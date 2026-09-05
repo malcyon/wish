@@ -17,7 +17,6 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 * [Sparkling Sabre](https://game-icons.net/1x1/lorc/sparkling-sabre.html)
 * [Hazard Sign](https://game-icons.net/1x1/lorc/hazard-sign.html)
 * [Brass Eye](https://game-icons.net/1x1/lorc/brass-eye.html)
-* [Pointy Hat](https://game-icons.net/1x1/lorc/pointy-hat.html)
 * [Crossed Sabres](https://game-icons.net/1x1/lorc/crossed-sabres.html)
 * [Barbute](https://game-icons.net/1x1/lorc/barbute.html)
 * [Anvil Impact](https://game-icons.net/1x1/lorc/anvil-impact.html)

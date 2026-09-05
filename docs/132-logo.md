@@ -1,44 +1,77 @@
 # A logo, and an icon Windows will show
 
-**Status: built and wired, with a stand-in for the current glyph.** Task
+**Status: the artist delivered, and the mark is built and wired.** Task
 **P74**. Donald — *"We need an icon for the app that Windows will show in the
 task bar. Until I can hire an artist, we can use something from Font
-Awesome."* That mark was Font Awesome's `hat-wizard`; it shipped from
-2026-08 until `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`, when Donald asked for a different stand-in from his
-game-icons.net archive while an artist is commissioned: *"I am paying an
-artist to create an app logo and icon. In the meantime, please use
-`pointy-hat`."*
+Awesome."* Two stand-ins held that place while an artist was found: Font
+Awesome's `hat-wizard` from 2026-08, then game-icons.net's `pointy-hat` from
+`#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`.
+Both are history now -- *"I have the official logo from the artist I
+hired,"* Donald, 2026-09-05.
 
-The mark is `pointy-hat` (Lorc, game-icons.net) on an indigo tile. It is
-generated from `ui/icons.py`, so it cannot drift from the glyph the program
-paints, and there is no artist to wait for. §5 is what shipped, §6 is
-`pointy-hat`'s own geometry and why it is left alone, and §1 and §2 are the
-brief for the artist, when there is one. Most of what follows was written
-against `hat-wizard` and is kept as the record of that decision -- the
-sections that describe *today's* glyph rather than the brief are marked.
+**§0 is what was delivered and what shipped from it.** §5 describes the
+current build; §6 is `pointy-hat`'s own geometry, kept for the licence record
+now that nothing draws it; §1--§3 are the brief this project wrote for an
+artist before one existed, kept as the reasoning that turned out to hold up
+rather than as instructions still open.
 
 ---
 
-## The verdict
+## 0. What the artist delivered, and what is settled
 
-* **The glyph is `pointy-hat`** (Lorc, game-icons.net, CC BY 3.0), path data
-  verbatim from the artist's own SVG, in `ui/icons.py` under `GAME_ICONS`. A
-  peaked hat with a folded, curling brim. Wish is a spell; the hat is the
-  spellcaster. **This is a stand-in**, not the chosen mark -- see the intro.
-* **game-icons.net as an app icon is legal**, the same way Font Awesome was:
-  CC BY 3.0 is satisfied by the credit in the README and in Help > About, and
-  the attribution does not have to be *on* the icon. What CC BY does not grant
-  is exclusivity: this is a mark anyone else may also ship. §3.
-* **The drawing is not modified.** It is recoloured and placed on a tile, and
-  the path data is Lorc's, point for point, at every size. §6.
-* **The silhouette comes apart at 32px and up, and that is measured, not a
-  fault.** `pointy-hat` carries fold lines as fine strokes; at 16--24px they
-  are too fine to survive rasterising and the hat reads as one piece, and from
-  32px up they resolve into three. §6.
-* **What it looks like at 16 px, honestly.** A pale, curved cone over a
-  scalloped brim, inside a rounded indigo square -- narrower at the top,
-  flaring through the lower two-thirds. It reads as a hat at 16 and is
-  unmistakable from 32 up. Checked by rendering, not assumed.
+`WISH delivery.zip`, unpacked at `work/logo/` -- gitignored, so nothing there
+is the record; what is committed is under `assets/logo/`. Three families, each
+in black, white and colour, each with an SVG source beside PNG exports:
+
+| family | what it is | delivered sizes |
+|---|---|---|
+| `Logos/` | the wordmark -- **WISH** in a gold serif | 300x100, 600x200, 1200x400, SVG |
+| `Marks/` | the mark -- a gold pentacle inside a ring | 80, 150, 200, 500 square, SVG |
+| `Combo Marks/` | the pentacle with the wordmark inside it | 80, 150, 200, 500 square, SVG |
+
+**The application icon is `Marks/Color`, unmodified, on its own ground.**
+Donald chose the colour mark over a transparent glyph and over a light/dark
+pair: the square is opaque edge to edge, `#17140e` behind the gold pentacle,
+so it reads the same on a light desktop, a dark one and in a macOS dock --
+nothing has to guess what is behind it. That is the same conclusion §2 reached
+independently for a *drawn* glyph on a *composed* tile; the artist's file
+supplies the same property by construction, so there is no tile left to
+compose. `assets/logo/mark.svg` is the committed asset and `ui/appicon.py`
+renders it at every size the program or a packager asks for -- see §5.
+
+**The README is headed by the pentacle and the wordmark side by side**,
+assembled into one image (`assets/logo/lockup.png`) so the two never break
+apart on a narrow screen. Donald asked for the pentacle drawn noticeably
+larger than the wordmark rather than the two kept in proportion -- *"I don't
+think I do want the logo and wordmark to be in step"* -- and is tuning the
+sizing by hand from here; this document does not pin exact numbers because he
+expects to keep adjusting them.
+
+**Help > About gets the black combo mark, provisionally.** Donald asked for
+`Combo Marks/Black`, but that file is black line art on a *transparent*
+background, and the About dialog's panel colour is whatever the platform's
+Qt style resolves it to -- `wish/preferences.py` already documents the same
+failure mode for a badge that sets only its ink. Measured on this machine:
+`QApplication().palette()` comes back `#efefef` under the offscreen Fusion
+style, but nothing in `wish/window.py` or `wish/about.py` sets a style or a
+palette, so a real user's dialog follows their OS theme -- light on some
+desktops, dark on others. A black mark on a dark About panel would vanish the
+way a cut-out hat vanished on a dark taskbar in §2. **Not yet wired into
+`wish/about.py`** for that reason; the asset is committed at
+`assets/logo/combo-mark-black.png` and the decision of which colourway
+actually survives every theme is Donald's, not a default this document picks.
+
+**The `.desktop` file already exists** -- `assets/wish.desktop`, committed on
+`#9 (Finish the packaging icons: .desktop, .icns and a README lockup)` itself,
+2026-08-23, before the artist delivered. It points `Icon=wish` at the hicolor
+tree `tools/genicons.py` writes, which now renders from the delivered mark, so
+nothing about the entry itself needed to change.
+
+**The `.icns` is new** -- `assets/wish.icns`, from `packaging/geniconset.py`,
+covering the sizes `docs/132-logo.md` §1b always asked for: 16, 32, 64, 128,
+256, 512 and 1024, each rendered once from the vector and stored under the
+Apple type codes that share a pixel size. Nobody has dropped it on a real
+Dock; `packaging/README.md` says so.
 
 ---
 
@@ -232,23 +265,23 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 
 ## 5. What was built
 
-**The drawing** is `ui/appicon.py`, beside `iconpaint.py` because it is the same
-job: `icons.py` path data turned into pixels. `pointy-hat` on a rounded tile,
-`#2b3a67` behind `#f7f9fb`, the glyph inset 10 % of the side and centred on its
-own ink rather than on its canvas -- which `paint()` never reads as a
-constant, so the same code drew `hat-wizard`'s 640 box correctly and draws
-`pointy-hat`'s 512 correctly too. Indigo rather than the interface's
-near-black `#16202b`: a near-black tile is invisible on Windows' dark
-taskbar, and being visible against an unknown ground is the whole reason to
-have a tile.
+**The drawing is a committed asset, not a generated one, and that is a
+deliberate trade.** Every icon before this one was painted at run time from
+`ui/icons.py`'s path data, specifically so no raster could drift from a glyph
+the program painted somewhere else. Nothing else in the program paints this
+mark, so that property bought nothing here: `assets/logo/mark.svg` is the
+artist's own file, committed verbatim, and `ui/appicon.py` renders it with
+`QSvgRenderer` at whatever size is asked for. The mark is not modified --
+composing it into an icon's sizes is placement, not art, the same rule §6
+holds `pointy-hat` to.
 
-**The generator** is `tools/genicons.py`, offscreen through `ui.iconpaint`
-exactly as `tools/iconsheet.py` renders the sheet. Every size is rendered from
-the vector; nothing is a downscale of anything. It writes:
+**The generator** is `tools/genicons.py`, unchanged in shape from the
+stand-in days: it still renders every size from the vector through
+`ui.appicon.image`, never a downscale of another size, and still writes:
 
 | file | what |
 |---|---|
-| `assets/wish.ico` | 16, 20, 24, 32, 40, 48, 64, 256 — DIB below 256, PNG at 256, 48 KB |
+| `assets/wish.ico` | 16, 20, 24, 32, 40, 48, 64, 256 — DIB below 256, PNG at 256 |
 | `assets/icons/hicolor/{N}x{N}/apps/wish.png` | 16, 22, 24, 32, 48, 64, 128, 256 |
 | `assets/wish.png` | 256, for a README |
 
@@ -258,11 +291,19 @@ and every library that writes one makes that choice for the whole file at once.
 Thirty lines buys the mix the shell documents and leaves the generator needing
 nothing Qt does not already provide.
 
+**`packaging/geniconset.py` writes `assets/wish.icns`** the same way: every
+size in §1b's macOS row rendered once from `ui.appicon.image` and packed under
+the Apple type codes that share a pixel size (`32x32`@1x and `16x16`@2x are
+both one call at 32px, stored twice). Its own `struct` writer, for the same
+reason as the `.ico`'s: the container is a short, documented format and a
+library buys nothing over reading the spec.
+
 **The output is committed.** PyInstaller wants the `.ico` to exist when it reads
 `wish.spec`, so generating it in CI would mean a build step before every build;
 committing it keeps the release a single command. `tests/test_appicon.py`
-re-renders every artefact and compares, so a change to the path data that
-nobody regenerated fails the build instead of shipping the old drawing.
+re-renders every artefact and compares, so a change to the asset that nobody
+regenerated fails the build instead of shipping the old drawing;
+`tests/test_geniconset.py` does the same for the `.icns`.
 
 **The comparison is pixels within a tolerance**, and it took two goes to get
 there. It was **bytes**, and CI went red on every runner: a PNG's bytes are
@@ -286,20 +327,27 @@ measured, not chosen:
 | a colour changed by one unit of 255 | 6 of 255 | **70 % at every size** |
 
 The magnitude bound has six times the room the noise needs and still catches
-every edit above at one size or another; the 10 % bound is what catches the
-last row, where a great many pixels move by very little. `tools/genicons.py
---check` uses the same `differences()` and prints both numbers.
-`test_the_comparison_still_catches_a_change_to_the_drawing` re-runs the first
-three rows as a test, so the tolerance cannot quietly widen.
+every edit in that table at one size or another; the 10 % bound is what
+catches the last row, where a great many pixels move by very little.
+`tools/genicons.py --check` uses the same `differences()` and prints both
+numbers. **The table is history now** -- `INSET`, `RADIUS` and `TILE` were
+`ui/appicon.py`'s own tunable fractions and went with the procedural tile when
+the fixed asset replaced it, so there is nothing left in that module to
+perturb by a part in a thousand. `test_the_comparison_still_catches_a_change_to_the_drawing`
+now shifts the rendered image by a single device pixel and checks that still
+reads as stale, which is the smallest change of *any* kind the tolerance has
+to catch; `TOLERANCE` and `MOST` themselves are untouched; the table above is
+kept because it is still why they hold the values they do.
 
-**The tests measure the drawing, not the file list.** The tile is checked to be
-opaque on all four sides and rounded at the corners, the hat is checked to clear
-the edge at 16, its widest row is checked to be well below the apex and at
-least 8 px across so the brim reads, and the 16 stored in the `.ico` is
-compared against a fresh 16 to prove it is not a squeezed 256.
-`test_the_hat_stays_pointy_hats_own_shape_at_every_size` is §6 as an
-assertion: one piece from 16 to 24, three from 32 to 256, measured against
-`pointy-hat`'s own fold lines rather than `hat-wizard`'s cone-and-bar.
+**The tests measure the drawing, not the file list.** The square is checked to
+be opaque on every side including its corners -- there is no tile to round any
+more, since the artist's own square carries the ground -- the mark is checked
+to leave some pixels legibly different from the ground at 16px so there is
+something there to see, and the 16 stored in the `.ico` is compared against a
+fresh 16 to prove it is not a squeezed 256. `test_the_asset_is_the_artists_own_file_unmodified`
+pins the source file's hash, which is §6's rule -- never nudge a point --
+turned into something that fails a build rather than waiting for someone to
+notice.
 
 **The no-images rule is gone**, so none of this needed working around. Donald,
 2026-08: *"You need to remove that test that blocks all pngs. We don't need
@@ -308,21 +356,31 @@ executables, audio and PDFs, which is the part that was ever about the game.
 
 ### Still not done
 
-* **No `.desktop` file and no macOS bundle.** The hicolor PNGs are generated and
-  committed, but nothing installs them: the Linux artefact is a tarball. Wire
-  them up when there is a package. `.icns` waits for a Mac to test on.
-* **No README lockup.** A mark plus the word, 1200×300, is an artist's job or an
-  hour in Inkscape; `assets/wish.png` is the mark alone in the meantime.
+* **No macOS bundle.** `assets/wish.icns` is committed and `packaging/README.md`
+  says so, but `wish.spec` has no `BUNDLE` step on either platform -- Wish
+  ships as one `EXE` and a `COLLECT`, not a `.app` -- so nothing installs the
+  file yet and nobody has dropped it on a real Dock. Wire it up when there is
+  a macOS package.
+* **Help > About still shows no picture from this delivery.** §0 says why:
+  the colourway Donald asked for is transparent art whose background depends
+  on the platform's theme, and substituting a different colourway was not
+  this document's decision to make.
 * **Nobody has seen it on a Windows taskbar.** That is a row for
   [`122-release-testing.md`](122-release-testing.md)'s Windows column, and it
   now has somebody who can tick it.
 
 ---
 
-## 6. `pointy-hat`'s own geometry, and why it is left alone
+## 6. `pointy-hat`'s own geometry, kept for the record
 
-**This section describes the current glyph.** §6 used to be about
-`hat-wizard`'s cone-and-bar, kept below for the record.
+**Nothing draws this any more.** §0 and §5: the artist's mark replaced it on
+2026-09-05, and `pointy-hat`'s path data is gone from `ui/icons.py` the same
+way `hat-wizard`'s went before it -- `git show` recovers either if a revert
+ever wants them. This section stays as the record of a decision that held:
+the geometry below is why the second stand-in was shipped even though its
+silhouette does not hold together above 24px, and that reasoning is exactly
+`.claude/rules/art.md`'s rule, applied before the rule had that name. §6 used
+to be about `hat-wizard`'s cone-and-bar before that, kept further below.
 
 Lorc draws `pointy-hat` with fold lines as separate strokes -- the brim's
 curl, a crease down the crown -- fine enough that at 16--24px they do not
@@ -340,13 +398,13 @@ not work at a size the answer is a different icon, or not using it at that
 size — never nudging the geometry. Recolouring it and putting it on a tile is
 composition; moving a point is making art.
 
-So `ui/appicon.py` has no size-dependent geometry at all — `glyph()` hands
-back `painter_path("pointy-hat")` and that is the whole of it — and
-`tests/test_appicon.py::test_the_hat_stays_pointy_hats_own_shape_at_every_size`
-holds it there: one piece at 16, 20, 22 and 24, three from 32 to 256.
-
-If 16 px is one day judged unacceptable, the remedy is a different mark — not
-an edited one. It reads at 16 today: see the verdict at the top.
+So `ui/appicon.py` had no size-dependent geometry at all while it drew
+`pointy-hat` — `glyph()` handed back `painter_path("pointy-hat")` and that was
+the whole of it — and a now-removed test held it there: one piece at 16, 20,
+22 and 24, three from 32 to 256. `ui/appicon.py` renders the delivered mark
+from its own SVG now and there is no path data left in this program to hold
+that guard over; `test_the_asset_is_the_artists_own_file_unmodified` in
+`tests/test_appicon.py` is its replacement, over the artist's file instead.
 
 ### As it was: `hat-wizard`'s brim
 

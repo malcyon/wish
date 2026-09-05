@@ -1,113 +1,72 @@
-"""The application's own icon, for now: game-icons.net's `pointy-hat`, on a
-filled tile.
+"""The application's own icon: the artist's mark, on its own ground.
 
-**This is a stand-in, not the chosen icon.** Donald: *"I am paying an artist
-to create an app logo and icon. In the meantime, please use `pointy-hat`."*
-It comes off, and `hat-wizard` or whatever replaces it goes back, the moment
-the artist delivers -- which is why it is its own commit, separate from the
-note icons and the toolbar (`#167`), so it can be reverted on its own.
+**This is the commissioned mark, not a stand-in.** `docs/132-logo.md` records
+the two stand-ins that came before it -- Font Awesome's `hat-wizard`, then
+game-icons.net's `pointy-hat` -- each chosen only because no artist existed
+yet. One delivered on 2026-09-05: a gold pentacle inside a ring, on a dark
+square it already carries as its own ground. Donald chose this over a
+transparent glyph and over a light/dark pair, on the grounds that a square
+that supplies its own background reads the same on a light desktop, a dark
+one and in a macOS dock -- nothing has to guess what is behind it.
 
-Beside `iconpaint.py` because it is the same job -- `icons.py` path data turned
-into pixels -- and because putting it here means the taskbar icon, the About
-picture and the `.ico` PyInstaller embeds are all one drawing. There is no
-raster to keep in step with the glyph, so they cannot drift.
+**The drawing stopped being generated, and that is a deliberate trade.**
+Every icon before this one was painted at run time from `ui/icons.py`'s path
+data, specifically so no raster could drift from the glyph the program
+painted elsewhere. There is nowhere else in the program that paints this
+mark, so that property bought nothing here, and the mark is a fixed,
+committed SVG instead: `assets/logo/mark.svg`, the artist's file, verbatim.
+`image()` below renders it at whatever size is asked for, straight off the
+vector, the same way `tools/genicons.py` always insisted on for every other
+size -- so a 256 is never a downscale of anything and neither is a 16.
 
-**Why a tile and not a bare silhouette.** `docs/132-logo.md` §2: a shape on
-transparency is grey pixels against a taskbar whose colour we do not know, and
-it vanishes on half of them. The tile supplies the ground.
+**The asset is not modified.** Composing it into the sizes a taskbar or a
+`.ico` wants is placement, not art; nothing here moves a point of the artist's
+drawing.
 
-**Why the hat is painted light rather than cut out.** Cutting it out leaves the
-taskbar showing through the hat, so on a dark desktop a dark tile would carry a
-dark hole and there would be nothing to see. Filling it with paper is the same
-silhouette with a ground guaranteed on both sides of every edge, and it still
-reads in monochrome, which Windows sometimes wants.
-
-**The path data is drawn exactly as Lorc drew it, at every size.** Colouring
-it and placing it on the tile is composition; moving a point would be
-redrawing somebody else's art, which this project does not do.
-
-**Scaled from the hat's own ink, not from a box constant.** `pointy-hat` sits
-on game-icons.net's 512 canvas rather than `hat-wizard`'s 640, and a
-different shape besides -- but `paint()` below never reads either box
-constant: it fits `glyph().boundingRect()` to the tile, so the scaling is
-correct for any glyph's own ink regardless of the canvas it was drawn on.
-Checked at 16, 32 and 256px; the hat reads at all three.
-
-The path data is game-icons.net, CC BY 3.0, attributed in the README and in
-Help > About, which is where the obligation for a Windows resource has to
-live -- an `.ico` has nowhere to carry one.
+**This mark carries no CC BY obligation.** It is Donald's own commissioned
+work, not lifted from a licensed set, so there is no attribution to discharge
+here the way `pointy-hat`'s belonged to Lorc at game-icons.net -- see
+`ui/icons.py`'s own docstring, where that credit still lives for the icons
+still drawn from it.
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import (
-    QColor,
-    QGuiApplication,
-    QIcon,
-    QImage,
-    QPainter,
-    QPainterPath,
-    QPixmap,
-)
+import pathlib
 
-from .iconpaint import painter_path
+from PyQt6.QtCore import QRectF
+from PyQt6.QtGui import QGuiApplication, QIcon, QImage, QPainter, QPixmap
+from PyQt6.QtSvg import QSvgRenderer
 
-NAME = "pointy-hat"
+#: The artist's own file, committed rather than left under `work/`, which is
+#: gitignored and has been lost twice.
+ASSET = pathlib.Path(__file__).resolve().parent.parent / "assets" / "logo" / "mark.svg"
 
-#: Indigo rather than the interface's near-black `#16202b`: a near-black tile
-#: on Windows' dark taskbar is a tile nobody can see, and the whole point of
-#: having one is that it is visible against an unknown ground.
-TILE = QColor("#2b3a67")
-GLYPH = QColor("#f7f9fb")
-
-#: Fractions of the side. The corner radius is the shell's own idiom; the inset
-#: is what stops the brim touching the edge at 16 px, where one pixel of margin
-#: is all there is.
-RADIUS = 0.18
-INSET = 0.10
+#: One renderer, reused: `QSvgRenderer` parses the file once and renders it at
+#: any size afterwards, and re-parsing a 1.8 MB file per icon size would be
+#: the wrong place to spend that cost.
+_renderer: QSvgRenderer | None = None
 
 
-def glyph() -> QPainterPath:
-    """The hat, as Lorc drew it."""
-    return painter_path(NAME)
-
-
-def paint(p: QPainter, size: float, x: float = 0.0, y: float = 0.0) -> None:
-    """The whole icon -- tile and hat -- into a `size` box at `(x, y)`."""
-    tile = QPainterPath()
-    tile.addRoundedRect(QRectF(x, y, size, size), size * RADIUS, size * RADIUS)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.fillPath(tile, TILE)
-
-    # Centred on the hat's own ink rather than on its canvas, which it does
-    # not fill.
-    hat = glyph()
-    ink = hat.boundingRect()
-    inner = size * (1 - 2 * INSET)
-    scale = min(inner / ink.width(), inner / ink.height())
-    p.save()
-    p.translate(x + (size - ink.width() * scale) / 2,
-                y + (size - ink.height() * scale) / 2)
-    p.scale(scale, scale)
-    p.translate(-ink.x(), -ink.y())
-    p.setBrush(GLYPH)
-    p.drawPath(hat)
-    p.restore()
+def _svg() -> QSvgRenderer:
+    global _renderer
+    if _renderer is None or not _renderer.isValid():
+        _renderer = QSvgRenderer(str(ASSET))
+    return _renderer
 
 
 def image(size: int) -> QImage:
-    """One square of the icon, drawn at its own size rather than scaled down.
+    """The icon at `size`, rendered from the vector rather than scaled down.
 
-    Every size is rendered from the vector. Windows asks for 16, 20, 24, 32,
-    40, 48 and 64 at the various display scalings and bilinearly scales
-    whatever it cannot find; a 256 squeezed to 16 is mush.
+    Every size Windows or a Linux icon theme asks for is rendered here on its
+    own terms; a 256 squeezed to 16 is mush, and the artist's file is a vector
+    for exactly this reason.
     """
     out = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    out.fill(Qt.GlobalColor.transparent)
+    out.fill(0)
     p = QPainter(out)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    paint(p, size)
+    _svg().render(p, QRectF(0, 0, size, size))
     p.end()
     return out
 

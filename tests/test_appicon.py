@@ -4,30 +4,30 @@ from __future__ import annotations
 
 Two different things are checked here and they fail for different reasons.
 
-**The drawing.** `ui/appicon.py` puts game-icons.net's `pointy-hat` -- a
-stand-in, `#167` -- on a tile, recoloured and inset and otherwise exactly as
-Lorc drew it. What is measured here is the composition -- the tile is the
-ground on every side, the hat clears the edge at 16, it reads in monochrome
--- and that the path data is still theirs: the connectivity of the drawing at
-each size is measured and pinned, because moving a point would be redrawing
-somebody else's art.
+**The drawing.** `ui/appicon.py` renders the artist's own `assets/logo/mark.svg`
+at whatever size is asked for. What is measured here is that the asset is
+still theirs -- a hash pinned against the committed file, because moving a
+point would be redrawing somebody else's art -- and that the square it
+delivers is what an application icon needs: opaque on every side, so there is
+nothing for an unknown taskbar or dock to show through.
 
 **The files.** `assets/` is committed, which means it can go stale. Every
 artefact is re-rendered here and compared with what is on disk, so a change to
-the path data that nobody regenerated fails the build instead of shipping an
+the asset that nobody regenerated fails the build instead of shipping an
 executable whose icon is the old drawing. The comparison is the *pixels*,
 within a measured tolerance -- see `test_the_committed_assets_are_todays_drawing`
 and `test_the_comparison_still_catches_a_change_to_the_drawing`.
 """
 
 
+import hashlib
 import pathlib
 
 import pytest
 
 pytest.importorskip("PyQt6.QtGui")
 
-from PyQt6.QtGui import QColor, QGuiApplication, QImage  # noqa: E402
+from PyQt6.QtGui import QGuiApplication, QImage  # noqa: E402
 
 from tools import genicons  # noqa: E402
 from ui import appicon  # noqa: E402
@@ -35,6 +35,12 @@ from ui import appicon  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 ICO = ASSETS / "wish.ico"
+
+#: `assets/logo/mark.svg`, as delivered on 2026-09-05. Pinned so an edit to
+#: the artist's file -- even a well-meant one, tuning a curve for 16px -- fails
+#: here instead of shipping unnoticed. `.claude/rules/art.md`: the answer to a
+#: size that does not work is a different icon, never a nudged one.
+MARK_SHA256 = "8457f44bd64bdd6e7894695eb48f5e5ea82db9067132890829a0ad14e9923027"
 
 
 @pytest.fixture
@@ -52,108 +58,52 @@ def _pixels(size: int) -> list[list[tuple[int, int, int, int]]]:
              for x in range(size)] for y in range(size)]
 
 
-def _glyph_mask(size: int) -> set[tuple[int, int]]:
-    """The pixels that are more hat than tile.
-
-    A midpoint on the red channel: the tile is `#2b3a67` and the hat `#f7f9fb`,
-    so the antialiased edge crosses this once and the test is not counting
-    fringe pixels as either.
-    """
-    grid = _pixels(size)
-    edge = (0x2b + 0xf7) // 2
-    return {(x, y) for y in range(size) for x in range(size)
-            if grid[y][x][3] > 128 and grid[y][x][0] > edge}
+def test_the_asset_is_the_artists_own_file_unmodified():
+    """The whole of `art.md`'s ban on moving a point, as a checkable fact."""
+    assert appicon.ASSET.exists(), appicon.ASSET
+    digest = hashlib.sha256(appicon.ASSET.read_bytes()).hexdigest()
+    assert digest == MARK_SHA256, (
+        "assets/logo/mark.svg has changed -- if this is a deliberate new "
+        "delivery from the artist, update MARK_SHA256 to match; if it is an "
+        "edit of the existing file, it should not be one")
 
 
-def _pieces(mask: set[tuple[int, int]]) -> list[set[tuple[int, int]]]:
-    """The mask's four-connected pieces, largest first."""
-    seen: set[tuple[int, int]] = set()
-    out = []
-    for start in mask:
-        if start in seen:
-            continue
-        seen.add(start)
-        queue, piece = [start], set()
-        while queue:
-            x, y = queue.pop()
-            piece.add((x, y))
-            for step in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                near = (x + step[0], y + step[1])
-                if near in mask and near not in seen:
-                    seen.add(near)
-                    queue.append(near)
-        out.append(piece)
-    return sorted(out, key=len, reverse=True)
+def test_the_asset_is_a_valid_svg(app):
+    from PyQt6.QtSvg import QSvgRenderer
+
+    renderer = QSvgRenderer(str(appicon.ASSET))
+    assert renderer.isValid()
 
 
-def test_the_hat_is_pointy_hats_path_and_nothing_else(app):
-    """The glyph is drawn, not redrawn. `appicon.glyph` has to hand back the
-    same object `iconpaint` builds from the path data -- no cut, no translate,
-    no boolean."""
-    from ui.iconpaint import painter_path
-
-    assert appicon.glyph() == painter_path(appicon.NAME)
-    assert _glyph_mask(16), "nothing was drawn"
-
-
-def test_the_hat_stays_pointy_hats_own_shape_at_every_size(app):
-    """Their drawing, not ours -- a redraw guard, measured rather than
-    assumed, because `pointy-hat` is not `hat-wizard`'s simple cone-and-bar.
-
-    Lorc's drawing carries fold lines as separate strokes, which are too fine
-    to survive rasterising at the small sizes and resolve into gaps once
-    there is room: **one** connected piece from 16 to 24px, and **three**
-    from 32 up. Measured with `tools/genicons.py`'s own renderer; a different
-    count at any of these sizes means the drawing moved, not that PyQt
-    rounded a pixel differently.
-    """
-    for size in (16, 20, 22, 24):
-        pieces = _pieces(_glyph_mask(size))
-        assert len(pieces) == 1, f"{size}: {[len(p) for p in pieces]}"
-    for size in (32, 48, 128, 256):
-        pieces = _pieces(_glyph_mask(size))
-        assert len(pieces) == 3, f"{size}: {[len(p) for p in pieces]}"
+def test_the_icon_is_opaque_at_every_size(app):
+    """The mark carries its own ground -- `docs/132-logo.md` §2 -- so unlike
+    the stand-ins before it there is no tile to composite and nothing here
+    should ever be transparent, corners included."""
+    for size in (16, 32, 256):
+        grid = _pixels(size)
+        corners = [grid[0][0], grid[0][size - 1],
+                  grid[size - 1][0], grid[size - 1][size - 1]]
+        assert all(a == 255 for *_, a in corners), (size, corners)
+        assert all(a == 255 for row in grid for *_, a in row), size
 
 
-def test_the_hat_flares_below_the_apex_and_does_not_come_to_a_triangle(app):
-    """A hat, not a triangle: the silhouette has to flare well below the
-    apex, even though -- measured -- `pointy-hat`'s widest row is not
-    literally the bottom pixel row the way `hat-wizard`'s bar was. At 16px
-    the apex (y=2) is 3px wide, the widest row (y=10) is 10px, and that
-    widest row sits in the lower half of the shape (y=2..13)."""
-    mask = _glyph_mask(16)
-    rows = {y: sum(1 for x, yy in mask if yy == y) for _, y in mask}
-    top, bottom = min(rows), max(rows)
-    assert rows[top] <= 3, "the apex is not a point"
-    widest = max(rows, key=rows.get)
-    assert rows[widest] >= 8, f"the flare is only {rows[widest]}px wide"
-    assert widest > (top + bottom) / 2, "the flare is not below the midline"
+def test_the_icon_is_not_blank_at_16(app):
+    """The smallest anyone ever sees it. Some part of the gold mark has to
+    read against the dark ground, or there would be nothing here to see."""
+    grid = _pixels(16)
+    ground = grid[0][0]
+    lit = sum(1 for row in grid for px in row
+             if sum(abs(a - b) for a, b in zip(px, ground)) > 60)
+    assert lit >= 8, f"only {lit} pixels differ from the ground at 16px"
 
 
-def test_the_tile_reads_in_monochrome(app):
-    """Windows draws the icon greyscale in places and describes it in none."""
-    def grey(colour):
-        r, g, b, _ = colour
-        return 0.299 * r + 0.587 * g + 0.114 * b
-
-    assert grey(appicon.GLYPH.getRgb()) - grey(appicon.TILE.getRgb()) > 120
-
-
-def test_the_tile_fills_the_square_apart_from_its_corners(app):
-    """A shape on transparency is grey pixels on an unknown taskbar -- §2 of
-    `docs/132-logo.md`. The tile is the ground, so it has to be opaque
-    everywhere but the rounded corners."""
-    grid = _pixels(32)
-    assert grid[16][0][3] == 255 and grid[16][31][3] == 255      # left, right
-    assert grid[0][16][3] == 255 and grid[31][16][3] == 255      # top, bottom
-    assert grid[0][0][3] == 0, "the corner is not rounded"
-
-
-def test_the_hat_never_touches_the_edge(app):
-    """One pixel of tile all the way round, at the size where there is only
-    one pixel to spare."""
-    mask = _glyph_mask(16)
-    assert not any(x in (0, 15) or y in (0, 15) for x, y in mask)
+def test_the_icon_reads_the_same_drawing_at_every_size(app):
+    """Every size is rendered from the vector, never a downscale of another
+    size -- so the ground colour, sampled well away from any stroke, is the
+    same at 16 as at 256."""
+    corner_16 = _pixels(16)[0][0]
+    corner_256 = _pixels(256)[0][0]
+    assert corner_16 == corner_256
 
 
 # --- the icon Qt hands the window ---------------------------------------
@@ -272,22 +222,29 @@ def test_the_committed_assets_are_todays_drawing(app):
     assert not stale, f"run tools/genicons.py: {stale}"
 
 
-@pytest.mark.parametrize("attribute,value", [("INSET", 0.1001),
-                                             ("RADIUS", 0.1801),
-                                             ("TILE", QColor("#2b3a68"))])
-def test_the_comparison_still_catches_a_change_to_the_drawing(
-        app, monkeypatch, attribute, value):
+def test_the_comparison_still_catches_a_change_to_the_drawing(app, monkeypatch):
     """The tolerance above has to be noise-wide, not change-wide.
 
-    Each of these is the smallest perturbation of its kind worth arguing
-    about -- the inset and the corner radius moved by one part in a thousand,
-    and a colour by a single unit of 255 -- and each has to leave the
-    committed `assets/` looking stale. Measured when the bounds were chosen:
-    a part in a thousand off the inset goes 4 of 255 out at 24 and 12 at 256,
-    and a one-unit colour change moves 70 % of the pixels at every size.
+    Renders a slightly different square -- the mark shifted by a single
+    device pixel at every size -- and checks the comparison still calls it
+    stale. A shift is used rather than a colour change because there is no
+    tunable constant left in `ui/appicon.py` to perturb: the drawing is now a
+    fixed asset, not a set of fractions.
     """
-    monkeypatch.setattr(appicon, attribute, value)
-    assert genicons.differences(ASSETS), f"{attribute}={value} slipped through"
+    original = appicon.image
+
+    def shifted(size):
+        image = original(size)
+        nudged = QImage(image.size(), image.format())
+        nudged.fill(0)
+        from PyQt6.QtGui import QPainter
+        p = QPainter(nudged)
+        p.drawImage(1, 0, image)
+        p.end()
+        return nudged
+
+    monkeypatch.setattr(appicon, "image", shifted)
+    assert genicons.differences(ASSETS), "a shifted render slipped through"
 
 
 def test_the_hicolor_tree_covers_gnome_and_kde():
