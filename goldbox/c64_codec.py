@@ -720,10 +720,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         for i, e in zip(free, granted_ids):
             slots[i] = e
         rec.set_raw("item_effects", bytes(slots))
+        # Each field claims only the bytes it actually placed. Both used to
+        # claim the whole ten, and `Report.note` assigns per offset, so the
+        # second call erased the first: an elf wearing a ring came out with
+        # the two bytes holding his *racial* ids attributed to the ring.
+        # `docs/117-save-conversion.md` calls `Report.sources` "the test that
+        # replaces a round trip: for any offset in the output, say where that
+        # byte came from", so a wrong answer there is a wrong answer to the
+        # question the writer exists to answer, even though no byte of the
+        # save moves.
+        taken = [i for i, _ in zip(free, granted_ids)]
         if innate is not None:
-            emit(innate, "item_effects", 0x0AD, 10)
+            emit(innate, "item_effects", 0x0AD, len(innate_ids[:10]))
         if granted is not None:
-            emit(granted, "item_effects", 0x0AD, 10,
+            emit(granted, "item_effects",
+                 0x0AD + (min(taken) if taken else 0), len(taken),
                  "; the id is the whole of what the item's own READY would "
                  "write (#252, docs/171-c64-trait-slots.md) -- the value and "
                  "the removal flag the other ports keep beside it have no "
