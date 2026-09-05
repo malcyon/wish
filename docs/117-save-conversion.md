@@ -369,7 +369,7 @@ rubbish.
 | item / effect file | `.ITM` / `.SPC` | **`.SWG`** / `.FX` | **`.STF`** / `.SFX` | `.THG` / `.EFX` |
 | bytes per item | 63 | 63 | **67** | 63 |
 | bytes per ability | 1 | 2 | 2 | 2 |
-| memorised-spell region | 21 | 84 | 75 | 141 |
+| memorised-spell region | 16 | 84 | 75 | 141 |
 | spellbook entries | 56 | 100 | 117 | 125 |
 | spell-slot arrays × levels | 2 × 3 | 3 × 5 | 4 × 7 | 3 × 9 |
 | per-class level arrays | 1 × 8 | 2 × 8 | 2 × 7 | 3 × 7 |
@@ -379,6 +379,24 @@ rubbish.
 The spellbook widths are not guesses: 100 and 117 are `goldbox/spells.py`'s own
 Curse and Silver Blades id spaces, measured on the **C64** long before any DOS
 record was read, and they land exactly.
+
+**The memorised-spell row said 21 for Pool of Radiance and now says 16**, which
+is what `goldbox/dos_layout.py` has always carried: the field is `0x01C`+16, and
+21 was that plus the five undecoded bytes of `gap_017` in front of it. The other
+three titles have no such gap, so the row was counting one thing in one column
+and another in the other three, and `#192 (Convert a Curse of the Azure Bonds
+DOS save into a C64 one, which the importer refuses today)` step 0c tripped over
+it. Nothing rests on the old number.
+
+**The C64 side of that row is not the same number, and a conversion has to
+know it.** Curse's C64 record keeps its memorised list at `0x020` and it is
+**69 bytes**, not the 16 `goldbox/layout.py` records: five loops in Curse's
+`CAMP` count from `$44` down to zero over `$7C20,X` (`$2037`, `$1A1F`, `$1A5A`,
+`$1AE6`, `$20BB`), and `0x020 + 68 = 0x064` abuts the ability array at `0x065`
+exactly. So `goldbox/layout.py`'s `0x020`+16 and `0x030`+53 are one field in
+Curse. `goldbox/c64_codec.py` truncates the list to sixteen silently, which is
+unreachable today -- DOS Pool of Radiance's list is also sixteen -- and is
+Curse's to fix.
 
 **The evidence, and it is content rather than arithmetic.** 54 shipped records
 across the four titles, and every one of them:
@@ -412,12 +430,32 @@ differ only in front of that**.
 | file | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 |
 | undecoded head | — | — | — | **1024** |
 | container-number byte | 1 | 1 | 1 | — |
-| ECL variables, `u16le` from `$4900` | 2560 | 2560 | 2560 | — |
+| ECL variables, `u16le`, one per C64 byte | 2560 | 2560 | 2560 | — |
 | staged `ECL<n>.DAX` script | 7680 | 7680 | — | — |
 | unnamed, before the square | — | 12 | 12 | 4 |
 | square block, ending in the party size | 8 | 8 | 8 | 8 |
 | six 41-byte `CHRDAT` entries | 246 | 246 | 246 | 246 |
 | UI scratch | 82 | 82 | 82 | 82 |
+
+**The variable array is `$4900`-based in Pool of Radiance and `$4B00`-based in
+Curse and Silver Blades**, and the row above no longer names an address because
+it is not one address. The word *index* is the same in all three -- word *N* is
+the same file offset -- so every measurement taken through
+`goldbox.dos_savegame.word` is unaffected; what was wrong was calling Curse's
+indoors flag `$49E6` when the scripts that read it name `$4BE6`. It is settled
+from the bytecode: 21 of Curse's 25 area scripts are **byte-identical** to the
+DOS `ECL<n>.DAX` blocks of the same id, so the two ports name one address set,
+and a census of every address operand in all 25 finds 219 references to the
+`$4B00` page, 2053 to `$4C00` and **none at all** to `$4900` or `$4A00`
+(`tools/eclcensus.py`). Silver Blades' 22 scripts read the same way. The
+relocation is exactly `$200` and `DUNGEON` shows it directly: the clock tick is
+the same routine at Pool of Radiance `$0DEC` on `$49C6`/`$4900`/`$4980` and at
+Curse `$0D4F` on `$4BC6`/`$4B00`/`$4B80`.
+
+**So the quest-flag page is `$4C20`-`$4CFF` in Curse and Silver Blades**, not
+`$4A20`-`$4AF8`, and the per-script scratch that `NEWECL` zeroes is
+`$4C00`-`$4C1F` -- Curse's `DUNGEON $21D3`, `LDX #$1F / LDA #$00 / STA $4C00,X`,
+guarded so that it fires only when the script id actually changes.
 
 **Silver Blades stages no script, and that is the whole of why its save is
 less than half the size.** Its own scripts are no smaller — its largest
