@@ -164,6 +164,76 @@ def icon_bytes(disks: pathlib.Path) -> bytes:
     return dosdisk.game_files(disks)[0]
 
 
+def slot_icons(disk: pathlib.Path) -> list[dict]:
+    """The eight 36-byte icon entries the disk being booted actually holds.
+
+    `icon_bytes` above answers what a *conversion* composes, which is one
+    icon for the whole party.  This answers what is in the save, slot by
+    slot, so a party whose six figures differ can be checked figure by
+    figure -- the measurement `#130 (A converted DOS party arrives with six
+    identical combat figures, not its own)` will need and the one the glyph
+    half of `--icon` could not make while it read the wrong bank (#265).
+    """
+    from goldbox import icons as I
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    _game, sg0, _sg1 = load_save(D64(disk.read_bytes()))
+    payload = sg0.to_bytes()
+    out = []
+    for n in range(I.ICON_COUNT):
+        icon = I.icon_for_slot(payload, n)
+        out.append({"slot": n, "occupied": sg0.slot(n).occupied,
+                    "shape": icon.shape.hex(), "colours": icon.colours.hex()})
+    return out
+
+
+def icon_charset(disks: pathlib.Path) -> bytes:
+    """`CHARPIC00`, the glyphs an icon's eighteen screen codes name.
+
+    Byte-identical on all eight sides, so this walks the directory the way
+    `dosdisk.game_files` does rather than naming one.  Read off the player's
+    disk at run time and never stored here.
+    """
+    from goldbox.icons import load_icon_charset
+
+    for path in sorted(disks.glob("*.[dD]64")):
+        try:
+            return load_icon_charset(str(path))
+        except Exception:
+            continue
+    raise SystemExit(f"no CHARPIC00 on any disk in {disks}")
+
+
+def glyph_of(charset: bytes, code: int) -> bytes:
+    """One screen code's eight bitmap bytes, padded if the file stops short.
+
+    `CHARPIC00`'s payload is 2030 bytes, six into glyph 253 -- so a code that
+    high reads short rather than raising.  Nothing an icon carries reaches it
+    (the highest code across every source is 243), and padding keeps a
+    comparison against a *drawn* glyph honest instead of throwing.
+    """
+    raw = charset[code * 8:code * 8 + 8]
+    return raw + bytes(8 - len(raw))
+
+
+#: Where the 7x7 window of squares lands on the text screen.  A square is a
+#: 3x3 block of cells and the window starts one cell in from the top left, so
+#: square `(x, y)` draws at row `1 + 3 * (y - y0)`, column `1 + 3 * (x - x0)`
+#: for a camera at `(x0, y0)`.  Measured on the `#265` run: six party members
+#: at `(26,11) (25,11) (27,12) (26,12) (24,12) (29,12)` with the camera at
+#: `23,8` drew at rows 10, 10, 13, 13, 13, 13 and columns 10, 7, 13, 10, 4, 19
+#: -- 6 of 6, and the enemies' rows 16 and 19 follow the same step.
+FLOOR_ORIGIN = (1, 1)
+SQUARE_CELLS = 3
+
+
+def where_drawn(x: int, y: int, camera: tuple[int, int]) -> tuple[int, int]:
+    """The screen cell a combatant standing at `(x, y)` is drawn from."""
+    return (FLOOR_ORIGIN[0] + SQUARE_CELLS * (y - camera[1]),
+            FLOOR_ORIGIN[1] + SQUARE_CELLS * (x - camera[0]))
+
+
 class Log:
     """Everything the run saw, to the terminal and to a `.jsonl` beside it."""
 
@@ -336,8 +406,15 @@ def roll_call(sess) -> dict:
         return (c.on_map and x0 <= c.x < x0 + C.VIEW
                 and y0 <= c.y < y0 + C.VIEW)
 
+    # `slot` and `pose` are the position table's own third byte, split
+    # `packed >> 2` and `packed & 3` by `automap.combat._combatant`.  They are
+    # logged because a figure's *pose* is the one thing the screen cannot say:
+    # the composed icon's two poses share their top row, so which of the two
+    # the engine copied into the combat character set is readable only from
+    # the engine's own table (#184).
     party = [{"index": c.index, "name": c.name.strip(), "x": c.x, "y": c.y,
               "on_map": c.on_map, "hp": c.hp, "alive": c.alive,
+              "slot": c.slot, "pose": c.pose,
               "in_window": inside(c)}
              for c in battle.party]
     return {
@@ -389,8 +466,25 @@ def undrawn(roll: dict, blocks: int) -> list[str]:
     return out
 
 
-def icon_evidence(sess, icon: bytes) -> dict:
+def icon_evidence(sess, icon: bytes, slots: list[dict] | None = None,
+                  charset: bytes | None = None,
+                  roll: dict | None = None) -> dict:
     """What the running game drew, against the 36 bytes the save carries.
+
+    With `slots` (this disk's own eight icon entries), `charset`
+    (`CHARPIC00`) and `roll` (the fight's combatant table), each figure on
+    the floor is compared cell by cell against the bitmaps its own save slot
+    names -- which is the whole of `#184 (A converted combat icon's colours
+    are proven in the game and its shapes are not)`.  Without them the two
+    older readings below are all that is taken, which is what the unit tests
+    exercise.
+
+    **`$A0` is not the reversed space here.**  `#184`'s body proposed
+    checking the top row for eight zeroes and eight `$FF`s on the grounds
+    that `$20` and `$A0` are the space and the reversed space -- true of the
+    ROM character set and false of `CHARPIC00`, where `$A0` is
+    `003cfcf4d4f4dc90`, the top of a figure's head.  So the top row is
+    reported as read and judged against `CHARPIC00`, never against `$FF`.
 
     Two independent checks, because the codes on screen are the engine's and
     not ours:
@@ -444,22 +538,112 @@ def icon_evidence(sess, icon: bytes) -> dict:
                     glyphs[code] = m.read(chars + code * 8, 8, bank=ram_bank)
     poses = [icon[18:27], icon[27:36]]
     out = {"blocks": len(blocks), "charset": chars, "matched": [],
-           "top_row": [], "distinct_figures": []}
+           "top_row": [], "distinct_figures": [], "figures": []}
+    # Who the engine says stands on each drawn square, so a figure can be
+    # named rather than guessed at.  Party only: an enemy's figure comes from
+    # the monster's own art and not from the save's icon table.
+    standing = {}
+    if roll:
+        camera = tuple(roll["camera"])
+        for who in roll["party"]:
+            if who["on_map"]:
+                standing[where_drawn(who["x"], who["y"], camera)] = who
     for r, c, block in blocks:
         here = bytes(colours[(r + dr) * 40 + c + dc]
                      for dr in range(3) for dc in range(3))
         out["matched"].append((r, c, block[0],
                                [bytes(p) == here for p in poses], here.hex()))
-        # `20 A0 20` is the composed icon's own top row: blank, solid, blank.
+        # `20 A0 20` is the composed icon's own top row.  Read, not judged:
+        # what `$A0` draws is `CHARPIC00`'s business, not the ROM's (#184).
         out["top_row"].append((r, c, [glyphs[code].hex() for code in block[:3]]))
-        shape = b"".join(glyphs[code] for code in block)
+        drawn = [bytes(glyphs[code]) for code in block]
+        shape = b"".join(drawn)
         if shape not in out["distinct_figures"]:
             out["distinct_figures"].append(shape)
+        if slots is not None and charset is not None:
+            out["figures"].append(
+                figure_reading(r, c, block, drawn, here, slots, charset,
+                               standing.get((r, c))))
     out["distinct_figures"] = len(out["distinct_figures"])
     return out
 
 
-def watch_turns(seen: list) -> object:
+def figure_reading(row: int, col: int, block: bytes, drawn: list[bytes],
+                   colours: bytes, slots: list[dict], charset: bytes,
+                   who: dict | None) -> dict:
+    """One figure on the floor, against every icon the save carries.
+
+    The comparison the ticket asks for.  The engine hands each combatant its
+    own run of nine sequential screen codes, so an icon's own codes never
+    appear on the floor -- but the *bitmaps* behind those nine codes are
+    copied out of `CHARPIC00`, and `CHARPIC00[code * 8]` is exactly what the
+    save's eighteen screen codes name.  So a figure is scored against both
+    poses of all eight slots **and against the mirror of each**, and `exact`
+    is every slot, pose and handedness whose nine bitmaps are the nine the
+    engine drew, byte for byte.
+    """
+    scored = []
+    for entry in slots:
+        shape = bytes.fromhex(entry["shape"])
+        colour = bytes.fromhex(entry["colours"])
+        for pose in range(2):
+            codes = shape[pose * 9:pose * 9 + 9]
+            hues = colour[pose * 9:pose * 9 + 9]
+            want = [glyph_of(charset, code) for code in codes]
+            for kind, cells in (("plain", want),
+                                ("mirrored", mirrored(want, hues))):
+                same = sum(1 for a, b in zip(drawn, cells) if a == b)
+                scored.append({"slot": entry["slot"], "pose": pose,
+                               "kind": kind, "glyphs": same,
+                               "colours": hues == colours})
+    best = max((s["glyphs"] for s in scored), default=0)
+    return {
+        "row": row, "col": col, "code": block[0],
+        "who": None if who is None else who["name"],
+        "index": None if who is None else who["index"],
+        "table_slot": None if who is None else who["slot"],
+        "table_pose": None if who is None else who["pose"],
+        "drawn": [g.hex() for g in drawn],
+        "colours": colours.hex(),
+        "best": best,
+        "exact": [(s["slot"], s["pose"], s["kind"])
+                  for s in scored if s["glyphs"] == 9],
+        "exact_colours": [(s["slot"], s["pose"], s["kind"]) for s in scored
+                          if s["glyphs"] == 9 and s["colours"]],
+        "scored": scored,
+    }
+
+
+def mirrored(cells: list[bytes], colours: bytes) -> list[bytes]:
+    """The same nine cells drawn facing the other way.
+
+    A party member facing left is the *same* nine bitmaps turned over, not a
+    second set: over 80 turns of one fight, 45 of 405 party-figure readings
+    had the position table's pose byte at 2 and every one of those 45 was
+    this transform of that character's own first pose, 9 of 9 cells (#184).
+
+    **The pixel width depends on the cell, and getting it wrong looks like a
+    fault in the game.**  A multicolour cell is four double-width pixels, so
+    turning it over reverses the four bit pairs; a hi-res cell is eight, so
+    it reverses the eight bits.  Which one a cell is comes from bit 3 of its
+    own colour byte.  Reversing every cell as multicolour scored 8 of 9 for
+    RHIANNON, 21 readings out of 21, and the one cell that disagreed was the
+    single hi-res cell in her icon.
+    """
+    out: list[bytes] = [b""] * len(cells)
+    for cell, bits in enumerate(cells):
+        multi = bool(colours[cell] & 0x08)
+        turned = bytes(
+            (((b & 0x03) << 6) | ((b & 0x0C) << 2)
+             | ((b & 0x30) >> 2) | ((b & 0xC0) >> 6)) if multi
+            else int(f"{b:08b}"[::-1], 2)
+            for b in bits)
+        row, col = divmod(cell, 3)
+        out[row * 3 + (2 - col)] = turned
+    return out
+
+
+def watch_turns(seen: list, evidence=None) -> object:
     """A fight tactic that takes a roll call every time the party is asked.
 
     The floor is read once, before the first blow, and one reading cannot show
@@ -478,6 +662,19 @@ def watch_turns(seen: list) -> object:
         roll = roll_call(sess)
         if roll:
             roll["blocks"] = len(combatants(sess, s))
+            if evidence is not None:
+                # A figure's *second* pose is only ever on the screen for
+                # part of a fight -- the position table's pose byte was 0 for
+                # all six party members when the first floor was read, and
+                # three of the six had taken another value by the end of the
+                # same fight.  Each combatant's run in the combat character
+                # set is nine codes long, so the charset holds one pose at a
+                # time and the other nine of an icon's eighteen screen codes
+                # can only be read while that pose is the one drawn (#184).
+                try:
+                    roll["icons"] = evidence(sess)
+                except Exception as exc:      # a read is not worth the run
+                    roll["icons"] = {"error": repr(exc)}
             seen.append(roll)
         return sess.combat_turn()
     return tactic
@@ -641,10 +838,30 @@ def run(args, log: Log) -> int:
                                 f"the drawn window")
                 if args.icon:
                     icon = icon_bytes(pathlib.Path(args.disks))
-                    found = icon_evidence(sess, icon)
+                    # What *this* disk holds, slot by slot, and the glyphs its
+                    # codes name.  Both read off files, not off the machine,
+                    # so the comparison has an independent side (#184).
+                    slots = slot_icons(pathlib.Path(args.disk))
+                    charset = icon_charset(pathlib.Path(args.disks))
+                    log.emit("save_icons", slots=slots)
+                    for entry in slots:
+                        if entry["occupied"]:
+                            log.say(f"  save slot {entry['slot']} icon: "
+                                    f"{entry['shape']} / {entry['colours']}")
+                    found = icon_evidence(sess, icon, slots=slots,
+                                          charset=charset, roll=roll)
                     log.emit("icons", **found)
                     log.say(f"figures on the floor: {found.get('blocks')}, "
                             f"distinct: {found.get('distinct_figures')}")
+                    for fig in found.get("figures", []):
+                        who = fig["who"] or "an enemy"
+                        exact = ", ".join(f"slot {s} pose {p} {k}"
+                                          for s, p, k in fig["exact"]) \
+                            or "nothing"
+                        log.say(f"    {who} at {fig['row']},{fig['col']} "
+                                f"from code ${fig['code']:02X}: "
+                                f"{fig['best']} of 9 glyphs match the save's "
+                                f"best icon; exactly {exact}")
                     for row in found.get("matched", []):
                         log.say(f"    colours at {row[0]},{row[1]} "
                                 f"code ${row[2]:02X}: {row[4]} "
@@ -657,8 +874,15 @@ def run(args, log: Log) -> int:
                         log.say(f"  ** {line}")
                         log.emit("undrawn", complaint=line)
                 seen: list = []
-                r = sess.fight(budget=args.budget,
-                               tactic=watch_turns(seen) if args.icon else None)
+                watch = None
+                if args.icon:
+                    def per_turn(s, _icon=icon, _slots=slots,
+                                 _charset=charset):
+                        return icon_evidence(s, _icon, slots=_slots,
+                                             charset=_charset,
+                                             roll=roll_call(s))
+                    watch = watch_turns(seen, evidence=per_turn)
+                r = sess.fight(budget=args.budget, tactic=watch)
                 log.emit("fight", outcome=r.outcome, turns=r.turns,
                          acted=r.acted, blows=r.blows, lines=r.lines,
                          evidence=r.evidence)
@@ -674,6 +898,19 @@ def run(args, log: Log) -> int:
                             f"{roll['blocks']} figures drawn")
                     for line in undrawn(roll, roll["blocks"]):
                         log.say(f"  ** {line}")
+                    # Only the figures whose pose byte has moved: the first
+                    # floor already reported every pose-0 figure, and what is
+                    # unproven is the other nine of an icon's eighteen codes
+                    # (#184).
+                    for fig in roll.get("icons", {}).get("figures", []):
+                        if not fig["who"] or not fig["table_pose"]:
+                            continue
+                        exact = ", ".join(f"slot {s} pose {p} {k}"
+                                          for s, p, k in fig["exact"]) \
+                            or "nothing"
+                        log.say(f"    {fig['who']} is standing in pose byte "
+                                f"{fig['table_pose']}: {fig['best']} of 9 "
+                                f"glyphs match; exactly {exact}")
                 log.say(r.evidence)
                 sess.kbd.screenshot(str(log.dir / f"{args.tag}-fight-end.png"))
             else:
