@@ -403,3 +403,254 @@ def test_area_eleven_is_the_training_hall_not_the_arena():
     assert "arena" not in (a.name or "").lower()
     assert a.geos == ()
     assert a.disk == 3
+
+
+# -- Secret of the Silver Blades ---------------------------------------------
+#
+# `#20 (Build an area table for Silver Blades)`. Every claim in
+# `areas.AREAS_SILVER_BLADES` is re-derived here from the player's own six
+# sides, so a row that drifts from what the scripts say fails rather than
+# merely looking plausible. The disks are found through `tools/gamedisks.py`;
+# there are none on a CI runner, so all of these skip there.
+
+
+@pytest.fixture(scope="module")
+def ssb_table():
+    """The Silver Blades table read again off the disks, or skip."""
+    areatable = pytest.importorskip("tools.areatable")
+    gamedisks = pytest.importorskip("tools.gamedisks")
+    where = gamedisks.find("secret-of-the-silver-blades")
+    if where is None or not where.is_dir():
+        pytest.skip("needs the Silver Blades disks; set $SSB_DISKS")
+    game = next(g for g in games_module().GAMES
+                if g.key == "secret-of-the-silver-blades")
+    machine = areatable.Machine(str(where), game)
+    base, scripts = areatable.load_scripts(str(where), game, machine)
+    return base, scripts, areatable.catalogue(str(where), game)
+
+
+def games_module():
+    from goldbox import games
+    return games
+
+
+def test_the_silver_blades_table_has_a_row_per_script_on_the_disks(ssb_table):
+    """Twenty-two area scripts. `ECL64` and `ECL65` are on every one of the six
+    sides and are excluded by decoding rather than by name: their first four
+    bytes are not the `GOTO` an area script opens with."""
+    _, scripts, catalogue = ssb_table
+    on_disk = {int(n[3:], 16) for n in scripts}
+    assert on_disk == {a.id for a in areas.AREAS_SILVER_BLADES}
+    assert len(on_disk) == 22
+    assert "ECL64" in catalogue and "ECL65" in catalogue
+    assert "ECL64" not in scripts and "ECL65" not in scripts
+
+
+def test_every_silver_blades_disk_number_is_the_side_the_script_sits_on(
+        ssb_table):
+    """`Area.disk` is what a fast travel writes to `$7F12`; getting it wrong
+    leaves the loader sitting at an `INSERT SIDE #` prompt."""
+    _, scripts, _ = ssb_table
+    wrong = {a.id: (a.disk, scripts[a.ecl].side)
+             for a in areas.AREAS_SILVER_BLADES
+             if scripts[a.ecl].side != a.disk}
+    assert wrong == {}
+
+
+def test_the_scripts_own_disk_writes_agree_with_the_side(ssb_table):
+    """The other half of the disk column, and it is independent of the
+    directory: every static `SAVE <n>, [$7F12]` certain on every path into a
+    `NEWECL` names the side the target script is really on. 29 of 29, none
+    disagreeing -- if one ever does, the table is reading the wrong byte."""
+    _, scripts, _ = ssb_table
+    checked = disagreed = 0
+    for script in scripts.values():
+        for exit_ in script.exits(0x7F12):
+            target = scripts.get(f"ECL{exit_.target:02X}")
+            if exit_.disk is None or target is None:
+                continue
+            checked += 1
+            if target.side != exit_.disk:
+                disagreed += 1
+    assert checked >= 29 and disagreed == 0
+
+
+def test_every_silver_blades_map_is_one_its_script_loads(ssb_table):
+    """`LOADFILES`' first operand is the file number, so `LOADFILES 49` is
+    `GEO31`. `$FF` and `$7F` mean "leave this slot alone" and are not maps."""
+    _, scripts, _ = ssb_table
+    for a in areas.AREAS_SILVER_BLADES:
+        loaded = [f"GEO{g:02X}" for g in scripts[a.ecl].geos()]
+        assert list(a.geos) == loaded, a.ecl
+
+
+def test_two_silver_blades_areas_load_no_map_of_their_own(ssb_table):
+    """`ECL31` and `ECL32` issue no `LOADFILES` at all, and `ECL11` issues
+    none either. The first two still put a map on the screen -- `ECL30`, the
+    menu that sends the party to them, loads `GEO30` on the way -- so they are
+    `dynamic_geo` rather than mapless, and a caller must not pick a square off
+    `geos[0]` for them because there is no `geos[0]`."""
+    _, scripts, _ = ssb_table
+    mapless = {a.id for a in areas.AREAS_SILVER_BLADES if not a.geos}
+    assert mapless == {0x11, 0x31, 0x32}
+    assert not any(scripts[f"ECL{i:02X}"].geos() for i in mapless)
+    assert {a.id for a in areas.AREAS_SILVER_BLADES if a.dynamic_geo} \
+        == {0x31, 0x32}
+
+
+def test_five_silver_blades_areas_do_not_load_the_map_of_their_own_id(
+        ssb_table):
+    """Pool of Radiance's rule -- every script's `LOADFILES` first operand is
+    its own id -- is false in Silver Blades, and a table built on it would put
+    the wrong map against five of the twenty-two rows."""
+    odd = {a.id: a.geos[0] for a in areas.AREAS_SILVER_BLADES
+           if a.geos and a.geos[0] != f"GEO{a.id:02X}"}
+    assert odd == {0x04: "GEO10", 0x30: "GEO31", 0x33: "GEO31",
+                   0x34: "GEO32", 0x63: "GEO62"}
+
+
+def test_silver_blades_arrival_squares_come_from_the_scripts(ssb_table):
+    """Twelve of the twenty-two, and every one of them is the area's own
+    entry 4 rather than a departing script's write -- the opposite of Pool of
+    Radiance, where most were harvested from the departing side."""
+    _, scripts, _ = ssb_table
+    known = {a.id: a.arrival for a in areas.AREAS_SILVER_BLADES if a.arrival}
+    assert len(known) == 12
+    for area_id, arrival in known.items():
+        x, y, facing = scripts[f"ECL{area_id:02X}"].arrival()
+        assert (x, y, facing) == (arrival.x, arrival.y, arrival.facing), \
+            f"ECL{area_id:02X}"
+    assert known[0x22] == Arrival(14, 14, 0)
+    assert str(known[0x63]) == "0,0 S"
+
+
+def test_area_forty_has_two_candidate_squares_so_it_gets_none(ssb_table):
+    """`ECL44` writes 7,15 N before its `NEWECL 64`; `ECL40`'s own entry 4
+    writes 12,0 S. Two routes in, two squares, and nothing says which a fast
+    travel should imitate."""
+    _, scripts, _ = ssb_table
+    assert areas.area_in(0x40, areas.SECRET_OF_THE_SILVER_BLADES).arrival \
+        is None
+    assert scripts["ECL40"].arrival() == (12, 0, 2)
+    placed = [e.square for e in scripts["ECL44"].exits(0x7F12)
+              if e.target == 0x40 and e.places]
+    assert placed == [(7, 15, 0)]
+
+
+def test_the_silver_blades_rows_are_all_probable_and_unnamed():
+    """Nobody has fast-travelled a party into a Silver Blades area and watched
+    where it landed, and no area has a name. A row that claims CONFIRMED
+    without that measurement is claiming more than the evidence."""
+    table = areas.AREAS_SILVER_BLADES
+    assert {a.confidence for a in table} == {Confidence.PROBABLE}
+    assert all(a.name is None for a in table)
+    assert areas.GEO_NAMES[areas.SECRET_OF_THE_SILVER_BLADES] == {}
+
+
+def test_a_silver_blades_label_names_its_own_disk_not_a_pool_one():
+    """`POOL3` under a Silver Blades session would name a disk the player does
+    not own."""
+    row = areas.area_in(0x22, areas.SECRET_OF_THE_SILVER_BLADES)
+    assert row.label == "ECL22 - GEO22, SILVER-2"
+    assert areas.area(0).label == "New Phlan - GEO00, POOL3"
+
+
+def test_fast_travel_is_still_offered_nothing_for_silver_blades():
+    """The table exists and `areas_for_title` still refuses it, because
+    `automap/actions.py` writes Pool of Radiance's addresses and every one of
+    them is a different number in Silver Blades. `#15 (Fast Travel for more
+    than one Gold Box title)` is what changes this line, and until it does,
+    offering the rows would fast-travel a party by writing into whatever
+    Silver Blades keeps at Pool of Radiance's addresses."""
+    assert areas.areas_for_title(areas.SECRET_OF_THE_SILVER_BLADES) == ()
+    assert len(areas.areas_for(areas.SECRET_OF_THE_SILVER_BLADES)) == 22
+    assert areas.areas_for_title(POOL_OF_RADIANCE) == areas.AREAS
+    assert areas.areas_for(POOL_OF_RADIANCE) == areas.AREAS
+    assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == ()
+    assert areas.areas_for(None) == ()
+
+
+def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
+    """Blocked by side, with `ECL04` the one id whose high nibble is not its
+    side. Anything walking `range(...)` over these invents twenty-six areas
+    that do not exist."""
+    ids = [a.id for a in areas.AREAS_SILVER_BLADES]
+    assert ids == sorted(ids)
+    assert ids[0] == 0x04 and ids[-1] == 0x63
+    assert len(set(range(ids[0], ids[-1] + 1)) - set(ids)) == 74
+    wrong_nibble = [a.id for a in areas.AREAS_SILVER_BLADES
+                    if a.id >> 4 != a.disk]
+    assert wrong_nibble == [0x04]
+
+
+# -- the same reading, run against Pool of Radiance as a control -------------
+#
+# The five tests above that check `AREAS` against the scripts have skipped
+# since `work/ecl-scripts/` was lost with the rest of `work/` (#137). These
+# three ask the same questions of the disks directly, through the reader that
+# built the Silver Blades table -- so the Silver Blades rows are not the only
+# thing that reader has ever been believed about.
+
+
+@pytest.fixture(scope="module")
+def pool_table():
+    """Pool of Radiance's scripts read by `tools/areatable.py`, or skip."""
+    areatable = pytest.importorskip("tools.areatable")
+    gamedisks = pytest.importorskip("tools.gamedisks")
+    where = gamedisks.find("pool-of-radiance")
+    if where is None or not where.is_dir():
+        pytest.skip("needs the Pool of Radiance disks; set $POR_DISKS")
+    game = next(g for g in games_module().GAMES if g.key == "pool-of-radiance")
+    machine = areatable.Machine(str(where), game)
+    _, scripts = areatable.load_scripts(str(where), game, machine)
+    return scripts
+
+
+def test_the_pool_table_names_exactly_the_scripts_on_the_disks(pool_table):
+    assert {int(n[3:], 16) for n in pool_table} == {a.id for a in areas.AREAS}
+
+
+def test_every_pool_disk_number_is_the_side_the_script_sits_on(pool_table):
+    wrong = {a.id: (a.disk, pool_table[a.ecl].side) for a in areas.AREAS
+             if pool_table[a.ecl].side != a.disk}
+    assert wrong == {}
+
+
+def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
+    """`LOADFILES`' first operand is a *file number*; whether it is fetched as
+    a `GEO` or as a `SQRDATA` is decided at run time by `$49E6` and not by the
+    opcode, so `ECL19` loading 4 covers both `GEO04` and `SQRDATA04` and the
+    comparison is between numbers. Areas 3 and 5 are excluded: they are
+    `dynamic_geo`, their scripts issue no static `LOADFILES` at all, and their
+    `geos` is an inference from the id that is known to be wrong for both.
+
+    **Two exceptions in the remaining twenty-eight**, and they are different
+    in kind.
+
+    `ECL07` loads file 3 as well as its own 7, on its way into area 3, and the
+    table gives `GEO03` to area 3 rather than to area 7. That is deliberate,
+    and Silver Blades' `ECL30` does the same thing for areas `$31` and `$32`,
+    so a script loading the *next* area's map is a shape both titles have.
+
+    `ECL1E` is a defect in this table rather than a modelling choice: it
+    carries `LOADFILES 18, 2, 255` at `$9A54` -- `GEO12`, Podol Plaza, which
+    is what the attract-mode demo walks a party around -- so the docstring's
+    "four areas have no map" is three, and area 30's `geos` should hold
+    `GEO12`. Nothing a player can reach depends on it: area 30 is
+    `fasttravelable=False` and is offered nowhere. Pinned here rather than
+    corrected, because the correction moves `areas_for_geo("GEO12")`,
+    `has_map` and four other test modules --
+    `#20 (Build an area table for Silver Blades)` found it and is not the
+    ticket that fixes it."""
+    exceptions = {}
+    for a in areas.AREAS:
+        if a.dynamic_geo:
+            continue
+        claimed = {areas.geo_number(g) for g in a.geos}
+        if a.sqrdata:
+            claimed.add(int(a.sqrdata[-2:], 16))
+        loaded = set(pool_table[a.ecl].geos())
+        if claimed != loaded:
+            exceptions[a.ecl] = (sorted(claimed), sorted(loaded))
+    assert exceptions == {"ECL07": ([7], [3, 7]),
+                          "ECL1E": ([], [18])}

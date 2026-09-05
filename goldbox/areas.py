@@ -48,6 +48,13 @@ title first, and `area_name` degrades an unrecognised title -- or an
 unrecognised map -- to `"area 21"`, read straight off the file's own hex
 digits, rather than to a confident wrong answer.
 
+`AREAS_SILVER_BLADES` is the second table, built for
+`#20 (Build an area table for Silver Blades)` and read off that title's own
+six sides by `tools/areatable.py`. It shares the `Area` shape and nothing else:
+sparse ids, no names, disk sides 1-6, and five areas whose map is not their own
+id. Its own comment carries what does not carry over, and every row is
+PROBABLE.
+
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
 Blades, Champions and Death Knights start at `$10` or `$20`
@@ -69,13 +76,18 @@ __all__ = [
     "Confidence",
     "POOL_OF_RADIANCE",
     "CURSE_OF_THE_AZURE_BONDS",
+    "SECRET_OF_THE_SILVER_BLADES",
     "Arrival",
     "Area",
     "AREAS",
+    "AREAS_SILVER_BLADES",
     "AREAS_BY_ID",
+    "TABLES",
+    "areas_for",
     "areas_for_title",
     "MISSING_ID",
     "area",
+    "area_in",
     "areas_for_geo",
     "geos_for_area",
     "geo_number",
@@ -93,6 +105,7 @@ __all__ = [
 #: other. `tests/test_areas.py` pins the two spellings together.
 POOL_OF_RADIANCE = "Pool of Radiance"
 CURSE_OF_THE_AZURE_BONDS = "Curse of the Azure Bonds"
+SECRET_OF_THE_SILVER_BLADES = "Secret of the Silver Blades"
 
 #: `ECL0C` is not on any of the nine disks, so there is no area 12. Kept as a
 #: named constant because "the ids are 0-30 with one hole" is a fact about the
@@ -134,11 +147,15 @@ class Area:
     #: None for `ECL1E`, which has no `LOADFILES`, no `NEWECL` pointing at it
     #: and no name anybody has been able to attach to it.
     name: str | None
-    #: Which `POOL` disk carries the script, 1-8. This is what a fasttravel writes to
-    #: `$6E12` and what the loader will prompt for.
+    #: Which disk side carries the script -- 1-8 in Pool of Radiance, 1-6 in
+    #: Secret of the Silver Blades. This is what a fasttravel writes to the
+    #: loader's disk byte (`$6E12` in Pool of Radiance, `$7F12` in Silver
+    #: Blades) and what the loader will prompt for.
     disk: int
     #: The `GEO` files the script statically loads, in the order it loads them.
-    #: Empty for the four mapless areas.
+    #: Empty for the four mapless Pool of Radiance areas, and for the two
+    #: Silver Blades areas whose map is loaded by the script that sends the
+    #: party to them.
     geos: tuple[str, ...] = ()
     #: The overland square-data file, for areas 25-27 only.
     sqrdata: str | None = None
@@ -168,10 +185,15 @@ class Area:
     #: place in its own right -- area 29's `GEO20` is the catacombs under
     #: Kuto's Well, not Kuto's Well.
     geo_names: Mapping[str, str] = field(default_factory=dict)
-    #: The script also chooses a map at run time, with `GETTABLE ..., mapDir`,
-    #: so `geos` may be incomplete. True for areas 3 and 5, whose scripts issue
-    #: no static `LOADFILES` at all; their `geos` entry is the doc's inference
-    #: from the id, not something the bytecode says.
+    #: **`geos` may be incomplete: do not pick a square off `geos[0]`.** Two
+    #: different mechanisms set it, one per title.
+    #:
+    #: Pool of Radiance areas 3 and 5 issue no static `LOADFILES` at all and
+    #: choose their map at run time with `GETTABLE ..., mapDir`; their `geos`
+    #: entry is the doc's inference from the id, not something the bytecode
+    #: says. Silver Blades areas `$31` and `$32` issue none either, and their
+    #: map is loaded by `ECL30`, the script that sends the party to them --
+    #: `geos` is empty there rather than a guess.
     #:
     #: **And the inference is wrong for both.** FastTraveled into, area 3 loaded
     #: `GEO05` and area 5 loaded `GEO04` -- `$6E15` and the bytes at `$0400`
@@ -188,6 +210,11 @@ class Area:
     #: to `DUNGEON`'s key-wait loop, so **no later fasttravel can be started**
     #: (write-up lost, `work/reports/p20-arrivals.md`).
     fasttravelable: bool = True
+    #: How this title names a disk side, for `label`. Pool of Radiance's sides
+    #: are `POOL1`-`POOL8` and Silver Blades' are `SILVER-1`-`SILVER-6`, and a
+    #: dropdown that said `POOL3` under a Silver Blades session would be
+    #: naming a disk the player does not own.
+    side_name: str = "POOL{}"
 
     @property
     def ecl(self) -> str:
@@ -220,7 +247,8 @@ class Area:
         maps = ", ".join(self.geos) or "no map"
         if self.sqrdata:
             maps = f"{maps}, {self.sqrdata}"
-        return f"{self.name or self.ecl} - {maps}, POOL{self.disk}"
+        return (f"{self.name or self.ecl} - {maps}, "
+                f"{self.side_name.format(self.disk)}")
 
 
 def _a(id: int, name: str | None, disk: int, geos: tuple[str, ...],
@@ -307,6 +335,105 @@ AREAS: tuple[Area, ...] = (
 AREAS_BY_ID: Mapping[int, Area] = MappingProxyType({a.id: a for a in AREAS})
 
 
+def _s(id: int, disk: int, geos: tuple[str, ...],
+       arrival: Arrival | None, **kw) -> Area:
+    """One Silver Blades row. No name is known for any of them yet."""
+    return Area(id=id, name=None, disk=disk, geos=geos, arrival=arrival,
+                confidence=Confidence.PROBABLE, side_name="SILVER-{}", **kw)
+
+
+#: Secret of the Silver Blades, read off its own six sides by
+#: `tools/areatable.py` (`#20 (Build an area table for Silver Blades)`).
+#: Twenty-two scripts, seventeen maps, `ECL64` and `ECL65` excluded because
+#: their first four bytes do not decode as the `GOTO` an area script opens
+#: with -- they are on every side and are the machine, not a place.
+#:
+#: **Every row is PROBABLE and none is CONFIRMED**, because the whole table is
+#: a static reading of the scripts and nobody has yet fast-travelled a party
+#: into a Silver Blades area and watched where it landed. The disk column is
+#: the strongest part of it: the side is where the file sits in the
+#: directory, and 29 of 29 static `SAVE <n>, [$7F12]` before a `NEWECL`
+#: name that same side, 0 disagreeing.
+#:
+#: Four things do **not** carry over from Pool of Radiance, and each is a trap
+#: for anything that reads this table expecting the older shape.
+#:
+#: * **The ids are sparse and blocked by side.** `$04`, `$10`-`$11`,
+#:   `$20`-`$22`, `$30`-`$34`, `$40`-`$42`, `$44`, `$50`-`$52`, `$60`-`$63`.
+#:   The high nibble is the side for twenty-one of the twenty-two, and `ECL04`
+#:   is the exception: it sits on side 1. Never enumerate by range.
+#: * **An area's map is not its own id in the `$3x` block.** `ECL30` loads
+#:   `GEO31`, `ECL33` loads `GEO31` as well, `ECL34` loads `GEO32`, `ECL04`
+#:   loads `GEO10` and `ECL63` loads `GEO62`. Pool of Radiance's rule --
+#:   every script's `LOADFILES` first operand is its own id -- is false here
+#:   in five of the twenty-two.
+#: * **The arriving script places the party, not the departing one.** All
+#:   twelve squares here come from the area's own entry 4; exactly one
+#:   `NEWECL` in the whole title writes a square before it (`ECL44` sends the
+#:   party to area `$40` at 7,15 N), and that one contradicts `ECL40`'s own
+#:   entry 4, so area `$40` gets no square. Pool of Radiance harvested most of
+#:   its sixteen the other way round.
+#: * **A square is often computed rather than constant.** `ECL21` reads its
+#:   through `GETTABLE` indexed by a variable, `ECL34` and `ECL51` branch on
+#:   the came-from area `$4BF2`, and `ECL34` *adds* 3 to whatever `$C04B`
+#:   already holds. Nine rows have no `arrival` for that reason, and writing
+#:   one for them would be inventing it.
+AREAS_SILVER_BLADES: tuple[Area, ...] = (
+    # Nothing in any script issues a `NEWECL 4`, and `ECL04` has no re-entry
+    # guard (`COMPARE [$4BF2], own id / IF= / EXIT`) where twenty of the
+    # other twenty-one do. It looks like the opening scene and not a place
+    # the game returns to; UNKNOWN whether a fast travel into it is safe.
+    _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1)),
+    _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3)),
+    _s(0x11, 1, (), None),
+    _s(0x20, 2, ("GEO20",), None),
+    _s(0x21, 2, ("GEO21",), None),
+    _s(0x22, 2, ("GEO22",), Arrival(14, 14, 0)),
+    # `ECL30` is a twelve-option menu that dispatches on to `$31`, `$32`,
+    # `$33` and `$20`, storing which option was chosen in `[$4C69]` -- and
+    # `ECL31`'s entry 4 reads `[$4C69]` back. So one script and one map serve
+    # several places, and a fast travel into `$31` or `$32` that does not set
+    # `[$4C69]` arrives on a level nobody chose. It is also the only script
+    # anywhere that names `GEO30`, in a subroutine it calls before
+    # `NEWECL 49` and `NEWECL 50` under a condition, which is why `$31` and
+    # `$32` have no map of their own here.
+    #
+    # `geos` says what the script loads, so `ECL30` carries both -- `GEO31`
+    # from its entry 4 and `GEO30` from the subroutine above. **They are
+    # probably not both this area's**: the `GEO30` load is what `$31` and
+    # `$32` walk on, and a caller picking a landing square off `geos` for
+    # area `$30` should take `geos[0]`. Pool of Radiance's three two-map areas
+    # are a genuinely different thing -- one place with two floors.
+    _s(0x30, 3, ("GEO31", "GEO30"), Arrival(3, 3, 1)),
+    _s(0x31, 3, (), None, dynamic_geo=True),
+    _s(0x32, 3, (), None, dynamic_geo=True),
+    _s(0x33, 3, ("GEO31",), None),
+    _s(0x34, 3, ("GEO32",), None),
+    # `ECL44` writes 7,15 N before `NEWECL 64`; `ECL40`'s own entry 4 writes
+    # 12,0 S. Two routes in, two squares, and nothing says which a fast
+    # travel should imitate -- so neither.
+    _s(0x40, 4, ("GEO40",), None),
+    _s(0x41, 4, ("GEO41",), Arrival(13, 9, 1)),
+    _s(0x42, 4, ("GEO42",), Arrival(12, 13, 0)),
+    _s(0x44, 4, ("GEO44",), Arrival(7, 15, 0)),
+    _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1)),
+    _s(0x51, 5, ("GEO51",), None),
+    _s(0x52, 5, ("GEO52",), None),
+    _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3)),
+    _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3)),
+    _s(0x62, 6, ("GEO62",), Arrival(0, 15, 1)),
+    _s(0x63, 6, ("GEO62",), Arrival(0, 0, 2)),
+)
+
+#: Game title -> that title's areas. Curse is absent rather than empty: its
+#: twenty-three scripts read the same way and nobody has built the table yet,
+#: and an empty tuple would say we had looked and found none.
+TABLES: Mapping[str, tuple[Area, ...]] = MappingProxyType({
+    POOL_OF_RADIANCE: AREAS,
+    SECRET_OF_THE_SILVER_BLADES: AREAS_SILVER_BLADES,
+})
+
+
 def _by_geo() -> Mapping[str, tuple[Area, ...]]:
     index: dict[str, list[Area]] = {}
     for a in AREAS:
@@ -318,8 +445,19 @@ def _by_geo() -> Mapping[str, tuple[Area, ...]]:
 _BY_GEO = _by_geo()
 
 
+def areas_for(title: str | None) -> tuple[Area, ...]:
+    """Every area of this title that anybody has written down.
+
+    **This is the knowledge, not the permission.** It answers with Silver
+    Blades' twenty-two rows; `areas_for_title` below is the one a fast travel
+    asks, and it still refuses them. Use this for labelling a map, for a
+    report, or for anything that only reads.
+    """
+    return TABLES.get(title or "", ())
+
+
 def areas_for_title(title: str | None) -> tuple[Area, ...]:
-    """Every area of this title, which is nothing for five of the six.
+    """Every area a fast travel may offer, which is nothing for five of six.
 
     **`AREAS` is Pool of Radiance's and only Pool of Radiance's.** Every row
     carries a `POOL` disk number and an `ECL` id, and neither means anything in
@@ -329,13 +467,38 @@ def areas_for_title(title: str | None) -> tuple[Area, ...]:
     machine must ask this rather than reading `AREAS`, and must offer nothing
     when it comes back empty. Falling back to Pool of Radiance's list is the
     one answer that corrupts.
+
+    **Silver Blades now has a table and this still returns nothing for it**,
+    which is deliberate rather than an oversight. `automap/actions.py` writes
+    Pool of Radiance's addresses -- `$6E12`, `$6E1B`, `$49F2`, the wipe at
+    `$4A00` and the tail `$2034` -- and every one of them is a different
+    number in Silver Blades (`docs/138-multiple-games.md` §6). Offering the
+    rows before those move would fast-travel a party by writing into whatever
+    Silver Blades keeps at Pool of Radiance's addresses.
+    `#15 (Fast Travel for more than one Gold Box title)` is the ticket that
+    moves them, and this line is what it changes. `areas_for` above is the
+    accessor for everything that only reads.
     """
     return AREAS if title == POOL_OF_RADIANCE else ()
 
 
 def area(id: int) -> Area | None:
-    """The area with this id, or None -- id 12 has no script."""
+    """The area with this id in Pool of Radiance, or None -- id 12 has no
+    script."""
     return AREAS_BY_ID.get(id)
+
+
+def area_in(id: int, title: str | None) -> Area | None:
+    """The area with this id **in this title**, or None.
+
+    `area` above is Pool of Radiance's, and an id means a different place in
+    each game: `$21` is Sokol Keep there and a Silver Blades area on side 2
+    here. A caller holding a title must ask this one.
+    """
+    for a in areas_for(title):
+        if a.id == id:
+            return a
+    return None
 
 
 def areas_for_geo(geo: str) -> tuple[Area, ...]:
@@ -376,13 +539,16 @@ def _names_for_pool() -> Mapping[str, str]:
     return MappingProxyType(out)
 
 
-#: Game title -> map file -> the name to show. Curse is present and empty: its
-#: sixteen maps are not named anywhere yet, and an empty table degrades to
-#: `"area 21"` where a missing title would degrade to the same thing. Listing
-#: it is the difference between "we know we do not know" and "we never looked".
+#: Game title -> map file -> the name to show. Curse and Silver Blades are
+#: present and empty: their maps are not named anywhere yet -- Silver Blades'
+#: twenty-two areas are decoded down to the map and the disk side and not one
+#: of them has a name -- and an empty table degrades to `"area 21"` where a
+#: missing title would degrade to the same thing. Listing them is the
+#: difference between "we know we do not know" and "we never looked".
 GEO_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     POOL_OF_RADIANCE: _names_for_pool(),
     CURSE_OF_THE_AZURE_BONDS: MappingProxyType({}),
+    SECRET_OF_THE_SILVER_BLADES: MappingProxyType({}),
 })
 
 
