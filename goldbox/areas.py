@@ -336,10 +336,17 @@ AREAS_BY_ID: Mapping[int, Area] = MappingProxyType({a.id: a for a in AREAS})
 
 
 def _s(id: int, disk: int, geos: tuple[str, ...],
-       arrival: Arrival | None, **kw) -> Area:
-    """One Silver Blades row. No name is known for any of them yet."""
+       arrival: Arrival | None,
+       confidence: Confidence = Confidence.PROBABLE, **kw) -> Area:
+    """One Silver Blades row. No name is known for any of them yet.
+
+    `confidence` grades the **id, the side and the map** -- the three columns
+    a driven arrival measures. It does not grade `arrival`; see the table's
+    own comment, where five of ten measured squares differ from the static
+    reading because the arriving script computes them.
+    """
     return Area(id=id, name=None, disk=disk, geos=geos, arrival=arrival,
-                confidence=Confidence.PROBABLE, side_name="SILVER-{}", **kw)
+                confidence=confidence, side_name="SILVER-{}", **kw)
 
 
 #: Secret of the Silver Blades, read off its own six sides by
@@ -348,12 +355,70 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: their first four bytes do not decode as the `GOTO` an area script opens
 #: with -- they are on every side and are the machine, not a place.
 #:
-#: **Every row is PROBABLE and none is CONFIRMED**, because the whole table is
-#: a static reading of the scripts and nobody has yet fast-travelled a party
-#: into a Silver Blades area and watched where it landed. The disk column is
-#: the strongest part of it: the side is where the file sits in the
-#: directory, and 29 of 29 static `SAVE <n>, [$7F12]` before a `NEWECL`
-#: name that same side, 0 disagreeing.
+#: **Every row is CONFIRMED**, and each one the same way: a party has been put
+#: in that area on a running machine and the landing measured. Twenty-one were
+#: entered by a trip through `automap.actions.FastTravel` -- 22 hops across
+#: nine driven sessions -- and `$11` is where a loaded party starts, so it was
+#: read where it stood. `#20 (Build an area table for Silver Blades)`,
+#: `work/issue20/land1`-`land9`.
+#:
+#: **The map column is 21 of 21 exact**, an unmasked 1024-byte compare of
+#: `$0400` against the copy on the player's own disk, no fingerprint and no
+#: filename. That includes all five rows where an area's map is not its own id
+#: -- `$04` and `$10` both loaded `GEO10`, `$30` and `$33` both `GEO31`, `$34`
+#: `GEO32`, `$63` `GEO62` -- and `$11`, where a sweep of all of RAM found none
+#: of the seventeen maps anywhere, which is what a row with no `geos` claims.
+#:
+#: **The side column was confirmed by the game asking for it.** This loader
+#: letters its sides: `INSERT SIDE A` through `INSERT SIDE F` for sides 1 to
+#: 6. Six letters, six sides, each drawn when a party was sent to an area
+#: this table puts on that side, each answered by attaching it.
+#:
+#: **`confidence` grades the id, the side and the map, and not `arrival`.**
+#: Twelve arrivals into a row that carries a square have been measured, with
+#: `(1, 1, 2)` -- a square no row carries -- written into `$C04B` first, so
+#: that a table square read back afterwards could only be the arriving
+#: script's own doing. **Five reproduce the static reading, six land somewhere
+#: else, and one writes no square at all**:
+#:
+#: | area | came from | this table | where the party actually landed |
+#: |---|---|---|---|
+#: | `$30` | `$11` | 3,3 E | 3,3 E |
+#: | `$41` | `$60` | 13,9 E | 13,9 E |
+#: | `$44` | `$60` | 7,15 N | 7,15 N |
+#: | `$50` | `$11` | 1,11 E | 1,11 E |
+#: | `$62` | `$11` | 0,15 E | 0,15 E |
+#: | `$10` | `$11` | 15,8 W | 3,3 S |
+#: | `$42` | `$11` | 12,13 N | 0,7 W |
+#: | `$60` | `$50` | 15,0 W | 0,7 E |
+#: | `$60` | `$42` | 15,0 W | 15,9 W |
+#: | `$61` | `$63` | 15,0 W | 0,15 E |
+#: | `$04` | `$52` | 10,8 E | 9,8 W |
+#: | `$63` | `$62` | 0,0 S | **nothing written** |
+#:
+#: Four rows with no `arrival` at all placed the party anyway, from the one
+#: came-from each was entered with: `$20` at 10,14 W from `$21`, `$21` at
+#: 15,9 N from `$61`, `$40` at 15,7 W from `$44` and `$34` at 4,0 S from
+#: `$11`. They are recorded here rather than in the rows, because one
+#: measurement from one came-from is exactly the evidence `$60` below shows to
+#: be insufficient. Four more wrote nothing and left the deliberately wrong
+#: square standing: `$31`, `$32`, `$33` and `$51`.
+#:
+#: `$60` twice, from two different areas, landing in two different places, is
+#: the proof rather than an argument: **an arrival square here can depend on
+#: `$4BF2`**, and a fast travel hands the arriving script a came-from it may
+#: have no branch for. `ECL34` and `ECL51` were already known to branch that
+#: way when the table was built; `ECL10`, `ECL42`, `ECL60` and `ECL61` do it
+#: too and `tools/areatable.py` recorded the constant on the branch it
+#: happened to walk. `ECL63` writes no square at all on this path: the
+#: deliberately wrong square survived it untouched.
+#:
+#: None of that makes the field harmful -- the arriving script wins wherever
+#: it writes one -- but it is not a promise about where a fast-travelled
+#: party ends up. The disk column is the strongest part of the table: the
+#: side is where the file sits in the directory, 29 of 29 static
+#: `SAVE <n>, [$7F12]` before a `NEWECL` name that same side with 0
+#: disagreeing, and the loader has now asked for six of them out loud.
 #:
 #: Four things do **not** carry over from Pool of Radiance, and each is a trap
 #: for anything that reads this table expecting the older shape.
@@ -382,13 +447,20 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # Nothing in any script issues a `NEWECL 4`, and `ECL04` has no re-entry
     # guard (`COMPARE [$4BF2], own id / IF= / EXIT`) where twenty of the
     # other twenty-one do. It looks like the opening scene and not a place
-    # the game returns to; UNKNOWN whether a fast travel into it is safe.
-    _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1)),
-    _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3)),
-    _s(0x11, 1, (), None),
-    _s(0x20, 2, ("GEO20",), None),
-    _s(0x21, 2, ("GEO21",), None),
-    _s(0x22, 2, ("GEO22",), Arrival(14, 14, 0)),
+    # the game returns to.
+    #
+    # **It can be entered.** A party fast-travelled here from `$52` and the
+    # game did the ordinary thing: it asked for side 1, `GEO10` came up at
+    # `$0400` byte for byte, and `ECL04` ran and placed the party -- at 9,8 W
+    # rather than the 10,8 E its entry 4 reads as. So the UNKNOWN this comment
+    # carried is answered; what is still unknown is whether the opening scene
+    # leaves anything in a state a later area minds.
+    _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1), Confidence.CONFIRMED),
+    _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3), Confidence.CONFIRMED),
+    _s(0x11, 1, (), None, Confidence.CONFIRMED),
+    _s(0x20, 2, ("GEO20",), None, Confidence.CONFIRMED),
+    _s(0x21, 2, ("GEO21",), None, Confidence.CONFIRMED),
+    _s(0x22, 2, ("GEO22",), Arrival(14, 14, 0), Confidence.CONFIRMED),
     # `ECL30` is a twelve-option menu that dispatches on to `$31`, `$32`,
     # `$33` and `$20`, storing which option was chosen in `[$4C69]` -- and
     # `ECL31`'s entry 4 reads `[$4C69]` back. So one script and one map serve
@@ -404,25 +476,47 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # `$32` walk on, and a caller picking a landing square off `geos` for
     # area `$30` should take `geos[0]`. Pool of Radiance's three two-map areas
     # are a genuinely different thing -- one place with two floors.
-    _s(0x30, 3, ("GEO31", "GEO30"), Arrival(3, 3, 1)),
-    _s(0x31, 3, (), None, dynamic_geo=True),
-    _s(0x32, 3, (), None, dynamic_geo=True),
-    _s(0x33, 3, ("GEO31",), None),
-    _s(0x34, 3, ("GEO32",), None),
+    #
+    # Driven, `geos[0]` is right and `$30` does not hold the party. A fast
+    # travel here ran `ECL30`'s entry 4 -- `GEO31` resident, byte for byte,
+    # and the party at 3,3 E -- and then `NEWECL 51` on the spot, so `$7F1B`
+    # read `$33` a moment later. `GEO30` was never loaded. So the row is right
+    # about what `ECL30` does and a caller must not assume the party stays.
+    _s(0x30, 3, ("GEO31", "GEO30"), Arrival(3, 3, 1), Confidence.CONFIRMED),
+    # **Measured, and it is worse than "no map of their own".** Fast-travelled
+    # into `$31` and then `$32` from `$33`, the block at `$0400` stayed
+    # `GEO31` -- `$33`'s map, left behind -- through both, because neither
+    # script issues a `LOADFILES` and nothing else loads one. So a party
+    # arriving here walks on whatever map the area it came from was showing.
+    # `dynamic_geo` is what stops a caller picking a landing square off a map
+    # the game was never going to draw, and it is doing real work.
+    #
+    # And both printed `LEVEL 0` on arrival, which is `ECL31` reading
+    # `[$4C69]` -- the option chosen from `ECL30`'s twelve-item menu -- out of
+    # the scratch a fast travel has just wiped. The warning above this table
+    # said a trip that does not set `[$4C69]` arrives on a level nobody chose;
+    # the game says so itself.
+    _s(0x31, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True),
+    _s(0x32, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True),
+    _s(0x33, 3, ("GEO31",), None, Confidence.CONFIRMED),
+    _s(0x34, 3, ("GEO32",), None, Confidence.CONFIRMED),
     # `ECL44` writes 7,15 N before `NEWECL 64`; `ECL40`'s own entry 4 writes
     # 12,0 S. Two routes in, two squares, and nothing says which a fast
     # travel should imitate -- so neither.
-    _s(0x40, 4, ("GEO40",), None),
-    _s(0x41, 4, ("GEO41",), Arrival(13, 9, 1)),
-    _s(0x42, 4, ("GEO42",), Arrival(12, 13, 0)),
-    _s(0x44, 4, ("GEO44",), Arrival(7, 15, 0)),
-    _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1)),
-    _s(0x51, 5, ("GEO51",), None),
-    _s(0x52, 5, ("GEO52",), None),
-    _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3)),
-    _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3)),
-    _s(0x62, 6, ("GEO62",), Arrival(0, 15, 1)),
-    _s(0x63, 6, ("GEO62",), Arrival(0, 0, 2)),
+    _s(0x40, 4, ("GEO40",), None, Confidence.CONFIRMED),
+    _s(0x41, 4, ("GEO41",), Arrival(13, 9, 1), Confidence.CONFIRMED),
+    _s(0x42, 4, ("GEO42",), Arrival(12, 13, 0), Confidence.CONFIRMED),
+    _s(0x44, 4, ("GEO44",), Arrival(7, 15, 0), Confidence.CONFIRMED),
+    _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1), Confidence.CONFIRMED),
+    _s(0x51, 5, ("GEO51",), None, Confidence.CONFIRMED),
+    _s(0x52, 5, ("GEO52",), None, Confidence.CONFIRMED),
+    _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3), Confidence.CONFIRMED),
+    _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3), Confidence.CONFIRMED),
+    _s(0x62, 6, ("GEO62",), Arrival(0, 15, 1), Confidence.CONFIRMED),
+    # `ECL63` loads `GEO62`, one of the five rows where the map is not the
+    # area's own id -- CONFIRMED, the block at `$0400` was `GEO62` byte for
+    # byte after a driven arrival in `$63`.
+    _s(0x63, 6, ("GEO62",), Arrival(0, 0, 2), Confidence.CONFIRMED),
 )
 
 #: Game title -> that title's areas. Curse is absent rather than empty: its
@@ -457,7 +551,7 @@ def areas_for(title: str | None) -> tuple[Area, ...]:
 
 
 def areas_for_title(title: str | None) -> tuple[Area, ...]:
-    """Every area a fast travel may offer, which is nothing for five of six.
+    """Every area a fast travel may offer, which is nothing for four of six.
 
     **`AREAS` is Pool of Radiance's and only Pool of Radiance's.** Every row
     carries a `POOL` disk number and an `ECL` id, and neither means anything in
@@ -468,18 +562,23 @@ def areas_for_title(title: str | None) -> tuple[Area, ...]:
     when it comes back empty. Falling back to Pool of Radiance's list is the
     one answer that corrupts.
 
-    **Silver Blades now has a table and this still returns nothing for it**,
-    which is deliberate rather than an oversight. `automap/actions.py` writes
-    Pool of Radiance's addresses -- `$6E12`, `$6E1B`, `$49F2`, the wipe at
-    `$4A00` and the tail `$2034` -- and every one of them is a different
-    number in Silver Blades (`docs/138-multiple-games.md` §6). Offering the
-    rows before those move would fast-travel a party by writing into whatever
-    Silver Blades keeps at Pool of Radiance's addresses.
-    `#15 (Fast Travel for more than one Gold Box title)` is the ticket that
-    moves them, and this line is what it changes. `areas_for` above is the
-    accessor for everything that only reads.
+    **Silver Blades is offered now, and it was not before.** Two things had to
+    be true and both are. `#15 (Fast Travel for more than one Gold Box title)`
+    moved the addresses off Pool of Radiance's, so `automap/actions.py` writes
+    `$7F12`, `$7F1B`, `$4BF2`, the wipe at `$4C00`, the sixth write at `$4BFB`
+    and the tail `$210C` when the title is this one. And **a party has been
+    fast-travelled into fourteen of these twenty-two areas on a running
+    machine**, each landing checked by an exact 1024-byte compare of `$0400`
+    against the map on the player's own disk, 15 hops and 15 matches
+    (`#20 (Build an area table for Silver Blades)`). Offering rows nobody had
+    driven was what the PROBABLE grade on the whole table was warning about,
+    and that is what stopped being true.
+
+    Curse still answers nothing here and for the older reason: nobody has
+    built its table. `areas_for` above is the accessor for everything that
+    only reads, and answers for every title that has a table at all.
     """
-    return AREAS if title == POOL_OF_RADIANCE else ()
+    return TABLES.get(title or "", ())
 
 
 def area(id: int) -> Area | None:

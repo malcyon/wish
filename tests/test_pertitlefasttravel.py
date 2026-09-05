@@ -298,9 +298,17 @@ def test_the_way_back_is_looked_up_in_the_title_being_travelled_in():
     resolve it in the title being travelled in rather than in Pool of
     Radiance's table, which is what it did whatever was running.
 
-    Silver Blades answers None here as well and for a different reason: it has
-    a table and `goldbox.areas.areas_for_title` does not yet hand it over.
+    Curse answers None: it has no table at all. **Silver Blades answers with a
+    row now** -- it did not when this test was written, because
+    `goldbox.areas.areas_for_title` refused the title until a party had been
+    fast-travelled into its areas on a running machine
+    (`#20 (Build an area table for Silver Blades)`). `$21` is a different
+    place in each of the two titles, which is the whole point of the lookup:
+    Sokol Keep in Pool of Radiance and a side-2 area on `GEO21` here.
     """
     assert actions.FastTravel()._row(21) is not None
     assert actions.FastTravel(CURSE)._row(21) is None
-    assert actions.FastTravel(SILVER)._row(0x21) is None
+    silver = actions.FastTravel(SILVER)._row(0x21)
+    assert silver is not None and silver.geos == ("GEO21",)
+    assert actions.FastTravel()._row(21).name == "Sokol Keep"
+    assert actions.FastTravel(SILVER)._row(0x0C) is None

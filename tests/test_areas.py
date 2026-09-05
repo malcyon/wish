@@ -537,14 +537,72 @@ def test_area_forty_has_two_candidate_squares_so_it_gets_none(ssb_table):
     assert placed == [(7, 15, 0)]
 
 
-def test_the_silver_blades_rows_are_all_probable_and_unnamed():
-    """Nobody has fast-travelled a party into a Silver Blades area and watched
-    where it landed, and no area has a name. A row that claims CONFIRMED
-    without that measurement is claiming more than the evidence."""
+#: The twenty-one Silver Blades areas a party has been **fast-travelled into**
+#: on a running machine, with the landing measured -- `#20 (Build an area
+#: table for Silver Blades)`, `work/issue20/land1`-`land9`. `$11` is not in
+#: the set because nothing warps there: it is where a loaded party starts, and
+#: was read where it stood. A row outside both must not claim CONFIRMED.
+SILVER_BLADES_WARPED_INTO = {
+    0x04, 0x10, 0x20, 0x21, 0x22, 0x30, 0x31, 0x32, 0x33, 0x34, 0x40,
+    0x41, 0x42, 0x44, 0x50, 0x51, 0x52, 0x60, 0x61, 0x62, 0x63}
+
+
+def test_every_silver_blades_row_has_had_a_party_put_in_it():
+    """A row is CONFIRMED when a party has been put in that area on a running
+    machine and the map at `$0400` matched this table's, byte for byte. All
+    twenty-two have: twenty-one by a trip through `automap.actions.FastTravel`
+    and `$11`, the prologue, by starting there."""
     table = areas.AREAS_SILVER_BLADES
-    assert {a.confidence for a in table} == {Confidence.PROBABLE}
+    assert {a.confidence for a in table} == {Confidence.CONFIRMED}
+    assert SILVER_BLADES_WARPED_INTO | {0x11} == {a.id for a in table}
+    assert 0x11 not in SILVER_BLADES_WARPED_INTO
+
+
+def test_no_silver_blades_area_has_a_name_yet():
+    """Five arriving scripts name their own place on the first screen a
+    driven party sees, but naming is the other half of this ticket and takes
+    a systematic pass rather than four rows out of twenty-two: a dropdown
+    with five names and seventeen `ECLxx` reads worse than one with none."""
+    table = areas.AREAS_SILVER_BLADES
     assert all(a.name is None for a in table)
     assert areas.GEO_NAMES[areas.SECRET_OF_THE_SILVER_BLADES] == {}
+
+
+def test_the_silver_blades_arrival_column_is_not_what_confidence_grades():
+    """Five of ten measured arrival squares differ from the static reading,
+    because an arriving script can compute the square off `$4BF2` and a fast
+    travel supplies a came-from it may have no branch for. `$60` was entered
+    twice, from `$50` and from `$42`, and landed in two different places. So
+    a CONFIRMED row is a claim about the id, the side and the map, and this
+    pins the five rows whose square a driven arrival did *not* reproduce."""
+    by_id = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    reproduced = {0x30: (3, 3, 1), 0x41: (13, 9, 1), 0x44: (7, 15, 0),
+                  0x50: (1, 11, 1), 0x62: (0, 15, 1)}
+    for id, square in reproduced.items():
+        got = by_id[id].arrival
+        assert (got.x, got.y, got.facing) == square
+    # Measured and different: the party landed at 3,3 S in `$10`, 0,7 W in
+    # `$42`, 0,7 E and then 15,9 W in `$60` from two different came-froms,
+    # 0,15 E in `$61`, 9,8 W in `$04`, and in `$63` it stayed on the
+    # deliberately wrong square because `ECL63` wrote none.
+    for id in (0x04, 0x10, 0x42, 0x60, 0x61, 0x63):
+        assert by_id[id].arrival is not None
+        assert by_id[id].confidence is Confidence.CONFIRMED
+
+
+def test_the_two_silver_blades_areas_that_load_no_map_say_so():
+    """`$31` and `$32` issue no `LOADFILES` and nothing else loads one for
+    them, so a party fast-travelled in walks on whatever map the area it came
+    from was showing -- driven in from `$33`, `$0400` stayed `GEO31` through
+    both. `dynamic_geo` is what stops a caller picking a landing square off a
+    map the game was never going to draw."""
+    by_id = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    for id in (0x31, 0x32):
+        assert by_id[id].geos == ()
+        assert by_id[id].dynamic_geo
+        assert not by_id[id].has_map
+    assert not any(a.dynamic_geo for a in areas.AREAS_SILVER_BLADES
+                   if a.id not in (0x31, 0x32))
 
 
 def test_a_silver_blades_label_names_its_own_disk_not_a_pool_one():
@@ -555,18 +613,21 @@ def test_a_silver_blades_label_names_its_own_disk_not_a_pool_one():
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
 
 
-def test_fast_travel_is_still_offered_nothing_for_silver_blades():
-    """The table exists and `areas_for_title` still refuses it, because
-    `automap/actions.py` writes Pool of Radiance's addresses and every one of
-    them is a different number in Silver Blades. `#15 (Fast Travel for more
-    than one Gold Box title)` is what changes this line, and until it does,
-    offering the rows would fast-travel a party by writing into whatever
-    Silver Blades keeps at Pool of Radiance's addresses."""
-    assert areas.areas_for_title(areas.SECRET_OF_THE_SILVER_BLADES) == ()
+def test_fast_travel_is_offered_silver_blades_now_that_one_has_been_driven():
+    """Two things had to be true and both are: `#15 (Fast Travel for more than
+    one Gold Box title)` moved the addresses off Pool of Radiance's, and a
+    party has been fast-travelled into fourteen of these areas on a running
+    machine with the map checked byte for byte at every landing. Curse still
+    answers nothing, for the older reason that nobody has built its table."""
+    assert len(areas.areas_for_title(areas.SECRET_OF_THE_SILVER_BLADES)) == 22
+    assert areas.areas_for_title(areas.SECRET_OF_THE_SILVER_BLADES) \
+        == areas.AREAS_SILVER_BLADES
     assert len(areas.areas_for(areas.SECRET_OF_THE_SILVER_BLADES)) == 22
     assert areas.areas_for_title(POOL_OF_RADIANCE) == areas.AREAS
     assert areas.areas_for(POOL_OF_RADIANCE) == areas.AREAS
+    assert areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS) == ()
     assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == ()
+    assert areas.areas_for_title(None) == ()
     assert areas.areas_for(None) == ()
 
 

@@ -458,10 +458,36 @@ def idle_in_key_window(sess, addr, samples: int = 4, gap: float = 0.8
             return None
         s = sess.screen()
         text = s.text() if s is not None else None
-        if text is None or (last_text is not None and text != last_text):
+        if i and text != last_text:
             return None
         last_text = text
     return pc
+
+
+def pc_histogram(sess, addr, samples: int = 60, gap: float = 0.05) -> dict:
+    """Where the CPU actually is, when it is not where it should be.
+
+    A `wait_idle` that times out says only "not in a key window", which is
+    the shape of a hang, a fight and a full-screen picture alike. Sixty
+    samples say which: a tight cluster is a loop and a spread is code that is
+    getting on with something.
+    """
+    seen: dict[str, int] = {}
+    for _ in range(samples):
+        try:
+            with sess.mon(5) as m:
+                pc = m.registers().get(pc_register(m))
+        except Exception:
+            break
+        if pc is not None:
+            seen[f"${pc:04X}"] = seen.get(f"${pc:04X}", 0) + 1
+        time.sleep(gap)
+    windows = {"key_wait": addr.key_wait, "key_fetch": addr.key_fetch}
+    hit = {name: sum(n for k, n in seen.items()
+                     if lo <= int(k[1:], 16) < hi)
+           for name, (lo, hi) in windows.items()}
+    return {"samples": dict(sorted(seen.items(), key=lambda kv: -kv[1])[:12]),
+            "in_windows": hit}
 
 
 def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
@@ -858,6 +884,7 @@ def verdict_of(state: dict, row, spoiled: bool = False) -> dict:
     arrival = row.arrival
     out = {
         "area": state.get("area") == row.id,
+        "area_seen": f"0x{state.get('area', 0):02X}",
         "disk": state.get("disk") == row.disk,
         "geo": (got_geo in want) if (want and got_geo) else None,
         "geo_seen": got_geo,
@@ -989,27 +1016,62 @@ def run(args) -> int:
                 made = warp(sess, addr, want, args.disk or row.disk, square)
             print("wrote:", json.dumps(made), flush=True)
 
-            ok, pc = wait_idle(sess, addr)
+            idle, pc = wait_idle(sess, addr, args.arrival_timeout)
             sess.settle(3)
             after = measure(sess, addr, maps, row, out, tag)
-            after["idle"] = ok
-            hop = {"target": f"0x{want:02X}", "writes": made, "landed": ok,
-                   "spoiled": spoiled, "state": after,
-                   "verdict": verdict_of(after, row, spoiled)}
+            after["idle"] = idle
+            # **The landing test is the area byte, not the program counter.**
+            # `ECL22` arrives on an encounter menu drawn in bitmap mode, whose
+            # key wait is neither `DUNGEON`'s loop nor the `LIBRARY` fetcher --
+            # so `wait_idle` timed out on a hop that had plainly landed: the
+            # cache slot read `$22`, `$0400` held `GEO22` byte for byte and the
+            # script's own text was on the screen (`work/issue20/land1`).
+            # **And "landed" is not "arrived in the area we asked for".**
+            # `ECL30` runs its own entry 4 -- it loads `GEO31` and places the
+            # party at 3,3 E -- and then issues `NEWECL 51` on the spot, so a
+            # trip to `$30` ends in `$33` with `$7F1B` reading `$33`
+            # (`work/issue20/land3`). The trip took effect; it simply did not
+            # stop where it was aimed. The two are reported apart.
+            landed = after.get("area") != here["area"]
+            after["reached_target"] = after.get("area") == want
+            if landed and not after["reached_target"]:
+                print(f"the trip took effect and went on: ${want:02X} handed "
+                      f"the party to ${after['area']:02X}", flush=True)
+            if not idle:
+                after["where"] = pc_histogram(sess, addr)
+                print("not idle:", json.dumps(after["where"]), flush=True)
+            hop = {"target": f"0x{want:02X}", "writes": made,
+                   "landed": landed, "idle": idle, "spoiled": spoiled,
+                   "state": after, "verdict": verdict_of(after, row, spoiled)}
             print(f"verdict {tag}:", json.dumps(hop["verdict"]), flush=True)
             report["hops"].append(hop)
             (out / "report.json").write_text(json.dumps(report, indent=1))
-            if not ok:
+            if not landed:
                 break
             landed_any = True
-            if args.walk and n == len(chain):
+            if args.walk and n == len(chain) and idle:
                 hop["walk"] = walk_proof(sess)
                 hop["resident_after_walk"] = resident_geo(sess, maps)
                 print("walk:", json.dumps(hop["walk"]), flush=True)
-            elif n != len(chain):
-                # Clear the arriving script's messages before the next hop, so
-                # the machine is idle in the ordinary way rather than mid-text.
-                sess.log(f"  bar after {tag}: {clear_messages(sess, 60)!r}")
+            if n != len(chain) and not idle:
+                # Try to hand the arriving script back its key and get to a
+                # state another hop can leave from. If it will not come back,
+                # stop: a warp made from an unread loop is the one thing the
+                # PC guard exists to prevent.
+                sess.log("  nudging the arriving script")
+                back = None
+                for key in (0x0D, 0x0D, 0x1B, 0x0D, 0x0D, 0x1B):
+                    sess.press_kernal(key)
+                    time.sleep(2.0)
+                    sess.handle_prompt()
+                    back = idle_in_key_window(sess, addr)
+                    if back is not None:
+                        break
+                if back is None:
+                    print(f"after {tag} the machine will not come back to a "
+                          f"key window, so the chain stops here", flush=True)
+                    break
+                sess.log(f"  back at ${back:04X}")
         (out / "report.json").write_text(json.dumps(report, indent=1))
         return 0 if landed_any else 5
     finally:
@@ -1058,6 +1120,10 @@ def main(argv: list[str]) -> int:
                          "instead of the table's, so that the table's square "
                          "read back afterwards is the arriving script's own "
                          "doing and not ours" % (SPOIL_SQUARE,))
+    ap.add_argument("--arrival-timeout", type=float,
+                    default=ARRIVAL_TIMEOUT, metavar="S",
+                    help="how long to give the program counter to come back "
+                         "to a key window after a hop (default: %(default)s)")
     ap.add_argument("--walk", action="store_true",
                     help="after the last hop, walk the party to show the "
                          "arrival is a place and not a picture")

@@ -580,8 +580,14 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
                                           "The Slums"]
     row.set_title(games.SECRET_OF_THE_SILVER_BLADES.title,
                   games.SECRET_OF_THE_SILVER_BLADES)
+    # Silver Blades has a table now -- twenty-two areas, fourteen of them
+    # driven into on a running machine (`#20 (Build an area table for Silver
+    # Blades)`) -- and `automap/config.py` gives it no default ticks, so the
+    # dropdown is empty because nothing is chosen rather than because there is
+    # nothing to choose. `all_rows` is the table and `rows` is the ticks.
     assert row.rows == ()
-    assert "Secret of the Silver Blades" in row.combo.itemText(0)
+    assert len(row.all_rows) == 22
+    assert "No areas ticked" in row.combo.itemText(0)
     row.set_title(games.POOL_OF_RADIANCE.title, games.POOL_OF_RADIANCE)
     assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
                                           "The Slums"]
