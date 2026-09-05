@@ -29,6 +29,7 @@ registry's Curse row writes what a direct call writes, for the same input,
 not a fact about the Curse game disks.
 """
 
+import dataclasses
 import datetime
 import pathlib
 from types import SimpleNamespace
@@ -244,18 +245,25 @@ def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
 
 
 def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
-    """Secret of the Silver Blades is read but has no C64 writer yet (`#193
-    (Convert a Secret of the Silver Blades DOS save into a C64 one, which
-    the importer refuses today)`), so it is not offered and not refused. A
-    fake folder is enough -- `Source.detect` reads only the record size."""
-    folder = tmp_path / "ssb"
+    """Pools of Darkness is read and has no C64 destination, so it is not
+    offered and not refused.
+
+    **This used to use Secret of the Silver Blades**, which was read with no
+    C64 writer until `#193 (Convert a Secret of the Silver Blades DOS save
+    into a C64 one, which the importer refuses today)` built one and it
+    joined `goldbox.dos.CONVERTS` on 2026-09-05. Pools of Darkness is the
+    permanent example: `goldbox/games.py` has no entry for it at all, because
+    there is no C64 port to convert to, so no writer will ever appear.
+
+    A fake folder is enough -- `Source.detect` reads only the record size."""
+    folder = tmp_path / "pod"
     folder.mkdir()
     (folder / "SAVGAMA.DAT").write_bytes(b"\x00")
     (folder / "CHRDATA1.SAV").write_bytes(
-        b"\x00" * dos_layout.SECRET_OF_THE_SILVER_BLADES.record_size)
+        b"\x00" * dos_layout.POOLS_OF_DARKNESS.record_size)
 
     source = convert.Source.detect(folder)
-    assert source.key == dos_layout.SECRET_OF_THE_SILVER_BLADES.key
+    assert source.key == dos_layout.POOLS_OF_DARKNESS.key
     assert convert.destinations_for(source) == []
 
 
@@ -275,11 +283,21 @@ def test_a_converts_entry_missing_its_name_fails_at_construction():
     than by editing `CONVERTS` itself. Secret of the Silver Blades is a real
     `goldbox.games.by_key` entry -- so this proves the *name* lookup fails
     loudly, not the *game* lookup that would run first for a title nobody
-    has heard of."""
-    assert dos_layout.SECRET_OF_THE_SILVER_BLADES.key not in \
-        convert.DOS_TO_C64_NAMES
+    has heard of.
+
+    The shape is built here rather than named from `dos_layout`, because
+    every title that has one is now in `DOS_TO_C64_NAMES` -- Silver Blades
+    joined on 2026-09-05 with `#193 (Convert a Secret of the Silver Blades
+    DOS save into a C64 one, which the importer refuses today)`. Copying a
+    real shape under a key nothing names is what leaves this test asserting
+    the same thing it always did. Champions of Krynn is the key to borrow:
+    `goldbox/games.py` knows it, so `games.by_key` succeeds and the failure
+    can only come from the name lookup, which is the point."""
+    unnamed = dataclasses.replace(dos_layout.SECRET_OF_THE_SILVER_BLADES,
+                                  key="champions-of-krynn")
+    assert unnamed.key not in convert.DOS_TO_C64_NAMES
     with pytest.raises(convert.UnnamedConversionError):
-        convert.DosToC64(dos_layout.SECRET_OF_THE_SILVER_BLADES)
+        convert.DosToC64(unnamed)
 
 
 # ---------------------------------------------------------------------------

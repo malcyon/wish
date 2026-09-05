@@ -70,6 +70,7 @@ from .dos_layout import (
     LAYOUT,
     POOL_OF_RADIANCE,
     RECORD_SIZE,
+    SECRET_OF_THE_SILVER_BLADES,
     SHAPES,
     SPELLBOOK_SPELLS,
     DosShape,
@@ -1197,8 +1198,21 @@ def portrait_tables(game: str | pathlib.Path | None
 #: spellbook listed all nine ids, the party walked, and `ENCAMP > SAVE` came
 #: back differing only in bytes the engine itself rewrote.
 #:
+#: Secret of the Silver Blades joined on 2026-09-05, on the same standard and
+#: the same six checks (#193): the loader took a disk this project built, the
+#: panel drew all six characters with the DOS save's own AC and HP, six of six
+#: sheets matched, `MEMORIZE` on a magic-user 9 offered her 117-spell book and
+#: took four picks out of six presses from a ceiling the engine worked out
+#: itself, the party walked, and the engine's own resave differed in 600 bytes
+#: of 7424 -- every one of them the engine's, 594 being the area map it
+#: rebuilds on load.  Four faults were found and fixed on the way, two of
+#: which Curse had shipped with: a lower-case name drawing as punctuation, and
+#: a ranger arriving as a paladin.  It waited on #287, where every converted
+#: human saw in the dark.
+#:
 #: Pools of Darkness will never join it -- there is no C64 port to convert to.
-CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS)
+CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+                                  SECRET_OF_THE_SILVER_BLADES)
 
 #: The seven abilities in the order both ports store them, which is also the
 #: order Curse's pairs run in.  `goldbox/neutral.py`'s, because the C64 codec

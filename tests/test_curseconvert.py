@@ -220,15 +220,20 @@ def test_the_conversion_no_longer_refuses_curse():
     """`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
     which the importer refuses today)` step 3 loaded a converted Curse save
     in the running game and read the sheet, so step 4 puts Curse on
-    `CONVERTS` for real. Silver Blades, which has not been proven this way,
-    is still refused."""
+    `CONVERTS` for real.
+
+    **This used to end by asserting Silver Blades was still refused.** It was
+    proven the same way on 2026-09-05 -- `#193 (Convert a Secret of the
+    Silver Blades DOS save into a C64 one, which the importer refuses
+    today)` -- and joined `CONVERTS` with it, so the remaining title that
+    never converts is Pools of Darkness, which has no C64 port at all."""
     assert CURSE in dos.CONVERTS
     dos.to_neutral(dos.DosCharacter(curse_record()))     # does not raise
-    silver = next(s for s in dos_layout.SHAPES
-                  if s.key == "secret-of-the-silver-blades")
-    assert silver not in dos.CONVERTS
+    pod = next(s for s in dos_layout.SHAPES
+               if s.key == "pools-of-darkness")
+    assert pod not in dos.CONVERTS
     with pytest.raises(dos.WrongTitleError):
-        dos.to_neutral(dos.DosCharacter(bytes(silver.record_size)))
+        dos.to_neutral(dos.DosCharacter(bytes(pod.record_size)))
 
 
 def test_a_curse_address_is_not_a_variable_address():

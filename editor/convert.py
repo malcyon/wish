@@ -229,6 +229,8 @@ DOS_TO_C64_NAMES: dict[str, str] = {
     dos_layout.POOL_OF_RADIANCE.key: "PORSAVE{slot}.D64",
     # What `tools/cursedisk.py` writes.
     dos_layout.CURSE_OF_THE_AZURE_BONDS.key: "CURSE{slot}.D64",
+    # What `tools/ssbdisk.py` writes.
+    dos_layout.SECRET_OF_THE_SILVER_BLADES.key: "SSB{slot}.D64",
 }
 
 
