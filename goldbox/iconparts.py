@@ -505,15 +505,37 @@ class IconParts:
         return bytes(out)
 
 
+#: The two parts whose **high** nibble is the colour a player sees, where every
+#: other part's is the low one.
+#:
+#: A DOS colour byte holds two 4-bit colours, and the C64 has one colour for
+#: the whole part, so the conversion has to pick the one that covers more of
+#: the shape.  Counted pixel by pixel over the shipped art (`tools/dosnibbles.py`):
+#: the high nibble covers **56-65% of the leg in 32 of 32 bodies** and
+#: **68-72% of the shield in 8 of 8 that carry one**, and the low nibble wins
+#: everywhere else.
+#:
+#: Reading the low nibble for all six was invisible for 222 of 296 records,
+#: because both nibbles of the default colour set land on the same C64 colour
+#: through Donald's own match table -- and then MAGNUS's yellow shield came out
+#: black, which is what made it findable (#130).
+DOS_HIGH_NIBBLE_PARTS = frozenset({"leg", "shield"})
+
+
 def dos_part_colours(icon_colours: bytes,
                      tables: "DosIconTables | None" = None) -> dict[int, int]:
     """The seven C64 part colours a DOS record's six colour pairs become.
 
     Keyed by part class, which is what :meth:`IconParts.colours_for` takes.
+    Each DOS byte holds two colours and the C64 keeps one, so the nibble that
+    covers more of that part is the one taken -- see `DOS_HIGH_NIBBLE_PARTS`.
     """
     tables = tables or dos_icon_tables()
-    out = {PART_CLASSES.index(part): tables.ega_to_c64[icon_colours[i] & 0x0F]
-           for i, part in enumerate(DOS_PAIR_CLASSES)}
+    out = {}
+    for i, part in enumerate(DOS_PAIR_CLASSES):
+        byte = icon_colours[i]
+        ega = (byte >> 4) if part in DOS_HIGH_NIBBLE_PARTS else (byte & 0x0F)
+        out[PART_CLASSES.index(part)] = tables.ega_to_c64[ega]
     out[PART_CLASSES.index("cap")] = DOS_CAP_COLOUR
     return out
 

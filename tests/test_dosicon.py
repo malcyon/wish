@@ -18,6 +18,8 @@ from gamedata import game_file
 
 from goldbox.iconparts import (
     DOS_CAP_COLOUR,
+    DOS_HIGH_NIBBLE_PARTS,
+    DOS_PAIR_CLASSES,
     PART_CLASSES,
     IconParts,
     dos_icon_tables,
@@ -131,20 +133,30 @@ def test_a_small_row_in_range_composes_from_the_small_list(parts, tables):
     assert small[:18] != large[:18]
 
 
-def test_the_colours_come_from_the_records_own_low_nibbles(parts, tables):
+def test_each_part_takes_the_nibble_that_covers_most_of_it(parts, tables):
     """`0x0C1`-`0x0C6`, in the order the engine's recolour lookup uses them.
 
     Read back through `part_colours`, which is the menu value each part of a
     drawn icon implies -- so this checks the colours as the game would show
     them in ICON > COLOR rather than as we wrote them.
+
+    **Every byte here holds two different colours**, which is what makes the
+    test say anything: a DOS byte is a pair and the C64 keeps one colour a
+    part, so the conversion has to choose. The leg and the shield take the
+    high nibble because that is the colour covering most of those two shapes
+    -- 56-65% of the leg in 32 of 32 bodies, 68-72% of the shield in 8 of 8
+    (`tools/dosnibbles.py`, #130). Everything else takes the low one.
+    Reading the low nibble for all six turned MAGNUS's yellow shield black.
     """
-    # Body green, arm blue, leg yellow, hair white, shield red, weapon cyan.
-    colours = bytes([0x02, 0x01, 0x0E, 0x0F, 0x04, 0x03, ])
+    #        body    arm     leg     hair    shield  weapon
+    #  low:  green   blue    yellow  white   red     cyan
+    # high:  brown   grey    pink    d.grey  purple  l.green
+    colours = bytes([0x62, 0x81, 0xD0 | 0x0E, 0x8F, 0x54, 0xA3])
     icon = parts.dos_icon(3, 24, "large", colours, tables)
     got = parts.part_colours(icon[18:], icon[:18])
     ega = tables.ega_to_c64
-    for part, value in (("body", 0x02), ("arm", 0x01), ("leg", 0x0E),
-                        ("hair", 0x0F), ("shield", 0x04), ("weapon", 0x03)):
+    for part, value in (("body", 0x02), ("arm", 0x01), ("leg", 0x0D),
+                        ("hair", 0x0F), ("shield", 0x05), ("weapon", 0x03)):
         klass = PART_CLASSES.index(part)
         if klass in got:                # a figure need not own every part
             assert got[klass] == ega[value], part
@@ -156,17 +168,30 @@ def test_the_cap_has_no_dos_pair_and_takes_its_own_colour(tables):
     assert got[PART_CLASSES.index("cap")] == DOS_CAP_COLOUR
 
 
-def test_the_highlight_nibble_has_nowhere_to_go(parts, tables):
-    """The C64 keeps one colour a part, so the high nibble changes nothing.
+def test_the_high_nibble_moves_the_leg_and_the_shield_and_nothing_else(
+        parts, tables):
+    """Which of a DOS pair reaches the C64, part by part.
 
-    A negative result worth pinning: somebody reading `icon_colours` as
-    twelve values will expect this to differ, and it must not, because a
-    multicolour cell's low three bits are the only colour it owns.
+    This test used to say the opposite -- that the high nibble changes
+    nothing at all -- and that was the defect rather than a finding. The C64
+    keeps one colour a part, so exactly one of the two is chosen, and for the
+    leg and the shield it is the high one (#130).
     """
     low = bytes(v & 0x0F for v in DEFAULT_COLOURS)
-    high = bytes((v & 0x0F) | 0x50 for v in DEFAULT_COLOURS)
-    assert (parts.dos_icon(0, 1, "large", low, tables)
-            == parts.dos_icon(0, 1, "large", high, tables))
+    plain = parts.dos_icon(0, 1, "large", low, tables)
+
+    # The four parts that take the low nibble: their high nibble is ignored.
+    others = bytearray(low)
+    for i, part in enumerate(DOS_PAIR_CLASSES):
+        if part not in DOS_HIGH_NIBBLE_PARTS:
+            others[i] |= 0x50
+    assert parts.dos_icon(0, 1, "large", bytes(others), tables) == plain
+
+    # The two that take the high nibble: theirs is what a player sees.
+    for part in DOS_HIGH_NIBBLE_PARTS:
+        moved = bytearray(low)
+        moved[DOS_PAIR_CLASSES.index(part)] |= 0x50
+        assert parts.dos_icon(0, 1, "large", bytes(moved), tables) != plain, part
 
 
 def test_a_figure_the_table_does_not_name_is_refused(parts, tables):
