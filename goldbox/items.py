@@ -221,6 +221,47 @@ EFFECT_BIAS = 23
 # table is in ECL65, relocated to $9900, and covers $80-$88, $8A and $8B.
 PASSIVE_POWER = 0x80
 
+# The C64's RING OF FIRE RESISTANCE, identified by +0 (type index) and the
+# three name words at +1..+3 (suffix, qualifier, noun) -- 69, 205 (FIRE
+# RESISTANCE), 167 (OF), 66 (RING). `#285 (The C64's Ring of Fire Resistance
+# grants nothing, and Wish should repair it on conversion and on an editor
+# save)`: the shipped template is `45 cd a7 42 00 00 00 00 01 00 00 88 13 00
+# 00 00` -- +14 = 0 and +15 = 0, so `CAMP $10B5` never sees bit 7 set and
+# never reaches `SPELLE04 $ADD4`, and readying it grants nothing
+# (`docs/171-c64-trait-slots.md`, `docs/125-bug-notes.md` U4).
+RING_OF_FIRE_RESISTANCE_ID = (0x45, 0xCD, 0xA7, 0x42)
+RING_OF_FIRE_RESISTANCE_EFFECT = 61            # SPELLE01 $A9EE zeroes fire damage
+RING_OF_FIRE_RESISTANCE_POWER = 0x80           # the plain passive-dispatch bit
+
+
+def repair_ring_of_fire_resistance(raw: bytes) -> bytes:
+    """Set +14 and +15 on a Ring of Fire Resistance record, and nothing else.
+
+    Identified by +0..+3 -- the type and the three name words -- not by the
+    whole sixteen bytes, so a ring with its own quantity, weight, curse state
+    or identification does not stop it being recognised as this ring.
+
+    Only when the item is not already dispatching (bit 7 of +15 clear): a
+    ring already granting something -- converted from DOS, whose own item
+    already carries a working effect and power byte, or repaired by an
+    earlier pass -- is returned unchanged rather than overwritten.
+
+    This repairs one named item, not a class of items: `.claude/rules/
+    conversions.md` and the four other shipped templates that already set
+    bit 7 (the Cloak of Displacement, the Gauntlets of Ogre Power, the
+    undead-slaying two-handed sword and the alignment-locked Long Sword +3)
+    say the game's own data is inconsistent rather than uniformly broken, so
+    nothing here generalises past this one ring.
+    """
+    if len(raw) != ITEM_SIZE or tuple(raw[:4]) != RING_OF_FIRE_RESISTANCE_ID:
+        return bytes(raw)
+    if raw[15] & PASSIVE_POWER:
+        return bytes(raw)
+    out = bytearray(raw)
+    out[14] = RING_OF_FIRE_RESISTANCE_EFFECT
+    out[15] = RING_OF_FIRE_RESISTANCE_POWER
+    return bytes(out)
+
 
 @dataclass(frozen=True)
 class ItemType:

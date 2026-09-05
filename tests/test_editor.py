@@ -699,6 +699,46 @@ def test_an_added_item_is_a_copy_of_the_games_own_record(editor, save):
 
 
 @game_disks
+def test_the_ring_of_fire_resistance_is_repaired_on_an_editor_save(save):
+    """#285: the shipped template's `+14` and `+15` are both zero, so `CAMP
+    $10B5` never sees bit 7 set and readying the ring grants nothing. Opening
+    a save that holds one and saving repairs it -- the two bytes and nothing
+    else on the whole disk."""
+    from editor.window import EditorBinding
+    from goldbox.items import load_item_templates
+
+    template = load_item_templates(GAME_DISK)["RING OF FIRE RESISTANCE"]
+    assert (template[14], template[15]) == (0, 0)          # the shipped bug
+
+    first = EditorBinding(make_root(), str(save), GAME_DISK)
+    first.roster.selectRow(3)                    # ROLAND -- row 3, #160; two items
+    note = first.add_item("RING OF FIRE RESISTANCE")
+    assert "slot 2" in note
+    assert "wrote" in first.save(interactive=False)
+    broken = save.read_bytes()
+
+    # A second window, no edits at all -- opening and saving is the whole
+    # trigger.
+    second = EditorBinding(make_root(), str(save), GAME_DISK)
+    assert "wrote" in second.save(interactive=False)
+    repaired = save.read_bytes()
+
+    assert len(broken) == len(repaired)
+    diffs = [i for i in range(len(broken)) if broken[i] != repaired[i]]
+    assert len(diffs) == 2, diffs
+    lo, hi = sorted(diffs)
+    assert hi == lo + 1                                     # +14 then +15
+    assert (broken[lo], broken[hi]) == (0, 0)
+    assert (repaired[lo], repaired[hi]) == (61, 0x80)
+
+    third = EditorBinding(make_root(), str(save), GAME_DISK)
+    third.roster.selectRow(3)
+    raw = third.items.inventory.original[2]
+    assert (raw[14], raw[15]) == (61, 0x80)
+    assert raw[:14] == template[:14]                        # nothing else moved
+
+
+@game_disks
 def test_deleting_closes_the_gap(editor):
     editor.roster.selectRow(3)                    # ROLAND -- row 3, #160; BANDED MAIL, MACE
     assert "slot 0" in editor.delete_item(0)

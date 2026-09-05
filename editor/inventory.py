@@ -36,6 +36,7 @@ from goldbox.items import (
     TYPE_LOCATION,
     Item,
     ItemType,
+    repair_ring_of_fire_resistance,
 )
 from goldbox.savegame import SAVE0_LOAD_ADDRESS
 from goldbox.spells import POOL_OF_RADIANCE, SpellTable
@@ -68,6 +69,13 @@ class Inventory:
                                    self.base + (n + 1) * ITEM_SIZE])
                      for n in range(ITEMS_PER_CHARACTER)]
         self.original = list(self.raws)
+        # #285 (The C64's Ring of Fire Resistance grants nothing, and Wish
+        # should repair it on conversion and on an editor save): repair a
+        # broken ring the moment it is read, against `self.original` rather
+        # than after it, so `changed` sees the repair like any other edit --
+        # a party carrying the ring writes it fixed the next time this
+        # character's block is saved, and a party without one writes nothing.
+        self.raws = [repair_ring_of_fire_resistance(r) for r in self.raws]
 
     # -- reading ----------------------------------------------------------
 
