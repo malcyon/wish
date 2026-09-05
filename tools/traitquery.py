@@ -15,7 +15,14 @@ effect array in the save header. Two routines sit over them:
   A caller that goes here treats a trait slot exactly like a running spell.
 
 So the answer to "does a trait slot apply an id put there" is a **census of
-which ids reach which predicate**, and that is what this prints:
+which ids reach which predicate**, and this prints the half of it a static
+read can see: call sites that name the id with a `LDA #imm`. **The other half
+is data.** The combat engine walks twenty per-check id lists under the I/O
+area (`SQRPACI01 $072E`, lists at `$DB7A`) and asks `COMBAT $28A4` about every
+id on them, and no literal appears anywhere -- 61 is on two of those lists and
+this census reports it asked about nowhere. `tools/traitask.py` reads the
+lists off the running machine and logs the asks; `docs/171-c64-trait-slots.md`
+has both halves.
 
     tools/traitquery.py pool-of-radiance
     tools/traitquery.py curse-of-the-azure-bonds --sites

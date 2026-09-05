@@ -450,9 +450,15 @@ $4035  BEQ $403C      found here
 `$3FE4` alone -- `$3FE1` is a `LDX $6DB4` wrapper for the current character --
 is the array-only predicate, and **a caller that goes there never sees a trait
 slot.** So whether an id in a trait slot does anything is a question about the
-*call site*, not about the slot. `tools/traitquery.py` is the census, and finds
-the predicate in any of the three measured titles without being told where the
-overlay runs:
+*call site*, not about the slot. `tools/traitquery.py` censuses the call sites
+that name their id with a literal, and finds the predicate in any of the three
+measured titles without being told where the overlay runs. **It is not the
+whole census**: the combat engine asks about most of the namespace from twenty
+per-check id lists under the I/O area, through `COMBAT $28A4` and so through
+the trait slots, and a literal census never sees those -- which is how 61 came
+to be reported as asked about nowhere when it is on two lists.
+`docs/171-c64-trait-slots.md` has the lists and the correction; the table
+below counts literal sites only:
 
 | title | array only | array then traits | call sites honouring a trait slot |
 |---|---|---|---|

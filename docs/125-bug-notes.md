@@ -604,6 +604,36 @@ codes 3, 4 and 5 as `MAGIC-USER`. Its author was reading the game's own table.
 
 ---
 
+## U4. The Ring of Fire Resistance does nothing on the C64
+
+**What the game does.** Readying a magical item is what grants its effect:
+`CAMP $10B5` reads the item's byte `+15`, and only when bit 7 is set does it
+dispatch through `ECL65`'s power table to `SPELLE04 $ADD4`, which puts byte
+`+14` -- the effect id -- into a free trait slot. The C64's RING OF FIRE
+RESISTANCE template is `45 cd a7 42 00 00 00 00 01 00 00 88 13 00 00 00`:
+`+14 = 0`, `+15 = $00`, and the protection bytes `+4`/`+5` a Ring of
+Protection uses are zero too. So readying it grants nothing, and nothing
+else in the engine reads an item for fire resistance. The engine *does*
+implement the effect: id 61 is on the spell-damage and saving-throw check
+lists, and its handler at `SPELLE01 $A9EE` zeroes fire-spell damage -- the
+ring just never puts 61 anywhere (`docs/171-c64-trait-slots.md`).
+
+**What the player sees.** A character wearing the ring takes full damage
+from Fireball and Burning Hands, the same as one without it. The four
+templates that do set the bit -- the Cloak of Displacement, the Gauntlets of
+Ogre Power, the undead-slaying two-handed sword and the alignment-locked
+Long Sword +3 -- work.
+
+**Version.** Pool of Radiance, Commodore 64. PROBABLE: that the ring grants
+no effect is CONFIRMED from the template and the READY gate, both quoted
+above; that a wearer takes full damage has not been watched. **What would
+promote it:** Fireball from a level-5 magic-user at a party member wearing
+the ring, readied in camp, against one with 61 written into a trait slot by
+`tools/traitask.py --stage`: the wearer takes the full roll, the 61-carrier
+less. Burning Hands at level 1 cannot show it -- the handler never takes
+one die below one point, and `work/issue252/fire9/` watched a 61-carrier
+take exactly that.
+
 ## Attribution we are not sure of
 
 One find that may not be SSI's. **Gateway to the Savage Frontier's `GATE8` side
