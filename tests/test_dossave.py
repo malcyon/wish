@@ -67,7 +67,7 @@ CLASS_LEVELS = 0x096        # eight, indexed by the class number
 SEX = 0x09E
 EXPERIENCE = 0x0AC          # u24le
 CLASS_BITS = 0x0B0          # 1 mage, 2 cleric, 4 thief, 8 fighter
-PARTY_ORDER = 0x0BF
+COMBAT_ICON_SLOT = 0x0BF    # `party_order` in the tables: #305
 ITEM_COUNT = 0x0C7
 ENCUMBRANCE = 0x102         # u16le
 HP_CURRENT = 0x11B
@@ -436,7 +436,7 @@ def test_age_is_plausible_and_elves_are_old():
 
 
 @needs_specimens
-def test_party_order_numbers_the_six_slots():
+def test_the_combat_icon_slot_numbers_the_six_files():
     """`0x0BF`. A six-character save numbers its files 0 to 5 in order.
 
     Four saves of one party -- slot C at the roster, slot E after the tour and
@@ -445,18 +445,25 @@ def test_party_order_numbers_the_six_slots():
     CHARACTER TO PARTY. So this checks the field against the order we watched
     rather than against itself.
 
-    A `.CHA` written at creation holds 0: the character is on the roster and
-    in no party yet, which is what the field is counting.
+    **The byte is the combat-icon slot rather than the marching order**
+    (#305): LOAD SAVED GAME allocates the lowest free one of eight as it
+    reads the six filenames, so a party nobody has reordered comes out
+    numbered by file position and this assertion holds either way.  What it
+    does not prove is which of the two the byte *is*; the engine's own
+    allocation loop in `GAME.OVR` does that.
+
+    A `.CHA` written at creation holds 0: no icon has been handed out to a
+    character who is on the roster and in no party.
     """
     for name in CLEAN_PARTY[:2] + CLEAN_TRAINED:
         where = specimen(name)
         paths = sorted(where.glob("CHRDAT??.SAV"))
         assert len(paths) == 6, name
-        order = [p.read_bytes()[PARTY_ORDER] for p in paths]
+        order = [p.read_bytes()[COMBAT_ICON_SLOT] for p in paths]
         assert order == [0, 1, 2, 3, 4, 5], name
     for filename, record in specimen_files(
             ["por-party-l1-rolled"], (".CHA",), size=RECORD_SIZE).items():
-        assert record[PARTY_ORDER] == 0, filename
+        assert record[COMBAT_ICON_SLOT] == 0, filename
 
 
 # --- items --------------------------------------------------------------------

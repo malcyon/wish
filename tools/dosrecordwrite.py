@@ -241,8 +241,9 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
         original = dos.read_character(source)
         rec, _itm, _spc, _report = dos.write(char)
         differs = compare(shape, original.to_bytes(), rec)
-        # `party_order` is renumbered by the file position on the way out,
-        # which is the reversal above and not a loss.
+        # `party_order` -- the combat-icon slot, #305 -- is renumbered by the
+        # file position on the way out, which is the reversal above and not a
+        # loss; the DOS loader re-allocates it in file order anyway.
         table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
         rec = bytearray(rec)
         rec[table["party_order"].offset] = original.get("party_order")

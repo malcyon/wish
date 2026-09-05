@@ -1013,6 +1013,12 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("armour_class_base", "armour_class_base"),
     ("experience", "experience"),
     ("hp_rolled", "hp_rolled"),
+    # **Not the marching order** -- the DOS byte at 0x0BF is the character's
+    # combat-icon slot, and the loader hands those out in file order, so a
+    # party nobody has reordered numbers 0-5 and the neutral marching
+    # position is what that number means (#305, `goldbox/dos_layout.py`).
+    # The name here is the *neutral* field's and stays until the rename can
+    # be made across `goldbox/amiga.py` and `goldbox/c64_codec.py` too.
     ("party_order", "party_order"),
     ("hp_current", "hp_current"),
     ("thac0_current", "thac0"),
@@ -1920,6 +1926,11 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("armour_class_base", "armour_class_base"),
     ("experience", "experience"),
     ("hp_rolled", "hp_rolled"),
+    # Written, and then thrown away: the DOS loader allocates a fresh combat
+    # icon slot for every character it reads, so this byte never survives a
+    # load (#305).  It is written because it costs nothing, because the round
+    # trip needs it, and because the number a party in file order gets is the
+    # marching position this neutral field holds.
     ("party_order", "party_order"),
     ("hp_current", "hp_current"),
     ("thac0_current", "thac0_current"),
@@ -2157,8 +2168,10 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "C64's own turn_class at 0x0A3 for the same reason (#297, "
      "docs/178-turning-undead.md)"),
     ("field_83_87", b"\x00\x00\x01\x00\x00",
-     "00 00 01 00 00 in 101 of 101 engine-written Pool of Radiance records, "
-     "against the 24 this used to count (#235)"),
+     "a player character who takes one share of treasure. **Not one value "
+     "every record holds**: the third byte is 1 in every record of the "
+     "archives and 0 in 45 of the 54 Pool of Radiance records this project "
+     "rolled itself, and `FIELD_83_87` has the counts and why (#304)"),
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
 )
 
@@ -2294,19 +2307,68 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: records here and 22 of the 24 shipped ones read `00 01 00 00`, which is
 #: Pool of Radiance's `00 00 01 00 00` from its second byte on.
 #:
-#: **What those bytes are, from the game's own code.**
-#: `simeonpilgrim/coab`, the decompilation of the DOS Curse overlays,
-#: declares the run as `field_F6`, `control_morale`, `npcTreasureShareCount`,
-#: `field_F9`, `field_FA` at Curse record 0x0F6-0x0FA, which is this field.
-#: `control_morale` is the **NPC flag** -- `>= 0x80` is a companion the
-#: engine runs itself -- and `npcTreasureShareCount` is how many shares of
-#: treasure the character takes.  So `00 01 00 00` is "a player character,
-#: taking one share", which is exactly what a converted character is, and the
-#: value is a measured constant with a meaning rather than a copied blob.
+#: **What those bytes are, out of the shipped overlays** (#303, #305).  The
+#: second byte is the **control byte**, whose bit 7 the engine tests to decide
+#: whether it drives the character itself: every title's own `GAME.OVR`
+#: compares it against `0x7F` and `0x80` and stores `0x00`, `0xB2` and `0xB3`
+#: into it, which is `coab`'s `PC_Base` / `PC_Mask` / `NPC_Base` /
+#: `NPC_Berzerk` / `PC_Berzerk` in Pool of Radiance's binary, which nobody
+#: decompiled.  The third is the **treasure share**: Pool of Radiance reads it
+#: `& 7` at `0x006885`, behind that same control test and a status test, and
+#: adds it to the split -- a player character takes one part and is never read
+#: here at all.  The first, fourth and fifth bytes have **no site** in any of
+#: the four overlays.  Curse's own Pool of Radiance importer copies
+#: `0x083`-`0x087` into `0x0F6`-`0x0FA` one for one, so the run aligns.
 #:
-#: The five records in 76 that differ are the two the reading predicts: Silver
-#: Blades' MALACHITE, in the shipped party and in three saves this project
-#: drove, reads `00 00 00 00` -- a treasure share of zero.
+#: **The third byte is not a constant, and this is the value we choose rather
+#: than the value every record holds** (#304).  The only instruction in Pool
+#: of Radiance, Curse or Silver Blades that stores an immediate into it stores
+#: **1**, and it is the last statement of MODIFY CHARACTER, reached when the
+#: player presses `K` for KEEP -- a command the engine refuses on any
+#: character whose experience is not 0, 8333, 12500 or 25000, so it is
+#: reachable only just after creation.
+#:
+#: **CONFIRMED in the running game, one action apart, with a control**
+#: (`tools/dosmodifyprobe.py`, 2026-09-05).  Two human fighters rolled from
+#: CREATE NEW CHARACTER and added to the party both read 0.  MODIFY CHARACTER
+#: opened on one and left by EXIT, saved again: both records byte for byte
+#: unchanged.  MODIFY CHARACTER opened on the same one and left by KEEP, saved
+#: again: **exactly one byte of the 285 moved**, `0x085`, 0 to 1, and the
+#: other character's record is identical across all three saves.
+#: `WISH-SPEC-por-304-modify-exited` and `WISH-SPEC-por-304-modify-kept` are
+#: the pair.
+#:
+#: So the byte records "somebody kept this character out of the modify
+#: screen", and the corpus splits on exactly that:
+#:
+#:   * 1 in 66 of 66 Pool of Radiance archive records, 44 of 48 Curse ones
+#:     (the four are Gateway's ERSWELL and GULAIL, twice each) and 22 of 24
+#:     Silver Blades ones;
+#:   * **0 in 45 of the 54 Pool of Radiance specimen records**, which are the
+#:     parties this project rolled from character creation and never modified;
+#:   * 0 in Silver Blades' MALACHITE, in the shipped party and in three saves
+#:     this project drove -- which is the five exceptions in 76 that
+#:     `docs/180-writing-a-later-dos-record.md` counts, and nothing to do with
+#:     his being an NPC: his control byte is 0;
+#:   * meaningless in Pools of Darkness, whose overlay has no site for the
+#:     byte at all.
+#:
+#: **1 is kept**, because it is the only value any engine writes as an
+#: immediate, because it is what 132 of 138 records the engines have lived
+#: with hold, and because a share of 0 is the one value the engine treats
+#: specially -- `cmp byte ptr es:[di+85h], 0` at `0x006998` skips a character
+#: with no share out of the split entirely, so a converted companion would
+#: silently get nothing once `npc` reaches bit 7 of the byte before it (#303).
+#: For a player character it is inert either way, so no choice here is
+#: something a player can see.
+#:
+#: **It stays in `WRITE_CONSTANTS` rather than moving to `WRITE_DEFAULTS`,
+#: deliberately.**  A default is masked out of the round trip, and masking
+#: this one would hide MALACHITE's real difference rather than convert it.
+#: The fix that removes the choice is to convert the two meaningful bytes --
+#: the control byte into the neutral `npc`, the share into a neutral field
+#: that does not exist yet -- which needs `goldbox/neutral.py` and
+#: `goldbox/amiga.py`.
 FIELD_83_87: dict[int, bytes] = {5: b"\x00\x00\x01\x00\x00",
                                  4: b"\x00\x01\x00\x00"}
 
@@ -3772,8 +3834,9 @@ def marching_slot(index: int, count: int) -> int:
     SILAS, MAGNUS, BRUTUS.  The main panel lists the same six in the same
     order, and so does `PORSAVE13`.
 
-    DOS is the other way round: `party_order` at `0x0BF` is 0 for the
-    first-listed character, and the file order is the marching order.  So the
+    DOS is the other way round: the file order is the marching order, and
+    `party_order` at `0x0BF` is 0 for the first-listed character because the
+    loader allocates combat-icon slots as it reads that list (#305).  So the
     conversion reverses; writing DOS index *i* into slot *i* put the DOS
     party's front-rank fighter at the back of the C64 one.
 
@@ -4796,9 +4859,16 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # displays the highest occupied slot first -- its own `ENCAMP > ALTER >
     # ORDER` asks `WHO TAKES POSITION #1?` over a list headed by the character
     # in slot 5 -- and DOS displays `CHRDAT<slot>1` first.  So the file order
-    # is the reverse of the slot order, and `party_order` at `0x0BF`, which is
-    # 0-5 in file order in every DOS specimen, is renumbered to match rather
-    # than left as the C64's slot index.
+    # is the reverse of the slot order, and `party_order` at `0x0BF`, which
+    # is 0-5 in file order in every DOS specimen, is renumbered to match
+    # rather than left as the C64's slot index.
+    #
+    # **That renumbering is now what the DOS loader would have done anyway**
+    # (#305): the byte is the character's combat-icon slot, the loader hands
+    # out the lowest free one of eight as it reads the six filenames in order,
+    # and a party with no NPC therefore comes out numbered by file position.
+    # So this line stops the record disagreeing with itself before the game
+    # ever sees it, rather than deciding anything the game will keep.
     built.reverse()
     order = FIELDS_BY_NAME["party_order"].offset
     for position, entry in enumerate(built):

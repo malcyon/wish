@@ -86,12 +86,19 @@ levels)`.
 
 **The five Silver Blades exceptions are one character.** MALACHITE, the dwarf
 fighter 8 / thief 7 of the shipped party, differs at one byte -- the third of
-`field_83_87`, which the Curse decompilation calls `npcTreasureShareCount` --
-where he reads 0 and every other record of the title reads 1. Three of the
-five are saves this project drove the game into writing and two are shipped, so
-it is his value rather than a corpus artefact:
-`#304 (field_83_87 is written as a constant that the characters we rolled
-ourselves do not hold)` carries it.
+`field_83_87` -- where he reads 0 and every other record of the title reads 1.
+Three of the five are saves this project drove the game into writing and two
+are shipped, so it is his value rather than a corpus artefact.
+
+**Why he differs is now known, and it is not that he is a companion**
+(`#304 (field_83_87 is written as a constant that the characters we rolled
+ourselves do not hold)`, and
+`docs/195-three-dos-record-bytes-named-from-the-overlays.md`). The byte is the
+treasure share, and the only instruction in any of these engines that stores an
+immediate into it stores 1 at the end of MODIFY CHARACTER, on KEEP -- watched
+doing exactly that in DOSBox, where it moved one byte of 285 and left a control
+character's record untouched. MALACHITE was never modified. His control byte,
+which is the one that would make him a companion, reads 0.
 
 Two more differences are masked and each is masked by name rather than by the
 diff:
@@ -279,11 +286,17 @@ for such a character. Silver Blades' four bytes are that run with the first
 one gone: `00 01 00 00` against Pool of Radiance's `00 00 01 00 00`, and the
 byte that differs for MALACHITE is the share.
 
-That gives the neutral `npc` field a candidate DOS home, which
-`goldbox.dos.WRITE_DROPPED` currently says it has none of --
+That gives the neutral `npc` field a DOS home, which
+`goldbox.dos.WRITE_DROPPED` still says it has none of. **The reading is now
+CONFIRMED out of each title's own shipped `GAME.OVR` rather than from coab**,
+and the measurement that seemed to contradict it does not:
+`docs/195-three-dos-record-bytes-named-from-the-overlays.md` has the constants
+each engine stores and compares, the eight-record Treasures of the Savage
+Frontier party whose seventh member holds `0xB2`, and why MALACHITE's share of
+zero says nothing about companions.
 `#303 (The DOS record may hold the NPC flag that the conversion reports as
-having nowhere to go)` carries it, with the one measurement that contradicts
-the reading.
+having nowhere to go)` carries what is left, which is the wiring and one
+unmeasured value.
 
 ## What a converted character still loses
 

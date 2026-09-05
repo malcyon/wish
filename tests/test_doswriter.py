@@ -19,7 +19,16 @@ The other half of `tests/test_dosconvert.py`.  That module proves the DOS
 
 
 import pytest
-from test_dossave import _save_dir, needs_dos_saves
+from gamedata import have_specimen, needs_specimens, specimen
+from test_dossave import (
+    CLEAN_PARTY,
+    CLEAN_ROLLS,
+    CLEAN_TRAINED,
+    _clean_records,
+    _save_dir,
+    needs_dos_saves,
+)
+from test_dossave import _records as _archive_records
 from test_neutral import _filled
 
 from goldbox import c64_codec, dos, dos_layout, neutral
@@ -791,18 +800,103 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     assert bare[f.offset:f.end] == b"\x00\x01\x00\x00"
 
 
-def test_field_83_87_is_still_the_one_value_every_specimen_holds():
-    """The other half of #235 (Two unattributed DOS byte ranges in the combat
-    tail are dropped converting to C64, and nobody knows what they hold): the
-    census took the corpus from 24 records to 101 and `field_83_87` never
-    moved, so it stays a `WRITE_CONSTANTS` entry rather than following
-    `field_10c_10f` into `WRITE_DEFAULTS` -- the note names the new count so
-    the two claims are not confused."""
+@needs_specimens
+def test_field_83_87s_third_byte_splits_on_who_wrote_the_record():
+    """`#304 (field_83_87 is written as a constant that the characters we
+    rolled ourselves do not hold)`: the writer's value is a **choice**, and
+    this counts both populations rather than asserting one value and a stale
+    sentence.
+
+    The third byte is the treasure share, and the only instruction in Pool of
+    Radiance's, Curse's or Silver Blades' `GAME.OVR` that stores an immediate
+    into it stores 1 at the end of MODIFY CHARACTER, on KEEP -- a command the
+    engine offers only on a character who has just been made
+    (`#303 (The DOS record may hold the NPC flag that the conversion reports
+    as having nowhere to go)`). So a character this project rolled and never
+    modified holds 0 and the archives hold 1, which is exactly what the two
+    corpora do.
+
+    **The one exception is named rather than rounded away.** THRENDER GRONE in
+    `WISH-SPEC-por-item-granted` reads 1: he is an archive character staged
+    into a drive for `#232 (An item-granted effect is dropped on the way
+    through the neutral record, with no report)`, not one we created, so he
+    arrived with the byte already set.
+    """
+    share = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+    ours = {k: v[share] for k, v in
+            _clean_records(CLEAN_PARTY, CLEAN_ROLLS, CLEAN_TRAINED).items()}
+    assert len(ours) >= 26, "the clean corpus shrank; see tools/specimens.py"
+    assert set(ours.values()) == {0}, \
+        {k: v for k, v in ours.items() if v != 0}
+
+
+@needs_dos_saves
+def test_the_archives_hold_the_share_byte_the_writer_writes():
+    """The other half of `#304 (field_83_87 is written as a constant that the
+    characters we rolled ourselves do not hold)`. Every Pool of Radiance
+    record in the archives reads 1 where the records we rolled read 0, which
+    is why 1 is the value kept: it is what a character an engine has lived
+    with holds, and a share of 0 is the one value the split skips."""
+    share = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+    theirs = {name: rec[share]
+              for name, rec in _archive_records().items()}
+    assert len(theirs) >= 18
+    assert set(theirs.values()) == {1}, \
+        {k: v for k, v in theirs.items() if v != 1}
+
+
+@pytest.mark.skipif(
+    not (have_specimen("por-304-modify-exited")
+         and have_specimen("por-304-modify-kept")),
+    reason="needs the #304 MODIFY CHARACTER pair; see tools/dosmodifyprobe.py")
+def test_keeping_a_character_out_of_modify_sets_the_share_byte():
+    """`#304 (field_83_87 is written as a constant that the characters we
+    rolled ourselves do not hold)` settled in the running game rather than in
+    the code.
+
+    Two human fighters rolled from CREATE NEW CHARACTER, added to the party
+    and saved; MODIFY CHARACTER opened on the second and left by **EXIT**,
+    saved; opened again and left by **KEEP**, saved. `tools/dosmodifyprobe.py`
+    drove it and `tests/gamedata.py` re-hashes both saves before this reads
+    them.
+
+    **The assertion is the diff, not the value.** Exactly one byte of the 285
+    moves between the two saves, and it is the share byte -- so nothing else a
+    save rewrites can be mistaken for it, and the first character, who never
+    went near the screen, is the control that says so.
+    """
+    share = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+    before = specimen("por-304-modify-exited")
+    after = specimen("por-304-modify-kept")
+    control_b = (before / "CHRDATC1.SAV").read_bytes()
+    control_a = (after / "CHRDATC1.SAV").read_bytes()
+    assert control_b == control_a, "the untouched character's record moved"
+    kept_b = (before / "CHRDATC2.SAV").read_bytes()
+    kept_a = (after / "CHRDATC2.SAV").read_bytes()
+    moved = [i for i in range(len(kept_b)) if kept_b[i] != kept_a[i]]
+    assert moved == [share], [hex(i) for i in moved]
+    assert (kept_b[share], kept_a[share]) == (0, 1)
+    assert control_a[share] == 0
+
+
+def test_field_83_87_is_a_constant_the_writer_chooses_and_says_so():
+    """`#304 (field_83_87 is written as a constant that the characters we
+    rolled ourselves do not hold)`: the note has to name both populations, and
+    the field has to stay in `WRITE_CONSTANTS`.
+
+    **It does not move to `WRITE_DEFAULTS`, and that is the point of the
+    assertion.** `WRITE_DEFAULTS` is masked out of the round trip, so moving
+    it would hide Silver Blades' MALACHITE -- whose own third byte is 0 --
+    instead of converting him, which is
+    `#303 (The DOS record may hold the NPC flag that the conversion reports
+    as having nowhere to go)`'s work rather than a masking decision.
+    """
     consts = {n: (data, why) for n, data, why in dos.WRITE_CONSTANTS}
     assert "field_83_87" in consts
     data, why = consts["field_83_87"]
     assert data == b"\x00\x00\x01\x00\x00"
-    assert "101 of 101" in why
+    assert "101 of 101" not in why, "the stale census sentence is back"
+    assert "45 of the 54" in why and "archives" in why
     assert "field_83_87" not in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
 
 
