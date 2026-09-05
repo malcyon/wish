@@ -285,6 +285,159 @@ did not come up in thirty; and a save taken *during* a wilderness encounter,
 which turns out to be impossible — its command bar is `COMBAT WAIT FLEE PARLAY`
 with no `ENCAMP`.
 
+## The DOS party we made ourselves
+
+**The first DOS records this project watched being written from creation
+onward.** Everything else on this machine came from a download or a play
+directory — `.claude/rules/testing.md`, "A specimen is only evidence if we know
+who wrote it", has the account of what one edited record cost. These live in
+`$WISH_SPECIMENS` (default `~/wish-specimens/`), outside the repository,
+read-only and hashed; `tools/specimens.py check` re-verifies them.
+
+Six characters, rolled in Pool of Radiance's own CREATE NEW CHARACTER screens
+under DOSBox by `tools/dosparty.py` on 2026-09-04, with the archives' shipped
+roster wiped out of the staged copy first so nothing but our own characters
+could enter the party. First roll kept for every one.
+
+| slot | name | race (code) | class(es) | align | HP | gold |
+|---|---|---|---|---|---:|---:|
+| 1 | WISHFTR | human (7) | fighter | 0 | 7 | 140 |
+| 2 | WISHCLE | human (7) | cleric | 0 | 6 | 110 |
+| 3 | WISHMAG | elf (2) | magic-user | 0 | 4 | 70 |
+| 4 | WISHTHI | halfling (5) | thief | 1 | 5 | 90 |
+| 5 | WISHDWF | dwarf (1) | fighter/thief | 1 | 8 | 100 |
+| 6 | WISHHEL | half-elf (4) | cleric/fighter/magic-user | 0 | 7 | 100 |
+
+| specimen | what it is |
+|---|---|
+| `WISH-SPEC-por-party-l1` | `CHRDATC1..6.SAV`, four `.SPC` and all 13,137 bytes of `SAVGAMC.DAT`, written by SAVE CURRENT GAME before the party ever adventured |
+| `WISH-SPEC-por-party-l1-rolled` | the same six as loose roster `WISH*.CHA` plus `CHARLIST.TXT` |
+| `WISH-SPEC-por-party-l1-intown` | the same six in the game, standing at (0,4) in New Phlan with Rolf's opening tour finished, written by the game's own ENCAMP > SAVE |
+| `WISH-SPEC-por-party-trained-c2` | WISHCLE and WISHHEL trained from level 1 to 2 at the clerics' school |
+| `WISH-SPEC-por-train-clamp` | the evidence that TRAIN CHARACTER cuts experience even when it refuses to train |
+
+**ADD CHARACTER TO PARTY deletes `<NAME>.CHA`** and folds the record into
+`CHRDAT<slot><n>.SAV`, so the loose rolled records and the party save cannot
+both exist at once. That is why there are two specimens rather than one, and
+why `#84 (Roll a gnome in DOS and read the two innate effect ids nobody has
+seen)`'s final snapshot had no per-character files in it.
+
+### What creation itself measured
+
+CONFIRMED, one run, six of six records read back with
+`goldbox.dos.read_character` and matching the menu positions asked for.
+
+**The class list is not the same for two races.** Only human and half-elf are
+offered CLERIC:
+
+| race | the class list, in menu order |
+|---|---|
+| DWARF, GNOME, HALFLING | FIGHTER, THIEF, FIGHTER/THIEF |
+| ELF | FIGHTER, MAGIC-USER, THIEF, FIGHTER/MAGIC-USER, FIGHTER/THIEF, FIGHTER/MAGIC-USER/THIEF, MAGIC-USER/THIEF |
+| HUMAN | CLERIC, FIGHTER, MAGIC-USER, THIEF |
+| HALF-ELF | CLERIC, FIGHTER, MAGIC-USER, THIEF, CLERIC/FIGHTER, CLERIC/FIGHTER/MAGIC-USER, CLERIC/MAGIC-USER, FIGHTER/MAGIC-USER, FIGHTER/THIEF, FIGHTER/MAGIC-USER/THIEF, MAGIC-USER/THIEF |
+
+**So `#84`'s `dwarfc4` is a dwarf *fighter*, not a dwarf cleric** — its record
+reads `class_levels={'fighter': 1}`, and the name is what is wrong. `halfl5`
+and `elf6` are fighters as well.
+
+**The alignment list is filtered by the class just chosen.** WISHTHI and
+WISHDWF both took menu position 0 and stored alignment **1**; the other four
+took position 0 and stored **0**. A thief cannot be lawful good, so the list
+starts one entry further down. Anything driving creation by position must not
+assume nine fixed entries.
+
+**The encumbrance identity holds 6 of 6 with no items at all**: stored
+encumbrance equals gold exactly. A coin weighs one unit and nothing else is in
+the sum.
+
+### Experience, gold and levels
+
+**Experience and gold are written into the record before the run**, at
+`goldbox.dos_layout`'s own offsets — `experience` `0x0AC`, three bytes little
+endian; `gold` `0x08E`, a word; and `encumbrance` `0x102` moved with the gold,
+since the identity above would otherwise fail. `tools/dostrainprobe.py`'s
+`install()` does it and `tools/dostrain.py`'s `--xp` and `--gold` are the door.
+
+That makes the experience total an **input**, and nothing read back from it is
+the game's arithmetic. What the trainer then writes — level, `class_levels`,
+`hp_max`, `hp_rolled`, the spell slots, and the experience it leaves behind —
+is the engine's, because the engine does not care how a byte got there.
+
+**TRAIN CHARACTER is gated on the word at file offset `0xD51` of
+`SAVGAM<slot>.DAT`, the same word Curse of the Azure Bonds and Secret of the
+Silver Blades use.** CONFIRMED by differential: one save, two runs, that word
+0 in one and 20 in the other, and the party menu gains a tenth line reading
+TRAIN CHARACTER. `docs/117-save-conversion.md` has the loader arithmetic that
+found it in the other two titles. Two corroborations: the menu the poke draws
+is **pixel-identical** to the one the training hall draws when the party walks
+in and answers YES, and the engine's own in-town save writes **0** there.
+
+**But the poke alone does not train anybody.** Pressing `T` at that menu does
+nothing outside a hall. The training hall has to be entered, and it can be
+entered without walking the whole way:
+
+1. put the party at **(7,2) facing west** by writing `goldbox.dos_savegame`'s
+   `POS_X` `0x3201`, `POS_Y` `0x3202` and `POS_FACING` `0x3203` — facing is the
+   C64's 0–3 doubled, so west is 6;
+2. **step forward once.** Entering (6,2) fires script id 10, which loads area
+   11. A save cannot be dropped *on* (6,2): `ECL0B` dispatches on the departing
+   square's attribute byte, so arriving there without walking leaves nothing to
+   dispatch on, exactly as a fasttravel does — measured, and it is why the
+   first attempt landed on (7,2) with nothing happening;
+3. from (6,2) facing west: turn right, forward, forward → (6,0); then **left**
+   and forward → (5,0), the clerics' school, or **right** and forward → (7,0),
+   the magic users'. The sign at (6,0) says as much;
+4. answer YES to "WE TRAIN ONLY <class> HERE. DO YOU WANT TO TRAIN?" and the
+   party menu appears with TRAIN CHARACTER in it;
+5. move the roster highlight with `End`, then press `T`, then `Y` to
+   "<NAME> WILL BECOME: A LEVEL n <class>". A magic-user is then given a spell
+   list to choose from before the level-up completes.
+
+Training costs **1000 gp** and levels one character one level. More than one
+character can be trained in a single visit — WISHCLE and WISHHEL both were —
+but a character cannot be trained twice, because of what follows.
+
+### The trainer cuts experience whether or not it trains
+
+CONFIRMED. Five characters, two controls in the same run, and three of the five
+values predicted before the key was pressed.
+
+Every record went in holding 300,000 experience. TRAIN CHARACTER was pressed at
+the **clerics'** school on characters it refuses — level unchanged, no 1000 gp
+charge — and every one came out with experience cut to **one below the
+threshold two levels above its current level**:
+
+| character | class(es), level | after | is |
+|---|---|---:|---|
+| WISHFTR | fighter 1 | 4,000 | fighter level 3 needs 4,001 |
+| WISHMAG | magic-user 1 | 5,000 | magic-user level 3 needs 5,001 |
+| WISHTHI | thief 1 | 2,500 | thief level 3 needs 2,501 |
+| WISHDWF | fighter 1 / thief 1 | 4,000 | the fighter cap, not the thief's 2,500 |
+| WISHCLE | cleric 1, *trained* to 2 | 3,000 | cleric level 3 needs 3,001 |
+
+Thresholds from `goldbox.levels`. The controls are the characters never
+highlighted in each run: they still hold 300,000, and two earlier saves in the
+same boot — one taken after walking into the hall, one after opening the
+school's menu without pressing anything — show all six untouched. So it is
+`TRAIN CHARACTER` that does it and not the area, the school or the menu.
+
+**What a player sees is nothing**, which is why this is a note rather than a
+bug. Excess experience is lost when you train in any case; pressing TRAIN at
+the wrong school only loses it a moment early, and a character left one point
+short of the next level is the ordinary state after every training.
+
+Two things this does *not* settle, each with the experiment that would:
+
+* **whether the cut is applied on the way in or on the way out.** Give a
+  character exactly 4,001 experience, press TRAIN at the wrong school, and read
+  the record: 4,000 means it clamps whatever it finds, 4,001 means it only
+  clamps a surplus.
+* **what a multi-class character's stored experience means.** WISHDWF took the
+  fighter table's cap and WISHHEL came out of a cleric training at 5,000, which
+  no single table explains. Roll a fighter/thief, give it 3,000, train the
+  thief half, and read `experience` and both `class_levels` entries.
+
 ## What this set still lacks
 
 Every specimen *of Donald's own* is *level 1*. All three of the gaps listed
