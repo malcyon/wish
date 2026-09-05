@@ -17,6 +17,29 @@ and holds the lease for as long as your process lives. `Session(disk,
 slot=slot)` takes it from there. Two instances have been proven to coexist;
 `docs/123-parallel-sessions.md` §0 has the measurement.
 
+**On the C64 Ultimate, turn the speaker off before you boot a game.** The
+machine has an **internal speaker** and Donald has no physical way to turn it
+down, so booting Pool of Radiance plays the intro music into the room he is
+working in. He caught an agent doing it on 2026-09-05: *"That is going to
+blast the intro song, and I'll have no way to turn it down."* A window on his
+screen and a noise in his room are the same kind of mistake.
+
+```sh
+c64u --host <device> config export > work/c64u/config-backup-$(date +%F-%H%M).json
+c64u --host <device> config set "Speaker Mixer" "Speaker Enable" "Disabled"
+# ... drive the game ...
+c64u --host <device> config set "Speaker Mixer" "Speaker Enable" "Enabled"
+```
+
+**Export the config before you change it, and put the speaker back when you
+are done.** `config set` takes effect immediately and is **volatile** -- lost
+on power-off -- so nothing here is permanent, which is exactly why
+`save-to-flash`, `load-from-flash` and `reset-to-default` stay banned: those
+are what would make a change to his machine outlive the session.
+
+The music is `Vol UltiSid 1`/`2` in the same category and the drive noise is
+`Vol Drive 1`/`2`, if something quieter than silence is wanted.
+
 **Set `POR_HEADLESS=1`.** It keeps the window off Donald's desktop, and he works
 at that desktop while agents run.
 
