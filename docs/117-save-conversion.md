@@ -199,7 +199,7 @@ declines to carry is as informative as what it copies.
 | **six abilities and exceptional strength**, each `Load`ed then `EnforceRaceSexLimits(race, sex)` | Pool `0x10`–`0x16` | Curse `0x10`–`0x1D` — and `Load` writes **both halves of the (base, current) pair**, which is why one Pool byte fills two Curse bytes |
 | **THAC0, race, class, age, hit points maximum** copied | Pool `0x2D`, `0x2E`, `0x2F`, `0x30`, `0x32` | Curse `0x73`, `0x74`, `0x75`, `0x76`, `0x78` |
 | **spellbook**: 56 bytes copied into a 100-byte array, then `spellBook[animate_dead − 1] = 0` | Pool `0x33`–`0x6A` | Curse `0x79`; spells 57–100 stay zero. `coab`'s enum gives `animate_dead = 0x24` — **spell id 36, exactly `docs/86`'s** |
-| **attack level, `field_6C`, five saving throws, base movement, hit dice, levels lost, hit points lost, `field_76`, eight thief skills** copied | Pool `0x6B`–`0x7E` | Curse `0xDD`–`0xF1`. `multiclassLevel` (Curse `0xE6`) is set from hit dice, not from the source |
+| **attack level, `field_6C`, five saving throws, base movement, hit dice, levels lost, hit points lost, `field_76`, eight thief skills** copied | Pool `0x6B`–`0x7E` | Curse `0xDD`–`0xF1`. `coab` sets the byte it calls `multiclassLevel` (Curse `0xE6`) from hit dice rather than from the source, because Pool has nothing to copy there. **That name is wrong** and so is anything built on it: `0xE6` is the level a dual-classed human left his old class at, measured in the running game — see "Where a dual-classed human's old class lives" below. Whether SSI's own importer writes hit dice there too is unmeasured; `coab` is a reimplementation |
 | `field_83`–`field_87` copied | Pool `0x83`–`0x87` | Curse `0xF6`–`0xFA` |
 | **money: `Money.SetCoins(Money.Platinum, 300)`** | *nothing* | Curse `0xFB`. Pool's own money block at `0x88`–`0x95` is **not read by the loader at all** — `PoolRadPlayer` has no field there |
 | **per-class levels, sex, monster type, alignment, the eight attack-form bytes, base armour class, experience, class flags, hit points rolled, spells-cast counts, the icon bytes and six icon colours** copied | Pool `0x96`–`0xC6` | Curse `0x109`–`0x14A` |
@@ -224,10 +224,10 @@ not stored, so a converter never has to source it. And `docs/116`'s open
 question about where Curse keeps its dual-class array is **answered** below,
 in "Where a dual-classed human's old class lives". The lead recorded here used
 to say DOS Curse `0xE6` was `multiclassLevel` with no C64 counterpart; it is
-neither. The byte is zero in all eleven multi-classed records this project can
-reach and holds the level a *dual*-classed human left his old class at, which
-is the C64's `dual_class_level` — corrected on `#234 (A dual-classed Curse or
-Silver Blades character converted to DOS loses the class he trained out of)`.
+neither. The byte is zero in all 22 multi-classed records in the archives and
+holds the level a *dual*-classed human left his old class at, which is the
+C64's `dual_class_level` — corrected on `#234 (A dual-classed Curse or Silver
+Blades character converted to DOS loses the class he trained out of)`.
 
 ### Against our own measurement: 12 of the fifteen bytes
 
@@ -284,17 +284,30 @@ at three displacements:
 DOS→C64 converter has to expand or pack that field and can copy almost
 everything else.
 
-One place the alignment is ambiguous by a byte, and it is worth saying so rather
-than papering over it: `0x0A0`–`0x0A5`. DOS Curse runs hit dice, multiclass
-level, levels lost, hit points lost, `field_E9`, thief skills; the C64 runs
-level, levels drained, hit points lost to drain, turn class, turn power, thief
-skills. DOS Pool has no `multiclassLevel` — the importer sets it from hit dice —
-and `docs/117`'s own DOS Pool table has level at `0x073` → `0x0A0` (CONFIRMED)
-and thief skills at `0x077` → `0x0A5` (PROBABLE), a one-byte gain in between.
-The reading that fits everything is that **`multiclassLevel` is Curse-only and
-the C64's `turn_class` at `0x0A3` has no DOS counterpart**, the two cancelling so
-that −0x45 resumes at `0xE9` → `0x0A4`. PROBABLE, and one Curse specimen with a
-turn-undead class settles it.
+One place the alignment used to be ambiguous by a byte, `0x0A0`–`0x0A5`, and it
+is now settled. Three runs, side by side:
+
+| DOS Pool `0x073`+ | DOS Curse `0x0E5`+ | C64 `0x0A0`+ |
+|---|---|---|
+| `level` | `level` | `level` |
+| — | **`0x0E6`, the level he left his old class at** | — |
+| `levels_drained` | `levels_drained` | `levels_drained` |
+| `hp_lost_to_drain` | `hp_lost_to_drain` | `hp_lost_to_drain` |
+| — | — | **`turn_class`** |
+| `turn_power` | `turn_power` | `turn_power` |
+| thief skills | thief skills | thief skills |
+
+**Curse gains one byte the C64 has no room for in this run, and the C64 gains
+one Curse has not**, and the two cancel: −0x45 at `level`, −0x46 across
+`levels_drained` and `hp_lost_to_drain`, and −0x45 again from `turn_power`
+(`0xE9` → `0x0A4`) through the thief skills (`0xEA` → `0x0A5`). **CONFIRMED**,
+where it was PROBABLE and waiting on a turn-undead specimen. What upgraded it
+is that the Curse-only byte is no longer a name from somebody's notes: `0x0E6`
+holds the level a dual-classed human left his old class at, measured in a
+running DOS Curse below, and the C64 keeps that number at `0x0BA`
+(`dual_class_level`) instead — outside this run entirely, which is why the two
+records do not line up here. `turn_class` at C64 `0x0A3` is CONFIRMED in
+`goldbox/layout.py` and neither DOS title has it.
 
 ---
 
@@ -510,21 +523,38 @@ character has now into `former_class_levels` at the index of that class, then
 copies `level` into `0x0E6`, sets `level` to 1, zeroes `class_levels[old]`,
 sets `class_levels[new]` to 1 and zeroes `experience`. Counting every
 `es:[di+disp]` instruction in each of the six DOS Gold Box overlays on this
-machine, Curse, Silver Blades, Pools of Darkness, Gateway to the Savage
-Frontier and Treasures of the Savage Frontier each have **exactly one** writer
-of the former array against 20 to 31 readers, and Pool of Radiance has no such
-array at all — the same split `#224 (0x0B9 and 0x0BA are documented both as an
-NPC marker and as the dual-class slot)` measured on the C64. `tools/dualclassdos.py code` re-takes it.
+machine, five of them have **exactly one** writer of the former array, and
+Pool of Radiance has no such array at all — the same split
+`#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
+dual-class slot)` measured on the C64. `tools/dualclassdos.py code` re-takes it.
+
+| title | array | sites | writes | readers | the write |
+|---|---|---|---|---|---|
+| Curse of the Azure Bonds | `0x111` | 28 | 1 | 27 | `0x3BD7B` |
+| Secret of the Silver Blades | `0x118` | 31 | 1 | 30 | `0x3D00A` |
+| Pools of Darkness | `0x158` | 22 | 1 | 21 | `0x39130` |
+| Gateway to the Savage Frontier | `0x111` | 26 | 1 | 25 | `0x43A16` |
+| Treasures of the Savage Frontier | `0x158` | 20 | 1 | 19 | `0x4376E` |
+| Pool of Radiance | absent | — | — | — | — |
+
+**A `code --window N` listing does not show how the index is computed**, and
+should not be read as if it did. The backward search for an instruction
+boundary reaches only two bytes of lead-in before Curse's write site — an
+overlay is a byte stream with no entry point to walk from, so the alignment is
+chosen rather than known — so the printed listing begins at `mov es:[di+0x111],
+al` and never shows `di` and `al` being loaded. That the slot is indexed by
+class number rests on the specimens landing in different slots, not on the
+listing.
 
 **`0x0E6` is not `multiclassLevel`,** whatever the community notes call it. It
-is zero in all eleven multi-classed records across three titles and equal to
-the former class's level in all three dual-classed ones (ABAGAIL, PAINE,
-OUGO), and its only semantic writer is the routine above — the second write
-site in each overlay is inside a field-by-field record copy. Curse's own
-readers say what it is for: the helper at `0x3C031` answers "has he got the old
-class back yet?" by comparing his current class level against it, which is
-AD&D's rule, and where the C64 stores that answer (`GEN $20A3` writes the old
-level back into the level array once `level` passes it) DOS derives it.
+is zero in all 22 multi-classed records in the archives and equal to the former
+class's level in all five dual-classed records anybody here has seen, and its
+only semantic writer is the routine above — the second write site in each
+overlay is inside a field-by-field record copy. Curse's own readers say what it
+is for: the helper at `0x3C031` answers "has he got the old class back yet?" by
+comparing his current class level against it, which is AD&D's rule, and where
+the C64 stores that answer (`GEN $20A3` writes the old level back into the
+level array once `level` passes it) DOS derives it.
 
 **So the conversion is a transposition rather than a copy**, and this is what
 `goldbox/neutral.py` needs to carry — one field for the pair, because on DOS
@@ -533,9 +563,16 @@ neither of the C64's two bytes exists as such:
 * the C64 indexes its level array by class **bit** and DOS by class **number**,
   so the permutation `goldbox/dos.py` already carries for `class_levels`
   applies here too;
-* DOS keeps `class_levels[old]` at **zero** for good and puts both classes'
-  bits in `class_bits` — `class_bits_for` already produces that, because it
-  ORs over both arrays;
+* DOS keeps `class_levels[old]` at **zero** for good;
+* **`class_bits` carries only the new class at the moment of the change** —
+  `0x40` (paladin) → `0x02` (cleric) in the Curse specimen, `0x40` (ranger) →
+  `0x01` (magic-user) in the Silver Blades one. So a converter reading a freshly
+  dual-classed DOS record must take the old class from the former array and
+  cannot take it from `class_bits`. The two bits both appear once the character
+  is past the threshold — ABAGAIL is `0x03` and Pools of Darkness' PAINE `0x41`
+  — which is what `0x3C031` would predict, but no record here was watched
+  crossing it. **PROBABLE**; the settling experiment is to level a specimen's
+  new class past the byte after `level` and read `class_bits` again;
 * writing DOS means writing the former array entry **and** the byte after
   `level`, both with the old level;
 * reading DOS back to the C64 means setting `class_levels[old]` to that level
@@ -545,18 +582,134 @@ neither of the C64's two bytes exists as such:
   understands — both engines gate on human and on not already being
   dual-classed — and the conversion should refuse it rather than pick a slot.
 
-**One specimen short of CONFIRMED, and it is the same gap on both sides.** No
-422- or 439-byte record on this machine has a non-zero former array: 52
-distinct Curse records and 44 Silver Blades ones, all zero, because nobody has
-played either game past a training hall. The three that do are 510-byte
-records of the later engine. What closes it is one visit to a training hall in
-DOS Curse or DOS Silver Blades — `Train Character` and `Human Change Classes`
-are two of `START.EXE`'s thirteen party-menu items and appear **only** there,
-so the front-end menu is not a shortcut, and pressing `H` on it does nothing.
-`work/curse/234-ssb-town/` holds a Silver Blades party saved in New Verdigris
-at (3,12) for whoever picks it up, and `PAINE` is a human ranger 8 with
-`STR 18 INT 17 WIS 16` — the very transition SSI itself made, since the same
-character is a magic-user 13 who was a ranger 9 by Pools of Darkness.
+### CONFIRMED in both titles, by two records we watched being written
+
+Two training halls, two records, one action apart from their own before-state,
+each read at the offsets its own shape names. Every value was predicted before
+the key was pressed.
+
+**What makes these evidence where the older specimens are not** is that the
+*transition* was watched: both parties were loaded, one menu item was chosen,
+and the game wrote the record. Where the party itself came from does not enter
+it — the engine does not care how a byte got there, and what is being measured
+is what the engine did next.
+
+| | Curse of the Azure Bonds, 422 bytes | Secret of the Silver Blades, 439 bytes |
+|---|---|---|
+| who | DEMELTINA, human paladin 5 → cleric 1 | PAINE, human ranger 8 → magic-user 1 |
+| `former_class_levels[old]` | `0x114` 0 → **5** | `0x11C` 0 → **8** |
+| the byte after `level` | `0x0E6` 0 → **5** | `0x0EF` 0 → **8** |
+| `class_levels[old]` | `0x10C` 5 → **0** | `0x115` 8 → **0** |
+| `class_levels[new]` | `0x109` 0 → **1** | `0x116` 0 → **1** |
+| `level` | `0x0E5` 5 → **1** | `0x0EE` 8 → **1** |
+| `experience` | 25,000 → **0** | 202,750 → **0** |
+| `char_class` | 3 → **0** (the new class) | 4 → **5** (the new class) |
+| bytes changed in all | 32 | 33 |
+
+**How to reach a training hall without walking to one**, which is the part that
+had blocked this for two sessions. Both engines gate the two menu items on one
+word:
+
+```
+les di, [<the second farmalloc'd buffer>]
+cmp word es:[di+0x550], 0
+ja  enable                    ; a hall that trains to some level
+cmp byte [<the "Free training" flag>], 0
+jne enable
+```
+
+Curse `0x201FF` with the pointer at DS `0x4fb6`, Silver Blades `0x1D790` with
+it at DS `0x67ca`. In both, that buffer is the **second of four `farmalloc`s**
+(`0x800`, `0x800`, `0x400`, `0x1E00`) and the save loader reads one byte —
+the `.DAX` container number — and then `0x800` and `0x800` straight into the
+first two. **So `es:[di+0x550]` is file offset `0xD51` of
+`SAVGAM<slot>.DAT`, in both titles**, though Curse's save is 13,149 bytes and
+Silver Blades' 5,469. Set that word non-zero in a copy of a save, load it, and
+TRAIN CHARACTER and HUMAN CHANGE CLASSES are in the party menu wherever the
+party is standing. It is the hall's **maximum level**: the engine itself writes
+`0xFF` there at Silver Blades `0x1F5EF`, calls the trainer, and restores the old
+value at `0x1F614`.
+
+Poking offset `0x550` of the save file instead — reading `es:[di+0x550]` as if
+`di` pointed at the file's first byte — changed nothing, and the menu's frame
+digest came back identical. That is the negative result that forced reading the
+loader for where the buffer actually starts.
+
+Two things fell out of the same run. The **nine-item menu drawn after LOAD
+SAVED GAME is the in-game menu**, not the front end: `Drop`, `Modify`, `View`
+and `Remove` are enabled in it and `Load Saved Game` is not, which is the
+in-game branch. Pressing `H` there does nothing because the flag is clear, not
+because the menu is the wrong one, so nothing ever had to be walked to. And
+Curse's **HUMAN CHANGE CLASSES disappears from the menu after the change**,
+because its second gate wants the "which class was he" reader to return the
+`0x11` sentinel — the array read back through a different code path.
+
+Where the specimens are: `work/curse/234-curse-dualclassed/CHRDATD1.SAV` after
+against `work/curse/234-before/CHRDATC1.SAV` before, and
+`work/curse/234-ssb-dualclassed/CHRDATD2.SAV` after against `CHRDATC2.SAV`
+beside it. Gitignored, so take them as convenience rather than citation; the
+recipe above re-makes either in about four minutes.
+
+### Two by-products of the same measurement
+
+**The dual-class routine fills the thief-skill table whatever the new class
+is.** Curse `0x0EA`-`0x0F1`, all zero → 23, 36, 8, 14, 15, 11, 13, 14 for a
+**cleric**; Silver Blades `0x0F3`-`0x0F9`, all zero → 17, 31, 11, 12, 13, 9, 11
+for a **magic-user**. CONFIRMED in two titles, and it is not a misread on our
+side: the other thirty-odd changed bytes of each record read correctly at the
+same offsets. No player sees it, because the sheet prints those numbers only
+for a thief, so it is a note rather than a bug anybody can hit. The C64 does the
+opposite — `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as
+the dual-class slot)` found `GEN $24B5` *zeroing* the eight skills at the same
+moment.
+
+**Curse asks for the code wheel when you train**, and Silver Blades asks for
+nothing when you change class. Anything driving either game unattended stops
+dead at Curse's TRAIN CHARACTER and does not stop at HUMAN CHANGE CLASSES.
+
+### What the older specimens are worth now
+
+Three 510-byte records were the whole of the evidence before this: ABAGAIL
+(Pools of Darkness, magic-user 12, `former_class_levels[cleric]` 11), PAINE
+(Pools of Darkness, magic-user 13, ranger 9) and OUGO (**Treasures of the
+Savage Frontier**, not Pools of Darkness — it is read against that shape
+because it is 510 bytes). **All three came out of a downloaded archive's
+`Default files/Saves`**, so under `.claude/rules/testing.md`'s "a specimen is
+only evidence if we know who wrote it" none of them is evidence any more. The
+finding does not need them.
+
+**OUGO's direction is unsettled, and the doc used to state it as fact.** He
+reads `class_levels[cleric] = 8`, `former_class_levels[fighter] = 8` and
+`class_bits = 0x02`; the class-bit map derived from every single-classed record
+in the archives is mage `0x01`, cleric `0x02`, thief `0x04`, fighter `0x08`,
+druid `0x10`, paladin and ranger both `0x40`. So two of his three class fields
+say he is a cleric now who was a fighter — but `char_class` reads **2**,
+fighter, where both watched specimens have the *new* class there. Treasures
+numbers classes the same as everybody else (Cleric, Druid, Fighter, Paladin,
+Ranger, Magic-User, Thief, Monk in index order, in every title's front end), so
+the likeliest explanation is that the record was edited, which its provenance
+allows. Left as it stands rather than resolved.
+
+### Counts, and which directories they cover
+
+Deduplicated on bytes, over `~/Downloads/fr-archives` **only** — the number to
+quote, because it is stable and it is what `tools/dualclassdos.py census
+--no-archives` can be pointed away from:
+
+| read as | distinct records | which game trees they came out of | dual-classed |
+|---|---|---|---|
+| Pool of Radiance, 285 bytes | 36 | Pool of Radiance 12, a Steam `SavesDir` 24 | 0 (no such array) |
+| Curse of the Azure Bonds, 422 bytes | 24 | Curse 12, **Gateway 12** | 0 |
+| Secret of the Silver Blades, 439 bytes | 12 | Silver Blades 12 | 0 |
+| Pools of Darkness, 510 bytes | 26 | Pools of Darkness 12, **Treasures 14** | 3 |
+
+98 records, 22 of them multi-classed. Adding `work/` brings it to 267 and 8
+dual-classed, but that number moves with every run and includes copies of
+`/home/donald/dos_por_play/SAVE/`, which is known-edited. **An earlier version
+of this section said 52 Curse and 44 Silver Blades records and eleven
+multi-classed ones; none of the three reproduces at any scope**, and the
+conclusions they were quoted for — every 422- and 439-byte record in the
+archives reads zero at the former array — hold at the numbers above.
 
 ## Losslessness, which is the project's whole promise
 

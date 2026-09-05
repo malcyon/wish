@@ -6,18 +6,22 @@ the class he trained out of)` asked whether the DOS record has a home for the
 C64's `dual_class_slot`/`dual_class_level` pair.  It has two, and this is what
 was used to find them:
 
-* **`census`** reads every DOS character record on the machine -- 285, 422,
-  439 and 510 bytes, `.SAV`, `.CHA` and `.GUY` alike -- deduplicates on the
-  bytes, and prints `class_levels`, `former_class_levels` and the unnamed byte
-  immediately after `level` for each.  Three characters in the whole corpus
-  are dual-classed and all three are 510 bytes, so the counts matter: a field
-  that is zero in all 52 Curse records is zero because no Curse character on
-  this machine has ever trained out of a class.
+* **`census`** reads every DOS character record under the roots it is given --
+  285, 422, 439 and 510 bytes, `.SAV`, `.CHA` and `.GUY` alike -- deduplicates
+  on the bytes, and prints `class_levels`, `former_class_levels` and the
+  unnamed byte immediately after `level` for each.  It **names the roots it
+  swept and the game tree each record came out of**, because neither is
+  recoverable from the output otherwise: a record is grouped by its *size*,
+  which only ever names four titles, and six exist on this machine -- OUGO is
+  a Treasures of the Savage Frontier record read as Pools of Darkness, and a
+  Gateway `.GUY` would read as Curse.  A count with no scope beside it is not
+  a measurement; `--no-archives` is how a run gets one.
 * **`code`** counts every `es:[di+<offset>]` instruction in each title's own
   `GAME.OVR` that touches either level array, and disassembles the window
   around the single write to the former one.  Five of the six DOS Gold Box
-  overlays on this machine carry **exactly one** writer and twenty-odd
-  readers; Pool of Radiance has no such array at all, which is the DOS half of
+  overlays on this machine carry **exactly one** writer against 19 to 30
+  readers -- the printed "sites" figure counts the write as well; Pool of
+  Radiance has no such array at all, which is the DOS half of
   `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
   dual-class slot)`'s C64 census.
 
@@ -28,8 +32,15 @@ checks that a match is an instruction.  What makes the answer sound is that
 `code` disassembles the site it found and the routine reads as one: the
 displacement census only says where to look.
 
+**And the listing does not show how the slot is indexed.**  The backward
+search for an instruction boundary reaches two bytes of lead-in before Curse's
+write site and no further, so the listing opens on the store itself and never
+shows `di` and `al` being loaded.  That the slot is the class *number* rests
+on the specimens landing in different slots, not on anything printed here.
+
     tools/dualclassdos.py census
     tools/dualclassdos.py census --dual-only work/curse
+    tools/dualclassdos.py census --no-archives work/curse
     tools/dualclassdos.py code
     tools/dualclassdos.py code --title curse-of-the-azure-bonds --window 60
 
@@ -67,9 +78,48 @@ SUFFIXES = (".SAV", ".CHA", ".GUY")
 CLASS_NAMES = dos_layout.CLASS_NUMBERS
 
 
-def record_paths(extra: list[str]) -> list[pathlib.Path]:
-    """Every file that could be a character record, archives first."""
-    roots = [dosbox.ARCHIVES] + [pathlib.Path(p) for p in extra]
+#: The directory stem each title's game tree carries, and its name.  A record
+#: is grouped by the *size* it is, and that only ever names four titles; six
+#: exist here, so `census` says separately which game's tree a file came out of
+#: and a Gateway `.GUY` stops reading as a Curse record by silence.
+TITLE_BY_STEM = {
+    "POOLRAD": "Pool of Radiance",
+    "CURSE": "Curse of the Azure Bonds",
+    "SECRET": "Secret of the Silver Blades",
+    "Pools of Darkness": "Pools of Darkness",
+    "Gateway to the Savage Frontier": "Gateway to the Savage Frontier",
+    "Treasures of the Savage Frontier": "Treasures of the Savage Frontier",
+}
+
+
+def source_title(path: pathlib.Path) -> str:
+    """Which game's tree `path` came out of, or `"?"`.
+
+    The *deepest* match wins, because `games/Pools of Darkness/GAME/SECRET/`
+    exists: it is where Pools of Darkness looks for a Silver Blades party to
+    import, and a record found there is a Silver Blades one.
+
+    `"?"` where the path names no game tree, and two ordinary things do that:
+    a Steam `SavesDir/<steamid>/<appid>/English/`, whose app id is the whole
+    collection rather than one title, and anything copied under `work/`.  It
+    is a refusal rather than a guess, which is the point of the function.
+    """
+    best = "?"
+    for part in path.parts:
+        if part in TITLE_BY_STEM:
+            best = TITLE_BY_STEM[part]
+    return best
+
+
+def record_paths(extra: list[str], archives: bool = True) -> list[pathlib.Path]:
+    """Every file that could be a character record, archives first.
+
+    `archives=False` sweeps only `extra`, which is how a count gets a scope
+    somebody can check: the number depends entirely on which directories were
+    walked, and `work/` grows with every run.
+    """
+    roots = ([dosbox.ARCHIVES] if archives else [])
+    roots += [pathlib.Path(p) for p in extra]
     out = []
     for root in roots:
         if not root.is_dir():
@@ -80,7 +130,7 @@ def record_paths(extra: list[str]) -> list[pathlib.Path]:
     return out
 
 
-def read_records(extra: list[str]):
+def read_records(extra: list[str], archives: bool = True):
     """`(shape, character, paths)` for every distinct record, by bytes.
 
     The archives ship most save directories twice and a run under `work/`
@@ -89,7 +139,7 @@ def read_records(extra: list[str]):
     """
     by_size = {s.record_size: s for s in dos_layout.SHAPES}
     seen: dict[str, list] = {}
-    for path in record_paths(extra):
+    for path in record_paths(extra, archives):
         shape = by_size.get(path.stat().st_size)
         if shape is None:
             continue
@@ -118,7 +168,8 @@ def old_level_byte(char) -> int | None:
 
     Unnamed in every shape -- `gap_0e6` in Curse, `gap_0ef` in Silver Blades,
     `gap_139` in Pools of Darkness -- and equal to the former class's level in
-    all three dual-classed records this corpus holds.
+    every dual-classed record this corpus holds, including the two written by
+    a training hall under DOSBox for `#234`.
     """
     level = char.fields.get("level")
     if level is None:
@@ -129,9 +180,11 @@ def old_level_byte(char) -> int | None:
 
 
 def census(args: argparse.Namespace) -> int:
-    records = read_records(args.paths)
+    roots = ([str(dosbox.ARCHIVES)] if not args.no_archives else []) + args.paths
+    print(f"swept: {', '.join(roots) or '(nothing)'}")
+    records = read_records(args.paths, not args.no_archives)
     if not records:
-        print("no DOS character records on this machine; set $FR_ARCHIVES")
+        print("no DOS character records under those roots; set $FR_ARCHIVES")
         return 0
     by_title = collections.defaultdict(list)
     for shape, char, paths in records:
@@ -141,14 +194,18 @@ def census(args: argparse.Namespace) -> int:
         if not rows:
             continue
         dual = [r for r in rows if any(former_of(r[0]))]
-        print(f"=== {shape.title} ({shape.record_size} bytes): "
+        came_from = collections.Counter(source_title(r[1][0]) for r in rows)
+        print(f"=== read as {shape.title} ({shape.record_size} bytes): "
               f"{len(rows)} distinct record(s), {len(dual)} dual-classed")
+        print("    out of " + ", ".join(f"{t} x{n}" for t, n
+                                        in sorted(came_from.items())))
         for char, paths in sorted(rows, key=lambda r: r[0].name):
             former = former_of(char)
             if args.dual_only and not any(former):
                 continue
             after = old_level_byte(char)
-            print(f"  {char.name:<15} class={char.get('char_class'):<3} "
+            print(f"  {char.name:<15} [{source_title(paths[0])}] "
+                  f"class={char.get('char_class'):<3} "
                   f"level={char.get('level'):<3} after-level={after} "
                   f"levels={list(char.raw('class_levels'))} former={former}")
             if any(former):
@@ -275,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("paths", nargs="*", help="extra directories to sweep")
     c.add_argument("--dual-only", action="store_true",
                    help="print only records whose former array is set")
+    c.add_argument("--no-archives", action="store_true",
+                   help="sweep only the paths given, so a count has a scope")
     c.set_defaults(func=census)
 
     d = sub.add_parser("code", help="who writes the former array, per title")

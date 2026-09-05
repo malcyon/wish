@@ -44,6 +44,14 @@ original is not.
 The player's archives are read only, as everywhere in this harness: the game
 tree is copied into the instance directory before DOSBox sees it, and a
 specimen is copied *out* of that tree, never out of the archives.
+
+    tools/doscurse.py pane --slot 0 --rect view --last 8
+
+is the reading half, and it is offline: it crops one named region out of the
+last few shots and montages them, so eight steps of a walk are one picture
+instead of eight.  `--rect text --events` instead *lists* the shots whose
+message pane is not blank, which is how a driven walk finds the square that
+made the game say something without a person looking at every frame of it.
 """
 
 from __future__ import annotations
@@ -64,6 +72,70 @@ from tools.dosbox import BAR, Screen, Session, claim, find_game  # noqa: E402
 #: Where a copied-out specimen lands.  Gitignored, like everything derived
 #: from the game's bytes.
 SPECIMENS = REPO / "work" / "curse"
+
+#: The named regions of a 320x200 Gold Box frame, as ImageMagick geometry.
+#: Measured off Secret of the Silver Blades and shared with Curse of the Azure
+#: Bonds, which draws the same furniture in the same places.
+PANES = {
+    "view": "112x114+8+5",       # the 3D view, or the area map when it is up
+    "coord": "130x14+126+114",   # `3,12 S 00:09` -- square, facing, clock
+    "text": "320x58+0+130",      # the message pane, blank when nothing is said
+    "bar": "320x12+0+188",       # MOVE AREA CAST VIEW ENCAMP SEARCH LOOK
+    "top": "320x128+0+0",        # view, roster and coordinate together
+    "all": "320x200+0+0",
+}
+
+
+def shot_files(slot: int, last: int, names: list[str]) -> list[Path]:
+    """The shots to read: the named ones, or the last `last` in order.
+
+    `last.png` and `last-big.png` are skipped -- they are copies of a shot
+    already in the list, and a montage that repeats its own final frame reads
+    as one step more than the walk actually took.
+    """
+    shots = (REPO / "work" / "dosbox" / "inst" / str(slot) / "shots")
+    every = sorted((p for p in shots.glob("*.png")
+                    if not p.stem.startswith("last")
+                    and not p.stem.endswith("-big")),
+                   key=lambda p: p.stat().st_mtime)
+    if names:
+        return [p for p in every if any(n in p.stem for n in names)]
+    return every[-last:]
+
+
+def pane(slot: int, rect: str, last: int, names: list[str], out: Path,
+         scale: int, events: bool) -> int:
+    """Crop `rect` out of each shot; montage them, or list the ones with ink."""
+    files = shot_files(slot, last, names)
+    if not files:
+        print(f"no shots under work/dosbox/inst/{slot}/shots")
+        return 1
+    geometry = PANES[rect]
+    if events:
+        from PIL import Image
+        w, h, x, y = (int(v) for v in
+                      geometry.replace("x", " ").replace("+", " ").split())
+        for path in files:
+            box = Image.open(path).convert("L").crop((x, y, x + w, y + h))
+            lit = sum(1 for p in box.getdata() if p > 32)
+            if lit:
+                print(f"{path.name:28s} {lit:5d} lit pixels in {rect}")
+        return 0
+    tiles = []
+    for i, path in enumerate(files):
+        tile = out.parent / f".pane-{i:03d}.png"
+        subprocess.run(["convert", str(path), "-crop", geometry, "+repage",
+                        "-filter", "point", "-resize", f"{scale * 100}%",
+                        "-bordercolor", "grey40", "-border", "2", str(tile)],
+                       check=True, capture_output=True)
+        tiles.append(tile)
+    subprocess.run(["montage", *[str(t) for t in tiles], "-tile", "4x",
+                    "-geometry", "+2+2", "-background", "black", str(out)],
+                   check=True, capture_output=True)
+    for tile in tiles:
+        tile.unlink()
+    print(f"{out}  ({', '.join(p.stem for p in files)})")
+    return 0
 
 
 def enlarge(src: Path, factor: int = 3) -> Path | None:
@@ -206,13 +278,27 @@ def console(game: str, note: str, minutes: float, exe: str = "START.EXE") -> int
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=("console", "check"))
+    ap.add_argument("command", choices=("console", "check", "pane"))
     ap.add_argument("--game", default="CURSE", help="game directory stem")
     ap.add_argument("--exe", default="START.EXE")
     ap.add_argument("--note", default="doscurse")
     ap.add_argument("--minutes", type=float, default=120.0,
                     help="lifetime cap, so an abandoned console frees its slot")
+    ap.add_argument("--slot", type=int, default=0, help="pane: which instance")
+    ap.add_argument("--rect", default="view", choices=sorted(PANES),
+                    help="pane: which region of the frame")
+    ap.add_argument("--last", type=int, default=8,
+                    help="pane: how many of the most recent shots")
+    ap.add_argument("--shots", nargs="*", default=[],
+                    help="pane: shot name fragments, instead of --last")
+    ap.add_argument("--scale", type=int, default=2, help="pane: blow-up factor")
+    ap.add_argument("--events", action="store_true",
+                    help="pane: list the shots with ink in the region")
+    ap.add_argument("--out", default=str(REPO / "work" / "pane.png"))
     args = ap.parse_args(argv)
+    if args.command == "pane":
+        return pane(args.slot, args.rect, args.last, args.shots,
+                    Path(args.out), args.scale, args.events)
     if args.command == "check":
         absent = dosbox.missing_tools()
         print("tools missing:", ", ".join(absent) if absent else "none")
