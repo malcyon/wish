@@ -332,10 +332,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.tail:
         print()
+        # Every byte from x to the party size, which is `square_bytes` in
+        # Pool of Radiance and twelve more in the two titles that copy the
+        # wallset in here (#253) -- so the header spans the row rather than
+        # the block's nominal width.
         first = shape.square
         print(f"{'specimen':<22} "
-              + " ".join(f"{n:>5}"
-                         for n in range(first, first + shape.square_bytes)))
+              + " ".join(f"{n:>5}" for n in range(first, shape.party_table)))
         for s in specimens:
             print(f"{s['label']:<22} " +
                   " ".join(f"{b:>5}" for b in s["tail"]))

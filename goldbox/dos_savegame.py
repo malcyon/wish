@@ -104,14 +104,13 @@ ECL_BUFFER = (5121, 12801)   # the loaded script text -- **live**, see below
 #: claim that it held stale remnants of longer previous scripts was wrong.
 ECL_HEADER = 2
 
-#: Pool of Radiance's own square offsets -- `SAVE_POOL_OF_RADIANCE.pos_x` and
-#: siblings equal these exactly, because Pool of Radiance's `unnamed` is 0.
-#: **Another title's square is not at these bytes**: Curse's twelve
-#: "unnamed" bytes in front of it push its square block twelve bytes later,
-#: measured in a played save (#220), and Silver Blades' own twelve are
-#: presumed the same by the shape but not driven-game confirmed. A writer
-#: for any title but Pool of Radiance must read `shape.pos_x`/`pos_y`/
-#: `pos_facing`, never these three names.
+#: Pool of Radiance's own square offsets.  Curse of the Azure Bonds writes
+#: its square at the same three bytes -- both engines emit the square block
+#: the moment the variable array and the staged script run out, and both
+#: those regions are the same size in the two titles (#253).  Silver Blades'
+#: is at 5121 because it stages no script, and Pools of Darkness' is at 1024.
+#: So a writer for any title but Pool of Radiance still reads
+#: `shape.pos_x`/`pos_y`/`pos_facing` rather than these three names.
 POS_X, POS_Y, POS_FACING = 12801, 12802, 12803
 FACING_SCALE = 2             # 0 N, 2 E, 4 S, 6 W
 # The four bytes between the facing and the party size, measured over the
@@ -267,13 +266,37 @@ class DosSaveShape:
     var_words: int = VAR_WORDS
     #: The staged `ECL<n>.DAX` script, or 0 where the title does not stage one.
     script_bytes: int = ECL_BUFFER[1] - ECL_BUFFER[0]
-    #: Bytes between the script buffer and the square block that no specimen
-    #: has explained.  Zero in Pool of Radiance.
+    #: Extra bytes Curse and Silver Blades write **inside** the square block,
+    #: between its seventh byte and the party-size byte that ends it.  Zero in
+    #: Pool of Radiance and in Pools of Darkness.
+    #:
+    #: Twelve bytes, and their *shape* is no longer unknown: the writer emits
+    #: them as three passes of two `u16` each, `DS:0x722A + 4*i` and
+    #: `DS:0x722C + 4*i` for `i` = 1, 2, 3 in Curse (`GAME.OVR:0x1F9D4`) and
+    #: `DS:0x89D8`/`DS:0x89DA` in Silver Blades (`GAME.OVR:0x26BC7`).  So they
+    #: are two three-element `u16` arrays interleaved, not twelve loose bytes
+    #: (#253).
+    #:
+    #: **PROBABLE** that they are the wallset and wallmap triples Pool of
+    #: Radiance keeps in the variable array at `WALLSET`/`WALLMAP`, which
+    #: `$4AFA` and `$4AFD` hold at zero in all 121 Curse and Silver Blades
+    #: containers here.  What fits: a shipped container reads
+    #: `(0, $FFFF, $FFFF)` and `(1, $FFFF, $FFFF)`, which is
+    #: `OUTDOOR_WALLSET` and this module's "`(1, $FFFF, $FFFF)` with one set
+    #: loaded"; a played Curse one reads `(1, 2, 3)` and `(1, 2, 3)`, which is
+    #: "`(1, 2, 3)` with three sets loaded"; Curse's initialiser at
+    #: `GAME.OVR:0xF982` writes exactly the shipped pair.  What is missing:
+    #: no site writes a real block id into either array -- the four indexed
+    #: writers all store `$FFFF` -- so the value's source has not been read.
+    #: Settling experiment: a `BPM` on `DS:0x722E` under DOSBox-X while the
+    #: party enters an area with three wall sets, and see whether the writer
+    #: is the same routine that fills `$4AFA` in Pool of Radiance.
     unnamed: int = 0
-    #: The square block: x, y, facing, engine state, and the party size as its
-    #: last byte.  Eight bytes in the first three titles and **twelve** in
-    #: Pools of Darkness, whose writer lays it out as five bytes from
-    #: `DS:0xA9F3`, two interface-mode bytes, two words and the count (#175).
+    #: The square block without `unnamed`: x, y, facing, engine state, and the
+    #: party size as its last byte.  Eight bytes in the first three titles and
+    #: **twelve** in Pools of Darkness, whose writer lays it out as five bytes
+    #: from `DS:0xA9F3`, two interface-mode bytes, two words and the count
+    #: (#175).
     square_bytes: int = 8
 
     def __post_init__(self) -> None:
@@ -302,32 +325,52 @@ class DosSaveShape:
 
     @property
     def square(self) -> int:
-        """The square block; its last byte is the party size.
+        """The square block's first byte, which is x.
 
-        `square_bytes` wide, which is 8 in the first three titles and 12 in
-        Pools of Darkness.  Computed backwards from the end of the file
-        because the party table is the anchor every title's map was measured
-        from.
+        Computed **forwards**, the way the writer emits the file: everything
+        before it is the variable array and the staged script, so the block
+        opens the moment those run out.  12801 in Pool of Radiance and in
+        Curse alike, 5121 in Silver Blades, 1024 in Pools of Darkness.
+
+        It was computed backwards from the party table until #253, which put
+        Curse's and Silver Blades' twelve extra bytes in front of the block
+        rather than inside it and so read x twelve bytes late.  Both
+        arithmetics give the same answer wherever `unnamed` is 0, which is
+        why Pool of Radiance never noticed and why the widths still tiled the
+        file.
         """
-        return (self.size - UI_SCRATCH - PARTY_ENTRIES * PARTY_ENTRY
-                - self.square_bytes)
+        return (self.var_bytes + self.head + self.dax_bytes
+                + 2 * self.var_words + self.script_bytes)
 
     @property
     def pos_x(self) -> int:
         """The square block's first byte, named rather than left for a
         caller to add to `square` by hand.
 
-        Pool of Radiance's `POS_X`, `POS_Y` and `POS_FACING` are this row's
-        values -- `square` is 12801 only because `unnamed` is 0 here -- and
-        Curse's are twelve bytes later because its `unnamed` is 12, measured
-        in a played save (#220). A writer that hardcodes Pool of Radiance's
-        constants for another title's shape is the bug #220 found: use
-        `pos_x`/`pos_y`/`pos_facing` instead.
+        **The same distance into every title's file**: the first byte after
+        the variable array and the staged script.  Read out of each engine's
+        own save routine -- the chain of `BlockWrite` calls that emits the
+        file in order -- so it is the writer's arithmetic rather than an
+        inference from a specimen (#253):
 
-        Pools of Darkness is the second title to prove the point: its square
-        is at 1024 and not at the 1028 this row said until #175, because the
-        four bytes called `unnamed` in front of it were the last four bytes
-        of its square block all along.
+        =====================  ===========  ==========================
+        title                  `GAME.OVR`   x is written from
+        =====================  ===========  ==========================
+        Pool of Radiance       `0x1FF85`    `DS:0x6AAD`, 5 bytes
+        Curse of the Azure     `0x1F98B`    `DS:0x7229`, 5 bytes
+        Bonds
+        Secret of the Silver   `0x26B7E`    `DS:0x89D7`, 5 bytes
+        Blades
+        =====================  ===========  ==========================
+
+        In all three that call lands at the same file offset the shape gives,
+        and Pools of Darkness' own writer was read the same way for #175.
+
+        A writer that hardcodes Pool of Radiance's `POS_X`, `POS_Y` and
+        `POS_FACING` for another title's shape still wants
+        `pos_x`/`pos_y`/`pos_facing` instead: the constants happen to agree
+        for Curse and Silver Blades and do not for Pools of Darkness, whose
+        square is at 1024.
         """
         return self.square
 
@@ -341,7 +384,7 @@ class DosSaveShape:
 
     @property
     def party_table(self) -> int:
-        return self.square + self.square_bytes
+        return self.square + self.unnamed + self.square_bytes
 
 
 #: Pool of Radiance, 13137 bytes.  Every offset above is this row's.
@@ -349,12 +392,27 @@ SAVE_POOL_OF_RADIANCE = DosSaveShape(
     key="pool-of-radiance", title="Pool of Radiance", size=13137)
 
 #: Curse of the Azure Bonds, 13149.  **The same file as Pool of Radiance's
-#: with twelve more bytes in front of the square block**, and the variable
-#: array is at the same offset holding the same ECL addresses: `$5012` equals
-#: the header byte (2 and 2), `$503E` is the party size (6 and 6) and `$49E6`
-#: is the indoors flag (1 and 1) in both specimens.  The twelve bytes read
-#: `07 0d 00 00 00 00 00 00 00 01 00 ff` in A and B alike; what they are is
-#: UNKNOWN and a played save would say.
+#: with twelve more bytes inside the square block**, and the variable array
+#: is at the same offset holding the same ECL addresses: `$5012` equals the
+#: header byte (2 and 2), `$503E` is the party size (6 and 6) and `$49E6` is
+#: the indoors flag (1 and 1) in both specimens.
+#:
+#: Its save routine writes the file in this order, from the `BlockWrite`
+#: chain at `GAME.OVR:0x1F909`-`0x1FAFC` (#253):
+#:
+#: =============  =====  ===========================================
+#: file offset    bytes  source
+#: =============  =====  ===========================================
+#: 0                  1  `DS:0x5C08`, the `.DAX` container number
+#: 1               5120  the variable array, as 2048 + 2048 + 1024
+#: 5121            7680  the staged script
+#: 12801              5  `DS:0x7229` -- x, y, facing, and two more
+#: 12806              1  `DS:0x4FD4`
+#: 12807              1  `DS:0x4FD3`
+#: 12808             12  the two `u16[1..3]` arrays above
+#: 12820              1  the party size
+#: 12821            328  eight 41-byte character slots
+#: =============  =====  ===========================================
 SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
     key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
     size=13149, unnamed=12)
@@ -362,11 +420,17 @@ SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
 #: Secret of the Silver Blades, 5469 -- and the reason it is less than half
 #: the size is that **it stages no script**.  Its variable array is Pool of
 #: Radiance's, at the same offset with the same three addresses reading the
-#: same way; what is missing is the 7680-byte ECL text buffer, and the same
-#: twelve unnamed bytes Curse has sit where it would have ended.  Silver
+#: same way; what is missing is the 7680-byte ECL text buffer.  Silver
 #: Blades' own scripts are no smaller -- its largest `ECL<n>.DAX` block is
 #: 7678 bytes against Pool of Radiance's 7679 -- so the engine reloads them
 #: from the container rather than carrying them in the save.
+#:
+#: Its `BlockWrite` chain is Curse's with that one region taken out, at
+#: `GAME.OVR:0x26B15`-`0x26D10`: 1 byte from `DS:0x7420`, then 5120 bytes of
+#: variable array, then **5 bytes from `DS:0x89D7` at file offset 5121** --
+#: x, y and the doubled facing -- then `DS:0x67E8`, `DS:0x67E7`, the twelve
+#: bytes of `unnamed` from `DS:0x89D8`/`DS:0x89DA`, the party size at 5140
+#: and 328 bytes of character slots at 5141 (#253).
 SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
     size=5469, script_bytes=0, unnamed=12)
@@ -655,8 +719,11 @@ def position(save: bytes, shape: "DosSaveShape | None" = None
     stays live -- read `travel_square` when `outdoors(save)`.  The mirror of
     the C64, whose stale copy outdoors is `$49C0`-`$49C2` (#47, #59).
 
-    The shipped Curse and Silver Blades containers hold `$FF` in all three,
-    which is a party that has never stood anywhere rather than a square.
+    The shipped Curse and Silver Blades containers hold (7, 13, 0), which is
+    the square Curse's own initialiser leaves (`GAME.OVR:0xF95E` writes 7, 13
+    and 0 into `DS:0x7229`-`DS:0x722B`).  They read `$FF` in all three until
+    #253, which was this reader looking twelve bytes past the square, at the
+    `unnamed` arrays' empty marker.
 
     **Pools of Darkness reads correctly here** as of #175, and did not before:
     its square is at 1024-1026 rather than the 1028-1030 the old `unnamed=4`
@@ -882,10 +949,10 @@ def put_position(save: bytearray, x: int, y: int, facing: int,
     """The square, with `facing` in the C64's 0-3.
 
     Writes through `shape.pos_x`/`pos_y`/`pos_facing`, not the Pool of
-    Radiance constants of the same shape -- #220 found those hardcoded here
-    put a Curse square twelve bytes into what is actually the "unnamed"
-    region in front of it. `shape` defaults to whichever the buffer's own
-    length names, so an existing Pool of Radiance caller is unaffected.
+    Radiance constants of the same shape -- those are 12801-12803, which is
+    Silver Blades' script buffer and is inside Pools of Darkness' variable
+    array. `shape` defaults to whichever the buffer's own length names, so an
+    existing Pool of Radiance caller is unaffected.
 
     **This is the one writer here that takes a title other than Pool of
     Radiance, and that is deliberate rather than an oversight.** Every other

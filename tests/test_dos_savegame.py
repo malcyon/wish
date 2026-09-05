@@ -184,26 +184,47 @@ def test_a_pool_of_radiance_position_lands_on_the_module_constants():
         (8, 14, 3 * sg.FACING_SCALE)
 
 
-def test_a_curse_position_lands_twelve_bytes_past_pool_of_radiances():
-    """#220: Curse's square sits twelve bytes later than `POS_X`/`POS_Y`/
-    `POS_FACING` because its `unnamed` region is 12 bytes where Pool of
-    Radiance's is 0 -- measured in a played save, x/y/facing confirmed on
-    three squares (#113). A writer that used the bare module constants for
-    a Curse-shaped buffer would corrupt the "unnamed" bytes in front of the
-    square rather than the square itself, and `position()` would then read
-    back whatever the unnamed bytes held instead of the square just written.
+@pytest.mark.parametrize("key,x,table", [
+    ("curse-of-the-azure-bonds", 12801, 12821),
+    ("secret-of-the-silver-blades", 5121, 5141)])
+def test_a_later_titles_square_is_where_its_own_writer_puts_it(key, x, table):
+    """#253, correcting #220. Curse's square is at Pool of Radiance's own
+    12801 and Silver Blades' at 5121 -- the first byte after the variable
+    array and the staged script in each -- and the twelve extra bytes those
+    two titles carry sit *inside* the block rather than in front of it.
+
+    #220 read them as sitting in front and so moved x twelve bytes on, which
+    is what this pins against. Both directions are asserted on purpose: the
+    offset is right, and it is specifically not twelve past.
+    `tests/test_dossavewritemap.py` has the same claim read out of each
+    engine's own `BlockWrite` chain, which is where it is settled.
     """
-    shape = sg.SAVE_CURSE_OF_THE_AZURE_BONDS
-    assert shape.pos_x == sg.POS_X + 12
-    assert shape.pos_y == sg.POS_Y + 12
-    assert shape.pos_facing == sg.POS_FACING + 12
+    shape = sg.save_shape_for(key)
+    assert (shape.pos_x, shape.pos_y, shape.pos_facing) == (x, x + 1, x + 2)
+    assert shape.unnamed == 12
+    # The twelve are between the block's seventh byte and the party size.
+    assert shape.pos_x + 7 + shape.unnamed == shape.party_table - 1
+    # And the party table did not move with the square.
+    assert shape.party_table == table
 
     save = bytearray(shape.size)
     sg.put_position(save, 8, 14, 3, shape)
     assert sg.position(bytes(save), shape) == (8, 14, 3)
-    # And the bytes at Pool of Radiance's own offsets -- the "unnamed"
-    # region for this title -- are untouched.
-    assert save[sg.POS_X:sg.POS_FACING + 1] == b"\x00\x00\x00"
+    # Nothing was written twelve bytes on, where #220 put the square.
+    assert save[x + 12:x + 15] == b"\x00\x00\x00"
+
+
+def test_a_curse_square_is_at_pool_of_radiances_own_offset():
+    """The finding of #253 in one line: the two titles' squares coincide.
+
+    They coincide because the two regions in front of the block -- the 5120
+    bytes of variable array and the 7680 of staged script -- are the same
+    size in both engines, not because Curse inherited the constant.
+    """
+    curse = sg.save_shape_for("curse-of-the-azure-bonds")
+    assert (curse.pos_x, curse.pos_y, curse.pos_facing) == \
+        (sg.POS_X, sg.POS_Y, sg.POS_FACING)
+    assert curse.size != sg.SAVGAM_SIZE, "and yet they are different files"
 
 
 def test_the_party_filenames_are_rewritten_for_the_slot():
@@ -486,10 +507,12 @@ def test_a_shape_whose_widths_do_not_add_up_is_refused_at_import():
     wide moves every one after it, and the shape raises rather than reading
     somebody else's bytes.
 
-    Asserting that the *existing* shapes tile is not this check and cannot
-    fail -- `square` is computed backwards from `size`, so
-    `party_table + entries + scratch == size` reduces to `size == size` for
-    any widths at all.  Building a wrong one is what exercises the guard.
+    Asserting that the *existing* shapes tile was not this check and could
+    not fail until #253: `square` was computed backwards from `size`, so
+    `party_table + entries + scratch == size` reduced to `size == size` for
+    any widths at all.  It is computed forwards now, which makes that a real
+    assertion -- see the test below.  Building a wrong shape is still what
+    exercises this guard.
     """
     good = dict(key="fifth", title="A Fifth Title",
                 size=sg.SAVGAM_SIZE, script_bytes=0, unnamed=0)
@@ -502,6 +525,25 @@ def test_a_shape_whose_widths_do_not_add_up_is_refused_at_import():
     # And the same shape with the missing width put back is accepted.
     width = sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0]
     assert sg.DosSaveShape(**{**good, "script_bytes": width}).size == sg.SAVGAM_SIZE
+
+
+def test_every_shape_reaches_its_own_end_from_the_front():
+    """`square` is measured forwards from the file's start and the character
+    table is measured backwards from its end, so the two arithmetics meeting
+    is a real check rather than an identity (#253).
+
+    It is what would have caught #220's twelve-byte shift had `square` been
+    computed this way then: putting the twelve in front of the block moves
+    `party_table` and the count byte off the end of the character table, and
+    the shipped containers stop naming six files.
+    """
+    for shape in sg.SAVE_SHAPES:
+        assert (shape.party_table + sg.PARTY_ENTRIES * sg.PARTY_ENTRY
+                + sg.UI_SCRATCH) == shape.size, shape.key
+        assert shape.square + shape.unnamed + shape.square_bytes == \
+            shape.party_table, shape.key
+        if shape.script_buffer:
+            assert shape.script_buffer[1] == shape.square, shape.key
 
 
 def test_no_two_shapes_collide_on_the_size_that_selects_them():
@@ -546,6 +588,26 @@ def test_the_party_size_byte_is_the_last_of_the_square_block(key):
     square block sits immediately before the party table in each of them."""
     for path, data in _of(key):
         assert sg.party_size(data, sg.save_shape_for(key)) == 6, path
+
+
+@_ALL_SHAPES
+def test_a_shipped_container_reads_a_square_and_not_three_empty_markers(key):
+    """A facing is 0, 2, 4 or 6 and a square is on a grid, so a reader that
+    has slipped is visible without knowing where the party actually stood.
+
+    Curse and Silver Blades read (255, 255, 254) here until #253, which was
+    this reader landing on the wallset triple's `$FFFF` empty markers twelve
+    bytes past the square. These containers are a download with no chain of
+    custody (`.claude/rules/testing.md`) and that does not weaken the check:
+    a character editor changes what a field holds and never where the engine
+    puts it, and 255 is not a value the writer can produce for any of three.
+    """
+    for path, data in _of(key):
+        shape = sg.save_shape_for(key)
+        assert data[shape.pos_facing] % sg.FACING_SCALE == 0, path
+        x, y, facing = sg.position(data, shape)
+        assert 0 <= facing <= 3, path
+        assert 0 <= x < 32 and 0 <= y < 32, path
 
 
 @pytest.mark.parametrize("key", ["pool-of-radiance", "curse-of-the-azure-bonds",

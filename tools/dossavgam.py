@@ -114,8 +114,13 @@ def region_map(shape) -> list[tuple[str, int, int]]:
                         ("Container number", shape.dax_bytes),
                         ("ECL variables", 2 * shape.var_words),
                         ("Staged script", shape.script_bytes),
-                        ("Unnamed", shape.unnamed),
-                        ("Square and party size", shape.square_bytes),
+                        # The twelve Curse and Silver Blades carry sit
+                        # *inside* the block, after the engine state and
+                        # before the count -- #253, read off each writer.
+                        ("Square and engine state",
+                         shape.square_bytes - 1),
+                        ("Wallset and wallmap copies", shape.unnamed),
+                        ("Party size", 1),
                         ("Character slots",
                          sg.NAME_SLOTS * sg.PARTY_ENTRY)):
         if size:

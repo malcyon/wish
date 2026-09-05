@@ -241,8 +241,9 @@ most save directories twice and for three titles the copies are identical.
 | container-number byte | 1 | 1 | 1 | — | CONFIRMED — it equals `$5012` in all nine containers that have both |
 | ECL variables, `u16le` from `$4900` | 2560 | 2560 | 2560 | — | CONFIRMED for the three; the word count is Pool of Radiance's and untested in the other two |
 | staged `ECL<n>.DAX` script | 7680 | 7680 | — | — | CONFIRMED for Pool of Radiance; PROBABLE for Curse, whose buffer is all zero in both shipped saves |
-| unnamed, before the square block | — | 12 | 12 | — | UNKNOWN — Curse and Silver Blades read `07 0d 00 00 00 00 00 00 00 01 00 ff` in both specimens each. **Pools of Darkness has none**: the four this table gave it were the last four bytes of its own square block (#175) |
-| square block, last byte the party size | 8 | 8 | 8 | **12** | CONFIRMED — the party-size byte reads 6 in all thirteen, and Pools of Darkness' twelve bytes are named one `BlockWrite` at a time below |
+| square and engine state | 7 | 7 | 7 | **11** | CONFIRMED from each writer — five bytes from one data-segment address, then two single bytes (#253, and #175 for Pools of Darkness) |
+| two interleaved `u16[1..3]` arrays, **inside** the square block | — | 12 | 12 | — | the *shape* CONFIRMED from the writer — three passes of two `u16` each, `DS:0x722A`/`DS:0x722C` in Curse and `DS:0x89D8`/`DS:0x89DA` in Silver Blades, stepping by 4; PROBABLE that they are `WALLSET` and `WALLMAP`, see below (#253). This table called them "unnamed, before the square block" until then, and reading the square through that put it twelve bytes late. **Pools of Darkness has none**: the four this table gave it were the last four bytes of its own square block (#175) |
+| the party size, one byte | 1 | 1 | 1 | 1 | CONFIRMED — it reads 6 in all thirteen, and every writer emits it immediately before the `CHRDAT` slots |
 | 41-byte `CHRDAT` slots | 8 × 41 | 8 × 41 | 8 × 41 | 8 × 41 | CONFIRMED as 328 bytes in all thirteen; **eight** slots CONFIRMED for Pools of Darkness and Silver Blades from the code, PROBABLE for the other two |
 
 **The last two slots are the 82 bytes this page called UI scratch.** Pools of
@@ -253,8 +254,10 @@ and the party fills six of them; the rest is the stack under the buffer, which
 is why it reads `Camp: ` and `Choose a FUNCTION`. Its *loader* reads the same
 328 bytes out of a **Silver Blades** container after seeking to 5140 — which
 is that shape's own count byte exactly — so the eight-slot reading is the
-engine's for that title too. Settling experiment for Pool of Radiance and
-Curse: the same `BlockWrite` census on their `GAME.OVR`s.
+engine's for that title too. **Settled for Pool of Radiance, Curse and Silver
+Blades as well** by the same `BlockWrite` census, below: each writes one
+`0x148` = 328-byte block, from a stack buffer, immediately after the party
+size (#253).
 
 **Curse and Silver Blades share Pool of Radiance's variable array**, at the
 same offset with the same ECL addresses. Two readings 1602 words apart agree:
@@ -273,9 +276,11 @@ one Silver Blades and Pools of Darkness would not need.
 
 **What is missing for Curse and Silver Blades is a played save.** Both
 containers of each is a shipped starting party: 272 to 295 nonzero bytes in
-the whole file, an all-`$FF` square, a zero clock, no quest flags and a script
-buffer that is entirely zero. Nothing about the variable array's *contents*
-can be measured from them and the `07 0d` block cannot be attributed. The
+the whole file, a zero clock, no quest flags and a script buffer that is
+entirely zero. Nothing about the variable array's *contents* can be measured
+from them. This paragraph said "an all-`$FF` square" until #253; the `$FF`s
+were the wallset triple's empty markers, twelve bytes past the square, and
+the square itself reads (7, 13, 0) in every one of them. The
 Steam `SavesDir` holds Pool of Radiance's app id and no other — the same
 specimen `#113 (Play DOS Curse far enough to save a party with items)` is
 about. **Pools of Darkness is no longer in that list**: see the next section.
@@ -285,6 +290,80 @@ writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
 that Pools of Darkness does, with the same 336-byte tail, and its two
 containers read cleanly through the Pools of Darkness row. Only the directory
 a file came from says which game wrote it.
+
+### Every title's save routine, read off its `BlockWrite` chain (#253)
+
+The map above is no longer inferred from specimens for the first three
+titles. Each engine saves with one Turbo Pascal `BlockWrite` per region, in
+file order, in one basic block, so the file map is the chain: the first call
+starts at offset 0 and each one after it starts where the last ended.
+`tools/dossavewritemap.py` finds the chain and prints it, and
+`tools/dossavewritemap.py --check` fails if a map and a `DosSaveShape`
+disagree.
+
+The chain is found by its shape rather than by an address. A save-side
+`BlockWrite` passes its `var Result` argument as `NIL` and so compiles to
+`xor ax, ax; push ax; push ax; lcall`, where the *load* side passes a real
+`var` and pushes `ss:di`; the longest run of the former whose widths add up
+to a known container size is the save routine. Corroborated on the strings
+each routine prints: Curse's writer at `GAME.OVR:0x1F909` is the one that
+references "Saving...Please Wait" and "Unexpected error during save", and its
+mirror at `0x1F0EE`, which is byte for byte the same chain with the other
+call, references "Loading...Please Wait".
+
+| what | Pool of Radiance | Curse | Silver Blades |
+|---|---|---|---|
+| container-number byte | 1 at 0, `DS:0x5376` | 1 at 0, `DS:0x5C08` | 1 at 0, `DS:0x7420` |
+| variable array, first block | 2048 at 1, `[DS:0x49D2]^` | 2048 at 1, `[DS:0x4FB2]^` | 2048 at 1, `[DS:0x67C6]^` |
+| variable array, second | 2048 at 2049, `[DS:0x49D6]^` | 2048 at 2049, `[DS:0x4FB6]^` | 2048 at 2049, `[DS:0x67CA]^` |
+| variable array, third | 1024 at 4097, `[DS:0x49DA]^` | 1024 at 4097, `[DS:0x4FBA]^` | 1024 at 4097, `[DS:0x67CE]^` |
+| staged script | 7680 at 5121, `[DS:0x49DE]^` | 7680 at 5121, `[DS:0x4FBE]^` | — |
+| **x, y, facing and two more** | **5 at 12801, `DS:0x6AAD`** | **5 at 12801, `DS:0x7229`** | **5 at 5121, `DS:0x89D7`** |
+| view mode | 1 at 12806, `DS:0x49FA` | 1 at 12806, `DS:0x4FD4` | 1 at 5126, `DS:0x67E8` |
+| the constant 2 | 1 at 12807, `DS:0x49F3` | 1 at 12807, `DS:0x4FD3` | 1 at 5127, `DS:0x67E7` |
+| two `u16[1..3]` arrays | — | 12 at 12808, three passes of `DS:0x722A`/`DS:0x722C` | 12 at 5128, three passes of `DS:0x89D8`/`DS:0x89DA` |
+| party size | 1 at 12808 | 1 at 12820 | 1 at 5140 |
+| `CHRDAT` slots | 328 at 12809 | 328 at 12821 | 328 at 5141 |
+
+**So x is at 12801 in Pool of Radiance and in Curse alike, and at 5121 in
+Silver Blades** — the first byte after the variable array and the staged
+script, in every one. The two titles' squares coincide because the regions in
+front of the block are the same size in both engines, not because Curse
+inherited a constant.
+
+The variable array is three heap blocks rather than one, 2048 + 2048 + 1024,
+which is why `#59` could name file words 1024–2047 and 2048–2559 as separate
+VM address ranges: they are separate allocations. `docs/163-dos-vm-address-map.md`
+has the renaming.
+
+This is evidence a saved game cannot give. A character editor changes what a
+field holds and never where the engine puts it, and none of the DOS saves on
+this machine has a chain of custody — `.claude/rules/testing.md`. Reading the
+writer sidesteps the question.
+
+#### The initialiser writes the starting square and the empty triples
+
+`GAME.OVR:0xF95E` in Curse sets `[0x7229] = 7`, `[0x722A] = 13`,
+`[0x722B] = 0`, then `[0x722E] = 0`, `[0x7230] = 1` and `$FFFF` into
+`[0x722A + 4i]` and `[0x722C + 4i]` for *i* = 2, 3. That is byte for byte
+what every shipped Curse and Silver Blades container holds at 12801 and 5121:
+`07 0d 00 00 00 00 00 00 00 01 00 ff ff ff ff ff ff ff ff 06`. So the `07 0d`
+is the starting square (7, 13) rather than a mystery pair — the same reading
+`#175` reached for Pools of Darkness at 1024 — and the `$FF`s that
+`position()` was returning are the two arrays' empty markers.
+
+**The two arrays are PROBABLE `WALLSET` and `WALLMAP`, not CONFIRMED.** What
+fits: `(0, $FFFF, $FFFF)` and `(1, $FFFF, $FFFF)` shipped is `OUTDOOR_WALLSET`
+and this page's "(1, $FFFF, $FFFF) with one set loaded"; `(1, 2, 3)` twice in
+a played Curse save is "(1, 2, 3) with three sets loaded"; Silver Blades'
+driven saves read `(21, $FFFF, $FFFF)` and `(1, $FFFF, $FFFF)`, one set
+loaded. What is missing: `$4AFA` and `$4AFD` are **zero in all 121 Curse and
+Silver Blades containers here**, so the variable array cannot corroborate it,
+and the four indexed writers of these arrays (`0x1679`, `0xF9A3`, `0xFD49`,
+`0x3F190` and their `0x722C` twins) all store `$FFFF` — nothing found yet
+writes a real block id. Settling experiment: a DOSBox-X `BPM` on `DS:0x722E`
+while the party walks into an area with three wall sets loaded, and see
+whether the writer is the routine that fills `$4AFA` in Pool of Radiance.
 
 ## Pools of Darkness: the byte-wide variable array (#175)
 
@@ -458,11 +537,13 @@ single-byte:
   any origin. This page's earlier CONFIRMED "not the same array shifted"
   stands and is explained.
 * **The `07 0d` at 1024–1025 is not a mystery pair**: it is the dungeon square
-  (7, 13) the initialiser leaves. Curse and Silver Blades' twelve unnamed
+  (7, 13) the initialiser leaves. Curse and Silver Blades' twelve "unnamed"
   bytes **also open `07 0d 00 00 00`**, which is byte for byte what Pools of
-  Darkness writes from `DS:0xA9F3`–`0xA9F7`. Worth the same `BlockWrite`
-  census on their `GAME.OVR`s before anyone calls those twelve
-  unattributable.
+  Darkness writes from `DS:0xA9F3`–`0xA9F7`. This bullet asked for the same
+  `BlockWrite` census on their `GAME.OVR`s before anyone called those twelve
+  unattributable, and it was right: the census (#253, below) found those five
+  bytes are the square block's own head in both titles, and the twelve are
+  something else and elsewhere.
 * **The eight-slot name table is not a Pools of Darkness peculiarity.** Its
   own loader reads 328 bytes at 5140 out of a *Silver Blades* container,
   which is the party-import path from the previous game, and 5140 is that
