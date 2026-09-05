@@ -1,0 +1,8 @@
+# The artist's own files are hashed by `tests/test_appicon.py`, which is how we
+# know nobody has quietly edited a delivery.  Git for Windows checks out with
+# `core.autocrlf=true`, so without this line it rewrites every LF in an `.svg`
+# to CRLF on the way out of the object store, the file on disk is no longer the
+# file the artist sent, and both hash tests fail on the two Windows CI jobs and
+# on neither Linux one.  Marking SVG as not-text turns the conversion off while
+# still letting `git diff` show it as text.
+*.svg -text
