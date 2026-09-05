@@ -67,10 +67,44 @@ def test_the_writer_and_reader_direct_tables_are_mirrors():
     on the C64 side, not this one."""
     read_neutral = {n for n, _ in dos.DIRECT}
     write_neutral = {n for n, _ in dos.WRITE_DIRECT}
-    # The reader's DIRECT names DOS fields (its neutral names are the same
-    # strings); turn_power crosses by rule on the way in and by copy back out.
-    assert write_neutral - read_neutral == {"turn_power"}
-    assert read_neutral - write_neutral == set()
+    # The reader's DIRECT names DOS fields, and its neutral names are the
+    # same strings.  The two tables were mirrors but for `turn_power`, which
+    # the writer copied into DOS 0x076 and the reader took back out of it --
+    # and #297 established that 0x076 is the *target's* turning row and not
+    # the caster's strength, so neither side names it now.  The DOS field is
+    # `turn_class`, written zero as a constant and dropped on the way in.
+    assert write_neutral == read_neutral
+    assert "turn_power" not in write_neutral
+    assert "turn_class" in {n for n, _ in dos.DROPPED}
+
+
+def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
+    """`#297 (A cleric converted from the C64 to DOS is given an undead's
+    turning row, because the DOS writer puts turn_power in the undead's
+    byte)`, pinned where no round trip can pin it.
+
+    Curse's shipped CLERIC, a level 5, stores 6 at C64 `0x0A4`, and the DOS
+    record written from him used to hold **6 at DOS `0x076`** -- which is
+    nothing to do with a caster. It is the row of the AD&D turning table an
+    undead creature answers to, read off the *target* by the DOS turn-undead
+    routine, one step off a wight. Every player character in either port
+    reads 0 there, against eleven undead monster records that do not
+    (`docs/178-turning-undead.md`).
+
+    A round trip cannot catch this: the DOS records it round-trips all hold
+    0, so a writer copying a source value of 0 into 0 agrees with them.
+    """
+    f = dos_layout.FIELDS_BY_NAME["turn_class"]
+    assert f.offset == 0x076
+    assert f.confidence is Confidence.CONFIRMED
+    char = _filled()
+    char.set("turn_power", 6, "made up: a cleric 5's turning strength")
+    rec, _, _, _ = dos.write(char)
+    assert rec[f.offset] == 0
+    # And the field is not silently unaccounted for at either end.
+    assert dos.write_targets()["turn_class"].startswith("constant:")
+    assert "turn_power" in dos.write_field_disposition()
+    assert dos.write_field_disposition()["turn_power"].startswith("dropped:")
 
 
 # --- the item projection, both ways ------------------------------------------

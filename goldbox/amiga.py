@@ -3071,7 +3071,6 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("spells_castable_druid", "into the same map"),
     ("spells_castable_magic_user", "into the same map"),
     ("size", "1/2 on DOS becomes 0/1 in the neutral size_small"),
-    ("turn_power", "copied, as the DOS reader copies it"),
     ("attack_forms", "copied as a block"),
     ("roster_tail", "copied as a block"),
     ("field_10c_10f", "its first byte becomes the neutral status, by name, "
@@ -3117,6 +3116,17 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                                      "array, which no character of either "
                                      "port sets a byte of and no class has "
                                      "been shown to use"),
+    ("turn_class", "the row of the turning matrix an undead creature "
+                   "answers to, read off the *target* rather than the "
+                   "caster: 0 for every player character, and the neutral "
+                   "record has no field for it. The DOS reader drops it for "
+                   "the same reason (#297, docs/178-turning-undead.md)"),
+    ("paladin_cures", "how many times the paladin may still CURE DISEASE, "
+                      "named in `goldbox/dos_layout.py` from the Curse "
+                      "decompilation and measured 1 for every paladin and 0 "
+                      "for everybody else. The neutral record has no field "
+                      "for it, so nothing here can take it; the DOS writer "
+                      "derives it from the class instead (#299)"),
 )
 
 #: The plain-English half of `LATER_DROPPED`, and the only one a person ever
@@ -3338,9 +3348,6 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 
     out.set("size_small", max(0, char.get("size") - 1),
             "the Amiga size byte, less one", grade("size"))
-    out.set("turn_power", char.get("turn_power"),
-            f"Amiga turn_power @{shape.offset(table['turn_power'].offset):#05x}",
-            grade("turn_power"))
     out.set("attack_forms", char.get("attack_forms"),
             f"Amiga attack_forms @"
             f"{shape.offset(table['attack_forms'].offset):#05x}",

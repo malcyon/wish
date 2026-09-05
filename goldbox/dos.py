@@ -67,12 +67,11 @@ from .dos_layout import (
     FIELDS_BY_NAME_FOR,
     ITEM_FIELDS_BY_NAME,
     ITEM_SIZE,
-    LAYOUT,
+    LAYOUTS,
     POOL_OF_RADIANCE,
     RECORD_SIZE,
     SECRET_OF_THE_SILVER_BLADES,
     SHAPES,
-    SPELLBOOK_SPELLS,
     DosShape,
     DosShapeError,
     shape_for,
@@ -997,6 +996,16 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("field_83_87", "always the same five bytes, and the character sheet "
                     "looks identical whichever value they hold, so nothing "
                     "here is a loss a player would notice"),
+    # #297: this byte is the **target's** turning row, not the caster's
+    # strength, so a player character reads 0 and there is nothing for the
+    # C64's own `turn_class` at 0x0A3 to gain from it. The C64 writer sets
+    # that byte to zero for the same reason.
+    ("turn_class", "the row of the turning matrix an undead creature "
+                   "answers to. The DOS engine reads it off the creature "
+                   "being turned rather than off the cleric turning it, so "
+                   "every player character in either port holds zero and the "
+                   "C64 writes zero into its own turning row whatever it is "
+                   "given"),
 )
 
 #: Drops the **player** is not shown, though the conversion still knows them.
@@ -1012,7 +1021,8 @@ DROPPED: tuple[tuple[str, str], ...] = (
 #:
 #: Donald, 2026-08-27: *"We do not need to report derived lines as being
 #: dropped. The user will not notice the difference."*
-UNREPORTED_DROPS = frozenset({"encumbrance", "item_count", "strength_bonus"})
+UNREPORTED_DROPS = frozenset({"encumbrance", "item_count",
+                              "strength_bonus", "turn_class"})
 
 #: The three DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
 #: All three say the same thing to a player -- the DOS combat figure does not
@@ -1091,7 +1101,6 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("spells_castable_cleric", "packed into the C64's high nibbles"),
     ("spells_castable_magic_user", "packed into the C64's low nibbles"),
     ("size", "1/2 on DOS becomes 0/1 on the C64"),
-    ("turn_power", "one DOS byte for the C64's two turning bytes"),
     ("attack_forms", "copied as a block"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
     ("field_10c_10f", "the four bytes read apart: 0x10C indexed into the "
@@ -1123,6 +1132,17 @@ LATER_TITLE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
+    ("paladin_cures",
+     "the paladin's cure-disease bookkeeping, which the C64 record has "
+     "nowhere to keep: no byte of the C64 record is 1 for a paladin and 0 "
+     "for everybody else across the 78 C64 records this project holds, 12 "
+     "of them paladins, and the only two that separate paladins at all are "
+     "the class byte itself and one that tracks level. The DOS writer puts "
+     "back the value every engine-written paladin record holds, derived "
+     "from the class, so a converted paladin's record is the one the game "
+     "would have written. **What a player gains by it is not established**: "
+     "staged both ways in the running Silver Blades game the sheet offers "
+     "CURE either way, so the byte does not gate the command there"),
     ("spells_castable_unattributed",
      "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
      "character sets a byte of and nobody has attributed to a class"),
@@ -1386,8 +1406,13 @@ def to_neutral(dos: DosCharacter,
     out.set("size_small", max(0, dos.get("size") - 1),
             "DOS size @0x0C0, less one", FIELDS_BY_NAME["size"].confidence)
 
-    out.set("turn_power", dos.get("turn_power"), "DOS 0x076",
-            FIELDS_BY_NAME["turn_power"].confidence)
+    # **The turning byte is not read into the neutral record at all** (#297).
+    # It is the row of the turning matrix the *target* answers to
+    # (`GAME.OVR:0x13A2A`), it is 0 for every player character, and the DOS
+    # engine works a caster's own strength out from `class_levels[0]` when
+    # the command is pressed. `goldbox.c64_codec.write` computes the C64's
+    # `turn_power` from the levels for the same reason (#288), so there is
+    # nothing here for either side to take. It is named in `DROPPED`.
 
     # -- the identity draw: no longer a drop, now that it has a C64 home -----
     # `to_c64_record` writes this into the C64's identity_pair at 0x0E6, with
@@ -1681,8 +1706,8 @@ class SaveReport(neutral.Report):
         return lines
 
 
-def item_from_c64(record: bytes) -> bytes:
-    """Project one C64 sixteen-byte item onto the DOS 63 bytes.
+def item_from_c64(record: bytes, item_size: int = ITEM_SIZE) -> bytes:
+    """Project one C64 sixteen-byte item onto the DOS item record.
 
     The inverse of :func:`item_to_c64` for every field the two ports share:
     the C64's two packed bytes come apart into DOS's readied, hidden and
@@ -1691,15 +1716,27 @@ def item_from_c64(record: bytes) -> bytes:
     rather than a guess: the rendered line at `0x001` is a cache the game
     rewrites whenever it draws the list, and NULL at `0x02A` is the chain's
     own last-item marker.
+
+    `item_size` is the title's own stride, `DosShape.item_size` -- 63 in
+    three of the four titles and **67 in Secret of the Silver Blades**, whose
+    four extra bytes are :data:`ITEM_TAIL` and are zero in 48 of 48 item
+    records this project drove the game into writing (#113).  So the longer
+    record is the shorter one with four measured zeroes after it, and reading
+    the stride from the shape is the whole of what the wider title needs.
     """
     if len(record) != 16:
         raise DosRecordError(f"a C64 item is 16 bytes; got {len(record)}")
+    sizes = sorted({s.item_size for s in SHAPES})
+    if item_size not in sizes:
+        raise DosRecordError(
+            f"a DOS item is {' or '.join(str(n) for n in sizes)} bytes; "
+            f"got {item_size}")
     at = {n: ITEM_FIELDS_BY_NAME[n].offset for n in
           ("type_index", "name1", "name2", "name3", "plus", "plus_save",
            "readied", "hidden", "cursed", "weight", "quantity", "value",
            "charges", "effect", "power")}
     r = record
-    out = bytearray(ITEM_SIZE)
+    out = bytearray(item_size)
     out[at["type_index"]] = r[0]
     out[at["name1"]], out[at["name2"]], out[at["name3"]] = r[1], r[2], r[3]
     out[at["plus"]], out[at["plus_save"]] = r[4], r[5]
@@ -1739,9 +1776,6 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("level", "level"),
     ("levels_drained", "levels_drained"),
     ("hp_lost_to_drain", "hp_lost_to_drain"),
-    # One DOS byte where the C64 has two turning bytes; the C64 *reader*
-    # supplies the caster's, which is the pairing `to_neutral` uses too.
-    ("turn_power", "turn_power"),
     ("thief_pick_pockets", "thief_pick_pockets"),
     ("thief_open_locks", "thief_open_locks"),
     ("thief_find_traps", "thief_find_traps"),
@@ -1832,6 +1866,13 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "DOS does not store it; the DOS engine derives what it "
                     "needs from the race byte"),
+    ("turn_power", "the DOS game works a cleric's turning strength out for "
+                   "itself, from his own class level, at the moment the "
+                   "player presses the command -- so it keeps no byte for it "
+                   "and there is nothing to write. This is not a byte we "
+                   "have failed to find: the turn-undead routine has been "
+                   "read, and the only record byte it takes is the row "
+                   "belonging to the creature being turned"),
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
@@ -1908,6 +1949,14 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
 #: the one value all 24 specimens hold.
 WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
     ("icon_dimension", b"\x01", "1 in all 24 DOS specimens"),
+    ("turn_class", b"\x00",
+     "no player character is undead. The byte is the row of the turning "
+     "matrix a creature answers to -- eleven of the 103 distinct DOS Pool of "
+     "Radiance monster records carry a non-zero one and every one of them is "
+     "undead, at the published AD&D rows -- and every player character in "
+     "either port reads 0. `goldbox.c64_codec.write` writes zero into the "
+     "C64's own turn_class at 0x0A3 for the same reason (#297, "
+     "docs/178-turning-undead.md)"),
     ("field_83_87", b"\x00\x00\x01\x00\x00",
      "00 00 01 00 00 in 101 of 101 engine-written Pool of Radiance records, "
      "against the 24 this used to count (#235)"),
@@ -1986,7 +2035,8 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
 )
 
 
-def identity_byte(record: bytes | bytearray) -> int:
+def identity_byte(record: bytes | bytearray,
+                  shape: "int | str | DosShape | None" = None) -> int:
     """The `unnamed_0ab` byte for a record, derived from the rest of it.
 
     The engine draws this at random when it creates a character, and uses it
@@ -1999,11 +2049,103 @@ def identity_byte(record: bytes | bytearray) -> int:
     The byte's own position is excluded, so the answer does not depend on
     what was there before.  Two characters identical in all 284 other bytes
     do collide, and are the same character by every field the game has.
+
+    `shape` names the title; with none it is taken from the record's length,
+    which identifies it on its own among the four (`shape_for`).  The field
+    is at a different offset in every title, so a Pool of Radiance offset
+    used on a Curse record would digest the wrong 421 bytes and blank a byte
+    of the money block.
     """
-    f = FIELDS_BY_NAME["unnamed_0ab"]
+    shape = shape_for(len(record) if shape is None else shape)
+    f = FIELDS_BY_NAME_FOR[shape.key]["unnamed_0ab"]
     body = bytearray(record)
     body[f.offset:f.end] = bytes(f.size)
     return hashlib.blake2b(bytes(body), digest_size=1).digest()[0]
+
+
+#: The DOS shapes :func:`write` will build a record for -- the same three
+#: :data:`CONVERTS` reads, because a conversion is between two ports of the
+#: same title and both directions have to exist for a title to be offered.
+#:
+#: **Pools of Darkness is not here and is not an oversight**: there is no C64
+#: port to convert from, `#194 (Import and export a Pools of Darkness save
+#: between DOS and the Amiga)` owns its Amiga pairing, and nothing has ever
+#: written one of its 510-byte records.  Its shape reads.
+WRITES: tuple[DosShape, ...] = CONVERTS
+
+#: Neutral fields the writer takes by a rule in the **later titles only**.
+#: Pool of Radiance declares neither field, so it drops both and keeps its
+#: entries in :data:`WRITE_DROPPED`; `write_field_disposition` swaps them per
+#: title, exactly as the reader's `field_disposition` does.
+WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
+    ("abilities_second", "written into the second byte of the title's own "
+                         "(current, base) pair; a source with no second copy "
+                         "gets the first written into both, which is what "
+                         "every record measured holds -- 0 of 406 DOS pairs "
+                         "and 0 of 6 C64 Curse records differ"),
+    ("former_levels", "permuted onto the title's former-class level array "
+                      "the same way the current levels are, and the level "
+                      "itself written again into the single byte after "
+                      "`level` that the engine keeps it in (#234)"),
+)
+
+#: `field_83_87` is five bytes in Pool of Radiance and Curse of the Azure
+#: Bonds and **four** in Secret of the Silver Blades, which is the same run
+#: with the first byte gone: 17 of the 20 engine-written Silver Blades
+#: records here and 22 of the 24 shipped ones read `00 01 00 00`, which is
+#: Pool of Radiance's `00 00 01 00 00` from its second byte on.
+#:
+#: **What those bytes are, from the game's own code.**
+#: `simeonpilgrim/coab`, the decompilation of the DOS Curse overlays,
+#: declares the run as `field_F6`, `control_morale`, `npcTreasureShareCount`,
+#: `field_F9`, `field_FA` at Curse record 0x0F6-0x0FA, which is this field.
+#: `control_morale` is the **NPC flag** -- `>= 0x80` is a companion the
+#: engine runs itself -- and `npcTreasureShareCount` is how many shares of
+#: treasure the character takes.  So `00 01 00 00` is "a player character,
+#: taking one share", which is exactly what a converted character is, and the
+#: value is a measured constant with a meaning rather than a copied blob.
+#:
+#: The five records in 76 that differ are the two the reading predicts: Silver
+#: Blades' MALACHITE, in the shipped party and in three saves this project
+#: drove, reads `00 00 00 00` -- a treasure share of zero.
+FIELD_83_87: dict[int, bytes] = {5: b"\x00\x00\x01\x00\x00",
+                                 4: b"\x00\x01\x00\x00"}
+
+#: DOS bytes with no source that only the **later titles** declare.  Zeroed
+#: and reported, exactly as :data:`WRITE_UNSOURCED` is, and the round trip
+#: masks this list beside that one.
+WRITE_UNSOURCED_LATER: tuple[tuple[str, str], ...] = (
+    ("spells_castable_unattributed",
+     "Secret of the Silver Blades' fourth spell-slot array, 28 bytes where "
+     "Curse has 15. **Zero in 44 of 44 Silver Blades records** -- 20 this "
+     "project drove the game into writing and 24 shipped -- and nobody has "
+     "attributed it to a class: cleric, druid and magic-user account for the "
+     "other three arrays and a paladin's spells go in the cleric's "
+     "(#222). So zero is the measured value and not a shrug"),
+)
+
+#: Fields the later titles derive from the record rather than from a neutral
+#: value.  Separate from :data:`WRITE_DERIVED`, which Pool of Radiance shares
+#: and which `write` unpacks as a single row.
+WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
+    ("paladin_cures",
+     "1 for a character who is or was a paladin and 0 for everybody else, "
+     "which is what every engine-written record holds: 8 paladins across "
+     "four record shapes and six titles read 1 and 71 other characters read "
+     "0. The C64 has no counterpart to convert from -- no byte of "
+     "`goldbox/layout.py` separates a paladin that way in 78 C64 records -- "
+     "and 1 is the value the DOS engine's own character creation writes "
+     "(`coab`'s `ovr018`). It is written from the *former* class too, "
+     "because the engine leaves it at 1 for a paladin who has been through "
+     "HUMAN CHANGE CLASSES: DEMELTINA is a cleric 1 with former paladin 5 "
+     "and still reads 1.\n"
+     "**The rule is 'write what the engine writes', not 'give the paladin "
+     "his cure back'** -- staged 0 and staged 2 on a paladin in the running "
+     "Silver Blades game, the sheet offers CURE either way and one use ends "
+     "the offer, so the byte does not gate the command in that title. It "
+     "*is* cure-disease bookkeeping: one use took a staged 2 to 0 in the "
+     "engine's own resave (#299)"),
+)
 
 
 #: What :func:`write` does with every field `goldbox/dos_layout.py` declares --
@@ -2011,6 +2153,9 @@ def identity_byte(record: bytes | bytearray) -> int:
 #: :func:`write_field_disposition` accounts over the neutral vocabulary.
 #: `tests/test_doswriter.py` fails if a field is declared in the layout and
 #: named nowhere here, so a new field cannot be skipped in silence.
+#:
+#: **Pool of Radiance's**, which is what it has always been; ask
+#: :func:`write_targets` for another title's.
 WRITE_TARGETS: dict[str, str] = (
     {dos_name: f"from neutral {n}" for n, dos_name in WRITE_DIRECT}
     | {"name_length": "from neutral name, the count byte",
@@ -2033,6 +2178,54 @@ WRITE_TARGETS: dict[str, str] = (
     | {name: f"zero: {why}" for name, why in WRITE_UNSOURCED}
     | {name: f"derived: {why}" for name, why in WRITE_DERIVED}
 )
+
+
+def write_constants(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+                    ) -> tuple[tuple[str, bytes, str], ...]:
+    """:data:`WRITE_CONSTANTS`, cut to the title's own field widths.
+
+    One field changes width between the three titles this writes --
+    `field_83_87`, five bytes in Pool of Radiance and Curse and four in
+    Silver Blades -- and :data:`FIELD_83_87` has the value for each and what
+    the bytes are.  A constant whose length does not match the field it goes
+    into is a `DosRecordError` from `_encode` rather than a silent misfit.
+    """
+    table = FIELDS_BY_NAME_FOR[shape_for(shape).key]
+    out = []
+    for name, data, why in WRITE_CONSTANTS:
+        size = table[name].size
+        if size != len(data):
+            data = FIELD_83_87[size] if name == "field_83_87" else data
+        out.append((name, data, why))
+    return tuple(out)
+
+
+def write_targets(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+                  ) -> dict[str, str]:
+    """:data:`WRITE_TARGETS` for one title.
+
+    **Asked per title for the same reason the reader's `field_disposition`
+    is**: Curse of the Azure Bonds and Secret of the Silver Blades declare
+    four fields Pool of Radiance has never heard of, and a Pool of Radiance
+    account of a Curse record would leave every one of them unnamed -- which
+    is a field written or zeroed in silence, the thing this table exists to
+    make impossible.
+    """
+    shape = shape_for(shape)
+    declared = set(FIELDS_BY_NAME_FOR[shape.key])
+    out = dict(WRITE_TARGETS)
+    out |= {name: f"constant: {why}"
+            for name, _, why in write_constants(shape)}
+    out |= {
+        "former_level": "from neutral former_levels, the one level again in "
+                        "the byte the engine keeps it in",
+        "former_class_levels": "from neutral former_levels, permuted to "
+                               "class numbers",
+        "spells_castable_druid": "from neutral spells_castable['druid']",
+    }
+    out |= {name: f"zero: {why}" for name, why in WRITE_UNSOURCED_LATER}
+    out |= {name: f"derived: {why}" for name, why in WRITE_DERIVED_LATER}
+    return {n: w for n, w in out.items() if n in declared}
 
 
 #: Class name -> the DOS level slot with that number.  All eight have one --
@@ -2062,21 +2255,66 @@ def _encode(f: Field, rec: bytearray, value: Any) -> None:
         rec[f.offset:f.end] = data
 
 
+def write_shape(char: NeutralCharacter,
+                shape: "int | str | DosShape | None" = None) -> DosShape:
+    """Which DOS record :func:`write` will build for this character.
+
+    **The title is the character's, not the caller's**, because a conversion
+    is between two ports of the same title and never between titles
+    (`.claude/rules/conversions.md`).  A neutral character carries the title
+    its reader read it in -- `NeutralCharacter.game`, which is a
+    `goldbox.games.Game`, its key, or `None` for Pool of Radiance -- and that
+    is what decides the shape.  `shape` overrides it, for a caller that has
+    already resolved the title.
+
+    A title with no DOS record raises `DosShapeError`; a DOS record nobody
+    has written raises `WrongTitleError`, which is the same refusal
+    :func:`to_neutral` makes in the other direction.
+    """
+    if shape is None:
+        game = char.game
+        shape = shape_for(getattr(game, "key", game) or POOL_OF_RADIANCE)
+    else:
+        shape = shape_for(shape)
+    if shape not in WRITES:
+        raise WrongTitleError(
+            f"{shape.title} records read, but only "
+            f"{', '.join(s.title for s in WRITES)} can be written: no other "
+            f"pair of ports has been measured against each other (#53)",
+            title=shape.title)
+    return shape
+
+
 def write(char: NeutralCharacter,
-          portraits: PortraitTables | None = None
+          portraits: PortraitTables | None = None,
+          shape: "int | str | DosShape | None" = None
           ) -> tuple[bytes, bytes, bytes, WriteReport]:
-    """Build a 285-byte DOS record and its `.ITM` and `.SPC` payloads from a
-    neutral character.
+    """Build a DOS record and its item and effect payloads from a neutral
+    character.
 
     The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
     C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
     `(record, itm, spc, report)`.
 
+    **Which record is the character's own title's**, not this function's
+    (#299).  Pool of Radiance is 285 bytes with one copy of each ability,
+    Curse of the Azure Bonds 422 with a (current, base) pair per ability, a
+    100-spell book and a former-class array, and Secret of the Silver Blades
+    439 with a 117-spell book, seven spell-slot levels and **67-byte items**.
+    Every width comes off `goldbox/dos_layout.py`'s table for the title and
+    none of them is a constant here: that is what `#113 (Play DOS Curse far
+    enough to save a party with items)` closed and what a second writer would
+    have reopened.  :func:`write_shape` says how the title is chosen.
+
     `portraits` is the creation menu's two tables, from
     :func:`portrait_tables`.  With them the sheet portrait crosses -- the C64
     art id the neutral record carries becomes the menu position DOS stores --
     and without them the pair is left zero and reported, which is what a
-    converted party looked like before #57: no face on the sheet.
+    converted party looked like before #57: no face on the sheet.  **Only
+    Pool of Radiance draws one**: `portrait_head` and `portrait_body` are 0 in
+    all 32 Curse records and all 44 Silver Blades records this project can
+    reach, so those two titles report the portrait rather than writing a
+    position into a byte their sheet never reads.
 
     Every byte of both outputs is justified in the report: it came from a
     neutral value, it was computed by a named rule, it is a documented
@@ -2084,15 +2322,24 @@ def write(char: NeutralCharacter,
     the live heap and the three unattributed runs, which the round-trip test
     masks *by this same list* rather than by whatever happened to differ.
     """
-    rec = bytearray(RECORD_SIZE)
+    shape = write_shape(char, shape)
+    table = FIELDS_BY_NAME_FOR[shape.key]
+    size = shape.record_size
+    item_size = shape.item_size
+    rec = bytearray(size)
     rep = WriteReport()
     port = char.port
-    w = neutral.Writer(char, rep, into="DOS", dropped=WRITE_DROPPED)
+    # The later titles turn two of Pool of Radiance's drops into conversions,
+    # so the sweep's reasons are the title's rather than the module's.
+    later = {n for n, _ in WRITE_TRANSFORMED_LATER}
+    dropped = (WRITE_DROPPED if shape is POOL_OF_RADIANCE else
+               tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
+    w = neutral.Writer(char, rep, into="DOS", dropped=dropped)
     use, emit = w.use, w.emit
 
     def put(v: neutral.Value, dos_name: str, extra: str = "",
             value: Any = None) -> None:
-        f = FIELDS_BY_NAME[dos_name]
+        f = table[dos_name]
         val = v.value if value is None else value
         if f.kind is Kind.U8 and not 0 <= int(val) <= 0xFF:
             rep.warnings.append(
@@ -2105,21 +2352,51 @@ def write(char: NeutralCharacter,
     # -- the name: one count byte, fifteen of ASCII --------------------------
     name = use("name")
     if name is not None:
-        text = str(name.value)[:15].encode("ascii", "replace")
-        if len(str(name.value)) > 15:
+        width = table["name_text"].size
+        text = str(name.value)[:width].encode("ascii", "replace")
+        if len(str(name.value)) > width:
             rep.warnings.append(
-                f"Name {str(name.value)!r} is longer than the DOS fifteen "
+                f"Name {str(name.value)!r} is longer than the DOS {width} "
                 f"characters; truncated")
-        rec[0x000] = len(text)
-        rec[0x001:0x001 + len(text)] = text
-        emit(name, "name_length/name_text", 0x000, 16,
+        at = table["name_length"].offset
+        rec[at] = len(text)
+        rec[at + 1:at + 1 + len(text)] = text
+        emit(name, "name_length/name_text", at, 1 + width,
              ", length-prefixed into one count byte and fifteen ASCII")
 
     # -- everything the two ports encode the same way ------------------------
+    # The abilities are a **(current, base) pair** from Curse of the Azure
+    # Bonds on, and one byte in Pool of Radiance, so the width decides the
+    # shape of the write rather than the title doing so.  `abilities_second`
+    # is the neutral record's second copy; a source that has none writes the
+    # one value into both halves, which is what every record measured holds
+    # -- 0 of 406 DOS pairs differ, and 0 of the 6 C64 Curse records.
+    #
+    # **coab, the decompilation of the DOS Curse overlays, says which half is
+    # which**: `StatValue.Write` puts `cur` at +0 and `full` at +1, so the
+    # first byte is the score as play has left it and the second the score
+    # the character rolled.  That is the pairing `_ability_pair` and this
+    # both use, and no specimen could have told them apart.
+    second = use("abilities_second")
+    seconds = dict(second.value) if second is not None else {}
     for neutral_name, dos_name in WRITE_DIRECT:
         v = use(neutral_name)
-        if v is not None:
+        if v is None:
+            continue
+        f = table[dos_name]
+        if dos_name in ABILITY_ORDER and f.size == 2:
+            base = int(seconds.get(dos_name, v.value))
+            put(v, dos_name,
+                f", the first of the title's (current, base) pair; the "
+                f"second is {base}",
+                value=bytes((int(v.value) & 0xFF, base & 0xFF)))
+        else:
             put(v, dos_name)
+    if second is not None and not any(table[n].size == 2
+                                      for n in ABILITY_ORDER):
+        rep.dropped.append(
+            f"abilities_second: {shape.title} keeps one copy of each ability "
+            f"score, so the source's second copy has nowhere to go")
 
     # -- the class mask, folded back into DOS's own order --------------------
     bits = use("class_bits")
@@ -2129,62 +2406,119 @@ def write(char: NeutralCharacter,
             "shares with the paladin",
             value=dos_class_bits(int(bits.value)))
 
-    # -- the spellbook: one byte per spell, ids 1..56 -------------------------
+    # -- the spellbook: one byte per spell, ids 1..n -------------------------
+    # 56 ids in Pool of Radiance, 100 in Curse and 117 in Silver Blades,
+    # which are `goldbox/spells.py`'s three id spaces exactly.  The width is
+    # the title's own `spellbook` field, so an id the destination title has
+    # no byte for is reported rather than written past the end.
     known = use("spells_known")
     if known is not None:
-        book = bytearray(SPELLBOOK_SPELLS)
+        spells_in_book = table["spellbook"].size
+        book = bytearray(spells_in_book)
         for sid in known.value:
-            if 1 <= int(sid) <= SPELLBOOK_SPELLS:
+            if 1 <= int(sid) <= spells_in_book:
                 book[int(sid) - 1] = 1
             else:
                 rep.warnings.append(
-                    f"Spell id {sid} is outside the DOS book's ids 1-56")
+                    f"Spell id {sid} is outside the {shape.title} book's "
+                    f"ids 1-{spells_in_book}")
         put(known, "spellbook", ", unpacked to one byte per spell",
             value=bytes(book))
 
-    # -- memorised spells: sixteen slots, filled from the end ----------------
+    # -- memorised spells: the title's slots, filled from the end ------------
     memorised = use("spells_memorised")
     if memorised is not None:
-        ids = [int(i) for i in memorised.value][:16]
-        if len(memorised.value) > 16:
+        slots = table["spells_memorised"].size
+        ids = [int(i) for i in memorised.value][:slots]
+        if len(memorised.value) > slots:
             rep.warnings.append(
-                f"{len(memorised.value)} spells memorised and DOS has "
-                f"sixteen slots; the rest dropped")
+                f"{len(memorised.value)} spells memorised and "
+                f"{shape.title} has {slots} slots; the rest dropped")
         put(memorised, "spells_memorised",
-            " reversed -- DOS fills its sixteen slots from the end",
-            value=bytes(16 - len(ids)) + bytes(reversed(ids)))
+            f" reversed -- DOS fills its {slots} slots from the end",
+            value=bytes(slots - len(ids)) + bytes(reversed(ids)))
 
     # -- the per-class level array: indexed by the class number --------------
-    levels = use("levels")
-    if levels is not None:
-        raw = bytearray(8)
-        for cname, lv in levels.value.items():
+    # Eight slots in Pool of Radiance and Curse, **seven** in Silver Blades,
+    # which drops the monk's.  A class whose number is past the end of this
+    # title's array is reported by name rather than written over the field
+    # that follows it.
+    def _levels_into(v: neutral.Value, dos_name: str, extra: str) -> None:
+        slots = table[dos_name].size
+        raw = bytearray(slots)
+        for cname, lv in v.value.items():
             n = _DOS_CLASS_SLOT.get(cname)
-            if n is None:
+            if n is None or n >= slots:
                 if lv:
                     rep.warnings.append(
-                        f"{port} carries {cname} level {lv}, and the DOS "
-                        f"eight-slot array has no {cname} slot")
+                        f"{port} carries {cname} level {lv}, and "
+                        f"{shape.title}'s {slots}-slot array has no {cname} "
+                        f"slot")
                 continue
             raw[n] = min(int(lv), 0xFF)
-        put(levels, "class_levels",
-            ", permuted from class name to class number", value=bytes(raw))
+        put(v, dos_name, extra, value=bytes(raw))
 
-    # -- spell slots: two three-byte runs ------------------------------------
+    levels = use("levels")
+    if levels is not None:
+        _levels_into(levels, "class_levels",
+                     ", permuted from class name to class number")
+
+    # -- the class a dual-classed human left ---------------------------------
+    # Curse of the Azure Bonds and Secret of the Silver Blades keep it twice:
+    # a second copy of the level array holding what the character *was*, and
+    # the same level again in the single byte after `level` (#234).  Both are
+    # written from the one neutral value, which is what that issue said the
+    # writer this project did not have would do.  Pool of Radiance declares
+    # neither and reports the loss instead -- it has no way for a character
+    # to change class at all.
+    former = use("former_levels")
+    if former is not None and "former_class_levels" in table:
+        _levels_into(former, "former_class_levels",
+                     ", permuted from class name to class number")
+        held = [lv for lv in former.value.values() if lv]
+        if len(held) > 1:
+            rep.warnings.append(
+                f"{port} carries former levels in {len(held)} classes and "
+                f"the DOS byte after level holds one; the highest is written "
+                f"there and the array keeps them all")
+        put(former, "former_level",
+            ", the level again in the byte the engine keeps it in",
+            value=max(held) if held else 0)
+    elif former is not None and any(former.value.values()):
+        rep.dropped.append(
+            f"former_levels: a DOS {shape.title} record has no former-class "
+            f"level array; that title does not let a character change class")
+
+    # -- spell slots, by class: two arrays on Pool of Radiance, three after --
+    # Three levels of slots in Pool of Radiance, five in Curse and seven in
+    # Silver Blades, and the druid's array only from Curse on.  A neutral
+    # record that carries more levels than the destination keeps says so.
     castable = use("spells_castable")
     if castable is not None:
-        for school, dos_name in (
-                ("cleric", "spells_castable_cleric"),
-                ("magic-user", "spells_castable_magic_user")):
-            triple = (tuple(castable.value.get(school, ())) + (0, 0, 0))[:3]
+        for school, dos_name in (("cleric", "spells_castable_cleric"),
+                                 ("druid", "spells_castable_druid"),
+                                 ("magic-user", "spells_castable_magic_user")):
+            if dos_name not in table:
+                if any(castable.value.get(school, ())):
+                    rep.dropped.append(
+                        f"spells_castable[{school!r}]: a DOS {shape.title} "
+                        f"record has no {school} spell-slot array")
+                continue
+            depth = table[dos_name].size
+            run = tuple(castable.value.get(school, ()))
+            if len(run) > depth and any(run[depth:]):
+                rep.warnings.append(
+                    f"{port} carries {school} spell slots {len(run)} levels "
+                    f"deep and {shape.title} keeps {depth}; the rest dropped")
+            run = (run + (0,) * depth)[:depth]
             put(castable, dos_name, f", the {school} run",
-                value=bytes(min(int(n), 0xFF) for n in triple))
+                value=bytes(min(int(n), 0xFF) for n in run))
 
     # -- size: neutral 0 small / 1 large, DOS 1 small / 2 medium -------------
-    size = use("size_small")
-    if size is not None:
-        put(size, "size", " plus one -- DOS stores 1 small / 2 medium",
-            value=int(size.value) + 1)
+    size_small = use("size_small")
+    if size_small is not None:
+        put(size_small, "size", " plus one -- DOS stores 1 small / 2 medium",
+            value=int(size_small.value) + 1)
 
     # -- two blocks the ports share byte for byte ----------------------------
     forms = use("attack_forms")
@@ -2205,12 +2539,18 @@ def write(char: NeutralCharacter,
     # menu does not offer has no DOS position to be written as, so the byte
     # is left zero and the loss is reported: the alternative is a face that
     # belongs to somebody else.
+    #
+    # **Only Pool of Radiance has a sheet portrait.**  The pair is zero in
+    # all 32 Curse and all 44 Silver Blades records this project holds, and
+    # the sheet those two titles draw has no face on it, so writing a menu
+    # position there would put a number where the engine writes none.
+    draws_portrait = shape is POOL_OF_RADIANCE
     portraits_written: set[str] = set()
     for pname, lookup, stem in (("portrait_head", "head_position", "HEAD"),
                                 ("portrait_body", "body_position", "BODY")):
         v = use(pname)
         position = None
-        if v is not None and portraits is not None:
+        if v is not None and portraits is not None and draws_portrait:
             position = getattr(portraits, lookup)(int(v.value))
         if position is not None:
             put(v, pname,
@@ -2220,32 +2560,45 @@ def write(char: NeutralCharacter,
         elif v is not None:
             rep.dropped.append(
                 f"{pname}: {port} carries {stem}{int(v.value):02X} and " +
-                ("the creation menu does not offer it, so the DOS record "
+                ("the sheet a DOS " + shape.title + " character has draws no "
+                 "portrait -- the pair is zero in every record of that title"
+                 if not draws_portrait else
+                 "the creation menu does not offer it, so the DOS record "
                  "has no position for it"
                  if portraits is not None else
                  "the creation menu's own tables were not available to turn "
                  "it into the position the DOS record stores"))
 
-    # -- the inventory becomes the .ITM file ---------------------------------
+    # -- the inventory becomes the item file ---------------------------------
+    # `.ITM` in Pool of Radiance, **`.SWG`** in Curse and **`.STF`** in
+    # Silver Blades, whose records are 67 bytes rather than 63 (#113).  The
+    # stride is the shape's and the caller writes the file under
+    # `DosShape.item_suffix`; nothing here assumes either.
     itm = b""
     projected: list[bytes] = []
     inventory = use("inventory")
     if inventory is not None:
         projected = [bytes(i) for i in inventory.value]
-        itm = b"".join(item_from_c64(i) for i in projected)
+        itm = b"".join(item_from_c64(i, item_size) for i in projected)
         if projected:
-            emit(inventory, "the .ITM file", RECORD_SIZE, len(itm),
-                 ", each sixteen-byte record unpacked onto the DOS 63")
+            emit(inventory, f"the {shape.item_suffix} file", size, len(itm),
+                 f", each sixteen-byte record unpacked onto the DOS "
+                 f"{item_size}")
             for n in range(len(projected)):
-                base = RECORD_SIZE + n * ITEM_SIZE
+                base = size + n * item_size
                 rep.note(base, 0x02A,
                          f"item {n}: the rendered-line cache, left empty -- "
                          f"the game rewrites it whenever it draws the list")
                 rep.note(base + 0x02A, 4,
                          f"item {n}: next pointer left NULL -- the loader "
                          f"rebuilds the chain, measured by its own resave")
+                if item_size > ITEM_SIZE:
+                    rep.note(base + ITEM_TAIL[0], ITEM_TAIL[1],
+                             f"item {n}: the four bytes Silver Blades' item "
+                             f"record has and the others do not, zero in 48 "
+                             f"of 48 records driven out of the game (#113)")
 
-    # -- the innate effects become the .SPC file -----------------------------
+    # -- the innate effects become the effect file ---------------------------
     # Running spells are not written, which is what the game's own C64
     # importer does: it reads a `.spc` and keeps only the racial and
     # constitutional ids.  A character with none gets no file, the state the
@@ -2272,62 +2625,63 @@ def write(char: NeutralCharacter,
 
     spc = b"".join([bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL
                     for e in keep] + grants)
-    base = RECORD_SIZE + len(itm)
+    base = size + len(itm)
     for n, e in enumerate(keep):
         at = base + n * EFFECT_SIZE
         whence = (f"derived from race {race} -- the C64 works this one out "
                   f"at combat time and stores it nowhere"
                   if e in derived else f"{port} innate_effects")
-        rep.note(at, 1, f".SPC record {n}: effect {e} "
+        rep.note(at, 1, f"{shape.effect_suffix} record {n}: effect {e} "
                         f"({traits.describe(e)}), {whence}")
         rep.note(at + 1, 4,
-                 f".SPC record {n}: INNATE_PAYLOAD, the four bytes every "
-                 f"innate specimen in the archives holds")
+                 f"{shape.effect_suffix} record {n}: INNATE_PAYLOAD, the four "
+                 f"bytes every innate specimen in the archives holds")
         rep.note(at + 5, 4,
-                 f".SPC record {n}: next pointer NULL -- the loader allocates "
-                 f"a node per record and relinks them, and the count comes "
-                 f"from the file's length")
+                 f"{shape.effect_suffix} record {n}: next pointer NULL -- the "
+                 f"loader allocates a node per record and relinks them, and "
+                 f"the count comes from the file's length")
     for i, g in enumerate(grants):
         n = len(keep) + i
         at = base + n * EFFECT_SIZE
-        rep.note(at, 1, f".SPC record {n}: effect {g[0]} "
+        rep.note(at, 1, f"{shape.effect_suffix} record {n}: effect {g[0]} "
                         f"({traits.describe(g[0])}), {port} granted_effects")
         rep.note(at + 1, 2,
-                 f".SPC record {n}: duration zero -- the engine's expiry pass "
-                 f"skips a node at zero and never removes it")
+                 f"{shape.effect_suffix} record {n}: duration zero -- the "
+                 f"engine's expiry pass skips a node at zero and never "
+                 f"removes it")
         rep.note(at + 3, 2,
-                 f".SPC record {n}: the value the effect carries and the flag "
-                 f"the engine reads when the item comes off, the source "
-                 f"record's own two bytes")
+                 f"{shape.effect_suffix} record {n}: the value the effect "
+                 f"carries and the flag the engine reads when the item comes "
+                 f"off, the source record's own two bytes")
         rep.note(at + 5, 4,
-                 f".SPC record {n}: next pointer NULL -- the loader allocates "
-                 f"a node per record and relinks them, and the count comes "
-                 f"from the file's length")
+                 f"{shape.effect_suffix} record {n}: next pointer NULL -- the "
+                 f"loader allocates a node per record and relinks them, and "
+                 f"the count comes from the file's length")
     for e in converted:
         if e not in INNATE_EFFECTS:
             rep.dropped.append(
                 f"innate_effects {e} ({traits.describe(e)}): not one of the "
                 f"ids the game's own importer keeps, so it is an item power "
-                f"or a running effect rather than an innate one and no .SPC "
-                f"record is written for it")
+                f"or a running effect rather than an innate one and no "
+                f"{shape.effect_suffix} record is written for it")
 
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)
-    rec[FIELDS_BY_NAME["item_count"].offset] = count
-    rep.note(FIELDS_BY_NAME["item_count"].offset, 1,
-             f"item_count: computed -- the {count} records of the .ITM file")
-    money = sum(int(w.get(k, 0)) for k in _COINS)
+    rec[table["item_count"].offset] = count
+    rep.note(table["item_count"].offset, 1,
+             f"item_count: computed -- the {count} records of the "
+             f"{shape.item_suffix} file")
+    money = sum(int(w.get(k, 0)) for k in _COINS if k in table)
     weight = sum(int.from_bytes(i[8:10], "little") * (i[10] or 1)
                  for i in projected)
-    _encode(FIELDS_BY_NAME["encumbrance"], rec,
-            min(money + weight, 0xFFFF))
-    rep.note(FIELDS_BY_NAME["encumbrance"].offset, 2,
+    _encode(table["encumbrance"], rec, min(money + weight, 0xFFFF))
+    rep.note(table["encumbrance"].offset, 2,
              "encumbrance: computed -- money plus item weight x quantity, "
              "the identity the DOS engine itself uses")
 
     # -- documented constants ------------------------------------------------
-    for cname, data, why in WRITE_CONSTANTS:
-        f = FIELDS_BY_NAME[cname]
+    for cname, data, why in write_constants(shape):
+        f = table[cname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size, f"{cname}: {why}")
 
@@ -2338,7 +2692,7 @@ def write(char: NeutralCharacter,
     # is a sentence for Donald to approve rather than one to model on the
     # sibling lines already there (`.claude/rules/gui-text.md`).
     for dname, data, why, lost in WRITE_DEFAULTS:
-        f = FIELDS_BY_NAME[dname]
+        f = table[dname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size,
                  f"{dname}: {data.hex()} -- {why}. Not converted: {lost}")
@@ -2355,42 +2709,59 @@ def write(char: NeutralCharacter,
     # A source that carries none of the four leaves all four at the
     # default just written, which is the state a freshly made DOS character
     # is in.
-    f = FIELDS_BY_NAME["field_10c_10f"]
+    f = table["field_10c_10f"]
     status, active = w.use("status"), w.use("active")
     hostile, quickfight = w.use("hostile"), w.use("quickfight")
     said = []
     if status is not None:
         if status.value in neutral.STATUS_NAMES:
             rec[f.offset] = neutral.STATUS_NAMES.index(status.value)
-            said.append(f"0x10C is {rec[f.offset]} ({status.value}) "
-                        f"<- {status.origin}")
+            said.append(f"the status byte is {rec[f.offset]} "
+                        f"({status.value}) <- {status.origin}")
         else:
             rep.dropped.append(
                 f"{status.value.capitalize()}: the character "
                 f"arrives well -- the DOS game has no such state")
     if active is not None:
         rec[f.offset + 1] = 1 if active.value else 0
-        said.append(f"0x10D is {rec[f.offset + 1]} <- {active.origin}")
+        said.append(f"the active flag is {rec[f.offset + 1]} "
+                    f"<- {active.origin}")
     if hostile is not None:
         rec[f.offset + 2] = 1 if hostile.value else 0
-        said.append(f"0x10E is {rec[f.offset + 2]} <- {hostile.origin}")
+        said.append(f"the combat side is {rec[f.offset + 2]} "
+                    f"<- {hostile.origin}")
     if quickfight is not None:
         rec[f.offset + 3] = 1 if quickfight.value else 0
-        said.append(f"0x10F is {rec[f.offset + 3]} <- {quickfight.origin}")
+        said.append(f"quickfight is {rec[f.offset + 3]} "
+                    f"<- {quickfight.origin}")
     if said:
         rep.note(f.offset, f.size,
-                 f"field_10c_10f: {bytes(rec[f.offset:f.end]).hex()} -- "
-                 + "; ".join(said))
+                 f"field_10c_10f @{f.offset:#05x}: "
+                 f"{bytes(rec[f.offset:f.end]).hex()} -- " + "; ".join(said))
 
     # -- bytes with no source: live heap and the unattributed ----------------
     # The portrait pair is in that list because it is what a conversion with
     # no game directory still writes, and a note here would overwrite the
     # provenance of a portrait that *was* converted.
-    for uname, why in WRITE_UNSOURCED:
-        if uname in portraits_written:
+    for uname, why in WRITE_UNSOURCED + WRITE_UNSOURCED_LATER:
+        if uname in portraits_written or uname not in table:
             continue
-        f = FIELDS_BY_NAME[uname]
+        f = table[uname]
         rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
+
+    # -- derived from the record ---------------------------------------------
+    # The paladin's cure-disease allowance, which the C64 has no byte for and
+    # the DOS engine's own character creation writes as 1.  Taken from the
+    # class the character holds *or* the class a dual-classed one left, the
+    # way the engine leaves it set for both.
+    if "paladin_cures" in table:
+        (_pal_name, _pal_why), = WRITE_DERIVED_LATER
+        f = table[_pal_name]
+        was = dict(w.get("levels", {}) or {})
+        was.update(w.get("former_levels", {}) or {})
+        rec[f.offset] = 1 if was.get("paladin") else 0
+        rep.note(f.offset, f.size,
+                 f"{_pal_name}: {rec[f.offset]} -- {_pal_why}")
 
     # -- derived from the record, once everything else in it is written ------
     # Last, so the digest covers the finished record: a field written after
@@ -2402,37 +2773,51 @@ def write(char: NeutralCharacter,
     # so a value graded below the floor is refused and reported rather than
     # taken, and so the field counts as consumed either way.
     (_derived_name, _derived_why), = WRITE_DERIVED
-    f = FIELDS_BY_NAME[_derived_name]
+    f = table[_derived_name]
     supplied = w.use(_derived_name)
     if supplied is not None and char.port == "C64":
         rec[f.offset] = int(supplied.value) & 0xFF
         rep.note(f.offset, f.size,
                  f"{_derived_name}: {rec[f.offset]:#04x} <- {supplied.origin}")
     else:
-        rec[f.offset] = identity_byte(rec)
+        rec[f.offset] = identity_byte(rec, shape)
         rep.note(f.offset, f.size,
                  f"{_derived_name}: {rec[f.offset]:#04x} -- {_derived_why}")
 
     # -- the gaps, zero in every specimen held -------------------------------
-    for f in LAYOUT:
+    for f in LAYOUTS[shape.key]:
         if f.name.startswith("gap_"):
             rep.note(f.offset, f.size, f"{f.name}: zero ({f.note})")
 
     # -- the closing sweep: unwritten fields, then the reader's own drops ----
     w.finish()
-    rep.total = RECORD_SIZE + len(itm) + len(spc)
+    rep.total = size + len(itm) + len(spc)
     return bytes(rec), itm, spc, rep
 
 
-def write_field_disposition() -> dict[str, str]:
+def write_field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+                            ) -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
 
     The DOS writer's twin of `goldbox.c64_codec.field_disposition`, over the
-    neutral vocabulary; `WRITE_TARGETS` is the same account over the DOS
-    layout's own names, and the tests hold both complete.
+    neutral vocabulary; :func:`write_targets` is the same account over the
+    DOS layout's own names, and the tests hold both complete.
+
+    **Asked per title, for the reason the reader's `field_disposition` is.**
+    Two fields Pool of Radiance drops are converted by the later titles --
+    the second copy of each ability score and the class a dual-classed
+    character left -- so a Pool of Radiance answer given for a Curse record
+    would call a conversion a loss.
     """
-    return neutral.disposition(WRITE_DIRECT, WRITE_TRANSFORMED, WRITE_DROPPED,
-                               "the DOS record's")
+    shape = shape_for(shape)
+    if shape is POOL_OF_RADIANCE:
+        return neutral.disposition(WRITE_DIRECT, WRITE_TRANSFORMED,
+                                   WRITE_DROPPED, "the DOS record's")
+    later = {n for n, _ in WRITE_TRANSFORMED_LATER}
+    return neutral.disposition(
+        WRITE_DIRECT, WRITE_TRANSFORMED + WRITE_TRANSFORMED_LATER,
+        tuple((n, w) for n, w in WRITE_DROPPED if n not in later),
+        "the DOS record's")
 
 
 # ---------------------------------------------------------------------------

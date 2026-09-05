@@ -107,7 +107,12 @@ def test_a_curse_or_silver_blades_source_still_gets_the_digest():
     two.set("experience", 2, "made up")
     first, _, _, _ = dos.write(one)
     second, _, _, _ = dos.write(two)
-    assert first[IDENT.offset] != second[IDENT.offset]
+    # A Curse source builds Curse's 422 bytes since #299, and Curse keeps
+    # this byte at 0x126 rather than Pool of Radiance's 0x0AB.
+    at = dos_layout.FIELDS_BY_NAME_FOR[
+        "curse-of-the-azure-bonds"]["unnamed_0ab"].offset
+    assert len(first) == dos_layout.CURSE_OF_THE_AZURE_BONDS.record_size
+    assert first[at] != second[at]
 
 
 def test_a_dos_record_round_trips_its_own_identity_through_the_c64():

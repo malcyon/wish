@@ -165,9 +165,11 @@ def test_a_ranger_round_trips_through_the_c64_record(converts_ssb):
     """DOS `$40` -> C64 `$80` -> DOS `$40`, which is what makes the change
     safe: no DOS record's own byte moves.
 
-    The DOS writer only writes Pool of Radiance's 285 bytes, so the return
-    leg is read at Pool of Radiance's own `class_bits` offset -- the fold is
-    the same one whichever title the record is for.
+    The return leg is read at **Silver Blades' own** `class_bits` offset:
+    since #299 the writer builds the record of the title the character is
+    from, so a Silver Blades character comes back as 439 bytes rather than
+    Pool of Radiance's 285.  The fold itself is the same one whichever title
+    the record is for.
     """
     ranger = dos.DosCharacter(ssb_record(
         class_bits=0x40, char_class=4,
@@ -176,7 +178,10 @@ def test_a_ranger_round_trips_through_the_c64_record(converts_ssb):
     back = c64_codec.read(rec, game=SSB_GAME)
     assert back.fields["class_bits"].value == 0x80
     out, _itm, _spc, _report = dos.write(back)
-    assert out[dos_layout.FIELDS_BY_NAME["class_bits"].offset] == 0x40
+    assert len(out) == dos_layout.SECRET_OF_THE_SILVER_BLADES.record_size
+    at = dos_layout.FIELDS_BY_NAME_FOR[
+        dos_layout.SECRET_OF_THE_SILVER_BLADES.key]["class_bits"].offset
+    assert out[at] == 0x40
 
 
 # --- infravision: the C64 field is computed, and the race table is per title -

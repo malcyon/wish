@@ -335,15 +335,31 @@ _DECLARED: Sequence[Field] = (
        "field it calls levels lost, and from the C64's 0x0A1 aligning"),
     _f(0x075, 1, _U8, "hp_lost_to_drain", "Hit points lost", _MAYBE,
        "zero in all 24; same two sources as 0x074"),
-    _f(0x076, 1, _U8, "turn_power", "Turn-undead power", _MAYBE,
-       "zero in all 24, including for ROLAND, a cleric 3, whose C64 "
-       "counterpart would read 1. The C64 has **two** turning bytes here -- "
-       "`turn_class` 0x0A3 for the undead's row and `turn_power` 0x0A4 for "
-       "the caster's -- and DOS Pool of Radiance has one byte for the pair, "
-       "which is where the run's displacement gains its extra byte before "
-       "the thief skills. Which of the two this is cannot be told from a "
-       "party with no undead in it and no turning cleric above level 3; "
-       "PROBABLE, and one specimen either way settles it"),
+    _f(0x076, 1, _U8, "turn_class", "Turn-undead row", _OK,
+       "**the row of the turning matrix the creature answers to, not the "
+       "power of a cleric turning it** -- the C64's `turn_class` at 0x0A3, "
+       "and DOS has no counterpart to the C64's `turn_power` at 0x0A4 at "
+       "all. This was named `turn_power` at PROBABLE until #288, on the "
+       "grounds that a party with no undead in it and no cleric above level "
+       "3 could not tell the C64's two turning bytes apart. The code and the "
+       "monster files can. CONFIRMED, three ways:\n"
+       "* `GAME.OVR:0x139CD`, the turn-undead routine, takes the **caster's** "
+       "level out of `class_levels[0]` at record 0x096 and bands it -- 1 to "
+       "8 as it stands, 9 to 13 as 9, otherwise 10 -- as the matrix *column*, "
+       "and at `0x13A2A` reads `es:[di+0x76]` off the **target** and "
+       "multiplies it by ten as the *row*. So there is no caster-side byte "
+       "in a DOS record at all, and the menu builder at `GAME.OVR:0x9F8C` "
+       "gates the word `Turn ` on the cleric level rather than on this.\n"
+       "* Eleven of the 103 distinct DOS Pool of Radiance monster records "
+       "carry a non-zero value here and every one is undead, at the "
+       "published AD&D rows: skeleton 1, zombie 2, ghoul 3, wight 5, wraith "
+       "7, giant skeleton 8, mummy 8, juju zombie 9, spectre 9, vampire 10, "
+       "and FERRAN MARTINEZ 9. `tools/turncensus.py --dos` re-runs it.\n"
+       "* Every player character in either port reads 0, including ROLAND, "
+       "a cleric 3, whose C64 counterpart's `turn_power` would read 1.\n"
+       "So a converter writes **zero** here for a player character and takes "
+       "nothing from the caster's strength, which the DOS engine works out "
+       "for itself. docs/178-turning-undead.md, #297"),
     _f(0x077, 1, _I8, "thief_pick_pockets", "Pick pockets", _MAYBE,
        "eight percentages, 0x077-0x07E, in the C64's order. Nonzero for the "
        "thief, for the fighter/mage/thief, and for SILAS -- a fighter 4 who "
@@ -780,7 +796,10 @@ class DosShape:
     #: through the module-level default.
     race_numbers: Sequence[str] = RACE_NUMBERS
     sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
-    inserts: "Mapping[str, int | Sequence[Field]]" = dataclasses.field(
+    #: A count of undecoded bytes, or a sequence that may mix `Field`s with
+    #: counts -- `(paladin_cures, 3)` is one named byte and three nobody has
+    #: attributed.
+    inserts: "Mapping[str, int | Sequence[Field | int]]" = dataclasses.field(
         default_factory=dict)
 
 
@@ -828,10 +847,52 @@ _DRUID_SLOT_NOTE = (
 
 
 def _x(size: int, name: str, label: str, confidence: Confidence,
-       note: str = "") -> Field:
+       note: str = "", kind: Kind = Kind.RAW) -> Field:
     """A field a later title has and Pool of Radiance does not.  The offset
     is filled in by `layout_for`, which is the only thing that knows it."""
-    return Field(0, size, Kind.RAW, name, label, confidence, note, False)
+    return Field(0, size, kind, name, label, confidence, note, False)
+
+
+_PALADIN_CURES_NOTE = (
+    "how many times the paladin may still CURE DISEASE. **1 for every "
+    "paladin and 0 for everybody else**, in 8 paladin records and 71 others "
+    "across four record shapes and six titles: Curse's MATHEW, MARK and "
+    "DEMELTINA and Gateway to the Savage Frontier's JERRICUS at the "
+    "422-byte shape's 0x191, Silver Blades' Guy de Valois and DEMELTINA, "
+    "Pools of Darkness' Guy de Valois and DEMELTINA and Treasures of the "
+    "Savage Frontier's MAXWELL and JERRICUS at the byte immediately after "
+    "`char_class`. Pool of Radiance has no such byte -- it has no paladins.\n"
+    "**Named from the game's own code**: `simeonpilgrim/coab`, the "
+    "decompilation of the DOS Curse overlays this project already reads for "
+    "`docs/117-save-conversion.md`, declares `paladinCuresLeft` at record "
+    "0x191 of a `StructSize = 0x1A6` player, which is the 422 bytes of the "
+    "record. Character creation writes 1 (`ovr018`), CURE DISEASE is offered "
+    "only while it is above zero and decrements it (`ovr020`), and the "
+    "refresh sets `((paladinLevel - 1) / 5) + 1` (`ovr013`) -- so a Curse "
+    "paladin of 11 or better could hold 3, and no specimen here holds "
+    "anything but 0 or 1.\n"
+    "**The offset moves between the engines and the field does not**: the "
+    "422-byte shape keeps it in the combat tail and the 439- and 510-byte "
+    "shapes keep it beside the class. It stays 1 after HUMAN CHANGE CLASSES: "
+    "DEMELTINA is a cleric 1 with former paladin 5 in "
+    "`WISH-SPEC-curse-234-dualclassed` and still reads 1.\n"
+    "**Silver Blades does not use it the way Curse's code does, and that is "
+    "measured rather than assumed** (#299). Staged on Guy de Valois in DOS "
+    "Silver Blades under DOSBox: at 0 the sheet still offers `CURE`, so it "
+    "does not gate the command the way `CanCastCureDiseases` gates Curse's; "
+    "at 2 one use ends the offer, so it does not count uses either; and one "
+    "use takes a staged 2 to **0** in the engine's own resave, so the engine "
+    "clears it rather than decrementing it. What is CONFIRMED for the later "
+    "titles is therefore narrower than the name: the byte is the paladin's "
+    "cure-disease bookkeeping, cleared when he cures, and it is 1 for every "
+    "paladin and 0 for everybody else. Whether it is literally Curse's own "
+    "field is PROBABLE and no more")
+
+#: The paladin's cure-disease allowance, in every title that has paladins.
+#: One `Field` object per shape, because `layout_for` fills the offset in.
+def _paladin_cures() -> Field:
+    return _x(1, "paladin_cures", "Cure disease uses left", _OK,
+              _PALADIN_CURES_NOTE, kind=Kind.U8)
 
 
 #: Pool of Radiance itself: the table above, unchanged.  Present so callers
@@ -868,13 +929,14 @@ CURSE_OF_THE_AZURE_BONDS = DosShape(
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
     inserts={"level": (_x(1, "former_level", "Level left the old class at",
-                          _OK, _FORMER_LEVEL_NOTE),),
+                          _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),
              "class_levels": (_x(8, "former_class_levels",
                                  "Former class levels", _OK, _FORMER_NOTE),),
              "spells_castable_cleric": (
                  _x(5, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),),
-             "icon_colours": 1, "heap_104": 4})
+             "icon_colours": 1,
+             "heap_104": (_paladin_cures(), 3)})
 
 #: Secret of the Silver Blades, 439 bytes.  Curse's record plus a spellbook
 #: of 117 -- `goldbox/spells.py`'s Silver Blades id space, 1..117 -- seven spell
@@ -902,9 +964,9 @@ SECRET_OF_THE_SILVER_BLADES = DosShape(
            "field_83_87": 4, "class_levels": 7, "gap_09f": 0,
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 7, "spells_castable_magic_user": 7},
-    inserts={"char_class": 1,
+    inserts={"char_class": (_paladin_cures(),),
              "level": (_x(1, "former_level", "Level left the old class at",
-                          _OK, _FORMER_LEVEL_NOTE),),
+                          _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),
              "class_levels": (_x(7, "former_class_levels",
                                  "Former class levels", _OK, _FORMER_NOTE),),
              "spells_castable_cleric": (
@@ -942,9 +1004,9 @@ POOLS_OF_DARKNESS = DosShape(
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
            "gap_0b8": 2, "portrait_head": 0, "portrait_body": 0},
-    inserts={"char_class": 1,
+    inserts={"char_class": (_paladin_cures(),),
              "level": (_x(1, "former_level", "Level left the old class at",
-                          _OK, _FORMER_LEVEL_NOTE),),
+                          _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),
              "class_levels": (
                  _x(7, "former_class_levels", "Former class levels", _OK,
                     _FORMER_NOTE),
@@ -1053,7 +1115,14 @@ def layout_for(what: "int | str | DosShape") -> tuple[Field, ...]:
         if isinstance(extra, int):
             cursor += extra
         else:
+            # A sequence may mix the two: `(field, 3)` is one named byte and
+            # three nobody has attributed, which is what Curse's run at
+            # `0x191` is.  Without the mixed form a title with a named byte
+            # inside an undecoded run would have to declare the whole run.
             for e in extra:
+                if isinstance(e, int):
+                    cursor += e
+                    continue
                 declared.append(dataclasses.replace(e, offset=cursor))
                 cursor += e.size
     if cursor != shape.record_size:
