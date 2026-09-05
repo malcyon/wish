@@ -20,7 +20,7 @@
 weapons:
   0:  {c64: 0}                        # empty hands
   1:  {c64: 26}                       # bow
-  2:  {c64: 5, alt: [27]}             # hammer raised
+  2:  {c64: 10}                        # hatchet raised
   3:  {c64: 23}                       # flail swung
   4:  {c64: 24}                       # flail and shield
   5:  {c64: 21, alt: [14]}            # spear thrust level
