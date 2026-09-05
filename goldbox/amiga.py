@@ -2271,38 +2271,98 @@ class AmigaShape:
             f"no field called {name!r} in the DOS {self.title} record")
 
 
+# ---------------------------------------------------------------------------
+# The item node of the two later Amiga titles, read from the constructor
+# ---------------------------------------------------------------------------
+#
+# Curse's node is **66 bytes** and Silver Blades' **70**, and the first 66 of
+# each are the same layout.  It is not argued from specimens: each executable
+# carries a constructor that allocates the node, clears it and then writes
+# fifteen named arguments into it, one field at a time -- `/Curse` at file
+# offset `0x1C1EA`, `/Secret` at `0x1B862`, instruction for instruction the
+# same routine.  The arguments arrive in `goldbox/dos_layout.py`'s own item
+# order, so the two tables can be laid beside each other:
+#
+#     type_index -> 0x2E   name1..3 -> 0x30 0x31 0x32   plus -> 0x33
+#     plus_save  -> 0x34   readied  -> 0x35   hidden -> 0x36  cursed -> 0x37
+#     weight (u16be) -> 0x38   quantity -> 0x3A   value (u16be) -> 0x3C
+#     charges -> 0x3F   effect -> 0x40   power -> 0x41
+#
+# **Nothing is written at `0x2F`, `0x3B` or `0x3E`.**  Those three are the
+# insertions, and the constructor's `setmem(node, size, 0)` is why an item the
+# game builds itself reads zero in all three.  The nine nodes in
+# `SAVE/savgamA.dat` read `0x7F`, 52 and 47 there instead because they came
+# through the other path -- the `ITEM<n>` template loader at `/Curse`
+# `0x1F2D6`, which unpacks each 63-byte template into a stack struct it never
+# clears and copies all 66 bytes into the node.  Uninitialised stack, copied
+# nine times.
+#
+# This **refutes** the reading `#55 (Decode the Amiga Curse and Silver Blades
+# records)` carried until 2026-09-05, that `0x3E` was `charges` and 47 was a
+# Chain Mail's charge count.  `charges` is at `0x3F` and reads zero, which is
+# what a Chain Mail should hold.
+#
+# Silver Blades adds a **fourth pointer at `0x42`**, `u32` big-endian, which
+# the unpacker clears (`/Secret` `0x28194`) and which is non-NULL only on a
+# scroll: an item whose `type_index` is `0x49` chains `quantity` further
+# 70-byte nodes through it, each carrying three more spell ids in the bytes
+# the constructor calls `charges`, `effect` and `power`.  `/Secret` `0xDE`
+# walks it, and the vault writer at `0x3D6D2` writes those nodes out after
+# the item itself.  Curse has no such field and no room for one.
+#
+#: `(first DOS item offset, bytes inserted before it)`, ascending -- the same
+#: three insertions in both later Amiga titles.
+AMIGA_LATER_ITEM_SHIFTS = ((0x000, 0), (0x02F, 1), (0x03A, 2), (0x03C, 3))
+
+#: Silver Blades only: a `u32be` at the end of the 70-byte node, NULL except
+#: on a scroll, where it heads a chain of further nodes holding the rest of
+#: the scroll's spell ids.
+AMIGA_SSB_SCROLL_CHAIN = 0x042
+
 #: Curse of the Azure Bonds: the 422-byte DOS record, 428 bytes on the Amiga.
 #:
 #: Five insertions, and only two of them are located to the byte.
 #:
-#:   * one in Amiga `0x0F9`-`0x0FB`, which even-aligns the money block at
-#:     `0x0FC`.  DOS `0x0F8` is a **party flag** -- 1 in all twelve DOS
-#:     records and all four played Amiga blocks, 0 in all eleven pregens,
-#:     at the same offset on both ports -- so the pad is past it and the
-#:     window is three bytes rather than six.  Every one of them reads zero
-#:     on both ports;
-#:   * **two** between the cleric spell-slot array and the magic-user one.
-#:     The cleric array is measured at `0x12E` (KAROLYN's `4 3 1`, IILANDA's
-#:     `5 3`, TEUT HALF-ELFIN's `5 4`) and the magic-user array at `0x13A`
-#:     (ARIEL's `4 2 1`, which is `goldbox/spells.py`'s Curse table for a
-#:     level-5 magic-user, read out of the game's own `ECL65`), so twelve
-#:     Amiga bytes hold what DOS holds in ten.  **A compiler does not pad
-#:     inside an array**, so each five-byte array is still five consecutive
-#:     bytes and the cleric's are `0x12E`-`0x132` and the magic-user's
-#:     `0x13A`-`0x13E` whatever the two spare bytes turn out to be.  What is
-#:     unplaced is the **druid array**, which starts at `0x133`, `0x134` or
-#:     `0x135`: `0x131`-`0x139` is zero in 15 of 15, because no Curse pregen
-#:     is high enough for a fourth-level cleric slot and none is a ranger;
-#:   * one between the magic-user array and `portrait_head`, which is at
-#:     `0x143` because `size` is at `0x148` and the icon colours at `0x149`.
-#:     It lands somewhere in DOS's three-byte `gap_13c`, which is zero on
-#:     both ports;
+#: **Every insertion is located to the byte, and none of it rests on a
+#: specimen.**  `/Curse` carries a routine at file offset `0x270A6` that
+#: expands a packed 422-byte record -- the DOS layout, byte for byte -- into
+#: the 428-byte Amiga one, field group by field group, and its 26 copy
+#: boundaries all land on a `goldbox/dos_layout.py` Curse field boundary.  It
+#: opens `setmem(record, 0x1AC, 0)`, which is 428, and the monster loader at
+#: `0x26306` calls it after decompressing `MON<n>CHA` to `0x1A6` = 422 bytes.
+#: `tools/amigaunpack.py` prints the map; `docs/166-amiga-records-from-the-code.md`
+#: has the working.
+#:
+#:   * the pad is at Amiga **`0x0FB`**, not anywhere in `0x0F9`-`0x0FB`: the
+#:     routine copies DOS `0x0F6`-`0x0F8` to `0x0F6`, DOS `0x0F9` and `0x0FA`
+#:     one byte each to the same offsets, and then the fourteen money bytes
+#:     from DOS `0x0FB` to Amiga `0x0FC`.  So `field_83_87` is at
+#:     `0x0F6`-`0x0FA` at shift 0 and is readable;
+#:   * **each of the three spell-slot arrays is six bytes on the Amiga where
+#:     DOS spends five**, and that is the whole of the three-byte insertion
+#:     between `hp_rolled` and `gap_13c`.  Three routines index them as
+#:     `record[0x12E + 6 * class + (level - 1)]` -- `/Curse` `0x288`, `0x482`
+#:     and `0x9F4`, with `class` read from byte 0 of a 16-byte spell-table
+#:     entry (0 cleric, 1 druid, 2 magic-user) and `level` from byte 1.  So
+#:     the cleric array is `0x12E`-`0x133`, the **druid array `0x134`-`0x139`**
+#:     and the magic-user array `0x13A`-`0x13F`, and the sixth byte of each
+#:     has no DOS counterpart.  `/Secret`'s Curse-import routine at `0x26F64`
+#:     reads the same three bases out of a Curse record, which is a second
+#:     binary agreeing;
+#:   * DOS's three-byte `gap_13c` is therefore at Amiga `0x140`-`0x142`, and
+#:     its first two bytes are a `u16`: the unpacker byte-swaps the word at
+#:     Amiga `0x140` the way it swaps age, the money block and experience;
 #:   * one at Amiga `0x151`, between `item_count` and the item pointer array.
-#:     **Located**, because the count is at `0x150` -- forced by
-#:     `428 + 66 x count + 10 x effects` matching the block length in 4 of 4
-#:     played characters -- and the pointers are at `0x152`, non-zero in
-#:     exactly those four;
+#:     The count is at `0x150` -- forced by `428 + 66 x count + 10 x effects`
+#:     matching the block length in 4 of 4 played characters -- and the
+#:     pointers are at `0x152`, which is where `/Curse`'s saved-game writer
+#:     starts the item chain (`docs/165-amiga-savegame.md`);
 #:   * the trailing byte at `0x1AB`, which makes 427 into 428.
+#:
+#: **`sex` is at Amiga `0x11A` and `alignment` at `0x11C`** -- the two fields
+#: reading GALAIN's sheet on screen could not place, because one sheet cannot
+#: separate a byte from its neighbours.  The unpacker copies DOS `0x119`,
+#: `0x11A` and `0x11B` to those three offsets, one byte at a time.
 #:
 #: Thirteen of these offsets were also **read off the game's own character
 #: sheet** under WinUAE, on GALAIN in `SAVE/savgamA.dat` -- race at `0x074`,
@@ -2318,11 +2378,10 @@ CURSE_SHAPE = AmigaShape(
     title="Curse of the Azure Bonds",
     dos=dos_layout.CURSE_OF_THE_AZURE_BONDS,
     record_size=428,
-    shifts=((0x000, 0), (0x0FB, 1), (0x137, 3), (0x13F, 4), (0x14D, 5)),
-    unplaced=(range(0x0F9, 0x0FB), range(0x132, 0x137), range(0x13C, 0x13F)),
+    shifts=((0x000, 0), (0x0FB, 1), (0x132, 2), (0x137, 3), (0x13C, 4),
+            (0x14D, 5)),
     item_size=66,
-    item_shifts=((0x000, 0), (0x031, 1), (0x03A, 2)),
-    item_unplaced=(range(0x02F, 0x031),),
+    item_shifts=AMIGA_LATER_ITEM_SHIFTS,
     trailing_pad=0x1AB,
 )
 
@@ -2338,12 +2397,27 @@ CURSE_SHAPE = AmigaShape(
 #:     `unnamed_0ab`, distinct in all six, and `0x0C8` reads 200 000 or
 #:     100 000 big-endian, which is what the DOS twin holds;
 #:   * Amiga `0x0FD`, between `item_count` at `0x0FC` and the item pointer
-#:     array at `0x0FE`.  **PROBABLE, not measured**: no Silver Blades
-#:     character on either port carries an item, so the whole region is zero.
-#:     It is where the other two titles put theirs -- Curse at `0x151` and
-#:     Pool of Radiance not at all, because its array is already even -- and
-#:     it is the only placement that lands `encumbrance` at `0x138`, which
-#:     *is* measured on MALACHITE's 4.
+#:     array at `0x0FE`.
+#:
+#: All three are now **CONFIRMED from the code rather than from the six
+#: specimens**: `/Secret` expands a packed 439-byte record -- the DOS layout
+#: -- into this one at file offset `0x281A2`, opening with
+#: `setmem(record, 0x154, 0)`, and its 22 copy boundaries all land on a
+#: `goldbox/dos_layout.py` Silver Blades field boundary.  It copies DOS
+#: `0x0F3`+8 to Amiga `0x08D`, skips DOS's four-byte `effect_chain`, and
+#: resumes at Amiga `0x09A`, which puts the pad at `0x095`; it copies DOS
+#: `0x121`+11 to `0x0BC` and DOS `0x12C`+13 to `0x0C8`, which puts the pad at
+#: `0x0C7`; and it copies DOS `0x14E`+19 to `0x0EA` and DOS `0x161`+69 to
+#: `0x0FE`, which puts the pad at `0x0FD`.  The last of those was PROBABLE
+#: and is now measured.  `docs/166-amiga-records-from-the-code.md`.
+#:
+#: **`sex` is at Amiga `0x0BA` and `alignment` at `0x0BB`**, from the two
+#: single-byte copies of DOS `0x11F` and `0x120`.
+#:
+#: The **four spell-slot arrays are seven bytes each and are not widened**,
+#: unlike Curse's: `/Secret` `0x5D4` indexes them as
+#: `record[0x0CE + 7 * class + (level - 1)]`, and the unpacker copies each of
+#: the four as its own seven bytes.
 SILVER_BLADES_SHAPE = AmigaShape(
     key="secret-of-the-silver-blades",
     title="Secret of the Silver Blades",
@@ -2352,6 +2426,8 @@ SILVER_BLADES_SHAPE = AmigaShape(
     shifts=((0x000, 0), (0x0E6, -102), (0x0FB, -101), (0x12C, -100),
             (0x161, -99)),
     spellbook_bytes=15,
+    item_size=70,
+    item_shifts=AMIGA_LATER_ITEM_SHIFTS,
 )
 
 #: Every Amiga shape this module reads, and the size that names each.  The
@@ -2363,7 +2439,13 @@ AMIGA_SHAPES_BY_SIZE = {s.record_size: s for s in AMIGA_SHAPES}
 #: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**
 #: within each byte, where DOS spends one byte per spell for ids 1..117.
 #:
-#: CONFIRMED on 6 of 6 specimens and 62 set bits: PAINE's `77 78 79 80`,
+#: CONFIRMED from the code: `/Secret`'s record unpacker at file offset
+#: `0x28260` walks the packed record's 117 one-byte flags and, for each,
+#: sets or clears bit `i mod 8` of `record[0x71 + i / 8]` through a mask
+#: table at `g234e` that reads `01 02 04 08 10 20 40 80` -- least
+#: significant bit first, by the table's own contents.
+#:
+#: CONFIRMED on 6 of 6 specimens and 62 set bits as well: PAINE's `77 78 79 80`,
 #: DOMINIC's 29 ids and MORGAINE's 29 come out of the mask exactly as the DOS
 #: twin's byte array holds them, and MSB-first reproduces none of the three.
 #: The other three characters have an empty book on both ports.
@@ -2381,23 +2463,17 @@ AMIGA_SSB_SPELLBOOK_AT = 0x071
 class AmigaItem:
     """One item node of a later Amiga Gold Box title.
 
-    Curse's is **66 bytes** where DOS spends 63 and Amiga Pool of Radiance
-    spends 65, and the difference from Pool of Radiance is one byte in the
-    name group: the same Chain Mail reads `37 00 30 37` at `0x02E` on Amiga
-    Pool of Radiance and `37 00 00 30 37` on Amiga Curse, so Curse has an
-    extra zero at `0x02F` or `0x030` and everything from `name3` on is one
-    further along.  That insertion uses up the pad Pool of Radiance keeps
-    ahead of the weight, which is why the weight is at `0x038` in both.
+    Curse's is **66 bytes** where DOS spends 63, Silver Blades' is **70**,
+    and the first 66 of each are the same layout -- see
+    `AMIGA_LATER_ITEM_SHIFTS` for the constructor both titles build one with.
+    The insertion Amiga Pool of Radiance does not have is the pad at `0x02F`,
+    ahead of `name1`: the same Chain Mail reads `37 00 30 37` at `0x02E`
+    there and `37 00 00 30 37` here.
 
-    Nine nodes of five distinct items, from the four played characters in
-    `SAVE/savgamA.dat`.  Two bytes are constant and unexplained: `0x03B`
-    reads 52 in 9 of 9, where Pool of Radiance's pad reads zero, and `0x03E`
-    reads 47.  On the alignment rule that generates every other insertion,
-    `0x03B` is the pad that even-aligns the value word at `0x03C` and `0x03E`
-    is `charges` -- which would make charges 47 on a Chain Mail.  The corpus
-    cannot separate that from a second pad at `0x03E` with `charges` at
-    `0x03F`; **an Amiga Curse save holding a wand or any charged item settles
-    it in one read.**
+    `charges` is at **`0x03F`**, not `0x03E`.  The nine nodes in
+    `SAVE/savgamA.dat` read 52 at `0x03B` and 47 at `0x03E` in 9 of 9, which
+    looked like a field; the constructor writes neither, and both are
+    uninitialised stack copied out of the `ITEM<n>` template loader.
     """
 
     raw: bytes

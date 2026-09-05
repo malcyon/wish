@@ -1874,6 +1874,128 @@ def _dos_records(title: str, size: int) -> dict[str, bytes]:
     return {}
 
 
+#: Where each title's unpacker sits in its executable, and how big the
+#: record it fills is.  `docs/166-amiga-records-from-the-code.md` names them.
+UNPACKERS = {
+    "curse-of-the-azure-bonds": ("/Curse", 0x270A6, 0x273EA, 0x1AC),
+    "secret-of-the-silver-blades": ("/Secret", 0x281A2, 0x285B0, 0x154),
+}
+ITEM_UNPACKERS = {
+    "curse-of-the-azure-bonds": ("/Curse", 0x26EF8, 0x270A6, 0x42),
+    "secret-of-the-silver-blades": ("/Secret", 0x27FE6, 0x281A2, 0x46),
+}
+
+
+def _unpacker_rows(shape, table):
+    """`(dos offset, amiga offset)` for every byte the unpacker copies."""
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import amiga68k, amigaunpack, gamedisks
+    name, start, end, size = table[shape.key]
+    want = "curse" if name == "/Curse" else "silver"
+    for root in gamedisks.candidates("amiga"):
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.adf")):
+            if want not in path.name.lower().replace("_", ""):
+                continue
+            try:
+                data = AmigaDisk.open(path).read_file(name)
+            except Exception:
+                continue
+            break
+        else:
+            continue
+        exe = amiga68k.Executable.parse(data)
+        rows = amigaunpack.read_map(exe, start, end, size)
+        return {r.src + i: r.dest + i for r in rows if r.kind == "copy"
+                and r.src is not None and r.src != 1 for i in range(r.size)}
+    pytest.skip(f"no Amiga disk carrying {name}; set $AMIGA_DISKS")
+
+
+def test_the_curse_shift_map_is_the_one_the_game_s_own_unpacker_writes():
+    """The map against the routine that builds the record, byte for byte.
+
+    `/Curse` `0x270A6` expands a packed 422-byte DOS record into the 428-byte
+    Amiga one -- it is what the monster loader at `0x26306` calls after
+    decompressing `MON<n>CHA` to `0x1A6` bytes -- so every offset in
+    `CURSE_SHAPE` is an instruction rather than an inference from a specimen.
+
+    The three spell-slot arrays are excluded and have a test of their own:
+    the routine copies them as one flat run and lands two of the three in the
+    wrong bytes, which is the game's defect rather than this map's.
+    """
+    shape = amiga.CURSE_SHAPE
+    rows = _unpacker_rows(shape, UNPACKERS)
+    assert len(rows) > 200
+    for dos_offset, amiga_offset in sorted(rows.items()):
+        if 0x12D <= dos_offset < 0x13C:
+            continue
+        assert shape.offset(dos_offset) == amiga_offset, hex(dos_offset)
+
+
+def test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays():
+    """A defect in the port, pinned so nobody smooths it into the map.
+
+    Each Amiga slot array is six bytes to DOS's five -- three routines index
+    them as `record[0x12E + 6 * class + level - 1]` -- but the unpacker
+    copies all fifteen packed bytes in one `movmem`.  So a monster loaded
+    from `MON<n>CHA` gets its cleric slots right, its druid slots one byte
+    early and its magic-user slots two, and `0x13D`-`0x13F` -- the top of the
+    magic-user array -- is never written at all.
+
+    This is what makes the record map and the copy map disagree, and it is
+    the copy map that is wrong: the eleven pregens and the four played
+    characters all read `goldbox/spells.py`'s Curse table at `0x13A`, which
+    only the indexed reading puts there.
+    """
+    shape = amiga.CURSE_SHAPE
+    rows = _unpacker_rows(shape, UNPACKERS)
+    for dos_offset in range(0x12D, 0x132):          # the cleric array
+        assert rows[dos_offset] == shape.offset(dos_offset)
+    for dos_offset in range(0x132, 0x137):          # the druid array
+        assert rows[dos_offset] == shape.offset(dos_offset) - 1
+    for dos_offset in range(0x137, 0x13C):          # the magic-user array
+        assert rows[dos_offset] == shape.offset(dos_offset) - 2
+    assert set(rows.values()).isdisjoint({0x13D, 0x13E, 0x13F})
+
+
+def test_the_silver_blades_shift_map_is_the_one_its_unpacker_writes():
+    """The same check on `/Secret` `0x281A2`, whose record is 340 bytes.
+
+    It skips the spellbook, which the routine turns from 117 one-byte flags
+    into 15 bytes of bitmask rather than copying, and which `shape.offset`
+    refuses for that reason.
+    """
+    shape = amiga.SILVER_BLADES_SHAPE
+    book = shape.dos_field("spellbook")
+    rows = _unpacker_rows(shape, UNPACKERS)
+    assert len(rows) > 150
+    for dos_offset, amiga_offset in sorted(rows.items()):
+        if book.offset <= dos_offset < book.offset + book.size:
+            continue
+        assert shape.offset(dos_offset) == amiga_offset, hex(dos_offset)
+
+
+@pytest.mark.parametrize("key", sorted(ITEM_UNPACKERS))
+def test_both_item_shift_maps_are_what_their_unpackers_write(key):
+    """`0x2F`, `0x3B` and `0x3E` are the three bytes neither routine writes.
+
+    The two are the same routine compiled twice, apart from the `clr.l` on
+    Silver Blades' fourth pointer, so the same assertion covers both and the
+    66-byte node is the 70-byte one without its last field.
+    """
+    shape = amiga.AMIGA_SHAPES_BY_SIZE[
+        428 if key == "curse-of-the-azure-bonds" else 340]
+    rows = _unpacker_rows(shape, ITEM_UNPACKERS)
+    text = dos_layout.ITEM_FIELDS_BY_NAME["text"]
+    for dos_offset, amiga_offset in sorted(rows.items()):
+        if dos_offset < text.offset + text.size:
+            continue
+        assert shape.item_offset(dos_offset) == amiga_offset, hex(dos_offset)
+    assert set(rows.values()).isdisjoint({0x02F, 0x03B, 0x03E})
+    assert shape.item_offset(0x03C) == 0x03F        # charges, not 0x03E
+
+
 def test_the_record_size_names_the_amiga_title():
     """Three sizes, three titles, and a fourth is refused rather than read."""
     assert amiga.AMIGA_SHAPES_BY_SIZE[428] is amiga.CURSE_SHAPE
@@ -1882,32 +2004,59 @@ def test_the_record_size_names_the_amiga_title():
         amiga.AmigaCharacter.from_bytes(bytes(288))
 
 
-def test_an_unplaced_window_is_refused_rather_than_guessed():
-    """Three Curse windows hold an insertion nobody has located.
+def test_every_curse_insertion_is_placed_to_the_byte():
+    """The map `/Curse`'s own record unpacker writes, with nothing left over.
 
-    `spells_castable_druid` is the one that matters: the cleric array is
-    measured at `0x12E` and the magic-user array at `0x13A`, so two bytes
-    between them are unaccounted for and the druid array could start at
-    `0x133`, `0x134` or `0x135`.  Reading it would be a guess.
+    Three windows used to be refused here because a specimen could not say
+    where inside them the insertion sat.  The routine at `/Curse` `0x270A6`
+    says: it expands the packed 422-byte DOS record into the 428-byte Amiga
+    one a field group at a time, so every boundary is an instruction rather
+    than an inference.  What changed, and would break if the map went back:
 
-    And a field that only *straddles* a window is refused too:
-    `field_83_87` starts at a placed byte -- DOS `0x0F8` is a party flag at
-    the same offset on both ports -- and ends inside one.
+    * `field_83_87` is `0x0F6`-`0x0FA` at shift 0 and the pad is at `0x0FB`;
+    * each spell-slot array is six Amiga bytes to DOS's five, which puts the
+      **druid array at `0x134`** and DOS's `gap_13c` at `0x140`;
+    * `sex` and `alignment`, which no character sheet could place, are at
+      `0x11A` and `0x11C`.
     """
     shape = amiga.CURSE_SHAPE
-    assert shape.offset(0x0F2) == 0x0F2            # the effect chain
-    assert shape.offset(0x0F8) == 0x0F8            # the party flag
-    assert shape.offset(0x0FB) == 0x0FC            # copper, one byte along
-    assert shape.offset(0x137) == 0x13A            # the magic-user array
-    assert shape.offset(0x14C) == 0x150            # the item count
-    for dos_offset in (0x0F9, 0x0FA, 0x132, 0x136, 0x13C, 0x13E):
-        with pytest.raises(AmigaRecordError):
-            shape.offset(dos_offset)
-    char = curse_characters()[0]
-    for name in ("field_83_87", "spells_castable_druid", "gap_13c"):
-        with pytest.raises(AmigaRecordError):
-            char.get(name)
-    assert list(char.get("spells_castable_cleric")) == [0] * 5
+    assert shape.unplaced == ()
+    placed = {
+        0x0F2: 0x0F2,        # the effect chain
+        0x0F6: 0x0F6,        # field_83_87, whose third byte is DOS 0x0F8
+        0x0FB: 0x0FC,        # copper: the pad at 0x0FB is behind it
+        0x119: 0x11A,        # sex
+        0x11B: 0x11C,        # alignment
+        0x12D: 0x12E,        # the cleric array
+        0x132: 0x134,        # the druid array
+        0x137: 0x13A,        # the magic-user array
+        0x13C: 0x140,        # gap_13c, whose first two bytes are a u16
+        0x14C: 0x150,        # the item count
+        0x14D: 0x152,        # the item chain, where the writer starts it
+    }
+    for dos_offset, want in placed.items():
+        assert shape.offset(dos_offset) == want, hex(dos_offset)
+    for char in curse_characters():
+        for name in ("field_83_87", "spells_castable_druid", "gap_13c"):
+            char.get(name)          # no longer raises
+        assert list(char.get("spells_castable_druid")) == [0] * 5
+
+
+def test_the_placed_field_83_87_reads_the_constant_dos_holds():
+    """A free check on the window this map used to refuse.
+
+    `goldbox/dos.py` records `00 00 01 00 00` at DOS `0x0F6` in 24 of 24 Pool
+    of Radiance records.  Placing the Amiga field at the same offset makes
+    the four **played** Curse characters read exactly that, and the eleven
+    pregens read five zeros -- which is the same third byte that separated a
+    party member from a pregen before anybody knew what field it belonged to.
+    """
+    played = [c for c in curse_characters() if c.items]
+    pregens = [c for c in curse_characters() if not c.items]
+    assert len(played) == 4 and len(pregens) == 11
+    assert {bytes(c.get("field_83_87")) for c in played} == \
+        {b"\x00\x00\x01\x00\x00"}
+    assert {bytes(c.get("field_83_87")) for c in pregens} == {bytes(5)}
 
 
 def test_the_silver_blades_spellbook_has_no_one_to_one_offset():
@@ -1972,6 +2121,51 @@ def test_a_curse_block_is_the_record_then_its_items_then_its_effects():
     for char in played:
         assert len(char.items) == char.get("item_count")
         assert all(len(i.raw) == 66 for i in char.items)
+
+
+def test_the_item_node_reads_the_fields_the_constructor_writes():
+    """`charges` is at `0x3F` and reads zero on nine mundane items.
+
+    Both later titles build an item with the same fifteen-argument
+    constructor -- `/Curse` `0x1C1EA`, `/Secret` `0x1B862` -- which clears the
+    node and then writes `type_index` at `0x2E`, the three name indices at
+    `0x30`-`0x32`, `readied` at `0x35`, the weight word at `0x38`, `quantity`
+    at `0x3A`, the value word at `0x3C` and `charges`, `effect` and `power`
+    at `0x3F`-`0x41`.  Nothing is written at `0x2F`, `0x3B` or `0x3E`.
+
+    The nine specimens read 52 at `0x3B` and 47 at `0x3E`, which is what made
+    `0x3E` look like `charges`; the constructor says both are padding, and a
+    Chain Mail with 47 charges was never a plausible reading.
+    """
+    shape = amiga.CURSE_SHAPE
+    assert shape.item_offset(0x03C) == 0x03F        # charges
+    assert shape.item_offset(0x02F) == 0x030        # name1, past the pad
+    items = [i for c in curse_characters() for i in c.items]
+    assert len(items) == 9
+    for item in items:
+        assert item.get("charges") == 0, item.text
+        assert item.get("effect") == 0 and item.get("power") == 0
+        assert item.get("readied") == 1
+        assert item.get("name3") == item.get("type_index")
+        assert item.raw[0x03B] == 52 and item.raw[0x03E] == 47
+    assert {i.get("weight") for i in items} == {100, 300}
+
+
+def test_the_silver_blades_item_node_is_seventy_bytes():
+    """Measured in the code, because no specimen of that title carries one.
+
+    `/Secret` allocates `0x46` = 70 bytes for an item, unpacks the same 63
+    bytes into the same offsets Curse uses, and then clears a `u32` at
+    `0x42` that Curse's 66-byte node has no room for.  So the two nodes are
+    the same layout for `0x00`-`0x41` and Silver Blades has one more field.
+    """
+    ssb, curse = amiga.SILVER_BLADES_SHAPE, amiga.CURSE_SHAPE
+    assert ssb.item_size == 70 and curse.item_size == 66
+    assert ssb.item_size - curse.item_size == 4
+    assert amiga.AMIGA_SSB_SCROLL_CHAIN == 0x042
+    for dos_offset in range(0x02A, dos_layout.ITEM_SIZE):
+        assert ssb.item_offset(dos_offset) == curse.item_offset(dos_offset)
+    assert curse.item_offset(dos_layout.ITEM_SIZE - 1) + 1 == curse.item_size
 
 
 def test_curse_encumbrance_is_money_plus_the_weight_of_what_is_carried():

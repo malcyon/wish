@@ -245,39 +245,40 @@ four in-save blocks, which are the numbers that make each block's byte length
 come out exactly. `0x18c` was the other candidate and is **refuted**: it reads
 1 where there are no items.
 
-**The 66-byte item record**, on nine specimens of five distinct items:
+**The 66-byte item record**, and it is now read out of the constructor that
+builds one rather than off the nine specimens —
+[`166-amiga-records-from-the-code.md`](166-amiga-records-from-the-code.md) has
+the routine (`/Curse` `0x1C1EA`) and the whole table. The three insertions are
+at `0x02F`, `0x03B` and `0x03E`, all three of them pads the constructor never
+writes:
 
-| offset | field | grade |
-|---|---|---|
-| `0x000`-`0x027` | display text, NUL-separated, no length prefix: full name, second word, price right-aligned. DOS spends a length byte plus 41 | CONFIRMED 9/9 |
-| `0x028`-`0x029` | `7f 00`, end-of-text marker | CONFIRMED 9/9 |
-| `0x02a`-`0x02d` | next item, u32 big-endian, NULL on the last | CONFIRMED 9/9 |
-| `0x02e` | type index (Chain Mail 55, Shield 59, Bastard Sword 34, Mace 23, Glaive-Guisarme 15) | CONFIRMED 9/9 |
-| `0x032` | the type index again, byte-identical | CONFIRMED 9/9 |
-| `0x038`-`0x039` | weight, u16 big-endian — Chain Mail 300, the rest 100 | CONFIRMED 5/5 distinct items |
-| `0x03c`-`0x03d` | value in gold, u16 big-endian | CONFIRMED 5/5 — **each matches the price string in its own display text** |
-| `0x035` | `readied`, 1 in all nine — and all nine *are* readied | CONFIRMED by Amiga Pool of Radiance, whose un-readied darts read 0 at the same field |
-| `0x03b`, `0x03e` | 52 and 47, constant in all nine, where Pool of Radiance reads zero at both | UNKNOWN |
+| offset | field |
+|---|---|
+| `0x000`-`0x029` | display text, NUL-separated, no length prefix |
+| `0x02a`-`0x02d` | next item, u32 big-endian, NULL on the last |
+| `0x02e` | type index (Chain Mail 55, Shield 59, Bastard Sword 34, Mace 23, Glaive-Guisarme 15) |
+| `0x030`-`0x032` | name1, name2, name3 — `name3` is why `0x032` reads the type index again |
+| `0x033`-`0x037` | plus, plus save, `readied`, hidden, cursed |
+| `0x038`-`0x039` | weight, u16 big-endian — Chain Mail 300, the rest 100 |
+| `0x03a` | quantity |
+| `0x03c`-`0x03d` | value in gold, u16 big-endian, matching the price string in the item's own display text |
+| `0x03f`-`0x041` | **charges**, effect, power |
 
-Weight is +1 and value +2 against `goldbox/dos_layout.py`'s 63-byte DOS record.
-**Where the third insertion is, is now settled**: the same Chain Mail reads
-`37 00 30 37` at `0x02E` on Amiga Pool of Radiance and `37 00 00 30 37` on
-Amiga Curse, so Curse has one extra zero at `0x02F` or `0x030` and everything
-from `name3` on is one further along — which uses up the pad Pool of Radiance
-keeps ahead of the weight, and is why the weight is at `0x038` in both. That
-leaves 63 + 2 = 65 and a trailing pad to 66, on the even-length rule.
+**`0x03b` = 52 and `0x03e` = 47 are not fields, and neither is the `7f` at
+`0x028`.** The constructor clears the node and writes neither; the nine
+specimens carry those values because they came through the `ITEM<n>` template
+loader (`/Curse` `0x1F2D6`), which unpacks each template into a stack struct
+it never clears. This paragraph used to say `0x03e` was `charges` and that an
+Amiga Curse save holding a wand would settle it; the code settled it instead,
+and `charges` is at `0x03f`.
 
-What is left is the two constants. On the alignment rule, `0x03b` is the pad
-that even-aligns the value word and `0x03e` is `charges` — which would make
-`charges` 47 on a Chain Mail. The corpus cannot separate that from a second
-pad at `0x03e` with `charges` at `0x03f`. **What settles it: one Amiga Curse
-save holding a wand, a staff or any item with charges.**
-
-**The item record is per-title on the Amiga**: 65 bytes in
-Pool of Radiance (195 = 3x65, 130 = 2x65, neither a multiple of 66) against 66
-here, where DOS's is 63 across the whole family — and **Silver Blades' is not
-measured at all**, because no specimen of that title carries an item and its
-DOS node is 67 rather than 63, so Curse's 66 cannot be assumed for it.
+**The item record is per-title on the Amiga**: 65 bytes in Pool of Radiance
+(195 = 3x65, 130 = 2x65, neither a multiple of 66) against 66 here, where
+DOS's is 63 across the whole family. **Silver Blades' is 70** — the same 66
+bytes plus a `u32be` at `0x042` that heads a scroll's extra spell nodes,
+CONFIRMED from `/Secret`'s own allocator and unpacker, which is what settled
+the "not measured at all, because no specimen carries an item" this paragraph
+used to end with.
 
 **The Amiga packs the Silver Blades spellbook as bits**, which is where the
 99-byte difference comes from, and §1.3's "the DOS record, name re-encoded and
@@ -317,11 +318,10 @@ it, and `tools/amigarecords.py` produces the specimens.
 | `0x0FB` | `0x0FC` | **+1** | the seven-word money block |
 | `0x109` | `0x10A` | **+1** | the per-class level array, whose non-zero slots are that character's classes in 15 of 15 |
 | `0x127` | `0x128` | **+1** | experience, `u32le` onto `u32be` -- 25000 single-class, 12500 dual, 8333 triple |
-| `0x12D`-`0x131` | `0x12E`-`0x132` | **+1** | the cleric spell-slot array: KAROLYN's `4 3 1`, IILANDA's `5 3`, TEUT HALF-ELFIN's `5 4` |
-| | **two** insertions in Amiga `0x133`-`0x139` | | the druid array is in there and starts at `0x133`, `0x134` or `0x135` |
-| `0x137`-`0x13B` | `0x13A`-`0x13E` | **+3** | the magic-user array, which is `goldbox/spells.py`'s Curse table **exactly** for all seven casters and five zeros for the other eight -- and that table was read out of Curse's own `ECL65`, so it is the game's arithmetic rather than the rulebook's |
-| | one insertion in Amiga `0x13F`-`0x142` | | DOS's three-byte `gap_13c`, zero on both ports |
-| `0x13F`-`0x14C` | `0x143`-`0x150` | **+4** | `size` = 1 for the dwarves and the gnome and 2 for everybody else (15/15); the icon colours `145 162 179 196 230 247` at `0x149`; the item count at `0x150` |
+| `0x12D`-`0x131` | `0x12E`-`0x132` | **+1** | the cleric spell-slot array: KAROLYN's `4 3 1`, IILANDA's `5 3`, TEUT HALF-ELFIN's `5 4`. Amiga `0x133` is its **sixth** byte and has no DOS counterpart |
+| `0x132`-`0x136` | `0x134`-`0x138` | **+2** | the druid array, with Amiga `0x139` its sixth byte |
+| `0x137`-`0x13B` | `0x13A`-`0x13E` | **+3** | the magic-user array, which is `goldbox/spells.py`'s Curse table **exactly** for all seven casters and five zeros for the other eight -- and that table was read out of Curse's own `ECL65`, so it is the game's arithmetic rather than the rulebook's. Amiga `0x13F` is its sixth byte |
+| `0x13C`-`0x14C` | `0x140`-`0x150` | **+4** | DOS's three-byte `gap_13c` at `0x140`, whose first word the loader byte-swaps; `size` = 1 for the dwarves and the gnome and 2 for everybody else (15/15); the icon colours `145 162 179 196 230 247` at `0x149`; the item count at `0x150` |
 | | one insertion at Amiga `0x151` | | **located**: the count is at `0x150` and the `u32be` pointer array at `0x152`, non-zero in exactly the four played blocks |
 | `0x14D`-`0x1A5` | `0x152`-`0x1AA` | **+5** | encumbrance, `u16le` onto `u16be`, at `0x18C`; hit points at `0x1A9`; armour class at `0x19F`, stored `60 - AC` |
 | | Amiga `0x1AB` | | the trailing pad; 422 + 5 = 427 is odd and the struct is padded to 428 |
@@ -355,24 +355,21 @@ finding for the DOS side rather than for this one.
 reads 9, 1, 11, 15, 8, 8, 8, 8 across the twelve, every one at most 15 -- and
 it maps four bytes onto the Amiga's four with no shift at all.
 
-**The two spell-slot insertions do not matter to a reader, and this is why.**
-Twelve Amiga bytes at `0x12E`-`0x139` hold what DOS holds in ten, and nothing
-in the corpus says which two are spare -- `0x131`-`0x139` is zero in 15 of 15,
-because no Curse pregen is high enough for a fourth-level cleric slot and
-none is a ranger. But **a compiler does not pad inside an array**: each
-five-byte slot array is five consecutive bytes wherever it starts, so the
-cleric's are `0x12E`-`0x132` and the magic-user's `0x13A`-`0x13E` under every
-reading. What is genuinely unplaced is the **druid array**, which begins at
-`0x133`, `0x134` or `0x135`. `goldbox/amiga.py` refuses to read it rather than
-picking one. **What settles it: an Amiga Curse ranger of level 8 or above**,
-who gets his first druid spell there and puts a 1 in one of the three.
+**The three insertions in the spell-slot region are the arrays themselves:
+each is six bytes on the Amiga where DOS spends five.** This page used to say
+two bytes were spare and the druid array might begin at `0x133`, `0x134` or
+`0x135`, waiting on an Amiga Curse ranger of level 8. It waits on nothing:
+`/Curse` reads a slot count as `record[0x12E + 6 * class + level - 1]` at
+three places (`0x288`, `0x482`, `0x9F4`), so the **druid array is
+`0x134`-`0x139`** and each array's sixth byte is the Amiga's own. DOS's are
+five, from `FillChar(record + 0x12D, 15, 0)` in its `GAME.OVR`.
+[`166-amiga-records-from-the-code.md`](166-amiga-records-from-the-code.md).
 
-**What settles the other two windows is a save, not a probe.** Amiga
-`0x0F9`-`0x0FB` and `0x13F`-`0x142` are zero on both ports for the same
-reason: DOS calls both regions unknown and every specimen leaves them blank.
-A ramp probe under Amiga Curse cannot help -- the character sheet draws none
-of these bytes, and the Amiga offsets such a probe would report are already
-measured on 15 specimens.
+**The other two windows are placed too, and by the same routine.** Amiga
+`0x0FB` is the pad and `0x0F9`-`0x0FA` are `field_83_87`'s last two bytes at
+shift 0; Amiga `0x140`-`0x142` is DOS's `gap_13c`. A ramp probe was never
+going to help -- the character sheet draws none of these bytes -- and the
+loader answered all four in one reading.
 
 ### 1.6a The Amiga Silver Blades record, against its own DOS twin (#55)
 
@@ -430,16 +427,18 @@ property of the port: the Amiga Curse spellbook is 100 bytes of 0 and 1 at
 clean class-coherent sets -- KAROLYN the cleric holds 1-8, 22-28 and 37-44,
 ARIEL the magic-user holds 10, 11, 12, 15, 18, 21, 31 and 34.
 
-**The one thing Silver Blades leaves undecided is the item region.** No
-Silver Blades character on either port carries an item, so `0x0F9`-`0x137` is
-zero on both sides. The pad at `0x0FD` is inferred from the rule the other
-two titles obey -- the pointer array is even-aligned, which is why Curse has
-one at `0x151` and Pool of Radiance needs none -- and it is the only
-placement that lands `encumbrance` at `0x138`, which *is* measured, on
-MALACHITE's 4. **The Amiga item node's size for this title is UNKNOWN**: DOS
-Silver Blades' is 67 where the other three titles' is 63, so it cannot be
-assumed to be Curse's 66. **What settles both: one played Amiga Silver Blades
-save with something on somebody's back.**
+**The item region was the one thing Silver Blades left undecided, and the
+loader settled both halves of it.** No Silver Blades character on either port
+carries an item, so `0x0F9`-`0x137` is zero on both sides and the corpus could
+say nothing. `/Secret`'s record unpacker at `0x281A2` copies DOS `0x14E`+19 to
+Amiga `0x0EA` and DOS `0x161`+69 to Amiga `0x0FE`, which **measures the pad at
+`0x0FD`** rather than inferring it; and the title's item allocator asks for
+`0x46` = **70 bytes**, laid out as Curse's 66 plus a `u32be` at `0x042` for a
+scroll's extra spell nodes.
+[`166-amiga-records-from-the-code.md`](166-amiga-records-from-the-code.md).
+A played Amiga Silver Blades save with something on somebody's back is still
+worth having -- it would put values in the node -- but nothing is blocked on
+it.
 
 **A finding for the DOS side, not this one, and it is settled.** All six DOS
 Silver Blades records hold race 6, which `goldbox/dos_layout.py`'s
@@ -1228,27 +1227,27 @@ then **three (WALLDEF block, slot) `u16be` pairs**: the "`u16be` 1" is entry
 empty, which is what both titles' new-game initialisation writes. Nothing in
 the region is open.
 
-### 1.15 The item record's remaining bytes: the corpus is exhausted (#28, #55)
+### 1.15 The item record's remaining bytes: they were never fields (#28, #55)
 
-**Amiga Curse's `0x03B` = 52 and `0x03E` = 47 are still UNKNOWN, and no further
-file reading will change that.** A scan of the whole Amiga Curse saved game for
-the `7f 00` end-of-text marker finds **exactly the nine item nodes the four
-party members carry and no tenth** -- every other hit is inside the ECL buffer
-and decodes to nothing. All nine hold 52 and 47.
+**Amiga Curse's `0x03B` = 52 and `0x03E` = 47 are padding, and so is the `7F`
+at `0x028`.** The item constructor at `/Curse` `0x1C1EA` allocates the node,
+clears all 66 bytes and writes fifteen named fields into it, and none of the
+three is among them; `charges` is at `0x03F` and reads zero on all nine.
+[`166-amiga-records-from-the-code.md`](166-amiga-records-from-the-code.md).
 
-Two things are new and both are negative:
+The nine specimens hold the same three values because they came through the
+other path -- the `ITEM<n>` template loader at `0x1F2D6` unpacks each 63-byte
+template into a stack struct it never clears and copies all 66 bytes into the
+node, so one uninitialised stack frame is copied nine times.
 
-* **They are Curse's values, not the family's.** The same two offsets read
-  **zero in all seventeen** Amiga Pool of Radiance nodes, so they are not a
-  struct constant every Amiga item carries.
-* **Neither is a trait id that makes sense on a weapon or a suit of armour.**
-  In `goldbox/traits.py`'s shared namespace 47 is the dwarf and gnome armour-class
-  bonus against giants and 52 is *held or paralysed*.
-
-The settling experiment is unchanged and is the one #55 named: **an Amiga Curse
-item with a charge count** -- a wand, a ring, anything the game spends uses out
-of -- puts a number in `charges` and says which offset it is. The whole corpus
-is a weapon and a suit of armour apiece.
+This section used to say the corpus was exhausted and that only an Amiga Curse
+item with a charge count could settle it. Two things it recorded stand and
+were the clue: the values are **Curse's, not the family's** -- the same two
+offsets read zero in all seventeen Amiga Pool of Radiance nodes -- and
+**neither is a trait id that makes sense on a weapon or a suit of armour**,
+47 being the dwarf's armour-class bonus against giants and 52 *held or
+paralysed* in `goldbox/traits.py`'s namespace. Both are what a byte nobody
+writes looks like.
 
 **Amiga Pool of Radiance's own pad window, `0x035`-`0x037`, cannot be placed
 from files either**, and now for a measured reason rather than an unexamined
