@@ -1732,17 +1732,26 @@ def amiga_por_item_from_dos(item: bytes) -> bytes:
     nodes of 17, and the last came back NULL (`docs/124-amiga-port.md`
     §1.12a).
 
-    **The display text is PROBABLE and the grade is deliberate.** The line is
-    a render, not a source -- everything in it comes from `name1`, `name2`,
-    `name3`, `readied`, `quantity` and `value`, which this node carries -- and
-    five of the five genuine nodes with a tail show a second, longer render
-    underneath the first, so the composer runs more than once and on more than
-    one screen. But the engine did **not** compose it on load and did not
-    compose it on save: 17 nodes written NUL survived a load, a camp and a
-    save still NUL. So "it will be filled in when ITEMS draws" is an argument
-    from the bytes, and what would refute it is one screenshot of that screen
-    on a party this wrote. Until then this is the one part of the writer that
-    might have to change.
+    **The display text is CONFIRMED as a render the engine composes**, and
+    leaving it NUL is right. Watched in Amiga Pool of Radiance under WinUAE on
+    2026-09-05 (`docs/182-amiga-por-in-the-running-game.md`): a party whose 17
+    item nodes all held 42 NUL bytes drew `YES LONG SWORD`, `YES BANDED MAIL`
+    and `YES SHIELD` on its ITEMS screen, and a converted DOS character drew
+    `YES FLAIL` and `YES BANDED MAIL`. Nothing in a row comes from this
+    buffer: the name from `name1`, `name2` and `name3`, the ready column from
+    `readied`, the count from `quantity` and the price from `value`.
+
+    **And the engine writes the render back into the buffer, which is what
+    makes it a cache.** Two nodes written NUL, loaded, drawn on ITEMS and
+    saved came back holding `Flail \0lail \0` and `Banded Mail \0Mail \0` --
+    the current render, then the tail of a longer earlier one, exactly the
+    shape the game's own shipped nodes have. `' Yes  Flail '` is twelve
+    characters and `'Flail \0'` is seven, so what survives from index 7 is
+    `'lail '`; `' Yes  Banded Mail '` is eighteen against thirteen, leaving
+    `'Mail '`. It is composed at least twice, once with the ready column and
+    once without. Until ITEMS is opened the buffer stays NUL through a load, a
+    camp and a save, which is why the earlier measurement said the engine did
+    not compose it.
     """
     if len(item) != dos_layout.ITEM_SIZE:
         raise AmigaRecordError(

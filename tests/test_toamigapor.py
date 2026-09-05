@@ -1,0 +1,222 @@
+"""`tools/toamigapor.py`: a C64 or DOS party written into an Amiga save slot.
+
+This is the direction `#105 (Write an Amiga Pool of Radiance character, not
+just a Pools of Darkness one)` exists for, and on 2026-09-05 both halves of it
+were loaded in Amiga Pool of Radiance under WinUAE -- the six C64 characters of
+`WISH-SPEC-por-party-twin-pair` in slot B and the one DOS character of
+`WISH-SPEC-por-item-granted` in slot D, each drawn on the party panel, the
+character sheet and, where the character owned anything, the ITEMS screen.
+`docs/182-amiga-por-in-the-running-game.md` carries the screenshots and the
+byte-level comparisons.  What is here is what keeps that true afterwards.
+
+Everything reads the Amiga disk out of `gamedisks.toml`'s `amiga` entry and the
+parties out of `$WISH_SPECIMENS`, so nothing is committed and everything skips
+on a machine that has neither.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import pathlib
+
+import pytest
+
+from tests import gamedata
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
+
+# ---------------------------------------------------------------------------
+# Finding a disk to write onto
+# ---------------------------------------------------------------------------
+
+def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A writable copy of an Amiga Pool of Radiance disk 1, or a skip.
+
+    The images on this machine are inside `.zip`s, so `tools/amigasaves.py`'s
+    reader is what gets at them.  The disk is identified by a `savgamA.dat` of
+    Pool of Radiance's own length rather than by its file name, which differs
+    between the four rips here -- and rather than by the name alone, because
+    the Curse save disk carries a `save/savgamA.dat` too and it is 15221 bytes
+    where this title's is 13141.
+    """
+    from goldbox.amiga import POR_SAVEGAME_SIZE
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import amigasaves, gamedisks
+
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("no Amiga disks; set $AMIGA_DISKS")
+    for _name, data in amigasaves.images():
+        try:
+            disk = AmigaDisk(bytearray(data))
+            savegame = disk.read_file("save/savgamA.dat")
+        except Exception:
+            continue
+        if len(savegame) != POR_SAVEGAME_SIZE:
+            continue
+        where = tmp_path / "por1.adf"
+        where.write_bytes(bytes(data))
+        return where
+    pytest.skip("no Amiga Pool of Radiance disk 1; set $AMIGA_DISKS")
+
+
+def _c64_specimen(name: str) -> pathlib.Path:
+    """A C64 specimen disk, which is one file rather than a directory."""
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    found = sorted((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
+    if not found:
+        pytest.skip(f"needs the C64 specimen WISH-SPEC-{name}")
+    return found[0]
+
+
+def _read_slot(image: pathlib.Path, letter: str) -> list:
+    """Every character of one slot on a disk, back through the reader."""
+    import tempfile
+
+    from goldbox import amiga
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+
+    disk = AmigaDisk.open(image)
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for index in range(1, amiga.POR_PARTY_MAX + 1):
+            stem = f"/{amiga.POR_SAVE_DRAWER}/" \
+                   f"{amiga.por_filename(letter, index, '')}"
+            try:
+                record = disk.read_file(stem + ".sav")
+            except AmigaDiskError:
+                break
+            here = pathlib.Path(tmp) / f"{letter}{index}.sav"
+            here.write_bytes(record)
+            for suffix in (".itm", ".spc"):
+                try:
+                    here.with_suffix(suffix).write_bytes(
+                        disk.read_file(stem + suffix))
+                except AmigaDiskError:
+                    pass
+            out.append(amiga.to_neutral(amiga.read_amiga_por(here)))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The two directions, each against the party the emulator actually loaded
+# ---------------------------------------------------------------------------
+
+def test_a_c64_party_reaches_an_amiga_slot_with_its_names_and_hit_points(
+        tmp_path):
+    """Six of six, and the six the Amiga's party panel drew on 2026-09-05.
+
+    The hit points are the assertion that matters: they are the C64 record's
+    own and nothing derives them, so a wrong offset anywhere in the
+    transposition moves one.
+    """
+    from tools import toamigapor
+
+    party = _c64_specimen("por-party-twin-pair")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "por1-B.adf"
+    toamigapor.main([str(disk), "--to", "B", "--out", str(out),
+                     "--c64", str(party)])
+
+    drawn = [(str(c.get("name")), c.get("hp_current"))
+             for c in _read_slot(out, "B")]
+    assert drawn == [("MALCYON", 4), ("TWIN", 4), ("ROLAND", 7),
+                     ("LADY KATHERINE", 5), ("MAGNUS", 9), ("BRUTUS", 11)]
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-item-granted"),
+                    reason="needs WISH-SPEC-por-item-granted")
+def test_a_dos_character_reaches_an_amiga_slot_with_his_two_items(tmp_path):
+    """THRENDER GRONE's flail and banded mail, which the Amiga ITEMS screen
+    drew as `YES FLAIL` and `YES BANDED MAIL`."""
+    from tools import toamigapor
+
+    where = gamedata.specimen("por-item-granted")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "por1-D.adf"
+    toamigapor.main([str(disk), "--to", "D", "--out", str(out),
+                     "--dos", str(where), "--dos-slot", "D"])
+
+    party = _read_slot(out, "D")
+    assert len(party) == 1
+    assert str(party[0].get("name")) == "THRENDER GRONE"
+    assert len(party[0].get("inventory") or []) == 2
+
+
+def test_the_slot_letter_lands_in_its_own_byte_of_the_picker_list(tmp_path):
+    """`save/save` is an array indexed by the slot letter (#109), so a party
+    written into `D` puts `D` at byte 3 and leaves bytes 1 and 2 alone."""
+    from goldbox import amiga
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import toamigapor
+
+    party = _c64_specimen("por-party-twin-pair")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "por1-D.adf"
+    toamigapor.main([str(disk), "--to", "D", "--out", str(out),
+                     "--c64", str(party)])
+    listed = AmigaDisk.open(out).read_file(amiga.POR_SLOT_LIST)
+    assert listed == b"A  D      "
+
+
+def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
+    """LADY KATHERINE keeps her space, and this test is here because the
+    engine does not.
+
+    Loaded in Amiga Pool of Radiance the panel reads `LADY KATHERINE`; camp,
+    save, and the engine writes the record back as `LADYKATHERINE`, which the
+    panel then draws -- `#308 (Does Amiga Pool of Radiance drop the space out of
+    a character's name when it saves?)`.  The tempting
+    repair is to strip the space on our side so the two agree.  That would
+    lose it immediately instead of on the first save, and this fails if
+    anybody does it.
+    """
+    from tools import toamigapor
+
+    party = _c64_specimen("por-party-twin-pair")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "por1-B.adf"
+    toamigapor.main([str(disk), "--to", "B", "--out", str(out),
+                     "--c64", str(party)])
+
+    from goldbox.amiga_adf import AmigaDisk
+    record = AmigaDisk.open(out).read_file("/save/CHRDATB4.sav")
+    assert bytes(record[:16]) == b"LADY KATHERINE\x00\x00"
+
+
+def test_the_input_disk_is_not_written(tmp_path):
+    """`--out` is required and the image named on the command line is read
+    only, because the next caller's will be the player's own."""
+    from tools import toamigapor
+
+    party = _c64_specimen("por-party-twin-pair")
+    disk = _por_disk_1(tmp_path)
+    before = hashlib.sha256(disk.read_bytes()).hexdigest()
+    toamigapor.main([str(disk), "--to", "B", "--out", str(tmp_path / "o.adf"),
+                     "--c64", str(party)])
+    assert hashlib.sha256(disk.read_bytes()).hexdigest() == before
+
+
+# ---------------------------------------------------------------------------
+# Refusals, which need no game data at all
+# ---------------------------------------------------------------------------
+
+def test_two_sources_at_once_are_refused(tmp_path):
+    from tools import toamigapor
+
+    with pytest.raises(SystemExit) as caught:
+        toamigapor.main([str(tmp_path / "x.adf"), "--to", "B",
+                         "--out", str(tmp_path / "o.adf"),
+                         "--c64", "a.d64", "--dos", "b"])
+    assert "exactly one" in str(caught.value)
+
+
+def test_no_source_at_all_is_refused(tmp_path):
+    from tools import toamigapor
+
+    with pytest.raises(SystemExit) as caught:
+        toamigapor.main([str(tmp_path / "x.adf"), "--to", "B",
+                         "--out", str(tmp_path / "o.adf")])
+    assert "exactly one" in str(caught.value)
