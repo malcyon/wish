@@ -452,7 +452,7 @@ _DECLARED: Sequence[Field] = (
            "cancelled. **Nothing anywhere reads bit 0 back**, so the forum "
            "rumour that altering a score carries a penalty in play has no code "
            "behind it on this port"),
-    _field(0x0B9, 1, _U8, "dual_class_slot", "Dual class: old class slot", _MAYBE,
+    _field(0x0B9, 1, _U8, "dual_class_slot", "Dual class: old class slot", _OK,
            "the slot in the per-class level array at 0x0C9 that a dual-classed "
            "human left behind, with the level it was left at in 0x0BA. Curse "
            "of the Azure Bonds' GEN writes the pair, and the gate at $2387 is "
@@ -473,8 +473,26 @@ _DECLARED: Sequence[Field] = (
            "same. That -- not a marker -- is why every Pool of Radiance "
            "specimen reads zero here; see region_0e3 and #224 (0x0B9 and "
            "0x0BA are documented both as an NPC marker and as the "
-           "dual-class slot). **PROBABLE rather than CONFIRMED, and the difference is one specimen**: the routines are read byte for byte and cross-checked across three titles, but no save this project can reach holds a non-zero value here -- not the shipped Curse party, whose six characters are all zero. Driving Curse's training hall to dual-class a human fighter of level 2 or better is what lifts it"),
-    _field(0x0BA, 1, _U8, "dual_class_level", "Dual class: old level", _MAYBE,
+           "dual-class slot). "
+           "**CONFIRMED, no longer PROBABLE**: `WISH-SPEC-curse-dual-classed` "
+           "holds PHILIPPE, a magic-user 6 who chose FIGHTER off Curse's own "
+           "training-hall menu (#234 (A dual-classed Curse or Silver Blades "
+           "character converted to DOS loses the class he trained out of), "
+           "#291 (A Curse save disk will not load through the game's own "
+           "front end in a pooled session, so no C64 Curse party can be got "
+           "in)), watched being written. His record reads slot 0 "
+           "(magic-user) and level 6 -- exactly the meaning above -- with "
+           "level_magic_user zeroed to 0 and class_bits holding fighter's "
+           "bit alone, both matching the DOS specimens on #234 (A "
+           "dual-classed Curse or Silver Blades character converted to DOS "
+           "loses the class he trained out of) at the same moment of "
+           "change. **Still open**: what $20A3 does once the new class "
+           "passes the old level -- PHILIPPE's fighter is level 1, one "
+           "short of it -- so the old class's slot being frozen at zero "
+           "rather than restored is CONFIRMED and the *regaining* half "
+           "stays PROBABLE (#256 (The neutral record has nowhere to put a "
+           "dual-classed character's former levels), M2)"),
+    _field(0x0BA, 1, _U8, "dual_class_level", "Dual class: old level", _OK,
            "the level the dual-classed character left its old class at, and "
            "the sentinel for the pair: GEN $18EB reads LDY #$FF / LDA 0x0BA / "
            "BEQ / LDY 0x0B9, so **zero here means 'not dual-classed'** and "
@@ -482,7 +500,8 @@ _DECLARED: Sequence[Field] = (
            "is what stops slot 0, the magic-user, being ambiguous. Written by "
            "Curse's GEN $23D2 with the whole of the gate dual_class_slot "
            "describes; zero in every Pool of Radiance specimen because that "
-           "title never touches it. PROBABLE for the reason dual_class_slot gives"),
+           "title never touches it. CONFIRMED for the reason dual_class_slot "
+           "gives: PHILIPPE holds 6 here, the level he left magic-user at"),
     _field(0x0E1, 1, _U8, "armour_class_base", "AC base (60 - AC)", _MAYBE,
            "base armour class, stored as 60 - AC, the same encoding used for "
            "THAC0 at 0x071 and for the current AC in the SAVEDGAME1 roster. It "

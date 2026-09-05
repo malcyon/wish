@@ -392,6 +392,13 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     READY filled are the same byte to the engine's own compare -- no
     provenance byte, so the reader cannot tell one from `innate_effects`
     (`docs/171-c64-trait-slots.md`).
+
+    And `former_levels` is a field in the two titles whose `RecordShape` has
+    `dual_class` -- Pool of Radiance never touches `0x0B9`/`0x0BA` (#224).
+    `_filled` sets no former class, so this round trip stays at Curse and
+    Silver Blades' own "empty" convention, `{}`, and Pool of Radiance's
+    reader leaves the name off entirely rather than guess at a slot number
+    the title's own GEN never wrote (#256, #234).
     """
     char = _filled(game=game)
     rec, _ = c64_codec.write(char)
@@ -402,6 +409,8 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
         taken.discard("abilities_second")
     if not c64_codec.record_shape(game).identity_pair:
         taken.discard("unnamed_0ab")
+    if not c64_codec.record_shape(game).dual_class:
+        taken.discard("former_levels")
     taken.discard("granted_effects")
     assert taken - set(back.keys()) == set()
 

@@ -514,6 +514,26 @@ def _layout():
     return _l.LAYOUT
 
 
+#: The class name for each slot of the per-class level array, the inverse of
+#: the writer's own slot arithmetic (`_field(field).offset -
+#: _field("level_magic_user").offset`), so a dual-classed human's old class
+#: reads back by the same permutation `write` uses to set it.
+#:
+#: **Excludes `knight`.** `LEVEL_FIELDS` names slot 4 `level_knight` because
+#: that is what the Death Knights of Krynn editor calls it, but
+#: `goldbox/layout.py`'s own note on that field says the Realms titles this
+#: reader sees -- Curse, Silver Blades -- use the same slot for druid, and
+#: neither title's training hall ever offers a human DRUID or MONK (#234's own
+#: screenshots offer only FIGHTER/MAGIC-USER or CLERIC/THIEF). So a
+#: dual-classed human can never leave slot 4 or slot 5 (unused in both
+#: numberings), and a record that names one is one this project does not
+#: understand rather than a class to guess at.
+_DUAL_CLASS_SLOT_NAMES: dict[int, str] = {
+    _field(field).offset - _field("level_magic_user").offset: name
+    for name, field in LEVEL_FIELDS.items() if name != "knight"
+}
+
+
 def write(char: NeutralCharacter, icon: bytes | None = None,
           ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a neutral one.
@@ -671,6 +691,25 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                 emit(former, "dual_class_slot", 0x0B9, 2,
                      f", as slot {slot} ({name_}) of the C64's level array "
                      f"and the level {level} it was left at")
+                # -- has the old class come back yet? ---------------------------
+                # DOS derives this at read time rather than storing it
+                # (`0x3C031`: the new class's level past the level he left the
+                # old one at); the C64 stores the answer instead, in the old
+                # class's own level slot, once GEN $20A3 sees the new class
+                # overtake it -- which also ORs the old bit back into
+                # class_bits, already copied above. PROBABLE: no C64 save this
+                # project holds has ever passed that point (#256, M2) -- the
+                # one specimen that has the pair at all, PHILIPPE in
+                # WISH-SPEC-curse-dual-classed, is one level short of it.
+                current_level = w.get("level") or 0
+                regained = current_level > level
+                rec.set(field, level if regained else 0)
+                rep.note(_field(field).offset, 1,
+                         f"{field}: {level if regained else 0} -- "
+                         f"{'regained' if regained else 'not yet regained'}, "
+                         f"since the new class's level ({current_level}) "
+                         f"{'has' if regained else 'has not'} passed the "
+                         f"{level} {name_} was left at (GEN $20A3, PROBABLE)")
 
     # -- size ----------------------------------------------------------------
     size = use("size_small")
@@ -964,7 +1003,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                          "Pool of Radiance, which does not"),
     ("former_levels", "the one class with a level becomes the C64's "
                       "dual_class_slot and dual_class_level; two would be "
-                      "reported"),
+                      "reported. Whether the old class has been regained is "
+                      "not itself a neutral field -- it is computed here, "
+                      "against neutral level, and written into the old "
+                      "class's own level slot (PROBABLE, GEN $20A3, #256 M2)"),
     ("size_small", "copied to the C64's size byte"),
     ("turn_power", "**computed, not copied**: the C64's caster turning byte "
                    "at 0x0A4 is what this title's own GEN writes from the "
@@ -1067,19 +1109,6 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "the caster's"),
     ("strength_index", "derived from strength and the percentile; a writer "
                        "that wants it recomputes it"),
-    ("dual_class_slot", "the class a dual-classed human left, and "
-                        "dual_class_level the level it was left at. Zero in "
-                        "every Pool of Radiance specimen because that title's "
-                        "code never references either byte -- the pair is "
-                        "Curse, Silver Blades and Gateway's (#224). **This is "
-                        "a defect, not an exemption**: no DOS field has been "
-                        "attributed to it, so a dual-classed Curse character "
-                        "converted to DOS would lose its old class. What "
-                        "settles it is one DOS Curse save of a dual-classed "
-                        "human, diffed against the same character before the "
-                        "change, which names the DOS byte"),
-    ("dual_class_level", "see dual_class_slot: the two are one field with a "
-                         "sentinel, and neither has a DOS home yet"),
     ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
                    "colours, a C64 character set no other port can draw"),
     ("missile_attack_adjustment",
@@ -1130,7 +1159,14 @@ READ_TARGETS: dict[str, str] = (
        "identity_pair": "the first byte read as neutral unnamed_0ab, in "
                         "Pool of Radiance only; Curse of the Azure Bonds "
                         "and Secret of the Silver Blades never draw it "
-                        "(#258)"}
+                        "(#258)",
+       "dual_class_slot": "with dual_class_level, read as neutral "
+                          "former_levels -- named by the class the slot "
+                          "belongs to -- in a title whose shape has "
+                          "dual_class and only when dual_class_level is "
+                          "non-zero; a slot naming no class is warned about "
+                          "rather than guessed at",
+       "dual_class_level": "see dual_class_slot: the two are one field"}
     | {f: "read into neutral levels, named by the class bit"
        for f in _LEVEL_ORDER}
     | {name: f"dropped: {why}" for name, why in READ_DROPPED}
@@ -1307,11 +1343,35 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("abilities_second",
                 dict(zip(neutral.ABILITIES, rec.get_raw("abilities_second"))),
                 "the second ability array @0x065", grade("abilities_second"))
-    if rec.is_stored("dual_class_slot") and rec.get("dual_class_slot") != 0xFF:
-        out.set("former_levels", {rec.get("dual_class_slot"):
-                                  rec.get("dual_class_level")},
+    # `{}` for an ordinary character in a title that keeps the pair at all --
+    # `goldbox/neutral.py`'s own convention for `former_levels` -- and absent
+    # only where the title has no such bytes (`shape.dual_class` False:
+    # Pool of Radiance, which never touches either byte and holds `$FF` in
+    # some NPC records). Gated past that on `dual_class_level`, the engine's
+    # own sentinel (`GEN $18EB`: zero there means "not dual-classed" whatever
+    # `dual_class_slot` holds -- `goldbox/layout.py`'s note on the field), and
+    # keyed by class name through the same permutation `write` uses, not by
+    # the raw slot number, or a C64-to-C64 round trip cannot find its own
+    # class back (#256, #234).
+    if shape.dual_class and rec.is_stored("dual_class_level"):
+        level = rec.get("dual_class_level")
+        held: dict[str, int] = {}
+        if level:
+            slot = rec.get("dual_class_slot")
+            name_ = _DUAL_CLASS_SLOT_NAMES.get(slot)
+            if name_ is None:
+                out.warnings.append(
+                    f"C64 dual_class_slot is {slot} with dual_class_level "
+                    f"{level}: the per-class level array has no "
+                    f"dual-classable name for that slot, so the class the "
+                    f"character trained out of cannot be read")
+            else:
+                held = {name_: level}
+        out.set("former_levels", held,
                 "the class the character trained out of, from the C64's "
-                "dual-class pair", grade("dual_class_slot"))
+                "dual-class pair" if held
+                else "the C64's dual-class pair, both zero",
+                grade("dual_class_slot"), Provenance.RESHAPED)
 
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))
