@@ -2424,7 +2424,7 @@ writes 3, in `SAVGAM_MEASURED`, with the run beside it. **What the word means
 is still unknown; what it does is measured.**
 
 **`$49FF` bit 7 gates the C64 sheet portrait the same way it gates the DOS
-one, CONFIRMED.** `LIBRARY $2C5C` is `LDA $49EB / BNE done` then `LDA $49FF`,
+one, CONFIRMED.** `LIBRARY $48A4` is `LDA $49EB / BNE done` then `LDA $49FF`,
 branching on bit 7: clear and the art is never fetched, set and it is. The
 same address is nonzero in all 114 filled slots of the nineteen C64 save
 disks on this machine — 1, or `$81` in two — which is what `INIT $1156`
@@ -2436,7 +2436,7 @@ patched to `$81` was watched fetching each character's own head and body
 under DOSBox-X.
 
 **The game draws no sheet portrait in the Slums at all on either port, and
-the C64 half of the cause is now named.** `LIBRARY $2C5C` checks `$49EB`
+the C64 half of the cause is now named.** `LIBRARY $48A4` checks `$49EB`
 before it ever looks at `$49FF`: PORSAVE13, standing in the Slums, holds
 `$49EB = $01`, and poking it to `$00` in RAM (not in the file — the arriving
 area's script rewrites it on load) made the portrait routine run and the

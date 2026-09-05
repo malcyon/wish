@@ -1361,7 +1361,7 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
 
 # --- the sheet portrait, and the trap in its switch (#57) -------------------
 #
-# `$49FF` bit 7 is what makes `LIBRARY $2C5C` fetch `HEAD<xx>`/`BODY<xx>` at
+# `$49FF` bit 7 is what makes `LIBRARY $48A4` fetch `HEAD<xx>`/`BODY<xx>` at
 # all.  Turning it on over a party some of whom carry no id sends the loader
 # after `HEAD00` -- a real portrait -- and `BODY00`, which is on none of the
 # eight sides, and the sheet sticks with no way off it.  So the two tests
