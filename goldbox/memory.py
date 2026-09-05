@@ -91,7 +91,9 @@ MAP: tuple[Region, ...] = (
                 "two reads 6. No byte of $4900-$4CFF equals the party size in "
                 "any of 190 saves -- the C64 does not store one, and the "
                 "engine's own DROP CHARACTER instead zeroes the first byte "
-                "of the dropped character's name (#104)"),
+                "of the dropped character's name (#104 (A converted DOS "
+                "party arrives with the template save's spare characters "
+                "still in it))"),
     Region(0x49FD, 2, "wall colour by roofed bit", MAYBE, saved_in="SAVEDGAME0",
            note="a two-entry table indexed by the roofed bit of the square you "
                 "stand on; every ECL writes both"),
@@ -161,9 +163,12 @@ MAP: tuple[Region, ...] = (
                 "but $8400-$8753 is the file ANIMATE00 and loaded-files cache "
                 "slot 11 tells the engine it is already in memory, so nothing "
                 "reloads it and a save that carries the wrong bytes here is "
-                "carrying wrong code (#122). $8754-$8AFF is the bitmap buffer "
+                "carrying wrong code (#122 (A converted save says ANIMATE00 "
+                "is resident and carries whatever the template had "
+                "there)). $8754-$8AFF is the bitmap buffer "
                 "and is scratch: 940 zeros there loaded, walked, fought and "
-                "changed area (#118)"),
+                "changed area (#118 (Write a C64 save from nothing, so "
+                "importing a DOS save needs no existing .d64))"),
 
     # --- live only --------------------------------------------------------
     Region(0x03DE, 3, "SETNAM arguments", OK,
