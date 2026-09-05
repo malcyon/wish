@@ -21,11 +21,14 @@ Archives*; with no archives and no game disks every test here skips.
 """
 from __future__ import annotations
 
+import gamedata
 import pytest
+from conftest import load_tools_module
 from test_dossave import _save_dir, needs_dos_saves
 
 from goldbox import c64_codec, dos, items, savegame
 from goldbox import dos_savegame as sg
+from goldbox import portraits as portraits_mod
 from goldbox.d64 import D64
 
 #: `60 - value` is the family's encoding for armour class and THAC0 alike --
@@ -258,6 +261,50 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
                 assert any(drawn), f"{slot} slot {place} draws as black hooks"
             else:
                 assert drawn == bytes(len(icon)), (slot, place)
+
+
+@needs_dos_saves
+def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
+    """`tools/dosdisk.py`'s `build()` reads the creation menu (#57) off the
+    same disks directory it already reads the icon and `ANIMATE00` from, and
+    passes it on to `dos.new_save` -- so a party wholly inside the menu
+    arrives on the disk with the sheet portrait switched on rather than with
+    every face silently dropped.
+
+    This is the wiring, not the conversion: `tests/test_dosconvert.py`
+    already proves `new_save(..., portraits=tables)` sets the switch. What
+    was missing is `build()` ever calling `tables_from_disks` at all --
+    before this it always passed `portraits=None`, so `$49FF` came out
+    `dos.PORTRAIT_OFF` for every party, however complete its faces were.
+    """
+    dosdisk = load_tools_module("dosdisk")
+
+    where = gamedata.disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    try:
+        tables = portraits_mod.tables_from_disks(where)
+    except portraits_mod.PortraitError:
+        pytest.skip("no side here carries the creation menu")
+
+    save_dir = _save_dir()
+    slot = None
+    for candidate in dos.slots_available(save_dir):
+        party = dos.read_party(save_dir, candidate)
+        neutral = [dos.to_neutral(c, portraits=tables) for c in party]
+        if all("portrait_head" in n and "portrait_body" in n
+               for n in neutral):
+            slot = candidate
+            break
+    if slot is None:
+        pytest.skip("no DOS slot here has every character in the menu")
+
+    out = tmp_path / f"NEW{slot}.D64"
+    dosdisk.build(save_dir, slot, where, out)
+    _game, sg0, _sg1 = savegame.load_save(D64.open(out))
+    payload = sg0.to_bytes()
+    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
+    assert payload[at] == dos.PORTRAIT_ON
 
 
 @needs_dos_saves

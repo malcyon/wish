@@ -52,6 +52,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import dos  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
+from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -98,9 +99,23 @@ def game_files(disks: pathlib.Path) -> tuple[bytes, bytes]:
 
 def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
           out: pathlib.Path) -> dos.C64SaveReport:
-    """Write `out` and return the report.  Nothing else is touched."""
+    """Write `out` and return the report.  Nothing else is touched.
+
+    The creation menu's two tables (#57) come off the same `disks` directory
+    the icon and `ANIMATE00` already do, read through `tables_from_disks`.
+    Unlike those two, a conversion does not refuse without them: a directory
+    that answers with no `POOL[0-9].D64` or no `GEN` on any side leaves
+    `portraits` `None`, and `dos.new_save` carries the party's own records
+    with the sheet portrait switched off, the same as an engine-written save
+    with it turned off.
+    """
     icon, animate = game_files(disks)
-    save0, save1, report = dos.new_save(folder, slot, icon, animate)
+    try:
+        portraits = tables_from_disks(disks)
+    except PortraitError:
+        portraits = None
+    save0, save1, report = dos.new_save(folder, slot, icon, animate,
+                                        portraits=portraits)
     disk: D64 = dos.save_disk(bytes(save0), bytes(save1))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(disk.data)

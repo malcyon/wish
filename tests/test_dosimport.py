@@ -378,6 +378,68 @@ def test_the_game_files_an_import_needs_are_the_icon_and_animate(app, tmp_path):
     window.close()
 
 
+@needs_disks
+def test_the_game_files_an_import_needs_include_the_creation_menu(app, tmp_path):
+    """`game_files_for_import` also reads the creation menu (#57) off the
+    same disks directory, through `goldbox.portraits.tables_from_disks` --
+    the wiring `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
+    import working for all three C64 titles)` is waiting on.
+
+    Before this wiring `GameFiles` carried no `portraits` field at all, so
+    this raised `AttributeError` rather than finding one.
+    """
+    from editor.window import EditorBinding
+    from goldbox.portraits import PortraitTables
+
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
+                          disks=str(game_disk().parent))
+    found = window.game_files_for_import()
+    assert found is not None
+    assert isinstance(found.portraits, PortraitTables)
+    window.close()
+
+
+@needs_dos_saves
+@needs_disks
+def test_an_import_started_from_the_window_carries_its_own_faces(app, tmp_path):
+    """The whole chain, window to converted disk: `game_files_for_import`
+    finds the creation menu, `rehearse` passes it on to `dos.new_save`, and a
+    party wholly inside the fourteen-and-twelve menu comes back with the
+    sheet portrait switched on.
+
+    Reusing a `GameFiles` built by hand -- as the `files` fixture above does
+    -- would say nothing about this: it never carries `portraits`, so it
+    cannot tell a wired `rehearse` from one that still defaults to `None`.
+    This is deliberately the one test in the module that goes through
+    `EditorBinding.game_files_for_import` instead.
+    """
+    from editor.dosimport import rehearse
+    from editor.window import EditorBinding
+
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
+                          disks=str(game_disk().parent))
+    game_files = window.game_files_for_import()
+    assert game_files is not None and game_files.portraits is not None
+
+    where = _save_dir()
+    slot = None
+    for candidate in dos.slots_available(where):
+        party = dos.read_party(where, candidate)
+        neutral = [dos.to_neutral(c, portraits=game_files.portraits)
+                  for c in party]
+        if all("portrait_head" in n and "portrait_body" in n
+               for n in neutral):
+            slot = candidate
+            break
+    if slot is None:
+        pytest.skip("no DOS slot here has every character in the menu")
+
+    conversion = rehearse(where, slot, game_files)
+    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
+    assert conversion.save0.to_bytes()[at] == dos.PORTRAIT_ON
+    window.close()
+
+
 # --- what reaches the editor -------------------------------------------------
 
 @needs_dos_saves
@@ -489,7 +551,7 @@ def test_an_empty_destination_is_not_convertible(app, dos_save, files,
 @needs_dos_saves
 @needs_disks
 def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
-                                                 files, monkeypatch):
+                                                 monkeypatch):
     """The whole of Donald's ruling in one test: *"when the user clicks the
     Convert button, it does what the user expects. it converts."*
 
@@ -498,6 +560,12 @@ def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
     built, so the editor's save machinery carrying the write changes nothing
     about it. Afterwards the window has that file: a path, an `opened` signal,
     a title bar with the name in it and no unsaved mark.
+
+    The comparison rehearsal uses `game_files_for_import` rather than the
+    module-level `files` fixture: since the wiring in `#57 (Carry the
+    character portrait across ports)` a `GameFiles` also carries the
+    creation menu, and the fixture's hand-built one does not, so the two
+    would legitimately disagree on the sheet portrait bytes.
     """
     from PyQt6.QtWidgets import QDialog
 
@@ -514,11 +582,13 @@ def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
     window.opened.connect(opened.append)
 
     slot = dos.slots_available(dos_save)[0]
+    game_files = window.game_files_for_import()
     note = window.import_dos_save(folder=str(dos_save))
     out = tmp_path / f"PORSAVE{slot}.D64"
 
     assert out.exists(), f"Convert wrote nothing; it said {note!r}"
-    assert out.read_bytes() == rehearse(dos_save, slot, files).disk.to_bytes()
+    assert out.read_bytes() == \
+        rehearse(dos_save, slot, game_files).disk.to_bytes()
     assert window.path == out
     assert not window.dirty
     assert opened == [str(out)]

@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
 )
 
 from goldbox import dos, games
+from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
 
 from .ui_dosimport import Ui_DosImportDialog
@@ -179,6 +180,12 @@ class GameFiles:
     icon: bytes
     #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
     animate: bytes
+    #: The creation menu's two tables (#57), or `None` when no disk here
+    #: carries `GEN`. Unlike `icon` and `animate` a conversion does not
+    #: refuse without it -- a party converted with `portraits` `None` keeps
+    #: its own records but arrives with the sheet portrait switched off, the
+    #: same as an engine-written save with it turned off.
+    portraits: PortraitTables | None = None
 
 
 @dataclasses.dataclass
@@ -207,7 +214,8 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     the dialog turns into a sentence.
     """
     payload0, payload1, report = dos.new_save(folder, slot,
-                                              files.icon, files.animate)
+                                              files.icon, files.animate,
+                                              portraits=files.portraits)
     game = games.POOL_OF_RADIANCE
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game)

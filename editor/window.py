@@ -849,9 +849,19 @@ class EditorBinding(QObject):
     # -- importing --------------------------------------------------------
 
     def game_files_for_import(self):
-        """The icon and `ANIMATE00` a conversion needs, or None (#118)."""
+        """The icon, `ANIMATE00` and the creation menu a conversion needs, or
+        None for the first two (#118).
+
+        The creation menu's two tables (#57) come off the same disks
+        directory, through `goldbox.portraits.tables_from_disks`. Unlike the
+        icon and `ANIMATE00`, a conversion does not refuse without them: a
+        directory with no side carrying `GEN` leaves `portraits` `None`, and
+        the party converts with its own faces switched off rather than not
+        converting at all.
+        """
         from goldbox import dos
         from goldbox.d64 import load_payload
+        from goldbox.portraits import PortraitError, tables_from_disks
 
         from .dosimport import GameFiles
 
@@ -862,9 +872,16 @@ class EditorBinding(QObject):
         animate_disk = self._find_disk(read_animate)
         if icon_disk is None or animate_disk is None:
             return None
+        portraits = None
+        if self.disks:
+            try:
+                portraits = tables_from_disks(self.disks)
+            except (PortraitError, OSError) as exc:
+                _log.debug("no creation menu off %s: %s", self.disks, exc)
         try:
             return GameFiles(icon=IconParts.load(icon_disk).default_icon(),
-                             animate=read_animate(animate_disk))
+                             animate=read_animate(animate_disk),
+                             portraits=portraits)
         except Exception:
             _log.exception("could not read the import's game files off "
                            "%s and %s", icon_disk, animate_disk)
