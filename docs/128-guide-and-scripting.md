@@ -424,6 +424,68 @@ item `+14` namespace at once, and the split we observed (spell effects below 64,
 monster traits from 64) is visible in the guide's own ordering. Our range runs
 to 139 and the guide's stops at 127; the tail needs checking.
 
+### What the C64 does with an id in that namespace
+
+`#252 (Does a C64 trait slot apply an item-granted effect id, or only the ones
+its own READY routine wrote?)` asked whether an id put in a trait slot applies.
+It does. One namespace, **two backing stores**, and one predicate over both. The C64
+engine answers "has this character got effect N?" from the 64-entry active
+effect array in the save header **and then** from the ten trait slots at record
+`0x0AD`; the trait half is three instructions long and tests the value and
+nothing else, so there is no way for the engine to tell an id its own READY
+routine wrote from one anything else wrote.
+
+Pool of Radiance, `LIBRARY` at `$2C48`:
+
+```
+$4027  JSR $3FE4      the 64-entry array
+$402A  BCC $402D
+$402C  RTS            found there
+$402D  LDX #$09       otherwise the ten trait slots
+$402F  LDA $6BAD,X
+$4032  CMP $6E6E
+$4035  BEQ $403C      found here
+```
+
+`$3FE4` alone -- `$3FE1` is a `LDX $6DB4` wrapper for the current character --
+is the array-only predicate, and **a caller that goes there never sees a trait
+slot.** So whether an id in a trait slot does anything is a question about the
+*call site*, not about the slot. `tools/traitquery.py` is the census, and finds
+the predicate in any of the three measured titles without being told where the
+overlay runs:
+
+| title | array only | array then traits | call sites honouring a trait slot |
+|---|---|---|---|
+| Pool of Radiance | `$3FE4` | `$4027` | 11 |
+| Curse of the Azure Bonds | `$409F` | `$40E2` | 21 |
+| Secret of the Silver Blades | `$3854` | `$387D` | 24 |
+
+**The trait block has exactly one reader that consults its contents**, and it
+is that scan: a census of all 564 Pool of Radiance files finds 17 absolute
+references to `$6BAD`, and every other one is the racial seed (`GEN $0BF3`),
+the grant (`SPELLE04 $ADD4`, `ECL64 $9AD3`), the revoke (`SPELLE04 $AE13`,
+`ECL64 $9AFA`) or a clear by the index the predicate just returned. **Nothing
+computes armour class, THAC0 or a saving throw from it, and the character
+sheet does not draw it.**
+
+CONFIRMED in the running game as well as in the code: two boots of the same
+save three steps into the Slums, differing by one effect id written into trait
+slot 9 of one character, hit `$4027` 198 times each and reached `$403C` -- the
+`SEC` only a trait match falls through to -- **0 times in the control and 1
+time with the id staged** (`tools/traitdrive.py`).
+
+**Item power codes are a separate little namespace, `$80`-`$8B`, in item byte
+`+15`**, and `ECL65`'s 24-entry table at `$9AD5` dispatches them to handlers in
+`SPELLE04`. Ten of the twelve go to `$ADD4`, which copies item byte `+14` into
+the first free trait slot scanning **slot 9 downwards**, and falls back to the
+active-effect array when all ten are full -- that last is the engine's own
+answer to `#236 (A character converted to the C64 with more than ten innate effects loses the extra ones with no report)`. `$83` and `$84` do not: `$83`, which is GAUNTLETS OF OGRE
+POWER, goes to `$AE2D`, which writes the strength effect into the **array**
+instead and takes it off through `$3FE1`. So the spot check above --
+*"the gauntlets carry 38"* -- is right about the byte and wrong about where the
+engine puts it; the cloak's 89 and the sword's 3 are the trait-slot cases.
+
+
 ---
 
 ## Spells: our grouping confirmed, our tail is different
