@@ -15,10 +15,19 @@ colours the same record converts to.  Nothing here converts a save; when the
 tables are approved they move into `goldbox/`, and until then they are a
 picture on the issue.
 
+    tools/iconproposal.py --markdown work/issue130/proposal/proposal.md
+    tools/iconproposal.py --from-markdown work/issue130/proposal/proposal.md
     tools/iconproposal.py --png work/issue130/proposal-weapons.png
     tools/iconproposal.py --kind head --png work/issue130/proposal-heads.png
     tools/iconproposal.py --colours 91a2b3c4e6f7      # a record's own six bytes
     tools/iconproposal.py                             # the tables, as text
+
+**`--markdown` is the form a person can edit and `--png` is the form a
+person can only look at.** A sheet shows the proposal; a document with one
+image per figure lets a row be swapped, because swapping needs the figure
+you are moving *to* beside the one you are moving *from*, and a gallery of
+every option to pick it out of. Edit the `Proposed` column and
+`--from-markdown` prints the tables the document now asks for.
 
 The DOS side is read the way `tools/iconcorrespond.py` reads it, off the
 player's own `CHEAD.DAX`/`CBODY.DAX`; the C64 side is composed by
@@ -245,6 +254,139 @@ def sheet(game: pathlib.Path, disk: pathlib.Path, kind: str, size: str,
     print(f"{path}  {image.width}x{image.height}")
 
 
+def save_figure(poses, palette, path: pathlib.Path, scale: int = 4) -> None:
+    """One figure, both poses side by side, as its own small PNG."""
+    from PIL import Image
+
+    cell, gap = 24 * scale, 2 * scale
+    image = Image.new("RGB", (2 * cell + gap, cell), "#303030")
+    pixels = image.load()
+    for p, pose in enumerate(poses):
+        x0 = p * (cell + gap)
+        for y, line in enumerate(pose[:24]):
+            for x, value in enumerate(line[:24]):
+                colour = palette[value & 0x0F]
+                if isinstance(colour, str):
+                    colour = tuple(int(colour[i:i + 2], 16)
+                                   for i in (1, 3, 5))
+                for dy in range(scale):
+                    for dx in range(scale):
+                        pixels[x0 + x * scale + dx, y * scale + dy] = colour
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
+def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
+             icon_colours: bytes, out: pathlib.Path) -> None:
+    """The proposal as a document whose rows can be swapped by hand (#130).
+
+    One PNG per figure rather than one sheet per table, because a sheet
+    cannot be edited: to move a row you need the C64 figure you are moving
+    it to, beside the one you are moving it from, as its own image. The
+    gallery at the end is every option the C64 offers, numbered, which is
+    what a swap picks from.
+
+    `--from-markdown` reads the document back, so the loop is: draw it,
+    edit the **Proposed** column, read it back, and the tool's own tables
+    are what changed.
+    """
+    parts = IconParts.load(str(disk))
+    charset = icons.load_icon_charset(str(disk))
+    img = out.parent / "img"
+    lines = [
+        "# The proposed combat-figure table, for #130",
+        "",
+        "Each row is one DOS figure and the C64 figure it would become.",
+        "**Edit the `Proposed` number** and run",
+        f"`tools/iconproposal.py --from-markdown {out}` to read the table",
+        "back. The gallery at the end is every option the C64 offers.",
+        "",
+        "The DOS figure is drawn in its record's own colours and the C64 one",
+        "in the colours that record converts to, so a row that looks wrong is",
+        "wrong for the reason you can see.",
+        "",
+        "This file and its images are the game's own art. They live under",
+        "`work/` and must never be committed.",
+        "",
+    ]
+    for kind, table, alternatives in (
+            ("weapon", WEAPONS, WEAPON_ALTERNATIVES),
+            ("head", HEADS, HEAD_ALTERNATIVES)):
+        lines += [f"## DOS {kind} to C64 {kind}", "",
+                  "| DOS | | Proposed | | Alternatives |",
+                  "|---:|---|---:|---|---|"]
+        for dos_index, c64_index in sorted(table.items()):
+            body, head = ((dos_index, 0) if kind == "weapon"
+                          else (0, dos_index))
+            name = f"dos-{kind}-{size}-{dos_index:02d}.png"
+            save_figure(dos_figure(game, size, body, head, icon_colours),
+                        ic.EGA, img / name)
+            alts = []
+            for option in alternatives.get(dos_index, ()):
+                alts.append(f"{option} ![]({'img/' + _c64_png(parts, charset, size, kind, option, icon_colours, img)})")
+            lines.append(
+                f"| {dos_index} | ![](img/{name}) | {c64_index} | "
+                f"![](img/{_c64_png(parts, charset, size, kind, c64_index, icon_colours, img)}) | "
+                f"{' '.join(alts)} |")
+        lines.append("")
+        count = parts.count(size, kind)
+        lines += [f"### Every C64 {kind}, to swap from", "",
+                  "| | | | | | |", "|---|---|---|---|---|---|"]
+        row = []
+        for option in range(count):
+            png = _c64_png(parts, charset, size, kind, option, icon_colours,
+                           img)
+            row.append(f"**{option}**<br>![](img/{png})")
+            if len(row) == 6:
+                lines.append("| " + " | ".join(row) + " |")
+                row = []
+        if row:
+            lines.append("| " + " | ".join(row + [""] * (6 - len(row))) + " |")
+        lines.append("")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n")
+    print(f"{out}  {len(lines)} lines, images in {img}")
+
+
+def _c64_png(parts, charset, size: str, kind: str, option: int,
+             icon_colours: bytes, img: pathlib.Path) -> str:
+    """Draw one C64 option if it is not drawn already, and name its file."""
+    name = f"c64-{kind}-{size}-{option:02d}.png"
+    if not (img / name).exists():
+        weapon, head = ((option, HEADS[0]) if kind == "weapon"
+                        else (WEAPONS[0], option))
+        px = c64_figure(parts, charset, size, weapon, head, icon_colours)
+        save_figure([px[:24], px[24:48]], tuple(icons.C64_PALETTE), img / name)
+    return name
+
+
+def read_markdown(path: pathlib.Path) -> None:
+    """Print the tables a hand-edited document asks for (#130)."""
+    kind = None
+    found: dict[str, dict[int, int]] = {"weapon": {}, "head": {}}
+    for line in path.read_text().splitlines():
+        if line.startswith("## DOS "):
+            kind = line.split()[2]
+        elif line.startswith("### "):
+            kind = None
+        elif kind and line.startswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) >= 3 and cells[0].isdigit() and cells[2].isdigit():
+                found[kind][int(cells[0])] = int(cells[2])
+    for kind, table in found.items():
+        current = WEAPONS if kind == "weapon" else HEADS
+        moved = {n: o for n, o in table.items() if current.get(n) != o}
+        print(f"{kind.upper()}S: {len(table)} rows, {len(moved)} changed")
+        for n, o in sorted(moved.items()):
+            print(f"  {n:2}: {current.get(n)} -> {o}")
+        print(f"{kind.upper()}S = {{")
+        for n, o in sorted(table.items()):
+            print(f"    {n}: {o},")
+        print("}")
+    if not any(found.values()):
+        raise SystemExit(f"{path} has no table rows this can read")
+
+
 def print_tables() -> None:
     print("DOS body -> C64 weapon (alternatives in brackets)")
     for n, o in sorted(WEAPONS.items()):
@@ -266,11 +408,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--colours", default=DEFAULT_COLOURS.hex(),
                     help="the record's six icon_colours bytes, as hex")
     ap.add_argument("--png", metavar="PATH", help="draw the table, under work/")
+    ap.add_argument("--markdown", metavar="PATH",
+                    help="write the proposal as a document whose rows can be "
+                         "swapped by hand, with one image per figure")
+    ap.add_argument("--from-markdown", metavar="PATH",
+                    help="read a hand-edited document back and print the "
+                         "tables it asks for")
     args = ap.parse_args(argv)
+    if args.from_markdown:
+        read_markdown(pathlib.Path(args.from_markdown))
+        return 0
     colours = bytes.fromhex(args.colours)
     if len(colours) != 6:
         raise SystemExit("--colours is six bytes: twelve hex digits")
-    if args.png:
+    if args.markdown:
+        markdown(ic.dos_game(args.dos), ic.c64_disk(args.disk), args.size,
+                 colours, pathlib.Path(args.markdown))
+    elif args.png:
         sheet(ic.dos_game(args.dos), ic.c64_disk(args.disk), args.kind,
               args.size, colours, pathlib.Path(args.png))
     else:
