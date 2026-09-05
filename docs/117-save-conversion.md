@@ -1857,7 +1857,6 @@ graph LR
   amiga -.->|deferred| traits
   areas -.->|deferred| geo
   areas --> layout
-  c64_codec -.->|deferred| amiga
   c64_codec --> encoding
   c64_codec --> layout
   c64_codec --> neutral

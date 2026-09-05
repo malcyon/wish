@@ -52,7 +52,7 @@ five bytes, where Curse's put 8 and 9 back over the zeroes it was given.
 Pool of Radiance's quest flags are `$4A20`-`$4AF8` and stop there because
 `$4AFA` and `$4AFD` are its wallset and wallmap triples
 (`goldbox/dos_savegame.py`). **Silver Blades keeps its wall triples in the
-twelve unnamed bytes of the square block instead** (`#253`), and its scripts
+twelve unnamed bytes of the square block instead** (`#253 (A Curse or Silver Blades party's square is read twelve bytes past where the engine writes it, since #220 moved the offset the wrong way)`), and its scripts
 use the page to the end: `$4CFD` -- the same word index as Pool of Radiance's
 wallmap -- is named by seventeen of the twenty-two scripts, 33 reads and 63
 writes, and `$4CFE` and `$4CFF` by eight and one.
@@ -137,14 +137,14 @@ recorded the same fact from the other side and the Amiga codec has always
 computed the mask rather than copying it.
 
 **Curse of the Azure Bonds had the same defect and it shipped**, because the
-party `#192` proved that conversion on had two paladins and no ranger. The fix
+party `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)` proved that conversion on had two paladins and no ranger. The fix
 is in `goldbox/dos.py` and covers both titles.
 
 ### Items are 67 bytes, and the four extra ones hold nothing
 
 `item_to_c64` demanded 63 and refused every Silver Blades item. Every field it
 reads is below `0x03E` and so is at the same offset whichever title wrote it
-(`#113`); the four extra bytes are `0x03F`-`0x042` and **read `00 00 00 00` in
+(`#113 (Play DOS Curse far enough to save a party with items)`); the four extra bytes are `0x03F`-`0x042` and **read `00 00 00 00` in
 48 of 48 item records**, 24 of them distinct, across every `.STF` this project
 made by driving the game. A non-zero one is refused rather than dropped in
 silence.
