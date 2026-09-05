@@ -83,6 +83,23 @@ def test_a_grade_a_writer_will_take_is_written():
     assert not any("wisdom" in d for d in rep.dropped)
 
 
+def test_a_lowercase_name_from_a_non_dos_source_is_folded_to_capitals():
+    """`#290 (A character named in lower case draws as punctuation on the
+    C64, and only the DOS import folds the name)`: `goldbox.dos.c64_name`
+    only reached the DOS-to-C64 path. An Amiga source, a YAML import or
+    anything else that builds a `NeutralCharacter` and calls
+    `c64_codec.write` went through unfolded, and the C64 drew the name as
+    punctuation and digits -- watched on the running machine, `Guy de
+    Valois ` drew as `G59 $% V!,/)3`. The fold now lives in
+    `goldbox.petscii.encode_record_name`, which this call reaches even
+    though nothing here is DOS."""
+    char = NeutralCharacter("test", source="a made-up character")
+    char.set("name", "Guy de Valois ", "made up", Confidence.CONFIRMED,
+             Provenance.RESHAPED)
+    rec, _ = c64_codec.write(char)
+    assert rec.to_bytes()[:20] == b"GUY DE VALOIS" + b"\x00" * 7
+
+
 # --- losslessness through the middle -----------------------------------------
 
 def _filled(game=None) -> NeutralCharacter:

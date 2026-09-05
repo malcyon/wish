@@ -81,10 +81,28 @@ def decode_record_name(raw: bytes) -> str:
 def encode_record_name(text: str, size: int = RECORD_NAME_SIZE) -> bytes:
     """Encode *text* as a NUL-padded record-name field of exactly *size* bytes.
 
+    **Folded to capitals, with trailing blanks cut, first.** The C64 draws
+    this field in its uppercase/graphics character set, where the screen code
+    for a byte in `$61`-`$7A` is that byte less `$40` -- so a lower-case
+    letter draws as punctuation or a digit rather than as itself. `#193`
+    found this on Secret of the Silver Blades' own DOS pregen, `Guy de
+    Valois `, which drew in the party panel as `G59 $% V!,/)3`.
+
+    That fix (`goldbox.dos.c64_name`) only reached the DOS-to-C64 path.
+    `#290 (A character named in lower case draws as punctuation on the C64,
+    and only the DOS import folds the name)` moves the fold here instead,
+    because this is the one function every route into a C64 record's name
+    field ends at -- `goldbox.c64_codec.write`, an Amiga-to-C64 conversion,
+    and `editor/window.py`'s own rename field (`record.name = ...`) all
+    reach a C64 record's name byte for byte only through this encoder.
+    Punctuation and digits are untouched; only letters and trailing blanks
+    move.
+
     Raises:
         ValueError: if the text is too long or contains non-ASCII / control
             characters.
     """
+    text = text.upper().rstrip()
     encoded = bytearray()
     for ch in text:
         code = ord(ch)
@@ -104,8 +122,11 @@ def encode_record_name(text: str, size: int = RECORD_NAME_SIZE) -> bytes:
 def is_canonical_record_name(raw: bytes) -> bool:
     """True if ``encode_record_name(decode_record_name(raw))`` reproduces *raw*.
 
-    False means the field holds bytes the text form cannot represent (control
-    bytes, or data past the terminating NUL) and must be preserved verbatim.
+    False means either the field holds bytes the text form cannot represent
+    (control bytes, or data past the terminating NUL) and must be preserved
+    verbatim, or it holds a lower-case letter or a trailing blank that
+    :func:`encode_record_name` would fold away -- which, on the C64, is a
+    name the game itself never wrote (`#290`).
     """
     data = bytes(raw)
     try:

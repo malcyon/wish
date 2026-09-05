@@ -238,6 +238,34 @@ def test_record_name_rejects_non_ascii() -> None:
         petscii.encode_record_name("BRUTÖS")
 
 
+def test_a_lowercase_record_name_is_folded_to_capitals() -> None:
+    """`#290`: the C64 draws its text in the uppercase/graphics character
+    set, where a lower-case letter's screen code lands in the symbol range --
+    watched on the running machine, `Guy de Valois ` drew as
+    `G59 $% V!,/)3`. `goldbox.dos.c64_name` folded this for the DOS-to-C64
+    path only; this is the encoder every route into a C64 record's name
+    field ends at, so the fold belongs here.
+    """
+    encoded = petscii.encode_record_name("Guy de Valois ")
+    assert encoded == b"GUY DE VALOIS" + b"\x00" * 7
+
+
+def test_a_record_name_fold_leaves_punctuation_and_digits_alone() -> None:
+    """Only case and trailing blanks move; everything else crosses as is."""
+    assert petscii.encode_record_name("O'malley") == \
+        petscii.encode_record_name("O'MALLEY")
+    assert petscii.encode_record_name("abc-123") == \
+        petscii.encode_record_name("ABC-123")
+
+
+def test_a_folded_record_name_is_not_canonical() -> None:
+    """A raw field holding lower-case letters would be rewritten on the next
+    save, so it does not round-trip through the text form unchanged."""
+    raw = b"guy" + b"\x00" * 17
+    assert petscii.decode_record_name(raw) == "guy"
+    assert not petscii.is_canonical_record_name(raw)
+
+
 def test_record_name_stops_at_first_nul() -> None:
     assert petscii.decode_record_name(b"AB\x00CD" + b"\x00" * 15) == "AB"
     # ...which is exactly why such a field is not canonical and must not be
@@ -249,6 +277,17 @@ def test_short_name_written_into_record_is_nul_padded(record_bytes: bytes) -> No
     rec = CharacterRecord(record_bytes)
     rec.name = "AL"
     assert rec.get_raw("name") == b"AL" + b"\x00" * 18
+
+
+def test_a_renamed_record_folds_a_lowercase_name(record_bytes: bytes) -> None:
+    """`#290`'s editor route: `editor/window.py`'s rename field sets
+    `record.name` directly, never going through `goldbox.c64_codec.write` --
+    so the fold has to hold here too, not only for a freshly-converted
+    record."""
+    rec = CharacterRecord(record_bytes)
+    rec.name = "guy"
+    assert rec.name == "GUY"
+    assert rec.get_raw("name") == b"GUY" + b"\x00" * 17
 
 
 def test_directory_names_are_a_separate_convention() -> None:
