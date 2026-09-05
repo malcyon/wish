@@ -243,3 +243,26 @@ def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
                          "--dos", str(where), "--dos-slot", "C"])
     assert "Curse" in str(raised.value), raised.value
     assert not out.exists()
+
+
+def test_the_input_disk_cannot_be_named_as_the_output(tmp_path):
+    """A player's own disk given twice is refused before anything is written.
+
+    `tools/porslot.py` has refused this from the start and said why: the
+    player keeps their disks somewhere the script is pointed at by hand, so
+    naming the same file as the source and the destination is a typo away.
+    `tools/toamigapor.py` had no such guard, and either `--out` or
+    `--save-disk` would have overwritten the disk it had just read.
+    """
+    import hashlib
+
+    from tools import toamigapor
+
+    disk = _por_disk_1(tmp_path)
+    before = hashlib.sha256(disk.read_bytes()).hexdigest()
+    for flag in ("--out", "--save-disk"):
+        with pytest.raises(SystemExit) as raised:
+            toamigapor.main([str(disk), "--to", "B", flag, str(disk),
+                             "--c64", str(_c64_specimen("por-party-twin-pair"))])
+        assert "input disk" in str(raised.value), raised.value
+    assert hashlib.sha256(disk.read_bytes()).hexdigest() == before
