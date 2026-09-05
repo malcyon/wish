@@ -1,5 +1,9 @@
 # Wish
 
+<p align="center">
+  <img src="assets/logo/lockup.png" alt="Wish" width="500">
+</p>
+
 Wish is a save editor and automapper for the **Commodore 64** version of *Pool of Radiance*
 (SSI, 1988). 
 
@@ -11,6 +15,7 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 - ⚔️ Combat view that shows the whole battlefield.
 - 🛡️ Party stats. HP, XP, AC, THAC0, readied items, etc.
 - 📋 Quest log. Shows what commissions you have from the council.
+- Support for the VICE emulator or the Commodore 64 Ultimate.
 
 
 <a href="images/automapper1.png">
@@ -39,33 +44,6 @@ I would like Wish to be compatible with all the Gold Box games. Right now, thoug
 | Curse of the Azure Bonds | 🟡 | This probably has a bunch of bugs. Character editing should work. |
 | Secrets of the Silver Blades | 🟡 | This has been tested even less, but work is ongoing. |
 | Pools of Darkness | 🔴 | This for sure doesn't work at all. Wish would need to support the Amiga for this. |
-
-
-<!--
-DRAFT, NOT APPROVED -- proposed by an agent finishing the import half of
-#57 (Carry the character portrait across ports), for #131 (Lift
-WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all three
-C64 titles), which asks for a paragraph here on how the first picker works.
-Donald has not seen this wording. Approve it, edit it, or replace it outright
--- it is commented out so nobody reads it on the rendered page until then.
-
-## Importing a DOS save (experimental)
-
-Wish can turn a DOS *Pool of Radiance* save into a Commodore 64 one, so a
-party you played on the PC can keep going on the C64. It's new, and I'm still
-finding the edges of it, so it stays off unless you set
-`WISH_EXPERIMENTAL_DOS_IMPORT=1` before starting Wish.
-
-With it on, `File ▸ Import ▸ DOS Save Folder…` asks for the *folder* your DOS
-save lives in rather than a single file -- a DOS save is a dozen or more
-separate files, and there's no one of them to point at. You'll also need your
-own Commodore 64 Pool of Radiance disks, set in Preferences, since a couple of
-things the conversion needs only exist there.
-
-This works for Pool of Radiance today; Curse of the Azure Bonds and Secrets
-of the Silver Blades are next. Whatever a save can't carry across yet is
-listed on screen before you convert, so nothing is lost without you knowing.
--->
 
 
 ## Caution
@@ -147,10 +125,10 @@ flatpak override --user --share=network net.sf.VICE
 
 ## Credits
 
+Wish logo and logo mark designed by Dustin Geddy Parker.
+
 Icons are from **[Game-icons.net](https://game-icons.net/)**, licensed
-**CC BY 3.0**. Every glyph and the artist who drew it is listed in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), which the program also
-shows under **Help ▸ Licenses**.
+**CC BY 3.0**. See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), for details.
 
 
 ## Documentation
