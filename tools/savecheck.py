@@ -39,6 +39,7 @@ import json
 import os
 import pathlib
 import shutil
+import struct
 import sys
 import time
 
@@ -89,6 +90,24 @@ FLOOR_COLS = range(0, 22)
 #: Reading it is how an area change is seen rather than inferred from a
 #: status line that shows the same `x,y` on both sides of a door.
 AREA_AT = 0x6E1B
+
+#: `MON_CMD_BANKS_AVAILABLE`.  `tools/wallpins.py` and `tools/vicebankcheck.py`
+#: carry the same constant and the same unpacking (#265).
+CMD_BANKS = 0x82
+
+
+def bank_ids(mon) -> dict:
+    """Every bank VICE offers this machine, by name."""
+    resp = mon.command(CMD_BANKS, b"")
+    count = struct.unpack("<H", resp[:2])[0]
+    off, out = 2, {}
+    for _ in range(count):
+        size = resp[off]
+        bid = struct.unpack("<H", resp[off + 1:off + 3])[0]
+        n = resp[off + 3]
+        out[resp[off + 4:off + 4 + n].decode("latin1")] = bid
+        off += size + 1
+    return out
 
 
 def area(sess) -> int:
@@ -389,6 +408,14 @@ def icon_evidence(sess, icon: bytes) -> dict:
     Together they say the bytes the conversion wrote are the bytes the engine
     drew from -- which is the last of #118's 5405, and the one that had only
     a file-level measurement behind it.
+
+    The two reads below want different banks, and it matters (#265): the
+    charset computes to `$D000`, which is RAM **under** the VIC's I/O
+    registers, so it has to be read through the monitor's `ram` bank or it
+    answers the registers instead -- both zero for `$20` and never `$FF` for
+    `$A0`, so `distinct_figures` came out 1 whatever the party's icons were.
+    Colour RAM at `$D800` is only reachable *through* I/O, so that read stays
+    on the default bank.
     """
     blocks = combatants(sess)
     if not blocks:
@@ -398,12 +425,13 @@ def icon_evidence(sess, icon: bytes) -> dict:
         dd00 = m.read(0xDD00, 1)[0]
         bank = (~dd00 & 3) * 0x4000
         chars = bank + ((d018 >> 1) & 7) * 0x800
+        ram_bank = bank_ids(m).get("ram", 0)
         colours = bytes(c & 0x0F for c in m.read(0xD800, 1000))
         glyphs = {}
         for _r, _c, block in blocks:
             for code in block:
                 if code not in glyphs:
-                    glyphs[code] = m.read(chars + code * 8, 8)
+                    glyphs[code] = m.read(chars + code * 8, 8, bank=ram_bank)
     poses = [icon[18:27], icon[27:36]]
     out = {"blocks": len(blocks), "charset": chars, "matched": [],
            "top_row": [], "distinct_figures": []}
