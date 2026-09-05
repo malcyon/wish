@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pathlib
 import stat
+import sys
 
 import pytest
 
@@ -91,6 +92,12 @@ def test_add_leaves_every_specimen_file_read_only(tree, one_source):
         assert not mode & stat.S_IWUSR, path
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="a directory's write bit is not what Windows enforces, so chmod "
+           "cannot stop a file being created here; `check` is the guard that "
+           "works on both platforms and it is tested separately",
+)
 def test_add_leaves_the_specimen_directory_unwritable(tree, one_source):
     """The directory itself loses its write bit too, so a new file cannot be
     dropped in beside the ones that were watched being written."""
@@ -152,7 +159,12 @@ def test_check_catches_a_specimen_file_edited_after_the_fact(tree, one_source):
 def test_check_catches_a_missing_file(tree, one_source):
     dest = _add(tree, one_source)
     dest.chmod(stat.S_IRWXU)
-    (dest / "GNOMF1.CHA").unlink()
+    # Windows refuses to unlink a read-only file, where a POSIX system only
+    # asks that the *directory* be writable.  Clear the file's own bit too, so
+    # this reads the same on both.
+    victim = dest / "GNOMF1.CHA"
+    victim.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    victim.unlink()
     problems = specimens.check_specimens(tree)
     assert any("GNOMF1.CHA" in p and "missing" in p for p in problems)
 
