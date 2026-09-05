@@ -207,11 +207,10 @@ class Slot:
         `POR_HEADLESS` defaults to `"1"` here rather than in every caller
         (#147) -- a slot is by definition something an agent claimed, and an
         agent must not put a window, or its sound, on Donald's screen. Every
-        caller that builds a launch environment does
-        `dict(os.environ, **slot.env())` (`tools/session.py:281-283`,
-        `tools/instance.py main()`), so `slot.env()`'s own values win over
-        whatever `os.environ` already held -- an unconditional `"1"` here
-        would silently overrule a human who exported `POR_HEADLESS=0` to
+        caller builds its launch environment through `launch_env()` below,
+        which merges this dict in *last*, so `slot.env()`'s own values win
+        over whatever `os.environ` already held -- an unconditional `"1"`
+        here would silently overrule a human who exported `POR_HEADLESS=0` to
         watch a run. Reading it from `os.environ` first, and only defaulting
         when it is absent, is what lets that override reach `porlaunch.sh`.
         """
@@ -239,6 +238,44 @@ class Slot:
         if killed:
             self.record(pgid=None, x64sc=None)
         return killed
+
+
+#: Environment variables that let a GTK or Qt child escape the X display it
+#: was actually given and draw on Donald's own desktop instead of the pool's
+#: virtual one -- AGENTS.md, "The machine": "a GTK or Qt child prefers
+#: [`WAYLAND_DISPLAY`] over whatever you set for X, so a private Xvfb is not
+#: a sandbox".  `XDG_SESSION_TYPE=wayland` is the same hazard on its own: it
+#: is enough to steer a client that has no `WAYLAND_DISPLAY` set at all.
+UNSAFE_DISPLAY_ENV = ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE")
+
+
+def launch_env(extra: dict[str, str], base: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment for anything the pool launches.
+
+    `base` (`os.environ` by default) with `extra` -- `Slot.env()`, plus
+    whatever a caller needs beside it -- merged on top, `UNSAFE_DISPLAY_ENV`
+    removed, and `GDK_BACKEND` forced to `x11` so a GTK child is told which
+    backend to use rather than left to detect one.
+
+    A dict cannot express "unset a key the parent already set" by adding a
+    key, only by omitting or overwriting it -- so this filters `base` *before*
+    merging `extra`, rather than the reverse, so a stale `WAYLAND_DISPLAY`
+    left over in the parent's own shell cannot survive without a caller
+    putting it back on purpose.  `extra` is trusted and merged last, the same
+    as it always was: that is what lets `Slot.env()`'s own `POR_HEADLESS` win
+    over a stale value already sitting in `os.environ` (#147). Nothing this
+    project builds ever puts one of `UNSAFE_DISPLAY_ENV` into `extra`.
+
+    Both launch sites go through this rather than building
+    `dict(os.environ, **slot.env())` by hand: `tools/instance.py main()` and
+    `tools/session.py`'s `Session.launch()`.
+    """
+    env = dict(os.environ if base is None else base)
+    for key in UNSAFE_DISPLAY_ENV:
+        env.pop(key, None)
+    env["GDK_BACKEND"] = "x11"
+    env.update(extra)
+    return env
 
 
 # --------------------------------------------------------------------------
@@ -901,7 +938,7 @@ def main(argv: list[str] | None = None) -> int:
             print("# the lease is released as this process exits; use "
                   "`claim -- <command>` to hold it", file=sys.stderr)
             return 0
-        env = dict(os.environ, **slot.env())
+        env = launch_env(slot.env())
         proc = subprocess.Popen(args.exec, env=env, start_new_session=True)
         slot.record(pgid=os.getpgid(proc.pid), cmd=args.exec)
         try:

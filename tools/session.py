@@ -526,9 +526,10 @@ class Session:
         agent's emulator and Donald's own game -- the same failure mode as the
         incident in `docs/160-why-these-rules.md`, "The machine", generalised.
         """
-        env = dict(os.environ, MONFLAGS=self.monflags, POR_DISPLAY=self.display)
+        extra = {"MONFLAGS": self.monflags, "POR_DISPLAY": self.display}
         if self.slot is not None:
-            env.update(self.slot.env())
+            extra.update(self.slot.env())
+        env = instance.launch_env(extra)
         os.makedirs(self.here, exist_ok=True)
         proc = subprocess.Popen(
             [f"{TOOLS}/porlaunch.sh", self.disk],

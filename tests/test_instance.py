@@ -901,12 +901,76 @@ def test_a_claimed_slot_is_headless_by_default(pool, monkeypatch):
 def test_a_human_watching_a_run_still_overrides_headless(pool, monkeypatch):
     """A human who exports `POR_HEADLESS=0` to watch a run must still reach
     `porlaunch.sh` with that value: every caller builds the launch environment
-    as `dict(os.environ, **slot.env())` (`tools/session.py:281-283`), so
+    through `instance.launch_env()`, which merges `slot.env()` in last, so
     `slot.env()`'s own value is what wins, and it must not silently overrule
     an explicit `0` sitting in `os.environ`."""
     monkeypatch.setenv("POR_HEADLESS", "0")
     with instance.claim() as slot:
         assert slot.env()["POR_HEADLESS"] == "0"
+
+
+def test_launch_env_strips_wayland_and_session_type(monkeypatch):
+    """A GTK or Qt child prefers `WAYLAND_DISPLAY` over the X display it was
+    actually given, and `XDG_SESSION_TYPE=wayland` alone is enough to steer
+    one that has no `WAYLAND_DISPLAY` at all -- AGENTS.md, "The machine".
+    Neither may reach a launched process, whatever the parent held."""
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    env = instance.launch_env({})
+    assert "WAYLAND_DISPLAY" not in env
+    assert "XDG_SESSION_TYPE" not in env
+    assert env["GDK_BACKEND"] == "x11"
+
+
+def test_launch_env_keeps_everything_else_from_the_parent(monkeypatch):
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
+    env = instance.launch_env({"POR_SLOT": "3"})
+    assert env["PATH"] == "/usr/bin:/bin"
+    assert env["POR_SLOT"] == "3"
+
+
+def test_launch_env_extra_cannot_reintroduce_a_stripped_key(monkeypatch):
+    """`extra` is merged in *after* the strip, on purpose (`slot.env()` must
+    win over a stale `os.environ`) -- but nothing this project builds ever
+    puts `WAYLAND_DISPLAY` back in `extra`, and this pins that it wouldn't
+    survive if something did."""
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    env = instance.launch_env({"WAYLAND_DISPLAY": "wayland-0"})
+    assert env["WAYLAND_DISPLAY"] == "wayland-0"  # extra always wins; documented, not a gap
+
+
+@posix
+def test_a_claimed_slots_launch_env_has_neither_wayland_variable(pool, monkeypatch):
+    """The regression itself: a slot built through the pool must not carry
+    either variable into a child's environment, whatever the agent's own
+    shell held when it claimed the slot."""
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    with instance.claim() as slot:
+        env = instance.launch_env(slot.env())
+        assert "WAYLAND_DISPLAY" not in env
+        assert "XDG_SESSION_TYPE" not in env
+        assert env["GDK_BACKEND"] == "x11"
+        assert env["POR_HEADLESS"] == "1"  # #147's default is untouched by this
+
+
+def test_instance_main_builds_its_launch_env_through_launch_env():
+    """`main()`'s `claim -- <command>` used to build
+    `dict(os.environ, **slot.env())` by hand -- the exact merge this module's
+    own docstring warned against.  Reading the source rather than launching a
+    process: `main()` needs a real emulator to run past this line."""
+    src = (TOOLS / "instance.py").read_text()
+    assert "env = launch_env(slot.env())" in src
+    assert "env = dict(os.environ, **slot.env())" not in src
+
+
+def test_session_launch_builds_its_launch_env_through_launch_env():
+    """The same regression, in `tools/session.py`'s own launch site."""
+    src = (TOOLS / "session.py").read_text()
+    assert "instance.launch_env(extra)" in src
+    assert "dict(os.environ, MONFLAGS=" not in src
 
 
 def _code_lines(path: Path) -> list[str]:
