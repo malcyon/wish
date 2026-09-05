@@ -63,8 +63,14 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 CAVES, EAST, PHLAN, SLUMS = 13, 27, 0, 20
 #: `GEO0D` square-attribute id 28, the caves' exit, sits on (6,15) and (10,15).
 EXIT_SQUARE = (6, 15, 2)
-#: New Phlan's east edge, facing east: `$10EC` counts x+1 = 16 as off the map.
-PHLAN_EDGE = (15, 1, 1)
+#: New Phlan's south edge, facing south: `$10EC` counts y+1 = 16 as off the
+#: map.  It has to be a square that is **open** that way.  `$10EC` reads
+#: `$C04E`, the wall art in the facing direction, and only counts the step
+#: when it is zero or `$1143` calls it a door you can walk through -- so an
+#: edge square with a wall on its outward side never sets `$6DD5` and the
+#: script's gate never opens.  (15,1) was the first choice and is walled:
+#: `Geo.wall(15, 1, EAST)` = 14, and the emulator read `$C04E` = 14 there.
+PHLAN_EDGE = (8, 15, 2)
 
 #: `$0809 TSX / STX $03BF`: the main loop's stack depth.
 SAVED_SP = 0x03BF
@@ -82,6 +88,18 @@ NEWECL_TAIL = 0x2034
 SLOT_RECORD, SLOT_ROSTER, SLOTS = 0x4D00, 0x8300, 8
 #: VICE's register ids, `docs/50-experiments.md` P43.
 REG_PC, REG_SP = 3, 4
+
+
+def indoors(sess) -> bool:
+    """`$49E6`: non-zero indoors, zero on the travel grid.
+
+    `DUNGEON`'s key-wait loop is an indoor loop -- `$08F4` branches to
+    `$0ABA`, the overland loop, when this reads zero -- so waiting for
+    `KEY_WAIT` after an exit that lands in the wilderness waits for
+    something that will never happen.
+    """
+    with sess.mon(5) as m:
+        return m.read(0x49E6, 1)[0] != 0
 
 
 def wait_idle(sess, timeout: float = 300.0, need: int = 6) -> bool:
@@ -303,7 +321,12 @@ def phase_square(sess, target, out, answer: str) -> dict:
     if answer == "YES":
         if not answer_until_area(sess, target, EAST, out, label):
             raise RuntimeError("the handler's exit never reached area 27")
-    wait_idle(sess)
+    if indoors(sess):
+        wait_idle(sess)
+    else:
+        print("  landed on the travel grid; no indoor key-wait to wait for",
+              flush=True)
+        sess.settle(6)
     sess.settle(3)
     meta = capture(sess, out, label, f"exit square, answered {answer}")
     info["capture"] = meta["label"]
@@ -333,31 +356,64 @@ def phase_second_hop(sess, target, out) -> bool:
         if row and (not seen or seen[-1] != row):
             seen.append(row)
             print(f"  row 24: {row!r}", flush=True)
-        if A.FastTravel.current_area(target) == PHLAN and \
-                (s is not None and s.contains("ENCAMP")):
+        if A.FastTravel.current_area(target) == PHLAN and indoors(sess):
             break
         sess.handle_prompt(s)
         time.sleep(0.6)
     wait_idle(sess, timeout=60)
     meta = capture(sess, out, "30-second-hop",
                    "warp 27 -> 0 after writing $49E6=1 and $6E22-$6E27=$7F")
-    return (meta["6E1B"][0] & 0x7F) == PHLAN and "ENCAMP" in meta.get("text", "")
+    # The first version of this asked for the word ENCAMP on screen and the
+    # arrival came up in MOVE mode showing `I,J,K,M, RETURN OR BUTTON`, so a
+    # landing that had worked was reported as a failure.  The area byte and
+    # `$49E6` are what "landed indoors in New Phlan" means.
+    return (meta["6E1B"][0] & 0x7F) == PHLAN and meta["49E6"][0] != 0
+
+
+def phase_putback(sess, out, where) -> dict:
+    """Put the party back on the square it was on, without running a script.
+
+    The `NO` branch of an exit handler leaves the party standing on the exit
+    square, because the re-entry teleported it there.  `$0A4C` on its own is
+    the redraw and nothing else: re-entered with only the main loop's return
+    pushed, its `RTS` lands on `$08A7` and the game carries on at the command
+    bar.  Entry 1 never runs, so no square event fires on the way back.
+    """
+    print(f"phase G: put the party back on {where}", flush=True)
+    with sess.mon(5) as m:
+        m.write(0xC04B, bytes(where))
+    info = reenter(sess, REDRAW, ())
+    wait_idle(sess, timeout=90)
+    sess.settle(2)
+    meta = capture(sess, out, "15-put-back",
+                   f"square rewritten to {where} and $0A4C re-entered alone")
+    info["capture"] = meta["label"]
+    (out / "15-put-back-reentry.json").write_text(json.dumps(info, indent=1))
+    return meta
 
 
 def phase_edge(sess, target, out) -> None:
     print("phase F: edge exit out of New Phlan", flush=True)
-    if not sess.select_bar("MOVE", timeout=20):
-        raise RuntimeError("MOVE could not be selected")
-    time.sleep(1.0)
+    s = sess.screen()
+    row = s.row(24) if s is not None else ""
+    if "MOVE" in row.split():
+        if not sess.select_bar("MOVE", timeout=20):
+            raise RuntimeError("MOVE could not be selected")
+        time.sleep(1.0)
+    else:
+        print(f"  already out of the bar; row 24 is {row.strip()!r}",
+              flush=True)
     with sess.mon(5) as m:
         m.write(0xC04B, bytes(PHLAN_EDGE))
     print(f"  placed at {PHLAN_EDGE}", flush=True)
+    with sess.mon(5) as m:
+        print(f"  $C04E/$C04F there = {list(m.read(0xC04E, 2))}", flush=True)
     info = reenter(sess, REDRAW, (FORWARD_KEY - 1,))
     ok = answer_until_area(sess, target, SLUMS, out, "40-edge")
     wait_idle(sess, timeout=120)
     sess.settle(3)
     meta = capture(sess, out, "40-edge-exit",
-                   "re-entered at $0A4C then $0978 on New Phlan's east edge")
+                   f"re-entered at $0A4C then $0978 at {PHLAN_EDGE}")
     info["capture"] = meta["label"]
     info["reached"] = ok
     (out / "40-edge-reentry.json").write_text(json.dumps(info, indent=1))
@@ -390,10 +446,13 @@ def run(args) -> int:
         if (meta["6E1B"][0] & 0x7F) != CAVES:
             raise RuntimeError("the save is not in the Kobold Caves")
         phases = args.phases
+        home = tuple(meta["C04B"])
         if "A" in phases:
             phase_stack(sess, out)
         if "C" in phases:
             phase_square(sess, target, out, "NO")
+        if "G" in phases:
+            phase_putback(sess, out, home)
         if "D" in phases:
             phase_square(sess, target, out, "YES")
         if "E" in phases:
@@ -422,8 +481,8 @@ def main(argv=None) -> int:
     p.add_argument("--slot", type=int, default=None)
     p.add_argument("--out", default=str(ROOT / "work" / "issue207" / "run1"))
     p.add_argument("--arrive", type=float, default=240.0)
-    p.add_argument("--phases", default="ACDEF",
-                   help="which phases to run, from A C D E F")
+    p.add_argument("--phases", default="ACGDEF",
+                   help="which phases to run, from A C G D E F")
     return run(p.parse_args(argv))
 
 

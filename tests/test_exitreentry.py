@@ -23,6 +23,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from goldbox.geo import EAST, Geo  # noqa: E402
+from tests.gamedata import game_file, needs_disks  # noqa: E402
 from tools import exitreentry as ER  # noqa: E402
 
 
@@ -169,3 +171,55 @@ def test_reenter_reports_the_before_and_after_stacks():
     info = ER.reenter(sess, pc=0x1234, chain=(0x0977,))
     assert info["before"]["sp"] == 0xF0
     assert info["after"]["sp"] == 0xF0 - 4
+
+
+# ---------------------------------------------------------------------------
+# indoors() -- the one register that decides which key-wait loop to wait for
+# ---------------------------------------------------------------------------
+
+def test_indoors_is_true_when_49e6_is_set():
+    sess, m = make()
+    m.mem[0x49E6] = 1
+    assert ER.indoors(sess) is True
+
+
+def test_indoors_is_false_on_the_travel_grid():
+    sess, m = make()
+    m.mem[0x49E6] = 0
+    assert ER.indoors(sess) is False
+
+
+def test_indoors_accepts_any_non_zero_the_way_dungeon_does():
+    # `$08F4 LDA $49E6 / BNE $08FC` branches on non-zero, not on 1.
+    sess, m = make()
+    m.mem[0x49E6] = 0x80
+    assert ER.indoors(sess) is True
+
+
+# ---------------------------------------------------------------------------
+# The edge square, against the map the party would stand on
+# ---------------------------------------------------------------------------
+
+@needs_disks
+def test_the_edge_square_is_open_on_the_side_the_party_steps_off():
+    """`$10EC` refuses to count a step through a wall, so the gate never opens.
+
+    Measured on 2026-09-04: the first choice of `PHLAN_EDGE` was (15, 1)
+    facing east, `$C04E` read 14 there, `$6DD5` stayed 0 and `ECL00`'s
+    `COMPARE [$6DD5], 0 / IF= / GOTO [$9965]` jumped straight past
+    `NEWECL 20`.  `GEO00`'s wall art on that edge is 14 as well, which is
+    what makes this checkable without an emulator.
+    """
+    geo = Geo.from_bytes(game_file("GEO00"))
+    x, y, facing = ER.PHLAN_EDGE
+    assert (x == 15 or y == 15 or x == 0 or y == 0), \
+        f"{ER.PHLAN_EDGE} is not on the edge of the map"
+    assert geo.is_passable(x, y, facing), \
+        f"the party cannot step off the map at {ER.PHLAN_EDGE}"
+
+
+@needs_disks
+def test_the_square_that_failed_is_still_walled_so_the_test_above_can_fail():
+    geo = Geo.from_bytes(game_file("GEO00"))
+    assert geo.wall(15, 1, EAST) == 14
+    assert not geo.is_passable(15, 1, EAST)
