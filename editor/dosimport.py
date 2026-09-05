@@ -144,7 +144,7 @@ DEFAULT_NAME = "PORSAVE{slot}.D64"
 #: **PROPOSED, not yet approved** -- replaces "The conversion cannot carry
 #: these:", which named fields and a conversion rather than the player's own
 #: party; `.claude/rules/gui-text.md` makes the wording Donald's.
-DROPPED_HEADING = "What your characters lose:"
+DROPPED_HEADING = "Wish cannot currently convert these fields:"
 
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of

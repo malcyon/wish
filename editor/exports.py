@@ -113,7 +113,7 @@ WRONG_GAME = "This is a {title} save. Only Pool of Radiance can be exported."
 #: way it is going.
 #:
 #: **PROPOSED, not yet approved**, along with the sibling in `dosimport.py`.
-DROPPED_HEADING = "What your characters lose:"
+DROPPED_HEADING = "Wish cannot currently convert these fields:"
 WRITES_HEADING = "This writes:"
 REPLACES_HEADING = "It replaces these, already there:"
 REMOVES_HEADING = "It removes these, left by an earlier export:"
