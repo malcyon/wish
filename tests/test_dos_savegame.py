@@ -894,3 +894,75 @@ def test_a_played_clock_is_a_time_and_not_seven_arbitrary_bytes():
                   for i in range(sg.POD_CLOCK_DIGITS)]
         for digit, radix in zip(digits, sg.POD_CLOCK_RADIX):
             assert 0 <= digit < radix, (path, digits)
+
+
+# --- the area, and the map it runs on (#257) --------------------------------
+
+#: The two engine-written Pool of Radiance saves made inside the training
+#: hall, and the one made on the street outside it as a control.  All three
+#: were written by the game's own SAVE CURRENT GAME in `#249`'s driven runs.
+#: The two hall saves are flagged EDITED because experience and gold were
+#: poked into their **character records** before the run and the square into
+#: bytes 12801-12803; `tools/dostrain.py` writes no VM variable at all, so
+#: the two words this section is about are the engine's.
+HALL_SPECIMENS = (("por-party-trained-c2", "F"), ("por-train-clamp", "F"))
+STREET_SPECIMEN = ("por-party-l1-intown", "E")
+
+
+def _savgam(name: str, slot: str) -> bytes:
+    from gamedata import specimen
+    return (specimen(name) / f"SAVGAM{slot}.DAT").read_bytes()
+
+
+def _ecl_container(n: int) -> bytes:
+    """`ECL<n>.DAX` out of the player's own DOS game directory.
+
+    Read, never written, and never copied into the repository. Skips where
+    the archives are not on this machine, which is what CI does.
+    """
+    from tools import dosbox
+
+    try:
+        return (dosbox.find_game("POOLRAD") / f"ECL{n}.DAX").read_bytes()
+    except (FileNotFoundError, OSError) as e:
+        pytest.skip(f"needs the DOS game files: {e}")
+
+
+def test_a_save_made_in_the_training_hall_reads_area_eleven():
+    """The regression `#257 (A DOS save made in the training hall converts as
+    though the party were in New Phlan)` is about.
+
+    `current_area` read `$49C5` indoors, on the belief that the two words
+    always agree there. They do not: area 11 has no map of its own -- there
+    is no `LOADFILES` anywhere in `ECL0B` -- so it runs on New Phlan's
+    `GEO00`, `$49C5` stays 0 and only `$49F2` says where the party is. A
+    conversion keyed on `$49C5` puts them in New Phlan.
+
+    Two of two hall specimens, against a street save from the same party as
+    the control.
+    """
+    for name, slot in HALL_SPECIMENS:
+        save = _savgam(name, slot)
+        assert sg.outdoors(save) is False, name
+        assert sg.geo_block(save) == 0, name          # New Phlan's GEO00
+        assert sg.current_area(save) == 11, name      # the training hall
+    street = _savgam(*STREET_SPECIMEN)
+    assert sg.geo_block(street) == sg.current_area(street) == 0
+
+
+def test_the_hall_saves_carry_the_hall_script_and_the_street_save_does_not():
+    """What makes 11 the party's area rather than a stray word: the ECL text
+    buffer is a verbatim copy of the running script, and in the two hall
+    saves it is area 11's block byte for byte.
+
+    Read against `ECL3.DAX` off the player's own DOS files, which carries
+    blocks 0, 8, 11 and 14 -- so the same container answers for the control.
+    """
+    dax = _ecl_container(3)
+    start, end = sg.ECL_BUFFER
+    for name, slot, block in [(n, s, 11) for n, s in HALL_SPECIMENS] + \
+            [(STREET_SPECIMEN[0], STREET_SPECIMEN[1], 0)]:
+        body = sg.dax_block(dax, block)[sg.ECL_HEADER:]
+        buffer = _savgam(name, slot)[start:end]
+        assert buffer[:len(body)] == body, name
+        assert set(buffer[len(body):]) <= {0}, name

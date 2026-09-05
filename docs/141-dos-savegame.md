@@ -82,10 +82,10 @@ quest flags convert unconditionally.
 |---|---|---|
 | `$49C0`-`$49C2` | **zero in every DOS save**, indoors and out — the square is *not* here, unlike the C64; it is at file 12801-12803 indoors and `$49C3`/`$49C4` outdoors | CONFIRMED — 6 of 6 |
 | `$49C3`, `$49C4` | **the overland travel square, window-local**: (7,29) → (7,28) → (8,28) across the three outdoor saves against on-screen `20,29`/`20,28`/`21,28` — world x = local x + 13 for window 26 (`WINDOW_X_OFFSET`) — and a live `BPM` caught one east step writing `$49C3` 7→8 (writer `2E33:095E`). Zero in the three indoor specimens, stale after a return indoors | CONFIRMED — two independent sources |
-| `$49C5` | area id (= geo block id, `goldbox/areas.py` numbering) — but **0 in all three outdoor saves**, *not* the C64's SQRDATA number (the C64 holds 5 there for window 26) | CONFIRMED indoors — three saves, plus moving a save to a new area only works when this word is set to the target's id; outdoor value CONFIRMED, its consumer UNKNOWN |
+| `$49C5` | **the resident `GEO` block, not the area.** `LOADFILES`' first operand lands here unless it is `$FF` or `$7F`, and the one reader hands it to the `GEO` loader (`GAME.OVR:0x1A09` and `0x1FBBE`; the C64's `$2041`). It equals the area id only for an area that loads its own map. **0 in all three outdoor saves**, *not* the C64's SQRDATA number (the C64 holds 5 there for window 26), and **0 in the training hall**, whose script loads no map at all | CONFIRMED — both writers and the reader read out of `GAME.OVR`, and `ECL0B` has no `LOADFILES` in it (#257 (A DOS save made in the training hall converts as though the party were in New Phlan)) |
 | `$49C6`-`$49CB` | **the clock, six digit words, exactly the C64's six bytes**: sub-minute, minute units, minute tens, hour, day, month. A reads 10:02 day 16 and displayed 10:02; one step moved `$49C7` 2→3 as the display moved 10:02→10:03; saving costs no time | CONFIRMED |
 | `$49E6` | **the indoors flag**: 1 in the three indoor specimens, 0 in the three outdoor ones, and the boat-back transition was caught live writing it 0→1 (writer `30F6:0CA1`) | CONFIRMED |
-| `$49F2` | the area script id | CONFIRMED as the field; carried in every save that has successfully moved a party to a new area, never tested absent |
+| `$49F2` | **the area the party is in**, indoors and out. `NEWECL`'s handler writes it and the area-startup path reads it straight back into the engine's current-area global, which is then what the travel-mode test compares against 25, 26 and 27 (`GAME.OVR:0x192F` and `0x4067`-`0x4070`; the C64's `$2011`-`$2016`). Nothing anywhere loads `$49C5` into that global | CONFIRMED — the code on both ports, and two engine-written saves made inside the training hall hold 11 here with `$49C5` = 0 (#257 (A DOS save made in the training hall converts as though the party were in New Phlan)) |
 | `$4A20`-`$4AF8` | the quest flags, byte-to-word at the C64's addresses | CONFIRMED — prior work, #26 (Write a DOS save, not just read one) |
 | `$4AFA`-`$4AFC` | **the wallset triple**: up to three `WALLDEF<n>.DAX` / `8X8D<n>.DAX` block ids, `$FFFF` = empty. Byte-identical to the C64 loaded-files cache slots 15-17 for the same area — PORSAVE13's Slums triple (2,4,1) is slot J's, PORSAVE's Sokol Keep (1,5,9) is slot B's. **New Phlan is the exception**: the C64 loads no `WALLSET` there and all three slots read `$FF`, where DOS slot A holds `(0, $FFFF, $FFFF)`. Without the triple, a save moved to a new area dies in `LoadWallSet` | CONFIRMED |
 | `$4AFD`-`$4AFF` | (1,2,3) with three sets loaded, (1,$FFFF,$FFFF) with one — read as the wall-index map | PROBABLE |
@@ -179,7 +179,9 @@ away and the game exits to DOS — and the last two are the party rather than
 the place:
 
 1. byte 0 = the target area's DAX number (`goldbox/areas.py`'s `Area.disk`);
-2. `$49C5` = the target area id;
+2. `$49C5` = the `GEO` block the target area runs on, which is its own id for
+   every area that loads its own map and **New Phlan's 0** for the training
+   hall and Phlan City Hall, whose scripts load none;
 3. `$49F2` = the target area id;
 4. `$5012` = the target area's DAX number;
 5. `$4AFA`-`$4AFC` = the target's wallset triple (sourceable from the C64
@@ -574,7 +576,7 @@ live watches in `run2.log`):
 |---|---|---|
 | byte 0, `$5012` | area's DAX number | unchanged mechanism — 7 for area 26 |
 | `$49F2` | area id | area id (26) |
-| `$49C5` | area id | **0** — not the C64's SQRDATA number |
+| `$49C5` | the resident `GEO`, which is the area id for an area that loads its own map and **0** for the training hall and Phlan City Hall, which do not | **0** — not the C64's SQRDATA number |
 | `$49E6` | 1 | **0** |
 | square | file 12801-12803 | `$49C3`/`$49C4`, window-local; 12801/12802 stale, 12803 (facing) still live |
 | ECL buffer | script from byte 2 | same rule — `ECL7.DAX` block 26, 6567 of 6567 |
@@ -587,6 +589,14 @@ One overland step costs 12 hours on the clock. The DOS overland has no
 `SQRDATA` files at all — the three windows are ordinary `GEO` blocks 25-27
 in `GEO6`-`GEO8.DAX` plus `SQRPACI.DAX`/`WILDCOM.DAX`, which is presumably
 why `$49C5` has nothing to carry out there.
+
+**Outdoors is not the only place the two words part.** A saved game made
+inside the training hall holds `$49C5` = 0 and `$49F2` = 11: area 11 has no
+map of its own and runs on New Phlan's `GEO00`, so `LOADFILES` — the only
+thing that writes `$49C5` — is never reached. Phlan City Hall, area 8, has
+the same shape. Reading the area out of `$49C5` names New Phlan for both, and
+`goldbox.dos_savegame.current_area` did so until #257 (A DOS save made in the
+training hall converts as though the party were in New Phlan).
 
 ### The wallset triple outdoors is live, not stale — CONFIRMED
 
