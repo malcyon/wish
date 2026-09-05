@@ -411,14 +411,19 @@ def test_the_written_cache_names_the_area_with_bit_seven_set():
     assert save0[0xEA] == 0
 
 
-def test_the_script_scratch_is_copied_and_the_map_is_not():
+def test_the_script_scratch_is_copied_and_the_picture_buffer_is_not():
     """`DUNGEON $21BA` clears `+$100`-`+$11F` only when the script id changes,
-    so a save taken inside an area is carrying live scratch -- the DOS save's
-    own thirty-two words cross rather than being zeroed.
+    so a save taken inside an area holds live scratch -- the DOS save's own
+    thirty-two words cross rather than being zeroed.
 
-    The map memory is the other way: nothing in the DOS save has been
-    attributed to it and an engine-written save of a party that has not walked
-    yet holds zero.
+    The region at `+$1800` is the other way, and **the reason written here
+    used to be wrong**: it said an engine-written save of a party that has not
+    walked yet holds zero there.  It does not.  That region is `ANIMATE00`'s
+    picture buffer and an engine-written Curse save holds 526 non-zero bytes
+    in it, a frame of the camp scene the game was drawing when it saved
+    (`docs/181-curse-picture-buffer.md`).  Wish writes zero because nothing in
+    a DOS save corresponds to it and the engine rebuilds it before it draws,
+    which is a measured zero rather than an inherited one.
     """
     folder = _dos_save()
     save0, _, _ = dos.new_save(folder, "H", icon=bytes(36),
