@@ -37,12 +37,19 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
+# The repository root and nothing else.  Putting `tools/` on `sys.path` as
+# well -- which this did, to reach `dosbox` by its bare name -- leaves it
+# there for the rest of the process, and `tools/wish.py` then shadows the
+# `wish` package for whatever imports it next; that is
+# `#259 (A cold test run intermittently loses the wish package to
+# tools/wish.py, and a different test fails each time)`, and this file was the
+# proven culprit in the batch that reproduced it.  The sibling comes through
+# the package instead, which also means `tools.dosbox` here is the same module
+# object the tests patch rather than a second copy of it.
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import dosbox  # noqa: E402
 
 from goldbox import dos_layout  # noqa: E402
+from tools import dosbox  # noqa: E402
 
 #: Entry 0 of the alignment table, as a counted string.  The race table ends
 #: where this begins, in all four titles.

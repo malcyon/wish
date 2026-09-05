@@ -30,6 +30,44 @@ import pytest
 
 _TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 
+# Before pytest imports a single test module, in every xdist worker.
+#
+# `tools/wish.py` shares the `wish` *package*'s name, and thirty-four scripts
+# in `tools/` put `tools/` at the front of `sys.path` at import time and leave
+# it there. Whichever `import wish` came first in a worker owned the name for
+# the rest of that worker's life, and with `-n auto` which file a worker
+# collected first is timing -- so a cold `__pycache__` failed a *different*
+# test each run, always inside `tests/test_dosimport.py`, always
+# `No module named 'wish.ui_window'; 'wish' is not a package`. See
+# `#259 (A cold test run intermittently loses the wish package to
+# tools/wish.py, and a different test fails each time)`.
+#
+# conftest is imported before anything a test file can do to `sys.path`, so
+# binding the package here settles it for the worker. `tools/__init__.py` does
+# the same for anything reaching a tool as `from tools import x` outside
+# pytest; this line additionally covers a test file that inserts `tools/` by
+# hand and imports a tool by its bare name, which never runs that package.
+#
+# The repository root goes in front for that one import and comes straight
+# back off, so this holds even when whatever invoked pytest already had
+# `tools/` ahead of it -- a `PYTHONPATH` with `tools/` in it, say.
+#
+# The assertion is the part that survives a future regression: whatever else
+# goes wrong, the run says which `wish` it got and stops, rather than failing
+# one arbitrary test in `tests/test_dosimport.py`.
+_saved_path = sys.path[:]
+sys.path.insert(0, str(_TOOLS.parent))
+try:
+    import wish  # noqa: E402
+finally:
+    sys.path[:] = _saved_path
+del _saved_path
+
+assert hasattr(wish, "__path__"), (
+    f"`import wish` found {getattr(wish, '__file__', wish)!r} rather than the "
+    f"wish package. Something bound {_TOOLS}/wish.py to the name `wish` "
+    f"before conftest was imported; see #259.")
+
 
 def load_tools_module(name: str):
     """Import ``tools/<name>.py`` by file path, without leaving ``tools/`` on
