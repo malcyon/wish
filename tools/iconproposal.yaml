@@ -1,0 +1,94 @@
+# The proposed DOS-to-C64 combat-figure table for #130 (A converted DOS
+# party arrives with six identical combat figures, not its own).
+#
+# This is the single source: edit `c64:` and `alt:` here, never in the
+# generated document. Regenerate it with:
+#
+#     tools/iconproposal.py --markdown work/issue130/proposal/proposal.md
+#
+# `c64` is the proposed C64 option number, `alt` (when present) lists any
+# other option that looked as close, and the trailing comment names what the
+# DOS figure shows -- read off the sheets at work/issue130/big-*.png, not
+# measured.
+
+# DOS body n -> C64 large weapon option. The C64's small list is the same 28
+# designs in the same order (18 of 28 share their weapon glyphs exactly and
+# the other ten differ only in the shield glyph the smaller body wears), so
+# one table serves both sizes; an option at or above 28 on a small character
+# is composed as a large weapon under a small head, which the game accepts
+# (HOGARTH's icon on the player's own disks is such a mix).
+weapons:
+  0:  {c64: 0}                        # empty hands
+  1:  {c64: 26}                       # bow
+  2:  {c64: 5, alt: [27]}             # hammer raised
+  3:  {c64: 23}                       # flail swung
+  4:  {c64: 24}                       # flail and shield
+  5:  {c64: 21, alt: [14]}            # spear thrust level
+  6:  {c64: 27, alt: [5]}             # mace raised
+  7:  {c64: 1}                        # sword raised
+  8:  {c64: 25, alt: [19]}            # sling
+  9:  {c64: 8}                        # axe raised
+  10: {c64: 10}                       # war hammer held level
+  11: {c64: 23, alt: [25]}            # flail hanging
+  12: {c64: 27, alt: [5]}             # morning star raised
+  13: {c64: 27, alt: [5]}             # mace, round head
+  14: {c64: 15, alt: [10]}            # hammer, level
+  15: {c64: 7, alt: [11]}             # hatchet
+  16: {c64: 28}                       # crossbow
+  17: {c64: 14, alt: [2]}             # spear held high, thrust in pose 2
+  18: {c64: 11, alt: [13]}            # halberd
+  19: {c64: 13, alt: [4]}             # polearm across the body
+  20: {c64: 17, alt: [12]}            # mace and shield
+  21: {c64: 6, alt: [20]}             # spear and shield
+  22: {c64: 9}                        # axe and shield
+  23: {c64: 12, alt: [24]}            # hammer and shield
+  24: {c64: 3}                        # sword and shield
+  25: {c64: 22, alt: [24]}            # sling and shield -- the C64 has no such figure
+  26: {c64: 12, alt: [17]}            # hammer and shield
+  27: {c64: 32, alt: [34]}            # robed, hands empty
+  28: {c64: 31}                       # robed, staff upright
+  29: {c64: 34, alt: [32]}            # robed, arms out
+  30: {c64: 29}                       # robed, dagger
+  31: {c64: 30}                       # robed, staff across the body
+
+# DOS head n -> C64 large head option. The C64 small list is 14 heads and its
+# large list 23; the DOS small heads are the large designs eight rows tall
+# instead of ten. These rows are the least certain of the three tables: a
+# head is two cells of art on the C64 and ten rows on DOS, and half of them
+# differ by one band of pixels.
+heads:
+  0:  {c64: 7, alt: [1]}              # short hair
+  1:  {c64: 11, alt: [3]}             # headband
+  2:  {c64: 16, alt: [15, 22]}        # plumed helmet
+  3:  {c64: 3, alt: [15]}             # visored helmet
+  4:  {c64: 8, alt: [21, 0]}          # cap over hair
+  5:  {c64: 5}                        # hair to the shoulder
+  6:  {c64: 14, alt: [2, 9]}          # tall pointed hat
+  7:  {c64: 11}                       # headband
+  8:  {c64: 17, alt: [12]}            # long hair down the back
+  9:  {c64: 12, alt: [17]}            # long hair
+  10: {c64: 10, alt: [15]}            # banded helmet
+  11: {c64: 6}                        # bald
+  12: {c64: 0, alt: [2]}              # close helmet
+  13: {c64: 13, alt: [16]}            # crest
+
+# EGA index -> C64 colour 0-7, the proposal of the colour comment on the
+# issue. Four of these are not the nearest colour by RGB: brown to yellow,
+# light grey to white, dark grey to black and light red to red.
+colours:
+  0:  {c64: 0}                        # black
+  1:  {c64: 6}                        # blue
+  2:  {c64: 5}                        # green
+  3:  {c64: 3}                        # cyan
+  4:  {c64: 2}                        # red
+  5:  {c64: 4}                        # magenta -> purple
+  6:  {c64: 7}                        # brown -> yellow
+  7:  {c64: 1}                        # light grey -> white
+  8:  {c64: 0}                        # dark grey -> black
+  9:  {c64: 6}                        # light blue -> blue
+  10: {c64: 5}                        # light green -> green
+  11: {c64: 3}                        # light cyan -> cyan
+  12: {c64: 2}                        # light red -> red
+  13: {c64: 4}                        # light magenta -> purple
+  14: {c64: 7}                        # yellow
+  15: {c64: 1}                        # white

@@ -8,26 +8,28 @@ the same *kinds* of figure -- an archer, a flail, a sword and shield, a
 robed caster -- in different orders and from different art, so no
 measurement picks the rows, and the ticket says the choice is Donald's.
 
-This tool holds the **proposal** -- three tables a person can edit -- and
-draws every row as the two games would draw it: the DOS figure in its own
+This tool holds the **proposal** -- three tables read from
+`tools/iconproposal.yaml`, which is the single source Donald edits by hand --
+and draws every row as the two games would draw it: the DOS figure in its own
 record colours on the left, the proposed C64 figure on the right in the
 colours the same record converts to.  Nothing here converts a save; when the
 tables are approved they move into `goldbox/`, and until then they are a
 picture on the issue.
 
     tools/iconproposal.py --markdown work/issue130/proposal/proposal.md
-    tools/iconproposal.py --from-markdown work/issue130/proposal/proposal.md
     tools/iconproposal.py --png work/issue130/proposal-weapons.png
     tools/iconproposal.py --kind head --png work/issue130/proposal-heads.png
     tools/iconproposal.py --colours 91a2b3c4e6f7      # a record's own six bytes
     tools/iconproposal.py                             # the tables, as text
 
-**`--markdown` is the form a person can edit and `--png` is the form a
-person can only look at.** A sheet shows the proposal; a document with one
-image per figure lets a row be swapped, because swapping needs the figure
-you are moving *to* beside the one you are moving *from*, and a gallery of
-every option to pick it out of. Edit the `Proposed` column and
-`--from-markdown` prints the tables the document now asks for.
+**`--markdown` is the form a person can only look at, generated fresh each
+time from the YAML.** A document with one image per figure lets a row be
+judged, because judging needs the figure you might move *to* beside the one
+you are judging *from*, and a gallery of every option at the end. To change a
+row, edit `tools/iconproposal.yaml` and regenerate the document; there used to
+be a `--from-markdown` that read the document back, and it is gone, because a
+YAML file a person edits directly cannot be overwritten by regenerating the
+document the way the markdown round trip could.
 
 The DOS side is read the way `tools/iconcorrespond.py` reads it, off the
 player's own `CHEAD.DAX`/`CBODY.DAX`; the C64 side is composed by
@@ -41,6 +43,8 @@ import argparse
 import pathlib
 import sys
 
+import yaml
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -51,106 +55,46 @@ from goldbox.iconparts import MULTICOLOUR, PART_CLASSES, IconParts  # noqa: E402
 
 # -- the proposal -------------------------------------------------------------
 #
-# DOS body n -> C64 large weapon option.  The C64's small list is the same 28
-# designs in the same order (18 of 28 share their weapon glyphs exactly and
-# the other ten differ only in the shield glyph the smaller body wears), so
-# one table serves both sizes; an option at or above 28 on a small character
-# is composed as a large weapon under a small head, which the game accepts
-# (HOGARTH's icon on the player's own disks is such a mix).
-#
-# Every row is a look at `work/issue130/big-*.png`, not a measurement.  The
-# rows marked in ALTERNATIVES are the ones where a second option looked as
-# close, and the rows *not* marked are the ones where the weapon is
-# unmistakable in both ports.
-WEAPONS: dict[int, int] = {
-    0: 0,       # empty hands
-    1: 26,      # bow
-    2: 5,       # hammer raised
-    3: 23,      # flail swung
-    4: 24,      # flail and shield
-    5: 21,      # spear thrust level
-    6: 27,      # mace raised
-    7: 1,       # sword raised
-    8: 25,      # sling
-    9: 8,       # axe raised
-    10: 10,     # war hammer held level
-    11: 23,     # flail hanging
-    12: 27,     # morning star raised
-    13: 27,     # mace, round head
-    14: 15,     # hammer, level
-    15: 7,      # hatchet
-    16: 28,     # crossbow
-    17: 14,     # spear held high, thrust in pose 2
-    18: 11,     # halberd
-    19: 13,     # polearm across the body
-    20: 17,     # mace and shield
-    21: 6,      # spear and shield
-    22: 9,      # axe and shield
-    23: 12,     # hammer and shield
-    24: 3,      # sword and shield
-    25: 22,     # sling and shield -- the C64 has no such figure
-    26: 12,     # hammer and shield
-    27: 32,     # robed, hands empty
-    28: 31,     # robed, staff upright
-    29: 34,     # robed, arms out
-    30: 29,     # robed, dagger
-    31: 30,     # robed, staff across the body
-}
+# The three tables -- which C64 weapon each DOS body becomes, which C64 head
+# each DOS head becomes, and EGA colour to C64 colour -- are Donald's
+# judgement and live in `tools/iconproposal.yaml`, beside this file, so he can
+# edit them without touching Python. Every row there is a look at
+# `work/issue130/big-*.png`, not a measurement.
 
-WEAPON_ALTERNATIVES: dict[int, tuple[int, ...]] = {
-    2: (27,), 5: (14,), 6: (5,), 8: (19,), 11: (25,), 12: (5,), 13: (5,),
-    14: (10,), 15: (11,), 17: (2,), 18: (13,), 19: (4,), 20: (12,),
-    21: (20,), 23: (24,), 25: (24,), 26: (17,), 27: (34,), 29: (32,),
-}
+#: `tools/iconproposal.yaml`, the single source for the three tables below.
+TABLE_PATH = pathlib.Path(__file__).with_name("iconproposal.yaml")
 
-# DOS head n -> C64 large head option.  The C64 small list is 14 heads and
-# its large list 23; the DOS small heads are the large designs eight rows
-# tall instead of ten.  These rows are the least certain of the three tables:
-# a head is two cells of art on the C64 and ten rows on DOS, and half of them
-# differ by one band of pixels.
-HEADS: dict[int, int] = {
-    0: 7,       # short hair
-    1: 11,      # headband
-    2: 16,      # plumed helmet
-    3: 3,       # visored helmet
-    4: 8,       # cap over hair
-    5: 5,       # hair to the shoulder
-    6: 14,      # tall pointed hat
-    7: 11,      # headband
-    8: 17,      # long hair down the back
-    9: 12,      # long hair
-    10: 10,     # banded helmet
-    11: 6,      # bald
-    12: 0,      # close helmet
-    13: 13,     # crest
-}
+Table = dict[int, int]
+Alternatives = dict[int, tuple[int, ...]]
 
-HEAD_ALTERNATIVES: dict[int, tuple[int, ...]] = {
-    0: (1,), 1: (3,), 2: (15, 22), 3: (15,), 4: (21, 0), 6: (2, 9),
-    8: (12,), 9: (17,), 10: (15,), 12: (2,), 13: (16,),
-}
 
-#: EGA index -> C64 colour 0-7, the proposal of the colour comment on the
-#: issue.  Four of these are not the nearest colour by RGB: brown to yellow,
-#: light grey to white, dark grey to black and light red to red.
-EGA_TO_C64: tuple[int, ...] = (
-    0,  # black
-    6,  # blue
-    5,  # green
-    3,  # cyan
-    2,  # red
-    4,  # magenta -> purple
-    7,  # brown -> yellow
-    1,  # light grey -> white
-    0,  # dark grey -> black
-    6,  # light blue -> blue
-    5,  # light green -> green
-    3,  # light cyan -> cyan
-    2,  # light red -> red
-    4,  # light magenta -> purple
-    7,  # yellow
-    1,  # white
-)
+def load_tables(path: pathlib.Path = TABLE_PATH,
+                ) -> tuple[Table, Alternatives, Table, Alternatives,
+                          tuple[int, ...]]:
+    """The weapon, head and colour tables, read out of the YAML source.
+
+    Returns `(weapons, weapon_alternatives, heads, head_alternatives,
+    ega_to_c64)`, the same shapes the tool used to hold as Python literals.
+    """
+    data = yaml.safe_load(path.read_text())
+
+    def _table(section: str) -> tuple[Table, Alternatives]:
+        table, alternatives = {}, {}
+        for dos_index, row in data[section].items():
+            table[int(dos_index)] = row["c64"]
+            if row.get("alt"):
+                alternatives[int(dos_index)] = tuple(row["alt"])
+        return table, alternatives
+
+    weapons, weapon_alternatives = _table("weapons")
+    heads, head_alternatives = _table("heads")
+    ega_to_c64 = tuple(data["colours"][i]["c64"]
+                      for i in sorted(data["colours"]))
+    return weapons, weapon_alternatives, heads, head_alternatives, ega_to_c64
+
+
+(WEAPONS, WEAPON_ALTERNATIVES, HEADS, HEAD_ALTERNATIVES,
+ EGA_TO_C64) = load_tables()
 
 #: A DOS hat or plume is drawn in values 5/13, which the character cannot
 #: recolour, so it is always magenta; a C64 cap gets purple.
@@ -278,17 +222,16 @@ def save_figure(poses, palette, path: pathlib.Path, scale: int = 4) -> None:
 
 def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
              icon_colours: bytes, out: pathlib.Path) -> None:
-    """The proposal as a document whose rows can be swapped by hand (#130).
+    """The proposal as a document, generated fresh from the YAML (#130).
 
-    One PNG per figure rather than one sheet per table, because a sheet
-    cannot be edited: to move a row you need the C64 figure you are moving
-    it to, beside the one you are moving it from, as its own image. The
-    gallery at the end is every option the C64 offers, numbered, which is
-    what a swap picks from.
+    One PNG per figure rather than one sheet per table, because judging a
+    row needs the C64 figure it is proposed as, beside the DOS figure it is
+    proposed *for*, as its own image. The gallery at the end is every option
+    the C64 offers, numbered, so a preferred alternative can be named.
 
-    `--from-markdown` reads the document back, so the loop is: draw it,
-    edit the **Proposed** column, read it back, and the tool's own tables
-    are what changed.
+    The loop is: edit `tools/iconproposal.yaml`, and run this again -- there
+    is no reading a document back, because the YAML is the only place the
+    numbers live.
     """
     parts = IconParts.load(str(disk))
     charset = icons.load_icon_charset(str(disk))
@@ -297,9 +240,9 @@ def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
         "# The proposed combat-figure table, for #130",
         "",
         "Each row is one DOS figure and the C64 figure it would become.",
-        "**Edit the `Proposed` number** and run",
-        f"`tools/iconproposal.py --from-markdown {out}` to read the table",
-        "back. The gallery at the end is every option the C64 offers.",
+        "**Edit `tools/iconproposal.yaml`** and run",
+        f"`tools/iconproposal.py --markdown {out}` to redraw this document.",
+        "The gallery at the end is every option the C64 offers.",
         "",
         "The DOS figure is drawn in its record's own colours and the C64 one",
         "in the colours that record converts to, so a row that looks wrong is",
@@ -360,33 +303,6 @@ def _c64_png(parts, charset, size: str, kind: str, option: int,
     return name
 
 
-def read_markdown(path: pathlib.Path) -> None:
-    """Print the tables a hand-edited document asks for (#130)."""
-    kind = None
-    found: dict[str, dict[int, int]] = {"weapon": {}, "head": {}}
-    for line in path.read_text().splitlines():
-        if line.startswith("## DOS "):
-            kind = line.split()[2]
-        elif line.startswith("### "):
-            kind = None
-        elif kind and line.startswith("|"):
-            cells = [c.strip() for c in line.strip("|").split("|")]
-            if len(cells) >= 3 and cells[0].isdigit() and cells[2].isdigit():
-                found[kind][int(cells[0])] = int(cells[2])
-    for kind, table in found.items():
-        current = WEAPONS if kind == "weapon" else HEADS
-        moved = {n: o for n, o in table.items() if current.get(n) != o}
-        print(f"{kind.upper()}S: {len(table)} rows, {len(moved)} changed")
-        for n, o in sorted(moved.items()):
-            print(f"  {n:2}: {current.get(n)} -> {o}")
-        print(f"{kind.upper()}S = {{")
-        for n, o in sorted(table.items()):
-            print(f"    {n}: {o},")
-        print("}")
-    if not any(found.values()):
-        raise SystemExit(f"{path} has no table rows this can read")
-
-
 def print_tables() -> None:
     print("DOS body -> C64 weapon (alternatives in brackets)")
     for n, o in sorted(WEAPONS.items()):
@@ -409,15 +325,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="the record's six icon_colours bytes, as hex")
     ap.add_argument("--png", metavar="PATH", help="draw the table, under work/")
     ap.add_argument("--markdown", metavar="PATH",
-                    help="write the proposal as a document whose rows can be "
-                         "swapped by hand, with one image per figure")
-    ap.add_argument("--from-markdown", metavar="PATH",
-                    help="read a hand-edited document back and print the "
-                         "tables it asks for")
+                    help="write the proposal as a document, generated fresh "
+                         "from tools/iconproposal.yaml, with one image per "
+                         "figure")
     args = ap.parse_args(argv)
-    if args.from_markdown:
-        read_markdown(pathlib.Path(args.from_markdown))
-        return 0
     colours = bytes.fromhex(args.colours)
     if len(colours) != 6:
         raise SystemExit("--colours is six bytes: twelve hex digits")

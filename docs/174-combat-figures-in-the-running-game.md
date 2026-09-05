@@ -41,7 +41,7 @@ holds.
 
 **`$A0` is not the reversed space here.** In the ROM charset it is eight `$FF`s;
 in `CHARPIC00` glyph 160 is `003cfcf4d4f4dc90`, the top of a figure's head, and
-that is what the engine copies. `#184` proposed checking for `$FF`s and the
+that is what the engine copies. `#184 (A converted combat icon's colours are proven in the game and its shapes are not)` proposed checking for `$FF`s and the
 check could never have passed. Its companion, glyph 32, is eight zero bytes in
 both, which is why half of the proposed check passed by coincidence twice over.
 
