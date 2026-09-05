@@ -1767,13 +1767,13 @@ graph LR
   amiga -.->|deferred| traits
   areas -.->|deferred| geo
   areas --> layout
+  c64_codec -.->|deferred| amiga
   c64_codec --> encoding
   c64_codec --> layout
   c64_codec --> neutral
   c64_codec --> record
   c64_codec --> spells
   derive --> items
-  dos -.->|deferred| amiga
   dos --> areas
   dos --> c64_codec
   dos -.->|deferred| d64
