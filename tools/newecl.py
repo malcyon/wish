@@ -339,6 +339,104 @@ def loop_start(body: bytes, base: int, test: int) -> tuple[int, int]:
     return head, reachable_end(body, base, head)
 
 
+def one_reference(body: bytes, base: int, opcode: int, addr: int,
+                  followed_by: int | None = None) -> int | None:
+    """Where this overlay names `addr` with `opcode`, if it does so exactly once.
+
+    Used to find an address that `NEWECL` does not itself write -- the
+    wall-slot-pinned array, which is read by the wall unpacker and by nothing
+    else. **Exactly once is the whole test.** A second reference would mean
+    the pattern had found something other than the routine being looked for,
+    and then the address it hands back is a guess wearing a derivation's
+    clothes; the caller gets None and refuses instead.
+    """
+    want = bytes([opcode, addr & 0xFF, addr >> 8])
+    hits, at = [], body.find(want)
+    while at >= 0:
+        if followed_by is None or (at + 3 < len(body)
+                                   and body[at + 3] == followed_by):
+            hits.append(base + at)
+        at = body.find(want, at + 1)
+    return hits[0] if len(hits) == 1 else None
+
+
+def derive(game: games.Game, root: str, base: int = LINKER_BASE) -> dict:
+    """Every fast-travel address for a title, out of its own overlays.
+
+    The same chain the report prints, as data rather than as lines, so that
+    `automap/fasttravel.py`'s shipped rows can be checked against the game's
+    bytes -- `tests/test_newecl.py` -- and a driver can re-derive rather than
+    write an address down (`tools/cursewarp.py`).
+
+    Keys are `automap.fasttravel.FastTravelAddresses` field names where there
+    is a field, plus `mode` for the loader's dispatch byte.
+    **`walls_slot` and `travel_square` are not here**: neither is `NEWECL`'s
+    and both are Pool of Radiance measurements from `#156` and `#178`.
+    """
+    _, body = load("DUNGEON", root, game)
+    _, lo_t, hi_t, _ = dispatch_tables(body, base)
+    handler_at = handler(body, base, lo_t, hi_t, NEWECL_OPCODE)
+    lines = instructions(body, base, handler_at, 0x40)
+    tail = newecl_tail(lines)
+    text = [t for _, _, t in lines]
+
+    # `LDA <slot> / AND #$7F / STA <came-from>` opens the handler, and the
+    # 32-byte wipe is its one indexed store.
+    slot = int(text[0][5:], 16)
+    came_from = int(text[2][5:], 16)
+    scratch = next(int(t[5:9], 16) for t in text
+                   if t.startswith("STA $") and t.endswith(",X"))
+
+    # Anything else zeroed in the same breath: Silver Blades stores to `$4BFB`
+    # between the `LDA #$00` and the wipe, and the loop's back edge is the
+    # indexed store, so it happens once. Taken as the plain `STA abs` between
+    # the immediate zero and the tail, which is where such a write can be.
+    zero_at = next(i for i, t in enumerate(text) if t == "LDA #$00")
+    tail_at = next(i for i, (a, _, _) in enumerate(lines) if a == tail)
+    zeroed = tuple(int(t[5:], 16) for t in text[zero_at + 1:tail_at]
+                   if t.startswith("STA $") and "," not in t)
+
+    # The indoors flag is what the position flush tests before copying the
+    # live triple into the save, and the flush is the tail's own first call.
+    flush = int(text[tail_at][5:], 16)
+    flush_lines = instructions(body, base, flush, 0x10)
+    indoors = int(flush_lines[0][2][5:], 16)
+    live_square = int(next(t for _, _, t in flush_lines
+                           if t.startswith("LDA $") and t.endswith(",X"))[5:9],
+                      16)
+
+    # The wall-slot-pinned array is read by the wall unpacker and by nothing
+    # else, and it sits one byte above the indoors flag in every title read.
+    # Checked rather than assumed: `LDA <flag+1>,X` followed by a `BNE` has to
+    # appear exactly once in the overlay.
+    guard = one_reference(body, base, 0xBD, indoors + 1, 0xD0)
+    pinned = indoors + 1 if guard is not None else None
+
+    test = find_window(body, base, KEY_WAIT_SIG, "key-wait")
+    key_wait = loop_start(body, base, test) if test else (0, 0)
+    _, lib = load("LIBRARY", root, game)
+    called = next(int(t[5:], 16) for _, _, t
+                  in instructions(body, base, key_wait[0], 0x10)
+                  if t.startswith("JSR $"))
+    off = lib.find(KEY_FETCH_SIG)
+    key_fetch = (called, reachable_end(lib, called - off, called))
+
+    _, lk = load("LINKER", root, game)
+    loads = [t for _, _, t in instructions(lk, 0, 0, 0x20)
+             if t.startswith(("LDA $", "STA $")) and "," not in t]
+    mode_flag = int(loads[0][5:], 16)
+
+    return {
+        "key": game.key, "title": game.title,
+        "handler": handler_at, "tail": tail,
+        "slot": slot, "disk": mode_flag + 1, "came_from": came_from,
+        "scratch": scratch, "zeroed": zeroed, "indoors": indoors,
+        "live_square": live_square, "wall_slot_pinned": pinned,
+        "key_wait": tuple(key_wait), "key_fetch": tuple(key_fetch),
+        "mode": mode_flag,
+    }
+
+
 def report(game: games.Game, root: str, base: int,
            against: games.Game | None) -> int:
     decl, body = load("DUNGEON", root, game)

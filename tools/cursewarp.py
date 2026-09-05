@@ -12,10 +12,19 @@ area of a running Curse.
 
     tools/cursewarp.py --pool 3 --to 0x03 --disk 2 --out work/issue19/run1
     tools/cursewarp.py --pool 3 --probe --out work/issue19/probe
+    tools/cursewarp.py --pool 5 --to 0x10 --disk 3 --via-actions --out DIR
 
 `--probe` boots, loads the party, and reports what the machine holds without
 warping -- which is what to run first, because the current area and the
 indoors flag both decide whether a warp is legal.
+
+**`--via-actions` makes the trip with `automap.actions.FastTravel` instead of
+with this file's own writes**, which is the measurement
+`#15 (Fast Travel for more than one Gold Box title)` needed: `#19` proved the
+mechanism by writing the bytes from here, and what a player clicking Fast
+Travel runs is the action, with its own address table, its own legality chain
+and its own jump. A tool that reproduces a result its own way says nothing
+about the code that ships.
 
 **Every address here is Curse's, read out of Curse's overlays**, and none of
 them is Pool of Radiance's with an offset applied by hand: `tools/newecl.py`
@@ -486,6 +495,79 @@ def warp(sess, addr: Addresses, target: int, disk: int,
     return made
 
 
+class SessTarget:
+    """`automap.actions`' Target contract over this session's monitor.
+
+    The same four methods `tools/windowsquare.py` wraps a Pool of Radiance
+    session in. It exists so that `--via-actions` exercises the code the
+    window ships rather than this file's own `warp`: the two write the same
+    bytes, and only one of them is what a player clicking Fast Travel runs.
+    """
+
+    def __init__(self, sess):
+        self.sess = sess
+
+    def read(self, addr: int, length: int) -> bytes:
+        with self.sess.mon(5) as m:
+            return m.read(addr, length)
+
+    def write(self, addr: int, data) -> None:
+        with self.sess.mon(5) as m:
+            m.write(addr, bytes(data))
+
+    def pc(self):
+        with self.sess.mon(5) as m:
+            return m.registers().get(pc_register(m))
+
+    def set_pc(self, address: int) -> None:
+        with self.sess.mon(5) as m:
+            m.set_registers({pc_register(m): address})
+
+
+class Row:
+    """One area, in the shape `FastTravel` reads a table row in.
+
+    Curse has no area table -- `goldbox/areas.py` has Pool of Radiance's and
+    Silver Blades' -- so a driven trip has to supply the three fields itself:
+    the id, the side that carries the area's `ECL`, and where to put the
+    party. `FastTravel` reads them off any object, which is what lets this run
+    without waiting on a table nobody has built.
+    """
+
+    def __init__(self, id: int, disk: int, arrival=None):
+        self.id, self.disk, self.arrival = id, disk, arrival
+        self.name = f"area ${id:02X}"
+        self.outdoors = False
+        self.fasttravelable = True
+
+
+def warp_via_actions(sess, target, to: int, disk: int, square) -> dict:
+    """The same trip, made by `automap.actions.FastTravel` itself.
+
+    **This is the measurement `#15 (Fast Travel for more than one Gold Box
+    title)` needs and `#19` did not make.** `#19` proved the mechanism by
+    writing the bytes from this file; what a player runs is
+    `FastTravel.apply`, with its own legality chain, its own address table and
+    its own jump. A tool that reproduces a result its own way says nothing
+    about the code that ships.
+    """
+    from automap import actions
+
+    ft = actions.FastTravel(games.CURSE_OF_THE_AZURE_BONDS)
+    row = Row(to, disk, arrival=tuple(square) if square else None)
+    verdict = ft.legality(target, row)
+    out = {"legal": bool(verdict), "reason": verdict.reason,
+           "addresses": ft.addresses.title if ft.addresses else None}
+    if not verdict:
+        return out
+    outcome = ft.apply(target, area=row)
+    out["ok"] = outcome.ok
+    out["message"] = outcome.message
+    out["writes"] = [[at, list(data)] for at, data in outcome.writes]
+    out["notes"] = list(outcome.notes)
+    return out
+
+
 def run(args) -> int:
     game = games.CURSE_OF_THE_AZURE_BONDS
     out = pathlib.Path(args.out)
@@ -572,9 +654,18 @@ def run(args) -> int:
             if square is not None:
                 square = (square[0], square[1], square[2])
             print(f"arrival square from {args.geo}: {square}", flush=True)
-        made = warp(sess, addr, args.to, args.disk, square)
-        print("wrote:", json.dumps(made), flush=True)
-        (out / "writes.json").write_text(json.dumps(made, indent=1))
+        if args.via_actions:
+            made = warp_via_actions(sess, SessTarget(sess), args.to,
+                                    args.disk, square)
+            print("FastTravel.apply:", json.dumps(made), flush=True)
+            (out / "writes.json").write_text(json.dumps(made, indent=1))
+            if not made.get("ok"):
+                print("the action refused; nothing was written", flush=True)
+                return 4
+        else:
+            made = warp(sess, addr, args.to, args.disk, square)
+            print("wrote:", json.dumps(made), flush=True)
+            (out / "writes.json").write_text(json.dumps(made, indent=1))
 
         landed, pc = wait_idle(sess, addr)
         sess.settle(3)
@@ -619,6 +710,10 @@ def main(argv: list[str]) -> int:
                          "omitted, the arriving script places the party")
     ap.add_argument("--probe", action="store_true",
                     help="boot and report, warp nothing")
+    ap.add_argument("--via-actions", action="store_true",
+                    help="make the trip with automap.actions.FastTravel "
+                         "rather than with this file's own writes, which is "
+                         "what a player clicking the button runs")
     ap.add_argument("--force", action="store_true",
                     help="warp even from the travel grid, which is expected "
                          "to wedge the loader")

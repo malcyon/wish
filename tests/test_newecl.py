@@ -36,6 +36,7 @@ import pytest
 # the package's name and a bare `import wish` that resolves to it stays
 # resolved for the whole process.
 import wish  # noqa: F401
+from automap import fasttravel
 from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
 from automap.paths import find_disks
 from goldbox import games
@@ -130,10 +131,8 @@ def test_the_later_titles_have_the_same_mechanism(newecl, key, handler, tail):
     """Curse and Silver Blades have a `NEWECL` whose tail can be entered.
 
     The answer to `#19 (Can Curse be fast-travelled at all, or is the
-    mechanism Pool of Radiance's alone?)`, pinned. The addresses are here
-    because they are the finding, not because anything ships them: no code
-    reads these yet, and a change in either is a change in what that ticket
-    concluded.
+    mechanism Pool of Radiance's alone?)`, pinned. A change in either address
+    is a change in what that ticket concluded.
     """
     game = next(g for g in games.GAMES if g.key == key)
     at, got, wait, fetch, lines = _read(newecl, game)
@@ -148,3 +147,47 @@ def test_the_later_titles_have_the_same_mechanism(newecl, key, handler, tail):
     assert any(t.startswith("STA $4BF2") for t in text)
     assert any(t.startswith("STA $4C00,X") for t in text)
     assert "JMP $0809" in text
+
+
+@pytest.mark.parametrize("key", sorted(fasttravel.ADDRESSES))
+def test_every_shipped_row_is_what_that_titles_disks_say(newecl, key):
+    """`automap/fasttravel.py`'s whole table, against the games' own bytes.
+
+    Twelve numbers a fast travel writes or jumps to, per title, re-derived by
+    `tools/newecl.py` from the overlays rather than compared with anything
+    typed into this file. A row that drifts -- another release, another crack,
+    a paste error -- is a `JMP` into somebody else's code and a byte written
+    into whatever that title keeps at another title's address, and neither
+    failure says anything before it happens.
+
+    `walls_slot` and `travel_square` are not checked here: neither is
+    `NEWECL`'s own, they are Pool of Radiance measurements from `#156` and
+    `#178`, and the derivation has nothing to compare them against.
+    """
+    game = next(g for g in games.GAMES if g.key == key)
+    got = newecl.derive(game, _disks(game))
+    row = fasttravel.ADDRESSES[key]
+    for field in ("title", "handler", "tail", "slot", "disk", "came_from",
+                  "scratch", "indoors", "live_square", "wall_slot_pinned",
+                  "key_wait", "key_fetch", "zeroed"):
+        assert got[field] == getattr(row, field), field
+    assert got["mode"] == game.mode_flag
+
+
+def test_silver_blades_is_the_one_title_with_a_sixth_write(newecl):
+    """One extra byte zeroed, and the other two titles have none.
+
+    `#19` left this for `#15 (Fast Travel for more than one Gold Box title)`
+    as a warning rather than as a number. It is `$4BFB`, the flag that
+    suppresses the party's coordinates on the status line, and the handler
+    writes it once -- the wipe's back edge is the indexed store below it, not
+    the plain one -- so a trip that skipped it would leave a party's
+    coordinates hidden in the four Silver Blades areas whose own script never
+    touches the byte.
+    """
+    rows = {k: newecl.derive(next(g for g in games.GAMES if g.key == k),
+                             _disks(next(g for g in games.GAMES if g.key == k)))
+            for k in fasttravel.ADDRESSES}
+    assert rows["secret-of-the-silver-blades"]["zeroed"] == (0x4BFB,)
+    assert rows["pool-of-radiance"]["zeroed"] == ()
+    assert rows["curse-of-the-azure-bonds"]["zeroed"] == ()

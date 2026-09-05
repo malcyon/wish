@@ -64,7 +64,7 @@ from goldbox.savegame import (
     SaveGame1,
 )
 
-from . import live
+from . import fasttravel, live
 from .combat import COMBAT
 from .paths import config_dir
 
@@ -1086,15 +1086,29 @@ def actions(store: SpellStore | None = None,
 # **Nothing below has ever been run against the game.** The writes are copied
 # from the handler; entering it at `$2034` from the key-wait loop is a guess,
 # and so is what happens to the party afterwards.
+#
+# **Every address below is Pool of Radiance's, and is now one row of a table.**
+# `automap/fasttravel.py` holds the row for each title whose overlays have been
+# read, and the constants here are that row's fields under the names the rest
+# of the program already used -- `tools/wallpins.py`, `tools/windowsquare.py`,
+# `tools/exitreentry.py` and `tests/test_newecl.py` all import them, and every
+# one of those is Pool of Radiance's work. A `FastTravel` built for a title
+# reads its own row instead and never these (#15).
+
+#: Pool of Radiance's row, which is where the constants below come from. Named
+#: so that a reader who follows one of them arrives at the table rather than at
+#: another copy of the number.
+POOL_ADDRESSES = fasttravel.POOL_OF_RADIANCE
 
 #: Which `POOL` disk the arriving area lives on. `LIBRARY $43A4` reads it and
 #: prompts if that disk is not in the drive.
-FASTTRAVEL_DISK = 0x6E12
+FASTTRAVEL_DISK = POOL_ADDRESSES.disk
 #: The live party square inside `GDRIVE00`, of which `$49C0`-`$49C2` is a
 #: lagging copy: x, y, facing. `$1A3C`, called from `$2034`, copies these into
 #: the save's own bytes, which is why the arrival square is written before the
 #: jump and not after.
-FASTTRAVEL_X, FASTTRAVEL_Y, FASTTRAVEL_FACING = 0xC04B, 0xC04C, 0xC04D
+FASTTRAVEL_X = POOL_ADDRESSES.live_square
+FASTTRAVEL_Y, FASTTRAVEL_FACING = FASTTRAVEL_X + 1, FASTTRAVEL_X + 2
 #: The live travel-grid square, window-local x then y. Outdoors `$C04B`-
 #: `$C04D` is not the party's position -- `GDRIVE00` is not resident -- and
 #: no arriving script places an outdoor party
@@ -1104,7 +1118,7 @@ FASTTRAVEL_X, FASTTRAVEL_Y, FASTTRAVEL_FACING = 0xC04B, 0xC04C, 0xC04D
 #: overland square it last stood on)`). Two bytes: the travel facing is
 #: `$033D`, page 3, unsaved and of unknown encoding (`docs/113-world-map.md`
 #: unknown 3), and is not written here.
-FASTTRAVEL_TRAVEL_X = 0x49C3
+FASTTRAVEL_TRAVEL_X = POOL_ADDRESSES.travel_square
 #: Where the party came *from*: `$2011`-`$2016` sets it, and the arriving
 #: script's entry 4 compares it against its own id.
 #:
@@ -1116,9 +1130,9 @@ FASTTRAVEL_TRAVEL_X = 0x49C3
 #: Proved by fasttraveling into area 22 with `$49F2` = 23: `ECL16`'s
 #: `COMPARE [$49F2], 23 / IF= / EXIT` fired, the script left the square alone,
 #: and the party stood where the fasttravel had put it.
-FASTTRAVEL_FROM = 0x49F2
+FASTTRAVEL_FROM = POOL_ADDRESSES.came_from
 #: The `ECL` slot of the loaded-files cache. Bit 7 means "reload me".
-FASTTRAVEL_SLOT = 0x6E1B
+FASTTRAVEL_SLOT = POOL_ADDRESSES.slot
 #: Slot 9 of the loaded-files cache -- the resident `WALLS` file, which loads
 #: at `$ED50` under the KERNAL. `#156`: every area but New Phlan uses a
 #: `WALLDEF` triple instead: `LOADPIECES` (`DUNGEON $276E`) marks the three
@@ -1135,7 +1149,15 @@ FASTTRAVEL_SLOT = 0x6E1B
 #: area carries in this slot, and it is the one value `LIBRARY $4225` leaves
 #: alone -- so the next `LOADFILES 0, 0, 0` in New Phlan reloads `WALLS00`
 #: rather than declining because the slot already says `00`.
-FASTTRAVEL_WALLS_SLOT = 0x6E1C
+#:
+#: **Pool of Radiance is the only title with this bug, because it is the only
+#: one with a `WALLS` file.** A directory read of all nine Pool of Radiance
+#: sides, all six Curse sides and all six Silver Blades sides finds `WALLS00`
+#: on Pool of Radiance's alone; the other two carry `WALLDEF`/`WALLSET` pairs
+#: and nothing else. So `FastTravelAddresses.walls_slot` is None there and
+#: `newecl_writes` leaves the slot out rather than aiming `$FF` at a cache
+#: entry whose contents in those titles nobody has read.
+FASTTRAVEL_WALLS_SLOT = POOL_ADDRESSES.walls_slot
 #: `$49E7`-`$49E9`, one flag per wall piece -- `goldbox/memory.py` calls it
 #: "wall slot pinned". `DUNGEON $14CB` reads `$49E7,X` before unpacking piece
 #: `X` and returns at once when it is non-zero, so the piece keeps whatever
@@ -1147,15 +1169,29 @@ FASTTRAVEL_WALLS_SLOT = 0x6E1C
 #: the areas that never set it, and one extra relocation pass in `ECL06`'s
 #: Valjevo-to-Valjevo route, which is the one place the game left it set on
 #: purpose.
-WALL_SLOT_PINNED, WALL_SLOT_PINNED_LEN = 0x49E7, 3
+#:
+#: **This one does transfer, and it was checked rather than assumed.** The
+#: array is at `$4BE7` in Curse and Silver Blades -- `save_load_address` plus
+#: `$0200`, like the other two save-relative writes -- and each title's
+#: `DUNGEON` holds exactly one reference to it, `LDA $4BE7,X / BNE` in front of
+#: the same unpack setup Pool of Radiance guards (`LDA #$0C / STA $B0 /
+#: LDA #$03 / STA $B1`, the piece geometry). One hit per overlay, three
+#: overlays, so there is no second array anywhere that could be the real one.
+#: Which of their scripts pin a piece is unmeasured, and zeroing costs a
+#: relocation pass in the ones that do.
+WALL_SLOT_PINNED = POOL_ADDRESSES.wall_slot_pinned
+WALL_SLOT_PINNED_LEN = POOL_ADDRESSES.wall_slot_pinned_len
 #: Zeroed by `$202A`-`$2032`: the origin of the scratch/persistent split.
-FASTTRAVEL_SCRATCH, FASTTRAVEL_SCRATCH_LEN = 0x4A00, 0x20
+FASTTRAVEL_SCRATCH = POOL_ADDRESSES.scratch
+FASTTRAVEL_SCRATCH_LEN = POOL_ADDRESSES.scratch_len
 #: Non-zero indoors, zero on the overland map. Read, never written: it decides
-#: whether `LOADFILES` asks for a `GEO` or a `SQRDATA`.
-FASTTRAVEL_INDOORS = 0x49E6
+#: whether `LOADFILES` asks for a `GEO` or a `SQRDATA`. `$4BE6` in Curse and
+#: Silver Blades, read out of `NEWECL`'s own tail call rather than relocated by
+#: hand -- and in a running Curse this address is `LIBRARY` code (`#29`).
+FASTTRAVEL_INDOORS = POOL_ADDRESSES.indoors
 #: The tail of `NEWECL`'s handler, past the operand fetch. `$203A` reloads the
 #: stack pointer from `$03BF`, so the call depth we interrupt does not matter.
-NEWECL_TAIL = 0x2034
+NEWECL_TAIL = POOL_ADDRESSES.tail
 #: `$6E11`: DUNGEON is the resident overlay. `$2034` is some other overlay's
 #: code when it is not.
 DUNGEON = 1
@@ -1168,7 +1204,7 @@ DUNGEON = 1
 #: nothing above it, and the code agrees: `$10E0` is the `JMP $10C2` that
 #: closes it, `$10E3`-`$10EB` is its own exit tail, and `$10EC` starts a
 #: different routine (`LDA #$00 / STA $6DD5`). So the window ends at `$10EC`.
-KEY_WAIT = (0x10C2, 0x10EC)
+KEY_WAIT = POOL_ADDRESSES.key_wait
 #: The key fetcher the loop calls, `$2E4E`-`$2E6A` inclusive: `LDA $DC00` for
 #: the CIA row, then the KERNAL buffer, then `RTS`. FastTraveling from inside it is
 #: safe for the same reason as the loop -- it is called *from* the loop, so
@@ -1176,7 +1212,7 @@ KEY_WAIT = (0x10C2, 0x10EC)
 #: successfully from `$2E4E` before this was written down. Nine idle samples
 #: in ten land in one window or the other, so refusing the fetcher made the
 #: button fail about half the times it was pressed.
-KEY_FETCH = (0x2E4E, 0x2E6B)
+KEY_FETCH = POOL_ADDRESSES.key_fetch
 
 
 #: No title given means "whatever table this build has", which is what every
@@ -1188,13 +1224,21 @@ ANY_TITLE = object()
 def area_rows(title=ANY_TITLE) -> tuple:
     """This title's area table, or nothing if there is none.
 
-    `goldbox/areas.py` owns it. Imported here rather than at the top of the module
-    so that a checkout without it still has the other five actions.
+    **Two gates, and a row has to pass both.** `goldbox.areas.areas_for_title`
+    asks whether anybody has written the table down -- a row's disk number and
+    `ECL` id mean a different place in every title, and `#14` is what happens
+    when Pool of Radiance's are offered in a Curse session.
+    `automap.fasttravel.supported` asks the other half: whether the *writes*
+    for that title have been read, because a table with no addresses behind it
+    would put the right area id at the wrong byte.
 
-    **Only Pool of Radiance has one.** A row's disk number and `ECL` id are
-    Pool of Radiance's, and `FastTravel` writes both into the running machine, so
-    another title's session must be offered nothing rather than these --
-    `goldbox.areas.areas_for_title` is where that refusal lives.
+    They are separate on purpose. Silver Blades has had the first since
+    `#20 (Build an area table for Silver Blades)` and got the second here, so
+    a table can exist for a title a fast travel still cannot reach -- and
+    `goldbox.areas.areas_for` is the accessor for everything that only reads.
+
+    `goldbox/areas.py` is imported here rather than at the top of the module so
+    that a checkout without it still has the other five actions.
     """
     try:
         from goldbox import areas
@@ -1202,6 +1246,8 @@ def area_rows(title=ANY_TITLE) -> tuple:
         return ()
     if title is ANY_TITLE:
         return tuple(areas.AREAS)
+    if not fasttravel.supported(title):
+        return ()
     return tuple(areas.areas_for_title(title))
 
 
@@ -1265,7 +1311,8 @@ class Waypoint:
 
 def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
                   arrival=None,
-                  overland: tuple[int, int] | None = None
+                  overland: tuple[int, int] | None = None,
+                  addresses: fasttravel.FastTravelAddresses | None = None
                   ) -> tuple[tuple[int, bytes], ...]:
     """The bytes a fast travel writes: `NEWECL`'s own, in its own order and
     minus the operand fetch, behind the one write a departing script would
@@ -1276,6 +1323,24 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     `DUNGEON $2011`-`$2032`, and that they can be made from outside while the
     game sits in its key-wait loop is not established. Correcting the sequence
     should mean editing this function and nothing else.
+
+    `addresses` is the title's row from `automap/fasttravel.py`, and defaults
+    to Pool of Radiance's, which is what every caller written before there was
+    a second title meant. Three of its fields change what gets written rather
+    than only where:
+
+    * **`walls_slot` is None in every title but Pool of Radiance**, which is
+      the only one with a `WALLS` file at all (Curse and Silver Blades carry
+      `WALLDEF`/`WALLSET` triples and no `WALLS00`, read off their own disk
+      directories), so the `#156` write is left out rather than aimed at a
+      cache slot whose contents there nobody has read.
+    * **`travel_square` is None in every title but Pool of Radiance**, the one
+      title with a square-engine overland, so `overland` cannot be honoured
+      elsewhere and asking for it is a caller bug.
+    * **`zeroed` carries Silver Blades' sixth write.** Its handler is
+      `LDX #$1F / LDA #$00 / STA $4BFB / STA $4C00,X / DEX / BPL`, and the
+      back edge is the `STA $4C00,X` -- so `$4BFB` is written once, in front
+      of the wipe, and that order is kept here.
 
     `arrival` is `(x, y, facing)`, or `(x, y)` where the departing script sets
     the square but not the direction, or None to write no square at all and let
@@ -1307,20 +1372,27 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
         raise ValueError("newecl_writes: arrival and overland are mutually "
                          "exclusive -- an area is indoors or outdoors, "
                          "never both")
-    writes: list[tuple[int, bytes]] = [
-        (FASTTRAVEL_WALLS_SLOT, b"\xff"),
-        (WALL_SLOT_PINNED, bytes(WALL_SLOT_PINNED_LEN)),
-    ]
+    addr = addresses or POOL_ADDRESSES
+    if overland is not None and addr.travel_square is None:
+        raise ValueError(f"newecl_writes: {addr.title} has no travel grid, so "
+                         f"there is no address to put an overland square at")
+    writes: list[tuple[int, bytes]] = []
+    if addr.walls_slot is not None:
+        writes.append((addr.walls_slot, b"\xff"))
+    if addr.wall_slot_pinned is not None:
+        writes.append((addr.wall_slot_pinned,
+                       bytes(addr.wall_slot_pinned_len)))
     if disk is not None:
-        writes.append((FASTTRAVEL_DISK, bytes([disk & 0xFF])))
+        writes.append((addr.disk, bytes([disk & 0xFF])))
     if arrival is not None:
-        writes.append((FASTTRAVEL_X, bytes(int(v) & 0xFF for v in arrival)))
+        writes.append((addr.live_square, bytes(int(v) & 0xFF for v in arrival)))
     elif overland is not None:
-        writes.append((FASTTRAVEL_TRAVEL_X,
+        writes.append((addr.travel_square,
                        bytes(int(v) & 0xFF for v in overland)))
-    writes.append((FASTTRAVEL_FROM, bytes([from_area & 0x7F])))
-    writes.append((FASTTRAVEL_SLOT, bytes([(to_area & 0x7F) | 0x80])))
-    writes.append((FASTTRAVEL_SCRATCH, bytes(FASTTRAVEL_SCRATCH_LEN)))
+    writes.append((addr.came_from, bytes([from_area & 0x7F])))
+    writes.append((addr.slot, bytes([(to_area & 0x7F) | 0x80])))
+    writes.extend((at, b"\x00") for at in addr.zeroed)
+    writes.append((addr.scratch, bytes(addr.scratch_len)))
     return tuple(writes)
 
 
@@ -1440,6 +1512,15 @@ class FastTravel(Action):
     into all fifteen areas that then had no arrival square and recorded where
     each landed. Fourteen still have none and get a square off the map instead.
 
+    **Three titles, one mechanism.** `NEWECL` is the same routine in Curse and
+    Silver Blades -- found by the script VM's self-modifying dispatch rather
+    than by relocating Pool of Radiance's address, which is no constant at all
+    (`$2011`, `$21BA`, `$20E6`) -- and a Curse party has been fast-travelled
+    four times on a running machine and then walked
+    (`#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
+    Radiance's alone?)`). The addresses are `automap/fasttravel.py`, one row
+    per title, and `self.addresses` is None for the three nobody has read.
+
     Two guards that are not optional, both re-checked at `apply` time:
 
     * **`$6E11` must be 1.** `$2034` is some other overlay's code otherwise,
@@ -1480,44 +1561,69 @@ class FastTravel(Action):
         "inside the game, so point the emulator at a copy of your save disk, "
         "never the original.")
 
-    def __init__(self):
-        # Pool of Radiance, always and explicitly. Every address below is one
-        # of this title's overlays -- `NEWECL`'s tail, DUNGEON's key-wait loop,
-        # the disk and cache-slot bytes -- and `goldbox/areas.py` has a table for
-        # no other title, so the row offers a later title nothing at all (#14).
-        super().__init__(games.POOL_OF_RADIANCE)
+    def __init__(self, game: games.Game | None = None):
+        """Which title to travel in. None is Pool of Radiance.
+
+        **The addresses come with the title and are never defaulted.**
+        `automap/fasttravel.py` has a row for each of the three titles whose
+        overlays have been read; `self.addresses` is None for the other three,
+        and every method below refuses rather than falling back to Pool of
+        Radiance's numbers. Falling back is the one answer that corrupts --
+        `#14` fixed it for the area list, and this is the same mistake one
+        address at a time.
+        """
+        super().__init__(game or games.POOL_OF_RADIANCE)
+        #: This title's `NEWECL` addresses, or None if nobody has read it.
+        self.addresses = fasttravel.addresses_for(self.game)
         #: Where the last fasttravel came from. `FastTravel Back` reads it; None until a
         #: fasttravel has been made, which is why the button starts disabled.
         self.back: Waypoint | None = None
 
     # -- reading the machine ---------------------------------------------
+    #
+    # Static, and taking the row as a second argument, because three tools
+    # call `FastTravel.current_area(target)` off the class -- they are Pool of
+    # Radiance's experiments and the default keeps them working. Everything in
+    # here passes `self.addresses`.
 
     @staticmethod
-    def current_area(target) -> int | None:
+    def current_area(target, addresses=None) -> int | None:
         """The id of the area running now: `$6E1B` without the reload bit."""
-        raw = _read(target, FASTTRAVEL_SLOT, 1)
+        raw = _read(target, (addresses or POOL_ADDRESSES).slot, 1)
         return raw[0] & 0x7F if raw else None
 
     @staticmethod
-    def current_disk(target) -> int | None:
-        raw = _read(target, FASTTRAVEL_DISK, 1)
+    def current_disk(target, addresses=None) -> int | None:
+        raw = _read(target, (addresses or POOL_ADDRESSES).disk, 1)
         return raw[0] if raw else None
 
     @staticmethod
-    def current_square(target) -> tuple[int, int, int] | None:
-        raw = _read(target, FASTTRAVEL_X, 3)
+    def current_square(target, addresses=None) -> tuple[int, int, int] | None:
+        raw = _read(target, (addresses or POOL_ADDRESSES).live_square, 3)
         return (raw[0], raw[1], raw[2]) if raw and len(raw) == 3 else None
 
     @staticmethod
-    def current_indoors(target) -> int | None:
-        """`$49E6`: non-zero indoors, zero on the travel grid."""
-        raw = _read(target, FASTTRAVEL_INDOORS, 1)
+    def current_indoors(target, addresses=None) -> int | None:
+        """`$49E6`: non-zero indoors, zero on the travel grid.
+
+        Curse's and Silver Blades' is `$4BE6`, which is not a guess and not a
+        relocation applied by hand: `NEWECL`'s own tail call reads it, and the
+        three routines are the same instructions -- `LDA <flag> / BEQ /
+        LDX #$02 / LDA $C04B,X / STA <save position>,X` at `DUNGEON $1A3C`,
+        `$1BE7` and `$1AF9`. In a running Curse `$49E6` is `LIBRARY` code
+        (`#29`).
+        """
+        raw = _read(target, (addresses or POOL_ADDRESSES).indoors, 1)
         return raw[0] if raw else None
 
     @staticmethod
-    def current_overland(target) -> tuple[int, int] | None:
-        """`$49C3`/`$49C4`, the live travel-grid square."""
-        raw = _read(target, FASTTRAVEL_TRAVEL_X, 2)
+    def current_overland(target, addresses=None) -> tuple[int, int] | None:
+        """`$49C3`/`$49C4`, the live travel-grid square, or None where the
+        title has no travel grid to have one on."""
+        at = (addresses or POOL_ADDRESSES).travel_square
+        if at is None:
+            return None
+        raw = _read(target, at, 2)
         return (raw[0], raw[1]) if raw and len(raw) == 2 else None
 
     # -- may we -----------------------------------------------------------
@@ -1526,31 +1632,43 @@ class FastTravel(Action):
         base = super().legality(target)
         if not base:
             return base
+        addr = self.addresses
+        if addr is None:
+            # Nobody has read this title's overlays, so there is no tail to
+            # jump to and no cache slot to flag. `UNSUPPORTED` is the sentence
+            # every other action already answers with when the title has no
+            # measured address, which is exactly what this is.
+            return Verdict(False, UNSUPPORTED.format(title=self.game.title))
         if mode(target, self.game) != DUNGEON:
-            return Verdict(False, "$6E11 is not 1, so DUNGEON is not the "
-                                  "resident overlay and $2034 is not NEWECL")
+            return Verdict(False, f"${self.game.mode_flag:04X} is not 1, so "
+                                  f"DUNGEON is not the resident overlay and "
+                                  f"${addr.tail:04X} is not NEWECL")
         pc = program_counter(target)
         if pc is None:
             return Verdict(False, "this backend cannot read the CPU, and "
                                   "fast travel has to set the program counter")
-        if not any(lo <= pc < hi for lo, hi in (KEY_WAIT, KEY_FETCH)):
+        if not any(lo <= pc < hi for lo, hi in (addr.key_wait, addr.key_fetch)):
             return Verdict(False, f"the PC is ${pc:04X}, outside DUNGEON's "
-                                  f"key-wait loop (${KEY_WAIT[0]:04X}-"
-                                  f"${KEY_WAIT[1] - 1:04X}) and the key "
-                                  f"fetcher it calls (${KEY_FETCH[0]:04X}-"
-                                  f"${KEY_FETCH[1] - 1:04X}): the game is busy")
+                                  f"key-wait loop (${addr.key_wait[0]:04X}-"
+                                  f"${addr.key_wait[1] - 1:04X}) and the key "
+                                  f"fetcher it calls (${addr.key_fetch[0]:04X}-"
+                                  f"${addr.key_fetch[1] - 1:04X}): the game is "
+                                  f"busy")
         if area is None:
             return Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
             return Verdict(False, self.ATTRACT_TRAP)
-        here = self.current_area(target)
+        if getattr(area, "outdoors", False) and addr.travel_square is None:
+            return Verdict(False, self.NO_TRAVEL_GRID.format(
+                title=self.game.title))
+        here = self.current_area(target, addr)
         if here is not None and here == getattr(area, "id", None):
             return Verdict(False, "the party is already in that area, and "
                                   "NEWECL skips a same-area transition")
-        raw = _read(target, FASTTRAVEL_INDOORS, 1)
-        indoors = raw[0] if raw else None
+        indoors = self.current_indoors(target, addr)
         if indoors == 0 and not getattr(area, "outdoors", False):
-            return Verdict(False, self.OUTDOORS_TRAP)
+            return Verdict(False, self.OUTDOORS_TRAP.format(
+                indoors=addr.indoors))
         return Verdict(True)
 
     def apply(self, target, area=None, arrival=None, **kwargs) -> Outcome:
@@ -1562,27 +1680,33 @@ class FastTravel(Action):
     # -- doing it ---------------------------------------------------------
 
     def run(self, target, area=None, arrival=None, **kwargs) -> Outcome:
-        here = self.current_area(target)
+        addr = self.addresses
+        if addr is None:
+            # `legality` refuses first for anything that came through `apply`.
+            # `run` is public, and a caller that skips the check must not get
+            # Pool of Radiance's tail jumped to in another title's machine.
+            return Outcome(False, UNSUPPORTED.format(title=self.game.title))
+        here = self.current_area(target, addr)
         to = getattr(area, "id", area)
         arrival, overland = self._square_writes(area, arrival=arrival)
         notes = list(self.warnings(target, area, arrival, overland))
         # Read before writing: the first write is $6E12 and the second is
         # $C04B or $49C3, so a waypoint taken afterwards would record where
         # we are going rather than where we were.
-        was = Waypoint(here, self.current_disk(target),
-                       self.current_square(target),
-                       self.current_overland(target)
-                       if self.current_indoors(target) == 0 else None
+        was = Waypoint(here, self.current_disk(target, addr),
+                       self.current_square(target, addr),
+                       self.current_overland(target, addr)
+                       if self.current_indoors(target, addr) == 0 else None
                        ) if here is not None else None
         writes = newecl_writes(here or 0, to, getattr(area, "disk", None),
-                               arrival, overland=overland)
+                               arrival, overland=overland, addresses=addr)
         _write_all(target, writes)
-        if not jump(target, NEWECL_TAIL):
+        if not jump(target, addr.tail):
             return Outcome(False,
-                           "the writes were made but the program counter could "
-                           "not be set, so nothing has happened yet -- $6E1B is "
-                           "flagged for reload and the next area change will "
-                           "act on it",
+                           f"the writes were made but the program counter "
+                           f"could not be set, so nothing has happened yet -- "
+                           f"${addr.slot:04X} is flagged for reload and the "
+                           f"next area change will act on it",
                            writes, tuple(notes))
         self.back = was
         name = getattr(area, "name", None) or getattr(area, "ecl", str(to))
@@ -1622,37 +1746,45 @@ class FastTravel(Action):
         return arrival, None
 
     def warnings(self, target, area, arrival, overland=None) -> tuple[str, ...]:
-        """Everything true about this fasttravel that the caller should know first."""
+        """Everything true about this fasttravel that the caller should know first.
+
+        Every address named here is `self.addresses`', so a Curse session
+        reads `$4BF2` and `$4BE6` rather than quoting Pool of Radiance's
+        numbers at a machine that keeps something else there.
+        """
+        addr = self.addresses or POOL_ADDRESSES
         out = ["the arriving script assumes quest flags the party never set; "
                "arriving this way is not the same as having played there"]
         outdoors_target = getattr(area, "outdoors", False)
         if not outdoors_target and arrival is None:
-            out.append("no arrival square is known for this area, so the party "
-                       "lands wherever the arriving script leaves it -- which "
-                       "it does: $49F2 survives the restart, so the arriving "
-                       "script's entry takes its came-from-elsewhere branch")
+            out.append(f"no arrival square is known for this area, so the "
+                       f"party lands wherever the arriving script leaves it "
+                       f"-- which it does: ${addr.came_from:04X} survives the "
+                       f"restart, so the arriving script's entry takes its "
+                       f"came-from-elsewhere branch")
         if not getattr(area, "has_map", True):
             out.append(f"{getattr(area, 'ecl', 'this area')} loads no map of "
                        "its own")
         if outdoors_target:
+            travel = addr.travel_square or 0
             if overland is not None:
                 x, y = overland
                 out.append(f"this is an overland area; the party is put at "
-                           f"$49C3/$49C4 = ({x}, {y}), the departing script's "
-                           f"own square, since no arriving script places an "
-                           f"outdoor party")
+                           f"${travel:04X}/${travel + 1:04X} = ({x}, {y}), the "
+                           f"departing script's own square, since no arriving "
+                           f"script places an outdoor party")
             else:
                 name = getattr(area, "name", None) or getattr(
                     area, "ecl", "this window")
                 out.append(f"no overland square is known for {name}, so the "
-                           f"party stays on whatever square $49C3/$49C4 "
-                           f"last held")
-        raw = _read(target, FASTTRAVEL_INDOORS, 1)
-        indoors = raw[0] if raw else None
+                           f"party stays on whatever square ${travel:04X}/"
+                           f"${travel + 1:04X} last held")
+        indoors = self.current_indoors(target, addr)
         if indoors is not None:
             outdoors_now = indoors == 0
             if outdoors_now != outdoors_target:
-                out.append(f"$49E6 is {indoors}, so LOADFILES will ask for a "
+                out.append(f"${addr.indoors:04X} is {indoors}, so LOADFILES "
+                           f"will ask for a "
                            f"{'SQRDATA' if outdoors_now else 'GEO'}")
         return tuple(out)
 
@@ -1672,10 +1804,25 @@ class FastTravel(Action):
     #: attaching something else first and poking `$49E6` afterwards all fail.
     #: The other direction is fine -- area 23 to 26 worked, and the arriving
     #: script sets `$49E6` itself. See `docs/50-experiments.md`.
-    OUTDOORS_TRAP = ("the party is on the overland map ($49E6 is 0) and this "
-                     "area is indoors: travelling that way hangs the loader "
-                     "asking for the disk for ever. Walk off the overland map "
-                     "first")
+    #:
+    #: **Measured in Pool of Radiance and never tested elsewhere**, and the
+    #: refusal stands in every title on that precedent. It is not safe to
+    #: assume the answer is the same: Curse's key-wait loop has a block Pool of
+    #: Radiance has nothing at, `$102E`-`$103A`, gated on the indoors flag and
+    #: calling `GDRIVE00 $C003` (`#19`). The address is the title's own, so a
+    #: Curse session does not read back Pool of Radiance's `$49E6`.
+    OUTDOORS_TRAP = ("the party is on the overland map (${indoors:04X} is 0) "
+                     "and this area is indoors: travelling that way hangs the "
+                     "loader asking for the disk for ever. Walk off the "
+                     "overland map first")
+
+    #: An outdoors row in a title with no travel grid. Nothing can produce it
+    #: today -- Pool of Radiance is the only title with a square-engine
+    #: overland and the only one whose area table has an `outdoors` row -- and
+    #: it is here because `newecl_writes` would otherwise have no address to
+    #: write the square at and would raise where a refusal belongs.
+    NO_TRAVEL_GRID = ("this area is on an overland map and {title} has no "
+                      "travel grid, so there is nowhere to put the party")
 
     # -- and back again ---------------------------------------------------
 
@@ -1683,7 +1830,7 @@ class FastTravel(Action):
         if self.back is None:
             return Verdict(False, "nothing to go back to: the party has not "
                                   "travelled anywhere this session")
-        area = area_by_id(self.back.area)
+        area = self._row(self.back.area)
         return self.legality(target, area or self.back)
 
     def apply_back(self, target) -> Outcome:
@@ -1691,9 +1838,10 @@ class FastTravel(Action):
         verdict = self.back_verdict(target)
         if not verdict:
             return Outcome(False, verdict.reason)
+        addr = self.addresses or POOL_ADDRESSES
         was, self.back = self.back, None
-        here = self.current_area(target)
-        area = area_by_id(was.area)
+        here = self.current_area(target, addr)
+        area = self._row(was.area)
         # `was.square` is $C04B at departure; `was.overland` is $49C3/$49C4
         # at departure. The area we are returning to decides which one is
         # its real position -- $C04B is not GDRIVE00's square outdoors
@@ -1701,19 +1849,33 @@ class FastTravel(Action):
         arrival, overland = self._square_writes(
             area or was, arrival=was.square, overland=was.overland)
         writes = newecl_writes(here or 0, was.area, was.disk, arrival,
-                               overland=overland)
+                               overland=overland, addresses=addr)
         _write_all(target, writes)
-        if not jump(target, NEWECL_TAIL):
+        if not jump(target, addr.tail):
             self.back = was
             return Outcome(False, "the writes were made but the program "
                                   "counter could not be set", writes)
         name = getattr(area, "name", None) or f"area {was.area}"
         return Outcome(True, f"travelled back to {name}", writes)
 
+    def _row(self, id: int):
+        """The row for an id **in this title**.
 
-def area_by_id(id: int):
-    """One row of the area table, or None."""
-    for row in area_rows():
+        An id means a different place in each game -- `$21` is Sokol Keep in
+        Pool of Radiance and a Silver Blades area on side 2 -- so the way back
+        has to be looked up in the title being travelled in. `area_by_id`
+        below is the module-level Pool of Radiance version its callers expect.
+        """
+        return area_by_id(id, self.game.title)
+
+
+def area_by_id(id: int, title=ANY_TITLE):
+    """One row of a title's area table, or None.
+
+    The default is "whatever table this build has", which for every caller
+    written before there was a second title meant Pool of Radiance's.
+    """
+    for row in area_rows(title):
         if getattr(row, "id", None) == id:
             return row
     return None
