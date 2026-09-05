@@ -807,6 +807,31 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     byte = bits | (0 if in_play else OUT_OF_PLAY)
     rec.set("roster_in_use", byte)
     rep.note(0x100, 1, f"roster status ${byte:02X}: " + ", ".join(where))
+
+    # -- the combat side and quickfight flag, packed into one byte -----------
+    # Bit 0 is the side the character fights on (0 the party's, 1 the
+    # enemy's) and bit 7 is quickfight, set by QUICK and never cleared
+    # (goldbox-bugs.md bug 3).  DOS keeps the same two flags separately at
+    # 0x10E and 0x10F -- the DOS engine's own script-field accessor converts
+    # between the two shapes, which is what fixes this byte's meaning
+    # (docs/169-dos-combat-side.md, #235).  A source supplying neither writes
+    # 0x00, which is what every fresh C64 character holds.
+    hostile, quickfight = use("hostile"), use("quickfight")
+    side_bits = 0
+    side_where: list[str] = []
+    for value, bit, label in ((hostile, 0x01, "bit 0"),
+                              (quickfight, 0x80, "bit 7")):
+        if value is not None:
+            if value.value:
+                side_bits |= bit
+            side_where.append(
+                f"{label} {'set' if value.value else 'clear'} <- "
+                f"{value.origin}")
+            rep.dropped.extend(value.dropped)
+    rec.set("combat_side", side_bits)
+    rep.note(0x10C, 1, f"combat side ${side_bits:02X}: " +
+             (", ".join(side_where) if side_where else
+              "no source for the combat side or quickfight, written 0"))
     tail = use("roster_tail")
     if tail is not None:
         rec.set_raw("roster_tail", bytes(tail.value))
@@ -863,6 +888,8 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                "have is reported and the character arrives OK"),
     ("active", "bit 7 of that same byte, set when the character is out of "
                "play -- the opposite polarity to DOS's own flag"),
+    ("hostile", "bit 0 of record 0x10C -- 0 the party's side, 1 the enemy's"),
+    ("quickfight", "bit 7 of the same byte, set by QUICK and never cleared"),
     # #57: the two ports share one 14-head, 12-body menu, byte for byte, in
     # both binaries -- so the neutral value is already the C64's own art id
     # and this is a copy, not a table lookup.  Kept out of `DIRECT` because a
@@ -977,6 +1004,8 @@ READ_TARGETS: dict[str, str] = (
        "roster_in_use": "the low three bits read as neutral status and bit 7 "
                         "as neutral active; zero is an empty roster slot and "
                         "is neither",
+       "combat_side": "bit 0 read as neutral hostile and bit 7 as neutral "
+                      "quickfight",
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
@@ -1081,6 +1110,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             out.drop("The character's state: this save holds a value the "
                      "game reads as an empty roster slot, which is not one "
                      "of the states it can put into words")
+
+    # -- the combat side and quickfight flag, unpacked from one byte ---------
+    if rec.is_stored("combat_side"):
+        raw = rec.get("combat_side")
+        out.set("hostile", bool(raw & 0x01),
+                f"bit 0 of C64 record 0x10C, ${raw:02X}",
+                grade("combat_side"), Provenance.RESHAPED)
+        out.set("quickfight", bool(raw & 0x80),
+                f"bit 7 of the same byte, ${raw:02X}",
+                grade("combat_side"), Provenance.RESHAPED)
 
     # As wide as the *title's* mask, not as wide as Pool of Radiance's. Seven
     # bytes stop at id 55, which cost MORGAINE five of her twenty-nine spells

@@ -441,7 +441,15 @@ def _unsourced_offsets() -> set[int]:
     # A measured default is not converted either: it is what a *newly made*
     # character has, and a played one's own value differs -- 12 of the 24
     # specimens here for `icon_colours` (#112).
+    #
+    # `field_10c_10f` is the one exception: it is in `WRITE_DEFAULTS` only
+    # for a source that supplies none of status, active, the combat side or
+    # quickfight, and every DOS record read here supplies all four -- so it
+    # round-trips unmasked, and masking it would hide a real regression
+    # (#235, docs/169-dos-combat-side.md).
     for name, _, _, _ in dos.WRITE_DEFAULTS:
+        if name == "field_10c_10f":
+            continue
         f = dos_layout.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     # Nor is a byte derived from the rest of the record: `unnamed_0ab` is the
@@ -722,32 +730,31 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     specimens hold" that `WRITE_CONSTANTS`' own docstring promises -- it is
     what a freshly made character carries, the same shape as `icon_colours`.
 
-    **Two of the four bytes are converted now and two are not**, and this is
-    what pins the split. A record staged at status Unconscious with the
-    active flag clear (`0x10C` = 4, `0x10D` = 0 -- the pair the engine itself
-    wrote for a character it knocked out) comes back with both, because
-    `to_neutral` reads them and the writer puts them back. `0x10E` is still
-    UNKNOWN and `0x10F` is the quickfight flag with no named C64 field to
-    have come from, so those two stay at the default and the note says so.
+    **All four bytes are converted now.** A record staged at status
+    Unconscious, not active, on the enemy's side and quick-fought (`0x10C` =
+    4, `0x10D` = 0, `0x10E` = 1, `0x10F` = 1) comes back exactly as staged,
+    because `to_neutral` reads all four and the writer puts them all back --
+    `tests/test_c64status.py` is where the C64 half of the conversion is
+    tested.  `WRITE_DEFAULTS`' entry is only what a source supplying none of
+    the four gets instead.
 
     Reverting `field_10c_10f` to `WRITE_CONSTANTS` still fails this: its
     provenance note there reads "in all 24 DOS specimens" and says nothing
-    about status, active or quickfight, or that half the field is not
-    converted. `tests/test_c64status.py` is where the conversion itself is
-    tested.
+    about status, active, the combat side or quickfight, and a source
+    staged away from the constant would fail the constant write outright.
     """
     assert "field_10c_10f" not in {n for n, _, _ in dos.WRITE_CONSTANTS}
     assert "field_10c_10f" in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
 
     f = dos_layout.FIELDS_BY_NAME["field_10c_10f"]
     raw = bytearray(dos_layout.RECORD_SIZE)
-    raw[f.offset:f.end] = b"\x04\x00\x00\x00"          # status: Unconscious
+    raw[f.offset:f.end] = b"\x04\x00\x01\x01"          # unconscious, hostile, quick
     char = dos.DosCharacter(bytes(raw))
     rec, _, _, rep = dos.write(dos.to_neutral(char))
-    assert rec[f.offset:f.end] == b"\x04\x00\x00\x00"
+    assert rec[f.offset:f.end] == b"\x04\x00\x01\x01"
     note = rep.sources[f.offset]
-    assert "Not converted" in note
-    assert "unconscious" in note and "quickfight" in note
+    assert "Not converted" not in note
+    assert "unconscious" in note
 
     # And a character the source says nothing about still gets the
     # fresh-character default across all four.

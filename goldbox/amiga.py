@@ -729,6 +729,10 @@ DROPPED: tuple[tuple[str, str], ...] = (
                "`CONFIDENCE['status']`. The character arrives well"),
     ("active", "see `status`: whether PoD marks a character out of the party "
                "the way DOS and the C64 do is not located either"),
+    ("hostile", "no located home; a player character is never on the enemy's "
+                "side and no Amiga specimen separates the byte from fill -- "
+                "see `docs/169-dos-combat-side.md`"),
+    ("quickfight", "no located home for the quickfight flag"),
 )
 
 

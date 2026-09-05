@@ -17,11 +17,11 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 
 | level | bytes | share |
 |---|---:|---:|
-| CONFIRMED | 451 | 77.8% |
+| CONFIRMED | 452 | 77.9% |
 | PROBABLE | 29 | 5.0% |
 | GUESS | 0 | 0.0% |
-| UNKNOWN | 100 | 17.2% |
-| **known** | **480** | **82.8%** |
+| UNKNOWN | 99 | 17.1% |
+| **known** | **481** | **82.9%** |
 
 ## Known fields
 
@@ -122,6 +122,7 @@ Promoted from PROBABLE on three further lines (docs/127). **Multi-class specimen
 **Measured in the running game, not only read.** One character in PORSAVE13's Slums ambush was wounded to 1 hit point through the monitor and nothing else touched; an orc took him to 0 and the byte went 01 -> 84 on that turn, then 84 -> 85 when the party won, and 85 is what the game wrote to the save disk. Loading that disk, his sheet reads UNCONSIOUS. tools/statusdrive.py.
 Four values carry an upper bit that is not bit 7 and are not explained: SPELLE04 $AA11 writes $03 beside creature type 4, undead -- Animate Dead, a DEAD thing with bit 7 clear so it still acts -- and $09 where it forces hit points to 1; SPELLE01 $ACDA writes $11 beside GETS BACK UP; SPELLE02 $AA05 writes $21. All four mask to OK or DEAD, so nothing a player sees separates them.
 The DOS enumeration is a different one at a different offset: 0 Okay, 1 Animated, 2 tempgone, 3 Running, 4 Unconscious, 5 Dying, 6 Dead, 7 Stoned, 8 Gone, at DOS 0x10C. Both are real; converting between them is a table, not an alignment |
+| `0x10C` | 1 | `combat_side` | unsigned byte | CONFIRMED | bit 0 is the side the character fights on, 0 the party's and 1 the enemy's; bit 7 is the quickfight flag, set by QUICK and never cleared (goldbox-bugs.md bug 3). COM.PREP $0F15 reads `AND #$7F` as the side; 115 of 116 MON* records hold $81; 104 occupied roster slots across 17 save images hold $00 in 99 and $80 in 5, never $81. The DOS engine's own script-field accessor (GAME.OVR:0x7DE9, 0x8074) reads and writes this exact byte over DOS 0x10E/0x10F -- docs/169-dos-combat-side.md. Bits 1-6 are unused by every writer seen; masked (`& 0x81`) rather than asserted zero (#235 (Two unattributed DOS byte ranges in the combat tail are dropped converting to C64, and nobody knows what they hold)) |
 | `0x10D` | 1 | `party_order` | unsigned byte | PROBABLE | the only byte where an export and the roster block disagree. In a roster block it is the record slot index, which is how the combat code finds a combatant's record; 8 means not in a party. It was read as marching order in an export, because across a six-character party the values form a complete 0-5 permutation -- but #160 (The automapper and the editor list the party backwards) showed the marching order is carried by the slot arrangement itself (the party lists from the highest occupied slot down) and no order table exists anywhere in the machine, and the slot indices of a packed six-character party are also a complete 0-5 permutation. So that evidence cannot separate the two readings. Treat it as the slot index until an export is taken from a party whose occupied slots are not 0..n-1 |
 | `0x10E` | 1 | `thac0` | unsigned byte | PROBABLE | current THAC0 including strength and the readied weapon, stored as 60 - THAC0, sitting immediately before the current armour class at 0x10F. Matches the AD&D table on all eleven exports we hold. Like 0x10F it exists only in an export, and it agrees with the SAVEDGAME1 roster's +0x0E for the same character -- so an exported .chr does carry both combat numbers after all, which is worth knowing given the 1989 editor's author reported he could never find either |
 | `0x10F` | 1 | `armour_class` | unsigned byte | PROBABLE | current armour class including armour, shield and dexterity, stored as 60 - AC. Present only in an exported .chr -- it lies beyond the 256 bytes a save slot stores -- and it agrees exactly with the SAVEDGAME1 roster's +0x0F for the same character: BRUTUS 9, MALCYON 8, LADY KATHERINE 8. Base and current again, in different places |

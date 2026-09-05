@@ -568,8 +568,8 @@ _DECLARED: Sequence[Field] = (
     _f(0x104, 8, _RAW, "heap_104", "unnamed @0x104 (LIVE)", _NOPE,
        "another of the runs Curse's importer skips; 0x106/0x107 move with "
        "the heap. LIVE"),
-    _f(0x10C, 4, _RAW, "field_10c_10f", "status, active, unknown, quickfight",
-       _MAYBE,
+    _f(0x10C, 4, _RAW, "field_10c_10f", "status, active, side, quickfight",
+       _OK,
        "the combat tail (#235), stored state rather than scratch -- twelve "
        "values staged across two boots, including 04 00 00 00 and "
        "06 00 00 00, all came back byte for byte from the engine's own "
@@ -579,12 +579,11 @@ _DECLARED: Sequence[Field] = (
        "STATUS UNCONSCIOUS for the same character staged 0 and 4. 0x10D is "
        "an active flag, CONFIRMED: 0 draws the name red in the party panel "
        "and 1 does not, 3 of 3 against 9 of 9 across two boots. 0x10E is "
-       "UNKNOWN: 0 in all 223 engine-written records of all four titles; "
-       "the third-party workbooks call it IsHostile, but a player "
-       "character is never hostile, so no specimen separates it from "
-       "fill -- a Pool of Radiance monster record, which shares this "
-       "format, is the untried experiment. 0x10F is the quickfight flag, "
-       "CONFIRMED: staged 1, a fight ran to its end with QUICK never "
+       "the combat side, 1 for the enemy's, CONFIRMED from the DOS engine's "
+       "own combat code and from a party member staged to it, which "
+       "attacked his own side and was dropped from the party when the "
+       "fight ended -- docs/169-dos-combat-side.md. 0x10F is the quickfight "
+       "flag, CONFIRMED: staged 1, a fight ran to its end with QUICK never "
        "pressed; staged 0, the same encounter stopped at the command bar. "
        "The default 00 01 00 00 is what a freshly made character carries, "
        "not a constant every specimen holds -- see "

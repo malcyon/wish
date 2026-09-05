@@ -210,17 +210,89 @@ def test_a_dos_record_at_status_four_round_trips_through_the_c64_and_back():
     assert bytes(rec[TAIL.offset:TAIL.offset + 2]) == b"\x04\x00"
 
 
-def test_the_two_bytes_dos_still_does_not_carry_stay_at_the_default():
-    """0x10E is UNKNOWN and 0x10F is the quickfight flag, which the C64 keeps
-    in a byte `goldbox/layout.py` does not name yet, so neither has anywhere
-    to come from.  Both stay at what a freshly made DOS character carries,
-    and a source that quick-fought loses it -- which is the part of #235 that
-    is still open."""
+def test_the_combat_side_and_quickfight_now_carry_across_and_back():
+    """The last two bytes of #235 (Two unattributed DOS byte ranges in the
+    combat tail are dropped converting to C64, and nobody knows what they
+    hold): 0x10E is the combat side and 0x10F is quickfight, and the C64
+    keeps both in one byte at record 0x10C -- bit 0 the side, bit 7
+    quickfight -- named `combat_side` in `goldbox/layout.py`.  Before this,
+    a source that quick-fought lost it going to the C64 and gained it coming
+    back, unconditionally."""
     quick = _dos_record(b"\x00\x01\x00\x01")
     assert dos.to_neutral(quick).get("status") == "okay"
-    rec, _, _, _ = dos.write(c64_codec.read(
-        c64_codec.write(dos.to_neutral(quick))[0]))
-    assert bytes(rec[TAIL.offset + 2:TAIL.end]) == b"\x00\x00"
+    c64, _ = c64_codec.write(dos.to_neutral(quick))
+    assert c64.get("combat_side") == 0x80
+    rec, _, _, _ = dos.write(c64_codec.read(c64))
+    assert bytes(rec[TAIL.offset + 2:TAIL.end]) == b"\x00\x01"
+
+
+# --- the combat side and quickfight, packed into one C64 byte ---------------
+
+@pytest.mark.parametrize("hostile,quickfight,byte", [
+    (0, 0, 0x00),
+    (1, 1, 0x81),
+    (0, 1, 0x80),
+    (1, 0, 0x01),
+])
+def test_dos_hostile_and_quickfight_pack_into_one_c64_byte(
+        hostile, quickfight, byte):
+    """The DOS engine's own script-field accessor over C64 record 0x10C
+    (docs/169-dos-combat-side.md): `0x81` if the side bit is set, `0x80` if
+    only quickfight is, else 0."""
+    char = _dos_record(bytes([0, 1, hostile, quickfight]))
+    rec, _ = c64_codec.write(dos.to_neutral(char))
+    assert rec.get("combat_side") == byte
+
+
+@pytest.mark.parametrize("byte,hostile,quickfight", [
+    (0x00, 0, 0),
+    (0x81, 1, 1),
+    (0x80, 0, 1),
+    (0x01, 1, 0),
+])
+def test_the_c64_byte_unpacks_into_dos_hostile_and_quickfight(
+        byte, hostile, quickfight):
+    """The reverse of the table above, over the same four values."""
+    rec = _c64_record(0x01)
+    rec.set("combat_side", byte)
+    out = c64_codec.read(rec)
+    assert out.get("hostile") is bool(hostile)
+    assert out.get("quickfight") is bool(quickfight)
+    written, _, _, _ = dos.write(out)
+    assert written[TAIL.offset + 2] == hostile
+    assert written[TAIL.offset + 3] == quickfight
+
+
+@pytest.mark.parametrize("status,active,hostile,quickfight", [
+    (0, 1, 0, 0),
+    (4, 0, 1, 1),
+    (6, 0, 0, 1),
+    (0, 1, 1, 0),
+])
+def test_the_whole_combat_tail_round_trips_through_dos(
+        status, active, hostile, quickfight):
+    """DOS -> neutral -> DOS keeps all four bytes of the combat tail, for
+    four values spanning both the status/active pair and the side/quickfight
+    pair -- not just the two #235 first converted."""
+    tail = bytes([status, active, hostile, quickfight])
+    char = _dos_record(tail)
+    rec, _, _, _ = dos.write(dos.to_neutral(char))
+    assert bytes(rec[TAIL.offset:TAIL.end]) == tail
+
+
+def test_field_10c_10f_no_longer_shows_as_dropped():
+    """The whole point of naming C64 record 0x10C: `field_10c_10f` comes off
+    the drop list entirely, both in the table and in what a real conversion
+    reports."""
+    assert "field_10c_10f" not in dict(dos.DROPPED)
+    assert "field_10c_10f" not in dos.UNREPORTED_DROPS
+    disposition = dos.field_disposition()
+    assert not disposition["field_10c_10f"].startswith("dropped:")
+
+    char = _dos_record(b"\x00\x01\x01\x01")
+    _rec, report = dos.to_c64_record(char)
+    assert not [d for d in report.dropped if "field_10c_10f" in d]
+    assert not [d for d in report.dropped if "quickfight" in d.lower()]
 
 
 # --- bit 7 is a flag of its own ----------------------------------------------
@@ -386,10 +458,10 @@ def test_the_c64_table_names_only_states_the_vocabulary_declares():
 
 
 def test_the_dos_reader_grades_the_two_bytes_above_the_field_they_sit_in():
-    """`field_10c_10f` is PROBABLE because 0x10E is still UNKNOWN, and the
-    status and the active flag are CONFIRMED individually.  Reading them at
-    the field's grade would be understating a measurement; a writer's floor
-    is what the grade is for."""
+    """The status and the active flag are each CONFIRMED on their own
+    evidence, independent of whatever `field_10c_10f`'s own grade is (now
+    CONFIRMED too, since all four bytes are understood -- #235,
+    docs/169-dos-combat-side.md)."""
     out = dos.to_neutral(_dos_record(b"\x04\x00\x00\x00"))
     assert out.value("status").confidence is Confidence.CONFIRMED
     assert out.value("active").confidence is Confidence.CONFIRMED

@@ -903,6 +903,19 @@ _DECLARED: Sequence[Field] = (
            "Okay, 1 Animated, 2 tempgone, 3 Running, 4 Unconscious, 5 Dying, "
            "6 Dead, 7 Stoned, 8 Gone, at DOS 0x10C. Both are real; converting "
            "between them is a table, not an alignment"),
+    _field(0x10C, 1, _U8, "combat_side", "Combat side", _OK,
+           "bit 0 is the side the character fights on, 0 the party's and 1 "
+           "the enemy's; bit 7 is the quickfight flag, set by QUICK and "
+           "never cleared (goldbox-bugs.md bug 3). COM.PREP $0F15 reads "
+           "`AND #$7F` as the side; 115 of 116 MON* records hold $81; 104 "
+           "occupied roster slots across 17 save images hold $00 in 99 and "
+           "$80 in 5, never $81. The DOS engine's own script-field accessor "
+           "(GAME.OVR:0x7DE9, 0x8074) reads and writes this exact byte over "
+           "DOS 0x10E/0x10F -- docs/169-dos-combat-side.md. Bits 1-6 are "
+           "unused by every writer seen; masked (`& 0x81`) rather than "
+           "asserted zero (#235 (Two unattributed DOS byte ranges in the "
+           "combat tail are dropped converting to C64, and nobody knows "
+           "what they hold))"),
     _field(0x0EC, 1, _I8, "missile_attack_adjustment",
            "Missile attack adjustment", _OK,
            "what dexterity is worth to hit with a ranged weapon, signed: $FF "

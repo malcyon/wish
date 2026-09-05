@@ -237,6 +237,21 @@ FIELDS: dict[str, str] = {
               "state",
     "npc": "true for a companion the party picked up rather than one the "
            "player made",
+    "hostile": "true for a combatant on the enemy's side. Never true for a "
+              "character the engine saved into a party: both ports write 0 "
+              "for every player character, and it is here because both "
+              "ports store it beside the character and a conversion copies "
+              "a field rather than assuming it",
+    # It is converted, not dropped -- both ports have a byte for it and
+    # neither derives it.  It is never reported to a player, and that is
+    # Donald's ruling rather than a case where nothing converts: 2026-09-04,
+    # *"The player will not care if Quickfight isn't converted. Don't bother
+    # alerting on that."*, and separately, of taking it off #235's drop list
+    # rather than the pane, *"I agree, we should try to convert it. We just
+    # shouldn't tell the player about quickfight."*
+    "quickfight": "true once the player has chosen QUICK for the character; "
+                 "neither port ever clears it, so it is the state the "
+                 "character's next fight starts in",
     # -- converted by some ports and not others ------------------------------
     # Declared here because a character has them, not because every writer
     # wants them: a writer that takes nothing from a field reports so.

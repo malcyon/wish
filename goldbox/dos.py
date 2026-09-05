@@ -776,34 +776,19 @@ DROPPED: tuple[tuple[str, str], ...] = (
                        "strength *index* and is computed instead"),
     ("hands_used", "live combat state"),
     ("unnamed_0ab", "one unattributed byte, stable per character"),
-    # `field_83_87` and `field_10c_10f` (#235): the byte-level evidence is
-    # in `docs/141-dos-savegame.md`, under "0x083-0x087: a constant, and
-    # what that rests on" and "The character record's combat tail,
-    # 0x10C-0x10F".  0x083-0x087 reads 00 00 01 00 00 in 101 of 101
-    # engine-written Pool of Radiance records -- 20 characters, eight
-    # classes, levels 1-4, before a fight and after one, and on a character
-    # the engine knocked unconscious -- and the sheet is pixel-identical
-    # whatever it holds.  Of the combat tail, 0x10C is the status byte (0
-    # Okay .. 8 Gone), 0x10D is the flag that draws a name red in the party
-    # panel when it is 0, and 0x10F is the quickfight flag; all three
-    # CONFIRMED.  0x10E is still UNKNOWN: 0 in all 223 engine-written
-    # records, and the untried experiment is the same offset in a monster
-    # record, where a hostile creature would have to set the third-party
-    # workbooks' `IsHostile`.
+    # `field_83_87` (#235): the byte-level evidence is in
+    # `docs/141-dos-savegame.md`, under "0x083-0x087: a constant, and what
+    # that rests on".  It reads 00 00 01 00 00 in 101 of 101 engine-written
+    # Pool of Radiance records -- 20 characters, eight classes, levels 1-4,
+    # before a fight and after one, and on a character the engine knocked
+    # unconscious -- and the sheet is pixel-identical whatever it holds.
     #
-    # **0x10C and 0x10D are converted now**: `to_neutral` reads them as the
-    # neutral `status` and `active`, `goldbox/c64_codec.py` packs both into
-    # C64 record 0x100 through a table -- the two enumerations differ -- and
-    # `write` puts them back.  What is left in this entry is 0x10F, the
-    # quickfight flag, whose C64 home is a byte inside `goldbox/layout.py`'s
-    # `gap_101` that no field names yet, and 0x10E.
+    # `field_10c_10f`, the combat tail, is `#235`'s other half and is no
+    # longer here: all four bytes are now understood and converted (see
+    # `TRANSFORMED`, and docs/169-dos-combat-side.md for 0x10E and 0x10F).
     ("field_83_87", "always the same five bytes, and the character sheet "
                     "looks identical whichever value they hold, so nothing "
                     "here is a loss a player would notice"),
-    ("field_10c_10f", "whether their last fight ran on quickfight, and one "
-                      "byte nobody has identified. The character's status "
-                      "and whether the game had taken them out of the party "
-                      "are converted now and are no longer part of this"),
 )
 
 #: Drops the **player** is not shown, though the conversion still knows them.
@@ -819,17 +804,7 @@ DROPPED: tuple[tuple[str, str], ...] = (
 #:
 #: Donald, 2026-08-27: *"We do not need to report derived lines as being
 #: dropped. The user will not notice the difference."*
-#:
-#: **`field_10c_10f` is silenced for a different reason, and it is Donald's
-#: alone rather than a precedent.** The quickfight flag genuinely does not
-#: convert -- the C64 has a byte for it and the value is lost -- so this is
-#: not derivation, and `.claude/rules/conversions.md`'s bar for silencing a
-#: drop does not apply here. Donald, 2026-09-04: *"The player will not care
-#: if Quickfight isn't converted. Don't bother alerting on that."*  It stays
-#: a counted drop -- `field_disposition` and #131's accounting still see it
-#: -- only the pane goes quiet.
-UNREPORTED_DROPS = frozenset({"encumbrance", "item_count", "strength_bonus",
-                              "field_10c_10f"})
+UNREPORTED_DROPS = frozenset({"encumbrance", "item_count", "strength_bonus"})
 
 #: The three DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
 #: All three say the same thing to a player -- the DOS combat figure does not
@@ -904,6 +879,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("turn_power", "one DOS byte for the C64's two turning bytes"),
     ("attack_forms", "copied as a block"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
+    ("field_10c_10f", "the four bytes read apart: 0x10C indexed into the "
+                      "neutral status, 0x10D into active, 0x10E into "
+                      "hostile and 0x10F into quickfight (#235, "
+                      "docs/169-dos-combat-side.md)"),
 )
 
 
@@ -1139,22 +1118,23 @@ def to_neutral(dos: DosCharacter,
     out.set("turn_power", dos.get("turn_power"), "DOS 0x076",
             FIELDS_BY_NAME["turn_power"].confidence)
 
-    # -- the combat tail's first two bytes: how the character is -------------
-    # `field_10c_10f` is four bytes and two of them are a character's own
-    # state rather than fill (#235).  0x10C is the status, 0-based, indexing
-    # the nine words `neutral.STATUS_NAMES` carries in the engine's own
-    # order -- CONFIRMED against the sheet, which drew STATUS OKAY and
-    # STATUS UNCONSCIOUS for one character staged 0 and 4.  0x10D is an
-    # active flag, CONFIRMED: 0 draws the name red in the party panel and 1
-    # does not, 3 of 3 against 9 of 9 across two boots of the running game.
+    # -- the combat tail: how the character is, and which side it fights on --
+    # `field_10c_10f` is four bytes and all four are a character's own state
+    # rather than fill (#235, docs/169-dos-combat-side.md).  0x10C is the
+    # status, 0-based, indexing the nine words `neutral.STATUS_NAMES` carries
+    # in the engine's own order -- CONFIRMED against the sheet, which drew
+    # STATUS OKAY and STATUS UNCONSCIOUS for one character staged 0 and 4.
+    # 0x10D is an active flag, CONFIRMED: 0 draws the name red in the party
+    # panel and 1 does not, 3 of 3 against 9 of 9 across two boots of the
+    # running game.  0x10E is the combat side, 1 for the enemy's, CONFIRMED
+    # from the DOS engine's own combat code and the running game (a party
+    # member staged to it attacked his own side and was dropped from the
+    # party when the fight ended).  0x10F is the quickfight flag, CONFIRMED
+    # by effect: a party staged with it set fought its next battle under
+    # computer control with the player never asked for a command.
     #
-    # A value past the end of the table is not a state the engine can draw,
-    # so it is reported rather than turned into the nearest name.  The other
-    # two bytes stay in `DROPPED`: 0x10E is UNKNOWN and 0x10F is quickfight,
-    # which has no named C64 field yet.
-    # Both are graded CONFIRMED where the four-byte field they sit in is
-    # PROBABLE, and the difference is the point: the field's grade is the
-    # weakest of its four bytes, 0x10E, which is still UNKNOWN.
+    # A status value past the end of the table is not a state the engine can
+    # draw, so it is reported rather than turned into the nearest name.
     tail = dos.raw("field_10c_10f")
     if tail[0] < len(neutral.STATUS_NAMES):
         out.set("status", neutral.STATUS_NAMES[tail[0]],
@@ -1167,6 +1147,11 @@ def to_neutral(dos: DosCharacter,
     out.set("active", bool(tail[1]),
             "DOS 0x10D: 0 is the flag that draws the name red in the party "
             "panel", Confidence.CONFIRMED)
+    out.set("hostile", bool(tail[2]),
+            "DOS 0x10E: the combat side, 1 for the enemy's",
+            Confidence.CONFIRMED)
+    out.set("quickfight", bool(tail[3]), "DOS 0x10F",
+            Confidence.CONFIRMED)
     out.set("attack_forms", dos.raw("attack_forms"), "DOS 0x0A1 (PROBABLE)",
             FIELDS_BY_NAME["attack_forms"].confidence)
     out.set("roster_tail", dos.raw("roster_tail"),
@@ -1493,6 +1478,11 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("active", "written to 0x10D, 1 for a character the party panel draws "
                "normally and 0 for one it draws red -- the opposite polarity "
                "to the C64's own bit, which is set for the same character"),
+    ("hostile", "written to 0x10E, 1 for the enemy's side -- the same bit "
+               "the C64 keeps at record 0x10C bit 0 (#235, "
+               "docs/169-dos-combat-side.md)"),
+    ("quickfight", "written to 0x10F -- the same bit the C64 keeps at "
+                  "record 0x10C bit 7"),
     ("granted_effects", "written into the same .SPC file after the innate "
                         "records, each one's own five bytes with the next "
                         "pointer NULLed -- the value byte and the removal "
@@ -1610,16 +1600,17 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "colour per part against DOS's two 4-bit ones, so a correspondence "
      "would be a choice rather than a conversion"),
     ("field_10c_10f", b"\x00\x01\x00\x00",
-     "okay, not shown red, and not quick-fought -- the state a newly made "
-     "DOS character is in. 0x10C is the status (0 Okay .. 8 Gone, the "
-     "order of the game's own status words), 0x10D the flag that draws a "
-     "name red in the party panel when it is 0, and 0x10F the quickfight "
-     "flag; all three measured in the running game. 0x10E is written "
-     "zero, the fill value in all 223 engine-written records, and its "
-     "meaning is still UNKNOWN (#235)",
-     "a DOS character who is unconscious, dying, dead, stoned or gone comes "
-     "out of the conversion in perfect health, and one the game had taken "
-     "out of the party comes out a full member"),
+     "okay, not shown red, not the enemy's side and not quick-fought -- "
+     "the state a newly made DOS character is in. 0x10C is the status (0 "
+     "Okay .. 8 Gone, the order of the game's own status words), 0x10D "
+     "the flag that draws a name red in the party panel when it is 0, "
+     "0x10E the combat side (1 the enemy's) and 0x10F the quickfight "
+     "flag; all four measured in the running game and converted below "
+     "when the source supplies them "
+     "(#235, docs/169-dos-combat-side.md)",
+     "written only when the source supplies none of status, active, the "
+     "combat side or quickfight -- each of the four converts on its own "
+     "when the source has it"),
 )
 
 #: Fields written from a rule over the **record itself** rather than from a
@@ -1995,19 +1986,21 @@ def write(char: NeutralCharacter,
         rep.note(f.offset, f.size,
                  f"{dname}: {data.hex()} -- {why}. Not converted: {lost}")
 
-    # -- the combat tail's first two bytes, over the default just written ----
-    # `field_10c_10f` is four bytes and two of them are the character's own
-    # state (#235): 0x10C is the status, 0-based over the engine's own nine
-    # words -- which is the order `neutral.STATUS_NAMES` is in, so the index
-    # *is* the DOS number -- and 0x10D is the flag that draws a name red in
-    # the party panel when it is 0.  The other two stay at the default
-    # whatever the source holds: 0x10E is UNKNOWN and 0x10F is the quickfight
-    # flag, which has no named C64 field to have come from.
+    # -- the combat tail, over the default just written -----------------------
+    # `field_10c_10f` is four bytes and all four are the character's own
+    # state (#235, docs/169-dos-combat-side.md): 0x10C is the status,
+    # 0-based over the engine's own nine words -- which is the order
+    # `neutral.STATUS_NAMES` is in, so the index *is* the DOS number; 0x10D
+    # is the flag that draws a name red in the party panel when it is 0;
+    # 0x10E is the combat side, 1 for the enemy's; and 0x10F is the
+    # quickfight flag.
     #
-    # A source that carries neither leaves all four at the default, which is
-    # the state a freshly made DOS character is in.
+    # A source that carries none of the four leaves all four at the
+    # default just written, which is the state a freshly made DOS character
+    # is in.
     f = FIELDS_BY_NAME["field_10c_10f"]
     status, active = w.use("status"), w.use("active")
+    hostile, quickfight = w.use("hostile"), w.use("quickfight")
     said = []
     if status is not None:
         if status.value in neutral.STATUS_NAMES:
@@ -2021,13 +2014,16 @@ def write(char: NeutralCharacter,
     if active is not None:
         rec[f.offset + 1] = 1 if active.value else 0
         said.append(f"0x10D is {rec[f.offset + 1]} <- {active.origin}")
+    if hostile is not None:
+        rec[f.offset + 2] = 1 if hostile.value else 0
+        said.append(f"0x10E is {rec[f.offset + 2]} <- {hostile.origin}")
+    if quickfight is not None:
+        rec[f.offset + 3] = 1 if quickfight.value else 0
+        said.append(f"0x10F is {rec[f.offset + 3]} <- {quickfight.origin}")
     if said:
         rep.note(f.offset, f.size,
                  f"field_10c_10f: {bytes(rec[f.offset:f.end]).hex()} -- "
-                 + "; ".join(said)
-                 + ". Not converted: 0x10E, still UNKNOWN and written zero, "
-                   "and 0x10F, the quickfight flag, which the C64 keeps in "
-                   "a byte no field names yet")
+                 + "; ".join(said))
 
     # -- bytes with no source: live heap and the unattributed ----------------
     # The portrait pair is in that list because it is what a conversion with
