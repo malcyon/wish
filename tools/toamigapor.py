@@ -19,26 +19,35 @@ declared unsourced list and every drop line with the writers the test suite
 already measures.  What cannot be converted is printed rather than dropped
 quietly.
 
-**The saved game around the party is the destination disk's own.**  A slot is
-six character files plus a `savgam<letter>.dat`, and that container carries
-the map, the party's square and the clock -- none of which a character record
-holds and none of which crosses a port.  `--container` names the slot whose
-saved game is copied and pointed at the new slot's files; it defaults to `A`,
-the slot the game ships.  So the party is ours and the place is the disk's,
-and a run says so rather than leaving a reader to work it out.
+**The saved game around the party is built from the source save, not copied**
+(#316).  A slot is one to six character files plus a `savgam<letter>.dat`, and
+that container carries the map, the party's square, the clock and the quest
+flags -- so a copied one would stand a converted party where SSI's party
+stood.  All 13,141 bytes are written from the C64 or DOS save being converted,
+with a declared reason for every byte it leaves zero; `--provenance` prints
+the accounting.
+
+The one thing that cannot come from the source is the **area's own script**,
+7680 bytes of it, live on load.  The Amiga keeps every area's in a single
+`ecl.dax` on disk 2, the `POOLDATA` volume, so **a conversion needs the
+player's disk 2**: name it with `--data-disk`, or leave it out and the disk on
+the command line is searched for an `ecl.dax` of its own.
+
+`--container <letter>` is the old behaviour and is an experiment rather than a
+conversion: it copies that slot's saved game off the disk on the command line,
+so the party is ours and the place is somebody else's.  The run says so.
 
 **`--save-disk` writes a save disk instead of a copy of the game disk**, which
 is what a player is actually handed (#36):
 
-    tools/toamigapor.py work/por1.adf --to B --save-disk work/poolsave.adf \\
+    tools/toamigapor.py work/por2.adf --to B --save-disk work/poolsave.adf \\
         --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 
 That output is an 880K floppy named `POOLSAVE` with no game code on it at all
 -- put it in any drive beside the game disk and answer `LOAD SAVED GAME`'s
 `PATH FOR SAVE  RETURN = POOLSAVE:` with a bare RETURN.  The disk named on the
-command line is still read, because the 13,141-byte saved game has to come
-from somewhere and only the game disk has one; nothing else on the output is
-copied.
+command line is read for one thing only, the area's script, so **disk 2 is
+what a save disk needs** and the party's own disk 1 is not read at all.
 
 **The input disk is opened read-only, and one of `--out` and `--save-disk` is
 required.**  The player's own disks are never written to; work on a copy.
@@ -101,6 +110,61 @@ def read_dos_party(folder: str, slot: str) -> list:
     return [dos.to_neutral(char) for char in party]
 
 
+ECL_DAX = "/ecl.dax"
+
+
+def read_ecl_dax(args) -> bytes:
+    """The Amiga `ecl.dax`, off `--data-disk` or off the disk on the line.
+
+    Named rather than searched for, because "the game's data disk" is a thing
+    the player has in their hand and a wrong guess here is a party arriving in
+    an area nobody chose.  A disk with no `ecl.dax` says which disk it needs.
+    """
+    where = args.data_disk or args.disk
+    try:
+        return AmigaDisk.open(where).read_file(ECL_DAX)
+    except AmigaDiskError:
+        raise SystemExit(
+            f"{where} has no {ECL_DAX}, and the area's own script is the one "
+            f"thing a converted saved game cannot be built without. It is on "
+            f"Pool of Radiance disk 2, the POOLDATA volume; name it with "
+            f"--data-disk") from None
+
+
+def build_savegame(args, party_size: int, portraits: bool):
+    """The 13,141-byte saved game, built from the save being converted."""
+    from goldbox import games
+    from goldbox.d64 import load_payload
+
+    if args.c64:
+        payload = load_payload(args.c64,
+                               games.by_key("pool-of-radiance").save_file)
+        state = amiga.por_state_from_c64(payload, args.c64)
+    else:
+        folder = pathlib.Path(args.dos)
+        slot = args.dos_slot.upper()
+        savgam = folder / f"SAVGAM{slot}.DAT"
+        if not savgam.exists():
+            raise SystemExit(f"{savgam} is not there, and the saved game is "
+                             f"where the party's square and clock live")
+        state = amiga.por_state_from_dos(savgam.read_bytes(), str(savgam))
+    return amiga.new_por_savegame(state, args.target, party_size,
+                                  read_ecl_dax(args), portraits=portraits)
+
+
+def provenance_lines(report) -> list[str]:
+    """One line per run of bytes sharing a provenance, in file order."""
+    out: list[str] = []
+    start = 0
+    for i in range(1, report.total + 1):
+        if (i == report.total
+                or report.sources.get(i) != report.sources.get(start)):
+            why = report.sources.get(start, "NOTHING WROTE THIS")
+            out.append(f"{report.address(start)}: {i - start} bytes -- {why}")
+            start = i
+    return out
+
+
 def _walk_names(disk) -> list[str]:
     """Every file on a disk, for the run's own report.
 
@@ -116,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("disk", help="an Amiga Pool of Radiance disk 1 image")
+    parser.add_argument("disk",
+                        help="an Amiga Pool of Radiance disk: disk 2 for a "
+                             "save disk, or the disk 1 being copied for --out")
     parser.add_argument("--to", dest="target", required=True,
                         help="the slot letter to write, A to J")
     parser.add_argument("--out",
@@ -125,9 +191,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--save-disk", dest="save_disk",
                         help="where a freshly formatted POOLSAVE save disk, "
                              "carrying the slot and no game code, is put")
-    parser.add_argument("--container", default="A",
-                        help="the slot whose saved game is copied around the "
-                             "party (default A)")
+    parser.add_argument("--data-disk", dest="data_disk",
+                        help="the Amiga disk holding ecl.dax, which is disk 2 "
+                             "(POOLDATA); defaults to the disk named above")
+    parser.add_argument("--container",
+                        help="an experiment, not a conversion: copy this "
+                             "slot's saved game off the input disk instead of "
+                             "building one, so the place is somebody else's")
+    parser.add_argument("--provenance", action="store_true",
+                        help="print where every byte of the saved game came "
+                             "from, one line per run of bytes")
     parser.add_argument("--c64", help="a C64 Pool of Radiance save disk")
     parser.add_argument("--dos", help="a DOS Pool of Radiance save folder")
     parser.add_argument("--dos-slot", default="A",
@@ -159,13 +232,19 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"{source} holds no characters")
 
     disk = AmigaDisk.open(args.disk)
-    container = amiga.por_savegame_filename(args.container.upper())
-    try:
-        savegame = disk.read_file(f"/{amiga.POR_SAVE_DRAWER}/{container}")
-    except AmigaDiskError:
-        raise SystemExit(
-            f"{args.disk} has no {container}; --container names a slot the "
-            f"disk already has") from None
+    report = None
+    if args.container:
+        container = amiga.por_savegame_filename(args.container.upper())
+        try:
+            savegame = disk.read_file(f"/{amiga.POR_SAVE_DRAWER}/{container}")
+        except AmigaDiskError:
+            raise SystemExit(
+                f"{args.disk} has no {container}; --container names a slot "
+                f"the disk already has") from None
+    else:
+        savegame, report = build_savegame(
+            args, party_size=len(party),
+            portraits=any(char.get("portrait_head") for char in party))
 
     print(f"{source}: {len(party)} character(s)")
     for char in party:
@@ -173,6 +252,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    not converted: {line}")
         for line in char.warnings:
             print(f"    {line}")
+    if report is None:
+        print(f"  the saved game is {args.container.upper()}'s off "
+              f"{args.disk}: the party is this one and the place, the clock "
+              f"and the quest flags are that slot's")
+    else:
+        for line in report.converted:
+            print(f"    {line}")
+        print(f"    the saved game is built: "
+              f"{len(report.sources)}/{report.total} bytes accounted for, "
+              f"{len(report.unwritten)} left to nobody")
+        if args.provenance:
+            for line in provenance_lines(report):
+                print(f"      {line}")
 
     if args.save_disk:
         # A save disk is not a copy of anything: it is formatted here, and the

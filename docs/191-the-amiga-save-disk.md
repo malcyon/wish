@@ -62,12 +62,22 @@ has, so nine slots would fit before anybody had to think about room.
 | `CHRDAT<L><n>.spc` | the effect chain, likewise |
 | `charlist.txt` | zero bytes, as disk 1 ships it |
 
-**One of those cannot be made from a converted party and has to be copied off
-the player's game disk: `savgam<L>.dat`.** It holds where the party is
-standing and what time it is, and a character record holds neither. So a
-conversion to Amiga still reads the player's disk 1, even though nothing else
-on the output comes from it. `tools/toamigapor.py --container` names which
-slot's saved game is copied; it defaults to `A`, the slot the game ships.
+**`savgam<L>.dat` used to be copied off the player's disk 1, and is now built
+from the save being converted.** This section said it "cannot be made from a
+converted party"; that was true when it was written and stopped being true on
+2026-09-05, when `#316 (Write the Amiga Pool of Radiance saved game from the
+source save, so a converted party arrives where it was standing)` landed. All
+13,141 bytes come from the C64 or DOS save, with a declared reason for every
+byte left zero, and the party arrives on its own square at its own clock --
+[`196-the-amiga-saved-game-built.md`](196-the-amiga-saved-game-built.md).
+
+**What a conversion reads is disk 2 rather than disk 1.** The one thing no
+character record holds is the area's own 7680-byte ECL script, which is live on
+load, and the Amiga keeps every area's in a single `ecl.dax` on the `POOLDATA`
+volume. `tools/toamigapor.py --data-disk` names it. `--container <letter>`
+still copies a saved game off a disk and is now an experiment rather than a
+conversion: it puts the party in somebody else's place on purpose, and the run
+says so.
 
 `charlist.txt` is there because the game opens it by name and
 `file not found,check your save path` is what a player would otherwise meet
@@ -198,7 +208,9 @@ winvm acquire wish36
 ps='powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1'
 winvm ssh "$ps claim -Holder por36"
 
-tools/toamigapor.py work/issue36/por1.adf --to B \
+# Since #316 the disk on the command line is **disk 2**, whose ecl.dax the
+# area's script is read out of; the saved game is built rather than copied.
+tools/toamigapor.py work/issue36/por2.adf --to B \
     --save-disk work/issue36/poolsave-B.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
 
@@ -237,6 +249,8 @@ Four things cost time on the way.
 The library can now hand a player a save disk, and `tools/toamigapor.py` is
 the way to ask for one. Putting it behind `File ▸ Export` belongs to
 `#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)`, along with the question of which disk the saved game is copied
-from -- a dialog has to ask for the player's disk 1 as well as for where the
-save disk goes.
+supports)`. **The dialog has to ask for the player's Amiga disk 2**, not disk
+1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
+save, so a converted party arrives where it was standing)` the saved game is
+built from the save being converted, and the only thing read off an Amiga disk
+is the area's script out of `ecl.dax`.

@@ -60,6 +60,32 @@ def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
     pytest.skip("no Amiga Pool of Radiance disk 1; set $AMIGA_DISKS")
 
 
+def _por_disk_2(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A Pool of Radiance disk 2 image, or a skip.
+
+    Needed since `#316 (Write the Amiga Pool of Radiance saved game from the
+    source save, so a converted party arrives where it was standing)`: the
+    saved game is built rather than copied, and the one part of it no
+    character record holds is the area's own 7680-byte ECL script, which the
+    Amiga keeps in a single `ecl.dax` on the `POOLDATA` volume.  Identified by
+    carrying that file rather than by its name, which differs between rips.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import amigasaves, gamedisks
+
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("no Amiga disks; set $AMIGA_DISKS")
+    for _name, data in amigasaves.images():
+        try:
+            AmigaDisk(bytearray(data)).read_file("/ecl.dax")
+        except Exception:
+            continue
+        where = tmp_path / "por2.adf"
+        where.write_bytes(bytes(data))
+        return where
+    pytest.skip("no Amiga Pool of Radiance disk 2; set $AMIGA_DISKS")
+
+
 def _c64_specimen(name: str) -> pathlib.Path:
     """A C64 specimen disk, which is one file rather than a directory."""
     root = gamedata.specimen_root()
@@ -118,6 +144,7 @@ def test_a_c64_party_reaches_an_amiga_slot_with_its_names_and_hit_points(
     disk = _por_disk_1(tmp_path)
     out = tmp_path / "por1-B.adf"
     toamigapor.main([str(disk), "--to", "B", "--out", str(out),
+                     "--data-disk", str(_por_disk_2(tmp_path)),
                      "--c64", str(party)])
 
     drawn = [(str(c.get("name")), c.get("hp_current"))
@@ -137,6 +164,7 @@ def test_a_dos_character_reaches_an_amiga_slot_with_his_two_items(tmp_path):
     disk = _por_disk_1(tmp_path)
     out = tmp_path / "por1-D.adf"
     toamigapor.main([str(disk), "--to", "D", "--out", str(out),
+                     "--data-disk", str(_por_disk_2(tmp_path)),
                      "--dos", str(where), "--dos-slot", "D"])
 
     party = _read_slot(out, "D")
@@ -156,6 +184,7 @@ def test_the_slot_letter_lands_in_its_own_byte_of_the_picker_list(tmp_path):
     disk = _por_disk_1(tmp_path)
     out = tmp_path / "por1-D.adf"
     toamigapor.main([str(disk), "--to", "D", "--out", str(out),
+                     "--data-disk", str(_por_disk_2(tmp_path)),
                      "--c64", str(party)])
     listed = AmigaDisk.open(out).read_file(amiga.POR_SLOT_LIST)
     assert listed == b"A  D      "
@@ -179,6 +208,7 @@ def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
     disk = _por_disk_1(tmp_path)
     out = tmp_path / "por1-B.adf"
     toamigapor.main([str(disk), "--to", "B", "--out", str(out),
+                     "--data-disk", str(_por_disk_2(tmp_path)),
                      "--c64", str(party)])
 
     from goldbox.amiga_adf import AmigaDisk
@@ -195,8 +225,74 @@ def test_the_input_disk_is_not_written(tmp_path):
     disk = _por_disk_1(tmp_path)
     before = hashlib.sha256(disk.read_bytes()).hexdigest()
     toamigapor.main([str(disk), "--to", "B", "--out", str(tmp_path / "o.adf"),
+                     "--data-disk", str(_por_disk_2(tmp_path)),
                      "--c64", str(party)])
     assert hashlib.sha256(disk.read_bytes()).hexdigest() == before
+
+
+def test_the_saved_game_is_the_partys_own_place_and_not_the_disks(tmp_path):
+    """The whole of #316, at the level a player would notice it.
+
+    The Amiga disk this is written onto has one saved game on it, SSI's, and
+    it stands at (0,4) facing west at 05:48 in New Phlan.  The C64 party is
+    somewhere else at another time.  Before the saved game was built the
+    converted party arrived on SSI's square at SSI's clock; this asserts it
+    arrives on its own.
+    """
+    from goldbox import amiga, dos_savegame, games
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.d64 import load_payload
+    from tools import toamigapor
+
+    party = _c64_specimen("porunconscious1")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "poolsave-B.adf"
+    toamigapor.main([str(_por_disk_2(tmp_path)), "--to", "B",
+                     "--save-disk", str(out), "--c64", str(party)])
+
+    source = load_payload(str(party),
+                          games.by_key("pool-of-radiance").save_file)
+    state = amiga.por_state_from_c64(source, str(party))
+    built = AmigaDisk.open(out).read_file("/savgamB.dat")
+    shipped = AmigaDisk.open(disk).read_file("/save/savgamA.dat")
+
+    assert (built[amiga.POR_POS_X], built[amiga.POR_POS_Y],
+            built[amiga.POR_POS_FACING]) == (state.x, state.y,
+                                             state.facing * 2)
+    assert amiga.por_word(built, dos_savegame.SCRIPT) == state.area
+    for i, digit in enumerate(state.clock):
+        assert amiga.por_word(built, dos_savegame.CLOCK + i) == digit
+
+    # And it is not the disk's, which is the failure this replaces: a
+    # difference here means the party moved rather than that a byte drifted.
+    assert built[amiga.POR_POS_X:amiga.POR_POS_FACING + 1] != \
+        shipped[amiga.POR_POS_X:amiga.POR_POS_FACING + 1]
+    start, end = amiga.POR_ECL_BUFFER
+    assert built[start:end] != shipped[start:end]
+
+
+def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
+    """`--container` is an experiment rather than a conversion.
+
+    It puts the party in somebody else's place on purpose -- which is what
+    `tools/porslot.py` does between two Amiga slots -- so it stays, and the
+    run says in words that the place is not the party's.
+    """
+    from goldbox import amiga
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import toamigapor
+
+    party = _c64_specimen("porunconscious1")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "por1-B.adf"
+    toamigapor.main([str(disk), "--to", "B", "--out", str(out),
+                     "--container", "A", "--c64", str(party)])
+    assert "the place, the clock" in capsys.readouterr().out
+
+    built = AmigaDisk.open(out).read_file("/save/savgamB.dat")
+    shipped = AmigaDisk.open(disk).read_file("/save/savgamA.dat")
+    assert built[amiga.POR_POS_X:amiga.POR_POS_FACING + 1] == \
+        shipped[amiga.POR_POS_X:amiga.POR_POS_FACING + 1]
 
 
 # ---------------------------------------------------------------------------

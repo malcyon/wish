@@ -39,7 +39,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from . import dos_layout, games, neutral
+from . import areas, dos_layout, dos_savegame, games, neutral
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
@@ -2072,11 +2072,20 @@ def slot_list_bytes(slots: Sequence[str]) -> bytes:
 def retarget_savegame(save: bytes, slot: str) -> bytes:
     """Point a saved game's character table at another slot's files.
 
-    Six entries of eight plain bytes at 12813, stride 41: `CHRDATA1` becomes
+    Entries of eight plain bytes at 12813, stride 41: `CHRDATA1` becomes
     `CHRDATB1` and so on.  The engine loads the party named here rather than
     the party named by the slot letter, so a saved game copied to another slot
     without this loads the party it came from -- measured the other way round,
     by the game's own save to slot B rewriting all six (#28 §1.9b).
+
+    **Only the entries that hold a name are rewritten, because the engine
+    fills only as many as the party has** (#316).  `savgamE.dat` of
+    `work/issue105`, which Amiga Pool of Radiance itself wrote for a
+    one-character party, holds `CHRDATE1` in entry 0 and Amiga heap addresses
+    in entries 1 to 7; this used to demand a `CHRDAT` name in all six and
+    would have refused it.  A saved game with none at all is still refused,
+    which is what keeps the guard: that is a file this function has been
+    handed by mistake.
     """
     letter = _por_slot_letter(slot)
     if len(save) != POR_SAVEGAME_SIZE:
@@ -2084,15 +2093,18 @@ def retarget_savegame(save: bytes, slot: str) -> bytes:
             f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
             f"bytes, got {len(save)}")
     out = bytearray(save)
+    named = 0
     for n in range(POR_PARTY_MAX):
         at = POR_CHARACTER_TABLE + n * POR_CHARACTER_TABLE_STRIDE
-        name = out[at:at + POR_CHARACTER_TABLE_NAME]
-        if not name.startswith(b"CHRDAT"):
-            raise AmigaRecordError(
-                f"entry {n} of the character table at {at} reads {name!r}, "
-                f"not a CHRDAT<slot><n> name; this is not the saved game "
-                f"this function knows how to point at another slot")
+        if not out[at:at + POR_CHARACTER_TABLE_NAME].startswith(b"CHRDAT"):
+            continue
         out[at + 6] = ord(letter)
+        named += 1
+    if not named:
+        raise AmigaRecordError(
+            f"no entry of the character table at {POR_CHARACTER_TABLE} holds "
+            f"a CHRDAT<slot><n> name; this is not a saved game this function "
+            f"can point at another slot")
     return bytes(out)
 
 
@@ -2212,14 +2224,632 @@ def make_por_save_disk(slot: str, characters: Sequence[NeutralCharacter],
     beside both the load and the save path in the game's own `/program`.
 
     `savegame` is the 13,141-byte `savgam<letter>.dat` the slot is wrapped in.
-    It has to come off the player's game disk, because it holds the map, the
-    party's square and the clock, and a character record holds none of the
-    three.  Everything else on the disk is made here.
+    It used to have to come off the player's game disk; since #316 it is built
+    from the save being converted by :func:`new_por_savegame`, so the party
+    arrives on its own square at its own clock rather than on SSI's.  The
+    caller builds it, because only the caller knows which save is being
+    converted and which Amiga disk 2 the area's script can be read from.
     """
     disk = AmigaDisk.blank(volume)
     disk.write_file(por_save_path(POR_CHARACTER_LIST_NAME, ""), b"")
     write_por_slot(disk, slot, characters, savegame, drawer="")
     return disk
+
+
+# ---------------------------------------------------------------------------
+# The Amiga Pool of Radiance saved game, built rather than copied (#316)
+# ---------------------------------------------------------------------------
+#
+# `savgam<letter>.dat` is where the party is standing, what time it is and how
+# far through the story it has got, and until this existed a converted party
+# was wrapped in one copied off the player's own disk 1 -- so the party was
+# theirs and the place, the clock and the quest flags were SSI's.  That is a
+# template, and `.claude/rules/conversions.md` rules it out: every byte nobody
+# has attributed silently keeps a value belonging to a different party in a
+# different place.
+#
+# **The DOS map is the Amiga map.**  `docs/141-dos-savegame.md` was established
+# by differential analysis under DOSBox, and the same addresses hold the same
+# meanings here, big-endian, because the three ports share one ECL address
+# space.  Read against the shipped `savgamA.dat`, which is a New Phlan party:
+# `$49FE` = 10 is `ECL00`'s own constant, `$4FD2`/`$4FD3` = (1, 101) is New
+# Phlan's rest pair, `$4AFA`-`$4AFC` = (0, $FFFF, $FFFF) is New Phlan's
+# wallset triple, `$5012` = 3 is New Phlan's container, and `$5082` = `$5200`
+# = tail byte 12804 exactly as the DOS page says.  So this is `goldbox.dos`'s
+# `savgam_writes` in another endianness rather than a second map.
+#
+# **The four bytes between the two files** (13141 against DOS's 13137): the
+# Amiga has no container byte at the front, and its tail is thirteen bytes
+# where DOS's is eight.  The five extra are 12805-12809 -- two the square
+# struct pads to and the first three of wallset entry 0, which the game's
+# 10-byte write runs into -- and nothing reads any of them.  5 - 1 = 4.
+#
+# **The corpus cannot settle a field and this is why.**  There are ten distinct
+# Amiga Pool of Radiance saved games on this machine, the shipped one and nine
+# the engine wrote, and every one of them is at (0,4) facing west at 05:48 in
+# New Phlan.  Diffing all ten gives 148 differing bytes, every one of them the
+# party size or inside the 328-byte character table; the whole variable array
+# and the whole script buffer are identical.  So no Amiga saved game here can
+# be differenced into a map, the map has to come from the code and from the
+# DOS page, and the proof has to come from the running game.
+
+#: The variable array: 2560 big-endian words at the front of the file, indexed
+#: by the ECL address the bytecode itself uses.  DOS spends a container byte
+#: ahead of its copy and the Amiga does not, which is why the offset has no
+#: `+ 1` in it.
+POR_VAR_BASE = 0x4900
+POR_VAR_WORDS = 2560
+POR_VAR_OFFSET = 0
+POR_VAR_LAST = POR_VAR_BASE + POR_VAR_WORDS - 1
+
+#: `(start, end)` of the staged area script, and how much of the `.dax` block
+#: is header rather than script.  Live on load: DOS dies in `Load3DMap` when
+#: the buffer holds somebody else's area (#60), and the Amiga loader reads the
+#: same buffer back into the same globals.
+POR_ECL_BUFFER = (5120, 12800)
+POR_ECL_HEADER = 2
+
+#: The thirteen-byte tail, in the order the save routine writes it.
+POR_POS_X, POR_POS_Y, POR_POS_FACING = 12800, 12801, 12802
+#: The wall art in front of the party, `fn(x, y, facing)`, recomputed by the
+#: step routine at `/program` `0x2ec1c`.
+POR_WALL_BYTE = 12803
+#: A square property, `fn(x, y)` at `0x2ec54`, and the low byte of `$5200`.
+POR_SQUARE_PROPERTY = 12804
+#: `(start, end)` of the five bytes nothing reads: two the struct pads to and
+#: the first three of wallset entry 0.  The write is ten bytes long and the
+#: struct is seven (`docs/165-amiga-savegame.md`).
+POR_SQUARE_PAD = (12805, 12810)
+#: 1 = 3D, 2 = overland, from the code beside the write.
+POR_VIEW_TYPE = 12810
+POR_VIEW_TYPE_3D = 1
+POR_VIEW_TYPE_OVERLAND = 2
+#: The game mode.  A save is taken from camp, so this is 2 in every saved game
+#: the engine writes -- all ten here.
+POR_GAME_MODE = 12811
+POR_GAME_MODE_CAMP = 2
+POR_PARTY_SIZE_BYTE = 12812
+#: Eight 41-byte name slots, of which the first `count` are used.
+POR_NAME_SLOTS = 8
+
+#: The empty wallset word, and the words the triple and its index map live in.
+POR_EMPTY = 0xFFFF
+POR_WALLSET = 0x4AFA
+POR_WALLMAP = 0x4AFD
+
+
+def por_word_offset(address: int) -> int:
+    """File offset of the variable-array word for an ECL address."""
+    if not POR_VAR_BASE <= address <= POR_VAR_LAST:
+        raise AmigaRecordError(
+            f"${address:04X} is outside the Amiga Pool of Radiance variable "
+            f"array ${POR_VAR_BASE:04X}-${POR_VAR_LAST:04X}")
+    return POR_VAR_OFFSET + 2 * (address - POR_VAR_BASE)
+
+
+def por_word(save: bytes, address: int) -> int:
+    at = por_word_offset(address)
+    return int.from_bytes(save[at:at + 2], "big")
+
+
+def por_put_word(save: bytearray, address: int, value: int) -> None:
+    at = por_word_offset(address)
+    save[at:at + 2] = (value & 0xFFFF).to_bytes(2, "big")
+
+
+@dataclass(frozen=True)
+class PorSaveState:
+    """Where a Pool of Radiance party is standing, and when.
+
+    The part of a saved game that belongs to the **party** rather than to the
+    disk it was found on, in the ECL address space all three ports share --
+    which is why one shape serves a C64 source and a DOS one.  Everything
+    here is read out of the save being converted; nothing is a default.
+
+    `facing` is the C64's 0-3.  Both DOS and the Amiga store it doubled and
+    both writers do the doubling, so a caller never sees the doubled form.
+    """
+
+    #: `$49F2`, the area the party is in.
+    area: int
+    #: `$49C5`, the resident `GEO` -- **not** the area.  The two part company
+    #: for an area whose script loads no map of its own, such as the training
+    #: hall, and writing the area id into both there names a map no script
+    #: loads (#276).
+    geo: int
+    x: int
+    y: int
+    facing: int
+    #: The six clock digits at `$49C6`-`$49CB`: sub-minute, minute units,
+    #: minute tens, hour, day, month.
+    clock: tuple[int, ...]
+    #: `$4AFA`-`$4AFC`, the `WALLDEF`/`8X8D` block ids, `$FFFF` for an empty
+    #: slot.
+    wallset: tuple[int, int, int]
+    #: `$4A20`-`$4AF8`, the quest flags, one value per address in order.
+    flags: tuple[int, ...]
+    #: `$49EB` and `$4A00`-`$4A1F`, the per-script scratch, by address.
+    scratch: "dict[int, int]"
+    #: Where this was read from, for the report.
+    source: str = ""
+
+
+def por_state_from_c64(save0: bytes, source: str = "") -> PorSaveState:
+    """A C64 Pool of Radiance `SAVEDGAME0` payload, as a place and a clock.
+
+    `SAVEDGAME0` is a memory image based at `$4900`, so every ECL address in
+    :class:`PorSaveState` is one subtraction away.  The wallset triple is the
+    exception and comes out of the C64's own loaded-files cache, slots 15-17,
+    which carry the same three numbers the DOS and Amiga words do.
+
+    **Outdoors is refused here rather than written wrong.**  See
+    :func:`por_conversion_reason`.
+    """
+    from . import dos as _dos
+
+    base = _dos.SAVE0_BASE
+    area = save0[_dos.CURRENT_SCRIPT - base]
+    where = areas.area(area)
+    if where is not None and where.outdoors:
+        raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
+    return PorSaveState(
+        area=area,
+        geo=save0[_dos.CURRENT_GEO - base],
+        x=save0[_dos.PARTY_X - base],
+        y=save0[_dos.PARTY_Y - base],
+        facing=save0[_dos.PARTY_FACING - base],
+        clock=tuple(save0[dos_savegame.CLOCK + i - base]
+                    for i in range(dos_savegame.CLOCK_DIGITS)),
+        wallset=_dos.c64_wall_triple(save0),
+        flags=tuple(save0[a - base] for a in
+                    range(dos_savegame.FLAGS_FIRST,
+                          dos_savegame.FLAGS_LAST + 1)),
+        scratch={a: save0[a - base] for a in _dos.SHARED_SCRATCH},
+        source=source)
+
+
+def por_state_from_dos(savgam: bytes, source: str = "") -> PorSaveState:
+    """A DOS `SAVGAM<slot>.DAT`, as a place and a clock.
+
+    The DOS container is the same array of the same words in the other
+    endianness, so this is a straight read through `goldbox.dos_savegame`.
+    """
+    from . import dos as _dos
+
+    if dos_savegame.outdoors(savgam):
+        raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
+    x, y, facing = dos_savegame.position(savgam)
+    return PorSaveState(
+        area=dos_savegame.current_area(savgam),
+        geo=dos_savegame.geo_block(savgam),
+        x=x, y=y, facing=facing,
+        clock=tuple(dos_savegame.word(savgam, dos_savegame.CLOCK + i)
+                    for i in range(dos_savegame.CLOCK_DIGITS)),
+        wallset=dos_savegame.wall_triple(savgam),
+        flags=tuple(dos_savegame.word(savgam, a) for a in
+                    range(dos_savegame.FLAGS_FIRST,
+                          dos_savegame.FLAGS_LAST + 1)),
+        scratch={a: dos_savegame.word(savgam, a)
+                 for a in _dos.SHARED_SCRATCH},
+        source=source)
+
+
+def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
+    """An Amiga `savgam<letter>.dat`, as a place and a clock.
+
+    Here so the writer can be checked against the game's own file: read a
+    shipped saved game through this, hand the result back to
+    :func:`new_por_savegame`, and every byte that differs has to be one the
+    writer *declares* it cannot source.  A round trip masked by the declared
+    list rather than by the diff is the test
+    `.claude/rules/conversions.md` asks for.
+    """
+    if len(savgam) != POR_SAVEGAME_SIZE:
+        raise AmigaRecordError(
+            f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
+            f"bytes, got {len(savgam)}")
+    from . import dos as _dos
+
+    if not por_word(savgam, dos_savegame.INDOORS):
+        raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
+    return PorSaveState(
+        area=por_word(savgam, dos_savegame.SCRIPT),
+        geo=por_word(savgam, dos_savegame.AREA),
+        x=savgam[POR_POS_X], y=savgam[POR_POS_Y],
+        facing=savgam[POR_POS_FACING] // dos_savegame.FACING_SCALE,
+        clock=tuple(por_word(savgam, dos_savegame.CLOCK + i)
+                    for i in range(dos_savegame.CLOCK_DIGITS)),
+        wallset=tuple(por_word(savgam, POR_WALLSET + i) for i in range(3)),
+        flags=tuple(por_word(savgam, a) for a in
+                    range(dos_savegame.FLAGS_FIRST,
+                          dos_savegame.FLAGS_LAST + 1)),
+        scratch={a: por_word(savgam, a) for a in _dos.SHARED_SCRATCH},
+        source=source)
+
+
+#: Why a party standing on the travel grid is refused rather than written.
+#:
+#: **Two bytes of an outdoor Amiga saved game have never been seen.**  DOS's
+#: view-mode byte reads 3 outdoors in 10 of 10 specimens, and the Amiga's own
+#: code names the same byte 1 = 3D and 2 = overland -- so the two ports either
+#: disagree or the DOS reading is of a different field, and there is no Amiga
+#: overland save anywhere on this machine to say which.  The wall byte is the
+#: second.  Writing either would be inventing a value, which is the whole of
+#: what #316 exists to stop.
+#:
+#: The experiment that settles it, and it is one WinUAE run: load the shipped
+#: slot A, walk out of New Phlan onto the travel grid, save to a fresh slot,
+#: and read bytes 12803 and 12810 of the `savgam<letter>.dat` the engine
+#: wrote.  `#321 (An Amiga Pool of Radiance conversion refuses a party
+#: standing on the travel grid, because no outdoor Amiga saved game has ever
+#: been read)`.  Unapproved wording -- a player never sees this string today.
+POR_OUTDOORS_UNMEASURED = (
+    "this party is on the travel grid, and no Amiga saved game made outdoors "
+    "has ever been read, so two bytes of the one this would write have no "
+    "measured value")
+
+#: Why an area cannot be written, or `None`.  Two refusals, and both are about
+#: the script rather than about the party.
+#:
+#: `ecl.dax` on disk 2 holds blocks 0-11 and 13-29.  Area 30 (`ECL1E`) has no
+#: Amiga block at all -- 29 of the C64's 30, which
+#: `docs/117-save-conversion.md` already recorded -- so a party standing there
+#: has no script to stage and the save would carry somebody else's area.
+POR_NO_AMIGA_SCRIPT = ("area {area} has no script in the Amiga game's own "
+                       "ecl.dax, so there is nothing to stage in the saved "
+                       "game and the party would arrive in somebody else's "
+                       "area")
+
+
+def por_conversion_reason(area: int) -> "str | None":
+    """Why this area cannot be converted to the Amiga, or `None` if it can.
+
+    The mirror of `goldbox.dos.conversion_reason`.  An area with no row has no
+    disk number and no script; the travel grid is refused for the reason
+    :data:`POR_OUTDOORS_UNMEASURED` gives.  Whether `ecl.dax` holds the block
+    is checked by :func:`por_area_script`, which is the only place that can
+    see the player's own disk.
+    """
+    where = areas.area(area)
+    if where is None:
+        return (f"area {area} is not an area of Pool of Radiance, so there is "
+                f"no script to stage")
+    if where.outdoors:
+        return POR_OUTDOORS_UNMEASURED
+    return None
+
+
+def por_area_script(ecl_dax: bytes, area: int) -> bytes:
+    """The area's own block of the Amiga `ecl.dax`, unpacked.
+
+    The block **including** its two-byte header; the writer stages it from
+    byte :data:`POR_ECL_HEADER` on, which is the relationship the shipped save
+    has with block 0 -- byte for byte over all 7468 bytes.
+    """
+    from . import amiga_dax
+
+    why = por_conversion_reason(area)
+    if why is not None:
+        raise AmigaRecordError(why)
+    try:
+        return amiga_dax.block(ecl_dax, area, "ecl.dax")
+    except amiga_dax.AmigaDaxError as e:
+        raise AmigaRecordError(
+            f"{POR_NO_AMIGA_SCRIPT.format(area=area)} ({e})") from e
+
+
+#: The reasons a word this conversion cannot source is written **zero** rather
+#: than left at somebody else's value.  Each is the head of a reason string in
+#: :data:`POR_SAVGAM_UNSOURCED`.
+POR_ENGINE_REBUILT = (
+    "one of the words the Amiga engine rewrites for itself: it came back "
+    "non-zero from the game's own ENCAMP > SAVE of a party loaded out of a "
+    "container built here with it zero, in both WinUAE runs of #316 -- and "
+    "the same word is engine-rebuilt on DOS (#59, #26)")
+POR_ENGINE_ONLY = (
+    "engine state with no counterpart in a C64 or DOS save -- above $4AF9, "
+    "which no ECL script in the thirty-script corpus references (#59)")
+POR_ENCOUNTER_STATE = (
+    "the pending-encounter record: it changes together with the message "
+    "buffer beside it, and a converted party has no encounter pending")
+
+#: Words of `$4900`-`$52FF` no source save can answer for, written **zero**
+#: with the reason each is nobody's.  The Amiga counterpart of
+#: `goldbox.dos.SAVGAM_UNSOURCED`, and it is that list address for address --
+#: which is a finding rather than a convenience.  **Every one of the 92
+#: distinct nonzero words the ten Amiga saved games on this machine hold is
+#: either written by :func:`por_savegame_writes` or named here**, with nothing
+#: left over.
+POR_SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
+    (0x49F0, 2, f"the previous square -- {POR_ENGINE_REBUILT}"),
+    (0x49FC, 1, "an engine byte the save routine copies into the array and "
+                "the loader copies back out (`g3d3e`, "
+                "`docs/165-amiga-savegame.md`). The three ports disagree on "
+                "it -- the Amiga reads 1, DOS 6 or 4 by area, the C64 2 -- so "
+                "there is nothing to convert"),
+    (0x49FD, 2, "the two wall colours, which the arriving area's own ECL "
+                "prologue writes on entry: `ECL00` opens `SAVE [$6E7D],"
+                "[$49FD] / SAVE 10,[$49FE]` and `ECL14` the same with 9. "
+                "Measured in the running game: both WinUAE runs of #316 wrote "
+                "zero here, and the engine's own resave of a party standing "
+                "in the Slums came back holding the Slums' 9"),
+    (0x4DB8, 1, POR_ENGINE_ONLY), (0x4DC3, 1, POR_ENGINE_ONLY),
+    (0x4E0C, 1, POR_ENGINE_ONLY), (0x4FA8, 1, POR_ENGINE_ONLY),
+    (0x4FC0, 2, POR_ENGINE_ONLY), (0x4FC6, 1, POR_ENGINE_ONLY),
+    (0x4FC8, 1, POR_ENGINE_ONLY),
+    (0x4FD2, 2, "the rest-interruption pair `$6DD2`/`$6DD3` -- how many "
+                "five-minute passes between checks and the chance of one. The "
+                "area's own script writes them on ENCAMP and the area-init "
+                "routine zeroes them on load. Measured: both WinUAE runs of "
+                "#316 wrote zero and the engine's resave in the Slums came "
+                "back with the Slums' own (24, 24), which is docs/141's "
+                "figure for that area"),
+    (0x5079, 1, POR_ENGINE_REBUILT),
+    (0x507A, 4, POR_ENGINE_ONLY + " -- and the overland script's own loop "
+                "registers, rewritten on the first step out there (#59)"),
+    (0x507F, 2, POR_ENGINE_ONLY),
+    (0x5082, 1, POR_ENGINE_REBUILT),
+    (0x5200, 1, POR_ENGINE_REBUILT),
+    (0x5202, 6, POR_ENCOUNTER_STATE),
+    (0x5208, 1, POR_ENGINE_REBUILT),
+    (0x520A, 6, POR_ENCOUNTER_STATE),
+    (0x5227, POR_VAR_LAST - 0x5227 + 1,
+     "the encounter and monster message buffers, one ASCII character per "
+     "word -- a converted party is not being shouted at. The shipped Amiga "
+     "save is still holding `YOU HAVE SURPRISED A PARTY OF  ORCS.`"),
+)
+
+#: The 32 bytes of heap after each of the eight names in the character table.
+#: Written zero, and the same 274 bytes DOS zeroes: display scratch, and the
+#: evidence is what is in them -- the engine's own menu words, and the ten
+#: Amiga saved games differ from each other in almost nothing else.
+POR_TABLE_SCRATCH = ("display scratch: the 33 bytes after each of the eight "
+                     "names in the character table, zeroed")
+
+#: Words written to a value **measured** rather than sourced, as
+#: `(address, value, why)`.
+#:
+#: `$49FF` gates the sheet portrait on the C64 (`LIBRARY $48A9`, bit 7) and on
+#: DOS, where zero left a converted party faceless whatever its records said
+#: (#57).  The Amiga's own code calls it `2 * g63d1 + g63d0`, split back into
+#: two engine bytes on load, and all ten Amiga saved games here hold 3 -- the
+#: same 3 all three engine-written DOS ones hold.  PROBABLE for the Amiga: the
+#: value is the engine's own on both ports that have been bisected, and no
+#: Amiga run has bisected it.  Nobody has opened an Amiga character sheet at
+#: all: `#322 (Nobody has looked at an Amiga Pool of Radiance character sheet
+#: to see whether it draws a portrait at all)`.
+POR_SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
+    (0x49FF, 3, "the word that gates the sheet portrait on the two ports "
+                "where it has been bisected, and 3 is what all ten Amiga "
+                "saved games and all three DOS ones hold (#57)"),
+)
+
+
+@dataclass
+class PorSaveReport(neutral.Report):
+    """Where every byte of a built `savgam<letter>.dat` came from.
+
+    `sources` covers all 13141 bytes, so what is *not* written is countable --
+    which is the whole of how "no template" is checked rather than asserted.
+    """
+
+    total: int = POR_SAVEGAME_SIZE
+    #: One line per field taken from the source save, for a person to read.
+    converted: list[str] = field(default_factory=list)
+    #: Offsets nothing wrote.  **Empty when the buffer started from zeroes**,
+    #: and that is what makes "no template" checkable rather than asserted.
+    unwritten: list[int] = field(default_factory=list)
+
+    def address(self, offset: int) -> str:
+        """`$4A20` for a variable, `the script buffer`, or `byte 12800`."""
+        if POR_VAR_OFFSET <= offset < POR_VAR_OFFSET + 2 * POR_VAR_WORDS:
+            word = POR_VAR_BASE + (offset - POR_VAR_OFFSET) // 2
+            return f"${word:04X}"
+        if POR_ECL_BUFFER[0] <= offset < POR_ECL_BUFFER[1]:
+            return "the script buffer"
+        return f"byte {offset}"
+
+    def summary_notes(self) -> list[str]:
+        lines = [f"  converted: {c}" for c in self.converted]
+        if self.unwritten:
+            lines.append(f"  {len(self.unwritten)} bytes unwritten, from "
+                         f"{self.address(self.unwritten[0])}")
+        return lines
+
+
+def _por_note_word(report: PorSaveReport, address: int, words: int,
+                   why: str) -> None:
+    report.note(por_word_offset(address), 2 * words, why)
+
+
+def por_savegame_writes(save: bytearray, report: PorSaveReport,
+                        state: PorSaveState, slot: str, count: int,
+                        script: bytes, *, portraits: bool = False) -> None:
+    """Write everything the source save answers for into a 13141-byte buffer.
+
+    `save` is modified in place and every byte written gets a line in
+    `report.sources`.  `script` is the party's own area's `ecl.dax` block,
+    header and all; there is no path here without one, because the buffer is
+    live on load and a save carrying a stranger's area is a party standing
+    somewhere it has never been.
+    """
+    where = areas.area(state.area)
+    why = por_conversion_reason(state.area)
+    if why is not None:
+        raise AmigaRecordError(why)
+
+    por_put_word(save, dos_savegame.AREA, state.geo)
+    _por_note_word(report, dos_savegame.AREA, 1,
+                   "the resident GEO, the source save's own $49C5 -- which is "
+                   "not the area id for a script that loads no map of its own")
+    por_put_word(save, dos_savegame.SCRIPT, state.area)
+    _por_note_word(report, dos_savegame.SCRIPT, 1,
+                   f"the area the party is in, {state.area} "
+                   f"({where.name or where.ecl})")
+    por_put_word(save, dos_savegame.DISK, where.disk)
+    _por_note_word(report, dos_savegame.DISK, 1,
+                   f"the container number, {where.disk}. The Amiga keeps it "
+                   f"only here: it has no header byte where DOS has one")
+    for i, w in enumerate(state.wallset):
+        por_put_word(save, POR_WALLSET + i, w)
+    _por_note_word(report, POR_WALLSET, 3,
+                   "the wallset triple, the source save's own three "
+                   "WALLDEF/8X8D block ids")
+    for i, w in enumerate(dos_savegame.wall_map(state.wallset)):
+        por_put_word(save, POR_WALLMAP + i, w)
+    _por_note_word(report, POR_WALLMAP, 3,
+                   "the wall-index map that goes with the triple")
+
+    body = script[POR_ECL_HEADER:]
+    start, end = POR_ECL_BUFFER
+    if len(body) > end - start:
+        raise AmigaRecordError(
+            f"area {state.area}'s script is {len(body)} bytes and the "
+            f"buffer holds {end - start}")
+    save[start:start + len(body)] = body
+    report.note(start, end - start,
+                f"the area's own ecl.dax block {state.area} from byte "
+                f"{POR_ECL_HEADER} on, then zero to the end of the buffer -- "
+                f"which is what the shipped saved game holds past its "
+                f"script's end, byte for byte over 7468 bytes")
+
+    por_put_word(save, dos_savegame.INDOORS, 1)
+    _por_note_word(report, dos_savegame.INDOORS, 1, "indoors")
+
+    save[POR_POS_X] = state.x
+    save[POR_POS_Y] = state.y
+    save[POR_POS_FACING] = state.facing * dos_savegame.FACING_SCALE
+    report.note(POR_POS_X, 3,
+                f"the square ({state.x},{state.y}) facing {state.facing}, the "
+                f"source save's own, doubled the way both ports store it")
+    save[POR_WALL_BYTE] = 0
+    report.note(POR_WALL_BYTE, 1,
+                "the wall art in front of the party: zero. It is a function "
+                "of the map and the facing and the step routine recomputes it "
+                "(/program 0x2ec1c). Measured: the engine's own ENCAMP > SAVE "
+                "of a party loaded out of a container written this way came "
+                "back holding zero too, in both WinUAE runs of #316")
+    save[POR_SQUARE_PROPERTY] = 0
+    report.note(POR_SQUARE_PROPERTY, 1,
+                "the square property: zero. It is the low byte of $5200, "
+                "which nothing can source, and the same step routine "
+                "rewrites it. The engine's own resave holds zero here too "
+                "(#316)")
+    pad_start, pad_end = POR_SQUARE_PAD
+    report.note(pad_start, pad_end - pad_start,
+                "five bytes nothing reads: two the seven-byte square struct "
+                "pads to and the first three of wallset entry 0, which the "
+                "game's own ten-byte write runs into. Zero in all ten Amiga "
+                "saved games here")
+    save[POR_VIEW_TYPE] = POR_VIEW_TYPE_3D
+    report.note(POR_VIEW_TYPE, 1,
+                "the view type: 1, the 3D view, from the code beside the "
+                "write and 1 in all ten Amiga saved games")
+    save[POR_GAME_MODE] = POR_GAME_MODE_CAMP
+    report.note(POR_GAME_MODE, 1,
+                "the game mode: 2, camp. A save is taken from camp, so this "
+                "is what the engine writes -- 2 in all ten")
+
+    por_put_word(save, dos_savegame.PARTY_SIZE, count)
+    _por_note_word(report, dos_savegame.PARTY_SIZE, 1,
+                   f"the party size, {count}")
+    save[POR_PARTY_SIZE_BYTE] = count
+    report.note(POR_PARTY_SIZE_BYTE, 1, f"the party size again, {count}")
+
+    letter = _por_slot_letter(slot)
+    for n in range(POR_NAME_SLOTS):
+        at = POR_CHARACTER_TABLE + n * POR_CHARACTER_TABLE_STRIDE
+        if n < count:
+            save[at:at + POR_CHARACTER_TABLE_NAME] = \
+                f"CHRDAT{letter}{n + 1}".encode("ascii")
+            report.note(at, POR_CHARACTER_TABLE_NAME,
+                        f"CHRDAT{letter}{n + 1}, which is what the engine "
+                        f"loads the party from -- not the slot letter at the "
+                        f"picker (#28)")
+        else:
+            report.note(at, POR_CHARACTER_TABLE_NAME,
+                        f"an unused name slot: this party has {count} "
+                        f"characters and the table holds {POR_NAME_SLOTS}")
+        report.note(at + POR_CHARACTER_TABLE_NAME,
+                    POR_CHARACTER_TABLE_STRIDE - POR_CHARACTER_TABLE_NAME,
+                    POR_TABLE_SCRATCH)
+
+    for i, address in enumerate(range(dos_savegame.FLAGS_FIRST,
+                                      dos_savegame.FLAGS_LAST + 1)):
+        por_put_word(save, address, state.flags[i])
+    _por_note_word(report, dos_savegame.FLAGS_FIRST,
+                   dos_savegame.FLAGS_LAST - dos_savegame.FLAGS_FIRST + 1,
+                   "a quest flag: the source save's own value at the same ECL "
+                   "address, which is the address all three ports share")
+    for address, value in state.scratch.items():
+        por_put_word(save, address, value)
+        _por_note_word(report, address, 1,
+                       "script scratch: the source save's own value at the "
+                       "same ECL address")
+
+    for i, digit in enumerate(state.clock):
+        por_put_word(save, dos_savegame.CLOCK + i, digit)
+    _por_note_word(report, dos_savegame.CLOCK, dos_savegame.CLOCK_DIGITS,
+                   "a clock digit, the source save's own")
+
+    for address, value, why in dos_savegame.SAVGAM_CONSTANTS:
+        por_put_word(save, address, value)
+        _por_note_word(report, address, 1, f"a documented constant: {why}")
+    for address, value, why in POR_SAVGAM_MEASURED:
+        if address == 0x49FF and not portraits:
+            continue
+        por_put_word(save, address, value)
+        _por_note_word(report, address, 1, f"measured: {why}")
+
+
+def por_savegame_zeroes(save: bytearray, report: PorSaveReport) -> None:
+    """Account for every byte :func:`por_savegame_writes` left zero."""
+    for address, words, why in POR_SAVGAM_UNSOURCED:
+        _por_note_word(report, address, words, f"zeroed -- {why}")
+    rest = [i for i in range(POR_VAR_OFFSET,
+                             POR_VAR_OFFSET + 2 * POR_VAR_WORDS)
+            if i not in report.sources]
+    for i in rest:
+        report.sources[i] = (
+            "zeroed: this word reads zero in every Amiga saved game on this "
+            "machine, and nothing in a C64 or DOS save corresponds to it")
+
+
+def new_por_savegame(state: PorSaveState, slot: str, count: int,
+                     ecl_dax: bytes, *, portraits: bool = False
+                     ) -> "tuple[bytes, PorSaveReport]":
+    """Build all 13141 bytes of a `savgam<letter>.dat` from 13141 zeroes.
+
+    `ecl_dax` is the whole of `/ecl.dax` off the player's Amiga disk 2, which
+    is the only copy of the party's area's script.  `count` is how many
+    characters the slot holds; `slot` is the letter, which is what the eight
+    `CHRDAT` names in the table are built from.
+
+    Returns the file and a report whose `sources` covers every byte and whose
+    `unwritten` is empty.  There is no template and no argument for one.
+    """
+    if not 1 <= count <= POR_PARTY_MAX:
+        raise AmigaRecordError(
+            f"a Pool of Radiance party is 1 to {POR_PARTY_MAX} characters; "
+            f"got {count}")
+    script = por_area_script(ecl_dax, state.area)
+    save = bytearray(POR_SAVEGAME_SIZE)
+    report = PorSaveReport(total=POR_SAVEGAME_SIZE)
+    por_savegame_writes(save, report, state, slot, count, script,
+                        portraits=portraits)
+    por_savegame_zeroes(save, report)
+    where = areas.area(state.area)
+    report.converted = [
+        f"the party is in {where.name or where.ecl} at "
+        f"({state.x},{state.y}) facing "
+        f"{'NESW'[state.facing % 4]}",
+        f"the clock reads {state.clock[3]:02d}:"
+        f"{state.clock[2]}{state.clock[1]}",
+        f"{sum(1 for f in state.flags if f)} quest flags are set",
+    ]
+    report.unwritten = [i for i in range(POR_SAVEGAME_SIZE)
+                        if i not in report.sources]
+    return bytes(save), report
 
 
 # ---------------------------------------------------------------------------
