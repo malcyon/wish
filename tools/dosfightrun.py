@@ -114,7 +114,7 @@ def party_state(save_dir: Path, letter: str) -> dict:
         out["save"] = {
             "file": sav.name,
             "position": list(dosbox.position(data)),
-            "area_id": dosbox.area_id(data),
+            "area_id": dosbox.current_area(data),
             "slums_fights": _sav.word(data, SLUMS_FIGHTS),
             "mtime": sav.stat().st_mtime,
             "raw": data.hex(),

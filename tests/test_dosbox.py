@@ -695,7 +695,7 @@ def test_the_area_id_is_one_the_c64_area_table_knows():
     from goldbox.areas import AREAS_BY_ID
 
     for name, data in _clean_saves().items():
-        assert dosbox.area_id(data) in AREAS_BY_ID, name
+        assert dosbox.current_area(data) in AREAS_BY_ID, name
 
 
 @needs_specimens
@@ -720,9 +720,9 @@ def test_the_second_area_entry_is_the_script_and_parts_company_in_a_hall():
         second = data[485] | data[486] << 8
         in_a_hall = name in ("por-party-trained-c2", "por-train-clamp")
         if in_a_hall:
-            assert (dosbox.area_id(data), second) == (0, 11), name
+            assert (dosbox.geo_block(data), second) == (0, 11), name
         else:
-            assert second == dosbox.area_id(data), name
+            assert second == dosbox.geo_block(data), name
 
 
 @needs_specimens
@@ -737,7 +737,7 @@ def test_the_header_byte_is_the_dax_file_that_holds_the_area():
     if not files:
         pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
     for name, data in saves.items():
-        area = dosbox.area_id(data)
+        area = dosbox.geo_block(data)
         assert files[area] == data[dosbox.AREA_FILE], (name, area)
 
 
@@ -772,7 +772,7 @@ def test_the_c64_arrival_square_for_new_phlan_is_where_the_boat_lands():
     if not path.is_file():
         pytest.skip("needs the driven capture in work/dosbox/p47")
     data = path.read_bytes()
-    arrival = AREAS_BY_ID[dosbox.area_id(data)].arrival
+    arrival = AREAS_BY_ID[dosbox.current_area(data)].arrival
     x, y, facing = dosbox.position(data)
     assert (x, y) == (arrival.x, arrival.y)
     assert facing == arrival.facing * 2

@@ -887,16 +887,19 @@ def position(save: bytes) -> tuple[int, int, int]:
     return save[POS_X], save[POS_Y], save[POS_FACING]
 
 
-def area_id(save: bytes) -> int:
-    """`$49C5`, the resident `GEO` block.  **Not the area**, despite the name.
+def geo_block(save: bytes) -> int:
+    """`$49C5`, the resident `GEO` block.  **Not the area.**
 
-    Kept spelt this way because the captures and the tests already say it.
-    It equals the area id for the twenty-four areas that load their own map,
+    Renamed from `area_id` by #278 (Three callers still read area_id as the
+    area, and it is the resident map): three call sites in this tree read the
+    old name as though it meant the party's location, and it never has. It
+    equals the area id for the twenty-four areas that load their own map,
     which is why it read as the area for a year; in the training hall and in
     Phlan City Hall it is New Phlan's 0 while the party is in area 11 or 8,
     and on the travel grid it is 0 while the party is in 25, 26 or 27
-    (#257).  A caller that wants **where the party is** wants `current_area`
-    below.
+    (#257 (A DOS save made in the training hall converts as though the
+    party were in New Phlan)).  A caller that wants **where the party is**
+    wants `current_area` below.
     """
     return _sav.geo_block(save)
 
@@ -1420,7 +1423,7 @@ def one_step(
         "before": position(a),
         "after": position(b),
         "area_file": (a[0], b[0]),
-        "area_id": (area_id(a), area_id(b)),
+        "area_id": (geo_block(a), geo_block(b)),
         "changed_in_array": [i for i in changed if i < 5121],
         "changed_in_struct": [i for i in changed if i >= 12550],
         "changed_total": len(changed),
