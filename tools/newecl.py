@@ -512,8 +512,7 @@ def report(game: games.Game, root: str, base: int,
               f"and ${tables[0]:04X}")
 
     if against is not None:
-        found = gamedisks.find(against.key)
-        other = pathlib.Path(found) if found else None
+        other = gamedisks.find(against.key)
         if other is None:
             print(f"  (no {against.title} disks to compare against)")
             return 0

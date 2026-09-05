@@ -91,11 +91,15 @@ def disks(game: games.Game, root: str | None) -> list[D64]:
     Silver Blades' disks are where nothing looks for them, so every per-title
     test skips)).
     """
-    found = gamedisks.find(game.key)
-    where = pathlib.Path(root) if root else found
+    where = pathlib.Path(root) if root else gamedisks.find(game.key)
     if where is None:
-        raise SystemExit(
-            f"No {game.title} disks. Set $POR_DISKS or pass --disks.")
+        # Name *this* title's own variable. `$POR_DISKS` is Pool of
+        # Radiance's and does nothing for the other two, so the old wording
+        # sent somebody reading Silver Blades cold to set a variable that
+        # could not help them and gave them the same error again (#251).
+        env = gamedisks.entry(game.key).get("env")
+        lever = f"Set ${env} or pass --disks." if env else "Pass --disks."
+        raise SystemExit(f"No {game.title} disks. {lever}")
     seen: dict[str, pathlib.Path] = {}
     for pattern in disk_globs(game):
         for path in sorted(where.glob(pattern)):
