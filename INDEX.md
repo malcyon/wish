@@ -12,8 +12,8 @@ What each directory in this repository is for.
 | [`tools/`](tools/README.md) | Developer scripts, but ships anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.genui`, which `wish` reaches into at runtime. |
 | `tests/` | The test suite, plus `gamedata.py`, which reads game data off the player's own disks so none of it is committed. |
 | `docs/` | The knowledge base: numbered documents recording what is known and how it was established. Outlives every issue that cites it. |
-| `packaging/` | The PyInstaller entry script and the Windows console-borrowing shim. |
-| `assets/` | Shipped non-code files — the application icons and the `.desktop` entry. |
+| [`packaging/`](packaging/README.md) | The PyInstaller entry script, the Windows console-borrowing shim, and the `.icns` generator. |
+| `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
 | `designer` | A launcher for Qt Designer, opening `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`) — `editor/character.ui` is gone, absorbed into it. |
 | `.claude/agents/` | The subagent definitions -- each one a model, a tool list and a system prompt for a kind of work this project keeps handing out. |
