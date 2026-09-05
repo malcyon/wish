@@ -205,7 +205,7 @@ declines to carry is as informative as what it copies.
 | **per-class levels, sex, monster type, alignment, the eight attack-form bytes, base armour class, experience, class flags, hit points rolled, spells-cast counts, the icon bytes and six icon colours** copied | Pool `0x96`–`0xC6` | Curse `0x109`–`0x14A` |
 | **items** come from the separate `<name>.swg` file, not the record. The item *count* at Pool `0xC7` is commented out in the reimplementation; the assembly quoted beside it copies **0x34 = 52 bytes** of item pointers from Pool `0xCC` to Curse `0x151` | | |
 | **the combat-state tail** — hands used, weight, health status, in-combat, team, hit bonus, armour class, attacks left, dice, damage bonuses, current hit points, movement | Pool `0x100`–`0x11C` | Curse `0x185`–`0x1A5` |
-| **active effects are filtered.** From the Pool `.spc` file only seven effect ids survive: `18, 26, 47, 48, 97, 107, 124` | | `coab`'s `Affects` enum names them **gnome vs man-sized giant, dwarf vs orc, dwarf and gnome vs giants, `affect_30`, constitution saving bonus, elf sleep resistance, half-elf resistance** — every one an **innate racial or constitutional bonus**. Every temporary spell effect is dropped |
+| **active effects are filtered.** From the Pool `.spc` file only seven effect ids survive: `18, 26, 47, 48, 97, 107, 124` | | `coab`'s `Affects` enum names them **gnome vs man-sized giant, dwarf vs orc, dwarf and gnome vs giants, `affect_30`, constitution saving bonus, elf sleep resistance, half-elf resistance** — every one an **innate racial or constitutional bonus**. Every temporary spell effect is dropped. `affect_30` has a carrier now: 48 is a gnome's, in all three of #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)'s specimens and in nobody else's -- what it *does* is still unmeasured. **And the enum and `goldbox/traits.py` disagree about 18**, which `coab` calls *gnome vs man-sized giant* and `traits.py` calls *gnome THAC0 bonus against kobolds and goblins*; nothing measured yet says which |
 
 Then `reclac_player_values` and `ReclacClassBonuses` run over the result and
 **recompute** armour class from base plus dexterity plus readied items; hit
@@ -2014,8 +2014,8 @@ out of the same instrument plus a census of every `.SPC` in the archives:
 | bytes | what | grade |
 |---|---|---|
 | 0 | the effect id, in `goldbox/traits.py`'s namespace | CONFIRMED |
-| 1-2 | duration, a little-endian `u16`. `00 00` for every innate effect in 32 files, over six ids and three races, and for every item-granted permanent effect #232 (An item-granted effect is dropped on the way through the neutral record, with no report) found; `BLESS` is the one record with rounds left, `02 00`, and it is the only specimen anybody has read with a nonzero value here | CONFIRMED for 26, 47, 90, 97, 107, 124; PROBABLE for 18 and 48, which no save holds, and for the reading that a nonzero count is rounds remaining rather than something else that happens to vary with `BLESS` |
-| 3 | for a racial id, always `0xFF` (`INNATE_PAYLOAD`'s own reading of "permanent" bytes 1-4 as `00 00 FF 00` no longer holds beyond the six racial ids: #232 (An item-granted effect is dropped on the way through the neutral record, with no report) measured a Ring of Fire Resistance at `12`, extra strength at `92`, and displacement at `12` here, all three at duration zero, so this byte is not a universal permanence flag -- it is `0xFF` only because that is the value a racial bonus happens to carry) | CONFIRMED for the six racial ids; PROBABLE that a nonzero, non-`0xFF` value elsewhere is the effect's own magnitude |
+| 1-2 | duration, a little-endian `u16`. `00 00` for every innate effect in 32 files, over six ids and three races, and for every item-granted permanent effect #232 (An item-granted effect is dropped on the way through the neutral record, with no report) found; `BLESS` is the one record with rounds left, `02 00`, and it is the only specimen anybody has read with a nonzero value here | CONFIRMED for all eight racial ids -- 18 and 48 held no specimen until #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen) rolled three gnomes and read `00 00` in both, twice each; PROBABLE for the reading that a nonzero count is rounds remaining rather than something else that happens to vary with `BLESS` |
+| 3 | for a racial id, always `0xFF` (`INNATE_PAYLOAD`'s own reading of "permanent" bytes 1-4 as `00 00 FF 00` no longer holds beyond the eight racial ids: #232 (An item-granted effect is dropped on the way through the neutral record, with no report) measured a Ring of Fire Resistance at `12`, extra strength at `92`, and displacement at `12` here, all three at duration zero, so this byte is not a universal permanence flag -- it is `0xFF` only because that is the value a racial bonus happens to carry) | CONFIRMED for the eight racial ids, 18 and 48 added by #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen); PROBABLE that a nonzero, non-`0xFF` value elsewhere is the effect's own magnitude |
 | 4 | `00` in every specimen measured, racial or item-granted | PROBABLE |
 | 5-8 | a far pointer to the next record, offset word then segment word. The saved value is dead: the engine allocates a node per record on load and relinks them (`EFFECT_NEXT_NULL`) | CONFIRMED |
 
@@ -2058,15 +2058,42 @@ beside him carries 90, 97, 26 and 47 — in both of the two Pool of Radiance
 save directories the archives hold. So a converted halfling gets the two
 constitution records without the dwarf's bonuses against orcs and giants.
 
-The gnome is the hole, and it is **four** ids wide rather than the three this
+**The gnome is measured, and he is four ids wide** rather than the three this
 paragraph used to name -- 48 was omitted here and in `goldbox/dos.py`'s note,
-found in the code review of #191 (A converted dwarf loses his constitution bonus to saving throws). 18 is the gnome's own THAC0 bonus against
-kobolds and goblins and 48 his own armour-class bonus against gnolls and
-bugbears; 47 is named for gnomes as well as dwarves; 97 is named for all three
-sturdy races where 90 is the dwarf's and the halfling's only, so a gnome would
-not get 90 at all. No gnome appears in any save the archives
-hold, so every one of the four would be a guess: a converted gnome gets no
-record and the report says why.
+found in the code review of #191 (A converted dwarf loses his constitution bonus to saving throws).
+#84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)
+rolled three gnomes in DOS Pool of Radiance's own creation screens -- one of
+each class the game offers a gnome (fighter, thief, fighter/thief), both
+sexes, three alignments, constitution 11, 13 and 15 -- and the engine wrote
+the same four records for every one: **97, 18, 47, 48**, in that order, each
+carrying `00 00 FF 00`. Each character was read twice, as `<NAME>.SPC` at the
+end of creation and as `CHRDAT<slot><n>.SPC` after the party was saved, and
+the six files agree in the five meaningful bytes of every record. **No 90**,
+which is what this paragraph predicted from the names: 90 is the dwarf's and
+the halfling's, 97 is all three sturdy races'. Five controls rolled in the
+same boot reproduce the archives' census exactly -- dwarf 90/97/26/47, elf
+107, half-elf 124, halfling 90/97, human no `.SPC` file at all -- so the gnome
+reading is the same measurement rather than a new one. CONFIRMED.
+
+`RACE_COMBAT_EFFECTS` carries `3: (97, 18, 47, 48)` since
+#243 (Write a converted gnome's four innate effect records, now that the engine has been watched writing them),
+and `UNWITNESSED_RACE` -- the branch that wrote a gnome no `.SPC` at all and
+put a line in the drop report instead -- is deleted with it.
+
+**What each of the four is named for is still PROBABLE.** 18 is read as the
+gnome's own THAC0 bonus against kobolds and goblins and 48 as his armour class
+against gnolls and bugbears; 47 is named for gnomes as well as dwarves.
+#84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen) separated none of them:
+it established that all four are a gnome's and innate, and no run has yet made
+one fire on its own.
+#247 (Nobody knows whether innate effect 97 is racial or the constitution bonus)
+is the same doubt over 97, since every race in this corpus that carries it also
+earns a constitution bonus. **A rolled gnome cannot settle
+#247 (Nobody knows whether innate effect 97 is racial or the constitution bonus)**:
+the bonus is `GEN $2359`'s `constitution * 2 // 7`, so it is zero only below
+constitution 4 and no rollable score reaches that -- the constitution-11 gnome
+of #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen),
+the lowest anybody has, still earns 3 and still carries 97.
 
 **Confirmed in the running game.** `PORSAVE.D64` — MALCYON an elf, LADY
 KATHERINE a half-elf, MAGNUS a dwarf with empty trait slots — converted into a
@@ -2078,6 +2105,31 @@ with the three humans at NULL and no `.SPC` written for them at all.
 the record of this run, not as what happens today: a dwarf now gets
 `90, 97, 26, 47`, measured on its own run further down. The run above has not
 been repeated with the fix in, so its numbers are left as they were taken.
+
+**A converted gnome has been loaded, walked and resaved.** The gnome is
+GNOMF1, one of #84 (Roll a gnome in DOS and read the two innate effect ids
+nobody has seen)'s three: `tools/c64splicechar.py` put his record into C64
+slot 5 of a copy of `PORSAVE13.D64`, `goldbox.dos.new_dos_save` converted the
+disk, and `tools/dosnewsave.py` booted the result. His DOS sheet reads
+`MALE GNOME AGE 71`, `LAWFUL GOOD`, `FIGHTER`, `STR 16 INT 15 WIS 12 DEX 14
+CON 13 CHA 12`, `LEVEL 1`, `AC 10  THAC0 20  HP 6  MOVEMENT 12`, `GOLD 120`,
+`ENCUMBRANCE 120`, `STATUS OKAY` -- every one of them the number the engine's
+own roll had written, and `VIEW: TRADE DROP EXIT` with no ITEMS command,
+which is what a character carrying nothing gets since
+#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item).
+
+**Nothing on the sheet mentions the four records**, and nothing was going to:
+Pool of Radiance's VIEW screen shows no saving throws, so an innate effect is
+invisible there whatever it holds. What proves the engine read them is its own
+rewrite. Loaded, walked a square and written back through `ENCAMP > SAVE`, 279
+of the 285 record bytes come back byte for byte; the six that differ are
+`effect_chain` and `heap_104`, both live heap pointers `WRITE_UNSOURCED`
+already declares. The `.SPC` comes back with the same four ids and the same
+payloads, and with the far pointers filled in -- `00 00 00 00` in all four of
+the records we wrote, `08 00 5d 3b`, `08 00 29 3e`, `08 00 2f 3e` and NULL in
+the four the engine wrote. **That is a four-node chain, and the engine could
+not have built it out of three records.** Both halves of the run are kept as
+`WISH-SPEC-por-gnome-converted`.
 
 ### The round trip, which is the bar
 
@@ -2184,16 +2236,12 @@ did **not** hold for free on the reader beside it: the first real consumer of
   about.
 * **An item-granted or racial-by-analogy permanent effect `INNATE_EFFECTS`
   turns away.** Extra strength, a Ring of Fire Resistance, being displaced --
-  a `.spc` record at duration zero that is not one of the six racial ids.
+  a `.spc` record at duration zero that is not one of the eight racial ids.
   `NeutralCharacter` has no field for it, so it is still not carried on
   either port, but `goldbox.dos.to_neutral` and `goldbox.amiga.to_neutral`
   now report it: `#232 (An item-granted effect is dropped on the way through
   the neutral record, with no report)` is the fix that would carry it, and
   is still open.
-* **A gnome's bonuses against giants.** Nobody in the archives is a gnome, so
-  the effect ids the DOS engine writes for one have never been seen. A
-  converted gnome is reported rather than guessed at — see "The `.SPC`
-  effects file".
 * **The day and the month.** The clock itself is carried now (#67 (Carry the clock and the party count into a converted DOS save)) — six
   digit words at `$49C6`-`$49CB`, the C64's own six bytes at the C64's own
   addresses — but the C64 holds 0 in the sub-minute, day and month digits of
