@@ -150,6 +150,25 @@ So: raise a cleric's wisdom in Wish, drive the trainer, and what the trainer
 offers is the game's answer for that wisdom. Raise the weight of an item in
 Wish and read the stored encumbrance, and you have measured Wish.
 
+**A specimen dies with the emulator slot that made it.** `Session.stage()` is a
+`copytree` into the pool instance's own directory, and tearing the slot down
+takes the instance with it. On 2026-09-04 the only engine-written DOS
+item-granted effect record this project has ever had -- `CHRDATD1.SPC`, made by
+readying a magical item in the running game -- was reported at
+`work/issue232/ready4/` and was gone from the whole filesystem an hour later.
+Its nine bytes survive only because they were quoted in
+`docs/162-spc-permanence.md`. **Copy a specimen out before the slot goes**, and
+put it in the tree below rather than anywhere under `work/`.
+
+**The tree is `$WISH_SPECIMENS`, default `~/wish-specimens/`**, outside the
+repository because the game's data must never be committed. `tools/specimens.py
+add` copies a save in, records who made it and how, hashes every file and makes
+it read-only; `check` re-hashes and reports anything that moved; `list` says
+what is there. A file with no `provenance.toml` is not a specimen, and `check`
+says so. Donald asked for it in those terms: *"We could have a process or naming
+convention for saves that are JUST for your tests, so I'll know not to touch
+them."*
+
 `docs/125-bug-notes.md`'s N13 is the worked example of surviving this. Its
 evidence is *"the table's bytes and the three compares"* -- `GEN $10AD`, read
 out of the code -- with ROLAND at wisdom 16 as corroboration. The code half is
