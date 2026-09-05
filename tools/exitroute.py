@@ -43,12 +43,10 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import eclexitkinds as K  # noqa: E402
-import eclwalk as W  # noqa: E402
 
 from goldbox.geo import Geo  # noqa: E402
+from tools import eclexitkinds as K  # noqa: E402
+from tools import eclwalk as W  # noqa: E402
 
 
 #: What each statement on a route would look like to a player, using the same

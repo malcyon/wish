@@ -30,13 +30,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
-
-from session import STEP_KEYS, Session  # noqa: E402
 
 from automap import combat  # noqa: E402
 from automap.target import MemoryTarget  # noqa: E402
+from tools.session import STEP_KEYS, Session  # noqa: E402
 
 
 def variant(base, combatants):

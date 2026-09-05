@@ -26,12 +26,10 @@ import time
 _TOOLS = pathlib.Path(__file__).resolve().parent
 _ROOT = _TOOLS.parent
 
-sys.path.insert(0, str(_TOOLS))
-import instance  # noqa: E402
-from session import HERE, Session, claim_slot  # noqa: E402
-
 sys.path.insert(0, str(_ROOT))
 from automap.paths import find_disks  # noqa: E402
+from tools import instance  # noqa: E402
+from tools.session import HERE, Session, claim_slot  # noqa: E402
 
 WALKS = f"{HERE}/walks"
 _disks = find_disks()

@@ -60,13 +60,11 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import session as S  # noqa: E402
 
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
+from tools import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")

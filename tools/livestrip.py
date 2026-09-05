@@ -30,16 +30,15 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
-sys.path.insert(0, str(TOOLS))
 
 # Importing this is what forces the process offscreen and gives it a throwaway
 # config directory: both run at its import time, and they have to happen
 # before Qt is imported at all.
-import shotstrip  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from automap import live  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
+from tools import shotstrip  # noqa: E402
 
 
 def read_snapshot(port: int, host: str = "127.0.0.1"):

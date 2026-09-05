@@ -44,13 +44,11 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import newecl  # noqa: E402
 
 from automap.paths import disk_globs, find_disks  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
+from tools import newecl  # noqa: E402
 
 #: Where `LINKER` puts `DUNGEON`, in every title read so far. Not its header.
 DUNGEON_BASE = 0x0800

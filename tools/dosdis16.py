@@ -37,9 +37,8 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
 
-import dosbox  # noqa: E402
+from tools import dosbox  # noqa: E402
 
 
 def listing(image: bytes, at: int, before: int, window: int) -> list[str]:

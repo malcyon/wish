@@ -37,12 +37,10 @@ import sys
 import time
 
 TOOLS = str(pathlib.Path(__file__).resolve().parent)
-sys.path.insert(0, TOOLS)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 
-import session as por  # noqa: E402
-
 from goldbox.d64 import D64  # noqa: E402
+from tools import session as por  # noqa: E402
 
 SIDES = "ABCDEF"
 

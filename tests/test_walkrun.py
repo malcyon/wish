@@ -13,15 +13,10 @@ slot's ports are arithmetic.
 import os
 import sys
 import types
-from pathlib import Path
 
 import pytest
 
-TOOLS = Path(__file__).resolve().parent.parent / "tools"
-sys.path.insert(0, str(TOOLS))
-
-import instance  # noqa: E402
-import walkrun  # noqa: E402
+from tools import instance, walkrun
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 

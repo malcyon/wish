@@ -40,9 +40,15 @@ from typing import NamedTuple
 # path is invisible on CI, and this one hid until a test imported the module
 # and CI answered `ModuleNotFoundError: No module named 'session'`.
 TOOLS = str(pathlib.Path(__file__).resolve().parent)
-sys.path.insert(0, TOOLS)
-import instance  # noqa: E402
-from drive import Keyboard, Monitor, MonitorError, is_bitmap, read_screen  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
+from tools import instance  # noqa: E402
+from tools.drive import (  # noqa: E402
+    Keyboard,
+    Monitor,
+    MonitorError,
+    is_bitmap,
+    read_screen,
+)
 
 # Disk images and logs live in scratch; the code does not.
 HERE = str(pathlib.Path(TOOLS).parent / "work" / "drive")

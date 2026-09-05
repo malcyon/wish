@@ -10,11 +10,30 @@ that then draws that area's map is what makes a row CONFIRMED**, and that is
 what this measures.
 
     tools/ssbwarp.py --pool 3 --probe --out work/issue20/probe
-    tools/ssbwarp.py --pool 3 --to 0x22 --disk 2 --out work/issue20/run1
+    tools/ssbwarp.py --pool 3 --to 0x22,0x50,0x60 --via-actions \
+        --spoil-from 2 --walk --out work/issue20/run1
 
 `--probe` boots, loads a party and reports what the machine holds without
 warping; it is what to run first, because the current area and the indoors
 flag both decide whether a warp is legal.
+
+**`--to` is a chain.** A boot costs about five minutes and a hop about
+thirty seconds, so one session confirms as many rows as it has targets. Each
+hop leaves from wherever the last one landed.
+
+**`--via-actions` is the trip a player makes.** It hands the row to
+`automap.actions.FastTravel`, which has its own address table, its own
+legality chain and its own jump; this file's `warp` reproduces the same six
+writes its own way and proves nothing about the code that ships.
+
+**The party never has to reach a command bar.** Eight earlier sessions tried
+to answer the prologue's starting-treasure bar `VIEW TAKE POOL SHARE EXIT`
+and each ended on a character sheet instead. `NEWECL`'s tail rebuilds the
+stack pointer from `$03BF` and re-enters `DUNGEON` at `$0809`, so a warp
+discards whatever the script VM had in flight whether it left from the
+command bar or from a menu -- and a script's one-option menu waits for a key
+in the same `LIBRARY` fetcher the command bar does. `enter_world` leaves at
+the first moment the machine is demonstrably idle there.
 
 **Six writes, not five.** Silver Blades' `NEWECL` zeroes `$4BFB` as well as the
 32 bytes of scratch, which Pool of Radiance's and Curse's do not -- read off
@@ -47,14 +66,12 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import newecl  # noqa: E402
-import session as por  # noqa: E402
 
 from automap.actions import pc_register  # noqa: E402
 from goldbox import areas, games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
+from tools import newecl  # noqa: E402
+from tools import session as por  # noqa: E402
 
 #: The live party square. **Not relocated in any title read so far**: page
 #: `$C0` is `GDRIVE00`, and `DUNGEON`'s own position flush reads `$C04B,X`
@@ -72,18 +89,34 @@ ARRIVAL_TIMEOUT = 240.0
 SIDE_GLOBS = ("SILVER-?.D64", "SILVER?.D64", "*Disk?.d64")
 
 #: What this title draws when it wants another side, and when it wants the
-#: save disk. Both are widened from Pool of Radiance's, because the wording is
-#: not known to be the same and an unanswered prompt is a run that hangs
-#: politely for its whole budget.
-#: **`[1-6]`, not `[1-9A-F]`.** Curse's needle allows a hex letter because its
-#: sides might have been lettered; this title has six numbered sides and
-#: nothing else. Widening it cost a run: the loader drew a line the `A` branch
-#: matched, `handle_prompt` attached `SIDE10.D64`, which does not exist, and
-#: the game sat waiting for a disk that could never arrive
-#: (`work/issue20/probe4`).
+#: save disk.
+#:
+#: **Silver Blades letters its sides, and that is what `A` was.** The loader
+#: drew `INSERT SIDE A, AND PRESS ANY KEY.` at the moment it wanted the side
+#: carrying `ECL11`, which `goldbox.areas.AREAS_SILVER_BLADES` puts on side 1,
+#: and attaching `SILVER-1` got past it (`work/issue20/warp1`). Read as hex
+#: that token is side 10, which is what an earlier run did before attaching a
+#: `SIDE10.D64` that does not exist (`work/issue20/probe4`); read as a letter
+#: it is side 1 and the disk that answered it. Digits stay accepted because
+#: nothing says the loader never prints one.
 RE_SSB_SIDE = re.compile(
-    r"INSERT\s+(?:YOUR\s+)?(?:GAME\s+)?(?:DISK|SIDE)\s*#?\s*([1-6])\b")
+    r"INSERT\s+(?:YOUR\s+)?(?:GAME\s+)?(?:DISK|SIDE)\s*#?\s*([1-6A-F])\b")
 SAVE_PROMPT = "SAVE DISK"
+
+
+def side_wanted(text: str) -> tuple[int | None, str]:
+    """Which of the six sides a prompt is asking for, and the line it read.
+
+    `A`-`F` are sides 1-6; `1`-`6` are themselves. A token that lands outside
+    1-6 comes back None **with** the line, so a caller can report a prompt no
+    staged disk can answer rather than attaching a file that is not there.
+    """
+    m = RE_SSB_SIDE.search(text)
+    if not m:
+        return None, ""
+    tok = m.group(1)
+    side = int(tok) if tok.isdigit() else ord(tok) - ord("A") + 1
+    return (side if 1 <= side <= 6 else None), m.group(0)
 
 #: A release check that names the character it wants, as Curse's does. Kept
 #: because it costs nothing and its absence is itself a finding.
@@ -223,10 +256,11 @@ class SSBSession(por.Session):
         if SAVE_PROMPT in text:
             want = self.save_disk
         else:
-            m = RE_SSB_SIDE.search(text)
-            if m:
-                self.log(f"  prompt text: {m.group(0)!r}")
-                want = f"{self.here}/SIDE{m.group(1)}.D64"
+            side, line = side_wanted(text)
+            if line:
+                self.log(f"  prompt text: {line!r} -> side {side}")
+            if side is not None:
+                want = f"{self.here}/SIDE{side}.D64"
         if want is None:
             return False
         if not os.path.exists(want):
@@ -355,41 +389,28 @@ def load_party(sess, timeout: float = 300.0) -> bool:
     return False
 
 
-#: What the loader draws when it wants a side, with the number in hex -- so
-#: side 10 prints as `A`. Measured: `INSERT SIDE A, AND PRESS ANY KEY.`
-RE_ANY_SIDE = re.compile(r"INSERT\s+SIDE\s+([0-9A-F])\b")
-
-
 def impossible_side(sess, addr, text: str, fix: bool) -> dict | None:
-    """Report -- and optionally correct -- a prompt for a side that is not one.
+    """Report -- and optionally correct -- a prompt no staged disk answers.
 
-    **The shipped `SAVEDBASH` is a roster, not a party standing anywhere**:
-    its whole world header is zero and the area byte at payload `0x2C2` is
-    `$FF`. Loaded, the game draws the adventure screen with its six characters
-    and then asks for `INSERT SIDE A` -- side 10 of six. So the run stops at a
-    prompt no disk can answer, and what the loader thinks is worth reading
-    before anything is done about it.
+    `side_wanted` reads `A`-`F` as sides 1-6, so the `INSERT SIDE A` that
+    stopped every earlier run reaches `handle_prompt` and is answered there.
+    This is what is left: a prompt naming something outside 1-6, which would
+    be a reading of the loader nobody has, and it is reported with the whole
+    machine state rather than guessed at.
 
-    With `fix`, the disk byte is set to a side that exists and a key is
-    pressed, which is an edit to an *input* the game then computes from
-    rather than a value read back and believed.
+    With `fix`, the staged sides are offered in turn and a key is pressed.
     """
-    m = RE_ANY_SIDE.search(text)
-    if not m:
-        return None
-    side = int(m.group(1), 16)
-    if 1 <= side <= 6:
+    side, line = side_wanted(text)
+    if not line or side is not None:
         return None
     state = snapshot(sess, addr)
-    sess.log(f"  impossible side {side}: {json.dumps(state)}")
+    sess.log(f"  unanswerable side prompt {line!r}: {json.dumps(state)}")
     if not fix:
         return state
-    # **The disk byte is not what the prompt is printing.** `$7F12` reads 1
-    # while the prompt says `A`, so writing 1 to it changes nothing and the
-    # loop runs forever -- measured, `work/issue20/probe6`. What is left is
+    # **The disk byte is not what the prompt is printing.** `$7F12` read 1
+    # while the prompt said `A`, so writing 1 to it changed nothing and the
+    # loop ran forever -- measured, `work/issue20/probe6`. What is left is
     # the ordinary answer to a disk prompt: put a disk in and press a key.
-    # The staged sides are offered in turn, because which one it wants is
-    # exactly what the prompt is failing to say.
     n = getattr(sess, "_side_rotation", 0)
     sess._side_rotation = n + 1
     want = f"{sess.here}/SIDE{(n % 6) + 1}.D64"
@@ -401,16 +422,68 @@ def impossible_side(sess, addr, text: str, fix: bool) -> dict | None:
     return state
 
 
-def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True) -> bool:
-    """Take a loaded party from the formation menu into the world.
+def idle_in_key_window(sess, addr, samples: int = 4, gap: float = 0.8
+                       ) -> int | None:
+    """The PC, if the machine has been sitting in a key window and nothing
+    else for `samples` readings, with the screen unchanged across them.
+
+    **This is the whole of what makes warping out of the prologue safe**, and
+    it is not a guess about menus. `NEWECL`'s tail is
+    `JSR $1AF9 / INC $7EDD / LDX $03BF / TXS / JMP $0809`: it rebuilds the
+    stack pointer from `$03BF` and re-enters `DUNGEON` at the top, so whatever
+    the script VM had in flight is discarded either way. What must *not* be in
+    flight is disk I/O, and the guard against that is the same one
+    `FastTravel.legality` applies -- the PC inside `DUNGEON`'s key-wait loop
+    or the `LIBRARY` fetcher it calls. A script's own one-option menu waits
+    for a key in that fetcher exactly as the command bar does, which is why
+    the prologue is a legal place to leave from and the treasure menu never
+    has to be answered at all.
+
+    The screen has to be still as well. A key window can be passed through
+    while text is being printed, and a single sample there would be a warp
+    made mid-draw.
+    """
+    windows = (addr.key_wait, addr.key_fetch)
+    last_text = None
+    pc = None
+    for i in range(samples):
+        if i:
+            time.sleep(gap)
+        try:
+            with sess.mon(6) as m:
+                pc = m.registers().get(pc_register(m))
+        except Exception:
+            return None
+        if pc is None or not any(lo <= pc < hi for lo, hi in windows):
+            return None
+        s = sess.screen()
+        text = s.text() if s is not None else None
+        if text is None or (last_text is not None and text != last_text):
+            return None
+        last_text = text
+    return pc
+
+
+def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
+                stop_at_idle: bool = True) -> bool:
+    """Take a loaded party from the formation menu into somewhere warpable.
 
     Act only on what is on screen, press nothing at a blank one -- 1024
     zeroes is an area drawing itself, not a menu waiting for a keypress --
     and back out with Escape only when some *other* menu has sat unchanged.
+
+    **`stop_at_idle` is what got past the prologue.** Eight earlier sessions
+    tried to answer the starting-treasure bar `VIEW TAKE POOL SHARE EXIT` and
+    ended on a character sheet instead. Nothing needed that bar answered: the
+    party is already in the world, `$7F11` reads 1 and `$4BE6` reads 1, and a
+    warp made from the fetcher the menu is waiting in is the same six writes
+    and the same jump. So the first moment the machine is demonstrably idle
+    is the moment to leave from, whatever menu happens to be on screen.
     """
     STUCK = 15.0
     deadline = time.time() + timeout
     seen, since = "", time.time()
+    began = entered = False
     while time.time() < deadline:
         s = sess.screen()
         if s is None:
@@ -419,6 +492,16 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True) -> bool:
         text = s.text()
         if "ENCAMP" in text:
             return True
+        if entered and stop_at_idle and not side_wanted(text)[1] \
+                and SAVE_PROMPT not in text:
+            # Not while a disk prompt is up: that waits in `LIBRARY` too, at
+            # its own loop rather than in the fetcher, and a warp made with
+            # the drive half-way through a file is the one thing the PC guard
+            # exists to prevent.
+            pc = idle_in_key_window(sess, addr)
+            if pc is not None:
+                sess.log(f"  world: idle at ${pc:04X}, which is warpable")
+                return True
         if impossible_side(sess, addr, text, fix) is not None:
             time.sleep(2.0)
             continue
@@ -432,8 +515,16 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True) -> bool:
             sess.log(f"  world: {state!r}")
             seen, since = state, time.time()
         if state == "BEGIN":
+            began = True
             sess.select_row("BEGIN ADVENTURING")
             sess.press_kernal(0x0D)
+        elif began and not entered:
+            # Past the formation menu and not a disk prompt: the party is in
+            # the world and a script is running it. Only now is an idle PC
+            # worth anything -- before it, the same fetcher is what the menus
+            # of the front end wait in.
+            entered = True
+            sess.log("  world: the party is in the world")
         elif "EXIT" in state and state != "ENCAMP":
             # The prologue hands the party its starting treasure and puts up
             # `VIEW TAKE POOL SHARE EXIT`. Nothing here wants the treasure --
@@ -560,6 +651,84 @@ def warp(sess, addr: Addresses, target: int, disk: int,
     return made
 
 
+class SessTarget:
+    """`automap.actions`' Target contract over this session's monitor.
+
+    The same four methods `tools/cursewarp.py` wraps a Curse session in. It is
+    what makes `--via-actions` exercise the code the window ships rather than
+    this file's own `warp`: the two write the same bytes, and only one of them
+    is what a player clicking Fast Travel runs.
+    """
+
+    def __init__(self, sess):
+        self.sess = sess
+
+    def read(self, addr: int, length: int) -> bytes:
+        with self.sess.mon(5) as m:
+            return m.read(addr, length)
+
+    def write(self, addr: int, data) -> None:
+        with self.sess.mon(5) as m:
+            m.write(addr, bytes(data))
+
+    def pc(self):
+        with self.sess.mon(5) as m:
+            return m.registers().get(pc_register(m))
+
+    def set_pc(self, address: int) -> None:
+        with self.sess.mon(5) as m:
+            m.set_registers({pc_register(m): address})
+
+
+def warp_via_actions(target, game, row, square) -> dict:
+    """The same trip, made by `automap.actions.FastTravel` itself.
+
+    **A tool that reproduces a result its own way says nothing about the code
+    that ships.** `FastTravel.legality` has its own address table
+    (`automap/fasttravel.py`), its own guards and its own jump, and a Silver
+    Blades row of that table has never been acted on. The row handed in is
+    `goldbox.areas.Area` itself rather than a shim, so what gets written is
+    the id, side and arrival square the table actually holds.
+    """
+    from automap import actions
+
+    ft = actions.FastTravel(game)
+    verdict = ft.legality(target, row)
+    out = {"legal": bool(verdict), "reason": verdict.reason,
+           "addresses": ft.addresses.title if ft.addresses else None}
+    if not verdict:
+        return out
+    outcome = ft.apply(target, area=row,
+                       arrival=tuple(square) if square else None)
+    out["ok"] = outcome.ok
+    out["message"] = outcome.message
+    out["writes"] = [[at, list(data)] for at, data in outcome.writes]
+    out["notes"] = list(outcome.notes)
+    return out
+
+
+def geo_in_ram(sess, maps: dict, low: int = 0x0200, high: int = 0x10000,
+               chunk: int = 0x1000) -> dict:
+    """Where any known map's exact 1024 bytes sit in RAM, by name.
+
+    `resident_geo` reads `$0400` because that is where a `GEO` PRG loads, and
+    that is a Pool of Radiance measurement. This asks the question without the
+    address: sweep RAM and look for the bytes. It is the backstop for a
+    verdict of `unknown`, and an empty answer is itself a reading -- the map
+    the table expects is not in memory anywhere.
+    """
+    blob = bytearray()
+    try:
+        with sess.mon(30) as m:
+            for a in range(low, high, chunk):
+                blob += m.read(a, min(chunk, high - a))
+    except Exception as exc:                                # pragma: no cover
+        return {"error": str(exc)}
+    raw = bytes(blob)
+    return {name: low + raw.find(geo.to_bytes())
+            for name, geo in maps.items() if geo.to_bytes() in raw}
+
+
 def clear_messages(sess, timeout: float = 150.0) -> str:
     """Answer the arriving script's messages until the command bar is back."""
     deadline = time.time() + timeout
@@ -628,6 +797,82 @@ def screen_text(sess, path: pathlib.Path | None = None) -> str:
     return text
 
 
+def targets_of(spec: str) -> list[int]:
+    """`--to 0x22,0x50,0x60` -- a chain, driven in one boot.
+
+    A boot costs about five minutes and a warp costs about thirty seconds, so
+    the expensive part of confirming a row is getting a party into the world
+    at all. Each hop is measured on its own and the next leaves from wherever
+    the last one landed.
+    """
+    return [int(v, 0) for v in spec.replace(" ", "").split(",") if v]
+
+
+def measure(sess, addr, maps, row, out: pathlib.Path, tag: str) -> dict:
+    """Everything a landing has to be judged on, in one place."""
+    state = snapshot(sess, addr)
+    state["resident"] = resident_geo(sess, maps)
+    if state["resident"].get("verdict") != "ours":
+        # The `$0400` reading said nothing. Ask the question without the
+        # address before concluding no map is loaded.
+        state["ram"] = {k: f"${v:04X}" for k, v in
+                        geo_in_ram(sess, maps).items()}
+    if row is not None:
+        state["expected_geo"] = list(row.geos)
+        state["expected_arrival"] = (str(row.arrival) if row.arrival
+                                     else None)
+        state["expected_disk"] = row.disk
+    s = sess.screen()
+    text = s.text() if s is not None else None
+    print(f"{tag}:", json.dumps(state), flush=True)
+    (out / f"{tag}.json").write_text(json.dumps(state, indent=1))
+    sess.kbd.screenshot(str(out / f"{tag}.png"))
+    if text:
+        (out / f"{tag}-screen.txt").write_text(text)
+    return state
+
+
+#: A square no row in the table carries, written in front of a hop by
+#: `--spoil-from` so that finding the table's square afterwards can only be
+#: the arriving script's own doing.
+#:
+#: **This is what makes an arrival column confirmable at all.** Left to
+#: itself, `FastTravel` writes the table's square into `$C04B` before the
+#: jump -- proven by the write list, no emulator needed -- and then reading
+#: that same square back afterwards would be reading our own write. The
+#: table's claim is the other one: that the *arriving* script's entry 4 puts
+#: the party there.
+SPOIL_SQUARE = (1, 1, 2)
+
+
+def verdict_of(state: dict, row, spoiled: bool = False) -> dict:
+    """Does this landing match the row the table predicted? Field by field.
+
+    Three independent columns, each reported as its own answer rather than
+    rolled into one boolean: a run that gets the map right and the square
+    wrong is a different finding from one that gets neither.
+    """
+    got_geo = state.get("resident", {}).get("name")
+    want = list(row.geos)
+    square = state.get("square") or []
+    arrival = row.arrival
+    out = {
+        "area": state.get("area") == row.id,
+        "disk": state.get("disk") == row.disk,
+        "geo": (got_geo in want) if (want and got_geo) else None,
+        "geo_seen": got_geo,
+    }
+    if arrival is not None and len(square) == 3:
+        out["arrival"] = (square[0] == arrival.x and square[1] == arrival.y
+                          and (arrival.facing is None
+                               or square[2] == arrival.facing))
+        # Without this the arrival answer is a reading of our own write.
+        out["arrival_is_the_scripts"] = spoiled
+        out["arrival_seen"] = f"{square[0]},{square[1]} " \
+                              f"{areas.FACINGS[square[2] & 3]}"
+    return out
+
+
 def run(args) -> int:
     game = games.SECRET_OF_THE_SILVER_BLADES
     out = pathlib.Path(args.out)
@@ -637,12 +882,18 @@ def run(args) -> int:
     print("addresses:", addr.describe(), flush=True)
     (out / "addresses.json").write_text(json.dumps(addr.as_dict(), indent=1))
 
-    row = areas.area_in(args.to, areas.SECRET_OF_THE_SILVER_BLADES)
-    if row is None:
-        print(f"no area ${args.to:02X} in the Silver Blades table", flush=True)
-        return 2
-    disk = args.disk or row.disk
-    print(f"target ${args.to:02X}: {row.label}, disk {disk}", flush=True)
+    chain = targets_of(args.to)
+    rows = []
+    for want in chain:
+        row = areas.area_in(want, areas.SECRET_OF_THE_SILVER_BLADES)
+        if row is None:
+            print(f"no area ${want:02X} in the Silver Blades table",
+                  flush=True)
+            return 2
+        rows.append(row)
+        print(f"target ${want:02X}: {row.label}, side {args.disk or row.disk},"
+              f" maps {row.geos or '--'}, arrival {row.arrival or '--'}",
+              flush=True)
 
     maps = ssb_maps(args.disks)
     print(f"{len(maps)} maps read off the sides", flush=True)
@@ -651,6 +902,7 @@ def run(args) -> int:
     print(f"slot {slot.n}: monitor {slot.port} display {slot.display} "
           f"dir {slot.dir}", flush=True)
     sess = None
+    report: dict = {"targets": [f"0x{t:02X}" for t in chain], "hops": []}
     try:
         save = args.save
         if save:
@@ -676,75 +928,90 @@ def run(args) -> int:
             print(screen_text(sess, out / "stuck-load.txt"), flush=True)
             sess.kbd.screenshot(str(out / "stuck-load.png"))
             return 3
-        if not enter_world(sess, addr, fix=not args.no_fix_disk):
+        if not enter_world(sess, addr, fix=not args.no_fix_disk,
+                           stop_at_idle=not args.command_bar):
             print("never reached the world; the screen says:", flush=True)
             print(screen_text(sess, out / "stuck-world.txt"), flush=True)
             sess.kbd.screenshot(str(out / "stuck-world.png"))
             return 3
-        sess.settle(4)
-        ok, pc = wait_idle(sess, addr, 120)
-        before = snapshot(sess, addr)
-        before["resident"] = resident_geo(sess, maps)
-        before["idle"] = ok
-        s = sess.screen()
-        before["screen"] = s.text() if s is not None else None
-        print("before:", json.dumps({k: v for k, v in before.items()
-                                     if k != "screen"}), flush=True)
-        (out / "before.json").write_text(json.dumps(before, indent=1))
-        sess.kbd.screenshot(str(out / "before.png"))
-        if before["screen"]:
-            (out / "before-screen.txt").write_text(before["screen"])
+        before = measure(sess, addr, maps, None, out, "before")
+        report["before"] = before
 
         if args.probe:
+            (out / "report.json").write_text(json.dumps(report, indent=1))
             return 0
-        if not before["idle"]:
-            print(f"the PC is ${pc:04X} and not in a key window; refusing",
-                  flush=True)
-            return 4
-        if before["mode"] != 1:
-            print(f"${addr.mode:04X} is {before['mode']}, not 1: DUNGEON is "
-                  f"not resident and the tail is somebody else's code",
-                  flush=True)
-            return 4
-        if not before["indoors"] and not args.force:
-            print(f"${addr.indoors:04X} is 0, so the party is not indoors. "
-                  f"Pool of Radiance wedges its loader warping out of the "
-                  f"travel grid; pass --force to test that here.", flush=True)
-            return 4
-        if before["area"] == args.to:
-            print(f"the party is already in area ${args.to:02X}", flush=True)
-            return 4
 
-        square = None
-        if args.square:
-            square = tuple(int(v, 0) for v in args.square.split(","))
-        elif row.arrival is not None and args.place:
-            a = row.arrival
-            square = (a.x, a.y, a.facing or 0)
-        print(f"arrival square: {square}", flush=True)
+        target = SessTarget(sess)
+        landed_any = False
+        for n, (want, row) in enumerate(zip(chain, rows), start=1):
+            tag = f"hop{n}-{want:02x}"
+            here = snapshot(sess, addr)
+            if here["mode"] != 1:
+                print(f"${addr.mode:04X} is {here['mode']}, not 1: DUNGEON is "
+                      f"not resident and the tail is somebody else's code",
+                      flush=True)
+                break
+            if here["area"] == want:
+                print(f"the party is already in area ${want:02X}", flush=True)
+                break
+            if not here["indoors"] and not args.force:
+                print(f"${addr.indoors:04X} is 0, so the party is not "
+                      f"indoors. Pool of Radiance wedges its loader warping "
+                      f"out of the travel grid; pass --force to test that "
+                      f"here.", flush=True)
+                break
+            pc = idle_in_key_window(sess, addr)
+            if pc is None:
+                print("the machine is not idle in a key window; refusing",
+                      flush=True)
+                break
+            square = None
+            spoiled = bool(args.spoil_from) and n >= args.spoil_from
+            if spoiled:
+                square = SPOIL_SQUARE
+            elif args.square and n == 1:
+                square = tuple(int(v, 0) for v in args.square.split(","))
+            elif row.arrival is not None and args.place:
+                a = row.arrival
+                square = (a.x, a.y, a.facing or 0)
+            print(f"hop {n} -> ${want:02X} from ${here['area']:02X}, "
+                  f"square {square}, PC ${pc:04X}", flush=True)
 
-        made = warp(sess, addr, args.to, disk, square)
-        print("wrote:", json.dumps(made), flush=True)
-        (out / "writes.json").write_text(json.dumps(made, indent=1))
+            if args.via_actions:
+                made = warp_via_actions(target, game, row, square)
+                if not made.get("ok"):
+                    print("FastTravel refused:",
+                          json.dumps(made), flush=True)
+                    report["hops"].append({"target": f"0x{want:02X}",
+                                           "writes": made, "landed": False})
+                    break
+            else:
+                made = warp(sess, addr, want, args.disk or row.disk, square)
+            print("wrote:", json.dumps(made), flush=True)
 
-        landed, pc = wait_idle(sess, addr)
-        sess.settle(3)
-        after = snapshot(sess, addr)
-        after["resident"] = resident_geo(sess, maps)
-        after["idle"] = landed
-        after["expected_geo"] = list(row.geos)
-        if landed:
-            after["walk"] = walk_proof(sess)
-            after["resident_after_walk"] = resident_geo(sess, maps)
-        s = sess.screen()
-        after["screen"] = s.text() if s is not None else None
-        print("after:", json.dumps({k: v for k, v in after.items()
-                                    if k != "screen"}), flush=True)
-        (out / "after.json").write_text(json.dumps(after, indent=1))
-        sess.kbd.screenshot(str(out / "after.png"))
-        if after["screen"]:
-            (out / "after-screen.txt").write_text(after["screen"])
-        return 0 if landed else 5
+            ok, pc = wait_idle(sess, addr)
+            sess.settle(3)
+            after = measure(sess, addr, maps, row, out, tag)
+            after["idle"] = ok
+            hop = {"target": f"0x{want:02X}", "writes": made, "landed": ok,
+                   "spoiled": spoiled, "state": after,
+                   "verdict": verdict_of(after, row, spoiled)}
+            print(f"verdict {tag}:", json.dumps(hop["verdict"]), flush=True)
+            report["hops"].append(hop)
+            (out / "report.json").write_text(json.dumps(report, indent=1))
+            if not ok:
+                break
+            landed_any = True
+            if args.walk and n == len(chain):
+                hop["walk"] = walk_proof(sess)
+                hop["resident_after_walk"] = resident_geo(sess, maps)
+                print("walk:", json.dumps(hop["walk"]), flush=True)
+            elif n != len(chain):
+                # Clear the arriving script's messages before the next hop, so
+                # the machine is idle in the ordinary way rather than mid-text.
+                sess.log(f"  bar after {tag}: {clear_messages(sess, 60)!r}")
+        (out / "report.json").write_text(json.dumps(report, indent=1))
+        return 0 if landed_any else 5
     finally:
         if sess is not None:
             sess.terminate()
@@ -761,8 +1028,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--save", default="",
                     help="a save disk to stage as SIDE0 (default: a copy of "
                          "side 6, which carries the shipped SAVEDBASH party)")
-    ap.add_argument("--to", type=lambda v: int(v, 0), default=0x22,
-                    help="the target area id, the ECL number")
+    ap.add_argument("--to", default="0x22",
+                    help="the target area id, the ECL number; a comma-"
+                         "separated list is a chain driven in one boot")
     ap.add_argument("--disk", type=int, default=0,
                     help="which side carries that ECL (default: the table's)")
     ap.add_argument("--place", action="store_true",
@@ -777,6 +1045,22 @@ def main(argv: list[str]) -> int:
                          " rather than writing a legal one and pressing a key")
     ap.add_argument("--force", action="store_true",
                     help="warp even when the indoors flag is clear")
+    ap.add_argument("--via-actions", action="store_true",
+                    help="make the trip with automap.actions.FastTravel, "
+                         "which is the code a player clicking Fast Travel "
+                         "runs, rather than this file's own writes")
+    ap.add_argument("--command-bar", action="store_true",
+                    help="wait for ENCAMP before warping, rather than for "
+                         "the first moment the machine is idle in a key "
+                         "window; eight sessions never reached one")
+    ap.add_argument("--spoil-from", type=int, default=0, metavar="N",
+                    help="from hop N on, write %s into the live square "
+                         "instead of the table's, so that the table's square "
+                         "read back afterwards is the arriving script's own "
+                         "doing and not ours" % (SPOIL_SQUARE,))
+    ap.add_argument("--walk", action="store_true",
+                    help="after the last hop, walk the party to show the "
+                         "arrival is a place and not a picture")
     ap.add_argument("--out", default="work/issue20/run",
                     help="where captures go (default: %(default)s)")
     args = ap.parse_args(argv[1:])

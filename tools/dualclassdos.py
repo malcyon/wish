@@ -60,12 +60,10 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import dosbox  # noqa: E402
-from dosfieldrefs import references  # noqa: E402
 
 from goldbox import dos, dos_layout  # noqa: E402
+from tools import dosbox  # noqa: E402
+from tools.dosfieldrefs import references  # noqa: E402
 
 #: The suffixes a character record can wear.  A saved slot is `.SAV`; a
 #: character exported from the party menu is `.CHA` in Pool of Radiance and

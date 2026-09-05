@@ -33,18 +33,17 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
-sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS.parent / "tests"))
 
 # Importing this is what forces the process offscreen and gives it a throwaway
 # config directory: both run at its import time, and they have to happen
 # before Qt is imported at all.
-import shotwindow  # noqa: E402,F401  (imported for that alone)
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from automap import combat, live  # noqa: E402
 from automap.target import MemoryTarget, ViceTarget  # noqa: E402
 from automap.window import CombatCanvas  # noqa: E402
+from tools import shotwindow  # noqa: E402,F401  (imported for that alone)
 
 
 def from_machine(port: int, host: str = "127.0.0.1"):

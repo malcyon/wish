@@ -46,11 +46,9 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tools"))
-
-import session as S  # noqa: E402
 
 from automap.paths import find_disks  # noqa: E402
+from tools import session as S  # noqa: E402
 
 #: Give up walking rather than circling an area that will not ambush anybody.
 MAX_STEPS = 400

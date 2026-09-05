@@ -34,14 +34,11 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import d6502  # noqa: E402
-import gamedisks  # noqa: E402
 
 from automap.paths import disk_globs, find_disks  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
+from tools import d6502, gamedisks  # noqa: E402
 
 #: Where an overlay runs, for the disassembly `--sites` prints. `LINKER` puts
 #: every overlay read so far at `$0800` whatever its own header claims

@@ -44,14 +44,11 @@ from collections import Counter
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
 
 import capstone  # noqa: E402
-import dosbox  # noqa: E402
-import dosfieldrefs  # noqa: E402
-import unexepack  # noqa: E402
 
 from goldbox import dos_layout  # noqa: E402
+from tools import dosbox, dosfieldrefs, unexepack  # noqa: E402
 
 #: The title's record size, by game directory stem, for `dos_layout`.
 RECORD_SIZE = {

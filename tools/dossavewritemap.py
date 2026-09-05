@@ -37,11 +37,9 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import dosbox  # noqa: E402
 
 from goldbox import dos_savegame as sg  # noqa: E402
+from tools import dosbox  # noqa: E402
 
 #: `xor ax, ax; push ax; push ax; lcall` -- `BlockWrite(..., NIL)`.
 WRITE_CALL = re.compile(rb"\x31\xc0\x50\x50\x9a....", re.DOTALL)

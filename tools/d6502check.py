@@ -38,12 +38,10 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import d6502  # noqa: E402
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
+from tools import d6502  # noqa: E402
 
 #: capstone gives `BRK` two bytes and `d6502` gives it one.
 #: `docs/148-d6502.md` records that as a declared difference rather than a

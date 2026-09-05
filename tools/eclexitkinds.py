@@ -44,11 +44,9 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import eclwalk as W  # noqa: E402
 
 from goldbox.geo import Geo  # noqa: E402
+from tools import eclwalk as W  # noqa: E402
 
 #: The two menus, and the text printers, by opcode.  `$2B` and `$15` carry a
 #: count operand (`W.COUNTED`); `$12` prints an inline string; `$0E` prints

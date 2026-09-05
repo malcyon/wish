@@ -42,17 +42,12 @@ import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
-# TOOLS first so `session` and `savecheck` import, then ROOT **in front of
-# it**: `tools/wish.py` is a launcher script, and with TOOLS ahead it shadows
-# the `wish` package this needs `Ui_WishWindow` out of.
-sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(ROOT))
-
-import session as S  # noqa: E402
-from savecheck import Log, answer_bars  # noqa: E402
 
 from automap import actions  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
+from tools import session as S  # noqa: E402
+from tools.savecheck import Log, answer_bars  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read, never written -- the sides are
 #: copied into the slot and the game only ever sees the copies.
@@ -199,20 +194,6 @@ def clear_bars(sess, log: Log, answers=("STAY", "NO"), seconds: float = 180.0,
     return "stuck"
 
 
-def _root_first() -> None:
-    """Put the repository ahead of `tools/` on the path, and keep it there.
-
-    `tools/wish.py` is a launcher script and `wish/` is the package this needs
-    `Ui_WishWindow` out of, so whichever directory is first on `sys.path`
-    decides which one `import wish` finds.  Importing `savecheck` puts
-    `tools/` back in front -- it inserts its own two entries -- so this is
-    called where the import happens rather than once at the top.
-    """
-    while str(ROOT) in sys.path:
-        sys.path.remove(str(ROOT))
-    sys.path.insert(0, str(ROOT))
-
-
 def _offscreen() -> None:
     """Make it impossible for this process to draw on the user's desktop.
 
@@ -254,7 +235,6 @@ def private_settings(out: pathlib.Path) -> None:
 
 def build_window(target, disks: str, out: pathlib.Path):
     """The real map tab, offscreen, with its own settings and notes."""
-    _root_first()
     private_settings(out)
     from PyQt6.QtWidgets import QApplication, QMainWindow
 

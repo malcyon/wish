@@ -37,12 +37,10 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import d6502  # noqa: E402
 
 from automap.paths import disk_globs, find_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
+from tools import d6502  # noqa: E402
 
 #: `LINKER` loads every overlay it dispatches to at `$0800`.
 LINKER_BASE = 0x0800

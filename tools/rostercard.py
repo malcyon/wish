@@ -39,17 +39,16 @@ import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
-sys.path.insert(0, str(TOOLS))
 
 # Importing this is what forces the process offscreen and gives it a throwaway
 # config directory: both run at its import time, and they have to happen
 # before Qt is imported at all.
-import shotwindow  # noqa: E402
 from PyQt6.QtCore import QPoint  # noqa: E402
 from PyQt6.QtGui import QColor, QFont, QImage, QPixmap  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from automap import live, paths  # noqa: E402
+from tools import shotwindow  # noqa: E402
 from wish.session import Session  # noqa: E402
 from wish.window import MAP_TAB, WishWindow  # noqa: E402
 

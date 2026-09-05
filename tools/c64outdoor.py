@@ -58,15 +58,13 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import session as S  # noqa: E402
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox import areas, dos  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
+from tools import session as S  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read only, and found the way every
 #: other tool here finds them.

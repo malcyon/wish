@@ -37,11 +37,9 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import dostailcensus  # noqa: E402
 
 from goldbox import dos_layout as dl  # noqa: E402
+from tools import dostailcensus  # noqa: E402
 
 #: The seven (base, current) ability pairs, in record order.
 ABILITIES = ("strength", "intelligence", "wisdom", "dexterity",

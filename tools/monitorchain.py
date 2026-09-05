@@ -42,9 +42,6 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tools"))
-
-from session import Session, claim_slot  # noqa: E402
 
 from automap.target import (  # noqa: E402
     MonitorBusy,
@@ -53,6 +50,7 @@ from automap.target import (  # noqa: E402
     monitor_listening,
 )
 from automap.vice import MonitorError  # noqa: E402
+from tools.session import Session, claim_slot  # noqa: E402
 
 #: Short enough that the read gives up mid-message, which is the state a
 #: stalled emulator leaves the socket in; long enough not to fail on connect.
