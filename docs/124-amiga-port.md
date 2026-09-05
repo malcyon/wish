@@ -505,15 +505,14 @@ characters are DOS slot A's six in the same state — which is what makes §1.6'
 spellbook finding a diff rather than an inference.
 
 **The square region**, between the buffer and the first record, is 24 bytes on
-Curse and 22 on Silver Blades against 20 in both DOS files. Silver Blades is a
-clean diff and gives **x, y and facing as single bytes at the DOS offsets**
-(`0x1401`-`0x1403` = 7, 13, 0 in both files) with one byte inserted in
-`0x1404`-`0x140a` and the party size preceded by a `00`. **Curse does not
-agree**: its region is +4, and **§1.11 settles it on the screen** — `x = 3`
-and `y = 14` as `u16be` at `0x3201` and `0x3203`, facing a byte at `0x3205`.
-The `$49F0`=2 / `$49F1`=14 pair that once looked like corroboration is engine
-scratch and was a coincidence; §1.9b measured it moving on a step that changed
-neither coordinate.
+Curse and 22 on Silver Blades against 20 in both DOS files, and every byte of
+it is now named from the save routine itself in
+[`165-amiga-savegame.md`](165-amiga-savegame.md): the square struct (8 bytes
+on Curse with `u16be` x and y, 6 on Silver Blades with single bytes), the
+game mode before the current one, the game mode, three (WALLDEF block, slot)
+pairs, and a `u16be` party count. §1.11 read Curse's `x = 3`, `y = 14` off the
+screen; the `$49F0`=2 / `$49F1`=14 pair that once looked like corroboration is
+engine scratch and was a coincidence (§1.9b).
 
 The encounter message is in the Curse save **twice**: unpacked at `$5289`, one
 character per word, which is `docs/141`'s buffer; and **packed two characters
@@ -696,14 +695,16 @@ for nothing, after the character name and the item display text. So §1.7's
 "where DOS names six files, the Amiga embeds the records" is **Curse and Silver
 Blades only**.
 
-**The square block is 13 bytes and four of them are settled**: 12812 = party
-size 6 (agrees with `$503E`), 12811 = the constant 2, 12810 = view mode 1
-(agrees with `$49E6`), 12804 = the low byte of `$5200`. `12801`-`12803` = 4, 6,
-1 sits where DOS puts x, y and facing — **but 1 is not a legal DOS facing**,
-which stores the C64's value doubled. Either the Amiga stores facing
-undoubled, the way the C64 itself does, or the square is among the five zeros
-at 12805-12809. UNKNOWN, one specimen; a save one step apart settles it, and
-the same session settles Curse's.
+**The square block is 13 bytes and all of them are placed**, from the save
+routine rather than from the file ([`165-amiga-savegame.md`](165-amiga-savegame.md)):
+a ten-byte write of a **seven-byte** square struct -- x, y, facing (doubled),
+the wall in front, a square property, two bytes nothing references -- running
+three bytes into the wallset table that follows it in memory, then the view
+type (12810 = 1, 3D), the game mode (12811 = 2, camp) and the count byte
+(12812 = 6, agreeing with `$503E`). `12800`-`12802` = 0, 4, 6 is x, y, facing
+and §1.9b's step diff confirmed it. The earlier reading of this paragraph
+put x at 12801 and asked whether facing was undoubled; it was off by the
+missing container byte.
 
 ### 1.9b The Amiga Pool of Radiance square, measured one step apart (#28)
 
@@ -723,7 +724,7 @@ B (0,3 N 05:49)   12800:  00 03 00 00 00 00 00 00 00 00 01 02 06
 | 12802 | 6 | 0 | **facing, DOS's doubled encoding**: 6 W, 0 N |
 | 12803 | 1 | 0 | DOS's unnamed engine-maintained byte |
 | 12804 | 25 | 0 | **the low byte of `$5200`**, which moved 25 → 0 in the same save |
-| 12805-12809 | 0 | 0 | five bytes DOS does not have |
+| 12805-12809 | 0 | 0 | two unreferenced struct bytes and three bytes of the neighbouring wallset table -- `165-amiga-savegame.md` |
 | 12810-12812 | 1, 2, 6 | 1, 2, 6 | view mode, the constant 2, party size |
 
 **The clock moved by one minute at `docs/141`'s own addresses**: `$49C7`, the
@@ -1219,12 +1220,13 @@ fourteen-byte window. Under the alignment above those fourteen bytes are four
 separate fields, and the last two are a party size `$503E` gives independently.
 A table of ascending pairs matches any block of small ascending numbers.
 
-**What is still open in that region**: the eight bytes where DOS writes eight
-`0xFF`. Amiga Silver Blades, taken before any play, keeps the eight `0xFF`;
-Amiga Curse's mid-game save holds `00 02 00 02 00 03 00 03` -- four `u16be`
-values 2, 2, 3, 3 for a party of four, on the byte order the rest of the region
-uses. So it is filled during play and DOS's `0xFF` is its unset state.
-UNKNOWN, one played specimen.
+**The grouping above was wrong, and the save routine says what the bytes
+are** -- [`165-amiga-savegame.md`](165-amiga-savegame.md). After the square
+struct come the game mode before the current one (the `04`), the game mode,
+then **three (WALLDEF block, slot) `u16be` pairs**: the "`u16be` 1" is entry
+1's slot number and the "eight bytes" are entries 2 and 3, `$FFFF` when
+empty, which is what both titles' new-game initialisation writes. Nothing in
+the region is open.
 
 ### 1.15 The item record's remaining bytes: the corpus is exhausted (#28, #55)
 
