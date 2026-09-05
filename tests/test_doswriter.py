@@ -311,15 +311,15 @@ def test_a_converted_halfling_carries_the_two_records_his_own_kind_has():
     assert _spc_ids(spc) == [90, 97]
 
 
-def test_a_converted_gnome_is_told_about_rather_than_guessed_at():
-    """The third sturdy race has no specimen anywhere, so nothing is written
-    for one and the report says what was lost."""
+def test_a_converted_gnome_carries_his_four_innate_records():
+    """#84 (Roll a gnome in DOS and read the two innate effect ids nobody has
+    seen) measured the engine writing 97, 18, 47 and 48 for a gnome, so a
+    converted gnome gets the same four rather than being reported as lost."""
     char = _filled()
-    char.set("race", dos.UNWITNESSED_RACE, "made up: gnome")
+    char.set("race", 3, "made up: gnome")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, rep = dos.write(char)
-    assert spc == b""
-    assert any("gnome" in d and "saving throws" in d for d in rep.dropped)
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [97, 18, 47, 48]
 
 
 def test_a_race_with_no_innate_effects_gets_no_spc_file():

@@ -391,15 +391,30 @@ EFFECT_NEXT_NULL = bytes(4)
 #: from his race byte at the moment of the blow; the DOS dwarf gets them from
 #: these records or not at all.
 #:
-#: **The gnome is not here and that is deliberate**, and there are *four* ids
-#: at stake rather than the three this note used to name -- 48 was left out.
-#: 18 is the gnome's own THAC0 bonus and 48 his own armour-class bonus; 47 is
-#: named for gnomes as well as dwarves; 97 is named for all three sturdy races
-#: where 90 is the dwarf's and the halfling's only, so a gnome would not get
-#: 90 at all.  Nobody in any save the archives hold is a gnome, so every one of
-#: the four would be a guess.  A converted gnome is reported instead.
+#: **The gnome (3) is measured now: 97, 18, 47, 48.**  #84 rolled three
+#: gnomes in DOS Pool of Radiance's own creation screens -- one of each class
+#: the game offers a gnome (fighter, thief, fighter/thief), both sexes, three
+#: alignments -- and the engine wrote the same four records for every one,
+#: twice over: once as `<NAME>.SPC` at creation and again as
+#: `CHRDAT<slot><n>.SPC` after the party was saved.  No 90, which is what the
+#: names alone had predicted: 90 is the dwarf's and the halfling's only, 97 is
+#: all three sturdy races'.  Five same-boot controls reproduce the archives'
+#: census exactly -- dwarf 90/97/26/47, elf 107, half-elf 124, halfling 90/97,
+#: human no `.SPC` file at all -- so this is one measurement and not a new
+#: kind of one.  CONFIRMED over three gnomes and six engine-written files.
+#:
+#: **Writing 97 from this table is PROBABLE, not CONFIRMED, and #247 (Nobody
+#: knows whether innate effect 97 is racial or the constitution bonus) is
+#: why.**  Every race this corpus has ever seen carry 97 -- dwarf, halfling,
+#: now gnome -- also earns a constitution bonus, so nothing here separates
+#: "97 is racial" from "97 is the constitution bonus computed some other
+#: way."  If it turns out to be the latter, a converted character with a low
+#: constitution would be handed a bonus he did not roll.  18, 47 and 48 do
+#: not carry this doubt: #84 measured them as this race's own,
+#: unconditionally.
 RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {
     1: (90, 97, 26, 47),
+    3: (97, 18, 47, 48),
     5: (90, 97),
 }
 
@@ -410,10 +425,6 @@ RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {
 #: from -- see #191 (A converted dwarf loses his constitution bonus to saving
 #: throws).
 STURDY_RACES = (1, 3, 5)
-
-#: The race with an innate effect this conversion cannot name.  Kept apart
-#: from `RACE_COMBAT_EFFECTS` because the entry that is missing is the point.
-UNWITNESSED_RACE = 3
 
 #: DOS class number -> the C64 record field holding that class's level.  DOS
 #: indexes its eight slots by the class *number* and the C64 by the class
@@ -1792,14 +1803,6 @@ def write(char: NeutralCharacter,
                 f"ids the game's own importer keeps, so it is an item power "
                 f"or a running effect rather than an innate one and no .SPC "
                 f"record is written for it")
-    if race == UNWITNESSED_RACE:
-        rep.dropped.append(
-            "A gnome's four innate racial bonuses -- his to-hit against "
-            "kobolds and goblins, his armour class against gnolls and "
-            "bugbears and against giants, and his constitution bonus to "
-            "saving throws: no gnome appears in any DOS save we hold, so "
-            "the effect ids the DOS engine writes for one are unmeasured "
-            "and are not guessed at")
 
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)
