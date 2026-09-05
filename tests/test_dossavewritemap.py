@@ -13,6 +13,12 @@ import pytest
 from goldbox import dos_savegame as sg
 from tools import dossavewritemap as wm
 
+# `capstone` is not a declared dependency: nine tools under `tools/` use it and
+# CI installs none of them.  `tools/dossavewritemap.py` imports it lazily, so the
+# module above is safe to import and it is the test bodies that need the skip.
+# `tests/test_amiga68k.py` guards the same way, and passes in CI without it.
+pytest.importorskip("capstone")
+
 # --- a chain assembled here, so CI exercises the parser ----------------------
 
 
