@@ -137,4 +137,6 @@ Icons are from **[Game-icons.net](https://game-icons.net/)**, licensed
 Reverse engineering notes can be found in [`docs/README.md`](docs/README.md). This include the details on the D64 
 container, the character record, the save game layout, and experiment logs.
 
+Bugs found in the game itself are logged into [goldbox-bugs.md](goldbox-bugs.md).
+
 API Reference is at [https://wish-goldbox.readthedocs.io](https://wish-goldbox.readthedocs.io).
