@@ -7,11 +7,10 @@ instead, with `tools/iconproposal.py` reading it and `--markdown` generating
 the judged document from it -- so `tools/iconproposal.yaml` is now the single
 source, and this is where that is checked.
 
-The numbers below are the proposal exactly as it stood in Python before the
-move, copied here once as an independent oracle. If `tools/iconproposal.yaml`
-or `load_tables` silently drops or renumbers a row, this is what catches it --
-these tests fail without the YAML file being read correctly, which is the
-"prove it fails" half of moving the data.
+These tests pin the **shape** of the file rather than the matches in it: every
+DOS figure has a row, every row names a C64 option, and all sixteen EGA
+colours map to one of the C64's eight. The matches themselves are Donald's
+judgement and change whenever he edits the file, which is what it is for.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ import contextlib
 import io
 import pathlib
 import sys
-import tempfile
 
 import pytest
 
@@ -28,31 +26,23 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools")
 
 import iconproposal as ip  # noqa: E402
 
-# The proposal as it stood in Python, before the move to YAML (#130).
-OLD_WEAPONS = {
-    0: 0, 1: 26, 2: 5, 3: 23, 4: 24, 5: 21, 6: 27, 7: 1, 8: 25, 9: 8,
-    10: 10, 11: 23, 12: 27, 13: 27, 14: 15, 15: 7, 16: 28, 17: 14, 18: 11,
-    19: 13, 20: 17, 21: 6, 22: 9, 23: 12, 24: 3, 25: 22, 26: 12, 27: 32,
-    28: 31, 29: 34, 30: 29, 31: 30,
-}
-
-OLD_WEAPON_ALTERNATIVES = {
-    2: (27,), 5: (14,), 6: (5,), 8: (19,), 11: (25,), 12: (5,), 13: (5,),
-    14: (10,), 15: (11,), 17: (2,), 18: (13,), 19: (4,), 20: (12,),
-    21: (20,), 23: (24,), 25: (24,), 26: (17,), 27: (34,), 29: (32,),
-}
-
-OLD_HEADS = {
-    0: 7, 1: 11, 2: 16, 3: 3, 4: 8, 5: 5, 6: 14, 7: 11, 8: 17, 9: 12,
-    10: 10, 11: 6, 12: 0, 13: 13,
-}
-
-OLD_HEAD_ALTERNATIVES = {
-    0: (1,), 1: (3,), 2: (15, 22), 3: (15,), 4: (21, 0), 6: (2, 9),
-    8: (12,), 9: (17,), 10: (15,), 12: (2,), 13: (16,),
-}
-
-OLD_EGA_TO_C64 = (0, 6, 5, 3, 2, 4, 7, 1, 0, 6, 5, 3, 2, 4, 7, 1)
+#: The shape of the proposal, which does not change when Donald edits it.
+#:
+#: **These deliberately do not pin the values.** An earlier version of this
+#: file held the whole table as it stood in Python before the move to YAML and
+#: asserted the two were equal, which was the right check for the migration
+#: and the wrong one to leave behind: `tools/iconproposal.yaml` exists for
+#: Donald to edit, so a test demanding it still equal the old Python turns his
+#: first edit into a red build. It did -- he moved DOS weapon 2 from C64 5 to
+#: 10 and CI went red on the migration oracle (#130).
+#:
+#: What is worth pinning is the shape: every DOS figure has a row, every row
+#: names a C64 option that exists, and the colour table covers all sixteen EGA
+#: entries. Those stay true however he rearranges the matches.
+DOS_WEAPONS = 32
+DOS_HEADS = 14
+EGA_COLOURS = 16
+C64_COLOURS = 8
 
 
 def test_the_yaml_file_exists_beside_the_tool():
@@ -60,31 +50,33 @@ def test_the_yaml_file_exists_beside_the_tool():
     assert ip.TABLE_PATH.is_file()
 
 
-def test_every_weapon_row_and_alternative_came_across_unchanged():
+def test_every_dos_weapon_has_a_row_naming_a_real_c64_option():
     weapons, alternatives, _, _, _ = ip.load_tables()
-    assert len(weapons) == 32 == len(OLD_WEAPONS)
-    assert weapons == OLD_WEAPONS
-    assert len(alternatives) == 19 == len(OLD_WEAPON_ALTERNATIVES)
-    assert alternatives == OLD_WEAPON_ALTERNATIVES
+    assert sorted(weapons) == list(range(DOS_WEAPONS))
+    assert all(isinstance(v, int) and v >= 0 for v in weapons.values())
+    for dos_index, alts in alternatives.items():
+        assert dos_index in weapons, dos_index
+        assert all(isinstance(a, int) and a >= 0 for a in alts), dos_index
 
 
-def test_every_head_row_and_alternative_came_across_unchanged():
+def test_every_dos_head_has_a_row_naming_a_real_c64_option():
     _, _, heads, alternatives, _ = ip.load_tables()
-    assert len(heads) == 14 == len(OLD_HEADS)
-    assert heads == OLD_HEADS
-    assert len(alternatives) == 11 == len(OLD_HEAD_ALTERNATIVES)
-    assert alternatives == OLD_HEAD_ALTERNATIVES
+    assert sorted(heads) == list(range(DOS_HEADS))
+    assert all(isinstance(v, int) and v >= 0 for v in heads.values())
+    for dos_index, alts in alternatives.items():
+        assert dos_index in heads, dos_index
+        assert all(isinstance(a, int) and a >= 0 for a in alts), dos_index
 
 
-def test_all_sixteen_colours_came_across_unchanged():
+def test_every_ega_colour_maps_to_one_the_c64_has():
     _, _, _, _, ega_to_c64 = ip.load_tables()
-    assert len(ega_to_c64) == 16 == len(OLD_EGA_TO_C64)
-    assert ega_to_c64 == OLD_EGA_TO_C64
+    assert len(ega_to_c64) == EGA_COLOURS
+    assert all(0 <= c < C64_COLOURS for c in ega_to_c64), ega_to_c64
 
 
 def test_forty_six_rows_total_between_weapons_and_heads():
     weapons, _, heads, _, _ = ip.load_tables()
-    assert len(weapons) + len(heads) == 46
+    assert len(weapons) + len(heads) == DOS_WEAPONS + DOS_HEADS == 46
 
 
 def test_the_module_level_tables_are_what_load_tables_returns():
@@ -106,13 +98,16 @@ def test_from_markdown_is_gone():
     assert "--from-markdown" not in buf.getvalue()
 
 
-def test_a_malformed_yaml_row_is_caught_by_the_type():
-    """A non-dict row (a bare number, the old Python shape) fails loudly."""
-    bad = pathlib.Path(tempfile.mkstemp(suffix=".yaml")[1])
-    try:
-        bad.write_text("weapons:\n  0: 5\nheads:\n  0: {c64: 7}\ncolours:\n"
-                       + "\n".join(f"  {i}: {{c64: 0}}" for i in range(16)))
-        with pytest.raises(TypeError):
-            ip.load_tables(bad)
-    finally:
-        bad.unlink()
+def test_a_malformed_yaml_row_is_caught_by_the_type(tmp_path):
+    """A non-dict row (a bare number, the old Python shape) fails loudly.
+
+    `tmp_path` rather than `tempfile.mkstemp`: the latter hands back an open
+    descriptor as well as a path, and on Windows a file already open cannot
+    be opened again -- `PermissionError: [WinError 32]`, which is what this
+    test did on both Windows jobs in CI and on neither Linux one.
+    """
+    bad = tmp_path / "malformed.yaml"
+    bad.write_text("weapons:\n  0: 5\nheads:\n  0: {c64: 7}\ncolours:\n"
+                   + "\n".join(f"  {i}: {{c64: 0}}" for i in range(16)))
+    with pytest.raises(TypeError):
+        ip.load_tables(bad)
