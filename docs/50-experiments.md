@@ -5241,7 +5241,7 @@ engine carries unread *because* it trusts whoever made the character, and both
 are now written rather than zeroed — see "Two same-named characters and one
 byte" below.
 
-**Two of those names were wrong and are corrected here (#57 (Carry the character portrait across ports)).** What this
+**Two of those names were wrong and are corrected here (#57 (Convert the character portrait across ports)).** What this
 paragraph called `heap_0c1` is `icon_colours`, the combat icon's six colour
 pairs; what it called `icon_choice` is four bytes, `portrait_head` and
 `portrait_body` for the sheet portrait and `icon_head` and `icon_body` for the
@@ -5357,7 +5357,7 @@ itself was always well-formed).
 
 **Left open.** ~30 live words unnamed (`$49F0`, `$49FC`-`$49FF`,
 `$4FC0`-`$4FD3`, `$5200`-`$520F`), bytes 12804-12807, outdoor saves
-(no specimen at the time — see the next entry), #57 (Carry the character portrait across ports)'s portrait path.
+(no specimen at the time — see the next entry), #57 (Convert the character portrait across ports)'s portrait path.
 
 ## The DOS saved game outdoors (#59 (Map the DOS saved game, not just the character record), the outdoor half)
 

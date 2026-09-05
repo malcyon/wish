@@ -756,7 +756,7 @@ only "unattributed".
 |---|---|---|
 | `0x10C` | **status**, 0-based: 0 Okay, 1 Animated, 2 tempgone, 3 Running, 4 Unconscious, 5 Dying, 6 Dead, 7 Stoned, 8 Gone. The order is the game's own — nine length-prefixed strings in `START.EXE` from file offset `0xD191`, in that sequence — and two of the nine were read off the sheet: the same character staged 0 shows `STATUS OKAY` and staged 4 shows `STATUS UNCONSCIOUS`, with hit points and armour class unchanged. The engine writes 4 itself for a character it takes to zero hit points | CONFIRMED |
 | `0x10D` | **an active flag**. 0 draws the name red in the party panel and 1 does not: 3 of 3 against 9 of 9 across two boots, and it is `0x10D` alone — a character carrying status 5 or 6 with `0x10D` = 1 is *not* red | CONFIRMED |
-| `0x10E` | 0 in all 223 engine-written records of all four titles. The third-party workbooks call it `IsHostile`; a player character is never hostile and DOS monsters are not `CHRDAT` files, so no specimen separates it from fill | UNKNOWN |
+| `0x10E` | **the combat side**: 0 the party's, 1 the enemy's. Read out of `GAME.OVR` rather than from a specimen — no player-character record can ever hold 1, since a fight the party lost is never saved — and confirmed in the running game: staged 1 on one character, he drew yellow on the party panel, was targeted by his own side and fought on the enemy's, and `ENCAMP > SAVE` wrote the byte back unchanged. Zero in all 223 engine-written records of all four titles is what that makes it: an absence, not a value the engine chose. See [`docs/169-dos-combat-side.md`](169-dos-combat-side.md) | CONFIRMED |
 | `0x10F` | **the quickfight flag**. Staged 1 on all six of a party, the next fight ran to its end with the combat command bar never appearing and QUICK never pressed; staged 0, the same party at the same encounter stopped at the first character's `MOVE VIEW AIM USE QUICK DONE` and sat there for 335 captures. The engine sets it in a fight and nothing clears it — 11 of 11 characters resaved after one carry it — which is `goldbox-bugs.md` bug 3 in the DOS build | CONFIRMED |
 
 **The whole four-byte block is stored state, not scratch.** Twelve values
@@ -847,16 +847,13 @@ Pools of Darkness)`.
 * **Whether Pool of Radiance and Curse write eight name slots too.** Pools of
   Darkness and Silver Blades do, from the code. Experiment: the same
   `BlockWrite` census on `POOLRAD/GAME/POOLRAD/GAME.OVR`.
-* `#57 (Carry the character portrait across ports)` asks what the game does
+* `#57 (Convert the character portrait across ports)` asks what the game does
   with `icon_choice` on load. Its four bytes have since been decoded on that
   issue -- `portrait_head`, `portrait_body`, `icon_head`, `icon_body` -- and
   all four live in the **character record**, not in `SAVGAM<slot>.DAT`.
   Nothing in this file bears on it, which is the answer rather than a gap.
-* **What `0x10E` is.** 0 in all 223 engine-written records of all four
-  titles, which is an absence rather than a reading. Experiment: read the
-  same offset out of a DOS `MON*` record, where a hostile creature would
-  have to set it — the format is shared and no monster record has been
-  looked at.
+* ~~**What `0x10E` is.**~~ Settled: the combat side, 0 the party's and 1 the
+  enemy's — [`docs/169-dos-combat-side.md`](169-dos-combat-side.md).
 * **Whether `0x084`/`0x085` are morale and treasure share.** Experiment: a
   Pool of Radiance record for a monster or a joined NPC, which is the only
   kind of character either value could be nonzero for.

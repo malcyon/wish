@@ -937,8 +937,7 @@ steps -- and look at the party on the combat floor.
 They are alike because a converted party has no C64 art to carry, so every
 character gets the icon the game's own character creation writes. *If instead
 a character is a 3x3 block of black hooks*, its combat icon reached the disk as
-zero: screen code 0 is a real glyph and a zeroed icon is not "no icon" (`#57 (Carry the character portrait across ports)
-(Carry the character portrait across ports)`).
+zero: screen code 0 is a real glyph and a zeroed icon is not "no icon" (`#57 (Convert the character portrait across ports)`).
 
 `tools/savecheck.py` does D3 to D7 unattended through the instance pool and
 prints what it read, which is how it was last checked; `--icon` is the D7

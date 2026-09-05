@@ -88,9 +88,13 @@ way.
 (combat)** and used as an index: `/Curse` `0x1B794` into a byte array at
 `g3E2A`, `/Secret` `0x1ABD4` into a *word* array at `g5436`, where it
 decrements the entry. So it is a combat-roster index rather than the constant
-DOS's own records make it look like. `docs/141-dos-savegame.md` calls DOS's
-`0x10E` UNKNOWN and zero in 223 records, which is what a save always taken out
-of combat would look like. PROBABLE as "an index into a per-combatant array",
+DOS's own records make it look like. `docs/141-dos-savegame.md`'s DOS `0x10E`
+at the same offset is now CONFIRMED as **the combat side**, 0 the party's and
+1 the enemy's, indexing a two-entry per-side count that a combatant's defeat
+decrements ([`docs/169-dos-combat-side.md`](169-dos-combat-side.md)) — the
+same shape as this Amiga index, and why it reads zero in every
+engine-written player record: a fight the party lost is never saved.
+PROBABLE as "an index into a per-combatant array",
 CONFIRMED as "read only in combat".
 
 ## What reaches the neutral record
@@ -149,7 +153,7 @@ been read.
   `#256 (The neutral record has nowhere to put a dual-classed character's
   former levels)` rather than half a change.
 * **`portrait_head` and `portrait_body`** — a position in the Amiga's own
-  creation menu. `#57 (Carry the character portrait across ports)` read DOS's menu tables out of `START.EXE` and that is
+  creation menu. `#57 (Convert the character portrait across ports)` read DOS's menu tables out of `START.EXE` and that is
   what let the portrait cross; nobody has read `/Curse`'s or `/Secret`'s.
 * **`spells_castable_unattributed`** — Silver Blades' fourth slot array, which
   no character of either port sets a byte of.
