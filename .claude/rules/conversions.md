@@ -17,6 +17,20 @@ has an issue**, and `WISH_EXPERIMENTAL_DOS_IMPORT` does not come off while any
 of them is open.
 
 **Every field is carried, or it is on a short list with a tested reason.**
+**And "the destination has no such field" is not an ending.** Donald,
+2026-09-04, told the ring's effect could not reach the C64 and that the drop
+was therefore legitimate: *"everything must work."* A converted character
+wearing a Ring of Fire Resistance has to resist fire on the other side. So the
+three reasons below say why a field is not converted **yet**, and the first of
+them is a description of the destination as we currently understand it rather
+than permission to stop -- if the destination has no home for something a
+player would notice, finding it one is the work.
+
+**Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
+'carried', you must mean 'converted'. I don't think carried means what you
+think."* The word is in this file, in `field_disposition` prose and in drop
+lines a player reads.
+
 Three reasons are legitimate:
 
 * the destination format **has no such field** -- and that has been established
