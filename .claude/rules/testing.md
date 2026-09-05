@@ -126,11 +126,22 @@ of knowing."* The archives here are a download -- `~/Downloads/fr-archives`,
 custody either. It was listed as trustworthy in an earlier version of this
 rule and that was wrong.
 
-**A worked consequence:** six of the eighteen records in Pool of Radiance's
-`Default files/Saves` fail the encumbrance identity, against two of eighteen in
-the known-edited set. That was nearly filed as a question about the game. The
-likelier answer is that it is a stranger's edited party, and no amount of
-staring at it would have said which.
+**A worked consequence, and the example itself turned out to be wrong, which
+makes the point better than it did.** This rule used to say six of the eighteen
+records in Pool of Radiance's `Default files/Saves` fail the encumbrance
+identity, against two of eighteen in the known-edited set, and reasoned from
+that towards a stranger's edited party. Re-run on 2026-09-05: **0 of 18 fail**,
+while the known-edited half still reproduces exactly at 2 of 18. So the six
+were never there and the inference built on them had nothing under it.
+
+What that leaves standing is the rule rather than the example: a save found on
+a disk has no chain of custody, and **staring at it does not say which**. The
+reason to distrust the archives is that nobody watched them being written, not
+a count somebody took once. `#323 (The encumbrance identity does not survive
+the training fee, so failing it is not evidence of an edited record)` is the
+related finding -- 42 of 42 trainings took 1000 gp and left encumbrance
+untouched, so failing that identity is not evidence of editing in the first
+place.
 
 **Records this project's own writers produced** test the writer and are never
 evidence about the game, since they carry what we already believe. **Including
