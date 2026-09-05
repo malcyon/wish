@@ -1858,6 +1858,7 @@ graph LR
   areas -.->|deferred| geo
   areas --> layout
   c64_codec --> encoding
+  c64_codec --> games
   c64_codec --> layout
   c64_codec --> neutral
   c64_codec --> record
