@@ -1857,6 +1857,7 @@ graph LR
   amiga -.->|deferred| traits
   areas -.->|deferred| geo
   areas --> layout
+  c64_codec --> derive
   c64_codec --> encoding
   c64_codec --> games
   c64_codec --> layout
@@ -1865,6 +1866,7 @@ graph LR
   c64_codec --> spells
   c64_save --> games
   derive --> items
+  derive -.->|deferred| levels
   dos --> areas
   dos --> c64_codec
   dos --> c64_save
@@ -1899,6 +1901,7 @@ graph LR
   neutral --> layout
   portraits -.->|deferred| d64
   portraits --> dos_savegame
+  portraits -.->|deferred| games
   record --> encoding
   record --> layout
   record --> petscii
