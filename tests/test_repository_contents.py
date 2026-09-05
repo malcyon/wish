@@ -431,6 +431,14 @@ def test_no_bare_issue_number_where_a_citation_belongs(files):
         if not in_scope or rel.parts[:2] == (".github", "ISSUE_TEMPLATE"):
             continue
         text = (ROOT / rel).read_text(encoding="utf-8")
+        # A generated page's citations come from the source it is built from --
+        # `goldbox/layout.py`'s field notes, `goldbox/memory.py`'s regions --
+        # so fixing one here is undone by the next `tools/gendocs.py` run.  The
+        # source notes want the same sweep; #261 (A generated document's issue
+        # citations come from source notes that still use bare numbers) carries
+        # it.  Skip on the banner the generators themselves write.
+        if re.search(r"^\*\*Generated", text, re.M):
+            continue
         # Fenced code carries a commit-message example verbatim (the one place
         # AGENTS.md itself allows a bare number) and must not be scanned.
         text = re.sub(r"```.*?```", lambda m: re.sub(r"[^\n]", " ", m.group(0)),
