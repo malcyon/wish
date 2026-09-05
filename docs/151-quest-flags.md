@@ -8,9 +8,10 @@ transcribed by hand, and no line of it is the game's own text.
 `$4A20`-`$4AF8` survives one ([`41`](41-memory-regions.md)). This is every
 reference the thirty area scripts make to either half.
 
-It replaces `work/reports/quest-flags.md`, which is lost (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`), and was
-rebuilt for `#158 (Track the quests the game itself forgets, starting with
-Ohlo's potion)`.
+It replaces `work/reports/quest-flags.md`, which is lost (`#136 (Thirty-two
+cited write-ups are gone, because the knowledge base pointed into gitignored
+scratch)`), and was rebuilt for `#158 (Track the quests the game itself
+forgets, starting with Ohlo's potion)`.
 
 ## How to read it
 
@@ -73,7 +74,7 @@ Survives an area change.
 | `$4A20` | | | | | | *never referenced* |
 | `$4A21` | 1 | 4 | 255 |  | ECL15 |  |
 | `$4A22` | 2 | 5 | 255, +1 |  | ECL1D |  |
-| `$4A23` | 5 | 12 | |1, |16, |2, |4, |8 | * | ECL1D |  |
+| `$4A23` | 5 | 12 | \|1, \|16, \|2, \|4, \|8 | * | ECL1D |  |
 | `$4A24` | 2 | 5 | 255, computed | * | ECL1D |  |
 | `$4A25` | 0 | 1 | - |  | ECL15 |  |
 | `$4A26` | 2 | 5 | 255, computed | * | ECL15 |  |
@@ -83,11 +84,11 @@ Survives an area change.
 | `$4A2A` | 2 | 2 | 1, computed |  | ECL18 |  |
 | `$4A2B` | | | | | | *never referenced* |
 | `$4A2C` | | | | | | *never referenced* |
-| `$4A2D` | 3 | 7 | |2, |4, computed |  | ECL18 |  |
-| `$4A2E` | 7 | 13 | |1, |16, |2, |32, |4, |8, computed | * | ECL18 |  |
-| `$4A2F` | 10 | 17 | 0, 1, |1, |16, |2, |32, |4, |64, |8, computed | * | ECL0F, ECL1E |  |
+| `$4A2D` | 3 | 7 | \|2, \|4, computed |  | ECL18 |  |
+| `$4A2E` | 7 | 13 | \|1, \|16, \|2, \|32, \|4, \|8, computed | * | ECL18 |  |
+| `$4A2F` | 10 | 17 | 0, 1, \|1, \|16, \|2, \|32, \|4, \|64, \|8, computed | * | ECL0F, ECL1E |  |
 | `$4A30` | 1 | 3 | +1 | * | ECL0F |  |
-| `$4A31` | 8 | 14 | |1, |128, |2, |32, |64, computed | * | ECL08, ECL0F |  |
+| `$4A31` | 8 | 14 | \|1, \|128, \|2, \|32, \|64, computed | * | ECL08, ECL0F |  |
 | `$4A32` | 2 | 3 | 1, +1 | * | ECL0F |  |
 | `$4A33` | | | | | | *never referenced* |
 | `$4A34` | 4 | 10 | 0, 10, 64, +1 |  | ECL12 |  |
@@ -106,21 +107,21 @@ Survives an area change.
 | `$4A41` | 2 | 7 | 250, 255 |  | ECL0A |  |
 | `$4A42` | 6 | 9 | 250, 255, +1, +2, computed | * | ECL0A |  |
 | `$4A43` | 1 | 2 | 251 | * | ECL0A |  |
-| `$4A44` | 2 | 4 | |1, |2 |  | ECL18 |  |
+| `$4A44` | 2 | 4 | \|1, \|2 |  | ECL18 |  |
 | `$4A45` | 4 | 12 | +1, +15, computed |  | ECL0E |  |
-| `$4A46` | 4 | 8 | |8, computed | * | ECL0E |  |
-| `$4A47` | 5 | 9 | |32, computed | * | ECL0E |  |
-| `$4A48` | 4 | 8 | |1, |2, |4, |8 | * | ECL0E |  |
+| `$4A46` | 4 | 8 | \|8, computed | * | ECL0E |  |
+| `$4A47` | 5 | 9 | \|32, computed | * | ECL0E |  |
+| `$4A48` | 4 | 8 | \|1, \|2, \|4, \|8 | * | ECL0E |  |
 | `$4A49` | 1 | 1 | 255 |  | ECL0A |  |
 | `$4A4A` | 1 | 1 | 255 |  | ECL0A |  |
-| `$4A4B` | 2 | 5 | |128, computed | * | ECL16 |  |
+| `$4A4B` | 2 | 5 | \|128, computed | * | ECL16 |  |
 | `$4A4C` | 1 | 5 | computed |  | ECL16 |  |
-| `$4A4D` | 10 | 16 | &254, |1, |2, computed | * | ECL16, ECL17 |  |
+| `$4A4D` | 10 | 16 | &254, \|1, \|2, computed | * | ECL16, ECL17 |  |
 | `$4A4E` | 1 | 4 | computed |  | ECL16 |  |
 | `$4A4F` | 1 | 4 | computed |  | ECL17 |  |
 | `$4A50` | 1 | 3 | computed | * | ECL17 |  |
-| `$4A51` | 8 | 16 | |1, |128, |16, |2, |32, |4, |64, |8 | * | ECL17 |  |
-| `$4A52` | 10 | 16 | &254, |1, |128, |2, |4, |64, computed | * | ECL10, ECL17 |  |
+| `$4A51` | 8 | 16 | \|1, \|128, \|16, \|2, \|32, \|4, \|64, \|8 | * | ECL17 |  |
+| `$4A52` | 10 | 16 | &254, \|1, \|128, \|2, \|4, \|64, computed | * | ECL10, ECL17 |  |
 | `$4A53` | | | | | | *never referenced* |
 | `$4A54` | | | | | | *never referenced* |
 | `$4A55` | | | | | | *never referenced* |
@@ -134,46 +135,46 @@ Survives an area change.
 | `$4A5D` | 1 | 4 | computed |  | ECL10 |  |
 | `$4A5E` | 1 | 3 | computed |  | ECL10 |  |
 | `$4A5F` | 1 | 2 | computed |  | ECL10 |  |
-| `$4A60` | 4 | 7 | 255, |1, computed | * | ECL10 |  |
-| `$4A61` | 5 | 9 | |1, |2, |4, |8, computed | * | ECL10 |  |
+| `$4A60` | 4 | 7 | 255, \|1, computed | * | ECL10 |  |
+| `$4A61` | 5 | 9 | \|1, \|2, \|4, \|8, computed | * | ECL10 |  |
 | `$4A62` | 5 | 9 | computed | * | ECL03, ECL04, ECL05, ECL06, ECL09 |  |
 | `$4A63` | 5 | 5 | computed | * | ECL03, ECL04, ECL05, ECL06, ECL09 |  |
 | `$4A64` | 11 | 31 | 0, +1, computed | * | ECL03, ECL04, ECL05, ECL06, ECL09 |  |
-| `$4A65` | 19 | 46 | &254, |1, |128, |16, |2, |32, |4, |64, |8, computed | * | ECL03, ECL04, ECL05, ECL06, ECL09 |  |
-| `$4A66` | 12 | 23 | &128, |128, |16, |2, |32, |4, |64, |8, computed | * | ECL03, ECL04, ECL05 |  |
-| `$4A67` | 11 | 19 | &127, |1, |16, |2, |32, |4, |64, |8, computed | * | ECL03, ECL04, ECL05, ECL06 |  |
+| `$4A65` | 19 | 46 | &254, \|1, \|128, \|16, \|2, \|32, \|4, \|64, \|8, computed | * | ECL03, ECL04, ECL05, ECL06, ECL09 |  |
+| `$4A66` | 12 | 23 | &128, \|128, \|16, \|2, \|32, \|4, \|64, \|8, computed | * | ECL03, ECL04, ECL05 |  |
+| `$4A67` | 11 | 19 | &127, \|1, \|16, \|2, \|32, \|4, \|64, \|8, computed | * | ECL03, ECL04, ECL05, ECL06 |  |
 | `$4A68` | 2 | 1 | 1, 2 |  | ECL04 |  |
-| `$4A69` | 8 | 15 | |1, |128, |16, |2, |32, |4, |64, |8 | * | ECL05, ECL06 |  |
-| `$4A6A` | 8 | 29 | |1, |16, |2, |32, |4, |8, computed | * | ECL03, ECL04, ECL05, ECL06, ECL07 |  |
-| `$4A6B` | 6 | 11 | |128, |16, |32, |64, |8, computed | * | ECL03, ECL05, ECL08 |  |
-| `$4A6C` | 5 | 12 | |16, |32, |64, |8, computed | * | ECL03, ECL07 |  |
-| `$4A6D` | 7 | 15 | &252, |1, |2, |4, |8, computed | * | ECL07 |  |
+| `$4A69` | 8 | 15 | \|1, \|128, \|16, \|2, \|32, \|4, \|64, \|8 | * | ECL05, ECL06 |  |
+| `$4A6A` | 8 | 29 | \|1, \|16, \|2, \|32, \|4, \|8, computed | * | ECL03, ECL04, ECL05, ECL06, ECL07 |  |
+| `$4A6B` | 6 | 11 | \|128, \|16, \|32, \|64, \|8, computed | * | ECL03, ECL05, ECL08 |  |
+| `$4A6C` | 5 | 12 | \|16, \|32, \|64, \|8, computed | * | ECL03, ECL07 |  |
+| `$4A6D` | 7 | 15 | &252, \|1, \|2, \|4, \|8, computed | * | ECL07 |  |
 | `$4A6E` | | | | | | *never referenced* |
 | `$4A6F` | | | | | | *never referenced* |
 | `$4A70` | | | | | | *never referenced* |
 | `$4A71` | | | | | | *never referenced* |
-| `$4A72` | 1 | 0 | |16 |  | ECL07 |  |
+| `$4A72` | 1 | 0 | \|16 |  | ECL07 |  |
 | `$4A73` | 5 | 2 | 128, 255, computed | * | ECL02 |  |
 | `$4A74` | 3 | 2 | 1, 2, computed | * | ECL02 |  |
 | `$4A75` | 1 | 5 | 255 |  | ECL02 |  |
 | `$4A76` | | | | | | *never referenced* |
-| `$4A77` | 10 | 32 | |1, |12, |16, |2, |3, |32, |4, |64, |8, computed | * | ECL09 |  |
+| `$4A77` | 10 | 32 | \|1, \|12, \|16, \|2, \|3, \|32, \|4, \|64, \|8, computed | * | ECL09 |  |
 | `$4A78` | 7 | 5 | 1, 2, 3, computed | * | ECL09 |  |
 | `$4A79` | | | | | | *never referenced* |
 | `$4A7A` | | | | | | *never referenced* |
 | `$4A7B` | | | | | | *never referenced* |
-| `$4A7C` | 9 | 30 | &254, |1, |2, |4, |5, |8, computed | * | ECL11, ECL1A |  |
+| `$4A7C` | 9 | 30 | &254, \|1, \|2, \|4, \|5, \|8, computed | * | ECL11, ECL1A |  |
 | `$4A7D` | 5 | 2 | 0, 1, 2, 3, computed | * | ECL11 |  |
 | `$4A7E` | 3 | 3 | 1, computed |  | ECL11 |  |
 | `$4A7F` | 1 | 2 | computed |  | ECL11 |  |
 | `$4A80` | 3 | 6 | 0, +1, computed | * | ECL14 | slums: won wandering fights, capped at 15 |
-| `$4A81` | 3 | 4 | 250, 255, computed | * | ECL14 | Ohlo's potion: 250 = the potion has been collected from the booth; 255 = Ohlo dealt with: the potion delivered, or he was killed |
+| `$4A81` | 3 | 4 | 250, 255, computed | * | ECL14 | Ohlo's potion: 250 = The potion has been collected from the booth; 255 = Ohlo dealt with: the potion delivered, or he was killed |
 | `$4A82` | | | | | | *never referenced* |
 | `$4A83` | 1 | 1 | 255 |  | ECL14 |  |
 | `$4A84` | | | | | | *never referenced* |
 | `$4A85` | 1 | 1 | 255 | * | ECL14 |  |
 | `$4A86` | | | | | | *never referenced* |
-| `$4A87` | 3 | 6 | |1, |128, |2 | * | ECL13 |  |
+| `$4A87` | 3 | 6 | \|1, \|128, \|2 | * | ECL13 |  |
 | `$4A88` | 1 | 1 | 255 |  | ECL0A |  |
 | `$4A89` | 1 | 1 | 255 |  | ECL0A |  |
 | `$4A8A` | | | | | | *never referenced* |
@@ -198,7 +199,7 @@ Survives an area change.
 | `$4A9D` | | | | | | *never referenced* |
 | `$4A9E` | 6 | 9 | 0, 255, computed |  | ECL19, ECL1A, ECL1B |  |
 | `$4A9F` | 1 | 1 | 1 |  | ECL1A |  |
-| `$4AA0` | 2 | 6 | |2, computed |  | ECL1B |  |
+| `$4AA0` | 2 | 6 | \|2, computed |  | ECL1B |  |
 | `$4AA1` | 2 | 2 | 1, 255 | * | ECL19 |  |
 | `$4AA2` | 1 | 3 | 255 |  | ECL1A |  |
 | `$4AA3` | | | | | | *never referenced* |
@@ -294,11 +295,11 @@ Zeroed by the `NEWECL` handler at `DUNGEON $202A`-`$2032` whenever the resident 
 
 | addr | w | r | values written | s | scripts | what we call it |
 |---|---:|---:|---|---|---|---|
-| `$4A00` | 53 | 66 | 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 255, +1, |1, computed | * | ECL01, ECL03, ECL04, ECL07, ECL08, ECL09, ECL0A, ECL0B, ECL0E, ECL0F, ECL11, ECL14, ECL15, ECL16, ECL19, ECL1A, ECL1B, ECL1C |  |
-| `$4A01` | 26 | 33 | 0, 1, 2, 3, 4, 255, +1, |1, |2, computed | * | ECL00, ECL01, ECL07, ECL08, ECL09, ECL0A, ECL0B, ECL0D, ECL12, ECL15, ECL18, ECL19, ECL1A, ECL1B |  |
+| `$4A00` | 53 | 66 | 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 255, +1, \|1, computed | * | ECL01, ECL03, ECL04, ECL07, ECL08, ECL09, ECL0A, ECL0B, ECL0E, ECL0F, ECL11, ECL14, ECL15, ECL16, ECL19, ECL1A, ECL1B, ECL1C |  |
+| `$4A01` | 26 | 33 | 0, 1, 2, 3, 4, 255, +1, \|1, \|2, computed | * | ECL00, ECL01, ECL07, ECL08, ECL09, ECL0A, ECL0B, ECL0D, ECL12, ECL15, ECL18, ECL19, ECL1A, ECL1B |  |
 | `$4A02` | 16 | 23 | 0, 1, 8, 11, 255, +1, computed | * | ECL02, ECL07, ECL08, ECL0A, ECL0B, ECL0D, ECL12, ECL15, ECL18, ECL19, ECL1A, ECL1B |  |
 | `$4A03` | 22 | 25 | 0, 1, 2, 4, 26, 255, +1, computed | * | ECL00, ECL01, ECL08, ECL0A, ECL0B, ECL0D, ECL0E, ECL12, ECL15, ECL18 |  |
-| `$4A04` | 11 | 19 | 0, 1, 2, 250, 255, +1, computed | * | ECL01, ECL08, ECL0D, ECL0F, ECL12, ECL14 | Ohlo's potion: 250 = the errand has been accepted |
+| `$4A04` | 11 | 19 | 0, 1, 2, 250, 255, +1, computed | * | ECL01, ECL08, ECL0D, ECL0F, ECL12, ECL14 | Ohlo's potion: 250 = The errand has been accepted |
 | `$4A05` | 16 | 23 | 0, 1, 2, 255, +1, +9, computed | * | ECL00, ECL01, ECL02, ECL08, ECL0A, ECL0B, ECL0D, ECL0F, ECL12, ECL15 |  |
 | `$4A06` | 11 | 14 | 0, 1, 255, +1, computed | * | ECL02, ECL08, ECL0A, ECL0B, ECL0E, ECL0F, ECL15, ECL1A |  |
 | `$4A07` | 10 | 14 | 0, 1, 250, computed | * | ECL00, ECL08, ECL0A, ECL0B, ECL0E, ECL0F, ECL14, ECL15 |  |
@@ -313,8 +314,8 @@ Zeroed by the `NEWECL` handler at `DUNGEON $202A`-`$2032` whenever the resident 
 | `$4A10` | 12 | 18 | 0, 1, 8, 255, +1, computed | * | ECL00, ECL01, ECL0A, ECL0B, ECL15, ECL19, ECL1C, ECL1D |  |
 | `$4A11` | 8 | 7 | 0, 1, 255, computed | * | ECL00, ECL01, ECL0B, ECL0D, ECL15, ECL19, ECL1B |  |
 | `$4A12` | 3 | 4 | 1, 255, +1 | * | ECL0A, ECL0D, ECL1D |  |
-| `$4A13` | 33 | 62 | 0, 1, 2, 255, &32, +1, |1, |128, |16, |2, |32, |4, |64, |8, computed | * | ECL00, ECL01, ECL0A, ECL0D, ECL0E, ECL15, ECL19, ECL1A, ECL1B, ECL1C, ECL1D |  |
-| `$4A14` | 10 | 13 | 0, 3, 255, +1, +20, |1, |2, computed | * | ECL0A, ECL14, ECL19, ECL1A, ECL1C, ECL1D |  |
+| `$4A13` | 33 | 62 | 0, 1, 2, 255, &32, +1, \|1, \|128, \|16, \|2, \|32, \|4, \|64, \|8, computed | * | ECL00, ECL01, ECL0A, ECL0D, ECL0E, ECL15, ECL19, ECL1A, ECL1B, ECL1C, ECL1D |  |
+| `$4A14` | 10 | 13 | 0, 3, 255, +1, +20, \|1, \|2, computed | * | ECL0A, ECL14, ECL19, ECL1A, ECL1C, ECL1D |  |
 | `$4A15` | 11 | 10 | 0, 1, +1, computed | * | ECL0A, ECL0E, ECL19, ECL1A, ECL1B |  |
 | `$4A16` | 11 | 8 | 30, 40, 50, 60, 70, 255, +15, +5, computed | * | ECL0A, ECL0E, ECL14, ECL1A |  |
 | `$4A17` | 9 | 8 | 1, 255, +1, computed | * | ECL00, ECL02, ECL14, ECL1A, ECL1C |  |

@@ -26,6 +26,24 @@ KIND_DESC = {
 }
 
 
+def _table_cell(note: str) -> str:
+    """Render a note for a single table cell.
+
+    A markdown table row has to be one physical line. A note that carries
+    more than one paragraph -- several do, at several thousand characters of
+    evidence -- would otherwise run on past its own line and stop the
+    renderer from seeing a table at all. Where that happens, the cell holds
+    only the first paragraph, escaped, with a pointer to the full text under
+    "Field notes"; the rest holds the whole note in one paragraph, since a
+    long single line is at least a table that renders.
+    """
+    first, sep, _ = note.partition("\n")
+    cell = first.replace("|", r"\|")
+    if sep:
+        cell += " *(rest under Field notes, below.)*"
+    return cell
+
+
 def main() -> int:
     cov = layout.coverage()
     lines: list[str] = []
@@ -63,13 +81,26 @@ def main() -> int:
     add("")
     add("| offset | size | name | type | confidence | notes |")
     add("|---|---:|---|---|---|---|")
-    for f in layout.iter_fields():
-        if f.confidence is Confidence.UNKNOWN:
-            continue
+    known_fields = [f for f in layout.iter_fields() if f.confidence is not Confidence.UNKNOWN]
+    for f in known_fields:
         kind = KIND_DESC.get(f.kind.name, f.kind.name)
-        note = (f.note or "").replace("|", r"\|")
-        add(f"| `0x{f.offset:03X}` | {f.size} | `{f.name}` | {kind} | {f.confidence.name} | {note} |")
+        cell = _table_cell(f.note or "")
+        add(f"| `0x{f.offset:03X}` | {f.size} | `{f.name}` | {kind} | {f.confidence.name} | {cell} |")
     add("")
+
+    long_notes = [f for f in known_fields if "\n" in (f.note or "")]
+    if long_notes:
+        add("## Field notes")
+        add("")
+        add("Notes too long, or too many paragraphs, for a table cell -- kept "
+            "here in full rather than run on past their own row above.")
+        add("")
+        for f in long_notes:
+            add(f"### `0x{f.offset:03X}` `{f.name}`")
+            add("")
+            for paragraph in f.note.split("\n"):
+                add(paragraph)
+                add("")
     add("## Unknown regions that hold data")
     add("")
     add("Regions explicitly declared as candidates because they are non-zero in at least "

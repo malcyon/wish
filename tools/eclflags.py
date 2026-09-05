@@ -411,9 +411,10 @@ transcribed by hand, and no line of it is the game's own text.
 `$4A20`-`$4AF8` survives one ([`41`](41-memory-regions.md)). This is every
 reference the thirty area scripts make to either half.
 
-It replaces `work/reports/quest-flags.md`, which is lost (`#136`), and was
-rebuilt for `#158 (Track the quests the game itself forgets, starting with
-Ohlo's potion)`.
+It replaces `work/reports/quest-flags.md`, which is lost (`#136 (Thirty-two
+cited write-ups are gone, because the knowledge base pointed into gitignored
+scratch)`), and was rebuilt for `#158 (Track the quests the game itself
+forgets, starting with Ohlo's potion)`.
 
 ## How to read it
 
@@ -497,8 +498,9 @@ def cmd_doc(refs, named, bases, reach, args):
             what = names.get(row.address, "")
             if row.interior and not row.referenced:
                 what = what or f"table interior: {row.interior}"
+            values = row.value_text.replace("|", r"\|")
             print(f"| `${row.address:04X}` | {len(row.writes)} "
-                  f"| {len(row.reads)} | {row.value_text} "
+                  f"| {len(row.reads)} | {values} "
                   f"| {'*' if row.named else ''} "
                   f"| {', '.join(row.scripts)} | {what} |")
     del args
