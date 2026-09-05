@@ -3031,13 +3031,22 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
 #: Fields of the title's DOS table with a neutral home of the same name.
 #: Taken from `goldbox.dos.DIRECT` at call time rather than copied, because a
 #: field that changes meaning there must not go on meaning the old thing here.
-#: Every one of the fifty is in both later titles' tables.
+#: Every one of the forty-seven is in both later titles' tables.
 #:
-#: What is **not** here and is converted by a rule below: the name, the
-#: spellbook, the memorised spells, the level arrays, the spell-slot arrays,
-#: size, turn power, the status and its flag, the attack forms, the roster
-#: tail, the effect records and the items.
+#: **A field leaving `goldbox.dos.DIRECT` leaves this reader too, in silence**,
+#: which is how `class_bits` came to be dropped (#292); the two tests that
+#: `later_field_disposition` backs are what catch it, so keep them.
+#:
+#: What is **not** here and is converted by a rule below: the class mask, the
+#: name, the spellbook, the memorised spells, the level arrays, the spell-slot
+#: arrays, size, turn power, the status and its flag, the attack forms, the
+#: roster tail, the effect records and the items.
 LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("class_bits", "reread from the level array into the shared bit order, "
+                   "the way the DOS reader rereads its own: this port gives "
+                   "the paladin and the ranger one bit between them, where "
+                   "the neutral record and the C64 give the ranger a bit of "
+                   "its own"),
     ("name_length", "there is no count byte: the Amiga name is 16 bytes "
                     "terminated and padded with NUL"),
     ("name_text", "the sixteen NUL-padded bytes, as the neutral name"),
@@ -3206,6 +3215,26 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f"Amiga {shape.title} {name} @{shape.offset(f.offset):#05x} "
                 f"({f.confidence}), read big-endian through the DOS table",
                 f.confidence)
+
+    # -- the class mask, which is not a copy on this port either -------------
+    # The Amiga stores this field exactly as DOS does, ambiguity and all:
+    # Silver Blades' shipped PAINE reads `$40` with 8 in the ranger's level
+    # slot and GUY DE VALOIS reads `$40` with 8 in the paladin's, so the byte
+    # alone does not say which class it is and the level array is what
+    # settles it.  Copying it would make an Amiga ranger a C64 paladin, the
+    # defect `goldbox.dos.neutral_class_bits` exists to stop; and after
+    # `class_bits` left `_dos.DIRECT` the loop above stopped setting the
+    # field at all, which left the C64 record with no class bit set (#292).
+    f = table["class_bits"]
+    former = char.get("former_class_levels") if (
+        "former_class_levels" in table) else b""
+    out.set("class_bits",
+            _dos.neutral_class_bits_from(char.get("class_bits"),
+                                         char.get("class_levels"), former),
+            f"Amiga {shape.title} class_bits @{shape.offset(f.offset):#05x} "
+            f"({f.confidence}), reread from the level array because the "
+            f"paladin and the ranger share one bit here as they do on DOS",
+            f.confidence, neutral.Provenance.RESHAPED)
 
     out.set("spells_known", char.spellbook,
             "the Amiga spellbook, "

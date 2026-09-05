@@ -2548,6 +2548,103 @@ def test_every_declared_field_of_a_later_title_has_a_disposition():
         assert not unknown, (shape.key, sorted(unknown))
 
 
+# --- the class mask: this port gives paladin and ranger one bit, as DOS does -
+#: DOS level-array slots, `goldbox.dos.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
+PALADIN_SLOT, RANGER_SLOT = 3, 4
+
+
+def _later_record(shape, class_bits: int, slot: int | None, level: int = 8):
+    """A record of `shape` holding one class mask and one class level.
+
+    Built from `goldbox/dos_layout.py`'s own table through the shape's shift
+    map, so it belongs to this project and runs with no disks. Every other
+    byte is zero, which is what makes the two fields the only thing under
+    test.
+    """
+    raw = bytearray(shape.record_size)
+    raw[:6] = b"TESTER"
+    raw[shape.offset(shape.dos_field("class_bits").offset)] = class_bits
+    if slot is not None:
+        raw[shape.offset(shape.dos_field("class_levels").offset) + slot] = level
+    return amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
+
+
+def test_a_later_amiga_read_sets_the_class_mask_at_all():
+    """The regression: no class mask at all reached the neutral record.
+
+    `to_neutral_later` builds its copied-field list by iterating
+    `goldbox.dos.DIRECT`, and `class_bits` left that tuple when the DOS
+    reader started rereading it -- so an Amiga Curse or Silver Blades
+    character converted to the C64 got the blank record's `0` for its class
+    and nothing said so (#292).
+    """
+    from goldbox import dos
+    assert "class_bits" not in [n for n, _ in dos.DIRECT]
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        char = _later_record(shape, 0x08, slot=5)     # a plain fighter
+        out = amiga.to_neutral_later(char)
+        assert "class_bits" in out.fields, shape.key
+        assert out.get("class_bits") == 0x08, shape.key
+
+
+def test_a_later_amiga_ranger_gets_the_shared_orders_own_bit():
+    """`$40` with a ranger's level becomes `$80`; a paladin's stays `$40`.
+
+    The same reread the DOS records of these two titles get, because the
+    Amiga stores the field the same way: bit 6 for both classes, and the
+    level array is the only thing that says which.
+    """
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        ranger = _later_record(shape, 0x40, RANGER_SLOT)
+        paladin = _later_record(shape, 0x40, PALADIN_SLOT)
+        assert amiga.to_neutral_later(ranger).get("class_bits") == 0x80
+        assert amiga.to_neutral_later(paladin).get("class_bits") == 0x40
+
+
+def test_only_the_shared_bit_of_a_later_amiga_mask_is_reread():
+    """Every other bit is the byte the game wrote, and a record with bit 6
+    and neither level slot filled keeps bit 6 -- there is nothing to read it
+    as. A dual-classed fighter/ranger keeps its fighter bit alongside."""
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        assert amiga.to_neutral_later(
+            _later_record(shape, 0x40, None)).get("class_bits") == 0x40
+        assert amiga.to_neutral_later(
+            _later_record(shape, 0x48, RANGER_SLOT)).get("class_bits") == 0x88
+        assert amiga.to_neutral_later(
+            _later_record(shape, 0x01, 0)).get("class_bits") == 0x01
+
+
+def test_every_later_specimen_sets_a_class_mask_its_levels_agree_with():
+    """21 of 21, against the records on the disks.
+
+    The stored byte equals the mask the level array implies in all 21 -- so
+    the field is at the offset the shift map puts it at -- and the only one
+    the reread moves is Silver Blades' PAINE, whose `$40` sits with 8 in the
+    ranger's slot and becomes `$80`. Silver Blades ships the same party on
+    three ports and the C64 record SSI wrote for PAINE reads `$80`, which is
+    what says the reread is right rather than merely consistent.
+    """
+    from goldbox import dos
+    seen = moved = 0
+    for char in _later_parties():
+        stored = char.get("class_bits")
+        implied = 0
+        for slot, value in enumerate(char.get("class_levels")):
+            if value:
+                implied |= dos.CLASS_BIT_FOR_SLOT.get(slot, 0)
+        assert stored == implied, (char.name, hex(stored), hex(implied))
+        got = amiga.to_neutral(char).get("class_bits")
+        levels = char.get("class_levels")
+        if levels[RANGER_SLOT]:
+            assert got == (stored & ~0x40) | 0x80, char.name
+            moved += 1
+        else:
+            assert got == stored, (char.name, hex(got))
+        seen += 1
+    assert seen == 21, seen
+    assert moved == 1, moved
+
+
 def test_no_drop_line_of_a_later_read_carries_developer_detail():
     """`.claude/rules/gui-text.md`: no memory address, file offset or bare
     issue number in front of a player.  `LATER_DROPPED`'s own `why` text is

@@ -88,6 +88,7 @@ __all__ = [
     "CLASS_SLOTS_FOR_CLASS",
     "CLASS_BIT_FOR_SLOT",
     "class_bits_for",
+    "neutral_class_bits_from",
     "INFRAVISION",
     "to_neutral",
     "DosCharacter",
@@ -561,13 +562,35 @@ def neutral_class_bits(char: "DosCharacter") -> int:
     A record with bit 6 set and neither slot filled keeps bit 6, since there
     is nothing to read it as.
     """
-    bits = char.get("class_bits")
+    former = (char.raw("former_class_levels")
+              if "former_class_levels" in char.fields else b"")
+    return neutral_class_bits_from(char.get("class_bits"),
+                                   char.raw("class_levels"), former)
+
+
+def neutral_class_bits_from(bits: int, class_levels: Sequence[int],
+                            former_class_levels: Sequence[int] = ()) -> int:
+    """:func:`neutral_class_bits`, from the three values rather than a record.
+
+    **Here because the Amiga's Curse and Silver Blades records hold this
+    field exactly as DOS does, and had lost it.** `goldbox.amiga
+    .to_neutral_later` reads those two titles through the DOS field table
+    and built its copied-field list by iterating `DIRECT`, so taking
+    `class_bits` out of `DIRECT` stopped it setting the field at all and an
+    Amiga character converted to the C64 arrived with no class
+    (#292). It cannot call :func:`neutral_class_bits`, which wants a
+    `DosCharacter`'s `.raw()` and `.fields`.
+
+    The ambiguity is the same one on both ports, measured on the party SSI
+    shipped for Silver Blades three times over: Amiga PAINE reads `$40` at
+    `0x0CC` with 8 in the ranger's level slot and Amiga GUY DE VALOIS reads
+    `$40` with 8 in the paladin's, exactly as their DOS records do, and the
+    C64 record SSI shipped for PAINE reads `$80`.
+    """
     if not bits & RANGER_BIT_DOS:
         return bits
-    slots = {n for n, v in enumerate(char.raw("class_levels")) if v}
-    if "former_class_levels" in char.fields:
-        slots |= {n for n, v in enumerate(char.raw("former_class_levels"))
-                  if v}
+    slots = {n for n, v in enumerate(class_levels) if v}
+    slots |= {n for n, v in enumerate(former_class_levels) if v}
     named = 0
     for slot, bit in ((PALADIN_SLOT, RANGER_BIT_DOS),
                       (RANGER_SLOT, RANGER_BIT_NEUTRAL)):
