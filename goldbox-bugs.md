@@ -36,6 +36,7 @@ a port fixed one, that is said.
 | 9 | The slums fortune teller is alive again every time you come back | Pool of Radiance | script | CONFIRMED, in game |
 | 10 | Reload a save on the road and undiscovered places appear on the map | Pool of Radiance | engine | CONFIRMED, in game |
 | 11 | Every weapon in Tilverton's shop costs the same three platinum | Curse of the Azure Bonds | engine | CONFIRMED, in game |
+| 12 | Lose a fight and the game stops: the message stays on screen and nothing answers the keyboard | Pool of Radiance | port | CONFIRMED, in game |
 
 ---
 
@@ -539,3 +540,48 @@ all platinum takes `cost/5 + 1` platinum and hands back the change from the
 top, and the only cost that takes three platinum and leaves **no gold** behind
 -- which is what every one of these records shows -- is **fifteen gold**,
 exactly what three platinum is worth.
+
+---
+
+## 12. Lose a fight and the game stops
+
+**What a player sees.** Your last character takes a hit. The message band says
+`MAGNUS` / `GOES DOWN` / `AND IS DYING`, the way it has for the other five. The
+whole text window clears and one line appears:
+
+```
+THE PARTY HAS LOST
+```
+
+And that is all that ever happens. There is no `PRESS <RETURN> OR BUTTON TO
+CONTINUE`, no menu, no title screen, no offer to reload. Return, space and
+Return again change neither the screen nor the processor. **The only way on is
+to switch the machine off and load the game again**, back to whatever was last
+saved at an encampment.
+
+**What the game does.** `POST.COM` picks the outcome line at `$0903` from the
+result byte `$6DC7` -- `$80` lost, `$81` ran away, `$00`/`$01` won -- out of a
+56-entry split pointer table at `$2A8D`/`$2AC5`. Having drawn the line, the lost
+branch reaches `JMP $0957`, which jumps to itself. The processor was caught
+sitting there **96 times across two driven defeats**, 66 of 66 samples in the
+second, with the screen unchanged over 67 consecutive readings.
+
+`JMP $0957` is not a dispatch slot something patches at run time: `POST.COM` is
+byte-identical on all eight sides of the disk, and nothing on any side stores to
+`$0957`, `$0958` or `$0959`.
+
+**What it costs.** Nothing on the disk. The saved game is untouched -- the disk
+image has the same SHA-256 before and after -- so a defeat costs whatever has
+happened since the last `ENCAMP > SAVE`, which is what a defeat costs anyway.
+The cost is the reset.
+
+**Not established.** Whether *every* defeat stops, or only this one. Two runs,
+one party, one save; all three exits of the branch reach the spin on the
+evidence here. The experiment is to stage `$6DE6` to 1 through the monitor
+before the last character falls and see whether the game reaches the treasure
+screen -- `ECL00` is the only one of the thirty scripts carrying the bytes
+`E6 6D`. And the DOS build is unchecked: its overlay wants unpacking first, so
+nobody can yet say whether this is the C64 port's or the engine's.
+
+`#128 (Nothing has ever read what the game prints when the party loses a
+fight)` has the measurement; `docs/110-combat-log.md` has the addresses.
