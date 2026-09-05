@@ -46,20 +46,46 @@ PICTURE_ASSET = (pathlib.Path(__file__).resolve().parent.parent
 PICTURE = 256
 
 
+#: How many times bigger than the target the mark is drawn before it is
+#: scaled down.
+#:
+#: **The two rings around the star are the only parts of the artist's file
+#: that are not vector.** Each is an embedded PNG about 3,600 pixels square
+#: carrying a single hairline -- 41 and 31 pixels of stroke, around 1% of the
+#: image's width. Asked to put that straight into a 256-pixel box, Qt's SVG
+#: renderer shrinks the bitmap fourteen times and the ring comes out uneven
+#: rather than thin. `SmoothPixmapTransform` makes no difference to it.
+#:
+#: Drawing four times as large and letting `QImage.scaled` do the shrink
+#: fixes it, because the reduction is then the image scaler's work rather
+#: than the SVG renderer's. Donald, 2026-09-05: *"The circle around the star
+#: is broken up and does not look clear at all."*
+#:
+#: This goes when the artist's file draws those two circles as circles.
+OVERSAMPLE = 4
+
+
 def _picture(size: int) -> QPixmap:
     """The combo mark at `size` logical pixels, rendered from the vector at
     the display's own ratio -- `ui.appicon.image` does the same for the
     taskbar icon, and for the same reason: a 2x display asked for `size`
-    device pixels gets a soft picture."""
+    device pixels gets a soft picture.
+
+    Drawn `OVERSAMPLE` times larger and scaled down, which is what keeps the
+    two embedded rings continuous."""
     ratio = (QGuiApplication.instance().devicePixelRatio()
              if QGuiApplication.instance() else 1.0)
     device = int(size * ratio)
-    image = QImage(device, device, QImage.Format.Format_ARGB32_Premultiplied)
+    big = device * OVERSAMPLE
+    image = QImage(big, big, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(0)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    QSvgRenderer(str(PICTURE_ASSET)).render(painter, QRectF(0, 0, device, device))
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    QSvgRenderer(str(PICTURE_ASSET)).render(painter, QRectF(0, 0, big, big))
     painter.end()
+    image = image.scaled(device, device, Qt.AspectRatioMode.IgnoreAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
     pixmap = QPixmap.fromImage(image)
     pixmap.setDevicePixelRatio(ratio)
     return pixmap
