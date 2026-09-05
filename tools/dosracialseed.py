@@ -9,7 +9,7 @@ racial or the constitution bonus)`, taken out of the engine rather than out
 of any specimen, so that no edited save can poison them.
 
 `creation_table` finds character creation's switch on the record's race byte
-(`GAME.OVR:0x1A127` in the 1.3 build -- found by its shape, not its address)
+(`GAME.OVR:0x1A12A` in the 1.3 build -- found by its shape, not its address)
 and lists, per race, every `add_affect(id, duration, data, flag)` it pushes.
 Nothing between the race read and the last call reads any other byte of the
 record, so the ids are the race's and nothing else's.

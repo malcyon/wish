@@ -10,9 +10,16 @@ writes 97 for a dwarf, gnome or halfling on the race byte alone; the handler
 rolled* and adds the band to the die. Nothing about the bonus is stored.
 
 Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
-`GAME.OVR` and `START.EXE` in the archives; `tools/dosracialseed.py` reads
-every number below out of them and `tests/test_dosracialseed.py` pins the
-project's tables to that reading.
+`GAME.OVR` and `START.EXE` in the archives.
+
+**Four of the six links below are re-taken every time the suite runs, and two
+are not.** `tools/dosracialseed.py` reads links 1, 4, 5 and 6 -- the creation
+switch, the start-up-filled dispatch table, the overlay stubs and the handlers
+-- by shape rather than by address, and `tests/test_dosracialseed.py` pins the
+project's tables to what it finds. **Links 2 and 3 were read once, by hand,
+with `tools/dosovrmap.py dis`, and nothing re-checks them.** They are the two
+that join "a saving throw is rolled" to "the dispatch table is consulted at
+all", so they are where a later reader who doubts any of this should start.
 
 ## What a player has
 
@@ -31,8 +38,10 @@ out**, because the magnitude is never written anywhere. CONFIRMED.
 Six links, each read from the bytes; `tools/dosovrmap.py dis` prints any of
 them.
 
-**1. Creation, `GAME.OVR:0x1A127`.** `mov al, es:[di+0x2E]` -- the record's
-race byte -- and a switch:
+**1. Creation, `GAME.OVR:0x1A12A`.** CONFIRMED. `mov al, es:[di+0x2E]` --
+the record's race byte -- and a switch. The `les` that sets `es:di` up for it
+is one instruction earlier at `0x1A127`, which is what a reader stepping
+backwards through a listing will land on first:
 
 | `cmp al` | race | `add_affect(id, 0, 0xFF, 0)`, in order |
 |---|---|---|
@@ -66,16 +75,19 @@ with 90 and 97 where Curse has `con_saving_bonus` alone. Each goes to
 `0x2B04A`, which asks `0xBA:0x2199` (resident; `START.img:0x2D39`) whether
 the character has the id -- a walk of the chain at record `0x7F` comparing
 node byte 0, the chain creation appended to -- and on a hit calls `0x2AEEA`.
+CONFIRMED, and read once by hand: this link and link 2 are the two no tool
+re-takes.
 
 **4. The dispatch, `0x2AEEA`:** `di = id * 4; lcall [di + 0x6828]`. The
 table is BSS, filled at start-up by quartets of `mov ax / mov dx / mov [] /
 mov []`: `0x122D3` stores `0x41:0x01B5` into `[0x69AC]`, entry 97, and
 `0x12278` stores `0x41:0x0197` into `[0x6990]`, entry 90. 180 entries are
-filled that way.
+filled that way. CONFIRMED, and `tools/dosracialseed.py` re-takes it.
 
 **5. The stubs.** Unit `0x41`'s public entry at stub `0x1B5` is code
 `0x268A`, file `0x112E5`; stub `0x197` is code `0x24D9`, file `0x11134`
-(`tools/dosovrmap.py units`).
+(`tools/dosovrmap.py units`). CONFIRMED, and `tools/dosracialseed.py`
+re-takes it.
 
 **6. The handler, `0x112E5`:**
 
