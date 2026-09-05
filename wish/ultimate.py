@@ -104,7 +104,13 @@ class UltimateTarget:
     """A `Target` over the Ultimate's REST API.
 
     `read` is confirmed on Donald's own machine, 2026-09-04 -- see the module
-    docstring. `write` is not yet exercised.
+    docstring.
+
+    **`write` is confirmed too, 2026-09-05**, and by a player rather than by a
+    test: Donald pressed Level Up against the Ultimate and the character came
+    back levelled. So the whole path -- read the save off the hardware, edit
+    it, write it back, and have the machine accept it -- has been round-tripped
+    once on real hardware.
     """
 
     def __init__(self, host: str | None = None, port: int | None = None,
