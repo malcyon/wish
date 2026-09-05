@@ -70,6 +70,7 @@ from .dos_layout import (
     LAYOUT,
     POOL_OF_RADIANCE,
     RECORD_SIZE,
+    SHAPES,
     SPELLBOOK_SPELLS,
     DosShape,
     DosShapeError,
@@ -103,6 +104,7 @@ __all__ = [
     "read_character",
     "read_party",
     "slots_available",
+    "c64_name",
     "to_c64_record",
     "export_party",
     "quest_flags",
@@ -282,8 +284,36 @@ class DosItem(_Fielded):
         return item_to_c64(self._data)
 
 
+#: Where Secret of the Silver Blades' item record grows past the 63 bytes the
+#: other three titles write, and what has been read there.
+#:
+#: `#113 (Silver Blades' items are 67 bytes, not 63)` measured the stride in
+#: the running game -- the mayor of New Verdigris hands the party twelve magic
+#: items and `CHRDATC1.STF` is 804 bytes, which is 12 x 67 and is not
+#: divisible by 63 -- and established that every field below `0x03E` is at the
+#: same offset as in the other titles, because the weights are the published
+#: AD&D figures and a `MAGE SCROLL 3 SPELLS` carries three ids inside this
+#: title's own 1..117 spell space.  So the four extra bytes are `0x03F`-`0x042`
+#: and nothing has ever been attributed to them.
+#:
+#: **They read `00 00 00 00` in 48 of 48 item records**, 24 of them distinct,
+#: across every `.STF` this project made by driving DOS Silver Blades and
+#: excluding the three folders whose records were edited by hand for
+#: `#222 (Silver Blades' fourth spell-slot array is zero in every state
+#: anybody can create)`.  Including those three the count is 18 files and the
+#: answer does not change.  So a conversion writes nothing from them; a
+#: **non-zero** one is a byte nobody has decoded and is refused rather than
+#: quietly dropped (`.claude/rules/conversions.md`).
+ITEM_TAIL = (0x3F, 4)
+
+
 def item_to_c64(record: bytes) -> bytes:
-    """Project one 63-byte DOS item onto the C64's sixteen bytes.
+    """Project one DOS item onto the C64's sixteen bytes.
+
+    63 bytes in three titles and 67 in Secret of the Silver Blades, whose
+    four extra bytes are :data:`ITEM_TAIL` and are refused if they hold
+    anything -- every field this reads is below `0x03E` and so is at the same
+    offset whichever title wrote it (#113).
 
     Not a guess at a conversion: it *is* the evidence.  Applied to every item
     in the eight `ITEM*.DAX` files it reproduces **157 of the 163 distinct
@@ -294,8 +324,19 @@ def item_to_c64(record: bytes) -> bytes:
     different places, not near misses.  The write-up,
     `work/reports/dos-items.md`, is lost; asserted in `tests/test_dosbox.py`.
     """
-    if len(record) != ITEM_SIZE:
-        raise DosRecordError(f"a DOS item is {ITEM_SIZE} bytes; got {len(record)}")
+    sizes = sorted({s.item_size for s in SHAPES})
+    if len(record) not in sizes:
+        raise DosRecordError(
+            f"a DOS item is {' or '.join(str(n) for n in sizes)} bytes; "
+            f"got {len(record)}")
+    tail_at, tail_size = ITEM_TAIL
+    tail = record[tail_at:tail_at + tail_size]
+    if any(tail):
+        raise DosRecordError(
+            f"this item holds {tail.hex(' ')} at 0x{tail_at:03X}, and those "
+            f"four bytes read zero in all 48 Silver Blades item records this "
+            f"project has driven the game into writing -- nothing has been "
+            f"attributed to them, so there is nowhere to convert them to")
     at = {n: ITEM_FIELDS_BY_NAME[n].offset for n in
           ("type_index", "name1", "name2", "name3", "plus", "plus_save",
            "readied", "hidden", "cursed", "weight", "quantity", "value",
@@ -470,6 +511,81 @@ CLASS_SLOTS_FOR_CLASS: dict[int, tuple[int, ...]] = {
 #: ranger on DOS and the class *number* must be read instead.
 CLASS_BIT_FOR_SLOT: dict[int, int] = {0: 0x02, 2: 0x08, 3: 0x40, 4: 0x40,
                                       5: 0x01, 6: 0x04}
+
+#: **The shared bit order gives a ranger bit 7 to itself, and DOS does
+#: not.**
+#:
+#: **A DOS ranger used to convert into a C64 paladin, and this is what stops
+#: it.**  `class_bits` was DIRECT -- copied byte for byte -- so PAINE, the
+#: shipped Silver Blades ranger 8, arrived on the C64 with `class_bits`
+#: `$40` and `level_ranger` 8, which is a paladin holding a ranger's levels
+#: and is a combination no C64 save on either title holds.  Found by
+#: `tools/ssbtwins.py`, which converts the six DOS characters SSI shipped and
+#: diffs each against the C64 record SSI shipped for the same character:
+#: PAINE's C64 twin reads `$80`.  Curse of the Azure Bonds has the same
+#: defect and it shipped, because the party `#192` proved the conversion on
+#: had two paladins and no ranger.
+#:
+#: `goldbox/amiga.py`'s own `CLASS_BIT` had already recorded the same thing
+#: from the other side -- *"64 for both the paladin and the ranger, where the
+#: C64 gives them 0x40 and 0x80 separately. So the mask is not the neutral
+#: `class_bits` byte and must not be copied across"* -- and the Amiga codec
+#: has always computed it from the class names rather than copying it.
+#:
+#: CONFIRMED on both sides: DOS Curse's MATHEW (paladin 5) and ARGORA
+#: (ranger 5) and DOS Silver Blades' GUY DE VALOIS (paladin 8) and PAINE
+#: (ranger 8) all read `$40`; the C64 twin of Curse's ranger reads `$80` with
+#: `0x0D0` = 5 (`goldbox/layout.py` 0x0D0) and the C64 twin of PAINE reads
+#: `$80` with `level_ranger` 8.
+#:
+#: `RANGER_BIT_NEUTRAL` and `RANGER_BIT_DOS` are the one bit the two orders
+#: disagree about; `PALADIN_SLOT` and `RANGER_SLOT` are the level-array slots
+#: that say which class a DOS record's bit 6 stands for.
+RANGER_BIT_NEUTRAL, RANGER_BIT_DOS = 0x80, 0x40
+PALADIN_SLOT, RANGER_SLOT = 3, 4
+
+
+def neutral_class_bits(char: "DosCharacter") -> int:
+    """A DOS record's own class mask, in the shared bit order.
+
+    **The record's own byte, with one bit disambiguated and nothing else
+    touched.**  Only bit 6 is ambiguous, so only bit 6 is reread: it becomes
+    bit 6 where the level array holds a paladin, bit 7 where it holds a
+    ranger, and both where a record somehow holds both.  Every other bit is
+    the byte the DOS engine wrote, which is what stops this quietly
+    rewriting a record whose stored mask and level array disagree for some
+    other reason -- Pool of Radiance's SILAS reads `$08` with fighter *and*
+    thief levels, and that disagreement is his record's and not ours to
+    settle here.
+
+    A record with bit 6 set and neither slot filled keeps bit 6, since there
+    is nothing to read it as.
+    """
+    bits = char.get("class_bits")
+    if not bits & RANGER_BIT_DOS:
+        return bits
+    slots = {n for n, v in enumerate(char.raw("class_levels")) if v}
+    if "former_class_levels" in char.fields:
+        slots |= {n for n, v in enumerate(char.raw("former_class_levels"))
+                  if v}
+    named = 0
+    for slot, bit in ((PALADIN_SLOT, RANGER_BIT_DOS),
+                      (RANGER_SLOT, RANGER_BIT_NEUTRAL)):
+        if slot in slots:
+            named |= bit
+    return (bits & ~RANGER_BIT_DOS) | (named or RANGER_BIT_DOS)
+
+
+def dos_class_bits(neutral_bits: int) -> int:
+    """A shared-order class mask as DOS's own byte: the ranger folds onto 6.
+
+    The inverse of :func:`neutral_class_bits` as far as it can be -- DOS
+    stores less than the neutral record does here, and the class number and
+    the level array are what carry the difference.
+    """
+    if not neutral_bits & RANGER_BIT_NEUTRAL:
+        return neutral_bits
+    return (neutral_bits & ~RANGER_BIT_NEUTRAL) | RANGER_BIT_DOS
 
 
 def class_bits_for(char: "DosCharacter") -> int:
@@ -751,7 +867,6 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("alignment", "alignment"),
     ("armour_class_base", "armour_class_base"),
     ("experience", "experience"),
-    ("class_bits", "class_bits"),
     ("hp_rolled", "hp_rolled"),
     ("party_order", "party_order"),
     ("hp_current", "hp_current"),
@@ -875,8 +990,16 @@ DROPPED_PLAYER_TEXT: dict[str, str] = {
 #: disposition check below can see them; the rules themselves are in
 #: `to_c64_record`.
 TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("class_bits", "reread from the level array into the shared bit order: "
+                   "DOS gives the paladin and the ranger one bit between "
+                   "them and the C64 gives the ranger a bit of its own, so "
+                   "copying the byte made a converted ranger a paladin"),
     ("name_length", "folded into the C64's 20-byte NUL-padded name"),
-    ("name_text", "re-padded into the C64's 20-byte name"),
+    ("name_text", "re-padded into the C64's 20-byte name, and folded to "
+                  "capitals with its trailing blanks cut: the C64 draws its "
+                  "text in the uppercase/graphics character set, where a "
+                  "lower-case letter is a punctuation mark (goldbox.dos."
+                  "c64_name)"),
     ("spellbook", "56 bytes packed into 56 bits; the ids are identical"),
     ("spells_memorised", "reversed: DOS fills from the end, the C64 from the "
                          "start. The arrangement is not converted and does not "
@@ -1066,6 +1189,18 @@ def to_neutral(dos: DosCharacter,
         out.set(dos_name, dos.get(dos_name),
                 f"DOS {dos_name} @{f.offset:#05x} ({f.confidence})",
                 f.confidence)
+
+    # -- the class mask, which is *not* the DOS byte -------------------------
+    # DOS gives the paladin and the ranger the same bit 6; the neutral record
+    # and the C64 give the ranger bit 7.  See `NEUTRAL_CLASS_BIT_FOR_SLOT`:
+    # copying the byte sent a DOS ranger to the C64 as a paladin holding a
+    # ranger's levels.
+    f = dos.fields["class_bits"]
+    out.set("class_bits", neutral_class_bits(dos),
+            f"DOS class_bits @{f.offset:#05x} ({f.confidence}), reread from "
+            f"the level array because DOS gives the paladin and the ranger "
+            f"one bit between them",
+            f.confidence, Provenance.RESHAPED)
 
     # -- the abilities, which are a (first, second) pair after Pool of --------
     # Radiance.  Both halves cross; the first goes to the neutral ability and
@@ -1333,8 +1468,55 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     character that is belongs to the caller, which is the only thing that
     knows the slot and the marching position.  `convert_save` prefixes each of
     its own notes that way (#107).
+
+    **The name is folded to capitals on the way across**, which is the one
+    thing this function does that is not a straight hand-off; see
+    :func:`c64_name`.
     """
-    return c64_codec.write(to_neutral(dos, portraits=portraits), icon=icon)
+    out = to_neutral(dos, portraits=portraits)
+    field = out.fields.get("name")
+    if field is not None:
+        out.set("name", c64_name(str(field.value)),
+                field.origin + ", folded to capitals for the C64's own "
+                               "character set",
+                field.confidence, Provenance.RESHAPED)
+    return c64_codec.write(out, icon=icon)
+
+
+def c64_name(name: str) -> str:
+    """A DOS name as the C64 can draw it: capitals, no trailing blanks.
+
+    **A lower-case letter in a name is not a letter on a C64 screen.**  The
+    game draws its text in the uppercase/graphics character set, where the
+    screen code for a byte in `$61`-`$7A` is that byte less `$40` -- so `u`
+    is `5`, `y` is `9`, `d` is `$` and `e` is `%`.  Watched on the running
+    machine, `#193` step 3: Secret of the Silver Blades' own DOS pregen is
+    named `Guy de Valois ` and, converted byte for byte, his name drew in the
+    party panel and at the head of his character sheet as
+
+        G59 $% V!,/)3
+
+    which is exactly `G`, then each lower-case letter mapped by that rule.
+    The other five characters of the same party are named in capitals and
+    drew correctly, so it is the case and nothing else.
+
+    **SSI did the same thing themselves.**  The C64 `SAVEDBASH` on
+    `SILVER-6.D64` holds `GUY DE VALOIS` for the character DOS calls
+    `Guy de Valois `, and that name is the only field of the six shipped
+    characters where the two ports' records differ for a reason that is not
+    a separate roll (`tools/ssbtwins.py`).  So capitals are what the
+    destination port's own copy of this party has.
+
+    The trailing blanks go for the same reason: DOS counts a trailing space
+    into `name_length` and the C64 field is NUL-padded, so a name ending in
+    one draws a stray space in a fixed-width column.
+
+    **This is the DOS-to-C64 path only, and the same fault is reachable from
+    any other source a C64 record can be written from** -- `c64_codec.write`
+    is where it would be closed for all of them, and that file is another
+    ticket's.
+    """
+    return name.upper().rstrip()
 
 
 # ---------------------------------------------------------------------------
@@ -1485,7 +1667,6 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("alignment", "alignment"),
     ("armour_class_base", "armour_class_base"),
     ("experience", "experience"),
-    ("class_bits", "class_bits"),
     ("hp_rolled", "hp_rolled"),
     ("party_order", "party_order"),
     ("hp_current", "hp_current"),
@@ -1496,6 +1677,9 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
 
 #: Neutral fields the DOS writer takes by a rule rather than by a copy.
 WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("class_bits", "folded back into DOS's own order, where the paladin and "
+                   "the ranger share bit 6 and the class number and the "
+                   "level array are what tell them apart"),
     ("name", "length-prefixed into one count byte and fifteen ASCII"),
     ("portrait_head", "the C64's HEADnn id becomes the DOS record's menu "
                       "position, through the creation tables in the game's "
@@ -1737,6 +1921,8 @@ WRITE_TARGETS: dict[str, str] = (
     {dos_name: f"from neutral {n}" for n, dos_name in WRITE_DIRECT}
     | {"name_length": "from neutral name, the count byte",
        "name_text": "from neutral name, fifteen ASCII",
+       "class_bits": "from neutral class_bits, with the ranger's bit 7 "
+                     "folded onto DOS's bit 6",
        "spells_memorised": "from neutral spells_memorised, reversed",
        "spellbook": "from neutral spells_known, one byte per id",
        "class_levels": "from neutral levels, permuted to class numbers",
@@ -1840,6 +2026,14 @@ def write(char: NeutralCharacter,
         v = use(neutral_name)
         if v is not None:
             put(v, dos_name)
+
+    # -- the class mask, folded back into DOS's own order --------------------
+    bits = use("class_bits")
+    if bits is not None:
+        put(bits, "class_bits",
+            ", with the ranger's bit 7 folded onto DOS's bit 6, which it "
+            "shares with the paladin",
+            value=dos_class_bits(int(bits.value)))
 
     # -- the spellbook: one byte per spell, ids 1..56 -------------------------
     known = use("spells_known")
@@ -2256,31 +2450,58 @@ SHARED_SCRATCH = (0x49EB,) + tuple(range(0x4A00, 0x4A20))
 
 
 def quest_flags(save: bytes,
-                shape: "dos_savegame.DosSaveShape | None" = None) -> bytes:
-    """`$4A20`-`$4AF8` as the C64's 217 bytes: read the word, keep the byte.
+                shape: "dos_savegame.DosSaveShape | None" = None,
+                window: "tuple[int, int] | None" = None) -> bytes:
+    """The flag page as the C64's bytes: read each word, keep the low byte.
 
-    Every nonzero word in the window is 1, 2, 3 or 255 across three saves of
-    two parties -- the flag alphabet, nothing wider -- and the runs the
-    quest-flag report names are set and clear together.  A base off by one
-    would straddle them.
+    `window` is `(payload offset, length)` and defaults to Pool of Radiance's
+    `$4A20`-`$4AF8`, 217 bytes.  Every nonzero word in that window is 1, 2, 3
+    or 255 across three saves of two parties -- the flag alphabet, nothing
+    wider -- and the runs the quest-flag report names are set and clear
+    together.  A base off by one would straddle them.
+
+    **The window is per title, because where it ends is.**  Pool of Radiance
+    stops at `$4AF8` because `$4AFA` and `$4AFD` are its wallset and wallmap
+    triples (`goldbox/dos_savegame.py`).  Secret of the Silver Blades keeps
+    its wall triples in the twelve unnamed bytes of the square block instead
+    (#253), and an address census over all twenty-two of its `ECL` scripts,
+    on both ports, finds the scripts reading and writing right up to the end
+    of the page: `$4CFD` -- the same word index as Pool of Radiance's
+    wallmap -- is named by seventeen of the twenty-two, 33 reads and 63
+    writes (`tools/eclcensus.py secret-of-the-silver-blades --range 4CE0
+    4CFF`).  So five more bytes of a Silver Blades party's flags live past
+    where Pool of Radiance's page ends, and the window that stops at `$4AF8`
+    loses them.
+
+    CONFIRMED in the running game: the C64 engine's own `ENCAMP > SAVE` of a
+    converted party wrote `$FF` at payload `+$1FD`, where the conversion had
+    written zero, and all three driven DOS Silver Blades containers hold 255
+    at that word (`#193` step 3).
     """
+    first, size = window or (FLAGS_FIRST - SAVE0_BASE,
+                             FLAGS_LAST - FLAGS_FIRST + 1)
     out = bytearray()
-    for addr in range(FLAGS_FIRST, FLAGS_LAST + 1):
-        out.append(dos_savegame.word(save, addr, shape) & 0xFF)
+    for i in range(size):
+        out.append(dos_savegame.word(save, SAVE0_BASE + first + i, shape)
+                   & 0xFF)
     return bytes(out)
 
 
 def apply_quest_flags(save0: bytearray, savgam: bytes,
-                      shape: "dos_savegame.DosSaveShape | None" = None) -> int:
-    """Copy the flags into a C64 `SAVEDGAME0` payload. Returns bytes changed.
+                      shape: "dos_savegame.DosSaveShape | None" = None,
+                      window: "tuple[int, int] | None" = None) -> int:
+    """Copy the flags into a C64 payload. Returns bytes changed.
 
-    `SAVEDGAME0` is a verbatim image of `$4900`-`$64FF`, so the C64 offset of
-    an address is the address less `$4900`.
+    The payload is a verbatim image of the save image, so the C64 offset of
+    an address is the address less that title's own base.  `window` is the
+    container's `quest_flags`; see :func:`quest_flags` for why it is per
+    title.
     """
-    flags = quest_flags(savgam, shape)
-    base = FLAGS_FIRST - SAVE0_BASE
-    changed = sum(1 for i, b in enumerate(flags) if save0[base + i] != b)
-    save0[base:base + len(flags)] = flags
+    first, _size = window or (FLAGS_FIRST - SAVE0_BASE,
+                              FLAGS_LAST - FLAGS_FIRST + 1)
+    flags = quest_flags(savgam, shape, window)
+    changed = sum(1 for i, b in enumerate(flags) if save0[first + i] != b)
+    save0[first:first + len(flags)] = flags
     return changed
 
 
@@ -2973,13 +3194,17 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             "compared (#57)" if icon is not None else
             "icon from the record, which is zero"))
         if container.name_table is not None:
-            at = container.name(place)
+            entry = container.name_index(place, len(party))
+            at = container.name(entry)
             save0[at:at + container.name_stride] = (
                 raw[:container.name_stride])
             report.note(at, container.name_stride,
                         f"{who} -- the party's own name table, which this "
-                        f"title keeps beside the records and fills in slot "
-                        f"order")
+                        f"title keeps beside the records and fills in "
+                        + ("marching order, so entry 0 is the character at "
+                           "the head of the party"
+                           if container.names_in_marching_order
+                           else "slot order"))
         at, into = ((container.roster_offset + place * ROSTER_STRIDE, save0)
                     if container.roster_in_payload
                     else (place * ROSTER_STRIDE, save1))
@@ -3089,7 +3314,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                     "holds. Nothing in the DOS save has been attributed to "
                     "it")
 
-    changed = apply_quest_flags(save0, savgam, shape)
+    changed = apply_quest_flags(save0, savgam, shape, container.quest_flags)
     report.note(*container.quest_flags,
                 "quest flags: the DOS word array, narrowed to bytes")
     for address, what in apply_position(save0, savgam, shape):
@@ -3103,7 +3328,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     # set flags.  It is a count either way, so the wording says what was
     # compared rather than naming a save that may not be there.
     report.warnings.append(
-        f"{changed} of {FLAGS_LAST - FLAGS_FIRST + 1} quest-flag bytes "
+        f"{changed} of {container.quest_flags[1]} quest-flag bytes "
         f"differed from what the payload already held")
     if save1 is not None:
         at = BITMAP_BUFFER[0] - SAVE1_BASE

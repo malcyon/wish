@@ -25,8 +25,12 @@ eight character pages, a table of the party's names where Pool of Radiance's
 ninth character page would be, eight item pages, a page of map memory and the
 roster at the end.
 
-Confidence: the two rows below are each measured on that title's own
-engine-written saves, and every claim that is not is graded where it is made.
+Confidence: Pool of Radiance's row and Curse of the Azure Bonds' are each
+measured on that title's own engine-written saves.  Secret of the Silver
+Blades' is not -- the only save of it anybody here has is the one SSI shipped
+-- so its rows are read out of that title's own overlays and its `ECL`
+bytecode wherever the code says anything at all, and graded where they are
+made.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ __all__ = [
     "Region",
     "POOL_OF_RADIANCE",
     "CURSE_OF_THE_AZURE_BONDS",
+    "SECRET_OF_THE_SILVER_BLADES",
     "CONTAINERS",
     "container_for",
 ]
@@ -65,10 +70,16 @@ class Container:
     slot_stride: int = 0x100
     party_slots: int = 8
     record_pages: int = 12
-    #: The party's names again, sixteen bytes each in slot order, or None for
-    #: a title that keeps no such table.
+    #: The party's names again, sixteen bytes each, or None for a title that
+    #: keeps no such table.
     name_table: int | None = None
     name_stride: int = 16
+    #: Which index that table is keyed by.  False -- Curse of the Azure
+    #: Bonds' -- means entry *n* is the name of the character in slot *n*.
+    #: True means entry *n* is the *n*th character of the marching order,
+    #: which is the reverse, because the C64 fills slots from the top down.
+    #: See `SECRET_OF_THE_SILVER_BLADES` below for why the two titles differ.
+    names_in_marching_order: bool = False
     #: The item pages, one per slot, and how many the file carries.
     item_area: int = 0x1000
     item_pages: int = 12
@@ -106,6 +117,13 @@ class Container:
     indoors: int = 0xE6
     #: The party's square and facing, the travel-grid square, the six clock
     #: digits, and the quest-flag page.
+    #:
+    #: **The flag page ends in a different place in each title**, so this is
+    #: `(offset, length)` rather than a shared constant.  Pool of Radiance's
+    #: stops at `+$1F8` because `+$1FA` and `+$1FD` are its wallset and
+    #: wallmap triples; Secret of the Silver Blades keeps its wall triples
+    #: elsewhere and its scripts use the page to the end -- see
+    #: `goldbox.dos.quest_flags`.
     position: int = 0xC0
     travel_position: int = 0xC3
     clock: int = 0xC6
@@ -141,6 +159,16 @@ class Container:
         if self.name_table is None:
             raise ValueError(f"{self.game.title} keeps no name table")
         return self.name_table + index * self.name_stride
+
+    def name_index(self, slot: int, party: int) -> int:
+        """Which table entry belongs to the character in `slot`.
+
+        `party` is how many characters the party has, because a marching-order
+        table is indexed from the top slot down and the top slot is
+        `party - 1` -- the same arithmetic `goldbox.dos.marching_slot` does
+        in the other direction.
+        """
+        return (party - 1 - slot) if self.names_in_marching_order else slot
 
 
 #: What every entry of Pool of Radiance's zeroing list was measured by, said
@@ -249,8 +277,106 @@ CURSE_OF_THE_AZURE_BONDS = Container(
     ),
 )
 
+#: What Silver Blades' zeroing list rests on, and it is a weaker measurement
+#: than either of the other two: **there is one Secret of the Silver Blades
+#: save on this machine and it is the one SSI shipped on side 6**, so a zero
+#: here is what that file holds rather than what an engine-written save of a
+#: played party holds.  Every byte of the header outside the square, the
+#: clock, the named bytes, the cache and the icon table is zero in it.  The
+#: `#193` step-3 resave is what turns this into a measurement of the engine.
+_SILVER_ZERO = ("zero: what the one Secret of the Silver Blades save on this "
+                "machine holds there, and what the same address is written as "
+                "in a Pool of Radiance save that was loaded, walked and "
+                "fought in (#118, #193)")
+
+#: Secret of the Silver Blades.  **The container is Curse of the Azure Bonds'
+#: byte for byte under a different file name** -- one 7424-byte `SAVEDBASH` at
+#: `$4B00`, header `$400`, eight character pages, a name table at `+$C00`,
+#: eight item pages at `+$1000`, map memory at `+$1800` and the roster at
+#: `+$1C00` (`tests/test_silverblades.py`).  Three rows differ from Curse's,
+#: and each was read out of this title's own overlays rather than assumed:
+#:
+#: * **the cache bit and the disk hint are Curse's, and the code says so.**
+#:   `CAMP $0CA5` is `LDX #$18 / LDA $7F13,X / ORA #$80 / STA $4DC0,X` on the
+#:   save path with `LDA $4BF2 / ORA #$80 / STA $4DC8` after it, `GEN $2469`
+#:   is the same loop, and `GEN $2424` is `LDA $4DC0,X / STA $7F13,X` with no
+#:   `ORA` on the load path -- so a converted save must set bit 7 itself.
+#:   `CAMP $0C65` is `LDA $7F12 / STA $4BEE` and `GEN $228E` is
+#:   `LDA $4BEE / STA $7F12`, so `+$EE` is the disk hint here too; `+$EA` is
+#:   named twice in `DUNGEON $0B0E`, which stores a table byte into it and
+#:   reads it back three instructions later, so nothing in the save reaches
+#:   that read.  CONFIRMED.
+#: * **`+$E7`-`+$E9` and `+$FD`-`+$FE` are copied rather than zeroed.**  An
+#:   address census over all 22 of this title's scripts, both ports
+#:   (`tools/eclcensus.py`), gives `$4BE7` and `$4BE8` 18 writes and **no
+#:   reads** over seventeen scripts, `$4BE9` 10 writes over seven, `$4BFD` 8
+#:   and `$4BFE` 16.  They are per-area constants an arriving script sets, and
+#:   the party's own value is in the DOS save at the same ECL address, so the
+#:   conversion writes that rather than a zero nobody has measured.  Curse
+#:   zeroes `+$FD`/`+$FE` and its engine put 8 and 9 back unasked, which is
+#:   the same fact from the other side.
+#: * **the name table may be keyed the other way round.**  In both
+#:   engine-written Curse saves entry *n* is the name in slot *n*; in the
+#:   shipped `SAVEDBASH` entry 0 is GUY DE VALOIS and slot 0 is MORGAINE, so
+#:   the table runs in marching order and the slots run the other way.
+#:   Everything else in that file is slot-ordered -- roster block *n* carries
+#:   slot *n*'s armour class and hit points, six of six -- so it is the table
+#:   that is reversed and not the file.  **PROBABLE, on one file that SSI
+#:   shipped**; `#193` step 3 is what settles it, because a wrong order is a
+#:   party whose names do not match its sheets.
+SECRET_OF_THE_SILVER_BLADES = Container(
+    game=games.SECRET_OF_THE_SILVER_BLADES,
+    party_slots=8,
+    record_pages=8,
+    name_table=0xC00,
+    names_in_marching_order=True,
+    item_pages=8,
+    map_memory=(0x1800, 0x400),
+    roster_offset=0x1C00,
+    cache_bit7=True,
+    disk_hint=0xEE,
+    quest_flags=(0x120, 0xE0),
+    zeroed=(
+        (0x0C3, 2, _SILVER_ZERO), (0x0CC, 26, _SILVER_ZERO),
+        (0x0EA, 1,
+         "zero: DUNGEON $0B0E stores a byte it has just read out of its own "
+         "table here and reads it back at $0B1E, so nothing in the save "
+         "reaches that read -- and Pool of Radiance's disk hint is at +$EE "
+         "in this title, named by CAMP, GEN and LINKER (#193)"),
+        (0x0EB, 3, _SILVER_ZERO),
+        (0x0EF, 1, _SILVER_ZERO),
+        (0xC80, 0x380,
+         "zero: the name table fills the first 128 bytes of its page and the "
+         "rest of the page is zero in the shipped save"),
+        (0x0F0, 2, _SILVER_ZERO), (0x0F3, 9, _SILVER_ZERO),
+        (0x0FC, 1,
+         "zero: the two ports disagree about it -- all five DOS Silver "
+         "Blades containers on this machine hold 4 and the shipped C64 save "
+         "holds 2 -- so it is a loader value each port keeps for itself "
+         "rather than a variable the party carries, and Curse's converted "
+         "save booted with a zero here (#192, #193)"),
+        (0x200, 128, _SILVER_ZERO), (0x2D9, 7, _SILVER_ZERO),
+    ),
+    copied=(
+        (0x0E7, 3,
+         "from the DOS save: seventeen of this title's area scripts write "
+         "+$E7 and +$E8 at their heads and seven write +$E9, none of the "
+         "twenty-two ever reads one, and DUNGEON does -- so the party's own "
+         "value crosses rather than a zero (#193)"),
+        (0x0FD, 2,
+         "from the DOS save: per-area constants four scripts write into +$FD "
+         "and fourteen into +$FE, read by DUNGEON and by no script (#193)"),
+        (0x100, 0x20,
+         "the per-script scratch, from the DOS save: the NEWECL handler "
+         "clears it only when the script id changes, so a save taken inside "
+         "an area is carrying live scratch its own script reads on the next "
+         "step (#192 step 0a, #193)"),
+    ),
+)
+
 CONTAINERS: dict[str, Container] = {
-    c.game.key: c for c in (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS)}
+    c.game.key: c for c in (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+                            SECRET_OF_THE_SILVER_BLADES)}
 
 
 def container_for(game=None) -> Container:
