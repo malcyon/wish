@@ -82,6 +82,29 @@ the pane that shows it to a player is a temporary state rather than a feature
 entry is worth less than removing it, and an agent polishing a drop line is
 usually an agent working on the wrong half of the problem.
 
+**The one exception, and it is about capacity rather than understanding: a
+destination that genuinely holds fewer things than the source.** Donald,
+2026-09-05, on a character carrying more items than the C64's sixteen slots:
+*"If there is a difference in the number of items a character can carry on
+different platforms, then this is a case where the converter is allowed to
+tell the user what will not convert. However, if we have to do that, the
+player will need to get a choice of what items to drop off the list."*
+
+The two are not in tension, because they are different situations. A **field**
+we do not convert is our failure and the player is never told about it -- the
+answer is to convert it. A **thing that does not fit** is the destination
+telling the truth about itself, and then the player is entitled both to know
+and to choose which of their own items goes.
+
+**And do not build the picker until the measurement says it is needed.**
+Donald, same day: *"we shouldn't build that unless we are sure it is
+necessary."* The C64 record has sixteen item slots; DOS keeps a one-byte
+`item_count` and its items in a sibling `.ITM` file, so the format allows far
+more -- but **what the DOS game itself allows is unmeasured**, and if it also
+stops at sixteen there is nothing here to build. Measure the ceiling per
+title before designing anything, because `#113 (Silver Blades' items are 67
+bytes, not 63)` already proved this family is not uniform.
+
 **"Nobody has measured it" is not "it cannot be done", and saying so is how an
 agent gives up in a sentence that sounds like a finding.** Donald, 2026-09-05,
 on the combat icon: *"We absolutely can figure out how to convert combat
