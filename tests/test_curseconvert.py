@@ -280,6 +280,42 @@ def test_the_curse_container_is_one_file_with_a_name_table():
         c64_save.container_for("champions-of-krynn")
 
 
+def test_the_flag_window_runs_to_the_end_of_the_page():
+    """The twin of `tests/test_ssbconvert.py`'s test of the same name (#289).
+
+    `$4CFE` and `$4CFF` -- the same word indices as Pool of Radiance's
+    wallset and wallmap triples -- are named by `ECL04` sixteen times and by
+    four scripts respectively, and Curse keeps its own wall triples in the
+    twelve unnamed bytes of the square block instead (#253), so nothing
+    stops its flag page short of the end.
+    """
+    first, size = c64_save.container_for(CURSE_GAME).quest_flags
+    assert (first, first + size - 1) == (0x120, 0x1FF)
+    #: Pool of Radiance stops short, because `+$1FA` and `+$1FD` are its own
+    #: wallset and wallmap triples.
+    first, size = c64_save.container_for(games.POOL_OF_RADIANCE).quest_flags
+    assert (first, first + size - 1) == (0x120, 0x1F8)
+
+
+def test_the_last_flag_word_reaches_the_c64_payload():
+    """A synthetic DOS Curse save with a word set at `$4AFE` -- the last flag
+    word before Pool of Radiance's window stops, and inside Curse's own
+    window -- reaches the C64 payload at `+$1FE` (#289).
+
+    `$4AFE` is a Pool of Radiance address; `sg.pool_address(0x4CFE, shape)`
+    is what a Curse script would call it, and the two name the same word
+    (`test_a_curse_address_is_not_a_variable_address` above).
+    """
+    shape = sg.save_shape_for(CURSE.key)
+    savgam = bytearray(shape.size)
+    off = sg.word_offset(0x4AFE, shape)
+    savgam[off], savgam[off + 1] = 0xFF, 0x00
+    save0 = bytearray(c64_save.CURSE_OF_THE_AZURE_BONDS.payload_size)
+    window = c64_save.CURSE_OF_THE_AZURE_BONDS.quest_flags
+    dos.apply_quest_flags(save0, bytes(savgam), shape, window)
+    assert save0[0x1FE] == 0xFF
+
+
 # --- the container, against a save the game itself wrote --------------------
 def _engine_written():
     path = SPECIMENS / "D-curse-party-with-items.D64"

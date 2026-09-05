@@ -121,9 +121,9 @@ class Container:
     #: **The flag page ends in a different place in each title**, so this is
     #: `(offset, length)` rather than a shared constant.  Pool of Radiance's
     #: stops at `+$1F8` because `+$1FA` and `+$1FD` are its wallset and
-    #: wallmap triples; Secret of the Silver Blades keeps its wall triples
-    #: elsewhere and its scripts use the page to the end -- see
-    #: `goldbox.dos.quest_flags`.
+    #: wallmap triples; Curse of the Azure Bonds and Secret of the Silver
+    #: Blades keep their wall triples elsewhere and their scripts use the
+    #: page to the end -- see `goldbox.dos.quest_flags`.
     position: int = 0xC0
     travel_position: int = 0xC3
     clock: int = 0xC6
@@ -237,6 +237,7 @@ CURSE_OF_THE_AZURE_BONDS = Container(
     roster_offset=0x1C00,
     cache_bit7=True,
     disk_hint=0xEE,
+    quest_flags=(0x120, 0xE0),
     zeroed=(
         (0x0C3, 2, _CURSE_ZERO), (0x0CC, 26, _CURSE_ZERO),
         (0x0E9, 1, _CURSE_ZERO),
@@ -261,7 +262,7 @@ CURSE_OF_THE_AZURE_BONDS = Container(
          "zero: nineteen of Curse's area scripts write +$FE and nine write "
          "+$FD from their own entry code, so the arriving script refills "
          "both (#192 step 0e)"),
-        (0x1F9, 135, _CURSE_ZERO), (0x2D9, 7, _CURSE_ZERO),
+        (0x200, 128, _CURSE_ZERO), (0x2D9, 7, _CURSE_ZERO),
     ),
     copied=(
         (0x0E7, 2,
