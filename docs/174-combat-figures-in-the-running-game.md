@@ -81,19 +81,24 @@ icon into all six --
 `#130 (A converted DOS party arrives with six identical combat figures, not its
 own)`.
 
-## What is not established
+## What is not established here
 
-**The icon's second nine codes have never been seen on the screen.** Each
-combatant's run in the combat character set is nine codes long, so the charset
-holds one pose at a time, and the pose byte selected handedness rather than the
-second pose in all 405 readings. The driver passed every turn -- the run's own
-summary is *"A party member struck on 0 of 80 driven turns"* -- so the
-attacking frame is the obvious candidate and is untested. The experiment is a
-fight where a party member actually attacks, with `--icon`'s per-turn glyph
-reading running.
+**An icon's second nine codes are not on the combat floor when the game stops
+to ask for a command.** Each combatant's run in the combat character set is
+nine codes long, so the charset holds one pose at a time, and the pose byte
+selected handedness rather than the second pose in all 405 readings.
 
-That matters for a conversion, which has to write eighteen codes: an icon whose
-second nine were wrong would look right in every fight measured so far.
+The driver passed every turn here -- the run's own summary is *"A party member
+struck on 0 of 80 driven turns"* -- so the attacking frame was the obvious
+candidate. **That experiment has since been run and it is not the answer at
+this granularity**: a party that struck 35 blows on 42 turns still read as the
+first pose at all 178 of its command-bar readings.
+
+Where the second nine *are* drawn, what the game calls them, and the table
+`COM.PREP` expands both poses into is
+[`186-ready-and-action.md`](186-ready-and-action.md). The short version is that
+they are the ACTION pose, a player sees them in the icon editor in camp, and
+the engine fetches them once per turn for whichever character is acting.
 
 ## Reproducing it
 
