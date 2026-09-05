@@ -220,3 +220,26 @@ def test_no_source_at_all_is_refused(tmp_path):
         toamigapor.main([str(tmp_path / "x.adf"), "--to", "B",
                          "--out", str(tmp_path / "o.adf")])
     assert "exactly one" in str(caught.value)
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("curse-234-before"),
+                    reason="needs WISH-SPEC-curse-234-before")
+def test_a_dos_curse_party_is_refused_before_any_conversion_work(tmp_path):
+    """A conversion is between two ports of the same title.
+
+    Pointing this at a DOS Curse folder used to print a full report that read
+    like a working conversion and then die several calls down in `write_por`
+    with `a DOS Pool of Radiance record is 285 bytes, got 422` -- a traceback
+    naming a size, where what was wrong was the title.  `--c64` had this check
+    from the start and `--dos` did not.
+    """
+    from tools import toamigapor
+
+    where = gamedata.specimen("curse-234-before")
+    disk = _por_disk_1(tmp_path)
+    out = tmp_path / "por1-refused.adf"
+    with pytest.raises(SystemExit) as raised:
+        toamigapor.main([str(disk), "--to", "B", "--out", str(out),
+                         "--dos", str(where), "--dos-slot", "C"])
+    assert "Curse" in str(raised.value), raised.value
+    assert not out.exists()

@@ -629,10 +629,15 @@ stale bytes (`Mail           400`) past its own length byte. So the line is
 The tail is a second render showing through the first, and §1.12a works it out
 to the character: `' Yes  Long Sword '` overwritten by `'Long Sword \0'` leaves
 exactly `'word '` from index 12, on five of the five Amiga nodes that have a
-tail. **What a *writer* has to do about it is a separate question and it is
-still open** — `write_por` leaves all 42 bytes NUL, on the reading that the
-line is composed when the ITEMS screen draws. That is PROBABLE rather than
-measured; §1.12a has the argument and the one screenshot that settles it.
+tail. **A writer leaves all 42 bytes NUL, and that is CONFIRMED rather than
+argued.** The screenshot this section used to promise was taken on
+2026-09-05: a party written by `write_por_slot` with every item node NUL drew
+`YES LONG SWORD`, `YES BANDED MAIL` and `YES SHIELD` on its ITEMS screen, so
+the line is composed when that screen draws and nothing in it comes out of
+the node. `docs/182-amiga-por-in-the-running-game.md` has the pictures and
+the byte comparisons, and it also settles what the tails are: the engine
+writes its own render back into the buffer, which is why a shipped node
+carries one render with the tail of a longer earlier one behind it.
 
 **The effect node is 10 bytes with the pad at offset 1**, which #55 (Decode the Amiga Curse and Silver Blades records) measured
 on 62 records; disk 1's six agree, and their payload bytes `0x02`-`0x05` read
@@ -1039,13 +1044,32 @@ And **everything in the line is derivable from fields the writer carries**:
 `60 Darts`, and `value` at `0x03C` is the price column. Nothing in the 42 bytes
 is a source for anything.
 
-**PROBABLE, therefore, that the ITEMS screen composes the line from those
-fields and caches it back, so a NUL line is filled in on the first draw and
-`write_por`'s all-NUL buffer is correct as it stands.** It rests on an argument
-from the bytes rather than on a measurement, and **one screenshot settles it**:
-load a slot our code wrote, `E` ENCAMP → `V` VIEW → a character → `I` ITEMS. If
-the rows are blank, `amiga_por_item_from_dos` has to compose the line itself,
-including the ready column and the right-aligned price.
+**CONFIRMED, 2026-09-05: the ITEMS screen composes the line from those fields
+and caches it back, so a NUL line is filled in on the first draw and
+`write_por`'s all-NUL buffer is correct as it stands.** The screenshot this
+section asked for was taken under WinUAE. GARWAN's slot, written by
+`write_por_slot` with all seventeen item nodes holding 42 NUL bytes, drew:
+
+```
+GARWAN'S ITEMS
+READY ITEM
+YES    LONG SWORD
+YES    BANDED MAIL
+YES    SHIELD
+```
+
+So no row comes out of the buffer, and the paragraph above about where each
+column comes from is what the engine is doing.
+
+**And the cache half was watched being written.** Two nodes of a converted DOS
+character went in NUL, the game drew ITEMS, camped and saved, and the same two
+nodes came back holding `Flail \0lail \0` and `Banded Mail \0Mail \0` — the
+current render, then the tail of a longer earlier one, which is the shape the
+shipped nodes in the table above have. That is why the earlier measurement in
+this section stands rather than being contradicted: **that run never opened
+ITEMS**, so nothing ever composed anything to cache.
+
+`docs/182-amiga-por-in-the-running-game.md` has both, with the pictures.
 
 **Five thief-skill bytes are derived, and this is the first evidence of it.**
 GOLDLEAF, a level-1 elf fighter/mage/thief with DEX 19, is the party's only

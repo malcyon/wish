@@ -65,10 +65,27 @@ def read_c64_party(path: str) -> list:
 
 
 def read_dos_party(folder: str, slot: str) -> list:
-    """Every character of a DOS saved game's slot, as neutral records."""
+    """Every character of a DOS saved game's slot, as neutral records.
+
+    The title is checked before any conversion work, the way
+    `read_c64_party` checks it.  Without that, pointing this at a DOS Curse
+    or Silver Blades folder printed a full report that looked like a working
+    conversion and then died several calls down in `write_por` with `a DOS
+    Pool of Radiance record is 285 bytes, got 422` -- a traceback naming a
+    size rather than the thing that was actually wrong.  A conversion is
+    between two ports of the same title
+    (`.claude/rules/conversions.md`), and an Amiga Pool of Radiance slot
+    takes a Pool of Radiance party.
+    """
     from goldbox import dos
 
-    return [dos.to_neutral(char) for char in dos.read_party(folder, slot)]
+    party = dos.read_party(folder, slot)
+    shape = party[0].shape
+    if shape.key != "pool-of-radiance":
+        raise SystemExit(
+            f"{folder} slot {slot} is {shape.title}, and an Amiga Pool of "
+            f"Radiance slot takes a Pool of Radiance party")
+    return [dos.to_neutral(char) for char in party]
 
 
 def main(argv: list[str] | None = None) -> int:
