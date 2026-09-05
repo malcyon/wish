@@ -718,7 +718,12 @@ class FastTravelBar(QObject):
         # site -- so capitalising the strings would leave the prefix
         # lowercase and fix nothing a user sees.
         line = line[:1].upper() + line[1:]
-        self.say(line, "\n".join(outcome.notes), alarm=not outcome.ok)
+        # #263: a note is `automap.actions.FastTravel.warnings`' own fragment,
+        # capitalised here for the same reason `line` is -- one composed
+        # string, capitalised where it is assembled, rather than each source
+        # string upper-cased and every other caller of it left lowercase.
+        notes = [n[:1].upper() + n[1:] for n in outcome.notes if n]
+        self.say(line, "\n".join(notes), alarm=not outcome.ok)
         self.refresh()
 
     def wait_for_key_wait(self) -> engine.Verdict:

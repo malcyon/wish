@@ -233,8 +233,70 @@ def test_a_window_with_no_overland_square_says_so():
     assert outcome.ok
     assert actions.FASTTRAVEL_TRAVEL_X not in dict(outcome.writes)
     assert actions.FASTTRAVEL_X not in dict(outcome.writes)
-    assert any("Nowhere Window" in note and "$49C3" in note
+    # #263: the note used to name `$49C3` as the square that held. It says
+    # what the player sees instead, and the address moved to a comment beside
+    # `FastTravel.warnings`.
+    assert any("Nowhere Window" in note and "last held" in note
                for note in outcome.notes), outcome.notes
+
+
+def test_fasttravel_warnings_carry_no_memory_address():
+    """`#263 (Fast Travel's Messages tooltip shows the player a memory
+    address)`: `$49F2`, `$49C3`/`$49C4` and the rest used to sit in front of a
+    player who only hovered a Messages line to learn why a trip was risky.
+
+    Indoors is matched to each target's own `outdoors` here so the one branch
+    `#263` left open -- the indoors/outdoors mismatch note, still `$49E6 is
+    {n}, so LOADFILES will ask for a SQRDATA` -- does not fire and mask a
+    regression in the other three.
+    """
+    import re
+
+    address = re.compile(r"\$[0-9A-F]{4}\b")
+
+    class _Indoors:
+        outdoors = False
+        has_map = True
+
+    class _Outdoors:
+        outdoors = True
+        has_map = True
+        overland = None
+        name = "Nowhere Window"
+
+    ft = actions.FastTravel()
+    target_in = machine(area=0, indoors=1)      # outdoors_now is False
+    target_out = machine(area=0, indoors=0)     # outdoors_now is True
+
+    # no arrival square known, indoors target
+    for note in ft.warnings(target_in, _Indoors(), None):
+        assert not address.search(note), f"a memory address reaches a player: {note!r}"
+
+    # overland square known, outdoors target
+    for note in ft.warnings(target_out, _Outdoors(), None, overland=(7, 29)):
+        assert not address.search(note), f"a memory address reaches a player: {note!r}"
+
+    # no overland square known, outdoors target
+    for note in ft.warnings(target_out, _Outdoors(), None):
+        assert not address.search(note), f"a memory address reaches a player: {note!r}"
+
+
+def test_the_fasttravel_tooltip_capitalises_every_note(app):
+    """`#263`: every note opened lowercase, because `FastTravelBar._report`
+    joined `outcome.notes` straight into the tooltip. `_report` already
+    capitalises the message line the same way; this is the same fix for the
+    notes below it."""
+    said = []
+    row = bar(app, say=lambda text, detail="", alarm=False:
+              said.append((text, detail)))
+    row._report("fast travel", actions.Outcome(
+        True, "Traveling to Kuto's Well.",
+        notes=("the arriving script assumes quest flags the party never "
+               "set", "no arrival square is known for this area")))
+    detail = said[-1][1]
+    assert detail.splitlines() == [
+        "The arriving script assumes quest flags the party never set",
+        "No arrival square is known for this area"]
 
 
 def test_the_quest_flags_are_said_out_loud():

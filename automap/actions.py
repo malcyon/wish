@@ -1763,28 +1763,32 @@ class FastTravel(Action):
                "arriving this way is not the same as having played there"]
         outdoors_target = getattr(area, "outdoors", False)
         if not outdoors_target and arrival is None:
-            out.append(f"no arrival square is known for this area, so the "
-                       f"party lands wherever the arriving script leaves it "
-                       f"-- which it does: ${addr.came_from:04X} survives the "
-                       f"restart, so the arriving script's entry takes its "
-                       f"came-from-elsewhere branch")
+            # #263: this used to go on to cite `$addr.came_from` as the proof
+            # that the claim is true -- a developer's citation, not something
+            # a player needs. The address is still `self.addresses.came_from`
+            # for anybody reading the code.
+            out.append("no arrival square is known for this area, so the "
+                       "party lands wherever the arriving script leaves it")
         if not getattr(area, "has_map", True):
             out.append(f"{getattr(area, 'ecl', 'this area')} loads no map of "
                        "its own")
         if outdoors_target:
-            travel = addr.travel_square or 0
             if overland is not None:
                 x, y = overland
+                # #263: `${travel:04X}/${travel + 1:04X} = ` used to sit in
+                # front of the coordinate; `self.addresses.travel_square` is
+                # still where a reader of the code finds it.
                 out.append(f"this is an overland area; the party is put at "
-                           f"${travel:04X}/${travel + 1:04X} = ({x}, {y}), the "
+                           f"({x}, {y}), the "
                            f"departing script's own square, since no arriving "
                            f"script places an outdoor party")
             else:
                 name = getattr(area, "name", None) or getattr(
                     area, "ecl", "this window")
+                # #263: as above -- the square this names is
+                # `self.addresses.travel_square`.
                 out.append(f"no overland square is known for {name}, so the "
-                           f"party stays on whatever square ${travel:04X}/"
-                           f"${travel + 1:04X} last held")
+                           f"party stays on whatever square it last held")
         indoors = self.current_indoors(target, addr)
         if indoors is not None:
             outdoors_now = indoors == 0
