@@ -1,5 +1,3 @@
-# Wish
-
 <p align="center">
   <img src="assets/logo/lockup.png" alt="Wish" width="500">
 </p>
