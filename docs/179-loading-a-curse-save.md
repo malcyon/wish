@@ -111,7 +111,7 @@ The one-key run sat on `INSERT CURSE SAVE DISK, PRESS A KEY` for the whole
 run drew and dismissed inside one screen poll.
 
 **This is also why `$03B4` looked broken.** Poked to 1 so the prompt would be
-drawn again, `#291` reported that it was not. It was: `$183A` fired, and the
+drawn again, `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)` reported that it was not. It was: `$183A` fired, and the
 spare Return took it in under 1.5 seconds. The poke works.
 
 `tools/curseload.py`'s `answer_yes` walks the bar with the arrows, which Curse
@@ -199,7 +199,7 @@ taken from inside the world reports its failures with less information than
 the front end does. The experiment is to break at `GEN $1FDC` during an
 `ENCAMP > SAVE` and read `$7E9F`.
 
-**Why `#291`'s own sessions refused with the save disk attached.** Their logs
+**Why `#291 (A Curse save disk will not load through the game's own front end in a pooled session, so no C64 Curse party can be got in)`'s own sessions refused with the save disk attached.** Their logs
 survive at `work/issue256-dual/c64/run.jsonl` and stop at `menu-miss` before
 any load, so the refusals they describe came from driving by hand over the
 command port and no transcript of that survives. All three faults above were
