@@ -820,7 +820,7 @@ both ends of the party panel it is drawn in. Legible enough to act on, ugly.
 
 ---
 
-## 6b. A DOS import, played (#119)
+## 6b. A DOS import, played (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing))
 
 **Only if `WISH_EXPERIMENTAL_DOS_IMPORT=1` and only where the player's DOS
 *Forgotten Realms: The Archives* is unpacked.** This is not a per-platform row
@@ -859,7 +859,7 @@ class and THAC0 already decoded through the family's `60 - value`.
 **LOAD SAVED GAME**.
 
 *Expect:* the game finds it and reaches **BEGIN ADVENTURING**. *If it does
-not*, stop: that is the `#109`-shaped failure and nothing further is worth
+not*, stop: that is the `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)`-shaped failure and nothing further is worth
 checking.
 
 **D4.** Begin adventuring and read three things off the screen:
@@ -937,7 +937,7 @@ steps -- and look at the party on the combat floor.
 They are alike because a converted party has no C64 art to carry, so every
 character gets the icon the game's own character creation writes. *If instead
 a character is a 3x3 block of black hooks*, its combat icon reached the disk as
-zero: screen code 0 is a real glyph and a zeroed icon is not "no icon" (`#57
+zero: screen code 0 is a real glyph and a zeroed icon is not "no icon" (`#57 (Carry the character portrait across ports)
 (Carry the character portrait across ports)`).
 
 `tools/savecheck.py` does D3 to D7 unattended through the instance pool and

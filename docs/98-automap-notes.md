@@ -18,7 +18,7 @@ the layout**: five rows of five, each row one idea. The picker shows no
 words at all, so where a picture sits is the only thing helping somebody
 find it, and a new kind joins the row it belongs to rather than the end.
 
-Every name and every description is Donald's, settled on `#166`; the
+Every name and every description is Donald's, settled on `#166 (Draw the twenty-three note kinds Donald chose, and name them)`; the
 descriptions are tooltip only, and each opens with a capital because he
 asked for that across the whole program. `work/note-icons.md` rendered
 all twenty-five at 32px and 13px, which is what he chose them from --
@@ -53,7 +53,7 @@ the record that does.
 |  | Inn | `bed` | Delapouite | Somewhere to rest and get the spells back |
 |  | Tavern | `beer-stein` | Lorc | Drink, gossip, and the people who have it |
 
-**Sixteen of those arrived at once**, on `#166`: Point of Interest,
+**Sixteen of those arrived at once**, on `#166 (Draw the twenty-three note kinds Donald chose, and name them)`: Point of Interest,
 Warrior, Smith, Silversmith, Jeweler, Magic items, Inn, Tavern, Trap,
 Orcs, Goblins, Dragon, Undead, Cleric, Thief and Wizard. Donald picked
 twenty-three glyphs and three went unused -- `swords-emblem`,
@@ -88,7 +88,7 @@ has no sword — `sword` and `swords` are Pro, and `khanda` is a Sikh religious
 emblem, wrong in meaning and illegible at twelve pixels — so the Encounter
 note was a drawing of ours, then Donald's choice of **U+2694** rendered from
 whatever font the machine had, and is `crossed-sabres` (Lorc) now: a path like
-every other note, chosen from his game-icons.net archive on `#167`.
+every other note, chosen from his game-icons.net archive on `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`.
 `icons.TEXT_GLYPHS` held U+2694 and is empty since. `docs/109-icon-choices.md`
 carries the history, including what U+2694 cost while it was in use.
 
@@ -120,7 +120,7 @@ with several notes draws the first one's icon and a count.
 * **No keyboard shortcut picks a kind.** Each of the original nine had a letter
   — `E T P X L S D N C` — that nothing in the window ever mentioned. Donald did
   not know they existed and did not want them, so `NoteType.key` and the
-  `keyPressEvent` branch that read it came out on `#166`.
+  `keyPressEvent` branch that read it came out on `#166 (Draw the twenty-three note kinds Donald chose, and name them)`.
 * **Click a square that already has a note** — the same popover, **opened on
   that note**: its type picked, its words in the field, and a **Delete** button
   beside Keep. The first version opened blank and offered no way to remove

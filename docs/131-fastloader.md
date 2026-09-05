@@ -88,7 +88,7 @@ worker.
 | **F** | as found, true drive emulation **off** | `N` | 1 probe |
 
 Cell **E** — "force `Drive8Type=1542` and see whether JiffyDOS starts
-working" — was never run, because pre-flight #1 showed it is already 1542.
+working" — was never run, because pre-flight #1 (Run the Windows half of the release test) showed it is already 1542.
 
 ### Milestones
 
@@ -116,7 +116,7 @@ The KERNAL jiffy clock at `$A0-$A2` is not used and must not be: it is ticked
 by the KERNAL IRQ and a fastloader disables interrupts, so it would under-count
 exactly the interval in question and bias the `N` cells low.
 
-**The CIA #1 TOD cross-check was dropped, not fudged.** `$DC08-$DC0B` read one
+**The CIA #1 (Run the Windows half of the release test) TOD cross-check was dropped, not fudged.** `$DC08-$DC0B` read one
 o'clock and zero tenths at every sample of every run — it does not advance in
 this configuration and measures nothing. What replaces it: `resourceget`
 confirms `AutostartFastTravel=0` and `Speed=100` per run, and the VICE status bar

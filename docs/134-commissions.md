@@ -110,7 +110,7 @@ and walking the whole list without filling three slots writes 254 into `$4ABE`
 
 The Slums hold a side quest that is not a commission and touches no ledger
 byte, so nothing in this document's structures can carry it and the panel draws
-no row for it (#157). It is recorded here because it is the first evidence that
+no row for it (#157 (Ohlo's potion errand does not appear in the Quest Log)). It is recorded here because it is the first evidence that
 area scripts keep quests of their own.
 
 A man in the Slums asks the party to fetch a potion his agent is holding in a
@@ -135,7 +135,7 @@ which are unambiguous because an `ECL` loads at `$9900`:
 | `$9F13`, `$9F1B`, `$9F30`, `$9F3B` | the entry test: 255 in either byte exits, then `[$4A81] == 250` and `[$4A04] == 250` pick his three speeches apart |
 | `$AE1E` | `COMPARE [$4A81], 250 / IF>= / EXIT` — the booth refuses a party that already has the potion or has finished with him |
 
-**The file offsets quoted on `#157` and `#158` do not all point where they
+**The file offsets quoted on `#157 (Ohlo's potion errand does not appear in the Quest Log)` and `#158 (Track the quests the game itself forgets, starting with Ohlo's potion)` do not all point where they
 say.** They were `0x957`, `0x1748`, `0xaa4` and `0x7b8`, and they are not
 measured from one base: `0xaa4` is an offset into the raw file, `0x7b8` an
 offset into the body after the two-byte load address, `0x1748` the body offset
@@ -181,7 +181,7 @@ the interview happened.
 
 **`$4A9A` is shared with a wilderness animation and the collision is a bug in
 the shipped game** — clearing Yarash's pyramid cancels the special council
-meeting for good. `goldbox-bugs.md` #7.
+meeting for good. `goldbox-bugs.md` #7 (Write a C64 party into Amiga Pools of Darkness).
 
 ## Ports
 

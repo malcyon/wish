@@ -166,7 +166,7 @@ the 1541 writes.
 
 `D64.blank()` formats an image; `D64.write_file()` allocates blocks, writes the sector chain
 and links a directory entry, growing the directory chain when eight entries are not enough.
-Written for #118, so a DOS save can be imported without a `.d64` the player already had.
+Written for #118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64), so a DOS save can be imported without a `.d64` the player already had.
 
 **Neither the disk name nor the placement of a file's blocks is something the game insists on.**
 Thirteen of the fifteen save disks are named `" "` and two `"BLANK"`; thirteen space a file's

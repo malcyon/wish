@@ -106,7 +106,7 @@ through the binary monitor, neither of which depends on the display.
 
 Baked into `tools/porlaunch.sh`, which the instance pool launches. It was
 `tools/rungame.sh` until that script was deleted for killing every emulator
-on the machine by name (#143).
+on the machine by name (#143 (tools/rungame.sh kills every emulator by name and takes Donald's own ports)).
 
 ---
 
@@ -2734,7 +2734,7 @@ drain, the NPC flag and the item bytes solved this too, in one search for
 `STA $D02x`.
 
 **Correction: not every cell is multicolour, and the weapon usually is not
-(#123).** "Every colour byte in the specimen is at or above 8" was true of that
+(#123 (The editor draws an icon's weapon at half the resolution the game draws it)).** "Every colour byte in the specimen is at or above 8" was true of that
 one specimen and not of the format: the VIC-II draws a cell in multicolour only
 when bit 3 of its colour byte is set, and with bit 3 clear the cell is ordinary
 hires text -- eight single-width pixels, foreground `colour & 7`, background
@@ -3637,7 +3637,7 @@ actions" penalty goes with her, and `$4A80`, the fifteen-fight cap on the
 slums' wandering monsters, can be reset without limit because `ECL14 $A749`
 does `SAVE 0, [$4A80]` when she dies. Issue 12, PROBABLE on the addresses.
 
-**All four halves confirmed.** `goldbox-bugs.md` #9.
+**All four halves confirmed.** `goldbox-bugs.md` #9 (Finish the packaging icons: .desktop, .icns and a README lockup).
 
 **Read first.** Two corrections to how the project had been reading `ECL14`
 came out of this and both matter beyond it.
@@ -4998,14 +4998,14 @@ The **DOS side is not**: none of the three DOS specimen saves is outdoors, so
 where a DOS save keeps the travel square is unmeasured. PROBABLE by the
 variable-array mapping that already carried `$49C5` and `$49F2`, it is
 `goldbox.dos_savegame.word` at `$49C3`/`$49C4` (it was `savgam_word` when this
-was written; #64 renamed it); the experiment is one DOS save made on the
+was written; #64 (por/dos_savegame.py and por/dos.py hold the same byte map twice) renamed it); the experiment is one DOS save made on the
 overland map, its words at those addresses against the on-screen position.
 
 Build scripts, runner, logs and screenshots: `work/p47/`.
 
 ## Does the arriving script re-place the party? Yes, when it means to
 
-**Hypothesis.** #24's test B could not say whether `ECL15` placed the moved
+**Hypothesis.** #24 (Decode the loaded-files cache, so conversion stops needing a same-area template)'s test B could not say whether `ECL15` placed the moved
 party or the saved square survived, because `(8,14)` was both. The clean test is
 the same build carrying `(8,12)` — a walkable square that is neither.
 
@@ -5031,7 +5031,7 @@ So the two indoor cases are now separated:
   branch is skipped, which is why an ordinary same-area reload never sees the
   boat.
 * **a script with no placing arrival** leaves the saved square alone —
-  PROBABLE, one run: the #24 DOS conversion came up at `(4,3)`, the DOS square,
+  PROBABLE, one run: the #24 (Decode the loaded-files cache, so conversion stops needing a same-area template) DOS conversion came up at `(4,3)`, the DOS square,
   where New Phlan's own arrival is `(15,1)`. The settling experiment for a
   second area: move a save onto the Slums (`ECL14`) with a square that is
   neither the template's nor an arrival, and read `$C04B`.
@@ -5057,7 +5057,7 @@ Build, runner, log and screenshots: `work/p46/`.
 
 ## The hidden-site paint does not survive a reload, and the player can see it
 
-**Hypothesis.** The #47 loose end — walk-in `$8C00` at 647/648 against the disk,
+**Hypothesis.** The #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too) loose end — walk-in `$8C00` at 647/648 against the disk,
 load at 648/648, same flag bytes — is the hidden-site paint being lost on load,
 and it reaches the screen. The alternative was timing: the walk-in capture was
 taken at a different moment in the arrival.
@@ -5071,7 +5071,7 @@ painted control state was manufactured first — a seam bounce, east into window
 issue's `W1.D64` at `(5,2)`, sixteen squares away — every travel step risks a
 random encounter and the run took none. One session, pool slot 1, `work/p49/`.
 
-**Result. CONFIRMED at the screen; `goldbox-bugs.md` #10.** The camp byte
+**Result. CONFIRMED at the screen; `goldbox-bugs.md` #10 (Finish the high-level test party).** The camp byte
 `$8CD2` (= `$8C00` + 11·18 + 12):
 
 | stage | byte |
@@ -5100,14 +5100,14 @@ entries); a step-and-redump would confirm.
 
 Runner, log, `PRE.png`/`POST.png` and the phase-2 `$8C00` dump: `work/p49/`.
 
-## Why the converted C64 character reached DOS with no items (#56)
+## Why the converted C64 character reached DOS with no items (#56 (Why did a converted C64 character reach DOS with no items?))
 
-**Hypothesis.** #26's converted character arrived in DOS owning nothing either
+**Hypothesis.** #26 (Write a DOS save, not just read one)'s converted character arrived in DOS owning nothing either
 because the C64 party used had nothing, or because the
 `write_dos_save` → `items_for_slot` → `item_from_c64` path drops items.
 
 **Result 1. The fixture owned nothing; the path drops nothing. Both
-CONFIRMED.** The character in #26's end-to-end run was `savedgame0.bin`'s
+CONFIRMED.** The character in #26 (Write a DOS save, not just read one)'s end-to-end run was `savedgame0.bin`'s
 BRUTUS, and both places a C64 save can hold his items are all zero: the
 `$5900` item area's slot-0 block (0 non-zero bytes of 256) and the record's
 own inventory at `0x120`–`0x21F` (0 of 256). `party6_savedgame0.bin` is the
@@ -5130,7 +5130,7 @@ is the evidence that it read every chain correctly.
 
 **Result 3. The garbage no-items sheet is NOT the game's display for any
 character who owns nothing — it needs a record whose bytes disagree with the
-empty list.** #26 run 4 said "the game's own behaviour for a character who
+empty list.** #26 (Write a DOS save, not just read one) run 4 said "the game's own behaviour for a character who
 owns nothing"; two in-game controls narrow that:
 
 * a character freshly rolled in the DOS game, viewed before buying anything,
@@ -5144,8 +5144,8 @@ owns nothing"; two in-game controls narrow that:
 So a player cannot reach the garbage unaided by either route. What does show
 it, reproduced today under the current writer: the zero-item fixture BRUTUS
 converted and loaded reads `WEAPON 254 PASSS`, `DAMAGE 0D8-128`, `THAC0 148`,
-`ENCUMBRANCE 60540` (`l1_sheet.png`, identical to #26's `exp3_view.png`) —
-and the #26 control (a native character whose `.ITM` was emptied by hand)
+`ENCUMBRANCE 60540` (`l1_sheet.png`, identical to #26 (Write a DOS save, not just read one)'s `exp3_view.png`) —
+and the #26 (Write a DOS save, not just read one) control (a native character whose `.ITM` was emptied by hand)
 showed the same. Both are records that imply gear the item list does not
 carry; the engine's own no-item encoding differs from ours somewhere.
 
@@ -5165,10 +5165,10 @@ but a converted naked character grows a garbage item on his first resave.
 
 Conversions, resaves, runner scripts and screenshots: `work/p56/`.
 
-**Answered by "A converted character who owns nothing (#62)" below: no record
+**Answered by "A converted character who owns nothing (#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item))" below: no record
 byte triggers it. The trigger is the zero-length `.ITM` file beside it.**
 
-## A converted character who owns nothing (#62)
+## A converted character who owns nothing (#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item))
 
 **Hypothesis.** The converted zero-item record differs from the engine's own
 somewhere the sheet's derived lines read — candidates `hands_used` at `0x100`
@@ -5236,12 +5236,12 @@ entries are now measured against a character carrying none as well —
 `effect_chain`, `unnamed_0ab`, `icon_colours` and `heap_104` are carried
 through a resave unread in both cases. The portrait ids remain a known
 cosmetic drop. **Two of those four have since stopped being evidence of
-safety**: `icon_colours` (#112) and `unnamed_0ab` (#216) are both fields the
+safety**: `icon_colours` (#112 (A converted DOS character's combat icon has no colours)) and `unnamed_0ab` (#216 (Every converted DOS character carries the same identity byte at 0x0AB)) are both fields the
 engine carries unread *because* it trusts whoever made the character, and both
 are now written rather than zeroed — see "Two same-named characters and one
 byte" below.
 
-**Two of those names were wrong and are corrected here (#57).** What this
+**Two of those names were wrong and are corrected here (#57 (Carry the character portrait across ports)).** What this
 paragraph called `heap_0c1` is `icon_colours`, the combat icon's six colour
 pairs; what it called `icon_choice` is four bytes, `portrait_head` and
 `portrait_body` for the sheet portrait and `icon_head` and `icon_body` for the
@@ -5253,7 +5253,7 @@ icon has no colours)`.
 
 Runner scripts, conversions, resaves and screenshots: `work/p62/`.
 
-## Mapping the DOS saved game (#59)
+## Mapping the DOS saved game (#59 (Map the DOS saved game, not just the character record))
 
 **Hypothesis.** `SAVGAM?.DAT`'s 8016 unattributed bytes can be mapped the way
 the C64 save was: differential analysis, one known in-game change at a time,
@@ -5261,7 +5261,7 @@ then bisection with hand-built saves the game is made to load.
 
 **Specimens.** Donald's slots A (New Phlan, area 0), B (Sokol Keep, 21) and
 J (the Slums, 20); four saves taken one action apart (run 1); two engine
-resaves of converted parties from #56; and nine hand-built variants V1-V12.
+resaves of converted parties from #56 (Why did a converted C64 character reach DOS with no items?); and nine hand-built variants V1-V12.
 All artefacts in `work/p59/`. `docs/141-dos-savegame.md` is the resulting
 layout; `goldbox/dos_savegame.py` reads it.
 
@@ -5291,14 +5291,14 @@ ground truth):
 The clock is the C64's, at the C64's addresses: digit words `$49C6`-`$49CB`,
 sub-minute / units / tens / hour / day / month. A=10:02 day 16, B=1:22,
 J=10:56, all as loaded. Saving costs no time on DOS (it costs a minute on
-the C64). **#58's decode is done**: carry the six words like the flags.
+the C64). **#58 (Decode the DOS clock, so converted saves keep the time of day)'s decode is done**: carry the six words like the flags.
 
 **Result 3. Party size is `$503E` and byte 12808, twice each.** The one word
 the engine changed when a six-member template carried a one-member party was
 `$503E` (6→1), with byte 12808 alongside; Curse's and Secret's six-member
 defaults both read 6. Not a C64 address — C64 saves hold 0 there.
 
-**Result 4. The naive #60 recipe is refuted; the real one is nine
+**Result 4. The naive #60 (Put a converted party where it actually stood, not where the template stood) recipe is refuted; the real one is nine
 writes, and this bisection found seven of them.** Header byte + `$49C5` +
 `$49F2` + square dies with `Unable to load geo in Load3DMap.` and an exit to
 DOS. Bisection (V1-V12, one boot per pair):
@@ -5325,17 +5325,17 @@ dax 2, area 20, `$5012` = 2, triple (2,4,1), CHRDAT letters rewritten,
 buffer refilled. CONFIRMED for area 0 → area 20; a second pair would firm
 the general claim.
 
-**The blind spot, found by #60 on 2026-08-25.** Every one
+**The blind spot, found by #60 (Put a converted party where it actually stood, not where the template stood) on 2026-08-25.** Every one
 of V1-V12 was built on slot J and carried **J's** ECL buffer — 0 bytes
 differ over 5121-12800 in all twelve, against 7439 differing from A. So the
 buffer was never a variable in this bisection and no variant could have
 shown it mattered; V11 stood in the Slums with the *Slums'* script staged,
 not area 0's. The control this run lacked is `work/p60/run2` X1 — slot A,
 all seven writes above, its own buffer left alone — which dies in
-`Load3DMap`. The buffer is write **7** of nine, and #60 was implemented
+`Load3DMap`. The buffer is write **7** of nine, and #60 (Put a converted party where it actually stood, not where the template stood) was implemented
 against the seven and its first attempt to move a save onto a fresh template
 died exactly there. The recipe as it stands is in `docs/141-dos-savegame.md`
-"The recipe for moving a save to a different area (#60)", formatted from
+"The recipe for moving a save to a different area (#60 (Put a converted party where it actually stood, not where the template stood))", formatted from
 `goldbox.dos_savegame.RETARGET_WRITES`.
 
 **Result 5. The variable array is sparse and the tail is mostly not state.**
@@ -5351,18 +5351,18 @@ are zero words on DOS — the cache's DOS descendants are `$4AFA`-`$4AFF` +
 `$5012`. No GEO image is stored in the save. No pointer to the ECL buffer
 exists in the file (none needed; the buffer is at a fixed offset).
 `tools/dosbox.py`'s `dax_unpack` IndexErrored on `ECL2.DAX` block 9 during
-this run and the block was skipped — since diagnosed and fixed (#65: two
+this run and the block was skipped — since diagnosed and fixed (#65 (dax_unpack raises IndexError on ECL2.DAX block 9): two
 real faults in the reader, zero failures over 11 654 blocks after; the block
 itself was always well-formed).
 
 **Left open.** ~30 live words unnamed (`$49F0`, `$49FC`-`$49FF`,
 `$4FC0`-`$4FD3`, `$5200`-`$520F`), bytes 12804-12807, outdoor saves
-(no specimen at the time — see the next entry), #57's portrait path.
+(no specimen at the time — see the next entry), #57 (Carry the character portrait across ports)'s portrait path.
 
-## The DOS saved game outdoors (#59, the outdoor half)
+## The DOS saved game outdoors (#59 (Map the DOS saved game, not just the character record), the outdoor half)
 
 **Hypothesis.** A DOS save made on the overland travel map differs from an
-indoor one the way the C64's does (#47): `$49E6` = 0, the square in
+indoor one the way the C64's does (#47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)): `$49E6` = 0, the square in
 `$49C3`/`$49C4`, and some analogue of the SQRDATA substitution in whatever
 the DOS load path keys on.
 
@@ -5386,7 +5386,7 @@ step east, `21,28 E 10:15` next day), with the engine's `CHRDAT` files, the
 screenshots and `run1.py`. `run2.py` is the DOSBox-X debugger pass on save
 D; `run2.log` its output.
 
-**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50
+**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50 (Lift the wilderness refusal from the DOS save converter)
 blocker, settled.** (7,29) → (7,28) → (8,28) against the three screens;
 world x = local x + 13 for window 26, y unchanged, exactly the C64 seam
 arithmetic. Live corroboration: `BPM` on `$49C3`'s low byte, one east step,
@@ -5438,7 +5438,7 @@ save has ever held -- and the engine's own `ENCAMP > SAVE` replaced it with
 (0,$FFFF,$FFFF) at three squares, 3 of 3. The triple outdoors is written by
 the engine rather than inherited. The same run answered the other half: a save
 carrying the wrong triple **loaded and drew anyway**, `20,29 N 01:22` on the
-status line, so the outdoor load path does not read it at all (#59, #190).
+status line, so the outdoor load path does not read it at all (#59 (Map the DOS saved game, not just the character record), #190 (A C64 party standing on the travel grid cannot be written into a DOS save)).
 
 Also no longer unnamed: `$5079`-`$507D` are partly named -- `$507A`-`$507C`
 are live only outdoors, deterministic and position-dependent, and are **not**
@@ -5448,7 +5448,7 @@ different lineages) -- and byte 12805 carries the low byte of `$5200`, which
 unnamed; the counts and the whole map are `docs/141-dos-savegame.md`, which is
 the document that gets kept current.
 
-Moving an outdoor save to a new area has still not been driven; #50 owns the
+Moving an outdoor save to a new area has still not been driven; #50 (Lift the wilderness refusal from the DOS save converter) owns the
 converter form.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
@@ -5457,7 +5457,7 @@ converter form.
 Secret of the Silver Blades, and `2` is COMBAT there exactly as `$6E11 = 2` is
 in Pool of Radiance.** CONFIRMED for Curse, PROBABLE for Silver Blades. It is
 the last address `automap/actions.py` needed and the reason all five live
-action buttons refused on both titles (#29).
+action buttons refused on both titles (#29 (The live reader uses Pool of Radiance's addresses on every title)).
 
 **It is not derivable and it was never going to be.** The save image moved
 `$4900` → `$4B00` between the two games; the flag moved `$6E11` → `$7F11`,
@@ -5533,7 +5533,7 @@ later titles, so the five live actions no longer refuse there and
 `LINKER` has not been read, and a title with no gate must refuse rather than
 read somebody else's byte and call whatever it finds "not combat".
 
-## Measured versus inherited: the DOS saved game's last unnamed bytes (#59)
+## Measured versus inherited: the DOS saved game's last unnamed bytes (#59 (Map the DOS saved game, not just the character record))
 
 Donald's ruling — no template, block on not understanding — turns every
 undecoded byte of `SAVGAM?.DAT` into a blocker, so the question stopped being
@@ -5588,14 +5588,14 @@ The inherit list this leaves — three groups with an experiment against each,
 and the byte count — is the table in `141-dos-savegame.md`. Scripts:
 `work/p59-vars/corr.py`, `partition.py`, `inherit.py`, `crossport.py`.
 
-## What the C64 engine writes when a character is dropped (#104)
+## What the C64 engine writes when a character is dropped (#104 (A converted DOS party arrives with the template save's spare characters still in it))
 
 **There is no party count. A slot is empty exactly when the first byte of its
 record is zero, and dropping a character writes that one byte.**
 
 The question mattered because a DOS save holds six characters and a C64 save
 eight, so every conversion leaves at least two of the template's slots
-unwritten — and `#104` could not be fixed until somebody knew what "unwritten"
+unwritten — and `#104 (A converted DOS party arrives with the template save's spare characters still in it)` could not be fixed until somebody knew what "unwritten"
 should look like. Writing zeros over the whole slot was the obvious guess, and
 `.claude/rules/conversions.md`'s standard forbids exactly that guess.
 
@@ -5604,7 +5604,7 @@ should look like. Writing zeros over the whole slot was the obvious guess, and
 190 `.d64` images under `work/` carry a readable `SAVEDGAME0` — party sizes 1,
 2, 6 (×187) and 8. For every byte of the 1024-byte header `$4900`-`$4CFF`,
 none equals the party size in all 190; nor the size minus one, nor the highest
-occupied slot index, nor twice the size. `$49FC` behaves as `#104` says: 2 in
+occupied slot index, nor twice the size. `$49FC` behaves as `#104 (A converted DOS party arrives with the template save's spare characters still in it)` says: 2 in
 the one-character save, 2 in the six-character ones, 6 in the two-character
 one.
 
@@ -5727,7 +5727,7 @@ settled 53, and is the obvious next measurement.
 
 ---
 
-## The 68000 disassembler, and the `.pc` loader it was written to read (#148)
+## The 68000 disassembler, and the `.pc` loader it was written to read (#148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler))
 
 `work/amiga/m68dis.py` went with `work/`, and `docs/124-amiga-port.md` phase 1
 had been stopped on it since: "read the `.pc` loader" needs a 68000
@@ -5857,7 +5857,7 @@ Nothing about `goldbox.amiga.PodWriter` moves: it leaves both counts zero, so
 PoD reads 404 bytes and stops, and the 80 bytes after them are padding rather
 than a length the game wants.
 
-## Fast Travel out of New Phlan loses the wall art, and the loader never notices (#156)
+## Fast Travel out of New Phlan loses the wall art, and the loader never notices (#156 (Warping from the Slums to New Phlan draws New Phlan with the Slums' walls))
 
 Donald reported that warping from the Slums to New Phlan draws New Phlan with
 corrupted wall art, twice. It reproduces, and the cause is one byte of the
@@ -6031,7 +6031,7 @@ is why the collision never shows in ordinary play.
   and only becomes New Phlan's 10 after a step — so `ECL00` writes it somewhere
   other than entry 4. Nothing here depends on it.
 
-## The item type table's damage bonus is signed (#188)
+## The item type table's damage bonus is signed (#188 (A vial of holy water is exported as doing 1d1+255 damage))
 
 A YAML export described a vial of holy water as doing `1d1+255` damage, and
 Silver Blades' canary — a mine-gas detector, not a weapon — read the same. Both
@@ -6101,7 +6101,7 @@ of unreachable record.
 
 ---
 
-## The byte that moves a THAC0 when darts are readied (#202)
+## The byte that moves a THAC0 when darts are readied (#202 (Name record offset 0x0EC, which is what moves a THAC0 when darts are readied))
 
 **Question.** `goldbox/derive.py` recomputed every cached combat number in
 every save the player owns except one: MALCYON's THAC0 improved by a point
@@ -6227,7 +6227,7 @@ the other one.
 
 ---
 
-## Walking out of the Kobold Caves drops Princess Fatima; fast travelling out keeps her (#180)
+## Walking out of the Kobold Caves drops Princess Fatima; fast travelling out keeps her (#180 (What the Kobold Caves exit does to an NPC in the party is not understood, and Fast Travel skips it))
 
 **Hypothesis.** `ECL0D $9A9D`, the only exit in the thirty area scripts that
 touches who is in the party, removes the NPC travelling with the party — and a
@@ -6353,7 +6353,7 @@ the work it implies is not scheduled here.
 
 ---
 
-## The NPC marker was never a marker, and two of its eight bytes are Curse's dual class (#224)
+## The NPC marker was never a marker, and two of its eight bytes are Curse's dual class (#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class slot))
 
 **Hypothesis.** `goldbox/layout.py` called `0x0B9` and `0x0BA` part of an
 eight-byte NPC marker; `#18 (Measure Curse's trainer so Level Up works there)`
@@ -6471,11 +6471,11 @@ the eight disagree, so a dual-classed Curse, Silver Blades or Gateway character
 real save has been seen in that state. Measured on a real record with the pair
 set to slot 3, level 5 and nothing else changed.
 
-## Two same-named characters and one byte: `unnamed_0ab` (#216)
+## Two same-named characters and one byte: `unnamed_0ab` (#216 (Every converted DOS character carries the same identity byte at 0x0AB))
 
 `goldbox.dos.write` used to leave DOS `0x0AB` zero in every record it made,
 on the grounds that the byte was unattributed and the engine carried our zero
-through a resave unread (#69). The question `#216 (Every converted DOS
+through a resave unread (#69 (No WRITE_UNSOURCED zero has been tested during combat)). The question `#216 (Every converted DOS
 character carries the same identity byte at 0x0AB)` asked was whether that
 costs a player anything, and it does: **two converted characters of the same
 name cannot both be in one party**, and the game says nothing when it refuses
@@ -6502,7 +6502,7 @@ je   duplicate
 ```
 
 Both reads use the same displacement with `di` reloaded between them, which is
-what the description of #216 had transcribed as the same operand twice.
+what the description of #216 (Every converted DOS character carries the same identity byte at 0x0AB) had transcribed as the same operand twice.
 `131A:0C10` is an exact comparison of two length-prefixed strings — `repe
 cmpsb` over `min(len)` bytes, then the lengths — so it is the whole name, not a
 prefix and not case-folded.
@@ -6568,7 +6568,7 @@ engine never compares.
 **What it does not give, said out loud.** The engine's byte is stable per
 character across a play session and ours is not: slots A and B hold the same
 six characters saved twice, and their derived bytes differ because their
-experience does. Inside one converted save that does not matter — #69
+experience does. Inside one converted save that does not matter — #69 (No WRITE_UNSOURCED zero has been tested during combat)
 established that the engine never rewrites this byte — so the exposure is a
 player who converts the same party into two slots at two points in play and
 then moves a character between them, where the engine would refuse a duplicate
@@ -6587,10 +6587,10 @@ character, export that character to a DOS `.CHA` through the game's own
 `ADD CHARACTER TO PARTY` on both ports, and see whether the DOS `0x0AB` is one
 of the two bytes.
 
-### The lesson, which is #112's again
+### The lesson, which is #112 (A converted DOS character's combat icon has no colours)'s again
 
 "Carried through a resave unread" was read as evidence that a zero is safe.
-For `icon_colours` it turned out to be evidence of a defect (#112); for
+For `icon_colours` it turned out to be evidence of a defect (#112 (A converted DOS character's combat icon has no colours)); for
 `unnamed_0ab` it has now turned out the same way. The engine not touching a
 field is not the engine not *needing* it — it is the engine trusting whatever
 created the character to have got it right.

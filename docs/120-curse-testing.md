@@ -214,7 +214,7 @@ not in the save image at all.
 | area byte | `$4BC2` | **`$4DC2`** (payload `+$2C2`), read `$81` | PROBABLE |
 | resident `GEO` block | `$0400` | **`$0400` — unchanged** | CONFIRMED |
 | `LIBRARY`'s `GEO` stem digits at `$2714` | — | **not there**; `$2710` is code. The `docs/116` figure came from the file and does not hold live. Nothing depends on it | — |
-| combat mode flag | `$6E11` | **`$7F11`** | CONFIRMED. `LINKER` is resident at `$2D00` and begins `LDA $7F11`; its name table at `$2D42` is Pool of Radiance's entry for entry, so `2` is still COMBAT. Sampled world `1` / camp `9` / roster `0`. `Game.mode_flag` is set and the five live actions no longer refuse (#29) |
+| combat mode flag | `$6E11` | **`$7F11`** | CONFIRMED. `LINKER` is resident at `$2D00` and begins `LDA $7F11`; its name table at `$2D42` is Pool of Radiance's entry for entry, so `2` is still COMBAT. Sampled world `1` / camp `9` / roster `0`. `Game.mode_flag` is set and the five live actions no longer refuse (#29 (The live reader uses Pool of Radiance's addresses on every title)) |
 
 **How `$C04B` was earned**, because it is the one that a "check `$4BC0`" task
 would have got wrong in both directions. `$4BC0`–`$4BC2` *is* the position
@@ -242,7 +242,7 @@ still writes only to `work/`, never to the player's own disks.
 
 ### 3.1 The item area, and what the last four pages really are
 
-**The item area is Pool of Radiance's, in Curse too. CONFIRMED (#32).** Ten
+**The item area is Pool of Radiance's, in Curse too. CONFIRMED (#32 (One Curse session, to get a party with items)).** Ten
 items bought in a Tilverton shop land at payload `$1500` -- `$1000 + 5 x $100`,
 the buying character's slot -- and `goldbox/items.py` reads them with no change
 at all: `SILVER MIRROR` 1.0 lb 25 gp seven times, `FLASK OF OIL` 2.5 lb 20 gp
@@ -418,9 +418,9 @@ that rip**. What is left:
 |---|---|---|
 | the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
 | the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/games.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
-| ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32). A save disk the game wrote carrying them is `work/issue32/specimens/D-curse-party-with-items.D64`, which is scratch and will not survive; the measurements are in §3.1 below |
+| ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32 (One Curse session, to get a party with items)). A save disk the game wrote carrying them is `work/issue32/specimens/D-curse-party-with-items.D64`, which is scratch and will not survive; the measurements are in §3.1 below |
 | ~~Curse's level caps are not measured~~ **cleared** | ceilings `GEN $15A1`, racial limits `$15A9` (rows for races 1-5; race 6 and above skip the check at `$155B`), experience `$136E`, hit dice `$161E` — all in `goldbox/levels.py` and asserted in `tests/test_titletables.py` | done. `tools/coldread.py levels curse-of-the-azure-bonds` reads them off the disk again in one command |
-| ~~the spellbook's width in Curse~~ **cleared** | it is **13**, and no specimen was needed: `CAMP $2A25` walks spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id 100, and reads the mask as `TYA / LSR x3 / TAX / LDA $7C78,X` — id 100 puts X at 12, so the game itself reads `0x078`-`0x084` | done (#31). Whether `0x085`-`0x087` are also mask stays UNKNOWN in Curse, whose `GEN` has no clear loop; thirteen is what the game reads and no more is claimed |
+| ~~the spellbook's width in Curse~~ **cleared** | it is **13**, and no specimen was needed: `CAMP $2A25` walks spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id 100, and reads the mask as `TYA / LSR x3 / TAX / LDA $7C78,X` — id 100 puts X at 12, so the game itself reads `0x078`-`0x084` | done (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)). Whether `0x085`-`0x087` are also mask stays UNKNOWN in Curse, whose `GEN` has no clear loop; thirteen is what the game reads and no more is claimed |
 | Curse's `$200` attribute plane — indoor bit and script id | GUESS and UNKNOWN, tier 2 | needs Curse's ECL decoded, which nothing else depends on |
 
 **On the archives.** The disks are under `/home/donald/c64/All Games/`. Use

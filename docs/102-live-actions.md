@@ -15,7 +15,7 @@ and Silver Blades.
 player saves in the game as usual. That keeps the losslessness promise intact:
 `wish` still never writes a save file except through the editor's own save path.
 
-## Which title, and the one address that stops it (#29)
+## Which title, and the one address that stops it (#29 (The live reader uses Pool of Radiance's addresses on every title))
 
 **Every address an action writes comes from the `goldbox.games.Game` descriptor.**
 The slot area, the item area and the roster page are payload offsets that are
@@ -265,7 +265,7 @@ The misses are the KERNAL interrupt path (`$EA34`, `$EA93`, `$EACC`-`$EACF`,
 `$FFEA`), the BASIC ROM's floating-point routines (`$BA13`-`$BA39`,
 `$BC59`-`$BC6C`), and occasionally the game's own code. `FastTravelBar.refresh`
 runs once a second, so the button greys itself out for one refresh about once
-every thirty seconds with nothing happening in the game -- `#152`. It extends
+every thirty seconds with nothing happening in the game -- `#152 (The Fast Travel button greys itself out for a second while the party stands still)`. It extends
 P36 in [50-experiments.md](50-experiments.md), which measured 2.2% at 400
 samples and whose number nobody had connected to the button.
 
@@ -273,7 +273,7 @@ samples and whose number nobody had connected to the button.
 read**: `actions._read` swallows the exception, `mode()` answers None and
 `Action.legality` says "the machine is not readable right now", so a failed read
 greys the button too -- the same symptom from a different cause, and the reason
-this and `#151` look alike from the outside and are not the same fault.
+this and `#151 (The automapper loses VICE and cannot get back in, because it never hangs up the connection it gave up on)` look alike from the outside and are not the same fault.
 
 **`FastTravelBar` does not use `_OnePoll`** and reads `$6E11` three times per
 refresh where `ActionBar` reads it once.

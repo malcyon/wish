@@ -337,7 +337,7 @@ offered CLERIC:
 | HUMAN | CLERIC, FIGHTER, MAGIC-USER, THIEF |
 | HALF-ELF | CLERIC, FIGHTER, MAGIC-USER, THIEF, CLERIC/FIGHTER, CLERIC/FIGHTER/MAGIC-USER, CLERIC/MAGIC-USER, FIGHTER/MAGIC-USER, FIGHTER/THIEF, FIGHTER/MAGIC-USER/THIEF, MAGIC-USER/THIEF |
 
-**So `#84`'s `dwarfc4` is a dwarf *fighter*, not a dwarf cleric** — its record
+**So `#84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)`'s `dwarfc4` is a dwarf *fighter*, not a dwarf cleric** — its record
 reads `class_levels={'fighter': 1}`, and the name is what is wrong. `halfl5`
 and `elf6` are fighters as well.
 

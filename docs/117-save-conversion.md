@@ -20,7 +20,7 @@ save written from DOS fields loads and plays** — no checksum, no validation,
 not a byte rewritten by the loader (obstacle 7). What is left is conversion
 work, field by field, not a question about whether the game will accept it.
 The plan below was written for one direction — DOS into C64 — and that
-narrowing was what made it tractable. **The reverse now exists too** (#26):
+narrowing was what made it tractable. **The reverse now exists too** (#26 (Write a DOS save, not just read one)):
 `goldbox.dos.write` builds a DOS character record and its `.ITM` from the neutral
 record, `goldbox.dos.new_dos_save` writes a whole C64 save into a DOS save
 directory owing nothing to another save, and DOS Pool of Radiance loads and
@@ -44,7 +44,7 @@ flags sit at the *same address* on DOS. See obstacle 1.
 
 That narrowing was worth more than it looked, and it was right at the time:
 **no DOS encoder** meant the DOS format only had to be decoded far enough to
-source what the C64 needs. #26 reversed it deliberately — the encoder now
+source what the C64 needs. #26 (Write a DOS save, not just read one) reversed it deliberately — the encoder now
 exists, and with it the round trip the narrowing had retired: a DOS record
 read into the neutral middle and written out again is byte-for-byte the
 original outside the named live-heap bytes, 24 of 24.
@@ -242,7 +242,7 @@ twelve of them.
 | `0x098` fighting level set (1 byte) | `reclac_player_values`: `attackLevel = SkillLevel(Fighter)`, else 1 | **explained** |
 | `0x10F` roster armour class recomputed (1 byte) | `reclac_player_values`: `ac = base_ac`, then dexterity and readied-item bonuses | **explained** |
 | `0x073` `char_class` zeroed (1 byte) | the DOS routine *copies* the class byte straight across | **not explained** |
-| `0x0FE`, `0x0FF` portrait head and body zeroed (2 bytes) | the DOS routine copies `head_icon` and `weapon_icon` straight across | **explained since #57**: they are not the same field. `0x0FE`/`0x0FF` are the **sheet portrait**, the ids of the `HEAD<xx>` and `BODY<xx>` files, and only Pool of Radiance has one — from Curse onwards the pair is gone from the record, so there is nothing for the importer to carry. The combat icon at `0x220` passes through untouched because that is the field the DOS routine's `head_icon`/`weapon_icon` correspond to. (The earlier reading here, that `0x0FE`/`0x0FF` index `CHARPIC00`, was wrong: `CHARPIC00` is the icon charset and the portrait is a disk file.) |
+| `0x0FE`, `0x0FF` portrait head and body zeroed (2 bytes) | the DOS routine copies `head_icon` and `weapon_icon` straight across | **explained since #57 (Carry the character portrait across ports)**: they are not the same field. `0x0FE`/`0x0FF` are the **sheet portrait**, the ids of the `HEAD<xx>` and `BODY<xx>` files, and only Pool of Radiance has one — from Curse onwards the pair is gone from the record, so there is nothing for the importer to carry. The combat icon at `0x220` passes through untouched because that is the field the DOS routine's `head_icon`/`weapon_icon` correspond to. (The earlier reading here, that `0x0FE`/`0x0FF` index `CHARPIC00`, was wrong: `CHARPIC00` is the icon charset and the portrait is a disk file.) |
 
 `docs/116` also saw saving throws change where an item bonus had been baked in,
 and **thief skills re-derived rather than copied**. Both are `ReclacClassBonuses`
@@ -320,7 +320,7 @@ Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 |---|---|
 | `CHRDAT<slot><1..6>.SAV` | one character of the saved party. **285 bytes** |
 | `<NAME>.CHA` | one *exported* character. **The same 285 bytes, same layout** — the export is the slot copied out, not a reduced form. The only systematic difference is that the item count at `0x0C7` is zeroed |
-| `<stem>.ITM` | that character's items, **63 bytes each**, no header. **The suffix is per title and so is the stride** (#113): Curse writes `.SWG` and Silver Blades `.STF` at **67** bytes, measured on a played game — 804 bytes for 12 items, which 63 does not divide. Until that was found, `read_character` returned an item *count* with an **empty item list** and no error for both titles |
+| `<stem>.ITM` | that character's items, **63 bytes each**, no header. **The suffix is per title and so is the stride** (#113 (Play DOS Curse far enough to save a party with items)): Curse writes `.SWG` and Silver Blades `.STF` at **67** bytes, measured on a played game — 804 bytes for 12 items, which 63 does not divide. Until that was found, `read_character` returned an item *count* with an **empty item list** and no error for both titles |
 | `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none. One effect id, four payload bytes and a four-byte far pointer to the next record, which the loader rebuilds -- see "The `.SPC` effects file" |
 | `CHARLIST.TXT` | the names the "add character" menu offers. Plain text, CRLF |
 | `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1. The header byte is the `GEO`/`ECL` `.DAX` file number of the current area, 1–8; see obstacle 2 |
@@ -352,7 +352,7 @@ after shifts by `0x46`. A DOS reader is per title. What does hold across the
 family is the item stride (63) and the effect stride (9), Pool of Radiance
 through Pools of Darkness and across into the Savage Frontier pair.
 
-### All four titles read, one row each (#53)
+### All four titles read, one row each (#53 (Read and write DOS saves for Curse, Silver Blades and Pools of Darkness))
 
 The four records are **the same field sequence at four widths**. Nothing is
 reordered and nothing is inserted out of turn; what changes is how wide a
@@ -749,9 +749,9 @@ from somewhere.** This is the whole list.
 | `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_layout.py` |
 | `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dosbox.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
-| `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 |
-| `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 step 3) |
-| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is refused**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57) |
+| `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 (A converted save says ANIMATE00 is resident and carries whatever the template had there) |
+| `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3) |
+| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is refused**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57 (Carry the character portrait across ports)) |
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
@@ -812,12 +812,12 @@ file offset of ECL address A  =  1 + 2 × (A − $4900)
 ```
 
 2560 entries cover `$4900`-`$52FF`; the remaining 8016 bytes are mapped in
-[`141-dos-savegame.md`](141-dos-savegame.md) (#59): 7680 of them are the
+[`141-dos-savegame.md`](141-dos-savegame.md) (#59 (Map the DOS saved game, not just the character record)): 7680 of them are the
 current area's ECL script, byte-identical to its `ECL<n>.DAX` block from byte
 2 on, and the rest is the square, the party size, the `CHRDAT` filename table
 the engine loads the party from, and UI scratch. **The script buffer is live
 on load** — this said it was "reloaded from the DAX on load, dead data for a
-converter", and #60 refuted it: a save carrying the wrong area's script dies
+converter", and #60 (Put a converted party where it actually stood, not where the template stood) refuted it: a save carrying the wrong area's script dies
 in `Load3DMap` however many variables it writes, so writing the target's own
 script is one of the retarget's writes. The mechanism is in the Curse reimplementation:
 `vm_SetMemoryValue` in `work/coab/engine/ovr008.cs` ends in
@@ -846,7 +846,7 @@ offset:u32 compSize:u16 rawSize:u16` entries, and a ByteKiller-style backwards
 bit-cruncher transcribed from the routine at `program` hunk27`+$7346`. All 843
 blocks of all 23 **Amiga** `.dax` files decompress to their stated size with a
 zero checksum — the DOS container is a different format read by
-`goldbox.dos_savegame`, and that sentence read as a claim about both until #65
+`goldbox.dos_savegame`, and that sentence read as a claim about both until #65 (dax_unpack raises IndexError on ECL2.DAX block 9)
 spent an investigation on the contradiction. There is no `DAxF` magic and no
 `POOLDATA` volume; that was invented.
 
@@ -1086,10 +1086,10 @@ checking was better than the question:
 
 **3. The clock is read, and this said it was not.** `$49C6`-`$49CB` is six
 digits on the C64 and the DOS save keeps the same six as words at the same
-address; `apply_clock` copies them digit for digit in both directions (#58,
-#67). The paragraph that stood here said the converter left the template
+address; `apply_clock` copies them digit for digit in both directions (#58 (Decode the DOS clock, so converted saves keep the time of day),
+#67 (Carry the clock and the party count into a converted DOS save)). The paragraph that stood here said the converter left the template
 save's clock alone — which is what put a party that saved at 10:15 in the
-game reading 21:15, and #103 is where that was found and fixed.
+game reading 21:15, and #103 (A DOS party converted to the C64 arrives at the template save's time of day) is where that was found and fixed.
 
 ## Order of work
 
@@ -1119,7 +1119,7 @@ game reading 21:15, and #103 is where that was found and fixed.
 6. **The party's square and area — done.** `goldbox.dos_savegame.position` and
    `area_id`; the facing is halved.
 7. **An editor menu item.** Built, 2026-08-24, behind
-   `WISH_EXPERIMENTAL_DOS_IMPORT` and `WISH_EXPERIMENTAL_EXPORT` — `#23`'s
+   `WISH_EXPERIMENTAL_DOS_IMPORT` and `WISH_EXPERIMENTAL_EXPORT` — `#23 (A conversion window for DOS saves, under File ▸ Import)`'s
    dialog is `editor/dosimport.py`, the export side is `editor/exports.py`,
    and `wish/window.py` builds the submenu inside the flag's `if` rather than
    greying it out. `goldbox.dos.convert_save` is the whole
@@ -1198,14 +1198,14 @@ for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
 **So the template no longer has to stand in the DOS party's area.** What
 `convert_save` still refuses is six areas of the thirty, where the answer
 would be a guess: the four that load no map and the two whose script picks its
-map at run time. The travel-grid refusal came off in #50: the C64 side of the
+map at run time. The travel-grid refusal came off in #50 (Lift the wilderness refusal from the DOS save converter): the C64 side of the
 outdoor recipe was already CONFIRMED — slot 4 = the `SQRDATA` number in place
 of slot 2, the travel square in `$49C3`/`$49C4`,
-`docs/140-loaded-files-cache.md` — and #59's outdoor pass measured the DOS
+`docs/140-loaded-files-cache.md` — and #59 (Map the DOS saved game, not just the character record)'s outdoor pass measured the DOS
 side against three engine-written overland saves: the DOS travel square is
 the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 `$49F2` alone (`$49C5` reads 0 out there, so `convert_save` keys on
-`dos_savegame.current_area`). The converted outdoor shape follows #47's
+`dos_savegame.current_area`). The converted outdoor shape follows #47 (Decode the travel grid's cache entries, so the wilderness can be retargeted too)'s
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
 outdoor shape. The indoor one has run three times, on all three of the
@@ -1216,11 +1216,11 @@ first run's scripts and went with the rest of `work/`; the tools that replaced
 them are in `tools/` and cannot.)
 
 The cache is written this way **every time**, even when the party is going to
-an area the save already names — #121 removed the branch that kept an existing
+an area the save already names — #121 (A converted DOS save keeps the template's loaded-files cache whenever the template stands in the same area) removed the branch that kept an existing
 cache, which was the last place here that preferred an inherited value to a
 computed one.
 
-### What `convert_save` writes, and there is nothing left over (#118)
+### What `convert_save` writes, and there is nothing left over (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64))
 
 **There is no template.** `goldbox.dos.new_save` starts from two zeroed
 buffers and writes all 9216 bytes; `goldbox.dos.save_disk` puts them on a
@@ -1238,19 +1238,19 @@ here — and with those missing the import refuses rather than inventing them.
 | the clock `$49C6`-`$49CB` | the DOS save's own six digit words |
 | the four effect arrays, and `$4A00`-`$4A1F` | zeroed — "nothing running" is a legal state, and `DUNGEON $202A` zeroes the scratch on every area change |
 | the loaded-files cache `$4BC0`-`$4BD8`, and `$49EA`, `$49C5`, `$49F2`, `$49E6` with it | **`$FF` in all twenty-five slots**, then slot 2 = the area's `GEO` number and slot 8 = the area id, with the disk hint, the map and the script id to match |
-| the combat icons of the party's slots `$4BE0`+ | **composed** — `(large, weapon 0, head 1)` out of `SPELLE64`/`SPELLN64`, which is what the game's own character creation writes, 8 of 8 (#57), and which the engine has now been watched drawing (§"The composed icon, seen in a fight") |
+| the combat icons of the party's slots `$4BE0`+ | **composed** — `(large, weapon 0, head 1)` out of `SPELLE64`/`SPELLN64`, which is what the game's own character creation writes, 8 of 8 (#57 (Carry the character portrait across ports)), and which the engine has now been watched drawing (§"The composed icon, seen in a fight") |
 | `SAVEDGAME1` `$8400`-`$8753` | **`ANIMATE00`** off a `POOL` side |
 | the slots, item blocks, icons and roster blocks above the party | **zero**, entire — not the one `DROP`-style byte the engine writes |
-| the 193 unattributed header bytes, and `$8754`-`$8AFF` | **zero**, each with a run behind it (#118 step 3) |
+| the 193 unattributed header bytes, and `$8754`-`$8AFF` | **zero**, each with a run behind it (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3) |
 
 `Report.unaccounted` is empty and so is `Report.unwritten`: every one of the
 9216 bytes has a one-line provenance, and none of them says "carried through
 from the template save". `unwritten` is what makes that checkable rather than
 asserted — `new_save` refuses to return a save with an entry in it.
 
-### The composed icon, seen in a fight (#118)
+### The composed icon, seen in a fight (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64))
 
-The 216 bytes of the six party icons were the last region on #118's list with
+The 216 bytes of the six party icons were the last region on #118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)'s list with
 only a file-level measurement behind them: composed from part numbers, checked
 against the two NPC slots on all fourteen of the player's save disks, and never
 watched. A converted Slums party built onto a `D64.blank()` was booted, walked
@@ -1324,7 +1324,7 @@ there returns the registers rather than the font. Reading it needs the monitor's
 `ram` bank rather than its default and nobody has done it, so what carries this
 finding is the colours and the picture.
 
-### Three from-nothing disks played, one per DOS save (#119)
+### Three from-nothing disks played, one per DOS save (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing))
 
 All three of the DOS saves in the player's archives were built onto a
 `D64.blank()` by `tools/dosdisk.py` and driven by `tools/savecheck.py`. **The
@@ -1348,7 +1348,7 @@ game, and everything that differs between them differs the right way — SILAS i
 readied weapon a `LONG SWORD +1` against a `BROAD SWORD +1`.
 
 **An area change by walking, which had never been driven on a from-nothing
-disk.** #118's four area changes were `NEWECL` warps performed from outside on
+disk.** #118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)'s four area changes were `NEWECL` warps performed from outside on
 template-based saves. The New Phlan party walked from `(4,2)` east into `(7,2)`
 — the training hall's door — and `$6E1B & $7F` went **0 to 11**, with the room
 description, the `PRESS <RETURN>`, the twenty-second load, the trainer's two
@@ -1864,12 +1864,12 @@ the block above ever drifts from what the tool prints.
    are inherited from `goldbox/neutral.py`. `goldbox/amiga.py` is the demonstration:
    rewritten onto the neutral record it lost its own copy of that bookkeeping
    and its own C64-shaped middle, and every `.pc` byte it writes is what it
-   was before. The DOS writer of #26 is the second demonstration, with a
+   was before. The DOS writer of #26 (Write a DOS save, not just read one) is the second demonstration, with a
    caveat the first could not show: the writer itself cost one writer, but
    its arrival exposed two latent defects in `c64_codec.read` that only a
    second consumer could reach — see "The reverse direction" below.
 
-## The reverse direction: writing a DOS save (#26)
+## The reverse direction: writing a DOS save (#26 (Write a DOS save, not just read one))
 
 `goldbox.dos.write` builds the 285-byte character record and its `.ITM` payload
 from a `NeutralCharacter`; `goldbox.dos.item_from_c64` is the inverse of the item
@@ -1890,18 +1890,18 @@ DOS save from nothing" below.
 | what | where | grade |
 |---|---|---|
 | the quest flags | `$4A20`-`$4AF8`, 217 C64 bytes widened to words at the same ECL addresses | CONFIRMED |
-| the clock (#67) | six digit words at `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses | CONFIRMED — read back in the game as 21:15 and 16:58, the two C64 saves' own times |
-| the party size (#67) | the word at `$503E` **and** byte 12808; they move together | CONFIRMED |
-| the party's filenames | six entries from 12809, named for the slot being written — the engine loads the party from these, not from the letter chosen at the LOAD menu | CONFIRMED — #59 |
+| the clock (#67 (Carry the clock and the party count into a converted DOS save)) | six digit words at `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses | CONFIRMED — read back in the game as 21:15 and 16:58, the two C64 saves' own times |
+| the party size (#67 (Carry the clock and the party count into a converted DOS save)) | the word at `$503E` **and** byte 12808; they move together | CONFIRMED |
+| the party's filenames | six entries from 12809, named for the slot being written — the engine loads the party from these, not from the letter chosen at the LOAD menu | CONFIRMED — #59 (Map the DOS saved game, not just the character record) |
 | the square | 12801-12803, facing doubled | CONFIRMED |
-| **the area** (#60) | every write of `goldbox.dos_savegame.RETARGET_WRITES` | CONFIRMED — three area pairs, loaded and walked |
+| **the area** (#60 (Put a converted party where it actually stood, not where the template stood)) | every write of `goldbox.dos_savegame.RETARGET_WRITES` | CONFIRMED — three area pairs, loaded and walked |
 
-**The party lands where it stood, not where the template stood.** #59's
+**The party lands where it stood, not where the template stood.** #59 (Map the DOS saved game, not just the character record)'s
 seven-write recipe was not enough, and what it was missing is the one thing
 it recorded as unnecessary: the **ECL text buffer at 5121-12800 is live**,
 and a save built for a new area but still carrying the old area's script dies
 with `Unable to load geo in Load3DMap.` however many other variables it
-writes. All twelve of #59's variants
+writes. All twelve of #59 (Map the DOS saved game, not just the character record)'s variants
 happened to carry the target area's buffer, so it was never a variable in
 that bisection; `work/p60/run2`'s X1 is the control, and it fails. The buffer
 is the target's `ECL<dax>.DAX` block from byte 2 on — every block opens
@@ -1928,7 +1928,7 @@ them in the colour-cycling command bar).
 rather than because it is untested: an area this project has no row for, an
 area whose script picks its map at run time or loads none at all, and an area
 whose `ECL<n>.DAX` is not there to read. The travel grid was a fourth until
-#190: it was refused for want of a specimen rather than for want of an answer,
+#190 (A C64 party standing on the travel grid cannot be written into a DOS save): it was refused for want of a specimen rather than for want of an answer,
 and now it converts and the result has been loaded, walked and resaved by the
 game itself. The last of those used to leave the party on the
 template's square with a warning, and a warning is not enough: the file
@@ -1959,13 +1959,13 @@ here fails a test. Four kinds of byte have no neutral source:
   `portrait_head`/`portrait_body` **only when the game directory's creation
   tables cannot be read** — live heap and the combat art ids, ~73 bytes.
   Measured
-  survivable for a character carrying items, and, since #62, for one carrying
+  survivable for a character carrying items, and, since #62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item), for one carrying
   nothing too: the engine's own record for a character who dropped everything
   in play holds `item_chain` NULL and `hands_used` 0, which is what the writer
   writes.
 * **derived from the record**, the `WRITE_DERIVED` list — `unnamed_0ab`
   alone, a one-byte digest of the other 284 (`goldbox.dos.identity_byte`).
-  It was an unsourced zero until #216 measured what the zero costs: the byte
+  It was an unsourced zero until #216 (Every converted DOS character carries the same identity byte at 0x0AB) measured what the zero costs: the byte
   is the identity the engine compares, after the name, when a saved character
   is being added to the party, so six converted characters all holding zero
   are indistinguishable there and a second character of the same name is
@@ -1979,7 +1979,7 @@ here fails a test. Four kinds of byte have no neutral source:
   *newly made* character has, 42 of the 54 shipped records across the four
   DOS titles, and a played character's own set differs — so a round trip has
   to mask these, which is why they are their own table rather than entries in
-  `WRITE_CONSTANTS`. `icon_colours` was in the unsourced list until #112
+  `WRITE_CONSTANTS`. `icon_colours` was in the unsourced list until #112 (A converted DOS character's combat icon has no colours)
   measured what zero draws: all six parts EGA 8, dark grey, which is the
   combat floor's own colour, so the figure reads as not being there at all.
   Each entry carries a fourth string saying what the source held that is not
@@ -1988,18 +1988,18 @@ here fails a test. Four kinds of byte have no neutral source:
 
 And one rule that is about a **file** rather than a byte: a character carrying
 nothing gets **no `.ITM`**, not an empty one (`ITM_OMITTED_WHEN_EMPTY`). A
-zero-length file is what the engine reads as one item of heap — #62, and the
+zero-length file is what the engine reads as one item of heap — #62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item), and the
 one thing about a naked converted character that was actually wrong.
 
 The `.SPC` effects file **is** written now — see "The `.SPC` effects file"
-below, which is where #61 settled the nine bytes and what DOS does without
+below, which is where #61 (Carry innate racial bonuses across a conversion instead of dropping them) settled the nine bytes and what DOS does without
 them.
 
-### The `.SPC` effects file (#61)
+### The `.SPC` effects file (#61 (Carry innate racial bonuses across a conversion instead of dropping them))
 
 **DOS does not work a racial bonus out from race and constitution when it
 loads a character. It reads it out of the `.SPC` file, and with no file there
-is no bonus.** That was #61's cheap experiment and it came back the expensive
+is no bonus.** That was #61 (Carry innate racial bonuses across a conversion instead of dropping them)'s cheap experiment and it came back the expensive
 way. Measured under DOSBox-X: load the archives' slot J, break in, find each
 character's record in the megabyte, and follow the far pointer at record
 `0x07F`. With `CHRDATJ1.SPC` present the dwarf's list holds 90, 97, 26, 47 and
@@ -2014,8 +2014,8 @@ out of the same instrument plus a census of every `.SPC` in the archives:
 | bytes | what | grade |
 |---|---|---|
 | 0 | the effect id, in `goldbox/traits.py`'s namespace | CONFIRMED |
-| 1-2 | duration, a little-endian `u16`. `00 00` for every innate effect in 32 files, over six ids and three races, and for every item-granted permanent effect #232 found; `BLESS` is the one record with rounds left, `02 00`, and it is the only specimen anybody has read with a nonzero value here | CONFIRMED for 26, 47, 90, 97, 107, 124; PROBABLE for 18 and 48, which no save holds, and for the reading that a nonzero count is rounds remaining rather than something else that happens to vary with `BLESS` |
-| 3 | for a racial id, always `0xFF` (`INNATE_PAYLOAD`'s own reading of "permanent" bytes 1-4 as `00 00 FF 00` no longer holds beyond the six racial ids: #232 measured a Ring of Fire Resistance at `12`, extra strength at `92`, and displacement at `12` here, all three at duration zero, so this byte is not a universal permanence flag -- it is `0xFF` only because that is the value a racial bonus happens to carry) | CONFIRMED for the six racial ids; PROBABLE that a nonzero, non-`0xFF` value elsewhere is the effect's own magnitude |
+| 1-2 | duration, a little-endian `u16`. `00 00` for every innate effect in 32 files, over six ids and three races, and for every item-granted permanent effect #232 (An item-granted effect is dropped on the way through the neutral record, with no report) found; `BLESS` is the one record with rounds left, `02 00`, and it is the only specimen anybody has read with a nonzero value here | CONFIRMED for 26, 47, 90, 97, 107, 124; PROBABLE for 18 and 48, which no save holds, and for the reading that a nonzero count is rounds remaining rather than something else that happens to vary with `BLESS` |
+| 3 | for a racial id, always `0xFF` (`INNATE_PAYLOAD`'s own reading of "permanent" bytes 1-4 as `00 00 FF 00` no longer holds beyond the six racial ids: #232 (An item-granted effect is dropped on the way through the neutral record, with no report) measured a Ring of Fire Resistance at `12`, extra strength at `92`, and displacement at `12` here, all three at duration zero, so this byte is not a universal permanence flag -- it is `0xFF` only because that is the value a racial bonus happens to carry) | CONFIRMED for the six racial ids; PROBABLE that a nonzero, non-`0xFF` value elsewhere is the effect's own magnitude |
 | 4 | `00` in every specimen measured, racial or item-granted | PROBABLE |
 | 5-8 | a far pointer to the next record, offset word then segment word. The saved value is dead: the engine allocates a node per record on load and relinks them (`EFFECT_NEXT_NULL`) | CONFIRMED |
 
@@ -2060,7 +2060,7 @@ constitution records without the dwarf's bonuses against orcs and giants.
 
 The gnome is the hole, and it is **four** ids wide rather than the three this
 paragraph used to name -- 48 was omitted here and in `goldbox/dos.py`'s note,
-found in the code review of #191. 18 is the gnome's own THAC0 bonus against
+found in the code review of #191 (A converted dwarf loses his constitution bonus to saving throws). 18 is the gnome's own THAC0 bonus against
 kobolds and goblins and 48 his own armour-class bonus against gnolls and
 bugbears; 47 is named for gnomes as well as dwarves; 97 is named for all three
 sturdy races where 90 is the dwarf's and the halfling's only, so a gnome would
@@ -2074,7 +2074,7 @@ DOS slot and loaded: the party stands on its square with six names on the
 roster, and the live effect lists read 107, 124 and `26 -> 47` respectively,
 with the three humans at NULL and no `.SPC` written for them at all.
 
-**That dwarf reading is what the converter wrote before #191** and is kept as
+**That dwarf reading is what the converter wrote before #191 (A converted dwarf loses his constitution bonus to saving throws)** and is kept as
 the record of this run, not as what happens today: a dwarf now gets
 `90, 97, 26, 47`, measured on its own run further down. The run above has not
 been repeated with the fix in, so its numbers are left as they were taken.
@@ -2100,13 +2100,13 @@ been repeated with the fix in, so its numbers are left as they were taken.
 1. **Slot A with every record rewritten by the round trip** (only the
    unsourced bytes differ from the game's own files): loads, all six
    characters on the roster with their real AC and HP, the party on its
-   square. **CONFIRMED: DOS accepts a save it did not write** — issue #26's
+   square. **CONFIRMED: DOS accepts a save it did not write** — issue #26 (Write a DOS save, not just read one)'s
    question 2, answered yes. Re-saving from inside the game showed the
    engine rebuilding the item chain-head pointer itself and keeping most of
    our zeros: its own resave zeroes `icon_colours`, the extra item pointers,
    `hands_used` and, at the time, `unnamed_0ab` too. **For `icon_colours`
    that is a defect and not a convenience** — those six bytes are the combat icon's
-   colours (#57), the engine does not put them back, and nobody has looked
+   colours (#57 (Carry the character portrait across ports)), the engine does not put them back, and nobody has looked
    at a converted character in a fight. Filed as
    `#112 (A converted DOS character's combat icon has no colours)`.
 2. **The item list renders** from the fields, readied flags and quantities
@@ -2119,7 +2119,7 @@ been repeated with the fix in, so its numbers are left as they were taken.
    showed `WEAPON 254 PASSS`, `DAMAGE 0D8-128`, THAC0 148 — and an
    *unmodified* DOS character with only his items removed shows the
    identical garbage, so the display was not the converter mangling item
-   bytes. #56 then established why the character owned nothing (the fixture
+   bytes. #56 (Why did a converted C64 character reach DOS with no items?) then established why the character owned nothing (the fixture
    itself is item-free, in both the `$5900` area and the in-record
    inventory) and narrowed the garbage claim: a character freshly rolled in
    the DOS game, and a character whose items are all dropped *in* the game,
@@ -2129,7 +2129,7 @@ been repeated with the fix in, so its numbers are left as they were taken.
    a player cannot reach it unaided. CONFIRMED, `docs/50-experiments.md`
    "Why the converted C64 character reached DOS with no items".
 
-5. **The racial bonuses arrive** (#61): `PORSAVE.D64`'s party converted into
+5. **The racial bonuses arrive** (#61 (Carry innate racial bonuses across a conversion instead of dropping them)): `PORSAVE.D64`'s party converted into
    a DOS slot loads with the elf's sleep resistance, the half-elf's, and the
    dwarf's two bonuses against orcs and giants live on the heap — the last
    pair derived from his race byte, because his C64 record holds no trait id
@@ -2142,14 +2142,14 @@ byte-identical in the shared fields, the in-game item list renders
 character 1's count, order, quantities and readied flag exactly, and the
 engine's own resave re-emits all 25 for all six characters unchanged.
 That residue — a character converted with *zero* items showing the garbage
-sheet, and the engine inventing one heap item for him on resave — was **#62,
+sheet, and the engine inventing one heap item for him on resave — was **#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item),
 and it is fixed**. It was never a record byte: the engine's own record for a
 character who owns nothing holds `item_count` 0, `item_chain` NULL and
 `hands_used` 0, exactly what the writer already wrote. What was wrong was the
 zero-length `.ITM` beside it, which the engine reads as one item of heap and
 its own save never produces. `write_dos_save` now writes no `.ITM` for a
 character carrying nothing and removes a stale one. See `docs/50-experiments.md`
-"A converted character who owns nothing (#62)".
+"A converted character who owns nothing (#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item))".
 
 ### What the second consumer of the C64 reader exposed
 
@@ -2173,11 +2173,11 @@ did **not** hold for free on the reader beside it: the first real consumer of
 
 ### What a converted party loses
 
-* ~~**The sheet portrait**~~ — **carried since #57, and seen on the sheet in
+* ~~**The sheet portrait**~~ — **carried since #57 (Carry the character portrait across ports), and seen on the sheet in
   the game.** See "The portrait" below. What is still dropped is the
   *combat* icon pair at `0x0BD`/`0x0BE`, which is a different art set and
-  #130.
-* **Running spell effects.** The innate bonuses are carried now (#61); a
+  #130 (A converted DOS party arrives with six identical combat figures, not its own).
+* **Running spell effects.** The innate bonuses are carried now (#61 (Carry innate racial bonuses across a conversion instead of dropping them)); a
   spell still running when the party saved is not, which is what the game's
   own importer does too, and needs no report -- Donald, 2026-08-27: an
   effect that was going to expire anyway is not a loss a player need be told
@@ -2194,7 +2194,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   the effect ids the DOS engine writes for one have never been seen. A
   converted gnome is reported rather than guessed at — see "The `.SPC`
   effects file".
-* **The day and the month.** The clock itself is carried now (#67) — six
+* **The day and the month.** The clock itself is carried now (#67 (Carry the clock and the party count into a converted DOS save)) — six
   digit words at `$49C6`-`$49CB`, the C64's own six bytes at the C64's own
   addresses — but the C64 holds 0 in the sub-minute, day and month digits of
   every save on Donald's disks, so a converted party arrives on day 0 of
@@ -2205,7 +2205,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   hit points to give; the writer refuses and reports rather than writing
   hp_max as a guess, and the party arrives at 0 hit points on the sheet.
 
-### The portrait, which is one menu written two ways (#57)
+### The portrait, which is one menu written two ways (#57 (Carry the character portrait across ports))
 
 **The two ports choose a face from the same menu, and each stores the choice
 in its own spelling.** The C64 keeps the art's **id** — `portrait_head` at
@@ -2330,9 +2330,9 @@ And for the reverse direction, `tests/test_doswriter.py`:
   conversion refuses and names the file that was missing.
 * **A converted save loads and plays in DOS Pool of Radiance** under
   DOSBox — the four driven runs above, and the two area-moved parties of
-  #60.
+  #60 (Put a converted party where it actually stood, not where the template stood).
 
-## A DOS save from nothing (#26)
+## A DOS save from nothing (#26 (Write a DOS save, not just read one))
 
 **`goldbox.dos.new_dos_save` writes all 13137 bytes and inherits none of
 them.** This section used to say the opposite: that the writer built on a
@@ -2342,7 +2342,7 @@ another party in another place. That is what the count below removed.
 The account is `SaveReport.sources`, one line per byte, and `unwritten` is
 what has no source. `new_dos_save` **raises** on a non-empty `unwritten`
 rather than handing back a file whose zeroes nobody stands behind -- the same
-refusal `new_save` makes in the other direction (#118). Where each byte comes
+refusal `new_save` makes in the other direction (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)). Where each byte comes
 from is ["What a conversion inherits: nothing"](141-dos-savegame.md) in
 `141-dos-savegame.md`; what follows is the run that made the zeroes evidence
 rather than a census.
@@ -2363,7 +2363,7 @@ facing west at 21:15.
 | `work/p26/run3` | the `VIEW` sheet and the item list | BRUTUS reads AC 3, THAC0 18, HP 11, `LONG SWORD`, `BANDED MAIL`, encumbrance 1787, and 17 items with the mail readied -- no garbage weapon line |
 | `work/p26/run4` | walked out of the Slums into New Phlan | the engine loaded a **new map, script and wallset** from a save it did not write: `$49C5`, `$49F2`, `$5012`, byte 0 and the whole wallset triple came back rewritten |
 | `work/p26/run5` | a wandering encounter, fought | the engine filled the pending-encounter record and the message buffer itself -- `$5202`, `$5205`, `$5206`, and `$522C`+ spelling out the sentence it shouted |
-| `work/p26/run7` | a **second party into a second slot**: `PORSAVE12`, standing in New Phlan, written as slot B | comes up at **0,4 W 16:58** with all six -- that party's own square and clock, and the same numbers the template-based run of #60 got |
+| `work/p26/run7` | a **second party into a second slot**: `PORSAVE12`, standing in New Phlan, written as slot B | comes up at **0,4 W 16:58** with all six -- that party's own square and clock, and the same numbers the template-based run of #60 (Put a converted party where it actually stood, not where the template stood) got |
 
 So a converted party in a save with no template loads, is looked at, walks,
 changes area and fights. Every byte the engine rewrote is one this
@@ -2424,7 +2424,7 @@ finding in the useful direction: they cannot be got wrong.
   `141-dos-savegame.md`'s "What this leaves open". Zero in them is CONFIRMED
   survivable across all five runs and nothing says what would put a value
   there.
-* **Settled, both of them (#190).** An outdoor C64 party is no longer
+* **Settled, both of them (#190 (A C64 party standing on the travel grid cannot be written into a DOS save)).** An outdoor C64 party is no longer
   refused: the overland retarget has been driven twice, on two squares, and
   each result loaded, drew the overland, walked, and was resaved by the game's
   own `ENCAMP > SAVE`. The blocker had never been the converter -- none of the
@@ -2439,10 +2439,10 @@ finding in the useful direction: they cannot be got wrong.
   writes both kinds of save, and each of those five is either written or
   declared, so 13137 of 13137 bytes are accounted for either way.
 
-## The template's spare characters (#104)
+## The template's spare characters (#104 (A converted DOS party arrives with the template save's spare characters still in it))
 
 A DOS save holds six characters and a C64 save eight, so **every** conversion
-leaves at least two of the template's slots unwritten. Until #104 they stayed
+leaves at least two of the template's slots unwritten. Until #104 (A converted DOS party arrives with the template save's spare characters still in it) they stayed
 occupied: converting DOS slot J over an eight-character template left
 `BRUTUS BRUTUS` in slots 6 and 7 with their inventories and roster blocks.
 

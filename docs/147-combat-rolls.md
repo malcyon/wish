@@ -1,7 +1,7 @@
 # What the game rolls when somebody attacks
 
 **Status: measured, and built.** `automap/rolls.py` reads these bytes and
-`automap/combatlog.py` says the roll under each combat message (#139).
+`automap/combatlog.py` says the roll under each combat message (#139 (Show the dice in the Messages panel, not just what the game printed)).
 `docs/110-combat-log.md`'s Messages panel shows what the game *prints*; this is
 what the game *rolled*, which is a different thing.
 

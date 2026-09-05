@@ -78,7 +78,7 @@ debuggerrun = debugger
 `logfile` is what makes this scriptable at all — see below.
 
 **The window trap.** A session that shares another run's display captures the
-wrong window, and every screenshot comes back solid black (#83). Two DOSBox-X
+wrong window, and every screenshot comes back solid black (#83 (A DOSBox session can pick the wrong X window, and then every screenshot is black)). Two DOSBox-X
 processes on one display leave two top-level windows with the same title, the
 same `640x400+80+100`, both `IsViewable`, and both returned by `xdotool search`:
 
@@ -96,7 +96,7 @@ black frames a finished screen, every `wait_for` on it times out, and
 `load_game` reports a save that loads perfectly as never having loaded.
 
 Three things follow. They live in `tools/dosbox.py`, which had the same three
-faults (#88) and now shares one copy of the fix with this harness — and note
+faults (#88 (tools/dosbox.py can capture the wrong window, and then every screenshot is black)) and now shares one copy of the fix with this harness — and note
 that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
 `_NET_WM_PID`, so on that side the display refusal is what does the work.
 

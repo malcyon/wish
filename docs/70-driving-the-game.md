@@ -126,13 +126,13 @@ The order of operations, all of it in `tools/session.py`:
 | `DISABLE FASTLOADER (Y/N)?` | `Y` (VICE runs JiffyDOS here) |
 | credits screen | row 24 is `PLAY GAME  DEMO`; take it at once — **left alone the screen starts the demo by itself** |
 | `INPUT THE CODE WORD:` | patch `$12D9` `D0 04` → `EA EA` (check the bytes first), type six letters, then inject `Return` through the KERNAL buffer |
-| `INSERT SIDE # 3` / `INSERT YOUR GAME DISK #3` / `INSERT GAME DISK #3` | attach that side, press a key with a 0.25 s hold — and re-attach even if that image is already in the drive. Three wordings, on row 24 **or** row 18 — match the text, not the row |
+| `INSERT SIDE # 3` / `INSERT YOUR GAME DISK #3 (Replace the three class icons we drew with Font Awesome ones)` / `INSERT GAME DISK #3 (Replace the three class icons we drew with Font Awesome ones)` | attach that side, press a key with a 0.25 s hold — and re-attach even if that image is already in the drive. Three wordings, on row 24 **or** row 18 — match the text, not the row |
 | `INSERT YOUR SAVE GAME DISK` | attach the save disk, press a key |
 | main menu | `LOAD SAVED GAME`, then `Return` on the already-white `YES` |
 | party menu | `BEGIN ADVENTURING` |
 | in the world | row 14 is the status line — `E 16:48 5,2`: facing, clock, x, y. **Outdoors it reads `OUTDOORS 22:02 7,28`**, with the word where the facing letter goes, so there is no facing to read on the travel grid and the square is window-local |
 | `MOVE`, in a dungeon | `I` forward, `J` turn left, `K` turn right, **`M` steps *backward*** without turning; `Return` leaves |
-| `MOVE`, on the travel grid | **a different bar: `1-8, RETURN OR BUTTON`** — the compass, not `I J K M`. A driver that presses `I` out here moves the party not at all and looks exactly like a save that cannot walk, which is what an hour of #50's proof was spent on. The eight are the compass **clockwise from north** and not the numpad — 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW — measured twice: `3` east and `6` south-west by writing `$49C3`/`$49C4` and reading the square back, and `1 3 5 7` walked as a closed box (7,28) → (7,27) → (8,27) → (8,28) → (7,28) on pool slot 3 on 2026-09-02. `Return` leaves |
+| `MOVE`, on the travel grid | **a different bar: `1-8, RETURN OR BUTTON`** — the compass, not `I J K M`. A driver that presses `I` out here moves the party not at all and looks exactly like a save that cannot walk, which is what an hour of #50 (Lift the wilderness refusal from the DOS save converter)'s proof was spent on. The eight are the compass **clockwise from north** and not the numpad — 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW — measured twice: `3` east and `6` south-west by writing `$49C3`/`$49C4` and reading the square back, and `1 3 5 7` walked as a closed box (7,28) → (7,27) → (8,27) → (8,28) → (7,28) on pool slot 3 on 2026-09-02. `Return` leaves |
 | arriving on the travel grid | **a walked exit lands with `1-8, RETURN OR BUTTON` already up**, so asking for `MOVE` finds no such word and spins to its timeout — which from the outside is indistinguishable from a party that cannot move. A *warped* arrival, and a loaded outdoor save, land on the command bar and do need `MOVE` taking first. Read row 24 and answer whichever is there; `Session.outdoor_key` does |
 | the clock, on the travel grid | one overland step is about **twelve hours**: `22:02 → 10:03 → 22:04 → 10:05 → 22:06` across the four steps above, which is why the hour looks like it is flipping between two values |
 | `ENCAMP` → `SAVE` → `SAVE GAME` | writes `SAVEDGAME0`/`SAVEDGAME1` to whatever disk is in the drive |
@@ -275,7 +275,7 @@ own loop, and `work/drive/qffight.py`, `work/combatlog/walkabout.py` and
 until something ambushes the party, drive every command bar with
 `melee_turn`, and print who took the turns, how many had an enemy in contact
 and how many of those ended with a blow. Three copies of it were written into
-`work/` for `#126`, `#127` and `#165` and thrown away with that directory; the
+`work/` for `#126 (The emulator harness cannot drive a fight, so no conversion has ever been proven in combat)`, `#127 (A driven character stands next to an enemy and passes its turn instead of attacking)` and `#165 (One character that cannot act takes every turn in a driven fight)` and thrown away with that directory; the
 log it writes still belongs in `work/`, the tool does not.
 
 **`$6E11` says whether there is a fight**: `1` DUNGEON, `2` COMBAT. It is
@@ -379,7 +379,7 @@ driver being asked for the same character again.
 `DELAY QUIT SPEED EXIT` — and `end_turn` used to fall to DELAY there. One
 character who could not strike then took **50 of the 54 turns** that had an
 enemy in contact, in a fight of 56 driven turns, while the other five never
-acted again (`#165`, `work/issue127/after1.jsonl`). `Session.ENDS_TURN` is
+acted again (`#165 (One character that cannot act takes every turn in a driven fight)`, `work/issue127/after1.jsonl`). `Session.ENDS_TURN` is
 `GUARD` then `QUIT` and `Session.LEAVES_BAR` is `DELAY` then `EXIT`, in that
 order, so a bar with no GUARD gets QUIT. Why GUARD drops off is still not
 established; the obvious suspect is that it is only offered to a character
@@ -394,7 +394,7 @@ a turn.
 ### There is no attack key
 
 `MOVE/ATTACK` is the whole of it: take `MOVE`, and a step into an occupied
-square is a blow. That is why six runs of `#118` step 3 could get the party to
+square is a blow. That is why six runs of `#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)` step 3 could get the party to
 the end of a fight without any of them swinging — the driver kept entering move
 mode and pressing Return to get out again.
 
@@ -444,7 +444,7 @@ points to 1** (`work/issue127/sweep1.jsonl`, turn 15). So neither the count on
 row 24 nor the position table says a blow happened. What says it is the
 target's hit points, and the move sub-bar going away a moment later.
 
-That is what `#127` was: `melee_turn` read the count, found it unchanged,
+That is what `#127 (A driven character stands next to an enemy and passes its turn instead of attacking)` was: `melee_turn` read the count, found it unchanged,
 concluded "the step cost nothing so it did not happen", put the one key that
 would land the blow into `avoid`, and passed the turn — with the character
 standing next to the orc. **26 of 27 turns of one fight went that way.**
@@ -505,7 +505,7 @@ fight.
 character, take `MOVE`, and step towards the nearest living enemy until the
 sub-bar goes away.
 
-**A won fight is not a fought fight.** Six runs before `#126` ended with
+**A won fight is not a fought fight.** Six runs before `#126 (The emulator harness cannot drive a fight, so no conversion has ever been proven in combat)` ended with
 `THE PARTY HAS WON !` and no character having attacked — the party guarded, the
 monsters wandered off, and a log of command bars cannot tell that from a
 victory. `FightResult.acted` is the distinction.
@@ -518,7 +518,7 @@ being attacked in every fight it is in — so `HITS`, `MISSES`, `SLAIN` and
 `POINTS OF DAMAGE` are true of any fight that lasts a round. `acted` used to
 be exactly that pattern, and it reported `True` on the Slums ambush where 26 of
 27 turns were passed with the party standing next to the orcs, on the strength
-of `AND MISSES...` — the orcs (`#163`).
+of `AND MISSES...` — the orcs (`#163 (A fight nobody in the party fought is reported as one they did)`).
 
 `acted` is now **the count of driven turns that ended with the blow struck**:
 `fight` counts the turns whose tactic answered `Session.ATTACK`, and

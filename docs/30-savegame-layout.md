@@ -141,11 +141,11 @@ them is the occupied slots in descending index order.
 
 So the party list is **the occupied slots, highest first**, and reading them
 0 upwards gives the party upside down — which is what
-[`#160`](https://github.com/malcyon/wish/issues/160) is.
+[`#160 (The automapper and the editor list the party backwards)`](https://github.com/malcyon/wish/issues/160) is.
 `SaveGame0.marching_order` is the fix: `reversed(self.characters)`, not
 `reversed(range(slot_count))`, because a dropped character can leave a hole
 and the range form would count it. `goldbox.dos.marching_slot`'s `count - 1 -
-index`, from [`#101`](https://github.com/malcyon/wish/issues/101), stays as
+index`, from [`#101 (A converted DOS party is listed in the reverse of its DOS order)`](https://github.com/malcyon/wish/issues/101), stays as
 it was: its one caller always writes a packed party, so the gap this section
 is about never reaches it.
 
@@ -162,7 +162,7 @@ Two consequences worth holding:
   and both ends empty, one reorder put them in slots 0–3. That is why 29 of the
   29 saves on this machine have no gap.
 * **`DROP` does not pack, so a gap can reach the disk.** It zeroes the first
-  byte of the dropped character's name where it stands ([`#104`](https://github.com/malcyon/wish/issues/104))
+  byte of the dropped character's name where it stands ([`#104 (A converted DOS party arrives with the template save's spare characters still in it)`](https://github.com/malcyon/wish/issues/104))
   and leaves the hole; a player who drops somebody and saves without reordering
   has a save whose occupied slots are not `0..n-1`. Whether the game *skips* a
   hole in the middle or stops at it is UNKNOWN — every gap measured was at one
@@ -276,7 +276,7 @@ two is named as a cheap job for whoever next touches `goldbox/commissions.py`.
 
 | address | offset | PORSAVE | note |
 |---|---|---|---|
-| `$49FC` | `+$0FC` | 2 | read 2 for a whole driven fight, set by `INIT $09AC`. The "party count" reading is **REFUTED**: one save with one character and another with six both read 2, and a save with two reads 6. **The C64 stores no party count at all** — no byte of `$4900`-`$4CFF` equals the party size in any of 190 saves; `DROP CHARACTER` zeroes the first byte of the dropped name instead ([#104](https://github.com/malcyon/wish/issues/104)) |
+| `$49FC` | `+$0FC` | 2 | read 2 for a whole driven fight, set by `INIT $09AC`. The "party count" reading is **REFUTED**: one save with one character and another with six both read 2, and a save with two reads 6. **The C64 stores no party count at all** — no byte of `$4900`-`$4CFF` equals the party size in any of 190 saves; `DROP CHARACTER` zeroes the first byte of the dropped name instead ([#104 (A converted DOS party arrives with the template save's spare characters still in it)](https://github.com/malcyon/wish/issues/104)) |
 | `$4A07`, `$4BC6` | | | moved only on leaving the inn, and `$4A07` is inside the per-script scratch page, so it is whatever `ECL00` was using that byte for |
 
 What is left in `$4900`–`$4BDF` after the table above is a scatter of single
@@ -295,7 +295,7 @@ anything there is **disputed** — see the two paragraphs below the table.
 | `$8754`–`$882F` | 220 | zero in 93 of 98 saves; the other five carry the same 59 non-zero bytes |
 | `$8830`–`$8AFF` | 720 | C64 multicolour bitmap scratch, the leading edge of the animator's data |
 
-**Measured over 98 saves, not three** (#118 step 1, which corrects one number
+**Measured over 98 saves, not three** (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 1, which corrects one number
 this table gave from a sample of three and adds two it did not have):
 
 * **844 of the 852 `ANIMATE00` bytes are the same in every save that carries
@@ -311,7 +311,7 @@ this table gave from a sample of three and adds two it did not have):
   the same 59 non-zero bytes, every one of them taken after training. None of
   Donald's own 13 `PORSAVE` disks do. **The five disks themselves are gone** —
   they were `LVAFTER.D64`, `P18PARTY.D64` and three levelling saves, all under
-  gitignored working directories that no longer exist (#136, #148), so the
+  gitignored working directories that no longer exist (#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch), #148 (The Amiga port's tools are gone, and phase 1 still needs the disassembler)), so the
   count survives and the specimens do not. Training a party again is what
   would produce another.
 * **A save carries `ANIMATE00` after the game has run it**, not as it comes off
@@ -326,12 +326,12 @@ this table gave from a sample of three and adds two it did not have):
 **What was disputed, and how it came out.** This section used to say flatly
 that `$8400`–`$8AFF` holds no save data, while
 [140-loaded-files-cache.md](140-loaded-files-cache.md) said loaded-files cache
-slot 11 tells the engine `ANIMATE00` is resident and #102 showed the engine
+slot 11 tells the engine `ANIMATE00` is resident and #102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) showed the engine
 believes that cache rather than checking — which reads as "if the cache says
 the code is there, the code has to be there".
 
-**Measured, #118 step 3.** Four saves, DOS slot J converted onto `PORSAVE9`,
-fasttraveled The Slums → New Phlan, which is the transition #102 showed the cache
+**Measured, #118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3.** Four saves, DOS slot J converted onto `PORSAVE9`,
+fasttraveled The Slums → New Phlan, which is the transition #102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) showed the cache
 decides:
 
 | `$8400`–`$8753` | slot 11 | area change | `$0400` against `GEO00` |
@@ -351,7 +351,7 @@ arrival**, area 21. Those are the two things that could still call into a
 zeroed page, and neither has been driven with it zeroed.
 
 Both were tried on a save carrying the **real** `ANIMATE00`, read off
-`POOL1.D64` by the shipped converter (#122, 2026-08-31), which answers a
+`POOL1.D64` by the shipped converter (#122 (A converted save says ANIMATE00 is resident and carries whatever the template had there), 2026-08-31), which answers a
 different question — whether the conversion survives them — and answers it
 yes. The Sokol Keep party arrived: `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.`,
 `(8,14)` facing north, `$0400` matching `GEO15` in 1024 of 1024. The Slums
@@ -364,7 +364,7 @@ screen in text mode — `$D011` bit 5 never goes up. This said it was therefore
 view window, in character graphics, over `THE BOAT DISEMBARKS YOU AT SOKAL
 KEEP.` and under `(PRESS <RETURN> OR BUTTON TO CONTINUE)`. Photographed on a
 converted Sokol Keep party built from nothing, `work/p119b/NEWB2-boat.png`
-(#119, 2026-09-02, gitignored). Bitmap mode and a picture are not the same
+(#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing), 2026-09-02, gitignored). Bitmap mode and a picture are not the same
 question, and the earlier reading answered the second from the first. Whether
 the boat is drawn *by the animator* is still unknown, so "something that draws
 an animation has still to be named" stands as a statement about `$8400` and
@@ -394,7 +394,7 @@ four different places, and an export matches a save in **579 of 580 bytes**:
 The one real difference is `0x10D`, and calling it "marching order in an export"
 overstates what was measured. `0x10D` **is** roster `+0x0D`, and in a roster
 block that byte is the slot index — it did not budge from 0..5 through three
-in-game reorders that moved the records themselves (`#160`). The export evidence
+in-game reorders that moved the records themselves (`#160 (The automapper and the editor list the party backwards)`). The export evidence
 was that a six-character party's exports carry a complete 0-5 permutation; so do
 the slot indices of a packed six-character party, so it does not separate the two
 readings. Treat it as the slot index until an export is taken from a party whose
@@ -434,7 +434,7 @@ self-checking against `docs/20-character-record.md`.
 | `+0x04` | spells memorised, **2nd level** | PROBABLE | |
 | `+0x05` | spells memorised, **3rd level** | PROBABLE | |
 | `+0x0C` | **quickfight**, bit 7 | CONFIRMED | set by QUICK, read by `COMBAT` at the start of the next fight, never cleared. See [`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3 |
-| `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot — 29 of 29 saves on this machine, 0 mismatches. **Not the marching order**: it stayed 0..5 through three in-game reorders while the records themselves moved between slots (`#160`) |
+| `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot — 29 of 29 saves on this machine, 0 mismatches. **Not the marching order**: it stayed 0..5 through three in-game reorders while the records themselves moved between slots (`#160 (The automapper and the editor list the party backwards)`) |
 | `+0x0E` | **THAC0**, stored as `60 - THAC0` | PROBABLE | see below |
 | `+0x0F` | **armour class**, stored as `60 - AC` | CONFIRMED | AC 8 -> 52, AC 2 -> 58 |
 | `+0x10` | armour bonus (shield excluded), stored as `48 + bonus` | PROBABLE | none 48, leather 50, banded mail 54 — measured by putting armour on. Two outside sources read the same byte as **armour class from behind**, `60 - AC`; see below |

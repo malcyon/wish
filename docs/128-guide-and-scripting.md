@@ -244,7 +244,7 @@ have never opened, offered as a work list rather than as findings:
 | C64 offset | DOS field | note |
 |---|---|---|
 | `0x0B7` | unknown, "always 255 for monsters" | `$FF` in all five C64 `MON*` records too; both ports fill it and neither reads it |
-| `0x0B9`-`0x0BA` | unknown, "always 0 for monsters" | **settled since, and not by them**: the dual-classed human's old class slot and old level, written by Curse, Silver Blades and Gateway and unreferenced in Pool of Radiance (`#224`). Their "always 0 for monsters" is the one place the ports differ — the C64's monster records hold `$FF` here, 70 of 70 in Curse |
+| `0x0B9`-`0x0BA` | unknown, "always 0 for monsters" | **settled since, and not by them**: the dual-classed human's old class slot and old level, written by Curse, Silver Blades and Gateway and unreferenced in Pool of Radiance (`#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class slot)`). Their "always 0 for monsters" is the one place the ports differ — the C64's monster records hold `$FF` here, 70 of 70 in Curse |
 | `0x0E2` | strength-bonus-applies flag | we call it `strength_index` |
 | `0x0ED` | maximum hit points before Constitution and `M`odify | we call it `hp_rolled`; the reading matches |
 | `0x0EE`-`0x0F3` | three cleric then three magic-user spell counts | on the C64 these are **nibble-packed**, cleric high, magic-user low (`goldbox/layout.py` already has this) — another place the C64 halved a DOS field |

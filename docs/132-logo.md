@@ -4,7 +4,7 @@
 **P74**. Donald — *"We need an icon for the app that Windows will show in the
 task bar. Until I can hire an artist, we can use something from Font
 Awesome."* That mark was Font Awesome's `hat-wizard`; it shipped from
-2026-08 until `#167`, when Donald asked for a different stand-in from his
+2026-08 until `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`, when Donald asked for a different stand-in from his
 game-icons.net archive while an artist is commissioned: *"I am paying an
 artist to create an app logo and icon. In the meantime, please use
 `pointy-hat`."*
@@ -121,7 +121,7 @@ sheet: **one connected silhouette, every feature at least about 64 units in the
 640 box** — a tenth of the width, which is 1.6 px at 16. The failure that kills
 a glyph is *separation*, not mush: `hat-wizard`'s brim stops touching its cone
 and the icon reads as a shark's fin. That was the app icon's own glyph until
-`#167`; the current one, `pointy-hat`, keeps to one piece at 16--24 for the
+`#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`; the current one, `pointy-hat`, keeps to one piece at 16--24 for the
 same reason -- §6.
 
 | reads at 16 | does not |
@@ -154,7 +154,7 @@ under **CC BY 3.0**, attribution generated into `THIRD_PARTY_LICENSES.md` from
 `wish/about.py`.
 
 It carried Font Awesome Free 7.3.1 under **CC BY 4.0** until 2026-09-01, when
-`#167` replaced the last glyph anything drew. `fontawesome-LICENSE.txt` went
+`#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` replaced the last glyph anything drew. `fontawesome-LICENSE.txt` went
 with it; `git log -- fontawesome-LICENSE.txt` has the file.
 
 **What CC BY obliges, for an application icon.** Wherever the work is
@@ -203,7 +203,7 @@ Everything already available, judged as a logo:
 
 | candidate | source | as an app icon |
 |---|---|---|
-| `hat-wizard` | Font Awesome | **chosen, 2026-08 -- superseded by `pointy-hat` on `#167`** — Donald's call; drawn as Fonticons drew it, §6 as it was |
+| `hat-wizard` | Font Awesome | **chosen, 2026-08 -- superseded by `pointy-hat` on `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`** — Donald's call; drawn as Fonticons drew it, §6 as it was |
 | `wizard-hat` | ours | the previous mark, and still the map's magic-user glyph |
 | `sword` | ours | says combat; the program does not do combat |
 | `swords` | ours | reads as a starburst at small sizes, and already means "encounter" on the map |

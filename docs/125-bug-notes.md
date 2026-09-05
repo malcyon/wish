@@ -389,7 +389,7 @@ into the instruction after it — which is `$9A0E`, the script's own entry 2 —
 or does nothing at all has not been driven. PROBABLE, and what would promote it
 is standing on one of the thirteen with a checkpoint on `$9A0E`.
 
-Found while confirming `goldbox-bugs.md` #9, which needed the dispatcher's
+Found while confirming `goldbox-bugs.md` #9 (Finish the packaging icons: .desktop, .icns and a README lockup), which needed the dispatcher's
 indexing settled: it is 0-based, so script id 8 is the fortune teller.
 
 ## N17. Ohlo introduces himself again after a trip out of the slums
@@ -408,7 +408,7 @@ whole parlay again, instead of the one line written for that case.
 **What the player sees.** A scene replayed, and nothing else: `$4A81` carries
 the errand itself, so no reward is repeated and no state is lost. PROBABLE —
 read from the bytecode, not driven. Same page and same class of mistake as
-`goldbox-bugs.md` #9; it is here rather than there because the consequence is
+`goldbox-bugs.md` #9 (Finish the packaging icons: .desktop, .icns and a README lockup); it is here rather than there because the consequence is
 a repeated paragraph.
 
 ## N18. A zero-length `.ITM` gives a DOS character one item made of heap
@@ -429,12 +429,12 @@ whether the file is there: with it the sheet is garbage, without it there is no
 `WEAPON` line, `DAMAGE 1D2+5`, `THAC0 18`, `ENCUMBRANCE 120` and no `ITEMS` in
 the VIEW bar. Six variants in one save slot separated on the file and not on
 `hands_used`. CONFIRMED, `docs/50-experiments.md` "A converted character who
-owns nothing (#62)".
+owns nothing (#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item))".
 
 **Why no player sees it.** Nothing in the game writes an empty `.ITM`: both
 in-game routes to owning nothing — a freshly rolled character, and one who
 drops every item in play — render clean. It takes a file written from outside,
-which is how our own converter reached it (#62, fixed).
+which is how our own converter reached it (#62 (A converted character who owns nothing gets a corrupt sheet, and DOS then invents a garbage item), fixed).
 
 ## N19. A shop purchase leaves the buyer's encumbrance high by what it just paid
 

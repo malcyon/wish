@@ -236,7 +236,7 @@ confirm — the clamp is what the trainer always does.
 
 **Levelling is refused for every title but Pool of Radiance**, with the reason
 in the outcome's notes, and the button does not appear on the card at all
-(#16). `automap.actions.level_up_blockers` takes the title as well as the
+(#16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character)). `automap.actions.level_up_blockers` takes the title as well as the
 record, and `goldbox.levels.TRAINER_MEASURED` is the list of titles whose trainer
 has been read — one entry.
 
@@ -267,7 +267,7 @@ entry and the refusal says which title it is refusing.
 
 ## Curse of the Azure Bonds, table by table
 
-**Every routine above has now been found in Curse's own overlays** (`#18`), and
+**Every routine above has now been found in Curse's own overlays** (`#18 (Measure Curse's trainer so Level Up works there)`), and
 `tests/test_cursetrainer.py` reads each one off the player's disk rather than
 trusting this document. What follows is where they are and, where the rule is
 not Pool of Radiance's, what the rule is instead.
@@ -506,7 +506,7 @@ ORs the class bit into `class_bits`; `$124F` gives it its own constitution term
 in `hp_max`; and `$15E7` uses `0x0BA` to stop the hit-die roll running for a
 level already paid for.
 
-**The writer, found on `#224` (`0x0B9` and `0x0BA` are documented both as an NPC
+**The writer, found on `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class slot)` (`0x0B9` and `0x0BA` are documented both as an NPC
 marker and as the dual-class slot).** `GEN $2387` gates on race 7, on a check
 that refuses with carry clear, on `0x0BA` still being zero, and on level 2 or
 better, then `$23C9` stores the slot and `$23D2` the level. `$18EB` gives the

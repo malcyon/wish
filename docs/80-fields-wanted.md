@@ -427,7 +427,7 @@ been resolved. `0x0EC` was on this list as "0 → 1 after combat for MALCYON and
 LADY KATHERINE and nobody else — exactly the two spellcasters, so more likely
 spell state than damage"; it is the **missile attack adjustment**, and those
 two are also exactly the two characters with a dexterity of 16
-([the byte that moves a THAC0 when darts are readied](50-experiments.md), #202).
+([the byte that moves a THAC0 when darts are readied](50-experiments.md), #202 (Name record offset 0x0EC, which is what moves a THAC0 when darts are readied)).
 
 `0x117` is roster
 `+0x17`, the damage bonus — its 5, 0, 1 across three exports is three different

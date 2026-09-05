@@ -11,7 +11,7 @@ actually backed by — and what it would take to back the rest.
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
 | How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 28, Silver Blades 25.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `goldbox/games.py:Game.mode_flag`, `tests/test_actions.py` |
+| Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29 (The live reader uses Pool of Radiance's addresses on every title)): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `goldbox/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
 The honest one-line version: **the file path works on three titles, the live
 *reader* now works on three, and the live *writes* are addressed correctly on
@@ -36,7 +36,7 @@ five-row table of the automapper; the automapper tab today has fifteen rows in
 Two specific corrections they already earned and have not had:
 
 * `docs/120` tier 4 listed the memory fallback as "does not transfer" and left
-  it there, so it shipped as a defect on two titles. **Closed by #29**: the
+  it there, so it shipped as a defect on two titles. **Closed by #29 (The live reader uses Pool of Radiance's addresses on every title)**: the
   triple is `Game.live_position`, measured per title, and a title where it is
   unmeasured refuses instead of guessing.
 * `docs/121` §6 lists eight edits the run owes the decoding checklist -- then
@@ -59,16 +59,16 @@ applicable.
 | A3 | 580-byte record decodes to sane fields | V | V | V | `test_curse.py::test_every_curse_character_parses_with_fields_a_person_would_recognise`, `test_silverblades.py::test_the_shipped_party_decodes_with_fields_a_person_would_recognise` |
 | A4 | record round-trips byte-identically | V | V | V | `test_curse.py::test_a_curse_character_export_round_trips_byte_for_byte`, `test_silverblades.py::test_every_slot_round_trips_byte_identically` |
 | A5 | race, class, alignment named in the sheet | V | V | V | `test_pertitle_ui.py::test_the_race_table_follows_the_title`, `…test_a_silver_blades_save_shows_its_own_races` |
-| A6 | saving throws satisfy the derived rule | V | V | V | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **Built (#187)**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`. Reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` and `…test_silver_blades_saves_match_the_modules_own_table` — and the sheet now shows them, via `automap/live.py:_classes` |
-| A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | V | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **Built (#187)**: experience `GEN $162D` (6 x 19 x 3, big-endian, reproducing Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855`, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES` — `test_coldread.py` and `test_ssblevels.py` |
+| A6 | saving throws satisfy the derived rule | V | V | V | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **Built (#187 (Silver Blades characters are shown Pool of Radiance's level progression))**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`. Reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` and `…test_silver_blades_saves_match_the_modules_own_table` — and the sheet now shows them, via `automap/live.py:_classes` |
+| A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | V | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **Built (#187 (Silver Blades characters are shown Pool of Radiance's level progression))**: experience `GEN $162D` (6 x 19 x 3, big-endian, reproducing Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855`, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES` — `test_coldread.py` and `test_ssblevels.py` |
 | A8 | the seven money fields | V | V (gold only) | **U** | `docs/120` §5.2 — gold `0` → `777` read back off the game's own sheet; the other six purses untested on any title but PoR |
-| A9 | spellbook width | V | V | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; **Curse is 13 and the game's own code says so** — `CAMP $2A25` walks spell ids to 100 and reads `LDA $7C78,X` with X at 12, `test_curse.py::test_camp_reads_curses_mask_as_far_as_spell_one_hundred`. No Curse specimen writes past `0x07C` and none has to (#31) |
+| A9 | spellbook width | V | V | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; **Curse is 13 and the game's own code says so** — `CAMP $2A25` walks spell ids to 100 and reads `LDA $7C78,X` with X at 12, `test_curse.py::test_camp_reads_curses_mask_as_far_as_spell_one_hundred`. No Curse specimen writes past `0x07C` and none has to (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) |
 | A10 | spell names resolve | V | V | V | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; **SSB's are resolved** — `goldbox/spells.py:SECRET_OF_THE_SILVER_BLADES`, `COMBAT2` at `$E000`, 194 entries, spells to 117, with `test_silverblades.py::test_silver_blades_keeps_its_spell_names_in_combat2_like_curse` and `…::test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm` |
 | A11 | item names resolve | V | V | V | `test_titletables.py::test_every_title_names_its_first_item_battle_axe` — all six titles |
 | A12 | item **types** (`ITEMS`) decode to damage/AC/usage | V | V | V | `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added`; **SSB decodes to AD&D on 42 of 43 named items**, 30 weapons and 13 armour, through the unmodified decoder against its own `ITEM<nn>` lists — `test_coldread.py::test_a_titles_item_types_decode_to_the_rulebooks_numbers`. The exception is the hammer's damage against large opponents, which SSB stores as 1d4+1 where the other two store the rulebook's 1d4; both are sane dice out of the same three bytes, so it is a data difference and not a misread offset |
 | A13 | inventory edit, add, remove | V | **U** | **U** | `docs/120` blockers: "no Curse save from a *played* party with inventory … no Curse item record has ever been seen" |
 | A14 | combat icon editor and its charset | V | V | V | `CHARPIC00` is on all twenty sides of the three titles, 2030 bytes every time. **Curse's is Pool of Radiance's byte for byte** (only the PRG load address moves, `$8000` → `$3000`) and **Silver Blades redraws three glyphs of 253** — 132, 133 and 207 — which its own eight-bytes-per-glyph reading takes unchanged. `test_curse.py::test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte`, `test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`. The editor reads the open title's own disks: `editor/window.py:_disk_candidates` globs on `game.disk_glob` |
-| A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | V | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds. **Closed by #186**: `goldbox/traits.py` is a table per title now, Curse pointing at Pool of Radiance's and Silver Blades carrying its own — six of its nine seeded codes named by pointing the existing wording at this title's number, and 7, 92 and 105 showing their number because nobody has read what they mean. `test_coldread.py`, six tests, corroborated on the shipped party; `test_pertitle_ui.py`, seven more, on a record built with an elf in it because the shipped party is all humans and dwarves |
+| A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | V | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds. **Closed by #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability)**: `goldbox/traits.py` is a table per title now, Curse pointing at Pool of Radiance's and Silver Blades carrying its own — six of its nine seeded codes named by pointing the existing wording at this title's number, and 7, 92 and 105 showing their number because nobody has read what they mean. `test_coldread.py`, six tests, corroborated on the shipped party; `test_pertitle_ui.py`, seven more, on a record built with an elf in it because the shipped party is all humans and dwarves |
 | A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
 | A17 | an unchanged save writes back byte-identically | V | V | **U** | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; no SSB equivalent |
 | A18 | YAML export → import → byte-identical disk | V | V | **U** | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; SSB has no save disk in the tests, only the shipped `SAVEDBASH` party |
@@ -80,7 +80,7 @@ applicable.
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
 | B1 | read a DOS save | V | — | — | `test_dossave.py`, `test_dosconvert.py`; `docs/117` narrowed the goal to DOS Pool of Radiance, one direction |
-| B2 | convert a DOS save into a C64 one | V | — | — | issue #6, closed: the converted disk loads and the party walks |
+| B2 | convert a DOS save into a C64 one | V | — | — | issue #6 (Convert a DOS save into a C64 save), closed: the converted disk loads and the party walks |
 
 ### C. The automapper — needs a live machine
 
@@ -94,26 +94,26 @@ applicable.
 | C6 | area identification across a boundary | V | **U** | **U** | `docs/120` tier 3 — no boundary was crossed, the area byte stays PROBABLE; `docs/121` §5 — the party never left `GEO10` |
 | C7 | map drawing, reveal, exploration | V | **U** | **U** | pure `Geo`, so it ought to transfer; nothing has drawn a Curse or SSB map in the shipped window |
 | C8 | area names on the map | V | — | — | `goldbox/areas.py:334` — `GEO_NAMES` is empty for Curse on purpose and absent for SSB; `area_name` degrades to `"area 15"`. Correct behaviour, no content |
-| C9 | map notes and exploration, persisted | V | V | V | `test_automap.py::test_a_note_on_one_titles_geo15_is_absent_from_anothers` — the path is `{data dir}/maps/{title}/{GEO id}.json` (#30), three distinct paths for one map id. Pre-split files migrate: `…::test_a_flat_notes_file_is_still_readable_after_the_split` |
-| C10 | combat view | V | **U**, expected broken | **U**, expected broken | `automap/combat.py` holds `$6E11`, `$0600`, `$A380` — PoR's combat overlay. Only the first of those is known for the later titles (`$7F11`, #29), and it is deliberately **not** threaded through here: making the view open on Curse would only let it draw the other two addresses' garbage. Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) |
+| C9 | map notes and exploration, persisted | V | V | V | `test_automap.py::test_a_note_on_one_titles_geo15_is_absent_from_anothers` — the path is `{data dir}/maps/{title}/{GEO id}.json` (#30 (Notes and explored squares leak between titles)), three distinct paths for one map id. Pre-split files migrate: `…::test_a_flat_notes_file_is_still_readable_after_the_split` |
+| C10 | combat view | V | **U**, expected broken | **U**, expected broken | `automap/combat.py` holds `$6E11`, `$0600`, `$A380` — PoR's combat overlay. Only the first of those is known for the later titles (`$7F11`, #29 (The live reader uses Pool of Radiance's addresses on every title)), and it is deliberately **not** threaded through here: making the view open on Curse would only let it draw the other two addresses' garbage. Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) |
 | C11 | combat log | V | **U**, expected broken | **U**, expected broken | `automap/combatlog.py` is built on `COMBAT $2983`, a PoR address in a PoR overlay |
-| C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | V | V | `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29) — **and both have now been read for real**: Curse's BRUTUS/MAGNUS/LADY KATHERINE and Silver Blades' six, names and hit point maxima matching each game's own panel (`docs/120` tier 3, `docs/121` §4). One hazard fell out: while a full-screen picture is up the roster page is scrap and the cards read zeroes — issue #82. **This row said V for XP on all three and was wrong for two classes**: `automap/live.py:_classes` walked the classic four, so a Curse paladin and a Silver Blades ranger got no class name and no experience bar at all -- `#197`, fixed by walking `Game.class_bits` instead. The abbreviations `MU/F/C/T` have no counterpart for paladin, ranger or knight, so those show the class's own name until Donald chooses letters. `test_pertitle_live.py` |
-| C13 | condition badges | V | **U** | **R** | rides C12, which is now V on both -- but no badge has been *drawn* from a real Curse or SSB roster, only the numbers behind it read. **Closed by #196**: `badges()` called `traits.describe(i)` with no title, so a Silver Blades card named Pool of Radiance's spell -- and the badge *groups* were Pool of Radiance's ids besides, which is the same error one level up. `automap/live.py:BADGE_TABLES` is per title now: Curse keeps Pool of Radiance's, because it keeps its trait table (this row rides A15), and **Silver Blades draws none** -- sixteen of the seventeen badged ids are unnamed in its own table, so a glyph there would assert a meaning nobody has read. R rather than U for SSB: the refusal is deliberate and tested, and `Snapshot.unbadged_party_effects` still puts every one of them in the debug log. `test_pertitle_live.py`, eight badge tests of fifteen. `docs/136-condition-badges.md` |
-| C14 | quickfight badge | V | **U** | **U** | rides C12. `quickfight_flag` resolved to `$670C` on both live machines (#29) and nobody was on quickfight, so the bit has never been seen set on either |
+| C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | V | V | `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29 (The live reader uses Pool of Radiance's addresses on every title)) — **and both have now been read for real**: Curse's BRUTUS/MAGNUS/LADY KATHERINE and Silver Blades' six, names and hit point maxima matching each game's own panel (`docs/120` tier 3, `docs/121` §4). One hazard fell out: while a full-screen picture is up the roster page is scrap and the cards read zeroes — issue #82 (The live roster reads graphics data while a full-screen picture is up on Silver Blades). **This row said V for XP on all three and was wrong for two classes**: `automap/live.py:_classes` walked the classic four, so a Curse paladin and a Silver Blades ranger got no class name and no experience bar at all -- `#197 (A Curse or Silver Blades paladin or ranger has no class and no experience bar on its roster card)`, fixed by walking `Game.class_bits` instead. The abbreviations `MU/F/C/T` have no counterpart for paladin, ranger or knight, so those show the class's own name until Donald chooses letters. `test_pertitle_live.py` |
+| C13 | condition badges | V | **U** | **R** | rides C12, which is now V on both -- but no badge has been *drawn* from a real Curse or SSB roster, only the numbers behind it read. **Closed by #196 (The automapper's condition badges name a Silver Blades trait with Pool of Radiance's meaning)**: `badges()` called `traits.describe(i)` with no title, so a Silver Blades card named Pool of Radiance's spell -- and the badge *groups* were Pool of Radiance's ids besides, which is the same error one level up. `automap/live.py:BADGE_TABLES` is per title now: Curse keeps Pool of Radiance's, because it keeps its trait table (this row rides A15), and **Silver Blades draws none** -- sixteen of the seventeen badged ids are unnamed in its own table, so a glyph there would assert a meaning nobody has read. R rather than U for SSB: the refusal is deliberate and tested, and `Snapshot.unbadged_party_effects` still puts every one of them in the debug log. `test_pertitle_live.py`, eight badge tests of fifteen. `docs/136-condition-badges.md` |
+| C14 | quickfight badge | V | **U** | **U** | rides C12. `quickfight_flag` resolved to `$670C` on both live machines (#29 (The live reader uses Pool of Radiance's addresses on every title)) and nobody was on quickfight, so the bit has never been seen set on either |
 | C15 | the Quest Log | V | — | — | `goldbox/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
-| C16 | heal party | V | **U** | V | Addresses and gate both done (#29). `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own` -- and `Game.mode_flag` is `$7F11` on both later titles, `…::test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances`. **V for Silver Blades because it was done to a real party**: `HealParty` wrote `$6719`/`$6739` on a live machine and MORGAINE and MALACHITE came back to 35/35 and 58/58 (`docs/121` §4). On Curse the same call ran and legitimately had nothing to heal, so the write half is untried there. The combat gate was exercised for real on Silver Blades: `1` -> `4` -> `2` on a wandering encounter, `heal` legal, `identify` refused |
-| C17 | store / restore spells | V | **U** | **U** | rides C16 -- the gate passes on both titles now (#29), but no spell block has been written on either |
-| C18 | identify items | V | **U** | **U** | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29). Neither party carried an item, so nothing has been identified on either title |
+| C16 | heal party | V | **U** | V | Addresses and gate both done (#29 (The live reader uses Pool of Radiance's addresses on every title)). `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own` -- and `Game.mode_flag` is `$7F11` on both later titles, `…::test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances`. **V for Silver Blades because it was done to a real party**: `HealParty` wrote `$6719`/`$6739` on a live machine and MORGAINE and MALACHITE came back to 35/35 and 58/58 (`docs/121` §4). On Curse the same call ran and legitimately had nothing to heal, so the write half is untried there. The combat gate was exercised for real on Silver Blades: `1` -> `4` -> `2` on a wandering encounter, `heal` legal, `identify` refused |
+| C17 | store / restore spells | V | **U** | **U** | rides C16 -- the gate passes on both titles now (#29 (The live reader uses Pool of Radiance's addresses on every title)), but no spell block has been written on either |
+| C18 | identify items | V | **U** | **U** | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29 (The live reader uses Pool of Radiance's addresses on every title)). Neither party carried an item, so nothing has been identified on either title |
 | C19 | clear quickfight, and the watcher | V | **U** | **U** | rides C16; `actions.quickfight_flag(game)` builds the address from `Game.roster_base` and read `$670C` on both live machines -- `test_actions.py::test_the_quickfight_flag_follows_the_roster_page`. Nobody was on quickfight, so no bit has been cleared on either title |
-| C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 |
-| C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `fasttravel_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
-| C22 | the *running* title is **checked against** the machine | V | V | V | issue #21, closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
+| C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 (Level Up assumes Pool of Radiance, and silently corrupts a Curse character) |
+| C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `fasttravel_bar.has_areas` is true for PoR and false for Curse. Closed by #14 (Fast Travel offers Pool of Radiance's areas in a Curse session) |
+| C22 | the *running* title is **checked against** the machine | V | V | V | issue #21 (The running game is guessed from a preference, so both title safeguards can fail open), closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
 
 ### D. The application shell
 
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
-| D1 | Preferences: disks folder, and the report of what was found | V | **U** | **U** | `#22`: Curse and Silver Blades each have their own folder row now, on the Game disks tab, and the report reuses the shared box's own wording -- built and tested in `tests/test_preferences.py`, not yet exercised against a live machine on either title, which is what keeps this U |
+| D1 | Preferences: disks folder, and the report of what was found | V | **U** | **U** | `#22 (A disk folder setting per game, not one shared by all six)`: Curse and Silver Blades each have their own folder row now, on the Game disks tab, and the report reuses the shared box's own wording -- built and tested in `tests/test_preferences.py`, not yet exercised against a live machine on either title, which is what keeps this U |
 | D2 | Preferences: the Fast Travel tick table | V | — | — | built straight off `goldbox/areas.py:AREAS`, which is PoR's alone |
 | D3 | backend selection, VICE | V | V | V | title-independent; exercised by every live test |
 | D4 | backend, Commodore 64 Ultimate | **U** | **U** | **U** | `wish/ultimate.py` — "UNVERIFIED. Nobody on this project has the hardware", and `Backend.verified` is False |
@@ -137,27 +137,27 @@ each title's five add to 49.
 **Silver Blades' own two numbers above, and the §0 summary, are a fresh count,
 not the ones this table carried when it was written.** `#196 (The
 automapper's condition badges name a Silver Blades trait with Pool of
-Radiance's meaning)` (row C13) turned one more `U` into `R` since `#31` last
+Radiance's meaning)` (row C13) turned one more `U` into `R` since `#31 (Cold-read Curse and Silver Blades for the fields the editor shows)` last
 counted these rows, without anyone returning to update the totals here — the
 table said 24 `V` and 2 `R` where the rows now read 25 and 3.
 
-#31 moved eight of them, all by reading files this project already opens:
+#31 (Cold-read Curse and Silver Blades for the fields the editor shows) moved eight of them, all by reading files this project already opens:
 A9 and A14 to `V` for Curse, A10, A12 and A14 to `V` for Silver Blades, A15 to
 `V` for Curse, and A16 to `V` for both after the row was corrected to say what
 it is about. A6 and A7 stayed `U` for Silver Blades at that point, with every
 number they need measured and written down but no `LevelTables` in
-`goldbox/levels.py` to show it from; #187 built one and moved both to `V`.
+`goldbox/levels.py` to show it from; #187 (Silver Blades characters are shown Pool of Radiance's level progression) built one and moved both to `V`.
 
 Curse and Silver Blades each gained two `V` (C4, C9) and turned three `X` into
-`U` (C12–C14) when #29 and #30 landed, and a third when #21 closed C22. The
-second half of #29 turned the last four `X` -- the live actions -- into `R`:
+`U` (C12–C14) when #29 (The live reader uses Pool of Radiance's addresses on every title) and #30 (Notes and explored squares leak between titles) landed, and a third when #21 (The running game is guessed from a preference, so both title safeguards can fail open) closed C22. The
+second half of #29 (The live reader uses Pool of Radiance's addresses on every title) turned the last four `X` -- the live actions -- into `R`:
 every address they write is the descriptor's now, and the one address that
 cannot be derived, the loader's mode flag, is unmeasured on both titles, so the
 buttons refuse and say so.
 
 **Silver Blades briefly had one `X` again** -- A15's trait codes are not Pool
 of Radiance's, so the character sheet named four of its six races' abilities
-wrongly all along and nobody had looked. #186 closed it with a table per title,
+wrongly all along and nobody had looked. #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability) closed it with a table per title,
 and the three codes nobody has read show their number rather than another
 title's sentence. Curse has none. Pool of Radiance's one `U` is the Ultimate
 backend, which nobody can test.
@@ -191,7 +191,7 @@ Grouped by what they share, so each group is one sitting.
 
 ### G1 — a cold read of the Curse and Silver Blades disks · no emulator
 
-**Done (#31), six cells of the eight.** `tools/coldread.py` is what it produced
+**Done (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)), six cells of the eight.** `tools/coldread.py` is what it produced
 and `tests/test_coldread.py` is what keeps it true; the six answers are below,
 with the two that did not close.
 
@@ -208,7 +208,7 @@ with the two that did not close.
   at byte 12. A9.
 * Trait codes — **the seeding is per title and so is the namespace.** Curse's
   codes are Pool of Radiance's; Silver Blades' are not, which made A15 an `X`
-  for that title and #186 a bug a user could see. Closed: the table is per
+  for that title and #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability) a bug a user could see. Closed: the table is per
   title now, and a Silver Blades code nobody has read shows its number.
 * The effect arrays — **all four at the same payload offsets in all three**,
   from `CAMP`'s and `DUNGEON`'s own loops rather than from a shipped party,
@@ -216,9 +216,9 @@ with the two that did not close.
 
 **A6 and A7, closed by #187 (Silver Blades characters are shown Pool of
 Radiance's level progression).** Every Silver Blades table those cells need
-was read and written into the matrix rows above during #31, and the
+was read and written into the matrix rows above during #31 (Cold-read Curse and Silver Blades for the fields the editor shows), and the
 saving-throw rule reproduces all six shipped characters; what was missing was
-a `LevelTables` for the title in `goldbox/levels.py`, which #187 built --
+a `LevelTables` for the title in `goldbox/levels.py`, which #187 (Silver Blades characters are shown Pool of Radiance's level progression) built --
 `SECRET_OF_THE_SILVER_BLADES`, checked row by row against `GEN` in
 `tests/test_coldread.py` and `tests/test_ssblevels.py`. Its trainer stays
 unread (thief-skill racial adjustment, constitution hit-point bonus, wisdom
@@ -227,13 +227,13 @@ bonus spells, turning table), so `levels.trainer_measured` and
 
 ### G2 — thread the save geometry into the live reader · code, no emulator
 
-**Done (#29)**, for the reader. `live.memory_blocks(game)` and `party_fix(read,
+**Done (#29 (The live reader uses Pool of Radiance's addresses on every title))**, for the reader. `live.memory_blocks(game)` and `party_fix(read,
 game)` take every address from the `Game` descriptor, and the live party triple
 is `Game.live_position` — `$C04B`, measured on Pool of Radiance, Curse and
 Silver Blades and None on the other three, which refuse rather than guess.
 Closed C4 and moved C12–C14 from `X` to `U`.
 
-**Also done (#29): `automap/actions.py`.** `Member` and `read_party` take the
+**Also done (#29 (The live reader uses Pool of Radiance's addresses on every title)): `automap/actions.py`.** `Member` and `read_party` take the
 descriptor, so the slot area, the item area and the roster page all follow
 `save_load_address`; `live.BLOCKS` is gone with its last caller. `ActionBar`
 takes a game and the window hands it the one it resolved, alongside the Fast
@@ -244,14 +244,14 @@ the buttons.** The flag every action reads before it writes, because `2` is
 combat, is a byte of `LINKER`'s own resident page. It is now measured on three
 titles: `$6E11` in Pool of Radiance, **`$7F11` in Curse and Silver Blades**,
 read out of `LINKER`'s own first instruction and confirmed live at `$2D00` in
-both (#29). Their overlay name tables are the same table entry for entry, so
+both (#29 (The live reader uses Pool of Radiance's addresses on every title)). Their overlay name tables are the same table entry for entry, so
 `2` is COMBAT in all three. `Game.mode_flag` is None only on the three
 Krynn-era titles now, and an action whose title has None still refuses rather
 than write with no way to see a fight.
 
 ### G3 — namespace the notes by title · code, no emulator
 
-**Done (#30)**, closing C9. `AutomapState.notes_path` is
+**Done (#30 (Notes and explored squares leak between titles))**, closing C9. `AutomapState.notes_path` is
 `{data dir}/maps/{title}/{GEO id}.json`, keyed by `Game.key`, and the fog-of-war
 record moved with it because it is in the same file.
 
@@ -287,7 +287,7 @@ already proved the disk-flush hazard; `docs/121` §5 has the list.
 Closes C6, C7, C12–C19 for both titles — twenty cells between them, and they
 share one prerequisite and one kind of run.
 
-**Part of it is done (#29).** The mode flag — the loader's dispatch byte, which
+**Part of it is done (#29 (The live reader uses Pool of Radiance's addresses on every title)).** The mode flag — the loader's dispatch byte, which
 is what the five action buttons gate on — is `$7F11` on both later titles, and
 it did not need a differential read at all: it is the absolute operand of
 `LINKER`'s own first instruction and can be taken off the disk. With it in
@@ -298,7 +298,7 @@ done to a real wounded party, which is C16 for that title.
 **What the sitting still owes**, and it is the same pass for either title:
 draw the map (C7); cross an area boundary and read the area byte either side
 (C6 — the negative example `docs/120` tier 3 says is missing); check the badges
-against the character sheet (C13, C14) and mind issue #82 while doing it; and
+against the character sheet (C13, C14) and mind issue #82 (The live roster reads graphics data while a full-screen picture is up on Silver Blades) while doing it; and
 put an item and a spellbook in front of the remaining three action buttons,
 because neither party carried anything for them to work on (C17, C18, C19).
 The gate itself is done for Silver Blades — a wandering encounter 228 steps out
@@ -319,10 +319,10 @@ show nothing rather than garbage on the others, the way Fast Travel now does.
 
 | cell | issue |
 |---|---|
-| C20 for Curse, the trainer measurement | #18 |
-| C21 for SSB, an area table | #20 |
-| C21 for Curse, whether the mechanism exists at all | #19 |
-| D1, a disks folder per title | #22 |
+| C20 for Curse, the trainer measurement | #18 (Measure Curse's trainer so Level Up works there) |
+| C21 for SSB, an area table | #20 (Build an area table for Silver Blades) |
+| C21 for Curse, whether the mechanism exists at all | #19 (Can Curse be fast-travelled at all, or is the mechanism Pool of Radiance's alone?) |
+| D1, a disks folder per title | #22 (A disk folder setting per game, not one shared by all six) |
 | D4, the Ultimate backend | needs hardware nobody here has |
 
 ## 4. What this document is not

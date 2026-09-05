@@ -26,19 +26,19 @@ what is left is what ships.
 | Person note | `person` | game-icons.net, Delapouite |
 | application icon (temporary stand-in) | `pointy-hat` | game-icons.net, Lorc |
 
-The map-note kinds went from nine to twenty-five on `#166`; the sixteen
+The map-note kinds went from nine to twenty-five on `#166 (Draw the twenty-three note kinds Donald chose, and name them)`; the sixteen
 that joined are in the section at the foot of this page, and
 `docs/98-automap-notes.md` is the table a reader should go to.
 
 `person-running` was the quickfight badge's Font Awesome original; nothing has
-drawn it since `sparkling-sabre` replaced it (`#4`/`#136`), and its path data
+drawn it since `sparkling-sabre` replaced it (`#4 (Condition badges on the roster card)`/`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`), and its path data
 is deleted from `ui/icons.py` along with `skull` and `arrow-down-long`, the
 other two condition-badge originals the same batch superseded.
 
 The last row is not one of these. It is the *app* icon, judged in
 [`132-logo.md`](132-logo.md) against a different bar — 16 px and up, on its own
 tile. `hat-wizard`, the glyph the sheet below rejected for every *other* slot,
-was the app icon until `#167` swapped in `pointy-hat` as a stand-in while an
+was the app icon until `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` swapped in `pointy-hat` as a stand-in while an
 artist is commissioned; see `132-logo.md` and `ui/appicon.py`.
 
 The sheet is still buildable and now shows the chosen set:
@@ -300,7 +300,7 @@ mark now.
 
 ### Toolbar
 
-**Superseded by `#167`, below** — the buttons now draw game-icons.net's
+**Superseded by `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`, below** — the buttons now draw game-icons.net's
 `open-folder`, `save` and `brass-eye`. Left here as the record of why Font
 Awesome's `folder-open` and `floppy-disk` were picked at the time.
 
@@ -340,7 +340,7 @@ the four buttons at `TOOLBAR_ICON = 16`.
 | combat | party, enemy, active | **no** — coloured squares with hit points in them are unambiguous |
 | roster | poisoned, paralysed | **blocked** — the effect codes are not decoded |
 
-## `#167` — Font Awesome leaves the note icons, the toolbar and the app icon
+## `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` — Font Awesome leaves the note icons, the toolbar and the app icon
 
 Ten icons, then a further two, went this way: chosen by Donald and copied
 verbatim from his game-icons.net archive.
@@ -391,7 +391,7 @@ check as the ten. `crossed-sabres`' control points overshoot its 512 box by
 ink does not, and `tests/test_automap.py`/`tests/test_conditionbadges.py`
 carry the same measured exclusion.
 
-**The Person note's `user` is the last one, and it finishes `#167`
+**The Person note's `user` is the last one, and it finishes `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)`
 completely.** `person` (Delapouite) replaces it, so nothing in the program
 renders a Font Awesome glyph any more.
 
@@ -421,12 +421,12 @@ Nothing is redrawn: the app icon recolours `pointy-hat` -- game-icons.net,
 CC BY 3.0, Lorc -- and puts it on a tile, and the path data is theirs,
 untouched, at every size.
 
-## `#166` — sixteen more note kinds
+## `#166 (Draw the twenty-three note kinds Donald chose, and name them)` — sixteen more note kinds
 
 Donald picked twenty-three glyphs for map notes and named every one of them
 himself, working from `work/note-icons.md`, which drew each at 32px and at
 13px. Sixteen became new kinds; the nine that already existed kept their names
-and had been repictured on `#167` already.
+and had been repictured on `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` already.
 
 | kind | glyph | artist |
 |---|---|---|

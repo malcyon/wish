@@ -262,7 +262,7 @@ into LIBRARY's own string table (lo `$3439`, hi `$347B`, 66 entries, base
 
 Bit 7 on top of those means "out of the fight", which is what `POST.COM`'s
 census tests first. So `$84` is a dying character and `$85` an unconscious
-one, which is the pair `#235` watched the engine write.
+one, which is the pair `#235 (Two unattributed DOS byte ranges in the combat tail are dropped converting to C64, and nobody knows what they hold)` watched the engine write.
 
 **A party that loses is left dying, not dead, and nothing binds it.** In both
 driven defeats all six characters took `GOES DOWN` then `AND IS DYING`, and

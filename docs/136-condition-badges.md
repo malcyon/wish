@@ -318,7 +318,7 @@ displaced collision without choosing between them.
   synthesised effect arrays. No save this project holds has a spell running on
   a character, so the only badges a live poll has ever lit are the two the record
   carries — `P3-EFFECTS.D64` would have shown all five and went with `work/`
-  (#136).
+  (#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)).
 
 ## Which title's ids these are
 
@@ -349,7 +349,7 @@ whatever `badges()` returns and `RosterCard` drops the rest silently: no log
 line, nothing anywhere. That predates the per-title split and is not caused by
 it, but it is the ordinary case — a Bless on one fighter, a Haste on one thief
 — so on Silver Blades, where no card badges anything, every per-character
-effect now vanishes without trace. Found in the code review of #197, filed as
+effect now vanishes without trace. Found in the code review of #197 (A Curse or Silver Blades paladin or ranger has no class and no experience bar on its roster card), filed as
 its own ticket, and named here because this paragraph used to say "nothing is
 hidden" and that was true only of the party strip.
 

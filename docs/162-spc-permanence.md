@@ -154,7 +154,7 @@ Reported for `goldbox/neutral.py` and `goldbox.dos.to_neutral`, which
 another agent holds tonight.
 
 1. **Duration zero is the discriminator, on both ports.** The carrying half
-   of `#232` can be built as specified: a neutral field holding the whole
+   of `#232 (An item-granted effect is dropped on the way through the neutral record, with no report)` can be built as specified: a neutral field holding the whole
    record for every non-innate `.SPC` node at duration zero, written back by
    `goldbox.dos.write` and `goldbox.amiga.write_por`. A nonzero duration is a
    running spell and stays unreported under Donald's 2026-08-27 ruling.

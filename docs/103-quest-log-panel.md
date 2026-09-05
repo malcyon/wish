@@ -160,7 +160,7 @@ no other kind of row in that group. The interface calls the panel the Quest
 Log, and an area script's own side quest — one the City Council never hears
 about — used to be a quest the panel could not draw at all.
 
-Ohlo's potion errand in the Slums is the first one found (#157): accepted from
+Ohlo's potion errand in the Slums is the first one found (#157 (Ohlo's potion errand does not appear in the Quest Log)): accepted from
 a man in the Slums, fetched from a booth in the old rope guild, and tracked in
 `$4A04` and `$4A81` rather than in any ledger byte
 ([`134-commissions.md`](134-commissions.md)). `$4A04` is scratch, in the page
@@ -248,7 +248,7 @@ log that blanked every time somebody opened one would be a flicker.
 * Reading is pure: the decoder copies its input, and the specimen save's bytes
   are identical after the panel has drawn them.
 
-## The other titles have no equivalent, and this is why the panel refuses (#40)
+## The other titles have no equivalent, and this is why the panel refuses (#40 (Is there a commissions equivalent in Curse or Silver Blades?))
 
 **Curse of the Azure Bonds and Secret of the Silver Blades have nothing a
 Quest Log could draw.** Established by reading every string in both
@@ -284,6 +284,6 @@ That is **one number** — the five bonds — on a linear plot, and Silver Blade
 has not even that. There is no board to offer from and no ledger to read back,
 so a per-title panel would have a single integer to draw and no rows.
 
-**So the refusal is permanent rather than provisional**, and #35's decision to
+**So the refusal is permanent rather than provisional**, and #35 (Combat and commissions features should say they are Pool of Radiance's)'s decision to
 make the panel refuse instead of making it per-title is the right one for a
 reason rather than for want of information.

@@ -7,7 +7,7 @@ may assume and which you must re-measure.
 
 **Every format fact this page needs is somewhere else in `docs/`, and it is
 cited rather than repeated.** A second copy of the byte map is exactly the
-defect #64 and #76 (*`tools/dosbox.py` holds a third copy of the DOS saved
+defect #64 (por/dos_savegame.py and por/dos.py hold the same byte map twice) and #76 (*`tools/dosbox.py` holds a third copy of the DOS saved
 game's byte map*) were opened for. Where a number appears here it is because
 the *method* turns on it.
 

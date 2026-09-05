@@ -3,7 +3,7 @@
 `#55 (Decode the Amiga Curse and Silver Blades records)`. Both titles keep
 their characters, monsters and items on disk in the **DOS layout** and expand
 each into the Amiga one at load time. That expander is the shift map, written
-by the people who wrote the port, and it settles the four measurements `#55`
+by the people who wrote the port, and it settles the four measurements `#55 (Decode the Amiga Curse and Silver Blades records)`
 was holding open for specimens nobody has.
 
 Every offset here is a file offset into `/Curse` on Curse of the Azure Bonds
@@ -190,7 +190,7 @@ through the other path, the `ITEM<n>` template loader, which unpacks each
 63-byte template into a stack struct it never clears and copies all 66 bytes
 into the node. Nine identical values from one uninitialised stack frame.
 
-This refutes the reading `#55` carried from 2026-08-26 to 2026-09-05, that
+This refutes the reading `#55 (Decode the Amiga Curse and Silver Blades records)` carried from 2026-08-26 to 2026-09-05, that
 `0x3E` was `charges` and 47 was a Chain Mail's charge count. **A constant
 across nine specimens is not a constant; it is nine specimens** — the third
 time this corpus has taught that lesson, after `readied` and

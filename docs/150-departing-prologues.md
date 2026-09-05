@@ -77,7 +77,7 @@ journey, so a skipped quest flag is the right answer rather than a fault: the
 party did not open that door, so the door is not open. What matters is the
 narrower set of statements that are about **the machine** rather than about the
 story -- the loader's cache, the wall tables, the party's position -- because
-the arriving area assumes those and nobody has told it otherwise. `#156
+the arriving area assumes those and nobody has told it otherwise. `#156 (Warping from the Slums to New Phlan draws New Phlan with the Slums' walls)
 (Warping from the Slums to New Phlan draws New Phlan with the Slums' walls)`
 was one of those, and there are two more.
 

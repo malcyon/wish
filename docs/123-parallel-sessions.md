@@ -142,7 +142,7 @@ of them are the actual work:
 
 `Slot.env()` is the whole interface: `POR_SLOT`, `POR_DISPLAY`, `POR_VICERC`,
 `POR_MONITOR`, `MONFLAGS` and `POR_HEADLESS`, which `porlaunch.sh` reads and
-passes on. `Slot.env()` sets `POR_HEADLESS` to `"1"` itself (#147) -- a slot
+passes on. `Slot.env()` sets `POR_HEADLESS` to `"1"` itself (#147 (Claiming a pool slot does not stop an emulator opening a window on Donald's screen)) -- a slot
 is by definition something an agent claimed, so headless is the default an
 agent gets without asking for it; `os.environ`'s own value wins when a human
 has set one, so `POR_HEADLESS=0` still lets somebody deliberately watch a run.

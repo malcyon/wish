@@ -47,7 +47,7 @@ The word store at `0x814A` then does, per class: `les di, [0x49D2]; add di,
 same with `[0x49D6]` and `+0x2A00` (`2*(addr - $6B00)`), `[0x49DA]` and
 `-0x2E00` (`2*(addr - $9700)`), and the script buffer `[0x49DE]` with
 `+0x6700` (`addr - $9900`, one byte wide). Those are the four heap blocks the
-save routine writes, in file order (`#218`'s first comment has the
+save routine writes, in file order (`#218 (Three live regions of the DOS saved game are named but not understood)`'s first comment has the
 `BlockWrite` list). Class 4 is engine state reached by address: the load
 routine at `0x82DF` hands back `$C04B`, `$C04C`, `$C04D`, `$C04E`, `$C04F`
 as `[0x6AAD]`, `[0x6AAE]`, `[0x6AAF] >> 1`, `[0x6AB0]`, `[0x6AB1]`
@@ -209,7 +209,7 @@ the code offset did not.
 
 ## Bytes 12804 and 12805: `$C04E` and `$C04F`
 
-`#218`'s first comment found the step routine (`GAME.OVR:0x8EAE`) ending in
+`#218 (Three live regions of the DOS saved game are named but not understood)`'s first comment found the step routine (`GAME.OVR:0x8EAE`) ending in
 two far calls whose results it stores at `[0x6AB0]` and `[0x6AB1]`, file
 bytes 12804 and 12805, and did not read the callees. They are:
 

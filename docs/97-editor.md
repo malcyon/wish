@@ -209,7 +209,7 @@ Editor should be resizable?"*
 
 It is a `QSplitter` now (`editor_split` in `wish/window.ui`, managed by
 `editor.window.RowSplitter`), and the divider is the answer rather than a
-guess about where the height should come from. That is the shape `#162` gave
+guess about where the height should come from. That is the shape `#162 (Let the user resize the Quest Log and roster columns)` gave
 the automapper's three columns, and the two rulings behind it are the same:
 **a dragged position is remembered** -- `Settings.editor_rows`, two numbers in
 the JSON, written on a drag and never on a window resize -- and **a row may be

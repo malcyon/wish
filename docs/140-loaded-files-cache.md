@@ -44,7 +44,7 @@ Read straight out of `LIBRARY`: `$4209,X` maps a slot to a stem, the stem is at
 each one there, and `$1485` then **unpacks each of the three to `$ED50`,
 `$F05C` and `$F368`** -- the destinations in the three-entry tables at
 `$14BF`/`$14C2`. That is the same memory slot 9 (`WALLS`) loads at, and the
-two cannot both be resident at once; see `#156` for what happens when the
+two cannot both be resident at once; see `#156 (Warping from the Slums to New Phlan draws New Phlan with the Slums' walls)` for what happens when the
 loader is not told the wall pieces have overwritten it.
 | 21 | `CHARPIC` | `$9900` | the icon charset |
 | 22 | `CHARPIC` | `$8C00` | the same file, staged |
@@ -59,7 +59,7 @@ where the character record begins.
 
 ## Slot 3, `SECSET`: it is a character set, and it shares its space with the walls
 
-`#48` asked what is in a `SECSET` file. **It is character-generator data** --
+`#48 (What is in a SECSET file?)` asked what is in a `SECSET` file. **It is character-generator data** --
 8×8 multicolour glyphs, one every eight bytes -- and the region it lands in is
 shared with the three `WALLSET` pieces.
 
@@ -174,7 +174,7 @@ message-and-place branch, gated on the scratch flag `$4A02`, overwrites the
 saved square when the gate is open — and a converter that zeroes the scratch
 arms it, which is safe: the script's own square is legal by construction. An
 area with no placing arrival leaves the saved square alone — PROBABLE from the
-#24 conversion run, which came up at `(4,3)` where New Phlan's arrival is
+#24 (Decode the loaded-files cache, so conversion stops needing a same-area template) conversion run, which came up at `(4,3)` where New Phlan's arrival is
 `(15,1)`. Indoors the saved square is a shadow: it seeds the live
 `$C04B`-`$C04D` during arrival and does not move again until the game saves.
 
@@ -227,7 +227,7 @@ gaps; `$49EA` is no longer one.
 ## Slot 11 is not lazy, because the save is carrying the file
 
 CONFIRMED in the running game, by bisecting a known-good and a known-bad save
-that differ in the cache and nothing else (`work/p102/`, #102).
+that differ in the cache and nothing else (`work/p102/`, #102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands)).
 
 `SAVEDGAME1` is `$8300`-`$8AFF`, and its tail from `$8400` is the resident
 `ANIMATE00`: 829 of those 852 bytes match the file on the disk, over 98 saves
@@ -236,7 +236,7 @@ as over the three this was first counted on. So a save whose slot 11 reads
 and the engine believes the cache.
 
 **"The engine believes the cache" is a claim about slot 11, not about the 852
-bytes**, and this section was read as making both. #118 step 3 zeroed the whole
+bytes**, and this section was read as making both. #118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64) step 3 zeroed the whole
 of `$8400`-`$8AFF` in a converted save, left slot 11 saying resident, and the
 party loaded, walked and changed area anyway — `$0400` matching `GEO00` in 1024
 of 1024 — as did the same save with slot 11 `$FF`, and one carrying `ANIMATE00`
@@ -252,7 +252,7 @@ matching `GEO15` in 1024 of 1024. The screen never left text mode, and this
 concluded from that that the arrival "draws no picture" — which is wrong: it
 **draws a boat** in the view window, in character graphics, and waits on
 `(PRESS <RETURN> OR BUTTON TO CONTINUE)`. Photographed on a converted Sokol
-Keep party built from nothing, `work/p119b/NEWB2-boat.png` (#119, 2026-09-02,
+Keep party built from nothing, `work/p119b/NEWB2-boat.png` (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing), 2026-09-02,
 gitignored). Bitmap mode and a picture are not the same question. Whether that
 picture is drawn by the animator at `$8400` is still unknown, so what is
 outstanding is unchanged: nothing that provably calls into `$8400` has been

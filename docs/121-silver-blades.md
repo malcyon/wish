@@ -15,7 +15,7 @@ read out of `GEN`'s own clear loop at `$09DC`. And **the live party position is
 at `$C04B`, not `$4BC0`** — the header copy is stale during play, and so is the
 on-screen status line.
 
-A fourth, added by #31: **`GEN` and `CAMP` run at `$0800`**, and every Silver
+A fourth, added by #31 (Cold-read Curse and Silver Blades for the fields the editor shows): **`GEN` and `CAMP` run at `$0800`**, and every Silver
 Blades overlay address this document and `goldbox/spells.py` carried was
 computed at the PRG header's `$4000` instead. §4.3 lists the seven corrected
 addresses across three titles.
@@ -352,13 +352,13 @@ CANARY here — so only a title's own `ITEM<nn>` lists say what its indices mean
 |---|---|
 | items and coins across the import | no specimen carried either; a Curse party with an inventory settles the 256-byte item block |
 | `0x0EC` | class-shaped after an import, `0xFB` in every native pregen. UNKNOWN |
-| ~~Silver Blades' per-race trait table at `0x0AD`~~ **read** (#31) | `GEN $0C4B` seeds **two** slots from `$0C5B` and `$0C62`, which is why the shipped dwarf carries two entries where the import wrote one. Elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92, human none; `GEN $0FF0` then writes 45 for a paladin and 105 for a ranger. §4.3 |
+| ~~Silver Blades' per-race trait table at `0x0AD`~~ **read** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) | `GEN $0C4B` seeds **two** slots from `$0C5B` and `$0C62`, which is why the shipped dwarf carries two entries where the import wrote one. Elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92, human none; `GEN $0FF0` then writes 45 for a paladin and 105 for a ranger. §4.3 |
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
-| ~~whether the sixteen-byte spellbook is also Curse's~~ **it is not** (#31) | Curse reads thirteen bytes: `CAMP $2A25` walks spell ids to 100 and indexes the mask at byte 12. Gateway is still unread |
+| ~~whether the sixteen-byte spellbook is also Curse's~~ **it is not** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) | Curse reads thirteen bytes: `CAMP $2A25` walks spell ids to 100 and indexes the mask at byte 12. Gateway is still unread |
 | `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
-| ~~`goldbox/levels.py`'s caps for this title~~ **built** (#31, #187) | every table is read off `GEO`'s neighbour `GEN` and written into `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`; the character sheet shows it through `automap/live.py:_classes`. The trainer's own inputs stay unread, so `goldbox/levelup.py` still refuses to level the title |
+| ~~`goldbox/levels.py`'s caps for this title~~ **built** (#31 (Cold-read Curse and Silver Blades for the fields the editor shows), #187 (Silver Blades characters are shown Pool of Radiance's level progression)) | every table is read off `GEO`'s neighbour `GEN` and written into `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`; the character sheet shows it through `automap/live.py:_classes`. The trainer's own inputs stay unread, so `goldbox/levelup.py` still refuses to level the title |
 
-**The loader's mode flag is `$7F11` (#29).** `LINKER` is 149 bytes on
+**The loader's mode flag is `$7F11` (#29 (The live reader uses Pool of Radiance's addresses on every title)).** `LINKER` is 149 bytes on
 `SILVER-1.D64`, is resident at `$2D00` byte-identical to the disk copy, and
 begins `LDA $7F11` — the operand is absolute, so it names the flag without
 anyone having to fit the load address. The overlay name table at `$2D42` is
@@ -389,7 +389,7 @@ never been sampled live in any title before this.
 screen, the roster page at `$6700` holds something else entirely and reads as
 graphics data. Character *names* still come out right, because those are read
 from the record slots, so a reader that sanity-checks the party will pass and
-then show nonsense hit points. Issue #82.
+then show nonsense hit points. Issue #82 (The live roster reads graphics data while a full-screen picture is up on Silver Blades).
 
 Phases 1, 2 and 6 needed no emulator, which is the whole reason they were
 ordered first — and phases 3 to 5 then cost one session between them because

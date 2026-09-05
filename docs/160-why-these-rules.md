@@ -35,10 +35,10 @@ The failures came in a sequence, each one a narrower version of the last.
 First bare numbers everywhere. Then titles in the prose and bare numbers in
 tables -- a column of bare numbers is the least readable thing in a reply, not
 the most. Then titles in the table and bare numbers in the prose around it:
-"#102 is solved", "#59's inherit list", "#50's proof now passes". A number used
+"#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands) is solved", "#59 (Map the DOS saved game, not just the character record)'s inherit list", "#50 (Lift the wilderness refusal from the DOS save converter)'s proof now passes". A number used
 as the subject of a sentence is the worst place for it, because that is exactly
 where the reader most needs to know what is being talked about. "The resizable
-columns with #135" is the same shape. There is no "already introduced it above"
+columns with #135 (The automapper's roster column does not scroll, so a full party puts a 944px floor under the window)" is the same shape. There is no "already introduced it above"
 exemption, because a reply is skimmed rather than read in order.
 
 Two exceptions were settled deliberately, and both are about where the reader

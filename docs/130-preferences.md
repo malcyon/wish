@@ -73,7 +73,7 @@ Preferences…**, in the window.
 | *(new)* `disks` | — | **in the dialog** | the point of the exercise |
 | *(new)* `ultimate_host` | was `$POR_ULTIMATE` only | **in the dialog** | see §6 |
 | *(new)* `backup_folder`, `backup_folder_chosen` | — | **in the dialog** | it was two implicit folders and no way to choose either. See §5c |
-| *(new)* `saves_folder` | — | **in the dialog** | where `File > Open` starts (`#66`). See §5d |
+| *(new)* `saves_folder` | — | **in the dialog** | where `File > Open` starts (`#66 (Remember where the save disks are, and let Preferences say where)`). See §5d |
 
 **The rule the table applies:** a preferences dialog collects the settings you
 set *once*, about this machine. Everything you set *while playing* belongs on
@@ -283,12 +283,12 @@ writing to. Anything that landed in `~/.local/share/wish/backups` under the old
 fallback is still there and still a file; nothing in the application ever
 listed those, and nothing does now.
 
-### 5d. Where `File > Open` starts (`#66`)
+### 5d. Where `File > Open` starts (`#66 (Remember where the save disks are, and let Preferences say where)`)
 
 Donald: *"When I open Wish and click Open, I always have to navigate multiple
 subdirectories to find my save file. I should only have to do this once."*
 
-Two halves, built in separate sessions. The first (`#66` steps 1 and 4) needed
+Two halves, built in separate sessions. The first (`#66 (Remember where the save disks are, and let Preferences say where)` steps 1 and 4) needed
 no new UI at all: `editor.files.open_start_dir` remembers the folder a save was
 last opened from (`Settings.last_save_folder`) and `File > Open` starts there
 once there is nothing more specific to go on. That is a convenience and changes
@@ -312,7 +312,7 @@ has over searching beside the open save in `paths.resolve_disks`. Left empty,
 * **Existence is checked, like the remembered folder.** A chosen folder can be
   renamed or deleted like any other, and `open_start_dir` refuses a preference
   that is no longer there rather than handing a dead path to the dialog — the
-  same rule `#66` step 4 already applied to the remembered one.
+  same rule `#66 (Remember where the save disks are, and let Preferences say where)` step 4 already applied to the remembered one.
 * **`editor.files` is the one place this resolves**, alongside
   `open_start_dir`'s existing two arguments: `WishWindow.set_saves_folder`
   writes the setting and hands the string to `EditorBinding.saves_folder`,
@@ -743,7 +743,7 @@ squeezed, which is exactly the line edits, the spin box and the table.
 
 * **`General`, `Game disks` and `Fast travel`.** General holds the backups
   line, the backend and the debug log; Game disks holds the shared folder and
-  each title's own (`#22`); Fast travel holds the area table and the amber
+  each title's own (`#22 (A disk folder setting per game, not one shared by all six)`); Fast travel holds the area table and the amber
   warning, which belongs beside the thing it warns about. Split, none of the
   three has to fight the others for height: General needs 458 lines and gets
   them now that Game disks is its own tab (578 with the disks group still in
@@ -751,7 +751,7 @@ squeezed, which is exactly the line edits, the spin box and the table.
   visible instead of 5**, with no cap on it at all (`TABLE_MIN_ROWS` is a
   floor, not a ceiling). The table still scrolls internally; 29 rows is 900 px
   and no 662-line screen will ever show them all. **Game disks moved out of
-  General** when `#22` gave the one shared folder three more rows, one per
+  General** when `#22 (A disk folder setting per game, not one shared by all six)` gave the one shared folder three more rows, one per
   title: stacked on General they pushed its natural height 77 px past what
   `fit` can give it on Donald's own 1280x675 desktop, the same squeeze that put
   Fast travel on its own tab in the first place. It needs no scroll area of its
@@ -808,8 +808,8 @@ squeezed, which is exactly the line edits, the spin box and the table.
   (2026-09-04): Pool of Radiance, Curse, Silver Blades and Pools of Darkness.
   The fourth is not built -- it has no entry in `goldbox.games.GAMES` at all,
   and it never shipped on the Commodore 64 this whole module searches for (DOS
-  and the Amiga are its only two ports, `#194`), so there is no `disk_glob` a
-  folder for it could search against. Left as a finding on `#22` for whoever
+  and the Amiga are its only two ports, `#194 (Import and export a Pools of Darkness save between DOS and the Amiga)`), so there is no `disk_glob` a
+  folder for it could search against. Left as a finding on `#22 (A disk folder setting per game, not one shared by all six)` for whoever
   picks it up next, rather than a guessed-at `disk_glob`.
 * **`wish-editor` standalone** (`editor/__main__.py`) takes `--game-disk` and
   cannot read a preference: the grep test globs `editor/*.py`, which includes

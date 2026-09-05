@@ -373,3 +373,73 @@ def test_claude_md_imports_the_file_that_holds_the_rules():
         "of Claude Code alone.")
     assert "## Words to avoid" in (ROOT / IMPORTED).read_text(encoding="utf-8"), (
         f"{IMPORTED} no longer holds the rules.")
+
+
+# -- a bare issue number is a lookup the reader has to go and do -------------
+
+#: A full citation: `#137 (Its title)`. Allows one level of nested parens --
+#: `#215 (Nothing checks that a frame halve() is about to halve was really
+#: line-doubled)` is a real title -- but no more, which keeps it from
+#: swallowing a second citation on the same line. Stripped out first so what
+#: remains is only the bare mentions.
+FULL_CITATION = re.compile(r"#\d{1,4} \((?:[^()]|\([^()]*\))*\)")
+
+#: A number that could be an issue reference: 1-4 digits, not the tail of a
+#: longer run of digits or hex letters (so `#555555` and `#2f7d4f`, a CSS
+#: colour, never match), and not preceded by a word character or `/` (so a
+#: URL fragment like `.../issues/136` does not).
+BARE_ISSUE_NUMBER = re.compile(r"(?<![\w/])#(\d{1,4})(?![\da-fA-F])")
+
+#: Where this rule actually applies. Scoped to what
+#: `.claude/rules/issues.md` and `#245 (tools/README.md cites issues by bare
+#: number, which is the lookup AGENTS.md's first rule exists to prevent)`
+#: swept, not every tracked `.md`:
+#:
+#: * `AGENTS.md` quotes a bare `#59` on purpose, as the example of what *not*
+#:   to write -- fixing it would delete the example.
+#: * `.claude/agents/*.md` do the same for `#59` and `#78`, and `junior-dev.md`
+#:   cites issues in its own worked examples rather than in project prose.
+#: * `CHANGELOG.md` uses a different, already-approved form -- a written-out
+#:   markdown link, `[#78](https://github.com/.../issues/78)` -- because
+#:   GitHub does not auto-link a bare number off the release page; see
+#:   `.claude/agents/changelog-writer.md`.
+CITED_ISSUE_SCOPE = ("docs",)
+CITED_ISSUE_FILES = {
+    pathlib.PurePosixPath("tools/README.md"),
+    pathlib.PurePosixPath("goldbox/README.md"),
+    pathlib.PurePosixPath("editor/README.md"),
+    pathlib.PurePosixPath("ui/README.md"),
+}
+
+
+def test_no_bare_issue_number_where_a_citation_belongs(files):
+    """Every issue citation carries its title: `#137 (Its title)`, not `#137`.
+
+    `.claude/rules/issues.md`: *"A bare number is a lookup Donald has to go and
+    do."* His own words are the reason it is a rule at all -- *"When you only
+    reference a number, it never means anything to me."* A commit message and
+    the body of a GitHub issue are the two places a bare number is read where
+    it hovers into a title on its own; nothing tracked in this repository is
+    either.
+    """
+    bad = []
+    for rel in files:
+        if rel.suffix != ".md":
+            continue
+        in_scope = (rel.parts[0] in CITED_ISSUE_SCOPE
+                    or pathlib.PurePosixPath(rel.as_posix()) in CITED_ISSUE_FILES)
+        if not in_scope or rel.parts[:2] == (".github", "ISSUE_TEMPLATE"):
+            continue
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        # Fenced code carries a commit-message example verbatim (the one place
+        # AGENTS.md itself allows a bare number) and must not be scanned.
+        text = re.sub(r"```.*?```", lambda m: re.sub(r"[^\n]", " ", m.group(0)),
+                       text, flags=re.S)
+        text = FULL_CITATION.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+        for m in BARE_ISSUE_NUMBER.finditer(text):
+            line_no = text[:m.start()].count("\n") + 1
+            bad.append(f"{rel.as_posix()}:{line_no}  {m.group(0)}")
+    assert not bad, (
+        "these cite an issue by bare number instead of `#N (Title)`:\n  "
+        + "\n  ".join(bad)
+        + "\n\nTake the title from `gh issue view N --json number,title`.")

@@ -266,7 +266,7 @@ the visible tab polls at all.
 `$4B00` and fold the roster into its last page at `$6700`, so the page is in
 hand already and asking for it again would be a round trip for bytes we have.
 `live.memory_blocks(game)` is where that choice is made and `goldbox/games.py` is
-where the numbers are; nothing in `automap/live.py` holds an address (#29).
+where the numbers are; nothing in `automap/live.py` holds an address (#29 (The live reader uses Pool of Radiance's addresses on every title)).
 
 ### The refused step -- wired up
 
@@ -292,7 +292,7 @@ keeps the last set that fitted, and counts the contradiction instead.
 
 **VICE serves exactly one binary-monitor connection**, so a connection wish
 gives up on and does not close is one it then competes with itself for. That is
-what a random mid-session disconnection turned out to be (`#151`): `close()`
+what a random mid-session disconnection turned out to be (`#151 (The automapper loses VICE and cannot get back in, because it never hangs up the connection it gave up on)`): `close()`
 was guarded on `_open`, every give-up path cleared `_open` before raising, and
 `wish/window.py` keeps a second reference to the dead target in
 `mapper.target`, so the socket stayed open and VICE went on serving it.
@@ -358,14 +358,14 @@ Neither source survived out there:
   `OUTDOORS` for a facing, so a party there read as a *plausible indoor* fix on
   a square it had never stood on -- the same fault `#189 (The emulator driver
   cannot move a party on the travel grid, and reads its facing out of the word
-  OUTDOORS)` fixed in `tools/session.py` and not here, until `#205`;
+  OUTDOORS)` fixed in `tools/session.py` and not here, until `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)`;
 * the **fallback**, `Game.live_position` = `$C04B`, read `4C 2F C5` outdoors,
   unchanged over four steps: `DUNGEON` is not the resident overlay there, so
   those are somebody else's code bytes and not a triple. Indoors the same three
   read `0F 04 03` then `0E 04 03`, matching the status line, while `$49C0`
   lagged a move at `0F 04 03`.
 
-**What `#205` added.** `automap/target.py`'s `party_fix` now tries a second
+**What `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` added.** `automap/target.py`'s `party_fix` now tries a second
 status pattern, `OUTDOORS +(\d+):(\d+) +(\d+),(\d+)`, plausible over the travel
 grid's own 18x36 window rather than the dungeon's 16x16 -- and `RE_STATUS`
 itself gained the lookarounds `tools/session.py` already had, so `OUTDOORS`

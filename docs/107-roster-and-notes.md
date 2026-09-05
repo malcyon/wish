@@ -9,7 +9,7 @@ badge. `automap/panel.py` is the roster, `ui/icons.py` the icons, and
 
 ## The order the cards are in
 
-**Fixed, `#160`.** The card at the top is now the character the game lists
+**Fixed, `#160 (The automapper and the editor list the party backwards)`.** The card at the top is now the character the game lists
 first. `automap/live.py`'s `characters()` and `editor/roster.py`'s
 `_load_save` both walked `SaveGame0.characters`, ascending slot order, while
 the C64 lists the party from the **highest** occupied slot down. Measured in
@@ -77,7 +77,7 @@ Each card carries one line of what that character has **in hand**, decoded by
 * **The line never adds to the window's floor.** `panel.ReadiedLabel.SHORT` is
   0, which makes it the first row on a card to give way: eight cards in a
   column that does not scroll, each insisting on a line of height, is eight
-  lines added to a page that still has to fit a 720-high screen (#97, #100).
+  lines added to a page that still has to fit a 720-high screen (#97 (The character editor tab gets taller as the UI font grows, so a large font stops the window fitting a 720-high screen), #100 (The automapper's bottom strip loses the tops of its letters at the window's floor)).
   Anywhere above that floor it is drawn in full. Its point size is set in
   `wish/window.ui` rather than inherited, so it does not get taller as the UI
   font grows either.
@@ -331,7 +331,7 @@ at the floor again.
 
 ## The licence, and its two traps
 
-**Historical: Wish drew no Font Awesome icon after 2026-09-01.** `#167` replaced
+**Historical: Wish drew no Font Awesome icon after 2026-09-01.** `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` replaced
 the last of them and `fontawesome-LICENSE.txt` came out with it; `git log --
 fontawesome-LICENSE.txt` has the file. The section is kept because the traps
 below are about attribution generally and cost this project real time. Every

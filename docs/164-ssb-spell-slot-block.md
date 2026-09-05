@@ -162,7 +162,7 @@ under `work/issue222/run1/` and `run2/`.
 ## Negative results
 
 * **The fourth array is not "slots remaining", not the paladin's, not the
-  ranger's, and not a seven-byte field of another kind** -- `#113`'s
+  ranger's, and not a seven-byte field of another kind** -- `#113 (Play DOS Curse far enough to save a party with items)`'s
   measurements said so and the code agrees: the paladin adds into class 0,
   the ranger into 1 and 3, and the `FillChar` of 28 dimensions the block as
   four sevens rather than three sevens and something else.
