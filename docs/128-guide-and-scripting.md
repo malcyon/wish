@@ -42,9 +42,9 @@ have before. **Six land inside gaps.** All six were then checked against the
 | `0x0D7` | `gap_0d7` | **creature type** — humanoid, undead, giant, regenerating… | CONFIRMED. 116 `MON*` records take 13 distinct values and every one is inside the DOS enumeration; TROLL reads 10 (regenerating), MUMMY 4 (undead). 5, 6 and 13 never occur — the same three the enumeration omits |
 | `0x0F7`-`0x0F8` | inside `gap_0f4` | **experience awarded for defeating** (u16) | CONFIRMED. GOBLIN GUARD 10, HOBGOBLIN 20, OGRE 90 — the AD&D 1e values exactly. Zero in every player export |
 | `0x0F9` | inside `gap_0f4` | **bonus experience per hit point** | CONFIRMED. 1, 2, 5 for the three above — again the published table |
-| `0x10C` | inside `gap_101` | **combat behaviour**: 0 allied and controlled, 128 allied and uncontrolled, 129 hostile | CONFIRMED. 115 of 116 `MON*` records read 129; one reads 128 |
+| `0x10C` | inside `gap_101` | **combat behaviour**: 0 allied and controlled, 128 allied and uncontrolled, 129 hostile | CONFIRMED. 115 of 116 `MON*` records read 129; one reads 128. `COM.PREP $0F15` reads it as the *side* — `LDA $6C0C / AND #$7F / CMP $17F6` — while writing the status to `0x100`, so the two are different fields and this one is not a player's status |
 | `0x0B8` | `flags_0b8` | bit 7 not-a-PC (which we had), **bits 0-6 morale** | PROBABLE. 111 monsters read `$FF`, five read 178; the DOS rule is `(value - 128) / 2` for an NPC's morale |
-| `0x100` | `roster_in_use` | **status**: 0 out of play, 1 okay, 128 + status otherwise | PROBABLE, and richer than "in use". Every `MON*` reads 1; every save slot reads 0 |
+| `0x100` | `roster_in_use` | **status**: 0 the slot is empty, 1 okay, `128 + status` otherwise | **CONFIRMED, and settled against the C64's own names** — see "The status byte, and which of the two candidates was right" below. Every `MON*` reads 1 |
 
 Two more come from the DOS record layout rather than the GBVM list, and the
 disks agree:
@@ -78,6 +78,103 @@ them a reason. Two consequences:
   Krynn games put the knight there. `0x0CE` is monk. Both unused here.
 * **A DOS→C64 save conversion must permute this array.** `docs/117` should say
   so.
+
+### The status byte, and which of the two candidates was right
+
+**Record `0x100` holds the status. Record `0x10C` does not, and the two rows
+above no longer disagree.** This page carried both readings for months: `0x100`
+as "0 out of play, 1 okay, 128 + status otherwise" from the guide's GBVM list,
+and `0x10C` as combat behaviour, CONFIRMED against `MON*` records and sitting at
+the offset the DOS record puts `CharacterStatus` at. Neither had ever been
+watched being written to a player character, because **no player character in
+any save this project holds is anything but well** -- 38 `.d64` images under
+`work/` and on the player's own disks carry a `SAVEDGAME1`, and across their 304
+roster slots record `0x100` reads 0 in 70 and 1 in 234 and nothing else.
+
+**The C64's own names decide it.** `LIBRARY $38BE` draws the sheet's status
+line:
+
+```
+$38BE  AD 00 6C   LDA $6C00      ; the roster staging page, +0x00 = record 0x100
+$38C1  29 07      AND #$07
+$38C4  69 29      ADC #$29       ; string id $29
+$38C9  4C 2D 32   JMP $322D      ; print string X
+```
+
+and the table it indexes (`LIBRARY $3236`: low bytes at `$3439,X`, high at
+`$347B,X`) reads, on the player's own `POOL1` side:
+
+| `status & 7` | string id | the word the sheet draws |
+|---|---|---|
+| 0 | `$29` | `HITPOINTS` -- unreachable; 0 means the slot is empty |
+| 1 | `$2A` | `OK` |
+| 2 | `$2B` | `GONE` |
+| 3 | `$2C` | `DEAD` |
+| 4 | `$2D` | `DYING` |
+| 5 | `$2E` | `UNCONSIOUS`, the game's own spelling |
+| 6 | `$2F` | `RUNNING` |
+| 7 | `$30` | `STONED` |
+
+That is the enumeration the three "sir" editors carry, so those three tools --
+one author's table, and one source -- now have a fourth source that is the game
+itself. **Bit 7 is a separate flag**, masked off for display: `$1BF6` skips a
+slot with bit 7 set when it sums the party's strength
+([`114`](114-party-strength.md)), and `$3E4A` picks the greyed party-panel
+colour with `CMP #$80`.
+
+Every value has a writer that says what it means:
+
+| value | writer | what is happening |
+|---|---|---|
+| `$00` | `CAMP $0C0B`, `POST.COM $0E25` | `DROP CHARACTER`, and clearing a slot -- one byte, as `#104 (A converted DOS party arrives with the template save's spare characters still in it)` measured |
+| `$01` | `POST.COM $0E36` | `$86` and `$81` are restored to `$01` when a fight ends |
+| `$82` | `POST.COM $216A` | after `LDX $6B72` (race) / `CMP $218E,X`, a per-race maximum age table: dying of old age |
+| `$83` | `COMBAT $0C4B`, `DUNGEON $262A` | the bleed counter `$A6C0,X` on a `$84` character reaching **10**, and damage landing more than 10 below zero |
+| `$84` | measured below | 0 hit points in a fight |
+| `$85` | `COMBAT $2161`, `DUNGEON $2626`, `SPELLE04 $AE91` | slots 7 to 0 turned from `$84` as the fight ends -- the party binding its dying -- and a fall of fewer than 10 below zero |
+| `$86` | `COM.PREP $0F1F`, `COMBAT $1719` | the side that is fleeing, marked across all 64 combatants |
+| `$87` | `SPELLE01 $AC38` | `LDA #$87 / LDX #$06`, and message 6 in `SPELLN00`'s table is `TURNS TO STONE` |
+
+Two AD&D rules fall out of that and corroborate the names: a `$84` character
+bleeds for **ten** rounds and becomes `$83`, and damage that lands within ten
+points below zero gives `$85` rather than `$83` -- 0 to -9 dying, -10 dead.
+
+**And the byte was measured, not only read.** `tools/statusdrive.py` loaded
+`PORSAVE13.D64`, walked three steps into the Slums ambush, wounded one character
+to 1 hit point through the monitor **and touched nothing else**, and sampled the
+roster page every turn:
+
+| turn | slot 5's `0x100` | his hit points |
+|---|---|---|
+| 6 | `01` | 1 |
+| 7 | `84` | 0 |
+| the fight is won | `85` | 0 |
+
+`ENCAMP > SAVE` wrote `85` into the roster block of the save disk, and loading
+that disk draws `UNCONSIOUS` on his sheet. Three sources -- the display
+arithmetic, live RAM, and a byte on a disk the game wrote -- so CONFIRMED.
+
+**What the whole-record diff says about the other candidate.** Between the save
+before the fight and the save after it, slot 5's record `0x000`-`0x0FF` is
+byte-identical and its roster block differs in five places: `0x100` `01` -> `85`,
+`0x10A`/`0x10B` `00 00` -> `1C 0D` (the square he fell on, 28,13), `0x111` `01`
+-> `00` (attacks), and `0x119` `0B` -> `00` (hit points). **`0x10C` did not
+change, in any of the eight slots.** It is the side a combatant fights on, which
+is what `COM.PREP $0F15` reads it as, and it is not a player's status.
+
+The DOS enumeration is a genuinely different one -- 0 Okay, 1 Animated, 2
+tempgone, 3 Running, 4 Unconscious, 5 Dying, 6 Dead, 7 Stoned, 8 Gone, at DOS
+`0x10C` -- so a conversion needs a table rather than an alignment. `Animated`
+has no C64 value of its own: `SPELLE04 $AA11` writes `$03`, `DEAD` with bit 7
+*clear*, beside creature type 4 (undead) and the not-a-PC flag, which is a dead
+thing that still acts.
+
+**Still UNKNOWN: bits 3, 4 and 5.** Four writers set one of them with the low
+bits at `OK` or `DEAD` -- `$03` and `$09` in `SPELLE04`, `$11` in `SPELLE01`
+beside `GETS BACK UP`, `$21` in `SPELLE02` -- and nothing a player sees
+separates them from `$01` and `$03`. To settle it: stage `$09`, `$11` and `$21`
+into a roster slot on a save disk, load it, and see whether the party panel, the
+strength routine at `$1BF6` or `COM.PREP` treats them differently from `$01`.
 
 ### The rest of the record
 

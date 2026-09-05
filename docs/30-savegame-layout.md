@@ -429,7 +429,7 @@ self-checking against `docs/20-character-record.md`.
 
 | Offset | Field | Confidence | Notes |
 |---|---|---|---|
-| `+0x00` | in use | PROBABLE | `roster_in_use` in `goldbox/layout.py`. 1 in every occupied block; a fourth source calls the DOS field at the aligned offset a status enum, which weakens rather than strengthens the case. One specimen reading other than 1 settles it |
+| `+0x00` | **status** | CONFIRMED | `roster_in_use` in `goldbox/layout.py`, and the name is now wrong. 0 empty, 1 `OK`, `$82` `GONE`, `$83` `DEAD`, `$84` `DYING`, `$85` `UNCONSIOUS`, `$86` `RUNNING`, `$87` `STONED` -- the game's own seven names, indexed `AND #$07` by `LIBRARY $38BE`, and bit 7 is a separate out-of-play flag. Watched going `01` -> `84` when an orc reached a character's last hit point and `84` -> `85` when the fight ended, and `85` is what the engine saved: [`128`](128-guide-and-scripting.md) §"The status byte" |
 | `+0x03` | spells memorised, **1st level** | PROBABLE | see below |
 | `+0x04` | spells memorised, **2nd level** | PROBABLE | |
 | `+0x05` | spells memorised, **3rd level** | PROBABLE | |

@@ -380,9 +380,14 @@ DOS `0x10C`, which under the roster alignment above is C64 `0x10A`, **not**
 `0x100`. Its numbering is 0-based and does not match the 1-based cycle the
 three "sir" editors use.
 
-So a fourth, genuinely independent source **weakens** rather than strengthens
-the case for `0x100` being STATUS. `roster_in_use` stays PROBABLE and keeps its
-name. What would settle it: one C64 specimen where `0x100` reads other than 1.
+That reading of the DOS documentation is right about DOS and wrong about the
+C64, and the C64 has since answered for itself: `0x100` **is** the status, with
+the 1-based cycle the "sir" editors carry, and `0x10C` is the side a combatant
+fights on. `LIBRARY $38BE` draws the sheet's status line straight out of
+`0x100`, and a character knocked down in a driven fight had `85` written there
+and saved. The two enumerations are genuinely different and a conversion needs
+a table: [`128`](128-guide-and-scripting.md) §"The status byte, and which of
+the two candidates was right".
 
 ---
 
