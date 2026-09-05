@@ -13,7 +13,7 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 - 🧭 Reveals the area map as you explore.
 - 📍 Pin notes to the map.
 - ⚔️ Combat view that shows the whole battlefield.
-- 🛡️ Party stats. HP, XP, AC, THAC0, readied items, etc.
+- 🛡️ Party stats. HP, XP, class, level, readied items, etc.
 - 📋 Quest log. Shows what commissions you have from the council.
 - 🕹️ Support for the VICE emulator or the Commodore 64 Ultimate.
 
