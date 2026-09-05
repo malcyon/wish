@@ -888,8 +888,27 @@ def position(save: bytes) -> tuple[int, int, int]:
 
 
 def area_id(save: bytes) -> int:
-    """The current area, in the numbering `goldbox/areas.py` uses."""
-    return _sav.area_id(save)
+    """`$49C5`, the resident `GEO` block.  **Not the area**, despite the name.
+
+    Kept spelt this way because the captures and the tests already say it.
+    It equals the area id for the twenty-four areas that load their own map,
+    which is why it read as the area for a year; in the training hall and in
+    Phlan City Hall it is New Phlan's 0 while the party is in area 11 or 8,
+    and on the travel grid it is 0 while the party is in 25, 26 or 27
+    (#257).  A caller that wants **where the party is** wants `current_area`
+    below.
+    """
+    return _sav.geo_block(save)
+
+
+def current_area(save: bytes) -> int:
+    """`$49F2`, the area the party is in, indoors and out.
+
+    The word the engine restores its own current-area global from on load
+    (`GAME.OVR:0x4067`-`0x4070`), and the one to index `goldbox/areas.py`
+    with.
+    """
+    return _sav.current_area(save)
 
 
 # --------------------------------------------------------------------------

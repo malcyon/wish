@@ -90,6 +90,7 @@ __all__ = [
     "area_in",
     "areas_for_geo",
     "geos_for_area",
+    "geos_in",
     "geo_number",
     "geo_name",
     "GEO_NAMES",
@@ -609,6 +610,24 @@ def geos_for_area(id: int) -> tuple[str, ...]:
     """The maps this area loads: two, one, or none."""
     a = AREAS_BY_ID.get(id)
     return a.geos if a else ()
+
+
+def geos_in(title: str | None) -> frozenset[str]:
+    """Every map any area of this title loads.
+
+    The set a `GEO` number read out of a saved game is checked against, so
+    that a number nothing could have loaded is refused rather than written
+    into a converted save. It is the *union* of the rows and not a range:
+    `GEO0C` is in no row (`areas_for_geo("GEO0C")` is empty) and 12 is inside
+    any range anybody would write.
+
+    **The set can be short of what a title's disks hold**, because two Pool
+    of Radiance rows are `dynamic_geo` -- their script chooses its map at run
+    time and their `geos` entry is the doc's inference from the id, which is
+    known to be wrong for both. If this ever refuses a save the game itself
+    wrote, the row is what is incomplete.
+    """
+    return frozenset(g for a in areas_for(title) for g in a.geos)
 
 
 def iter_areas() -> Iterator[Area]:

@@ -498,10 +498,13 @@ def test_the_party_square_and_area_read_out():
         assert 0 <= x < 32 and 0 <= y < 32
         assert facing in (0, 1, 2, 3)
         assert save[sg.POS_FACING] in (0, 2, 4, 6)
-        assert 0 <= sg.area_id(save) < 32
+        assert 0 <= sg.geo_block(save) < 32
         assert 1 <= sg.dax_number(save) <= 8
-        # The engine keeps the same area id twice, at $49C5 and $49F2.
-        assert sg.word(save, sg.SCRIPT) == sg.area_id(save)
+        # `$49C5` is the resident map and `$49F2` is the area, and they hold
+        # the same number in all three of these because all three stand in an
+        # area that loads its own map. They part company in the training
+        # hall, where the script loads none (#257).
+        assert sg.current_area(save) == sg.geo_block(save)
 
 
 @needs_dos_saves
@@ -523,7 +526,7 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     dos.apply_position(payload, save)
     assert payload[0x4BC2 - 0x4900] == 0xFF
     dos.apply_file_cache(payload, save)
-    assert payload[0x4BC2 - 0x4900] == sg.area_id(save)
+    assert payload[0x4BC2 - 0x4900] == sg.geo_block(save)   # slot 2, the map
     # Nothing outside the two regions was touched.
     assert payload[:0x49C0 - 0x4900] == bytes(0xC0)
 
@@ -599,7 +602,7 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
     the side it asked for.
     """
     savgam = _savgam("A")
-    there = sg.area_id(savgam)
+    there = sg.current_area(savgam)
     where = areas.area(there)
     save0 = bytearray(0x1C00)
     save0[0x4BC2 - dos.SAVE0_BASE] = (there + 1) & 0x7F
@@ -607,7 +610,7 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     cache = bytes(save0[at:at + dos.FILE_CACHE[1]])
     want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
-    want[dos.CACHE_GEO] = areas.geo_number(where.geos[0])
+    want[dos.CACHE_GEO] = sg.geo_block(savgam)
     want[dos.CACHE_ECL] = there
     want[11] = 0                 # ANIMATE00, and see below
     assert cache == bytes(want)
@@ -632,7 +635,7 @@ def test_a_template_already_in_the_area_is_retargeted_like_any_other():
     else's save on #118's inherited list, for no gain.
     """
     savgam = _savgam("A")
-    there = sg.area_id(savgam)
+    there = sg.current_area(savgam)
     where = areas.area(there)
     save0 = bytearray(0x1C00)
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
@@ -640,7 +643,7 @@ def test_a_template_already_in_the_area_is_retargeted_like_any_other():
     save0[at + dos.CACHE_GEO] = there | dos.FILE_CACHE_RELOAD
     dos.convert_save(_save_dir(), "A", save0)
     want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
-    want[dos.CACHE_GEO] = areas.geo_number(where.geos[0])
+    want[dos.CACHE_GEO] = sg.geo_block(savgam)
     want[dos.CACHE_ECL] = there
     want[11] = 0                 # ANIMATE00, as in the other-area case
     assert bytes(save0[at:at + dos.FILE_CACHE[1]]) == bytes(want)
@@ -654,22 +657,92 @@ def test_a_template_already_in_the_area_is_retargeted_like_any_other():
 
 
 @needs_dos_saves
-def test_an_area_whose_map_we_cannot_name_is_refused():
-    """Six of the thirty areas: the four that load no map and the two whose
-    script picks one at run time. Guessing there is what wrote a save that
-    loads and hangs.  The travel-grid windows used to be refused here too;
-    #50 lifted that once #59's outdoor saves settled their fields.
+def test_an_area_that_names_no_map_takes_the_one_the_save_names():
+    """Six of the thirty areas name no map of their own: the four whose script
+    loads none and the two that pick one at run time.  All six used to be
+    refused, on the reasoning that guessing a map is what writes a save that
+    loads and hangs -- and the training hall is one of them, so a player who
+    saved there got `Saves from this location are not supported.` (#257).
+
+    There is nothing to guess.  `$49C5` in the save **is** the resident map,
+    written by `LOADFILES` and read by the `GEO` loader, so area 8 -- Phlan
+    City Hall, whose script loads no map at all -- converts onto New Phlan's
+    `GEO00` because that is the word its own save carries.
     """
     savgam = bytearray(_savgam("A"))
     save0 = bytearray(0x1C00)
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     for id in (3, 8):
-        # `$49F2`, not `$49C5`: the area is the script word, and area 8 --
-        # Phlan City Hall -- is one of the places that proves it, since its
-        # script loads no map and leaves `$49C5` at New Phlan's 0 (#257).
+        # `$49F2`, not `$49C5`: the area is the script word, and area 8 is one
+        # of the places that proves it, since its script loads no map and
+        # leaves `$49C5` at New Phlan's 0.
         sg.put_word(savgam, sg.SCRIPT, id)
         assert sg.current_area(bytes(savgam)) == id
-        with pytest.raises(dos.DosRecordError):
-            dos.apply_file_cache(save0, bytes(savgam))
+        dos.apply_file_cache(save0, bytes(savgam))
+        assert save0[at + dos.CACHE_ECL] == id
+        assert save0[at + dos.CACHE_GEO] == sg.geo_block(bytes(savgam)) == 0
+        assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
+        assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == id
+
+
+@needs_dos_saves
+def test_a_resident_map_no_area_loads_is_refused():
+    """`$49C5` is trusted, and trusted is not unchecked.  `GEO0C` is on no
+    disk and in no row, so a save claiming it is either not a save this
+    reader understands or an area table with a row missing -- and either way
+    the answer is not to write it into a converted save (#257).
+    """
+    savgam = bytearray(_savgam("A"))
+    sg.put_word(savgam, sg.AREA, 0x0C)
+    with pytest.raises(dos.DosRecordError, match="GEO0C"):
+        dos.apply_file_cache(bytearray(0x1C00), bytes(savgam))
+
+
+@needs_dos_saves
+def test_a_resident_map_that_contradicts_the_area_is_refused():
+    """The other check on `$49C5`.  Area 20 loads `GEO14` and nothing else, so
+    a save that says the party is in area 20 with `GEO15` resident is two
+    sources disagreeing, and neither is trusted over the other.  Twelve of
+    twelve Pool of Radiance saves whose area owns a map agree, so this has
+    never fired on a real one (#257).
+    """
+    savgam = bytearray(_savgam("A"))
+    sg.put_word(savgam, sg.SCRIPT, 20)
+    sg.put_word(savgam, sg.AREA, 21)
+    with pytest.raises(dos.DosRecordError, match="GEO15"):
+        dos.apply_file_cache(bytearray(0x1C00), bytes(savgam))
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-party-trained-c2"),
+                    reason="needs the training-hall specimen")
+def test_a_training_hall_save_converts_into_the_hall_on_new_phlans_map():
+    """The whole of `#257`, on the save that found it.
+
+    A player trains a cleric in New Phlan's training hall, encamps, saves, and
+    converts.  `WISH-SPEC-por-party-trained-c2` is that save, driven from
+    character creation in `#249`, and its two place words part company: the
+    area is 11 and the resident map is New Phlan's `GEO00`, because `ECL0B`
+    contains no `LOADFILES` at all and runs on whatever `ECL00` left on the
+    screen.
+
+    Reading the map as the area put the party in New Phlan; reading the area
+    as the map refused the save.  Both words are read, each from its own
+    address, and the two disagreeing is the point rather than a fault.
+    """
+    where = gamedata.specimen("por-party-trained-c2")
+    savgam = (where / "SAVGAMF.DAT").read_bytes()
+    assert (sg.current_area(savgam), sg.geo_block(savgam)) == (11, 0)
+
+    save0 = bytearray(0x1C00)
+    dos.apply_file_cache(save0, savgam)
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    assert save0[at + dos.CACHE_ECL] == 11          # the hall's script
+    assert save0[at + dos.CACHE_GEO] == 0           # on New Phlan's map
+    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 11
+    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    # POOL3 carries both `ECL0B` and `GEO00`, so one hint answers for both.
+    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == areas.area(11).disk == 3
 
 
 def _outdoor_savgam(script: int = 26) -> bytes:
@@ -743,10 +816,10 @@ def test_an_outdoor_area_id_is_read_from_the_script_word(script):
     """`$49C5` is 0 on the travel grid (3 of 3 outdoor specimens), so a
     reader keying on it would take an overland party for one in New Phlan."""
     savgam = _outdoor_savgam(script)
-    assert sg.area_id(savgam) == 0
+    assert sg.geo_block(savgam) == 0
     assert sg.current_area(savgam) == script
     indoor = _savgam("A")
-    assert sg.current_area(indoor) == sg.area_id(indoor)
+    assert sg.current_area(indoor) == sg.geo_block(indoor)
 
 
 # --- #99: the two outdoor signals checked against each other ----------------

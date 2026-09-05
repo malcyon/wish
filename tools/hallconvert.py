@@ -18,9 +18,11 @@ The `geo` disk is built by monkeypatching `current_area` back to
 `#257`.  That is deliberate: it reproduces the shipped defect from the
 shipped code rather than from a hand-built file, so the disk can be booted
 and the player's own experience of the bug read off the screen.  The
-`script` disk is what the fixed reader builds, and it may legitimately
-**refuse** -- a location `goldbox/areas.py` cannot name a map for is refused
-rather than guessed at, which is the point.
+`script` disk is what the fixed reader builds.  It used to be able to
+**refuse**, when the map came out of `goldbox/areas.py` and a mapless area
+had no map to name; it now comes out of the save's own `$49C5` and the hall
+converts, so `--borrow` is kept only as the record of how the shape was
+prototyped before it shipped.
 
 The DOS folder is `--folder`, the C64 game disks are `$POR_DISKS` then
 `automap.paths.find_disks()`, and both are read and never written.  Output

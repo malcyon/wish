@@ -86,6 +86,28 @@ def test_the_geo_to_area_direction_is_a_tuple_too():
         assert isinstance(areas.areas_for_geo(name), tuple)
 
 
+def test_the_maps_a_title_loads_are_a_set_and_not_a_range():
+    """`geos_in` is what a `GEO` number read out of a saved game is checked
+    against, and it has to be the union of the rows rather than 0 to the
+    largest: `GEO0C` is inside any range anybody would write and is in no row
+    (#257).
+
+    Twenty-nine maps for Pool of Radiance, which is the count the module's own
+    docstring claims. An unknown title answers nothing at all -- the answer
+    that refuses every save rather than the one that validates against
+    somebody else's game.
+    """
+    pool = areas.geos_in(areas.POOL_OF_RADIANCE)
+    assert pool == {g for a in areas.AREAS for g in a.geos}
+    assert len(pool) == 29
+    assert "GEO00" in pool and "GEO0C" not in pool
+    assert 12 not in {areas.geo_number(g) for g in pool}
+    silver = areas.geos_in(areas.SECRET_OF_THE_SILVER_BLADES)
+    assert silver and silver != pool
+    assert areas.geos_in(areas.CURSE_OF_THE_AZURE_BONDS) == frozenset()
+    assert areas.geos_in(None) == frozenset()
+
+
 def test_the_three_outdoor_areas_carry_a_sqrdata():
     outdoors = [a for a in areas.AREAS if a.outdoors]
     assert [a.id for a in outdoors] == [25, 26, 27]

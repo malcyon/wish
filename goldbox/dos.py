@@ -2564,12 +2564,20 @@ ANIMATE_SIZE = 852
 #: when the template already stands in that same area, because then its own
 #: cache is real and is kept.
 #:
-#: `apply_file_cache` raises both.  The wilderness refusal came off it in #50,
-#: once #59's outdoor saves settled where a DOS save keeps the travel square,
-#: and came off `retarget_reason` -- the other direction -- in #190, once an
-#: outdoor DOS retarget had actually been driven.  `WILDERNESS`, Donald's own
-#: wording for it, is gone with the last thing that raised it: neither
-#: direction refuses a party on the travel grid now.
+#: The wilderness refusal came off `apply_file_cache` in #50, once #59's
+#: outdoor saves settled where a DOS save keeps the travel square, and came
+#: off `retarget_reason` -- the other direction -- in #190, once an outdoor
+#: DOS retarget had actually been driven.  `WILDERNESS`, Donald's own wording
+#: for it, is gone with the last thing that raised it: neither direction
+#: refuses a party on the travel grid now.
+#:
+#: **`UNSUPPORTED_LOCATION` came off `apply_file_cache` in #257** and is now
+#: `retarget_reason`'s alone.  Converting a save, the resident map is a word
+#: *in that save* -- `$49C5`, see `_resident_geo` -- so an area that loads no
+#: map or picks one at run time needs no row to name one, and the training
+#: hall stopped being refused.  Retargeting there is a different question
+#: with no save to read: the player names an area the party has never been
+#: in, and the table is the only source there is.
 NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of "
                "{title}, so there is no map file and no disk to name")
 UNSUPPORTED_LOCATION = "Saves from this location are not supported."
@@ -2580,12 +2588,63 @@ def _sqrdata_number(name: str) -> int:
     return int(name[len("SQRDATA"):], 16)
 
 
+def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
+    """Which `GEO` has to be resident for this save.  **The save's own word.**
+
+    `$49C5`, which `goldbox.dos_savegame.geo_block` reads.  It is written by
+    `LOADFILES` and read by the `GEO` loader and by nothing else, on both
+    ports, so it *is* the map the party is standing on -- and it is a fact in
+    the file rather than an inference from the area table.
+
+    This used to be `areas.geo_number(where.geos[0])`, and that reading has
+    three failures the save does not have (#257):
+
+    * **an area whose script loads no map** -- the training hall (11) and
+      Phlan City Hall (8) run on whatever `ECL00` left resident, so
+      `where.geos` is empty and the conversion refused the save outright with
+      `Saves from this location are not supported.`;
+    * **an area that picks its map at run time** -- areas 3 and 5, whose
+      `geos` entry `goldbox/areas.py` says in as many words is the doc's
+      inference from the id and is wrong for both.  Refused as well;
+    * **an area that loads two maps**, where `geos[0]` is whichever the
+      script loads first and the party may be standing on the other.
+
+    The save answers all three the same way.  CONFIRMED for the one-map case:
+    12 of 12 Pool of Radiance saved games on this machine whose area owns a
+    map hold `$49C5` = `geo_number(geos[0])` exactly -- areas 0, 20 and 21
+    across three collections, including the five this project made itself.
+    CONFIRMED for the training hall in the running game, where the two hall
+    specimens hold `$49C5` = 0 with `$49F2` = 11 and the C64 draws the school
+    on `GEO00`.  The two-map and dynamic cases are PROBABLE: the reasoning is
+    the same and no save has been made in one.
+
+    Both refusals are contradictions rather than gaps, and neither has ever
+    fired on a real save.
+    """
+    geo = dos_savegame.geo_block(savgam)
+    known = {areas.geo_number(g) for g in areas.geos_in(title)}
+    if geo not in known:
+        raise DosRecordError(
+            f"the save's own $49C5 says GEO{geo:02X} is the resident map, "
+            f"and no area of {title} loads that map -- so either the save is "
+            f"not one this reader understands or goldbox/areas.py is missing "
+            f"a row")
+    owned = {areas.geo_number(g) for g in where.geos}
+    if owned and not where.dynamic_geo and geo not in owned:
+        raise DosRecordError(
+            f"the save's own $49C5 says GEO{geo:02X} is the resident map, "
+            f"but area {where.id} ({where.name or where.ecl}) loads "
+            f"{' and '.join(where.geos)} in goldbox/areas.py -- these two "
+            f"disagree and neither is trusted over the other")
+    return geo
+
+
 def apply_file_cache(save0: bytearray, savgam: bytes,
                      container: "c64_save.Container | None" = None) -> str:
     """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
 
     The cache is rewritten to `$FF` in all twenty-five slots with slot 2 =
-    the area's `GEO` number, slot 8 = the area id and slot 11 = `ANIMATE00`
+    the resident `GEO` number, slot 8 = the area id and slot 11 = `ANIMATE00`
     -- the file `SAVEDGAME1`'s own tail holds (#102) -- plus the three bytes
     outside the cache that make those findable: the disk hint `$49EA`, the
     map `$49C5` and the script id `$49F2`.  Returns the one line the report
@@ -2595,9 +2654,15 @@ def apply_file_cache(save0: bytearray, savgam: bytes,
     live tests used.  Outdoors the same recipe with slot 4 in slot 2's
     role -- `SQRDATA` where a dungeon has a `GEO` -- which is the outdoor form
     #47 proved live twice, plus `$49E6` = 0, which is on its own what boots
-    the engine into travel mode.  It still refuses rather than guesses for
-    two kinds of area: one this project has no row for, and one whose script
-    picks its map at run time or loads none at all.
+    the engine into travel mode.
+
+    **The area and the map are two different words and are read separately**
+    (#257).  Slot 8 and `$49F2` take `current_area`, which is `$49F2` in the
+    DOS save; slot 2 and `$49C5` take `_resident_geo`, which is `$49C5`.  The
+    two hold the same number wherever an area loads its own map, which is
+    most of them, and part company in the training hall -- where a save read
+    through `$49C5` alone converted to a party standing in New Phlan.  One
+    refusal is left, for an area this project has no row for at all.
 
     **It applies to a template standing in the area too** (#121).  That case
     used to return early and keep the template's own cache, on the reasoning
@@ -2639,15 +2704,13 @@ def apply_file_cache(save0: bytearray, savgam: bytes,
                 f"{where.sqrdata}, slot 8 = {where.ecl} and slot 11 = "
                 f"ANIMATE00; outdoors no GEO loads at all, and $49E6 = 0 is "
                 f"what boots into travel mode")
-    if where.dynamic_geo or len(where.geos) < 1:
-        raise DosRecordError(UNSUPPORTED_LOCATION)
-
-    geo = areas.geo_number(where.geos[0])
+    geo = _resident_geo(savgam, where, container.game.title)
     save0[at + CACHE_GEO] = geo | on
     save0[container.current_geo] = geo
     save0[container.indoors] = 1
     return (f"loaded-files cache: $FF in all twenty-five, then slot 2 = "
-            f"{where.geos[0]}, slot 8 = {where.ecl} and slot 11 = ANIMATE00"
+            f"GEO{geo:02X}, the save's own $49C5, slot 8 = {where.ecl} and "
+            f"slot 11 = ANIMATE00"
             + ("," if container.cache_bit7 else ";")
             + (" each with bit 7 set, which this title's loader does not set "
                "for itself; " if container.cache_bit7 else " ")
