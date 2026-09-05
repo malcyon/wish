@@ -166,7 +166,7 @@ answers unknown 2 on its own.
    `tests/test_p3.py`'s `PAINTED` table, and the 179/180 and 180/180 overlap
    counts below, all in `tests/test_world.py`.
 
-   **The site tables and the two terrain tables are not carried, and
+   **The site tables and the two terrain tables are not read, and
    `passable()`/`site_at()` are not implemented.** Both live inside
    `ECL19`/`ECL1A`/`ECL1B`'s own bytecode, not in `SQRDATA0n`, and their byte
    offsets were in `work/reports/world-map.md`, lost with `work/`

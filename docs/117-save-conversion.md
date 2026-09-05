@@ -1517,7 +1517,7 @@ a value is a fact about the source whether or not the value is written. The
 running `.SPC` effects used to ride on `innate_effects.dropped` exactly that
 way and no longer do: Donald ruled on 2026-08-27 that a spell about to expire
 is not a loss a player will look for, so `to_neutral` passes no `dropped=`
-there. `INNATE_EFFECTS` still decides which ids are *carried*, which is the
+there. `INNATE_EFFECTS` still decides which ids are *converted*, which is the
 half that changes what the character can do.
 
 The split it enforces is that **a reader says where a value came from and a
@@ -2042,7 +2042,7 @@ here fails a test. Four kinds of byte have no neutral source:
   measured what zero draws: all six parts EGA 8, dark grey, which is the
   combat floor's own colour, so the figure reads as not being there at all.
   Each entry carries a fourth string saying what the source held that is not
-  carried — here the C64's own icon colours, which have seven parts to DOS's
+  converted — here the C64's own icon colours, which have seven parts to DOS's
   six and one 3-bit colour per part against DOS's two 4-bit ones.
 
 And one rule that is about a **file** rather than a byte: a character carrying
@@ -2284,24 +2284,31 @@ did **not** hold for free on the reader beside it: the first real consumer of
 
 ### What a converted party loses
 
-* ~~**The sheet portrait**~~ — **carried since #57 (Carry the character portrait across ports), and seen on the sheet in
+* ~~**The sheet portrait**~~ — **converted since #57 (Carry the character portrait across ports), and seen on the sheet in
   the game.** See "The portrait" below. What is still dropped is the
   *combat* icon pair at `0x0BD`/`0x0BE`, which is a different art set and
   #130 (A converted DOS party arrives with six identical combat figures, not its own).
-* **Running spell effects.** The innate bonuses are carried now (#61 (Carry innate racial bonuses across a conversion instead of dropping them)); a
+* **Running spell effects.** The innate bonuses are converted now (#61 (Carry innate racial bonuses across a conversion instead of dropping them)); a
   spell still running when the party saved is not, which is what the game's
   own importer does too, and needs no report -- Donald, 2026-08-27: an
   effect that was going to expire anyway is not a loss a player need be told
   about.
-* **An item-granted or racial-by-analogy permanent effect `INNATE_EFFECTS`
-  turns away.** Extra strength, a Ring of Fire Resistance, being displaced --
+* **An item-granted or racial-by-analogy permanent effect on a DOS or Amiga
+  character.** Extra strength, a Ring of Fire Resistance, being displaced --
   a `.spc` record at duration zero that is not one of the eight racial ids.
-  `NeutralCharacter` has no field for it, so it is still not carried on
-  either port, but `goldbox.dos.to_neutral` and `goldbox.amiga.to_neutral`
-  now report it: `#232 (An item-granted effect is dropped on the way through
-  the neutral record, with no report)` is the fix that would carry it, and
-  is still open.
-* **The day and the month.** The clock itself is carried now (#67 (Carry the clock and the party count into a converted DOS save)) — six
+  `NeutralCharacter` now holds it whole, as `granted_effects`, and
+  `goldbox.dos.to_neutral` and `goldbox.amiga.to_neutral` convert it rather
+  than dropping it -- `#232 (An item-granted effect is dropped on the way
+  through the neutral record, with no report)`'s fix landed for both ports,
+  and a DOS or Amiga round trip keeps the effect working. **The C64 record
+  still has nowhere to put it**: ten trait slots hold one number each, with
+  no room for what the effect is worth, so a party converted onto the C64
+  still arrives without it, named in the report rather than dropped in
+  silence. Whether one of those ten slots could hold the id anyway, the way
+  the C64's own READY routine sometimes does, is `#252 (Does a C64 trait
+  slot apply an item-granted effect id, or only the ones its own READY
+  routine wrote?)`, still open.
+* **The day and the month.** The clock itself is converted now (#67 (Carry the clock and the party count into a converted DOS save)) — six
   digit words at `$49C6`-`$49CB`, the C64's own six bytes at the C64's own
   addresses — but the C64 holds 0 in the sub-minute, day and month digits of
   every save on Donald's disks, so a converted party arrives on day 0 of

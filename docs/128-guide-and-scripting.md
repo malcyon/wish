@@ -617,7 +617,7 @@ Three things do transfer, and they are worth having:
 **`GB_Palette.xlsm`** is two 256-entry RGB tables, EGA and VGA. No use to a C64
 project except one thing: the character record's icon-colour nibbles index
 *this* palette on DOS and the VIC-II palette on ours, so it is the conversion
-table `docs/117` would need if it ever carried icon colours across.
+table `docs/117` would need if it ever converted icon colours across.
 
 ---
 

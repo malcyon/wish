@@ -648,7 +648,7 @@ there is no second bridge to drift. Four rules and nothing else: the name is
 re-cut from 16 NUL-padded bytes to a count and fifteen; `u16` and `u32` fields
 are byte-swapped; experience is one Amiga `u32` spanning DOS's 24-bit field
 *and* `gap_0af`; and the two live heap pointers — the effect chain and each
-item's `next` — are written NULL rather than carried.
+item's `next` — are written NULL rather than converted.
 
 **Two regions are reported rather than guessed.** DOS `0x083`-`0x087`, where
 the second insertion is still unplaced, is written **zero** — DOS's own
@@ -1552,8 +1552,8 @@ a string in the game binary's `LBI` library-reader code, beside
 `LBIBase: Invalid Library File` and the `GLIB` magic it checks. The two numbers
 are a library item index and the library's item count, and **`Disk3_CHEAD.TLB`,
 the portrait heads, holds exactly 29 items**. So R1's ramp made PoD ask
-`CHEAD.TLB` for item −1: `0x0B6`–`0x0C7` carries a portrait selector, not
-carried inventory. **Zero there is accepted** — every payload that loaded had
+`CHEAD.TLB` for item −1: `0x0B6`–`0x0C7` holds a portrait selector, not
+inventory. **Zero there is accepted** — every payload that loaded had
 zeros from `0x0B9` up, including the 484-byte written one.
 
 **What the loop costs and how it breaks.** Each probe is about three minutes:
@@ -1779,7 +1779,7 @@ So nobody is surprised, and nobody tries.
 | **Race and class codes** | `goldbox/games.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
 | **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
 | **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself, and no item crosses — so a converted character genuinely arrives unarmoured. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` |
-| **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not carried, and not wanted — see §3 |
+| **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not converted, and not wanted — see §3 |
 
 ---
 

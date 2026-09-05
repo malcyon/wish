@@ -6,25 +6,22 @@ paths:
 # Testing a conversion
 
 **The standard is a perfect conversion.** Reporting a dropped field is the
-minimum; it is not permission to drop it.
+minimum; it is not permission to drop it, and "the destination has no such
+field" is not an ending either. Donald, 2026-09-04: *"We should not be
+dropping anything when converting a save. Anything less is a bug, and the
+feature flag cannot be lifted until that is true."* Told separately that a
+ring's effect could not reach the C64 and that the drop was therefore
+legitimate: *"everything must work."* A converted character wearing a Ring of
+Fire Resistance has to resist fire on the other side.
 
-**And a drop is a bug.** Donald, 2026-09-04: *"We should not be dropping
-anything when converting a save. Anything less is a bug, and the feature flag
-cannot be lifted until that is true."* So the three reasons below explain why a
-field is not carried **yet** -- they are not a licence, and a drop list is not
-a state a conversion is allowed to rest in. **Every entry on every drop list
-has an issue**, and `WISH_EXPERIMENTAL_DOS_IMPORT` does not come off while any
-of them is open.
-
-**Every field is carried, or it is on a short list with a tested reason.**
-**And "the destination has no such field" is not an ending.** Donald,
-2026-09-04, told the ring's effect could not reach the C64 and that the drop
-was therefore legitimate: *"everything must work."* A converted character
-wearing a Ring of Fire Resistance has to resist fire on the other side. So the
-three reasons below say why a field is not converted **yet**, and the first of
-them is a description of the destination as we currently understand it rather
-than permission to stop -- if the destination has no home for something a
-player would notice, finding it one is the work.
+So the three reasons below explain why a field is not converted **yet** --
+they are not a licence, and a drop list is not a state a conversion is allowed
+to rest in. The first of them, "the destination has no such field," is a
+description of the destination as we currently understand it rather than
+permission to stop: if the destination has no home for something a player
+would notice, finding it one is the work. **Every entry on every drop list has
+an issue**, and `WISH_EXPERIMENTAL_DOS_IMPORT` does not come off while any of
+them is open.
 
 **Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
 'carried', you must mean 'converted'. I don't think carried means what you

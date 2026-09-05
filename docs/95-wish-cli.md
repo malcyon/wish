@@ -30,8 +30,8 @@ own `--help`.
 * **`--dry-run`** reports exactly what would change without writing anything.
 * **Unknown bytes are preserved.** Only fields we understand are written back;
   the party header, everything in `SAVEDGAME1` past its first page, and the
-  majority of each character record that is still unidentified are carried
-  through untouched.
+  majority of each character record that is still unidentified pass through
+  the conversion untouched.
 * **The round-trip is lossless** — exporting and re-importing unchanged
   reproduces the disk byte for byte. This is asserted in `tests/test_yaml_io.py`
   and is the property everything else depends on.
