@@ -200,7 +200,12 @@ def test_nothing_shipped_imports_this_module():
     offenders = []
     for package in SHIPPED_PACKAGES:
         for path in (REPO / package).rglob("*.py"):
-            tree = ast.parse(path.read_text(), filename=str(path))
+            # `encoding=` is not decoration: `read_text()` uses the locale's
+            # encoding, which on the Windows CI runner is cp1252, and this
+            # repository's source has bytes cp1252 has no character for. The
+            # sweep died on the first such file rather than reporting.
+            tree = ast.parse(path.read_text(encoding="utf-8"),
+                             filename=str(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:

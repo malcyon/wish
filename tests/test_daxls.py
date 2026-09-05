@@ -70,9 +70,13 @@ def test_dump_and_png_write_what_was_asked(tmp_path):
     out = tmp_path / "block.bin"
     assert daxls.main([str(dax), "--dump", "3", str(out)]) == 0
     assert out.read_bytes() == _image(4, 1, 0xF)
+    # Pillow is not in CI's environment and `--png` is the only part of this
+    # tool that wants it, so the drawing half skips rather than failing the
+    # run. The unpacking half above is what every other tool depends on and
+    # it is checked whatever is installed.
+    Image = pytest.importorskip("PIL.Image", reason="Pillow is not installed")
     png = tmp_path / "block.png"
     assert daxls.main([str(dax), "--png", "3", str(png), "--scale", "2"]) == 0
-    from PIL import Image
     with Image.open(png) as image:
         assert image.size == (16, 8)
 
