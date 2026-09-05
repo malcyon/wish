@@ -176,6 +176,15 @@ NOT_ON_THE_SHEET = (
     # two ways to make a character the game cannot read.
     "dual_class_slot",
     "dual_class_level",
+    # Which side of a fight the character is on -- bit 0 the enemy's side,
+    # bit 7 quickfight (#235). A player character is always on the party's
+    # side, and a widget offering the other one would let somebody build a
+    # character the game turns against them: measured, a party member with
+    # that bit set draws yellow on the party panel, attacks his own party,
+    # and the game's own save writes five records instead of six because it
+    # has dropped him. Quickfight is a setting of the last fight rather than
+    # anything about the character.
+    "combat_side",
     "inventory",          # editor/inventory.py edits the item slots
     # The high nine bytes of the spellbook bitmask. Not a field of its own on
     # the sheet: `field_spells_known` reads and writes both halves as one mask,
