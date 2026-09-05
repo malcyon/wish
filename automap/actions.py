@@ -580,6 +580,11 @@ class RestoreSpells(Action):
             # eighty-one, and it is still a good list: it is the front of the
             # same run. Write as much of the span as was stored and leave the
             # rest, which is what restoring did before the span was known.
+            #
+            # UNAPPROVED WORDING: the note below is reworded, because the old
+            # one named a constant that no longer has one value across the
+            # three titles. It reaches the player through the Messages panel.
+            # Donald has not seen it.
             if len(raw) > mem_size:
                 notes.append(f"the stored list for {m.name} is {len(raw)} "
                              f"bytes, more than the {mem_size} this title's "
