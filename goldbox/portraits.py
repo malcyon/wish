@@ -216,3 +216,36 @@ def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
         heads=tuple(data[at + BODY_COUNT:at + BODY_COUNT + HEAD_COUNT]),
         bodies=tuple(data[at:at + BODY_COUNT]),
         source=f"{disk.name}:GEN @{at}")
+
+
+def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
+    """The menu tables off the player's C64 game sides, whichever holds `GEN`.
+
+    The **import** direction -- a DOS save becoming a `.d64` -- needs the
+    tables to turn the DOS record's menu position into the art id the C64
+    record stores, and the thing it has in its hand is the directory of
+    `POOL<n>.D64` it already reads the combat icon and `ANIMATE00` out of.
+    `tables_from_c64` wants the one side that carries `GEN`; this finds it.
+
+    Every side is tried and the first that answers wins, rather than
+    hardcoding `POOL3`: which side carries `GEN` is the game's business and
+    an installation that puts it elsewhere is not a reason to lose the
+    party's faces.  Each side's answer is checked against the `HEAD*` and
+    `BODY*` files on that same side, so a table found is a table naming
+    portraits that exist beside it.
+    """
+    disks = pathlib.Path(disks)
+    sides = sorted(disks.glob("POOL[0-9].D64"))
+    if not sides:
+        raise PortraitError(
+            f"{disks}: no POOL<n>.D64 in it, so the creation menu's tables "
+            f"are not here to read")
+    why: list[str] = []
+    for side in sides:
+        try:
+            return tables_from_c64(side)
+        except (PortraitError, OSError) as e:
+            why.append(str(e))
+    raise PortraitError(
+        f"{disks}: none of the {len(sides)} sides here carries the creation "
+        f"menu ({'; '.join(why)})")

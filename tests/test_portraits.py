@@ -159,3 +159,64 @@ def test_a_directory_that_is_not_the_game_says_so(tmp_path):
     with pytest.raises(portraits.PortraitError) as caught:
         portraits.tables_from_dos(tmp_path)
     assert "HEAD" in str(caught.value)
+
+
+@needs_disks
+def test_the_import_finds_the_menu_without_being_told_which_side():
+    """What the **import** direction has in its hand is a disk *directory*.
+
+    A DOS save becoming a `.d64` has to turn the DOS record's menu position
+    into the art id the C64 record stores, and the only thing the import path
+    already holds is the folder of `POOL<n>.D64` it reads the combat icon and
+    `ANIMATE00` out of.  So the tables have to be findable from that folder
+    alone -- not from a named side, because which side carries `GEN` is the
+    game's business.
+    """
+    found = portraits.tables_from_disks(disk_dir())
+    assert len(found.heads) == portraits.HEAD_COUNT
+    assert len(found.bodies) == portraits.BODY_COUNT
+    named = portraits.tables_from_c64(disk_path("POOL3"))
+    assert found.agrees_with(named), (
+        f"{found.source} and {named.source} disagree, so which side the "
+        f"tables were read off changes the answer")
+
+
+@needs_disks
+def test_the_menu_found_from_the_disks_is_the_one_dos_offers():
+    """The import's table and the export's are one table.
+
+    `tables_from_disks` reads the C64's `GEN`; `tables_from_dos` reads DOS's
+    `START.EXE`.  A converted party's faces are only its own if those two
+    agree, and this is the assertion that makes the import's shortcut -- read
+    the destination port's own binary rather than the source's -- safe.
+    """
+    assert portraits.tables_from_disks(disk_dir()).agrees_with(
+        portraits.tables_from_dos(_dos_game()))
+
+
+def test_a_folder_with_no_game_sides_in_it_says_so(tmp_path):
+    """The failure a player causes by pointing the import at the wrong
+    folder: it names what is missing rather than raising out of a glob."""
+    with pytest.raises(portraits.PortraitError) as caught:
+        portraits.tables_from_disks(tmp_path)
+    assert "POOL" in str(caught.value)
+
+
+@needs_disks
+def test_a_folder_of_sides_that_carry_no_menu_says_which_it_tried(tmp_path):
+    """A directory of real `POOL<n>.D64` that happen not to carry `GEN`.
+
+    Built by copying one side that has no `HEAD*` on it, so the refusal is
+    reached the way a wrong-but-plausible folder would reach it rather than
+    by handing the function a broken image.
+    """
+    import shutil
+
+    for n in (1, 2):
+        shutil.copy(disk_path("POOL4"), tmp_path / f"POOL{n}.D64")
+    try:
+        portraits.tables_from_disks(tmp_path)
+    except portraits.PortraitError as e:
+        assert "none of the 2 sides" in str(e)
+    else:  # pragma: no cover - POOL4 carries HEAD00, so this would be news
+        pytest.skip("POOL4 answers for the menu on this set of disks")
