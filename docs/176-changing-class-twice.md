@@ -47,7 +47,7 @@ pointer pair at `GEN $2C3B`/`$2C64` -- the same table whose entry 27 is the
 trainer's `UNABLE TO ADVANCE` that `docs/172-curse-trainer.md` names.
 
 Secret of the Silver Blades is the same routine at `GEN $1F6C`, with `CMP #$06`
-for human because that title numbers races differently (`#237`), and the same
+for human because that title numbers races differently (`#237 (The DOS race table is one table for four titles, and it is wrong for two of them)`), and the same
 `LDA $7CBA / BNE` at `$1F88`. Its message 31 is the same sentence.
 
 **The flag is never cleared.** Sweeping every file on all six Curse sides for
@@ -108,7 +108,7 @@ the call, with no message.
 ### Watched, six characters, one save
 
 `tools/dualclassagain.py dos --game CURSE --party work/curse/234-curse-dualclassed`
-loads the save DEMELTINA was dual-classed in on `#234` and photographs the
+loads the save DEMELTINA was dual-classed in on `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` and photographs the
 party menu once per character, moving the roster highlight with `End`. The
 records were read at `goldbox/dos_layout.py`'s own offsets from the same files.
 
@@ -151,7 +151,7 @@ the eligible-class list comes out empty.
 ### Watched, one action apart
 
 Two slots of the same tree, `work/curse/234-ssb-dualclassed`, differing by the
-one `HUMAN CHANGE CLASSES` `#234` drove: slot C is PAINE the human ranger 8
+one `HUMAN CHANGE CLASSES` `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` drove: slot C is PAINE the human ranger 8
 with an all-zero former array, slot D is PAINE the magic-user 1 with
 `former_class_levels[ranger] = 8`. The same six keys in each run.
 
@@ -231,7 +231,7 @@ pressed `HUMAN CHANGE CLASS` on an already dual-classed character.
 `WISH-SPEC-curse-dual-classed` is the specimen and it would take one drive --
 except that on 2026-09-05 **no Curse save disk could be loaded through the
 front end in a pooled session at all**. That is not the specimen:
-`WISH-SPEC-curse-h-engine-resave` and `#18`'s own `work/issue18/train1.D64`,
+`WISH-SPEC-curse-h-engine-resave` and `#18 (Measure Curse's trainer so Level Up works there)`'s own `work/issue18/train1.D64`,
 which that session did load, fail the same way, and the attach itself is proven
 working because `ADD CHARACTER TO PARTY` asks for `INSERT SIDE # 1` once the
 save disk is in the drive. `GEN $1F42` is the load and `$3159` is what fails;
@@ -239,7 +239,7 @@ nobody has read `$3159`. The whole list of what was tried is in
 `tools/dualclassagain.py`'s docstring.
 
 **Gateway to the Savage Frontier** carries the same store (`GEN $23D3`, from
-`#224`) and its gate was not read. The question asked about two titles.
+`#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class slot)`) and its gate was not read. The question asked about two titles.
 
 **What the C64 does when the gate is removed** is unmeasured.
 `tools/dualclassagain.py c64 --gate-off` writes `NOP NOP` over `GEN $2396` and
