@@ -158,10 +158,23 @@ def test_importing_a_tool_leaves_the_wish_package_reachable(name):
     two got the name without depending on what either of them contains.
     """
     result = _in_a_fresh_process(
-        f"from tools import {name}\n"
+        "try:\n"
+        f"    from tools import {name}\n"
+        "except ModuleNotFoundError as exc:\n"
+        "    if exc.name in ('tools', 'wish'):\n"
+        "        raise\n"
+        # A tool that needs something CI does not install -- `capstone` for
+        # the three disassemblers -- cannot be imported there at all, and
+        # that is not this test's subject.  Anything else missing is, since
+        # losing `wish` is exactly how this failure presents.
+        "    print('SKIP', exc.name)\n"
+        "    raise SystemExit(0)\n"
         "import wish\n"
         "assert hasattr(wish, '__path__'), f'wish is {wish.__file__}'\n"
         "print('OK')\n")
+    if result.stdout.startswith("SKIP"):
+        pytest.skip(f"{name} needs {result.stdout.split()[1]}, "
+                    f"which is not installed here")
     assert result.returncode == 0 and "OK" in result.stdout, (
         f"after `from tools import {name}`, `wish` is not the package:\n"
         f"{result.stderr}")
