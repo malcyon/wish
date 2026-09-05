@@ -10,11 +10,15 @@ depends on the real `gamedisks.toml` except the one test that checks it.
 """
 
 
+import ast
 import pathlib
 
 import pytest
 
 from tools import gamedisks
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SHIPPED_PACKAGES = ("automap", "editor", "goldbox", "wish", "ui")
 
 
 def _write(path: pathlib.Path, text: str) -> pathlib.Path:
@@ -181,6 +185,35 @@ def test_every_committed_default_is_found_here_or_marked_unavailable():
               if gamedisks._committed()[name].get(gamedisks.PATHS)
               and gamedisks.find(name) is None]
     assert missing == []
+
+
+def test_nothing_shipped_imports_this_module():
+    """`gamedisks.py`'s own docstring: this is ours, not the player's.
+
+    `gamedisks.toml` carries no package-data entry, so a shipped `automap`,
+    `editor`, `goldbox`, `wish` or `ui` module calling `gamedisks.find` would
+    get a silent nothing on a player's machine -- the worst shape a lookup can
+    fail in. Checked by AST, the way `test_wish.py`'s transport check is: a
+    root module name is not enough here, since the import that matters is
+    `from tools import gamedisks`, not a bare `tools`.
+    """
+    offenders = []
+    for package in SHIPPED_PACKAGES:
+        for path in (REPO / package).rglob("*.py"):
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name in ("gamedisks", "tools.gamedisks"):
+                            offenders.append((path, alias.name))
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module == "tools.gamedisks":
+                        offenders.append((path, node.module))
+                    elif node.module == "tools":
+                        for alias in node.names:
+                            if alias.name == "gamedisks":
+                                offenders.append((path, "tools.gamedisks"))
+    assert offenders == []
 
 
 def test_no_committed_default_points_into_work():

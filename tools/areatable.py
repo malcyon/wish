@@ -45,7 +45,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import newecl  # noqa: E402
@@ -640,7 +640,8 @@ def report(game: games.Game, root: str, control: games.Game | None,
               f"counts ${machine.hi_table + machine.count:04X}")
         print(f"  scripts run at ${base:04X}, {len(scripts)} of them")
         if control is not None:
-            other = find_disks(control)
+            found = registry(control.key)
+            other = pathlib.Path(found) if found else None
             if other is not None:
                 for line in verify(machine, Machine(str(other), control)):
                     print(line)
@@ -772,12 +773,12 @@ DISK_BYTES = {
 def registry(key: str) -> str:
     """`tools/gamedisks.py`'s answer for this title, or "".
 
-    Third and last, after `$POR_DISKS` and `automap.paths.find_disks()`.
-    `find_disks` is the *player's* search and looks for a directory named
-    after the game; nobody names one that, so on this machine it finds Pool of
-    Radiance and neither of the other two --
-    `#251 (Curse's and Silver Blades' disks are where nothing looks for them,
-    so every per-title test skips)`. The registry is ours and already knows.
+    Second, after `--disks`/`$POR_DISKS`. `automap.paths.find_disks` is the
+    *player's* search and looks for a directory named after the game; nobody
+    names one that, so it finds Pool of Radiance and neither of the other two
+    -- `#251 (Curse's and Silver Blades' disks are where nothing looks for
+    them, so every per-title test skips)`. This tool is ours, so it asks the
+    registry rather than the player's lookup.
     """
     try:
         import gamedisks
@@ -801,7 +802,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv[1:])
 
     game = next(g for g in games.GAMES if g.key == args.game)
-    root = args.disks or str(find_disks(game) or "") or registry(game.key)
+    root = args.disks or registry(game.key)
     if not root or not os.path.isdir(root):
         print(f"No {game.title} disks. Set $POR_DISKS or pass --disks.",
               file=sys.stderr)

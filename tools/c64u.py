@@ -27,8 +27,8 @@ things it does that a bare CLI call does not, each of them a rule from
    `$01` -- and `$01` itself reads as the RAM under the processor port, so the
    dump cannot say.  A dump with no recorded bank state is a dump nobody can
    interpret later.
-4. **Reads the disks the way every other tool here does** -- `$POR_DISKS`,
-   then `automap.paths.find_disks()`, never a path in the source.  The image
+4. **Reads the disks the way this project's own tools do** -- `$POR_DISKS`,
+   then `tools/gamedisks.py`'s registry, never a path in the source.  The image
    is staged into `work/c64u/` and uploaded from there, so the player's own
    directory is never opened for writing, exactly as `tools/session.py` stages
    `SIDE1.D64` for VICE.
@@ -65,8 +65,9 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from automap.live import memory_blocks  # noqa: E402
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs  # noqa: E402
 from goldbox import games  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 #: Exit code for "no C64 Ultimate answered", distinct from a failed check.
 NO_DEVICE = 3
@@ -429,9 +430,18 @@ class Ultimate:
 
 
 def disk_dir(game: games.Game | None = None) -> str:
-    """`$POR_DISKS`, then wherever the title's disks actually are."""
+    """`$POR_DISKS`, then `tools/gamedisks.py`'s registry for this title.
+
+    `automap.paths.find_disks` is the player's own search and looks for a
+    directory named after the game, which is why it never finds Curse's or
+    Silver Blades' -- `#251 (Curse's and Silver Blades' disks are where
+    nothing looks for them, so every per-title test skips)`. This tool is
+    ours, so it asks the registry instead.
+    """
     env = os.environ.get("POR_DISKS")
-    return env if env else str(find_disks(game) or "")
+    if env:
+        return env
+    return str(gamedisks.find((game or games.DEFAULT).key) or "")
 
 
 def game_disks(game: games.Game | None = None, root: str | None = None) -> list[str]:

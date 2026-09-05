@@ -291,11 +291,13 @@ def test_a_missing_disk_says_where_it_looked(tmp_path, monkeypatch):
 
 
 def test_no_path_to_the_players_disks_is_written_into_the_source():
-    """Every other tool here reads `$POR_DISKS` then `find_disks()`; a fourth
-    way, or a path in the source, is useless to everybody but one machine."""
+    """This tool reads `$POR_DISKS` then `tools/gamedisks.py`'s registry
+    (#251 (Curse's and Silver Blades' disks are where nothing looks for them,
+    so every per-title test skips)); a fourth way, or a path in the source, is
+    useless to everybody but one machine."""
     text = pathlib.Path(c64u.__file__).read_text()
     assert "/home/" not in text
-    assert "POR_DISKS" in text and "find_disks" in text
+    assert "POR_DISKS" in text and "gamedisks" in text
 
 
 def test_staging_copies_out_of_the_players_directory(tmp_path):

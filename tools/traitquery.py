@@ -63,7 +63,6 @@ import d6502  # noqa: E402
 import gamedisks  # noqa: E402
 from absrefsweep import files, is_art  # noqa: E402
 
-from automap.paths import find_disks  # noqa: E402
 from goldbox import games, traits  # noqa: E402
 
 #: Where `LINKER` puts an overlay it dispatches to, used only to print a call
@@ -181,8 +180,7 @@ def main(argv=None) -> int:
                  if g.key == args.title or g.title == args.title), None)
     if game is None:
         raise SystemExit(f"No such title: {args.title}")
-    root = args.disks or (str(gamedisks.find(game.key) or "")
-                          or str(find_disks(game) or ""))
+    root = args.disks or str(gamedisks.find(game.key) or "")
     if not root or not os.path.isdir(root):
         raise SystemExit(f"No disks for {game.title}; pass --disks.")
 

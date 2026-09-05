@@ -38,8 +38,8 @@ import pytest
 import wish  # noqa: F401
 from automap import fasttravel
 from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
-from automap.paths import find_disks
 from goldbox import games
+from tools import gamedisks
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 
@@ -59,7 +59,7 @@ def newecl():
 
 
 def _disks(game):
-    root = find_disks(game)
+    root = gamedisks.find(game.key)
     if root is None:
         pytest.skip(f"no {game.title} disks on this machine")
     return str(root)

@@ -39,9 +39,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 #: Where `LINKER` loads an overlay it dispatches to.
 GEN_BASE = 0x0800
@@ -81,8 +82,17 @@ def staging(game: games.Game) -> int:
 # --- getting at the bytes ----------------------------------------------------
 
 def disks(game: games.Game, root: str | None) -> list[D64]:
-    """Every readable side of this title's, from `root` or wherever it lives."""
-    where = pathlib.Path(root) if root else find_disks(game)
+    """Every readable side of this title's, from `root` or wherever it lives.
+
+    `root` comes from `--disks`; failing that this asks `tools/gamedisks.py`'s
+    registry rather than `automap.paths.find_disks`, which is the *player's*
+    search and looks for a directory named after the game -- nobody names one
+    that, so it never finds Curse's or Silver Blades' (#251 (Curse's and
+    Silver Blades' disks are where nothing looks for them, so every per-title
+    test skips)).
+    """
+    found = gamedisks.find(game.key)
+    where = pathlib.Path(root) if root else found
     if where is None:
         raise SystemExit(
             f"No {game.title} disks. Set $POR_DISKS or pass --disks.")

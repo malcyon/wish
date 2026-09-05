@@ -55,8 +55,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(TOOLS))
 
 import d6502  # noqa: E402
+import gamedisks  # noqa: E402
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 
@@ -511,7 +512,8 @@ def report(game: games.Game, root: str, base: int,
               f"and ${tables[0]:04X}")
 
     if against is not None:
-        other = find_disks(against)
+        found = gamedisks.find(against.key)
+        other = pathlib.Path(found) if found else None
         if other is None:
             print(f"  (no {against.title} disks to compare against)")
             return 0
@@ -556,7 +558,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv[1:])
 
     game = next(g for g in games.GAMES if g.key == args.game)
-    root = args.disks or str(find_disks(game) or "")
+    root = args.disks or str(gamedisks.find(game.key) or "")
     if not root or not os.path.isdir(root):
         print(f"No {game.title} disks. Set $POR_DISKS or pass --disks.",
               file=sys.stderr)

@@ -49,7 +49,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import disk_globs, find_disks  # noqa: E402
+from automap.paths import disk_globs  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
@@ -456,7 +456,7 @@ def cmd(argv=None) -> int:
             game = candidate
     if game is None:
         raise SystemExit(f"No such title: {args.title}")
-    root = args.disks or registry(game.key) or str(find_disks(game) or "")
+    root = args.disks or registry(game.key)
     if not root or not os.path.isdir(root):
         raise SystemExit(f"No disks for {game.title}; pass --disks.")
 

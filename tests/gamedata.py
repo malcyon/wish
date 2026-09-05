@@ -34,7 +34,6 @@ import pathlib
 
 import pytest
 
-from automap.paths import find_disks
 from goldbox.d64 import D64, load_payload
 from goldbox.geo import (
     ATTRIBUTES,
@@ -51,8 +50,13 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 @functools.lru_cache(maxsize=1)
 def disk_dir():
-    """Where the player keeps their disks, or None."""
-    return find_disks()
+    """Where Pool of Radiance's disks are on this machine, or None.
+
+    `tools.gamedisks.find` (#212) is the test suite's own lookup, not
+    `automap.paths.find_disks` -- that one is the player's, and is for the
+    shipped code under `automap/`, `editor/` and `wish/` (#251)."""
+    from tools import gamedisks
+    return gamedisks.find("pool-of-radiance")
 
 
 @functools.lru_cache(maxsize=None)
