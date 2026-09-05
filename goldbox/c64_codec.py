@@ -43,7 +43,6 @@ __all__ = [
     "DIRECT",
     "TRANSFORMED",
     "DROPPED",
-    "GRANTED_EFFECT_REASON",
     "STATUS_BITS",
     "STATUS_BY_BITS",
     "OUT_OF_PLAY",
@@ -372,25 +371,6 @@ INFRAVISION = {0: 0, 1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6, 7: 0}
 ITEM_SLOTS = 16
 ITEM_SIZE = 16
 
-#: Why a C64 conversion cannot carry `granted_effects`, in the words a player
-#: reads.  The other ports keep a whole nine-byte record per effect -- the id,
-#: a duration, the value the effect is worth and a flag the engine reads when
-#: the item comes off -- and the C64 keeps ten slots of one byte each and
-#: nothing beside them.
-#:
-#: **The ten is CONFIRMED and cannot be widened**: `goldbox/layout.py`'s
-#: `item_effects` is a fixed ten-byte field, and three measured titles -- Pool
-#: of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades --
-#: read it with the same three-instruction, `LDX #$09`-indexed loop.  A
-#: character with more innate ids than slots is a different loss with its own
-#: ticket (#236, A character converted to the C64 with more than ten innate
-#: effects loses the extra ones with no report); this one is about a slot
-#: being a single number with no room for what the effect is worth.
-GRANTED_EFFECT_REASON = (
-    "a C64 character sheet keeps ten trait slots holding one number each, "
-    "with nowhere for what the effect is worth or for what the game needs to "
-    "take it away again when the item comes off")
-
 #: What a player reads when a title's C64 record has no home for something
 #: the source held.  **PROPOSED, not yet approved**:
 #: `.claude/rules/gui-text.md` makes every word a player reads Donald's, and
@@ -711,30 +691,53 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                        "character creation writes -- without it the engine "
                        "gives no strength bonus to hit or to damage")
 
-    # -- innate effects: ten slots -------------------------------------------
+    # -- innate effects and item grants: ten shared trait slots --------------
+    # `docs/171-c64-trait-slots.md` (#252): a trait slot is one byte meaning
+    # "this character has effect N", with no owner and no record of who wrote
+    # it -- the engine applies an id written here exactly where it would
+    # apply one its own READY wrote (watched: 98 regenerated a wounded
+    # character three a round, and a fire spell hit a 61-carrier for less
+    # damage, both with the id staged by this project rather than granted by
+    # the game).  Racial ids fill from slot 0, the way `GEN` seeds them at
+    # creation; item-granted ids fill from slot 9 down, the way
+    # `SPELLE04 $ADD4` itself scans for a free slot when an item is readied.
+    #
+    # The value an effect is worth and the flag DOS reads on removal have no
+    # C64 counterpart to write, and need none: the C64's own un-ready
+    # (`SPELLE04 $AE13`) finds the id in the ten slots and clears it, nothing
+    # else, and for every item power that uses a trait slot the id is the
+    # whole effect -- the handler holds the magnitude, not the record.
     innate = use("innate_effects")
-    if innate is not None:
-        full = list(innate.value)
-        ids = full[:10]
-        rec.set_raw("item_effects", bytes(ids) + bytes(10 - len(ids)))
-        emit(innate, "item_effects", 0x0AD, 10)
-        if len(full) > 10:
-            rep.warnings.append(
-                f"{len(full)} innate effects and the C64 has ten slots; "
-                f"{len(full) - 10} dropped from the end")
-
-    # -- what a ring or a girdle granted: named, and not converted -----------
-    # Taken so that the closing sweep does not report it a second time in the
-    # writer's own words; what a player reads is one line per effect saying
-    # what the character had, rather than one line saying a field was
-    # skipped.
     granted = use("granted_effects")
-    if granted is not None:
-        from . import amiga as _amiga
-        for node in granted.value:
-            rep.dropped.append(
-                f"{_amiga.describe_unconverted_effect(bytes(node))} -- "
-                f"{GRANTED_EFFECT_REASON}")
+    if innate is not None or granted is not None:
+        slots = [0] * 10
+        innate_ids = list(innate.value) if innate is not None else []
+        for i, e in enumerate(innate_ids[:10]):
+            slots[i] = e
+        granted_ids = ([int(node[0]) for node in granted.value]
+                       if granted is not None else [])
+        free = [i for i in range(9, -1, -1) if slots[i] == 0]
+        for i, e in zip(free, granted_ids):
+            slots[i] = e
+        rec.set_raw("item_effects", bytes(slots))
+        if innate is not None:
+            emit(innate, "item_effects", 0x0AD, 10)
+        if granted is not None:
+            emit(granted, "item_effects", 0x0AD, 10,
+                 "; the id is the whole of what the item's own READY would "
+                 "write (#252, docs/171-c64-trait-slots.md) -- the value and "
+                 "the removal flag the other ports keep beside it have no "
+                 "C64 counterpart, because the C64 removes by id alone and "
+                 "its handler holds the magnitude")
+        if len(innate_ids) > 10:
+            rep.warnings.append(
+                f"{len(innate_ids)} innate effects and the C64 has ten "
+                f"slots; {len(innate_ids) - 10} dropped from the end")
+        if len(granted_ids) > len(free):
+            rep.warnings.append(
+                f"{len(granted_ids)} item-granted effects and only "
+                f"{len(free)} free trait slots after the innate ones; "
+                f"{len(granted_ids) - len(free)} dropped from the end")
 
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
@@ -917,6 +920,15 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("attack_forms", "copied as a block to 0x0D9"),
     ("innate_effects", "the first ten ids, into the C64's trait slots; the "
                        "rest are warned about"),
+    ("granted_effects", "each id, into a free trait slot after the innate "
+                        "ones, filled from slot 9 down the way the item's "
+                        "own READY would fill it (#252); the rest are warned "
+                        "about. The record's duration, value and removal "
+                        "flag have no C64 counterpart and need none -- see "
+                        "the write itself. Not something the C64 reader can "
+                        "give back as this name, because a trait slot the "
+                        "converter filled and one READY filled are the same "
+                        "byte to the engine's own compare"),
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
@@ -954,9 +966,6 @@ DROPPED: tuple[tuple[str, str], ...] = (
             "business"),
     ("encumbrance", "derived -- the C64 has no such field and recomputes what "
                     "it needs"),
-    ("granted_effects", GRANTED_EFFECT_REASON + ". The write itself names "
-                        "each effect the character had, one line apiece, "
-                        "rather than saying a field was skipped"),
 )
 
 

@@ -265,40 +265,81 @@ def test_a_character_with_no_thief_level_carries_no_thief_skills():
 
 
 @needs_dos_saves
-def test_innate_effects_survive_and_running_ones_do_not():
-    """The `.SPC` file splits in two, and the two ports share the id space.
+def test_innate_and_granted_effects_reach_a_trait_slot_and_running_ones_do_not():
+    """The `.SPC` file splits three ways, and the C64 trait slots now take
+    two of them (#232).
 
     Curse's own importer keeps exactly the innate racial ids out of a Pool of
     Radiance `.spc`; `goldbox/traits.py` names the same numbers the same way --
-    107 is elf sleep resistance and 124 is the half-elf's on both sides.
-    Everything else is a running spell and must not reach the trait slots: a
-    Bless with four rounds left on it would arrive as a permanent racial
-    bonus, which is a defect a player can see.
+    107 is elf sleep resistance and 124 is the half-elf's on both sides.  A
+    ring or a girdle grants an effect the same way, at duration zero and
+    outside `INNATE_EFFECTS`, and it now reaches a free trait slot too, the
+    way the item's own READY would put it there
+    (`docs/171-c64-trait-slots.md`, #252). A spell still counting down --
+    nonzero duration -- must not reach the trait slots: a Bless with four
+    rounds left on it would arrive as a permanent bonus, which is a defect a
+    player can see.
 
-    **The running ones used to be reported as dropped as well, and are not
-    any more.**  Donald, 2026-08-27: *"For running effects, that would expire
-    after a certain period of time, we do not need to report those. The user
-    will not expect this to carry over, so reporting it is unnecessary."*  An
-    innate effect that cannot be converted is the opposite case and is still
-    reported -- `write`'s gnome line is the one specimen of it.  So what this
-    asserts moved from "it is reported" to "it is not written", which is the
-    thing a player would meet.
+    **A running effect is reported nowhere.**  Donald, 2026-08-27: *"For
+    running effects, that would expire after a certain period of time, we do
+    not need to report those. The user will not expect this to carry over,
+    so reporting it is unnecessary."*  An innate effect that cannot be
+    converted is the opposite case and is still reported -- `write`'s gnome
+    line is the one specimen of it.  So what this asserts is "innate and
+    granted are written, running is not, and none of the three is ever
+    reported", which is the thing a player would meet.
     """
-    innate = running = 0
+    innate = running = granted = 0
     for char in _records():
         rec, report = dos.to_c64_record(char)
         slots = [b for b in rec.get_raw("item_effects") if b]
-        for e in char.effect_ids:
-            if e in dos.INNATE_EFFECTS:
-                assert e in slots, (char.name, e)
+        for e in char.effects:
+            eid = e[0]
+            duration = int.from_bytes(e[1:3], "little")
+            if eid in dos.INNATE_EFFECTS:
+                assert eid in slots, (char.name, eid)
                 innate += 1
-            else:
+            elif duration != 0:
                 running += 1
-                assert e not in slots, (char.name, e)
+                assert eid not in slots, (char.name, eid)
+            else:
+                granted += 1
+                assert eid in slots, (char.name, eid)
         assert not [d for d in report.dropped if d.startswith(".SPC effect")], \
             char.name
     assert innate >= 5
     assert running >= 2
+    assert granted >= 1
+
+
+def test_an_item_granted_effect_reaches_a_c64_trait_slot():
+    """#232: the ring's id used to be reported as a loss and nothing else --
+    now it is written where the C64's own READY would write it.
+
+    `por-item-granted` is the one DOS record anybody has that the game
+    itself wrote an item's grant into: THRENDER GRONE's flail readied with
+    effect 61 (wearing a Ring of Fire Resistance) and power `0x80`, saved by
+    the engine to slot D.  Its `.SPC` is four racial ids, a `BLESS` at two
+    minutes, and the ring's `61 00 00 0C 00`.  The C64 record must carry the
+    four racial ids and 61 into its ten trait slots and must not carry the
+    `BLESS`, which is a running spell and needs no report either
+    (Donald, 2026-08-27).
+    """
+    from test_doswriter import _item_granted_specimen
+
+    from goldbox import traits
+
+    path = _item_granted_specimen()
+    if path is None:
+        pytest.skip("no por-item-granted specimen; "
+                    "tools/dosspcexpiry.py ready makes one")
+    char = dos.read_character(path)
+    rec, rep = dos.to_c64_record(char)
+    slots = [b for b in rec.get_raw("item_effects") if b]
+    assert sorted(slots) == sorted([90, 97, 26, 47, 61]), slots
+    said = traits.describe(61)
+    assert not any(said in d for d in rep.dropped)
+    assert not any("trait slot" in w for w in rep.warnings)
 
 
 @needs_dos_saves

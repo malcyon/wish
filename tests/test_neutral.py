@@ -175,6 +175,48 @@ def test_more_innate_effects_than_slots_is_reported():
     assert any("11" in w and "ten slots" in w for w in rep.warnings)
 
 
+def _granted(effect_id: int) -> bytes:
+    """One nine-byte `granted_effects` node, in the shared shape
+    `goldbox/dos.py` reads: id, a zero duration, the value `0x0C` a passive
+    item grant carries, a clear removal flag, and a NULL next pointer."""
+    return bytes((effect_id, 0, 0, 0x0C, 0, 0, 0, 0, 0))
+
+
+def test_a_granted_effect_lands_in_a_free_trait_slot():
+    """#232: an item-granted effect used to be reported as a drop and
+    written nowhere; now the id lands where the item's own READY would put
+    it (`docs/171-c64-trait-slots.md`, #252)."""
+    char = _filled()
+    char.set("granted_effects", [_granted(61)], "made up")
+    rec, rep = c64_codec.write(char)
+    assert 61 in rec.get_raw("item_effects")
+    assert not any("61" in d for d in rep.dropped)
+
+
+def test_a_granted_effect_fills_from_the_top_after_the_innate_ones():
+    """Racial ids seed from slot 0, the way `GEN` itself does; a readied
+    item's id is granted into the first free slot scanning from 9, the way
+    `SPELLE04 $ADD4` itself scans when an item is readied."""
+    char = _filled()
+    char.set("innate_effects", [18, 47], "made up")
+    char.set("granted_effects", [_granted(61)], "made up")
+    rec, _ = c64_codec.write(char)
+    slots = list(rec.get_raw("item_effects"))
+    assert slots[:2] == [18, 47]
+    assert slots[9] == 61
+
+
+def test_more_granted_effects_than_free_slots_is_reported():
+    """Nine innate ids leave one free slot; two item grants do not both
+    fit, and the loss must be named rather than silently cut off."""
+    char = _filled()
+    char.set("innate_effects", list(range(1, 10)), "made up")
+    char.set("granted_effects", [_granted(61), _granted(89)], "made up")
+    _, rep = c64_codec.write(char)
+    assert any("2 item-granted effects" in w and "1 free trait slots" in w
+               for w in rep.warnings)
+
+
 # --- the DOS reader, against real files --------------------------------------
 
 @needs_dos_saves
@@ -322,6 +364,13 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     GEN draws the identity pair at `0x0E6`-`0x0E7` and Curse of the Azure
     Bonds' and Secret of the Silver Blades' never do (#258, The C64 side of
     0x0AB is unnamed, so the conversion drops it with no issue behind it).
+
+    And `granted_effects` is taken but never comes back under its own name:
+    it is written into a free trait slot the way an item's own READY would
+    fill it (#232, #252), and a trait slot the converter filled and one
+    READY filled are the same byte to the engine's own compare -- no
+    provenance byte, so the reader cannot tell one from `innate_effects`
+    (`docs/171-c64-trait-slots.md`).
     """
     char = _filled(game=game)
     rec, _ = c64_codec.write(char)
@@ -332,6 +381,7 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
         taken.discard("abilities_second")
     if not c64_codec.record_shape(game).identity_pair:
         taken.discard("unnamed_0ab")
+    taken.discard("granted_effects")
     assert taken - set(back.keys()) == set()
 
 

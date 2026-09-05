@@ -209,24 +209,19 @@ def test_a_running_spell_is_neither_converted_nor_reported():
     assert rep.dropped == c64_codec.write(bare)[1].dropped
 
 
-def test_the_c64_names_the_granted_effect_it_cannot_convert():
-    """The one destination that still loses a ring's effect says so, in the
-    words a player reads: what the character had, and why this record has no
-    room for it.
-
-    No effect id, no file offset, no issue number -- Donald's wording,
-    2026-09-04, and `tests/test_dosconvert.py`'s two developer-detail guards
-    are what hold the line for the whole report.
+def test_the_c64_writes_the_granted_effect_into_a_trait_slot():
+    """The ring's id now reaches the C64 too -- `docs/171-c64-trait-slots.md`
+    (#252): a trait slot is one byte meaning "this character has effect N",
+    with no owner and no record of who wrote it, and the engine applies an
+    id written there exactly where it would apply one its own READY wrote
+    (watched: a fire spell hit a 61-carrier for less damage with the id
+    staged by this project, not granted by the game).  So the ring is no
+    longer a loss the report has to explain.
     """
     char = _dos_record([_effect(61, duration=0, value=12)])
-    _rec, rep = c64_codec.write(dos.to_neutral(char))
-    lines = [d for d in rep.dropped if "Ring of Fire Resistance" in d]
-    assert len(lines) == 1, rep.dropped
-    assert "ten trait slots" in lines[0], lines[0]
-    # The id is the player's business to never see, and `capitalize()` would
-    # have rendered the effect's own name as "ring of fire resistance".
-    assert "61" not in lines[0], lines[0]
-    assert "ring of fire" not in lines[0], lines[0]
+    rec, rep = c64_codec.write(dos.to_neutral(char))
+    assert 61 in rec.get_raw("item_effects")
+    assert not [d for d in rep.dropped if "Ring of Fire Resistance" in d]
 
 
 # --- the writer, on a synthetic character ------------------------------------
