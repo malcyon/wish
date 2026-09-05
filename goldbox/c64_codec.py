@@ -142,8 +142,8 @@ class RecordShape:
     `goldbox/layout.py` is Pool of Radiance's table and every offset in it is
     the same in the later titles -- what differs is how far three regions run
     and whether two fields are used at all.  Each row below was read out of
-    the title's own overlays, and a title with no row is written as Pool of
-    Radiance, which is what a caller with no title in hand means.
+    the title's own overlays, and a title with no row is refused (#274) --
+    only no title *at all*, `None`, still means Pool of Radiance.
     """
 
     key: str
@@ -268,16 +268,34 @@ RECORD_SHAPES: dict[str, RecordShape] = {
 
 
 def record_shape(game=None) -> RecordShape:
-    """The record shape for a title, Pool of Radiance's by default.
+    """The record shape for a title, Pool of Radiance's when none is given.
 
     Duck-typed on `.key` the way `goldbox.spells.for_game` is, so a
     `goldbox.games.Game`, a key or None all work and this module still does
     not import `goldbox/games.py`.
+
+    **A title with a key that names no measured row raises** (#274, A C64
+    title nobody has measured is read with Pool of Radiance's record shape,
+    silently) -- `goldbox/c64_save.py`'s `container_for` is the precedent:
+    handing back Pool of Radiance's spell span, ability layout and dual-class
+    answer for a title nobody has read the overlays of is inventing that
+    title's geometry, silently, exactly the way a title with no fast-travel
+    row is refused rather than given Pool of Radiance's coordinates
+    (`automap/fasttravel.py`). Only `None` -- a caller with no title in hand
+    at all, not a title that is unmeasured -- still means Pool of Radiance.
     """
     if isinstance(game, RecordShape):
         return game
-    return RECORD_SHAPES.get(getattr(game, "key", game),
-                             POOL_OF_RADIANCE_RECORD)
+    key = getattr(game, "key", game)
+    if key is None:
+        return POOL_OF_RADIANCE_RECORD
+    try:
+        return RECORD_SHAPES[key]
+    except KeyError:
+        raise KeyError(
+            f"no C64 record shape measured for {key!r}; "
+            f"{', '.join(sorted(RECORD_SHAPES))} are the only titles this "
+            f"project has read the overlays of") from None
 
 
 def span_of(names: "tuple[str, ...]") -> tuple[int, int]:

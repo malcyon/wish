@@ -14,7 +14,7 @@ rather than guessed at.
 import pytest
 from test_dossave import _save_dir, needs_dos_saves
 
-from goldbox import amiga, c64_codec, dos, dos_layout, neutral
+from goldbox import amiga, c64_codec, dos, dos_layout, games, neutral
 from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, Provenance
@@ -413,6 +413,23 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
         taken.discard("former_levels")
     taken.discard("granted_effects")
     assert taken - set(back.keys()) == set()
+
+
+def test_record_shape_refuses_a_title_it_has_not_measured():
+    """Champions of Krynn has a `Game` but no `RecordShape` row (#274): asking
+    for its shape must not hand back Pool of Radiance's silently."""
+    with pytest.raises(KeyError):
+        c64_codec.record_shape(games.BY_KEY["champions-of-krynn"])
+    with pytest.raises(KeyError):
+        c64_codec.record_shape("champions-of-krynn")
+
+
+def test_record_shape_still_defaults_pool_of_radiance_for_no_title_at_all():
+    """None means a caller with no title in hand at all, not an unmeasured
+    one, and every other test in this file calls `record_shape(None)`
+    expecting Pool of Radiance back."""
+    assert c64_codec.record_shape(None) is c64_codec.POOL_OF_RADIANCE_RECORD
+    assert c64_codec.record_shape() is c64_codec.POOL_OF_RADIANCE_RECORD
 
 
 def test_the_c64_reader_grades_every_value_from_the_layout():
