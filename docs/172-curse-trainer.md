@@ -242,18 +242,29 @@ The class list the game offered her is its own small question: wisdom 14 was
 offered CLERIC and dexterity 17 was not offered THIEF, so the filter at
 `GEN $23FC` is not AD&D 1st edition's prime-requisite rule as printed.
 
-## What is still open
+## What was still open, and where it went
 
-* **The probabilistic divide at `GEN $11AB`** is untouched by this session. Each
-  die was handed back to `plan` rather than predicted, so the divide has still
-  never been on trial in either title. Twenty trainings of one two-class
-  character, counting how often the extra point falls, is what settles it, and
-  TRAVIS is thief 6 / fighter 5 in the specimen.
-* **The experience clamp lowering a number.** All five kept their experience,
-  because each one's next-but-one threshold was above what it held. A Curse
-  character with more experience than that would show `$2086` writing.
-* **`TRAINER_MEASURED` still has one entry.** Nothing under `goldbox/` was
-  changed by this work.
+A second session the same day closed the first two --
+`docs/192-curse-dual-class.md` has both in full.
+
+* **The divide at `GEN $11AB` is settled, and it is not probabilistic in the
+  case that matters.** The random routine turned out to be in `LIBRARY` rather
+  than nowhere: Curse's runs at `$2DC8` and Pool of Radiance's at `$2C48`, both
+  ending exactly where that title's saved game loads. Both roll
+  `1..class_count`; Pool of Radiance rounds up when the roll is at or below the
+  remainder and **Curse only when it is below**, so a two-class Curse character
+  always rounds down. CONFIRMED from the bytecode and from 40 engine-written
+  divides.
+* **The experience clamp lowering a number** was watched six times over,
+  4,000 to 125,000, each `levels.clamp_threshold("fighter", n) - 1` exactly.
+* **`TRAINER_MEASURED` still has one entry**, and `docs/192-curse-dual-class.md`
+  lists the three changes still in front of it.
+
+Also closed there: the four routines that make a dual-classed character
+different, all watched, so `goldbox/levelup.py` no longer refuses one. The
+paragraph above under `HUMAN CHANGE CLASS` that says *"none of the four
+routines that behave differently afterwards has been seen running"* was true
+when it was written and is not now.
 
 ## The specimens
 

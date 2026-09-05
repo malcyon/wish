@@ -30,13 +30,19 @@ it" and saves a session of map-reading.
 
 Two subcommands:
 
-    tools/cursetrain.py stage --base <in.d64> --out <out.d64> \\
+    tools/cursetrain.py stage --base <in.d64> --out <out.d64> --repair \\
         --give SHARA:xp=30000,plat=2000 ...
 
-        Copy a Curse save disk and write experience and platinum into named
-        slots of `SAVEAZURE`.  **Those are inputs we write and they prove
-        nothing**; what the trainer does with them is the measurement
-        (`.claude/rules/testing.md`).
+        Copy a Curse save disk and write named fields into named slots of
+        `SAVEAZURE`.  **Those are inputs we write and they prove nothing**;
+        what the trainer does with them is the measurement
+        (`.claude/rules/testing.md`).  `--repair` closes a `SAVEAZURE` the
+        drive never finished writing, which is what every image copied out of
+        a pool slot after a `SAVE CURRENT GAME` looks like -- `$02` in the
+        directory type byte and a block count of zero, and the game refuses to
+        load one (`#298`).  The fields are `xp`, `plat`, `con`, `bits`,
+        `dcs`, `dcl`, `hpr` and `lvl_<class>`; `plat` zeroes the four lesser
+        coins so the total is exactly what it says.
 
     tools/cursetrain.py run --pool N --disks <PIS> --save <out.d64> \\
         --out work/issue18/run1
@@ -60,6 +66,40 @@ Two subcommands:
         module.  `--class` may be given more than once, in the order the
         engine raised them, because Curse's trainer raises **every**
         qualifying class in one visit and `plan` raises one.
+
+### The recipe, once the session is up
+
+`run` boots and serves; these are the `tools/porcmd` lines that drove eight
+trainings on 2026-09-05, and they are here because working them out is what
+cost the time.
+
+    savedisk <slot dir>/SIDE0.D64      # `drive` does not set it
+    row LOAD SAVED GAME
+    kernal 0D                          # YES is already white, and the bar
+                                       # reads the KERNAL buffer only
+    settle 12
+    poke 7EA8 7F                       # the hall, wherever the party stands
+    row VIEW CHARACTER / row EXIT      # any trip through the menu rebuilds it
+    row TRAIN CHARACTER
+    row <NAME>                         # this presses; do **not** add a Return
+
+**`row <NAME>` is the whole press.** Adding a Return after it starts a second
+training, which is what put a third thousand gold on LEDERA in the first
+session; the second call then says `UNABLE TO ADVANCE` and looks like a
+refusal of the first.
+
+**The party's records are in memory at `$4F00 + slot * $100`.** `SAVEAZURE`
+loads at `$4B00` and its eight character slots start `$400` in, so an
+experience byte poked at `$4FE8` is slot 0's -- which is how a character is
+trained again and again without a reboot, since `GEN $2086` clamps the number
+after every press.  The engine copies the roster slot into the working record
+at `$7C00` when the character is picked and writes it back on success only.
+
+**A magic-user's training stops at `INSERT SIDE # 1`**, because its spell menu
+loads from side 1.  `curserun.CurseSession.patch_disk_prompt` is the way past
+it and `run` does not apply it; from the command port it is
+`poke 459A eaea` and `poke 459F eaea`, after checking they read `d0 a9` and
+`d0 a4`.
 
 Nothing here writes to the player's own disks: the six sides are copied into
 the slot by `tools/curserun.py`, which opens them read only.
@@ -107,6 +147,22 @@ XP = 0x0E8
 MONEY = 0x0BB          # five u16 coin counts: copper, silver, electrum,
 PLATINUM = 0x0C3       # gold, platinum -- weights 1, 10, 100, 200, 1000
                        # copper, out of `GEN $2160`
+
+#: What `--give` may write, as `(offset, width)`.  Everything here is an
+#: **input**: the measurement is what the trainer does with it, never the value
+#: read back.  `lvl_*` indexes the per-class level array at `0x0C9` in
+#: `LevelTables.class_order` order, which is the order `GEN $1515` walks.
+FIELDS = {
+    "xp": (XP, 3),
+    "con": (0x018, 1),
+    "dcs": (0x0B9, 1),
+    "dcl": (0x0BA, 1),
+    "hpr": (0x0ED, 1),
+    "bits": (0x0EB, 1),
+    "lvl_magic-user": (0x0C9, 1), "lvl_cleric": (0x0CA, 1),
+    "lvl_thief": (0x0CB, 1), "lvl_fighter": (0x0CC, 1),
+    "lvl_paladin": (0x0CF, 1), "lvl_ranger": (0x0D0, 1),
+}
 
 #: What to print a diff of, so a reader sees the training and not the
 #: bookkeeping.  Every one is inside the 256 bytes a save slot keeps.
@@ -187,20 +243,35 @@ def stage(args) -> int:
         for pair in fields.split(","):
             key, _, val = pair.partition("=")
             value = int(val)
-            if key == "xp":
-                write_u(body, base + XP, 3, value)
-            elif key == "plat":
+            if key == "plat":
                 for coin in range(4):          # zero the four lesser coins,
                     write_u(body, base + MONEY + 2 * coin, 2, 0)
                 write_u(body, base + PLATINUM, 2, value)
+            elif key in FIELDS:
+                off, width = FIELDS[key]
+                write_u(body, base + off, width, value)
             else:
-                raise SystemExit(f"unknown field {key!r}; use xp= or plat=")
+                raise SystemExit(f"unknown field {key!r}; use plat= or one of "
+                                 f"{', '.join(sorted(FIELDS))}")
         print(f"{names[n]:10s} slot {n}: xp {read_u(body, base + XP, 3):8d}"
               f"  platinum {read_u(body, base + PLATINUM, 2):5d}")
     disk = D64(image)
     disk.write_file_inplace(b"SAVEAZURE",
                             load.to_bytes(2, "little") + bytes(body))
     pathlib.Path(args.out).write_bytes(disk.to_bytes())
+    if args.repair:
+        # An image copied out of a pool slot before the drive finished closing
+        # `SAVEAZURE` is `*PRG` with no block count, and the game answers
+        # `UNABLE TO LOAD SAVED GAME.` -- `#298`.  The payload is already
+        # there, so setting the bit and the count is the whole repair, and it
+        # is done to our copy and never to what it was copied from.
+        from tools.curseload import close_splat  # noqa: PLC0415
+
+        for entry in close_splat(args.out):
+            name = entry["name"]
+            name = name.decode("latin1") if isinstance(name, bytes) else name
+            print(f"closed {name}: type {entry['type_was']} -> "
+                  f"{entry['type_now']}, {entry['blocks_now']} blocks")
     print(f"wrote {args.out}")
     return 0
 
@@ -215,6 +286,8 @@ def main(argv=None) -> int:
     st.add_argument("--give", action="append", default=[],
                     metavar="NAME:xp=N,plat=N",
                     help="what to write into that character's slot")
+    st.add_argument("--repair", action="store_true",
+                    help="close a SAVEAZURE the drive never finished (#298)")
     st.set_defaults(func=stage)
 
     rn = sub.add_parser("run", help="boot a Curse session on a pooled slot")

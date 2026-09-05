@@ -34,10 +34,13 @@ and by eight different rules**, all of them read off its own `GEN` and `ECL65`
 | `attack_forms` | raised to 3, never lowered (`$2342`) | written outright, 2 or 3 (`$1909`) | `attack_forms_overwritten` |
 | `spells_castable` | written (`$20BC`) | **never stored** | `stores_spell_capacity` |
 
-**Curse is still refused**, because `levels.TRAINER_MEASURED` has one entry:
-none of this has been checked against a training anybody watched. What it *has*
-been checked against is the six characters SSI shipped, whose every derived
-field comes back out of this module -- `tests/test_cursetrainer.py`.
+**Curse is still refused**, because `levels.TRAINER_MEASURED` has one entry --
+but no longer because nothing has been watched. Five Curse level-ups were
+driven and diffed on 2026-09-05 and 75 derived fields and 5 spellbooks come
+back out of this module and `goldbox.levels` with no mismatches, and a
+dual-classed character was trained eight more times the same night
+(`docs/192-curse-dual-class.md`). What stands between the measurement and the
+key is in that page's last section.
 
 **One field is a die and cannot be anything else.** `hp_rolled` at `0x0ED`
 takes a fresh roll of the class's hit die at every training, so this module
@@ -45,11 +48,14 @@ rolls one too rather than pretending to derive it. Everything the roll feeds --
 `hp_max`, and the roster's current hit points -- follows from it exactly, by
 `hp_max = hp_rolled + level * constitution bonus`, which is `$2079`.
 
-**And a multi-class character's roll is not deterministic in either title.**
-Both divide it by how many classes the character has and round up *at random*
-against the remainder -- `$208D` and `$11AB`, the same routine twice -- so two
-identical characters can gain different hit points from the same die. No
-measured training constrains it, because every replay hands `plan` its roll.
+**A multi-class character's roll is divided between the classes, and the two
+titles round up on different comparisons.** `$208D` and `$11AB` both roll
+`1..class_count` out of the same resident routine and compare it with the
+remainder; Pool of Radiance increments on `<=` and Curse on `<`. So Pool of
+Radiance rounds up with chance `remainder / class_count` and **Curse with
+`(remainder - 1) / class_count`, which is never for a two-class character**.
+`divide_between_classes` still implements Pool of Radiance's rule for both
+titles, and what that needs is written up there.
 
 **Money is not touched, and the trainer does touch it.** A training costs a
 flat 1000 gold at every level and the rest of the character's coin is converted
@@ -191,8 +197,39 @@ def class_level(record, class_name: str) -> int:
             or record.get("level") or 1)
 
 
+def dual_class_old(record, game=None) -> tuple[str | None, int]:
+    """The class a character trained out of, and the level it stopped at.
+
+    `0x0BA` holds that level and **a zero means "has not dual-classed"** --
+    `GEN $18EB LDY #$FF / LDA $7CBA / BEQ / LDY $7CB9`, which is what stops
+    slot 0, the magic-user, being ambiguous. `0x0B9` holds the slot, so the
+    name comes from the title's own `class_order` (#224).
+
+    Curse, Silver Blades and Gateway to the Savage Frontier write the pair;
+    Pool of Radiance, Champions of Krynn and Death Knights of Krynn never
+    reference either byte on any of their disks, and 13 of 13 Pool of Radiance
+    records in `tests/fixtures/` hold zero there. So this answers `(None, 0)`
+    for a title that has no such rule without needing to know which titles
+    those are.
+    """
+    if not record.is_stored("dual_class_level"):
+        return None, 0
+    old_level = record.get("dual_class_level") or 0
+    if not old_level:
+        return None, 0
+    slot = record.get("dual_class_slot") or 0
+    order = levels.for_game(game).class_order
+    return (order[slot] if slot < len(order) else None), old_level
+
+
 def ready_classes(record, game=None) -> list[str]:
     """Which of the character's classes have the experience for another level.
+
+    **The class a dual-classed character left is never ready**, `GEN $1321`,
+    and that holds *after* `$20A3` has put its level back in the array.
+    Watched: PHILIPPE, magic-user 6 turned fighter, was refused with
+    `UNABLE TO ADVANCE` holding 150,000 experience and a restored magic-user 6
+    -- 15,000 more than the magic-user's ninth level asks for (#18).
 
     **Experience is not divided between classes.** The trainer reads the whole
     stored number against the single-class table -- LADY KATHERINE, magic-user
@@ -208,8 +245,11 @@ def ready_classes(record, game=None) -> list[str]:
     why the comparison here is a plain `>=`.
     """
     experience = record.get("experience") or 0
+    left_behind, _ = dual_class_old(record, game)
     out = []
     for name in classes_of(record, game):
+        if name == left_behind:
+            continue
         want = levels.next_threshold(name, class_level(record, name), game)
         if want is not None and experience >= want:
             out.append(name)
@@ -280,19 +320,32 @@ def divide_between_classes(value: int, class_count: int, rng=None,
     (`CMP $6E3F / BEQ inc / BCS out`) and Curse when it is below it
     (`CMP $7F3F / BCS out`).
 
-    **`remainder / class_count` is PROBABLE, not read.** It is what the two
-    comparisons come to *if* Pool of Radiance's roll runs 1 to `class_count`
-    and Curse's 0 to `class_count - 1`, which is what the `DEY` in front of
-    Curse's `JSR $2F6B` implies. Both random routines are resident and outside
-    `GEN`, so neither range is readable from the overlay. What is CONFIRMED is
-    that the round-up happens at all and that its chance rises with the
-    remainder.
+    **Both rolls run `1..class_count`, which is now read rather than guessed.**
+    The random routine is in `LIBRARY`, not in `GEN`: `LIBRARY $2F46` in Curse
+    and `$2DBC` in Pool of Radiance, the same code twice, masking a random byte
+    to the bit width of `Y` and retrying while it exceeds `Y`, so it returns
+    `0..Y`. Two entry points sit above it one byte apart, `DEY` then the call,
+    and both titles reach the lower one. Curse's `LIBRARY` runs at `$2DC8` and
+    Pool of Radiance's at `$2C48` -- each ends where that title's saved game
+    loads, `$4B00` and `$4900`.
 
-    **So two identical characters can gain different hit points from the same
-    die**, and no replay can pin this: none of the twenty-nine measured
-    trainings constrains it, because every one of them hands `plan` the roll it
-    is checking. That is why a multi-class Curse training has to be watched
-    rather than derived (`#18`'s step 3).
+    **So the two titles differ only in the comparison, and Curse's is not
+    random for a two-class character.** Pool of Radiance rounds up with chance
+    `remainder / class_count`; Curse's `BCS` with no `BEQ` in front of it makes
+    that `(remainder - 1) / class_count`, which is **zero** whenever the
+    remainder is 1 -- and a two-class character's remainder is only ever 0 or
+    1. CONFIRMED from the bytecode and from 40 engine-written divides on
+    2026-09-05: 14 of 14 round-downs at two classes, 12 of 12 at three with
+    remainder 1, and 5 round-ups in 14 at three with remainder 2, against the
+    1 in 3 this rule predicts and the 2 in 3 the code below gives.
+
+    **This function still implements Pool of Radiance's rule for both
+    titles.** Curse needs `LevelTables` to carry the comparison beside
+    `hit_die_divide_floor` -- Pool of Radiance rounds up when the roll is at or
+    below the remainder, Curse only when it is below -- and `goldbox/levels.py`
+    was another agent's file the night this was measured. Nothing reaches the
+    error today, because `_tables_for` refuses Curse outright
+    (`docs/192-curse-dual-class.md`).
 
     Pool of Radiance then floors the result at 1 (`$20A2 BNE / LDA #$01`) and
     Curse does not (`$11CC` is a bare `LDA $4C / RTS`), so a Curse character
@@ -609,10 +662,21 @@ def _experience(record, class_levels: dict[str, int], game=None) -> int:
     So the rule is the game's, not an extrapolation from single-class runs, and
     it is why training the *lower* threshold first can cost a multi-class
     character a level it had already earned -- `docs/135-levelling.md`.
+
+    **The class a dual-classed character left is out of the maximum**,
+    `GEN $1470`, and leaving it out makes the clamp *tighter* rather than
+    looser. Watched with a staged input on 2026-09-05: a character carrying a
+    magic-user 10 as its old class and a fighter 1 as its new one was trained
+    once with 400,000 experience and came out with **4,000**, which is the
+    fighter's `clamp_threshold(2) - 1`. Had the old class counted it would
+    have been the magic-user's 375,000 (#18).
     """
     experience = record.get("experience") or 0
+    left_behind, _ = dual_class_old(record, game)
     ceiling = None
     for name, level in class_levels.items():
+        if name == left_behind:
+            continue        # `$1470` leaves the old class out of the maximum
         want = levels.clamp_threshold(name, level, game)
         if want is not None:
             ceiling = want if ceiling is None else max(ceiling, want)
@@ -646,20 +710,20 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
                       or (classes_of(record, game) or [""])[0])
     if class_name not in classes_of(record, game):
         raise CannotLevel(f"{record.name} is not a {class_name}")
-    if record.is_stored("dual_class_level") and record.get("dual_class_level"):
-        # `0x0BA` non-zero is the "has dual-classed" sentinel (`GEN $18EB`),
-        # and four routines change behaviour for it: `$15E7` refuses the die
-        # until the new class passes the old level, `$124F` gives the old class
-        # its own hit-point term, `$1470` and `$1321` leave its slot out of the
-        # clamp and out of eligibility, and `$20A3` puts it back afterwards.
-        # All four were read off Curse's `GEN` and **not one has been seen
-        # happening**: no dual-classed character exists on any disk here, so
-        # this refuses rather than writing a rule nothing has checked (#18).
-        #
+    # `0x0BA` non-zero is the "has dual-classed" sentinel (`GEN $18EB`), and
+    # four routines change behaviour for it: `$15E7` refuses the die until the
+    # new class passes the old level, `$124F` gives the old class its own
+    # hit-point term, `$1470` and `$1321` leave its slot out of the clamp and
+    # out of eligibility, and `$20A3` puts it back afterwards. All four were
+    # watched happening on 2026-09-05, over eight trainings of one character
+    # (#18); until then this refused rather than write a rule nothing had
+    # checked.
+    left_behind, old_level = dual_class_old(record, game)
+    if class_name == left_behind:
         # UNAPPROVED WORDING: a new string Donald has not seen, reaching a user
         # as the level-up button's reason for saying no.
-        raise CannotLevel(f"{record.name} has dual-classed, and what the "
-                          f"trainer does then has been read but never watched")
+        raise CannotLevel(f"{record.name} trained out of being a {class_name} "
+                          f"and the trainer will not take it up again")
 
     class_levels = {name: class_level(record, name)
                     for name in classes_of(record, game)}
@@ -683,9 +747,30 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     notes = []
 
     if rolled is None:
-        rolled = roll_hit_points(
-            class_name, class_count=len(class_levels),
-            fighter_only=(bits == 8), rng=rng, game=game, level=to_level)
+        if old_level and old_level >= to_level:
+            # `GEN $15E7 LDA $7CBA / CMP $7CC9,X / BCS out`: a dual-classed
+            # character rolls **no hit die at all** until the new class passes
+            # the level the old one stopped at. Watched over five levels --
+            # PHILIPPE, magic-user 6 turned fighter, held 21 `hp_rolled` from
+            # fighter 2 to fighter 6 and gained at fighter 7 (#18).
+            rolled = 0
+        else:
+            rolled = roll_hit_points(
+                class_name, class_count=len(class_levels),
+                fighter_only=(bits == 8), rng=rng, game=game, level=to_level)
+
+    # `GEN $20A3`, the last step of the sequence and after the die: once the
+    # new class is *above* the old one's level, the old class's entry goes back
+    # into the array at `0x0C9` and its bit back into the mask at `0x0EB`, and
+    # everything below is then computed with it in. Watched at the same
+    # training that first rolled a die, and at no earlier one.
+    restored = None
+    if left_behind and old_level and old_level < level:
+        class_levels[left_behind] = old_level
+        bits |= 1 << list(tables.class_order).index(left_behind)
+        level = max(class_levels.values())
+        restored = left_behind
+
     hp_rolled = (record.get("hp_rolled") or 0) + rolled
     hp_max = _hit_point_maximum(record, class_levels, hp_rolled, game, rng)
 
@@ -705,6 +790,10 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
                              for name in ("fighter", "paladin", "ranger")),
                             default=0),
     }
+
+    if restored:
+        fields["class_bits"] = bits
+        fields[CLASS_LEVEL_FIELD[restored]] = old_level
 
     saves = levels.saving_throws(class_levels, race,
                                  record.get("constitution"), game)
