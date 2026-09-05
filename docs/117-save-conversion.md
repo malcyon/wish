@@ -1846,10 +1846,13 @@ the edge somebody adds without noticing.
 ```mermaid
 graph LR
   amiga --> amiga_adf
+  amiga -.->|deferred| amiga_dax
+  amiga --> areas
   amiga -.->|deferred| c64_codec
   amiga -.->|deferred| d64
   amiga -.->|deferred| dos
   amiga --> dos_layout
+  amiga --> dos_savegame
   amiga --> games
   amiga --> layout
   amiga --> neutral
