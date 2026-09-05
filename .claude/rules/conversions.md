@@ -5,6 +5,28 @@ paths:
 
 # Testing a conversion
 
+**A conversion is between two ports of the same title, and never between
+titles.** Donald, 2026-09-05: *"the user should not be able to convert a Curse
+character into a Pool character. The conversion is meant to be for the same
+title."* **The title is fixed and the port is what changes**: a DOS Curse save
+converts to a C64 Curse save or to an Amiga Curse save, and to nothing else.
+Donald, 2026-09-05: *"A DOS Curse save would be able to be converted into a
+C64 Curse save or an Amiga Curse save."*
+
+So the six directions of
+`#51 (Every permutation of DOS, C64 and Amiga, in both directions)` are six
+pairs of *ports*, each carrying whichever titles both ends can read -- not a
+grid of every title against every other.
+
+`editor/convert.py` already builds it that way -- a direction's destination is
+`games.by_key(shape.key)`, the same title on the other port -- so this rule is
+here to stop somebody adding the other thing rather than to describe a defect.
+It also settles a question that
+would otherwise keep coming back: **a character who cannot exist in the
+destination title is not a case the conversion has to handle**, because that
+conversion is never offered. Pool of Radiance has no druids, and no Curse
+druid is ever asked to become one.
+
 **The standard is a perfect conversion.** Reporting a dropped field is the
 minimum; it is not permission to drop it, and "the destination has no such
 field" is not an ending either. Donald, 2026-09-04: *"We should not be

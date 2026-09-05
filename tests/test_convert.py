@@ -16,6 +16,17 @@ own played saves, on the repository's allowlist; the DOS side reads
 `tests/test_dossave.py`'s `_save_dir()`, which needs `$FR_ARCHIVES` and skips
 without it -- the DOS → C64 direction also needs the player's own
 `POOL*.D64` game disks and skips without those too.
+
+The Curse of the Azure Bonds transfer test reads `work/curse/H-square-5-13`,
+the DOS session `tests/test_curseconvert.py`'s `_dos_save()` already reads
+for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
+the importer refuses today)` -- the FR_ARCHIVES default Curse save this
+project has access to stands in area 0, which is not a mapped Curse area
+(`goldbox/areas.py`'s `AREAS_CURSE` starts at `0x01`), so it cannot stand in
+for a played party the way Pool of Radiance's does. `icon`/`animate` are
+zero-filled the same way `test_curseconvert.py`'s do: this proves the
+registry's Curse row writes what a direct call writes, for the same input,
+not a fact about the Curse game disks.
 """
 
 import datetime
@@ -31,9 +42,27 @@ from goldbox import dos, dos_layout, dos_savegame, games
 from goldbox.savegame import SaveGame0, SaveGame1
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
+WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
+CURSE_DOS_SESSION = WORK / "curse" / "H-square-5-13"
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
+
+
+def _curse_save_dir() -> pathlib.Path | None:
+    """`work/curse/H-square-5-13`, if it is still on this machine.
+
+    `work/` is gitignored and has been lost twice; `test_curseconvert.py`'s
+    `_dos_save()` skips the same way for the same reason.
+    """
+    if (CURSE_DOS_SESSION / "SAVGAMH.DAT").exists():
+        return CURSE_DOS_SESSION
+    return None
+
+
+needs_curse_dos_save = pytest.mark.skipif(
+    _curse_save_dir() is None,
+    reason=f"no DOS Curse session at {CURSE_DOS_SESSION}; #113 makes one")
 
 
 def _game_dir() -> pathlib.Path:
@@ -192,7 +221,7 @@ def test_destinations_for_lists_the_two_registered_directions():
     dos_source = convert.Source(port="dos", title=dos_layout.POOL_OF_RADIANCE,
                                 path=pathlib.Path("."))
     assert [type(d) for d in convert.destinations_for(dos_source)] == \
-        [convert.PoolOfRadianceDosToC64]
+        [convert.DosToC64]
 
     c64_source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
                                 path=pathlib.Path("."))
@@ -200,14 +229,57 @@ def test_destinations_for_lists_the_two_registered_directions():
         [convert.PoolOfRadianceC64ToDos]
 
 
-def test_destinations_for_an_unregistered_source_is_empty():
-    """Curse of the Azure Bonds is read but has no C64 writer yet (`#192
-    (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
-    importer refuses today)`), so it is not offered and not refused."""
+def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
+    """Curse of the Azure Bonds joined `goldbox.dos.CONVERTS` overnight
+    (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
+    which the importer refuses today)`), and this registry derives its row
+    from `CONVERTS` rather than listing it -- so it is offered with no edit
+    to `editor/convert.py` beyond the derivation itself."""
     curse_source = convert.Source(port="dos",
                                   title=dos_layout.CURSE_OF_THE_AZURE_BONDS,
                                   path=pathlib.Path("."))
-    assert convert.destinations_for(curse_source) == []
+    directions = convert.destinations_for(curse_source)
+    assert [type(d) for d in directions] == [convert.DosToC64]
+    assert directions[0].destination_game is games.CURSE_OF_THE_AZURE_BONDS
+
+
+def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
+    """Secret of the Silver Blades is read but has no C64 writer yet (`#193
+    (Convert a Secret of the Silver Blades DOS save into a C64 one, which
+    the importer refuses today)`), so it is not offered and not refused. A
+    fake folder is enough -- `Source.detect` reads only the record size."""
+    folder = tmp_path / "ssb"
+    folder.mkdir()
+    (folder / "SAVGAMA.DAT").write_bytes(b"\x00")
+    (folder / "CHRDATA1.SAV").write_bytes(
+        b"\x00" * dos_layout.SECRET_OF_THE_SILVER_BLADES.record_size)
+
+    source = convert.Source.detect(folder)
+    assert source.key == dos_layout.SECRET_OF_THE_SILVER_BLADES.key
+    assert convert.destinations_for(source) == []
+
+
+def test_every_converts_entry_has_a_dos_to_c64_name():
+    """A `CONVERTS` title with no row in `DOS_TO_C64_NAMES` is a defect the
+    registry must fail loudly on -- `#52`'s plan calls this out by name --
+    and `DIRECTIONS` already proves it by having built without raising, but
+    this pins the table directly against the source of truth."""
+    for shape in dos.CONVERTS:
+        assert shape.key in convert.DOS_TO_C64_NAMES, (
+            f"{shape.title} converts but names no .D64 file")
+
+
+def test_a_converts_entry_missing_its_name_fails_at_construction():
+    """The loud failure `DIRECTIONS` would hit if `goldbox.dos.CONVERTS`
+    grew a row `DOS_TO_C64_NAMES` has none for, provoked directly rather
+    than by editing `CONVERTS` itself. Secret of the Silver Blades is a real
+    `goldbox.games.by_key` entry -- so this proves the *name* lookup fails
+    loudly, not the *game* lookup that would run first for a title nobody
+    has heard of."""
+    assert dos_layout.SECRET_OF_THE_SILVER_BLADES.key not in \
+        convert.DOS_TO_C64_NAMES
+    with pytest.raises(convert.UnnamedConversionError):
+        convert.DosToC64(dos_layout.SECRET_OF_THE_SILVER_BLADES)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +343,7 @@ def test_dos_to_c64_direction_rehearses_with_no_write(game_files, tmp_path):
     source = convert.Source.detect(folder)
     before = sorted(folder.iterdir())
 
-    direction = convert.PoolOfRadianceDosToC64()
+    direction = convert.DosToC64(dos_layout.POOL_OF_RADIANCE)
     direction.rehearse(source, slot, game_files)
 
     assert sorted(folder.iterdir()) == before
@@ -286,7 +358,7 @@ def test_dos_to_c64_direction_writes_only_into_its_own_folder(game_files,
     slot = dos.slots_available(folder)[0]
     source = convert.Source.detect(folder)
 
-    direction = convert.PoolOfRadianceDosToC64()
+    direction = convert.DosToC64(dos_layout.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_files)
 
     outside = tmp_path / "elsewhere.txt"
@@ -310,7 +382,7 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
     slot = dos.slots_available(folder)[0]
     source = convert.Source.detect(folder)
 
-    direction = convert.PoolOfRadianceDosToC64()
+    direction = convert.DosToC64(dos_layout.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_files)
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
@@ -319,6 +391,44 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
                                           game_files.animate)
     reference = dos.save_disk(bytes(ref_save0), bytes(ref_save1))
     assert (destination / f"PORSAVE{slot}.D64").read_bytes() == \
+        reference.to_bytes()
+
+
+@needs_curse_dos_save
+def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
+    """The registry's derived Curse row writes the same bytes a direct call
+    writes, calling `goldbox.dos.new_save` and `goldbox.dos.save_disk`
+    directly with `game=CURSE_OF_THE_AZURE_BONDS` -- so `#192 (Convert a
+    Curse of the Azure Bonds DOS save into a C64 one, which the importer
+    refuses today)`'s VICE proof stands for this path too. This is the
+    check `#52`'s plan asks for: `destinations_for` on a Curse folder
+    answers one direction whose `destination_game` is Curse.
+
+    `icon`/`animate` are zero-filled, `test_curseconvert.py`'s own pattern
+    for this DOS session -- a round trip of our code, not a claim about
+    what the player's Curse disks hold."""
+    folder = _curse_save_dir()
+    slot = "H"
+    icon, animate = bytes(36), bytes(852)
+    game_files = dosimport.GameFiles(icon=icon, animate=animate)
+    source = convert.Source.detect(folder)
+    assert source.key == dos_layout.CURSE_OF_THE_AZURE_BONDS.key
+
+    directions = convert.destinations_for(source)
+    assert len(directions) == 1
+    direction = directions[0]
+    assert direction.destination_game is games.CURSE_OF_THE_AZURE_BONDS
+
+    rehearsal = direction.rehearse(source, slot, game_files)
+    destination = tmp_path / "out"
+    written = direction.write(rehearsal, destination)
+    assert [p.name for p in written] == [f"CURSE{slot}.D64"]
+
+    ref_save0, ref_save1, _ = dos.new_save(
+        folder, slot, icon, animate, game=games.CURSE_OF_THE_AZURE_BONDS)
+    reference = dos.save_disk(bytes(ref_save0), bytes(ref_save1),
+                              games.CURSE_OF_THE_AZURE_BONDS)
+    assert (destination / f"CURSE{slot}.D64").read_bytes() == \
         reference.to_bytes()
 
 

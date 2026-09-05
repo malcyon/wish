@@ -7,22 +7,29 @@ supports)` replaces the two flagged submenus -- `editor/dosimport.py`'s
 module is the library half of that plan: no window, no strings, no menu
 entry. A **direction** is registered here only when the destination can be
 written whole, owing nothing to another save -- `.claude/rules/
-conversions.md`'s rule against a template. Today that is two rows, both Pool
-of Radiance:
+conversions.md`'s rule against a template. Today that is:
 
-* DOS save folder → C64 (`goldbox.dos.new_save`, proven in VICE by
+* DOS save folder → C64, one row per entry of `goldbox.dos.CONVERTS`
+  (`goldbox.dos.new_save`; Pool of Radiance proven in VICE by
   `#119 (Play a converted DOS save in VICE, off a disk Wish built from
-  nothing)`);
-* C64 `.D64` → DOS save folder (`goldbox.dos.new_dos_save`, proven in DOSBox
-  by `tools/dosnewsave.py` under `#26 (Write a DOS save, not just read one)`).
+  nothing)`, Curse of the Azure Bonds by `#192 (Convert a Curse of the Azure
+  Bonds DOS save into a C64 one, which the importer refuses today)`);
+* C64 `.D64` → DOS save folder, Pool of Radiance only
+  (`goldbox.dos.new_dos_save`, proven in DOSBox by `tools/dosnewsave.py`
+  under `#26 (Write a DOS save, not just read one)`).
 
-Curse of the Azure Bonds and Secret of the Silver Blades are DOS titles this
-project can read but their C64 writers do not exist yet
-(`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
-importer refuses today)`, `#193 (Convert a Secret of the Silver Blades DOS
-save into a C64 one, which the importer refuses today)`), so a source
-detected as either is simply not in `DIRECTIONS` and `destinations_for`
-answers `[]` -- never offered, and never refused with a sentence either.
+**This registry derives its DOS → C64 rows from `goldbox.dos.CONVERTS`
+rather than listing them, which is the point:** a title joins `CONVERTS` when
+its C64 writer exists, and it appears here with no edit to this module.
+Secret of the Silver Blades is read but has no C64 writer yet
+(`#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which
+the importer refuses today)`), so a source detected as one is simply not in
+`DIRECTIONS` and `destinations_for` answers `[]` -- never offered, and never
+refused with a sentence either. `DOS_TO_C64_NAMES` below is the one thing
+`CONVERTS` does not carry -- the `.D64` file name each title's conversion
+writes -- and a `CONVERTS` entry missing a row there fails loudly when
+`DIRECTIONS` is built, at import time, rather than answering `[]` for a title
+the library can actually write.
 
 **The source is a path, not the open window.** `Source.detect` reads a
 `.D64` or a DOS save folder directly, the way `tools/dosdisk.py` and
@@ -203,23 +210,64 @@ class Direction:
         raise NotImplementedError
 
 
-class PoolOfRadianceDosToC64(Direction):
-    """A DOS Pool of Radiance save folder becomes a C64 `.d64` (#118, #119).
+class UnnamedConversionError(Exception):
+    """A `goldbox.dos.CONVERTS` entry with no row in `DOS_TO_C64_NAMES`.
+
+    Raised while `DIRECTIONS` is being built, at import time -- never while a
+    player is looking at a pane. A title the library can write and this
+    module cannot name a file for is a defect in `DOS_TO_C64_NAMES`, not a
+    direction to answer `[]` for the way an unregistered title does.
+    """
+
+
+#: The `.D64` file name each DOS → C64 direction writes, keyed by
+#: `goldbox.dos_layout.DosShape.key`. The one thing `goldbox.dos.CONVERTS`
+#: does not carry, so it stays a table here rather than a property on the
+#: shape itself, which knows nothing about C64 file names.
+DOS_TO_C64_NAMES: dict[str, str] = {
+    # The player's own disks are named this way (`PORSAVE2.D64`).
+    dos_layout.POOL_OF_RADIANCE.key: "PORSAVE{slot}.D64",
+    # What `tools/cursedisk.py` writes.
+    dos_layout.CURSE_OF_THE_AZURE_BONDS.key: "CURSE{slot}.D64",
+}
+
+
+class DosToC64(Direction):
+    """A DOS save folder becomes a C64 `.d64`, for any title in
+    `goldbox.dos.CONVERTS` (#118, #119, #192).
+
+    One instance per entry of `CONVERTS` -- see `DIRECTIONS` below -- so a
+    title joining that tuple (`#193 (Convert a Secret of the Silver Blades
+    DOS save into a C64 one, which the importer refuses today)` will put
+    Secret of the Silver Blades there) needs no edit to this class.
 
     `rehearse` is `editor.dosimport.rehearse` exactly as `File ▸ Import`
-    calls it today -- the whole conversion happens in memory, so `write`
-    only has to put the bytes it already built on disk.
+    calls it today -- the whole conversion happens in memory and reads the
+    title off the record itself (`goldbox.dos.shape_for`), not off `shape`
+    here, so `write` only has to put the bytes it already built on disk.
+    `shape` decides only which source this instance answers for and what
+    the output is named.
     """
 
     source_port = "dos"
-    source_key = dos_layout.POOL_OF_RADIANCE.key
     destination_port = "c64"
-    destination_game = games.POOL_OF_RADIANCE
+
+    def __init__(self, shape: dos_layout.DosShape):
+        self.shape = shape
+        self.source_key = shape.key
+        self.destination_game = games.by_key(shape.key)
+        try:
+            self._name = DOS_TO_C64_NAMES[shape.key]
+        except KeyError:
+            raise UnnamedConversionError(
+                f"{shape.title} is in goldbox.dos.CONVERTS but "
+                f"editor.convert.DOS_TO_C64_NAMES names no .D64 file for "
+                f"it") from None
 
     def rehearse(self, source: Source, slot: str,
                 options: "dosimport.GameFiles") -> Rehearsal:
         conversion = dosimport.rehearse(source.path, slot, options)
-        name = f"PORSAVE{slot}.D64"
+        name = self._name.format(slot=slot)
         return Rehearsal(conversion.report, {name: conversion.disk.to_bytes()})
 
     def write(self, rehearsal: Rehearsal,
@@ -285,10 +333,14 @@ class PoolOfRadianceC64ToDos(Direction):
         return sorted(folder / name for name in rehearsal.files)
 
 
-#: Exactly two rows -- see the module docstring for what would extend this
-#: and the two issues it waits on.
-DIRECTIONS: tuple[Direction, ...] = (
-    PoolOfRadianceDosToC64(),
+#: One DOS → C64 row per entry of `goldbox.dos.CONVERTS` -- today Pool of
+#: Radiance and Curse of the Azure Bonds -- plus the one C64 → DOS row. See
+#: the module docstring for what would extend this and the issues it waits
+#: on. `UnnamedConversionError` fires here, at import time, if `CONVERTS`
+#: ever names a title `DOS_TO_C64_NAMES` does not.
+DIRECTIONS: tuple[Direction, ...] = tuple(
+    DosToC64(shape) for shape in dos.CONVERTS
+) + (
     PoolOfRadianceC64ToDos(),
 )
 
@@ -296,8 +348,8 @@ DIRECTIONS: tuple[Direction, ...] = (
 def destinations_for(source: Source) -> list[Direction]:
     """Every registered direction this source can be converted to.
 
-    Empty for anything not in `DIRECTIONS` -- Curse, Silver Blades, every
-    Amiga direction -- which is the whole point: an unready direction is
+    Empty for anything not in `DIRECTIONS` -- Secret of the Silver Blades,
+    every Amiga direction -- which is the whole point: an unready direction is
     never offered and never refused.
     """
     return [d for d in DIRECTIONS
