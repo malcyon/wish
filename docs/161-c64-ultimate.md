@@ -270,6 +270,108 @@ afterward to prove it stayed that way. If the machine returns and the party
 has not moved, re-running `tools/c64ucompare.py hw` and diffing it against
 `work/c64u/240/hw-c` settles this in thirty seconds.
 
+## Without the CLI: REST and FTP direct
+
+`tools/c64u.py` shells out to the `c64u` binary. Wish cannot: a player who
+installs Wish has no CLI, so `#272 (A Commodore 64 Ultimate tab: swap disks,
+boot, and grab the save over the REST API)` needs the same jobs done from
+Python's own standard library. `tools/c64urest.py` is that, and everything in
+this section was measured with it on Donald's machine on 2026-09-05, firmware
+3.14.
+
+**REST does everything except retrieve a file.** The firmware's route table
+has `files:info` and four image-creation routes and nothing that returns a
+file's bytes, so the one job that has to come back to the PC — fetching the
+save the game wrote — is **FTP**, anonymous on port 21, exactly as
+`c64u fs download` does it. Four fifths of the work is HTTP on port 80 and one
+fifth is FTP, and anything a person reads should say which.
+
+### What the wire actually does
+
+CONFIRMED, each of these measured rather than read out of the firmware source:
+
+* **`ftplib` works untouched.** `ftplib.FTP`, `login("anonymous",
+  "anonymous")`, default passive mode: the greeting is `220 C64 Ultimate FTP`,
+  `LIST /` gives `SD`, `Flash` and `Temp`, and `RETR` of a mounted image
+  returns all 174,848 bytes of a valid `.d64`. No dependency to install.
+* **`image_path` is empty; the device path comes back in `image_file`.** After
+  a `POST /v1/drives/a:mount` upload, `GET /v1/drives` answers `"image_file":
+  "/Temp/temp0000", "image_path": ""` for drive `a`. Anything that reads
+  `image_path` to learn where the image landed gets nothing.
+* **An uploaded image is always named `temp%04x`.** Sending
+  `Content-Disposition: attachment; filename="SPIKEA.D64"` alongside the
+  `application/octet-stream` body does not change it. The name has to be
+  remembered by whoever uploaded it.
+* **A remount by path needs `type`.** `PUT
+  /v1/drives/a:mount?image=/Temp/temp0000&mode=readwrite` answers `HTTP 400
+  {"errors": ["Invalid Type ''"]}`, because `files:info` reports the temp
+  file's `extension` as `""` and there is nothing to infer from. With
+  `type=d64` it mounts.
+* **`runners:run_prg` needs no reset, and costs a `/Temp` file.** A `POST`
+  with the program as the body runs it from wherever the machine is — the
+  screen shows the firmware performing the machine's own `LOAD` and `RUN` —
+  and the program is uploaded to `/Temp` first, taking the next `temp%04x`
+  name.
+* **`/Temp` does not evict.** Thirty-five files, thirty-two of them full disk
+  images and about 5.9 MB in total, uploaded one after another with nothing
+  ever removed; the first upload was still readable at the end. The ten-file
+  limit in the firmware's master branch (`kManagedTempMaxFiles`) does not
+  apply on 3.14. `/Temp` is still cleared by a power cycle, which is the
+  reason a save has to be fetched before the machine is switched off.
+
+### Writes go to the device's copy, and only a remount by path brings them back
+
+A `readwrite` mount writes to the `/Temp` copy and never to the local file.
+Measured with a 79-byte program that opens `MARK1,S,W` on device 8 and writes
+seven bytes:
+
+| Step | Result |
+|---|---|
+| upload a blank image, run the program | the device's copy has `MARK1`; the local file does not |
+| mount a different image, then `PUT ...:mount` back **by `/Temp` path**, run a second marker | the device's copy has `MARK1` **and** `MARK2` |
+| mount the same **local** file again with `POST` | the new copy is byte-identical to the local file — both markers gone |
+
+That last row is the trap in the disk-flipping workflow: swapping a save disk
+out and back in by re-uploading loses everything the game wrote to it.
+
+### The device's copy lags the drive by about ten seconds
+
+**A file fetched too soon is wrong, and says so.** Timing a single write and
+fetching the whole image repeatedly:
+
+| Time since the program started | The new file's directory entry | Track 17's BAM entry |
+|---|---|---|
+| 3.5 s | not in the directory at all | unchanged |
+| 6.5 s | type `$01` — an unclosed file — 0 blocks | `00 00 00 00` |
+| 9.6 s onwards, to 46 s | type `$81`, 1 block | correct |
+
+The image stayed mounted throughout, so it is time and not the eject that
+settles it, and the same six-byte signature appeared in three separate runs.
+The data block is present and readable in every sample; it is the directory
+entry's closed flag, its block count and the BAM that arrive late.
+
+So anything fetching a save should **check the image rather than sleep**: a
+directory entry whose type byte has bit 7 clear is a file the drive has not
+finished closing, `goldbox.d64` can already see it, and the answer is to fetch
+again. PROBABLE, and unresolved, is which side of the FPGA/firmware line
+defers those sectors.
+
+### Booting a game without the CLI
+
+`POST /v1/runners:run_prg` with the image's **first PRG**, read locally, boots
+all three C64 titles from a `/Temp` copy with no reset first — `BOOT` on
+`POOL1.D64` (1304 bytes) and `CURSE_A.D64` (1273), `SECRET BLADE/[%]` on
+`SILVER-1.D64` (4138). Pool of Radiance went the whole way: `Y` to `DISABLE
+FASTLOADER (Y/N) ?`, about two and a half minutes of blank screen, then the
+game's frame and roster.
+
+Two things that catch a reader out. **The screen moves**: with the game up,
+`$D018` is `$35` and `$DD00` is `$C4`, which puts it at `$CC00`, so `$0400`
+reads as zeros and proves nothing. Find it the way `automap.target.party_fix`
+does. And **a blank screen during a load is normal** with the fastloader
+disabled — the jiffy clock at `$00A0` advancing is what says the machine is
+alive, and it was, all the way through the two and a half minutes.
+
 ## What is still UNKNOWN
 
 Nothing below has been measured. Each line says what would settle it.
@@ -277,8 +379,7 @@ Nothing below has been measured. Each line says what would settle it.
 | Question | Grade | The experiment |
 |---|---|---|
 | How many `read-mem` calls a second, at the automapper's poll size | UNKNOWN | `tools/c64u.py time-reads --count 100`. One poll of Pool of Radiance is two blocks — `$4900` for `$1C00` bytes and `$8300` for `$100` — so it is two HTTP round-trips over WiFi. The number decides whether the Ultimate can back a live tab or only a stop-and-dump measurement |
-| Whether Pool of Radiance can be driven from `sendkey` | UNKNOWN | `tools/c64u.py probe-key ' '` at each stage: title screen, main menu, camp, the movement loop. `$00C6` returning to zero means something called the KERNAL's `GETIN` and the stage can be driven; a count that sits there means the matrix, and the answer is that the Ultimate can be read but not driven. It may differ between stages, so all four have to be tried |
-| Whether the game boots at all from `drives mount-upload` | UNKNOWN | It should — a 1541 on bus 8 with the player's own image — but the fastloader and the copy protection are the two things that could differ from VICE, and neither has been tried |
+| Whether Pool of Radiance can be driven from `sendkey` at the stages that are not the boot prompt | PARTLY ANSWERED | The boot's `DISABLE FASTLOADER (Y/N) ?` **can** be driven — see "Booting a game without the CLI" below, where a `Y` written to `$0277` with `01` at `$00C6` was echoed as `yes`. So that stage reads through the KERNAL's `GETIN`. The main menu, camp and the movement loop are still untried and may each answer differently: `tools/c64u.py probe-key ' '` at each, a `$00C6` returning to zero meaning the stage can be driven and a count that sits there meaning the keyboard matrix |
 
 ## Rules for working with it
 
