@@ -17,9 +17,19 @@ by one when he readies darts was the last discrepancy, and it was his dexterity:
 a ranged weapon takes the missile attack adjustment at record 0x0EC where a
 melee one takes the strength bonus (#202).
 See docs/30-savegame-layout.md.
+
+**One value here is written rather than only checked**, and it is the
+exception that proves the rest: :func:`turn_power`, the byte the C64 keeps at
+record `0x0A4`. DOS stores nothing a converter could copy -- it works the
+turning row out from the cleric level at the moment somebody presses Turn --
+so a conversion that copies has nothing to copy and leaves a cleric who cannot
+turn undead. `goldbox/c64_codec.py` calls this instead of copying (#288).
+See docs/178-turning-undead.md.
 """
 
 from __future__ import annotations
+
+from typing import Mapping
 
 from .items import TYPE_DAMAGE_MEDIUM, WEAPON_ADDS_STRENGTH, ItemType
 
@@ -172,6 +182,40 @@ def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int
             strength = damage if kind.weapon_flags & WEAPON_ADDS_STRENGTH else 0
             return strength + bonus
     return damage
+
+
+def turn_power(game, class_levels: Mapping[str, int] | None) -> int:
+    """What the C64 keeps at record `0x0A4` for a character with these levels.
+
+    The one derivation in this module a writer *stores*, because no port a
+    conversion can read stores it. All three C64 engines compute this byte
+    from the cleric and paladin levels and keep it: `GEN $2388` in Pool of
+    Radiance reads the fourteen bytes at `$2399` with the cleric level,
+    `GEN $113F` in Curse and `GEN $13A5` in Silver Blades reach the same
+    numbers arithmetically and add a paladin, who turns as a cleric two levels
+    weaker. Nothing recomputes it afterwards: the byte is written at creation
+    and at every training, and a save the engine itself re-writes keeps
+    whatever was there (#288).
+
+    DOS has no counterpart. `GAME.OVR:0x139CD` reads the cleric level out of
+    `class_levels[0]` at record `0x096` when the player presses Turn, bands it
+    1-8 / 9-13 / 14 and up, and uses that as the column of the turning matrix
+    -- so the DOS record keeps no caster-side byte at all, and a conversion
+    that copies one copies a zero.
+
+    Zero is the honest answer for a character who turns nothing: it is the
+    byte the game itself stores for one, and it is what a blank record starts
+    at where Pool of Radiance's `BEQ` writes nothing.
+
+    `game` is whatever the caller has for the title -- a `goldbox.games.Game`,
+    a `goldbox.levels.LevelTables`, a bare key, or None for Pool of Radiance.
+    """
+    from . import levels as _levels
+
+    held = class_levels or {}
+    want = _levels.turning_level(int(held.get("cleric") or 0), game,
+                                 int(held.get("paladin") or 0))
+    return 0 if want is None else int(want)
 
 
 def check(record, block, readied: list[tuple[object, ItemType]]) -> list[str]:

@@ -653,8 +653,12 @@ def test_only_the_dwarf_gets_silver_blades_constitution_save_bonus():
 def test_a_silver_blades_party_has_level_tables_and_its_trainer_is_still_unread():
     """`goldbox/levels.py` has Silver Blades' own tables now (#187), and its
     trainer is still refused -- the constitution hit-point bonus, the
-    thief-skill racial adjustment, the wisdom bonus spells and the turning
-    table remain unread or unattributed.
+    thief-skill racial adjustment and the wisdom bonus spells remain unread or
+    unattributed. The turning table no longer does: `GEN $13A5` was read for
+    #288 and is in `goldbox/levels.py`, checked against the routine and
+    against the two shipped records that store the byte in
+    `tests/test_turning.py`. One table is not a trainer, so the assertion
+    below stands.
 
     This test used to assert the opposite: that Silver Blades fell back to
     Pool of Radiance's tables entirely, with a docstring saying the day the

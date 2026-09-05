@@ -25,7 +25,7 @@ carries, and where:
 | hit die | `GEN` `$20A7`, 4 bytes in class-bit order | `GEN` `$161E` | `GEN` `$1845` |
 | constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score, consulted from 15 | `GEN` `$11D7`, **one** row indexed by the score with no floor, signed; `$126D` caps a non-fighter's *score* at 16 instead of keeping a second row | `GEN` `$0E80`, indexed by the score; not read into this module (trainer input) |
 | wisdom bonus spells | `GEN` `$10AD`, indexed by the score | `ECL65` `$8906` (payload `0x906`), the spell level each point of wisdom from 13 up buys; the loop is `$88F6` | not read (#89) |
-| turning level | `GEN` `$2399`, indexed by cleric level | `GEN` `$113F`, arithmetic rather than a table: `max(cleric, paladin - 2)`, `+ 1` from 4 up, capped at 10 -- the same ten numbers | not read (#89) |
+| turning level | `GEN` `$2399`, indexed by cleric level | `GEN` `$113F`, arithmetic rather than a table: `max(cleric, paladin - 2)`, `+ 1` from 4 up, capped at 10 -- the same ten numbers | `GEN` `$13A5`, Curse's arithmetic with a tail: `+ 1` from 4 up, 10 from 10 to 14, and **12** from 15 -- which is Pool of Radiance's fourteen numbers exactly |
 
 `GEN` is resident at `$0800` in all three games whatever its PRG header
 claims.
@@ -583,6 +583,16 @@ WISDOM_BONUS_FROM_CURSE = 13
 #: `paladin_turn_offset` carries the branch Pool of Radiance has no class for.
 _TURN_POWER_CURSE = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10)
 
+#: `GEN $13A5` expanded over a Silver Blades cleric's whole range. The routine
+#: is Curse's `$113F` with one branch more on the end: `max(cleric, paladin -
+#: 2)`, stored as it is below 4, `+ 1` from 4 up, then `CMP #$0A / BCC store`,
+#: `CMP #$0F / BCC` a `LDA #$0A`, and `LDA #$0C` past that. So a cleric 9 to 13
+#: stores 10 and a cleric 14 or 15 stores 12, which is Pool of Radiance's
+#: `$2399` table entry for entry -- a third mechanism reaching the same
+#: fourteen numbers. Kept as its own tuple rather than shared with
+#: `_TURN_POWER_POOL` because the two are read out of different code (#288).
+_TURN_POWER_SILVER = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10, 10, 10, 10, 12)
+
 
 def hit_die(class_name: str, game=None) -> int | None:
     """How many sides the class rolls a level, or None for no such class."""
@@ -1050,6 +1060,8 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     ),
     constitution_save_columns=(0, 2, 4),
     sturdy_races=(3,),          # the dwarf alone, and 3 is the dwarf here
+    turn_power=_TURN_POWER_SILVER,
+    paladin_turn_offset=2,      # `$13A5 LDA level_paladin / SEC / SBC #$02`
 )
 
 TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
@@ -1087,9 +1099,12 @@ DEFAULT = POOL_OF_RADIANCE
 #:
 #: Silver Blades is the same case: its level tables are in this module now
 #: (#187), and its trainer's own inputs -- the constitution hit-point bonus,
-#: thief-skill racial adjustment, wisdom bonus spells, turning table -- are
-#: either unread or unattributed (`docs/121-silver-blades.md`). Reading them
-#: is what would move it into this set; nothing here does that.
+#: thief-skill racial adjustment, wisdom bonus spells -- are either unread or
+#: unattributed (`docs/121-silver-blades.md`). Its **turning table is read**,
+#: at `GEN $13A5` (#288), and it is CONFIRMED: the routine's own expansion
+#: agrees with the two shipped records that store the byte, DOMINIC a cleric 8
+#: at 9 and GUY DE VALOIS a paladin 8 at 7. Reading the other three is what
+#: would move this title into the set; the turning table alone does not.
 #:
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a

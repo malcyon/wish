@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import games, neutral, spells
+from . import derive, games, neutral, spells
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
@@ -679,13 +679,24 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         emit(size, "size_small", 0x099, 1)
 
     # -- turning: the C64 has two bytes --------------------------------------
+    # The caster's byte is **computed and not copied** (#288). No port a
+    # conversion reads keeps one: DOS works the turning row out from the
+    # cleric level when somebody presses Turn (`GAME.OVR:0x139CD`) and stores
+    # nothing, and the Amiga has no located home for it -- so copying meant a
+    # converted cleric arriving with 0, and the C64's combat bar drops the
+    # word TURN entirely when this byte is zero (`COMBAT $09D9`).
+    #
+    # A source that does keep it agrees with the derivation anyway: 187 of 187
+    # engine-written C64 player records on this machine hold exactly what the
+    # levels give, the 23 that do not being ones this converter wrote.
+    # `tools/turncensus.py` is that census.
     rep.note(0x0A3, 1, "turn_class: zero -- no player character is undead")
-    turning = use("turn_power")
-    if turning is not None:
-        rec.set("turn_power", turning.value)
-        emit(turning, "turn_power", 0x0A4, 1,
-             " (PROBABLE: which of the C64's two turning bytes this is cannot "
-             "be told from a party with no turning cleric above level 3)")
+    use("turn_power")           # consumed here, by rule rather than by copy
+    turning = derive.turn_power(char.game, w.get("levels") or {})
+    rec.set("turn_power", turning)
+    rep.note(0x0A4, 1,
+             f"turn_power: computed from the cleric and paladin levels, the "
+             f"way this title's own GEN writes it; {port} keeps no such byte")
 
     # -- attack forms: eight bytes -------------------------------------------
     forms = use("attack_forms")
@@ -955,7 +966,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "dual_class_slot and dual_class_level; two would be "
                       "reported"),
     ("size_small", "copied to the C64's size byte"),
-    ("turn_power", "copied to the C64's caster turning byte at 0x0A4"),
+    ("turn_power", "**computed, not copied**: the C64's caster turning byte "
+                   "at 0x0A4 is what this title's own GEN writes from the "
+                   "cleric and paladin levels, because no port a conversion "
+                   "reads keeps the value -- DOS works it out when Turn is "
+                   "pressed and stores nothing, and a copied zero costs a "
+                   "cleric the word TURN on the combat bar (#288)"),
     ("attack_forms", "copied as a block to 0x0D9"),
     ("innate_effects", "the first ten ids, into the C64's trait slots; the "
                        "rest are warned about"),
