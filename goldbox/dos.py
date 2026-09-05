@@ -668,6 +668,64 @@ def dos_class_bits(neutral_bits: int) -> int:
     return (neutral_bits & ~RANGER_BIT_NEUTRAL) | RANGER_BIT_DOS
 
 
+#: The class code table Curse of the Azure Bonds' C64 `GEN` walks at `$1951`,
+#: indexed by the class code and holding the bitmask that code stands for.
+#: 0 cleric, 1 druid, 2 fighter, 3 paladin, 4 ranger, 5 magic-user, 6 thief,
+#: 7 monk, and 8 upward for the multi-class combinations, which is the order
+#: `goldbox/layout.py`'s `char_class` note documents.  The druid's entry and
+#: the monk's are 0 because no Gold Box record carries either class.
+#:
+#: **It is the C64's bit order**, the one the neutral record uses, so a DOS
+#: mask goes through :func:`neutral_class_bits` first.  And it is **Curse's**
+#: table: index 10 is `0x82`, cleric and ranger, where Pool of Radiance --
+#: which has neither a paladin nor a ranger -- carries cleric/magic-user
+#: there, the row `goldbox/yaml_io.py`'s `CLASS_CODES` records.  The two agree
+#: on every combination either title can actually make.
+#: `docs/187-the-class-code-byte.md` has the reading.
+CLASS_CODE_TABLE: tuple[int, ...] = (
+    0x02, 0x00, 0x08, 0x40, 0x80, 0x01, 0x04, 0x00,
+    0x0A, 0x0B, 0x82, 0x03, 0x06, 0x09, 0x0C, 0x0D, 0x05)
+
+#: Bitmask -> class code, from the table above, first occurrence winning so
+#: the two zero entries do not claim the empty mask.
+CLASS_CODE_FOR_BITS: dict[int, int] = {
+    bits: code for code, bits in reversed(list(enumerate(CLASS_CODE_TABLE)))
+    if bits}
+
+#: Class name -> its bit in the shared order, from `goldbox/games.py`'s own
+#: per-title lists so the two cannot drift apart.  Krynn's is the widest,
+#: adding the Knight of Solamnia at `0x10`; every other title's is a subset.
+CLASS_BIT_FOR_NAME: dict[str, int] = {
+    name: bit for bit, name in games.CLASS_BITS_KRYNN}
+
+
+def _class_code(levels: "dict[str, int] | None") -> int | None:
+    """The class code for the classes a character holds levels in, or None.
+
+    None when there is no level array to read, or when the classes it names
+    are a combination the game's own table has no code for -- three exist,
+    and `goldbox/yaml_io.py`'s `class_code_for` refuses them for the same
+    reason: a code that is not in the table means a different class.
+
+    **This is the dual-class answer, not the general one** (#310). A
+    dual-classed character gets the old class's bit back in `class_bits` once
+    his new class passes the level he left the old one at, so the mask names
+    two classes where the code names the one he *is*; his level array holds
+    exactly the class he is now, because the old class's slot is zeroed at
+    the change. For everybody else :func:`write` reads the mask instead --
+    SILAS, the shipped Pool of Radiance fighter, carries a thief 1 in his
+    level array that neither his mask nor his code knows about, and taking
+    the levels there would give him a class the game does not.
+    """
+    if not levels:
+        return None
+    bits = 0
+    for name, level in levels.items():
+        if level:
+            bits |= CLASS_BIT_FOR_NAME.get(name, 0)
+    return CLASS_CODE_FOR_BITS.get(bits)
+
+
 def class_bits_for(char: "DosCharacter") -> int:
     """The class bitmask a record's level arrays imply.
 
@@ -2162,6 +2220,8 @@ WRITE_TARGETS: dict[str, str] = (
        "name_text": "from neutral name, fifteen ASCII",
        "class_bits": "from neutral class_bits, with the ranger's bit 7 "
                      "folded onto DOS's bit 6",
+       "char_class": "from neutral char_class, recomputed from the class "
+                     "mask when the source record contradicts itself (#310)",
        "spells_memorised": "from neutral spells_memorised, reversed",
        "spellbook": "from neutral spells_known, one byte per id",
        "class_levels": "from neutral levels, permuted to class numbers",
@@ -2380,6 +2440,13 @@ def write(char: NeutralCharacter,
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
     for neutral_name, dos_name in WRITE_DIRECT:
+        # Written below, from the class mask when the source contradicts
+        # itself, and copied otherwise (#310).  It stays in `WRITE_DIRECT`
+        # because that is what it is in every record whose source kept it up
+        # to date, and because the reader's `DIRECT` and this table are
+        # mirrors.
+        if neutral_name == "char_class":
+            continue
         v = use(neutral_name)
         if v is None:
             continue
@@ -2405,6 +2472,49 @@ def write(char: NeutralCharacter,
             ", with the ranger's bit 7 folded onto DOS's bit 6, which it "
             "shares with the paladin",
             value=dos_class_bits(int(bits.value)))
+
+    # -- the class code, repaired when the source contradicts itself (#310) --
+    # The DOS sheet prints the class from `char_class`, and Curse of the Azure
+    # Bonds' own C64 engine stops maintaining it: `GEN $1939` computes the
+    # code by walking `CLASS_CODE_TABLE`, holds the answer in X and stores A,
+    # so every character its trainer touches comes away reading 0 and a
+    # dual-classed one reads the level he left his old class at.  Copied
+    # straight across, that drew CLERIC on a dwarf thief 6 / fighter 5 in the
+    # running game.
+    #
+    # So the code is checked against the **class mask** and rewritten when the
+    # two contradict each other.  The mask is the right source and the level
+    # array is not: SILAS, the shipped Pool of Radiance fighter, holds a
+    # thief 1 in his level array that neither his mask nor his code knows
+    # about, and rewriting his code to fighter/thief would be this conversion
+    # inventing a class for him.
+    #
+    # **A dual-classed character is the one exception, and it takes the level
+    # array after all.**  His mask carries the old class's bit back once his
+    # new class passes the level he left the old one at, so it names two
+    # classes where the code names the one he *is* -- and the engine agrees:
+    # `GEN $1939` branches away from the table walk entirely when
+    # `dual_class_level` is set.  The current level array holds exactly the
+    # class he is now, because the old class's slot is zeroed at the change.
+    code = use("char_class")
+    if code is not None:
+        former = w.get("former_levels") or {}
+        source = "levels" if any(former.values()) else "class_bits"
+        want = (_class_code(w.get("levels")) if source == "levels"
+                else CLASS_CODE_FOR_BITS.get(int(w.get("class_bits") or 0)))
+        if want is None or want == int(code.value):
+            put(code, "char_class")
+        else:
+            # **Not a warning**, and deliberately: `editor/exports.py`'s
+            # `losses` puts every warning in front of the player under a
+            # heading that says the conversion could not do something
+            # faithfully, and this is the opposite -- the record contradicted
+            # itself and the conversion repaired it.  The provenance line
+            # `put` writes is our own accounting, which is where it belongs.
+            put(code, "char_class",
+                f", recomputed from {source}: the source record says "
+                f"{int(code.value)} and its own classes say {want} (#310)",
+                value=want)
 
     # -- the spellbook: one byte per spell, ids 1..n -------------------------
     # 56 ids in Pool of Radiance, 100 in Curse and 117 in Silver Blades,
@@ -4091,6 +4201,39 @@ def retarget_reason(area: int) -> str | None:
     return None
 
 
+def conversion_reason(area: int) -> str | None:
+    """Why a *conversion* cannot write this area, or `None` if it can.
+
+    **A conversion is not a retarget, and the difference is where the map
+    comes from** (#276).  :func:`retarget_reason` refuses six areas because
+    the caller names an area the party has never been in, so `goldbox/areas.py`
+    is the only source for which `GEO` has to be resident and four of those
+    areas load no map of their own while two pick theirs at run time.
+
+    Converting a save, the resident map is **a word in the save being
+    converted** -- `$49C5`, which `savgam_writes` now reads out of the C64
+    save's own bytes.  So none of those six is a gap any more, and refusing
+    them means refusing a party standing in the training hall, which is
+    exactly the fault `#257 (A DOS save made in the training hall converts as
+    though the party were in New Phlan)` fixed on the way in.
+
+    What is left is the one refusal the save cannot answer: an area with no
+    row, which has no `ECL<n>.DAX` to lift the script out of and no disk
+    number to write.
+
+    CONFIRMED for area 11, the training hall: a C64 save made there converts
+    and DOS Pool of Radiance loads it, with the party standing in the school
+    (`#276`, and `WISH-SPEC-por-c64-hall-resave` is the input).  PROBABLE for
+    areas 3, 5, 8, 19 and 30 -- the same argument and no C64 save made in any
+    of them exists on this machine to run it with.
+    """
+    where = areas.area(area)
+    if where is None:
+        return (f"area {area} is not an area of Pool of Radiance, so there is "
+                f"no map file and no script to name")
+    return None
+
+
 def _area_script(area: int, template: "pathlib.Path | None",
                  game: "str | pathlib.Path | None") -> bytes:
     """The area's own `ECL<n>.DAX` block, or a refusal saying why not.
@@ -4100,8 +4243,12 @@ def _area_script(area: int, template: "pathlib.Path | None",
     directory to read the script out of, and a container that does not hold
     the block.  Each of them ends with a save the party has never been in;
     the file loads, so nothing says so afterwards.
+
+    **The first of the three is `conversion_reason` and not
+    `retarget_reason`** (#276): this is the conversion path, whose party
+    brings its own resident map with it.
     """
-    why = retarget_reason(area)
+    why = conversion_reason(area)
     if why is not None:
         raise DosRecordError(why)
     where = areas.area(area)
