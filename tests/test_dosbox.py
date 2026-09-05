@@ -28,6 +28,8 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from gamedata import needs_specimens  # noqa: E402
+
 from tools import dosbox  # noqa: E402
 
 # Shares a group with tests/test_instance.py -- see that file's own note.
@@ -146,6 +148,29 @@ def _need_saves():
     if not saves:
         pytest.skip("needs a DOS save; set FR_ARCHIVES to the archives")
     return saves
+
+
+#: Saved games this project watched the engine write, and where each party was
+#: standing when it did -- from `tools/specimens.py`'s tree, for `#246 (Nothing
+#: tells an engine-written DOS record from one edited with Gold Box Companion,
+#: and conclusions already rest on edited ones)`.  `_saves()` above sweeps the
+#: archives, whose `SAVE` folder was open in Gold Box Companion on 2026-08-17,
+#: so a *measurement* comes from here and the archives are left to the round
+#: trips.
+CLEAN_SAVES = {
+    "por-party-l1": "SAVGAMC.DAT",
+    "por-party-l1-intown": "SAVGAME.DAT",
+    "por-party-trained-c2": "SAVGAMF.DAT",
+    "por-train-clamp": "SAVGAMF.DAT",
+    "por-item-granted": "SAVGAMD.DAT",
+}
+
+
+def _clean_saves():
+    """`{specimen: bytes}` for every saved game in the specimen tree."""
+    from gamedata import specimen
+    return {name: (specimen(name) / filename).read_bytes()
+            for name, filename in CLEAN_SAVES.items()}
 
 
 # --------------------------------------------------------------------------
@@ -612,15 +637,39 @@ def test_every_save_is_the_size_the_format_says():
         assert len(data) == SAVGAM_SIZE, letter
 
 
+@needs_specimens
+def test_every_save_we_watched_being_written_is_the_size_the_format_says():
+    for name, data in _clean_saves().items():
+        assert len(data) == SAVGAM_SIZE, name
+
+
+@needs_specimens
 def test_the_party_square_reads_as_a_legal_square():
     """16x16 maps, so both coordinates are 0..15 and the facing is 0, 2, 4, 6."""
-    for letter, data in _need_saves().items():
+    for name, data in _clean_saves().items():
         x, y, facing = dosbox.position(data)
-        assert 0 <= x < 16, (letter, x)
-        assert 0 <= y < 16, (letter, y)
-        assert facing in dosbox.FACINGS, (letter, facing)
+        assert 0 <= x < 16, (name, x)
+        assert 0 <= y < 16, (name, y)
+        assert facing in dosbox.FACINGS, (name, facing)
 
 
+@needs_specimens
+def test_the_square_read_back_is_the_square_the_party_was_standing_on():
+    """The one reading here that is not the file checked against itself.
+
+    `WISH-SPEC-por-party-l1-intown` was made by loading the `#249` party,
+    pressing BEGIN ADVENTURING, playing Rolf's tour of New Phlan to its end
+    and saving -- and the tour ends with the party at (0, 4) facing west,
+    which is on the screen in the run's own snapshots.  So the three bytes
+    `POS_X`, `POS_Y` and `POS_FACING` are pinned against something outside the
+    file for once, and an offset that had drifted a byte would show up as a
+    square nobody stood on.
+    """
+    data = _clean_saves()["por-party-l1-intown"]
+    assert dosbox.position(data) == (0, 4, 6)
+
+
+@needs_specimens
 def test_the_harness_reads_the_facing_the_file_carries_and_por_halves_it():
     """The one place the two accessors over one byte map differ (#76).
 
@@ -632,42 +681,64 @@ def test_the_harness_reads_the_facing_the_file_carries_and_por_halves_it():
     """
     from goldbox import dos_savegame as sg
 
-    for letter, data in _need_saves().items():
+    for name, data in _clean_saves().items():
         x, y, facing = dosbox.position(data)
         px, py, pf = sg.position(data)
-        assert (x, y) == (px, py), letter
-        assert facing == pf * sg.FACING_SCALE, letter
-        assert facing in dosbox.FACINGS, (letter, facing)
+        assert (x, y) == (px, py), name
+        assert facing == pf * sg.FACING_SCALE, name
+        assert facing in dosbox.FACINGS, (name, facing)
 
 
+@needs_specimens
 def test_the_area_id_is_one_the_c64_area_table_knows():
     """The numbering is the same on both ports, which is the finding."""
     from goldbox.areas import AREAS_BY_ID
 
-    for letter, data in _need_saves().items():
-        assert dosbox.area_id(data) in AREAS_BY_ID, letter
+    for name, data in _clean_saves().items():
+        assert dosbox.area_id(data) in AREAS_BY_ID, name
 
 
-def test_the_area_id_is_duplicated_at_the_second_entry():
-    """`$49C5` and `$49F2` carry the same value in every save seen."""
-    for letter, data in _need_saves().items():
+@needs_specimens
+def test_the_second_area_entry_is_the_script_and_parts_company_in_a_hall():
+    """`$49C5` and `$49F2` are **not** the same number, and a save made in the
+    training hall is where they separate.
+
+    This test used to assert they agreed in every save seen, and every save it
+    had seen was the archives'.  Two saves the engine wrote for `#249` refute
+    it: standing in the clerics' school of area 11, `$49C5` reads 0 and
+    `$49F2` reads 11.  That is what the pair is *for* -- area 11 has no map of
+    its own and borrows New Phlan's `GEO00`, so `$49C5` names the GEO block
+    that is loaded and `$49F2` names the area the party is actually in.
+    Everywhere the two are the same, the area owns its own map.
+
+    `goldbox.dos_savegame.current_area` prefers `$49C5` indoors and so calls
+    the training hall New Phlan; `#246` carries the finding and the issue it
+    was filed as.
+    """
+    saves = _clean_saves()
+    for name, data in saves.items():
         second = data[485] | data[486] << 8
-        assert second == dosbox.area_id(data), letter
+        in_a_hall = name in ("por-party-trained-c2", "por-train-clamp")
+        if in_a_hall:
+            assert (dosbox.area_id(data), second) == (0, 11), name
+        else:
+            assert second == dosbox.area_id(data), name
 
 
+@needs_specimens
 def test_the_header_byte_is_the_dax_file_that_holds_the_area():
     """Byte 0 is not the area: it is which `GEO<n>.DAX` the area lives in.
 
     Read straight off the containers, so it is the game's own index that says
     so rather than anything this project inferred.
     """
-    saves = _need_saves()
+    saves = _clean_saves()
     files = _geo_files()
     if not files:
         pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
-    for letter, data in saves.items():
+    for name, data in saves.items():
         area = dosbox.area_id(data)
-        assert files[area] == data[dosbox.AREA_FILE], (letter, area)
+        assert files[area] == data[dosbox.AREA_FILE], (name, area)
 
 
 def test_the_header_byte_names_more_than_one_area_so_it_is_not_the_map():
@@ -963,12 +1034,25 @@ def test_the_hidden_name_mask_hides_the_words_the_c64_mask_hides():
     assert masked > 50
 
 
+@pytest.mark.skip(reason="the only two saves it can run on were edited in Gold "
+                        "Box Companion (#246)")
 def test_the_quantity_falls_when_the_party_fires_the_arrows():
-    """`0x039` observed changing in the player's own two saves of one party.
+    """`0x039` observed changing in two saves of one party.
 
     The stack of arrows +1 in the earlier save holds 18 and in the later one
     11; the rendered line still says 18, which is why the line is not a source
     of anything.
+
+    **Skipped rather than moved.**  The only pair of saves it can find is
+    `CHRDATA2`/`CHRDATB2` of the archives' party, which Gold Box Companion had
+    open on 2026-08-17, and Donald says the item encumbrance is specifically
+    what he changed there.  A quantity byte a player shot down and a quantity
+    byte somebody typed are the same symptom, which is why
+    `#246 (Nothing tells an engine-written DOS record from one edited with
+    Gold Box Companion, and conclusions already rest on edited ones)`
+    retracted the reading that rested on the same two records.  What would
+    revive it: a driven run that gives the `#249` party a bow, saves, fires
+    it, and saves again.
     """
     files = _need_items()
     pairs = {}

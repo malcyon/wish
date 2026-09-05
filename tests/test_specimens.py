@@ -226,3 +226,86 @@ def test_ensure_tree_writes_a_do_not_edit_file_addressed_to_a_reader(tree):
     text = (tree / "DO-NOT-EDIT.md").read_text()
     assert "do not edit" in text.lower()
     assert len(text.splitlines()) > 1
+
+
+# --- how a test reaches the tree ------------------------------------------
+# `tests/gamedata.py`'s helpers, which are what the DOS test modules call.
+# Each one points `$WISH_SPECIMENS` at `tmp_path`, so none of this reads the
+# real tree, and `_specimen_path` is cached per name so its cache is cleared
+# between cases.
+
+
+@pytest.fixture
+def fake_tree(tree, one_source, monkeypatch):
+    """A one-specimen tree at `tmp_path`, with `$WISH_SPECIMENS` aimed at it."""
+    import gamedata
+
+    _add(tree, one_source)
+    monkeypatch.setenv("WISH_SPECIMENS", str(tree))
+    gamedata._specimen_path.cache_clear()
+    yield tree
+    gamedata._specimen_path.cache_clear()
+
+
+def test_have_specimen_says_which_names_are_there(fake_tree):
+    import gamedata
+
+    assert gamedata.have_specimen("gnomf1")
+    assert not gamedata.have_specimen("nobody-rolled-this")
+
+
+def test_a_specimen_that_is_not_there_skips_rather_than_failing(fake_tree):
+    """CI has no specimen tree, so an absent one must not turn the suite red."""
+    import gamedata
+
+    with pytest.raises(pytest.skip.Exception):
+        gamedata.specimen("nobody-rolled-this")
+
+
+def test_the_whole_tree_being_absent_skips_too(tmp_path, monkeypatch):
+    import gamedata
+
+    monkeypatch.setenv("WISH_SPECIMENS", str(tmp_path / "no-such-tree"))
+    gamedata._specimen_path.cache_clear()
+    try:
+        assert gamedata.specimen_root() is None
+        with pytest.raises(pytest.skip.Exception):
+            gamedata.specimen("gnomf1")
+    finally:
+        gamedata._specimen_path.cache_clear()
+
+
+def test_a_changed_specimen_fails_rather_than_being_read(fake_tree):
+    """The point of the manifest, from a test's side.
+
+    A specimen somebody edited is no longer evidence, and reading it anyway is
+    exactly what `#246` is about -- so this fails loudly where an absent one
+    skips quietly. Prove it: the same call succeeds before the edit.
+    """
+    import gamedata
+
+    assert gamedata.specimen("gnomf1").is_dir()
+
+    target = fake_tree / "por-dos" / "WISH-SPEC-gnomf1" / "GNOMF1.SPC"
+    target.chmod(stat.S_IRWXU)
+    target.write_bytes(b"edited with an outside tool" + b"\x00" * 3)
+
+    with pytest.raises(pytest.fail.Exception) as caught:
+        gamedata.specimen("gnomf1")
+    assert "GNOMF1.SPC" in str(caught.value)
+    assert "changed" in str(caught.value)
+
+
+def test_specimen_files_keys_by_specimen_so_two_trees_do_not_collide(fake_tree):
+    import gamedata
+
+    found = gamedata.specimen_files(["gnomf1"], (".SPC", ".CHA"))
+    assert sorted(found) == ["gnomf1/GNOMF1.CHA", "gnomf1/GNOMF1.SPC"]
+
+
+def test_specimen_files_can_select_by_record_size(fake_tree):
+    """How a Pool of Radiance record is told from every other title's."""
+    import gamedata
+
+    nine = gamedata.specimen_files(["gnomf1"], (".SPC", ".CHA"), size=9)
+    assert sorted(nine) == ["gnomf1/GNOMF1.SPC"]

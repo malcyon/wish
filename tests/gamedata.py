@@ -741,3 +741,104 @@ def save_disk(stem: str = "PORSAVE"):
         if candidate.exists():
             return candidate
     pytest.skip(f"no {stem} where the disks are")
+
+
+# --- specimens: records this project watched being written --------------------
+# `.claude/rules/testing.md`, "A specimen is only evidence if we know who wrote
+# it". A record found in a save directory -- Donald's play folder, the
+# archives' `Default files/Saves`, a rip off the internet -- has no chain of
+# custody, and on 2026-09-04 one edited with Gold Box Companion refuted a
+# correct belief and stopped `#232 (An item-granted effect is dropped on the
+# way through the neutral record, with no report)` for a day. `#246 (Nothing
+# tells an engine-written DOS record from one edited with Gold Box Companion,
+# and conclusions already rest on edited ones)` is the fix, and this is how a
+# test reaches the clean corpus.
+#
+# The tree is `tools/specimens.py`'s, at `$WISH_SPECIMENS` or `~/wish-specimens`
+# -- outside the repository, because the game's data must never be committed.
+# It is read-only on disk and every specimen carries a SHA-256 manifest, so a
+# helper here can say not only "the specimen is present" but "it is still the
+# bytes we recorded".
+#
+# **CI has no specimen tree**, so everything below returns None or skips rather
+# than failing when it is absent. A *changed* specimen is a different matter and
+# fails loudly: the evidence has gone, and a silent skip would hide that.
+
+def specimen_root():
+    """The specimen tree, or None. Never skips, so it is safe at module level."""
+    from tools import specimens
+    root = specimens.tree_root()
+    return root if root.is_dir() else None
+
+
+@functools.lru_cache(maxsize=None)
+def _specimen_path(name: str, platform: str = "dos"):
+    root = specimen_root()
+    if root is None:
+        return None
+    where = root / f"por-{platform}" / f"WISH-SPEC-{name}"
+    return where if where.is_dir() else None
+
+
+def have_specimen(name: str, platform: str = "dos") -> bool:
+    """Whether a named specimen is on this machine. For `skipif` markers."""
+    return _specimen_path(name, platform) is not None
+
+
+def specimen(name: str, platform: str = "dos"):
+    """One specimen's directory, verified against its own manifest.
+
+    Skips when the tree or the specimen is absent -- not owning the game, or a
+    fresh checkout on CI, is not a broken suite. **Fails** when a file no
+    longer hashes to what `provenance.toml` recorded, because at that point the
+    directory is no longer evidence and a test reading it would be measuring
+    somebody's edit, which is the whole failure `#246 (Nothing tells an
+    engine-written DOS record from one edited with Gold Box Companion, and
+    conclusions already rest on edited ones)` is about.
+    """
+    from tools import specimens
+
+    where = _specimen_path(name, platform)
+    if where is None:
+        pytest.skip(f"needs specimen WISH-SPEC-{name}; "
+                    f"see tools/specimens.py and $WISH_SPECIMENS")
+    prov = where / "provenance.toml"
+    if not prov.is_file():
+        pytest.fail(f"{where}: no provenance.toml -- not a specimen")
+    recorded = specimens.read_provenance(prov).get("sha256", {})
+    for filename, expected in recorded.items():
+        path = where / filename
+        if not path.is_file():
+            pytest.fail(f"WISH-SPEC-{name}: {filename} is missing; "
+                        f"run tools/specimens.py check")
+        actual = specimens.sha256_file(path)
+        if actual != expected:
+            pytest.fail(f"WISH-SPEC-{name}: {filename} has changed -- recorded "
+                        f"{expected[:12]}, now {actual[:12]}; it is no longer "
+                        f"evidence. Run tools/specimens.py check")
+    return where
+
+
+def specimen_files(names, suffixes, size=None, platform="dos"):
+    """Files of the given suffixes across several specimens, keyed
+    `<specimen>/<filename>` so two specimens holding a `CHRDATF1.SAV` do not
+    collide.
+
+    `size` filters by byte length, which is how a Pool of Radiance record is
+    told from every other title's without reading it.
+    """
+    out = {}
+    for name in names:
+        where = specimen(name, platform)
+        for path in sorted(where.iterdir()):
+            if path.suffix.upper() not in suffixes:
+                continue
+            if size is not None and path.stat().st_size != size:
+                continue
+            out[f"{name}/{path.name}"] = path.read_bytes()
+    return out
+
+
+needs_specimens = pytest.mark.skipif(
+    specimen_root() is None,
+    reason="needs the specimen tree; see tools/specimens.py and $WISH_SPECIMENS")

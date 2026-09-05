@@ -8,55 +8,62 @@ pressed as a key gives a run with no snapshots and a log that reads as if
 everything worked, and a record split at the wrong stride gives ids that are
 somebody else's payload bytes and look like effect numbers.
 
-The reading is then corroborated against the player's own archives, which is
-the point of the tool: the eight characters rolled for #84 reproduced the
-census these files carry, so the same reader has to agree with them.
+The reading is then corroborated against the eight characters #84 rolled --
+one per race, created keystroke by keystroke in the game's own screens and
+kept in the specimen tree.  **They replaced the archives here on 2026-09-04**:
+the census used to be read off `Default files/Saves`, which is a download with
+no chain of custody and cannot be told from a party somebody edited, and
+`#246 (Nothing tells an engine-written DOS record from one edited with Gold
+Box Companion, and conclusions already rest on edited ones)` is why that is no
+longer good enough for a measurement.  `.claude/rules/testing.md`'s "A
+specimen is only evidence if we know who wrote it" is the rule.
 """
 
-import functools
 import pathlib
 import sys
 
 import pytest
+from gamedata import needs_specimens, specimen
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools import dosgnome  # noqa: E402
 
-#: Name -> the effect ids the archives' own `.SPC` files hold for that
-#: character, established in `docs/117-save-conversion.md` and reproduced from
-#: the game's creation screens in #84.  THRENDER GRONE is a dwarf, PHINEAS a
-#: halfling, and the pair is what makes 26 and 47 the dwarf's rather than
-#: every sturdy race's.
+#: Specimen -> the effect ids the engine wrote into that character's `.SPC`
+#: at creation.  One per race, from #84's eight rolls: the gnome's 18 and 48
+#: are what the issue was opened to find, and the dwarf beside the halfling is
+#: what makes 26 and 47 the dwarf's rather than every sturdy race's.
+#:
+#: `human7` is in the table with an empty list because the engine writes a
+#: human **no `.SPC` file at all**, which is the case a reader that treats a
+#: missing file as an empty one would never notice going wrong.
 CENSUS = {
-    "CHRDATA1.SPC": [90, 97, 26, 47],       # THRENDER GRONE, dwarf
-    "CHRDATA6.SPC": [90, 97],               # PHINEAS, halfling
-    "CHRDATA3.SPC": [107],                  # RHIANNON, elf
+    "dwarfc4": ("halfelf-DWARFC4.SPC", [90, 97, 26, 47]),
+    "halfl5": ("party-HALFL5.SPC", [90, 97]),
+    "elf6": ("party-ELF6.SPC", [107]),
+    "halfe8": ("party-HALFE8.SPC", [124]),
+    "gnomf1": ("halfelf-GNOMF1.SPC", [97, 18, 47, 48]),
+    "gnomt2": ("halfelf-GNOMT2.SPC", [97, 18, 47, 48]),
+    "gnomft3": ("halfelf-GNOMFT3.SPC", [97, 18, 47, 48]),
+    "human7": ("party-HUMAN7.SPC", []),
+}
+
+#: The `#249` party, rolled a fortnight after #84's eight and by a different
+#: tool, as the same-boot control on the table above: four races repeated, and
+#: the two humans carrying no `.SPC` again.
+CONTROL_PARTY = "por-party-l1-rolled"
+CONTROL = {
+    "WISHMAG.SPC": [107],                   # elf
+    "WISHTHI.SPC": [90, 97],                # halfling
+    "WISHDWF.SPC": [90, 97, 26, 47],        # dwarf
+    "WISHHEL.SPC": [124],                   # half-elf
 }
 
 
-def _candidates():
-    """`gamedisks.toml`'s own search list for the DOS archives (#212)."""
-    from tools import gamedisks
-    return gamedisks.candidates("dos-archives")
-
-
-@functools.lru_cache(maxsize=1)
-def _shipped_saves():
-    """`Default files/Saves` for DOS Pool of Radiance, or None.
-
-    The shipped directory rather than the played one, because the census
-    above names files by slot letter and the shipped copy is the one both
-    archive collections agree on.
-    """
-    for root in _candidates():
-        if not root.is_dir():
-            continue
-        for path in root.glob("*/games/POOLRAD/Default files/Saves"):
-            if (path / "CHRDATA1.SPC").is_file():
-                return path
-    return None
+# The archives' `Default files/Saves` used to be found here and the census read
+# off it.  It is gone rather than left unused: a helper that resolves an
+# untrusted directory is one import away from being the corpus again.
 
 
 # --- the step grammar --------------------------------------------------------
@@ -130,36 +137,52 @@ def test_describe_names_the_id_and_the_four_payload_bytes(tmp_path):
 # --- corroboration against the player's own files ----------------------------
 
 
-@pytest.mark.skipif(_shipped_saves() is None,
-                    reason="needs the DOS archives; set FR_ARCHIVES")
-@pytest.mark.parametrize("name,ids", sorted(CENSUS.items()))
-def test_the_reader_reproduces_the_archives_census(name, ids):
-    """The dwarf, the halfling and the elf, read off the shipped saves.
+@needs_specimens
+@pytest.mark.parametrize("name,filename,ids",
+                         [(name, f, ids) for name, (f, ids) in sorted(
+                             CENSUS.items())])
+def test_the_reader_reproduces_the_racial_effect_sets(name, filename, ids):
+    """Six races, read off characters this project watched being rolled.
 
-    This is the control on the gnome measurement: the same reader, the same
-    stride, applied to three characters whose ids were established
-    independently.  A wrong stride would show up here as ids nobody has ever
-    named.
+    The same reader and the same stride applied to a dwarf, a halfling, an
+    elf, a half-elf, three gnomes and a human.  A wrong stride shows up here
+    as ids nobody has ever named; a reader that guessed the race from
+    anything but the file would have to guess right eight times.
     """
-    path = _shipped_saves() / name
+    path = specimen(name) / filename
+    if not ids:
+        assert not path.exists(), f"{filename} exists, but a human has none"
+        return
     assert [rec[0] for rec in dosgnome.records(path.read_bytes())] == ids
 
 
-@pytest.mark.skipif(_shipped_saves() is None,
-                    reason="needs the DOS archives; set FR_ARCHIVES")
-def test_every_innate_record_in_the_archives_carries_the_same_payload():
-    """`00 00 FF 00`, in every innate record the archives hold.
+@needs_specimens
+@pytest.mark.parametrize("filename,ids", sorted(CONTROL.items()))
+def test_a_second_party_rolled_later_reproduces_the_same_sets(filename, ids):
+    """`#249`'s party against `#84`'s eight: four races, same ids.
 
-    `goldbox.dos.INNATE_PAYLOAD` is those four bytes and #84 confirmed them
-    for a gnome's 18 and 48 as well; the archives are where the other six ids
-    were measured, so a change to the reader that broke the shape would fail
-    here rather than only in an emulator run nobody reruns.
+    Two parties, two tools, two evenings, one engine.  This is what makes the
+    table above a property of the race rather than of one run's rolls.
+    """
+    path = specimen(CONTROL_PARTY) / filename
+    assert [rec[0] for rec in dosgnome.records(path.read_bytes())] == ids
+
+
+@needs_specimens
+def test_every_innate_record_we_watched_being_written_carries_the_same_payload():
+    """`00 00 FF 00`, in every innate record in the specimen tree.
+
+    `goldbox.dos.INNATE_PAYLOAD` is those four bytes.  24 innate records
+    across the two parties, and every one of them holds the same four -- so a
+    change to the reader that broke the shape fails here rather than only in
+    an emulator run nobody reruns.
     """
     from goldbox import dos
     seen = 0
-    for path in sorted(_shipped_saves().glob("*.SPC")):
-        for rec in dosgnome.records(path.read_bytes()):
-            if rec[0] in dos.INNATE_EFFECTS:
-                assert rec[1:5] == dos.INNATE_PAYLOAD, (path.name, rec[0])
-                seen += 1
-    assert seen >= 6, "no innate records found, so nothing was checked"
+    for name in tuple(CENSUS) + (CONTROL_PARTY,):
+        for path in sorted(specimen(name).glob("*.SPC")):
+            for rec in dosgnome.records(path.read_bytes()):
+                if rec[0] in dos.INNATE_EFFECTS:
+                    assert rec[1:5] == dos.INNATE_PAYLOAD, (path.name, rec[0])
+                    seen += 1
+    assert seen >= 24, f"only {seen} innate records checked"
