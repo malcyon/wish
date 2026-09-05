@@ -69,6 +69,36 @@ pins it for that panel.
 **The debug log is the exception**, and `WISH_DEBUG` output generally: it is
 read by whoever is debugging, and an address there is the point.
 
+## Any decision about the interface comes with a screenshot
+
+**If you are asking Donald to decide something about how the program looks,
+show him a picture of it.** 2026-09-05: *"For the theming stuff, you need to
+show me a screenshot. You are just giving me straight numbers, and I am not a
+computer. We need a rule that any UI decision requires a screenshot."*
+
+He said it after being handed hex colours, file paths and line numbers as the
+evidence for a claim that Wish would be unreadable on a dark desktop -- a
+claim about **what something looks like**, argued entirely in things you
+cannot look at. When the screenshot was finally taken it did not support the
+claim.
+
+So the rule has two halves and the second is the one that costs:
+
+* **Never describe an appearance in numbers when you could show it.** A hex
+  triple is not a colour to a person, a font metric is not a size, and a
+  layout described in pixels is not a layout.
+* **Take the screenshot before you form the opinion, not after.** Reading
+  `setStyleSheet` calls and reasoning about what they would do is how the
+  wrong claim above got made. `QWidget.grab()` works offscreen, so there is
+  never a reason to reason instead of look.
+
+**Say what the screenshot does not show.** A window with no data in it does
+not exercise the code paths that draw data -- the empty automapper looks
+correct on a dark palette and its party cards, which are the part that hard-
+codes white, never appear. A picture that does not contain the thing being
+argued about is not evidence for it, and saying so is the difference between
+a screenshot and a prop.
+
 **Look at the string in the running window before proposing it, not in the
 source.** A line that reads well in the code can repeat the prefix the pane
 puts in front of it, and that is invisible in a diff and obvious in a
