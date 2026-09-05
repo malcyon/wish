@@ -50,11 +50,20 @@ class ConvertError(Exception):
     """Anything a direction or `Source.detect` refuses, phrased for a pane."""
 
 
+def _same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
+    """Whether two paths name the same file, across relative and symlinked forms."""
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:            # a path that cannot be resolved is not a match
+        return False
+
+
 # ---------------------------------------------------------------------------
 # What is being converted
 # ---------------------------------------------------------------------------
 
 @dataclasses.dataclass
+
 class Source:
     """One save, read off a path -- never off what a window happens to hold.
 
@@ -86,7 +95,12 @@ class Source:
         conversion instead of whatever is on disk.
         """
         path = pathlib.Path(path)
-        if party is not None and party.path and pathlib.Path(party.path) == path:
+        # Both sides resolved: a caller may hand us a relative path where
+        # `Party.path` is absolute, or either may cross a symlink.  Comparing
+        # them raw falls through to reading the file, which is the stale copy
+        # this branch exists to avoid -- and it would do it silently.
+        if (party is not None and party.path
+                and _same_file(pathlib.Path(party.path), path)):
             if party.save0 is None:
                 raise ConvertError(f"{path} has no saved game open")
             return cls(port="c64", title=party.game, path=path,
