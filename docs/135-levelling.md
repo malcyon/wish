@@ -296,24 +296,23 @@ the bytes; what differs is whether any **byte on a disk** votes for it as well.
 | turning level, `$113F` | **CONFIRMED** | the bytecode, the two shipped characters that store one, and a ladder matching Pool of Radiance's independently read `$2399` digit for digit |
 | constitution hit points, `$11D7` + `$126D` | **CONFIRMED** | the table bytes, and `hp_max` reproduced on **6 of 6** shipped characters |
 | wisdom bonus spells, `ECL65 $8906` | **CONFIRMED**, and see below | the table bytes plus an exact match to the *Players Handbook* row |
-| racial saving-throw bonus, `$0F19` | **PROBABLE** | **the bytecode alone** |
+| racial saving-throw bonus, `$0F19` | **CONFIRMED** | the bytecode, and a dwarf's five stored saves written by the trainer in the running game (`docs/172-curse-trainer.md`) |
 | hit die rolled twice, `$15FC` | **PROBABLE** | the bytecode alone; a roll leaves no trace in a record |
 | thief skills including dexterity, `$0FAD` | **CONFIRMED** | the bytecode and the one shipped thief, 8 of 8 columns |
 | spell capacity never stored | **CONFIRMED** | no write in any of 411 files, and 6 of 6 characters hold zero |
 | `attack_forms`, `$1909` + `$191E` | **CONFIRMED** | the threshold row, 6 of 6 stored bytes, and Silver Blades' separately measured ranger band agreeing |
 | the class-count divide, `$11AB` | **PROBABLE** | the bytecode; `$2F6B`'s range is in a resident routine outside `GEN`, so the *probability* is read from the comparison rather than measured |
 
-**The racial saving-throw bonus is PROBABLE and was briefly written up as
-confirmed.** It is bytecode and nothing else: none of the six characters SSI
-shipped is a dwarf, gnome or halfling, and the disks carry no other Curse
-character, so **no stored `save_*` byte anywhere has ever been seen with this
-bonus subtracted into it**. That gap is the same shape as the one this section
-found for spell capacity — `ECL65 $880D` computes a perfectly correct number
-that never reaches the record — so "the routine says so" is a weaker claim than
-"a character's byte says so". What would raise it to CONFIRMED: one Curse
-dwarf, gnome or halfling whose five stored saves are the class rows less
-`constitution * 2 / 7` on columns 0, 2 and 4 and unchanged on 1 and 3. A driven
-training would make one.
+**The racial saving-throw bonus was PROBABLE until a dwarf was trained.** It
+was bytecode and nothing else — none of the six characters SSI shipped is a
+dwarf, gnome or halfling — and what this page asked for was *"one Curse dwarf,
+gnome or halfling whose five stored saves are the class rows less
+`constitution * 2 / 7` on columns 0, 2 and 4 and unchanged on 1 and 3"*. TRAVIS,
+a dwarf with constitution 16, was trained in the running game on 2026-09-05 and
+his five saves came out `7 11 8 13 9`, which is the lower of the thief 6 and
+fighter 5 rows less 4 on columns 0, 2 and 4 exactly — and the bytes he went in
+with had no such bonus in them. `docs/172-curse-trainer.md` has the working and
+`WISH-SPEC-curse-trained-party` is the disk.
 
 **The wisdom bonus is CONFIRMED and can never be corroborated against a
 character**, which is a different thing from being weakly evidenced. The bonus
@@ -323,6 +322,14 @@ plus the independent fact that `0 0 1 1 2 3 4` is AD&D 1st edition's row, which
 is two sources and as strong as this one gets without watching the running game
 memorise a spell. A reader should not assume the evidentiary shape of the
 constitution bonus, which six characters' `hp_max` votes for directly.
+
+**What a driven training added to all of this**, and what it did not:
+`docs/172-curse-trainer.md` is the 2026-09-05 session, five level-ups replayed
+through `goldbox/levelup.py` with 75 of 75 derived fields reproducing. It moved
+the racial saving-throw bonus above and confirmed that spell capacity is never
+written by watching a cleric go from 5 to 6 and leave `0x0EE`-`0x0F6` at nine
+zeroes. **It did not touch the class-count divide at `$11AB`**, which is still
+PROBABLE: every die was handed back to the module rather than predicted.
 
 **One caveat on the constitution bonus, which is otherwise fully earned.** No
 shipped character has a constitution below 14, so the *consequence* of the
