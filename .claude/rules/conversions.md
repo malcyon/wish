@@ -77,10 +77,34 @@ goes.
 **No player ever sees a dropped-field message.** Donald, 2026-09-05: *"I don't
 want the player to EVER see a message saying any field was dropped. The
 conversion needs to be perfect."* So the drop list is **our accounting**, and
-the pane that shows it to a player is a temporary state rather than a feature
--- what it is for is telling us the flag cannot come off yet. Rewording an
-entry is worth less than removing it, and an agent polishing a drop line is
-usually an agent working on the wrong half of the problem.
+and the list of losses is not something a player reads. Rewording an entry is
+worth less than removing it, and an agent polishing a drop line is usually an
+agent working on the wrong half of the problem.
+
+**The pane itself stays, and becomes a smaller one that says what Wish did.**
+Donald, 2026-09-05: *"you could reduce the size of the drop pane and make it a
+messages pane. It could say things like, 'Fixing Ring of Fire Resistance
+bug.' If we discover that it truly isn't needed, we can remove it then. But
+let's not plan ahead so far. Let's wait and see what we might need it for."*
+
+So it turns from a list of what did not convert into an account of what
+happened. **And it is not there to be as small as possible -- a player wants
+to know what the conversion did.** Donald, 2026-09-05: *"The user will want to
+know details about the conversion. A messages pane with details about what
+happened can have value."*
+
+So the test of a line is whether it tells the player something true and useful
+about their own save -- a repair Wish applied, a thing that did not fit and
+which of them they kept, what was read and what was written. **The test it
+must not fail is the one above it**: never a field we failed to convert, and
+never a memory address, a record offset or a script filename, which
+`.claude/rules/gui-text.md` keeps out of anything a player reads.
+
+**An earlier version of this rule said the pane was a temporary state that
+would end with the flag. That was my inference and it is wrong; do not plan
+its removal.** The example sentence above is Donald's shape rather than
+approved wording, and `.claude/rules/gui-text.md` governs every string that
+ends up in it.
 
 **The one exception, and it covers every field alike: a destination that
 genuinely holds fewer things than the source.** Donald, 2026-09-05: *"If a
