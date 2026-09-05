@@ -747,6 +747,30 @@ Ranger, Magic-User, Thief, Monk in index order, in every title's front end), so
 the likeliest explanation is that the record was edited, which its provenance
 allows. Left as it stands rather than resolved.
 
+### What the code does with it
+
+`goldbox/dos_layout.py`'s three later shapes name the byte after `level`
+**`former_level`**, CONFIRMED, at the offsets this section measured. Reading
+it (`goldbox/dos.py` `to_neutral`, `goldbox/amiga.py` `to_neutral_later`):
+
+* `former_class_levels` is read as `former_levels`, **non-zero entries
+  only** -- `{}` for a character who never dual-classed, never eight zero
+  entries;
+* the DOS reader checks `former_level` against the array's one non-zero
+  entry and warns, naming both numbers, when they disagree -- or when the
+  array is empty and the byte is not;
+* `class_bits_for`'s OR over both level arrays is the *regained* state, not
+  the state at the moment of the change (DEMELTINA and PAINE both hold the
+  new class's bit alone right after their training halls), and its docstring
+  says so.
+
+Still open: a neutral-to-DOS writer for Curse, Silver Blades or Pools of
+Darkness does not exist, so nothing yet writes `former_class_levels` or
+`former_level` back out, and `#234 (A dual-classed Curse or Silver Blades
+character converted to DOS loses the class he trained out of)` is blocked on
+that writer. The C64 reader's own fixes -- keying by class name rather than
+slot number, and moving the pair off `READ_DROPPED` -- are a separate change.
+
 ### Counts, and which directories they cover
 
 Deduplicated on bytes, over `~/Downloads/fr-archives` **only** — the number to

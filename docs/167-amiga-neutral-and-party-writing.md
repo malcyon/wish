@@ -121,6 +121,7 @@ Carried by a rule rather than a copy:
 | `spells_known` | Curse's 100 one-byte flags; Silver Blades' 15 bytes of bitmask, least significant bit first |
 | `spells_memorised` | the non-zero ids reversed, DOS's own order |
 | `levels` | `class_levels` permuted from class number to class name, eight slots on Curse and seven on Silver Blades |
+| `former_levels` | `former_class_levels` permuted the same way, **non-zero entries only** — `{}` for a character who never dual-classed, not eight zero entries (`#256 (The neutral record has nowhere to put a dual-classed character's former levels)`) |
 | `spells_castable` | each array at the **Amiga's** width — six bytes on Curse where DOS spends five, seven on Silver Blades |
 | `size_small` | the size byte less one |
 | `status` | a name out of `STATUS_NAMES`, above |
@@ -145,13 +146,18 @@ of Radiance `.spc` keeps exactly eighteen ids and that list is already in
 `goldbox/dos.py`; the equivalent for a Curse character created in Curse has not
 been read.
 
-### The three fields the read drops with a reason
+### The two fields the read drops with a reason
 
-* **`former_class_levels`** — what each class was before the character
-  dual-classed. There is no neutral field for it, and adding one obliges every
-  writer to declare what it does with the name -- three modules -- so it is
-  `#256 (The neutral record has nowhere to put a dual-classed character's
-  former levels)` rather than half a change.
+**`former_class_levels` is no longer here.** Until `#256 (The neutral record
+has nowhere to put a dual-classed character's former levels)`'s first step it
+was dropped outright, saying there was nowhere to put it; `goldbox/neutral.py`
+now has `former_levels`, and it is read into that, non-zero entries only --
+see the table above. The byte after `level` was an unnamed gap until the same
+step named it `former_level`; `later_field_disposition` now accounts for it
+as one more field the array's permutation already covers, without this
+reader reading it a second time -- that is the DOS reader's own disagreement
+check, on `goldbox/dos.py`'s side of the pair.
+
 * **`portrait_head` and `portrait_body`** — a position in the Amiga's own
   creation menu. `#57 (Convert the character portrait across ports)` read DOS's menu tables out of `START.EXE` and that is
   what let the portrait cross; nobody has read `/Curse`'s or `/Secret`'s.

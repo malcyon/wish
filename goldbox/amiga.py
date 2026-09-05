@@ -3048,6 +3048,12 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
                          "highest first"),
     ("class_levels", "named rather than numbered, into the neutral levels "
                      "map"),
+    ("former_class_levels", "named rather than numbered, into the neutral "
+                            "former_levels map, non-zero entries only "
+                            "(#256)"),
+    ("former_level", "the same level again; not read separately -- it is "
+                     "the DOS reader's disagreement check, and this reader "
+                     "shares the field table rather than the check"),
     ("spells_castable_cleric", "into the neutral spells_castable map, at the "
                                "Amiga's own array width"),
     ("spells_castable_druid", "into the same map"),
@@ -3066,13 +3072,6 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: Fields the read leaves behind, and why.  Every one is reported: a drop that
 #: nobody names is what `docs/117-save-conversion.md` forbids.
 LATER_DROPPED: tuple[tuple[str, str], ...] = (
-    ("former_class_levels", "what each class was before the character dual-"
-                            "classed. **There is no neutral field for it**: "
-                            "`goldbox/neutral.py` has `levels` and nothing "
-                            "beside it, and adding one obliges every writer "
-                            "to declare what it does with the name -- three "
-                            "modules, which is why this is #256 rather than "
-                            "half a change"),
     ("item_chain", "live heap state: the head of the Amiga's item list, "
                    "which the loader overwrites with the address it "
                    "allocates. The items themselves are converted"),
@@ -3111,9 +3110,6 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
 #: loss a player could notice have one, which is the same line
 #: `goldbox/dos.py` draws with `UNREPORTED_DROPS`.
 LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "former_class_levels": "The levels a dual-classed character reached in "
-                           "the class they gave up: the conversion has "
-                           "nowhere to put them yet",
     "item_chain": "Item list bookkeeping: the list's own internal links, "
                   "which the game rebuilds when it loads the party",
     "effect_chain": "The running-effects list's own internal link; the "
@@ -3236,6 +3232,18 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             f"{shape.offset(table['class_levels'].offset):#05x}, permuted "
             f"from class number to class name",
             grade("class_levels"))
+
+    # -- the class a dual-classed human left, where the title has one -------
+    if "former_class_levels" in table:
+        fc = table["former_class_levels"]
+        former_raw = char.get("former_class_levels")
+        out.set("former_levels",
+                {name: former_raw[n] for n, name, _ in named
+                 if n < len(former_raw) and former_raw[n]},
+                f"Amiga former_class_levels @{shape.offset(fc.offset):#05x}, "
+                f"permuted from class number to class name, non-zero "
+                f"entries only",
+                grade("former_class_levels"))
 
     castable = dict(char.spell_slots)
     castable.pop("unattributed", None)

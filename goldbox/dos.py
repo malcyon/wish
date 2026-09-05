@@ -480,6 +480,15 @@ def class_bits_for(char: "DosCharacter") -> int:
     former one.  Equal to the stored `class_bits` in 54 of 54 shipped records
     across all four titles, which is what makes it a check on the layout: a
     shape one byte out moves one array or the other and the two stop agreeing.
+
+    **Not the state at the moment a character dual-classes.** DEMELTINA and
+    PAINE, read one action after Curse's and Silver Blades' own training
+    halls dual-classed them, both hold `class_bits` for the *new* class only
+    -- the old bit returns once the new class's level passes the byte after
+    `level` (`#234`, PROBABLE on `0x3C031`), and this function's OR over both
+    arrays is that *regained* state rather than the general one. A record
+    read fresh off a dual-class, before that threshold, disagrees with what
+    this function returns.
     """
     slots = {n for n, v in enumerate(char.raw("class_levels")) if v}
     if "former_class_levels" in char.fields:
@@ -902,6 +911,8 @@ LATER_TITLE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                             "permuted from class number to class name and "
                             "written into the C64's dual_class_slot and "
                             "dual_class_level"),
+    ("former_level", "the same level again; checked against the array and "
+                     "folded into former_levels"),
     ("spells_castable_druid", "the third slot array, converted into the "
                               "neutral record beside the cleric's and the "
                               "magic-user's"),
@@ -1100,13 +1111,34 @@ def to_neutral(dos: DosCharacter,
 
     # -- the class a dual-classed human left, where the title has one --------
     # Curse of the Azure Bonds and everything after it keep a second copy of
-    # the level array holding what the character *was*.  Pool of Radiance has
-    # no such array and sets nothing here.
+    # the level array holding what the character *was*, and the same level
+    # again in the single byte right after `level` (#234).  Pool of Radiance
+    # has neither and sets nothing here.
     if "former_class_levels" in dos.fields:
         f = dos.fields["former_class_levels"]
-        out.set("former_levels", _by_class("former_class_levels"),
-                f"DOS former_class_levels @{f.offset:#05x}, permuted the same "
-                f"way as the current array", f.confidence)
+        former = {name: level for name, level in _by_class(
+            "former_class_levels").items() if level}
+        lf = dos.fields["former_level"]
+        byte_value = dos.raw("former_level")[0]
+        if len(former) == 1:
+            ((only_name, only_level),) = former.items()
+            if byte_value != only_level:
+                out.warnings.append(
+                    f"DOS former_class_levels @{f.offset:#05x} holds "
+                    f"{only_name} {only_level} and the byte after level "
+                    f"@{lf.offset:#05x} holds {byte_value}; the two should "
+                    f"agree and do not, so former_levels is taken from the "
+                    f"array")
+        elif not former and byte_value:
+            out.warnings.append(
+                f"DOS former_class_levels @{f.offset:#05x} is all zero but "
+                f"the byte after level @{lf.offset:#05x} holds {byte_value}, "
+                f"which should mean a dual-classed character; former_levels "
+                f"is left empty")
+        out.set("former_levels", former,
+                f"DOS former_class_levels @{f.offset:#05x}, permuted the "
+                f"same way as the current array, non-zero entries only",
+                f.confidence)
 
     # -- spell slots, by class: two arrays on Pool of Radiance, three after --
     castable = {"cleric": tuple(dos.raw("spells_castable_cleric")),

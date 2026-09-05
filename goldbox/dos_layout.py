@@ -787,10 +787,32 @@ class DosShape:
 #: Shared by three titles, so it is written once.
 _FORMER_NOTE = (
     "the per-class level array again, indexed by class number the same way, "
-    "holding what a dual-classed character *was*. ABAGAIL in Pools of "
-    "Darkness is a magic-user 12 whose slot 0 here reads cleric 11, and her "
-    "class bitmask carries both bits; PAINE is a magic-user 13 who was a "
-    "ranger 9. CONFIRMED on those two; Pool of Radiance has no such array")
+    "holding what a dual-classed character *was*. CONFIRMED by two engine-"
+    "written transitions, one action apart from their own before-state and "
+    "read at this shape's own offsets: Curse's DEMELTINA, a human paladin 5 "
+    "put through HUMAN CHANGE CLASSES at the training hall, has slot 3 (the "
+    "class he left) go 0 -> 5 while class_levels[paladin] goes 5 -> 0 and "
+    "class_levels[cleric] goes 0 -> 1; Silver Blades' PAINE, a human ranger 8 "
+    "trained the same way, has slot 4 go 0 -> 8 while class_levels[ranger] "
+    "goes 8 -> 0 and class_levels[magic-user] goes 0 -> 1. Pool of Radiance "
+    "has no such array")
+
+#: Shared by three titles, likewise -- the byte immediately after `level`,
+#: which the community notes call `multiclassLevel`.  It is not: that name and
+#: the C64-counterpart claim beside it are both wrong, and `#234 (A dual-
+#: classed Curse or Silver Blades character converted to DOS loses the class
+#: he trained out of)` found what it actually is.
+_FORMER_LEVEL_NOTE = (
+    "the level a dual-classed character left the old class at, again -- the "
+    "same number `former_class_levels` holds at the old class's slot, in a "
+    "single byte with no slot to look up. CONFIRMED on the same two engine-"
+    "written transitions: Curse's DEMELTINA goes 0 -> 5 here exactly as slot "
+    "3 of former_class_levels does, and Silver Blades' PAINE goes 0 -> 8 "
+    "exactly as slot 4 does. Curse's own `GAME.OVR` at 0x03BD7B writes this "
+    "byte and the array entry a few instructions apart in the same routine, "
+    "both from `es:[di+0xE5]` (`level`, before it is reset to 1). The reader "
+    "checks the two agree and warns when they do not; the writer this "
+    "project does not yet have would write both from the one neutral value")
 
 _DRUID_SLOT_NOTE = (
     "the slot array between the cleric's and the magic-user's, one byte per "
@@ -845,9 +867,10 @@ CURSE_OF_THE_AZURE_BONDS = DosShape(
            "gap_017": 0, "spells_memorised": 84, "spellbook": 100,
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
-    inserts={"level": 1,
+    inserts={"level": (_x(1, "former_level", "Level left the old class at",
+                          _OK, _FORMER_LEVEL_NOTE),),
              "class_levels": (_x(8, "former_class_levels",
-                                 "Former class levels", _MAYBE, _FORMER_NOTE),),
+                                 "Former class levels", _OK, _FORMER_NOTE),),
              "spells_castable_cleric": (
                  _x(5, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),),
@@ -879,9 +902,11 @@ SECRET_OF_THE_SILVER_BLADES = DosShape(
            "field_83_87": 4, "class_levels": 7, "gap_09f": 0,
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 7, "spells_castable_magic_user": 7},
-    inserts={"char_class": 1, "level": 1,
+    inserts={"char_class": 1,
+             "level": (_x(1, "former_level", "Level left the old class at",
+                          _OK, _FORMER_LEVEL_NOTE),),
              "class_levels": (_x(7, "former_class_levels",
-                                 "Former class levels", _MAYBE, _FORMER_NOTE),),
+                                 "Former class levels", _OK, _FORMER_NOTE),),
              "spells_castable_cleric": (
                  _x(7, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),
@@ -917,9 +942,11 @@ POOLS_OF_DARKNESS = DosShape(
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
            "gap_0b8": 2, "portrait_head": 0, "portrait_body": 0},
-    inserts={"char_class": 1, "level": 1,
+    inserts={"char_class": 1,
+             "level": (_x(1, "former_level", "Level left the old class at",
+                          _OK, _FORMER_LEVEL_NOTE),),
              "class_levels": (
-                 _x(7, "former_class_levels", "Former class levels", _MAYBE,
+                 _x(7, "former_class_levels", "Former class levels", _OK,
                     _FORMER_NOTE),
                  _x(7, "highest_class_levels", "Highest class levels", _MAYBE,
                     "a third copy of the level array, and what a title with "
