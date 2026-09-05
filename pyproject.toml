@@ -55,6 +55,24 @@ version-file = "wish/_version.py"
 # in an installed wheel.
 packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 
+# The desktop entry and the icon, so a Linux desktop can match the window to
+# them and draw the pentagram in Alt-Tab rather than a generic gear.
+#
+# These land in `<prefix>/share`, which the desktop searches **only for some
+# ways of installing**: `pip install --user` puts them in `~/.local/share` and
+# a system-wide install in `/usr/local/share`, both of which are on the search
+# path, while a virtualenv or a `pipx` install puts them somewhere that is
+# not. `tools/installdesktop.py` is what covers those, and `wish` runs it
+# itself on first start when nothing is found -- see `#9 (Finish the packaging
+# icons: .desktop, .icns and a README lockup)`.
+#
+# The icon shipped here is the scalable one. Every current desktop reads
+# `hicolor/scalable`, and one file beats eight rendered sizes that would have
+# to be regenerated whenever the artist delivers again.
+[tool.hatch.build.targets.wheel.shared-data]
+"assets/wish.desktop" = "share/applications/wish.desktop"
+"assets/logo/mark.svg" = "share/icons/hicolor/scalable/apps/wish.svg"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The suite is overwhelmingly independent test files, so parallel is the

@@ -680,12 +680,31 @@ def dress(app) -> None:
       pinning. Left unset, a Python-hosted window can be grouped under the
       interpreter rather than under itself, and a pin can attach to the wrong
       thing.
+
+    **And on Linux, none of that is enough on its own.** The desktop matches
+    the window to a `.desktop` entry and then looks up the icon *by name* in
+    its icon theme, so with neither installed it draws a generic gear whatever
+    `setWindowIcon` said. Donald hit exactly that on 2026-09-05. A wheel ships
+    both into `<prefix>/share`, which is on the search path for a
+    `pip install --user` and not for a virtualenv or a `pipx` install -- so
+    `tools.installdesktop.ensure` puts them in the user's own directory the
+    first time it finds none. It refuses to run on anything but Linux, when an
+    entry already exists anywhere on the search path, when
+    `WISH_NO_DESKTOP_INSTALL` is set, and in a headless or offscreen run --
+    the last of which is what keeps the test suite out of somebody's home
+    directory.
     """
     app.setApplicationName("Wish")
     # Not `setApplicationDisplayName`: Qt appends it to every window title, and
     # the title already starts with "Wish".
     app.setDesktopFileName(paths.APP)
     app.setWindowIcon(app_icon())
+    if sys.platform.startswith("linux"):
+        from tools import installdesktop
+
+        written = installdesktop.ensure()
+        if written is not None:
+            debuglog.debug("wrote a desktop entry at %s", written)
     if sys.platform == "win32":
         try:
             import ctypes

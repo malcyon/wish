@@ -51,6 +51,12 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--forget", metavar="AREA",
                     help="clear remembered squares for one area (or ALL), then "
                          "exit. Notes are kept")
+    ap.add_argument("--install-desktop", action="store_true",
+                    help="install the Linux desktop entry and icon, then exit. "
+                         "Wish does this itself on first run when it finds "
+                         "none; this is for doing it again by hand")
+    ap.add_argument("--remove-desktop", action="store_true",
+                    help="take that entry and those icons out again, then exit")
     ap.add_argument("--version", action="version",
                     version=f"wish {__version__}")
     return ap
@@ -110,6 +116,17 @@ def main(argv: list[str] | None = None) -> int:
             print("character.ui changed; recompiled the form")
 
     from automap.maps import forget, load_maps_titled
+
+    if args.install_desktop or args.remove_desktop:
+        # Before anything else that needs a window: this is a file operation
+        # on the user's own XDG directories and it must work over ssh, on a
+        # machine with no display, and in a virtualenv -- which is the case
+        # it exists for, since a wheel's own data files land where no desktop
+        # looks. `tools/installdesktop.py` says why (#9).
+        from tools import installdesktop
+
+        return installdesktop.main(
+            ["--remove"] if args.remove_desktop else [])
 
     if args.forget:
         return forget(args.forget)

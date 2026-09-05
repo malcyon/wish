@@ -111,7 +111,83 @@ def refresh(quiet: bool = False) -> None:
             print(f"  ran {argv[0]}")
 
 
-def install() -> int:
+def search_path() -> list[pathlib.Path]:
+    """Every directory a desktop looks in, ours first.
+
+    `$XDG_DATA_HOME` then `$XDG_DATA_DIRS`, with the defaults the
+    freedesktop spec names when either is unset.  A Flatpak's and a Snap's
+    exported directories are on this list on an ordinary desktop, which is
+    what makes `already_installed` able to keep out of a packager's way.
+    """
+    dirs = [data_home()]
+    system = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    dirs += [pathlib.Path(p) for p in system.split(":") if p]
+    return dirs
+
+
+def already_installed() -> pathlib.Path | None:
+    """Where a desktop entry for Wish already is, if anywhere.
+
+    Anywhere at all, not only ours: a distribution package, a Flatpak or a
+    `pip install --user` puts one on the search path, and **we must not write
+    over somebody else's**.  That is the whole reason this function exists
+    rather than a check for our own file.
+    """
+    for where in search_path():
+        entry = where / "applications" / f"{paths.APP}.desktop"
+        if entry.exists():
+            return entry
+    return None
+
+
+def ensure(quiet: bool = True) -> pathlib.Path | None:
+    """Install on first run, and do nothing every other time.
+
+    Called from `wish/window.py` as the window starts.  It is the layer that
+    covers the ways of installing the wheel's own data files cannot reach --
+    a virtualenv, `pipx`, a git checkout -- where `<prefix>/share` is not a
+    directory any desktop searches.
+
+    **Four things stop it**, and each is a way this could otherwise go wrong:
+
+    * not Linux.  macOS and Windows take their icon from the bundle and the
+      executable, and `#9 (Finish the packaging icons: .desktop, .icns and a
+      README lockup)` covers those separately.
+    * an entry already on the search path, wherever it came from.
+    * `WISH_NO_DESKTOP_INSTALL` set, for somebody who wants none of this.
+    * an offscreen or headless run.  `tests/conftest.py` forces
+      `QT_QPA_PLATFORM=offscreen`, and a test suite must never install
+      anything into the person's home directory.
+
+    Returns the entry it wrote, or `None`.  **It never raises**: a window
+    that fails to open because an icon could not be filed would be a far
+    worse bug than the gear it is fixing.
+    """
+    try:
+        if not sys.platform.startswith("linux"):
+            return None
+        if _truthy(os.environ.get("WISH_NO_DESKTOP_INSTALL")):
+            return None
+        if os.environ.get("QT_QPA_PLATFORM", "").startswith("offscreen"):
+            return None
+        if not os.environ.get("DISPLAY") and not os.environ.get(
+                "WAYLAND_DISPLAY"):
+            return None
+        found = already_installed()
+        if found is not None:
+            return None
+        install(quiet=quiet)
+        return desktop_path()
+    except Exception:                       # noqa: BLE001 -- cosmetic only
+        return None
+
+
+def _truthy(value: str | None) -> bool:
+    """`wish/debugmode.py`'s tuple, copied rather than reinvented."""
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def install(quiet: bool = False) -> int:
     from PyQt6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
@@ -121,26 +197,27 @@ def install() -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(entry_text(), encoding="utf-8")
     path.chmod(0o755)
-    print(f"wrote {path}")
-    print(f"  Exec={launcher()} %f")
+    say = (lambda *a: None) if quiet else print
+    say(f"wrote {path}")
+    say(f"  Exec={launcher()} %f")
 
     for size in SIZES:
         where = icon_path(size)
         where.parent.mkdir(parents=True, exist_ok=True)
         if not appicon.image(size).save(str(where)):
             raise SystemExit(f"could not write {where}")
-    print(f"wrote {len(SIZES)} icons under "
-          f"{data_home() / 'icons' / 'hicolor'}")
+    say(f"wrote {len(SIZES)} icons under "
+        f"{data_home() / 'icons' / 'hicolor'}")
 
     scalable = icon_path(None)
     scalable.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(appicon.ASSET, scalable)
-    print(f"wrote {scalable}")
+    say(f"wrote {scalable}")
 
-    refresh()
+    refresh(quiet=quiet)
     del app
-    print("\nLog out and back in if the icon does not change straight away: "
-          "some desktops read the theme once at start-up.")
+    say("\nLog out and back in if the icon does not change straight away: "
+        "some desktops read the theme once at start-up.")
     return 0
 
 
