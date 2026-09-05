@@ -262,8 +262,29 @@ class DosSaveShape:
     #: 1 where byte `head` is the area's `.DAX` container number, 0 where the
     #: file has no such byte.
     dax_bytes: int = 1
-    #: `u16le` ECL variables from `$4900` up.
+    #: `u16le` ECL variables from `var_base` up.
     var_words: int = VAR_WORDS
+    #: **The address the title's own scripts call variable 0.** `$4900` in
+    #: Pool of Radiance and `$4B00` in Curse of the Azure Bonds and Secret of
+    #: the Silver Blades, whose whole save image is relocated by `$200`.
+    #:
+    #: CONFIRMED from the bytecode, both ports (`#192` step 0a): an address
+    #: census over all 25 of Curse's `ECL` scripts finds 219 references into
+    #: `$4B00`, 2053 into `$4C00`, 2 into `$4D00` and **none at all** into
+    #: `$4900` or `$4A00`, and the C64 and DOS reference sets are identical
+    #: because 21 of the 25 scripts are the same bytes on both ports.  The
+    #: same routine appears in both titles' `DUNGEON` with every operand
+    #: `$200` apart.
+    #:
+    #: **Nothing in this module takes an address in that space, and that is
+    #: deliberate.** `word_offset` names its argument by Pool of Radiance's
+    #: address for the same *word index*, which is what every measurement
+    #: here was taken through and what every caller passes. A caller holding
+    #: a Curse address converts with `pool_address` first; handing `$4C20` --
+    #: a real Curse quest flag -- straight to `word_offset` is inside Pool of
+    #: Radiance's guard and comes back as the word for index `$320`, which is
+    #: a file offset 1024 bytes out and looks entirely plausible.
+    var_base: int = VAR_BASE
     #: The staged `ECL<n>.DAX` script, or 0 where the title does not stage one.
     script_bytes: int = ECL_BUFFER[1] - ECL_BUFFER[0]
     #: Extra bytes Curse and Silver Blades write **inside** the square block,
@@ -415,7 +436,7 @@ SAVE_POOL_OF_RADIANCE = DosSaveShape(
 #: =============  =====  ===========================================
 SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
     key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
-    size=13149, unnamed=12)
+    size=13149, unnamed=12, var_base=0x4B00)
 
 #: Secret of the Silver Blades, 5469 -- and the reason it is less than half
 #: the size is that **it stages no script**.  Its variable array is Pool of
@@ -433,7 +454,7 @@ SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
 #: and 328 bytes of character slots at 5141 (#253).
 SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
-    size=5469, script_bytes=0, unnamed=12)
+    size=5469, script_bytes=0, unnamed=12, var_base=0x4B00)
 
 #: Pools of Darkness, 1364 bytes of `SAVGAM<slot>.PTY` and a 12-byte
 #: `VAULT<slot>.DAT` that is all zero in both specimens.
@@ -500,9 +521,18 @@ def save_shape_for(what: "int | str | DosSaveShape") -> DosSaveShape:
 # -- the named VM variables --------------------------------------------------
 TRAVEL_X = 0x49C3            # the overland square, window-local, live only
 TRAVEL_Y = 0x49C4            # outdoors -- see `travel_square`
-AREA = 0x49C5                # geo block id == area id, `goldbox/areas.py` numbers
-                             # -- but **0 in all three outdoor saves**, not
-                             # the C64's SQRDATA number (#59, outdoor pass)
+AREA = 0x49C5                # the resident GEO block, **not the area** -- the
+                             # two numbers coincide only for an area that
+                             # loads its own map.  `LOADFILES`' first operand
+                             # lands here, unless it is $FF or $7F, and the
+                             # only reader hands it to the GEO loader
+                             # (GAME.OVR:0x1A09 and 0x1FBBE; the C64's $2041,
+                             # `docs/118-debug-mode.md`).  0 in all three
+                             # outdoor saves, not the C64's SQRDATA number
+                             # (#59, outdoor pass), and 0 in a hall, whose
+                             # script loads no map at all (#257).  The name
+                             # is the one twenty call sites already use;
+                             # `geo_block` is what it should have been
 EMPTY = 0xFFFF               # an empty word slot, the wallset triple's $FF
 CLOCK_DIGITS = 6
 CLOCK = 0x49C6               # six digit words, exactly the C64's six bytes:
@@ -511,7 +541,12 @@ CLOCK = 0x49C6               # six digit words, exactly the C64's six bytes:
 INDOORS = 0x49E6             # 1 in the three indoor specimens, 0 in the three
                              # outdoor ones; written 0->1 by the boat-back
                              # transition, writer 30F6:0CA1 (#59 run2)
-SCRIPT = 0x49F2              # the area script id
+SCRIPT = 0x49F2              # the area the party is in, indoors or out --
+                             # `NEWECL`'s handler writes it and the startup
+                             # path reads it straight back into the engine's
+                             # current-area global (GAME.OVR:0x192F and
+                             # 0x4067-0x4070), which is then what the travel
+                             # -mode test compares against 25, 26 and 27
 FLAGS_FIRST, FLAGS_LAST = 0x4A20, 0x4AF8    # quest flags, shared ECL addresses
 WALLSET = 0x4AFA             # three words: WALLDEF/8X8D block ids, $FFFF empty
 WALLMAP = 0x4AFD             # three words: (1,2,3) with three sets loaded,
@@ -562,11 +597,37 @@ SAVGAM_CONSTANTS: tuple[tuple[int, int, str], ...] = (
 )
 
 
+def pool_address(address: int, shape: "DosSaveShape | None" = None) -> int:
+    """A title's own ECL address, as the Pool of Radiance address for the
+    same word of the variable array.
+
+    `$4C20` is a Curse of the Azure Bonds quest flag and `$4A20` is Pool of
+    Radiance's; they are the **same word index**, `$120`, at the same file
+    offset, because the whole save image moved by `$200` between the two
+    titles and the array did not change shape (`DosSaveShape.var_base`).
+
+    This exists because `word_offset` cannot tell the two apart: `$4C20` is
+    inside Pool of Radiance's `$4900`-`$52FF` guard, so passing it raises
+    nothing and returns the word for index `$320` -- a file offset 1024 bytes
+    out, and every value read through it plausible and wrong.  A caller that
+    has a Curse or Silver Blades address in hand converts here first.
+    """
+    shape = shape or SAVE_POOL_OF_RADIANCE
+    return address - shape.var_base + VAR_BASE
+
+
 def word_offset(address: int, shape: "DosSaveShape | None" = None) -> int:
     """File offset of the VM word for an ECL address.
 
-    The default shape is Pool of Radiance's, whose array Curse and Silver
-    Blades share offset for offset -- see `SAVE_CURSE_OF_THE_AZURE_BONDS`.
+    **The address is Pool of Radiance's**, whatever title the shape is, and
+    what it really names is a *word index* into the array: `$4900` is index 0
+    in every title that has one, because Curse and Silver Blades relocate the
+    whole save image by `$200` without changing the array.  Their scripts
+    call the same word `$4B00`, and `pool_address` is what converts.  This
+    function does not, and cannot: a Curse address lands inside the guard
+    below and comes back as a plausible offset 1024 bytes from the one the
+    caller meant (`#192`).
+
     Pools of Darkness has no array here at all and raises.
     """
     shape = shape or SAVE_POOL_OF_RADIANCE
@@ -678,20 +739,48 @@ def dax_number(save: bytes, shape: "DosSaveShape | None" = None) -> int:
     return save[shape.head]
 
 
-def area_id(save: bytes) -> int:
+def geo_block(save: bytes) -> int:
+    """Which `GEO` was resident when the save was written.  **Not the area.**
+
+    `$49C5`, and the only thing that reads it is the `GEO` loader.  The number
+    equals the area id for an area that loads its own map, which is most of
+    them, and that coincidence is what `area_id` was named for.
+
+    Two kinds of place break it, and both read 0 here:
+
+    * **the overland**, where no `GEO` is loaded at all -- 10 of 10 outdoor
+      specimens (#59);
+    * **an area whose script loads no map**, which in Pool of Radiance is
+      the training hall (11) and Phlan City Hall (8).  `tools/loadfiles.py`
+      finds no `LOADFILES` anywhere in `ECL0B`, so the hall runs on New
+      Phlan's `GEO00` and leaves `$49C5` at 0 while `$49F2` says 11 (#257).
+    """
     return word(save, AREA)
 
 
-def current_area(save: bytes) -> int:
-    """The area the party is in, indoors or out.
+#: The old name for `geo_block`, kept because twenty call sites use it.  It
+#: never meant the area: see `geo_block` and `AREA` above.
+area_id = geo_block
 
-    Indoors `$49C5` and `$49F2` agree (asserted across every indoor specimen).
-    Outdoors `$49C5` is 0 -- the DOS overland names no GEO there -- and the
-    area id (25-27) is carried by `$49F2` alone, so a reader keying on
-    `area_id` would take a party on the travel grid for one in New Phlan
-    (#59, the outdoor pass).
+
+def current_area(save: bytes) -> int:
+    """The area the party is in, indoors or out.  `$49F2`, always.
+
+    CONFIRMED from the engine's own code, on both ports.  `NEWECL`'s handler
+    writes the departing area here and then sets the current-area global to
+    its operand (`GAME.OVR:0x192F`, the C64's `$2011`-`$2016`), and the
+    area-startup path reads the word straight back into that global
+    (`GAME.OVR:0x4067`-`0x4070`) before comparing it against 25, 26 and 27 to
+    choose travel mode.  Nothing anywhere loads `$49C5` into it.
+
+    This read `$49C5` indoors until #257, on the belief that the two words
+    always agree there.  They do not: `WISH-SPEC-por-party-trained-c2` and
+    `WISH-SPEC-por-train-clamp` were saved in the training hall and hold
+    `$49C5` = 0 with `$49F2` = 11, and their ECL text buffer is `ECL3.DAX`
+    block 11 byte for byte, so 11 is where the party is.  Reading `$49C5`
+    there named New Phlan.
     """
-    return word(save, SCRIPT) if outdoors(save) else word(save, AREA)
+    return word(save, SCRIPT)
 
 
 def clock(save: bytes) -> tuple[int, int, int, int]:

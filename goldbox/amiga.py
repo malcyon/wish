@@ -661,6 +661,14 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: and :func:`field_disposition` states the whole contract whether or not any
 #: one character happens to carry it.
 DROPPED: tuple[tuple[str, str], ...] = (
+    # Both arrived with #192's Curse container work and belong to the C64 and
+    # DOS records.  Pools of Darkness' `.pc` is the only Amiga record this
+    # writer produces and neither field has been located in it -- #55 placed
+    # every field of the *Curse* and *Silver Blades* records, not this one.
+    ("abilities_second", "the second ability array is a C64 and DOS field; "
+                         "no home for it has been located in the `.pc`"),
+    ("former_levels", "the class a dual-classed character trained out of; "
+                      "no home for it has been located in the `.pc`"),
     ("copper", "only platinum, gems and jewelry have been located in the "
                "`.pc`; the lighter coins have no known home"),
     ("silver", "no located home -- see `copper`"),

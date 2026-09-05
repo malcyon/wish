@@ -131,6 +131,121 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("movement_current", "roster_movement"),
 )
 
+@dataclasses.dataclass(frozen=True)
+class RecordShape:
+    """The parts of the 580-byte record the titles do not agree about.
+
+    `goldbox/layout.py` is Pool of Radiance's table and every offset in it is
+    the same in the later titles -- what differs is how far three regions run
+    and whether two fields are used at all.  Each row below was read out of
+    the title's own overlays, and a title with no row is written as Pool of
+    Radiance, which is what a caller with no title in hand means.
+    """
+
+    key: str
+    #: The declared fields the memorised-spell list spans, in offset order.
+    #: The list runs from `0x020` to the byte before `thac0_base` in both
+    #: titles measured, and what moves the end is whether the title spends
+    #: twelve of those bytes on a second copy of the abilities.
+    memorised: tuple[str, ...]
+    #: Does this title keep a second copy of the seven ability scores at
+    #: `0x065`, which `0x014` is then a copy of?
+    second_abilities: bool = False
+    #: Does the record store the free-spell-slot array at `0x0EE`?
+    spell_slots: bool = True
+    #: Does the record store the dual-class pair at `0x0B9`/`0x0BA`?
+    dual_class: bool = False
+
+
+#: Pool of Radiance: **81 memorised slots, `0x020`-`0x070`**, and no second
+#: ability array, no dual-class pair.
+#:
+#: The 81 is read out of its own `CAMP`, which walks the list at five sites
+#: and counts from `#$50` down at every one -- `LDX #$50 / LDA $6B20,X` at
+#: `+$0C52`, `+$10A5` and `+$21E5`, `LDY #$50 / LDA $6B20,Y` at `+$11F2` and
+#: `+$176E`, with `AND #$7F / STA $6B20,Y` at `+$16CA` clearing the cast bit
+#: the same way Curse's does.  `0x020 + 80 = 0x070`, and `0x071` is
+#: `thac0_base`, so the region ends exactly where the next field begins.
+#: CONFIRMED, and it corrects two documents that disagreed with each other:
+#: `goldbox/layout.py` declares sixteen and `docs/117-save-conversion.md`
+#: said twenty-one.  Nothing is lost today either way -- DOS Pool of
+#: Radiance allots sixteen, so a converted character never has more (#192).
+POOL_OF_RADIANCE_RECORD = RecordShape(
+    key="pool-of-radiance",
+    memorised=("spells_memorised", "gap_030", "abilities_second", "gap_06c"))
+
+#: Curse of the Azure Bonds: **69 memorised slots, `0x020`-`0x064`**, a second
+#: ability array at `0x065`, the dual-class pair, and **no spell-slot array at
+#: all**.
+#:
+#: The 69 is Curse's own `CAMP` counting from `#$44` at five sites
+#: (`$2037`, `$1A1F`, `$1A5A`, `$1AE6`, `$20BB`), and the twelve bytes it
+#: stops short of are the ability block: `GEN $1E9C` is `LDX #$0B / LDA
+#: $7C65,X / STA $7C14,X`, so `0x065`-`0x070` is the array the engine works
+#: in and clamps against the racial minimum and maximum, and `0x014`-`0x01F`
+#: is a copy of it.  All six records of the engine-written Curse save in
+#: `work/issue32/specimens/` hold the two blocks byte for byte identical.
+#:
+#: **The spell-slot array is the drop.** `0x0EE`-`0x0F3` has 32 code
+#: references in Pool of Radiance and **none** in Curse across 411 files, and
+#: all six of those engine-written records read zero there -- including a
+#: level-5 cleric who has memorised nothing and would have every slot free.
+#: So the C64 has no such field in this title and `CAMP` works the ceiling
+#: out for itself (#192 step 0d).
+CURSE_RECORD = RecordShape(
+    key="curse-of-the-azure-bonds",
+    memorised=("spells_memorised", "gap_030"),
+    second_abilities=True, spell_slots=False, dual_class=True)
+
+RECORD_SHAPES: dict[str, RecordShape] = {
+    s.key: s for s in (POOL_OF_RADIANCE_RECORD, CURSE_RECORD)}
+
+
+def record_shape(game=None) -> RecordShape:
+    """The record shape for a title, Pool of Radiance's by default.
+
+    Duck-typed on `.key` the way `goldbox.spells.for_game` is, so a
+    `goldbox.games.Game`, a key or None all work and this module still does
+    not import `goldbox/games.py`.
+    """
+    if isinstance(game, RecordShape):
+        return game
+    return RECORD_SHAPES.get(getattr(game, "key", game),
+                             POOL_OF_RADIANCE_RECORD)
+
+
+def span_of(names: "tuple[str, ...]") -> tuple[int, int]:
+    """`(offset, size)` of a run of declared fields, refusing a gap in it."""
+    fields = [_field(n) for n in names]
+    at = fields[0].offset
+    size = 0
+    for f in fields:
+        if f.offset != at + size:
+            raise ValueError(
+                f"{names} do not run end to end: {f.name} is at "
+                f"{f.offset:#05x} and the run had reached {at + size:#05x}")
+        size += f.size
+    return at, size
+
+
+def _set_span(rec: CharacterRecord, names: "tuple[str, ...]",
+              data: bytes) -> None:
+    """Write a run of bytes that crosses more than one declared field.
+
+    `CharacterRecord.set_raw` is width-exact per field, which is what stops a
+    writer running off the end of one; a region the *game* treats as one
+    field and `goldbox/layout.py` declares as several needs this instead.
+    """
+    at, size = span_of(names)
+    if len(data) != size:
+        raise ValueError(f"{names} is {size} bytes; got {len(data)}")
+    cursor = 0
+    for name in names:
+        f = _field(name)
+        rec.set_raw(name, data[cursor:cursor + f.size])
+        cursor += f.size
+
+
 #: Class name -> the C64 field holding that class's level.  The C64 indexes
 #: its eight slots by the class *bit*; a class with no bit has no slot, and a
 #: level for one is reported rather than written somewhere plausible.
@@ -176,6 +291,29 @@ GRANTED_EFFECT_REASON = (
     "a C64 character sheet keeps ten trait slots holding one number each, "
     "with nowhere for what the effect is worth or for what the game needs to "
     "take it away again when the item comes off")
+
+#: What a player reads when a title's C64 record has no home for something
+#: the source carried.  **PROPOSED, not yet approved**:
+#: `.claude/rules/gui-text.md` makes every word a player reads Donald's, and
+#: these five are written so they can be seen running rather than only
+#: described.  None names an offset, a field or a ticket.
+NO_SPELL_SLOTS = (
+    "How many spells each character can still cast today: this game works "
+    "that out from their class and level when you make camp, so it keeps no "
+    "list of it")
+NO_SLOT_ARRAY_FOR = (
+    "Spell slots for a {what}: the C64 game has nowhere to keep them")
+SPELL_LEVELS_ABOVE_THREE = (
+    "Free spell slots above third level: the C64 game keeps three levels")
+NO_DUAL_CLASS = (
+    "The class this character trained out of: this game does not let a "
+    "character change class, so its saved games have nowhere to put it")
+NO_DUAL_CLASS_SLOT = (
+    "The character used to be a {what}, and the C64 game has no place in the "
+    "saved game for that class")
+TWO_FORMER_CLASSES = (
+    "The character used to be both a {what}, and the saved game has room for "
+    "only one class trained out of")
 
 #: Neutral status name -> the low three bits of C64 record `0x100`.  The
 #: C64's own enumeration, read off the routine that draws the STATUS line:
@@ -280,6 +418,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rec = CharacterRecord.blank()
     rep = Report()
     port = char.port
+    shape = record_shape(char.game)
     w = neutral.Writer(char, rep, into="C64", dropped=DROPPED)
     use, emit = w.use, w.emit
 
@@ -298,12 +437,45 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set(c64_name, v.value)
         emit(v, c64_name, dst.offset, dst.size)
 
+    # -- memorised spells, into as many slots as this title has --------------
+    # Written before the second ability array because in Pool of Radiance the
+    # list runs *through* `0x065` and in Curse it stops just short of it.
+    memorised = use("spells_memorised")
+    mem_at, mem_size = span_of(shape.memorised)
+    if memorised is not None:
+        ids = list(memorised.value)[:mem_size]
+        _set_span(rec, shape.memorised, bytes(ids) + bytes(mem_size - len(ids)))
+        emit(memorised, "spells_memorised", mem_at, mem_size,
+             f" (the C64 fills this title's {mem_size} slots from the start, "
+             f"which is the neutral order)")
+        if len(memorised.value) > mem_size:
+            rep.warnings.append(
+                f"{len(memorised.value)} memorised spells and this title's "
+                f"C64 record has {mem_size} slots; "
+                f"{len(memorised.value) - mem_size} dropped from the end")
+
     # -- the second ability array -------------------------------------------
-    # Seven zeroes in every Pool of Radiance specimen, and Curse's importer
-    # writes both halves of every (base, current) pair. Zero is what a Pool of
-    # Radiance C64 record holds, so zero is what we write.
-    rep.note(0x065, 7, "abilities_second: zero, as in every C64 Pool of "
-                       "Radiance specimen")
+    # Curse of the Azure Bonds keeps every ability twice and works in this
+    # copy -- `GEN $1E9C` copies these twelve bytes forward to `0x014`, and
+    # creation and the racial clamp both write here.  Pool of Radiance has no
+    # such field: these seven bytes are part of its memorised list, written
+    # above.
+    second = use("abilities_second")
+    if shape.second_abilities:
+        if second is not None:
+            rec.set_raw("abilities_second",
+                        bytes(second.value.get(n, 0) & 0xFF
+                              for n in neutral.ABILITIES))
+            emit(second, "abilities_second", 0x065, 7,
+                 ", the copy this title's engine works in; 0x014 is the copy "
+                 "it makes of this one")
+        else:
+            rec.set_raw("abilities_second",
+                        bytes(w.get(n, 0) & 0xFF for n in neutral.ABILITIES))
+            rep.note(0x065, 7,
+                     f"abilities_second: the same seven scores again, because "
+                     f"{port} gave only one copy and this title's engine "
+                     f"works in this one")
 
     # -- the spellbook: as many bits as the title's mask has ------------------
     # Seven bytes on Pool of Radiance, thirteen on Curse, sixteen on Silver
@@ -330,15 +502,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                     + ("; id 56 is RESTORATION"
                        if table is spells.POOL_OF_RADIANCE else ""))
 
-    # -- memorised spells: sixteen slots, filled from the start --------------
-    memorised = use("spells_memorised")
-    if memorised is not None:
-        mem = list(memorised.value)[:16]
-        rec.set_raw("spells_memorised", bytes(mem) + bytes(16 - len(mem)))
-        emit(memorised, "spells_memorised", 0x020, 16,
-             " (the C64 fills its sixteen slots from the start, which is the "
-             "neutral order)")
-
     # -- the per-class level array: indexed by the class bit -----------------
     levels = use("levels")
     if levels is not None:
@@ -358,7 +521,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
 
     # -- spell slots: three packed nibbles, cleric high, magic-user low ------
     castable = use("spells_castable")
-    if castable is not None:
+    if castable is not None and shape.spell_slots:
         cleric = castable.value.get("cleric", (0, 0, 0))
         mage = castable.value.get("magic-user", (0, 0, 0))
         packed = bytes((_clamp_nibble(cleric[i]) << 4) | _clamp_nibble(mage[i])
@@ -366,6 +529,41 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set_raw("spells_castable", packed)
         emit(castable, "spells_castable", 0x0EE, 6,
              ", repacked cleric-high/magic-user-low")
+        for name_ in castable.value:
+            if name_ not in ("cleric", "magic-user"):
+                rep.dropped.append(NO_SLOT_ARRAY_FOR.format(what=name_))
+        if any(len(v) > 3 for v in castable.value.values()):
+            rep.dropped.append(SPELL_LEVELS_ABOVE_THREE)
+    elif castable is not None:
+        rep.dropped.append(NO_SPELL_SLOTS)
+
+    # -- the class a dual-classed human left --------------------------------
+    # One class and one level, where the source keeps a whole second level
+    # array: `dual_class_level` is the pair's sentinel, so zero there means
+    # "not dual-classed" whatever `dual_class_slot` holds, and a character
+    # who left two classes cannot be spelled at all.
+    former = use("former_levels")
+    if former is not None:
+        held = {n: lv for n, lv in former.value.items() if lv}
+        if not held:
+            pass                                  # not dual-classed: zero
+        elif not shape.dual_class:
+            rep.dropped.append(NO_DUAL_CLASS)
+        elif len(held) > 1:
+            rep.dropped.append(TWO_FORMER_CLASSES.format(
+                what=", ".join(sorted(held))))
+        else:
+            name_, level = next(iter(held.items()))
+            field = LEVEL_FIELDS.get(name_)
+            if field is None:
+                rep.dropped.append(NO_DUAL_CLASS_SLOT.format(what=name_))
+            else:
+                slot = _field(field).offset - _field("level_magic_user").offset
+                rec.set("dual_class_slot", slot)
+                rec.set("dual_class_level", level)
+                emit(former, "dual_class_slot", 0x0B9, 2,
+                     f", as slot {slot} ({name_}) of the C64's level array "
+                     f"and the level {level} it was left at")
 
     # -- size ----------------------------------------------------------------
     size = use("size_small")
@@ -548,10 +746,18 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("spells_known", "packed into the C64 mask at 0x078, as many bytes of it "
                      "as the title uses; an id past the last the mask has a "
                      "bit for is warned about"),
-    ("spells_memorised", "the first sixteen ids, into slots the C64 fills "
-                         "from the start"),
+    ("spells_memorised", "into the slots the title's own C64 record has, "
+                         "filled from the start: 81 in Pool of Radiance and "
+                         "69 in Curse of the Azure Bonds"),
     ("spells_castable", "repacked cleric-high/magic-user-low into three "
-                        "bytes"),
+                        "bytes, in the titles whose C64 record has the "
+                        "array; reported in the ones that do not"),
+    ("abilities_second", "written to the second ability array in the titles "
+                         "that keep one, and part of the memorised list in "
+                         "Pool of Radiance, which does not"),
+    ("former_levels", "the one class with a level becomes the C64's "
+                      "dual_class_slot and dual_class_level; two would be "
+                      "reported"),
     ("size_small", "copied to the C64's size byte"),
     ("turn_power", "copied to the C64's caster turning byte at 0x0A4"),
     ("attack_forms", "copied as a block to 0x0D9"),
@@ -797,6 +1003,21 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
              "magic-user": tuple(b & 0x0F for b in packed[:3])},
             "the C64's three packed bytes @0x0EE, cleric high nibble and "
             "magic-user low", grade("spells_castable"))
+
+    # Both fields arrived with #192 (Convert a Curse of the Azure Bonds DOS
+    # save into a C64 one, which the importer refuses today)'s container work
+    # and `write()` takes both, so the reader has to supply them or a record
+    # cannot survive its own round trip.  Neither is stored in every title:
+    # `abilities_second` is Curse's and Silver Blades' second array, and
+    # `former_levels` is the pair a dual-classed character carries.
+    if rec.is_stored("abilities_second"):
+        out.set("abilities_second", list(rec.get_raw("abilities_second")),
+                "the second ability array @0x065", grade("abilities_second"))
+    if rec.is_stored("dual_class_slot") and rec.get("dual_class_slot") != 0xFF:
+        out.set("former_levels", {rec.get("dual_class_slot"):
+                                  rec.get("dual_class_level")},
+                "the class the character trained out of, from the C64's "
+                "dual-class pair", grade("dual_class_slot"))
 
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))

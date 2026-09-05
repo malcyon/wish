@@ -50,6 +50,7 @@ from typing import Any, Iterable, Iterator, Sequence
 from .layout import Confidence
 
 __all__ = [
+    "ABILITIES",
     "Provenance",
     "Value",
     "FIELDS",
@@ -135,9 +136,25 @@ FIELDS: dict[str, str] = {
     "dexterity": "DEX",
     "constitution": "CON",
     "charisma": "CHA",
+    "abilities_second": "ability name -> the second of the two copies of that "
+                        "score the later titles keep. Curse of the Azure "
+                        "Bonds and every title after it store each ability "
+                        "twice, on both ports, and the two copies are equal "
+                        "in every record measured -- 406 DOS pairs and six "
+                        "C64 records. **Which copy the engine treats as "
+                        "current is not established**, so a codec carries "
+                        "both rather than choosing, and a codec whose port "
+                        "keeps one copy takes nothing from this",
     # -- level and health ---------------------------------------------------
     "level": "the character level the game itself keeps",
     "levels": "class name -> that class's level, in the source's slot order",
+    "former_levels": "class name -> the level a dual-classed character left "
+                     "that class at. Empty for everybody else. AD&D 1st "
+                     "edition lets a human leave one class for another once, "
+                     "keeping the old class's level and using neither its hit "
+                     "dice nor its abilities again, and a title that allows it "
+                     "keeps the old level so the character can still be that "
+                     "class in the parts of the rules that ask",
     "levels_drained": "levels lost to undead and not yet restored",
     "hp_lost_to_drain": "hit points lost with those levels",
     "experience": "experience points",
@@ -188,7 +205,12 @@ FIELDS: dict[str, str] = {
     # -- magic --------------------------------------------------------------
     "spells_known": "spell ids in the spellbook, ascending",
     "spells_memorised": "spell ids memorised, highest first",
-    "spells_castable": "class name -> slots free per spell level, ascending",
+    "spells_castable": "class name -> slots free per spell level, ascending. "
+                       "How many levels and how many classes is the source "
+                       "title's: Pool of Radiance keeps three levels for the "
+                       "cleric and the magic-user, Curse of the Azure Bonds "
+                       "five for those two and the druid, Secret of the "
+                       "Silver Blades seven",
     # -- effects and the roster ---------------------------------------------
     "innate_effects": "effect ids that are properties of the character rather "
                       "than spells running on it",
@@ -225,6 +247,14 @@ FIELDS: dict[str, str] = {
                      "and from it",
     "portrait_body": "the body half of the same pair, one of twelve",
 }
+
+
+#: The seven abilities in the order every port stores them, which is also the
+#: order `abilities_second` is keyed in.  One tuple, because three modules
+#: need the same order and a permutation between two of them would be silent.
+ABILITIES: tuple[str, ...] = (
+    "strength", "intelligence", "wisdom", "dexterity", "constitution",
+    "charisma", "exceptional_strength")
 
 
 #: Every value the neutral `status` field may hold, and the whole of it: a

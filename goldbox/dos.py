@@ -57,7 +57,7 @@ import shutil
 import tempfile
 from typing import Any, Sequence
 
-from . import areas, c64_codec, dos_savegame, neutral, traits
+from . import areas, c64_codec, c64_save, dos_savegame, games, neutral, traits
 from .c64_codec import Report
 from .dos_layout import (
     CLASS_NUMBERS,
@@ -900,15 +900,65 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 
-def field_disposition() -> dict[str, str]:
-    """Every declared DOS field and what the conversion does with it.
+#: Fields only the titles after Pool of Radiance declare, and what the
+#: conversion does with each.  Kept out of :data:`TRANSFORMED` and
+#: :data:`DROPPED` because those two are asked of every title and Pool of
+#: Radiance declares none of these.
+LATER_TITLE_TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("former_class_levels", "the class a dual-classed character left, "
+                            "permuted from class number to class name and "
+                            "written into the C64's dual_class_slot and "
+                            "dual_class_level"),
+    ("spells_castable_druid", "the third slot array, carried into the neutral "
+                              "record beside the cleric's and the "
+                              "magic-user's"),
+)
+
+LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
+    ("spells_castable_unattributed",
+     "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
+     "character sets a byte of and nobody has attributed to a class"),
+    ("highest_class_levels",
+     "Pools of Darkness' third level array, the level to restore a drained "
+     "character to; there is no C64 Pools of Darkness to convert to"),
+)
+
+#: How the ability pairs are reported for a title that keeps two copies.
+_PAIRED_ABILITY = ("the first of the title's two copies; the second goes to "
+                   "the neutral abilities_second, and neither codec claims to "
+                   "know which the engine treats as current")
+
+
+def field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+                      ) -> dict[str, str]:
+    """Every field one title declares and what the conversion does with it.
 
     The test that keeps this module honest: a field declared in
     `goldbox/dos_layout.py` and named nowhere here would be a field silently
     dropped, which `docs/117-save-conversion.md` forbids.  The shape is
     `goldbox/neutral.py`'s, so every direction reports its drops the same way.
+
+    **Asked per title**, because the four tables are not the same table: Curse
+    of the Azure Bonds and Secret of the Silver Blades declare fields Pool of
+    Radiance has never heard of, and Pools of Darkness is missing nine of Pool
+    of Radiance's.  Answering with Pool of Radiance's disposition for all four
+    is what let `former_class_levels` sit unnamed.
     """
-    return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the C64's")
+    shape = shape_for(shape)
+    declared = set(FIELDS_BY_NAME_FOR[shape.key])
+    paired = {n for n in ABILITY_ORDER
+              if n in declared and FIELDS_BY_NAME_FOR[shape.key][n].size > 1}
+
+    def only(rows):
+        return tuple((n, w) for n, w in rows if n in declared and
+                     n not in paired)
+
+    return neutral.disposition(
+        only(DIRECT),
+        only(TRANSFORMED + LATER_TITLE_TRANSFORMED)
+        + tuple((n, _PAIRED_ABILITY) for n in ABILITY_ORDER if n in paired),
+        only(DROPPED + LATER_TITLE_DROPPED),
+        "the C64's")
 
 
 def portrait_tables(game: str | pathlib.Path | None
@@ -930,6 +980,47 @@ def portrait_tables(game: str | pathlib.Path | None
         return None, str(e)
 
 
+#: The DOS shapes :func:`to_neutral` will read into a neutral character, and
+#: therefore the titles the import converts.  **The list is what step 4 of
+#: #192 adds Curse of the Azure Bonds to**, once step 3 has loaded a converted
+#: Curse save in the running game and read the sheet: everything below this
+#: line is built and byte-tested for Curse, and `.claude/rules/conversions.md`
+#: is explicit that bytes matching is necessary and not sufficient.
+#:
+#: Pools of Darkness will never join it -- there is no C64 port to convert to.
+CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE,)
+
+#: The seven abilities in the order both ports store them, which is also the
+#: order Curse's pairs run in.  `goldbox/neutral.py`'s, because the C64 codec
+#: needs the same order and neither may import the other.
+ABILITY_ORDER = neutral.ABILITIES
+
+#: DOS class number -> the class name, for the level arrays.  The first
+#: element of :data:`CLASS_LEVEL_SLOTS`' rows, hoisted so a former-class array
+#: can be read with the same permutation as the current one.
+CLASS_BY_SLOT: dict[int, str] = {n: name for n, name, _ in CLASS_LEVEL_SLOTS}
+
+
+def _ability_pair(dos: "DosCharacter", name: str) -> tuple[int, int]:
+    """One ability as `(first, second)`, whichever shape the title stores.
+
+    Pool of Radiance keeps one byte and every later title keeps two, so the
+    single byte answers for both halves rather than the reader having to
+    branch: a title with one copy has the same value in both places by
+    definition.
+
+    **The two are equal in every record this project can reach** -- 0 of 406
+    pairs differ, over 58 distinct Curse records, and the six C64 Curse
+    records in `work/issue32/specimens/` hold `0x014`-`0x01F` and
+    `0x065`-`0x070` byte for byte identical.  So no specimen says which is
+    which, and none is likely to: the settling experiment is to cast
+    `Strength` on a fighter in DOS Curse, save, and see which byte of the
+    pair moves.
+    """
+    raw = dos.raw(name)
+    return raw[0], raw[-1]
+
+
 def to_neutral(dos: DosCharacter,
                portraits: PortraitTables | None = None) -> NeutralCharacter:
     """Read one DOS character into the neutral record.
@@ -945,47 +1036,94 @@ def to_neutral(dos: DosCharacter,
     which is what the C64 stores -- and without them it is reported as a
     drop, exactly as it was before #57.
     """
-    if not dos.is_pool_of_radiance:
+    if dos.shape not in CONVERTS:
         raise WrongTitleError(
-            f"{dos.shape.title} records read, but only Pool of Radiance "
-            f"converts: no other pair of ports has been measured against "
-            f"each other (#53)",
+            f"{dos.shape.title} records read, but only "
+            f"{', '.join(s.title for s in CONVERTS)} converts: no other pair "
+            f"of ports has been measured against each other (#53)",
             title=dos.shape.title)
-    out = NeutralCharacter("DOS", source=dos.source)
+    out = NeutralCharacter("DOS", source=dos.source, game=dos.shape.key)
 
     # -- the name: a count byte and fifteen characters -----------------------
     out.set("name", dos.name, "the DOS count byte and text at 0x000",
             FIELDS_BY_NAME["name_text"].confidence, Provenance.RESHAPED)
 
     # -- everything the two ports encode the same way ------------------------
+    # `dos.fields`, not the module-level table: the offset quoted in a
+    # provenance line is this title's, and only Pool of Radiance's is the
+    # module's.
     for dos_name, _ in DIRECT:
-        f = FIELDS_BY_NAME[dos_name]
+        if dos_name in ABILITY_ORDER:
+            continue                      # a pair in three of the four titles
+        f = dos.fields[dos_name]
         out.set(dos_name, dos.get(dos_name),
                 f"DOS {dos_name} @{f.offset:#05x} ({f.confidence})",
                 f.confidence)
 
+    # -- the abilities, which are a (first, second) pair after Pool of --------
+    # Radiance.  Both halves cross; the first goes to the neutral ability and
+    # the second to `abilities_second`, and neither codec claims to know
+    # which the engine treats as current -- see `_ability_pair`.
+    second: dict[str, int] = {}
+    for dos_name in ABILITY_ORDER:
+        f = dos.fields[dos_name]
+        first, last = _ability_pair(dos, dos_name)
+        out.set(dos_name, first,
+                f"DOS {dos_name} @{f.offset:#05x} ({f.confidence})"
+                + (", the first of its two bytes" if f.size > 1 else ""),
+                f.confidence)
+        second[dos_name] = last
+    if any(dos.fields[n].size > 1 for n in ABILITY_ORDER):
+        out.set("abilities_second", second,
+                f"DOS {dos.shape.title} keeps every ability twice; these are "
+                f"the second byte of each pair",
+                Confidence.CONFIRMED, Provenance.RESHAPED)
+
     # -- the spellbook: one byte per spell ------------------------------------
+    book = dos.fields["spellbook"]
     out.set("spells_known", dos.spells_known,
-            "DOS spellbook @0x033, one byte per spell",
-            FIELDS_BY_NAME["spellbook"].confidence)
+            f"DOS spellbook @{book.offset:#05x}, one byte per spell across "
+            f"{book.size} of them", book.confidence)
 
     # -- memorised spells, put into the neutral order: highest first ---------
+    mem = dos.fields["spells_memorised"]
     out.set("spells_memorised", dos.spells_memorised,
-            "DOS 0x01C, reversed into the neutral highest-first order",
-            FIELDS_BY_NAME["spells_memorised"].confidence)
+            f"DOS {mem.offset:#05x}, {mem.size} slots reversed into the "
+            f"neutral highest-first order", mem.confidence)
 
     # -- the per-class levels, named rather than numbered --------------------
-    raw_levels = dos.raw("class_levels")
-    out.set("levels", {name: raw_levels[n] for n, name, _ in CLASS_LEVEL_SLOTS},
-            "DOS class_levels @0x096, permuted from class number to class bit",
-            FIELDS_BY_NAME["class_levels"].confidence)
+    def _by_class(field: str) -> dict[str, int]:
+        raw = dos.raw(field)
+        return {name: raw[n] for n, name in CLASS_BY_SLOT.items()
+                if n < len(raw)}
 
-    # -- spell slots: two triples, by class ----------------------------------
-    out.set("spells_castable",
-            {"cleric": tuple(dos.raw("spells_castable_cleric")),
-             "magic-user": tuple(dos.raw("spells_castable_magic_user"))},
-            "DOS 0x0B2 (cleric) and 0x0B5 (magic-user)",
-            FIELDS_BY_NAME["spells_castable_cleric"].confidence)
+    f = dos.fields["class_levels"]
+    out.set("levels", _by_class("class_levels"),
+            f"DOS class_levels @{f.offset:#05x}, permuted from class number "
+            f"to class bit", f.confidence)
+
+    # -- the class a dual-classed human left, where the title has one --------
+    # Curse of the Azure Bonds and everything after it keep a second copy of
+    # the level array holding what the character *was*.  Pool of Radiance has
+    # no such array and sets nothing here.
+    if "former_class_levels" in dos.fields:
+        f = dos.fields["former_class_levels"]
+        out.set("former_levels", _by_class("former_class_levels"),
+                f"DOS former_class_levels @{f.offset:#05x}, permuted the same "
+                f"way as the current array", f.confidence)
+
+    # -- spell slots, by class: two arrays on Pool of Radiance, three after --
+    castable = {"cleric": tuple(dos.raw("spells_castable_cleric")),
+                "magic-user": tuple(dos.raw("spells_castable_magic_user"))}
+    if "spells_castable_druid" in dos.fields:
+        castable["druid"] = tuple(dos.raw("spells_castable_druid"))
+    where = ", ".join(
+        f"{name} @{dos.fields['spells_castable_' + key].offset:#05x}"
+        for name, key in (("cleric", "cleric"), ("druid", "druid"),
+                          ("magic-user", "magic_user"))
+        if "spells_castable_" + key in dos.fields)
+    out.set("spells_castable", castable, f"DOS {where}",
+            dos.fields["spells_castable_cleric"].confidence)
 
     # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
     out.set("size_small", max(0, dos.get("size") - 1),
@@ -1362,6 +1500,17 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
+    # The two below are the later titles' fields, and this writer builds a
+    # Pool of Radiance record: it declares one copy of each ability and no
+    # former-class array, so there is nowhere to put either.  A C64 source
+    # supplies neither today in any case -- `goldbox.c64_codec.read` sets
+    # neither, which is where the export direction has its own work to do
+    # (#234 for the dual class; the ability copy is unread on that side too).
+    ("abilities_second", "a DOS Pool of Radiance record keeps one copy of "
+                         "each ability score, so a second has nowhere to go"),
+    ("former_levels", "a DOS Pool of Radiance record has no former-class "
+                      "level array; that title does not let a character "
+                      "change class"),
 )
 
 #: **A character carrying nothing gets no `.ITM` file at all**, and an empty
@@ -2024,7 +2173,8 @@ FLAGS_LAST = dos_savegame.FLAGS_LAST
 SHARED_SCRATCH = (0x49EB,) + tuple(range(0x4A00, 0x4A20))
 
 
-def quest_flags(save: bytes) -> bytes:
+def quest_flags(save: bytes,
+                shape: "dos_savegame.DosSaveShape | None" = None) -> bytes:
     """`$4A20`-`$4AF8` as the C64's 217 bytes: read the word, keep the byte.
 
     Every nonzero word in the window is 1, 2, 3 or 255 across three saves of
@@ -2034,17 +2184,18 @@ def quest_flags(save: bytes) -> bytes:
     """
     out = bytearray()
     for addr in range(FLAGS_FIRST, FLAGS_LAST + 1):
-        out.append(dos_savegame.word(save, addr) & 0xFF)
+        out.append(dos_savegame.word(save, addr, shape) & 0xFF)
     return bytes(out)
 
 
-def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
+def apply_quest_flags(save0: bytearray, savgam: bytes,
+                      shape: "dos_savegame.DosSaveShape | None" = None) -> int:
     """Copy the flags into a C64 `SAVEDGAME0` payload. Returns bytes changed.
 
     `SAVEDGAME0` is a verbatim image of `$4900`-`$64FF`, so the C64 offset of
     an address is the address less `$4900`.
     """
-    flags = quest_flags(savgam)
+    flags = quest_flags(savgam, shape)
     base = FLAGS_FIRST - SAVE0_BASE
     changed = sum(1 for i, b in enumerate(flags) if save0[base + i] != b)
     save0[base:base + len(flags)] = flags
@@ -2057,7 +2208,9 @@ def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
 CLOCK_LIMITS = (10, 10, 6, 24, 30, 12)
 
 
-def apply_clock(save0: bytearray, savgam: bytes) -> tuple[str, list[str]]:
+def apply_clock(save0: bytearray, savgam: bytes,
+                shape: "dos_savegame.DosSaveShape | None" = None
+                ) -> tuple[str, list[str]]:
     """Copy the DOS clock into a `SAVEDGAME0` payload, digit for digit.
 
     The mirror of what `write_dos_save` does the other way (#67), and for the
@@ -2069,7 +2222,7 @@ def apply_clock(save0: bytearray, savgam: bytes) -> tuple[str, list[str]]:
     Returns the report line and any complaints, because a digit above what
     its field holds means the six words are not the clock we think they are.
     """
-    digits = [dos_savegame.word(savgam, dos_savegame.CLOCK + i)
+    digits = [dos_savegame.word(savgam, dos_savegame.CLOCK + i, shape)
               for i in range(dos_savegame.CLOCK_DIGITS)]
     warnings = [
         f"clock digit {i} reads {d}, above the {limit} that digit holds; "
@@ -2083,7 +2236,8 @@ def apply_clock(save0: bytearray, savgam: bytes) -> tuple[str, list[str]]:
             warnings)
 
 
-def apply_position(save0: bytearray, savgam: bytes) -> tuple:
+def apply_position(save0: bytearray, savgam: bytes,
+                   shape: "dos_savegame.DosSaveShape | None" = None) -> tuple:
     """Write the party's square and facing into `SAVEDGAME0`.
 
     The area is **not** written here.  `$4BC2` is slot 2 of the loaded-files
@@ -2112,7 +2266,7 @@ def apply_position(save0: bytearray, savgam: bytes) -> tuple:
         save0[dos_savegame.TRAVEL_Y - SAVE0_BASE] = y
         return ((dos_savegame.TRAVEL_X, "travel-grid x, from SAVGAM $49C3"),
                 (dos_savegame.TRAVEL_Y, "travel-grid y, from SAVGAM $49C4"))
-    x, y, facing = dos_savegame.position(savgam)
+    x, y, facing = dos_savegame.position(savgam, shape)
     save0[PARTY_X - SAVE0_BASE] = x
     save0[PARTY_Y - SAVE0_BASE] = y
     save0[PARTY_FACING - SAVE0_BASE] = facing
@@ -2409,8 +2563,8 @@ ANIMATE_SIZE = 852
 #: outdoor DOS retarget had actually been driven.  `WILDERNESS`, Donald's own
 #: wording for it, is gone with the last thing that raised it: neither
 #: direction refuses a party on the travel grid now.
-NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of Pool "
-               "of Radiance, so there is no map file and no disk to name")
+NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of "
+               "{title}, so there is no map file and no disk to name")
 UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 
 
@@ -2419,7 +2573,8 @@ def _sqrdata_number(name: str) -> int:
     return int(name[len("SQRDATA"):], 16)
 
 
-def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
+def apply_file_cache(save0: bytearray, savgam: bytes,
+                     container: "c64_save.Container | None" = None) -> str:
     """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
 
     The cache is rewritten to `$FF` in all twenty-five slots with slot 2 =
@@ -2446,11 +2601,14 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     the Slums -- so the branch that went is the one already proven
     unnecessary.
     """
-    at = FILE_CACHE[0] - SAVE0_BASE
+    container = c64_save.container_for(container)
+    at, slots = container.cache
+    on = FILE_CACHE_RELOAD if container.cache_bit7 else 0
     there = dos_savegame.current_area(savgam)
-    where = areas.area(there)
+    where = areas.area_in(there, container.game.title)
     if where is None:
-        raise DosRecordError(NOT_AN_AREA.format(area=there))
+        raise DosRecordError(NOT_AN_AREA.format(area=there,
+                                                title=container.game.title))
     savgam_outdoors = dos_savegame.outdoors(savgam)
     if savgam_outdoors != where.outdoors:
         raise DosRecordError(
@@ -2460,17 +2618,16 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
             f"{'outdoors' if where.outdoors else 'indoors'} in "
             "goldbox/areas.py -- these two disagree and neither is trusted "
             "over the other")
+    save0[at:at + slots] = bytes([FILE_CACHE_EMPTY]) * slots
+    save0[at + CACHE_ECL] = there | on
+    save0[at + CACHE_ANIMATE] = ANIMATE_RESIDENT | on
+    save0[container.disk_hint] = where.disk
+    save0[container.current_script] = there
     if where.outdoors:
         sqr = _sqrdata_number(where.sqrdata)
-        save0[at:at + FILE_CACHE[1]] = (
-            bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1])
-        save0[at + CACHE_SQRDATA] = sqr
-        save0[at + CACHE_ECL] = there
-        save0[at + CACHE_ANIMATE] = ANIMATE_RESIDENT
-        save0[DISK_HINT - SAVE0_BASE] = where.disk
-        save0[CURRENT_GEO - SAVE0_BASE] = sqr   # $49C5 holds the SQRDATA
-        save0[CURRENT_SCRIPT - SAVE0_BASE] = there   # number outdoors (#47)
-        save0[INDOORS - SAVE0_BASE] = 0
+        save0[at + CACHE_SQRDATA] = sqr | on
+        save0[container.current_geo] = sqr   # $49C5 holds the SQRDATA
+        save0[container.indoors] = 0         # number outdoors (#47)
         return (f"loaded-files cache: $FF in all twenty-five, then slot 4 = "
                 f"{where.sqrdata}, slot 8 = {where.ecl} and slot 11 = "
                 f"ANIMATE00; outdoors no GEO loads at all, and $49E6 = 0 is "
@@ -2479,17 +2636,15 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
         raise DosRecordError(UNSUPPORTED_LOCATION)
 
     geo = areas.geo_number(where.geos[0])
-    save0[at:at + FILE_CACHE[1]] = bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1]
-    save0[at + CACHE_GEO] = geo
-    save0[at + CACHE_ECL] = there
-    save0[at + CACHE_ANIMATE] = ANIMATE_RESIDENT
-    save0[DISK_HINT - SAVE0_BASE] = where.disk
-    save0[CURRENT_GEO - SAVE0_BASE] = geo
-    save0[CURRENT_SCRIPT - SAVE0_BASE] = there
-    save0[INDOORS - SAVE0_BASE] = 1
+    save0[at + CACHE_GEO] = geo | on
+    save0[container.current_geo] = geo
+    save0[container.indoors] = 1
     return (f"loaded-files cache: $FF in all twenty-five, then slot 2 = "
-            f"{where.geos[0]}, slot 8 = {where.ecl} and slot 11 = ANIMATE00; "
-            f"the arriving script refills the rest")
+            f"{where.geos[0]}, slot 8 = {where.ecl} and slot 11 = ANIMATE00"
+            + ("," if container.cache_bit7 else ";")
+            + (" each with bit 7 set, which this title's loader does not set "
+               "for itself; " if container.cache_bit7 else " ")
+            + "the arriving script refills the rest")
 
 
 def marching_slot(index: int, count: int) -> int:
@@ -2576,7 +2731,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                  save0: bytearray, save1: bytearray | None = None,
                  icon: bytes | None = None,
                  animate: bytes | None = None,
-                 portraits: PortraitTables | None = None) -> C64SaveReport:
+                 portraits: PortraitTables | None = None,
+                 game=None) -> C64SaveReport:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     Both payloads are modified in place, and **the conversion writes every
@@ -2605,8 +2761,11 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
     `Report.unwritten` is empty when nothing was left to the payload.
     """
+    container = c64_save.container_for(game)
+    shape = dos_savegame.save_shape_for(container.game.key)
     party = read_party(folder, slot)
-    savgam = pathlib.Path(folder).joinpath(f"SAVGAM{slot}.DAT").read_bytes()
+    savgam = pathlib.Path(folder).joinpath(
+        f"SAVGAM{slot}{shape.suffix}").read_bytes()
     save1_at = len(save0)
     report = C64SaveReport(
         total=len(save0) + (0 if save1 is None else len(save1)),
@@ -2614,14 +2773,17 @@ def convert_save(folder: str | pathlib.Path, slot: str,
 
     # First, because `apply_position` writes the travel square over
     # `$49C3`-`$49C4` when the DOS party is outdoors.
-    header_zeroed = sum(size for _, size in HEADER_ZEROED)
-    for address, size in HEADER_ZEROED:
-        at = address - SAVE0_BASE
+    for at, size, why in container.zeroed:
         save0[at:at + size] = bytes(size)
-        report.note(at, size,
-                    f"zero: no part of the conversion computes it, and a save "
-                    f"with all {header_zeroed} of these written as zero "
-                    f"loaded, walked, fought and changed area (#118)")
+        report.note(at, size, why)
+    # And the header bytes with a source in the DOS save and no attribution:
+    # the party's own value at the same distance into the same ECL variable
+    # array, rather than a zero nobody has measured for this title.
+    for at, size, why in container.copied:
+        save0[at:at + size] = bytes(
+            dos_savegame.word(savgam, SAVE0_BASE + at + i, shape) & 0xFF
+            for i in range(size))
+        report.note(at, size, why)
     # And the dungeon square, which `apply_position` overwrites indoors and
     # leaves standing outdoors.  Its own note and its own evidence, so the
     # sentence above keeps saying exactly what its own run covered.
@@ -2644,13 +2806,13 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         rec.set("party_order", place)
         raw = rec.to_bytes()
         who = f"slot {place}: {char.name}, {index + 1} in the DOS marching order"
-        at = SLOT_AREA - SAVE0_BASE + place * SLOT_STRIDE
+        at = container.slot(place)
         save0[at:at + SLOT_STRIDE] = raw[:SLOT_STRIDE]
         report.note(at, SLOT_STRIDE, f"{who} -- the converted record")
-        at = ITEM_AREA - SAVE0_BASE + place * SLOT_STRIDE
+        at = container.items(place)
         save0[at:at + SLOT_STRIDE] = raw[0x120:0x220]
         report.note(at, SLOT_STRIDE, f"{who} -- the converted inventory")
-        at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
+        at = container.icon(place)
         save0[at:at + ICON_SIZE] = raw[0x220:0x244]
         report.note(at, ICON_SIZE, f"{who} -- " + (
             "the combat icon the game's own character creation writes, "
@@ -2659,23 +2821,48 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             "ports draw from different art and the palettes have not been "
             "compared (#57)" if icon is not None else
             "icon from the record, which is zero"))
-        if save1 is not None:
-            at = place * ROSTER_STRIDE
-            save1[at:at + ROSTER_STRIDE] = raw[0x100:0x120]
-            report.note(save1_at + at, ROSTER_STRIDE,
-                        f"SAVEDGAME1 ${SAVE1_BASE + at:04X} -- {who} -- the "
-                        f"converted roster block: the derived combat numbers "
-                        f"the character record does not hold")
+        if container.name_table is not None:
+            at = container.name(place)
+            save0[at:at + container.name_stride] = (
+                raw[:container.name_stride])
+            report.note(at, container.name_stride,
+                        f"{who} -- the party's own name table, which this "
+                        f"title keeps beside the records and fills in slot "
+                        f"order")
+        at, into = ((container.roster_offset + place * ROSTER_STRIDE, save0)
+                    if container.roster_in_payload
+                    else (place * ROSTER_STRIDE, save1))
+        if into is not None:
+            into[at:at + ROSTER_STRIDE] = raw[0x100:0x120]
+            flat = at if into is save0 else save1_at + at
+            report.note(flat, ROSTER_STRIDE,
+                        f"{report.address(flat)} -- {who} -- the converted "
+                        f"roster block: the derived combat numbers the "
+                        f"character record does not hold")
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
         report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
 
-    at = PORTRAIT_SWITCH - SAVE0_BASE
+    at = container.portrait_switch
     faces = bool(party) and all_faced
-    save0[at] = PORTRAIT_ON if faces else PORTRAIT_OFF
-    report.note(at, 1, f"${save0[at]:02X}: {PORTRAIT_SWITCH_WHY}"
-                       + ("" if faces else ". Written with bit 7 clear "
-                          "because a character here has no portrait id, and "
-                          "the game hunts for a BODY00 that is on no side"))
+    if container.game.key == games.POOL_OF_RADIANCE.key:
+        save0[at] = PORTRAIT_ON if faces else PORTRAIT_OFF
+        report.note(at, 1, f"${save0[at]:02X}: {PORTRAIT_SWITCH_WHY}"
+                    + ("" if faces else ". Written with bit 7 clear "
+                       "because a character here has no portrait id, and "
+                       "the game hunts for a BODY00 that is on no side"))
+    else:
+        # `PORTRAIT_OFF` is Pool of Radiance's answer to a party with no
+        # portrait ids, and it is Pool of Radiance's because `BODY00` is on
+        # none of its eight sides. Curse of the Azure Bonds carries `HEAD00`
+        # and `BODY00` on side 2, its own `INIT` writes `LDA #$81 / STA
+        # $4BFF`, and both engine-written Curse saves hold `$81` over six
+        # characters whose portrait ids are all zero -- so the on value is
+        # safe here whether or not the ids crossed.
+        save0[at] = PORTRAIT_ON
+        report.note(at, 1,
+                    f"${PORTRAIT_ON:02X}: what this title's own INIT writes "
+                    f"when a new game starts, and what both engine-written "
+                    f"saves of it hold")
 
     # The party fills slots `len(party) - 1` down to 0, so everything above it
     # is somebody else's and would otherwise walk into the converted party
@@ -2685,61 +2872,79 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     # seventh and an eighth character -- 555 non-zero bytes of a stranger's
     # party wiped -- and the party list showed six, the party walked five
     # squares and won a fight (#118, `work/p118-step3/runF.log`).
-    for place in range(len(party), SLOT_TOTAL):
-        for base in (SLOT_AREA, ITEM_AREA):
-            at = base - SAVE0_BASE + place * SLOT_STRIDE
+    for place in range(len(party), container.record_pages):
+        for at in (container.slot(place), container.items(place)):
             save0[at:at + SLOT_STRIDE] = bytes(SLOT_STRIDE)
             report.note(at, SLOT_STRIDE,
                         f"slot {place}: zeroed entire -- not this party's, and "
                         f"a party that carried none of these fought and won "
                         f"(#118)")
-        if place < SLOT_COUNT:
-            at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
-            save0[at:at + ICON_SIZE] = bytes(ICON_SIZE)
-            report.note(at, ICON_SIZE,
-                        f"slot {place}: combat icon zeroed -- nothing draws "
-                        f"an icon for a slot with no character in it")
-        if save1 is not None and place < SLOT_COUNT:
-            at = place * ROSTER_STRIDE
-            save1[at:at + ROSTER_STRIDE] = bytes(ROSTER_STRIDE)
-            report.note(save1_at + at, ROSTER_STRIDE,
-                        f"SAVEDGAME1 ${SAVE1_BASE + at:04X} -- slot {place}: "
-                        f"roster block zeroed, `roster_in_use` with it")
-    if len(party) < SLOT_COUNT:
+        if place >= container.party_slots:
+            continue
+        at = container.icon(place)
+        save0[at:at + ICON_SIZE] = bytes(ICON_SIZE)
+        report.note(at, ICON_SIZE,
+                    f"slot {place}: combat icon zeroed -- nothing draws "
+                    f"an icon for a slot with no character in it")
+        if container.name_table is not None:
+            at = container.name(place)
+            save0[at:at + container.name_stride] = bytes(container.name_stride)
+            report.note(at, container.name_stride,
+                        f"slot {place}: name table entry zeroed, since no "
+                        f"character is in that slot")
+        at, into = ((container.roster_offset + place * ROSTER_STRIDE, save0)
+                    if container.roster_in_payload
+                    else (place * ROSTER_STRIDE, save1))
+        if into is not None:
+            into[at:at + ROSTER_STRIDE] = bytes(ROSTER_STRIDE)
+            flat = at if into is save0 else save1_at + at
+            report.note(flat, ROSTER_STRIDE,
+                        f"{report.address(flat)} -- slot {place}: roster "
+                        f"block zeroed, `roster_in_use` with it")
+    if len(party) < container.party_slots:
         report.warnings.append(
-            f"Slots {len(party)}-{SLOT_COUNT - 1} emptied: a DOS save holds "
-            f"six characters and a C64 save eight")
+            f"Slots {len(party)}-{container.party_slots - 1} emptied: a DOS "
+            f"save holds six characters and a C64 save "
+            f"{container.party_slots}")
 
     for base, size in EFFECT_ARRAYS:
         at = base - SAVE0_BASE
         save0[at:at + size] = bytes(size)
         report.note(at, size, "active effects: zeroed, which is 'none running'")
-    at = SCRIPT_SCRATCH[0] - SAVE0_BASE
-    save0[at:at + SCRIPT_SCRATCH[1]] = bytes(SCRIPT_SCRATCH[1])
-    report.note(at, SCRIPT_SCRATCH[1],
-                "per-script scratch: zeroed, as DUNGEON $202A does on every "
-                "area change")
-    at = FILE_CACHE[0] - SAVE0_BASE
+    if not any(at == SCRIPT_SCRATCH[0] - SAVE0_BASE
+               for at, _, _ in container.copied):
+        at = SCRIPT_SCRATCH[0] - SAVE0_BASE
+        save0[at:at + SCRIPT_SCRATCH[1]] = bytes(SCRIPT_SCRATCH[1])
+        report.note(at, SCRIPT_SCRATCH[1],
+                    "per-script scratch: zeroed, as DUNGEON $202A does on "
+                    "every area change")
+    at, slots = container.cache
     outdoors = dos_savegame.outdoors(savgam)
-    report.note(at, FILE_CACHE[1], apply_file_cache(save0, savgam))
-    for address, what in (
-            (DISK_HINT, "the POOL side the loader will ask for"),
-            (CURRENT_GEO, "the SQRDATA number LOADFILES reloads" if
+    report.note(at, slots, apply_file_cache(save0, savgam, container))
+    for at, what in (
+            (container.disk_hint, "the disk side the loader will ask for"),
+            (container.current_geo, "the SQRDATA number LOADFILES reloads" if
              outdoors else "the map LOADFILES reloads"),
-            (CURRENT_SCRIPT, "the script id"),
-            (INDOORS, "outdoors -- 0 boots into travel mode" if outdoors
-             else "indoors")):
-        report.note(address - SAVE0_BASE, 1,
-                    f"{what}, from the area the DOS party is in")
+            (container.current_script, "the script id"),
+            (container.indoors, "outdoors -- 0 boots into travel mode" if
+             outdoors else "indoors")):
+        report.note(at, 1, f"{what}, from the area the DOS party is in")
+    if container.map_memory is not None:
+        at, size = container.map_memory
+        save0[at:at + size] = bytes(size)
+        report.note(at, size,
+                    "the map the party has walked: zeroed, which is what an "
+                    "engine-written save of a party that has not walked yet "
+                    "holds. Nothing in the DOS save has been attributed to "
+                    "it")
 
-    changed = apply_quest_flags(save0, savgam)
-    report.note(FLAGS_FIRST - SAVE0_BASE, FLAGS_LAST - FLAGS_FIRST + 1,
+    changed = apply_quest_flags(save0, savgam, shape)
+    report.note(*container.quest_flags,
                 "quest flags: the DOS word array, narrowed to bytes")
-    for address, what in apply_position(save0, savgam):
+    for address, what in apply_position(save0, savgam, shape):
         report.note(address - SAVE0_BASE, 1, what)
-    note, complaints = apply_clock(save0, savgam)
-    report.note(dos_savegame.CLOCK - SAVE0_BASE, dos_savegame.CLOCK_DIGITS,
-                note)
+    note, complaints = apply_clock(save0, savgam, shape)
+    report.note(container.clock, dos_savegame.CLOCK_DIGITS, note)
     report.warnings.extend(complaints)
     # "differed from the template's" until #118 removed the template, after
     # which the sentence described something that no longer exists: from
@@ -2785,7 +2990,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
 
 def new_save(folder: str | pathlib.Path, slot: str, icon: bytes,
              animate: bytes, portraits: PortraitTables | None = None,
-             ) -> tuple[bytearray, bytearray, C64SaveReport]:
+             game=None) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
     `icon` is the 36-byte combat icon each character gets and `animate` is
@@ -2799,9 +3004,13 @@ def new_save(folder: str | pathlib.Path, slot: str, icon: bytes,
 
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
-    save0, save1 = bytearray(SAVE0_SIZE), bytearray(SAVE1_SIZE)
-    report = convert_save(folder, slot, save0, save1,
-                          icon=icon, animate=animate, portraits=portraits)
+    container = c64_save.container_for(game)
+    save0 = bytearray(container.payload_size)
+    save1 = (bytearray() if container.roster_in_payload
+             else bytearray(container.game.roster_size))
+    report = convert_save(folder, slot, save0, save1 or None,
+                          icon=icon, animate=animate, portraits=portraits,
+                          game=container)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -2819,12 +3028,12 @@ def save_disk(save0: bytes, save1: bytes, game=None):
     the result reproduces a disk the 1541 wrote everywhere but the two files'
     final-sector slack, on all 13 (`tests/test_d64_blank.py`).
     """
-    from . import games
     from .d64 import D64, attach_load_address
     game = game or games.POOL_OF_RADIANCE
     disk = D64.blank()
-    disk.write_file(game.roster_file,
-                    attach_load_address(game.roster_load_address, save1))
+    if not game.roster_in_payload:
+        disk.write_file(game.roster_file,
+                        attach_load_address(game.roster_load_address, save1))
     disk.write_file(game.save_file,
                     attach_load_address(game.save_load_address, save0))
     return disk

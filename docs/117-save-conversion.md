@@ -394,9 +394,28 @@ know it.** Curse's C64 record keeps its memorised list at `0x020` and it is
 `CAMP` count from `$44` down to zero over `$7C20,X` (`$2037`, `$1A1F`, `$1A5A`,
 `$1AE6`, `$20BB`), and `0x020 + 68 = 0x064` abuts the ability array at `0x065`
 exactly. So `goldbox/layout.py`'s `0x020`+16 and `0x030`+53 are one field in
-Curse. `goldbox/c64_codec.py` truncates the list to sixteen silently, which is
-unreachable today -- DOS Pool of Radiance's list is also sixteen -- and is
-Curse's to fix.
+Curse.
+
+**And Pool of Radiance's own C64 list is 81 bytes, `0x020`-`0x070`** — read
+the same way, out of its own `CAMP`, which walks the list at five sites and
+counts down from `#$50` at every one: `LDX #$50 / LDA $6B20,X` at `+$0C52`,
+`+$10A5` and `+$21E5`, `LDY #$50 / LDA $6B20,Y` at `+$11F2` and `+$176E`, and
+`AND #$7F / STA $6B20,Y` at `+$16CA` clearing the cast bit exactly as Curse's
+does. `0x020 + 80 = 0x070`, and `0x071` is `thac0_base`, so the region ends
+where the next field begins. The two titles differ only in that Curse spends
+twelve of those bytes on its second ability array at `0x065`, which is why its
+list stops at `0x064`. CONFIRMED for both, from each title's own code.
+
+So `goldbox/layout.py`'s sixteen is 65 short for Pool of Radiance as well as
+53 short for Curse, and the field table wants widening; the per-title widths
+`goldbox/c64_codec.py` writes through are `RecordShape.memorised`, measured
+per title. **The silent truncation to sixteen is gone** — the writer fills the
+title's own region and warns past the end. Nothing a player can see changes on
+the Pool of Radiance path, because DOS Pool of Radiance allots sixteen and a
+converted character never has more; the **export** direction is a different
+question, since `goldbox/c64_codec.py`'s `read` still takes sixteen bytes off
+a C64 record where the engine keeps 81, and a Pool of Radiance cleric 6 with
+wisdom 18 who is also a magic-user can reach 21.
 
 **The evidence, and it is content rather than arithmetic.** 54 shipped records
 across the four titles, and every one of them:
