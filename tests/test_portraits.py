@@ -20,15 +20,38 @@ cleanly without them -- `tests/gamedata.py` for the C64 side and
 
 from __future__ import annotations
 
+import functools
+
 import pytest
-from gamedata import disk_dir, disk_path
+from gamedata import _disk_with, disk_dir, disk_path
 
 from goldbox import portraits
 from goldbox.d64 import D64
 from goldbox.dos_savegame import dax_index
+from tools import gamedisks
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the C64 game disks")
+
+
+@functools.lru_cache(maxsize=1)
+def _curse_disks_dir():
+    """Where Curse of the Azure Bonds' own sides are, or None (#300)."""
+    return gamedisks.find("curse-of-the-azure-bonds")
+
+
+@functools.lru_cache(maxsize=1)
+def _ssb_disks_dir():
+    """Where Secret of the Silver Blades' own sides are, or None (#300)."""
+    return gamedisks.find("secret-of-the-silver-blades")
+
+
+needs_curse_disks = pytest.mark.skipif(_curse_disks_dir() is None,
+                                       reason="needs the Curse disks; set "
+                                              "COAB_DISKS")
+needs_ssb_disks = pytest.mark.skipif(_ssb_disks_dir() is None,
+                                     reason="needs the Silver Blades disks; "
+                                            "set SSB_DISKS")
 
 
 def _dos_game():
@@ -220,3 +243,178 @@ def test_a_folder_of_sides_that_carry_no_menu_says_which_it_tried(tmp_path):
         assert "none of the 2 sides" in str(e)
     else:  # pragma: no cover - POOL4 carries HEAD00, so this would be news
         pytest.skip("POOL4 answers for the menu on this set of disks")
+
+
+# ---------------------------------------------------------------------------
+# #300: the glob was `POOL[0-9].D64` alone, so a Curse or Silver Blades
+# folder -- real disks, correctly named for their own title -- was refused
+# with a message about `POOL<n>.D64`, which is not what either title's sides
+# are called.
+# ---------------------------------------------------------------------------
+@needs_curse_disks
+def test_a_curse_folder_is_not_refused_for_lacking_pool_disks():
+    """The bug this issue reported: a real, correctly-named Curse folder was
+    rejected as if it were an empty one, because the glob only knew `POOL`.
+
+    Curse's own sides are found -- proven by their names appearing in the
+    refusal -- rather than the folder being waved off as having none.
+    """
+    with pytest.raises(portraits.PortraitError) as caught:
+        portraits.tables_from_disks(_curse_disks_dir())
+    message = str(caught.value)
+    assert "no POOL" not in message, (
+        "the old bug: a Curse folder answered as if it had no game sides "
+        "in it at all")
+    assert "CURSE" in message.upper()
+
+
+@needs_curse_disks
+def test_curse_keeps_gen_and_its_portrait_art_on_different_sides():
+    """Measured, 2026-09-05: `GEN` is on `CURSE_A.D64` alone and every
+    `HEAD<xx>`/`BODY<xx>` file is on the other five sides, so a search that
+    only checked the disk `GEN` came from -- what `tables_from_c64` does --
+    could never confirm a table here even if Curse's `GEN` held one.
+    """
+    disks = _curse_disks_dir()
+    sides = sorted(disks.glob("CURSE*.[dD]64"))
+    assert len(sides) >= 2
+    gen_sides, art_sides = [], []
+    for side in sides:
+        image = D64(side.read_bytes())
+        names = [e.raw_name.rstrip(b"\xa0").decode("latin1")
+                 for e in image.directory()]
+        if "GEN" in names:
+            gen_sides.append(side.name)
+        if any(n.startswith(("HEAD", "BODY")) and len(n) == 6 for n in names):
+            art_sides.append(side.name)
+    assert gen_sides, "no side here carries GEN any more; this test is stale"
+    assert not (set(gen_sides) & set(art_sides)), (
+        "GEN and the portrait art are now on the same side, so the "
+        "cross-side search this issue asked for is no longer exercised here")
+
+
+@needs_curse_disks
+def test_curse_has_no_run_of_fourteen_and_twelve_ids_anywhere_on_its_sides():
+    """The finding that changes what "fixed" means for Curse, not only for
+    Silver Blades (#300).
+
+    Pooling every `HEAD<xx>`/`BODY<xx>` id across all six sides and searching
+    every file on every side for an adjacent run of fourteen and twelve of
+    them, in either order, finds nothing -- the same search that finds Pool
+    of Radiance's table exactly once, at the one place it is
+    (`POOL3.D64:GEN @2877`). So the `HEAD*`/`BODY*` files Curse ships are not
+    the fourteen-heads-and-twelve-bodies creation menu Pool of Radiance has;
+    what they are for is unmeasured, and inventing a table would be worse
+    than reporting that none was found.
+    """
+    disks = _curse_disks_dir()
+    sides = sorted(disks.glob("CURSE*.[dD]64"))
+    heads, bodies = set(), set()
+    per_side = {}
+    for side in sides:
+        image = D64(side.read_bytes())
+        h, b = set(), set()
+        for entry in image.directory():
+            name = entry.raw_name.rstrip(b"\xa0").decode("latin1")
+            if name.startswith("HEAD") and len(name) == 6:
+                h.add(int(name[4:], 16))
+            if name.startswith("BODY") and len(name) == 6:
+                b.add(int(name[4:], 16))
+        per_side[side.name] = image
+        heads |= h
+        bodies |= b
+    assert heads and bodies, "Curse has grown no portrait art; update #300"
+
+    def windows(data, ok, length):
+        out = set()
+        for i in range(len(data) - length + 1):
+            chunk = data[i:i + length]
+            if len(set(chunk)) == length and all(x in ok for x in chunk):
+                out.add(i)
+        return out
+
+    hits = 0
+    for name, image in per_side.items():
+        for entry in image.directory():
+            raw = entry.raw_name.rstrip(b"\xa0")
+            try:
+                data = image.read_file(raw)
+            except Exception:
+                continue
+            h_at = windows(data, heads, portraits.HEAD_COUNT)
+            b_at = windows(data, bodies, portraits.BODY_COUNT)
+            hits += sum(1 for st in h_at if st + portraits.HEAD_COUNT in b_at)
+            hits += sum(1 for st in b_at if st + portraits.BODY_COUNT in h_at)
+    assert hits == 0, (
+        f"{hits} adjacency hit(s) found -- Curse does carry a run shaped "
+        f"like the creation menu after all; #300's finding needs revising")
+
+
+@needs_ssb_disks
+def test_silver_blades_ships_no_head_or_body_file_at_all():
+    """The escape-hatch fact: unlike Curse, Silver Blades has no candidate
+    art to look for a menu among, on any of its six sides."""
+    disks = _ssb_disks_dir()
+    sides = sorted(disks.glob("SILVER*.[dD]64"))
+    assert sides
+    for side in sides:
+        image = D64(side.read_bytes())
+        names = [e.raw_name.rstrip(b"\xa0").decode("latin1")
+                 for e in image.directory()]
+        assert not any(n.startswith(("HEAD", "BODY")) and len(n) == 6
+                      for n in names), f"{side.name} carries portrait art now"
+
+
+@needs_ssb_disks
+def test_a_silver_blades_folder_reports_no_portrait_art_rather_than_a_table():
+    """The player-visible refusal for a title that never had a face to give:
+    it names the missing art, not a made-up table."""
+    with pytest.raises(portraits.PortraitError) as caught:
+        portraits.tables_from_disks(_ssb_disks_dir())
+    assert "HEAD" in str(caught.value)
+
+
+def test_a_table_is_found_across_sides_even_when_gen_carries_no_art_itself(
+        tmp_path, monkeypatch):
+    """The mechanism #300 asked for, proven on synthetic disks so it does not
+    depend on any title actually shipping this shape.
+
+    `GEN` and its table sit alone on one side; every `HEAD<xx>`/`BODY<xx>`
+    file sits on a second. `tables_from_c64` -- one disk only -- cannot
+    confirm this table since the side it is on carries no art of its own;
+    `tables_from_disks` pools ids across every side matching the title's
+    glob, so it can.
+    """
+    monkeypatch.setattr(portraits, "HEAD_COUNT", 3)
+    monkeypatch.setattr(portraits, "BODY_COUNT", 2)
+    heads = (0x01, 0x02, 0x03)
+    bodies = (0x05, 0x06)
+
+    gen_payload = bytes([0xFE, 0xFF]) + bytes(bodies) + bytes(heads)
+    (tmp_path / "CURSEA.D64").write_bytes(
+        _disk_with([(b"GEN", gen_payload)]))
+    art_files = ([(f"HEAD{n:02X}".encode(), b"\x01\x08") for n in heads]
+                + [(f"BODY{n:02X}".encode(), b"\x01\x08") for n in bodies])
+    (tmp_path / "CURSEB.D64").write_bytes(_disk_with(art_files))
+
+    found = portraits.tables_from_disks(tmp_path)
+    assert found.heads == heads
+    assert found.bodies == bodies
+    assert found.source.startswith("CURSEA.D64:GEN")
+
+
+def test_no_table_is_found_when_a_side_has_gen_but_no_art_anywhere(
+        tmp_path, monkeypatch):
+    """The Silver Blades shape: a side carries `GEN`, but no side -- this one
+    or any other matching the same title -- carries a `HEAD<xx>`/`BODY<xx>`
+    file for a found run to be checked against."""
+    monkeypatch.setattr(portraits, "HEAD_COUNT", 3)
+    monkeypatch.setattr(portraits, "BODY_COUNT", 2)
+    gen_payload = (bytes([0xFE, 0xFF]) + bytes((0x05, 0x06))
+                  + bytes((0x01, 0x02, 0x03)))
+    (tmp_path / "SILVER-1.D64").write_bytes(
+        _disk_with([(b"GEN", gen_payload)]))
+
+    with pytest.raises(portraits.PortraitError) as caught:
+        portraits.tables_from_disks(tmp_path)
+    assert "HEAD" in str(caught.value)

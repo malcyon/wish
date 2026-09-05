@@ -128,8 +128,8 @@ def _only(hits: list[int], where: str) -> int:
     if not hits:
         raise PortraitError(
             f"{where}: no run of {HEAD_COUNT} head ids and {BODY_COUNT} body "
-            f"ids in it -- this is not the Pool of Radiance the portraits "
-            f"beside it belong to")
+            f"ids in it -- this is not a title whose creation menu the "
+            f"portraits beside it belong to")
     raise PortraitError(
         f"{where}: {len(hits)} runs of {HEAD_COUNT} head ids and "
         f"{BODY_COUNT} body ids, at {hits}; the table cannot be told from "
@@ -178,17 +178,8 @@ def tables_from_dos(game: str | pathlib.Path) -> PortraitTables:
         source=f"{exe.name} @{at}")
 
 
-def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
-    """The same tables out of the C64 `GEN` overlay, for a cross-check.
-
-    `GEN` is on `POOL3`, the character-creation side, beside the `HEAD*` and
-    `BODY*` files its two tables name.  The order is the other way round
-    there -- bodies first -- which is the only difference between the ports.
-    """
-    from .d64 import D64, D64Error
-
-    disk = pathlib.Path(disk)
-    image = D64(disk.read_bytes())
+def _side_art_ids(image) -> dict[str, set[int]]:
+    """Every `HEAD<xx>`/`BODY<xx>` id one open `D64` image's directory names."""
     ids: dict[str, set[int]] = {"HEAD": set(), "BODY": set()}
     for entry in image.directory():
         name = entry.raw_name.rstrip(b"\xa0").decode("latin1")
@@ -198,6 +189,59 @@ def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
                     ids[stem].add(int(name[len(stem):], 16))
                 except ValueError:
                     pass
+    return ids
+
+
+def _all_art_ids(sides: list[pathlib.Path]) -> dict[str, set[int]]:
+    """The union of `_side_art_ids` over every side given.
+
+    A title's `GEN` does not have to share a disk with its `HEAD*`/`BODY*`
+    files -- Curse keeps `GEN` on its first side and the art on the rest --
+    so a table found on one side is checked against every side of the same
+    title, not only the one it came from.
+    """
+    from .d64 import D64
+
+    out: dict[str, set[int]] = {"HEAD": set(), "BODY": set()}
+    for side in sides:
+        try:
+            image = D64(side.read_bytes())
+        except OSError:
+            continue
+        found = _side_art_ids(image)
+        out["HEAD"] |= found["HEAD"]
+        out["BODY"] |= found["BODY"]
+    return out
+
+
+def _table_from_gen(data: bytes, ids: dict[str, set[int]],
+                     source: str) -> PortraitTables:
+    """The heads-then-bodies-swapped `GEN` layout, checked against `ids`."""
+    at = _only(_runs(data, BODY_COUNT, ids["BODY"], HEAD_COUNT, ids["HEAD"]),
+               source)
+    return PortraitTables(
+        heads=tuple(data[at + BODY_COUNT:at + BODY_COUNT + HEAD_COUNT]),
+        bodies=tuple(data[at:at + BODY_COUNT]),
+        source=f"{source} @{at}")
+
+
+def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
+    """The same tables out of the C64 `GEN` overlay, for a cross-check.
+
+    `GEN` is on `POOL3`, the character-creation side, beside the `HEAD*` and
+    `BODY*` files its two tables name.  The order is the other way round
+    there -- bodies first -- which is the only difference between the ports.
+
+    This checks a found table against the **one** disk given, which is right
+    for `POOL3` -- `GEN` and the art it names are both there.  A title that
+    keeps them on different sides needs `tables_from_disks`, which checks
+    against every side of the title instead of just this one.
+    """
+    from .d64 import D64, D64Error
+
+    disk = pathlib.Path(disk)
+    image = D64(disk.read_bytes())
+    ids = _side_art_ids(image)
     if not ids["HEAD"] or not ids["BODY"]:
         raise PortraitError(
             f"{disk.name}: no HEAD<xx>/BODY<xx> files on it, so this is not "
@@ -210,12 +254,7 @@ def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
         # unrelated bug into "no GEN on it" -- a wrong answer that reads
         # like a measurement.
         raise PortraitError(f"{disk.name}: no GEN on it ({e})") from e
-    at = _only(_runs(data, BODY_COUNT, ids["BODY"], HEAD_COUNT, ids["HEAD"]),
-               f"{disk.name}:GEN")
-    return PortraitTables(
-        heads=tuple(data[at + BODY_COUNT:at + BODY_COUNT + HEAD_COUNT]),
-        bodies=tuple(data[at:at + BODY_COUNT]),
-        source=f"{disk.name}:GEN @{at}")
+    return _table_from_gen(data, ids, f"{disk.name}:GEN")
 
 
 def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
@@ -223,29 +262,59 @@ def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
 
     The **import** direction -- a DOS save becoming a `.d64` -- needs the
     tables to turn the DOS record's menu position into the art id the C64
-    record stores, and the thing it has in its hand is the directory of
-    `POOL<n>.D64` it already reads the combat icon and `ANIMATE00` out of.
-    `tables_from_c64` wants the one side that carries `GEN`; this finds it.
+    record stores, and the thing it has in its hand is the directory this
+    title's sides live in -- the one `goldbox.dos.write_dos_save` already
+    reads the combat icon and `ANIMATE00` out of.  `tables_from_c64` wants
+    the one side that carries `GEN`; this finds it, for whichever of the
+    three importable titles the directory turns out to hold (#300).
 
-    Every side is tried and the first that answers wins, rather than
-    hardcoding `POOL3`: which side carries `GEN` is the game's business and
-    an installation that puts it elsewhere is not a reason to lose the
-    party's faces.  Each side's answer is checked against the `HEAD*` and
-    `BODY*` files on that same side, so a table found is a table naming
-    portraits that exist beside it.
+    Every side of the matching title is tried and the first that answers
+    wins, rather than hardcoding `POOL3` or a `POOL<n>.D64` name: which side
+    carries `GEN` is the game's business, and Curse keeps `GEN` on one side
+    and its `HEAD*`/`BODY*` art on the others.  So the ids a found table is
+    checked against are pooled from **every side of the title**, not only
+    the one `GEN` happened to be on -- a table found is still a table naming
+    portraits that exist somewhere on the player's own disks.
     """
+    from .d64 import D64, D64Error
+    from .games import GAMES
+
     disks = pathlib.Path(disks)
-    sides = sorted(disks.glob("POOL[0-9].D64"))
-    if not sides:
-        raise PortraitError(
-            f"{disks}: no POOL<n>.D64 in it, so the creation menu's tables "
-            f"are not here to read")
+    # `dict.fromkeys` rather than a set: several titles could share one glob
+    # and the order patterns are tried in should not depend on a set's
+    # unordered hashing.
+    patterns = tuple(dict.fromkeys(g.disk_glob for g in GAMES))
+    any_sides = False
     why: list[str] = []
-    for side in sides:
-        try:
-            return tables_from_c64(side)
-        except (PortraitError, OSError) as e:
-            why.append(str(e))
+    for pattern in patterns:
+        sides = sorted(disks.glob(pattern))
+        if not sides:
+            continue
+        any_sides = True
+        ids = _all_art_ids(sides)
+        if not ids["HEAD"] or not ids["BODY"]:
+            why.append(
+                f"{len(sides)} side(s) matching {pattern!r} carry no "
+                f"HEAD<xx>/BODY<xx> file between them, so this title's "
+                f"sheet-portrait art is not on any of the player's disks")
+            continue
+        for side in sides:
+            try:
+                image = D64(side.read_bytes())
+                data = image.read_file(_C64_OVERLAY)
+            except (D64Error, OSError) as e:
+                why.append(f"{side.name}: no GEN on it ({e})")
+                continue
+            try:
+                return _table_from_gen(data, ids, f"{side.name}:GEN")
+            except PortraitError as e:
+                why.append(str(e))
+        why.append(f"none of the {len(sides)} sides matching {pattern!r} "
+                   f"carries the creation menu")
+    if not any_sides:
+        raise PortraitError(
+            f"{disks}: no {' or '.join(patterns)} in it, so the creation "
+            f"menu's tables are not here to read")
     raise PortraitError(
-        f"{disks}: none of the {len(sides)} sides here carries the creation "
-        f"menu ({'; '.join(why)})")
+        f"{disks}: none of the sides here carries the creation menu "
+        f"({'; '.join(why)})")
