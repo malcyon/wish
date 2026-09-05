@@ -250,7 +250,7 @@ A second session the same day closed the first two --
 * **The divide at `GEN $11AB` is settled, and it is not probabilistic in the
   case that matters.** The random routine turned out to be in `LIBRARY` rather
   than nowhere: Curse's runs at `$2DC8` and Pool of Radiance's at `$2C48`, both
-  ending exactly where that title's saved game loads. Both roll
+  Curse's ending exactly where `SAVEAZURE` loads and Pool of Radiance's landing four bytes below its own, which corroborates the technique rather than checking the second base. Both roll
   `1..class_count`; Pool of Radiance rounds up when the roll is at or below the
   remainder and **Curse only when it is below**, so a two-class Curse character
   always rounds down. CONFIRMED from the bytecode and from 40 engine-written

@@ -325,9 +325,13 @@ def divide_between_classes(value: int, class_count: int, rng=None,
     and `$2DBC` in Pool of Radiance, the same code twice, masking a random byte
     to the bit width of `Y` and retrying while it exceeds `Y`, so it returns
     `0..Y`. Two entry points sit above it one byte apart, `DEY` then the call,
-    and both titles reach the lower one. Curse's `LIBRARY` runs at `$2DC8` and
-    Pool of Radiance's at `$2C48` -- each ends where that title's saved game
-    loads, `$4B00` and `$4900`.
+    and both titles reach the lower one. Curse's `LIBRARY` runs at `$2DC8`,
+    which is exact: `$2DC8` plus its 7480 bytes is `$4B00`, where `SAVEAZURE`
+    loads. Aligning Pool of Radiance's copy against it puts its `LIBRARY` at
+    `$2C48`, which lands **four bytes below** the `$4900` its own saved game
+    loads at -- close enough to corroborate the technique and not an
+    independent check of the base, since a four-byte error in the alignment
+    would look exactly like this.
 
     **So the two titles differ only in the comparison, and Curse's is not
     random for a two-class character.** Pool of Radiance rounds up with chance

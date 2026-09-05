@@ -206,7 +206,7 @@ def test_the_clamp_leaves_the_class_the_character_left_out_of_its_maximum(
     does not discriminate this module.** `_experience` walks the classes in
     `class_bits`, and a dual-classed character's old class is out of that mask
     until `$20A3` puts it back -- so in the watched arrangement the right
-    answer falls out whether the skip is there or not. The branch only bites
+    answer falls out whether the skip is there or not. The branch only changes the answer
     after the restore, and this is a case where the old class's clamp is the
     larger: a thief 10 who used to be a cleric 10 crosses into thief 11, the
     cleric comes back, and 675,000 would be written instead of 440,000. That

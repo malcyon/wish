@@ -216,7 +216,7 @@ offers them from a menu)`: the one-press-raises-every-class loop (`$156F`), the
 hall gate `$7EA8` with the same `AND #$F7` and the same `$7F`/`$A1` menu masks
 (`$0991`), refusal message 27, the two-dice hit die (`$1808`) and the divide
 (`$0D96`) -- the last two instruction for instruction with Curse's, so Silver
-Blades carries the same `<` and the same absence of a floor. It never stores
+Blades has the same `<` and, like Curse, guarantees no minimum result. It never stores
 spell capacity either: 0 code references to `$7CEE`-`$7CF3` across 347 files.
 
 **The one thing that is Silver Blades' alone: its `GEN` trainer takes no
