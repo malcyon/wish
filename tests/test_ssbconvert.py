@@ -63,20 +63,25 @@ def converts_ssb(monkeypatch):
         monkeypatch.setattr(dos, "CONVERTS", dos.CONVERTS + (SSB,))
 
 
-def ssb_record(**values) -> bytes:
-    """A 439-byte Silver Blades record with the named fields set.
+def _dos_record(shape, **values) -> bytes:
+    """A `shape`'s own size of DOS record with the named fields set.
 
     Built from `goldbox/dos_layout.py`'s own table rather than sliced out of
     anybody's save, so it carries no game data and needs no disks.
     """
-    rec = bytearray(SSB.record_size)
-    table = dos_layout.FIELDS_BY_NAME_FOR[SSB.key]
+    rec = bytearray(shape.record_size)
+    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
         assert len(raw) == f.size, name
         rec[f.span] = raw
     return bytes(rec)
+
+
+def ssb_record(**values) -> bytes:
+    """A 439-byte Silver Blades record with the named fields set."""
+    return _dos_record(SSB, **values)
 
 
 def levels(**by_slot) -> bytes:
@@ -171,6 +176,52 @@ def test_a_ranger_round_trips_through_the_c64_record(converts_ssb):
     assert back.fields["class_bits"].value == 0x80
     out, _itm, _spc, _report = dos.write(back)
     assert out[dos_layout.FIELDS_BY_NAME["class_bits"].offset] == 0x40
+
+
+# --- infravision: the C64 field is computed, and the race table is per title -
+def test_a_silver_blades_human_has_no_infravision(converts_ssb):
+    """`race=6` is Silver Blades' human -- and the half-orc's slot in Pool of
+    Radiance's numbering, `#287`'s bug: every converted human read 6 at
+    `0x0D5` where all six shipped C64 records read 0."""
+    human = dos.DosCharacter(ssb_record(race=6))
+    rec, _ = dos.to_c64_record(human)
+    assert rec.get("infravision") == 0
+
+
+def test_a_silver_blades_dwarf_has_infravision(converts_ssb):
+    """`race=3` is Silver Blades' dwarf -- Pool of Radiance's gnome slot."""
+    dwarf = dos.DosCharacter(ssb_record(race=3))
+    rec, _ = dos.to_c64_record(dwarf)
+    assert rec.get("infravision") == 6
+
+
+def test_a_pool_of_radiance_human_still_has_no_infravision():
+    """The title this table was built from must not move: `race=7` is human
+    in Pool of Radiance's own numbering."""
+    human = dos.DosCharacter(_dos_record(dos_layout.POOL_OF_RADIANCE, race=7))
+    rec, _ = dos.to_c64_record(human)
+    assert rec.get("infravision") == 0
+
+
+def test_a_pool_of_radiance_dwarf_still_has_infravision():
+    dwarf = dos.DosCharacter(_dos_record(dos_layout.POOL_OF_RADIANCE, race=1))
+    rec, _ = dos.to_c64_record(dwarf)
+    assert rec.get("infravision") == 6
+
+
+def test_a_curse_human_still_has_no_infravision():
+    """Curse shares Pool of Radiance's race numbering (`race=7` human)."""
+    human = dos.DosCharacter(_dos_record(dos_layout.CURSE_OF_THE_AZURE_BONDS,
+                                         race=7))
+    rec, _ = dos.to_c64_record(human)
+    assert rec.get("infravision") == 0
+
+
+def test_a_curse_dwarf_still_has_infravision():
+    dwarf = dos.DosCharacter(_dos_record(dos_layout.CURSE_OF_THE_AZURE_BONDS,
+                                         race=1))
+    rec, _ = dos.to_c64_record(dwarf)
+    assert rec.get("infravision") == 6
 
 
 # --- the item record: 67 bytes in this title alone ---------------------------

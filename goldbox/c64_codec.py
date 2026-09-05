@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import neutral, spells
+from . import games, neutral, spells
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
@@ -359,13 +359,41 @@ _LEVEL_ORDER = ("level_magic_user", "level_cleric", "level_thief",
                 "level_fighter", "level_knight", "level_paladin",
                 "level_ranger")
 
-#: Race code -> infravision range in feet.  The C64 stores this at `0x0D5`
+#: Race name -> infravision range in feet.  The C64 stores this at `0x0D5`
 #: and it is a property of the race, not of any save: DOS does not store it,
 #: the Amiga derives what it needs, so the C64 writer computes it.  6 for
 #: every dwarf, elf and half-elf and 0 for every human across the twelve C64
 #: specimens that carry it; gnome, halfling and half-orc are PROBABLE, on
 #: AD&D 1st edition giving all three the same 60 feet.
-INFRAVISION = {0: 0, 1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6, 7: 0}
+#:
+#: **Keyed by name, not by the record's race number** (#287, A converted
+#: Silver Blades human sees in the dark, because the infravision table is
+#: keyed by Pool of Radiance's race numbers).  The number is an index into
+#: the record's *own title's* race table, and the titles disagree: human is
+#: 7 in Pool of Radiance and Curse and 6 in Silver Blades, which used to be
+#: the half-orc's slot -- so every converted Silver Blades human read the
+#: half-orc's 6.  :func:`_infravision` looks the number up through
+#: `goldbox.games.race_table` for the record's own title before this table is
+#: asked, so the name and not the number is what travels between titles.
+INFRAVISION = {
+    "dwarf": 6, "elf": 6, "half-elf": 6, "gnome": 6, "halfling": 6,
+    "half-orc": 6, "human": 0, "monster": 0,
+}
+
+
+def _infravision(game: object, race: int) -> int:
+    """This title's infravision for a race code, 0 for an unnamed one.
+
+    `game` is whatever a caller has in hand for the title -- a
+    `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
+    three shapes :func:`record_shape` accepts, and for the same reason: a
+    conversion carries a bare key rather than the descriptor.
+    """
+    resolved = (game if hasattr(game, "race_names")
+               else games.BY_KEY.get(getattr(game, "key", game)))
+    name = games.race_table(resolved).get(race)
+    return INFRAVISION.get(name, 0)
+
 
 #: How many item slots the C64 record has.
 ITEM_SLOTS = 16
@@ -669,7 +697,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # `w.get`, not `char.get`: the floor applies to a derivation as much as
     # to a copy, so a refused race yields infravision 0 and not a value
     # computed from a grade this conversion would not write.
-    rec.set("infravision", INFRAVISION.get(w.get("race", 0), 0))
+    rec.set("infravision", _infravision(char.game, w.get("race", 0)))
     rep.note(0x0D5, 1,
              f"infravision: computed from race; {port} does not store it")
     rec.set("strength_index", strength_index(w.get("strength", 0),
