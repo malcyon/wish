@@ -75,6 +75,7 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | a sentence that rates itself: **"worth saying"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
 | **plainly** -- "say plainly", "state it plainly", "put it plainly" | just say the thing. The word promises the sentence after it will be clear, which is not the same as writing one |
 | **floor**, for anything but a story of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
+| **carried**, of anything a conversion does not convert -- "not carried", "carries it across", "nowhere to carry it" | **converted**, and then say what a player loses: "the ring does not resist fire on the other side yet". The word is how an agent gives up and makes it sound like a finding -- Donald, 2026-09-04: *"The agents just give up and say 'oh well, we can't convert it'. But they call it carried instead, which confuses me."* |
 
 **A row's examples are examples; the word is banned however it is phrased**,
 and the table is not the whole rule -- the habit behind it is reaching for
