@@ -79,6 +79,27 @@ have their own lists (`dos.DERIVED`, `dos.CONSTANTS`, `dos.WRITE_DERIVED`,
 a long drop list is read against this rule, sort it before costing it -- most
 of what sat on the import list was never a loss.
 
+**A small table of numbers read out of the game is a measurement, not a data
+file.** `AGENTS.md` forbids committing the game's data files -- maps, tables,
+scripts, records -- as committed bytes. That ban is about redistributing the
+game, and a handful of integers with a note saying where they were read from
+is the thing the sentence after it asks for: *describe, cite, measure and
+generate*. It is the same class of thing as the byte offsets, field addresses
+and constants committed all through `docs/`.
+
+Donald, 2026-09-06, on storing the fourteen head and twelve body art ids the
+DOS-to-C64 portrait conversion needs, rather than reading them off the
+player's disks every time: *"A table of 26 numbers doesn't break any rules.
+It's not art, it's just two dozen numbers."* And on why it is worth doing at
+all: *"They are 40 years old and they are not going to change."*
+
+**The line is drawn by what the thing is, not by its size.** Numbers and their
+provenance are a measurement. A block of the game's own bytes is a copy
+however short, and a sprite, a map, a script or a record stays banned at any
+length -- including as a test fixture. If a table cannot be written as
+numbers a reader could check against the game, it is the wrong side of the
+line.
+
 **Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
 'carried', you must mean 'converted'. I don't think carried means what you
 think."* The word is in this file, in `field_disposition` prose and in drop
