@@ -200,7 +200,13 @@ ALLOWED = {
 def test_no_other_module_builds_a_path_to_the_checkout_root():
     offenders = []
     for path in _sources():
-        name = str(path.relative_to(ROOT))
+        #: `as_posix()`, not `str()`: on Windows this renders as
+        #: `goldbox\\assets.py`, which matches neither the `tools/` prefix
+        #: below nor anything in `ALLOWED` -- so every module is reported and
+        #: the test fails on both Windows jobs while passing on Linux.
+        #: `tests/test_repository_contents.py` carries the same note, having
+        #: been bitten first.
+        name = path.relative_to(ROOT).as_posix()
         if name.startswith("tools/") and name not in ("tools/wish.py",):
             continue        # developer scripts run from a checkout by design
         if name in ALLOWED:
