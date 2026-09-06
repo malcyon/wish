@@ -16,17 +16,21 @@ files and twelve pages.
 
 **Where the specimens come from.**  The synthetic records here are built from
 `goldbox/dos_layout.py`'s own table, so they belong to us and run anywhere.
-The two tests that read a save the *game* wrote are marked and skip without
-it: `work/issue32/specimens/` holds three C64 Curse saves an agent drove the
-game to write for `#32`, and `work/curse/` holds the DOS sessions of `#113`
-and `#234`.  `work/` is gitignored, so CI runs the synthetic half only, and
-what the engine-written half is for is stated at each of them.
+The two tests that read a C64 save the *game* wrote are marked and skip
+without it: `work/issue32/specimens/` holds three C64 Curse saves an agent
+drove the game to write for `#32`.  The tests that read a *played DOS*
+session use `gamedata.specimen("curse-131-four-items-readied")`, under
+`$WISH_SPECIMENS` (`~/wish-specimens/` by default) rather than `work/curse/`,
+which held the `#113`/`#234` sessions these once read and has been lost
+twice (`#333`, Six DOS Curse conversion tests skip because their specimen
+lived under work/, which has been lost twice).
 """
 
 from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
 
 from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame
@@ -37,7 +41,6 @@ CURSE = dos_layout.CURSE_OF_THE_AZURE_BONDS
 CURSE_GAME = games.CURSE_OF_THE_AZURE_BONDS
 WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
 SPECIMENS = WORK / "issue32" / "specimens"
-DOS_SESSION = WORK / "curse" / "H-square-5-13"
 
 
 # --- helpers ----------------------------------------------------------------
@@ -367,19 +370,24 @@ def test_the_engine_written_save_agrees_with_the_container():
 
 
 # --- the container, written from a DOS save ---------------------------------
+#: The shipped slot A party, driven out of the Windlord's Inn to Weaponers of
+#: Cormyr in Tilverton and saved to slot I -- MATHEW carrying a battle axe
+#: (readied), a two-handed sword, ten arrows and leather armour, so this is
+#: also the first specimen these item assertions have ever run against
+#: (`H-square-5-13` carried no items at all).
+_DOS_SLOT = "I"
+
+
 def _dos_save():
-    if not (DOS_SESSION / "SAVGAMH.DAT").exists():
-        pytest.skip(f"no DOS Curse session at {DOS_SESSION}; #113 makes one")
-    return DOS_SESSION
+    return gamedata.specimen("curse-131-four-items-readied")
 
 
 def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
     """#324 (The import pane tells a player nine fields could not be
-    converted that the C64 recomputes for itself): converting the `#113`
-    session at `work/curse/H-square-5-13` slot H through
-    `editor.dosimport.rehearse` shows no line for item bookkeeping, heap
-    state, the running-effects link, which hand holds a weapon or the
-    constant bytes at `field_83_87` -- the same guard as
+    converted that the C64 recomputes for itself): converting the `#131`
+    specimen through `editor.dosimport.rehearse` shows no line for item
+    bookkeeping, heap state, the running-effects link, which hand holds a
+    weapon or the constant bytes at `field_83_87` -- the same guard as
     `tests/test_dosconvert.py`'s Pool of Radiance version, on Curse's own
     container.  `icon` and `animate` are dummy bytes here, exactly as
     `test_a_curse_save_is_written_whole` uses them: the pane's content does
@@ -388,7 +396,7 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
     from editor.dosimport import GameFiles, rehearse
 
     files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
-    conversion = rehearse(_dos_save(), "H", files)
+    conversion = rehearse(_dos_save(), _DOS_SLOT, files)
     keywords = ("item list", "internal game state", "running-effects list",
                "which hand is holding", "five bytes that make no difference")
     for line in conversion.report.dropped:
@@ -397,16 +405,33 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
             assert keyword not in lowered, line
 
 
+def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
+    """#329 (A converted Curse or Silver Blades party still shows two
+    portrait drop lines, though #300 proved neither title's sheet draws a
+    face), plus #258's identity byte (docs/170-c64-identity-pair.md), written
+    for all three titles now rather than reported as dropped.
+
+    The `#131` specimen through `editor.dosimport.rehearse` showed three
+    lines before this pair of fixes -- two portrait, one identity -- and
+    shows none now, the same measurement `tests/test_ssbconvert.py` takes on
+    Silver Blades."""
+    from editor.dosimport import GameFiles, rehearse
+
+    files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
+    conversion = rehearse(_dos_save(), _DOS_SLOT, files)
+    assert conversion.report.dropped == []
+
+
 def test_a_curse_save_is_written_whole():
     """`new_save` refuses a byte with no source, so this passing at all is the
     claim: 7424 bytes, none of them inherited and none left zero by accident.
 
-    The party is the `#113` session's, standing on (5,13) in Tilverton with
-    the clock at 20:32, and every one of those reads back through the
-    project's own `SaveGame0`.
+    The party is `#131`'s specimen, standing on (3,12) in Tilverton with the
+    clock at 0:06, and every one of those reads back through the project's
+    own `SaveGame0`.
     """
     save0, save1, report = dos.new_save(
-        _dos_save(), "H", icon=bytes(36), animate=bytes(852),
+        _dos_save(), _DOS_SLOT, icon=bytes(36), animate=bytes(852),
         game=CURSE_GAME)
     assert len(save0) == 0x1D00 and not save1
     assert report.unwritten == []
@@ -414,8 +439,8 @@ def test_a_curse_save_is_written_whole():
 
     read = savegame.SaveGame0.from_bytes(bytes(save0), CURSE_GAME)
     assert read.area == 1 and read.area_file == "GEO01"
-    assert (read.party.x, read.party.y) == (5, 13)
-    assert read.party.clock_text.endswith("20:32")
+    assert (read.party.x, read.party.y) == (3, 12)
+    assert read.party.clock_text.endswith("0:06")
     assert [s.index for s in read.characters] == [0, 1, 2, 3, 4, 5]
 
     c = c64_save.CURSE_OF_THE_AZURE_BONDS
@@ -428,7 +453,7 @@ def test_a_curse_save_is_written_whole():
 def test_the_written_cache_names_the_area_with_bit_seven_set():
     """Curse ORs bit 7 on the **save** path and copies raw on load, the
     reverse of Pool of Radiance, so a converted save has to set it itself."""
-    save0, _, _ = dos.new_save(_dos_save(), "H", icon=bytes(36),
+    save0, _, _ = dos.new_save(_dos_save(), _DOS_SLOT, icon=bytes(36),
                                animate=bytes(852), game=CURSE_GAME)
     at, slots = c64_save.CURSE_OF_THE_AZURE_BONDS.cache
     cache = list(save0[at:at + slots])
@@ -457,9 +482,9 @@ def test_the_script_scratch_is_copied_and_the_picture_buffer_is_not():
     which is a measured zero rather than an inherited one.
     """
     folder = _dos_save()
-    save0, _, _ = dos.new_save(folder, "H", icon=bytes(36),
+    save0, _, _ = dos.new_save(folder, _DOS_SLOT, icon=bytes(36),
                                animate=bytes(852), game=CURSE_GAME)
-    savgam = (folder / "SAVGAMH.DAT").read_bytes()
+    savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
     shape = sg.save_shape_for(len(savgam))
     want = bytes(sg.word(savgam, 0x4A00 + i, shape) & 0xFF for i in range(0x20))
     assert bytes(save0[0x100:0x120]) == want
@@ -472,7 +497,7 @@ def test_the_disk_carries_one_file():
     """Pool of Radiance writes `SAVEDGAME0` and `SAVEDGAME1`; every later
     title writes one file, and `save_disk` no longer writes a roster file for
     a title that has no roster file."""
-    save0, save1, _ = dos.new_save(_dos_save(), "H", icon=bytes(36),
+    save0, save1, _ = dos.new_save(_dos_save(), _DOS_SLOT, icon=bytes(36),
                                    animate=bytes(852), game=CURSE_GAME)
     disk = dos.save_disk(bytes(save0), bytes(save1), CURSE_GAME)
     assert [e.display_name for e in disk.directory()] == ["SAVEAZURE"]
