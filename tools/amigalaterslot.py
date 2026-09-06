@@ -46,7 +46,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import amiga  # noqa: E402
-from goldbox.amiga_adf import AmigaDisk  # noqa: E402
+from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -65,7 +65,7 @@ def slot_path(disk: AmigaDisk, letter: str) -> str:
         path = f"/{SAVE_DRAWER}/savgam{letter}{suffix}"
         try:
             disk.lookup(path)
-        except Exception:
+        except AmigaDiskError:
             continue
         return path
     raise SystemExit(
@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     target = f"/{SAVE_DRAWER}/savgam{args.to}{path[-4:]}"
     try:
         disk.lookup(target)
-    except Exception:
+    except AmigaDiskError:
         pass
     else:
         disk.remove_file(target)

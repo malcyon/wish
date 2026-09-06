@@ -112,7 +112,15 @@ def answer(holder: str, settle: float, shot: pathlib.Path | None = None
     screen, wheel = _wheel_modules()
     tidy = shot is None
     if shot is None:
-        shot = pathlib.Path(tempfile.mkstemp(suffix=".png")[1])
+        #: `NamedTemporaryFile`, not `mkstemp`: `mkstemp` hands back an
+        #: open descriptor as well as a path, and `_to_reader_scale`
+        #: reopens the same file below.  Holding the descriptor there
+        #: is what broke a Windows CI job with `PermissionError:
+        #: [WinError 32]` once already -- `tests/test_iconproposal.py`
+        #: carries the note.
+        handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        handle.close()
+        shot = pathlib.Path(handle.name)
     try:
         subprocess.run(["winvm", "shot", str(shot)], check=True,
                        capture_output=True, text=True,
