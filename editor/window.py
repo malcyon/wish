@@ -880,6 +880,14 @@ class EditorBinding(QObject):
         directory with no side carrying `GEN` leaves `portraits` `None`, and
         the party converts with its own faces switched off rather than not
         converting at all.
+
+        The open party's own title -- or the default title with none open --
+        says which folder in Preferences (`Settings.game_folders`,
+        `#22 (A disk folder setting per game, not one shared by all six)`) to
+        try beside the shared one, the way `game_files_for` below already
+        does for the destination (`#342 (A Curse or Silver Blades save
+        cannot be converted unless its C64 sides sit in the Pool of
+        Radiance disk folder)`).
         """
         from goldbox import dos
         from goldbox.d64 import load_payload
@@ -890,16 +898,21 @@ class EditorBinding(QObject):
         def read_animate(disk):
             return load_payload(disk, dos.ANIMATE_FILE)
 
-        icon_disk = self._find_disk(IconParts.load)
-        animate_disk = self._find_disk(read_animate)
+        game = self.party.game if self.party is not None else por_games.DEFAULT
+        icon_disk = self._find_disk(IconParts.load, game=game)
+        animate_disk = self._find_disk(read_animate, game=game)
         if icon_disk is None or animate_disk is None:
             return None
+        own = self._own_disk_folder(game)
         portraits = None
-        if self.disks:
+        for candidate in (self.disks, own):
+            if not candidate:
+                continue
             try:
-                portraits = tables_from_disks(self.disks)
+                portraits = tables_from_disks(candidate)
+                break
             except (PortraitError, OSError) as exc:
-                _log.debug("no creation menu off %s: %s", self.disks, exc)
+                _log.debug("no creation menu off %s: %s", candidate, exc)
         try:
             return GameFiles(icon=IconParts.load(icon_disk),
                              animate=read_animate(animate_disk),
@@ -929,6 +942,14 @@ class EditorBinding(QObject):
         POOL<n>.D64)` established that Curse and Silver Blades draw no sheet
         face at all, so `portraits=None` is the right answer for them and
         not a loss.
+
+        `game` also says which folder in Preferences (`Settings.game_folders`,
+        `#22 (A disk folder setting per game, not one shared by all six)`) to
+        try beside the one shared folder -- `#342 (A Curse or Silver Blades
+        save cannot be converted unless its C64 sides sit in the Pool of
+        Radiance disk folder)`: a player with each title in its own folder
+        had already set Curse's and Silver Blades' own, and this asked only
+        the shared one.
         """
         from goldbox import dos, games
         from goldbox.d64 import load_payload
@@ -940,16 +961,20 @@ class EditorBinding(QObject):
             return load_payload(disk, dos.ANIMATE_FILE)
 
         pattern = game.disk_glob
-        icon_disk = self._find_disk(IconParts.load, pattern)
-        animate_disk = self._find_disk(read_animate, pattern)
+        icon_disk = self._find_disk(IconParts.load, pattern, game)
+        animate_disk = self._find_disk(read_animate, pattern, game)
         if icon_disk is None or animate_disk is None:
             return None
         portraits = None
-        if self.disks and game.key == games.POOL_OF_RADIANCE.key:
-            try:
-                portraits = tables_from_disks(self.disks)
-            except (PortraitError, OSError) as exc:
-                _log.debug("no creation menu off %s: %s", self.disks, exc)
+        if game.key == games.POOL_OF_RADIANCE.key:
+            for candidate in (self.disks, self._own_disk_folder(game)):
+                if not candidate:
+                    continue
+                try:
+                    portraits = tables_from_disks(candidate)
+                    break
+                except (PortraitError, OSError) as exc:
+                    _log.debug("no creation menu off %s: %s", candidate, exc)
         try:
             return GameFiles(icon=IconParts.load(icon_disk),
                              animate=read_animate(animate_disk),
@@ -1158,9 +1183,29 @@ class EditorBinding(QObject):
         view.setMinimumHeight(height + ROSTER_SLACK)
         view.setMaximumHeight(height + ROSTER_SLACK)
 
-    def _disk_candidates(self, pattern: str | None = None) -> list[str]:
-        """`--game-disk`, then the Game directory setting, then
-        $POR_GAME_DISK, then any game disk of the open title beside the save.
+    def _own_disk_folder(self, game: por_games.Game) -> str | None:
+        """`game`'s own folder in Preferences (`Settings.game_folders`,
+        `#22 (A disk folder setting per game, not one shared by all six)`),
+        or `None` with no entry for it.
+
+        Reads only that one field, not `automap.paths.resolve_disks`'s full
+        precedence -- which also falls back to the shared `disks` setting,
+        `$POR_DISKS` and finally a search of common directories when nothing
+        is set. Every caller here already has `self.disks` and the rest of
+        its own candidates to fall back to, so pulling in the search as well
+        would mean a conversion with no folder set for either title quietly
+        starts scanning the whole machine.
+        """
+        from automap.config import Settings
+        per_game = getattr(Settings.load(), "game_folders", None) or {}
+        own = (per_game.get(game.key, "") or "").strip()
+        return own or None
+
+    def _disk_candidates(self, pattern: str | None = None,
+                        game: por_games.Game | None = None) -> list[str]:
+        """`--game-disk`, then that title's own folder in Preferences, then
+        the shared Game directory setting, then $POR_GAME_DISK, then any
+        game disk of the open title beside the save.
 
         `pattern` overrides the title the glob searches for -- Pool of
         Radiance's `disk_glob` by default, or the open party's own when one
@@ -1169,6 +1214,20 @@ class EditorBinding(QObject):
         Pool of Radiance party open needs Curse's own disks, not the open
         party's (`#52`'s plan, "three C64 titles means the disks are chosen
         by the destination title").
+
+        `game` says which title that is, so its own folder in
+        `Settings.game_folders` (`#22`) is tried before the one shared
+        folder -- without it, a per-title folder the player has already set
+        in Preferences is never consulted, only the shared one
+        (`#342 (A Curse or Silver Blades save cannot be converted unless its
+        C64 sides sit in the Pool of Radiance disk folder)`). A caller with
+        no particular title in mind passes nothing, and this candidate is
+        skipped exactly as before. This is only the one setting, not
+        `automap.paths.resolve_disks`'s full precedence -- that also falls
+        back to searching common directories when nothing is set, which is
+        right for a caller with nothing else to try and wrong here: this
+        method already has `self.disks` and the rest, and must not have a
+        filesystem-wide search sprung on it underneath them.
         """
         import glob
         import os
@@ -1178,6 +1237,9 @@ class EditorBinding(QObject):
         candidates = []
         if self.game_disk:
             candidates.append(self.game_disk)
+        own = self._own_disk_folder(game) if game is not None else None
+        if own:
+            candidates += sorted(glob.glob(str(pathlib.Path(own) / pattern)))
         if self.disks:
             candidates += sorted(glob.glob(str(pathlib.Path(self.disks)
                                                / pattern)))
@@ -1197,9 +1259,10 @@ class EditorBinding(QObject):
                 unique.append(c)
         return unique
 
-    def _find_disk(self, read, pattern: str | None = None) -> str | None:
+    def _find_disk(self, read, pattern: str | None = None,
+                  game: por_games.Game | None = None) -> str | None:
         """The first candidate `read` succeeds on."""
-        for c in self._disk_candidates(pattern):
+        for c in self._disk_candidates(pattern, game):
             try:
                 read(c)
             except Exception as exc:

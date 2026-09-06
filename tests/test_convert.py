@@ -805,6 +805,58 @@ def test_disk_candidates_picks_the_destination_pattern_not_the_open_partys(
         window.close()
 
 
+def test_disk_candidates_prefers_a_titles_own_preferences_folder(tmp_path):
+    """`#342 (A Curse or Silver Blades save cannot be converted unless its
+    C64 sides sit in the Pool of Radiance disk folder)`: the shared Game Disk
+    folder holds Pool of Radiance's sides, Curse's own folder is set
+    separately in Preferences (`#22 (A disk folder setting per game, not one
+    shared by all six)`), and the destination lookup finds Curse's disk in
+    its own folder rather than refusing because the shared one has none."""
+    from automap.config import Settings
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "POOL1.D64").write_bytes(b"pool")
+
+    curse_folder = tmp_path / "curse"
+    curse_folder.mkdir()
+    (curse_folder / "CURSE1.D64").write_bytes(b"curse")
+
+    Settings(disks=str(shared), game_folders={
+        games.CURSE_OF_THE_AZURE_BONDS.key: str(curse_folder)}).save()
+
+    window = EditorBinding(_make_root(), disks=str(shared))
+    try:
+        assert window._disk_candidates(
+            games.CURSE_OF_THE_AZURE_BONDS.disk_glob,
+            games.CURSE_OF_THE_AZURE_BONDS) == \
+            [str(curse_folder / "CURSE1.D64")]
+    finally:
+        window.close()
+
+
+def test_disk_candidates_with_no_per_title_folder_still_uses_the_shared_one(
+        tmp_path):
+    """The unchanged case `#342` must not break: one shared Game Disk folder,
+    no per-title folder set in Preferences (`#22`), still answers from the
+    shared one."""
+    from automap.config import Settings
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "POOL1.D64").write_bytes(b"pool")
+
+    Settings(disks=str(shared)).save()
+
+    window = EditorBinding(_make_root(), disks=str(shared))
+    try:
+        assert window._disk_candidates(
+            games.POOL_OF_RADIANCE.disk_glob, games.POOL_OF_RADIANCE) == \
+            [str(shared / "POOL1.D64")]
+    finally:
+        window.close()
+
+
 @needs_dos_saves
 def test_the_writes_block_names_the_full_path_before_the_button_is_enabled(
         tmp_path):
