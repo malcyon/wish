@@ -587,6 +587,90 @@ TABLES: Mapping[str, tuple[Area, ...]] = MappingProxyType({
 })
 
 
+@dataclass(frozen=True)
+class Start:
+    """Where a party that has not begun adventuring goes when it does.
+
+    Every title in the family lets a party be saved from the
+    party-formation menu -- `SAVE CURRENT GAME` sits between
+    `REMOVE CHARACTER FROM PARTY` and `BEGIN ADVENTURING` on DOS and on the
+    C64 alike -- and such a save carries the initialiser's world state
+    rather than a real one.  This is the one row of the area table that
+    state means, per title, so a reader of such a save has somewhere to look
+    instead of a constant in its own module.
+    """
+
+    #: The area the party enters on `BEGIN ADVENTURING`, and the id of a row
+    #: in this title's own table.
+    area: int
+    #: The square the game itself leaves the party on once that area's script
+    #: has run its entry.  Not the square the never-adventured save holds:
+    #: Curse's holds `7,13` facing north and the engine's own answer one
+    #: keypress later is `7,13` facing east.
+    arrival: Arrival
+    confidence: Confidence = Confidence.UNKNOWN
+
+
+#: Game title -> where a party that has not set out begins.
+#:
+#: **The area word in such a save is 0 on all three titles, and 0 is not the
+#: test.**  Pool of Radiance has a real area 0 -- New Phlan, `GEO00`, side 3,
+#: where the game starts and where a player spends much of it -- so a rule
+#: reading "area 0 means the party has not set out" moves thirteen of the
+#: Pool of Radiance containers on this machine out of New Phlan and resets
+#: their clocks.  What separates the two states is the container: the staged
+#: area script is 7680 zeroes in a never-adventured save and holds a script
+#: in every other, and `$4FE1` is 0 in one and never in the other.  Measured
+#: over 114 distinct containers by `tools/neveradventured.py` -- 13 never
+#: adventured against 101 in the world, the two tests agreeing on all 107
+#: containers where both can be taken.  `goldbox/dos_savegame.py` owns the
+#: container; this owns the area.
+#:
+#: Curse of the Azure Bonds is CONFIRMED in the running DOS game
+#: (`#301 (A DOS Curse save standing in area 0 is refused by the import,
+#: because no row of the area table names area 0)`): one boot, a character
+#: created, `SAVE CURRENT GAME` at the party menu, then `BEGIN ADVENTURING`
+#: with the party standing still, and the second save reads area 1, map 1,
+#: `7,13` facing east, clock 00:00, with the status line over
+#: `YOU AWAKEN IN A SMALL ROOM`.  One action apart, and it is the action.
+#:
+#: Pool of Radiance is CONFIRMED from the containers: all seven of its
+#: never-adventured ones hold area 0 and the square `15,1` facing west, which
+#: is `AREAS`' own arrival square for New Phlan, measured separately by a
+#: driven fast travel.  Two independent readings of the same square.
+#:
+#: **Secret of the Silver Blades has no entry, and that is not an oversight.**
+#: Its two never-adventured containers hold the same area 0 and the same
+#: `7,13` facing north that Curse's do, its table's lowest id is `$04`, and
+#: all five of its played containers stand in area `$10` -- which is
+#: suggestive and is not the measurement.  The experiment is the one that
+#: settled Curse: boot DOS Silver Blades, create one character, add it to the
+#: party, `SAVE CURRENT GAME`, then `BEGIN ADVENTURING` and save again with
+#: the party standing still.  Area `$10` in the second save confirms `$10`;
+#: `$04` confirms `$04`.  Until then a caller gets `None` and has to refuse,
+#: rather than being handed a guess that looks like a row.
+STARTS: Mapping[str, Start] = MappingProxyType({
+    POOL_OF_RADIANCE: Start(0, Arrival(15, 1, 3), Confidence.CONFIRMED),
+    CURSE_OF_THE_AZURE_BONDS: Start(0x01, Arrival(7, 13, 1),
+                                    Confidence.CONFIRMED),
+})
+
+
+def start_of(title: str | None) -> Start | None:
+    """Where a party of this title that has not set out begins.
+
+    `None` for a title nobody has measured, which a caller must treat as a
+    refusal rather than as area 0 -- see `STARTS`.
+    """
+    return STARTS.get(title or "")
+
+
+def start_area(title: str | None) -> "Area | None":
+    """The row `start_of` names, so a caller gets the map and the disk too."""
+    start = start_of(title)
+    return None if start is None else area_in(start.area, title)
+
+
 def _by_geo() -> Mapping[str, tuple[Area, ...]]:
     index: dict[str, list[Area]] = {}
     for a in AREAS:

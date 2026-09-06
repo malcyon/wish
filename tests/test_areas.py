@@ -19,6 +19,7 @@ from goldbox import areas
 from goldbox.areas import (
     CURSE_OF_THE_AZURE_BONDS,
     POOL_OF_RADIANCE,
+    SECRET_OF_THE_SILVER_BLADES,
     Arrival,
     Confidence,
 )
@@ -691,6 +692,73 @@ def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():
     # Pool of Radiance is the contrast, and the reason this is not a rule
     # about Gold Box area tables in general: its area 0 is New Phlan.
     assert areas.area_in(0, POOL_OF_RADIANCE) is not None
+
+
+def test_a_party_that_has_not_set_out_starts_where_its_own_title_says():
+    """`STARTS` is per title, and the row it names is one of that title's own.
+
+    A DOS save made from the party-formation menu holds area 0 on all three
+    titles, and 0 means two different things: New Phlan in Pool of Radiance,
+    and nowhere at all in Curse. So the conversion asks the title rather than
+    reading the word (`#301 (A DOS Curse save standing in area 0 is refused
+    by the import, because no row of the area table names area 0)`).
+    """
+    curse = areas.start_of(CURSE_OF_THE_AZURE_BONDS)
+    assert curse.area == 0x01
+    assert (curse.arrival.x, curse.arrival.y) == (7, 13)
+    assert curse.arrival.facing_letter == "E"
+    row = areas.start_area(CURSE_OF_THE_AZURE_BONDS)
+    assert row.ecl == "ECL01" and row.geos == ("GEO01",) and row.disk == 2
+
+    # Pool of Radiance's start really is area 0, so a conversion that read the
+    # word instead of asking would be right here and wrong in Curse.
+    pool = areas.start_of(POOL_OF_RADIANCE)
+    assert pool.area == 0
+    assert areas.start_area(POOL_OF_RADIANCE).name == "New Phlan"
+
+
+def test_pool_of_radiances_start_square_is_the_one_its_area_row_already_holds():
+    """Two independent readings of the same square, and the reason the Pool of
+    Radiance row is graded CONFIRMED.
+
+    `AREAS`' New Phlan arrival came from a driven fast travel; `STARTS`' came
+    from the seven never-adventured containers on this machine, which all hold
+    `15,1` facing west. Neither was derived from the other, so if a later
+    measurement moves one it must move the other, and this fails until it
+    does.
+    """
+    start = areas.start_of(POOL_OF_RADIANCE)
+    assert start.arrival == areas.area(0).arrival
+
+
+def test_silver_blades_has_no_start_row_rather_than_a_guessed_one():
+    """A caller must refuse rather than convert a Silver Blades party that has
+    not set out to whichever area looks likeliest.
+
+    Its two never-adventured containers hold the same area 0 and `7,13` facing
+    north that Curse's do, and its table has no area 0 -- so the case exists
+    and the answer has not been measured. `STARTS` says so by having no entry,
+    which a caller can act on; a row with `Confidence.UNKNOWN` reads as an
+    answer at a glance and would be converted as one.
+    """
+    assert areas.start_of(SECRET_OF_THE_SILVER_BLADES) is None
+    assert areas.start_area(SECRET_OF_THE_SILVER_BLADES) is None
+    assert areas.area_in(0, SECRET_OF_THE_SILVER_BLADES) is None
+
+
+def test_every_start_names_a_row_of_its_own_titles_table():
+    """A `STARTS` entry pointing at an id its title does not have would send a
+    conversion after a script that is on none of the sides, which is the
+    failure `#301 (A DOS Curse save standing in area 0 is refused by the
+    import, because no row of the area table names area 0)` measured on the
+    C64: the loader asked for `GEO00` for ever."""
+    for title, start in areas.STARTS.items():
+        row = areas.area_in(start.area, title)
+        assert row is not None, f"{title} starts in {start.area}, no such row"
+        # The conversion has to name a map and a disk side, so a start whose
+        # row loads no map is one it cannot write.
+        assert row.geos, f"{title} starts in {row.ecl}, which loads no map"
+        assert start.confidence is areas.Confidence.CONFIRMED
 
 
 def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
