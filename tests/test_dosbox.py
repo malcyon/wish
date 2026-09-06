@@ -711,9 +711,9 @@ def test_the_second_area_entry_is_the_script_and_parts_company_in_a_hall():
     that is loaded and `$49F2` names the area the party is actually in.
     Everywhere the two are the same, the area owns its own map.
 
-    `goldbox.dos_savegame.current_area` prefers `$49C5` indoors and so calls
-    the training hall New Phlan; `#246` carries the finding and the issue it
-    was filed as.
+    `goldbox.dos_savegame.current_area` always reads `$49F2`, unconditionally
+    -- which is exactly why it no longer calls the training hall New Phlan;
+    `#246` carries the finding and the issue it was filed as.
     """
     saves = _clean_saves()
     for name, data in saves.items():
