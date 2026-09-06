@@ -129,7 +129,7 @@ Created and maintained by Donald Morton.
 
 Wish logo and logo mark designed by Dustin Geddy Parker.
 
-Icons are from **[Game-icons.net](https://game-icons.net/)**, licensed
+Automap note icons are from **[Game-icons.net](https://game-icons.net/)**, licensed
 **CC BY 3.0**. See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), for details.
 
 
