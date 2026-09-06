@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Answer DOS Curse of the Azure Bonds' code wheel from a screenshot.
+"""Answer DOS Curse of the Azure Bonds' code wheel from a screenshot, without
+recording the challenge or the answer.
 
 Curse asks its wheel before the main menu, so **every** driven DOS Curse
 session has to answer it, and an agent that cannot is stopped at the title.
@@ -7,11 +8,21 @@ The arithmetic behind the answer is worked out in
 `~/src/goldbox-codewheel/coab/notes/copy-protection.md` and computed by that
 repository's `coab/analysis/wheel.py`; what was missing was the reading --
 turning the frame on screen into the four numbers that function wants.
+`CLAUDE.md` keeps that arithmetic in Donald's separate private repository, and
+this reaches into it at run time and **records nothing** here -- the shape
+`tools/amigacursewheel.py` follows for the Amiga side of the same wheel
+(#108, Amiga Curse asks its code wheel, so the title cannot be driven
+unattended).
 
     tools/cursewheel.py --shot work/dosbox/inst/0/shots/008-wheel.png --box 4
 
-prints the two rune indices with their scores, the path it read, and the
-character to type.
+prints `challenge on screen, answered`, `challenge on screen, not answered`
+(no `--box` given, or the path could not be read) or `no challenge on
+screen`, and nothing else -- neither the rune indices, their scores, the path
+nor the character typed, because a handful of real challenge-answer pairs is
+exactly what `#108`'s ruling keeps out of this repository. `answer` and
+`identify` stay importable, so a driver running in the same process can use
+what they compute; only the command line's own printing is restricted.
 
 **The frame.** The prompt draws an Espruar rune above a Dethek one, as two
 tiles at (143,31) and (143,63) in the 320x200 frame, embossed in white, red
@@ -21,10 +32,6 @@ mask is enough to tell the 26 Espruar and 22 Dethek runes apart: the reference
 bitmaps in `coab/images/` are the same runes rendered from the C64's own
 `SECSET10`, so the two are the same shapes in different paint, compared as
 normalised grids with a cell of slack rather than pixel for pixel.
-
-Read on the first frame it met -- Espruar 1 at 0.96 against 0.91 for the
-runner-up, Dethek 2 at 0.98 against 0.88 -- and the answer it computed, `U`,
-was accepted by the game first try.
 
 **The path** is the row under the runes: `----------`, `..........` or
 `-..-..-..-`, drawn as marks whose *height in the character cell* is what
@@ -223,8 +230,6 @@ def main(argv=None) -> int:
                     help="the box number the prompt printed, 1-6")
     ap.add_argument("--path", type=int, default=None, choices=(0, 1, 2),
                     help="override the path this reads off the frame")
-    ap.add_argument("--top", type=int, default=4,
-                    help="how many rune candidates to print")
     args = ap.parse_args(argv)
     got = identify(pathlib.Path(args.shot))
     # **A frame that is not the prompt still scores.**  The matcher normalises
@@ -233,23 +238,15 @@ def main(argv=None) -> int:
     # driver *will* meet that frame.  Both tiles hold 100 or more pixels on a
     # real prompt and a handful on anything else.
     if min(got["espruar_ink"], got["dethek_ink"]) < 40 or got["path"] is None:
-        print(f"this frame does not look like the code-wheel prompt: "
-              f"{got['espruar_ink']} and {got['dethek_ink']} pixels in the "
-              f"rune tiles, path {got['path']}")
+        print("no challenge on screen")
         return 1
-    for name in ("espruar", "dethek"):
-        best = got[name][:args.top]
-        print(f"{name:8s} " + "  ".join(f"{i}={s:.2f}" for s, i in best))
     path = args.path if args.path is not None else got["path"]
-    print("path    ", path, PATH_NAMES[path] if path is not None else "(unread)")
     if args.box is None or path is None:
-        print("pass --box (and --path if the reading above is wrong) "
-              "for the answer")
+        print("challenge on screen, not answered")
         return 0
     e, d = got["espruar"][0][1], got["dethek"][0][1]
-    c64, dos = answer(args.box, e, d, path)
-    print(f"box {args.box}, espruar {e}, dethek {d}, path {path}: "
-          f"type {dos!r} on DOS ({c64!r} on the C64)")
+    answer(args.box, e, d, path)
+    print("challenge on screen, answered")
     return 0
 
 
