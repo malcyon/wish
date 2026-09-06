@@ -97,6 +97,20 @@ def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
     assert not outside, f"not reachable by any menu sequence: {outside}"
 
 
+def test_size_for_is_large_only_when_the_small_list_is_too_short(parts):
+    """Public because `tools/iconproposal.py` needs the same rule (#325).
+
+    A weapon or head numbered past the small list's own count composes
+    large; anything the small list already holds stays small.
+    """
+    small_heads = parts.count("small", "head")
+    small_weapons = parts.count("small", "weapon")
+    assert parts.size_for("small", "head", small_heads - 1) == "small"
+    assert parts.size_for("small", "head", small_heads) == "large"
+    assert parts.size_for("small", "weapon", small_weapons) == "large"
+    assert parts.size_for("large", "head", small_heads) == "large"
+
+
 def test_an_option_out_of_range_is_refused(parts):
     with pytest.raises(ValueError):
         parts.compose("large", 35, 0)

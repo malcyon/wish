@@ -422,16 +422,24 @@ class IconParts:
                              f"{len(tables.weapons)} the table names")
         weapon, c64_head = tables.weapons[body], tables.heads[head]
         shape = bytes([SPACE] * (CELLS_PER_POSE * 2))
-        shape = self.apply(shape, self._size_for(size, "weapon", weapon),
+        shape = self.apply(shape, self.size_for(size, "weapon", weapon),
                            "weapon", weapon)
-        shape = self.apply(shape, self._size_for(size, "head", c64_head),
+        shape = self.apply(shape, self.size_for(size, "head", c64_head),
                            "head", c64_head)
         seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
         return shape + self.colours_for(
             shape, dos_part_colours(colours, tables), seed)
 
-    def _size_for(self, size: str, kind: str, option: int) -> str:
-        """`size`, unless only the large list is long enough to hold `option`."""
+    def size_for(self, size: str, kind: str, option: int) -> str:
+        """`size`, unless only the large list is long enough to hold `option`.
+
+        Public because `tools/iconproposal.py` needs the same rule to draw a
+        mixed row on a proposal sheet -- the crash `#325 (The small head
+        sheet will not draw at all, because two of its rows use a head the
+        small list does not have)` fixed was that sheet's own `c64_figure`
+        recomputing this for the weapon and never for the head, so a head
+        past the small list hit `_apply`'s guard instead of composing large.
+        """
         return "large" if option >= self.count("small", kind) else size
 
     # -- the legal set ---------------------------------------------------

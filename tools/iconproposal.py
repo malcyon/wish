@@ -128,11 +128,19 @@ def dos_recoloured(pixels: list[list[int]], icon_colours: bytes) -> list[list[in
 
 def c64_figure(parts: IconParts, charset: bytes, size: str, weapon: int,
                head: int, icon_colours: bytes) -> list[list[int]]:
-    """Both poses of the proposed C64 figure in the converted colours."""
-    weapon_size = "large" if weapon >= parts.count("small", "weapon") else size
+    """Both poses of the proposed C64 figure in the converted colours.
+
+    A weapon or head numbered past the requested size's own list is drawn
+    from the large list instead, the way `IconParts.dos_icon` composes a
+    real conversion's mixed icon (#130) -- `parts.size_for` picks the size
+    for each part on its own, since a row can need it for the weapon, the
+    head, or neither (#325).
+    """
     blank = bytes([0x20] * 18)
-    shape = parts.apply(blank, weapon_size, "weapon", weapon)
-    shape = parts.apply(shape, size, "head", head)
+    shape = parts.apply(blank, parts.size_for(size, "weapon", weapon),
+                        "weapon", weapon)
+    shape = parts.apply(shape, parts.size_for(size, "head", head),
+                        "head", head)
     seed = bytes([6 | MULTICOLOUR] * len(shape))
     colours = parts.colours_for(shape, c64_part_colours(icon_colours), seed)
     return icons.icon_pixels(icons.Icon(shape + colours), charset)
@@ -167,7 +175,8 @@ def sheet(game: pathlib.Path, disk: pathlib.Path, kind: str, size: str,
             weapon, c_head = ((option, HEADS[0]) if kind == "weapon"
                               else (WEAPONS[0], option))
             px = c64_figure(parts, charset, size, weapon, c_head, icon_colours)
-            rights.append((option, [px[:24], px[24:48]]))
+            mixed = parts.size_for(size, kind, option) != size
+            rights.append((option, mixed, [px[:24], px[24:48]]))
         rows.append((dos_index, left, rights))
     cell, pad, label = 24 * scale, 6, 12
     widest = max(len(r) for _, _, r in rows)
@@ -178,9 +187,11 @@ def sheet(game: pathlib.Path, disk: pathlib.Path, kind: str, size: str,
     for r, (dos_index, left, rights) in enumerate(rows):
         top = pad + r * (cell + pad + label)
         columns = [(f"DOS {size} {kind} {dos_index}", ic.EGA, left)]
-        for i, (option, px) in enumerate(rights):
+        for i, (option, mixed, px) in enumerate(rights):
             tag = "proposed" if i == 0 else "alternative"
-            columns.append((f"C64 {option} {tag}", tuple(icons.C64_PALETTE), px))
+            note = ", large list only" if mixed else ""
+            columns.append((f"C64 {option} {tag}{note}",
+                            tuple(icons.C64_PALETTE), px))
         for c, (text, palette, poses) in enumerate(columns):
             x = pad + c * (2 * cell + 3 * pad)
             draw.text((x, top), text, fill="#FFFF80" if c else "#FFFFFF")

@@ -21,9 +21,11 @@ import pathlib
 import sys
 
 import pytest
+from gamedata import disk_dir
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 
+import iconcorrespond as ic  # noqa: E402
 import iconproposal as ip  # noqa: E402
 
 #: The shape of the proposal, which does not change when Donald edits it.
@@ -111,3 +113,62 @@ def test_a_malformed_yaml_row_is_caught_by_the_type(tmp_path):
                    + "\n".join(f"  {i}: {{c64: 0}}" for i in range(16)))
     with pytest.raises(TypeError):
         ip.load_tables(bad)
+
+
+# -- the four sheets (#325) --------------------------------------------------
+#
+# `--kind head --size small` used to raise `ValueError: small head 16 is not
+# one of 14` on its first mixed row and draw nothing at all -- two of the
+# fourteen rows, DOS head 2 and DOS head 8, name a C64 option only the large
+# list has. The art is Donald's and stays on his disks, so these skip
+# without them.
+
+def _dos_game():
+    try:
+        return ic.dos_game(None)
+    except SystemExit:
+        pytest.skip("needs the DOS game files; set POR_DOS_GAME")
+
+
+def _c64_disk():
+    if disk_dir() is None:
+        pytest.skip("needs the C64 game disks")
+    return ic.c64_disk(None)
+
+
+@pytest.mark.parametrize("kind,size", [
+    ("weapon", "large"), ("weapon", "small"),
+    ("head", "large"), ("head", "small"),
+])
+def test_all_four_sheet_combinations_draw(kind, size, tmp_path):
+    """The regression: every `--kind`/`--size` pair used to draw, or not."""
+    from PIL import Image
+
+    game, disk = _dos_game(), _c64_disk()
+    path = tmp_path / f"{kind}-{size}.png"
+    ip.sheet(game, disk, kind, size, ip.DEFAULT_COLOURS, path)
+    assert path.is_file()
+    with Image.open(path) as image:
+        rows = DOS_HEADS if kind == "head" else DOS_WEAPONS
+        assert image.height > rows * 20     # one band a row, at minimum
+
+
+def test_the_small_head_sheet_names_a_row_past_the_small_list(tmp_path):
+    """`#325` was two such rows, DOS head 2 and DOS head 8; Donald edits the
+
+    table by hand and the exact set moves, but as long as any row names a
+    C64 option only the large list has, the sheet has to draw it rather than
+    raise, and mark it rather than draw it silently at the wrong size.
+    """
+    game, disk = _dos_game(), _c64_disk()
+    from goldbox.iconparts import IconParts
+
+    parts = IconParts.load(str(disk))
+    small_head_count = parts.count("small", "head")
+    mixed = {dos: c64 for dos, c64 in ip.HEADS.items() if c64 >= small_head_count}
+    assert mixed, "no mixed row in the current table; #325 needs one to check"
+    assert {2, 8} & set(mixed), mixed
+
+    path = tmp_path / "head-small.png"
+    ip.sheet(game, disk, "head", "small", ip.DEFAULT_COLOURS, path)
+    assert path.is_file()
