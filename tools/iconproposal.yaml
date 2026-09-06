@@ -109,5 +109,13 @@ colours:
 #         11: {c64: ...}   # small body 11 -- Silver Blades draws no
 #                          # weapon where Pool of Radiance's draws one
 #
-# Left empty until Donald picks the two rows on #335.
-overrides: {}
+# Donald picked the head on 2026-09-05; the body is still open on #335.
+overrides:
+  secret-of-the-silver-blades:
+    heads:
+      10: {c64: 2}         # Silver Blades draws a hat on this head where
+                           # Pool of Radiance draws a bare one, so it wants
+                           # a C64 head that wears something rather than
+                           # head 15, which is hair and nothing on top.
+                           # Donald, 2026-09-05: "The #10 DOS head should be
+                           # matched with the #2 C64 head."

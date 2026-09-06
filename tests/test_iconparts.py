@@ -369,11 +369,60 @@ def test_a_title_with_an_override_uses_it_for_that_row_alone(tmp_path):
     assert dos_icon_tables(path, title="curse-of-the-azure-bonds") == base
 
 
-def test_the_shipped_table_has_no_override_yet_for_any_title():
-    """`#335` has not been settled, so every real title reads the base table
-    -- the property the conversion actually relies on today."""
+def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
+    """The rule, against the real `tools/iconproposal.yaml`: a title with no
+    `overrides:` section of its own reads the base table untouched, and a
+    title with one differs from it by exactly the rows that section names.
+
+    This replaces a test that asserted the section was empty. It was, until
+    Donald picked Silver Blades' head 10 on 2026-09-05 for `#335 (Two
+    combat-figure rows describe Pool of Radiance's art, and Silver Blades
+    draws those two options differently)`, and then it failed for having
+    pinned a state rather than a rule.
+    """
+    import sys
+
     from goldbox.games import GAMES
     from goldbox.iconparts import dos_icon_tables
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
+                           / "tools"))
+    import iconproposal as ip
+
+    overrides = ip.load_overrides()
     base = dos_icon_tables()
     for game in GAMES:
-        assert dos_icon_tables(title=game.key) == base, game.key
+        mine = dos_icon_tables(title=game.key)
+        section = overrides.get(game.key, {})
+        for kind, table, base_table in (("weapons", mine.weapons, base.weapons),
+                                        ("heads", mine.heads, base.heads)):
+            rows = section.get(kind, {})
+            moved = {k: v for k, v in table.items() if base_table[k] != v}
+            assert moved == {k: v for k, v in rows.items()
+                             if base_table[k] != v}, (game.key, kind)
+        assert mine.ega_to_c64 == base.ega_to_c64, game.key
+
+
+def test_dos_icon_tables_with_no_title_reads_the_base_table():
+    """No `title` means no override, whatever the section holds.
+
+    The contract every existing caller relies on, and the reason Donald's
+    Silver Blades head does not reach a conversion yet: `goldbox.dos.
+    _icon_for` calls `IconParts.dos_icon` with no `tables`, which calls
+    `dos_icon_tables()` with no `title`, so a converted Silver Blades
+    character is still composed through the base row. Passing the title down
+    is the rest of `#335 (Two combat-figure rows describe Pool of Radiance's
+    art, and Silver Blades draws those two options differently)`.
+    """
+    import sys
+
+    from goldbox.iconparts import dos_icon_tables
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
+                           / "tools"))
+    import iconproposal as ip
+
+    untitled = dos_icon_tables()
+    base_weapons, _, base_heads, _, _ = ip.load_tables()
+    assert untitled.weapons == base_weapons
+    assert untitled.heads == base_heads

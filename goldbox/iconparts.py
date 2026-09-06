@@ -200,12 +200,17 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
     `title` is a `goldbox.games.Game.key` such as
     `"secret-of-the-silver-blades"`. With no `title`, or a title that names no
     `overrides:` section of its own, this is exactly the base table every
-    conversion has always read (#330) -- the section is empty until Donald
-    picks the two rows `#335 (Two combat-figure rows describe Pool of
-    Radiance's art, and Silver Blades draws those two options differently)`
-    is about, and no caller passes `title` yet. Where a title's own section
-    names a row, its `c64` replaces the base table's for that DOS index only;
-    every other row is untouched.
+    conversion has always read (#330). Where a title's own section names a
+    row, its `c64` replaces the base table's for that DOS index only; every
+    other row is untouched.
+
+    **The section is no longer empty and no caller passes `title` yet**, so
+    a converted Silver Blades character still gets the base table's row.
+    Donald picked Silver Blades' head 10 on 2026-09-05 and it reaches a
+    document but not a conversion; giving `_icon_for` in `goldbox/dos.py`
+    the title it is composing for is the rest of
+    `#335 (Two combat-figure rows describe Pool of Radiance's art, and
+    Silver Blades draws those two options differently)`.
     """
     source = pathlib.Path(path or PROPOSAL_PATH)
     try:

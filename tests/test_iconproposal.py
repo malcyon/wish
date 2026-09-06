@@ -24,6 +24,8 @@ import pytest
 import yaml
 from gamedata import disk_dir
 
+from goldbox import games
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 
 import iconcorrespond as ic  # noqa: E402
@@ -119,16 +121,32 @@ def test_a_malformed_yaml_row_is_caught_by_the_type(tmp_path):
 # -- the per-title override section (#330, #335) -----------------------------
 #
 # `tools/iconproposal.yaml` gained an `overrides:` section for a title whose
-# C64 art disagrees with Pool of Radiance's -- empty until Donald picks
-# Silver Blades' two rows on `#335 (Two combat-figure rows describe Pool of
-# Radiance's art, and Silver Blades draws those two options differently)`.
-# These pin the shape rather than the (still absent) values.
+# art disagrees with Pool of Radiance's. Donald picked the first row on
+# 2026-09-05 -- Silver Blades' head 10, for `#335 (Two combat-figure rows
+# describe Pool of Radiance's art, and Silver Blades draws those two options
+# differently)` -- and will pick more.
+#
+# **These pin the rule, not the rows.** Two earlier tests here asserted the
+# section was empty and that every title got the base tables unchanged, which
+# was true only until the first override existed, and both went red the
+# evening it did. The rule that survives an edit is: a title with no section
+# gets the base tables untouched, and a title with one gets exactly the rows
+# its section names and no others.
 
-def test_the_overrides_section_exists_and_is_empty_today():
+def test_the_overrides_section_exists_and_names_only_titles_this_tool_draws():
     """The section is present, so a later removal fails loudly rather than
-    `load_overrides` quietly treating "missing" the same as "empty"."""
+    `load_overrides` quietly treating "missing" the same as "empty"; and
+    every key in it is a title `--title` will accept, so a typo in a title
+    name cannot sit in the file silently overriding nothing."""
     data = yaml.safe_load(ip.TABLE_PATH.read_text())
-    assert data["overrides"] == {}
+    assert "overrides" in data, "the overrides: section is gone from the YAML"
+    for title, sections in (data["overrides"] or {}).items():
+        assert title in ip.DOS_TITLES, title
+        assert set(sections) <= {"weapons", "heads"}, (title, sorted(sections))
+        for kind, rows in sections.items():
+            for dos_index, row in rows.items():
+                assert isinstance(int(dos_index), int)
+                assert isinstance(row["c64"], int), (title, kind, dos_index)
 
 
 def test_load_overrides_parses_a_titles_section(tmp_path):
@@ -143,13 +161,37 @@ def test_load_overrides_parses_a_titles_section(tmp_path):
         "secret-of-the-silver-blades": {"weapons": {0: 5}, "heads": {}}}
 
 
-def test_tables_for_title_with_no_override_matches_the_base_tables():
-    """Every title today, since `#335` has not been settled -- the property
-    a title's document relies on to say "nothing here needs judging"."""
-    for title in ip.DOS_TITLES:
+def test_a_title_with_no_override_of_its_own_gets_the_base_tables_unchanged():
+    """The property a title's document relies on to say "nothing here needs
+    judging" -- read against the real `tools/iconproposal.yaml`, so it holds
+    whatever Donald has put in the section rather than only while it is
+    empty."""
+    overridden = ip.load_overrides()
+    plain = [t for t in ip.DOS_TITLES if not any(overridden.get(t, {}).values())]
+    assert plain, "every title now has an override; this test needs one without"
+    for title in plain:
         weapons, heads = ip.tables_for_title(title)
-        assert weapons == ip.WEAPONS
-        assert heads == ip.HEADS
+        assert weapons == ip.WEAPONS, title
+        assert heads == ip.HEADS, title
+
+
+def test_a_title_with_an_override_gets_those_rows_and_no_others_changed():
+    """The other half of the same rule, also against the real file: whatever
+    a title's section names is what differs from the base table, exactly."""
+    overridden = ip.load_overrides()
+    named = {t: s for t, s in overridden.items() if any(s.values())}
+    if not named:
+        pytest.skip("no title has an override today; the rule needs one")
+    for title, sections in named.items():
+        weapons, heads = ip.tables_for_title(title)
+        for kind, table, base in (("weapons", weapons, ip.WEAPONS),
+                                  ("heads", heads, ip.HEADS)):
+            rows = sections.get(kind, {})
+            moved = {k: v for k, v in table.items() if base[k] != v}
+            assert moved == {k: v for k, v in rows.items() if base[k] != v}, (
+                title, kind)
+            for dos_index, c64_index in rows.items():
+                assert table[dos_index] == c64_index, (title, kind, dos_index)
 
 
 def test_tables_for_title_applies_a_titles_own_override_and_only_that_row(
@@ -233,11 +275,13 @@ def test_markdown_with_no_title_reads_exactly_as_it_always_has(tmp_path):
 
 def test_markdown_for_curse_says_no_row_needs_judging(tmp_path):
     pytest.importorskip("PIL.Image")
-    pool, disk = _dos_game(), _c64_disk()
+    pool, pool_disk = _dos_game(), _c64_disk()
     curse = _title_dos_game("curse-of-the-azure-bonds")
+    disk = _title_c64_disk("curse-of-the-azure-bonds")
     out = tmp_path / "curse.md"
     ip.markdown(curse, disk, "large", ip.DEFAULT_COLOURS, out,
-               title="curse-of-the-azure-bonds", reference_game=pool)
+               title="curse-of-the-azure-bonds", reference_game=pool,
+               reference_disk=pool_disk)
     text = out.read_text()
     assert "Every row below is the same art Pool of Radiance draws" in text
     assert "no row here needs judging" in text
@@ -246,11 +290,13 @@ def test_markdown_for_curse_says_no_row_needs_judging(tmp_path):
 
 def test_markdown_for_silver_blades_marks_the_two_redrawn_rows(tmp_path):
     pytest.importorskip("PIL.Image")
-    pool, disk = _dos_game(), _c64_disk()
+    pool, pool_disk = _dos_game(), _c64_disk()
     silver = _title_dos_game("secret-of-the-silver-blades")
+    disk = _title_c64_disk("secret-of-the-silver-blades")
     out = tmp_path / "silver.md"
     ip.markdown(silver, disk, "large", ip.DEFAULT_COLOURS, out,
-               title="secret-of-the-silver-blades", reference_game=pool)
+               title="secret-of-the-silver-blades", reference_game=pool,
+               reference_disk=pool_disk)
     text = out.read_text()
     assert "redraws its own art for 2 of the rows below" in text
     lines = text.splitlines()
@@ -261,11 +307,129 @@ def test_markdown_for_silver_blades_marks_the_two_redrawn_rows(tmp_path):
     weapon_11 = next(row for row in lines if "dos-weapon-large-11.png" in row)
     head_11 = next(row for row in lines if "dos-head-large-11.png" in row)
     weapon_10 = next(row for row in lines if "dos-weapon-large-10.png" in row)
-    assert "redraws this figure" in head_10
-    assert "redraws this figure" in weapon_11
-    assert "redraws this figure" not in head_11
-    assert "redraws this figure" not in weapon_10
+    assert "redraws this DOS figure" in head_10
+    assert "redraws this DOS figure" in weapon_11
+    assert "redraws this DOS figure" not in head_11
+    assert "redraws this DOS figure" not in weapon_10
     assert (out.parent / "img").is_dir()
+
+
+# -- the C64 side comes off the title's own disk too (#330, #335) ------------
+#
+# Donald, 2026-09-05: *"I need to be able to match like to like. I can't do
+# that if I don't have the C64 Secrets icons."* Both documents used to draw
+# their C64 half off `POOL3.D64` whatever `--title` said, on the strength of
+# `SPELLE64` being the identical bytes in all three titles. It is -- and the
+# glyphs those option tables *name* live in `CHARPIC00`, which Silver Blades
+# redraws in three places, so the claim was true of the screen codes and
+# false of the pictures. These are what stops it coming back.
+
+def _title_c64_disk(title: str):
+    disk = ip.title_c64_disk(title, None)
+    if disk is None:
+        pytest.skip(f"needs the {title} C64 disks")
+    return disk
+
+
+@pytest.mark.parametrize("title", ip.DOS_TITLES)
+def test_each_title_resolves_a_disk_of_its_own_carrying_the_icon_files(title):
+    """`POOL3.D64`, `CURSE_A.D64` and `SILVER-1.D64` here -- but the names
+    are not asserted, because what makes a side the right one is that it
+    carries all three files, not what it is called."""
+    from goldbox.d64 import D64
+
+    disk = _title_c64_disk(title)
+    assert disk.name.upper().endswith(".D64"), disk
+    names = {entry.name for entry in D64.open(str(disk)).directory()}
+    for wanted in ip.C64_ICON_FILES:
+        assert wanted in names, (disk.name, wanted)
+    #: And the side is one of that title's own, not another game's.
+    assert disk.match(games.by_key(title).disk_glob), disk
+
+
+def test_curse_draws_every_c64_option_exactly_as_pool_of_radiance_does():
+    """184 options over both sizes and both kinds, pixel for pixel."""
+    assert ip.c64_redrawn_options(_title_c64_disk("curse-of-the-azure-bonds"),
+                                  _c64_disk()) == {}
+
+
+def test_silver_blades_redraws_three_c64_options_and_only_those_three():
+    """Weapon 13 at both sizes and large heads 8 and 13, which is what the
+    three `CHARPIC00` glyphs 132, 133 and 207 are used by. The claim this
+    replaces was that no figure used them (#330, #335)."""
+    assert ip.c64_redrawn_options(
+        _title_c64_disk("secret-of-the-silver-blades"), _c64_disk()) == {
+            ("weapon", 13): ["small", "large"],
+            ("head", 8): ["large"],
+            ("head", 13): ["large"]}
+
+
+def test_a_disk_compared_with_itself_redraws_nothing():
+    disk = _c64_disk()
+    assert ip.c64_redrawn_options(disk, disk) == {}
+
+
+def test_the_silver_blades_document_names_its_own_disk_and_the_redrawn_rows(
+        tmp_path):
+    pytest.importorskip("PIL.Image")
+    pool, pool_disk = _dos_game(), _c64_disk()
+    silver = _title_dos_game("secret-of-the-silver-blades")
+    disk = _title_c64_disk("secret-of-the-silver-blades")
+    out = tmp_path / "silver.md"
+    ip.markdown(silver, disk, "large", ip.DEFAULT_COLOURS, out,
+               title="secret-of-the-silver-blades", reference_game=pool,
+               reference_disk=pool_disk)
+    text = out.read_text()
+    assert f"own disk, `{disk.name}`" in text
+    assert "3 of the options below are a different picture" in text
+    #: Every C64 image the document shows is drawn off Silver Blades' disk,
+    #: and Pool of Radiance's only ever appears as the thing a redrawn row is
+    #: compared against -- three rows, one image each.
+    assert text.count("img/c64-pool-of-radiance-") == 2
+    weapon_19 = next(r for r in text.splitlines()
+                     if "dos-weapon-large-19.png" in r)
+    assert "redraws the C64 option this row names" in weapon_19
+    assert "c64-secret-of-the-silver-blades-weapon-large-13.png" in weapon_19
+
+
+def test_the_c64_image_files_carry_the_title_that_drew_them(tmp_path):
+    """The stale-picture trap: the documents are regenerated into a
+    directory that already holds the last run's images, and `_c64_png` skips
+    a file that exists. With a name that did not say whose disk drew it, a
+    Pool of Radiance figure survived a redraw of Silver Blades' document --
+    which is the exact failure the change was made to stop."""
+    pytest.importorskip("PIL.Image")
+    pool, pool_disk = _dos_game(), _c64_disk()
+    silver = _title_dos_game("secret-of-the-silver-blades")
+    disk = _title_c64_disk("secret-of-the-silver-blades")
+    out = tmp_path / "doc.md"
+    ip.markdown(pool, pool_disk, "large", ip.DEFAULT_COLOURS, out)
+    first = (out.parent / "img" / "c64-pool-of-radiance-weapon-large-13.png"
+             ).read_bytes()
+    ip.markdown(silver, disk, "large", ip.DEFAULT_COLOURS, out,
+               title="secret-of-the-silver-blades", reference_game=pool,
+               reference_disk=pool_disk)
+    mine = (out.parent / "img" /
+            "c64-secret-of-the-silver-blades-weapon-large-13.png").read_bytes()
+    assert mine != first, "the second run reused the first run's picture"
+
+
+def test_with_no_disk_of_its_own_the_document_draws_no_c64_figure(tmp_path):
+    """A machine with the DOS archives and none of Silver Blades' C64 disks.
+    The document is still written and still shows every DOS figure; what it
+    must never do is fill the column with Pool of Radiance's art."""
+    pytest.importorskip("PIL.Image")
+    pool = _dos_game()
+    silver = _title_dos_game("secret-of-the-silver-blades")
+    out = tmp_path / "silver.md"
+    ip.markdown(silver, None, "large", ip.DEFAULT_COLOURS, out,
+               title="secret-of-the-silver-blades", reference_game=pool,
+               reference_disk=None)
+    text = out.read_text()
+    assert "No Commodore 64 figure is drawn in this section." in text
+    assert "Not drawn" in text
+    assert "img/c64-" not in text
+    assert "img/dos-weapon-large-19.png" in text
 
 
 # -- the four sheets (#325) --------------------------------------------------

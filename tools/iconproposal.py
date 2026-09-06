@@ -20,6 +20,7 @@ picture on the issue.
     tools/iconproposal.py --title secret-of-the-silver-blades --markdown work/issue330/silver-blades.md
     tools/iconproposal.py --png work/issue130/proposal-weapons.png
     tools/iconproposal.py --kind head --png work/issue130/proposal-heads.png
+    tools/iconproposal.py --compare-c64                # every title's C64 art
     tools/iconproposal.py --colours 91a2b3c4e6f7      # a record's own six bytes
     tools/iconproposal.py                             # the tables, as text
 
@@ -32,8 +33,8 @@ be a `--from-markdown` that read the document back, and it is gone, because a
 YAML file a person edits directly cannot be overwritten by regenerating the
 document the way the markdown round trip could.
 
-**`--title` picks whose own DOS art `--markdown` and `--png` draw** --
-`pool-of-radiance`, `curse-of-the-azure-bonds` or
+**`--title` picks whose own art `--markdown` and `--png` draw, on both
+sides** -- `pool-of-radiance`, `curse-of-the-azure-bonds` or
 `secret-of-the-silver-blades`, the three titles `#330 (A converted Curse or
 Silver Blades figure is composed through Pool of Radiance's icon table,
 which nobody has checked transfers)` measured. A title other than Pool of
@@ -43,12 +44,24 @@ or its own; `#335 (Two combat-figure rows describe Pool of Radiance's art,
 and Silver Blades draws those two options differently)` is where Secret of
 the Silver Blades' two redrawn rows get their C64 answer.
 
-The DOS side is read the way `tools/iconcorrespond.py` reads it, off the
-requested title's own `CHEAD.DAX`/`CBODY.DAX`; the C64 side is composed by
-`goldbox.iconparts` from `POOL3.D64`, whose `SPELLE64`/`SPELLN64` option
-tables are the identical bytes in all three titles, so one disk draws it for
-any of them (#330). The PNG is the game's art and goes under `work/`, never
-into the repository.
+**Both sides come off the named title's own art, and that is not a
+formality.** The DOS side is read the way `tools/iconcorrespond.py` reads
+it, off that title's `CHEAD.DAX`/`CBODY.DAX`. The C64 side is composed by
+`goldbox.iconparts` from that title's own disk -- `POOL3.D64`, `CURSE_A.D64`
+or `SILVER-1.D64`, whichever side of its own disk set carries `SPELLE64`,
+`SPELLN64` and `CHARPIC00` together. `SPELLE64` really is the identical
+1882 bytes in all three, so the composed *screen codes* are the same;
+`CHARPIC00` is not, and Silver Blades' redraws three of its 253 glyphs, so
+weapon 13 at either size and large heads 8 and 13 are different pictures on
+a Silver Blades disk. `--compare-c64` is that measurement, and Donald is
+matching by eye, so a document must show him his own game's drawing rather
+than one believed to be the same.
+
+**With no disk of the named title's own, `--markdown` draws no C64 figure at
+all** and says so where each one would have been, rather than filling the
+column with another game's art.
+
+The PNG is the game's art and goes under `work/`, never into the repository.
 """
 
 from __future__ import annotations
@@ -66,12 +79,17 @@ import dosicontitles as dit  # noqa: E402
 import iconcorrespond as ic  # noqa: E402
 
 from goldbox import games, icons  # noqa: E402
+from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
+    EDITOR_FILE,
     MULTICOLOUR,
+    PARTS_FILE,
+    SPACE,
     IconParts,
     dos_icon_tables,
     dos_part_colours,
 )
+from tools import gamedisks  # noqa: E402
 
 # -- the proposal -------------------------------------------------------------
 #
@@ -139,12 +157,14 @@ def load_overrides(path: pathlib.Path = TABLE_PATH,
                    ) -> dict[str, dict[str, Table]]:
     """The `overrides:` section: `{title: {"weapons": {...}, "heads": {...}}}`.
 
-    Empty for a title with no section of its own -- every title today, since
-    `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
-    Blades draws those two options differently)` has not been settled.  This
-    is `--markdown`'s own reading of the section, for saying in a title's
-    document whether a row is still the base table's; `goldbox.iconparts.
-    dos_icon_tables` is the reader the conversion itself uses.
+    Empty for a title with no section of its own, which is Pool of Radiance
+    and Curse of the Azure Bonds; Secret of the Silver Blades has one row,
+    the head Donald picked on 2026-09-05 for `#335 (Two combat-figure rows
+    describe Pool of Radiance's art, and Silver Blades draws those two
+    options differently)`.  This is `--markdown`'s own reading of the
+    section, for saying in a title's document whether a row is still the
+    base table's; `goldbox.iconparts.dos_icon_tables` is the reader the
+    conversion itself uses.
     """
     data = yaml.safe_load(path.read_text())
     out: dict[str, dict[str, Table]] = {}
@@ -251,13 +271,142 @@ def redrawn_sizes(game: pathlib.Path, reference: pathlib.Path, kind: str,
     return out
 
 
+# -- the C64 side, measured rather than assumed (#330, #335) -----------------
+#
+# The claim these replace was that one disk draws the C64 half for all three
+# titles, because `SPELLE64`'s four option tables are the identical bytes in
+# each.  They are -- but a figure is screen codes *drawn through* `CHARPIC00`,
+# and Silver Blades redraws three of that file's 253 glyphs.  Comparing the
+# composed shape therefore says "identical" about pictures that are not, which
+# is exactly the mistake a person matching by eye cannot afford.
+
+#: The three files a disk needs before it can draw a C64 figure: the option
+#: tables, the overlay carrying their counts and addresses, and the glyphs.
+#: Curse ships `SPELLE64` on all six sides and `SPELLN64` on one, so a title's
+#: icon disk is found by looking for all three together rather than by name.
+C64_ICON_FILES = (PARTS_FILE, EDITOR_FILE, icons.ICON_CHARSET_FILE)
+
+
+def title_c64_disk(title: str, given: str | None) -> pathlib.Path | None:
+    """The side of `title`'s own C64 disk set that carries the icon art.
+
+    `--disk` wins; otherwise the folder comes from `tools/gamedisks.py` --
+    `$POR_DISKS`, `$COAB_DISKS`, `$SSB_DISKS`, then `gamedisks.toml` -- the
+    same resolution `tools/iconredrawn.py` uses for `SILVER-1.D64`, and the
+    file name inside it is not guessed: every side matching the title's own
+    `Game.disk_glob` is opened in name order and the first holding all of
+    :data:`C64_ICON_FILES` is the answer.  `POOL3.D64`, `CURSE_A.D64` and
+    `SILVER-1.D64` on this machine.
+
+    None, rather than an exception, when the title's disks are not here: a
+    document that says "no C64 figure, these disks are not on this machine"
+    is worth writing, and one that quietly shows another game's art is not.
+    """
+    if given:
+        return pathlib.Path(given).expanduser()
+    folder = gamedisks.find(title)
+    if folder is None:
+        return None
+    for path in sorted(folder.glob(games.by_key(title).disk_glob)):
+        try:
+            names = {entry.name for entry in D64.open(str(path)).directory()}
+        except Exception:
+            continue
+        if all(name in names for name in C64_ICON_FILES):
+            return path
+    return None
+
+
+def c64_option_pixels(parts: IconParts, charset: bytes, size: str, kind: str,
+                      option: int, icon_colours: bytes) -> list[list[int]]:
+    """One C64 option alone on an empty figure, both poses, as drawn pixels.
+
+    One option and nothing else, so a difference cannot be hidden by the
+    other part painting over it, and *pixels* rather than screen codes,
+    because the codes are the same in all three titles and the glyphs they
+    name are not.
+    """
+    shape = parts.apply(bytes([SPACE] * 18),
+                        parts.size_for(size, kind, option), kind, option)
+    seed = bytes([MULTICOLOUR | 6] * len(shape))
+    colours = parts.colours_for(shape, c64_part_colours(icon_colours), seed)
+    return icons.icon_pixels(icons.Icon(shape + colours), charset)
+
+
+def c64_redrawn_options(disk: pathlib.Path | None,
+                        reference: pathlib.Path | None,
+                        icon_colours: bytes | None = None,
+                        ) -> dict[tuple[str, int], list[str]]:
+    """Which C64 options `disk` draws differently from `reference`.
+
+    Keyed `(kind, option)` -- the C64 option number, not the DOS one -- with
+    the sizes it differs at, the same shape `redrawn_sizes` returns for the
+    DOS side.  Empty when the two paths are the same disk, and empty for
+    Curse of the Azure Bonds, whose `CHARPIC00` is Pool of Radiance's byte
+    for byte.
+    """
+    if disk == reference or reference is None or disk is None:
+        return {}
+    icon_colours = DEFAULT_COLOURS if icon_colours is None else icon_colours
+    mine = (IconParts.load(str(disk)), icons.load_icon_charset(str(disk)))
+    theirs = (IconParts.load(str(reference)),
+              icons.load_icon_charset(str(reference)))
+    out: dict[tuple[str, int], list[str]] = {}
+    for size in ("small", "large"):
+        for kind in ("weapon", "head"):
+            for option in range(min(mine[0].count(size, kind),
+                                    theirs[0].count(size, kind))):
+                if (c64_option_pixels(*mine, size, kind, option, icon_colours)
+                        != c64_option_pixels(*theirs, size, kind, option,
+                                             icon_colours)):
+                    out.setdefault((kind, option), []).append(size)
+    return out
+
+
+def compare_c64(disks: dict[str, pathlib.Path | None],
+                icon_colours: bytes | None = None) -> None:
+    """Print every title's C64 art against Pool of Radiance's (#330, #335).
+
+    The counts first, then each option that draws differently, so the claim
+    in a document's preamble is one somebody can re-take in a second.
+    """
+    icon_colours = DEFAULT_COLOURS if icon_colours is None else icon_colours
+    reference = disks.get(DOS_TITLES[0])
+    for title, disk in disks.items():
+        name = games.by_key(title).title
+        if disk is None:
+            print(f"{name}: no C64 disks on this machine")
+            continue
+        parts = IconParts.load(str(disk))
+        counts = "  ".join(
+            f"{size} {kind} {parts.count(size, kind)}"
+            for size in ("small", "large") for kind in ("weapon", "head"))
+        print(f"{name}\n  {disk}\n  base ${parts.base:04X}   {counts}")
+        if title == DOS_TITLES[0]:
+            continue
+        redrawn = c64_redrawn_options(disk, reference, icon_colours)
+        if not redrawn:
+            print("  draws every option exactly as Pool of Radiance does")
+            continue
+        for (kind, option), sizes in sorted(redrawn.items()):
+            print(f"  redrawn: C64 {kind} {option}, at the "
+                  f"{' and '.join(sizes)} size")
+
+
 def sheet(game: pathlib.Path, disk: pathlib.Path, kind: str, size: str,
-          icon_colours: bytes, path: pathlib.Path, scale: int = 5) -> None:
+          icon_colours: bytes, path: pathlib.Path, scale: int = 5,
+          title: str = "pool-of-radiance") -> None:
+    """One table as a single sheet, both sides off `title`'s own art.
+
+    `game` is that title's DOS game folder and `disk` its own C64 disk, for
+    the same reason `markdown` takes both (#330, #335).
+    """
     from PIL import Image, ImageDraw
 
     parts = IconParts.load(str(disk))
     charset = icons.load_icon_charset(str(disk))
-    table = WEAPONS if kind == "weapon" else HEADS
+    weapons, heads = tables_for_title(title)
+    table = weapons if kind == "weapon" else heads
     alternatives = WEAPON_ALTERNATIVES if kind == "weapon" else HEAD_ALTERNATIVES
     rows = []
     for dos_index, c64_index in sorted(table.items()):
@@ -325,10 +474,11 @@ def save_figure(poses, palette, path: pathlib.Path, scale: int = 4) -> None:
     image.save(path)
 
 
-def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
+def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
              icon_colours: bytes, out: pathlib.Path,
              title: str = "pool-of-radiance",
-             reference_game: pathlib.Path | None = None) -> None:
+             reference_game: pathlib.Path | None = None,
+             reference_disk: pathlib.Path | None = None) -> None:
     """The proposal as a document, generated fresh from the YAML (#130).
 
     One PNG per figure rather than one sheet per table, because judging a
@@ -340,22 +490,40 @@ def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
     is no reading a document back, because the YAML is the only place the
     numbers live.
 
-    **`title`** is which of the three DOS titles' own game folder `game`
-    holds; the default, Pool of Radiance, is the drawing every row of the
-    table was chosen against, so its own document reads exactly as it
-    always has, with nothing to compare. For the other two, pass
-    `reference_game` -- Pool of Radiance's own game folder -- and every row
-    says plainly whether this title draws the same figure or its own,
-    measured against it rather than assumed (`#330`). The right-hand, C64
-    picture is one picture regardless of title: `SPELLE64` and `SPELLN64`
-    are the identical bytes in all three titles, so the same option tables
-    on `disk` draw it for any of them.
+    **`title`** is which of the three DOS titles the art belongs to: `game`
+    is that title's own DOS game folder and `disk` that title's own C64
+    disk. The default, Pool of Radiance, is the drawing every row of the
+    table was chosen against, so its own document reads exactly as it always
+    has, with nothing to compare. For the other two, pass `reference_game`
+    and `reference_disk` -- Pool of Radiance's own folder and disk -- and
+    every row says whether this title draws the same figure or its own, on
+    **both** sides, measured rather than assumed (`#330`).
+
+    The C64 side needs measuring as much as the DOS side does. `SPELLE64`
+    is the identical 1882 bytes in all three titles, so the composed screen
+    codes are the same -- but the glyphs those codes name live in
+    `CHARPIC00`, and Silver Blades redraws three of them, which moves
+    weapon 13 at either size and large heads 8 and 13. Donald is choosing a
+    figure by looking at it, so `disk` is his own game's disk and never a
+    stand-in for it.
+
+    **`disk` may be None**, when the title's C64 disks are not on this
+    machine. The document is still written, with the DOS side complete and
+    every C64 picture replaced by a line saying which disks are missing --
+    a document that shows the wrong game's art is worse than one that shows
+    none.
     """
     weapons, heads = tables_for_title(title)
     display_title = games.by_key(title).title
     compare = reference_game is not None and reference_game != game
-    parts = IconParts.load(str(disk))
-    charset = icons.load_icon_charset(str(disk))
+    parts = IconParts.load(str(disk)) if disk else None
+    charset = icons.load_icon_charset(str(disk)) if disk else None
+    #: Pool of Radiance's own C64 art, kept beside this title's so a row whose
+    #: C64 option was redrawn can show both. Loaded once: `_c64_cell` is
+    #: called about 250 times a document.
+    ref = reference_disk if reference_disk and reference_disk != disk else None
+    ref_parts = IconParts.load(str(ref)) if ref else None
+    ref_charset = icons.load_icon_charset(str(ref)) if ref else None
     img = out.parent / "img"
     lines = [
         f"# The proposed combat-figure table for {display_title}, for #130",
@@ -399,13 +567,8 @@ def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
                 "judging.",
                 "",
             ]
-        lines += [
-            "The right-hand, C64 picture is one Pool of Radiance's own disk "
-            "draws. Curse of the Azure Bonds and Secret of the Silver "
-            "Blades ship the identical option tables, so it is the same "
-            "picture either title's own disk would draw too (#330).",
-            "",
-        ]
+    c64_redrawn = c64_redrawn_options(disk, reference_disk, icon_colours)
+    lines += _c64_source_note(display_title, disk, c64_redrawn, compare)
     lines += [
         "This file and its images are the game's own art. They live under",
         "`work/` and must never be committed.",
@@ -429,9 +592,12 @@ def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
                         ic.EGA, img / name)
             alts = []
             for option in alternatives.get(dos_index, ()):
-                alts.append(f"{option} ![]({'img/' + _c64_png(parts, charset, size, kind, option, icon_colours, img)})")
+                alts.append(f"{option} " + _c64_cell(
+                    parts, charset, title, size, kind, option, icon_colours,
+                    img))
             cells = [str(dos_index), f"![](img/{name})"]
             if compare:
+                notes = []
                 sizes = redrawn_by_row.get((kind, dos_index), [])
                 if sizes:
                     extra = []
@@ -443,24 +609,50 @@ def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
                                           icon_colours),
                                 ic.EGA, img / oname)
                             extra.append(f"![]({'img/' + oname})")
-                    cells.append(
-                        f"**{display_title} redraws this figure**, at the "
-                        f"{' and '.join(sizes)} size " + " ".join(extra))
-                else:
-                    cells.append("Same picture Pool of Radiance draws")
+                    notes.append(
+                        f"**{display_title} redraws this DOS figure**, at "
+                        f"the {' and '.join(sizes)} size"
+                        + (" " + " ".join(extra) if extra
+                           else ", which is the picture beside this one"))
+                c64_sizes = c64_redrawn.get((kind, c64_index), [])
+                #: Which list this row's option actually comes out of: a row
+                #: naming an option past the small list is composed large
+                #: even in the small document (#325), and it is *that* size
+                #: whose drawing has to be compared.
+                drawn_at = (parts.size_for(size, kind, c64_index)
+                            if parts else size)
+                if drawn_at in c64_sizes:
+                    notes.append(
+                        f"**{display_title} redraws the C64 option this row "
+                        f"names{' too' if notes else ''}**. "
+                        f"Pool of Radiance draws it "
+                        + _c64_cell(ref_parts, ref_charset, DOS_TITLES[0],
+                                    size, kind, c64_index, icon_colours, img)
+                        + ", which is the picture this row was matched "
+                          "against")
+                elif c64_sizes:
+                    notes.append(
+                        f"**{display_title} redraws the C64 option this row "
+                        f"names at the {' and '.join(c64_sizes)} size**, "
+                        f"which this document does not draw -- the picture "
+                        f"beside is the same on either disk")
+                cells.append(". ".join(notes) if notes
+                             else "Same picture Pool of Radiance draws")
             cells += [str(c64_index),
-                     f"![](img/{_c64_png(parts, charset, size, kind, c64_index, icon_colours, img)})",
+                     _c64_cell(parts, charset, title, size, kind, c64_index,
+                               icon_colours, img),
                      " ".join(alts)]
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
-        count = parts.count(size, kind)
-        lines += [f"### Every C64 {kind}, to swap from", "",
-                  "| | | | | | |", "|---|---|---|---|---|---|"]
+        lines += [f"### Every C64 {kind}, to swap from", ""]
+        if parts is None:
+            lines += [_NO_C64_DISK.format(title=display_title), ""]
+            continue
+        lines += ["| | | | | | |", "|---|---|---|---|---|---|"]
         row = []
-        for option in range(count):
-            png = _c64_png(parts, charset, size, kind, option, icon_colours,
-                           img)
-            row.append(f"**{option}**<br>![](img/{png})")
+        for option in range(parts.count(size, kind)):
+            row.append(f"**{option}**<br>" + _c64_cell(
+                parts, charset, title, size, kind, option, icon_colours, img))
             if len(row) == 6:
                 lines.append("| " + " | ".join(row) + " |")
                 row = []
@@ -472,16 +664,86 @@ def markdown(game: pathlib.Path, disk: pathlib.Path, size: str,
     print(f"{out}  {len(lines)} lines, images in {img}")
 
 
-def _c64_png(parts, charset, size: str, kind: str, option: int,
+#: What stands where a C64 figure would be, with none of this title's disks
+#: on the machine.  Shown once a section rather than once a row.
+_NO_C64_DISK = ("**No Commodore 64 figure is drawn in this section.** The "
+                "{title} Commodore 64 disks are not on this machine, and a "
+                "document that stood another game's art in for them would be "
+                "worse than one that shows none.")
+
+#: The same, short enough for a table cell.
+_NO_C64_CELL = "Not drawn"
+
+
+def _possessive(name: str) -> str:
+    """`Pool of Radiance's`, but `Secret of the Silver Blades'`.
+
+    Three of the six titles end in an s, and the document says whose disk a
+    picture came from a dozen times over, so getting it wrong is visible.
+    """
+    return name + ("'" if name.endswith("s") else "'s")
+
+
+def _c64_png(parts, charset, title: str, size: str, kind: str, option: int,
              icon_colours: bytes, img: pathlib.Path) -> str:
-    """Draw one C64 option if it is not drawn already, and name its file."""
-    name = f"c64-{kind}-{size}-{option:02d}.png"
+    """Draw one C64 option if it is not drawn already, and name its file.
+
+    **The file name carries the title**, because two titles' disks draw some
+    of these options differently and the documents are regenerated into
+    directories that already hold the last run's images. A name without it
+    let a stale Pool of Radiance picture survive a redraw of Silver Blades'
+    document, which is precisely the failure this whole change is about.
+    """
+    name = f"c64-{title}-{kind}-{size}-{option:02d}.png"
     if not (img / name).exists():
         weapon, head = ((option, HEADS[0]) if kind == "weapon"
                         else (WEAPONS[0], option))
         px = c64_figure(parts, charset, size, weapon, head, icon_colours)
         save_figure([px[:24], px[24:48]], tuple(icons.C64_PALETTE), img / name)
     return name
+
+
+def _c64_cell(parts, charset, title: str, size: str, kind: str, option: int,
+              icon_colours: bytes, img: pathlib.Path) -> str:
+    """One C64 option as a markdown image, or the line that says why not."""
+    if parts is None or charset is None:
+        return _NO_C64_CELL
+    return "![](img/" + _c64_png(parts, charset, title, size, kind, option,
+                                 icon_colours, img) + ")"
+
+
+def _c64_source_note(display_title: str, disk: pathlib.Path | None,
+                     c64_redrawn: dict[tuple[str, int], list[str]],
+                     compare: bool) -> list[str]:
+    """The preamble paragraph naming where the C64 pictures come from.
+
+    Nothing at all for Pool of Radiance's own document, which has no other
+    title to be confused with and reads exactly as it always has.
+    """
+    if disk is None:
+        return [_NO_C64_DISK.format(title=display_title), ""]
+    if not compare:
+        return []
+    named = "; ".join(f"{kind} {option} (at the {' and '.join(sizes)} size)"
+                      for (kind, option), sizes in sorted(c64_redrawn.items()))
+    mine = _possessive(display_title)
+    where = (f"**Every Commodore 64 picture below is drawn off {mine} own "
+             f"disk, `{disk.name}`** -- not off Pool of Radiance's, which is "
+             f"what this document used to do. ")
+    if c64_redrawn:
+        where += (
+            f"That matters: `SPELLE64`'s option tables are the identical "
+            f"bytes in all three titles, so the screen codes are the same, "
+            f"but {display_title} redraws glyphs of `CHARPIC00`, and "
+            f"{len(c64_redrawn)} of the options below are a different picture "
+            f"here from the one Pool of Radiance draws: {named}. Where a row "
+            f"names one of them, it says so and shows both.")
+    else:
+        where += (f"{mine} `CHARPIC00` and `SPELLE64` are Pool of "
+                  f"Radiance's byte for byte, so every option below draws "
+                  f"the same picture on either disk -- measured option by "
+                  f"option and pixel by pixel, rather than assumed (#330).")
+    return [where, ""]
 
 
 def print_tables() -> None:
@@ -531,10 +793,13 @@ def reference_dos_game(archives: str | None) -> pathlib.Path:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dos", help="the DOS game directory")
-    ap.add_argument("--disk", help="POOL3.D64")
+    ap.add_argument("--disk", help="the C64 side carrying SPELLE64, SPELLN64 "
+                                   "and CHARPIC00 -- POOL3.D64, CURSE_A.D64 "
+                                   "or SILVER-1.D64; found from the title's "
+                                   "own disks when not given")
     ap.add_argument("--title", default="pool-of-radiance", choices=DOS_TITLES,
-                    help="which DOS title's own art to draw; the C64 side "
-                         "is one picture for all three (#330)")
+                    help="which title's own art to draw, on both sides "
+                         "(#330, #335)")
     ap.add_argument("--archives", help="the unpacked Forgotten Realms "
                                        "archives, for a --title other than "
                                        "pool-of-radiance")
@@ -547,21 +812,35 @@ def main(argv: list[str] | None = None) -> int:
                     help="write the proposal as a document, generated fresh "
                          "from tools/iconproposal.yaml, with one image per "
                          "figure")
+    ap.add_argument("--compare-c64", action="store_true",
+                    help="print every title's own C64 art against Pool of "
+                         "Radiance's, option by option (#330, #335)")
     args = ap.parse_args(argv)
     colours = bytes.fromhex(args.colours)
     if len(colours) != 6:
         raise SystemExit("--colours is six bytes: twelve hex digits")
-    if args.markdown:
+    if args.compare_c64:
+        compare_c64({t: title_c64_disk(t, args.disk if t == args.title else
+                                       None) for t in DOS_TITLES}, colours)
+    elif args.markdown:
         game = title_dos_game(args.title, args.dos, args.archives)
         reference = (game if args.title == "pool-of-radiance"
                     else reference_dos_game(args.archives))
-        markdown(game, ic.c64_disk(args.disk), args.size, colours,
+        disk = title_c64_disk(args.title, args.disk)
+        markdown(game, disk, args.size, colours,
                  pathlib.Path(args.markdown), title=args.title,
-                 reference_game=reference)
+                 reference_game=reference,
+                 reference_disk=title_c64_disk(DOS_TITLES[0], None))
     elif args.png:
+        disk = title_c64_disk(args.title, args.disk)
+        if disk is None:
+            raise SystemExit(
+                f"no {games.by_key(args.title).title} C64 disk carrying "
+                f"{', '.join(f.decode() for f in C64_ICON_FILES)}; pass "
+                f"--disk, or set the title's variable in gamedisks.toml")
         sheet(title_dos_game(args.title, args.dos, args.archives),
-              ic.c64_disk(args.disk), args.kind, args.size, colours,
-              pathlib.Path(args.png))
+              disk, args.kind, args.size, colours, pathlib.Path(args.png),
+              title=args.title)
     else:
         print_tables()
     return 0

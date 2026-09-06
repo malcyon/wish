@@ -208,3 +208,92 @@ with body 11 gains a weapon his DOS figure does not hold. Nothing else in
 either table is affected, and no record in the 54 shipped DOS saves across
 the four titles holds either combination -- though a player reaches both from
 the ICON menu, and those saves have no chain of custody.
+
+## Silver Blades re-drew the C64 art too -- CONFIRMED, and it refutes a PROBABLE
+
+Everything above is about the **DOS** art. The C64 half of every proposal
+document was drawn off `POOL3.D64` whatever title the document was for, on a
+claim graded PROBABLE: that `SPELLE64`'s four option tables are the identical
+bytes in all three titles, so one disk draws the C64 figure for any of them.
+
+**The bytes half of that claim is right and the picture half is wrong.**
+`SPELLE64` really is the same 1882 bytes -- md5 `1bcb496323493628e047a4ac46077f33`
+on all thirteen sides of the three titles that carry it -- so the *screen
+codes* a figure composes to are identical. But a figure is those codes drawn
+through `CHARPIC00`, and Silver Blades' `CHARPIC00` is not Pool of Radiance's.
+It redraws three of its 253 glyphs, and all three are used:
+
+| glyph | class | which C64 options place it |
+|---|---|---|
+| 132 | weapon | weapon 13, small and large |
+| 133 | weapon | weapon 13, small and large |
+| 207 | hair | head 8 and head 13, large only |
+
+So **three of the C64's 100 options draw a different picture on a Silver
+Blades disk**: weapon 13 at both sizes, and large heads 8 and 13. The other 97
+are pixel for pixel what Pool of Radiance draws, and Curse of the Azure Bonds
+redraws none of the 100.
+
+The measurement is `tools/iconproposal.py --compare-c64`, and it compares
+**rendered pixels** rather than composed shapes -- which is what the earlier
+grade got wrong, because the shapes agree and the pictures do not. Sample:
+each of the 100 options composed alone on an empty figure, both poses, at both
+sizes where the option exists, off each title's own disk; and separately all
+1610 `(size, weapon, head)` combinations per title, where Curse differs in 0
+and Silver Blades in 114 -- weapon 13 against all 23 heads at each size (46)
+plus heads 8 and 13 against the other 34 weapons at the large size (68).
+
+The three differing glyphs were already known and pinned:
+`tests/test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`
+has asserted the set `{132, 133, 207}` all along. What was not known is that
+combat figures use them.
+
+**Within each title the icon files are one set.** `CHARPIC00` is the same 2030
+bytes on all 8 Pool of Radiance sides, all 6 Curse sides and all 6 Silver
+Blades sides; `SPELLE64` is the same 1882 bytes on every side that carries it,
+in all three titles. So "the title's disk" is well defined and any side of it
+will do -- what a document needs is the side carrying `SPELLE64`, `SPELLN64`
+and `CHARPIC00` together, which is `POOL3.D64`, `CURSE_A.D64` and
+`SILVER-1.D64`.
+
+**Which rows of Donald's table this reaches.** DOS body 19 names C64 weapon
+13, and DOS head 12 names C64 head 13, so both were judged against a Pool of
+Radiance drawing that a Silver Blades player never sees. C64 head 8 is in
+nobody's row today and is reachable if a row moves to it.
+
+**What it does *not* mean: the conversion needs no per-title dimension for
+this.** The composed thirty-six bytes are the same in every title, and the
+figure is drawn by whichever game owns the disk the record was written to --
+`editor/window.py`'s `game_files_for_import` loads `IconParts` off the
+destination title's own disks, and the engine draws the codes through its own
+`CHARPIC00`. A Silver Blades character converted onto a Silver Blades disk
+already gets Silver Blades' weapon 13. What changes is only what a *document*
+must show, and that is `tools/iconproposal.py --title`, which now draws both
+sides off the named title's own art.
+
+**Negative result worth keeping.** Curse of the Azure Bonds' C64 icon art is
+Pool of Radiance's in every respect measured: `SPELLE64` byte-identical,
+`CHARPIC00` byte-identical, 0 of 100 options redrawn, 0 of 1610 composed
+figures differing. Only the load address moves, `$A700` to `$8E00`, which
+`IconParts` fits from the pointers rather than assuming.
+
+## The override reaches a document and not yet a conversion
+
+`tools/iconproposal.yaml` grew an `overrides:` section for `#335 (Two
+combat-figure rows describe Pool of Radiance's art, and Silver Blades draws
+those two options differently)`, and Donald picked its first row on
+2026-09-05: Secret of the Silver Blades' DOS head 10
+becomes C64 head 2 rather than the base table's 15. The body half of that pair
+is still open.
+
+**That row does not reach a converted character today.**
+`goldbox.iconparts.dos_icon_tables` applies an override only when it is given
+a `title`, and `goldbox.dos._icon_for` calls `IconParts.dos_icon` with no
+`tables` argument at all, so the no-title reading is what a conversion gets:
+
+    dos_icon_tables().heads[10]                              -> 15
+    dos_icon_tables(title="secret-of-the-silver-blades")     -> 2
+
+Passing the title down from `to_c64_record` is the rest of `#335 (Two
+combat-figure rows describe Pool of Radiance's art, and Silver Blades draws
+those two options differently)`.
