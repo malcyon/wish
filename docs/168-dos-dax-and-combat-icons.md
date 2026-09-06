@@ -128,3 +128,83 @@ and the mapping is a look. `tools/iconproposal.py` holds the proposed tables
 -- 32 body rows, 14 head rows, a 16-to-8 colour table -- and draws each DOS
 figure beside its proposed C64 one; the decision is Donald's and is tracked
 on the issue.
+
+## The same numbering in all three titles -- CONFIRMED
+
+`IconParts.dos_icon` takes no title, and the correspondence table it reads
+was built from Pool of Radiance's art, so `#330 (A converted Curse or Silver
+Blades figure is composed through Pool of Radiance's icon table, which nobody
+has checked transfers)` asked whether a Curse of the Azure Bonds or Secret of
+the Silver Blades record numbers its own art the same way. It does.
+`tools/dosicontitles.py` is the measurement, run against the archives'
+`POOLRAD`, `CURSE` and `SECRET` game directories.
+
+**The art.** Both containers hold the same block ids in all three titles --
+128 `CBODY` blocks over 32 options and 56 `CHEAD` blocks over 14, none added
+and none missing -- and the blocks themselves are the same bytes:
+
+| | `CHEAD.DAX` | `CBODY.DAX` | file |
+|---|---|---|---|
+| Curse of the Azure Bonds | 56 of 56 identical | 128 of 128 identical | byte-identical to Pool of Radiance's, both files |
+| Secret of the Silver Blades | 54 of 56 | 126 of 128 | 3428 and 23889 bytes against 3442 and 23978 |
+
+**The code.** Each title's ICON menu wraps the head at 13 and the body at 31,
+at that title's own record displacement -- Pool of Radiance `0x0BD`/`0x0BE`,
+Curse `0x141`/`0x142`, Silver Blades `0x153`/`0x154` -- so all three offer
+the same 14 heads and 32 bodies. The loader that appends `S` or `T` to the
+file name and asks for the block is the same routine in all three overlays,
+differing only in the displacements; its prologue is at Pool of Radiance
+`GAME.OVR:0x1E468`, Curse `0x1C1C1` and Silver Blades `0x242B7`, eleven bytes
+past each overlay's own `CHEAD`/`CBODY` string pair, and all three read
+`55 89 E5 81 EC 2A 02`. So is the recolour builder --
+Pool of Radiance `0x1E55C`, Curse `0x1C2B5`, Silver Blades `0x24413` -- which
+reads its own record's six colour bytes after `size` and indexes a seven-byte
+part table in the resident data segment, at `ds:0x3CF5`, `ds:0x3EC2` and
+`ds:0x4CAF`.
+
+**PROBABLE, and it is the one claim here that is not CONFIRMED:** that table
+holds `01 02 03 04 06 07` in all three -- body, arm, leg, hair, shield,
+weapon, which is `DOS_PAIR_CLASSES`. The six bytes occur exactly once in each
+title's `START.EXE` and nowhere else in any `.EXE`, `.OVR` or `.COM` of the
+three game directories, in the same run of constant tables each time
+(`0A 0F 0A 0A 0B 0C 0B` before, `1E 19 14 0F` after) -- but the `ds` base
+has not been resolved. In Pool of Radiance no single base puts both that hit
+at `ds:0x3CF5` and the size-letter table `04 53 54` at `ds:0x8C5`, so
+`START.EXE`'s data is not one flat run at a fixed offset and the match here
+is by neighbourhood rather than by address. The
+experiment that settles it: boot Curse under DOSBox, break at
+`GAME.OVR:0x1C301`, and read the seven bytes at `ds:0x3EC2`. Anything but
+`?? 01 02 03 04 06 07` refutes it.
+
+**And the shipped engines say it themselves.** Curse's own importer reads a
+Pool of Radiance record's `icon_head` `0x0BD`, `icon_body` `0x0BE` and `size`
+`0x0C0` and writes them into its `0x141`, `0x142` and `0x144`, then block-
+copies the six `icon_colours` from `0x0C1` to `0x145` --
+`GAME.OVR:0x1D477`-`0x1D4CD`, no table in between. Silver Blades' importer
+does the same with a Curse record at `0x2533C`-`0x253A2`. A title that had
+renumbered its art could not copy those bytes straight across.
+
+## Silver Blades re-drew two options -- CONFIRMED
+
+Four blocks of the 184 differ, and they are two options in both poses:
+
+| file | option | size | blocks | what changed |
+|---|---|---|---|---|
+| `CHEAD.DAX` | head 10 | large (`size` 2) | 74, 202 | Pool of Radiance draws hair, outline and face; Silver Blades adds pixel values 5 and 13, which the recolour lookup never touches -- a hat or plume. 32 of 192 pixels, and the block is 9 rows where every other `CHEAD` block is 8 or 10 |
+| `CBODY.DAX` | body 11 | small (`size` 1) | 11, 139 | Pool of Radiance draws weapon pixels 7 and 15; Silver Blades draws neither. 27 of 576 pixels in pose 1 and 79 in pose 2 |
+
+Two things say these were re-authored rather than mis-read here. Every other
+block in both files of all three titles carries `01 12 22 22 23 03 33 32 33`
+at block offset 8; exactly these four carry zeroes there. And the sibling
+size of each is untouched -- Silver Blades' *small* head 10 and *large* body
+11 are Pool of Radiance's bytes exactly -- so within Silver Blades the two
+sizes of those options now draw different things.
+
+**What that costs a converted character.** `tools/iconproposal.yaml` has one
+row per DOS option, serving both sizes, and both rows were chosen against
+Pool of Radiance's drawing. So a Silver Blades character at `size` 2 with
+head 10 loses a hat the C64 head option does not have, and one at `size` 1
+with body 11 gains a weapon his DOS figure does not hold. Nothing else in
+either table is affected, and no record in the 54 shipped DOS saves across
+the four titles holds either combination -- though a player reaches both from
+the ICON menu, and those saves have no chain of custody.

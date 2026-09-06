@@ -516,3 +516,112 @@ def test_the_engine_leaves_the_spell_slot_array_zero():
     filled = [s.record_bytes[0x0EE:0x0F4] for s in save.slots if s.occupied]
     assert len(filled) == 6
     assert all(not any(f) for f in filled)
+
+
+# --- the combat figure, through Silver Blades' own option tables (#330) ------
+#
+# The twin of `tests/test_curseconvert.py`'s section, and it exists because
+# `IconParts.dos_icon` takes no title while the correspondence table it reads
+# was built from Pool of Radiance's art -- `#330 (A converted Curse or Silver
+# Blades figure is composed through Pool of Radiance's icon table, which
+# nobody has checked transfers)`.
+#
+# Silver Blades numbers its art the same way: 182 of the 184 `CHEAD.DAX` and
+# `CBODY.DAX` blocks are byte-identical to Pool of Radiance's at the same
+# ids, its ICON menu wraps at the same 13 and 31, and its own importer copies
+# a Curse record's icon bytes straight across.  Two options it re-drew --
+# head 10 at size 2 and body 11 at size 1 -- are art differences inside a
+# numbering that did not move, and `tests/test_iconparts.py` is where those
+# two are pinned.
+
+#: The six colour pairs 42 of the 54 shipped DOS records across the four
+#: titles carry.
+DEFAULT_ICON_COLOURS = bytes.fromhex("91a2b3c4e6f7")
+
+
+@pytest.fixture(scope="module")
+def ssb_parts():
+    """Silver Blades' own `SPELLE64` and `SPELLN64`, off one Silver side.
+
+    Both files off the *same* disk, because `IconParts` fits the load address
+    out of the editor overlay's own pointer table and this title puts the
+    parts file at `$8E00`.
+    """
+    gamedisks = pytest.importorskip("tools.gamedisks")
+
+    from goldbox.iconparts import IconParts
+
+    where = gamedisks.find("secret-of-the-silver-blades")
+    if where is None or not where.is_dir():
+        pytest.skip("needs the Silver Blades disks; set $SSB_DISKS")
+    for path in sorted(pathlib.Path(where).glob("*.[dD]64")):
+        try:
+            disk = D64.open(path)
+        except Exception:
+            continue
+        if disk.find(b"SPELLE64") and disk.find(b"SPELLN64"):
+            return IconParts.load(disk)
+    pytest.skip("no Silver Blades side here carries SPELLE64 and SPELLN64")
+
+
+@pytest.fixture(scope="module")
+def ssb_reachable(ssb_parts):
+    """Every shape one weapon and then one head reaches, all four size pairs.
+
+    An icon outside it is eighteen `CHARPIC00` screen codes no menu produces,
+    and the engine draws them anyway -- which is why this is the assertion.
+    """
+    from goldbox.iconparts import SPACE
+
+    blank = bytes([SPACE] * 18)
+    out = set()
+    for weapon_size in ("small", "large"):
+        for w in range(ssb_parts.count(weapon_size, "weapon")):
+            shape = ssb_parts.apply(blank, weapon_size, "weapon", w)
+            for head_size in ("small", "large"):
+                for h in range(ssb_parts.count(head_size, "head")):
+                    out.add(ssb_parts.apply(shape, head_size, "head", h))
+    return out
+
+
+def _ssb_figure(parts, head, body, size):
+    """One record's own combat figure, by the path `convert_save` takes."""
+    char = dos.DosCharacter(ssb_record(
+        icon_head=head, icon_body=body, size=size,
+        icon_colours=DEFAULT_ICON_COLOURS))
+    icon = dos._icon_for(char, parts)
+    rec, _report = dos.to_c64_record(char, icon=icon)
+    return icon, rec.get_raw("region_220")
+
+
+def test_a_silver_blades_record_composes_a_figure_its_own_menus_can_make(
+        converts_ssb, ssb_parts, ssb_reachable):
+    icon, written = _ssb_figure(ssb_parts, head=5, body=24, size=2)
+    assert written == icon, "the composed figure has to reach the record"
+    assert len(icon) == 36
+    assert icon[:18] in ssb_reachable
+    per_class = ssb_parts.part_colours(icon[18:], icon[:18])
+    assert ssb_parts.colours_for(icon[:18], per_class, icon[18:]) == icon[18:]
+
+
+def test_two_silver_blades_characters_with_different_records_differ(
+        converts_ssb, ssb_parts):
+    """What a player sees when this is wrong: six identical men on the combat
+    floor, which is what `#130 (A converted DOS party arrives with six
+    identical combat figures, not its own)` was."""
+    knight, _ = _ssb_figure(ssb_parts, head=5, body=24, size=2)
+    dwarf, _ = _ssb_figure(ssb_parts, head=13, body=3, size=1)
+    assert knight != dwarf
+    assert knight != ssb_parts.default_icon()
+    assert dwarf != ssb_parts.default_icon()
+
+
+def test_every_figure_a_silver_blades_player_can_choose_composes(
+        converts_ssb, ssb_parts, ssb_reachable):
+    """All 896 of them: this title's `GAME.OVR` wraps the head at 13 and the
+    body at 31 at its own record displacements 0x153 and 0x154."""
+    for size in (1, 2):
+        for head in range(14):
+            for body in range(32):
+                icon, _ = _ssb_figure(ssb_parts, head, body, size)
+                assert icon[:18] in ssb_reachable, (head, body, size)

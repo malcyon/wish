@@ -176,3 +176,137 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
     assert dialog.shape in legal, "mixing sizes must stay inside the set"
     assert len(dialog.shape) == CELLS_PER_POSE * 2
     app.processEvents()
+
+
+# --- the same tables on three titles (#330) ---------------------------------
+#
+# `IconParts.dos_icon` takes no title.  Its C64 half is title-specific and
+# safe -- `IconParts.load` fits the base from the disk it was handed -- but
+# its DOS half reads one correspondence table, `tools/iconproposal.yaml`,
+# built from Pool of Radiance's art.  These are what would fail if a title
+# numbered its own art differently, because a wrong-but-in-range row composes
+# a complete, plausible figure that is simply not the one the player made.
+DOS_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
+              "secret-of-the-silver-blades")
+
+#: What Silver Blades re-drew, `tools/dosicontitles.py` against the archives:
+#: `(file, option, size)`, both poses of each.  Nothing else in either file
+#: differs from Pool of Radiance's in any of the three titles.
+SILVER_BLADES_REDREW = {("CHEAD.DAX", 10, "large"), ("CBODY.DAX", 11, "small")}
+
+
+@pytest.fixture(scope="module")
+def dos_art():
+    """Every title's `CHEAD.DAX` and `CBODY.DAX`, compared, or skip."""
+    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    gamedisks = pytest.importorskip("tools.gamedisks")
+    root = gamedisks.find("dos-archives")
+    if root is None or not root.is_dir():
+        pytest.skip("needs the DOS games; set $FR_ARCHIVES")
+    try:
+        folders = dosicontitles.find_folders(root, list(DOS_TITLES))
+    except SystemExit as exc:
+        pytest.skip(str(exc))
+    return dosicontitles.compare_art(folders, "pool-of-radiance")
+
+
+def test_all_three_titles_hold_the_same_thirty_two_bodies_and_fourteen_heads(
+        dos_art):
+    """The block ids are the numbering, and they are the same in all three.
+
+    `icon_body + (64 if size 2) + (128 if pose 2)` is the block the engine
+    loads, so a title that shipped a different set of options would hold a
+    different set of ids.  All three hold 128 `CBODY` blocks over 32 options
+    and 56 `CHEAD` blocks over 14 -- which is also what each title's own ICON
+    menu wraps at.
+    """
+    for name, options, blocks in (("CBODY.DAX", 32, 128),
+                                  ("CHEAD.DAX", 14, 56)):
+        for key in DOS_TITLES:
+            row = dos_art[name]["titles"][key]
+            assert (row["options"], row["blocks"]) == (options, blocks), key
+            assert row["added"] == [] and row["missing"] == [], key
+
+
+def test_curse_ships_pool_of_radiances_combat_art_block_for_block(dos_art):
+    """184 of 184 blocks byte-identical, so the table transfers unchanged."""
+    total = 0
+    for name in ("CBODY.DAX", "CHEAD.DAX"):
+        row = dos_art[name]["titles"]["curse-of-the-azure-bonds"]
+        assert row["redrawn"] == [], name
+        assert row["identical"] == row["blocks"]
+        total += row["identical"]
+    assert total == 184
+
+
+def test_silver_blades_redrew_two_options_and_only_those_two(dos_art):
+    """182 of 184 blocks byte-identical; the two that are not are named.
+
+    This is the test that fails if a later title diverges further, because
+    every row of `tools/iconproposal.yaml` was chosen against Pool of
+    Radiance's drawing of that option.  Silver Blades' head 10 at size 2
+    wears a hat Pool of Radiance's does not, and its body 11 at size 1 holds
+    no weapon where Pool of Radiance's holds one -- so those two rows
+    describe a figure Silver Blades does not draw.
+    """
+    seen = set()
+    for name in ("CBODY.DAX", "CHEAD.DAX"):
+        row = dos_art[name]["titles"]["secret-of-the-silver-blades"]
+        for hit in row["redrawn"]:
+            seen.add((name, hit["option"], hit["size"]))
+            assert hit["pose"] in (1, 2)
+        assert row["identical"] == row["blocks"] - len(row["redrawn"])
+    assert seen == SILVER_BLADES_REDREW
+
+
+def test_the_redrawn_silver_blades_body_holds_no_weapon(dos_art):
+    """Both poses of it, which is what makes the difference a figure rather
+    than a stray pixel: Pool of Radiance's small body 11 draws weapon and
+    weapon-highlight pixels and Silver Blades' draws neither."""
+    redrawn = [h for h in
+               dos_art["CBODY.DAX"]["titles"]
+               ["secret-of-the-silver-blades"]["redrawn"]]
+    assert len(redrawn) == 2
+    for hit in redrawn:
+        assert "weapon" in hit["parts_reference"]
+        assert "weapon" not in hit["parts_here"]
+        assert "weapon+" not in hit["parts_here"]
+
+
+def test_every_title_numbers_its_icon_fields_where_our_layout_says(dos_art):
+    """The engine's own ICON menu, read out of each `GAME.OVR`.
+
+    Two things at once: the wrap constants are 13 and 31 in all three, so
+    every title offers the same 14 heads and 32 bodies; and they are found at
+    the record displacement `goldbox/dos_layout.py` gives that title, so a
+    wrong offset in our own table shows up here rather than silently.
+    """
+    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    gamedisks = pytest.importorskip("tools.gamedisks")
+    root = gamedisks.find("dos-archives")
+    folders = dosicontitles.find_folders(root, list(DOS_TITLES))
+    code = dosicontitles.read_code(folders, list(DOS_TITLES))
+    for key in DOS_TITLES:
+        assert code[key]["wraps"]["icon_head"] == [0, 13], key
+        assert code[key]["wraps"]["icon_body"] == [0, 31], key
+
+
+def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
+    """The shipped engines' own answer to this question (#330).
+
+    Curse's importer reads a Pool of Radiance record's `icon_head`,
+    `icon_body`, `size` and six `icon_colours` and writes them into its own
+    record with no table in between; Silver Blades' importer does the same
+    with a Curse record.  A game that renumbered its art could not do that.
+    """
+    dosicontitles = pytest.importorskip("tools.dosicontitles")
+    gamedisks = pytest.importorskip("tools.gamedisks")
+    root = gamedisks.find("dos-archives")
+    if root is None or not root.is_dir():
+        pytest.skip("needs the DOS games; set $FR_ARCHIVES")
+    folders = dosicontitles.find_folders(root, list(DOS_TITLES))
+    code = dosicontitles.read_code(folders, list(DOS_TITLES))
+    for key in DOS_TITLES[1:]:
+        copies = code[key]["copies"]
+        for field in ("icon_head", "icon_body", "size", "icon_colours"):
+            assert len(copies[field]) == 1, f"{key}: {field} {copies[field]}"

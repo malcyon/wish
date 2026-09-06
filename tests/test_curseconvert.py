@@ -478,3 +478,118 @@ def test_the_disk_carries_one_file():
     assert [e.display_name for e in disk.directory()] == ["SAVEAZURE"]
     load, payload = split_load_address(disk.read_file(b"SAVEAZURE"))
     assert load == 0x4B00 and payload == bytes(save0)
+
+
+# --- the combat figure, through Curse's own option tables (#330) -------------
+#
+# `#130 (A converted DOS party arrives with six identical combat figures, not
+# its own)` made each character's figure his own, composed by
+# `IconParts.dos_icon` out of `icon_head` and `icon_body`.  That call takes no
+# title, and the correspondence table it reads was built from Pool of
+# Radiance's art -- so `#330 (A converted Curse or Silver Blades figure is
+# composed through Pool of Radiance's icon table, which nobody has checked
+# transfers)` asked whether Curse numbers its own art the same way.  It does:
+# `CHEAD.DAX` and `CBODY.DAX` are byte-identical between the two titles over
+# all 184 blocks, and Curse's own importer copies a Pool of Radiance record's
+# icon bytes straight into its own.
+#
+# These run a Curse record through the same call `convert_save` makes,
+# because every other DOS test in this file passes `icon=bytes(36)` and so
+# never touches the composition at all.
+
+#: The six colour pairs 42 of the 54 shipped DOS records across the four
+#: titles carry, so the figure below is coloured the way most are.
+DEFAULT_ICON_COLOURS = bytes.fromhex("91a2b3c4e6f7")
+
+
+@pytest.fixture(scope="module")
+def curse_parts():
+    """Curse's own `SPELLE64` and `SPELLN64`, off one Curse side.
+
+    Both files off the *same* disk: `IconParts` fits the load address from
+    the editor's own pointer table, and Curse puts the parts file at `$8E00`
+    where Pool of Radiance puts it at `$A700`.
+    """
+    import gamedata
+
+    from goldbox.iconparts import IconParts
+
+    for disk in gamedata.curse_disks():
+        if disk.find(b"SPELLE64") and disk.find(b"SPELLN64"):
+            return IconParts.load(disk)
+    pytest.skip("no Curse side here carries SPELLE64 and SPELLN64")
+
+
+@pytest.fixture(scope="module")
+def curse_reachable(curse_parts):
+    """Every shape one weapon and then one head reaches, all four size pairs.
+
+    An icon outside this set is eighteen `CHARPIC00` screen codes in an order
+    no menu produces, and the engine draws it without complaint -- which is
+    why membership is the assertion rather than "it looks like a figure".
+    """
+    from goldbox.iconparts import SPACE
+
+    blank = bytes([SPACE] * 18)
+    out = set()
+    for weapon_size in ("small", "large"):
+        for w in range(curse_parts.count(weapon_size, "weapon")):
+            shape = curse_parts.apply(blank, weapon_size, "weapon", w)
+            for head_size in ("small", "large"):
+                for h in range(curse_parts.count(head_size, "head")):
+                    out.add(curse_parts.apply(shape, head_size, "head", h))
+    return out
+
+
+def _curse_figure(parts, head, body, size):
+    """One Curse record's own combat figure, by the path `convert_save` takes."""
+    char = dos.DosCharacter(curse_record(
+        icon_head=head, icon_body=body, size=size,
+        icon_colours=DEFAULT_ICON_COLOURS))
+    icon = dos._icon_for(char, parts)
+    rec, _report = dos.to_c64_record(char, icon=icon)
+    return icon, rec.get_raw("region_220")
+
+
+def test_a_curse_record_composes_a_figure_curses_own_menus_can_make(
+        curse_parts, curse_reachable):
+    """The whole point of `#330`, on a Curse record and Curse's own tables.
+
+    A row naming an option Curse does not have would raise here, and a shape
+    the ICON menu cannot reach would fail the membership test -- neither of
+    which the `icon=bytes(36)` the rest of this file passes would ever show.
+    """
+    icon, written = _curse_figure(curse_parts, head=5, body=17, size=2)
+    assert written == icon, "the composed figure has to reach the record"
+    assert len(icon) == 36
+    assert icon[:18] in curse_reachable
+    # The colour half obeys the engine's own rule at `$B2F0`: every cell of a
+    # part carries that part's single colour, with bit 3 from the glyph.
+    per_class = curse_parts.part_colours(icon[18:], icon[:18])
+    assert curse_parts.colours_for(icon[:18], per_class, icon[18:]) == icon[18:]
+
+
+def test_two_curse_characters_with_different_records_get_different_figures(
+        curse_parts):
+    """What a player sees when this is wrong: a party of identical men.
+
+    Before `#130` every converted character got one composed default, and
+    the DOS-side gate `#330` considered would put Curse back there.
+    """
+    archer, _ = _curse_figure(curse_parts, head=5, body=17, size=2)
+    dwarf, _ = _curse_figure(curse_parts, head=13, body=3, size=1)
+    assert archer != dwarf
+    assert archer != curse_parts.default_icon()
+    assert dwarf != curse_parts.default_icon()
+
+
+def test_every_figure_a_curse_player_can_choose_composes(
+        curse_parts, curse_reachable):
+    """All 896: Curse's ICON menu wraps the head at 13 and the body at 31,
+    both sizes, and `GAME.OVR` holds those constants at Curse's own record
+    displacements 0x141 and 0x142."""
+    for size in (1, 2):
+        for head in range(14):
+            for body in range(32):
+                icon, _ = _curse_figure(curse_parts, head, body, size)
+                assert icon[:18] in curse_reachable, (head, body, size)
