@@ -150,12 +150,24 @@ DROPPED_HEADING = "Wish cannot currently convert these fields:"
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of
 #: `SPELLE64` and `$8400` out of `ANIMATE00`, and neither may be stored here.
-#: Donald's wording, approved 2026-08-27, a title and one line and no more.
-#: It fires **before** the folder picker, so nothing has been chosen and no
-#: dialog is left standing behind the error.
+#: Donald's wording. The title is his of 2026-08-27; the line was replaced by
+#: him on 2026-09-05, because the first version had gone stale in three ways
+#: at once -- it named `File ▸ Import`, which `#52 (File ▸ Import and
+#: File ▸ Export for every direction the library supports)` replaces with
+#: `File ▸ Convert…`; it said "a character" where a conversion moves a
+#: whole party; and it said "the Game Disk folder" as though there were one,
+#: when `#22 (A disk folder setting per game, not one shared by all six)`
+#: gives each title its own and `#342 (A Curse or Silver Blades save cannot
+#: be converted unless its C64 sides sit in the Pool of Radiance disk
+#: folder)` taught the conversion to read them. A player who had set Curse's
+#: folder was being told to do the thing they had already done.
+#:
+#: A title and one line and no more. It fires **before** the folder picker,
+#: so nothing has been chosen and no dialog is left standing behind the
+#: error.
 NO_DISKS_TITLE = "Game disks not found"
-NO_DISKS = ("You must set the Game Disk folder in File ▸ Preferences… "
-            "before importing a character.")
+NO_DISKS = ('Please set your "Game disks" folders in Preferences before '
+            "converting a save.")
 
 #: The status line when a conversion reaches the window with no file behind
 #: it. Convert names one and writes it, so what a user sees after an import is
