@@ -306,19 +306,26 @@ def test_ongoto_index_is_none_when_the_path_has_no_ongoto():
 def test_mask_before_reads_the_and_immediate_against_attr():
     and_stmt = W.Statement(0, 6, 0x2F, [(0x02, ATTR), (0x00, 0x1F)])
     script = FakeScript([and_stmt])
-    assert EK.mask_before(script, [0]) == 0x1F
+    assert EK.mask_before(script, [0]) == (0x1F, None)
+
+
+def test_mask_before_also_names_the_variable_the_id_was_written_to():
+    and_stmt = W.Statement(0, 8, 0x2F,
+                           [(0x00, 0x1F), (0x02, ATTR), (0x02, 0x6E82)])
+    script = FakeScript([and_stmt])
+    assert EK.mask_before(script, [0]) == (0x1F, 0x6E82)
 
 
 def test_mask_before_ignores_an_and_on_a_different_address():
     and_stmt = W.Statement(0, 6, 0x2F, [(0x02, 0x1234), (0x00, 0x1F)])
     script = FakeScript([and_stmt])
-    assert EK.mask_before(script, [0]) == 0x7F
+    assert EK.mask_before(script, [0]) == (0x7F, None)
 
 
 def test_mask_before_defaults_to_7f_with_no_and_on_the_route():
     compare = W.Statement(0, 4, 0x03, [(0x02, EDGE_FLAG)])
     script = FakeScript([compare])
-    assert EK.mask_before(script, [0]) == 0x7F
+    assert EK.mask_before(script, [0]) == (0x7F, None)
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +371,112 @@ def test_analyse_reports_the_squares_a_square_exit_fires_on():
         asm.label("ARM0")
         op_newecl(asm, 1)
     row = analyse_one(1, block, geo=geo)
+    assert row["squares"] == marked
+
+
+# ---------------------------------------------------------------------------
+# compare_index() / squares_for_test() -- a square id tested by `COMPARE`
+# and a conditional jump rather than an `ONGOTO` arm (#255)
+# ---------------------------------------------------------------------------
+
+def test_compare_index_reads_a_literal_first_equality_test():
+    """`COMPARE 26, [var]` then `IF=` -- the literal comes first, which is
+    the operand order `ECL08 $9A41`'s real exit uses."""
+    var = 0x6E82
+    compare = W.Statement(0, 5, 0x03, [(0x00, 26), (0x02, var)])
+    test = W.Statement(5, 6, 0x16, [])          # IF=
+    script = FakeScript([compare, test])
+    literal, op = EK.compare_index(script, [0, 5], var)
+    assert (literal, op) == (26, "=")
+
+
+def test_compare_index_flips_a_literal_first_inequality():
+    """`COMPARE 29, [var]` then `IF>` means `29 > id`, i.e. `id < 29` -- the
+    flip a literal-first `COMPARE` needs that an equality test does not."""
+    var = 0x6E79
+    compare = W.Statement(0, 5, 0x03, [(0x00, 29), (0x02, var)])
+    test = W.Statement(5, 6, 0x19, [])          # IF>
+    script = FakeScript([compare, test])
+    literal, op = EK.compare_index(script, [0, 5], var)
+    assert (literal, op) == (29, "<")
+
+
+def test_compare_index_reads_a_variable_first_test_unflipped():
+    """`COMPARE [var], 29` then `IF>` -- the variable comes first, the shape
+    `ECL05 $9C25`'s real exit uses, and needs no flip."""
+    var = 0x6E79
+    compare = W.Statement(0, 5, 0x03, [(0x02, var), (0x00, 29)])
+    test = W.Statement(5, 6, 0x19, [])          # IF>
+    script = FakeScript([compare, test])
+    literal, op = EK.compare_index(script, [0, 5], var)
+    assert (literal, op) == (29, ">")
+
+
+def test_compare_index_is_none_without_a_masked_variable():
+    """`mask_before` found no `AND` on the route, so there is no variable to
+    look a `COMPARE` up against."""
+    compare = W.Statement(0, 5, 0x03, [(0x00, 26), (0x02, 0x6E82)])
+    script = FakeScript([compare])
+    assert EK.compare_index(script, [0], None) == (None, None)
+
+
+def test_compare_index_ignores_a_compare_on_an_unrelated_flag():
+    """`ECL13 $996E`'s exit tests a quest flag, not the masked square id, and
+    must not be read as one."""
+    compare = W.Statement(0, 5, 0x03, [(0x00, 128), (0x02, 0x4A87)])
+    test = W.Statement(5, 6, 0x16, [])
+    script = FakeScript([compare, test])
+    assert EK.compare_index(script, [0, 5], 0x6E82) == (None, None)
+
+
+class CompareMachine:
+    """Adds a destination operand to `AND` and a second operand to
+    `COMPARE`, the shape #255's exits need and no other test in this file
+    uses -- kept off the shared `FakeMachine` so its own tests are untouched.
+    """
+    _COUNTS = {0x01: 1, 0x03: 2, 0x20: 1, 0x2F: 3}
+
+    def operands(self, op):
+        return self._COUNTS.get(op, 0)
+
+
+def op_and3(asm, mask, dest):
+    """`AND mask, $C04F, dest` -- the masked id, with its destination named
+    as a third operand, which is what `mask_before` reads `dest` from."""
+    asm.raw(bytes([0x2F, 0x00, mask, 0x02]) + ATTR.to_bytes(2, "little")
+            + bytes([0x02]) + dest.to_bytes(2, "little"))
+
+
+def op_compare_literal_first(asm, literal, var):
+    asm.raw(bytes([0x03, 0x00, literal, 0x02]) + var.to_bytes(2, "little"))
+
+
+def op_if(asm, opcode):
+    asm.raw(bytes([opcode]))
+
+
+def test_analyse_names_a_square_exit_gated_by_compare_instead_of_ongoto():
+    """`#255 (tools/eclexitkinds.py misses a square exit whose id is tested
+    by COMPARE rather than ONGOTO)`: this route has no `ONGOTO` at all, only
+    a masked `$C04F` and a `COMPARE`/`IF=`/`GOTO`, and the squares column
+    used to stay empty for it."""
+    marked = [(2, 2), (6, 6)]
+    geo = _synthetic_geo(marked, marked_id=5, background_id=0)
+
+    def block(asm):
+        op_and3(asm, 0x7F, 0x6E82)
+        op_compare_literal_first(asm, 5, 0x6E82)
+        op_if(asm, 0x16)                       # IF=
+        op_goto(asm, "TARGET")
+        op_exit(asm)
+        asm.label("TARGET")
+        op_newecl(asm, 1)
+
+    body = make_body(1, block)
+    _script, rows = EK.analyse(CompareMachine(), "TEST", "SIDE", body, geo)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["index"] == 5
     assert row["squares"] == marked
 
 

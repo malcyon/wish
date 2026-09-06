@@ -100,14 +100,59 @@ def ongoto_index(script, path):
 
 
 def mask_before(script, path):
-    """The `AND` mask applied to `$C04F` on the route, or `$7F`."""
+    """The `AND` mask applied to `$C04F` on the route, and the variable it
+    was written to, or `(0x7F, None)`."""
     for a in path:
         st = script.statements[a]
         if st.op == 0x2F and any(k != 0 and v == ATTR for k, v in st.operands):
+            mask, dest = 0x7F, None
             for k, v in st.operands:
                 if k == 0:
-                    return v
-    return 0x7F
+                    mask = v
+                elif v != ATTR:
+                    dest = v
+            return mask, dest
+    return 0x7F, None
+
+
+#: `IF=` .. `IF>=`, and the operand-order flip a literal-first `COMPARE`
+#: needs -- `<` and `>` swap, `=` and `!=` read the same either way.
+IF_TESTS = {0x16: "=", 0x17: "!=", 0x18: "<", 0x19: ">", 0x1A: "<=", 0x1B: ">="}
+_FLIP = {"<": ">", ">": "<", "<=": ">=", ">=": "<="}
+
+
+def compare_index(script, path, var):
+    """The literal a `COMPARE` on `var` tests against, and the test, or
+    `(None, None)`.
+
+    `var` is the destination `mask_before` wrote the masked square id to. A
+    route that has masked `$C04F` into `var` and then names it in a `COMPARE`
+    against a literal, immediately followed by the `IF` that reads it, names
+    the id the same way an `ONGOTO` arm does -- `#255 (tools/eclexitkinds.py
+    misses a square exit whose id is tested by COMPARE rather than
+    ONGOTO)`.
+    """
+    if var is None:
+        return None, None
+    for a, b in zip(path, path[1:]):
+        st = script.statements[a]
+        if st.op != COMPARE or len(st.operands) != 2:
+            continue
+        (k0, v0), (k1, v1) = st.operands
+        if k0 == 0 and v1 == var:
+            literal, flip = v0, True
+        elif k1 == 0 and v0 == var:
+            literal, flip = v1, False
+        else:
+            continue
+        nxt = script.statements.get(b)
+        if nxt is None or nxt.op not in IF_TESTS or nxt.at != st.end:
+            continue
+        test = IF_TESTS[nxt.op]
+        if flip:
+            test = _FLIP.get(test, test)
+        return literal, test
+    return None, None
 
 
 def features(script, path, exit_at):
@@ -143,6 +188,22 @@ def squares_with(geo, mask, k):
             if geo.script_id(x, y, mask) == k]
 
 
+_COMPARE_OK = {
+    "=": lambda k, literal: k == literal, "!=": lambda k, literal: k != literal,
+    "<": lambda k, literal: k < literal, ">": lambda k, literal: k > literal,
+    "<=": lambda k, literal: k <= literal, ">=": lambda k, literal: k >= literal,
+}
+
+
+def squares_for_test(geo, mask, literal, test):
+    """The squares `compare_index`'s `(literal, test)` selects, or `None`."""
+    if geo is None or literal is None:
+        return None
+    ok = _COMPARE_OK[test]
+    return [(x, y) for y in range(16) for x in range(16)
+            if ok(geo.script_id(x, y, mask), literal)]
+
+
 def analyse(machine, name, side, body, geo):
     script = W.Script(machine, name, side, body)
     entries = script.entries
@@ -160,11 +221,16 @@ def analyse(machine, name, side, body, geo):
             path = route_to(reach[1], st.at)
             og, k = ongoto_index(script, path)
             row["features"] = features(script, path, st.at)
+            mask, var = mask_before(script, path)
             if og is not None:
                 row["kind"] = "square"
                 row["index"] = k
-                row["squares"] = squares_with(geo, mask_before(script, path), k)
+                row["squares"] = squares_with(geo, mask, k)
             else:
+                literal, test = compare_index(script, path, var)
+                if literal is not None:
+                    row["index"] = literal if test == "=" else (test, literal)
+                    row["squares"] = squares_for_test(geo, mask, literal, test)
                 row["kind"] = "entry1-unconditional"
         elif 0 in reach:
             path = route_to(reach[0], st.at)
@@ -179,7 +245,8 @@ def analyse(machine, name, side, body, geo):
             elif og is not None:
                 row["kind"] = "edge+square" if gated else "square-via-entry0"
                 row["index"] = k
-                row["squares"] = squares_with(geo, mask_before(script, path), k)
+                mask, _var = mask_before(script, path)
+                row["squares"] = squares_with(geo, mask, k)
             else:
                 row["kind"] = "entry0-unconditional"
         elif reach:
