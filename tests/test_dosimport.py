@@ -204,6 +204,23 @@ def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
     # #130: the icon is converted now, whatever `icon` argument this call
     # was given, so the pane says nothing about it at all any more.
     assert "Combat icons" not in text
+    # #314: one sentence per missing portrait half, not two -- DOS's own
+    # line and `goldbox.c64_codec.write`'s generic fallback used to both
+    # fire for the same loss, and the fallback's copy opened lower case.
+    assert text.count("portrait") == 2, text
+    for line in text.splitlines():
+        if line.strip():
+            assert line.lstrip()[:1].isupper(), line
+
+
+def test_a_conversion_that_drops_nothing_gets_no_heading():
+    """#338 (The conversion pane says fields could not be converted and then
+    lists none): a heading over no lines told a player something was lost
+    with nothing to name, which is worse than saying nothing."""
+    from editor.dosimport import dropped_text
+    from goldbox.dos import Report
+
+    assert dropped_text(Report()) == ""
 
 
 # --- the window -------------------------------------------------------------

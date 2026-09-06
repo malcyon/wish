@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 
 from . import derive, games, neutral, spells
+from . import levels as level_tables
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
@@ -134,6 +135,18 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("thac0_current", "thac0"),
     ("armour_class", "armour_class"),
     ("movement_current", "roster_movement"),
+)
+
+#: The five saving-throw columns, neutral name to C64 name, in the order
+#: `goldbox.levels.Level.saves` stores them -- paralysis, petrification,
+#: wands, breath, spell.  `DIRECT` above copies these like anything else;
+#: `write` then overwrites them from `goldbox.levels.saving_throws` (#311).
+_SAVE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("save_paralysis", "save_paralysis"),
+    ("save_petrification", "save_petrification"),
+    ("save_wands", "save_wands"),
+    ("save_breath", "save_breath"),
+    ("save_spell", "save_spell"),
 )
 
 @dataclasses.dataclass(frozen=True)
@@ -596,6 +609,31 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set(c64_name, v.value)
         emit(v, c64_name, dst.offset, dst.size)
 
+    # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
+    # -----------------------------------------------------------------------
+    # DOS and Amiga store the plain class row and apply the constitution
+    # bonus at the moment a save is rolled; the C64 subtracts the bonus into
+    # the five stored bytes instead (`GEN $2359`,
+    # `goldbox.levels.constitution_save_bonus`).  Left as `DIRECT` copied it,
+    # a converted dwarf, gnome or halfling saves worse than the C64 itself
+    # would have made him (#311).  `w.get`, not `use`: the levels, race and
+    # constitution feeding this were already taken above, and a second `use`
+    # would report them dropped a second time.
+    computed_saves = level_tables.saving_throws(
+        w.get("levels", {}), w.get("race", 0), w.get("constitution", 0),
+        char.game)
+    if computed_saves is not None:
+        for column, (field, c64_name) in enumerate(_SAVE_COLUMNS):
+            if not rec.is_stored(c64_name):
+                continue
+            dst = _field(c64_name)
+            rec.set(c64_name, computed_saves[column])
+            rep.note(dst.offset, dst.size,
+                     f"{c64_name}: the class row less the constitution "
+                     f"bonus on the columns it reaches, the way the C64's "
+                     f"own trainer stores it -- {port} keeps the plain row "
+                     f"and applies the bonus when the die is rolled")
+
     # -- memorised spells, into as many slots as this title has --------------
     # Written before the second ability array because in Pool of Radiance the
     # list runs *through* `0x065` and in Curse it stops just short of it.
@@ -900,13 +938,23 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # routine that draws one (#300, docs/188-the-sheet-portrait-per-title.md):
     # a character arriving there with no portrait id is a character arriving
     # correct, the way one of their own engine's own would (#329).
+    #
+    # And `port == "DOS"` -- every caller today -- already owns the sentence:
+    # `goldbox.dos.to_neutral` puts its own line on `rep.dropped` whenever it
+    # cannot supply this field, naming why (no game disks, or a menu position
+    # the disk's own creation menu does not offer), whenever the destination
+    # would otherwise have drawn a face.  Adding this one too read as the
+    # same loss reported twice, in two vocabularies (#314), and it can be
+    # imported to check directly: `dos.py` imports this module, not the
+    # other way round.  A source with no such sentence of its own would need
+    # this line back.
     both = True
     for name, offset, stem in (("portrait_head", 0x0FE, "HEAD"),
                                ("portrait_body", 0x0FF, "BODY")):
         v = use(name)
         if v is None:
             both = False
-            if draws_sheet_portrait(shape.key):
+            if draws_sheet_portrait(shape.key) and port != "DOS":
                 rep.dropped.append(
                     f"the character sheet's portrait {stem[:4].lower()}: "
                     f"{port} gave none, so the sheet draws no face")

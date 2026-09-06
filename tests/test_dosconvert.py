@@ -27,7 +27,7 @@ import yaml
 from gamedata import needs_disks
 from test_dossave import _game_dirs, _save_dir, needs_dos_saves
 
-from goldbox import areas, dos, dos_layout, savegame, spells
+from goldbox import areas, c64_codec, dos, dos_layout, levels, neutral, savegame, spells
 from goldbox import dos_savegame as sg
 from goldbox.layout import RECORD_SIZE as C64_RECORD_SIZE
 
@@ -65,6 +65,56 @@ def test_the_spell_id_space_is_shared():
     # 56 DOS bytes hold ids 1..56; the C64's seven bytes hold bits 1..55.
     assert dos_layout.SPELLBOOK_SPELLS == 56
     assert spells.LAST_SPELLBOOK_SPELL == 55
+
+
+def _plain_row_character(race: int, constitution: int = 13) -> neutral.NeutralCharacter:
+    """A DOS-read neutral fighter 1, holding the plain class row DOS stores.
+
+    `(14, 15, 16, 17, 17)` is the level-1 fighter row `test_levels.py`'s own
+    `test_the_modifier_that_made_two_level_one_fighters_differ` measures --
+    what a DOS record carries whether or not the character's race takes the
+    constitution bonus, since DOS applies that bonus on the roll rather than
+    in the stored bytes.
+    """
+    char = neutral.NeutralCharacter("DOS", game="pool-of-radiance")
+    char.set("race", race, "test fixture")
+    char.set("constitution", constitution, "test fixture")
+    char.set("levels", {"fighter": 1}, "test fixture")
+    for name, value in zip(
+            ("save_paralysis", "save_petrification", "save_wands",
+             "save_breath", "save_spell"), (14, 15, 16, 17, 17)):
+        char.set(name, value, "test fixture")
+    return char
+
+
+def test_a_dwarf_gnome_or_halfling_gets_the_c64s_own_saves_not_the_dos_row():
+    """`#311 (A DOS dwarf, gnome or halfling converted to the C64 loses his
+    constitution bonus to saving throws, because the C64 keeps it inside the
+    five stored bytes)`.
+
+    DOS keeps the plain class row and applies the bonus on the roll; the C64
+    subtracts it into the five bytes on the way in.  A converted dwarf's
+    record should hold what `goldbox.levels.saving_throws` computes, not the
+    plain row `DIRECT` copied in.
+    """
+    plain = (14, 15, 16, 17, 17)
+    bonus = levels.constitution_save_bonus(13)
+    assert bonus == 3
+    for race in (1, 3, 5):                        # dwarf, gnome, halfling
+        rec, _ = c64_codec.write(_plain_row_character(race))
+        got = tuple(rec.get(n) for n in
+                    ("save_paralysis", "save_petrification", "save_wands",
+                     "save_breath", "save_spell"))
+        assert got == tuple(v - bonus for v in plain), race
+
+
+def test_a_human_still_gets_the_plain_row():
+    """The other half of the same check: nobody but a sturdy race moves."""
+    rec, _ = c64_codec.write(_plain_row_character(race=7))
+    got = tuple(rec.get(n) for n in
+                ("save_paralysis", "save_petrification", "save_wands",
+                 "save_breath", "save_spell"))
+    assert got == (14, 15, 16, 17, 17)
 
 
 def test_the_class_level_permutation_covers_every_c64_slot():

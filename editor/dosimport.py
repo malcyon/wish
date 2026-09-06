@@ -254,12 +254,19 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
 
 def dropped_text(report: dos.Report) -> str:
-    """The losses, one to a line, under a heading.
+    """The losses, one to a line, under a heading -- or nothing at all.
 
     The lines themselves are `goldbox/dos.py`'s -- the same words the command line
     prints -- so the report a menu shows and the report a terminal shows cannot
     drift into being two different accounts of the same conversion.
+
+    Empty when nothing was dropped (#338): the heading says something was
+    lost, and a heading over no lines told a player that with nothing to
+    back it up. A caller that puts more text after this one must not glue a
+    blank line onto an empty string either.
     """
+    if not report.dropped:
+        return ""
     return "\n".join([DROPPED_HEADING, ""]
                      + [f"  {d}" for d in report.dropped])
 
