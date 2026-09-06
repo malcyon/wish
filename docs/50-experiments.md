@@ -6599,7 +6599,7 @@ created the character to have got it right.
 
 ## The strength gate at `0x0E3`, and why a converted fighter looked right until his first fight (#277 (A DOS character converted to the C64 loses the strength bonus to hit and damage, because 0x0E3 is written zero))
 
-You import a DOS party with `WISH_EXPERIMENTAL_DOS_IMPORT` on, load it on the
+You import a DOS party, load it on the
 C64, and your 18/75 fighter's sheet reads `THACO 18  DAMAGE 1D2+3`, which is
 exactly right. You walk five steps into the Slums, something ambushes you, and
 from that moment his sheet reads `THACO 20  DAMAGE 1D2`. Nothing announced the

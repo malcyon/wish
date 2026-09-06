@@ -3,9 +3,11 @@
 **Status: the converter is written.** `goldbox/dos_layout.py` is the DOS field
 table and `goldbox/dos.py` reads a DOS save, exports it as the editor's own YAML,
 and builds a C64 `SAVEDGAME0`/`SAVEDGAME1` pair from it. **Steps 1 to 6 of the
-order of work below are closed**, and so is step 7: `File > Import` and
-`File > Export` are wired, behind `WISH_EXPERIMENTAL_DOS_IMPORT` and
-`WISH_EXPERIMENTAL_EXPORT` until the conversion is proven end to end.
+order of work below are closed**, and so is step 7: `File > Import` is built
+for everyone since 2026-09-06 (`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
+needs the import working for all three C64 titles)`), and `File > Export` is
+wired behind `WISH_EXPERIMENTAL_EXPORT` until its direction is proven end to
+end.
 Everything the plan said had to be found out first has been found out —
 the spell tables agree exactly, nothing DOS stores is lost that matters, and
 the clock is the one loose end.
@@ -1199,11 +1201,14 @@ game reading 21:15, and #103 (A DOS party converted to the C64 arrives at the te
    in a byte, so narrowing loses nothing.
 6. **The party's square and area — done.** `goldbox.dos_savegame.position` and
    `area_id`; the facing is halved.
-7. **An editor menu item.** Built, 2026-08-24, behind
-   `WISH_EXPERIMENTAL_DOS_IMPORT` and `WISH_EXPERIMENTAL_EXPORT` — `#23 (A conversion window for DOS saves, under File ▸ Import)`'s
-   dialog is `editor/dosimport.py`, the export side is `editor/exports.py`,
-   and `wish/window.py` builds the submenu inside the flag's `if` rather than
-   greying it out. `goldbox.dos.convert_save` is the whole
+7. **An editor menu item.** Built, 2026-08-24 — `#23 (A conversion window for DOS saves, under File ▸ Import)`'s
+   dialog is `editor/dosimport.py` and the export side is `editor/exports.py`.
+   The Import submenu sat behind `WISH_EXPERIMENTAL_DOS_IMPORT` until
+   2026-09-06, when `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
+   import working for all three C64 titles)` closed and `wish/window.py`
+   started building it for everyone; Export still sits behind
+   `WISH_EXPERIMENTAL_EXPORT`, built inside the flag's `if` rather than
+   greyed out. `goldbox.dos.convert_save` is the whole
    of what it needs to call: hand it a DOS save directory, a slot letter and a
    C64 save's two payloads and it rewrites them in place.
 

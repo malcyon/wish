@@ -1,17 +1,24 @@
-"""Turning a DOS save into a C64 one, with the losses named first.
+"""Turning a DOS save into a C64 one, with what happened on screen first.
 
-`goldbox/dos.py` does the conversion and this is the window over it. The one thing
-this file exists for is the order of events: a DOS save carries fields the C64
-has no home for -- encumbrance, the item heap pointers, the item count, the
-icon selection, the strength-bonus boolean, every running spell effect -- and
-`docs/117-save-conversion.md` forbids dropping them in silence. So the
-conversion is **rehearsed** in memory, the losses it reports are put on
-screen, and only then is there a button to press. The file the write goes to
-is named in this window, on the bottom row, before Convert is pressed --
-Donald's shape, 2026-08-27: *"when the user clicks the Convert button, it does
-what the user expects. it converts."* The write itself is still the editor's
-own Save, so the backup guarantee in `editor/files.py` covers this the way it
-covers every other write.
+`goldbox/dos.py` does the conversion and this is the window over it. The one
+thing this file exists for is the order of events: the conversion is
+**rehearsed** in memory, what it did to the player's own save is put on
+screen -- `C64SaveReport.messages`, a party that had not set out being
+started at the beginning of the story -- and only then is there a button to
+press. The file the write goes to is named in this window, on the bottom
+row, before Convert is pressed -- Donald's shape, 2026-08-27: *"when the user
+clicks the Convert button, it does what the user expects. it converts."* The
+write itself is still the editor's own Save, so the backup guarantee in
+`editor/files.py` covers this the way it covers every other write.
+
+**The pane is a messages pane and not a drop list.** It was the list of
+fields the conversion could not convert, and Donald ended that on
+2026-09-05: *"I don't want the player to EVER see a message saying any field
+was dropped. The conversion needs to be perfect."* and, the same day, *"you
+could reduce the size of the drop pane and make it a messages pane."* So
+`report.dropped` is the conversion's own accounting -- `summary()` prints
+it, the debug log gets it -- and nothing in it is drawn here
+(`.claude/rules/conversions.md`).
 
 **There is no template any more** (#118). The dialog used to make the user
 pick an existing `.d64` to convert *onto*, and every byte the conversion did
@@ -20,13 +27,16 @@ different party, in a different place, at a different time. `goldbox.dos`
 now writes all 9216 bytes of both payloads and `D64.blank()` carries them, so
 what the user gets is theirs and nothing else's.
 
-What that costs is the player's own `POOL*` disks at the moment the import
-runs: the combat icon is composed out of `SPELLE64`/`SPELLN64` and `$8400` is
-`ANIMATE00`, and neither may be stored here. Donald's ruling, 2026-08-27 --
-*"We should never attempt to write a save file if we don't have the game
+What that costs is the player's own game disks at the moment the import
+runs: the combat icon is composed out of `SPELLE64`/`SPELLN64`, `$8400` is
+`ANIMATE00`, and a Pool of Radiance sheet portrait needs the creation menu
+in `GEN` -- none of which may be stored here. Donald's ruling, 2026-08-27
+-- *"We should never attempt to write a save file if we don't have the game
 disks and we need them. That would mean making up data, which we will not
-do."* -- so `editor/window.py` checks for them before the folder picker opens
-and refuses with a pop-up.
+do."* -- so `editor/window.py` checks for the first two before the folder
+picker opens and refuses with a pop-up, and `goldbox.dos.new_save` refuses
+in the pane when the third cannot be read for a title that draws a face
+(#131).
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`, so
 the two are never told apart by sniffing: the first picker asks for a folder.
@@ -57,56 +67,6 @@ _log = logging.getLogger("wish.editor.dosimport")
 
 # Every string below is Donald's -- approved 2026-08-24, and the refusal
 # 2026-08-27. Changing one is his call, not a refactor.
-
-#: **Off unless `WISH_EXPERIMENTAL_DOS_IMPORT=1`.** The conversion works and is proven --
-#: a C64 party built from a DOS save loads and walks -- but what it cannot
-#: carry is still being closed out: the sheet portrait (#57) and the clock
-#: (#58) are dropped in this direction too. Until those land the menu entry
-#: is not built at all, so a player cannot reach a conversion that quietly
-#: loses two things.
-#:
-#: An environment variable and no preference, which is deliberate. The same
-#: shape as `WISH_DEBUG` and `WISH_NATIVE_LOG`: a checkbox would need a label
-#: and a sentence explaining what "experimental" meant, and this interface has
-#: had several such sentences removed already.
-#:
-#: **Comes off when #57 and #58 close** -- the portrait and the clock -- **when
-#: the import works for all three C64 titles (#131)**, **and when the README
-#: says how the first picker works.** The three titles are Donald's bar, set
-#: 2026-08-27: Pool of Radiance, Curse of the Azure Bonds and Secret of the
-#: Silver Blades all have to convert, and Pools of Darkness may refuse,
-#: because the Amiga export it would need is not finished. Only Pool of
-#: Radiance has been played from a converted save so far. The README condition
-#: is about the first picker: it asks for the *folder* a DOS save lives in,
-#: not a file, because one save is a dozen or more loose
-#: files with no single one to point at. That is defensible and it is not
-#: guessable: Donald, who wrote the format documentation, was stopped by it on
-#: 2026-08-26 -- the folder holds no subdirectories, so the dialog listed
-#: nothing and there was no sign he was already standing in the right place.
-#: A player meeting it cold has less to go on than he did.
-#:
-#: **A fourth condition, and it is the largest: nothing may be dropped at
-#: all.** Donald, 2026-09-04: *"We should not be dropping anything when
-#: converting a save. Anything less is a bug, and the feature flag cannot be
-#: lifted until that is true."* So `goldbox.dos.DROPPED` and every list like
-#: it must be empty, and every entry standing on one today is a bug with an
-#: issue of its own rather than a documented exemption -- see
-#: `.claude/rules/conversions.md`. That subsumes the portrait and the clock,
-#: which were only the two drops anybody had named. Four conditions, all
-#: stated; a flag with no way out is a second code path kept forever.
-ENV = "WISH_EXPERIMENTAL_DOS_IMPORT"
-
-#: Anything else -- an empty string, `0`, `off` -- is off, matching
-#: `wish/debugmode.py`. A variable somebody exported once and forgot should
-#: not put an unfinished menu in front of them.
-TRUE = ("1", "true", "yes", "on")
-
-
-def enabled() -> bool:
-    """Is the DOS import offered in this run?"""
-    import os
-    return os.environ.get(ENV, "").strip().lower() in TRUE
-
 
 #: The File menu entry and the submenu it hangs under.
 MENU_IMPORT = "&Import"
@@ -140,11 +100,13 @@ BUTTON_BROWSE = "Browse…"
 #: or browsed to, which is theirs.
 DEFAULT_NAME = "PORSAVE{slot}.D64"
 
-#: The heading over the list of what a converted character loses.
-#:
-#: **PROPOSED, not yet approved** -- replaces "The conversion cannot carry
-#: these:", which named fields and a conversion rather than the player's own
-#: party; `.claude/rules/gui-text.md` makes the wording Donald's.
+#: The heading over a list of what a converted character loses, Donald's
+#: wording of 2026-09-05 (`09027bb`).  **Nothing in this window draws it any
+#: more**: the pane shows `report.messages` and no dropped-field line
+#: (#131).  It stays defined because `editor/convert.py` -- `#52 (File ▸
+#: Import and File ▸ Export for every direction the library supports)`'s
+#: dialog, off unless its own flag says otherwise -- still imports it and
+#: `dropped_text` below; both go when that dialog stops drawing drops.
 DROPPED_HEADING = "Wish cannot currently convert these fields:"
 
 #: The refusal when the player's game disks cannot be found, which is the one
@@ -199,10 +161,10 @@ class GameFiles:
     #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
     animate: bytes
     #: The creation menu's two tables (#57), or `None` when no disk here
-    #: carries `GEN`. Unlike `icon` and `animate` a conversion does not
-    #: refuse without it -- a party converted with `portraits` `None` keeps
-    #: its own records but arrives with the sheet portrait switched off, the
-    #: same as an engine-written save with it turned off.
+    #: carries `GEN`. `goldbox.dos.new_save` refuses without it wherever the
+    #: destination draws a sheet portrait -- Pool of Radiance -- rather than
+    #: writing every character with no face (#131); Curse and Silver Blades
+    #: draw none and convert with it `None` (#300).
     portraits: PortraitTables | None = None
 
 
@@ -265,12 +227,32 @@ def rehearse(folder: str | pathlib.Path, slot: str,
                       pathlib.Path(folder), slot)
 
 
+def messages_text(report: dos.Report) -> str:
+    """What the pane shows: the conversion's messages, one to a line.
+
+    `C64SaveReport.messages` is the sentences a player reads about what the
+    conversion did to their own save -- Donald's *"Your party had not set
+    out yet, so it starts at the beginning of the story."* is the first --
+    and the lines are `goldbox/dos.py`'s own, the same words `summary()`
+    prints, so the pane and the terminal cannot drift into two accounts of
+    one conversion.  There is no heading: a line over one sentence would be
+    a label for a label, and the pane is empty when there is nothing to say.
+
+    `report.dropped` is never drawn.  Donald, 2026-09-05: *"I don't want the
+    player to EVER see a message saying any field was dropped."*  A plain
+    `Report` has no `messages` -- `to_c64_record`'s per-character one -- and
+    reads as nothing to say.
+    """
+    return "\n".join(getattr(report, "messages", ()))
+
+
 def dropped_text(report: dos.Report) -> str:
     """The losses, one to a line, under a heading -- or nothing at all.
 
-    The lines themselves are `goldbox/dos.py`'s -- the same words the command line
-    prints -- so the report a menu shows and the report a terminal shows cannot
-    drift into being two different accounts of the same conversion.
+    **Not this window's any more.** `DosImportDialog` draws
+    :func:`messages_text` instead, because no player is shown a dropped
+    field (#131); this is kept for `editor/convert.py`, which still calls
+    it, and goes when that dialog stops.
 
     Empty when nothing was dropped (#338): the heading says something was
     lost, and a heading over no lines told a player that with nothing to
@@ -284,12 +266,12 @@ def dropped_text(report: dos.Report) -> str:
 
 
 class DosImportDialog(QDialog):
-    """The folder, the slot, what will be lost, and where it goes.
+    """The folder, the slot, what the conversion did, and where it goes.
 
     Every change to the slot re-runs `rehearse`, so the pane is never showing
-    the losses of a conversion other than the one the button would commit --
-    and Convert is disabled unless there is a rehearsal behind it and a path
-    in front of it.
+    the messages of a conversion other than the one the button would commit
+    -- and Convert is disabled unless there is a rehearsal behind it and a
+    path in front of it.
 
     The bottom row is the destination, and it is why there is no Save As after
     this window any more: the file is named before Convert is pressed, so
@@ -388,7 +370,7 @@ class DosImportDialog(QDialog):
             self.destination.setText(path)
 
     def refuse(self, text: str) -> None:
-        """Put a failed write in the pane the losses are already reported in.
+        """Put a failed write in the pane the messages are already shown in.
 
         The window stays open on the path that did not work, which is the one
         thing the user has to change -- and it is a sentence rather than the
@@ -399,7 +381,7 @@ class DosImportDialog(QDialog):
     # -- the rehearsal -----------------------------------------------------
 
     def _rehearse(self) -> None:
-        """Build the save in memory, and put what it costs on screen.
+        """Build the save in memory, and put what it did on screen.
 
         Failures are shown, not raised: a refusal reaches the user as its own
         message while the log keeps the traceback, which is a sentence in the
@@ -441,4 +423,9 @@ class DosImportDialog(QDialog):
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
             return dos.CANNOT_CONVERT
-        return dropped_text(self.conversion.report)
+        # The accounting a player is not shown still reaches whoever is
+        # debugging: `WISH_DEBUG` is the one place a drop line belongs.
+        for line in self.conversion.report.dropped:
+            _log.debug("not converted, %s slot %s: %s",
+                       self.folder, self.slot, line)
+        return messages_text(self.conversion.report)

@@ -408,13 +408,14 @@ def test_import_and_export_are_two_submenus_not_one_dialog(app, tmp_path,
 
     Import is already a submenu (#23) and export sits beside it: the source of
     an export is always the save this window has open, so a source control in
-    a combined dialog would be a control with one sensible value.
+    a combined dialog would be a control with one sensible value.  Import is
+    built for everyone since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
+    needs the import working for all three C64 titles)`; only Export still
+    needs its flag.
     """
-    from editor.dosimport import ENV as IMPORT_ENV
     from editor.dosimport import MENU_IMPORT
     from editor.exports import ENV, MENU_EXPORT
 
-    monkeypatch.setenv(IMPORT_ENV, "1")
     monkeypatch.setenv(ENV, "1")
     window = _window(tmp_path, monkeypatch)
     texts = [a.text() for a in _file_menu(window).actions()]

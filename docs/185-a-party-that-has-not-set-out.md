@@ -203,7 +203,7 @@ straight after making their characters unable to move them at all.
 |---|---|---|
 | Pool of Radiance | `Start(0x00, Arrival(15, 1, 3))`, CONFIRMED from the seven containers, agreeing with `AREAS`' driven arrival for New Phlan | area 0, `GEO00`, side 3, `15,1` facing west, `$49E6` = 1 -- what the save already holds, except that `$49E6` is now written from the row instead of compared against the initialiser's 0 |
 | Curse of the Azure Bonds | `Start(0x01, Arrival(7, 13, 1))`, CONFIRMED in the running DOS game above | area 1, `GEO01`, side 2, `7,13` facing east, clock 00:00 |
-| Secret of the Silver Blades | **no row**, deliberately | refused with `goldbox.dos.NotSetOutError`, whose sentence is marked `(NOT APPROVED)` |
+| Secret of the Silver Blades | **no row**, deliberately | refused with `goldbox.dos.NotSetOutError`, whose sentence is Donald's of 2026-09-06: *"This save has never been played yet. Wish does not yet support converting these saves."* |
 
 The mechanics, in `goldbox/dos.py`:
 
@@ -220,9 +220,11 @@ The mechanics, in `goldbox/dos.py`:
   differs from it on Curse (`7,13` N in the save, `7,13` E in the world);
 * `convert_save` puts `NOT_SET_OUT` -- Donald's approved sentence, *"Your
   party had not set out yet, so it starts at the beginning of the story."*
-  -- on `C64SaveReport.messages`, and `summary()` prints it. **The messages
-  pane does not show `messages` yet**: `editor/dosimport.py` shows only the
-  dropped list, and wiring the line in is the one piece of this left to do.
+  -- on `C64SaveReport.messages`, and `summary()` prints it.
+  `editor/dosimport.py`'s pane shows `messages` and nothing else since
+  2026-09-06 (`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
+  import working for all three C64 titles)`): the dropped list is the
+  conversion's own accounting and no player reads it.
 
 A party standing in New Phlan with the clock running is untouched: the
 staged script says it has set out, and its own square, clock and map are

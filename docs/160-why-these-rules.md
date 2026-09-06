@@ -764,11 +764,13 @@ written, and `tools/genui.py --check` catches drift in CI.
 
 ## Feature flags
 
-The only history here is the feature that produced the rule. The DOS import is
-the first flagged feature: it works, it is proven in the emulator, and it still
-drops the portrait and the clock -- `#57 (Carry the character portrait across
-ports)` and `#58 (Decode the DOS clock, so converted saves keep the time of
-day)` -- so `File > Import` is not built unless the flag says to build it. That
+The only history here is the feature that produced the rule. The DOS import was
+the first flagged feature: it worked, it was proven in the emulator, and it
+still dropped the portrait and the clock -- `#57 (Convert the character
+portrait across ports)` and `#58 (Decode the DOS clock, so converted saves keep
+the time of day)` -- so `File > Import` was not built unless the flag said to
+build it, from 2026-08-24 until `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
+needs the import working for all three C64 titles)` closed on 2026-09-06. That
 pair of open issues is what "names the condition that removes it" means; "when
 it is ready" is not a condition, and a flag with no stated way out becomes a
 second code path maintained forever, where the second path is the one nobody

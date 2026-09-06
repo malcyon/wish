@@ -1,9 +1,11 @@
 # Feature flags
 
 **A major new feature ships behind a flag until it is proven stable, and a
-feature with open bugs is not stable.** The DOS import is the first: it works,
-it is proven in the emulator, and it still drops the portrait and the clock --
-so `File > Import` is not built unless the flag says to build it.
+feature with open bugs is not stable.** The DOS import was the first: it
+worked, it was proven in the emulator, and it still dropped the portrait and
+the clock -- so `File > Import` was not built unless the flag said to build
+it, until `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
+working for all three C64 titles)` closed on 2026-09-06.
 
 **The name is always `WISH_EXPERIMENTAL_<FEATURE>`.** The prefix separates a
 flag that exists to be *deleted* from `WISH_DEBUG` and `WISH_NATIVE_LOG`, which
@@ -19,7 +21,7 @@ one nobody runs.
 **Do not build the thing rather than disabling it.** A greyed-out menu item
 invites the question of how to un-grey it, and the answer would be a sentence
 in the interface -- which is the thing `.claude/rules/gui-text.md` spends its
-length preventing. `wish/window.py` builds the Import submenu inside the `if`.
+length preventing. `wish/window.py` builds the Export submenu inside the `if`.
 
 **An environment variable, not a preference.** A checkbox needs a label, and a
 label saying "experimental" needs a sentence saying what that means for the

@@ -477,6 +477,21 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
             assert keyword not in lowered, line
 
 
+def test_a_silver_blades_conversion_needs_no_creation_tables():
+    """`#131`: `new_save` refuses a conversion without the creation menu's
+    tables wherever the destination draws a sheet portrait, and Silver
+    Blades draws none (#300, `draws_sheet_portrait`), so `portraits=None`
+    converts here exactly as before -- the control for the Pool of Radiance
+    refusal in `tests/test_dosconvert.py`."""
+    from editor.dosimport import GameFiles, rehearse
+
+    folder = gamedata.specimen("ssb-234-party-pair")
+    files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
+    conversion = rehearse(folder, "D", files)
+    assert conversion.report.unwritten == []
+    assert conversion.game.key == SSB_GAME.key
+
+
 def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     """#329 (A converted Curse or Silver Blades party still shows two
     portrait drop lines, though #300 proved neither title's sheet draws a
@@ -652,7 +667,9 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     played ones -- and its first area is UNMEASURED, so `areas.STARTS` has
     no row and the conversion refuses rather than sending the party to
     whichever area looks likeliest (#301).  The sentence the player reads
-    is proposed and not approved, and says so."""
+    is Donald's own, 2026-09-06, and names no title on purpose: it reads
+    the same whichever title is refused, so nothing is interpolated into
+    it."""
     shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
     assert shape.script_buffer is None
     savgam = bytearray(shape.size)
@@ -662,8 +679,11 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     cont = c64_save.container_for(SSB_GAME)
     with pytest.raises(dos.NotSetOutError) as raised:
         dos.apply_file_cache(bytearray(cont.payload_size), bytes(savgam), cont)
-    assert "Secret of the Silver Blades" in raised.value.player_message
-    assert raised.value.player_message.endswith("(NOT APPROVED)")
+    assert raised.value.player_message == (
+        "This save has never been played yet. Wish does not yet support "
+        "converting these saves.")
+    assert raised.value.player_message == dos.NOT_SET_OUT_UNPLACED
+    assert "NOT APPROVED" not in raised.value.player_message
     assert "$" not in raised.value.player_message
     with pytest.raises(dos.NotSetOutError):
         dos.apply_position(bytearray(cont.payload_size), bytes(savgam), shape)

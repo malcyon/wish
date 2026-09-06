@@ -405,6 +405,20 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
             assert keyword not in lowered, line
 
 
+def test_a_curse_conversion_needs_no_creation_tables():
+    """`#131`: `new_save` refuses a conversion without the creation menu's
+    tables wherever the destination draws a sheet portrait, and Curse draws
+    none (#300, `draws_sheet_portrait`), so `portraits=None` converts here
+    exactly as before -- the control for the Pool of Radiance refusal in
+    `tests/test_dosconvert.py`."""
+    from editor.dosimport import GameFiles, rehearse
+
+    files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
+    conversion = rehearse(_dos_save(), _DOS_SLOT, files)
+    assert conversion.report.unwritten == []
+    assert conversion.game.key == CURSE_GAME.key
+
+
 def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     """#329 (A converted Curse or Silver Blades party still shows two
     portrait drop lines, though #300 proved neither title's sheet draws a

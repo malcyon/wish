@@ -822,8 +822,9 @@ both ends of the party panel it is drawn in. Legible enough to act on, ugly.
 
 ## 6b. A DOS import, played (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing))
 
-**Only if `WISH_EXPERIMENTAL_DOS_IMPORT=1` and only where the player's DOS
-*Forgotten Realms: The Archives* is unpacked.** This is not a per-platform row
+**Only where the player's DOS *Forgotten Realms: The Archives* is
+unpacked.** (`File ▸ Import` needed `WISH_EXPERIMENTAL_DOS_IMPORT=1` until
+2026-09-06; it is built for everyone now.) This is not a per-platform row
 in the table below: it needs the archives, the C64 game disks and a working
 VICE, so it is a check somebody does once on the machine that has all three
 rather than once per package.

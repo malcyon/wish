@@ -383,7 +383,17 @@ def game_files():
             pass
     if icon is None or animate is None:
         pytest.skip("the game disks here carry neither SPELLE64 nor ANIMATE00")
-    return dosimport.GameFiles(icon=icon, animate=animate)
+    #: The creation menu too. A Pool of Radiance conversion refuses without
+    #: it since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
+    #: import working for all three C64 titles)`, because a party arriving
+    #: with no face on any sheet is worse than one that did not arrive.
+    from goldbox.portraits import PortraitError, tables_from_disks
+    try:
+        portraits = tables_from_disks(where)
+    except (PortraitError, OSError):
+        pytest.skip("the game disks here carry no readable GEN")
+    return dosimport.GameFiles(icon=icon, animate=animate,
+                               portraits=portraits)
 
 
 @needs_dos_saves
@@ -438,8 +448,13 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
 
+    #: The portrait tables too, since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT,
+    #: which needs the import working for all three C64 titles)` -- the
+    #: reference call has to be given what the direction gives itself, or it
+    #: refuses where the direction does not and the two cannot be compared.
     ref_save0, ref_save1, _ = dos.new_save(folder, slot, game_files.icon,
-                                          game_files.animate)
+                                          game_files.animate,
+                                          portraits=game_files.portraits)
     reference = dos.save_disk(bytes(ref_save0), bytes(ref_save1))
     assert (destination / f"PORSAVE{slot}.D64").read_bytes() == \
         reference.to_bytes()

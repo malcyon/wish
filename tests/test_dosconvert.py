@@ -540,8 +540,10 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
         pytest.skip("no POOL disk here carries SPELLE64/SPELLN64 or ANIMATE00")
     try:
         portraits = tables_from_disks(where)
-    except PortraitError:
-        portraits = None
+    except PortraitError as exc:
+        # A Pool of Radiance conversion without the tables refuses (#131),
+        # so there would be no pane to measure.
+        pytest.skip(f"no readable GEN on the disks here: {exc}")
     folder = gamedata.specimen("por-party-l1-intown")
     conversion = rehearse(folder, "E", GameFiles(icon=icon, animate=animate,
                                                  portraits=portraits))
@@ -1467,7 +1469,8 @@ def test_a_save_built_from_nothing_accounts_for_every_byte():
     slots = dos.slots_available(_save_dir())
     assert slots, "the DOS save folder has to hold at least one slot"
     for slot in slots:
-        save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate)
+        save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate,
+                                            portraits=_portraits_or_skip())
         assert report.unwritten == [], slot
         assert report.unaccounted == [], slot
         assert len(save0) + len(save1) == report.total == 9216
@@ -1485,7 +1488,8 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     """
     icon, animate = _game_files()
     party = dos.read_party(_save_dir(), "A")
-    save0, _save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    save0, _save1, _report = dos.new_save(_save_dir(), "A", icon, animate,
+                                          portraits=_portraits_or_skip())
     for place in range(savegame.SLOT_COUNT):
         at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
         got = bytes(save0[at:at + dos.ICON_SIZE])
@@ -1531,7 +1535,8 @@ def test_a_converted_party_keeps_its_own_combat_figures():
         pytest.skip("needs a DOS party whose combat figures are not all "
                     "the same")
     party = dos.read_party(_save_dir(), slot)
-    save0, _save1, _report = dos.new_save(_save_dir(), slot, parts, animate)
+    save0, _save1, _report = dos.new_save(_save_dir(), slot, parts, animate,
+                                          portraits=_portraits_or_skip())
     icons = {}
     for index, char in enumerate(party):
         place = dos.marching_slot(index, len(party))
@@ -1552,6 +1557,20 @@ def test_a_converted_party_keeps_its_own_combat_figures():
 # eight sides, and the sheet sticks with no way off it.  So the two tests
 # below are the two ways this can go wrong, not one: the switch has to come
 # on when it is safe and stay off when it is not.
+
+def _portraits_or_skip():
+    """The creation menu off the player's own C64 game disks, or skip.
+
+    A whole-save Pool of Radiance conversion refuses without it since `#131
+    (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for
+    all three C64 titles)`, so a `new_save` test that is about something
+    else needs it the way it needs the icon and `ANIMATE00`.
+    """
+    tables = _portrait_tables_from_disks()
+    if tables is None:
+        pytest.skip("needs a readable GEN on the game disks; set POR_DISKS")
+    return tables
+
 
 def _portrait_tables_from_disks():
     """The creation menu off the player's own C64 game disks, or `None`.
@@ -1707,7 +1726,8 @@ def test_animate00_is_written_where_the_cache_says_it_is():
     """
     icon, animate = _game_files()
     assert len(animate) == dos.ANIMATE_SIZE
-    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate,
+                                         portraits=_portraits_or_skip())
     at = dos.ANIMATE_AT - dos.SAVE1_BASE
     assert bytes(save1[at:at + len(animate)]) == animate
     end = at + len(animate)
@@ -1756,9 +1776,13 @@ def test_a_wrong_sized_animate_is_refused_rather_than_written():
     for, so nothing else would notice.
     """
     icon, animate = _game_files()
+    portraits = _portraits_or_skip()
     for wrong in (animate[:-1], animate + b"\x00"):
-        with pytest.raises(dos.DosRecordError):
-            dos.new_save(_save_dir(), "A", icon, wrong)
+        with pytest.raises(dos.DosRecordError) as raised:
+            dos.new_save(_save_dir(), "A", icon, wrong, portraits=portraits)
+        # The refusal has to be the payload's, not `#131`'s portrait one,
+        # which is also a `DosRecordError` and fires first.
+        assert not isinstance(raised.value, dos.NoPortraitTablesError)
 
 
 @needs_dos_saves
@@ -1769,7 +1793,8 @@ def test_the_built_disk_is_the_two_files_a_save_disk_needs():
     from goldbox.savegame import load_save
 
     icon, animate = _game_files()
-    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate,
+                                         portraits=_portraits_or_skip())
     disk = dos.save_disk(bytes(save0), bytes(save1))
     assert [bytes(e.name) for e in disk.directory()] == \
         [b"SAVEDGAME1", b"SAVEDGAME0"]
@@ -1817,7 +1842,8 @@ def test_an_outdoor_dos_save_builds_a_whole_c64_save(tmp_path):
     """
     icon, animate = _game_files()
     folder = _outdoor_folder(tmp_path)
-    save0, save1, report = dos.new_save(folder, "A", icon, animate)
+    save0, save1, report = dos.new_save(folder, "A", icon, animate,
+                                        portraits=_portraits_or_skip())
     assert report.unwritten == []
     assert report.unaccounted == []
     assert len(save0) + len(save1) == report.total == 9216
@@ -1841,7 +1867,8 @@ def test_an_indoor_dos_save_still_carries_its_own_dungeon_square():
     """
     icon, animate = _game_files()
     slot = dos.slots_available(_save_dir())[0]
-    save0, _save1, _report = dos.new_save(_save_dir(), slot, icon, animate)
+    save0, _save1, _report = dos.new_save(_save_dir(), slot, icon, animate,
+                                          portraits=_portraits_or_skip())
     at = dos.DUNGEON_SQUARE[0] - dos.SAVE0_BASE
     want = sg.position(_savgam(slot))
     assert not sg.outdoors(_savgam(slot)), \
@@ -1995,6 +2022,31 @@ def test_a_party_standing_in_new_phlan_is_left_exactly_where_it_is():
     assert tuple(save0[0xC0:0xC3]) == (3, 9, 2)
     note, _ = dos.apply_clock(save0, savgam)
     assert "16:58" in note
+
+
+def test_a_whole_save_conversion_with_no_creation_tables_is_refused_before_reading(
+        tmp_path):
+    """`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
+    working for all three C64 titles)`: Pool of Radiance draws a sheet
+    portrait, so `new_save` with `portraits=None` used to write every
+    character with no face and report the portrait as a dropped field --
+    one refusal miscast as a drop.  It refuses now, before a single file is
+    read: the folder here is empty, and it is the refusal and not a missing
+    file that comes back.  The sentence a player reads names the title and
+    carries no address, file name or issue number; the exception text keeps
+    the issue number for the log.
+    """
+    import re
+
+    with pytest.raises(dos.NoPortraitTablesError) as raised:
+        dos.new_save(tmp_path, "A", bytes(36), bytes(852))
+    assert isinstance(raised.value, dos.DosRecordError)
+    assert "(#131)" in str(raised.value)
+    shown = raised.value.player_message
+    assert shown == dos.NO_PORTRAIT_TABLES.format(title="Pool of Radiance")
+    assert "Pool of Radiance" in shown
+    assert not re.search(r"\$[0-9A-F]{4}\b|\.py\b|#\d", shown), shown
+    assert shown[:1].isupper()
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-party-l1-intown"),

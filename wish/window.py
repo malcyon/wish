@@ -200,9 +200,9 @@ class WishWindow(QMainWindow):
         #
         # Built only when `WISH_EXPERIMENTAL_CONVERT` says so -- see
         # `editor/convert.py`, where every placeholder string still ends in
-        # ` (NOT APPROVED)`. Replaces `WISH_EXPERIMENTAL_DOS_IMPORT` and
-        # `WISH_EXPERIMENTAL_EXPORT` below, which stay until `#52`'s step 5
-        # removes the two submenus they gate.
+        # ` (NOT APPROVED)`. Replaces the Import submenu below, built for
+        # everyone since `#131`, and `WISH_EXPERIMENTAL_EXPORT`'s, which stay
+        # until `#52`'s step 5 removes the two submenus.
         from editor import convert
         self.convert_action = None
         if convert.enabled():
@@ -216,19 +216,18 @@ class WishWindow(QMainWindow):
         # of several ports and the next one goes beside it rather than growing
         # the File menu another top-level verb.
         #
-        # Built only when `WISH_EXPERIMENTAL_DOS_IMPORT` says so -- see `editor/dosimport.py`.
-        # Not built rather than disabled: a greyed-out entry invites the
-        # question of how to un-grey it, and the answer would be a sentence
-        # this window does not want.
+        # Built for everyone.  It sat behind `WISH_EXPERIMENTAL_DOS_IMPORT`
+        # from 2026-08-24 until `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT,
+        # which needs the import working for all three C64 titles)` closed
+        # on 2026-09-06: all three titles convert and have been played from
+        # a converted disk, and no player is shown a dropped field.
         from editor import dosimport
-        self.import_dos_action = None
-        if dosimport.enabled():
-            imports = menu.addMenu(dosimport.MENU_IMPORT)
-            dos_save = QAction(dosimport.MENU_DOS_SAVE, self)
-            dos_save.triggered.connect(
-                lambda _checked=False: self.editor.import_dos_save())
-            imports.addAction(dos_save)
-            self.import_dos_action = dos_save
+        imports = menu.addMenu(dosimport.MENU_IMPORT)
+        dos_save = QAction(dosimport.MENU_DOS_SAVE, self)
+        dos_save.triggered.connect(
+            lambda _checked=False: self.editor.import_dos_save())
+        imports.addAction(dos_save)
+        self.import_dos_action = dos_save
 
         # Export beside Import rather than one dialog with a source and a
         # destination: the source is always the save this window already has

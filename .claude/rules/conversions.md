@@ -42,8 +42,8 @@ to rest in. The first of them, "the destination has no such field," is a
 description of the destination as we currently understand it rather than
 permission to stop: if the destination has no home for something a player
 would notice, finding it one is the work. **Every entry on every drop list has
-an issue**, and `WISH_EXPERIMENTAL_DOS_IMPORT` does not come off while any of
-them is open.
+an issue.** (`WISH_EXPERIMENTAL_DOS_IMPORT` came off on 2026-09-06 once the
+import's lists were clear; the rule outlives the flag.)
 
 **The standard is every direction, not the import.** Donald, 2026-09-05:
 *"We should not drop any fields for any conversion in any direction. Unless

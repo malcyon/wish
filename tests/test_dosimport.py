@@ -64,6 +64,7 @@ def files():
     from editor.dosimport import GameFiles
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
+    from goldbox.portraits import PortraitError, tables_from_disks
 
     where = disk_dir()
     if where is None:
@@ -82,7 +83,15 @@ def files():
             pass
     if icon is None or animate is None:
         pytest.skip("the game disks here carry neither SPELLE64 nor ANIMATE00")
-    return GameFiles(icon=icon, animate=animate)
+    # The creation menu too, since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT,
+    # which needs the import working for all three C64 titles)`: a Pool of
+    # Radiance conversion without it refuses rather than writing a party
+    # with no faces, so a fixture without it would rehearse nothing.
+    try:
+        portraits = tables_from_disks(where)
+    except PortraitError as exc:
+        pytest.skip(f"the game disks here carry no readable GEN: {exc}")
+    return GameFiles(icon=icon, animate=animate, portraits=portraits)
 
 
 # --- the rehearsal, which is the whole point --------------------------------
@@ -111,7 +120,6 @@ def test_the_conversion_is_rehearsed_and_writes_nothing(dos_save, files,
                    for p in dos_save.iterdir() if p.is_file())
     assert after == before
     assert sorted(p.name for p in tmp_path.iterdir()) == []
-    assert conversion.report.dropped
     assert len(conversion.disk.to_bytes()) == 174848
 
 
@@ -154,63 +162,81 @@ def test_nothing_in_the_converted_save_is_left_to_a_previous_owner(
     assert len(report.sources) == report.total == 9216
 
 
-@needs_dos_saves
-@needs_disks
-def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
-    """What a player is shown, which is shorter than what the conversion
-    knows.
+def _stub_conversion(report):
+    """A `Conversion` with only what the pane reads -- the report -- so a
+    pane test can force any mix of messages and drops rather than wait for a
+    specimen that happens to produce it."""
+    import types
+    return types.SimpleNamespace(report=report, slot="A")
 
-    The pane used to name every entry in `goldbox/dos.py`'s `DROPPED`, and
-    Donald cut three kinds of line out of it on 2026-08-27: a field the C64
-    works out for itself, a spell effect that was about to expire, and the
-    DOS combat-icon fields, which became one sentence. None of the three is a
-    loss anybody using the program can see.
 
-    **`icon_colours` is one of the icon fields now**, since
-    #267 (The import tells the player the C64 has no combat icon colours, and
-    it has one for every part of the figure): its own sentence claimed the
-    C64 "does not use" combat icon colours, and the C64 keeps eighteen of
-    them. A converted figure's colours come from the same place its shapes do
-    -- the game's own default art -- so it is `COMBAT_ICON_DROP`'s fact and
-    not a second one.
+def _dialog_showing(app, tmp_path, monkeypatch, report):
+    """The real dialog, rehearsed over `report` instead of a DOS folder."""
+    from editor import dosimport
 
-    So this asserts both directions. The portrait ids stay -- they are the
-    character's face and #57 is still open on them -- and the derived fields
-    go. `tests/test_dosconvert.py` is where the other half is checked: every
-    suppressed name is still declared in `DROPPED` and still has a
-    disposition, so nothing measured left the code.
+    folder = _fake_dos_dir(tmp_path)
+    dialog = dosimport.DosImportDialog(folder, _fake_files())
+    monkeypatch.setattr(dosimport, "rehearse",
+                        lambda *_a, **_k: _stub_conversion(report))
+    dialog._rehearse()
+    return dialog
 
-    **What is checked is the plain-English name, not the field's own
-    identifier.** `dos.DROPPED_PLAYER_TEXT` is what `to_neutral` composes in
-    place of `portrait_head`, `portrait_body` and `icon_colours` themselves
-    -- carrying a raw field name in front of a player is
-    #244 (Every DROPPED entry's composed line carries a raw hex file offset
-    in front of the player, not only the two #235 fixed), and this test used
-    to assert the very thing that ticket exists to remove.
+
+def test_the_pane_shows_what_the_conversion_did_and_no_dropped_field(
+        app, tmp_path, monkeypatch):
+    """The pane is a messages pane (#131). Donald, 2026-09-06: *"It
+    shouldn't be a dropped list at all anymore, right? It's a message panel
+    to inform the player."*
+
+    A report carrying both -- the one approved sentence on `messages` and a
+    drop line the conversion's own accounting still keeps -- puts the
+    sentence on screen, alone, with no heading over it, and the drop line
+    nowhere. Before this the pane drew `DROPPED_HEADING` and the drop line
+    and never drew `messages` at all, so a party moved to the start of the
+    story was never told.
     """
-    from editor.dosimport import dropped_text, rehearse
-    from goldbox.dos import DROPPED_PLAYER_TEXT
+    from PyQt6.QtWidgets import QDialogButtonBox
 
-    text = dropped_text(rehearse(dos_save, "A", files).report)
-    for field in ("portrait_head", "portrait_body"):
-        assert DROPPED_PLAYER_TEXT[field] in text, field
-        assert field not in text, field
-    for field in ("encumbrance", "item_count", "strength_bonus",
-                  "icon_head", "icon_body", "icon_dimension", "icon_colours"):
-        assert field not in text, field
-    # #267: the sentence that said the C64 has no combat icon colours.
-    assert "does not use them" not in text
-    assert ".SPC effect" not in text
-    # #130: the icon is converted now, whatever `icon` argument this call
-    # was given, so the pane says nothing about it at all any more.
-    assert "Combat icons" not in text
-    # #314: one sentence per missing portrait half, not two -- DOS's own
-    # line and `goldbox.c64_codec.write`'s generic fallback used to both
-    # fire for the same loss, and the fallback's copy opened lower case.
-    assert text.count("portrait") == 2, text
-    for line in text.splitlines():
-        if line.strip():
-            assert line.lstrip()[:1].isupper(), line
+    from editor.dosimport import DROPPED_HEADING
+    from goldbox.dos import DROPPED_PLAYER_TEXT, NOT_SET_OUT, C64SaveReport
+
+    report = C64SaveReport(save0_size=0x1C00)
+    report.messages.append(NOT_SET_OUT)
+    report.dropped.append(DROPPED_PLAYER_TEXT["portrait_head"])
+    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
+
+    shown = dialog.report_pane.toPlainText()
+    assert shown == NOT_SET_OUT
+    assert DROPPED_HEADING not in shown
+    assert "portrait" not in shown.lower()
+    assert dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+
+def test_a_conversion_with_nothing_to_say_leaves_the_pane_empty(
+        app, tmp_path, monkeypatch):
+    """No heading over nothing (#338's rule, kept for the messages pane):
+    a conversion that did nothing remarkable to the save shows an empty
+    pane, whatever its own accounting lists as not converted."""
+    from goldbox.dos import DROPPED_PLAYER_TEXT, C64SaveReport
+
+    report = C64SaveReport(save0_size=0x1C00)
+    report.dropped.append(DROPPED_PLAYER_TEXT["portrait_body"])
+    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
+    assert dialog.report_pane.toPlainText() == ""
+
+
+def test_messages_text_is_the_messages_and_nothing_else():
+    """The renderer alone: one line per message, in order, no heading, and
+    a plain `Report` -- which has no `messages` -- reads as nothing."""
+    from editor.dosimport import messages_text
+    from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
+
+    report = C64SaveReport(save0_size=0x1C00)
+    report.messages.extend([NOT_SET_OUT, "Second line."])
+    report.dropped.append("a drop line")
+    assert messages_text(report) == f"{NOT_SET_OUT}\nSecond line."
+    assert messages_text(Report()) == ""
 
 
 def test_a_conversion_that_drops_nothing_gets_no_heading():
@@ -227,20 +253,52 @@ def test_a_conversion_that_drops_nothing_gets_no_heading():
 
 @needs_dos_saves
 @needs_disks
-def test_the_losses_are_on_screen_before_the_button_is_pressable(
+def test_the_pane_is_filled_before_the_button_is_pressable(
         app, dos_save, files):
-    """The dialog rehearses on construction, so the pane is filled at the
-    moment Convert first becomes pressable."""
+    """The dialog rehearses on construction, so the pane holds the
+    conversion's own messages -- and no dropped-field line, whatever the
+    accounting says -- at the moment Convert first becomes pressable."""
     from PyQt6.QtWidgets import QDialogButtonBox
 
-    from editor.dosimport import DROPPED_HEADING, DosImportDialog
-    from goldbox.dos import DROPPED_PLAYER_TEXT
+    from editor.dosimport import DROPPED_HEADING, DosImportDialog, messages_text
 
     dialog = DosImportDialog(dos_save, files)
+    assert dialog.conversion is not None
     text = dialog.report_pane.toPlainText()
-    assert text.startswith(DROPPED_HEADING)
-    assert DROPPED_PLAYER_TEXT["portrait_head"] in text
+    assert text == messages_text(dialog.conversion.report)
+    assert DROPPED_HEADING not in text
+    for line in dialog.conversion.report.dropped:
+        assert line not in text
     assert dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+
+@needs_dos_saves
+def test_a_pool_of_radiance_import_with_no_creation_tables_is_refused_in_the_pane(
+        app, dos_save):
+    """`#131`: a disk folder that carries `SPELLE64` and `ANIMATE00` but no
+    readable `GEN` used to convert every character with no face and report
+    the portrait as a dropped field. Donald, 2026-09-06: *"Shouldn't we
+    throw an error if they don't have their game disks?"* -- so it refuses,
+    in the pane, with Convert disabled and no address, file or issue number
+    in front of the player.
+
+    `icon` and `animate` are dummy bytes: what is under test is the missing
+    third file, not the two that were found.
+    """
+    import re
+
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor.dosimport import DosImportDialog, GameFiles
+
+    dialog = DosImportDialog(dos_save, GameFiles(icon=bytes(36),
+                                                 animate=bytes(852)))
+    assert dialog.conversion is None
+    shown = dialog.report_pane.toPlainText()
+    assert shown == dos.NO_PORTRAIT_TABLES.format(title="Pool of Radiance")
+    assert not re.search(r"\$[0-9A-F]{4}\b|\.py\b|#\d", shown), shown
+    assert not dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
 
 
@@ -742,55 +800,43 @@ def _file_menu(window):
                 if a.text() == "&File")
 
 
-def test_the_import_is_not_offered_unless_it_is_asked_for(app, tmp_path,
-                                                          monkeypatch):
-    """The gate, asserted from the outside: no submenu, not a greyed one.
+def test_the_file_menu_carries_the_import_with_nothing_set(app, tmp_path,
+                                                           monkeypatch):
+    """`File ▸ Import ▸ DOS Save Folder…` is built for everyone.
 
-    The conversion drops the portrait and the clock in this direction too
-    (#57, #58), so until those close a player should not be able to reach it
-    by accident. `dosimport.ENV` unset is the shipped state.
+    It sat behind `WISH_EXPERIMENTAL_DOS_IMPORT` until `#131 (Lift
+    WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
+    three C64 titles)` closed; the three tests that proved the gate held
+    came down with the gate, and this is the direction they never covered.
     """
-    from editor.dosimport import ENV, MENU_IMPORT
+    from editor.dosimport import MENU_DOS_SAVE, MENU_IMPORT
 
-    monkeypatch.delenv(ENV, raising=False)
+    monkeypatch.delenv("WISH_EXPERIMENTAL_DOS_IMPORT", raising=False)
     window = _window(tmp_path, monkeypatch)
-    assert MENU_IMPORT not in [a.text() for a in _file_menu(window).actions()]
-    assert window.import_dos_action is None
-    window.close()
-
-
-def test_a_variable_somebody_forgot_does_not_turn_it_on(app, tmp_path,
-                                                        monkeypatch):
-    """`0` and `off` are off, the same rule `wish/debugmode.py` follows."""
-    from editor.dosimport import ENV, MENU_IMPORT
-
-    for value in ("", "0", "off", "no"):
-        monkeypatch.setenv(ENV, value)
-        window = _window(tmp_path, monkeypatch)
-        assert MENU_IMPORT not in [a.text()
-                                   for a in _file_menu(window).actions()], value
-        window.close()
-
-
-def test_the_file_menu_carries_the_import(app, tmp_path, monkeypatch):
-    from editor.dosimport import ENV, MENU_DOS_SAVE, MENU_IMPORT
-    from wish.window import WishWindow  # noqa: F401
-
-    monkeypatch.setenv(ENV, "1")
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    # Nothing answering, and nothing looked for: a menu test must not go
-    # probing the ports a human's own game session is on.
-    from wish.session import Session
-    window = WishWindow(maps={},
-                        session=Session(find=lambda pref=None: None))
-    file_menu = next(a.menu() for a in window.menuBar().actions()
-                     if a.text() == "&File")
-    submenu = next(a.menu() for a in file_menu.actions()
+    submenu = next(a.menu() for a in _file_menu(window).actions()
                    if a.text() == MENU_IMPORT)
     assert [a.text() for a in submenu.actions()] == [MENU_DOS_SAVE]
     assert window.import_dos_action.text() == MENU_DOS_SAVE
     window.close()
+
+
+@pytest.mark.parametrize("value", ["1", "0", "true", "off", "", "no"])
+def test_the_import_does_not_depend_on_the_removed_variable(app, tmp_path,
+                                                            monkeypatch,
+                                                            value):
+    """A player who exported the old flag once, at any value, before its
+    removal (#131), gets the same File menu as everyone else."""
+    def file_menu_texts():
+        window = _window(tmp_path, monkeypatch)
+        try:
+            return [a.text() for a in _file_menu(window).actions()]
+        finally:
+            window.close()
+
+    monkeypatch.setenv("WISH_EXPERIMENTAL_DOS_IMPORT", value)
+    with_var = file_menu_texts()
+    monkeypatch.delenv("WISH_EXPERIMENTAL_DOS_IMPORT", raising=False)
+    assert with_var == file_menu_texts()
 
 
 # --- the refusal a player reads (#176) --------------------------------------

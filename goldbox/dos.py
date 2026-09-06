@@ -122,6 +122,9 @@ __all__ = [
     "never_adventured",
     "NotSetOutError",
     "NOT_SET_OUT",
+    "NOT_SET_OUT_UNPLACED",
+    "NO_PORTRAIT_TABLES",
+    "NoPortraitTablesError",
     "apply_clock",
     "marching_slot",
     "convert_save",
@@ -1033,8 +1036,10 @@ DIRECT: tuple[tuple[str, str], ...] = (
 #: DOS fields deliberately left behind, and why.  Reported, never silent
 #: unless :data:`UNREPORTED_DROPS` names them.
 DROPPED: tuple[tuple[str, str], ...] = (
-    # #57: `to_neutral` carries this across when it is given the game's own
-    # creation tables, and only drops it when it is not.
+    # #57: `to_neutral` converts this when it is given the game's own
+    # creation tables, and only drops it when it is not -- which `new_save`
+    # refuses outright where the title draws a face (#131), so the drop is
+    # reachable only through `convert_save` called bare.
     ("portrait_head", "the sheet portrait's head: a menu position, which "
                       "needs the game's own creation tables to become the "
                       "C64's HEADnn id. Converted across when those tables "
@@ -1404,7 +1409,11 @@ def to_neutral(dos: DosCharacter,
     :func:`portrait_tables`.  With them the sheet portrait crosses -- the DOS
     record's menu position becomes the art id the neutral record carries,
     which is what the C64 stores -- and without them it is reported as a
-    drop, exactly as it was before #57.
+    drop, exactly as it was before #57.  That drop reaches no player any
+    more: :func:`new_save` refuses a whole-save conversion without the
+    tables wherever the destination draws a face (#131), so it is only a
+    caller of this function or of `convert_save` directly -- a test, a
+    measuring tool -- that sees it.
     """
     if dos.shape not in CONVERTS:
         raise WrongTitleError(
@@ -3758,12 +3767,27 @@ NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
                "beginning of the story.")
 
 #: The refusal for a never-adventured save of a title whose start nobody has
-#: measured -- Secret of the Silver Blades today, `areas.STARTS`.  **PROPOSED,
-#: not approved**: `.claude/rules/gui-text.md` makes every word a player
-#: reads Donald's, and the marker comes off when he has ruled on it.
-NOT_SET_OUT_UNPLACED = ("This save was made before the party set out, and "
-                        "Wish does not know yet where {title} begins. "
-                        "(NOT APPROVED)")
+#: measured -- Secret of the Silver Blades today, `areas.STARTS`.  Donald's
+#: wording, 2026-09-06.  It names no title on purpose, so it reads the same
+#: whichever title is refused, and nothing is interpolated into it.
+NOT_SET_OUT_UNPLACED = ("This save has never been played yet. Wish does not "
+                        "yet support converting these saves.")
+
+#: The refusal when the destination draws a sheet portrait and the creation
+#: menu's tables could not be read off the player's disks (#131).  Before
+#: this the conversion went ahead, wrote every character with no face and
+#: reported the portrait as a dropped field -- a refusal miscast as a drop,
+#: and the one drop line a Pool of Radiance player could still meet.  The
+#: tables are in `GEN`, on a different side from `SPELLE64` and `ANIMATE00`,
+#: so a disk folder can carry the other two and not this one; Donald,
+#: 2026-09-06: *"Shouldn't we throw an error if they don't have their game
+#: disks? Then, this issue wouldn't happen at all."*
+#:
+#: **PROPOSED, not approved**: `.claude/rules/gui-text.md` makes every word
+#: a player reads Donald's, and the marker comes off when he has ruled on it.
+NO_PORTRAIT_TABLES = ("Wish could not read the character portraits off your "
+                      "{title} game disks, so this save cannot be converted. "
+                      "(NOT APPROVED)")
 
 
 class NotSetOutError(DosRecordError):
@@ -3781,7 +3805,28 @@ class NotSetOutError(DosRecordError):
 
     @property
     def player_message(self) -> str:
-        return NOT_SET_OUT_UNPLACED.format(title=self.title)
+        return NOT_SET_OUT_UNPLACED
+
+
+class NoPortraitTablesError(DosRecordError):
+    """A whole-save conversion into a title that draws a sheet portrait, with
+    no creation tables to draw it from.
+
+    Raised by :func:`new_save` before anything is read, and only where
+    `draws_sheet_portrait` says the destination would have drawn a face: a
+    Curse or Silver Blades conversion needs no tables and is never refused
+    for lacking them (#300).  `convert_save` itself still accepts
+    `portraits=None`, because the tests and the tools that measure the
+    other fields call it without any disks at all.
+    """
+
+    def __init__(self, message: str, title: str) -> None:
+        super().__init__(message)
+        self.title = title
+
+    @property
+    def player_message(self) -> str:
+        return NO_PORTRAIT_TABLES.format(title=self.title)
 
 
 def never_adventured(savgam: bytes,
@@ -4429,14 +4474,23 @@ def new_save(folder: str | pathlib.Path, slot: str,
     `ANIMATE00`'s payload; both come off the player's own game disks, and
     there is no default for either -- a conversion that cannot read them is
     one that would have to invent bytes, and it refuses instead.  `portraits`
-    is the creation menu's two tables (#57); unlike `icon` and `animate` it
-    is not required -- a party converted without it keeps its own records
-    but arrives with the sheet portrait switched off, which is the same
-    thing an engine-written save does when the player has turned it off.
+    is the creation menu's two tables (#57), and it is required on the same
+    terms wherever the destination draws a sheet portrait: without it every
+    character would arrive with no face and the loss would be reported as a
+    dropped field, which is a refusal miscast as a drop (#131), so
+    :class:`NoPortraitTablesError` is raised before anything is read.  A
+    title whose sheet draws no face -- Curse and Silver Blades (#300) --
+    needs no tables and is not refused for lacking them.
 
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
     container = c64_save.container_for(game)
+    if portraits is None and draws_sheet_portrait(container.game.key):
+        raise NoPortraitTablesError(
+            f"{container.game.title} draws a sheet portrait and no creation "
+            f"tables were given: GEN could not be read off the disks, so "
+            f"every character would arrive with no face (#131)",
+            title=container.game.title)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
              else bytearray(container.game.roster_size))
