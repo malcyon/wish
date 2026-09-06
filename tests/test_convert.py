@@ -942,3 +942,66 @@ def test_the_file_menu_carries_convert_when_asked_for(app, tmp_path,
                                     for a in _file_menu(window).actions()]
     assert window.convert_action.text() == convert.MENU_CONVERT
     window.close()
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
+                                                             monkeypatch):
+    """A half-written conversion is cleared away, not left looking like one
+    that worked.
+
+    `Direction.write` puts several files in the folder, so a writer that
+    raises after the first of them leaves it non-empty.  `rmdir` refuses a
+    non-empty directory, and the failure path used to swallow that -- which
+    left the debris in the player's own destination under a
+    `wish-YYYY-MM-DD` name, indistinguishable by name from a conversion
+    that worked, and never touched again, because the next attempt takes
+    the next suffix rather than that folder.
+    """
+    disks = disk_dir()
+    window = EditorBinding(_make_root(), disks=str(disks))
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    real = dos.new_dos_save
+
+    def half_a_write(save0, save1, folder, *args, **kwargs):
+        #: The rehearsal calls this too, into a temporary directory of its
+        #: own -- let that one through, so the dialog reaches the state
+        #: where its button is live, and fail only the real write into the
+        #: player's chosen destination.
+        if pathlib.Path(destination) not in pathlib.Path(folder).parents:
+            return real(save0, save1, folder, *args, **kwargs)
+        #: One file, then the failure a full disk would give: the state
+        #: `rmdir` cannot clear.
+        pathlib.Path(folder).joinpath("SAVGAMA.DAT").write_bytes(b"half")
+        raise OSError(28, "No space left on device")
+
+    #: Accept once so the write is attempted, then refuse, so the retry loop
+    #: `convert` runs on a refusal ends instead of spinning.
+    answers = iter([QDialog.DialogCode.Accepted, QDialog.DialogCode.Rejected])
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: next(answers))
+    refusals = []
+    real_refuse = convert.ConvertDialog.refuse
+
+    def note_refusal(self, text):
+        refusals.append(text)
+        return real_refuse(self, text)
+
+    monkeypatch.setattr(convert.ConvertDialog, "refuse", note_refusal)
+    monkeypatch.setattr(dos, "new_dos_save", half_a_write)
+    try:
+        outcome = window.convert(source=str(_por_c64_disk(tmp_path)),
+                                 destination="dos",
+                                 game=str(_game_dir()),
+                                 folder=str(destination))
+    finally:
+        monkeypatch.setattr(dos, "new_dos_save", real)
+        window.close()
+
+    assert outcome == "cancelled"
+    assert refusals == [convert.CANNOT_CONVERT]
+    assert list(destination.iterdir()) == [
+        ], [p.name for p in destination.iterdir()]

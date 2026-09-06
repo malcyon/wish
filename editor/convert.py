@@ -439,7 +439,7 @@ def fresh_folder(destination: str | pathlib.Path,
 #: (`.claude/rules/feature-flags.md`).
 #:
 #: **Comes off when:** (1) no string below carries the `(NOT APPROVED)`
-#: marker -- `test_every_placeholder_ends_in_not_approved` greps for the
+#: marker -- `test_every_placeholder_string_ends_in_not_approved` greps for the
 #: last one; (2) a Pool of Radiance, a Curse and a Silver Blades DOS save
 #: each list the Commodore 64, and a Pools of Darkness save never does
 #: (`#131`); (3) every registered direction's drop list is empty --

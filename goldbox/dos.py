@@ -1194,8 +1194,10 @@ LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
 #: destination derives on load needs no line, and that derivation has to be
 #: demonstrated in the running game first."  Reported by `field_disposition`
 #: as `derived:` rather than `dropped:`, and never shown to a player: the
-#: mirror of :data:`WRITE_DERIVED` on the export side, over the DOS field
-#: vocabulary the way :data:`DROPPED` is.
+#: the import-side counterpart of the export side's own accounting, over
+#: the DOS field vocabulary the way :data:`DROPPED` is.  Four of these
+#: fields appear on that side too, in :data:`WRITE_UNSOURCED` rather than
+#: in :data:`WRITE_DERIVED`, which holds only `unnamed_0ab`.
 #:
 #: `(name, why, the run that demonstrated it)` -- a row with nothing in the
 #: third field is a row nobody has earned yet.
@@ -1206,15 +1208,15 @@ DERIVED: tuple[tuple[str, str, str], ...] = (
     ("item_chain", "live heap state: the DOS item list is a chain of far "
                    "pointers, rebuilt by the engine on load; the C64 keeps "
                    "sixteen fixed slots instead and needs none of it",
-     "measured NULL in engine-written records with items and without "
-     "(#61, #62, #69)"),
+     "the engine's own far pointer in 30 of 30 engine-written records "
+     "with items and without, and rebuilt on load (#61, #62, #69)"),
     ("heap_104", "live heap pointers, rebuilt by the engine on load",
-     "measured NULL in engine-written records with items and without "
-     "(#61, #62, #69)"),
+     "the engine's own far pointer in 5 of 6 engine-written records, and "
+     "carried through a resave unread (#61, #62, #69)"),
     ("effect_chain", "live pointer to the effect list; the effects "
                      "themselves come from the .SPC file and the engine "
                      "rebuilds the chain on load",
-     "measured NULL in engine-written records with items and without "
+     "rebuilt on load in engine-written records with items and without "
      "(#61, #62, #69)"),
     ("hands_used", "live combat state, set again the next time the "
                    "character fights",
@@ -1228,9 +1230,11 @@ DERIVED: tuple[tuple[str, str, str], ...] = (
     ("item_count", "implied by the C64's sixteen fixed slots, which it "
                    "counts for itself on load",
      "27 of 27 converted characters balance exactly (b8a64ea)"),
-    ("strength_bonus", "a boolean on DOS; the C64 writer already sets its "
-                       "aligned byte to a computed strength index by the "
-                       "same rule GEN uses, so nothing here is a loss",
+    ("strength_bonus", "a boolean on DOS; the C64 writer sets its own home "
+                       "-- strength_bonus_flag at 0x0E3 -- to the constant 1 "
+                       "that GEN's creation writes there, so nothing here is "
+                       "a loss.  Not 0x0E2, which is the separate computed "
+                       "strength index",
      "#277 (A DOS character converted to the C64 loses the strength bonus "
      "to hit and damage, because 0x0E3 is written zero), closed"),
 )

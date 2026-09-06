@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import shutil
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QIcon
@@ -1060,10 +1061,13 @@ class EditorBinding(QObject):
                 written = dialog.direction.write(dialog.rehearsal, fresh)
             except Exception:
                 _log.exception("could not write a conversion into %s", fresh)
-                try:
-                    fresh.rmdir()
-                except OSError:
-                    pass
+                #: `rmtree`, not `rmdir`: a direction's `write` puts several
+                #: files in the folder, so a writer that fails partway leaves
+                #: it non-empty, where `rmdir` raises and the old handler
+                #: swallowed it.  What survived would sit in the player's own
+                #: destination under a `wish-YYYY-MM-DD` name, indis-
+                #: tinguishable from a conversion that worked.
+                shutil.rmtree(fresh, ignore_errors=True)
                 dialog.refuse(convert_mod.CANNOT_CONVERT)
                 continue
             if dialog.direction.destination_port == "c64":
