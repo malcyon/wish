@@ -45,6 +45,40 @@ would notice, finding it one is the work. **Every entry on every drop list has
 an issue**, and `WISH_EXPERIMENTAL_DOS_IMPORT` does not come off while any of
 them is open.
 
+**The standard is every direction, not the import.** Donald, 2026-09-05:
+*"We should not drop any fields for any conversion in any direction. Unless
+the platform we are converting to doesn't support that field."* And, on why:
+*"People will abandon it and call it bad and buggy when they notice things are
+missing from their characters. It's not a functional solution unless it
+converts everything. Why would someone want only half of their stats
+converted? It makes no sense. No shortcuts."*
+
+This was asked because the two rulings above had only ever been made about the
+DOS-to-C64 import, and the program keeps six more lists of the same kind --
+`dos.WRITE_DROPPED`, `WRITE_UNSOURCED`, `WRITE_DEFAULTS`, `c64_codec.READ_DROPPED`,
+`amiga.DROPPED` and `amiga.LATER_DROPPED`. **They are all covered.** A list is
+not exempt because its direction is the less travelled one, and the Amiga
+lists are not exempt because they are the longest.
+
+**The one carve-out is narrow, and it is not the same as "we have not decoded
+it yet".** A field is legitimately unconverted only when the destination
+*platform* has nothing that field could be -- not when we have not yet found
+its home, not when the home is inconvenient, and not when the value is one we
+guess a player would not miss. The identity byte is the worked example and it
+went the other way: Curse and Silver Blades on the C64 never write the pair
+and nothing reads it, which looked like the carve-out, and the ruling was to
+**write it anyway** because the bytes are there and a later conversion back to
+DOS then returns the player's own number instead of inventing one. Donald,
+2026-09-05: *"Yes, write the identity byte. No, don't tell the user about
+it."*
+
+Two things that are **not** drops and must not be counted as though they were:
+a field the destination recomputes on load, and a constant of the format. Both
+have their own lists (`dos.DERIVED`, `dos.CONSTANTS`, `dos.WRITE_DERIVED`,
+`dos.WRITE_CONSTANTS`) and each row carries the run that demonstrated it. When
+a long drop list is read against this rule, sort it before costing it -- most
+of what sat on the import list was never a loss.
+
 **Say "converted", not "carried".** Donald, 2026-09-04: *"When you say
 'carried', you must mean 'converted'. I don't think carried means what you
 think."* The word is in this file, in `field_disposition` prose and in drop
