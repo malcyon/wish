@@ -849,39 +849,53 @@ def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
         assert not hexish.search(text), text
 
 
-def test_every_placeholder_string_ends_in_not_approved():
-    """The whole flag's first removal condition
-    (`work/reports/52-plan.md`): nobody ships this dialog with an
-    unapproved sentence in it and no way to find which one."""
-    placeholders = [
-        convert.MENU_CONVERT,
-        convert.DIALOG_TITLE,
-        convert.LABEL_SOURCE,
-        convert.LABEL_TO,
-        convert.SOURCE_TITLE,
-        convert.NO_GAME_FOLDER,
-        convert.CONVERTED_DOS,
-        *convert.DESTINATION_LABELS.values(),
-    ]
-    for text in placeholders:
-        assert text.endswith(" (NOT APPROVED)"), text
+def test_no_string_the_player_reads_is_unapproved():
+    """The flag's first removal condition, now met.
 
-    # `SOURCE_FILTER` is a Qt file-dialog filter, not a sentence: the marker
-    # has to sit before the final `(*)` pattern group or Qt reads it as the
-    # glob itself, so it carries the marker mid-string instead of at the
-    # end. Still checked, just not by `endswith`.
-    assert " (NOT APPROVED) " in convert.SOURCE_FILTER
+    Every string in this dialog carried a ` (NOT APPROVED)` marker until
+    Donald read them in place and approved all ten on 2026-09-05 -- *"I
+    think these are all fine."*  The test inverted with the ruling: it used
+    to prove each placeholder still announced itself, and now proves none
+    of them does, which is the condition `editor/convert.py`'s flag names
+    first.
 
-    # And the reused ones do *not* carry the marker, so the grep above is
-    # not vacuously true because every string in the module ends that way.
-    approved = [
-        convert.LABEL_GAME, convert.LABEL_FOLDER, convert.BUTTON_CHOOSE,
-        convert.BUTTON_CONVERT, convert.GAME_TITLE, convert.FOLDER_TITLE,
-        convert.NO_FOLDER, convert.CANNOT_CONVERT, convert.NO_DISKS,
-        convert.DROPPED_HEADING, convert.WRITES_HEADING,
-    ]
-    for text in approved:
-        assert not text.endswith(" (NOT APPROVED)"), text
+    It greps the module rather than a list, so a **new** unapproved string
+    added later fails here instead of shipping quietly -- which the old
+    list-of-names form could not do.
+    """
+    import inspect
+    source = inspect.getsource(convert)
+    offenders = [line.strip() for line in source.splitlines()
+                 if '(NOT APPROVED)"' in line or "(NOT APPROVED)'" in line]
+    assert offenders == [], offenders
+
+    #: Every string a player can read, checked as values rather than as
+    #: source, so a marker built at run time is caught too.
+    for name, text in vars(convert).items():
+        if name.isupper() and isinstance(text, str):
+            assert "NOT APPROVED" not in text, name
+    for text in convert.DESTINATION_LABELS.values():
+        assert "NOT APPROVED" not in text, text
+
+
+def test_the_approved_strings_are_the_ones_donald_worded():
+    """A spot check that stripping the markers did not also strip a word.
+
+    `SOURCE_FILTER` is the one worth pinning: it is a Qt file-dialog filter
+    rather than a sentence, the marker sat mid-string because Qt would read
+    a trailing one as the glob itself, and removing it there is the edit
+    most likely to have taken a bracket with it.
+    """
+    assert convert.MENU_CONVERT == "&Convert…"
+    assert convert.DIALOG_TITLE == "Convert a save"
+    assert convert.LABEL_SOURCE == "Save"
+    assert convert.LABEL_TO == "To"
+    assert convert.SOURCE_TITLE == "Choose a save"
+    assert convert.NO_GAME_FOLDER == "Choose the DOS game folder."
+    assert convert.CONVERTED_DOS == "Converted to DOS slot {slot} in {folder}"
+    assert convert.DESTINATION_LABELS == {"c64": "Commodore 64", "dos": "DOS"}
+    assert convert.SOURCE_FILTER == (
+        "Saved games (*.d64 *.D64 SAVGAM?.DAT SAVGAM?.PTY);;All files (*)")
 
 
 # ---------------------------------------------------------------------------

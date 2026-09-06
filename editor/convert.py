@@ -439,8 +439,9 @@ def fresh_folder(destination: str | pathlib.Path,
 #: (`.claude/rules/feature-flags.md`).
 #:
 #: **Comes off when:** (1) no string below carries the `(NOT APPROVED)`
-#: marker -- `test_every_placeholder_string_ends_in_not_approved` greps for the
-#: last one; (2) a Pool of Radiance, a Curse and a Silver Blades DOS save
+#: marker -- **met 2026-09-05**, when Donald read all ten in place and
+#: approved them; `test_no_string_the_player_reads_is_unapproved` keeps it
+#: met, including for a string added later; (2) a Pool of Radiance, a Curse and a Silver Blades DOS save
 #: each list the Commodore 64, and a Pools of Darkness save never does
 #: (`#131`); (3) every registered direction's drop list is empty --
 #: `.claude/rules/conversions.md`'s list, tracked on `#131`; (4) the
@@ -470,19 +471,20 @@ def enabled() -> bool:
 # (`.claude/rules/gui-text.md`) -- never invent a sentence beyond this block.
 # ---------------------------------------------------------------------------
 
-#: The File menu entry. PROPOSED -- the two submenus it replaces were
-#: `&Import` and `&Export`, and this dialog is neither.
-MENU_CONVERT = "&Convert… (NOT APPROVED)"
+#: The File menu entry. Approved by Donald 2026-09-05, with every other
+#: string in this block: *"I think these are all fine."*  The two submenus
+#: it replaces were `&Import` and `&Export`, and this dialog is neither.
+MENU_CONVERT = "&Convert…"
 
-#: The dialog's title bar. PROPOSED.
-DIALOG_TITLE = "Convert a save (NOT APPROVED)"
+#: The dialog's title bar. Approved 2026-09-05.
+DIALOG_TITLE = "Convert a save"
 
 #: Row labels. `LABEL_GAME` is `editor/exports.py`'s, approved 2026-08-25;
 #: `LABEL_FOLDER` is its `LABEL_DESTINATION`, approved the same day -- the
 #: row where the player says which folder the write goes inside, renamed
 #: here so it is not confused with `convert_destination`'s new combo.
-LABEL_SOURCE = "Save (NOT APPROVED)"
-LABEL_TO = "To (NOT APPROVED)"
+LABEL_SOURCE = "Save"
+LABEL_TO = "To"
 LABEL_GAME = "DOS game folder"
 LABEL_FOLDER = "Write to"
 
@@ -494,7 +496,7 @@ BUTTON_CONVERT = "Convert"
 
 #: Picker titles. `GAME_TITLE` and `FOLDER_TITLE` are `editor/exports.py`'s
 #: `GAME_TITLE` and `DESTINATION_TITLE`, approved 2026-08-25.
-SOURCE_TITLE = "Choose a save (NOT APPROVED)"
+SOURCE_TITLE = "Choose a save"
 GAME_TITLE = "Choose the DOS game folder"
 FOLDER_TITLE = "Choose where to write"
 
@@ -502,8 +504,8 @@ FOLDER_TITLE = "Choose where to write"
 #: picking `SAVGAMB.DAT` picks slot B with no separate slot row. PROPOSED --
 #: only the descriptive label is new; `;;All files (*)` is
 #: `editor/window.py`'s `DISK_FILTER` boilerplate, reused rather than
-#: reworded.
-SOURCE_FILTER = ("Saved games (NOT APPROVED) "
+#: reworded.  Approved 2026-09-05.
+SOURCE_FILTER = ("Saved games "
                  "(*.d64 *.D64 SAVGAM?.DAT SAVGAM?.PTY);;All files (*)")
 
 #: The destination combo's items, by port -- never by title, since
@@ -512,14 +514,14 @@ SOURCE_FILTER = ("Saved games (NOT APPROVED) "
 #: title). PROPOSED. Amiga has no row yet (`#316 (Write the Amiga Pool of
 #: Radiance saved game from the source save, so a converted party arrives
 #: where it was standing)`), so it is not listed here until it can be
-#: exercised.
+#: exercised.  Approved 2026-09-05.
 DESTINATION_LABELS: dict[str, str] = {
-    "c64": "Commodore 64 (NOT APPROVED)",
-    "dos": "DOS (NOT APPROVED)",
+    "c64": "Commodore 64",
+    "dos": "DOS",
 }
 
 #: The pane while a required row is still empty.
-NO_GAME_FOLDER = "Choose the DOS game folder. (NOT APPROVED)"
+NO_GAME_FOLDER = "Choose the DOS game folder."
 #: `editor/exports.py`'s `NO_DESTINATION`, approved 2026-08-25.
 NO_FOLDER = "Choose where to write."
 #: `goldbox.dos.CANNOT_CONVERT`, approved under `#195 (The import pane shows
@@ -541,8 +543,8 @@ WRITES_HEADING = "This writes:"
 
 #: The status line after a DOS write, which nothing else in the window
 #: reports (a C64 write is opened in the editor and gets its own status the
-#: way `File ▸ Open` does). PROPOSED.
-CONVERTED_DOS = "Converted to DOS slot {slot} in {folder} (NOT APPROVED)"
+#: way `File ▸ Open` does). Approved 2026-09-05.
+CONVERTED_DOS = "Converted to DOS slot {slot} in {folder}"
 
 
 def _writes_text(rehearsal: "Rehearsal", folder: pathlib.Path) -> str:
