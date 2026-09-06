@@ -1612,7 +1612,7 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
     file whose zeroes nobody stands behind.
     """
     save0, save1 = _fixture_payloads()
-    monkeypatch.setattr(dos, "savgam_zeroes", lambda savgam, report: None)
+    monkeypatch.setattr(dos, "savgam_zeroes", lambda *a, **k: None)
     with pytest.raises(dos.DosRecordError) as e:
         dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
     assert "no source" in str(e.value)
@@ -1637,7 +1637,7 @@ def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
     keep.write_bytes(b"the party that was already here")
     before = sorted(p.name for p in out.iterdir())
 
-    monkeypatch.setattr(dos, "savgam_zeroes", lambda savgam, report: None)
+    monkeypatch.setattr(dos, "savgam_zeroes", lambda *a, **k: None)
     with pytest.raises(dos.DosRecordError):
         dos.new_dos_save(save0, save1, out, "A", _game_dir())
 

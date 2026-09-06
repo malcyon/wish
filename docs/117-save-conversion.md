@@ -1865,6 +1865,7 @@ graph LR
   c64_codec --> games
   c64_codec --> layout
   c64_codec --> neutral
+  c64_codec --> portraits
   c64_codec --> record
   c64_codec --> spells
   c64_save --> games
