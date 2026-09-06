@@ -36,7 +36,10 @@ def _synthetic_frame(tmp_path) -> pathlib.Path:
     8-row band, each lit at the same two adjacent rows, which is what
     `read_path` calls the all-middle pattern.
     """
-    from PIL import Image
+    #: After any skip above, never before: CI has no Pillow, and an
+    #: import at the top of the body fails the test where it should
+    #: skip it -- the same trap `tests/test_iconproposal.py` hit.
+    Image = pytest.importorskip("PIL.Image")
 
     im = Image.new("RGB", (320, 200), (0, 0, 0))
     px = im.load()
@@ -58,7 +61,10 @@ def _synthetic_frame(tmp_path) -> pathlib.Path:
 def _blank_frame(tmp_path) -> pathlib.Path:
     """A frame with no ink anywhere -- the main menu, or any other screen
     that is not the code-wheel prompt."""
-    from PIL import Image
+    #: After any skip above, never before: CI has no Pillow, and an
+    #: import at the top of the body fails the test where it should
+    #: skip it -- the same trap `tests/test_iconproposal.py` hit.
+    Image = pytest.importorskip("PIL.Image")
 
     path = tmp_path / "blank.png"
     Image.new("RGB", (320, 200), (0, 170, 0)).save(path)

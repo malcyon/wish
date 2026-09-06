@@ -47,7 +47,7 @@ reads its in-memory bytes instead, so unsaved edits cross -- the same rule
 `exports.Source.from_party` followed. `exports.Source` retires into this one
 at step 5.
 
-**`ConvertDialog`, below, is step B of `work/reports/52-plan.md`** (also
+**`ConvertDialog`, below, is step B of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment** (also
 `#52`'s comment of 2026-09-05 13:58:53): the source and destination rows, a
 game-files row shown only for a DOS destination, a write-to-folder row, and
 the report pane -- `editor/dosimport.py`'s rehearse-then-enable pattern, one

@@ -1053,7 +1053,7 @@ class EditorBinding(QObject):
         `source`, `destination`, `folder` and `game` pre-fill the dialog's
         rows the way `import_dos_save(folder=...)` pre-fills its one row --
         given every argument, no picker ever opens, which is how a test
-        drives the whole path (`work/reports/52-plan.md` step C). The write
+        drives the whole path (`#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment step C). The write
         itself happens here rather than inside `ConvertDialog`, the same
         split `import_dos_save` keeps between rehearsing (the dialog) and
         committing (this method): `fresh_folder` names a folder and

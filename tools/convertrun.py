@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert a save through `File ▸ Convert…`'s own code path, then play it.
 
-Step D of `work/reports/52-plan.md` -- the plan on
+Step D of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment -- the plan on
 `#52 (File ▸ Import and File ▸ Export for every direction the library
 supports)` -- and the one thing the flag's removal condition 5 asks for:
 *each registered direction has been loaded and walked in its emulator from a
