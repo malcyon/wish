@@ -104,6 +104,7 @@ def _picture(size: int) -> QPixmap:
 TEXT = f"""<h3>Wish {__version__}</h3>
 <p>A character editor and live automapper for Pool of Radiance (Commodore 64).</p>
 <p>Wish is licensed under GPLv3.</p>
+<p>Written by Donald Morton.</p>
 <p>Wish logo and logo mark designed by Dustin Geddy Parker.</p>"""
 
 
