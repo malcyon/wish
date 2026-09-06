@@ -11,14 +11,18 @@ clicks the Convert button, it does what the user expects. it converts."* The
 write itself is still the editor's own Save, so the backup guarantee in
 `editor/files.py` covers this the way it covers every other write.
 
-**The pane is a messages pane and not a drop list.** It was the list of
-fields the conversion could not convert, and Donald ended that on
-2026-09-05: *"I don't want the player to EVER see a message saying any field
-was dropped. The conversion needs to be perfect."* and, the same day, *"you
-could reduce the size of the drop pane and make it a messages pane."* So
-`report.dropped` is the conversion's own accounting -- `summary()` prints
-it, the debug log gets it -- and nothing in it is drawn here
-(`.claude/rules/conversions.md`).
+**The pane is headed `Conversion Info` and shows two things**: the
+conversion's own messages (`C64SaveReport.messages`), and then every field
+it did not convert that the C64 does not derive for itself.  The second half
+was off for a night: Donald on 2026-09-05 -- *"I don't want the player to
+EVER see a message saying any field was dropped."* -- and then on
+2026-09-06, having seen the pane: *"do not show dropped fields if they are
+derived in the new game. Show others for now. I will refine them as we go."*
+So what is silent is exactly what `goldbox.dos.DERIVED` and
+`goldbox.dos.CONSTANTS` name, and every line still on `goldbox.dos.DROPPED`
+is drawn, in the words `DROPPED_PLAYER_TEXT` gives it, with no heading of
+its own.  Which of those lines stay is his call, line by line, and not a
+judgement to make here (`.claude/rules/conversions.md`).
 
 **There is no template any more** (#118). The dialog used to make the user
 pick an existing `.d64` to convert *onto*, and every byte the conversion did
@@ -28,15 +32,16 @@ now writes all 9216 bytes of both payloads and `D64.blank()` carries them, so
 what the user gets is theirs and nothing else's.
 
 What that costs is the player's own game disks at the moment the import
-runs: the combat icon is composed out of `SPELLE64`/`SPELLN64`, `$8400` is
-`ANIMATE00`, and a Pool of Radiance sheet portrait needs the creation menu
-in `GEN` -- none of which may be stored here. Donald's ruling, 2026-08-27
+runs: the combat icon is composed out of `SPELLE64`/`SPELLN64` and `$8400`
+is `ANIMATE00`, and neither may be stored here. Donald's ruling, 2026-08-27
 -- *"We should never attempt to write a save file if we don't have the game
 disks and we need them. That would mean making up data, which we will not
-do."* -- so `editor/window.py` checks for the first two before the folder
-picker opens and refuses with a pop-up, and `goldbox.dos.new_save` refuses
-in the pane when the third cannot be read for a title that draws a face
-(#131).
+do."* -- so `editor/window.py` checks for both before the folder picker
+opens and refuses with a pop-up.  The third thing a Pool of Radiance
+conversion once read off the disks, the creation menu in `GEN`, is
+twenty-six integers and is stored (`goldbox.portraits.POOL_OF_RADIANCE_MENU`,
+2026-09-06), so a sheet portrait needs no disk and nothing here refuses for
+its lack.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`, so
 the two are never told apart by sniffing: the first picker asks for a folder.
@@ -101,13 +106,19 @@ BUTTON_BROWSE = "Browse…"
 DEFAULT_NAME = "PORSAVE{slot}.D64"
 
 #: The heading over a list of what a converted character loses, Donald's
-#: wording of 2026-09-05 (`09027bb`).  **Nothing in this window draws it any
-#: more**: the pane shows `report.messages` and no dropped-field line
-#: (#131).  It stays defined because `editor/convert.py` -- `#52 (File ▸
-#: Import and File ▸ Export for every direction the library supports)`'s
-#: dialog, off unless its own flag says otherwise -- still imports it and
-#: `dropped_text` below; both go when that dialog stops drawing drops.
+#: wording of 2026-09-05 (`09027bb`).  **Nothing in this window draws it**:
+#: the pane's drop lines sit under `Conversion Info` with no heading of
+#: their own (2026-09-06).  It stays defined because `editor/convert.py` --
+#: `#52 (File ▸ Import and File ▸ Export for every direction the library
+#: supports)`'s dialog, off unless its own flag says otherwise -- still
+#: imports it and `dropped_text` below; both go when that dialog stops
+#: drawing drops.
 DROPPED_HEADING = "Wish cannot currently convert these fields:"
+
+#: The heading over the pane, Donald's wording of 2026-09-06: *"how about
+#: 'Conversion Info'."*  It is in `dosimport.ui` and is here so a test can
+#: name it; the two must agree.
+PANE_HEADING = "Conversion Info"
 
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of
@@ -160,11 +171,11 @@ class GameFiles:
     icon: bytes | IconParts
     #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
     animate: bytes
-    #: The creation menu's two tables (#57), or `None` when no disk here
-    #: carries `GEN`. `goldbox.dos.new_save` refuses without it wherever the
-    #: destination draws a sheet portrait -- Pool of Radiance -- rather than
-    #: writing every character with no face (#131); Curse and Silver Blades
-    #: draw none and convert with it `None` (#300).
+    #: The creation menu's two tables (#57) read off the player's own disks,
+    #: or `None` -- and `None` costs nobody a face: `goldbox.dos.to_neutral`
+    #: uses the stored menu for a title that draws one (Pool of Radiance),
+    #: and Curse and Silver Blades draw none (#300).  So this is the one
+    #: field here without which a conversion still goes ahead.
     portraits: PortraitTables | None = None
 
 
@@ -227,32 +238,36 @@ def rehearse(folder: str | pathlib.Path, slot: str,
                       pathlib.Path(folder), slot)
 
 
-def messages_text(report: dos.Report) -> str:
-    """What the pane shows: the conversion's messages, one to a line.
+def pane_text(report: dos.Report) -> str:
+    """What the pane shows: the messages, then the fields not converted.
 
     `C64SaveReport.messages` is the sentences a player reads about what the
     conversion did to their own save -- Donald's *"Your party had not set
     out yet, so it starts at the beginning of the story."* is the first --
-    and the lines are `goldbox/dos.py`'s own, the same words `summary()`
-    prints, so the pane and the terminal cannot drift into two accounts of
-    one conversion.  There is no heading: a line over one sentence would be
-    a label for a label, and the pane is empty when there is nothing to say.
+    and `report.dropped` is every field the conversion did not convert that
+    the C64 does not derive for itself, in the words
+    `goldbox.dos.DROPPED_PLAYER_TEXT` gives each.  Both are
+    `goldbox/dos.py`'s own lines, the same words `summary()` prints, so the
+    pane and the terminal cannot drift into two accounts of one conversion.
 
-    `report.dropped` is never drawn.  Donald, 2026-09-05: *"I don't want the
-    player to EVER see a message saying any field was dropped."*  A plain
-    `Report` has no `messages` -- `to_c64_record`'s per-character one -- and
-    reads as nothing to say.
+    One blank line between the two halves when both are there, and no
+    heading over either: the pane's own `Conversion Info` label is the
+    heading, and Donald has asked to see the drop lines as they are so he
+    can refine them himself (2026-09-06).  Empty when there is nothing to
+    say.  A plain `Report` has no `messages` -- `to_c64_record`'s
+    per-character one -- and contributes only its drops.
     """
-    return "\n".join(getattr(report, "messages", ()))
+    halves = [list(getattr(report, "messages", ())), list(report.dropped)]
+    return "\n\n".join("\n".join(half) for half in halves if half)
 
 
 def dropped_text(report: dos.Report) -> str:
     """The losses, one to a line, under a heading -- or nothing at all.
 
-    **Not this window's any more.** `DosImportDialog` draws
-    :func:`messages_text` instead, because no player is shown a dropped
-    field (#131); this is kept for `editor/convert.py`, which still calls
-    it, and goes when that dialog stops.
+    **Not this window's.** `DosImportDialog` draws :func:`pane_text`, which
+    puts the same drop lines under the pane's own `Conversion Info` label
+    with no heading of their own; this is kept for `editor/convert.py`,
+    which still calls it, and goes when that dialog stops.
 
     Empty when nothing was dropped (#338): the heading says something was
     lost, and a heading over no lines told a player that with nothing to
@@ -423,9 +438,9 @@ class DosImportDialog(QDialog):
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
             return dos.CANNOT_CONVERT
-        # The accounting a player is not shown still reaches whoever is
-        # debugging: `WISH_DEBUG` is the one place a drop line belongs.
+        # The same lines the pane shows, for whoever is debugging with
+        # `WISH_DEBUG` and no window in front of them.
         for line in self.conversion.report.dropped:
             _log.debug("not converted, %s slot %s: %s",
                        self.folder, self.slot, line)
-        return messages_text(self.conversion.report)
+        return pane_text(self.conversion.report)

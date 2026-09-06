@@ -287,7 +287,6 @@ def test_field_10c_10f_no_longer_shows_as_dropped():
     the drop list entirely, both in the table and in what a real conversion
     reports."""
     assert "field_10c_10f" not in dict(dos.DROPPED)
-    assert "field_10c_10f" not in dos.UNREPORTED_DROPS
     disposition = dos.field_disposition()
     assert not disposition["field_10c_10f"].startswith("dropped:")
 

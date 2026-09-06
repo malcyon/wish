@@ -19,8 +19,13 @@ disk, all sixteen containers (`docs/117-save-conversion.md`, "The portrait").
 
 So the two ports are joined by the menu: **DOS position n is C64 art id
 `heads[n - 1]`**, and the table of ids is in the player's own files on both
-sides.  This module reads it rather than carrying a copy, the way
-`goldbox/iconparts.py` reads the icon menu's option tables out of `SPELLE64`.
+sides.  This module can read it off either -- `tables_from_dos`,
+`tables_from_c64`, `tables_from_disks` -- and **also carries the twenty-six
+numbers themselves**, `POOL_OF_RADIANCE_MENU`, read off both ports once and
+typed out, so a conversion needs no disk in reach to give a character his
+own face.  `stored_tables` is the fallback; the block above it says why a
+handful of integers with their provenance is a measurement and not a copy
+of a game file.
 """
 
 from __future__ import annotations
@@ -376,3 +381,95 @@ def draws_sheet_portrait(game=None) -> bool:
     if key is None:
         key = POOL_OF_RADIANCE_KEY
     return str(key) in SHEET_PORTRAIT_TITLES
+
+
+# ---------------------------------------------------------------------------
+# The menu, stored
+# ---------------------------------------------------------------------------
+#: Pool of Radiance's creation menu: the fourteen head ids and the twelve
+#: body ids in menu order, **read out of the game's own binaries once and
+#: written down here as numbers**, so a conversion needs no disk in reach
+#: to give a character his own face.  Donald, 2026-09-06: *"Can we not just
+#: store all these art id tables ourselves?  ...  It's just a handful of
+#: numbers, right?  Just pull them from each title so you can cross
+#: reference them.  Then you don't need the disks at all."*  And, asked
+#: whether that crossed `AGENTS.md`'s line: *"We don't need to refuse game
+#: disks.  Just store the IDs we would otherwise be looking up.  They are
+#: 40 years old and they are not going to change."*  And, the same day:
+#: *"A table of 26 numbers doesn't break any rules.  It's not art, it's
+#: just two dozen numbers."*  (`.claude/rules/conversions.md`, "A small
+#: table of numbers read out of the game is a measurement".)
+#:
+#: **Why this is a measurement and not a copy of a data file.**  `AGENTS.md`
+#: bans the game's *data files* -- a map, a table, a script, a record -- as
+#: committed bytes, because a slice of a game file under a new name is the
+#: file.  What is below is not a slice of anything: it is twenty-six
+#: integers that :func:`tables_from_c64` found in `GEN` and
+#: :func:`tables_from_dos` found in `START.EXE`, by the shape of the run and
+#: by checking every value against the art beside it, and then *typed out*
+#: -- the same class of thing as the field offsets in `goldbox/layout.py`,
+#: the `$49FF` switch below, and every address cited in `docs/`.  It
+#: describes where the menu's fourteenth head lives; it does not carry the
+#: head.  No byte of `GEN`, of `START.EXE` or of any `HEAD<xx>` file is
+#: here, and nothing here would let anybody rebuild one.
+#:
+#: **Where the numbers came from, so anybody can re-derive them.**
+#: `tools/portraitmenu.py` reads both binaries and prints this block;
+#: `tools/portraitmenu.py --check` says whether the disks on the machine
+#: still agree with it.  Read 2026-09-06 off:
+#:
+#: * the C64's `POOL3.D64:GEN`, run at file offset 2877, bodies first --
+#:   the one Pool of Radiance rip on this machine, present at two paths
+#:   with the same SHA-256 (`51b6fac7...`);
+#: * DOS's `START.EXE`, run at file offset 58297, heads first -- the
+#:   *Forgotten Realms: The Archives* release, and the same bytes again in
+#:   Donald's play directory.
+#:
+#: The two ports agree byte for byte
+#: (`tests/test_portraits.py::test_the_menu_found_from_the_disks_is_the_one_dos_offers`),
+#: and `test_the_stored_menu_is_what_the_disks_carry` pins this block to
+#: what the disks say wherever the disks are present, so the two cannot
+#: drift apart in silence.  **One release of each port has been read.**  A
+#: release whose `GEN` orders the menu differently would make this table
+#: wrong for its owner; none is known, and the check above is how one would
+#: be found.
+#:
+#: **Only Pool of Radiance needs one.**  Curse of the Azure Bonds' and Secret
+#: of the Silver Blades' C64 sheets draw no portrait for any character
+#: (`SHEET_PORTRAIT_TITLES`, `#300`), neither title's `GEN` or `START.EXE`
+#: carries a fourteen-and-twelve run -- `tables_from_disks` and
+#: `tables_from_dos` both raise on both, measured 2026-09-06 on every copy
+#: on this machine -- so there is nothing to store and nothing a stored
+#: table would give a player.
+POOL_OF_RADIANCE_MENU = PortraitTables(
+    heads=(0x00, 0x08, 0x09, 0x0D, 0x10, 0x12, 0x16,
+           0x22, 0x2D, 0x33, 0x35, 0x39, 0x43, 0x44),
+    bodies=(0x01, 0x02, 0x03, 0x04, 0x07, 0x08,
+            0x12, 0x18, 0x1A, 0x21, 0x23, 0x25),
+    source="the stored Pool of Radiance creation menu (goldbox/portraits.py)",
+)
+
+#: The stored menu per game key.  A title with no entry has no sheet
+#: portrait to convert, and :func:`stored_tables` answers `None` for it.
+STORED_MENUS: dict[str, PortraitTables] = {
+    POOL_OF_RADIANCE_KEY: POOL_OF_RADIANCE_MENU,
+}
+
+
+def stored_tables(game=None) -> PortraitTables | None:
+    """The creation menu this module carries for `game`, or `None`.
+
+    `game` is a `goldbox.games.Game`, anything else carrying a `key`, or the
+    key itself, and `None` means Pool of Radiance for the same reason
+    :func:`draws_sheet_portrait` says it does.  This is what a conversion
+    falls back to when nobody handed it tables read off the player's own
+    disks: `goldbox.dos.to_neutral` asks here before it gives up on the
+    portrait, so a DOS Pool of Radiance party converts with every face its
+    own whether or not a `POOL<n>.D64` is anywhere in reach.  Reading the
+    player's disks (:func:`tables_from_disks`) is still there for anybody
+    who wants the table off their own copy.
+    """
+    key = getattr(game, "key", game)
+    if key is None:
+        key = POOL_OF_RADIANCE_KEY
+    return STORED_MENUS.get(str(key))

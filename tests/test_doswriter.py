@@ -623,25 +623,30 @@ def test_the_portrait_is_the_only_thing_the_menu_tables_change():
 def test_without_the_menu_tables_the_portrait_is_zero_and_reported():
     """The state #57 found, kept reachable and kept loud.
 
-    A conversion that cannot read the game's own tables leaves the pair zero
-    -- a sheet with no face -- and says so, rather than writing a position
-    that would draw somebody else's.
+    A writer that is given no tables leaves the pair zero -- a sheet with no
+    face -- and says so, rather than writing a position that would draw
+    somebody else's.
 
-    The line itself is `goldbox.dos.to_neutral`'s -- carried through from the
-    read side rather than composed again here -- and since
-    #244 (Every DROPPED entry's composed line carries a raw hex file offset
-    in front of the player, not only the two #235 fixed) it reads in plain
-    English rather than as the field's own identifier, so this checks
-    `DROPPED_PLAYER_TEXT` rather than the name.
+    **The read side no longer has this state.** Since 2026-09-06
+    `to_neutral` uses the stored menu (`goldbox.portraits.POOL_OF_RADIANCE_MENU`)
+    when it is given none, so the neutral record here *carries* the face --
+    asserted, because that is the change -- and it is the writer, asked to
+    turn an art id back into a menu position with no tables of its own,
+    that reports the loss in its own words.  The export direction reads its
+    tables off the DOS game directory it needs anyway for the area script,
+    which is why it has not been given the stored fallback here; that is a
+    separate decision and it is Donald's.
     """
     char = _records()[0]
-    rec, _, _, rep = dos.write(dos.to_neutral(char))
+    neutral = dos.to_neutral(char)
+    assert "portrait_head" in neutral and "portrait_body" in neutral
+    rec, _, _, rep = dos.write(neutral)
     for name in PORTRAIT_FIELDS:
         f = dos_layout.FIELDS_BY_NAME[name]
         assert rec[f.offset] == 0, name
     text = " ".join(rep.dropped)
-    assert dos.DROPPED_PLAYER_TEXT["portrait_head"] in text
-    assert dos.DROPPED_PLAYER_TEXT["portrait_body"] in text
+    assert "HEAD" in text and "BODY" in text
+    assert "creation menu" in text
 
 
 @needs_dos_saves
@@ -1790,8 +1795,9 @@ def test_nothing_measured_leaves_the_code_when_a_writer_drop_goes_silent():
     """A silenced name is still a declared drop, so `field_disposition` still
     accounts for it and the conversion still knows it happened. The failure
     worth catching is a fact being deleted rather than a line being hidden --
-    the same assertion `tests/test_dosconvert.py` makes for the reader's
-    `UNREPORTED_DROPS`.
+    the assertion `tests/test_dosconvert.py` used to make for the reader's
+    `UNREPORTED_DROPS`, until that set went on 2026-09-06 and every reader
+    drop became visible.  This writer-side set is still the export's.
     """
     declared = dict(dos.WRITE_DROPPED)
     assert dos.WRITE_UNREPORTED_DROPS <= set(declared)

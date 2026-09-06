@@ -83,6 +83,7 @@ from .portraits import (
     PortraitError,
     PortraitTables,
     draws_sheet_portrait,
+    stored_tables,
     tables_from_dos,
 )
 from .record import CharacterRecord
@@ -123,8 +124,6 @@ __all__ = [
     "NotSetOutError",
     "NOT_SET_OUT",
     "NOT_SET_OUT_UNPLACED",
-    "NO_PORTRAIT_TABLES",
-    "NoPortraitTablesError",
     "apply_clock",
     "marching_slot",
     "convert_save",
@@ -1033,30 +1032,35 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("movement_current", "roster_movement"),
 )
 
-#: DOS fields deliberately left behind, and why.  Reported, never silent
-#: unless :data:`UNREPORTED_DROPS` names them.
+#: DOS fields deliberately left behind, and why.  **Every one of these is
+#: reported, and every one reaches the player** through
+#: :data:`DROPPED_PLAYER_TEXT`.  Donald, 2026-09-06: *"do not show dropped
+#: fields if they are derived in the new game.  Show others for now.  I will
+#: refine them as we go."*  The two lists that make a field silent are
+#: :data:`DERIVED` and :data:`CONSTANTS`; nothing here is silenced by
+#: anybody's judgement of whether a player would miss it, because that
+#: judgement is his and he has said he will make it line by line.
+#:
+#: The sheet portrait used to head this list -- converted with the creation
+#: tables, dropped without -- and left it on 2026-09-06 when the tables were
+#: stored (`goldbox.portraits.POOL_OF_RADIANCE_MENU`): there is no longer a
+#: conversion that has none, so it is :data:`TRANSFORMED` now.
 DROPPED: tuple[tuple[str, str], ...] = (
-    # #57: `to_neutral` converts this when it is given the game's own
-    # creation tables, and only drops it when it is not -- which `new_save`
-    # refuses outright where the title draws a face (#131), so the drop is
-    # reachable only through `convert_save` called bare.
-    ("portrait_head", "the sheet portrait's head: a menu position, which "
-                      "needs the game's own creation tables to become the "
-                      "C64's HEADnn id. Converted across when those tables "
-                      "are available, dropped when they are not"),
-    ("portrait_body", "see portrait_head; the body half of the same pair"),
     # #130 (A converted DOS party arrives with six identical combat figures,
     # not its own): the C64 has one size byte where DOS has two fields --
     # `size` (see `TRANSFORMED`) and this one, the creature's combat
     # footprint.  It is 1 in every player record any title has ever been
-    # read carrying and `GAME.OVR:0x19F98` writes the 1 at creation, so
-    # nothing here is a loss a player would notice -- silenced below.
+    # read carrying and `GAME.OVR:0x19F98` writes the 1 at creation.  It
+    # was silenced from 2026-08-27 to 2026-09-06 by an agent's reading of
+    # "the user will not notice the difference"; Donald has taken that
+    # judgement back, so it is shown until he rules on it himself.
     ("icon_dimension", "the C64 has one size byte where DOS has two fields; "
                        "the C64's carries the other one"),
     # #297: this byte is the **target's** turning row, not the caster's
     # strength, so a player character reads 0 and there is nothing for the
     # C64's own `turn_class` at 0x0A3 to gain from it. The C64 writer sets
-    # that byte to zero for the same reason.
+    # that byte to zero for the same reason.  Shown, not silenced, on the
+    # same terms as `icon_dimension` above.
     ("turn_class", "the row of the turning matrix an undead creature "
                    "answers to. The DOS engine reads it off the creature "
                    "being turned rather than off the cleric turning it, so "
@@ -1065,44 +1069,33 @@ DROPPED: tuple[tuple[str, str], ...] = (
                    "given"),
 )
 
-#: Drops the **player** is not shown, though the conversion still knows them.
-#:
-#: Every name here is still in :data:`DROPPED`, so `field_disposition` still
-#: accounts for it and `goldbox/dos_layout.py` still carries its field note --
-#: what changes is only the list in front of somebody importing a save.
-#: `icon_dimension` is 1 in every player record any title has ever been read
-#: carrying (#130); `turn_class` is 0 in every player character in either
-#: port (#297).
-#:
-#: Donald, 2026-08-27: *"We do not need to report derived lines as being
-#: dropped. The user will not notice the difference."*
-UNREPORTED_DROPS = frozenset({"icon_dimension", "turn_class"})
-
-#: What a player reads for each name in :data:`DROPPED` that still reaches
-#: `report.dropped` -- a subject a person recognises, standing in for the
-#: field's own identifier and the file offset `to_neutral` used to put in
-#: front of it (`.claude/rules/gui-text.md`: no memory address or file
-#: offset in front of a player).  `DROPPED`'s own `(name, why)` pairs are
-#: untouched and still carry the byte-level account for `field_disposition()`
-#: and anyone reading the source; this dict is read only when composing what
-#: a player sees.  A name silenced by `UNREPORTED_DROPS` needs no entry --
-#: nothing is composed for it -- and `portrait_head`/`portrait_body` are
-#: named here for the case where no creation tables were available at all;
-#: the menu-mismatch case has its own sentence at the call site, since it
+#: What a player reads for each name in :data:`DROPPED` -- a subject a
+#: person recognises, standing in for the field's own identifier and the
+#: file offset `to_neutral` used to put in front of it
+#: (`.claude/rules/gui-text.md`: no memory address or file offset in front
+#: of a player).  `DROPPED`'s own `(name, why)` pairs are untouched and
+#: still carry the byte-level account for `field_disposition()` and anyone
+#: reading the source; this dict is read only when composing what a player
+#: sees, and **every name in `DROPPED` has an entry**, because every drop
+#: is shown (Donald, 2026-09-06: *"Show others for now"*).  The menu-
+#: mismatch portrait case has its own sentence at the call site, since it
 #: has to name the position.
 #:
+#: There used to be an `UNREPORTED_DROPS` set beside this, holding these
+#: two names on the strength of Donald's 2026-08-27 *"We do not need to
+#: report derived lines as being dropped"*; neither is on :data:`DERIVED`,
+#: and on 2026-09-06 he asked to see what is not derived, so the set went.
+#:
 #: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
-#: word here Donald's; this is the working proposal for
-#: #244 (Every DROPPED entry's composed line carries a raw hex file offset
-#: in front of the player, not only the two #235 fixed), built so it can be
-#: seen running rather than only described.
+#: word here Donald's; this is the working proposal, built so it can be
+#: seen running rather than only described, and he has said he will refine
+#: the lines as he meets them.
 DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "portrait_head": "Character portrait (head): needs the game's own "
-                     "character-creation art, which this import could not "
-                     "read",
-    "portrait_body": "Character portrait (body): needs the game's own "
-                     "character-creation art, which this import could not "
-                     "read",
+    "icon_dimension": "Combat figure footprint: DOS keeps a second size "
+                      "value the C64 has no place for",
+    "turn_class": "Turning row: the DOS record's undead turning row, which "
+                  "the C64 has no place for and every player character "
+                  "holds at zero",
 }
 
 
@@ -1110,6 +1103,18 @@ DROPPED_PLAYER_TEXT: dict[str, str] = {
 #: disposition check below can see them; the rules themselves are in
 #: `to_c64_record`.
 TRANSFORMED: tuple[tuple[str, str], ...] = (
+    # #57, and stored on 2026-09-06: the menu that turns a DOS position into
+    # the C64's art id is `goldbox.portraits.POOL_OF_RADIANCE_MENU`, so no
+    # conversion is without it.  A position the menu does not offer is
+    # reported per record at the call site in `to_neutral`.  Curse and
+    # Silver Blades draw no sheet portrait for any character (#300), have no
+    # menu to convert with, and lose nothing by not converting it.
+    ("portrait_head", "the sheet portrait's head: a one-based menu position, "
+                      "converted to the C64's HEADnn id through the stored "
+                      "creation menu. A title whose sheet draws no face has "
+                      "no menu and nothing to convert"),
+    ("portrait_body", "see portrait_head; the body half of the same pair, "
+                      "through the twelve-body table"),
     ("class_bits", "reread from the level array into the shared bit order: "
                    "DOS gives the paladin and the ranger one bit between "
                    "them and the C64 gives the ranger a bit of its own, so "
@@ -1405,16 +1410,18 @@ def to_neutral(dos: DosCharacter,
     the DOS record holds that no neutral field does; what becomes of them
     afterwards is a writer's business.
 
-    `portraits` is the creation menu's two tables, from
-    :func:`portrait_tables`.  With them the sheet portrait crosses -- the DOS
-    record's menu position becomes the art id the neutral record carries,
-    which is what the C64 stores -- and without them it is reported as a
-    drop, exactly as it was before #57.  That drop reaches no player any
-    more: :func:`new_save` refuses a whole-save conversion without the
-    tables wherever the destination draws a face (#131), so it is only a
-    caller of this function or of `convert_save` directly -- a test, a
-    measuring tool -- that sees it.
+    `portraits` is the creation menu's two tables, read off the player's own
+    files by :func:`portrait_tables` or `goldbox.portraits.tables_from_disks`
+    -- **or nothing, and then the stored menu is used**:
+    `goldbox.portraits.stored_tables` carries Pool of Radiance's twenty-six
+    ids, so the DOS record's menu position becomes the art id the C64 stores
+    whether or not a game disk is anywhere in reach (Donald, 2026-09-06:
+    *"Then you don't need the disks at all."*).  A title with no stored menu
+    is one whose sheet draws no face (#300), and its portrait pair is left
+    alone without a line.
     """
+    if portraits is None:
+        portraits = stored_tables(dos.shape.key)
     if dos.shape not in CONVERTS:
         raise WrongTitleError(
             f"{dos.shape.title} records read, but only "
@@ -1687,7 +1694,6 @@ def to_neutral(dos: DosCharacter,
     # because a byte converted costs nothing, but a title whose engine draws
     # no portrait gets no line whatever happens.
     draws_portrait = draws_sheet_portrait(dos.shape.key)
-    converted_portrait: set[str] = set()
     for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
                                ("portrait_body", "body_art", "BODY")):
         if portraits is None:
@@ -1707,27 +1713,16 @@ def to_neutral(dos: DosCharacter,
                 f"DOS {name} @{f.offset:#05x} = menu position {position}, "
                 f"which is {stem}{art:02X} in {portraits.source}",
                 f.confidence, Provenance.RESHAPED)
-        converted_portrait.add(name)
 
     # -- what the DOS record holds and no neutral field does ------------------
-    # `UNREPORTED_DROPS` is still in `DROPPED`, so `field_disposition` still
-    # accounts for every name in it; what it is kept out of is the list a
-    # person reads.  `DERIVED` and `CONSTANTS` are not in `DROPPED` at all
-    # any more (#324), so the loop below never sees `item_chain`, `heap_104`,
-    # `effect_chain`, `hands_used`, `encumbrance`, `item_count`,
-    # `strength_bonus`, `field_83_87` or `spells_castable_unattributed`, and
-    # `icon_head`/`icon_body`/`icon_colours` are `TRANSFORMED` rather than
-    # dropped (#130).
-    silent = set(UNREPORTED_DROPS)
-    if not draws_portrait:
-        # Nothing was lost: this title's sheet draws no face for any
-        # character, including one the engine made itself (#300).
-        silent |= {"portrait_head", "portrait_body"}
+    # Every name in `DROPPED` is reported, in the words a player reads.
+    # `DERIVED` and `CONSTANTS` are not in `DROPPED` at all (#324), so this
+    # never sees `item_chain`, `heap_104`, `effect_chain`, `hands_used`,
+    # `encumbrance`, `item_count`, `strength_bonus`, `field_83_87` or
+    # `spells_castable_unattributed`; `icon_head`/`icon_body`/`icon_colours`
+    # are `TRANSFORMED` (#130) and so, since the menu was stored, is the
+    # portrait pair.
     for name, _why in DROPPED:
-        if name in silent:
-            continue
-        if name in converted_portrait:
-            continue
         out.drop(DROPPED_PLAYER_TEXT[name])
     return out
 
@@ -1765,8 +1760,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     all this function is now.  `icon` is the 36-byte combat icon; DOS has no
     equivalent -- its art is a different set -- so with none given the field
     is left zero and reported.  `portraits` is the creation menu's two
-    tables, from :func:`portrait_tables`; without them the sheet portrait is
-    reported as a drop rather than converted (#57).
+    tables, from :func:`portrait_tables`; left out, :func:`to_neutral` uses
+    the stored menu, so the sheet portrait converts either way (#57).
 
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
@@ -2084,11 +2079,13 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                       "change class"),
 )
 
-#: Writer drops the **player** is not shown, the mirror of the reader's
-#: :data:`UNREPORTED_DROPS` on the way out.  The reader has had two lists
-#: since 2026-08-27 and the writer had one, so every entry in
-#: :data:`WRITE_DROPPED` reached a report -- #307 (The DOS writer's drop list
-#: has no way to silence a field the DOS engine puts back on load).
+#: Writer drops the **player** is not shown.  It was the mirror of a reader
+#: list, `UNREPORTED_DROPS`, from #307 (The DOS writer's drop list has no
+#: way to silence a field the DOS engine puts back on load) until
+#: 2026-09-06, when the reader's went: Donald asked to see every import
+#: drop that is not derived (*"Show others for now"*), and that ruling was
+#: made about the import pane.  This one is the export's and stands until
+#: he rules on it; the export dialog is still behind its own flag.
 #:
 #: **Nothing measured leaves the code.**  A name here is still in
 #: :data:`WRITE_DROPPED`, so :func:`write_field_disposition` still calls it a
@@ -2107,8 +2104,9 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #:   reads is the row belonging to the creature being turned, and eleven of
 #:   the 103 distinct DOS Pool of Radiance monster records carry a non-zero
 #:   one against 0 for every player character in either port
-#:   (`docs/178-turning-undead.md`).  The reader already silences its
-#:   counterpart, `turn_class`, in :data:`UNREPORTED_DROPS`.
+#:   (`docs/178-turning-undead.md`).  The reader's counterpart,
+#:   `turn_class`, is shown on the import side since 2026-09-06, through
+#:   :data:`DROPPED_PLAYER_TEXT`.
 #:
 #: **`spells_castable` is not here and that is not an oversight.**  #307 named
 #: it as the second entry, and this writer composes no line for it: it is
@@ -3773,22 +3771,6 @@ NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
 NOT_SET_OUT_UNPLACED = ("This save has never been played yet. Wish does not "
                         "yet support converting these saves.")
 
-#: The refusal when the destination draws a sheet portrait and the creation
-#: menu's tables could not be read off the player's disks (#131).  Before
-#: this the conversion went ahead, wrote every character with no face and
-#: reported the portrait as a dropped field -- a refusal miscast as a drop,
-#: and the one drop line a Pool of Radiance player could still meet.  The
-#: tables are in `GEN`, on a different side from `SPELLE64` and `ANIMATE00`,
-#: so a disk folder can carry the other two and not this one; Donald,
-#: 2026-09-06: *"Shouldn't we throw an error if they don't have their game
-#: disks? Then, this issue wouldn't happen at all."*
-#:
-#: **PROPOSED, not approved**: `.claude/rules/gui-text.md` makes every word
-#: a player reads Donald's, and the marker comes off when he has ruled on it.
-NO_PORTRAIT_TABLES = ("Wish could not read the character portraits off your "
-                      "{title} game disks, so this save cannot be converted. "
-                      "(NOT APPROVED)")
-
 
 class NotSetOutError(DosRecordError):
     """A save made before the party set out, of a title with no `STARTS` row.
@@ -3806,27 +3788,6 @@ class NotSetOutError(DosRecordError):
     @property
     def player_message(self) -> str:
         return NOT_SET_OUT_UNPLACED
-
-
-class NoPortraitTablesError(DosRecordError):
-    """A whole-save conversion into a title that draws a sheet portrait, with
-    no creation tables to draw it from.
-
-    Raised by :func:`new_save` before anything is read, and only where
-    `draws_sheet_portrait` says the destination would have drawn a face: a
-    Curse or Silver Blades conversion needs no tables and is never refused
-    for lacking them (#300).  `convert_save` itself still accepts
-    `portraits=None`, because the tests and the tools that measure the
-    other fields call it without any disks at all.
-    """
-
-    def __init__(self, message: str, title: str) -> None:
-        super().__init__(message)
-        self.title = title
-
-    @property
-    def player_message(self) -> str:
-        return NO_PORTRAIT_TABLES.format(title=self.title)
 
 
 def never_adventured(savgam: bytes,
@@ -4188,10 +4149,12 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     so afterwards.
 
     `portraits` is the creation menu's two tables, from
-    :func:`portrait_tables`.  With them each character's sheet portrait
-    crosses and `PORTRAIT_SWITCH` is turned on; without them, or when a
-    character's own position is not one the menu offers, the switch is left
-    off rather than turned on over a party some of whom have no art id --
+    :func:`portrait_tables` -- or `None`, and then :func:`to_neutral` uses
+    the stored menu, so a Pool of Radiance party always has one.  With it
+    each character's sheet portrait crosses and `PORTRAIT_SWITCH` is turned
+    on; when a character's own position is not one the menu offers, the
+    switch is left off rather than turned on over a party some of whom have
+    no art id --
     turning it on over a zero id sends the C64 hunting a `BODY00` that is on
     none of the eight sides, and the sheet sticks with no way off it (#57).
 
@@ -4474,23 +4437,18 @@ def new_save(folder: str | pathlib.Path, slot: str,
     `ANIMATE00`'s payload; both come off the player's own game disks, and
     there is no default for either -- a conversion that cannot read them is
     one that would have to invent bytes, and it refuses instead.  `portraits`
-    is the creation menu's two tables (#57), and it is required on the same
-    terms wherever the destination draws a sheet portrait: without it every
-    character would arrive with no face and the loss would be reported as a
-    dropped field, which is a refusal miscast as a drop (#131), so
-    :class:`NoPortraitTablesError` is raised before anything is read.  A
-    title whose sheet draws no face -- Curse and Silver Blades (#300) --
-    needs no tables and is not refused for lacking them.
+    is the creation menu's two tables (#57), and **it is the one thing here
+    that has a default**: left out, the stored menu in `goldbox/portraits.py`
+    is used, so a Pool of Radiance party arrives with every face its own
+    whether or not `GEN` was anywhere to be read.  Twenty-six integers read
+    off both ports once are a measurement rather than invented bytes, which
+    is why this argument is optional and the other two are not.  A title
+    whose sheet draws no face -- Curse and Silver Blades (#300) -- has no
+    stored menu and needs none.
 
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
     container = c64_save.container_for(game)
-    if portraits is None and draws_sheet_portrait(container.game.key):
-        raise NoPortraitTablesError(
-            f"{container.game.title} draws a sheet portrait and no creation "
-            f"tables were given: GEN could not be read off the disks, so "
-            f"every character would arrive with no face (#131)",
-            title=container.game.title)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
              else bytearray(container.game.roster_size))

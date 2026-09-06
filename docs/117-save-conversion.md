@@ -811,10 +811,15 @@ different form:
   **What the player is shown is a shorter list than that**, since 2026-08-27
   — a value the C64 derives for itself, a spell effect that was about to
   expire, and three offsets saying the DOS combat figure does not convert are
-  all lines nobody using the program can act on. `UNREPORTED_DROPS`,
-  `ICON_DROPS` and `COMBAT_ICON_DROP` name exactly which, and the three icon
-  fields become one sentence rather than disappearing. Keeping a line out of
-  the pane does not take it out of the account;
+  all lines nobody using the program can act on. **That reasoning was
+  overturned on 2026-09-06** -- Donald: *"do not show dropped fields if they
+  are derived in the new game. Show others for now. I will refine them as we
+  go."* `UNREPORTED_DROPS`, `ICON_DROPS` and `COMBAT_ICON_DROP` are all gone
+  with it: an agent deciding an entry was not worth a player's attention was
+  the judgement he took back. `DERIVED` and `CONSTANTS` are silent because
+  the destination works the field out for itself, which is a measurement
+  rather than an opinion; everything else reaches the pane. Keeping a line
+  out of the pane does not take it out of the account;
 * the finished converter should be able to say, for any offset in its output,
   *where that byte came from*. That is the test, and it is stricter than a
   round trip would have been.

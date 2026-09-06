@@ -89,18 +89,8 @@ def _built(slot: str, tmp_path):
     directory entry or a sector chain that the image cannot be reconstructed
     from.  The game reads the file.
     """
-    from goldbox.portraits import PortraitError, tables_from_disks
-
     icon, animate = _game_files()
-    # The creation menu too: a Pool of Radiance conversion without it
-    # refuses since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs
-    # the import working for all three C64 titles)`.
-    try:
-        portraits = tables_from_disks(gamedata.disk_dir())
-    except PortraitError as exc:
-        pytest.skip(f"no readable GEN on the game disks here: {exc}")
-    save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate,
-                                        portraits=portraits)
+    save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate)
     path = tmp_path / f"NEW{slot}.D64"
     path.write_bytes(bytes(dos.save_disk(bytes(save0), bytes(save1)).data))
     return D64.open(path), report

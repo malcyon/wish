@@ -883,10 +883,13 @@ class EditorBinding(QObject):
 
         The creation menu's two tables (#57) come off the same disks
         directory, through `goldbox.portraits.tables_from_disks`. Unlike the
-        icon and `ANIMATE00`, a conversion does not refuse without them: a
+        icon and `ANIMATE00`, a conversion needs no disk for them: a
         directory with no side carrying `GEN` leaves `portraits` `None`, and
-        the party converts with its own faces switched off rather than not
-        converting at all.
+        `goldbox.dos.to_neutral` falls back to the stored menu -- twenty-six
+        numbers read out of `GEN` once and committed, so every character
+        still arrives with his own face. Reading the player's own disks is
+        kept because it is the check that the stored numbers are still
+        right, not because a conversion depends on it (#131).
 
         The open party's own title -- or the default title with none open --
         says which folder in Preferences (`Settings.game_folders`,

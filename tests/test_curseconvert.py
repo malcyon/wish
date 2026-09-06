@@ -427,13 +427,19 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
     The `#131` specimen through `editor.dosimport.rehearse` showed three
     lines before this pair of fixes -- two portrait, one identity -- and
-    shows none now, the same measurement `tests/test_ssbconvert.py` takes on
-    Silver Blades."""
+    shows neither kind now, the same measurement `tests/test_ssbconvert.py`
+    takes on Silver Blades.  What it does show since 2026-09-06 is every
+    line still on `goldbox.dos.DROPPED` -- Donald: *"Show others for now"*
+    -- so this asserts the absence of the two kinds rather than an empty
+    list."""
     from editor.dosimport import GameFiles, rehearse
 
     files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
     conversion = rehearse(_dos_save(), _DOS_SLOT, files)
-    assert conversion.report.dropped == []
+    for line in conversion.report.dropped:
+        assert "portrait" not in line.lower(), line
+        assert "identity" not in line.lower(), line
+    assert set(conversion.report.dropped) <= set(dos.DROPPED_PLAYER_TEXT.values())
 
 
 def test_a_curse_save_is_written_whole():

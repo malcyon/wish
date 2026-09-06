@@ -478,11 +478,11 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
 
 
 def test_a_silver_blades_conversion_needs_no_creation_tables():
-    """`#131`: `new_save` refuses a conversion without the creation menu's
-    tables wherever the destination draws a sheet portrait, and Silver
-    Blades draws none (#300, `draws_sheet_portrait`), so `portraits=None`
-    converts here exactly as before -- the control for the Pool of Radiance
-    refusal in `tests/test_dosconvert.py`."""
+    """Silver Blades draws no sheet portrait (#300, `draws_sheet_portrait`)
+    and has no stored menu (`goldbox.portraits.stored_tables` answers
+    `None` for it), so `portraits=None` converts here with nothing said
+    about a face -- the control for the Pool of Radiance case in
+    `tests/test_dosconvert.py`, where `None` means the stored menu."""
     from editor.dosimport import GameFiles, rehearse
 
     folder = gamedata.specimen("ssb-234-party-pair")
@@ -500,13 +500,19 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
     `WISH-SPEC-ssb-234-party-pair` slot D through `editor.dosimport.rehearse`
     showed three lines before this pair of fixes -- two portrait, one
-    identity -- and shows none now."""
+    identity -- and shows neither kind now.  What it does show since
+    2026-09-06 is every line still on `goldbox.dos.DROPPED` -- Donald:
+    *"Show others for now"* -- so this asserts the absence of the two
+    kinds rather than an empty list."""
     from editor.dosimport import GameFiles, rehearse
 
     folder = gamedata.specimen("ssb-234-party-pair")
     files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
     conversion = rehearse(folder, "D", files)
-    assert conversion.report.dropped == []
+    for line in conversion.report.dropped:
+        assert "portrait" not in line.lower(), line
+        assert "identity" not in line.lower(), line
+    assert set(conversion.report.dropped) <= set(dos.DROPPED_PLAYER_TEXT.values())
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------

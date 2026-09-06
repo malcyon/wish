@@ -64,7 +64,6 @@ def files():
     from editor.dosimport import GameFiles
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
-    from goldbox.portraits import PortraitError, tables_from_disks
 
     where = disk_dir()
     if where is None:
@@ -83,15 +82,11 @@ def files():
             pass
     if icon is None or animate is None:
         pytest.skip("the game disks here carry neither SPELLE64 nor ANIMATE00")
-    # The creation menu too, since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT,
-    # which needs the import working for all three C64 titles)`: a Pool of
-    # Radiance conversion without it refuses rather than writing a party
-    # with no faces, so a fixture without it would rehearse nothing.
-    try:
-        portraits = tables_from_disks(where)
-    except PortraitError as exc:
-        pytest.skip(f"the game disks here carry no readable GEN: {exc}")
-    return GameFiles(icon=icon, animate=animate, portraits=portraits)
+    # No `portraits`: the creation menu is stored (2026-09-06), so a
+    # conversion without one read off the disks still gives every character
+    # his own face, and a fixture that skipped for want of `GEN` would skip
+    # for nothing.
+    return GameFiles(icon=icon, animate=animate)
 
 
 # --- the rehearsal, which is the whole point --------------------------------
@@ -182,61 +177,103 @@ def _dialog_showing(app, tmp_path, monkeypatch, report):
     return dialog
 
 
-def test_the_pane_shows_what_the_conversion_did_and_no_dropped_field(
+def test_the_pane_shows_what_the_conversion_did_and_what_it_did_not_convert(
         app, tmp_path, monkeypatch):
-    """The pane is a messages pane (#131). Donald, 2026-09-06: *"It
-    shouldn't be a dropped list at all anymore, right? It's a message panel
-    to inform the player."*
+    """Donald, 2026-09-06, having seen the messages-only pane `#131 (Lift
+    WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
+    three C64 titles)` shipped: *"do not show dropped fields if they are
+    derived in the new game. Show others for now. I will refine them as we
+    go."*
 
     A report carrying both -- the one approved sentence on `messages` and a
-    drop line the conversion's own accounting still keeps -- puts the
-    sentence on screen, alone, with no heading over it, and the drop line
-    nowhere. Before this the pane drew `DROPPED_HEADING` and the drop line
-    and never drew `messages` at all, so a party moved to the start of the
-    story was never told.
+    drop line from `DROPPED_PLAYER_TEXT` -- puts the sentence on screen
+    first and the drop line after it, with no `DROPPED_HEADING` over either:
+    the pane's own `Conversion Info` label is the heading.  Watched failing
+    against the night-before pane, which drew the sentence alone.
     """
     from PyQt6.QtWidgets import QDialogButtonBox
 
     from editor.dosimport import DROPPED_HEADING
     from goldbox.dos import DROPPED_PLAYER_TEXT, NOT_SET_OUT, C64SaveReport
 
+    drop = DROPPED_PLAYER_TEXT["turn_class"]
     report = C64SaveReport(save0_size=0x1C00)
     report.messages.append(NOT_SET_OUT)
-    report.dropped.append(DROPPED_PLAYER_TEXT["portrait_head"])
+    report.dropped.append(drop)
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
 
     shown = dialog.report_pane.toPlainText()
-    assert shown == NOT_SET_OUT
+    assert shown.startswith(NOT_SET_OUT)
+    assert shown.endswith(drop)
     assert DROPPED_HEADING not in shown
-    assert "portrait" not in shown.lower()
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
 
 
 def test_a_conversion_with_nothing_to_say_leaves_the_pane_empty(
         app, tmp_path, monkeypatch):
-    """No heading over nothing (#338's rule, kept for the messages pane):
-    a conversion that did nothing remarkable to the save shows an empty
-    pane, whatever its own accounting lists as not converted."""
+    """No heading over nothing (#338's rule): a conversion that did nothing
+    remarkable and dropped nothing shows an empty pane under its label --
+    and one that only dropped something shows that line alone."""
     from goldbox.dos import DROPPED_PLAYER_TEXT, C64SaveReport
 
     report = C64SaveReport(save0_size=0x1C00)
-    report.dropped.append(DROPPED_PLAYER_TEXT["portrait_body"])
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
     assert dialog.report_pane.toPlainText() == ""
 
+    report.dropped.append(DROPPED_PLAYER_TEXT["icon_dimension"])
+    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
+    assert dialog.report_pane.toPlainText() == \
+        DROPPED_PLAYER_TEXT["icon_dimension"]
 
-def test_messages_text_is_the_messages_and_nothing_else():
-    """The renderer alone: one line per message, in order, no heading, and
-    a plain `Report` -- which has no `messages` -- reads as nothing."""
-    from editor.dosimport import messages_text
+
+def test_pane_text_is_the_messages_then_the_drops():
+    """The renderer alone: the messages one to a line, a blank line, then
+    the drop lines one to a line; either half alone with no blank line; a
+    plain `Report` -- which has no `messages` -- contributes its drops."""
+    from editor.dosimport import pane_text
     from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
 
     report = C64SaveReport(save0_size=0x1C00)
     report.messages.extend([NOT_SET_OUT, "Second line."])
-    report.dropped.append("a drop line")
-    assert messages_text(report) == f"{NOT_SET_OUT}\nSecond line."
-    assert messages_text(Report()) == ""
+    assert pane_text(report) == f"{NOT_SET_OUT}\nSecond line."
+    report.dropped.extend(["A drop line", "Another"])
+    assert pane_text(report) == \
+        f"{NOT_SET_OUT}\nSecond line.\n\nA drop line\nAnother"
+    plain = Report()
+    assert pane_text(plain) == ""
+    plain.dropped.append("Only a drop")
+    assert pane_text(plain) == "Only a drop"
+
+
+def test_the_pane_is_headed_conversion_info_and_is_half_the_height_it_was(
+        app, tmp_path, monkeypatch):
+    """Donald, 2026-09-06: *"how about 'Conversion Info'. I think it should
+    be half its current size, too."*
+
+    The label is the form's, above the pane, with his words exactly; the
+    pane's height is measured in lines of its own font rather than in
+    pixels, because a pixel count is a measurement of this machine.  The
+    pane before this was 342 pixels high in the 680x480 dialog -- about
+    twenty lines at the base font -- and half of that is ten; the dialog is
+    330 high now and the pane comes out at 169, nine or ten lines.  A pane
+    that fits eleven lines or more at the base font has grown back.
+    """
+    from editor.dosimport import PANE_HEADING
+    from goldbox.dos import C64SaveReport
+
+    dialog = _dialog_showing(app, tmp_path, monkeypatch,
+                             C64SaveReport(save0_size=0x1C00))
+    dialog.show()
+    app.processEvents()
+    label = dialog.ui.label_report
+    assert label.text() == PANE_HEADING == "Conversion Info"
+    assert label.isVisibleTo(dialog)
+    assert label.y() < dialog.report_pane.y()
+    line = dialog.report_pane.fontMetrics().lineSpacing()
+    lines = dialog.report_pane.height() / line
+    assert 6 <= lines < 11, (dialog.report_pane.height(), line)
+    dialog.close()
 
 
 def test_a_conversion_that_drops_nothing_gets_no_heading():
@@ -256,50 +293,72 @@ def test_a_conversion_that_drops_nothing_gets_no_heading():
 def test_the_pane_is_filled_before_the_button_is_pressable(
         app, dos_save, files):
     """The dialog rehearses on construction, so the pane holds the
-    conversion's own messages -- and no dropped-field line, whatever the
-    accounting says -- at the moment Convert first becomes pressable."""
+    conversion's own messages and every field it did not convert, in the
+    words the report gives them, at the moment Convert first becomes
+    pressable -- and no address, file name or issue number among them."""
+    import re
+
     from PyQt6.QtWidgets import QDialogButtonBox
 
-    from editor.dosimport import DROPPED_HEADING, DosImportDialog, messages_text
+    from editor.dosimport import DROPPED_HEADING, DosImportDialog, pane_text
 
     dialog = DosImportDialog(dos_save, files)
     assert dialog.conversion is not None
     text = dialog.report_pane.toPlainText()
-    assert text == messages_text(dialog.conversion.report)
+    assert text == pane_text(dialog.conversion.report)
     assert DROPPED_HEADING not in text
     for line in dialog.conversion.report.dropped:
-        assert line not in text
+        assert line in text
+    assert not re.search(r"\$[0-9A-F]{4}\b|0x[0-9A-Fa-f]+|\.py\b|#\d", text), text
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
 
 
 @needs_dos_saves
-def test_a_pool_of_radiance_import_with_no_creation_tables_is_refused_in_the_pane(
+def test_a_pool_of_radiance_import_with_no_creation_tables_converts_with_its_own_faces(
         app, dos_save):
-    """`#131`: a disk folder that carries `SPELLE64` and `ANIMATE00` but no
-    readable `GEN` used to convert every character with no face and report
-    the portrait as a dropped field. Donald, 2026-09-06: *"Shouldn't we
-    throw an error if they don't have their game disks?"* -- so it refuses,
-    in the pane, with Convert disabled and no address, file or issue number
-    in front of the player.
+    """A disk folder that carries `SPELLE64` and `ANIMATE00` but no readable
+    `GEN` -- `GameFiles` with `portraits` `None` -- converts, and every
+    character arrives with the face his own DOS record names, out of the
+    stored menu (`goldbox.portraits.POOL_OF_RADIANCE_MENU`, 2026-09-06).
+    For one night `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
+    import working for all three C64 titles)` had this refuse in the pane
+    with Convert disabled; Donald: *"We don't need to refuse game disks.
+    Just store the IDs we would otherwise be looking up."*
 
-    `icon` and `animate` are dummy bytes: what is under test is the missing
-    third file, not the two that were found.
+    `icon` and `animate` are dummy bytes: what is under test is the third
+    file nobody read, not the two.
     """
-    import re
-
     from PyQt6.QtWidgets import QDialogButtonBox
 
     from editor.dosimport import DosImportDialog, GameFiles
+    from goldbox.portraits import stored_tables
 
+    menu = stored_tables(None)
     dialog = DosImportDialog(dos_save, GameFiles(icon=bytes(36),
                                                  animate=bytes(852)))
-    assert dialog.conversion is None
-    shown = dialog.report_pane.toPlainText()
-    assert shown == dos.NO_PORTRAIT_TABLES.format(title="Pool of Radiance")
-    assert not re.search(r"\$[0-9A-F]{4}\b|\.py\b|#\d", shown), shown
-    assert not dialog.buttons.button(
+    for slot in dos.slots_available(dos_save):
+        party = dos.read_party(dos_save, slot)
+        if all(menu.head_art(c.get("portrait_head")) is not None
+               and menu.body_art(c.get("portrait_body")) is not None
+               for c in party):
+            break
+    else:
+        pytest.skip("no DOS slot here has every character in the menu")
+    dialog.slots.setCurrentText(slot)
+    assert dialog.conversion is not None
+    assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
+    assert "portrait" not in dialog.report_pane.toPlainText().lower()
+    save0 = dialog.conversion.save0.to_bytes()
+    assert save0[dos.PORTRAIT_SWITCH - dos.SAVE0_BASE] == dos.PORTRAIT_ON
+    for index, char in enumerate(party):
+        place = dos.marching_slot(index, len(party))
+        rec_at = dos.SLOT_AREA - dos.SAVE0_BASE + place * dos.SLOT_STRIDE
+        assert save0[rec_at + 0x0FE] == \
+            menu.head_art(char.get("portrait_head")), char.name
+        assert save0[rec_at + 0x0FF] == \
+            menu.body_art(char.get("portrait_body")), char.name
 
 
 @needs_dos_saves

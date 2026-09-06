@@ -418,3 +418,82 @@ def test_no_table_is_found_when_a_side_has_gen_but_no_art_anywhere(
     with pytest.raises(portraits.PortraitError) as caught:
         portraits.tables_from_disks(tmp_path)
     assert "HEAD" in str(caught.value)
+
+
+# ---------------------------------------------------------------------------
+# The stored menu (2026-09-06).  Donald: "Just pull them from each title so
+# you can cross reference them. Then you don't need the disks at all."
+# ---------------------------------------------------------------------------
+def test_the_stored_menu_has_the_shape_of_the_menu():
+    """No disks: the block in `goldbox/portraits.py` is fourteen heads and
+    twelve bodies, each run strictly increasing the way both binaries keep
+    it, and it answers for Pool of Radiance -- by key, by anything carrying
+    the key, and for `None`, the way every other resolver in the package
+    reads `None` -- and for no other title, because no other title's sheet
+    draws a face (#300)."""
+    import types
+
+    menu = portraits.POOL_OF_RADIANCE_MENU
+    assert len(menu.heads) == portraits.HEAD_COUNT
+    assert len(menu.bodies) == portraits.BODY_COUNT
+    for run in (menu.heads, menu.bodies):
+        assert all(a < b for a, b in zip(run, run[1:])), run
+        assert all(0 <= v <= 0xFF for v in run)
+    assert portraits.stored_tables(None) is menu
+    assert portraits.stored_tables(portraits.POOL_OF_RADIANCE_KEY) is menu
+    assert portraits.stored_tables(
+        types.SimpleNamespace(key=portraits.POOL_OF_RADIANCE_KEY)) is menu
+    for other in ("curse-of-the-azure-bonds", "secret-of-the-silver-blades",
+                  "pools-of-darkness", "no-such-title"):
+        assert portraits.stored_tables(other) is None, other
+    assert set(portraits.STORED_MENUS) <= portraits.SHEET_PORTRAIT_TITLES
+
+
+@needs_disks
+def test_the_stored_menu_is_what_the_disks_carry():
+    """The stored block and the player's own `GEN` are one table, so the
+    two cannot drift apart in silence: whoever changes either has to change
+    both, and `tools/portraitmenu.py --check` is the same comparison from
+    the command line.  Skips where the disks are absent, which is right --
+    the block is what a machine with no disks has instead."""
+    read = portraits.tables_from_disks(disk_dir())
+    assert read.agrees_with(portraits.POOL_OF_RADIANCE_MENU), (
+        f"{read.source} reads {read.heads}/{read.bodies}; the stored menu "
+        f"is {portraits.POOL_OF_RADIANCE_MENU.heads}/"
+        f"{portraits.POOL_OF_RADIANCE_MENU.bodies}")
+
+
+@needs_disks
+def test_the_stored_menu_is_what_dos_offers_too():
+    """The other port, so the stored block is pinned to both binaries it
+    was read from and not only the C64's."""
+    assert portraits.tables_from_dos(_dos_game()).agrees_with(
+        portraits.POOL_OF_RADIANCE_MENU)
+
+
+def test_the_extraction_tool_prints_the_stored_block_and_agrees_with_it(
+        tmp_path):
+    """`tools/portraitmenu.py` is how the numbers are re-derived, and its
+    literal is the one the stored block is written in -- run here over the
+    stored menu itself so the tool is exercised with no disks at all, and
+    over the real disks through `--check` where they are present."""
+    import pathlib
+    import subprocess
+    import sys
+
+    from tools import portraitmenu
+
+    text = portraitmenu.literal(portraits.POOL_OF_RADIANCE_MENU)
+    assert text.startswith("heads=(0x00, 0x08")
+    assert "bodies=(0x01, 0x02" in text
+    assert text.count("0x") == portraits.HEAD_COUNT + portraits.BODY_COUNT
+
+    if disk_dir() is None:
+        return
+    root = pathlib.Path(__file__).resolve().parents[1]
+    done = subprocess.run(
+        [sys.executable, str(root / "tools" / "portraitmenu.py"), "--check",
+         "--disks", str(disk_dir())],
+        capture_output=True, text=True, timeout=120, cwd=str(root))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "agrees with the stored menu" in done.stdout

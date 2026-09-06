@@ -395,36 +395,38 @@ def test_an_item_granted_effect_reaches_a_c64_trait_slot():
 
 
 @needs_dos_saves
-def test_the_dropped_list_names_the_losses_a_player_would_notice():
-    """What the import's report pane shows, which is not everything the
-    conversion knows (#118, Donald's four corrections of 2026-08-27).
+def test_every_dropped_field_reaches_the_player_unless_the_c64_derives_it():
+    """What the import's `Conversion Info` pane shows of the drop list, which
+    since 2026-09-06 is all of it.  Donald, having seen the pane: *"do not
+    show dropped fields if they are derived in the new game. Show others
+    for now. I will refine them as we go."*
 
-    A field the C64 derives for itself does not reach the player as a drop --
-    `UNREPORTED_DROPS` for `icon_dimension` and `turn_class` here, and
-    `DERIVED`/`CONSTANTS` for the rest (#324, see
-    `test_no_dos_derived_or_constant_field_reaches_the_import_pane`).  A
-    running spell effect and the DOS combat figure are the other two kinds of
-    line that never reach the pane -- the figure because it is converted
-    rather than dropped now (#130).
+    So the only things that keep a field out of a player's sight are
+    `DERIVED` and `CONSTANTS` -- a field the C64 recomputes on load, or one
+    that holds the same value in every record anybody has read (#324) -- and
+    every name still on `DROPPED` reaches `report.dropped` in the words
+    `DROPPED_PLAYER_TEXT` gives it.  The set that silenced `icon_dimension`
+    and `turn_class` by an agent's judgement of what a player would notice,
+    `UNREPORTED_DROPS`, is gone, and this fails if it comes back: which of
+    those lines stay is his call, line by line.
 
-    **Nothing measured left the code.**  Every suppressed name is still in
-    `DROPPED`, so `field_disposition` still accounts for it and
-    `test_every_declared_field_has_a_disposition` still holds; every one
-    still has its field note in `goldbox/dos_layout.py`.  This asserts both
-    halves, because the failure worth catching is a fact being deleted rather
-    than a line being hidden.
+    **Nothing measured left the code.**  Every name is still in `DROPPED`,
+    so `field_disposition` still accounts for it and
+    `test_every_declared_field_has_a_disposition` still holds.
     """
-    quiet = dos.UNREPORTED_DROPS
-    declared = dict(dos.DROPPED)
-    assert quiet <= set(declared), "a suppressed drop must still be declared"
-    disposition = dos.field_disposition()
-    for name in quiet:
-        assert disposition[name].startswith("dropped:"), name
+    assert not hasattr(dos, "UNREPORTED_DROPS")
+    assert set(dict(dos.DROPPED)) == set(dos.DROPPED_PLAYER_TEXT)
+    silent = ({name for name, *_ in dos.DERIVED}
+              | {name for name, _ in dos.CONSTANTS})
+    assert silent.isdisjoint(dict(dos.DROPPED))
 
     seen = 0
     for char in _records():
         _rec, report = dos.to_c64_record(char)
-        for name in quiet:
+        for name, _why in dos.DROPPED:
+            assert dos.DROPPED_PLAYER_TEXT[name] in report.dropped, \
+                (char.name, name)
+        for name in silent:
             assert not [d for d in report.dropped if name in d], \
                 (char.name, name)
         seen += 1
@@ -484,17 +486,33 @@ def test_no_composed_dropped_line_carries_developer_detail():
     assert seen >= 6, "needs a party to check against"
 
 
-def test_every_visible_dropped_name_has_player_text():
-    """Every name in `DROPPED` that reaches a player through the composition
-    at `goldbox/dos.py` has a plain-English entry in `DROPPED_PLAYER_TEXT` --
-    the dict `to_neutral` reads instead of the field's own identifier and
-    file offset.  A name added to `DROPPED` with none would raise a
-    `KeyError` out of `to_neutral` instead of failing here, where the cause
-    is obvious.
+def test_every_dropped_name_has_player_text():
+    """Every name in `DROPPED` has a plain-English entry in
+    `DROPPED_PLAYER_TEXT` -- the dict `to_neutral` reads instead of the
+    field's own identifier and file offset -- because every drop reaches
+    the player (2026-09-06).  A name added to `DROPPED` with none would
+    raise a `KeyError` out of `to_neutral` instead of failing here, where
+    the cause is obvious; an entry with no name behind it is a sentence
+    nobody can ever read.
     """
-    visible = {name for name, _why in dos.DROPPED
-               if name not in dos.UNREPORTED_DROPS}
-    assert visible <= set(dos.DROPPED_PLAYER_TEXT)
+    assert set(dict(dos.DROPPED)) == set(dos.DROPPED_PLAYER_TEXT)
+    for text in dos.DROPPED_PLAYER_TEXT.values():
+        assert text[:1].isupper(), text
+
+
+def test_the_portrait_is_transformed_and_not_dropped_in_any_title():
+    """The menu is stored (`goldbox.portraits.POOL_OF_RADIANCE_MENU`), so
+    there is no longer a Pool of Radiance conversion without it and the
+    pair's disposition is a rule rather than a loss.  Curse and Silver
+    Blades draw no sheet portrait (#300), and theirs says so in the same
+    row rather than calling a face nobody draws a drop."""
+    for title in (dos.POOL_OF_RADIANCE, dos.CURSE_OF_THE_AZURE_BONDS):
+        disposition = dos.field_disposition(title)
+        for name in ("portrait_head", "portrait_body"):
+            assert not disposition[name].startswith("dropped:"), \
+                (title, name, disposition[name])
+    assert "portrait_head" not in dict(dos.DROPPED)
+    assert "portrait_head" in dict(dos.TRANSFORMED)
 
 
 def test_every_derived_field_carries_the_run_that_demonstrated_it():
@@ -514,13 +532,13 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
     `editor.dosimport.rehearse` -- the same call `File > Import` makes --
     shows no line for item bookkeeping, heap state, the running-effects
     link, which hand holds a weapon or the five constant bytes at
-    `field_83_87`.  Measured empty outright: this specimen's party converts
-    with nothing left on the pane at all.
+    `field_83_87`.  What is left on the pane is exactly the lines still on
+    `DROPPED`, in their player text -- shown since 2026-09-06 (Donald:
+    *"Show others for now"*) -- and nothing else.
     """
     from editor.dosimport import GameFiles, rehearse
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
-    from goldbox.portraits import PortraitError, tables_from_disks
 
     where = gamedata.disk_dir()
     if where is None:
@@ -538,22 +556,16 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
             pass
     if icon is None or animate is None:
         pytest.skip("no POOL disk here carries SPELLE64/SPELLN64 or ANIMATE00")
-    try:
-        portraits = tables_from_disks(where)
-    except PortraitError as exc:
-        # A Pool of Radiance conversion without the tables refuses (#131),
-        # so there would be no pane to measure.
-        pytest.skip(f"no readable GEN on the disks here: {exc}")
     folder = gamedata.specimen("por-party-l1-intown")
-    conversion = rehearse(folder, "E", GameFiles(icon=icon, animate=animate,
-                                                 portraits=portraits))
+    conversion = rehearse(folder, "E", GameFiles(icon=icon, animate=animate))
     keywords = ("item list", "internal game state", "running-effects list",
                "which hand is holding", "five bytes that make no difference")
     for line in conversion.report.dropped:
         lowered = line.lower()
         for keyword in keywords:
             assert keyword not in lowered, line
-    assert conversion.report.dropped == [], conversion.report.dropped
+    assert sorted(conversion.report.dropped) == \
+        sorted(dos.DROPPED_PLAYER_TEXT.values()), conversion.report.dropped
 
 
 def test_no_player_text_says_something_was_not_carried():
@@ -1469,8 +1481,7 @@ def test_a_save_built_from_nothing_accounts_for_every_byte():
     slots = dos.slots_available(_save_dir())
     assert slots, "the DOS save folder has to hold at least one slot"
     for slot in slots:
-        save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate,
-                                            portraits=_portraits_or_skip())
+        save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate)
         assert report.unwritten == [], slot
         assert report.unaccounted == [], slot
         assert len(save0) + len(save1) == report.total == 9216
@@ -1488,8 +1499,7 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     """
     icon, animate = _game_files()
     party = dos.read_party(_save_dir(), "A")
-    save0, _save1, _report = dos.new_save(_save_dir(), "A", icon, animate,
-                                          portraits=_portraits_or_skip())
+    save0, _save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
     for place in range(savegame.SLOT_COUNT):
         at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
         got = bytes(save0[at:at + dos.ICON_SIZE])
@@ -1535,8 +1545,7 @@ def test_a_converted_party_keeps_its_own_combat_figures():
         pytest.skip("needs a DOS party whose combat figures are not all "
                     "the same")
     party = dos.read_party(_save_dir(), slot)
-    save0, _save1, _report = dos.new_save(_save_dir(), slot, parts, animate,
-                                          portraits=_portraits_or_skip())
+    save0, _save1, _report = dos.new_save(_save_dir(), slot, parts, animate)
     icons = {}
     for index, char in enumerate(party):
         place = dos.marching_slot(index, len(party))
@@ -1557,20 +1566,6 @@ def test_a_converted_party_keeps_its_own_combat_figures():
 # eight sides, and the sheet sticks with no way off it.  So the two tests
 # below are the two ways this can go wrong, not one: the switch has to come
 # on when it is safe and stay off when it is not.
-
-def _portraits_or_skip():
-    """The creation menu off the player's own C64 game disks, or skip.
-
-    A whole-save Pool of Radiance conversion refuses without it since `#131
-    (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for
-    all three C64 titles)`, so a `new_save` test that is about something
-    else needs it the way it needs the icon and `ANIMATE00`.
-    """
-    tables = _portrait_tables_from_disks()
-    if tables is None:
-        pytest.skip("needs a readable GEN on the game disks; set POR_DISKS")
-    return tables
-
 
 def _portrait_tables_from_disks():
     """The creation menu off the player's own C64 game disks, or `None`.
@@ -1726,8 +1721,7 @@ def test_animate00_is_written_where_the_cache_says_it_is():
     """
     icon, animate = _game_files()
     assert len(animate) == dos.ANIMATE_SIZE
-    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate,
-                                         portraits=_portraits_or_skip())
+    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
     at = dos.ANIMATE_AT - dos.SAVE1_BASE
     assert bytes(save1[at:at + len(animate)]) == animate
     end = at + len(animate)
@@ -1776,13 +1770,9 @@ def test_a_wrong_sized_animate_is_refused_rather_than_written():
     for, so nothing else would notice.
     """
     icon, animate = _game_files()
-    portraits = _portraits_or_skip()
     for wrong in (animate[:-1], animate + b"\x00"):
-        with pytest.raises(dos.DosRecordError) as raised:
-            dos.new_save(_save_dir(), "A", icon, wrong, portraits=portraits)
-        # The refusal has to be the payload's, not `#131`'s portrait one,
-        # which is also a `DosRecordError` and fires first.
-        assert not isinstance(raised.value, dos.NoPortraitTablesError)
+        with pytest.raises(dos.DosRecordError):
+            dos.new_save(_save_dir(), "A", icon, wrong)
 
 
 @needs_dos_saves
@@ -1793,8 +1783,7 @@ def test_the_built_disk_is_the_two_files_a_save_disk_needs():
     from goldbox.savegame import load_save
 
     icon, animate = _game_files()
-    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate,
-                                         portraits=_portraits_or_skip())
+    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
     disk = dos.save_disk(bytes(save0), bytes(save1))
     assert [bytes(e.name) for e in disk.directory()] == \
         [b"SAVEDGAME1", b"SAVEDGAME0"]
@@ -1842,8 +1831,7 @@ def test_an_outdoor_dos_save_builds_a_whole_c64_save(tmp_path):
     """
     icon, animate = _game_files()
     folder = _outdoor_folder(tmp_path)
-    save0, save1, report = dos.new_save(folder, "A", icon, animate,
-                                        portraits=_portraits_or_skip())
+    save0, save1, report = dos.new_save(folder, "A", icon, animate)
     assert report.unwritten == []
     assert report.unaccounted == []
     assert len(save0) + len(save1) == report.total == 9216
@@ -1867,8 +1855,7 @@ def test_an_indoor_dos_save_still_carries_its_own_dungeon_square():
     """
     icon, animate = _game_files()
     slot = dos.slots_available(_save_dir())[0]
-    save0, _save1, _report = dos.new_save(_save_dir(), slot, icon, animate,
-                                          portraits=_portraits_or_skip())
+    save0, _save1, _report = dos.new_save(_save_dir(), slot, icon, animate)
     at = dos.DUNGEON_SQUARE[0] - dos.SAVE0_BASE
     want = sg.position(_savgam(slot))
     assert not sg.outdoors(_savgam(slot)), \
@@ -2024,29 +2011,66 @@ def test_a_party_standing_in_new_phlan_is_left_exactly_where_it_is():
     assert "16:58" in note
 
 
-def test_a_whole_save_conversion_with_no_creation_tables_is_refused_before_reading(
-        tmp_path):
-    """`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
-    working for all three C64 titles)`: Pool of Radiance draws a sheet
-    portrait, so `new_save` with `portraits=None` used to write every
-    character with no face and report the portrait as a dropped field --
-    one refusal miscast as a drop.  It refuses now, before a single file is
-    read: the folder here is empty, and it is the refusal and not a missing
-    file that comes back.  The sentence a player reads names the title and
-    carries no address, file name or issue number; the exception text keeps
-    the issue number for the log.
-    """
-    import re
+@needs_dos_saves
+def test_a_conversion_with_no_disks_at_all_gives_every_character_his_own_face(
+        monkeypatch):
+    """The whole point of storing the menu.  Donald, 2026-09-06: *"Just pull
+    them from each title so you can cross reference them. Then you don't
+    need the disks at all."*
 
-    with pytest.raises(dos.NoPortraitTablesError) as raised:
-        dos.new_save(tmp_path, "A", bytes(36), bytes(852))
-    assert isinstance(raised.value, dos.DosRecordError)
-    assert "(#131)" in str(raised.value)
-    shown = raised.value.player_message
-    assert shown == dos.NO_PORTRAIT_TABLES.format(title="Pool of Radiance")
-    assert "Pool of Radiance" in shown
-    assert not re.search(r"\$[0-9A-F]{4}\b|\.py\b|#\d", shown), shown
-    assert shown[:1].isupper()
+    No `POOL<n>.D64`, no `GEN`, no `START.EXE`: every reader that could
+    fetch the creation menu off a disk is replaced with one that fails the
+    test if it is so much as called, the icon and `ANIMATE00` are dummy
+    bytes, and `new_save` is given no `portraits` at all.  Every character
+    still arrives with the `HEAD<xx>`/`BODY<xx>` id his own DOS menu
+    position names, the sheet-portrait switch comes out on, and the report
+    carries no portrait line.
+
+    `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import
+    working for all three C64 titles)` had this refuse for one night --
+    `NoPortraitTablesError`, a sentence Donald never approved -- and the
+    refusal, the sentence and the exception are all gone.  Watched failing
+    with the fallback in `to_neutral` taken out: the switch comes out
+    `PORTRAIT_OFF` and every id reads zero.
+    """
+    from goldbox import portraits
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("a game file was read for the creation menu")
+
+    for name in ("tables_from_disks", "tables_from_c64", "tables_from_dos"):
+        monkeypatch.setattr(portraits, name, never)
+    monkeypatch.setattr(dos, "tables_from_dos", never)
+    assert not hasattr(dos, "NoPortraitTablesError")
+    assert not hasattr(dos, "NO_PORTRAIT_TABLES")
+
+    menu = portraits.stored_tables(None)
+    where = _save_dir()
+    slot = party = None
+    for candidate in dos.slots_available(where):
+        candidate_party = dos.read_party(where, candidate)
+        if all(menu.head_art(c.get("portrait_head")) is not None
+               and menu.body_art(c.get("portrait_body")) is not None
+               for c in candidate_party):
+            slot, party = candidate, candidate_party
+            break
+    if slot is None:
+        pytest.skip("no DOS slot here has every character in the menu")
+
+    save0, _save1, report = dos.new_save(where, slot, bytes(36), bytes(852))
+    assert save0[dos.PORTRAIT_SWITCH - dos.SAVE0_BASE] == dos.PORTRAIT_ON
+    seen = 0
+    for index, char in enumerate(party):
+        place = dos.marching_slot(index, len(party))
+        rec_at = dos.SLOT_AREA - dos.SAVE0_BASE + place * dos.SLOT_STRIDE
+        assert save0[rec_at + 0x0FE] == \
+            menu.head_art(char.get("portrait_head")), char.name
+        assert save0[rec_at + 0x0FF] == \
+            menu.body_art(char.get("portrait_body")), char.name
+        seen += 1
+    assert seen == len(party) >= 1
+    assert not [d for d in report.dropped if "portrait" in d.lower()], \
+        report.dropped
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-party-l1-intown"),
