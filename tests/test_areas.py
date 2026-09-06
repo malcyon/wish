@@ -758,6 +758,10 @@ def test_every_start_names_a_row_of_its_own_titles_table():
         # The conversion has to name a map and a disk side, so a start whose
         # row loads no map is one it cannot write.
         assert row.geos, f"{title} starts in {row.ecl}, which loads no map"
+        # And exactly one: `goldbox.dos.apply_file_cache` writes `row.geo`
+        # for a party that has not set out, since the save's own `$49C5` is
+        # the initialiser's 0 there, and `geo` is None for two maps.
+        assert row.geo is not None, f"{title} starts in {row.ecl}: {row.geos}"
         assert start.confidence is areas.Confidence.CONFIRMED
 
 

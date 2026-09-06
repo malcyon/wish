@@ -29,8 +29,15 @@ unavailable still has the other:
   `--by buffer` uses.  Secret of the Silver Blades' 5469-byte container has no
   script buffer (`script_bytes` is 0), so this test cannot be taken there.
 * **`$4FE1`**, which is 0 in every never-adventured container and in no
-  other, on all three titles -- `--by word`.  Nobody has read what writes it,
-  so this is a census result and not a reading of the engine.
+  other, on all three titles -- `--by word`.  Curse's `GAME.OVR:0x832F`
+  stores `$FF` into it (`goldbox.dos.LATER_BEGUN_WORD`); what Pool of
+  Radiance's 255, 16 and 8 mean there is unread, so for that title this is
+  a census result and not a reading of the engine.
+
+`--by rule` is what the import itself applies -- `goldbox.dos.never_adventured`,
+the buffer where the shape has one and the word where it does not -- so a
+sweep can say whether the rule and either reading ever part company.  They
+agreed on all 107 containers where both could be taken on 2026-09-06.
 
 Reading only.  Nothing here writes a saved game or touches the player's disks.
 """
@@ -45,7 +52,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import areas  # noqa: E402
+from goldbox import areas, dos  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools import dossavcensus  # noqa: E402
 
@@ -95,6 +102,8 @@ def never_adventured(save: bytes, shape: sg.DosSaveShape,
     `None` where the chosen test cannot be taken -- Silver Blades has no
     script buffer -- so a caller cannot mistake "cannot tell" for "no".
     """
+    if by == "rule":
+        return dos.never_adventured(save, shape)
     if by == "word":
         return sg.word(save, NEVER_ADVENTURED_WORD, shape) == 0
     span = shape.script_buffer
@@ -161,9 +170,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("extra", nargs="*",
                     help="Extra directories to sweep, replacing the defaults")
-    ap.add_argument("--by", choices=("buffer", "word"), default="buffer",
+    ap.add_argument("--by", choices=("buffer", "word", "rule"),
+                    default="buffer",
                     help="Which test names a never-adventured save: the "
-                         "staged script (default) or $4FE1")
+                         "staged script (default), $4FE1, or the rule the "
+                         "import applies (goldbox.dos.never_adventured)")
     ap.add_argument("--title", help="One title's key, e.g. "
                                     "curse-of-the-azure-bonds")
     ap.add_argument("--list", action="store_true",

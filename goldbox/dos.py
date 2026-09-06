@@ -119,6 +119,9 @@ __all__ = [
     "apply_position",
     "apply_quest_flags",
     "apply_file_cache",
+    "never_adventured",
+    "NotSetOutError",
+    "NOT_SET_OUT",
     "apply_clock",
     "marching_slot",
     "convert_save",
@@ -3404,7 +3407,25 @@ def apply_position(save0: bytearray, savgam: bytes,
 
     Returns the `(address, what)` notes for the report, because which pair
     was written is exactly what its reader wants to know.
+
+    **A party that has not set out lands on its title's start square**
+    (`areas.STARTS`), not on the square the save holds: that square is the
+    initialiser's, and the engine's own answer one keypress later differs
+    from it -- Curse's save holds `7,13` facing north and `BEGIN
+    ADVENTURING` leaves the party at `7,13` facing east (#301).  Pool of
+    Radiance's two readings agree, `15,1` facing west, so nothing moves
+    there.
     """
+    shape = dos_savegame.save_shape_for(shape or len(savgam))
+    if never_adventured(savgam, shape):
+        start, _ = _start_of_the_story(shape.title)
+        save0[PARTY_X - SAVE0_BASE] = start.arrival.x
+        save0[PARTY_Y - SAVE0_BASE] = start.arrival.y
+        save0[PARTY_FACING - SAVE0_BASE] = start.arrival.facing or 0
+        why = ("the start of the story's own square, since the DOS party "
+               "had not set out (#301)")
+        return ((PARTY_X, f"party x, {why}"), (PARTY_Y, f"party y, {why}"),
+                (PARTY_FACING, f"facing, {why}"))
     if dos_savegame.outdoors(savgam):
         x, y = dos_savegame.travel_square(savgam)
         save0[dos_savegame.TRAVEL_X - SAVE0_BASE] = x
@@ -3727,6 +3748,131 @@ NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of "
                "{title}, so there is no map file and no disk to name")
 UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 
+#: The one sentence a player reads when a save made before the party set out
+#: is converted to the start of the story.  Donald's wording, approved
+#: 2026-09-05 on `#301 (A DOS Curse save standing in area 0 is refused by
+#: the import, because no row of the area table names area 0)`, chosen over
+#: saying nothing so that a player who expected to be somewhere else is told
+#: why.  `C64SaveReport.messages` carries it.
+NOT_SET_OUT = ("Your party had not set out yet, so it starts at the "
+               "beginning of the story.")
+
+#: The refusal for a never-adventured save of a title whose start nobody has
+#: measured -- Secret of the Silver Blades today, `areas.STARTS`.  **PROPOSED,
+#: not approved**: `.claude/rules/gui-text.md` makes every word a player
+#: reads Donald's, and the marker comes off when he has ruled on it.
+NOT_SET_OUT_UNPLACED = ("This save was made before the party set out, and "
+                        "Wish does not know yet where {title} begins. "
+                        "(NOT APPROVED)")
+
+
+class NotSetOutError(DosRecordError):
+    """A save made before the party set out, of a title with no `STARTS` row.
+
+    Raised rather than guessed: a `Start` invented for Silver Blades would
+    read as a row, and a save converted to the wrong first area is a party
+    the game places somewhere the story never sent it.  The experiment that
+    settles the title is on `goldbox.areas.STARTS`.
+    """
+
+    def __init__(self, message: str, title: str) -> None:
+        super().__init__(message)
+        self.title = title
+
+    @property
+    def player_message(self) -> str:
+        return NOT_SET_OUT_UNPLACED.format(title=self.title)
+
+
+def never_adventured(savgam: bytes,
+                     shape: "dos_savegame.DosSaveShape | None" = None) -> bool:
+    """Was this save made before the party pressed `BEGIN ADVENTURING`?
+
+    **The area word is not the test.**  It is 0 in such a save on all three
+    titles, and Pool of Radiance's area 0 is New Phlan -- a real place with
+    a real script, which thirteen containers on this machine stand in with
+    the clock running.  A rule keyed on the word would move every one of
+    them to the arrival square and reset its clock
+    (`#326 (A Pool of Radiance save made before the party began
+    adventuring is refused, because the initialiser left $49E6 at 0 and New
+    Phlan is indoors)`).
+
+    What separates the two states is the container itself, two ways that
+    agree on all 107 of 114 distinct containers where both can be taken
+    (`tools/neveradventured.py`, `docs/185-a-party-that-has-not-set-out.md`):
+
+    * **the staged area script** -- bytes 5121-12800 of a Pool of Radiance or
+      Curse container.  A party in the world always has its area's script
+      staged there, so an all-zero buffer is a party that has never had an
+      area: 13 of 13 never-adventured containers, against 1954-7222
+      non-zero bytes in each of the 101 others.  This is the reading with a
+      mechanism behind it and is the one used wherever the shape has a
+      buffer;
+    * **`$4FE1`** (`LATER_BEGUN_WORD`), 0 in 13 of 13 and never 0 in the
+      101 -- 255, 16 or 8.  Curse's `GAME.OVR:0x832F` stores `$FF` into it
+      and three sites compare against `$FF`; Pool of Radiance's meaning for
+      it is unread, so the reading is PROBABLE there.  It is what Silver
+      Blades gets, whose 5469-byte container stages no script at all.
+
+    `shape` defaults to whatever the buffer's own length names.
+    """
+    shape = dos_savegame.save_shape_for(shape or len(savgam))
+    span = shape.script_buffer
+    if span is not None:
+        return not any(savgam[span[0]:span[1]])
+    return dos_savegame.word(savgam, LATER_BEGUN_WORD, shape) == 0
+
+
+def _start_of_the_story(title: str) -> "tuple[areas.Start, areas.Area]":
+    """Where a party of this title that has not set out is converted to.
+
+    Donald's decision, 2026-09-05 on `#301 (A DOS Curse save standing in
+    area 0 is refused by the import, because no row of the area table names
+    area 0)`: such a party is converted to the start of the first area, which
+    is what the DOS engine itself does with the same save on
+    `BEGIN ADVENTURING` -- and the arriving script runs its own entry on the
+    C64 exactly as it does on DOS, so the player gets the awakening rather
+    than skipping it.  Converting the word through unchanged is measured to
+    produce a save the player cannot start: the C64 loader hunts for `GEO00`
+    for ever.
+
+    A title with no `areas.STARTS` row is refused rather than guessed.
+    """
+    start = areas.start_of(title)
+    row = areas.start_area(title)
+    if start is None or row is None:
+        raise NotSetOutError(
+            f"the DOS party has not set out -- the container holds the "
+            f"initialiser's world state and no staged script -- and "
+            f"goldbox/areas.py has no STARTS row for {title}, so there is "
+            f"nowhere to place it; the settling experiment is on "
+            f"areas.STARTS (#301)", title)
+    if row.geo is None:
+        raise DosRecordError(
+            f"{title} starts in {row.ecl}, which loads "
+            f"{' and '.join(row.geos) or 'no map'} in goldbox/areas.py, so "
+            f"there is no one map to name for a party that has not set out")
+    return start, row
+
+
+def _where_the_party_is(savgam: bytes, title: str,
+                        shape: "dos_savegame.DosSaveShape | None" = None
+                        ) -> "tuple[areas.Area, bool]":
+    """The area row a conversion writes, and whether the party had set out.
+
+    A party that has not set out is placed at `_start_of_the_story`; one that
+    has is in the area its own `$49F2` names, and a save naming an area this
+    title has no row for is refused -- `NOT_AN_AREA`, the one refusal the
+    save cannot answer for itself.
+    """
+    if never_adventured(savgam, shape):
+        return _start_of_the_story(title)[1], True
+    there = dos_savegame.current_area(savgam)
+    where = areas.area_in(there, title)
+    if where is None:
+        raise DosRecordError(NOT_AN_AREA.format(area=there, title=title))
+    return where, False
+
 
 def _sqrdata_number(name: str) -> int:
     """`SQRDATA05` -> 5.  Hex digits, like `geo_number`'s."""
@@ -3815,6 +3961,13 @@ def apply_file_cache(save0: bytearray, savgam: bytes,
     through `$49C5` alone converted to a party standing in New Phlan.  One
     refusal is left, for an area this project has no row for at all.
 
+    **A save made before the party set out is placed at the start of the
+    story** (#301, #326), read off the container by :func:`never_adventured`
+    and never off the area word: both words are the initialiser's 0 there,
+    `$49E6` is whatever that title's initialiser left, and the row comes
+    from `areas.STARTS` -- New Phlan for Pool of Radiance, area 1 for Curse,
+    and a refusal for Silver Blades until its first area is measured.
+
     **It applies to a template standing in the area too** (#121).  That case
     used to return early and keep the template's own cache, on the reasoning
     that the game wrote it and it names more files than a converted save
@@ -3827,12 +3980,14 @@ def apply_file_cache(save0: bytearray, savgam: bytes,
     container = c64_save.container_for(container)
     at, slots = container.cache
     on = FILE_CACHE_RELOAD if container.cache_bit7 else 0
-    there = dos_savegame.current_area(savgam)
-    where = areas.area_in(there, container.game.title)
-    if where is None:
-        raise DosRecordError(NOT_AN_AREA.format(area=there,
-                                                title=container.game.title))
-    savgam_outdoors = dos_savegame.outdoors(savgam)
+    shape = dos_savegame.save_shape_for(container.game.key)
+    where, fresh = _where_the_party_is(savgam, container.game.title, shape)
+    there = where.id
+    # A never-adventured save's `$49E6` is the initialiser's value and not a
+    # reading -- 0 in Pool of Radiance's seven such containers, whose start
+    # is indoors, and 1 in Curse's and Silver Blades' -- so it is written
+    # from the start row below rather than compared against it (#326).
+    savgam_outdoors = where.outdoors if fresh else dos_savegame.outdoors(savgam)
     if savgam_outdoors != where.outdoors:
         raise DosRecordError(
             f"the save's own $49E6 says "
@@ -3855,13 +4010,19 @@ def apply_file_cache(save0: bytearray, savgam: bytes,
                 f"{where.sqrdata}, slot 8 = {where.ecl} and slot 11 = "
                 f"ANIMATE00; outdoors no GEO loads at all, and $49E6 = 0 is "
                 f"what boots into travel mode")
-    geo = _resident_geo(savgam, where, container.game.title)
+    # A never-adventured save's `$49C5` is the initialiser's 0 as well, and
+    # 0 is `GEO00` -- New Phlan's map in Pool of Radiance and a file on none
+    # of Curse's six sides -- so the start row's own map is what goes in.
+    geo = (areas.geo_number(where.geo) if fresh
+           else _resident_geo(savgam, where, container.game.title))
     save0[at + CACHE_GEO] = geo | on
     save0[container.current_geo] = geo
     save0[container.indoors] = 1
     return (f"loaded-files cache: $FF in all twenty-five, then slot 2 = "
-            f"GEO{geo:02X}, the save's own $49C5, slot 8 = {where.ecl} and "
-            f"slot 11 = ANIMATE00"
+            f"GEO{geo:02X}, "
+            + ("the start row's own map, since the DOS party had not set "
+               "out (#301)" if fresh else "the save's own $49C5")
+            + f", slot 8 = {where.ecl} and slot 11 = ANIMATE00"
             + ("," if container.cache_bit7 else ";")
             + (" each with bit 7 set, which this title's loader does not set "
                "for itself; " if container.cache_bit7 else " ")
@@ -3932,8 +4093,15 @@ class C64SaveReport(Report):
     #: that is what makes "no template" checkable rather than asserted.
     unwritten: list[int] = dataclasses.field(default_factory=list)
 
+    #: Sentences a player reads about what the conversion did to their own
+    #: save -- the messages pane's lines, `.claude/rules/conversions.md`.
+    #: Not a warning (those are for the log) and not a drop (nothing was
+    #: lost).  `NOT_SET_OUT` is the first and, so far, the only one.
+    messages: list[str] = dataclasses.field(default_factory=list)
+
     def summary_notes(self) -> list[str]:
         lines = super().summary_notes()
+        lines.extend(f"  {m}" for m in self.messages)
         if self.total > self.save0_size:
             lines.append(f"  SAVEDGAME0 {self.save0_size} bytes, SAVEDGAME1 "
                          f"{self.total - self.save0_size}")
@@ -4167,8 +4335,11 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                     "per-script scratch: zeroed, as DUNGEON $202A does on "
                     "every area change")
     at, slots = container.cache
-    outdoors = dos_savegame.outdoors(savgam)
+    where, fresh = _where_the_party_is(savgam, container.game.title, shape)
+    outdoors = where.outdoors
     report.note(at, slots, apply_file_cache(save0, savgam, container))
+    origin = ("the start of the story, since the DOS party had not set out "
+              "(#301)" if fresh else "the area the DOS party is in")
     for at, what in (
             (container.disk_hint, "the disk side the loader will ask for"),
             (container.current_geo, "the SQRDATA number LOADFILES reloads" if
@@ -4176,7 +4347,9 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             (container.current_script, "the script id"),
             (container.indoors, "outdoors -- 0 boots into travel mode" if
              outdoors else "indoors")):
-        report.note(at, 1, f"{what}, from the area the DOS party is in")
+        report.note(at, 1, f"{what}, from {origin}")
+    if fresh:
+        report.messages.append(NOT_SET_OUT)
     if container.picture_buffer is not None:
         at, size = container.picture_buffer
         save0[at:at + size] = bytes(size)

@@ -67,7 +67,9 @@ def test_the_spell_id_space_is_shared():
     assert spells.LAST_SPELLBOOK_SPELL == 55
 
 
-def _plain_row_character(race: int, constitution: int = 13) -> neutral.NeutralCharacter:
+def _plain_row_character(race: int, constitution: int = 13,
+                         game: str = "pool-of-radiance"
+                         ) -> neutral.NeutralCharacter:
     """A DOS-read neutral fighter 1, holding the plain class row DOS stores.
 
     `(14, 15, 16, 17, 17)` is the level-1 fighter row `test_levels.py`'s own
@@ -76,7 +78,7 @@ def _plain_row_character(race: int, constitution: int = 13) -> neutral.NeutralCh
     constitution bonus, since DOS applies that bonus on the roll rather than
     in the stored bytes.
     """
-    char = neutral.NeutralCharacter("DOS", game="pool-of-radiance")
+    char = neutral.NeutralCharacter("DOS", game=game)
     char.set("race", race, "test fixture")
     char.set("constitution", constitution, "test fixture")
     char.set("levels", {"fighter": 1}, "test fixture")
@@ -1004,6 +1006,11 @@ def _mismatched_savgam(indoors_word: int, area: int, script: int) -> bytes:
     sg.put_word(savgam, sg.INDOORS, indoors_word)
     sg.put_word(savgam, sg.AREA, area)
     sg.put_word(savgam, sg.SCRIPT, script)
+    # A party in the world, not one that has never set out: a container
+    # built from nothing is all zero, which is exactly the never-adventured
+    # signature `dos.never_adventured` reads (#301, #326), and such a save
+    # is converted to the start rather than refused.  Stage a script.
+    _stage_a_script(savgam)
     return bytes(savgam)
 
 
@@ -1842,25 +1849,190 @@ def test_an_indoor_dos_save_still_carries_its_own_dungeon_square():
     assert tuple(save0[at:at + 3]) == want
 
 
-def test_an_unmeasured_titles_saves_are_carried_rather_than_computed():
-    """A guessed number is worse than the one the player had.
+def test_a_measured_title_recomputes_the_saves_and_an_unmeasured_one_keeps_its_row(
+        monkeypatch):
+    """`goldbox.levels.RACIAL_SAVE_BONUS_MEASURED` is a gate, not a list of
+    titles: a title in it has a converted character's five saving-throw
+    columns recomputed the way the C64's own trainer stores them, and a
+    title outside it keeps the row its source held, because a guessed
+    number is worse than the one the player had (`#311 (A DOS dwarf, gnome
+    or halfling converted to the C64 loses his constitution bonus to saving
+    throws, because the C64 keeps it inside the five stored bytes)`).
 
-    `#311 (A DOS dwarf, gnome or halfling converted to the C64 loses his
-    constitution bonus to saving throws...)` recomputes the five save
-    columns the way the C64's own trainer stores them. Pool of Radiance's
-    trainer is measured whole, and Curse's five saving throws agreed with
-    the engine across five driven level-ups (`#18 (Measure Curse's trainer
-    so Level Up works there)`). Silver Blades' constitution inputs are
-    unread, so it keeps the row its source held.
+    All three C64 titles are in it now.  Silver Blades joined on 2026-09-06
+    (`#344 (A converted Silver Blades dwarf, gnome or halfling keeps DOS's
+    saving throws, because that title's racial bonus has never been watched
+    in the game)`): MALACHITE, a dwarf with constitution 17, trained five
+    times on one boot with only his race byte changed between presses, and
+    the engine wrote `6 10 6 12 7` for the dwarf and `10 10 10 12 11` for
+    gnome, halfling and human -- 25 of 25 columns what `saving_throws`
+    computes.  Only the dwarf takes the bonus there: `$11D8` is an equality
+    test against race 3, not Curse's odd-race test.
 
-    The predicate is deliberately **not** `trainer_measured`: that asks a
-    broader question -- whether the whole trainer is reproduced -- and does
-    not yet name Curse for reasons belonging to `#18` rather than to this
-    writer. Gating on it would suppress a computation that is correct.
+    So what is pinned is the rule and not the membership.  The second half
+    is the one worth keeping: it is what stops a future title being
+    recomputed from a formula nobody has watched.  The predicate is
+    deliberately not `trainer_measured`, which asks a broader question.
     """
     from goldbox import levels
 
-    assert levels.racial_save_bonus_measured("pool-of-radiance")
-    assert levels.racial_save_bonus_measured("curse-of-the-azure-bonds")
-    assert not levels.racial_save_bonus_measured(
-        "secret-of-the-silver-blades")
+    columns = ("save_paralysis", "save_petrification", "save_wands",
+               "save_breath", "save_spell")
+    plain = (14, 15, 16, 17, 17)
+    #: The dwarf, in each title's own race numbering: 1 in Pool of Radiance
+    #: and Curse, 3 in Silver Blades (`goldbox/levels.py`'s table).
+    dwarf = {"pool-of-radiance": 1, "curse-of-the-azure-bonds": 1,
+             "secret-of-the-silver-blades": 3}
+
+    def written(game: str) -> tuple:
+        rec, _ = c64_codec.write(_plain_row_character(dwarf[game], game=game))
+        return tuple(rec.get(n) for n in columns)
+
+    for game, race in dwarf.items():
+        assert levels.racial_save_bonus_measured(game), game
+        want = tuple(levels.saving_throws({"fighter": 1}, race, 13, game))
+        assert want != plain, f"{game}: a dwarf's row must move"
+        assert written(game) == want, game
+
+    # The same dwarf under a title the set does not hold keeps DOS's row.
+    last = "secret-of-the-silver-blades"
+    monkeypatch.setattr(levels, "RACIAL_SAVE_BONUS_MEASURED",
+                        levels.RACIAL_SAVE_BONUS_MEASURED - {last})
+    assert not levels.racial_save_bonus_measured(last)
+    assert written(last) == plain
+
+
+# --- #301, #326: a party that has not set out --------------------------------
+
+def _stage_a_script(savgam: bytearray) -> None:
+    """Make a container from nothing read as a party **in the world**: one
+    non-zero byte in the staged area script, and `$4FE1` at the 255 that 51
+    of the 95 played Pool of Radiance containers on this machine hold -- the
+    two readings `dos.never_adventured` takes."""
+    start, _ = sg.SAVE_POOL_OF_RADIANCE.script_buffer
+    savgam[start] = 0x01
+    sg.put_word(savgam, dos.LATER_BEGUN_WORD, 255)
+
+
+def _never_adventured_savgam() -> bytes:
+    """The signature all seven Pool of Radiance never-adventured containers
+    on this machine share: area 0, map 0, `$49E6` = 0, `$4FE1` = 0, square
+    `15,1` facing west, clock 00:00 and an all-zero script buffer
+    (`#326 (A Pool of Radiance save made before the party began
+    adventuring is refused, because the initialiser left $49E6 at 0 and New
+    Phlan is indoors)`).  Built from nothing, which is how the initialiser
+    leaves it."""
+    savgam = bytearray(sg.SAVGAM_SIZE)
+    sg.put_position(savgam, 15, 1, 3)
+    return bytes(savgam)
+
+
+def _new_phlan_savgam() -> bytes:
+    """A party standing in New Phlan with the clock running: the same area
+    word and map word as a never-adventured save, and nothing else the same.
+    Thirteen real containers here are in this state, the archives' own
+    `SAVGAMA.DAT` at 16:58 among them."""
+    savgam = bytearray(sg.SAVGAM_SIZE)
+    sg.put_word(savgam, sg.INDOORS, 1)
+    sg.put_position(savgam, 3, 9, 2)
+    sg.put_clock(savgam, (0, 8, 5, 16, 4, 2))       # 16:58, day 4, month 2
+    _stage_a_script(savgam)
+    return bytes(savgam)
+
+
+def test_a_party_that_has_not_set_out_is_read_off_the_container_not_the_area_word():
+    """Area 0 is New Phlan in Pool of Radiance, so the word cannot say
+    whether the party has set out; the container can.  The two saves here
+    hold the same `$49F2` and the same `$49C5` and are told apart by the
+    staged script alone (#326)."""
+    fresh = _never_adventured_savgam()
+    standing = _new_phlan_savgam()
+    assert sg.current_area(fresh) == sg.current_area(standing) == 0
+    assert sg.geo_block(fresh) == sg.geo_block(standing) == 0
+    assert dos.never_adventured(fresh)
+    assert not dos.never_adventured(standing)
+    # The word on its own tells the same story, for the title with no buffer.
+    assert sg.word(fresh, dos.LATER_BEGUN_WORD) == 0
+    assert sg.word(standing, dos.LATER_BEGUN_WORD) == 255
+
+
+def test_a_pool_of_radiance_party_that_has_not_set_out_converts_to_new_phlan():
+    """`$49E6` is 0 in such a save because the initialiser left it 0, and
+    New Phlan is indoors, so the indoors compare refused every one of the
+    seven (#326).  Now the start row says where the party goes -- area 0,
+    `GEO00`, POOL3, `15,1` facing west -- and `$49E6` is written 1 from
+    the row rather than compared against the initialiser."""
+    savgam = _never_adventured_savgam()
+    assert sg.outdoors(savgam), "the initialiser's $49E6 reads as outdoors"
+    save0 = bytearray(0x1C00)
+    line = dos.apply_file_cache(save0, savgam)
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    assert save0[at + dos.CACHE_ECL] == 0
+    assert save0[at + dos.CACHE_GEO] == 0
+    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 0
+    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == areas.area(0).disk == 3
+    assert "had not set out" in line
+    dos.apply_position(save0, savgam)
+    assert tuple(save0[0xC0:0xC3]) == (15, 1, 3)
+
+
+def test_a_party_standing_in_new_phlan_is_left_exactly_where_it_is():
+    """The regression the obvious fix causes, and the test that matters most
+    here: a rule reading "area 0 means the party has not set out" would move
+    thirteen real containers out of New Phlan to the arrival square and
+    reset their clocks.  A party at `3,9` facing south at 16:58 stays there
+    and is told nothing (#326)."""
+    savgam = _new_phlan_savgam()
+    save0 = bytearray(0x1C00)
+    line = dos.apply_file_cache(save0, savgam)
+    assert "had not set out" not in line
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    assert save0[at + dos.CACHE_ECL] == 0 and save0[at + dos.CACHE_GEO] == 0
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    dos.apply_position(save0, savgam)
+    assert tuple(save0[0xC0:0xC3]) == (3, 9, 2)
+    note, _ = dos.apply_clock(save0, savgam)
+    assert "16:58" in note
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-party-l1-intown"),
+                    reason="needs the New Phlan tour specimen")
+def test_a_real_new_phlan_party_converts_where_it_stood():
+    """`WISH-SPEC-por-party-l1-intown` slot E: six characters this project
+    rolled, taken through the opening tour and saved by the game's own
+    `ENCAMP > SAVE` at `0,4` facing west in New Phlan.  Area 0, map 0, and
+    a staged script.  It converts to where it stood, with no sentence about
+    the beginning of the story (#326)."""
+    where = gamedata.specimen("por-party-l1-intown")
+    savgam = (where / "SAVGAME.DAT").read_bytes()
+    assert sg.current_area(savgam) == 0
+    assert not dos.never_adventured(savgam)
+    save0 = bytearray(0x1C00)
+    report = dos.convert_save(where, "E", save0)
+    assert tuple(save0[0xC0:0xC3]) == sg.position(savgam) == (0, 4, 3)
+    assert report.messages == []
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-304-modify-exited"),
+                    reason="needs the never-adventured specimen")
+def test_a_real_never_adventured_party_converts_and_the_player_is_told():
+    """`WISH-SPEC-por-304-modify-exited` slot C: two fighters rolled in the
+    game's own CREATE NEW CHARACTER, added to the party and saved from the
+    party-formation menu, never having pressed `BEGIN ADVENTURING`.  It was
+    refused with the `$49E6` message until #326; it converts to the start
+    of the story now, and the one sentence Donald approved on #301 is on
+    the report for the messages pane."""
+    where = gamedata.specimen("por-304-modify-exited")
+    savgam = (where / "SAVGAMC.DAT").read_bytes()
+    assert dos.never_adventured(savgam)
+    assert sg.word(savgam, dos.LATER_BEGUN_WORD) == 0
+    save0 = bytearray(0x1C00)
+    report = dos.convert_save(where, "C", save0)
+    assert tuple(save0[0xC0:0xC3]) == (15, 1, 3)
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 0
+    assert report.messages == [dos.NOT_SET_OUT]
+    assert dos.NOT_SET_OUT in report.summary()
+    assert report.unaccounted == []

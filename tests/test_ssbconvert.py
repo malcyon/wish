@@ -642,3 +642,61 @@ def test_every_figure_a_silver_blades_player_can_choose_composes(
             for body in range(32):
                 icon, _ = _ssb_figure(ssb_parts, head, body, size)
                 assert icon[:18] in ssb_reachable, (head, body, size)
+
+
+# --- #301: a party that has not set out is refused, not guessed --------------
+
+def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
+    """Silver Blades' container stages no script, so `$4FE1` is the reading
+    -- 0 in both never-adventured containers here and 255 in all five
+    played ones -- and its first area is UNMEASURED, so `areas.STARTS` has
+    no row and the conversion refuses rather than sending the party to
+    whichever area looks likeliest (#301).  The sentence the player reads
+    is proposed and not approved, and says so."""
+    shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
+    assert shape.script_buffer is None
+    savgam = bytearray(shape.size)
+    sg.put_word(savgam, sg.INDOORS, 1, shape)
+    sg.put_position(savgam, 7, 13, 0, shape)
+    assert dos.never_adventured(bytes(savgam))
+    cont = c64_save.container_for(SSB_GAME)
+    with pytest.raises(dos.NotSetOutError) as raised:
+        dos.apply_file_cache(bytearray(cont.payload_size), bytes(savgam), cont)
+    assert "Secret of the Silver Blades" in raised.value.player_message
+    assert raised.value.player_message.endswith("(NOT APPROVED)")
+    assert "$" not in raised.value.player_message
+    with pytest.raises(dos.NotSetOutError):
+        dos.apply_position(bytearray(cont.payload_size), bytes(savgam), shape)
+
+    # The same container one keypress later -- `$4FE1` written, a real area
+    # -- is a party in the world and is placed where it stands.
+    sg.put_word(savgam, dos.LATER_BEGUN_WORD, 255, shape)
+    sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
+    sg.put_word(savgam, sg.AREA, 0x10, shape)
+    assert not dos.never_adventured(bytes(savgam))
+    save0 = bytearray(cont.payload_size)
+    dos.apply_file_cache(save0, bytes(savgam), cont)
+    assert save0[cont.current_script] == 0x10
+    assert save0[cont.disk_hint] == 1
+
+
+def _shipped_silver_blades_save():
+    from test_dossave import _game_dirs
+    folder = _game_dirs().get("SECRET")
+    return None if folder is None else folder / "SAVGAMA.DAT"
+
+
+@pytest.mark.skipif(_shipped_silver_blades_save() is None,
+                    reason="needs the archives' Silver Blades saves")
+def test_the_archives_shipped_silver_blades_party_is_one_that_has_not_set_out():
+    """The two saved games the archives ship for this title are both in this
+    state -- area 0, `7,13` facing north, `$4FE1` = 0 -- so the first Silver
+    Blades save a player reaches for is one the import refuses until the
+    title's start is measured.  A found save with no chain of custody, read
+    here only to show what the refusal says about it."""
+    savgam = _shipped_silver_blades_save().read_bytes()
+    assert sg.current_area(savgam) == 0
+    assert dos.never_adventured(savgam)
+    cont = c64_save.container_for(SSB_GAME)
+    with pytest.raises(dos.NotSetOutError):
+        dos.apply_file_cache(bytearray(cont.payload_size), savgam, cont)

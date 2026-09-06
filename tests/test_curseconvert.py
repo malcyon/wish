@@ -618,3 +618,88 @@ def test_every_figure_a_curse_player_can_choose_composes(
             for body in range(32):
                 icon, _ = _curse_figure(curse_parts, head, body, size)
                 assert icon[:18] in curse_reachable, (head, body, size)
+
+
+# --- #301: a party that has not set out --------------------------------------
+
+def _never_adventured_curse() -> bytes:
+    """What Curse's initialiser leaves and `SAVE CURRENT GAME` at the party
+    menu writes: area 0, map 0, `$49E6` = 1, `$4FE1` = 0, `7,13` facing
+    north, clock 00:00 and no staged script -- 4 of 4 such containers on
+    this machine, two of them engine-written under DOSBox (#301)."""
+    savgam = bytearray(sg.SAVE_CURSE_OF_THE_AZURE_BONDS.size)
+    sg.put_word(savgam, sg.INDOORS, 1)
+    sg.put_position(savgam, 7, 13, 0)
+    return bytes(savgam)
+
+
+def _expect_the_start_of_area_1(save0: bytearray) -> None:
+    """Area 1, `GEO01`, side 2, the square `7,13` facing east: what the DOS
+    engine itself does with the same save on `BEGIN ADVENTURING`, and what
+    `areas.STARTS` holds for this title."""
+    cont = c64_save.container_for(CURSE_GAME)
+    at = cont.cache[0]
+    assert save0[at + dos.CACHE_ECL] == 0x01 | dos.FILE_CACHE_RELOAD
+    assert save0[at + dos.CACHE_GEO] == 0x01 | dos.FILE_CACHE_RELOAD
+    assert save0[cont.current_script] == 1
+    assert save0[cont.current_geo] == 1
+    assert save0[cont.disk_hint] == 2
+    assert save0[cont.indoors] == 1
+    assert tuple(save0[cont.position:cont.position + 3]) == (7, 13, 1)
+
+
+def test_a_curse_party_that_has_not_set_out_converts_to_the_start_of_area_1():
+    """Curse has no area 0 and no `GEO00`, so a save converted with the word
+    unchanged sits in front of `INSERT SIDE # 2` for ever while the C64
+    loader hunts for a map on none of the sides.  The container says the
+    party has not set out, and the title says where that party goes
+    (#301)."""
+    savgam = _never_adventured_curse()
+    assert sg.current_area(savgam) == 0
+    assert dos.never_adventured(savgam)
+    cont = c64_save.container_for(CURSE_GAME)
+    save0 = bytearray(cont.payload_size)
+    line = dos.apply_file_cache(save0, savgam, cont)
+    assert "had not set out" in line
+    dos.apply_position(save0, savgam)
+    _expect_the_start_of_area_1(save0)
+
+
+@pytest.mark.skipif(
+    not gamedata.have_specimen("curse-234-party-dualclassed"),
+    reason="needs the never-adventured Curse specimen")
+def test_a_real_curse_party_saved_at_the_menu_converts_and_the_player_is_told():
+    """`WISH-SPEC-curse-234-party-dualclassed` slot D: the DOS engine's own
+    `SAVE CURRENT GAME` from the party-formation menu, six characters, area
+    0.  Refused as `NOT_AN_AREA` until #301; converts to the start of area
+    1 now, with Donald's sentence on the report for the messages pane."""
+    folder = gamedata.specimen("curse-234-party-dualclassed")
+    savgam = (folder / "SAVGAMD.DAT").read_bytes()
+    assert sg.current_area(savgam) == 0
+    assert dos.never_adventured(savgam)
+    assert sg.word(savgam, dos.LATER_BEGUN_WORD) == 0
+    cont = c64_save.container_for(CURSE_GAME)
+    save0 = bytearray(cont.payload_size)
+    report = dos.convert_save(folder, "D", save0, game=CURSE_GAME)
+    _expect_the_start_of_area_1(save0)
+    assert report.messages == [dos.NOT_SET_OUT]
+    assert report.unaccounted == []
+
+
+@pytest.mark.skipif(
+    not gamedata.have_specimen("curse-131-dualclassed-in-area-1"),
+    reason="needs the played Curse specimen")
+def test_a_curse_party_standing_in_area_1_is_not_moved_to_its_start():
+    """The control: a party that walked in area 1 and saved by `ENCAMP >
+    SAVE` stands where the save says, not on the arrival square, and is
+    told nothing.  The staged script is what tells the two apart, since
+    both hold a real area and this one is the same area the start names."""
+    folder = gamedata.specimen("curse-131-dualclassed-in-area-1")
+    slot = next(p.name[6] for p in sorted(folder.glob("SAVGAM?.DAT")))
+    savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
+    assert not dos.never_adventured(savgam)
+    cont = c64_save.container_for(CURSE_GAME)
+    save0 = bytearray(cont.payload_size)
+    report = dos.convert_save(folder, slot, save0, game=CURSE_GAME)
+    assert tuple(save0[cont.position:cont.position + 3]) == sg.position(savgam)
+    assert report.messages == []
