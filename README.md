@@ -31,6 +31,7 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 - Spells. Change what spells you know.
 - Inventory. Edit your items, or add new ones.
 - Combat Icon Editor. A faster way to update your icon.
+- Import a DOS save and convert it into a C64 save.
 
 <a href="images/character_editor1.png">
   <img src="images/character_editor1.png" alt="Character Editor" title="Character Editor" width="700">
