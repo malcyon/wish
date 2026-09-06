@@ -426,3 +426,48 @@ def test_dos_icon_tables_with_no_title_reads_the_base_table():
     base_weapons, _, base_heads, _, _ = ip.load_tables()
     assert untitled.weapons == base_weapons
     assert untitled.heads == base_heads
+
+
+def test_a_size_specific_override_wins_and_only_at_that_size(tmp_path):
+    """The C64 draws a small character from shorter lists than a large one,
+    and the shared designs are redrawn rather than scaled -- so a row chosen
+    against the large picture can be the wrong answer for a halfling.
+
+    Donald asked for exactly that on 2026-09-05, for Pool of Radiance:
+    DOS weapon 7 to C64 weapon 2 and DOS head 0 to C64 head 1, at the small
+    size only. The base table sends them to 1 and 5, which stay right for a
+    large character.
+    """
+    from goldbox import iconparts
+
+    table = tmp_path / "t.yaml"
+    table.write_text(
+        "weapons:\n  7: {c64: 1}\n  9: {c64: 30}\n"
+        "heads:\n  0: {c64: 5}\n"
+        "colours:\n" + "".join(f"  {i}: {{c64: {i % 8}}}\n" for i in range(16))
+        + "overrides:\n"
+          "  pool-of-radiance:\n"
+          "    weapons:\n      9: {c64: 31}\n"
+          "    small:\n"
+          "      weapons:\n        7: {c64: 2}\n"
+          "      heads:\n        0: {c64: 1}\n")
+
+    base = iconparts.dos_icon_tables(table)
+    assert (base.weapons[7], base.heads[0]) == (1, 5)
+
+    large = iconparts.dos_icon_tables(table, title="pool-of-radiance",
+                                      size="large")
+    assert (large.weapons[7], large.heads[0]) == (1, 5), "small-only leaked"
+
+    small = iconparts.dos_icon_tables(table, title="pool-of-radiance",
+                                      size="small")
+    assert (small.weapons[7], small.heads[0]) == (2, 1)
+
+    #: A size-free row in the same section still reaches both sizes, so the
+    #: subsection is an exception to it rather than a replacement for it.
+    assert large.weapons[9] == 31 and small.weapons[9] == 31
+
+    #: And a title with no section of its own is untouched by either.
+    other = iconparts.dos_icon_tables(table, title="curse-of-the-azure-bonds",
+                                      size="small")
+    assert (other.weapons[7], other.heads[0]) == (1, 5)

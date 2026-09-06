@@ -109,8 +109,32 @@ colours:
 #         11: {c64: ...}   # small body 11 -- Silver Blades draws no
 #                          # weapon where Pool of Radiance's draws one
 #
-# Donald picked the head on 2026-09-05; the body is still open on #335.
+# A title's section may name rows directly -- those apply at both sizes --
+# and may hold a "small:" or "large:" section for rows that are only right at
+# one of them. The C64 draws a small character from a 28-weapon, 14-head list
+# where a large one has 35 and 23, and the shared designs are redrawn rather
+# than scaled, so a row chosen against the large picture can be wrong for a
+# dwarf, gnome or halfling. A size-specific row wins over a size-free one.
+#
+#   overrides:
+#     <title key>:
+#       weapons: {N: {c64: M}}     # both sizes
+#       small:
+#         heads: {N: {c64: M}}     # small characters only
+#
+# Donald picked these on 2026-09-05; more rows are his to add.
 overrides:
+  pool-of-radiance:
+    small:
+      weapons:
+        7: {c64: 2}        # Donald, 2026-09-05: "DOS weapon 7 should be
+                           # C64 weapon 2" for a small character. The base
+                           # table sends it to C64 weapon 1, which is the
+                           # answer for a large one.
+      heads:
+        0: {c64: 1}        # Donald, 2026-09-05: "DOS head 0 = C64 head 1"
+                           # for a small character. The base table sends it
+                           # to C64 head 5.
   secret-of-the-silver-blades:
     heads:
       10: {c64: 2}         # Silver Blades draws a hat on this head where

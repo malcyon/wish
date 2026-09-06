@@ -169,15 +169,19 @@ def load_overrides(path: pathlib.Path = TABLE_PATH,
     data = yaml.safe_load(path.read_text())
     out: dict[str, dict[str, Table]] = {}
     for title, sections in (data.get("overrides") or {}).items():
-        out[title] = {
-            kind: {int(k): row["c64"] for k, row in sections.get(kind, {}).items()}
-            for kind in ("weapons", "heads")
-        }
+        for size in (None, "small", "large"):
+            where = sections if size is None else (sections.get(size) or {})
+            key = title if size is None else f"{title}/{size}"
+            out[key] = {
+                kind: {int(k): row["c64"]
+                       for k, row in (where.get(kind) or {}).items()}
+                for kind in ("weapons", "heads")
+            }
     return out
 
 
 def tables_for_title(title: str, path: pathlib.Path = TABLE_PATH,
-                     ) -> tuple[Table, Table]:
+                     size: str | None = None) -> tuple[Table, Table]:
     """This title's own weapon and head tables, with its override applied.
 
     The base tables plus whatever `load_overrides` names for `title` -- the
@@ -188,11 +192,18 @@ def tables_for_title(title: str, path: pathlib.Path = TABLE_PATH,
     than `tools/iconproposal.yaml` in a test.
     """
     weapons, _, heads, _, _ = load_tables(path)
-    override = load_overrides(path).get(title, {})
+    overrides = load_overrides(path)
     weapons = dict(weapons)
-    weapons.update(override.get("weapons", {}))
     heads = dict(heads)
-    heads.update(override.get("heads", {}))
+    #: Size-free rows first, then this size's, so a `small:` row wins over a
+    #: row the same section names for both -- the order
+    #: `goldbox.iconparts.dos_icon_tables` merges in.
+    for key in (title, f"{title}/{size}" if size else None):
+        if key is None:
+            continue
+        override = overrides.get(key, {})
+        weapons.update(override.get("weapons", {}))
+        heads.update(override.get("heads", {}))
     return weapons, heads
 
 
@@ -405,7 +416,7 @@ def sheet(game: pathlib.Path, disk: pathlib.Path, kind: str, size: str,
 
     parts = IconParts.load(str(disk))
     charset = icons.load_icon_charset(str(disk))
-    weapons, heads = tables_for_title(title)
+    weapons, heads = tables_for_title(title, size=size)
     table = weapons if kind == "weapon" else heads
     alternatives = WEAPON_ALTERNATIVES if kind == "weapon" else HEAD_ALTERNATIVES
     rows = []
@@ -513,7 +524,7 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
     a document that shows the wrong game's art is worse than one that shows
     none.
     """
-    weapons, heads = tables_for_title(title)
+    weapons, heads = tables_for_title(title, size=size)
     display_title = games.by_key(title).title
     compare = reference_game is not None and reference_game != game
     parts = IconParts.load(str(disk)) if disk else None
@@ -657,16 +668,22 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
         if parts is None:
             lines += [_NO_C64_DISK.format(title=display_title), ""]
             continue
-        lines += ["| | | | | | |", "|---|---|---|---|---|---|"]
+        #: Three to a row, not six. Donald, 2026-09-05: *"can you make the
+        #: icons under 'Every C64 weapon, to swap from' a little bigger?
+        #: Those are small still."* The pictures are the same files the rows
+        #: above use and are already drawn at the same scale -- what made
+        #: them look smaller is a six-column table, which a viewer shrinks
+        #: to fit the page. Fewer columns, same pixels, bigger on screen.
+        lines += ["| | | |", "|---|---|---|"]
         row = []
         for option in range(parts.count(size, kind)):
             row.append(f"**{option}**<br>" + _c64_cell(
                 parts, charset, title, size, kind, option, icon_colours, img))
-            if len(row) == 6:
+            if len(row) == 3:
                 lines.append("| " + " | ".join(row) + " |")
                 row = []
         if row:
-            lines.append("| " + " | ".join(row + [""] * (6 - len(row))) + " |")
+            lines.append("| " + " | ".join(row + [""] * (3 - len(row))) + " |")
         lines.append("")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n")

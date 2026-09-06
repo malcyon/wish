@@ -140,13 +140,25 @@ def test_the_overrides_section_exists_and_names_only_titles_this_tool_draws():
     name cannot sit in the file silently overriding nothing."""
     data = yaml.safe_load(ip.TABLE_PATH.read_text())
     assert "overrides" in data, "the overrides: section is gone from the YAML"
+
+    def check_rows(where, what):
+        assert set(where) <= {"weapons", "heads"}, (what, sorted(where))
+        for kind, rows in where.items():
+            for dos_index, row in (rows or {}).items():
+                assert isinstance(int(dos_index), int)
+                assert isinstance(row["c64"], int), (what, kind, dos_index)
+
     for title, sections in (data["overrides"] or {}).items():
         assert title in ip.DOS_TITLES, title
-        assert set(sections) <= {"weapons", "heads"}, (title, sorted(sections))
-        for kind, rows in sections.items():
-            for dos_index, row in rows.items():
-                assert isinstance(int(dos_index), int)
-                assert isinstance(row["c64"], int), (title, kind, dos_index)
+        #: A title's section holds rows for both sizes and may hold a
+        #: `small:` or `large:` section of rows for one of them.
+        assert set(sections) <= {"weapons", "heads", "small", "large"}, (
+            title, sorted(sections))
+        check_rows({k: v for k, v in sections.items()
+                    if k in ("weapons", "heads")}, title)
+        for size in ("small", "large"):
+            if size in sections:
+                check_rows(sections[size] or {}, f"{title}/{size}")
 
 
 def test_load_overrides_parses_a_titles_section(tmp_path):
@@ -157,8 +169,40 @@ def test_load_overrides_parses_a_titles_section(tmp_path):
         "colours:\n" + "".join(f"  {i}: {{c64: 0}}\n" for i in range(16))
         + "overrides:\n  secret-of-the-silver-blades:\n"
         "    weapons:\n      0: {c64: 5}\n")
+    #: One key per title and one per title-and-size, so a caller can ask for
+    #: "this title, at this size" without merging the two itself. The
+    #: size keys are empty here because this table names no `small:` or
+    #: `large:` section.
     assert ip.load_overrides(path) == {
-        "secret-of-the-silver-blades": {"weapons": {0: 5}, "heads": {}}}
+        "secret-of-the-silver-blades": {"weapons": {0: 5}, "heads": {}},
+        "secret-of-the-silver-blades/small": {"weapons": {}, "heads": {}},
+        "secret-of-the-silver-blades/large": {"weapons": {}, "heads": {}}}
+
+
+def test_load_overrides_keeps_a_size_section_apart_from_the_rest(tmp_path):
+    """A `small:` row must not reach a large character, which is the whole
+    reason the section exists (Donald, 2026-09-05)."""
+    path = tmp_path / "table.yaml"
+    path.write_text(
+        "weapons:\n  0: {c64: 1}\n  7: {c64: 1}\n"
+        "heads:\n  0: {c64: 3}\n"
+        "colours:\n" + "".join(f"  {i}: {{c64: 0}}\n" for i in range(16))
+        + "overrides:\n  pool-of-radiance:\n"
+          "    weapons:\n      0: {c64: 5}\n"
+          "    small:\n      weapons:\n        7: {c64: 2}\n")
+    got = ip.load_overrides(path)
+    assert got["pool-of-radiance"]["weapons"] == {0: 5}
+    assert got["pool-of-radiance/small"]["weapons"] == {7: 2}
+    assert got["pool-of-radiance/large"]["weapons"] == {}
+
+    assert ip.tables_for_title(
+        "pool-of-radiance", path, size="small")[0][7] == 2
+    assert ip.tables_for_title(
+        "pool-of-radiance", path, size="large")[0][7] == 1
+    #: and the size-free row reaches both
+    for size in ("small", "large"):
+        assert ip.tables_for_title(
+            "pool-of-radiance", path, size=size)[0][0] == 5
 
 
 def test_a_title_with_no_override_of_its_own_gets_the_base_tables_unchanged():

@@ -194,15 +194,24 @@ class DosIconTables:
 
 
 def dos_icon_tables(path: "pathlib.Path | str | None" = None,
-                    title: str | None = None) -> DosIconTables:
+                    title: str | None = None,
+                    size: str | None = None) -> DosIconTables:
     """Read the three tables out of :data:`PROPOSAL_PATH`.
 
     `title` is a `goldbox.games.Game.key` such as
-    `"secret-of-the-silver-blades"`. With no `title`, or a title that names no
-    `overrides:` section of its own, this is exactly the base table every
-    conversion has always read (#330). Where a title's own section names a
-    row, its `c64` replaces the base table's for that DOS index only; every
-    other row is untouched.
+    `"secret-of-the-silver-blades"`, and `size` is `"small"` or `"large"`.
+    With neither, or a title that names no `overrides:` section of its own,
+    this is exactly the base table every conversion has always read (#330).
+    Where a title's own section names a row, its `c64` replaces the base
+    table's for that DOS index only; every other row is untouched.
+
+    **The base tables serve both sizes**, which is right for all but a
+    handful of rows: the C64 draws a small character from a 28-weapon and
+    14-head list where a large one has 35 and 23, and the shared designs are
+    redrawn rather than scaled. So a row chosen against the large picture
+    can be the wrong answer for a halfling, and a title's section may hold a
+    `small:` or `large:` subsection for those. A size-specific row wins over
+    a size-free one in the same section.
 
     **The section is no longer empty and no caller passes `title` yet**, so
     a converted Silver Blades character still gets the base table's row.
@@ -223,10 +232,19 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
     heads = {int(k): v["c64"] for k, v in data["heads"].items()}
     override = (data.get("overrides") or {}).get(title) if title else None
     if override:
-        weapons.update({int(k): v["c64"]
-                        for k, v in override.get("weapons", {}).items()})
-        heads.update({int(k): v["c64"]
-                      for k, v in override.get("heads", {}).items()})
+        #: A title's section may name rows directly -- those apply at both
+        #: sizes -- and may hold a `small:` or `large:` section naming rows
+        #: for that size alone.  The C64 draws a small character from
+        #: shorter lists than a large one and the two are different
+        #: pictures, so a row that is right for a human can be wrong for a
+        #: halfling; Donald asked for exactly that on 2026-09-05.  A
+        #: size-specific row wins over a size-free one, which is the only
+        #: order that lets a section say "this everywhere, except small".
+        for section in (override, override.get(size) or {} if size else {}):
+            weapons.update({int(k): v["c64"]
+                            for k, v in (section.get("weapons") or {}).items()})
+            heads.update({int(k): v["c64"]
+                          for k, v in (section.get("heads") or {}).items()})
     return DosIconTables(
         weapons=weapons, heads=heads,
         ega_to_c64=tuple(data["colours"][i]["c64"]
