@@ -9,28 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Combat messages now show what the dice actually did underneath the game's own line -- the d20 rolled, what was needed to hit, and the damage. ([#139](https://github.com/malcyon/wish/issues/139))
-- Inventory's weight column can now be edited directly, in pounds.
-- File ▸ Import converts a DOS save to the Commodore 64 for Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades, with nothing to turn on first. ([#131](https://github.com/malcyon/wish/issues/131))
-- Quest Log tracks quests the game itself keeps no record of, starting with Ohlo's potion errand in the Slums. ([#158](https://github.com/malcyon/wish/issues/158))
-- Preferences has a Saves folder now, so File ▸ Open does not have to be pointed at your save disks every session. ([#66](https://github.com/malcyon/wish/issues/66))
-- Notes offer twenty-three kinds now, each named, instead of nine. ([#166](https://github.com/malcyon/wish/issues/166))
-- The roster, map and Quest Log/Notes/Messages columns can be dragged wider or narrower. ([#162](https://github.com/malcyon/wish/issues/162))
-- Wish has its own application icon and a Linux desktop entry now, instead of a placeholder; the About box credits Game-icons.net for it and the interface icons. ([#9](https://github.com/malcyon/wish/issues/9), [#169](https://github.com/malcyon/wish/issues/169))
+- File ▸ Import converts a DOS save to a Commodore 64 save for Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades. ([#131](https://github.com/malcyon/wish/issues/131))
+- Combat messages now show the player's dice rolls. ([#139](https://github.com/malcyon/wish/issues/139))
+- Inventory's weight column can now be edited.
+- The Quest Log now tracks the Ohlo's potion side quest in the Slums. ([#158](https://github.com/malcyon/wish/issues/158))
+- Wish now remembers where your save disks are, so you don't have to navigate to it every time. ([#66](https://github.com/malcyon/wish/issues/66))
+- Updated map notes to use icons from [game-icons.net](https://game-icons.net)  ([#166](https://github.com/malcyon/wish/issues/166))
+- The Automap's left and ride side panels can now be resized. ([#162](https://github.com/malcyon/wish/issues/162))
+- Added original Wish logo and mark by artist Dustin Geddy Parker. ([#9](https://github.com/malcyon/wish/issues/9), [#169](https://github.com/malcyon/wish/issues/169))
 
 ### Changed
 
-- Heal Party and the Fast Travel dropdown are now refused during a fight, the same as Store/Restore Spells and Identify; Heal Party's message now names who was healed instead of giving a bare count. ([#146](https://github.com/malcyon/wish/issues/146))
-- Combat messages are now shown in ordinary sentence case, instead of the game's own all-capitals shouting.
-- Sleeping and held or paralysed enemies are now marked gold on the combat view, the same as helpless ones, and the tooltip names which condition applies.
-- The Commissions panel is now called the Quest Log, and its "Commissions completed" line now reads "Quests completed".
-- A roster card always shows its Level up button and every class letter now; where there is not room, the character's name is what shortens. ([#168](https://github.com/malcyon/wish/issues/168), [#161](https://github.com/malcyon/wish/issues/161))
-- The character editor's top row -- roster, character pane and combat icon -- can be resized now, so a large interface font no longer stops the window fitting a 720-pixel screen. ([#97](https://github.com/malcyon/wish/issues/97))
-- The automapper's condition badges are named from each title's own effects now, instead of always Pool of Radiance's; Secret of the Silver Blades shows none for now rather than the wrong names. ([#196](https://github.com/malcyon/wish/issues/196))
+- Disable the Heal and Fast Travel buttons during combat. No cheating! Also, Heal Party's message now names who was healed ([#146](https://github.com/malcyon/wish/issues/146))
+- Switched combat messages to lowercase.
+- Sleeping, held, and paralysed enemies now have yellow squares on the combat map, so you know who's affected.
+- Renamed Commissions panel to Quest Log.
+- Fixed the Level Up button crowding out other UI elements on the Roster. ([#168](https://github.com/malcyon/wish/issues/168), [#161](https://github.com/malcyon/wish/issues/161))
+- Made the top panel on the character editor resizable. ([#97](https://github.com/malcyon/wish/issues/97))
+- Updated the names of the condition icons on the roster.([#196](https://github.com/malcyon/wish/issues/196))
 
 ### Removed
 
-- Renaming a character, which could fail silently and leave the save unchanged with no visible error. ([#145](https://github.com/malcyon/wish/issues/145))
+- Removed the ability to rename a character. ([#145](https://github.com/malcyon/wish/issues/145))
 
 ### Fixed
 
@@ -40,9 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fast Travel and Return no longer flicker off for a second while the party stands still; a click now waits briefly for the game to be ready instead. ([#152](https://github.com/malcyon/wish/issues/152))
 - Round counter shown beside combat messages now resets at the start of each fight, instead of climbing across every fight in the session.
 - THAC0, armour class and four other Combat and Stats fields now show blank on a save slot too small to carry them, instead of a wrong number. ([#150](https://github.com/malcyon/wish/issues/150))
-- A converted party's combat figures now show each character's own colours and shape, instead of six identical figures. ([#130](https://github.com/malcyon/wish/issues/130), [#267](https://github.com/malcyon/wish/issues/267))
+- Combat icons converted from DOS now show the correct colors and shape. ([#130](https://github.com/malcyon/wish/issues/130), [#267](https://github.com/malcyon/wish/issues/267))
 - Two characters converted from DOS with the same name both convert now, instead of the second being refused. ([#216](https://github.com/malcyon/wish/issues/216))
-- Converting a character with more than ten innate effects now says how many were dropped, instead of losing the rest with no report. ([#236](https://github.com/malcyon/wish/issues/236))
 - A dual-classed Curse of the Azure Bonds character no longer imports with a false warning that its record is corrupt. ([#229](https://github.com/malcyon/wish/issues/229))
 - A converted dwarf, gnome or halfling keeps his constitution bonus to saving throws now, instead of arriving three or four points worse. ([#311](https://github.com/malcyon/wish/issues/311))
 - A converted cleric or paladin can turn undead on the Commodore 64 now, instead of arriving with the ability switched off. ([#288](https://github.com/malcyon/wish/issues/288))
