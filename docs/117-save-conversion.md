@@ -2497,6 +2497,53 @@ And for the reverse direction, `tests/test_doswriter.py`:
   DOSBox — the four driven runs above, and the two area-moved parties of
   #60 (Put a converted party where it actually stood, not where the template stood).
 
+## The Convert dialog's own path, in both emulators (2026-09-05)
+
+Everything above is `goldbox.dos` proven through `tools/dosdisk.py` and
+`tools/dosnewsave.py`, which call `new_save` and `new_dos_save` directly. A
+player does not: they press Convert, and the bytes come out of
+`editor.window.EditorBinding.convert` → `editor.convert.ConvertDialog` →
+`Direction.rehearse` → `Direction.write`.
+`tests/test_convert.py`'s three transfer tests assert those two routes are
+byte-identical, and a byte-identity test is not a loaded game
+(`.claude/rules/conversions.md`). So both Pool of Radiance directions were
+driven through the dialog's own path and then booted, by
+`tools/convertrun.py`, for step D of
+`#52 (File ▸ Import and File ▸ Export for every direction the library
+supports)`.
+
+**DOS → C64.** `WISH-SPEC-por-party-l1-intown`, six characters this project
+rolled, slot E. The dialog wrote one `PORSAVEE.D64`, byte-identical to a
+direct `new_save` + `save_disk` call for the same inputs (174848 of 174848).
+In VICE the game's own `LOAD SAVED GAME` accepted it, `BEGIN ADVENTURING`
+reached the world bar in New Phlan at 0,4 facing west, the party panel listed
+six characters, all six `VIEW` sheets read the source's own numbers, the
+engine's own `ENCAMP ▸ SAVE` wrote the party back, and a walk crossed from
+area 0 into area 20 (The Slums) with the game asking for side 2 — which is the
+disk `goldbox/areas.py` gives that area.
+
+**C64 → DOS.** The disk the first direction wrote, converted back. The dialog
+wrote eleven files — `SAVGAMA.DAT`, six `CHRDATA<n>.SAV`, four
+`CHRDATA<n>.SPC`. In DOSBox the game loaded slot A, the panel listed the same
+six with the same armour classes and hit points the C64 panel had shown, the
+first sheet read the source's numbers rather than defaults, and the engine's
+own save to slot D afterwards holds area 20 at 15,4 where the file we wrote
+held area 0 at 0,4 — so the party walked. The engine rewrote 19 VM words on
+top of ours, all of them its ordinary post-load bookkeeping.
+
+**A file copy has to clear the slot itself.** `new_dos_save` deletes stale
+`CHRDAT<slot><n>.*` before it moves its own files in; copying the dialog's
+output into a staged game tree does not, and a freshly staged archive tree
+carries the shipped party's records at slot A — thirteen of them, `.ITM` files
+among them, which no conversion writes. `tools/convertrun.py` repeats that
+enumeration for the same reason.
+
+The two later titles' DOS → C64 rows also write correctly through the dialog,
+and neither has been walked: Curse of the Azure Bonds got as far as the game's
+own `LOAD SAVED GAME` accepting the disk with no drive error
+(`tools/curseload.py`), and Secret of the Silver Blades was not attempted,
+because `tools/ssbrun.py` serves for ever rather than exiting.
+
 ## A DOS save from nothing (#26 (Write a DOS save, not just read one))
 
 **`goldbox.dos.new_dos_save` writes all 13137 bytes and inherits none of
