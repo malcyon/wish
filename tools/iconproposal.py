@@ -452,7 +452,7 @@ def sheet(game: pathlib.Path, disk: pathlib.Path, kind: str, size: str,
     print(f"{path}  {image.width}x{image.height}")
 
 
-def save_figure(poses, palette, path: pathlib.Path, scale: int = 4) -> None:
+def save_figure(poses, palette, path: pathlib.Path, scale: int = 6) -> None:
     """One figure, both poses side by side, as its own small PNG."""
     from PIL import Image
 
@@ -579,8 +579,14 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
             ("head", heads, HEAD_ALTERNATIVES)):
         lines += [f"## DOS {kind} to C64 {kind}", ""]
         if compare:
-            lines += ["| DOS | | Match | Proposed | | Alternatives |",
-                      "|---:|---|---|---:|---|---|"]
+            #: `Match` last, not between the two pictures. Donald,
+            #: 2026-09-05: *"the 'Match' column is WAY TOO LONG. I need the
+            #: icons to be side by side."* Its text runs to a paragraph on a
+            #: redrawn row, which pushed the DOS figure and the C64 one to
+            #: opposite ends of a wide table -- and the whole use of the
+            #: document is comparing those two pictures at a glance.
+            lines += ["| DOS | | Proposed | | Alternatives | Match |",
+                      "|---:|---|---:|---|---|---|"]
         else:
             lines += ["| DOS | | Proposed | | Alternatives |",
                       "|---:|---|---:|---|---|"]
@@ -596,6 +602,7 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
                     parts, charset, title, size, kind, option, icon_colours,
                     img))
             cells = [str(dos_index), f"![](img/{name})"]
+            match = ""
             if compare:
                 notes = []
                 sizes = redrawn_by_row.get((kind, dos_index), [])
@@ -636,12 +643,14 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
                         f"names at the {' and '.join(c64_sizes)} size**, "
                         f"which this document does not draw -- the picture "
                         f"beside is the same on either disk")
-                cells.append(". ".join(notes) if notes
-                             else "Same picture Pool of Radiance draws")
+                match = (". ".join(notes) if notes
+                         else "Same picture Pool of Radiance draws")
             cells += [str(c64_index),
                      _c64_cell(parts, charset, title, size, kind, c64_index,
                                icon_colours, img),
                      " ".join(alts)]
+            if compare:
+                cells.append(match)
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
         lines += [f"### Every C64 {kind}, to swap from", ""]
