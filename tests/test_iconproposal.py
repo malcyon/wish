@@ -142,9 +142,12 @@ def _c64_disk():
 ])
 def test_all_four_sheet_combinations_draw(kind, size, tmp_path):
     """The regression: every `--kind`/`--size` pair used to draw, or not."""
-    from PIL import Image
-
     game, disk = _dos_game(), _c64_disk()
+    #: After the two skips above, never before them: CI has neither the game
+    #: files nor Pillow, and an import at the top of the body raised
+    #: `ModuleNotFoundError` before the missing disks could skip the test.
+    Image = pytest.importorskip("PIL.Image")
+
     path = tmp_path / f"{kind}-{size}.png"
     ip.sheet(game, disk, kind, size, ip.DEFAULT_COLOURS, path)
     assert path.is_file()
