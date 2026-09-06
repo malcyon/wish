@@ -90,7 +90,7 @@ and constants committed all through `docs/`.
 Donald, 2026-09-06, on storing the fourteen head and twelve body art ids the
 DOS-to-C64 portrait conversion needs, rather than reading them off the
 player's disks every time: *"A table of 26 numbers doesn't break any rules.
-It's not art, it's just two dozen numbers."* And on why it is worth doing at
+It's not art, it's just two dozen numbers."* And on why to do it at
 all: *"They are 40 years old and they are not going to change."*
 
 **The line is drawn by what the thing is, not by its size.** Numbers and their
@@ -142,7 +142,7 @@ read and rule on one at a time -- and hiding it put an agent's judgement
 between him and his own program.
 
 So `DERIVED` and `CONSTANTS` are silent, and everything still on `DROPPED`
-reaches the pane. **No agent decides that an entry is not worth showing**; that
+reaches the pane. **No agent decides that a player would not care about an entry**; that
 is the judgement he took back. `UNREPORTED_DROPS` existed to make exactly that
 call and is gone.
 

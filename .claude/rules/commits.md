@@ -5,7 +5,8 @@
 
 One commit per finding, where that is practical. Three findings in one commit
 is worse for later archaeology than three commits, even when the files overlap
--- but do not spend longer splitting a commit than the split is worth.
+-- but do not spend longer splitting a commit than the split saves the
+next reader.
 
 **The issue number goes at the end of that same line, in parentheses**, never
 on a line of its own. A commit message is the one place the number goes bare

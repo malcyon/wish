@@ -25,7 +25,7 @@ across the range: a taller font makes every machine's rows taller by the same
 proportion, while how wide a button gets for the same text is the platform's
 business.
 
-**The largest font worth testing is +10, and 9pt is the base here**, so the
+**The largest font to test is +10, and 9pt is the base here**, so the
 range is 9pt to 19pt, and `+6` matters most because it measures here about like
 Windows' base font. There is no layout problem at any font a person uses;
 somebody who needs text that large uses display scaling, which enlarges the
@@ -75,7 +75,7 @@ behaviour rather than a smaller assertion.
 `test_the_window_opens_inside_a_small_desktop` encodes Donald's actual screen;
 a layout that fails it does not fit his screen.
 
-**Failures found in the running program are worth more than any of it.** The
+**A failure found in the running program tells you more than any of it.** The
 suite runs offscreen with no emulator. A screenshot, a save that loads, a party
 a player can walk in the game -- those are the evidence, and the tests are how
 you keep them true afterwards.
@@ -152,7 +152,7 @@ WISH. I gave them gold. I increased their ability scores. I changed the weight
 of their items."* Driving a party through the game does not keep it clean
 afterwards.
 
-**But there is a distinction worth holding on to, because it rescues real
+**But there is a distinction to hold on to, because it rescues real
 work.** Editing an **input** and then watching the game compute from it is a
 valid experiment -- the engine does not care how a byte got there. Reading back
 a **stored value that Wish wrote** and calling it the game's arithmetic is not.
@@ -203,7 +203,7 @@ written up, give the corpus size *and* what the records are.
 The same trap caught a census that was sweeping an emulator instance's staged
 tree, where the sweeping tool's own tampered probe records sat -- our bytes
 read back as the engine's. `tools/dostailcensus.py` excludes what this project
-wrote, by name, and that exclusion is worth copying rather than reinventing.
+wrote, by name; copy that exclusion rather than reinventing it.
 
 **The way out, when no specimen can be trusted, is to read the code instead.**
 A finding taken from the engine's own instructions cannot be poisoned by an

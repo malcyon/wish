@@ -45,7 +45,7 @@ would have got it right. Length is not context; it is also drift.
 session established and check each fact has a home: a comment on its issue, a
 line in `docs/`, a row in a README. Name anything that does not, and write it
 down before the session ends. Calibrations are the ones that get lost -- "+6pt
-here measures like Windows' base font" is worth more than the fix it enabled.
+here measures like Windows' base font" outlives the fix it enabled.
 
 **A fresh session reads, in this order:** `CLAUDE.md`, `INDEX.md`, then
 `gh issue list`. For any issue it is about to work,

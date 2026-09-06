@@ -25,8 +25,8 @@ length preventing. `wish/window.py` builds the Export submenu inside the `if`.
 
 **An environment variable, not a preference.** A checkbox needs a label, and a
 label saying "experimental" needs a sentence saying what that means for the
-user's save disk. That is Donald's wording to write and it is not worth writing
-for something due to be deleted.
+user's save disk. That is Donald's wording to write, and writing it for
+something due to be deleted costs him an evening for nothing.
 
 **One truthiness rule, shared: `1`, `true`, `yes`, `on`.** Anything else --
 including an empty string, `0` and `off` -- is off. `wish/debugmode.py` has it
