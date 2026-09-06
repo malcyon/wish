@@ -1,0 +1,226 @@
+# The combat map's monster labels for #345 (Draw a letter in each
+# combat-map square saying what is standing there, instead of the index the
+# backend counts with).
+#
+# One row per monster name as its MON* record spells it, and the label drawn
+# above its health bar on the combat map: at most two characters, chosen by
+# hand, because no rule turns `7TH LVL DW FIGHTER` into `DF`. Collisions are
+# fine -- ORC and OGRE may both be `O`. The comment says which C64 titles
+# carry the name (and in how many MON files) and the hit dice its record
+# states.
+#
+# This is the single source: edit the labels here, never in the generated
+# document. `tools/monsterlabels.py --propose` appends a draft row for any
+# name on the disks that has none; `--markdown` writes the document to read
+# them by. Both keys and labels are quoted, because a label like `ON` or `N`
+# is a boolean to YAML unquoted.
+
+labels:
+
+  # Drafted 2026-09-06 by tools/monsterlabels.py --propose; every label below is a guess to correct.
+  "12 HEADED HYDRA":       "HH"   # Silver Blades; 12 hit dice
+  "12HD PYROHYDRA":        "P"    # Silver Blades; 12 hit dice
+  "16 HEADED HYDRA":       "HH"   # Silver Blades; 16 hit dice
+  "1ST LVL CLERIC":        "C"    # Pool; 1 hit dice
+  "1ST LVL THIEF":         "T"    # Pool; 1 hit dice
+  "2ND LVL CLERIC":        "C"    # Pool; 2 hit dice
+  "3RD LVL FIGHTER":       "F"    # Pool; 3 hit dice
+  "4TH LVL FIGHTER":       "F"    # Pool; 4 hit dice
+  "5TH LVL FIGHTER":       "F"    # Pool; 5 hit dice
+  "5TH LVL MU":            "MU"   # Pool; 5 hit dice
+  "6TH LVL FIGHTER":       "F"    # Pool x2; 6 hit dice
+  "6TH LVL THIEF":         "T"    # Pool x2; 7 hit dice
+  "7TH LVL CLERIC":        "C"    # Pool; 7 hit dice
+  "7TH LVL DW FIGHTER":    "DF"   # Pool; 7 hit dice
+  "7TH LVL FIGHTER":       "F"    # Pool; 7 hit dice
+  "7TH LVL THIEF":         "T"    # Pool; 7 hit dice
+  "8TH LVL FIGHTER":       "F"    # Pool; 8 hit dice
+  "9 HEADED HYDRA":        "HH"   # Silver Blades; 9 hit dice
+  "ACOLYTE":               "A"    # Pool; 1 hit dice
+  "AHNKHEG":               "A"    # Pool; 8 hit dice
+  "AIDES":                 "A"    # Pool; 3 hit dice
+  "AKABAR BEL AKAS":       "AA"   # Curse; 5 hit dice
+  "AL-HYAM DAZID":         "AD"   # Pool; 7 hit dice
+  "ALIAS":                 "A"    # Curse; 6 hit dice
+  "ANCIENT DRAGON":        "AD"   # Silver Blades x2; 15 hit dice
+  "ANHKHEG":               "A"    # Curse; 8 hit dice
+  "AVEROES":               "A"    # Silver Blades; 14 hit dice
+  "BANDIT":                "B"    # Pool; 0 hit dice
+  "BANITE CLERIC":         "BC"   # Silver Blades; 10 hit dice
+  "BANITE PRIEST":         "BP"   # Silver Blades; 12 hit dice
+  "BAR PATRON":            "BP"   # Curse; 2 hit dice
+  "BASILISK":              "B"    # Pool, Silver Blades; 7 hit dice
+  "BC LORD":               "BL"   # Silver Blades; 13 hit dice
+  "BC NECROMANCER":        "BN"   # Silver Blades; 10 hit dice
+  "BC TROOPER":            "BT"   # Silver Blades; 8 hit dice
+  "BC VETERAN":            "BV"   # Silver Blades; 10 hit dice
+  "BC WARLOCK":            "BW"   # Silver Blades; 8 hit dice
+  "BC WIZARD":             "BW"   # Silver Blades; 12 hit dice
+  "BEHOLDER":              "B"    # Curse; 17 hit dice
+  "BIT O' MOANDER":        "BM"   # Curse; 20 hit dice
+  "BLACK DRAGON":          "BD"   # Curse; 12 hit dice
+  "BUCCANEER":             "B"    # Pool; 0 hit dice
+  "BUGBEAR":               "B"    # Pool, Curse, Silver Blades; 4 hit dice
+  "CAPET":                 "C"    # Silver Blades; 14 hit dice
+  "CAPTAIN":               "C"    # Pool; 10 hit dice
+  "CENTAUR":               "C"    # Pool, Curse; 4 hit dice
+  "CENTIPEDE":             "C"    # Silver Blades; 3 hit dice
+  "CLOUD GIANT":           "CG"   # Silver Blades; 12 hit dice
+  "COCKATRICE":            "C"    # Silver Blades; 5 hit dice
+  "COMMANDANT":            "C"    # Pool; 9 hit dice
+  "CORPORAL":              "C"    # Pool; 2 hit dice
+  "CROCODILE":             "C"    # Curse; 4 hit dice
+  "CULTIST":               "C"    # Curse; 5 hit dice
+  "CURATE":                "C"    # Pool; 4 hit dice
+  "CYNTHIA":               "C"    # Curse; 9 hit dice
+  "DARK ELF CLERIC":       "DC"   # Curse; 6 hit dice
+  "DARK ELF LORD":         "DL"   # Curse x2; 12 hit dice
+  "DARK ELF MAGE":         "DM"   # Curse; 6 hit dice
+  "DIANE":                 "D"    # Pool; 5 hit dice
+  "DISPLACER BEAST":       "DB"   # Pool, Curse, Silver Blades; 6 hit dice
+  "DK ELF FIGHTER":        "DF"   # Curse; 5 hit dice
+  "DRACANDROS":            "D"    # Curse; 11 hit dice
+  "DRACOLICH":             "D"    # Curse; 17 hit dice
+  "DRAGONBAIT":            "D"    # Curse; 7 hit dice
+  "DREAD GUARD":           "DG"   # Silver Blades; 13 hit dice
+  "DREADLORD":             "D"    # Silver Blades; 18 hit dice
+  "DRIDER":                "D"    # Pool, Silver Blades; 7 hit dice
+  "DRYTHH":                "D"    # Pool; 4 hit dice
+  "DWARVEN FIGHTER":       "DF"   # Pool; 6 hit dice
+  "EFREETI":               "E"    # Pool x2, Curse; 10 hit dice
+  "ENVOY":                 "E"    # Pool; 6 hit dice
+  "ETTIN":                 "E"    # Pool, Curse, Silver Blades; 10 hit dice
+  "EVOKER":                "E"    # Pool; 2 hit dice
+  "FERRAN MARTINEZ":       "FM"   # Pool; 8 hit dice
+  "FIGHTER":               "F"    # Curse; 5 hit dice
+  "FIGHTING DOG":          "FD"   # Curse; 3 hit dice
+  "FIRE GIANT":            "FG"   # Pool, Silver Blades; 12 hit dice
+  "FIRE KNIFE":            "FK"   # Curse, Silver Blades; 6 hit dice
+  "FROST GIANT":           "FG"   # Silver Blades x2; 10 hit dice
+  "GARGOYLE":              "G"    # Silver Blades; 4 hit dice
+  "GENHEERIS":             "G"    # Pool; 7 hit dice
+  "GHOUL":                 "G"    # Pool; 2 hit dice
+  "GIANT CROCODILE":       "GC"   # Silver Blades; 7 hit dice
+  "GIANT LIZARD":          "GL"   # Pool; 4 hit dice
+  "GIANT MANTIS":          "GM"   # Pool; 10 hit dice
+  "GIANT SLUG":            "GS"   # Curse, Silver Blades; 12 hit dice
+  "GIANT SNAKE":           "GS"   # Pool, Silver Blades; 5 hit dice
+  "GIANT SPIDER":          "GS"   # Curse, Silver Blades; 5 hit dice
+  "GNOLL":                 "G"    # Pool; 2 hit dice
+  "GOBLIN GUARD":          "GG"   # Pool; 0 hit dice
+  "GOBLIN LEADER":         "GL"   # Pool x2; 0 hit dice
+  "GOLDEN WARRIOR":        "GW"   # Silver Blades; 15 hit dice
+  "GRENDEL":               "G"    # Curse; 9 hit dice
+  "GRIFFON":               "G"    # Curse, Silver Blades; 7 hit dice
+  "GRISHNAK":              "G"    # Pool; 6 hit dice
+  "GUARD":                 "G"    # Pool; 0 hit dice
+  "GYNOSPHINX":            "G"    # Silver Blades; 8 hit dice
+  "HASSAD":                "H"    # Pool; 6 hit dice
+  "HELL HOUND":            "HH"   # Curse, Silver Blades; 7 hit dice
+  "HERO":                  "H"    # Pool; 4 hit dice
+  "HIGH PRIEST":           "HP"   # Curse; 10 hit dice
+  "HILL GIANT":            "HG"   # Pool, Silver Blades; 9 hit dice
+  "HIPPOGRIFF":            "H"    # Pool, Curse, Silver Blades; 4 hit dice
+  "HOBGOBLIN":             "H"    # Pool; 2 hit dice
+  "HOBGOBLIN LEADER":      "HL"   # Pool; 2 hit dice
+  "HOODED MEDUSA":         "HM"   # Curse; 6 hit dice
+  "HUGE SCORPION":         "HS"   # Pool; 5 hit dice
+  "IRON GOLEM":            "IG"   # Silver Blades; 18 hit dice
+  "JUJU ZOMBIE":           "JZ"   # Pool; 4 hit dice
+  "KNIGHT":                "K"    # Curse; 6 hit dice
+  "KOBOLD":                "K"    # Pool x2; 0 hit dice
+  "KOBOLD LEADER":         "KL"   # Pool x2; 0 hit dice
+  "LARGE SCORPION":        "LS"   # Pool; 3 hit dice
+  "LEGION WIZARD":         "LW"   # Silver Blades; 14 hit dice
+  "LEGIONAIRE":            "L"    # Silver Blades; 14 hit dice
+  "LEVEL 3 MU":            "MU"   # Pool; 3 hit dice
+  "LEVEL 5 CLERIC":        "C"    # Pool; 5 hit dice
+  "LEVEL 6 MU":            "MU"   # Pool x2; 6 hit dice
+  "LG VEGEPYGMY":          "LV"   # Curse; 6 hit dice
+  "LIZARD KING":           "LK"   # Silver Blades; 8 hit dice
+  "LIZARD MAN":            "LM"   # Curse, Silver Blades; 2 hit dice
+  "LIZARDMAN":             "L"    # Pool; 3 hit dice
+  "LOOTER":                "L"    # Curse; 5 hit dice
+  "MACE":                  "M"    # Pool; 5 hit dice
+  "MAD MAN":               "MM"   # Pool; 1 hit dice
+  "MAGE":                  "M"    # Curse; 4 hit dice
+  "MANTICORE":             "M"    # Curse; 7 hit dice
+  "MARGOYLE":              "M"    # Curse, Silver Blades; 6 hit dice
+  "MASTODON":              "M"    # Silver Blades; 12 hit dice
+  "MEDUSA":                "M"    # Pool, Silver Blades; 6 hit dice
+  "MERCHANT":              "M"    # Pool; 0 hit dice
+  "MINOTAUR":              "M"    # Pool, Curse, Silver Blades; 7 hit dice
+  "MOBAT":                 "M"    # Silver Blades; 6 hit dice
+  "MOGION":                "M"    # Curse; 10 hit dice
+  "MONKEY":                "M"    # Curse; 2 hit dice
+  "MUMMY":                 "M"    # Pool; 7 hit dice
+  "MUTANT LIZARD MAN":     "MM"   # Pool; 4 hit dice
+  "NEO OTYUGH":            "NO"   # Silver Blades; 12 hit dice
+  "NEO-OTYUGH":            "N"    # Curse; 12 hit dice
+  "NOMAD":                 "N"    # Pool; 1 hit dice
+  "NORRIS THE GRAY":       "NG"   # Pool; 5 hit dice
+  "OGRE":                  "O"    # Pool, Curse, Silver Blades; 5 hit dice
+  "OGRE LEADER":           "OL"   # Pool; 7 hit dice
+  "ORC":                   "O"    # Pool x3; 1 hit dice
+  "ORC LEADER":            "OL"   # Pool x3; 1 hit dice
+  "OTYUGH":                "O"    # Curse, Silver Blades; 8 hit dice
+  "OWL BEAR":              "OB"   # Curse; 6 hit dice
+  "PHASE SPIDER":          "PS"   # Pool, Curse, Silver Blades; 6 hit dice
+  "POISONOUS FROG":        "PF"   # Pool; 1 hit dice
+  "PRIEST OF BANE":        "PB"   # Curse; 8 hit dice
+  "PRINCESS FATIMA":       "PF"   # Pool; 4 hit dice
+  "PURPLE WORM":           "PW"   # Silver Blades; 15 hit dice
+  "QUICKLINGS":            "Q"    # Pool; 1 hit dice
+  "RAKSHASA":              "R"    # Curse x2; 7 hit dice
+  "RED DRAGON":            "RD"   # Silver Blades; 11 hit dice
+  "RED HATCHLING":         "RH"   # Silver Blades; 7 hit dice
+  "RED PLUME":             "RP"   # Curse; 7 hit dice
+  "REMORHAZ":              "R"    # Silver Blades; 14 hit dice
+  "RESTAL":                "R"    # Pool; 4 hit dice
+  "ROBBER":                "R"    # Pool; 4 hit dice
+  "ROGUE":                 "R"    # Silver Blades; 8 hit dice
+  "ROYAL GUARD":           "RG"   # Curse; 3 hit dice
+  "RUSTLE":                "R"    # Curse; 9 hit dice
+  "SALAMANDER":            "S"    # Curse; 8 hit dice
+  "SARGATHA":              "S"    # Silver Blades; 8 hit dice
+  "SHAMAN":                "S"    # Pool; 5 hit dice
+  "SHAMBLING MOUND":       "SM"   # Curse; 11 hit dice
+  "SIEGLINDA":             "S"    # Silver Blades; 14 hit dice
+  "SIR DERIC":             "SD"   # Silver Blades; 10 hit dice
+  "SKELETON":              "S"    # Pool; 1 hit dice
+  "SKULLCRUSHER":          "S"    # Pool; 4 hit dice
+  "SM VEGEPYGMY":          "SV"   # Curse; 3 hit dice
+  "SPECTRE":               "S"    # Pool; 8 hit dice
+  "STIRGE":                "S"    # Pool; 2 hit dice
+  "STORM GIANT":           "SG"   # Silver Blades; 15 hit dice
+  "SWASHBUCKLER":          "S"    # Silver Blades; 11 hit dice
+  "SWORDSMAN":             "S"    # Pool; 3 hit dice
+  "TARRAN":                "T"    # Pool; 4 hit dice
+  "THEURGIST":             "T"    # Pool; 4 hit dice
+  "THIEF":                 "T"    # Curse; 6 hit dice
+  "THRI-KREEN":            "T"    # Pool, Curse; 7 hit dice
+  "TIGER":                 "T"    # Pool; 6 hit dice
+  "TOWNSMAN":              "T"    # Silver Blades; 3 hit dice
+  "TROLL":                 "T"    # Pool, Curse; 7 hit dice
+  "TYRANITHRAXUS":         "T"    # Pool x2; 10 hit dice
+  "TYRANTHRAXUS":          "T"    # Curse; 15 hit dice
+  "UMBER HULK":            "UH"   # Silver Blades; 10 hit dice
+  "VALA":                  "V"    # Silver Blades; 13 hit dice
+  "VAMPIRE":               "V"    # Pool; 9 hit dice
+  "WARRIOR":               "W"    # Pool; 2 hit dice
+  "WHITE DRAGON":          "WD"   # Silver Blades; 7 hit dice
+  "WIGHT":                 "W"    # Pool; 5 hit dice
+  "WILD BOAR":             "WB"   # Pool; 4 hit dice
+  "WILLIAM D'OR":          "WD"   # Pool; 5 hit dice
+  "WOLF":                  "W"    # Pool; 3 hit dice
+  "WORG":                  "W"    # Curse, Silver Blades; 4 hit dice
+  "WRAITH":                "W"    # Pool; 6 hit dice
+  "WYVERN":                "W"    # Pool, Curse, Silver Blades; 9 hit dice
+  "YARASH":                "Y"    # Pool; 9 hit dice
+  "ZHENTIL CLERIC":        "ZC"   # Curse; 6 hit dice
+  "ZHENTIL FIGHTER":       "ZF"   # Curse; 7 hit dice
+  "ZHENTIL MAGE":          "ZM"   # Curse; 7 hit dice
+  "ZHENTRIM CLERIC":       "ZC"   # Curse; 9 hit dice
+  "ZHENTRIM FGHTR":        "ZF"   # Curse; 9 hit dice
+  "ZHENTRIM MAGE":         "ZM"   # Curse; 9 hit dice
+  "ZOMBIE":                "Z"    # Pool; 2 hit dice
