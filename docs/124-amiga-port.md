@@ -874,6 +874,36 @@ single bytes (§1.9b), Curse widens x and y. That is the third per-title
 difference in the Amiga port, after the saved game's missing container byte and
 the item record's size. **Read the title before reading the file.**
 
+**The rest of the route, driven on 2026-09-05** for
+`docs/165-amiga-savegame.md`'s run: `LOAD WHICH GAME:` offers **the letters it
+found in the `SAVE` drawer** -- `A B C D` on a disk carrying four -- where
+`SAVE WHICH GAME:` offers ten regardless; `BEGIN ADVENTURING` is `B`; the
+adventuring bar is `AREA CAST VIEW ENCAMP SEARCH LOOK`, so `V` opens the first
+character's sheet, `I` his items, and `E` backs out of each; `ENCAMP` is the
+same `E` from the bar, then `SAVE`, the slot letter, RETURN, and finally
+`EXIT GAME  YES  NO`, answered **`N`**. **Movement was still not found** -- the
+`4`/`6`/`8` that work in Pool of Radiance do nothing, and neither do the arrow
+keys -- and nothing in that run needed a step.
+
+### 1.11a Amiga Silver Blades, read on screen (#28 (Decode an Amiga saved game, not just a character file), #331 (Amiga Silver Blades asks a journal word before it will adventure, so the title cannot be driven past its party menu))
+
+**The route in, as far as it goes**: the title painting takes **RETURN**, the
+version screen another; the `PLAY / DEMO / QUIT` bar takes **`P`** and, like
+Curse's, ignores RETURN; the party menu picks by first letter throughout, and
+`LOAD WHICH GAME:` offers the letters it found with no path prompt.
+`SAVE CURRENT GAME` is `S` on that menu and is enabled once a party is loaded,
+which is how the run got an engine-written saved game without adventuring.
+
+**`BEGIN ADVENTURING` asks a copy-protection question and there is no way past
+it here.** The prompt is `WHAT IS WORD # 1 OF JOURNAL ENTRY # 40 (JOURNAL, PAGE
+35)?`, a bare RETURN is refused and draws a *different* challenge, and ESC does
+the same. The artefact is the printed Adventurer's Journal, which is not on this
+machine. This **corrects an assumption taken from the C64**, whose
+release here never asks because its check is dead code: the two rips are
+different and one port does not predict another, which is the lesson
+`#108 (Amiga Curse asks its code wheel, so the title cannot be driven
+unattended)` taught on Curse.
+
 ### 1.12 Writing an Amiga Pool of Radiance character (#105 (Write an Amiga Pool of Radiance character, not just a Pools of Darkness one))
 
 The reader landed in §1.8 and §1.9; this is the other half, and it is the same

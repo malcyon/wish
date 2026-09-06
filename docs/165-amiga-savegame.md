@@ -142,6 +142,87 @@ new-game code and to 1 or 2 elsewhere, so it is an area group rather than a
 disk; the shipped save holds 1. Pool of Radiance has no byte and keeps the
 number in `$5012` alone.
 
+## What the running game did with one
+
+**CONFIRMED, one WinUAE run each on 2026-09-05**, holder `wish28`, screenshots
+in `work/28run/shots/`. Until then every claim on this page was a statement
+about what the save routine writes, and no Curse or Silver Blades saved game
+this project wrote had ever been loaded by the game.
+
+Five slots were written onto copies of the two game disks with
+`tools/amigalaterslot.py`, each one edit of the shipped save, and every one
+loaded and drew the party it holds:
+
+| title | slot | the edit | bytes | the party panel |
+|---|---|---|---|---|
+| Curse | B | character 0's sixteen-byte name field rewritten | 15221 | four rows, **ZEPHYRA** first, AC 1/2/0/1, HP 32/48/38/48 |
+| Curse | C | the party one character shorter | **14621** | **three rows**, right AC and HP |
+| Curse | D | one character's item chain emptied | **15023** | four rows, and that character's AC drawn **6** where the record still says 0 |
+| Silver Blades | B | six characters cut to four, character 0 renamed | **6553** | four rows, **TALWYN** first, AC 6/6/7/7, HP 95/74/91/58 |
+
+Slot C is the structural one: dropping a character moves the party-count word
+and every block boundary after it, and a loader reading a block length wrong
+comes apart on the character following. Curse's slot D then went adventuring
+at `3,14 E 01:15` -- its own file's square, facing and clock -- and drew a
+character sheet reproducing `docs/124-amiga-port.md` §1.11 line for line, and
+an ITEMS screen listing that character's two item nodes.
+
+### The engine's own resave, which is the strongest of it
+
+Each party was saved back through the game, and the file the engine wrote is
+compared with the one we wrote:
+
+| | Curse: our D against the engine's E | Silver Blades: our B against the engine's C |
+|---|---|---|
+| length | **15023 both** | **6553 both** |
+| bytes differing | 70 | 27 |
+| of those, outside the party region | **2** | **1** |
+| heap pointers, of the rest | 48 | 26 |
+
+The **whole variable array bar one word, the whole 7680-byte staged script,
+the square, the facing, the clock, the wallset table and the party count are
+byte for byte identical** on Curse; on Silver Blades, which stages no script,
+the whole array is identical. The two header bytes that moved are `$5079`
+(35 to 11), which `docs/141-dos-savegame.md` already lists among the words the
+engine rebuilds, and the mode-before byte.
+
+Both engine-written files parse through this page's map with every claim in
+`tools/amigasavegame.py`'s `check` clean, including `rebuild(parse(f)) == f`.
+
+### The derived fields are recomputed from the item chain
+
+The only differences that are not heap belong to the one character whose items
+were removed, and every one is a consequence of having none:
+
+| record offset | field | ours | the engine's |
+|---|---|---|---|
+| `0x19F` | `armour_class` | 60, i.e. AC 0 | **54, i.e. AC 6** |
+| `0x18C` | `encumbrance`, `u16be` | 782 | **282** |
+| `0x1AA` | `movement_current` | 9 | **12** |
+| `0x18A` | `hands_used` | 2 | **0** |
+| `0x1A0`, `0x1A5`, `0x1A7` | `roster_tail` | 53, 6, 2 | 48, 2, 1 |
+
+AC 6 was already on the party panel **at load**, before any save, so the
+recompute happens on the way in. The three characters whose items were left
+alone differ in none of these. **CONFIRMED, one character, differential**:
+Amiga Curse derives armour class, encumbrance, current movement and hands used
+from the item chain rather than trusting the stored bytes. It does not license
+writing them wrong -- the panel draws the recomputed value and a player would
+see it -- but a writer that gets them wrong is corrected rather than believed.
+
+The same character's stale `item_chain` slots past the head -- `0x157`,
+`0x15B`, `0x15F`, inherited from the save we edited -- were **cleared to zero
+by the engine**. Those slots are live heap and the loader does not read them.
+
+### And the load picker enumerates the drawer
+
+`LOAD WHICH GAME:` offers **the letters it found**: `A B C D` on the Curse disk
+carrying our three, `A B` on the Silver Blades one carrying our one.
+`SAVE WHICH GAME:` offers ten letters regardless. Amiga Pool of Radiance is not
+like this -- it asks a path and then a free-text letter, which is
+`#109 (A save slot written onto an Amiga disk is not offered by the game's
+picker)`. A fourth per-title difference.
+
 ## Still open
 
 * **The square property, `fn(x, y)`.** Rewritten on every step on all three
@@ -151,10 +232,18 @@ number in `$5012` alone.
 * **`$49FC` and `$49FF`'s sources** `g3d3e`, `g63d0`, `g63d1`. Named as
   globals, not as meanings. `docs/141` records the two ports disagreeing on
   these words; this is why -- they are engine bytes mirrored into the array.
-* **Silver Blades' mode 0** in the shipped save, above.
-* **Whether the game accepts a save it did not write.** The loader trusts the
-  count word and the block sizes with no checksum, so nothing in the format
-  stops it; unproven in the running game.
+* **Silver Blades' mode 0** in the shipped save, above. The run adds one fact
+  and does not settle it: `SAVE CURRENT GAME` on the party menu writes **0 in
+  both mode bytes**, where the shipped save holds 4 and 0. So the shipped file
+  was not written from the party menu either, and what leaves a 4 in front of a
+  0 is still UNKNOWN.
+* **A party on the travel grid, and a party in combat**, on either later title.
+  Every specimen here was saved indoors from camp or from the party menu.
+* **Amiga Silver Blades past its party menu.** It asks for a word out of the
+  printed Adventurer's Journal at `BEGIN ADVENTURING` and there is no journal on
+  this machine --
+  `#331 (Amiga Silver Blades asks a journal word before it will adventure, so
+  the title cannot be driven past its party menu)`.
 
 ## What this does not need
 
@@ -164,7 +253,11 @@ weeks, and the WinUAE route to it is open (`docs/143-winuae-debugger.md`,
 unattended)` closed). It would now confirm a map already read out of the
 writer, and Pool of Radiance's step diff (`docs/124` §1.9b) already shows the
 same engine moving y, facing, the wall byte and the square property on one
-step. It is worth running only when the square property's meaning is chased.
+step. It is worth running only when the square property's meaning is chased --
+and note the 2026-09-05 run above never moved the party, because none of what
+it set out to measure needed a step. The movement key on Amiga Curse is still
+unknown: the `4`/`6`/`8` that work in Amiga Pool of Radiance do nothing, and
+neither do the arrow keys.
 
 ## Method, so it can be repeated
 

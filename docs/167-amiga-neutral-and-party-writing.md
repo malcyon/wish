@@ -242,29 +242,40 @@ script and the square block are the caller's own save, and this changes only
 the region it can account for byte by byte. It is an edit of a player's own
 saved game, not a converted save built on somebody else's template.
 
-## What step 4 cannot claim, and the gate
+## The gate, which is now open
 
-**No Amiga Curse or Silver Blades saved game this project wrote has ever been
-loaded by the game.** Nothing has been read on either title's screen since
-GALAIN's character sheet.
+**Both later titles have loaded a saved game this project wrote, and drawn the
+party in it.** Five slots, two titles, one WinUAE run each on 2026-09-05:
+`docs/165-amiga-savegame.md`, "What the running game did with one", has the
+table, the engine's own resave of each and the screenshots. Amiga Curse drew a
+renamed character, a party one shorter, a character sheet and an ITEMS screen;
+Amiga Silver Blades drew a six-character party cut to four.
 
-What is established: the format takes it. There is no checksum, no length
-field and no signature anywhere in either loader; the party count is trusted;
-the block sizes are constants; and the three fields the loader does test are
-set correctly and measured correctly on 21 records. What is **not** established
-is that the engine runs it — and the three faults this project has already
-shipped past every byte-level check that existed (an AC of 9 drawn as 51, a
-dropped combat tail, a garbage weapon line) are the reason that distinction is
-kept.
+That closes the distinction this section used to keep open. What was
+established before the run was that the **format** takes it -- no checksum, no
+length field and no signature anywhere in either loader, the party count
+trusted, the block sizes constants, and the three chain fields the loader tests
+set correctly on 21 records. What was not established was that the **engine**
+runs it, because the three faults this project has shipped past every
+byte-level check that existed (an AC of 9 drawn as 51, a dropped combat tail, a
+garbage weapon line) all passed exactly that kind of check. It does run it.
 
-**So a WinUAE target is the gate, and it is now the only thing between step 4
-and done.** `docs/143-winuae-debugger.md` says what one takes.
-`#108 (Amiga Curse asks its code wheel, so the title cannot be driven
-unattended)` is closed, so Curse boots, answers its own protection prompt and
-loads; what was never found is the key that moves the party, since the `4`/`6`/`8`
-that work in Amiga Pool of Radiance do nothing in Curse. The run: boot Curse on
-a writable copy, load `SAVE/savgamA.dat`, save it back to a second slot through
-the game's own `ENCAMP / SAVE`, then write our own rebuild of that same party
-onto the disk, load it, and photograph one character sheet and the party panel.
-A party that loads and draws the same sheet is what turns this page's last
-section from an argument into a measurement.
+**One thing the run changed about what a writer must do.** Amiga Curse
+recomputes `armour_class`, `encumbrance`, `movement_current`, `hands_used` and
+three `roster_tail` bytes from the item chain on load, so a party whose derived
+fields disagree with its items is corrected rather than drawn wrong. That is
+smaller than it looked, and it is not permission: the party panel draws the
+recomputed value, so a player sees whichever the engine settles on.
+
+**Two things it did not reach**, and both are the same shape -- a party saved
+somewhere other than indoors, from camp or from the party menu:
+
+* a party on the travel grid or in combat, on either later title;
+* anything on Amiga Silver Blades past `BEGIN ADVENTURING`, which asks for a
+  word out of the printed Adventurer's Journal --
+  `#331 (Amiga Silver Blades asks a journal word before it will adventure, so
+  the title cannot be driven past its party menu)`.
+
+The key that moves the party in Amiga Curse is still unfound: the `4`/`6`/`8`
+that work in Amiga Pool of Radiance do nothing there, and neither do the arrow
+keys. Nothing the run set out to measure needed a step.
