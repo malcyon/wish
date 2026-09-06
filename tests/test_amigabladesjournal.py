@@ -39,8 +39,9 @@ def _stripes(path: pathlib.Path, rows: list[int], *,
     and they start at the same column the game's own lines do, which is all
     `fit_grid` reads.  Everything else on the frame is black.
     """
-    from PIL import Image
-
+    #: Guarded, not imported: CI installs no Pillow, and an
+    #: unguarded import fails the test where it should skip it.
+    Image = pytest.importorskip("PIL.Image")
     image = Image.new("RGB", size, (0, 0, 0))
     pixels = image.load()
     for row in rows:
@@ -80,26 +81,28 @@ def test_too_few_lines_is_not_a_challenge():
 
 
 def test_a_stripe_frame_gives_back_the_grid_it_was_drawn_on(tmp_path):
-    import PIL.Image
+    PIL_Image = pytest.importorskip("PIL.Image")
     path = _stripes(tmp_path / "grid.png", [2, 4, 6])
-    x0, y0, pitch = journal.fit_grid(journal.text_bands(PIL.Image.open(path)))
+    x0, y0, pitch = journal.fit_grid(journal.text_bands(PIL_Image.open(path)))
     assert (x0, y0, pitch) == (58, 59, 16)
 
 
 def test_a_colour_the_game_does_not_draw_text_in_is_not_ink(tmp_path):
     # The input bar's echo is yellow and the party roster is cyan; only the
     # body colour counts, or a menu would fit a grid and be read as a prompt.
-    import PIL.Image
+    PIL_Image = pytest.importorskip("PIL.Image")
     path = _stripes(tmp_path / "yellow.png", [2, 4, 6], colour=(255, 238, 85))
-    assert journal.text_bands(PIL.Image.open(path)) == []
+    assert journal.text_bands(PIL_Image.open(path)) == []
 
 
 def test_rows_closer_than_the_band_gap_are_one_line(tmp_path):
-    import PIL.Image
+    PIL_Image = pytest.importorskip("PIL.Image")
     path = tmp_path / "gap.png"
     # Rows 20-25 and 29-35, three blank rows between them -- a hole inside a
     # glyph, not a blank line -- and a third band a whole cell away.
-    from PIL import Image
+    #: Guarded, not imported: CI installs no Pillow, and an
+    #: unguarded import fails the test where it should skip it.
+    Image = pytest.importorskip("PIL.Image")
     image = Image.new("RGB", (400, 200), (0, 0, 0))
     pixels = image.load()
     for band in ((20, 26), (29, 36), (80, 86)):
@@ -107,7 +110,7 @@ def test_rows_closer_than_the_band_gap_are_one_line(tmp_path):
             for x in range(100, 200):
                 pixels[x, y] = journal.GREEN
     image.save(path)
-    bands = journal.text_bands(PIL.Image.open(path))
+    bands = journal.text_bands(PIL_Image.open(path))
     assert [(band[0], band[1]) for band in bands] == [(20, 35), (80, 85)]
 
 
@@ -116,7 +119,7 @@ def test_a_capture_is_rescaled_to_the_pitch_the_reader_asks_for(tmp_path):
     # cell at 16 pixels of a 1920x1080 desktop; the private reader was written
     # against FS-UAE, where the same cell is 30.64. Handing it the capture
     # unchanged is what made it read nothing at all.
-    import PIL.Image
+    PIL_Image = pytest.importorskip("PIL.Image")
     source = _stripes(tmp_path / "src.png", [2, 4, 6])
     scaled = tmp_path / "out.png"
     x0, y0, pitch = journal.to_reader_scale(source, scaled, target_pitch=30.64)
@@ -126,11 +129,13 @@ def test_a_capture_is_rescaled_to_the_pitch_the_reader_asks_for(tmp_path):
     assert x0 == pytest.approx(30.64, abs=1.0)
     assert y0 == pytest.approx(30.64, abs=1.0)
     # 42 cells wide and 27 tall, which is the 40x25 display plus the margin.
-    assert PIL.Image.open(scaled).size[0] == pytest.approx(42 * 30.64, abs=40)
+    assert PIL_Image.open(scaled).size[0] == pytest.approx(42 * 30.64, abs=40)
 
 
 def test_a_frame_with_no_grid_on_it_is_rescaled_into_nothing(tmp_path):
-    from PIL import Image
+    #: Guarded, not imported: CI installs no Pillow, and an
+    #: unguarded import fails the test where it should skip it.
+    Image = pytest.importorskip("PIL.Image")
     source = tmp_path / "blank.png"
     Image.new("RGB", (1920, 1080), (0, 0, 0)).save(source)
     assert journal.to_reader_scale(source, tmp_path / "unused.png",
