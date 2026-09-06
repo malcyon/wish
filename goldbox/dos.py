@@ -1256,6 +1256,13 @@ CONSTANTS: tuple[tuple[str, str], ...] = (
     ("field_83_87", "always the same five bytes, and the character sheet "
                     "looks identical whichever value they hold, so nothing "
                     "here is a loss a player would notice"),
+)
+
+#: The same, for a field only a later title declares -- split off the way
+#: :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`, so that
+#: `field_disposition` for Pool of Radiance is built from the tables Pool of
+#: Radiance actually has (#324).
+LATER_TITLE_CONSTANTS: tuple[tuple[str, str], ...] = (
     ("spells_castable_unattributed",
      "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
      "character sets a byte of and nobody has attributed to a class"),
@@ -1291,19 +1298,17 @@ def field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
         return tuple((n, w) for n, w in rows if n in declared and
                      n not in paired)
 
-    out = dict(neutral.disposition(
+    # `DERIVED` drops its third field here: the run that demonstrated a row
+    # is what keeps the row honest in the source, and is not part of what a
+    # report says (#324).
+    return neutral.disposition(
         only(DIRECT),
         only(TRANSFORMED + LATER_TITLE_TRANSFORMED)
         + tuple((n, _PAIRED_ABILITY) for n in ABILITY_ORDER if n in paired),
         only(DROPPED + LATER_TITLE_DROPPED),
-        "the C64's"))
-    # `DERIVED` and `CONSTANTS` are outside `neutral.disposition`'s three
-    # buckets -- reported `derived:`/`constant:` rather than `dropped:`,
-    # the same shape `WRITE_TARGETS` builds by hand for `WRITE_DERIVED` and
-    # `WRITE_CONSTANTS` on the write side (#324).
-    out |= {n: f"derived: {w}" for n, w, _run in DERIVED if n in declared}
-    out |= {n: f"constant: {w}" for n, w in CONSTANTS if n in declared}
-    return out
+        "the C64's",
+        derived=only(tuple((n, w) for n, w, _run in DERIVED)),
+        constants=only(CONSTANTS + LATER_TITLE_CONSTANTS))
 
 
 def portrait_tables(game: str | pathlib.Path | None

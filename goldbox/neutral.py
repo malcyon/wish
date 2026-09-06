@@ -517,13 +517,24 @@ class Writer:
 def disposition(direct: Sequence[tuple[str, str]],
                 transformed: Sequence[tuple[str, str]],
                 dropped: Sequence[tuple[str, str]],
-                into: str) -> dict[str, str]:
+                into: str,
+                derived: Sequence[tuple[str, str]] = (),
+                constants: Sequence[tuple[str, str]] = ()) -> dict[str, str]:
     """Every field a codec knows about and what it does with it.
 
-    The three tables are the codec's whole account of itself, and the test
-    that keeps it honest is :func:`undeclared`: a field the source declares and
-    none of the three names would be a field dropped in silence, which
+    The tables are the codec's whole account of itself, and the test that
+    keeps it honest is :func:`undeclared`: a field the source declares and
+    none of them names would be a field dropped in silence, which
     `docs/117-save-conversion.md` forbids.
+
+    `derived` and `constants` are the two a destination does not need to be
+    given -- a field it recomputes on load, and one that holds the same value
+    in every record anybody has read.  They report as `derived:` and
+    `constant:` rather than `dropped:`, because a player is told about a
+    **loss** and neither is one (`#324 (The import pane tells a player nine
+    fields could not be converted that the C64 recomputes for itself)`).
+    They are optional so a codec that has measured none still calls the one
+    builder rather than growing a second.
     """
     out: dict[str, str] = {}
     for name, destination in direct:
@@ -532,6 +543,10 @@ def disposition(direct: Sequence[tuple[str, str]],
         out[name] = why
     for name, why in dropped:
         out[name] = f"dropped: {why}"
+    for name, why in derived:
+        out[name] = f"derived: {why}"
+    for name, why in constants:
+        out[name] = f"constant: {why}"
     return out
 
 

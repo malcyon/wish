@@ -1052,18 +1052,22 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
         assert n.get("experience") == 17
         assert n.get("exceptional_strength") == 100
         assert n.get("movement_current") == 9
-        # Encumbrance is derived, so `goldbox/dos.py` drops it rather than
-        # carrying it -- the identity that proves the item file is decoded
-        # is asserted on the reader above, not here.  It is deliberately
-        # *not* in `dropped`: `#118 (Stop showing the player drops nobody
-        # would notice)` put it in `goldbox.dos.UNREPORTED_DROPS` on
-        # 2026-08-27, because money plus item weight is a number the
-        # destination works out for itself and there is nothing for a player
-        # to see go missing. This test asserted the old line until 2026-09-04
-        # and never went red, because the specimen corpus had been lost with
-        # `work/` and every test that reads one was skipping.
+        # Encumbrance is derived, so `goldbox/dos.py` does not convert it --
+        # the identity that proves the item file is decoded is asserted on
+        # the reader above, not here.  It is deliberately *not* in
+        # `dropped`: money plus item weight is a number the destination
+        # works out for itself, so there is nothing for a player to see go
+        # missing.  `#118 (Stop showing the player drops nobody would
+        # notice)` first hid it in `goldbox.dos.UNREPORTED_DROPS` on
+        # 2026-08-27; `#324 (The import pane tells a player nine fields
+        # could not be converted that the C64 recomputes for itself)` moved
+        # it to `goldbox.dos.DERIVED` on 2026-09-05, which says the same
+        # thing without calling it a drop at all.  This test asserted the
+        # line before that until 2026-09-04 and never went red, because the
+        # specimen corpus had been lost with `work/` and every test that
+        # reads one was skipping.
         assert n.get("encumbrance") is None
-        assert "encumbrance" in dos_unreported_drops()
+        assert dos_field_disposition()["encumbrance"].startswith("derived:")
         assert not any("encumbrance" in d for d in n.dropped)
         assert n.get("strength") == 18
         assert n.get("age") == 18
@@ -1074,6 +1078,11 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
 def dos_unreported_drops() -> frozenset:
     from goldbox import dos
     return dos.UNREPORTED_DROPS
+
+
+def dos_field_disposition() -> dict:
+    from goldbox import dos
+    return dos.field_disposition()
 
 
 def test_the_innate_effects_reach_the_neutral_record():

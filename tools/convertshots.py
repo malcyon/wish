@@ -17,7 +17,7 @@ player's own DOS save and C64/DOS game files; those two are skipped, with a
 line saying so, on a machine that has neither.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py work/reports/convertshots
+        GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py work/convertshots
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def _ready_states(root: pathlib.Path):
 
 def main(argv: list[str]) -> int:
     out_dir = pathlib.Path(argv[1] if len(argv) > 1
-                           else "work/reports/convertshots")
+                           else "work/convertshots")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     app = QApplication.instance() or QApplication(["convertshots"])

@@ -1877,6 +1877,7 @@ graph LR
   dos --> dos_layout
   dos --> dos_savegame
   dos --> games
+  dos --> iconparts
   dos -.->|deferred| icons
   dos -.->|deferred| items
   dos --> layout

@@ -43,7 +43,9 @@ def test_the_two_ports_share_one_report_shape():
     assert issubclass(amiga.Report, neutral.Report)
     # And one builder makes both disposition tables.
     assert dos.field_disposition() == neutral.disposition(
-        dos.DIRECT, dos.TRANSFORMED, dos.DROPPED, "the C64's")
+        dos.DIRECT, dos.TRANSFORMED, dos.DROPPED, "the C64's",
+        derived=tuple((n, w) for n, w, _run in dos.DERIVED),
+        constants=dos.CONSTANTS)
     assert amiga.field_disposition() == neutral.disposition(
         amiga.DIRECT, amiga.TRANSFORMED, amiga.DROPPED, "the Amiga's")
 
