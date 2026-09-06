@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
 )
 
 from goldbox import dos, games
+from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
 
@@ -179,9 +180,10 @@ class GameFiles:
     there is no `GameFiles` to have named them.
     """
 
-    #: The 36-byte combat icon every converted character gets, composed from
-    #: `SPELLE64`/`SPELLN64` by `IconParts.default_icon`.
-    icon: bytes
+    #: `SPELLE64`/`SPELLN64`, read into an `IconParts` (#130): each converted
+    #: character gets the combat figure his own DOS record names, through
+    #: `IconParts.dos_icon`.
+    icon: bytes | IconParts
     #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
     animate: bytes
     #: The creation menu's two tables (#57), or `None` when no disk here

@@ -124,8 +124,8 @@ def check_areas(disks: pathlib.Path) -> list[str]:
     return out
 
 
-def game_files(disks: pathlib.Path) -> tuple[bytes, bytes]:
-    """The composed combat icon and `ANIMATE00`, off the player's own sides.
+def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
+    """The icon option tables and `ANIMATE00`, off the player's own sides.
 
     Curse ships `SPELLE64` and `SPELLN64` the same way Pool of Radiance does
     -- `goldbox/iconparts.py` reads `SPELLE64` byte-identical in all three
@@ -137,7 +137,7 @@ def game_files(disks: pathlib.Path) -> tuple[bytes, bytes]:
     for path in sorted(disks.glob("*.[dD]64")):
         if icon is None:
             try:
-                icon = IconParts.load(str(path)).default_icon()
+                icon = IconParts.load(str(path))
             except Exception:
                 pass
         if animate is None:

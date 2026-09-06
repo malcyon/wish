@@ -185,12 +185,19 @@ def test_curse_reports_the_spell_slots_its_c64_record_cannot_hold():
     """`0x0EE`-`0x0F3` has 32 code references in Pool of Radiance and none in
     Curse over 411 files, and all six records of the engine-written Curse save
     read zero there -- including a level-5 cleric with nothing memorised, who
-    would have every slot free.  So the array is not written, and the player
-    is told."""
+    would have every slot free.  So the array is not written.
+
+    **Not a drop line any more (#324).**  #192 step 3 watched the memorise
+    screen enforce this ceiling with nothing in the converted save supplying
+    it, so nothing here is a loss a player would notice; `write` records it
+    as a note over the six bytes instead of a line in `rep.dropped`.
+    """
     n = neutral_curse(spells_castable_cleric=bytes((2, 2, 1, 0, 0)))
     rec, rep = c64_codec.write(n)
     assert rec.to_bytes()[0x0EE:0x0F4] == bytes(6)
-    assert any("still cast today" in d for d in rep.dropped)
+    assert not any("still cast today" in d for d in rep.dropped)
+    assert rep.sources[0x0EE] == c64_codec.NO_SPELL_SLOTS
+    assert rep.sources[0x0F3] == c64_codec.NO_SPELL_SLOTS
 
 
 def test_pool_of_radiance_still_writes_its_spell_slots():
@@ -364,6 +371,30 @@ def _dos_save():
     if not (DOS_SESSION / "SAVGAMH.DAT").exists():
         pytest.skip(f"no DOS Curse session at {DOS_SESSION}; #113 makes one")
     return DOS_SESSION
+
+
+def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
+    """#324 (The import pane tells a player nine fields could not be
+    converted that the C64 recomputes for itself): converting the `#113`
+    session at `work/curse/H-square-5-13` slot H through
+    `editor.dosimport.rehearse` shows no line for item bookkeeping, heap
+    state, the running-effects link, which hand holds a weapon or the
+    constant bytes at `field_83_87` -- the same guard as
+    `tests/test_dosconvert.py`'s Pool of Radiance version, on Curse's own
+    container.  `icon` and `animate` are dummy bytes here, exactly as
+    `test_a_curse_save_is_written_whole` uses them: the pane's content does
+    not depend on the player's own disks, only the byte-for-byte write does.
+    """
+    from editor.dosimport import GameFiles, rehearse
+
+    files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
+    conversion = rehearse(_dos_save(), "H", files)
+    keywords = ("item list", "internal game state", "running-effects list",
+               "which hand is holding", "five bytes that make no difference")
+    for line in conversion.report.dropped:
+        lowered = line.lower()
+        for keyword in keywords:
+            assert keyword not in lowered, line
 
 
 def test_a_curse_save_is_written_whole():

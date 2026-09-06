@@ -189,20 +189,21 @@ def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
     to assert the very thing that ticket exists to remove.
     """
     from editor.dosimport import dropped_text, rehearse
-    from goldbox.dos import COMBAT_ICON_DROP, DROPPED_PLAYER_TEXT
+    from goldbox.dos import DROPPED_PLAYER_TEXT
 
     text = dropped_text(rehearse(dos_save, "A", files).report)
     for field in ("portrait_head", "portrait_body"):
         assert DROPPED_PLAYER_TEXT[field] in text, field
         assert field not in text, field
-    assert COMBAT_ICON_DROP in text
-    assert text.count(COMBAT_ICON_DROP) == 1
     for field in ("encumbrance", "item_count", "strength_bonus",
                   "icon_head", "icon_body", "icon_dimension", "icon_colours"):
         assert field not in text, field
     # #267: the sentence that said the C64 has no combat icon colours.
     assert "does not use them" not in text
     assert ".SPC effect" not in text
+    # #130: the icon is converted now, whatever `icon` argument this call
+    # was given, so the pane says nothing about it at all any more.
+    assert "Combat icons" not in text
 
 
 # --- the window -------------------------------------------------------------
@@ -339,17 +340,18 @@ def test_with_the_game_disks_there_the_import_gets_as_far_as_the_picker(
 
 
 @needs_disks
-def test_a_disk_that_loads_but_makes_no_icon_refuses_rather_than_doing_nothing(
+def test_a_disk_that_loads_once_but_fails_on_the_second_read_refuses(
         app, tmp_path, monkeypatch):
-    """`_find_disk` proves `IconParts.load` *succeeds*; it does not prove the
-    default weapon and head are in range for that disk's option counts. The
-    second read is where a corrupt or truncated `SPELLE64` shows up, and with
-    nothing catching it the exception escapes the menu's slot: `wish/debuglog.py`
-    logs it and **the user sees nothing at all happen**.
+    """`_find_disk` proves `IconParts.load` succeeds *once*, on the probe
+    read; `game_files_for_import` reads the same disk a second time to build
+    the `GameFiles` it returns (#130 -- the table is now kept whole rather
+    than reduced to one composed default at this point, so it is read once
+    more rather than reused).  A corrupt or truncated `SPELLE64` that fails
+    only on that second read must not escape the menu's slot uncaught:
+    `wish/debuglog.py` logs it and **the user sees nothing at all happen**.
 
-    Raising out of `default_icon` is the shortest way to stand that state up.
-    What has to come back is the refusal the missing-disks case already gets,
-    and no folder picker.
+    What has to come back is the refusal the missing-disks case already
+    gets, and no folder picker.
     """
     import editor.window as ew
     from editor.dosimport import NO_DISKS, NO_DISKS_TITLE
@@ -362,29 +364,47 @@ def test_a_disk_that_loads_but_makes_no_icon_refuses_rather_than_doing_nothing(
     monkeypatch.setattr(ew.QFileDialog, "getExistingDirectory",
                         lambda *a, **k: picked.append(a) or "")
 
-    def out_of_range(_self):
-        raise IndexError("icon option 3 of 2")
-
-    monkeypatch.setattr(IconParts, "default_icon", out_of_range)
+    # Construct the window with the real reader first -- it already calls
+    # `IconParts.load` more than once for its own game-disk setup, and the
+    # scenario this test wants is specific to `import_dos_save`'s own second
+    # read, not to whatever `EditorBinding.__init__` did on the way up.
     window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
+
+    real_load = IconParts.load
+    calls = []
+
+    def fails_on_the_second_call(disk):
+        calls.append(disk)
+        if len(calls) > 1:
+            raise ValueError("SPELLE64 truncated on the second read")
+        return real_load(disk)
+
+    monkeypatch.setattr(IconParts, "load", staticmethod(fails_on_the_second_call))
     assert window.import_dos_save() == "no game disks"
     assert said == [(NO_DISKS_TITLE, NO_DISKS)]
     assert picked == []
+    assert len(calls) > 1, "the scenario needs a second read to fail on"
     window.close()
 
 
 @needs_disks
 def test_the_game_files_an_import_needs_are_the_icon_and_animate(app, tmp_path):
     """What `game_files_for_import` actually found, rather than that it found
-    something: a 36-byte icon that is not zero and `ANIMATE00`'s own 852."""
+    something: the C64's own icon option tables (#130 -- kept whole rather
+    than reduced to one composed default here, so each character can get his
+    own figure later) and `ANIMATE00`'s own 852 bytes."""
     from editor.window import EditorBinding
+    from goldbox.iconparts import IconParts
 
     window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
     found = window.game_files_for_import()
     assert found is not None
-    assert len(found.icon) == 36 and any(found.icon)
+    assert isinstance(found.icon, IconParts)
+    default = found.icon.default_icon()
+    assert len(default) == 36 and any(default)
+    assert len(found.animate) == 852 and any(found.animate)
     assert len(found.animate) == dos.ANIMATE_SIZE
     window.close()
 

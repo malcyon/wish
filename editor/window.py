@@ -900,7 +900,7 @@ class EditorBinding(QObject):
             except (PortraitError, OSError) as exc:
                 _log.debug("no creation menu off %s: %s", self.disks, exc)
         try:
-            return GameFiles(icon=IconParts.load(icon_disk).default_icon(),
+            return GameFiles(icon=IconParts.load(icon_disk),
                              animate=read_animate(animate_disk),
                              portraits=portraits)
         except Exception:

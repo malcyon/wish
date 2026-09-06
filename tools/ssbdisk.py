@@ -88,8 +88,8 @@ def check_areas(disks: pathlib.Path) -> list[str]:
     return out
 
 
-def combat_icon(disks: pathlib.Path) -> bytes:
-    """The 36-byte icon the game's own character creation composes.
+def combat_icon(disks: pathlib.Path) -> IconParts:
+    """The icon option tables each character's own combat figure comes from.
 
     `goldbox/iconparts.py` reads `SPELLE64` byte-identical in all three C64
     titles, so this is the same call Curse's and Pool of Radiance's tools
@@ -98,7 +98,7 @@ def combat_icon(disks: pathlib.Path) -> bytes:
     """
     for path in sorted(disks.glob("*.[dD]64")):
         try:
-            return IconParts.load(str(path)).default_icon()
+            return IconParts.load(str(path))
         except Exception:
             continue
     raise FileNotFoundError(

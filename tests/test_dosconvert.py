@@ -347,10 +347,13 @@ def test_the_dropped_list_names_the_losses_a_player_would_notice():
     """What the import's report pane shows, which is not everything the
     conversion knows (#118, Donald's four corrections of 2026-08-27).
 
-    Three kinds of line came off it: a field the C64 derives for itself, a
-    running spell effect, and the three DOS icon fields, which became one
-    sentence.  None of the three is a loss a player can see, and a pane of
-    lines nobody can act on is what made him ask.
+    A field the C64 derives for itself does not reach the player as a drop --
+    `UNREPORTED_DROPS` for `icon_dimension` and `turn_class` here, and
+    `DERIVED`/`CONSTANTS` for the rest (#324, see
+    `test_no_dos_derived_or_constant_field_reaches_the_import_pane`).  A
+    running spell effect and the DOS combat figure are the other two kinds of
+    line that never reach the pane -- the figure because it is converted
+    rather than dropped now (#130).
 
     **Nothing measured left the code.**  Every suppressed name is still in
     `DROPPED`, so `field_disposition` still accounts for it and
@@ -359,7 +362,7 @@ def test_the_dropped_list_names_the_losses_a_player_would_notice():
     halves, because the failure worth catching is a fact being deleted rather
     than a line being hidden.
     """
-    quiet = dos.UNREPORTED_DROPS | dos.ICON_DROPS
+    quiet = dos.UNREPORTED_DROPS
     declared = dict(dos.DROPPED)
     assert quiet <= set(declared), "a suppressed drop must still be declared"
     disposition = dos.field_disposition()
@@ -372,7 +375,6 @@ def test_the_dropped_list_names_the_losses_a_player_would_notice():
         for name in quiet:
             assert not [d for d in report.dropped if name in d], \
                 (char.name, name)
-        assert report.dropped.count(dos.COMBAT_ICON_DROP) == 1, char.name
         seen += 1
     assert seen >= 6, "needs a party to check against"
 
@@ -439,9 +441,65 @@ def test_every_visible_dropped_name_has_player_text():
     is obvious.
     """
     visible = {name for name, _why in dos.DROPPED
-               if name not in dos.UNREPORTED_DROPS
-               and name not in dos.ICON_DROPS}
+               if name not in dos.UNREPORTED_DROPS}
     assert visible <= set(dos.DROPPED_PLAYER_TEXT)
+
+
+def test_every_derived_field_carries_the_run_that_demonstrated_it():
+    """#324 (The import pane tells a player nine fields could not be
+    converted that the C64 recomputes for itself): `DERIVED`'s third field
+    is the evidence that moved a name off `DROPPED`, and a row with nothing
+    there is a row nobody has earned yet.
+    """
+    for name, why, run in dos.DERIVED:
+        assert why.strip(), name
+        assert run.strip(), name
+
+
+@needs_disks
+def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
+    """#324: converting `WISH-SPEC-por-party-l1-intown` slot E through
+    `editor.dosimport.rehearse` -- the same call `File > Import` makes --
+    shows no line for item bookkeeping, heap state, the running-effects
+    link, which hand holds a weapon or the five constant bytes at
+    `field_83_87`.  Measured empty outright: this specimen's party converts
+    with nothing left on the pane at all.
+    """
+    from editor.dosimport import GameFiles, rehearse
+    from goldbox.d64 import load_payload
+    from goldbox.iconparts import IconParts
+    from goldbox.portraits import PortraitError, tables_from_disks
+
+    where = gamedata.disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    icon = animate = None
+    for disk in sorted(where.glob("POOL*.[dD]64")):
+        try:
+            icon = icon if icon is not None else IconParts.load(str(disk))
+        except Exception:
+            pass
+        try:
+            animate = animate if animate is not None else \
+                load_payload(str(disk), dos.ANIMATE_FILE)
+        except Exception:
+            pass
+    if icon is None or animate is None:
+        pytest.skip("no POOL disk here carries SPELLE64/SPELLN64 or ANIMATE00")
+    try:
+        portraits = tables_from_disks(where)
+    except PortraitError:
+        portraits = None
+    folder = gamedata.specimen("por-party-l1-intown")
+    conversion = rehearse(folder, "E", GameFiles(icon=icon, animate=animate,
+                                                 portraits=portraits))
+    keywords = ("item list", "internal game state", "running-effects list",
+               "which hand is holding", "five bytes that make no difference")
+    for line in conversion.report.dropped:
+        lowered = line.lower()
+        for keyword in keywords:
+            assert keyword not in lowered, line
+    assert conversion.report.dropped == [], conversion.report.dropped
 
 
 def test_no_player_text_says_something_was_not_carried():
@@ -1357,6 +1415,55 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
         assert got == want, place
         if place < len(party):
             assert any(got), f"slot {place} would draw as black hooks"
+
+
+def _icon_parts():
+    """`IconParts` off whichever `POOL*` side carries it, or skip."""
+    from goldbox.iconparts import IconParts
+
+    where = gamedata.disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    for disk in sorted(where.glob("POOL*.[dD]64")):
+        try:
+            return IconParts.load(str(disk))
+        except Exception:
+            pass
+    pytest.skip("no POOL disk here carries SPELLE64/SPELLN64")
+
+
+@needs_dos_saves
+def test_a_converted_party_keeps_its_own_combat_figures():
+    """#130 (A converted DOS party arrives with six identical combat figures,
+    not its own): `convert_save` used to hand every character the same
+    36-byte default icon.  Given the C64's own option tables instead of
+    composed bytes, each character gets the figure his own DOS record names,
+    through `IconParts.dos_icon` -- exactly `_icon_for`'s helper, checked
+    directly against `new_save`'s own output.
+    """
+    from goldbox.iconparts import dos_size
+
+    parts = _icon_parts()
+    _icon, animate = _game_files()
+    slot = next((s for s in dos.slots_available(_save_dir())
+                if len({(c.get("icon_head"), c.get("icon_body"))
+                        for c in dos.read_party(_save_dir(), s)}) > 1),
+               None)
+    if slot is None:
+        pytest.skip("needs a DOS party whose combat figures are not all "
+                    "the same")
+    party = dos.read_party(_save_dir(), slot)
+    save0, _save1, _report = dos.new_save(_save_dir(), slot, parts, animate)
+    icons = {}
+    for index, char in enumerate(party):
+        place = dos.marching_slot(index, len(party))
+        at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
+        icons[place] = bytes(save0[at:at + dos.ICON_SIZE])
+        want = parts.dos_icon(char.get("icon_head"), char.get("icon_body"),
+                              dos_size(char.get("size")),
+                              bytes(char.get("icon_colours")))
+        assert icons[place] == want, char.name
+    assert len(set(icons.values())) > 1, "every figure came out the same"
 
 
 # --- the sheet portrait, and the trap in its switch (#57) -------------------

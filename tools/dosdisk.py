@@ -14,8 +14,8 @@ the player's own game disks at run time, which is Donald's ruling of
 the game disks and we need them.  That would mean making up data, which we
 will not do."*:
 
-* the 36-byte combat icon each character gets, composed by
-  `goldbox.iconparts.IconParts.default_icon` off `SPELLE64`/`SPELLN64`;
+* the combat icon each character's own DOS record becomes, composed by
+  `goldbox.iconparts.IconParts.dos_icon` off `SPELLE64`/`SPELLN64` (#130);
 * `ANIMATE00`'s 852 payload bytes, which sit at `$8400` in `SAVEDGAME1`.
 
 So it refuses without them rather than inventing either.
@@ -70,8 +70,8 @@ def dos_folder() -> pathlib.Path:
     return dosbox.find_game("POOLRAD") / "SAVE"
 
 
-def game_files(disks: pathlib.Path) -> tuple[bytes, bytes]:
-    """The composed icon and `ANIMATE00`, off whichever disk carries each.
+def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
+    """The icon option tables and `ANIMATE00`, off whichever disk carries each.
 
     `ANIMATE00` is byte-identical on all eight `POOL` sides and the icon
     tables are on `POOL3`, so this walks the directory rather than naming a
@@ -81,7 +81,7 @@ def game_files(disks: pathlib.Path) -> tuple[bytes, bytes]:
     for path in sorted(disks.glob("*.[dD]64")):
         if icon is None:
             try:
-                icon = IconParts.load(str(path)).default_icon()
+                icon = IconParts.load(str(path))
             except Exception:
                 pass
         if animate is None:

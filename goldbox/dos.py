@@ -76,6 +76,7 @@ from .dos_layout import (
     DosShapeError,
     shape_for,
 )
+from .iconparts import IconParts, dos_size
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
 from .portraits import (
@@ -1026,38 +1027,9 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("movement_current", "roster_movement"),
 )
 
-#: DOS fields deliberately left behind, and why.  Reported, never silent.
+#: DOS fields deliberately left behind, and why.  Reported, never silent
+#: unless :data:`UNREPORTED_DROPS` names them.
 DROPPED: tuple[tuple[str, str], ...] = (
-    ("encumbrance", "derived -- money plus item weight; the C64 has no such "
-                    "field and recomputes what it needs"),
-    ("item_chain", "live heap state: the DOS item list is a chain of far "
-                   "pointers, the C64 has sixteen fixed slots"),
-    # #267 (The import tells the player the C64 has no combat icon colours,
-    # and it has one for every part of the figure): this used to read "the
-    # C64 draws its own 36-byte icon and numbers no such thing", which is
-    # false in the direction that matters.  A C64 icon is eighteen screen
-    # codes and **eighteen colours**, one per cell of the 3x3 figure, and the
-    # game's own ICON > COLOR menu names seven parts --
-    # WEAPON BODY CAP HAIR SHIELD ARM LEG.  `goldbox/iconparts.py` reads
-    # and writes them and `docs/186-ready-and-action.md` proved all eighteen
-    # of a converted figure against the game's own drawing.  What is really
-    # in the way is that the two sets do not correspond, which is
-    # #130 (A converted DOS party arrives with six identical combat figures,
-    # not its own).
-    ("icon_colours", "the DOS combat figure's own colours: six pairs of "
-                     "4-bit indices, one pair per part, the low nibble the "
-                     "main colour and the high one the highlight. The C64 "
-                     "keeps eighteen colours instead, one per cell, over "
-                     "seven named parts to DOS's six, and one 3-bit colour "
-                     "each where DOS has two 4-bit ones -- with no brown and "
-                     "no light grey in the eight it can draw, both of which "
-                     "the DOS default set uses. So a correspondence would be "
-                     "a choice rather than a conversion, and the C64 figure "
-                     "is composed in the game's own default colours instead"),
-    ("heap_104", "live heap pointers"),
-    ("effect_chain", "live pointer to the effect list; the effects "
-                     "themselves come from the .SPC file"),
-    ("item_count", "implied by the C64's sixteen fixed slots"),
     # #57: `to_neutral` carries this across when it is given the game's own
     # creation tables, and only drops it when it is not.
     ("portrait_head", "the sheet portrait's head: a menu position, which "
@@ -1065,27 +1037,14 @@ DROPPED: tuple[tuple[str, str], ...] = (
                       "C64's HEADnn id. Converted across when those tables "
                       "are available, dropped when they are not"),
     ("portrait_body", "see portrait_head; the body half of the same pair"),
-    ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. The C64 "
-                  "stores the drawn 36-byte icon instead of an index"),
-    ("icon_body", "DOS art: CBODY.DAX, likewise"),
+    # #130 (A converted DOS party arrives with six identical combat figures,
+    # not its own): the C64 has one size byte where DOS has two fields --
+    # `size` (see `TRANSFORMED`) and this one, the creature's combat
+    # footprint.  It is 1 in every player record any title has ever been
+    # read carrying and `GAME.OVR:0x19F98` writes the 1 at creation, so
+    # nothing here is a loss a player would notice -- silenced below.
     ("icon_dimension", "the C64 has one size byte where DOS has two fields; "
                        "the C64's carries the other one"),
-    ("strength_bonus", "a boolean on DOS; the C64's aligned byte is a "
-                       "strength *index* and is computed instead"),
-    ("hands_used", "live combat state"),
-    # `field_83_87` (#235): the byte-level evidence is in
-    # `docs/141-dos-savegame.md`, under "0x083-0x087: a constant, and what
-    # that rests on".  It reads 00 00 01 00 00 in 101 of 101 engine-written
-    # Pool of Radiance records -- 20 characters, eight classes, levels 1-4,
-    # before a fight and after one, and on a character the engine knocked
-    # unconscious -- and the sheet is pixel-identical whatever it holds.
-    #
-    # `field_10c_10f`, the combat tail, is `#235`'s other half and is no
-    # longer here: all four bytes are now understood and converted (see
-    # `TRANSFORMED`, and docs/169-dos-combat-side.md for 0x10E and 0x10F).
-    ("field_83_87", "always the same five bytes, and the character sheet "
-                    "looks identical whichever value they hold, so nothing "
-                    "here is a loss a player would notice"),
     # #297: this byte is the **target's** turning row, not the caster's
     # strength, so a player character reads 0 and there is nothing for the
     # C64's own `turn_class` at 0x0A3 to gain from it. The C64 writer sets
@@ -1102,49 +1061,14 @@ DROPPED: tuple[tuple[str, str], ...] = (
 #:
 #: Every name here is still in :data:`DROPPED`, so `field_disposition` still
 #: accounts for it and `goldbox/dos_layout.py` still carries its field note --
-#: what changes is only the list in front of somebody importing a save.  The
-#: first three are each a value the C64 works out for itself, so there is
-#: nothing for a player to see go missing: encumbrance is money plus item
-#: weight, item_count is implied by the sixteen fixed slots, and
-#: strength_bonus is a boolean the C64 replaces with a computed strength
-#: index.
+#: what changes is only the list in front of somebody importing a save.
+#: `icon_dimension` is 1 in every player record any title has ever been read
+#: carrying (#130); `turn_class` is 0 in every player character in either
+#: port (#297).
 #:
 #: Donald, 2026-08-27: *"We do not need to report derived lines as being
 #: dropped. The user will not notice the difference."*
-UNREPORTED_DROPS = frozenset({"encumbrance", "item_count",
-                              "strength_bonus", "turn_class"})
-
-#: The four DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
-#: All four say the same thing to a player -- the DOS combat figure does not
-#: come across -- and four offsets do not make that any clearer.
-#:
-#: `icon_colours` joined the other three for #267 (The import tells the player
-#: the C64 has no combat icon colours, and it has one for every part of the
-#: figure).  It had a sentence of its own claiming the C64 "does not use"
-#: combat icon colours, which is untrue -- the C64 keeps eighteen of them,
-#: one per cell -- and the colours of a converted figure are set by exactly
-#: the same thing as its shapes: the game's own default art.  So it is the
-#: same fact as the other three and reads as one line rather than two.
-ICON_DROPS = frozenset({"icon_head", "icon_body", "icon_dimension",
-                        "icon_colours"})
-
-#: What the player is told instead, in place of those four.  Donald's words,
-#: approved 2026-08-27.  It is true because the conversion composes the icon
-#: the game's own character creation writes (#118), colours included: all
-#: eighteen screen codes and all eighteen colours of a converted figure were
-#: matched against the game's own drawing for #184 (A converted combat icon's
-#: colours are proven in the game and its shapes are not),
-#: `docs/186-ready-and-action.md`.  If a conversion ever brings the DOS figure
-#: across (#130), this sentence stops being true and goes back to naming the
-#: fields.
-#:
-#: **Still a line about a field that did not convert**, which
-#: `.claude/rules/conversions.md` no longer wants a player to read at all
-#: (Donald, 2026-09-05).  Left in place because it is his own approved
-#: wording and because the figure really does arrive as the default one
-#: until #130 is done; taking the line out is his call, not an agent's.
-COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
-                    "art does not convert")
+UNREPORTED_DROPS = frozenset({"icon_dimension", "turn_class"})
 
 #: What a player reads for each name in :data:`DROPPED` that still reaches
 #: `report.dropped` -- a subject a person recognises, standing in for the
@@ -1153,11 +1077,11 @@ COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
 #: offset in front of a player).  `DROPPED`'s own `(name, why)` pairs are
 #: untouched and still carry the byte-level account for `field_disposition()`
 #: and anyone reading the source; this dict is read only when composing what
-#: a player sees.  A name silenced by `UNREPORTED_DROPS` or folded into
-#: `COMBAT_ICON_DROP` by `ICON_DROPS` needs no entry -- nothing is composed
-#: for it -- and `portrait_head`/`portrait_body` are named here for the case
-#: where no creation tables were available at all; the menu-mismatch case
-#: has its own sentence at the call site, since it has to name the position.
+#: a player sees.  A name silenced by `UNREPORTED_DROPS` needs no entry --
+#: nothing is composed for it -- and `portrait_head`/`portrait_body` are
+#: named here for the case where no creation tables were available at all;
+#: the menu-mismatch case has its own sentence at the call site, since it
+#: has to name the position.
 #:
 #: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
 #: word here Donald's; this is the working proposal for
@@ -1165,16 +1089,6 @@ COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
 #: in front of the player, not only the two #235 fixed), built so it can be
 #: seen running rather than only described.
 DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "item_chain": "Item list bookkeeping: the C64 keeps a fixed list of "
-                  "sixteen slots instead of DOS's linked one",
-    "heap_104": "Internal game state kept only while the game is running, "
-                "not shown to the player",
-    "effect_chain": "The running-effects list's own internal link; the "
-                    "effects themselves are kept separately",
-    "hands_used": "Which hand is holding a weapon right now; set again "
-                  "the next time the character fights",
-    "field_83_87": "Five bytes that make no difference to the character "
-                   "sheet, whatever they hold",
     "portrait_head": "Character portrait (head): needs the game's own "
                      "character-creation art, which this import could not "
                      "read",
@@ -1219,6 +1133,26 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "C64's identity_pair at 0x0E6, with 0x0E7 left zero "
                     "(#258, The C64 side of 0x0AB is unnamed, so the "
                     "conversion drops it with no issue behind it)"),
+    # #130 (A converted DOS party arrives with six identical combat figures,
+    # not its own): the composition and the tables are in
+    # `goldbox/iconparts.py`; `IconParts.dos_icon` is what `to_c64_record`
+    # calls through `_icon_for`.
+    ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. Converted "
+                  "through the head table in tools/iconproposal.yaml into "
+                  "one of the C64's own head options"),
+    ("icon_body", "DOS art: CBODY.DAX, the combat icon's body. Converted "
+                  "through the body table in tools/iconproposal.yaml -- the "
+                  "C64 draws a whole pose, arms and any held item included, "
+                  "as one WEAPON option -- into one of the C64's own weapon "
+                  "options"),
+    ("icon_colours", "the DOS combat figure's own colours: six pairs of "
+                     "4-bit indices, one pair per part, the low nibble the "
+                     "main colour and the high one the highlight. Converted "
+                     "through the colour table in tools/iconproposal.yaml -- "
+                     "the low nibble of each pair for most parts, the high "
+                     "one for the leg and the shield, which it covers more "
+                     "of -- into the C64's own eighteen colours over its "
+                     "seven named parts"),
 )
 
 
@@ -1250,12 +1184,77 @@ LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
      "would have written. **What a player gains by it is not established**: "
      "staged both ways in the running Silver Blades game the sheet offers "
      "CURE either way, so the byte does not gate the command there"),
-    ("spells_castable_unattributed",
-     "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
-     "character sets a byte of and nobody has attributed to a class"),
     ("highest_class_levels",
      "Pools of Darkness' third level array, the level to restore a drained "
      "character to; there is no C64 Pools of Darkness to convert to"),
+)
+
+#: DOS fields the C64 recomputes or never needed in the first place, measured
+#: rather than assumed -- `.claude/rules/conversions.md`'s "a field the
+#: destination derives on load needs no line, and that derivation has to be
+#: demonstrated in the running game first."  Reported by `field_disposition`
+#: as `derived:` rather than `dropped:`, and never shown to a player: the
+#: mirror of :data:`WRITE_DERIVED` on the export side, over the DOS field
+#: vocabulary the way :data:`DROPPED` is.
+#:
+#: `(name, why, the run that demonstrated it)` -- a row with nothing in the
+#: third field is a row nobody has earned yet.
+#:
+#: #324 (The import pane tells a player nine fields could not be converted
+#: that the C64 recomputes for itself).
+DERIVED: tuple[tuple[str, str, str], ...] = (
+    ("item_chain", "live heap state: the DOS item list is a chain of far "
+                   "pointers, rebuilt by the engine on load; the C64 keeps "
+                   "sixteen fixed slots instead and needs none of it",
+     "measured NULL in engine-written records with items and without "
+     "(#61, #62, #69)"),
+    ("heap_104", "live heap pointers, rebuilt by the engine on load",
+     "measured NULL in engine-written records with items and without "
+     "(#61, #62, #69)"),
+    ("effect_chain", "live pointer to the effect list; the effects "
+                     "themselves come from the .SPC file and the engine "
+                     "rebuilds the chain on load",
+     "measured NULL in engine-written records with items and without "
+     "(#61, #62, #69)"),
+    ("hands_used", "live combat state, set again the next time the "
+                   "character fights",
+     "measured zero in engine-written records with items and without "
+     "(#61, #62, #69)"),
+    ("encumbrance", "derived -- money plus item weight; the C64 has no such "
+                    "field and recomputes what it needs",
+     "27 of 27 converted characters balance exactly against money and item "
+     "weight (b8a64ea, test_encumbrance_balances_against_money_and_item_"
+     "weights)"),
+    ("item_count", "implied by the C64's sixteen fixed slots, which it "
+                   "counts for itself on load",
+     "27 of 27 converted characters balance exactly (b8a64ea)"),
+    ("strength_bonus", "a boolean on DOS; the C64 writer already sets its "
+                       "aligned byte to a computed strength index by the "
+                       "same rule GEN uses, so nothing here is a loss",
+     "#277 (A DOS character converted to the C64 loses the strength bonus "
+     "to hit and damage, because 0x0E3 is written zero), closed"),
+)
+
+#: DOS fields written to the one value every specimen this project has read
+#: holds, so nothing a player did produced a different one -- the import-side
+#: counterpart of :data:`WRITE_CONSTANTS`.  Reported by `field_disposition`
+#: as `constant:` rather than `dropped:`, and never shown to a player.
+#:
+#: #324 (The import pane tells a player nine fields could not be converted
+#: that the C64 recomputes for itself).
+CONSTANTS: tuple[tuple[str, str], ...] = (
+    # The byte-level evidence is in `docs/141-dos-savegame.md`, under
+    # "0x083-0x087: a constant, and what that rests on": 00 00 01 00 00 in
+    # 101 of 101 engine-written Pool of Radiance records -- 20 characters,
+    # eight classes, levels 1-4, before a fight and after one, and on a
+    # character the engine knocked unconscious -- and the sheet is
+    # pixel-identical whatever it holds (#235, #304).
+    ("field_83_87", "always the same five bytes, and the character sheet "
+                    "looks identical whichever value they hold, so nothing "
+                    "here is a loss a player would notice"),
+    ("spells_castable_unattributed",
+     "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
+     "character sets a byte of and nobody has attributed to a class"),
 )
 
 #: How the ability pairs are reported for a title that keeps two copies.
@@ -1288,12 +1287,19 @@ def field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
         return tuple((n, w) for n, w in rows if n in declared and
                      n not in paired)
 
-    return neutral.disposition(
+    out = dict(neutral.disposition(
         only(DIRECT),
         only(TRANSFORMED + LATER_TITLE_TRANSFORMED)
         + tuple((n, _PAIRED_ABILITY) for n in ABILITY_ORDER if n in paired),
         only(DROPPED + LATER_TITLE_DROPPED),
-        "the C64's")
+        "the C64's"))
+    # `DERIVED` and `CONSTANTS` are outside `neutral.disposition`'s three
+    # buckets -- reported `derived:`/`constant:` rather than `dropped:`,
+    # the same shape `WRITE_TARGETS` builds by hand for `WRITE_DERIVED` and
+    # `WRITE_CONSTANTS` on the write side (#324).
+    out |= {n: f"derived: {w}" for n, w, _run in DERIVED if n in declared}
+    out |= {n: f"constant: {w}" for n, w in CONSTANTS if n in declared}
+    return out
 
 
 def portrait_tables(game: str | pathlib.Path | None
@@ -1683,10 +1689,15 @@ def to_neutral(dos: DosCharacter,
         converted_portrait.add(name)
 
     # -- what the DOS record holds and no neutral field does ------------------
-    # `UNREPORTED_DROPS` and `ICON_DROPS` are still in `DROPPED`, so
-    # `field_disposition` still accounts for every one of them; what they are
-    # kept out of is the list a person reads.
-    silent = set(UNREPORTED_DROPS) | set(ICON_DROPS)
+    # `UNREPORTED_DROPS` is still in `DROPPED`, so `field_disposition` still
+    # accounts for every name in it; what it is kept out of is the list a
+    # person reads.  `DERIVED` and `CONSTANTS` are not in `DROPPED` at all
+    # any more (#324), so the loop below never sees `item_chain`, `heap_104`,
+    # `effect_chain`, `hands_used`, `encumbrance`, `item_count`,
+    # `strength_bonus`, `field_83_87` or `spells_castable_unattributed`, and
+    # `icon_head`/`icon_body`/`icon_colours` are `TRANSFORMED` rather than
+    # dropped (#130).
+    silent = set(UNREPORTED_DROPS)
     if not draws_portrait:
         # Nothing was lost: this title's sheet draws no face for any
         # character, including one the engine made itself (#300).
@@ -1697,8 +1708,24 @@ def to_neutral(dos: DosCharacter,
         if name in converted_portrait:
             continue
         out.drop(DROPPED_PLAYER_TEXT[name])
-    out.drop(COMBAT_ICON_DROP)
     return out
+
+
+def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None"
+             ) -> bytes | None:
+    """The 36 bytes this character's own combat figure becomes (#130).
+
+    `icon` is either the composed bytes every character shares -- which is
+    what a port with no DOS icon fields supplies -- or the C64's own option
+    tables, in which case each character gets the figure his own record
+    names.  `IconParts.dos_icon` composes it the way the game's own ICON
+    menu composes one, so every icon written here is one the game can make.
+    """
+    if not isinstance(icon, IconParts):
+        return icon
+    return icon.dos_icon(char.get("icon_head"), char.get("icon_body"),
+                         dos_size(char.get("size")),
+                         bytes(char.get("icon_colours")))
 
 
 def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
@@ -2062,11 +2089,12 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #: Silver Blades source produces, `RecordShape.spell_slots` being `False` for
 #: both -- writes zeroes and reports nothing.  Measured over the 24 records
 #: on the player's own disks: `turn_power` is the only `WRITE_DROPPED` line
-#: any of them reaches.  The `spells_castable` line a player can actually see
-#: is `goldbox.c64_codec.NO_SPELL_SLOTS`, on the DOS-to-C64 direction, and
-#: the measurement in `docs/180-writing-a-later-dos-record.md` is about the
-#: **DOS** engine rebuilding the field on load, so it does not license
-#: silencing a line about arriving on the C64.
+#: any of them reaches.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the
+#: `spells_castable` line on the DOS-to-C64 direction, went the same way for
+#: the same reason (#324): #192 step 3 and #193 step 3 both watched the
+#: memorise screen enforce a ceiling nothing in the converted save wrote, so
+#: it is a note over the six bytes it leaves zero rather than a line in
+#: `report.dropped`.
 WRITE_UNREPORTED_DROPS = frozenset({"turn_power"})
 
 
@@ -3907,7 +3935,7 @@ class C64SaveReport(Report):
 
 def convert_save(folder: str | pathlib.Path, slot: str,
                  save0: bytearray, save1: bytearray | None = None,
-                 icon: bytes | None = None,
+                 icon: "bytes | IconParts | None" = None,
                  animate: bytes | None = None,
                  portraits: PortraitTables | None = None,
                  game=None) -> C64SaveReport:
@@ -3919,13 +3947,16 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     else's (#118).  :func:`new_save` is that call, and is what the import
     uses.
 
-    `icon` is the 36-byte combat icon every converted character gets, which
-    only the caller can supply because it is composed from the player's own
-    game disk -- `goldbox.iconparts.IconParts.default_icon`.  `animate` is
-    `ANIMATE00`'s 852-byte payload off the same disks, which goes at `$8400`.
-    Leave either out and that region keeps whatever the payload already held,
-    which is only ever right when the payload came from a real C64 save;
-    `Report.unwritten` is what says so afterwards.
+    `icon` is either the 36-byte combat icon every converted character gets
+    when there is no DOS figure to draw from -- composed from the player's
+    own game disk, `goldbox.iconparts.IconParts.default_icon` -- or an
+    `IconParts` itself, in which case each character's own `icon_head`,
+    `icon_body` and `icon_colours` become his own figure instead (#130,
+    :func:`_icon_for`).  `animate` is `ANIMATE00`'s 852-byte payload off the
+    same disks, which goes at `$8400`.  Leave either out and that region
+    keeps whatever the payload already held, which is only ever right when
+    the payload came from a real C64 save; `Report.unwritten` is what says
+    so afterwards.
 
     `portraits` is the creation menu's two tables, from
     :func:`portrait_tables`.  With them each character's sheet portrait
@@ -3976,7 +4007,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     all_faced = True
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
-        rec, one = to_c64_record(char, icon=icon, portraits=portraits)
+        rec, one = to_c64_record(char, icon=_icon_for(char, icon),
+                                 portraits=portraits)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
@@ -3993,11 +4025,15 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         at = container.icon(place)
         save0[at:at + ICON_SIZE] = raw[0x220:0x244]
         report.note(at, ICON_SIZE, f"{who} -- " + (
+            "the combat figure this character's own DOS record names: "
+            "icon_body and icon_head through the table in "
+            "tools/iconproposal.yaml, and the low nibble of most of the six "
+            "icon_colours pairs through the same file's colour table -- the "
+            "high nibble for the leg and the shield (#130)"
+            if isinstance(icon, IconParts) else
             "the combat icon the game's own character creation writes, "
-            "composed from the player's own disk. The DOS character's own "
-            "icon_head, icon_body and icon_colours are not converted: the two "
-            "ports draw from different art and the palettes have not been "
-            "compared (#57)" if icon is not None else
+            "composed from the player's own disk"
+            if icon is not None else
             "icon from the record, which is zero"))
         if container.name_table is not None:
             entry = container.name_index(place, len(party))
@@ -4178,12 +4214,15 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     return report
 
 
-def new_save(folder: str | pathlib.Path, slot: str, icon: bytes,
+def new_save(folder: str | pathlib.Path, slot: str,
+             icon: "bytes | IconParts",
              animate: bytes, portraits: PortraitTables | None = None,
              game=None) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
-    `icon` is the 36-byte combat icon each character gets and `animate` is
+    `icon` is either the 36-byte combat icon every character gets, or the
+    C64's own option tables as an `IconParts`, in which case each character
+    gets the figure his own DOS record names instead (#130).  `animate` is
     `ANIMATE00`'s payload; both come off the player's own game disks, and
     there is no default for either -- a conversion that cannot read them is
     one that would have to invent bytes, and it refuses instead.  `portraits`

@@ -420,12 +420,8 @@ ITEM_SIZE = 16
 #: What a player reads when a title's C64 record has no home for something
 #: the source held.  **PROPOSED, not yet approved**:
 #: `.claude/rules/gui-text.md` makes every word a player reads Donald's, and
-#: these five are written so they can be seen running rather than only
+#: these four are written so they can be seen running rather than only
 #: described.  None names an offset, a field or a ticket.
-NO_SPELL_SLOTS = (
-    "How many spells each character can still cast today: this game works "
-    "that out from their class and level when you make camp, so it keeps no "
-    "list of it")
 NO_SLOT_ARRAY_FOR = (
     "Spell slots for a {what}: the C64 game has nowhere to keep them")
 SPELL_LEVELS_ABOVE_THREE = (
@@ -439,6 +435,17 @@ NO_DUAL_CLASS_SLOT = (
 TWO_FORMER_CLASSES = (
     "The character used to be both a {what}, and the saved game has room for "
     "only one class trained out of")
+
+#: Not a drop line any more (#324): both proofs that produced it -- #192 step
+#: 3 and #193 step 3 -- watched the memorise screen enforce a spell ceiling
+#: nothing in the converted save wrote, so a Curse or Silver Blades character
+#: arriving with no `spells_castable` array loses nothing.  `write` records
+#: it as a note over the six bytes it leaves zero instead of a line in
+#: `report.dropped`.
+NO_SPELL_SLOTS = (
+    "how many spells each character can still cast today: this game works "
+    "that out from their class and level when you make camp, so it keeps no "
+    "list of it")
 
 #: Neutral status name -> the low three bits of C64 record `0x100`.  The
 #: C64's own enumeration, read off the routine that draws the STATUS line:
@@ -680,7 +687,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         if any(len(v) > 3 for v in castable.value.values()):
             rep.dropped.append(SPELL_LEVELS_ABOVE_THREE)
     elif castable is not None:
-        rep.dropped.append(NO_SPELL_SLOTS)
+        rep.note(0x0EE, 6, NO_SPELL_SLOTS)
 
     # -- the class a dual-classed human left --------------------------------
     # One class and one level, where the source keeps a whole second level

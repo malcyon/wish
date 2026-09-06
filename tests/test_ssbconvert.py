@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
 from test_neutral import _filled
 
@@ -450,6 +451,30 @@ def test_the_twelve_items_land_on_the_head_of_the_party(converts_ssb):
     for slot in range(5):
         other = bytes(save0[0x1000 + slot * 0x100:0x1000 + (slot + 1) * 0x100])
         assert not any(other)
+
+
+def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
+    """#324 (The import pane tells a player nine fields could not be
+    converted that the C64 recomputes for itself): converting
+    `WISH-SPEC-ssb-234-party-pair` slot D through `editor.dosimport.rehearse`
+    shows no line for item bookkeeping, heap state, the running-effects
+    link, which hand holds a weapon or the constant bytes at `field_83_87`
+    -- the same guard as `tests/test_dosconvert.py`'s Pool of Radiance
+    version and `tests/test_curseconvert.py`'s Curse one.  `icon` and
+    `animate` are dummy bytes, as they are throughout this file's own DOS
+    tests: the pane's content does not depend on the player's own disks.
+    """
+    from editor.dosimport import GameFiles, rehearse
+
+    folder = gamedata.specimen("ssb-234-party-pair")
+    files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
+    conversion = rehearse(folder, "D", files)
+    keywords = ("item list", "internal game state", "running-effects list",
+               "which hand is holding", "five bytes that make no difference")
+    for line in conversion.report.dropped:
+        lowered = line.lower()
+        for keyword in keywords:
+            assert keyword not in lowered, line
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------
