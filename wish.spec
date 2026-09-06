@@ -46,6 +46,11 @@ COMMON_EXCLUDES = [
 # `goldbox/iconparts.py` onto `goldbox.assets`.
 DATAS = [
     ("assets/logo/mark.svg", "assets/logo"),
+    #: The PNG is what Help > About draws -- Qt drops four of the five
+    #: node gradients in the vector (`wish/about.py`). The SVG stays
+    #: carried: it is the source, and a renderer that implements
+    #: `xlink:href` on a gradient would draw it correctly.
+    ("assets/logo/combo-mark-color-500.png", "assets/logo"),
     ("assets/logo/combo-mark-color.svg", "assets/logo"),
     # `ui/appicon.py` scales the taskbar icon from the smallest of these no
     # smaller than the size it wants, and renders the SVG only above 500.

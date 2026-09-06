@@ -131,7 +131,7 @@ def test_the_readers_resolve_through_it(monkeypatch, tmp_path):
         for side, path in appicon.RASTERS.items():
             assert path == tmp_path / "assets" / "logo" / f"mark-{side}.png"
         assert about.PICTURE_ASSET == (
-            tmp_path / "assets" / "logo" / "combo-mark-color.svg")
+            tmp_path / "assets" / "logo" / "combo-mark-color-500.png")
     finally:
         monkeypatch.undo()
         importlib.reload(appicon)
@@ -147,7 +147,7 @@ def test_something_is_asked_for():
     stopped matching and the checks below pass vacuously."""
     asked = _asked_for()
     assert pathlib.Path("assets/logo/mark.svg") in asked
-    assert pathlib.Path("assets/logo/combo-mark-color.svg") in asked
+    assert pathlib.Path("assets/logo/combo-mark-color-500.png") in asked
     for side in (80, 150, 200, 500):
         assert pathlib.Path(f"assets/logo/mark-{side}.png") in asked, side
 

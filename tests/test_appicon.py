@@ -278,12 +278,12 @@ def test_the_about_box_shows_the_icon(app):
         dialog.deleteLater()
 
 
-#: `assets/logo/combo-mark-color.svg`, as delivered on 2026-09-05 -- the
-#: pentacle with the WISH lettering inside it, on its own near-black ground.
-#: Pinned for the same reason `MARK_SHA256` is: an edit here would be
-#: redrawing somebody else's art.
+#: `assets/logo/combo-mark-color-500.png`, the artist's own 500-pixel
+#: export -- the pentacle with the WISH lettering inside it, on its own
+#: near-black ground.  Pinned for the same reason `MARK_SHA256` is: an edit
+#: here would be redrawing somebody else's art.
 COMBO_MARK_SHA256 = \
-    "8a37717b86678a0ca105bec8378da59055dfce2a35ec0b7809ae6b46d2f03956"
+    "5a83a2e8018aaf4b6bbf2cb138586c38cf5a3a2542f4b64be2ba6c29188a4774"
 
 
 def test_the_about_picture_is_the_artists_own_file_unmodified():
@@ -292,8 +292,61 @@ def test_the_about_picture_is_the_artists_own_file_unmodified():
     assert PICTURE_ASSET.exists(), PICTURE_ASSET
     digest = hashlib.sha256(PICTURE_ASSET.read_bytes()).hexdigest()
     assert digest == COMBO_MARK_SHA256, (
-        "assets/logo/combo-mark-color.svg has changed -- update "
+        f"{PICTURE_ASSET.name} has changed -- update "
         "COMBO_MARK_SHA256 if this is a deliberate new delivery")
+
+
+def test_the_about_picture_draws_all_five_of_the_stars_nodes(app):
+    """The fault Donald photographed in a Windows build on 2026-09-06:
+    *"four of the five points on the star are gone in the combo image."*
+
+    The five glowing nodes are `<circle>` elements filled from radial
+    gradients, and only the first carries its own colour stops -- the other
+    four are `xlink:href="#radial-gradient"`, inheriting the stops and
+    overriding the position.  **Qt's SVG module does not implement that**,
+    so it paints one node and drops four.  Drawing from the artist's own
+    PNG export instead is what fixes it, and this counts the nodes rather
+    than asserting which file was opened, so it fails whatever the cause.
+
+    Each node is sampled where the star's arms meet the ring. **Brighter
+    than the ground is not the test** -- the arms themselves are gold and
+    meet at exactly those five points, so a first attempt at this passed
+    against the broken vector. Measured at 256 pixels: the vector gives the
+    one node that has its own stops 0.99 and the other four 0.62, which is
+    the arm alone; the artist's export gives all five 0.99. So the node is
+    the near-white glow on top of the arm, and 0.85 separates them with
+    room on both sides.
+    """
+    import math
+
+    from wish.about import PICTURE, _picture
+
+    image = _picture(PICTURE).toImage()
+    n = image.width()
+    #: The five vertices of an upright pentagram on a circle of radius r,
+    #: as fractions of the picture -- read off the artist's own geometry,
+    #: whose nodes sit at 540,184 / 876,428 / 748,824 / 332,824 / 204,429
+    #: in his 1080-square drawing.
+    points = [(540 / 1080, 184 / 1080), (876 / 1080, 428 / 1080),
+              (748 / 1080, 824 / 1080), (332 / 1080, 824 / 1080),
+              (204 / 1080, 429 / 1080)]
+    #: A drawn node reads 0.99; an undrawn one leaves the arm's 0.62.
+    NODE = 0.85
+    lit = 0
+    for fx, fy in points:
+        cx, cy = int(fx * n), int(fy * n)
+        best = 0.0
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                x, y = cx + dx, cy + dy
+                if 0 <= x < n and 0 <= y < n:
+                    best = max(best, image.pixelColor(x, y).lightnessF())
+        if best > NODE:
+            lit += 1
+    assert lit == 5, (
+        f"{lit} of the star's five nodes are drawn; the artist drew five, "
+        "and Qt's SVG renderer draws one")
+    assert math.isclose(image.width(), image.height(), abs_tol=1)
 
 
 def test_the_about_picture_is_the_combo_mark_on_its_own_ground(app):

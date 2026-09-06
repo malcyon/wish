@@ -20,9 +20,8 @@ this colourway once that was in front of him.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QAction, QGuiApplication, QImage, QPainter, QPixmap
-from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QGuiApplication, QImage, QPixmap
 from PyQt6.QtWidgets import QMainWindow, QMenu, QMessageBox
 
 from goldbox.assets import asset_path
@@ -34,7 +33,28 @@ from . import __version__
 #: from `__file__`, as it was, the Windows package drew no picture at all --
 #: `#351 (The Windows build shows no logo in About and a black square on the
 #: taskbar, because the artist's SVGs are not in the package)`.
-PICTURE_ASSET = asset_path("assets", "logo", "combo-mark-color.svg")
+#:
+#: **His PNG export, not his vector, and this is not a preference.** The five
+#: glowing nodes at the star's points are `<circle>` elements filled from
+#: radial gradients, and only the first carries its own colour stops: the
+#: other four are defined by `xlink:href="#radial-gradient"`, inheriting the
+#: stops and overriding the position. That is ordinary SVG and **Qt's SVG
+#: module does not implement it**, so four of the five nodes resolve to
+#: nothing and are painted as nothing. Donald saw one point where the artist
+#: drew five, in a Windows build on 2026-09-06, and the same comparison run
+#: on Linux reproduces it from the committed vector.
+#:
+#: It is the second time Qt has rendered this artist's work incompletely --
+#: `ui/appicon.py` draws the taskbar icon from his PNG for the same class of
+#: reason, the mark's hairline rings -- and the rule both follow is the one
+#: Donald gave: *"We should faithfully reproduce the artist's image exactly
+#: as he intended it."* His raster is what he intended; our renderer is what
+#: falls short of it.
+#:
+#: The vector stays committed. It is the source, it is what a future Qt or a
+#: different renderer would draw correctly, and `tests/test_appicon.py`
+#: pins both files' hashes.
+PICTURE_ASSET = asset_path("assets", "logo", "combo-mark-color-500.png")
 
 #: How big the picture is beside three lines of text. Was 64 -- Qt's own about
 #: boxes use that for a bare application icon -- and Donald asked for it
@@ -49,45 +69,21 @@ PICTURE_ASSET = asset_path("assets", "logo", "combo-mark-color.svg")
 PICTURE = 256
 
 
-#: How many times bigger than the target the mark is drawn before it is
-#: scaled down.
-#:
-#: **The two rings around the star are the only parts of the artist's file
-#: that are not vector.** Each is an embedded PNG about 3,600 pixels square
-#: carrying a single hairline -- 41 and 31 pixels of stroke, around 1% of the
-#: image's width. Asked to put that straight into a 256-pixel box, Qt's SVG
-#: renderer shrinks the bitmap fourteen times and the ring comes out uneven
-#: rather than thin. `SmoothPixmapTransform` makes no difference to it.
-#:
-#: Drawing four times as large and letting `QImage.scaled` do the shrink
-#: fixes it, because the reduction is then the image scaler's work rather
-#: than the SVG renderer's. Donald, 2026-09-05: *"The circle around the star
-#: is broken up and does not look clear at all."*
-#:
-#: This goes when the artist's file draws those two circles as circles.
-OVERSAMPLE = 4
-
-
 def _picture(size: int) -> QPixmap:
-    """The combo mark at `size` logical pixels, rendered from the vector at
-    the display's own ratio -- `ui.appicon.image` does the same for the
-    taskbar icon, and for the same reason: a 2x display asked for `size`
-    device pixels gets a soft picture.
+    """The combo mark at `size` logical pixels, scaled from the artist's own
+    500-pixel export at the display's own ratio -- `ui.appicon.image` does
+    the same for the taskbar icon, and for the same reason: a 2x display
+    asked for `size` device pixels gets a soft picture.
 
-    Drawn `OVERSAMPLE` times larger and scaled down, which is what keeps the
-    two embedded rings continuous."""
+    **Scaled, and nothing else.** 500 is larger than any size this dialog
+    asks for, even at a 2x ratio, so this only ever shrinks his drawing --
+    which is the whole of what we may do to it. `PICTURE_ASSET`'s note says
+    why it is his raster rather than his vector."""
     ratio = (QGuiApplication.instance().devicePixelRatio()
              if QGuiApplication.instance() else 1.0)
     device = int(size * ratio)
-    big = device * OVERSAMPLE
-    image = QImage(big, big, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(0)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-    QSvgRenderer(str(PICTURE_ASSET)).render(painter, QRectF(0, 0, big, big))
-    painter.end()
-    image = image.scaled(device, device, Qt.AspectRatioMode.IgnoreAspectRatio,
+    image = QImage(str(PICTURE_ASSET))
+    image = image.scaled(device, device, Qt.AspectRatioMode.KeepAspectRatio,
                          Qt.TransformationMode.SmoothTransformation)
     pixmap = QPixmap.fromImage(image)
     pixmap.setDevicePixelRatio(ratio)
