@@ -32,15 +32,19 @@ still drawn from it.
 
 from __future__ import annotations
 
-import pathlib
-
 from PyQt6.QtCore import QRectF
 from PyQt6.QtGui import QGuiApplication, QIcon, QImage, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
+from goldbox.assets import asset_path
+
 #: The artist's own file, committed rather than left under `work/`, which is
-#: gitignored and has been lost twice.
-ASSET = pathlib.Path(__file__).resolve().parent.parent / "assets" / "logo" / "mark.svg"
+#: gitignored and has been lost twice. Resolved through `goldbox.assets` so
+#: a frozen build finds it under `sys._MEIPASS` -- a path built from
+#: `__file__` here is what shipped a black square on the Windows taskbar,
+#: `#351 (The Windows build shows no logo in About and a black square on the
+#: taskbar, because the artist's SVGs are not in the package)`.
+ASSET = asset_path("assets", "logo", "mark.svg")
 
 #: One renderer, reused: `QSvgRenderer` parses the file once and renders it at
 #: any size afterwards, and re-parsing a 1.8 MB file per icon size would be

@@ -10,7 +10,7 @@ Both are history now -- *"I have the official logo from the artist I
 hired,"* Donald, 2026-09-05.
 
 **§0 is what was delivered and what shipped from it.** §5 describes the
-current build; §6 is `pointy-hat`'s own geometry, kept for the licence record
+current build and §7 the frozen build's fault and the open taskbar question; §6 is `pointy-hat`'s own geometry, kept for the licence record
 now that nothing draws it; §1--§3 are the brief this project wrote for an
 artist before one existed, kept as the reasoning that turned out to hold up
 rather than as instructions still open.
@@ -47,19 +47,18 @@ think I do want the logo and wordmark to be in step"* -- and is tuning the
 sizing by hand from here; this document does not pin exact numbers because he
 expects to keep adjusting them.
 
-**Help > About gets the black combo mark, provisionally.** Donald asked for
-`Combo Marks/Black`, but that file is black line art on a *transparent*
-background, and the About dialog's panel colour is whatever the platform's
-Qt style resolves it to -- `wish/preferences.py` already documents the same
-failure mode for a badge that sets only its ink. Measured on this machine:
-`QApplication().palette()` comes back `#efefef` under the offscreen Fusion
-style, but nothing in `wish/window.py` or `wish/about.py` sets a style or a
-palette, so a real user's dialog follows their OS theme -- light on some
-desktops, dark on others. A black mark on a dark About panel would vanish the
-way a cut-out hat vanished on a dark taskbar in §2. **Not yet wired into
-`wish/about.py`** for that reason; the asset is committed at
-`assets/logo/combo-mark-black.png` and the decision of which colourway
-actually survives every theme is Donald's, not a default this document picks.
+**Help > About gets the colour combo mark, at 256.** Donald first asked for
+`Combo Marks/Black`, which is black line art on a *transparent* background,
+and the About dialog's panel colour is whatever the platform's Qt style
+resolves it to -- `wish/preferences.py` documents the same failure mode for
+a badge that sets only its ink. A black mark on a dark About panel would
+vanish the way a cut-out hat vanished on a dark taskbar in §2. Once that was
+in front of him he chose the colour combo on its own near-black ground --
+*"Use the color combo with the black background, but double its size"* --
+and then doubled it again to 256 because the two rings, which are embedded
+bitmaps rather than vectors, broke up at 128. `wish/about.py` renders
+`assets/logo/combo-mark-color.svg` four times larger and scales down, which
+is what keeps the rings continuous; its `OVERSAMPLE` note has the measurement.
 
 **The `.desktop` file already exists** -- `assets/wish.desktop`, committed on
 `#9 (Finish the packaging icons: .desktop, .icns and a README lockup)` itself,
@@ -257,7 +256,7 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 | the taskbar button and title bar of a running window | `app.setWindowIcon(app_icon())`, a pixmap per size so Qt picks rather than scales | `wish/window.py::dress` |
 | the taskbar *grouping* on Windows | `SetCurrentProcessExplicitAppUserModelID` before the first window, or a Python-hosted window can group and pin under the interpreter | `wish/window.py::dress` |
 | the panel icon on Linux | `app.setDesktopFileName("wish")` — GNOME and KDE match a window to its `.desktop` by app id, and a Wayland window gets a generic icon without it. There is still no `.desktop` file and the Linux artefact is a tarball, so the hicolor PNGs sit under `assets/` waiting for a package | `wish/window.py::dress` |
-| Help > About | a hand-built `QMessageBox` with `setIconPixmap(appicon.pixmap(64))`; `QMessageBox.about` paints the platform's information icon and takes no picture | `wish/about.py` |
+| Help > About | a hand-built `QMessageBox` with `setIconPixmap` of the colour combo mark at 256, rendered from `assets/logo/combo-mark-color.svg`; `QMessageBox.about` paints the platform's information icon and takes no picture | `wish/about.py` |
 | the README | an `<img>` at the top — **Donald's file; ask** | `README.md` |
 | the icon files themselves | a generator, offscreen, in the shape of `tools/iconsheet.py` | `tools/genicons.py` |
 
@@ -361,13 +360,14 @@ executables, audio and PDFs, which is the part that was ever about the game.
   ships as one `EXE` and a `COLLECT`, not a `.app` -- so nothing installs the
   file yet and nobody has dropped it on a real Dock. Wire it up when there is
   a macOS package.
-* **Help > About still shows no picture from this delivery.** §0 says why:
-  the colourway Donald asked for is transparent art whose background depends
-  on the platform's theme, and substituting a different colourway was not
-  this document's decision to make.
-* **Nobody has seen it on a Windows taskbar.** That is a row for
-  [`122-release-testing.md`](122-release-testing.md)'s Windows column, and it
-  now has somebody who can tick it.
+* **The Windows taskbar drawing is still Donald's to choose.** §7: the
+  mark's rings dissolve below 32 pixels, he has asked for something different
+  at those sizes, and `tools/taskbaricon.py` draws the choices. Until he
+  picks one, every size is the full mark.
+* **Nobody has seen the fixed build on a Windows taskbar.** The first build
+  seen there showed a black square -- §7 -- and the fix has been proven only
+  as far as a Linux build with the SVGs inside it. That is a row for
+  [`122-release-testing.md`](122-release-testing.md)'s Windows column.
 
 ---
 
@@ -425,3 +425,69 @@ filling a sparkle or a fold line in, for a cleaner small silhouette, is
 **actively worse** -- a notch or a crease is not decoration, and without it a
 glyph loses exactly the feature that keeps it from reading as a blob or a
 fin.
+
+---
+
+## 7. The frozen build, and what a taskbar makes of the mark
+
+**The first Windows build shipped with no picture in Help > About and a
+black square on the taskbar** -- `#351 (The Windows build shows no logo in
+About and a black square on the taskbar, because the artist's SVGs are not
+in the package)`, photographed by Donald on 2026-09-06. `wish.spec` carried
+no `datas`, so neither SVG was in the package; both readers built a path
+from `__file__`; and `QSvgRenderer` on a file that is not there returns an
+empty renderer rather than raising. The icon painter draws its own ground
+first, so the taskbar got the ground and nothing on it, and About, which
+has no ground of its own, got nothing.
+
+**`assets/wish.ico` was not a second fault.** Read back entry by entry on
+2026-09-06: eight images at 16, 20, 24, 32, 40, 48, 64 and 256, DIB below
+256 and PNG at 256, every one fully opaque with the pentacle on it. Windows
+draws that file for a pinned shortcut and in Explorer; the running window's
+taskbar button comes from Qt's `setWindowIcon`, which is the path that had
+no file to render. So the black square was one fault, not two.
+
+What fixed it, in three parts, none sufficient alone:
+
+* `wish.spec`'s `DATAS` lists the two SVGs, and they land under
+  `sys._MEIPASS` at their checkout paths.
+* `goldbox/assets.py` is the one resolver -- `sys._MEIPASS` when frozen,
+  the checkout otherwise -- and both readers go through it.
+  `#315 (A frozen Wish cannot convert a combat figure, because the table it
+  needs lives outside the package)` is the next caller.
+* `tests/test_assets.py` reads every `asset_path(...)` call out of the
+  shipping packages and fails when one names a file `DATAS` does not carry,
+  and fails again when any module builds its own path to the checkout root.
+  Nothing caught it before, which is how it shipped.
+
+A Linux build (`pyinstaller wish.spec`) has both files at
+`dist/wish/_internal/assets/logo/` afterwards. The Windows taskbar itself is
+still unseen with the fix in.
+
+### The mark below 32 pixels
+
+Donald, of the taskbar: *"It is too small for the color image. I am open to
+suggestions."* The reason is in the file rather than in the renderer: the
+two rings are embedded bitmaps carrying a hairline each, 4 units wide on
+the 1080 canvas against 12 for the star's strokes. At 16 pixels those are
+0.06 and 0.18 of a pixel, so both blend into the ground and the icon is a
+faint smudge -- row A of the sheet below shows exactly that.
+
+`tools/taskbaricon.py` draws the choices side by side, at 16, 20, 24, 32,
+48 and 256, each at true size on a light and a dark taskbar and magnified
+beside it. Six rows, lettered so the answer can be a letter:
+
+| row | what | how it is made |
+|---|---|---|
+| A | the mark as it ships | `ui.appicon.image` |
+| B | the artist's star, rings off, cropped to fill | the two `<image>` elements left out of an in-memory copy; polygons untouched |
+| C | a heavier pentagram | drawn from five points -- **a stand-in, not the artist's**, to show what a hand-tuned glyph could buy |
+| D | the W of the wordmark | a viewBox crop of `combo-mark-color.svg`'s lettering, on its ground |
+| E | B below 32, A from 32 | what a `.ico` is for; `packaging/geniconset.py` already does this per size for macOS |
+| F | D below 32, A from 32 | the same pairing with the W |
+
+**No file under `assets/logo/` is changed by any of it**, and
+`tests/test_taskbaricon.py` checks the hash after drawing. If the answer is
+B, C or a two-drawing pairing, the small glyph is a thing to ask the artist
+for -- §3's own advice, *"hand-tuned 16, 24 and 32, not exports of the
+1024"* -- and C is only the shape of that request.

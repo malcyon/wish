@@ -14,10 +14,21 @@
 # `cmd` window is the console-borrowing path in packaging/wish_main.py, and
 # nothing depends on it.
 #
-# There are no data files to carry. `editor/character.ui` is compiled ahead of
-# time into `editor/ui_character.py`, and `wish/__main__.py` skips the Designer
-# recompile when `tools.genui` is not importable, which it is not here. The map
-# notes and settings live in the user's own directories at run time
+# `DATAS` is every file the window reads at run time that is not a Python
+# module: the artist's two SVGs today. Each lands under `sys._MEIPASS` at the
+# same relative path it has in the checkout, and `goldbox/assets.py` is the
+# one place that resolves such a path, so a reader finds the file in either
+# tree. This list used to be empty and the header said so -- "there are no
+# data files to carry" -- which stopped being true when the artist delivered
+# and nothing noticed: the Windows build shipped with no picture in Help >
+# About and a black square on the taskbar (#351). `tests/test_assets.py` now
+# reads every `asset_path(...)` call out of the source and fails when one
+# names a file that is not here.
+#
+# `editor/character.ui` is not a data file: it is compiled ahead of time into
+# `editor/ui_character.py`, and `wish/__main__.py` skips the Designer
+# recompile when `tools.genui` is not importable, which it is not here. The
+# map notes and settings live in the user's own directories at run time
 # (`automap/paths.py`), never beside the executable.
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -27,6 +38,14 @@ from PyInstaller.utils.hooks import collect_submodules
 COMMON_EXCLUDES = [
     "tkinter", "matplotlib", "numpy", "IPython", "pytest",
     "PyQt5", "PySide2", "PySide6",
+]
+
+# (source in the checkout, directory it lands in under `sys._MEIPASS`).
+# `tools/iconproposal.yaml` joins this list when #315 moves
+# `goldbox/iconparts.py` onto `goldbox.assets`.
+DATAS = [
+    ("assets/logo/mark.svg", "assets/logo"),
+    ("assets/logo/combo-mark-color.svg", "assets/logo"),
 ]
 
 window = Analysis(
@@ -44,6 +63,7 @@ window = Analysis(
         # generators and their dependencies in behind it.
         + ["tools.wish"]
     ),
+    datas=DATAS,
     excludes=COMMON_EXCLUDES,
     noarchive=False,
 )

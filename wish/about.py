@@ -20,18 +20,21 @@ this colourway once that was in front of him.
 
 from __future__ import annotations
 
-import pathlib
-
 from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QAction, QGuiApplication, QImage, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import QMainWindow, QMenu, QMessageBox
 
+from goldbox.assets import asset_path
+
 from . import __version__
 
-#: The artist's own file, committed rather than left under `work/`.
-PICTURE_ASSET = (pathlib.Path(__file__).resolve().parent.parent
-                  / "assets" / "logo" / "combo-mark-color.svg")
+#: The artist's own file, committed rather than left under `work/`. Resolved
+#: through `goldbox.assets`, which is what finds it in a frozen build; built
+#: from `__file__`, as it was, the Windows package drew no picture at all --
+#: `#351 (The Windows build shows no logo in About and a black square on the
+#: taskbar, because the artist's SVGs are not in the package)`.
+PICTURE_ASSET = asset_path("assets", "logo", "combo-mark-color.svg")
 
 #: How big the picture is beside three lines of text. Was 64 -- Qt's own about
 #: boxes use that for a bare application icon -- and Donald asked for it
