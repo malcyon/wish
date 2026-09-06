@@ -1129,7 +1129,7 @@ TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
 #: constitution inputs unread or unattributed, so a recomputed row there
 #: would be a guess written over the row the source actually held -- and a
 #: wrong saving throw looks exactly like a right one on a character sheet
-#: (`#343`).
+#: (`#344`).
 RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
     {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key})
 

@@ -626,7 +626,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # Blades' constitution inputs are unread, so recomputing there would
     # write a guess over the row the source actually held -- and a wrong
     # saving throw looks exactly like a right one on a character sheet
-    # (#343).  Not `trainer_measured`, which asks a broader question and
+    # (#344).  Not `trainer_measured`, which asks a broader question and
     # does not yet hold Curse for reasons that are #18's rather than this
     # writer's.
     computed_saves = None
