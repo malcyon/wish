@@ -401,21 +401,30 @@ def test_every_dropped_field_reaches_the_player_unless_the_c64_derives_it():
     show dropped fields if they are derived in the new game. Show others
     for now. I will refine them as we go."*
 
-    So the only things that keep a field out of a player's sight are
-    `DERIVED` and `CONSTANTS` -- a field the C64 recomputes on load, or one
-    that holds the same value in every record anybody has read (#324) -- and
-    every name still on `DROPPED` reaches `report.dropped` in the words
-    `DROPPED_PLAYER_TEXT` gives it.  The set that silenced `icon_dimension`
-    and `turn_class` by an agent's judgement of what a player would notice,
-    `UNREPORTED_DROPS`, is gone, and this fails if it comes back: which of
-    those lines stay is his call, line by line.
+    He then read the two lines that produced and took both out on the same
+    day, which is the second half of the rule: **a field is shown only when
+    a player loses something by it.**  `icon_dimension` is how many squares
+    a figure covers and every player character covers one; `turn_class` is
+    the row of the turning table an undead creature answers to, and a
+    cleric's own ability is `turn_power`, which is computed and stored
+    (#288).  Neither costs anybody anything, so neither has a sentence.
+
+    So a field reaches a player when it is on `DROPPED` **and**
+    `DROPPED_PLAYER_TEXT` has words for it.  `DERIVED` and `CONSTANTS` --
+    what the C64 recomputes on load, and what holds the same value in every
+    record anybody has read (#324) -- are not on `DROPPED` at all and can
+    never reach it.
+
+    `UNREPORTED_DROPS` stays gone, and this fails if it comes back: it
+    silenced fields by an agent's judgement of what a player would notice,
+    which is the judgement Donald took back.  A silence now costs somebody
+    writing a reason into the block above the dict, where he can read it.
 
     **Nothing measured left the code.**  Every name is still in `DROPPED`,
     so `field_disposition` still accounts for it and
     `test_every_declared_field_has_a_disposition` still holds.
     """
     assert not hasattr(dos, "UNREPORTED_DROPS")
-    assert set(dict(dos.DROPPED)) == set(dos.DROPPED_PLAYER_TEXT)
     silent = ({name for name, *_ in dos.DERIVED}
               | {name for name, _ in dos.CONSTANTS})
     assert silent.isdisjoint(dict(dos.DROPPED))
@@ -424,8 +433,12 @@ def test_every_dropped_field_reaches_the_player_unless_the_c64_derives_it():
     for char in _records():
         _rec, report = dos.to_c64_record(char)
         for name, _why in dos.DROPPED:
-            assert dos.DROPPED_PLAYER_TEXT[name] in report.dropped, \
-                (char.name, name)
+            sentence = dos.DROPPED_PLAYER_TEXT.get(name)
+            if sentence:
+                assert sentence in report.dropped, (char.name, name)
+            else:
+                assert not [d for d in report.dropped if name in d], \
+                    (char.name, name, "silent, so nothing names it")
         for name in silent:
             assert not [d for d in report.dropped if name in d], \
                 (char.name, name)
@@ -487,15 +500,23 @@ def test_no_composed_dropped_line_carries_developer_detail():
 
 
 def test_every_dropped_name_has_player_text():
-    """Every name in `DROPPED` has a plain-English entry in
-    `DROPPED_PLAYER_TEXT` -- the dict `to_neutral` reads instead of the
-    field's own identifier and file offset -- because every drop reaches
-    the player (2026-09-06).  A name added to `DROPPED` with none would
-    raise a `KeyError` out of `to_neutral` instead of failing here, where
-    the cause is obvious; an entry with no name behind it is a sentence
-    nobody can ever read.
+    """A sentence in `DROPPED_PLAYER_TEXT` names a field that is really on
+    `DROPPED`, and every sentence a player reads opens with a capital.
+
+    **The reverse does not hold**, and that is deliberate. A name with no
+    sentence is shown nothing, which is how `icon_dimension` and
+    `turn_class` left the pane on 2026-09-06: Donald read both, asked what
+    they meant, and neither turned out to cost a player anything -- all
+    player characters cover one square on the combat floor, and the turning
+    row belongs to the undead creature rather than to the cleric turning
+    it, whose own ability `goldbox/derive.py` computes and the writer
+    stores (#288).
+
+    So this pins the direction that can go wrong. A sentence with no field
+    behind it is text nobody can ever read; a field with no sentence is a
+    deliberate silence, and the block above the dict says why for each.
     """
-    assert set(dict(dos.DROPPED)) == set(dos.DROPPED_PLAYER_TEXT)
+    assert set(dos.DROPPED_PLAYER_TEXT) <= set(dict(dos.DROPPED))
     for text in dos.DROPPED_PLAYER_TEXT.values():
         assert text[:1].isupper(), text
 

@@ -1076,27 +1076,32 @@ DROPPED: tuple[tuple[str, str], ...] = (
 #: of a player).  `DROPPED`'s own `(name, why)` pairs are untouched and
 #: still carry the byte-level account for `field_disposition()` and anyone
 #: reading the source; this dict is read only when composing what a player
-#: sees, and **every name in `DROPPED` has an entry**, because every drop
-#: is shown (Donald, 2026-09-06: *"Show others for now"*).  The menu-
-#: mismatch portrait case has its own sentence at the call site, since it
-#: has to name the position.
+#: sees.
 #:
-#: There used to be an `UNREPORTED_DROPS` set beside this, holding these
-#: two names on the strength of Donald's 2026-08-27 *"We do not need to
-#: report derived lines as being dropped"*; neither is on :data:`DERIVED`,
-#: and on 2026-09-06 he asked to see what is not derived, so the set went.
+#: **A name with no entry here is shown nothing**, and both of the two that
+#: had one were taken out on 2026-09-06 after Donald read them and asked
+#: what they meant.  The test of a line is not whether the field crossed
+#: but whether a player loses anything, and neither does:
 #:
-#: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
-#: word here Donald's; this is the working proposal, built so it can be
-#: seen running rather than only described, and he has said he will refine
-#: the lines as he meets them.
-DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "icon_dimension": "Combat figure footprint: DOS keeps a second size "
-                      "value the C64 has no place for",
-    "turn_class": "Turning row: the DOS record's undead turning row, which "
-                  "the C64 has no place for and every player character "
-                  "holds at zero",
-}
+#: * `icon_dimension` is how many squares a figure covers on the combat
+#:   floor.  Donald: *"All PCs are the same size, so it doesn't matter.
+#:   Just leave that line out during conversions."*  It reads 1 in every
+#:   player record anybody has looked at.
+#: * `turn_class` is the row of the turning table **an undead creature**
+#:   answers to -- a skeleton's 1, a wight's 5 -- so it is zero in every
+#:   player character and says nothing about whether his cleric can turn.
+#:   That ability is `turn_power`, which `goldbox/derive.py` computes from
+#:   the cleric and paladin levels and the writer stores (#288), and which
+#:   was watched putting TURN on a converted paladin's combat bar.  Donald:
+#:   *"Will the cleric still be able to turn undead? And for the same
+#:   levels? If yes, then don't print anything about it during
+#:   conversions."*  He can, and at his own level, so nothing is printed.
+#:
+#: The rule those two leave behind, for whoever adds the next entry:
+#: **describe what the player loses, and if the honest answer is nothing,
+#: write no entry at all.**  A line explaining a byte is a line explaining
+#: the wrong thing.
+DROPPED_PLAYER_TEXT: dict[str, str] = {}
 
 
 #: DOS fields converted by a rule rather than by a copy.  Named here so the
@@ -1715,7 +1720,10 @@ def to_neutral(dos: DosCharacter,
                 f.confidence, Provenance.RESHAPED)
 
     # -- what the DOS record holds and no neutral field does ------------------
-    # Every name in `DROPPED` is reported, in the words a player reads.
+    # A name in `DROPPED` is reported **only where `DROPPED_PLAYER_TEXT` has
+    # a sentence for it**, and a name with none is shown nothing: the two it
+    # held were taken out on 2026-09-06 because neither costs a player
+    # anything, and the block above that dict says why in his own words.
     # `DERIVED` and `CONSTANTS` are not in `DROPPED` at all (#324), so this
     # never sees `item_chain`, `heap_104`, `effect_chain`, `hands_used`,
     # `encumbrance`, `item_count`, `strength_bonus`, `field_83_87` or
@@ -1723,7 +1731,9 @@ def to_neutral(dos: DosCharacter,
     # are `TRANSFORMED` (#130) and so, since the menu was stored, is the
     # portrait pair.
     for name, _why in DROPPED:
-        out.drop(DROPPED_PLAYER_TEXT[name])
+        sentence = DROPPED_PLAYER_TEXT.get(name)
+        if sentence:
+            out.drop(sentence)
     return out
 
 

@@ -194,9 +194,14 @@ def test_the_pane_shows_what_the_conversion_did_and_what_it_did_not_convert(
     from PyQt6.QtWidgets import QDialogButtonBox
 
     from editor.dosimport import DROPPED_HEADING
-    from goldbox.dos import DROPPED_PLAYER_TEXT, NOT_SET_OUT, C64SaveReport
+    from goldbox.dos import NOT_SET_OUT, C64SaveReport
 
-    drop = DROPPED_PLAYER_TEXT["turn_class"]
+    #: A sentence of its own rather than one taken out of
+    #: `DROPPED_PLAYER_TEXT`. This test is about where the pane puts a drop
+    #: line, not about which fields have one -- and that dict is empty
+    #: today, because Donald read both entries on 2026-09-06 and neither
+    #: cost a player anything.
+    drop = "Something the C64 has no place for"
     report = C64SaveReport(save0_size=0x1C00)
     report.messages.append(NOT_SET_OUT)
     report.dropped.append(drop)
@@ -215,16 +220,17 @@ def test_a_conversion_with_nothing_to_say_leaves_the_pane_empty(
     """No heading over nothing (#338's rule): a conversion that did nothing
     remarkable and dropped nothing shows an empty pane under its label --
     and one that only dropped something shows that line alone."""
-    from goldbox.dos import DROPPED_PLAYER_TEXT, C64SaveReport
+    from goldbox.dos import C64SaveReport
 
     report = C64SaveReport(save0_size=0x1C00)
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
     assert dialog.report_pane.toPlainText() == ""
 
-    report.dropped.append(DROPPED_PLAYER_TEXT["icon_dimension"])
+    #: Its own sentence, for the reason the test above gives.
+    drop = "Something the C64 has no place for"
+    report.dropped.append(drop)
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
-    assert dialog.report_pane.toPlainText() == \
-        DROPPED_PLAYER_TEXT["icon_dimension"]
+    assert dialog.report_pane.toPlainText() == drop
 
 
 def test_pane_text_is_the_messages_then_the_drops():
