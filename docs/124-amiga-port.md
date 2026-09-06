@@ -894,15 +894,50 @@ Curse's, ignores RETURN; the party menu picks by first letter throughout, and
 `SAVE CURRENT GAME` is `S` on that menu and is enabled once a party is loaded,
 which is how the run got an engine-written saved game without adventuring.
 
-**`BEGIN ADVENTURING` asks a copy-protection question and there is no way past
-it here.** The prompt is `WHAT IS WORD # 1 OF JOURNAL ENTRY # 40 (JOURNAL, PAGE
-35)?`, a bare RETURN is refused and draws a *different* challenge, and ESC does
-the same. The artefact is the printed Adventurer's Journal, which is not on this
-machine. This **corrects an assumption taken from the C64**, whose
-release here never asks because its check is dead code: the two rips are
-different and one port does not predict another, which is the lesson
-`#108 (Amiga Curse asks its code wheel, so the title cannot be driven
+**`BEGIN ADVENTURING` asks a copy-protection question**, on a screen of its own
+with an `ENTER` field: it names a word number, a journal entry and a page of
+the printed Adventurer's Journal, and a bare RETURN is refused and draws a
+*different* one. ESC does the same. This **corrects an assumption taken from
+the C64**, whose release here never asks because its check is dead code: the
+two rips are different and one port does not predict another, which is the
+lesson `#108 (Amiga Curse asks its code wheel, so the title cannot be driven
 unattended)` taught on Curse.
+
+**The prompt is answered and the title is drivable, as of 2026-09-06.**
+`tools/amigabladesjournal.py` reads the challenge off the guest's screen and
+types the word, and **the game accepted it twice out of two**, from two
+different challenges on two separate boots -- once from a cold start into the
+opening scene, and once from a saved game straight back to the adventuring bar.
+Neither the challenge nor the word is recorded anywhere here, per
+`#108 (Amiga Curse asks its code wheel, so the title cannot be driven
+unattended)`'s ruling; what the tool prints is `answered` or `no challenge on screen`.
+
+**The whole route, from a cold boot to a party standing in the world**, is
+RETURN past the credits, `P`, `L`, the slot letter, `B`, and then the tool.
+Timings on this machine: 47 s to the credits, 39 s to the version screen, 9 s
+to the party menu, 13 s to the load prompt, 13 s to a loaded party, and 56 s
+from `B` to the challenge -- so a key pressed on a fixed delay lands in the
+middle of a load and is swallowed, and every step here waited for the screen
+to stop changing instead.
+
+**`EXIT GAME` does not go back to the party menu.** Answering its `YES` quits
+to AmigaDOS with `Please re-boot your system.`, so a second run through the
+prompt costs a WinUAE restart. Curse's answer of `N` in §1.11 keeps the party
+in play; there is no `N` route back to the roster on this title.
+
+**Movement is still not found**, and three more candidates are ruled out on
+Silver Blades: the numeric-keypad `8` (VK 0x68), the arrow keys (VK 0x26) and
+the keypad `+` (VK 0x6B) all left the status line at `3,3 S 00:00`. The
+top-row digits were already ruled out on Curse. Whatever steps the party, it
+is none of those five.
+
+**A saved game made from inside the world now exists**, which is the specimen
+`#28 (Decode an Amiga saved game, not just a character file)` could not reach: `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-adventuring/savgamB.sav`,
+written by `ENCAMP > SAVE > B` at square 3,3 facing South. It is **7233 bytes
+against the 6553** of the four-character saves in
+`WISH-SPEC-ssb-amiga-resave`, and 7233 − 6553 = 680 = 2 × 340, which is two
+more characters at the 340-byte in-save block §1.6a measured -- an
+independent corroboration of that block size from a file neither of us cut.
 
 ### 1.12 Writing an Amiga Pool of Radiance character (#105 (Write an Amiga Pool of Radiance character, not just a Pools of Darkness one))
 
