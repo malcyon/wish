@@ -168,7 +168,7 @@ Survives an area change.
 | `$4A7E` | 3 | 3 | 1, computed |  | ECL11 |  |
 | `$4A7F` | 1 | 2 | computed |  | ECL11 |  |
 | `$4A80` | 3 | 6 | 0, +1, computed | * | ECL14 | slums: won wandering fights, capped at 15 |
-| `$4A81` | 3 | 4 | 250, 255, computed | * | ECL14 | Ohlo's potion: 250 = The potion has been collected from the booth; 255 = Ohlo dealt with: the potion delivered, or he was killed |
+| `$4A81` | 3 | 4 | 250, 255, computed | * | ECL14 | Ohlo's potion: 250 = Ohlo's potion collected.; 255 = Ohlo's quest completed. Both routes to 255 -- delivered and killed -- write the same value, and the wording names neither because the save cannot tell them apart |
 | `$4A82` | | | | | | *never referenced* |
 | `$4A83` | 1 | 1 | 255 |  | ECL14 |  |
 | `$4A84` | | | | | | *never referenced* |

@@ -120,7 +120,7 @@ booth in the old rope guild, and gives his name, `OHLO`, as the password.
 | byte | 0 | 250 | 255 |
 |---|---|---|---|
 | `$4A04` | not spoken to, or wiped by an area change | the errand has been accepted | the encounter is closed |
-| `$4A81` | the potion is not in hand | collected from the booth | Ohlo dealt with: potion delivered, or he was killed |
+| `$4A81` | the potion is not in hand | Ohlo's potion collected. | Ohlo's quest completed. |
 
 All CONFIRMED from `ECL14`'s own writes, re-derived on 2026-09-02 with
 `tools/eclflags.py sites 4A04 4A81` and given here as **script addresses**,

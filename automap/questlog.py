@@ -65,8 +65,13 @@ PANEL_WIDTH = 248
 # forgets, starting with Ohlo's potion):** Donald has approved the six
 # placeholder strings from a screenshot, and the row has been seen to appear
 # live against a running game -- a party collecting Ohlo's potion at the
-# booth, then delivering it, each within one poll. Both are the plan's step F
-# and neither is done yet.
+# booth, then delivering it, each within one poll. Both are the plan's step F.
+#
+# **Both are now met.** The strings were approved on 2026-09-04 and the two
+# tooltip sentences that were missed on 2026-09-05; the live watch ran on
+# 2026-09-05, two boots of each transition, with the whole 7168-byte window
+# byte-identical between runs at all three captures. What is left is the
+# removal itself, which is step E.
 ENV = "WISH_EXPERIMENTAL_QUESTS"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
@@ -436,10 +441,18 @@ def commission_rows(flags) -> list[tuple]:
 #
 # **The tooltip's third line is not written in this file and is easy to miss
 # when approving the rest.** `_side_quest_tip` composes it from the
-# `QuestFlag.meaning` of whichever flag explains the state, and those three
+# `QuestFlag.meaning` of whichever flag explains the state, and those
 # sentences live in `goldbox/commissions.py` beside the flags themselves.
-# Nothing drew them before this feature existed, so they are as unapproved as
-# the words above and the flag does not come off until they are approved too.
+# Nothing drew them before this feature existed, so they were missed when the
+# words above were approved on 2026-09-04.
+#
+# **Donald approved them on 2026-09-05**: "Ohlo's potion collected." and
+# "Ohlo's quest completed." Two rather than three, because `_side_quest_flag`
+# can only reach `accept.meaning` when `durable_state` is `QUEST_ACCEPTED`,
+# and Ohlo's accept flag is `durable=False` -- his own decision of 2026-09-04
+# made the row a function of the durable bytes alone, so that third sentence
+# is unreachable from the panel and survives only for the debug log and the
+# tests.
 # ===========================================================================
 #: A side-quest state nobody has proposed a word for goes here rather than on
 #: the face of the window: it is what a bug report needs and nothing a player

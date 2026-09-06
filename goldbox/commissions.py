@@ -576,7 +576,7 @@ SIDE_QUESTS = (
         # 250 / IF>= / EXIT` -- it will not serve a party that already has
         # the potion or has finished with him -- and on the password.
         progress=(QuestFlag(
-            0x4A81, 250, "The potion has been collected from the booth",
+            0x4A81, 250, "Ohlo's potion collected.",
             durable=True, where="ECL14 $B048 SAVE 250, [$4A81], after "
                                 "$B042 SAVE 255, [$4A19]"),),
         # Two routes to 255 and the flag does not tell them apart: the
@@ -584,8 +584,13 @@ SIDE_QUESTS = (
         # pays 150 platinum and one random magic item, and the kill at
         # $A084/$A0B8, after the `COMBAT` at $A0B3. Both then `GOSUB $B69C`,
         # which is what counts it as one of the slums' 25 encounters.
+        #
+        # Donald's wording, approved 2026-09-05, says "completed" and names
+        # neither route -- which is right, because the save cannot tell them
+        # apart either. A sentence promising the potion was delivered would
+        # be a claim the bytes do not support for a party that killed him.
         finish=QuestFlag(
-            0x4A81, 255, "Ohlo dealt with: the potion delivered, or he was killed",
+            0x4A81, 255, "Ohlo's quest completed.",
             durable=True, where="ECL14 $A3A8 (delivered) and $A0B8 (killed)"),
     ),
 )
