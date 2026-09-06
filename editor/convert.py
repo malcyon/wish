@@ -802,8 +802,16 @@ class ConvertDialog(QDialog):
             return NO_FOLDER
 
         preview = fresh_folder(pathlib.Path(self._folder_path))
-        return (dosimport.dropped_text(self.rehearsal.report) + "\n\n"
-               + _writes_text(self.rehearsal, preview))
+        #: A conversion that drops nothing gets no heading and no gap above
+        #: what it writes.  `dropped_text` returns an empty string in that
+        #: case (`#338 (The conversion pane says fields could not be
+        #: converted and then lists none)`), and joining it unconditionally
+        #: would leave two blank lines where the heading used to be -- which
+        #: is the same defect one layer down, since a player reads the space
+        #: as something missing.
+        dropped = dosimport.dropped_text(self.rehearsal.report)
+        writes = _writes_text(self.rehearsal, preview)
+        return f"{dropped}\n\n{writes}" if dropped else writes
 
     # -- what is shown, and when Convert is pressable -----------------
 

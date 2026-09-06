@@ -1125,3 +1125,46 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
     assert refusals == [convert.CANNOT_CONVERT]
     assert list(destination.iterdir()) == [
         ], [p.name for p in destination.iterdir()]
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_conversion_that_drops_nothing_opens_with_what_it_writes(
+        tmp_path, game_files, monkeypatch):
+    """No heading, and no gap where the heading used to be.
+
+    `#338 (The conversion pane says fields could not be converted and then
+    lists none)` was the heading standing over an empty list, once tonight's
+    work emptied the lists.  Removing the heading on its own left two blank
+    lines at the top of the pane, which a player reads as something missing
+    -- the same defect one layer down.
+
+    The empty case is forced rather than found: which fields a given
+    specimen drops depends on the disks and creation art the run can reach,
+    so a test that waited for a clean one would skip on most machines and
+    prove nothing on the rest.  Both branches are asserted here.
+    """
+    source = str(_save_dir() / "SAVGAMA.DAT")
+
+    def pane(dropped_text):
+        monkeypatch.setattr(dosimport, "dropped_text",
+                            lambda report: dropped_text)
+        dialog = convert.ConvertDialog(
+            source, None, lambda game: game_files,
+            destination="c64", folder=str(tmp_path))
+        try:
+            assert dialog.rehearsal is not None
+            return dialog.ui.convert_report.toPlainText()
+        finally:
+            dialog.close()
+
+    empty = pane("")
+    assert not empty.startswith("\n"), repr(empty[:40])
+    assert empty.startswith(convert.WRITES_HEADING), repr(empty[:60])
+
+    #: And the other branch still puts the gap back when there is something
+    #: above it, so this cannot pass by the pane having lost its spacing.
+    with_lines = pane("Something was dropped")
+    assert with_lines.startswith("Something was dropped\n\n"), repr(
+        with_lines[:60])
+    assert convert.WRITES_HEADING in with_lines
