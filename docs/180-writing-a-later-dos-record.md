@@ -311,35 +311,88 @@ Everything below is a Curse or Silver Blades character coming *from* the C64.
 | `paladin_cures` | derived from the class | the C64 has no such byte; what it is worth in Silver Blades is UNMEASURED |
 | `npc` | not written | `#303 (The DOS record may hold the NPC flag that the conversion reports as having nowhere to go)` may give it a home |
 
-## What is still missing, and it is the container
+## The container, written and loaded (#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing can be converted to DOS for the later titles))
 
-**Nothing here writes `SAVGAM<slot>.DAT` for Curse or Silver Blades**, and the
-DOS engine loads a party *from* one: it holds the six character filenames, the
-quest flags, the clock, the party's place and the area's own script.
-`goldbox.dos.write_dos_save` builds Pool of Radiance's 13137 bytes and nothing
-else; Curse's is 13149 and Silver Blades' 5469, and
-`goldbox/dos_savegame.py` reads all three shapes but writes none of the two.
+The DOS engine loads a party *from* `SAVGAM<slot>.DAT`: it holds the six
+character filenames, the quest flags, the clock, the party's place and, in
+Curse, the area's own script. `goldbox.dos.write_dos_save` built only Pool of
+Radiance's 13137 bytes until `#299 (goldbox.dos.write builds only Pool of
+Radiance's record, so nothing can be converted to DOS for the later titles)`
+made it shape-driven on both ends: it reads the C64 party through
+`c64_save.container_for(title)` and builds the DOS file to
+`dos_savegame.save_shape_for(title)`, so a Curse party comes out a 13149-byte
+`SAVGAMD.DAT` with its `ECL2.DAX` script staged and a Silver Blades one 5469
+bytes with none.
 
-So the state after `#299 (goldbox.dos.write builds only Pool of Radiance's
-record, so nothing can be converted to DOS for the later titles)` is: **the
-records exist and are right, and the DOS game cannot yet be pointed at
-them.** `tools/dosrecordwrite.py from-c64` writes the records and says so
-rather than producing a directory that looks loadable. The remaining work,
-in order:
+**Loaded and played, both titles, from a save built from nothing.** The whole
+container -- no template, no engine save underneath -- was converted from
+each title's own engine-written C64 disk, loaded in the DOS game under
+DOSBox, and its resave diffed against what we handed it:
 
-1. the container writer for the two later shapes -- the same job
-   `savgam_writes` does, against `dos_savegame.DosSaveShape` rather than Pool
-   of Radiance's addresses;
-2. the area and script staging, which is where Pool of Radiance's version
-   reads `ECL<n>.DAX` and refuses an area it cannot write;
-3. a row per title in `editor/convert.py`'s `DIRECTIONS`, so the four cells of
-   `#51 (Every permutation of DOS, C64 and Amiga, in both directions)` are
-   actually offered;
-4. the proof `#192 (Convert a Curse of the Azure Bonds DOS save into a C64
-   one, which the importer refuses today)` and `#193 (Convert a Secret of
-   the Silver Blades DOS save into a C64 one, which the importer refuses
-   today)` set the standard for -- convert, boot the DOS game, read the six
-   sheets, and diff the engine's own resave.
+| title | container | `LOAD SAVED GAME` | engine resave differs |
+|---|---|---|---|
+| Curse of the Azure Bonds | 13149, script staged | six sheets, PHILIPPE FIGHTER 1 EXP 0 carrying magic-user 6 | 204 of 13149 bytes |
+| Secret of the Silver Blades | 5469, no script | six drawn with own AC/HP, party walked into area 16 | 175 of 5469 bytes |
+
+Every differing byte is one the writer declares: ~170-198 in the name-table
+heap and menu scratch the engine fills, the two square-block scratch bytes it
+recomputes from the map on the first step, the wall-colour words `$49FD`/`$49FE`
+the arriving area's script writes on entry, and a handful the engine advanced
+during play (`$4FC6`, `$5079` in Curse, a quest flag `$4A3C` 2->3 in Silver
+Blades). Not one is a field the conversion sourced wrong. The specimens are
+`WISH-SPEC-{curse,ssb}-299-built-from-nothing` (ours) and
+`WISH-SPEC-{curse,ssb}-299-whole-engine-resave` (the engine's).
+
+**Three things the container writer had to get right, none of them a size
+change:**
+
+* **The wall triples move.** Pool of Radiance keeps its wallset/wallmap in the
+  variable array at `$4AFA`/`$4AFD`; Curse and Silver Blades hold those at
+  zero and write the triples into the twelve-byte block inside the square
+  block instead (`dos_savegame.put_wall_block`). `$4AFD` is a quest flag in
+  the later titles -- 255 in every played Silver Blades container and on its
+  C64 disk -- so writing a wallmap there would overwrite one.
+* **The DAX container number is the DOS file, not the C64 side.** Pool of
+  Radiance and Curse pack one `ECL<n>.DAX` per C64 side, so the area table's
+  disk column is the DOS number too (29 of 29 and 24 of 24 rows checked file
+  by file). Silver Blades packs six C64 sides into three DOS containers --
+  `ECL1` holds `$03`/`$10`/`$20`-`$22`, `ECL2` holds `$11`/`$30`-`$44`, `ECL3`
+  holds `$50`-`$63` -- so 21 of its 22 rows disagree, and
+  `goldbox.dos.dos_dax_number` reads the answer off the DOS files.
+  **The table is not wrong and must not be "fixed":** its column is the side
+  the C64 loader asks for.
+* **`$49FC` and `$49FF` are not zero in the later titles.** Each engine's save
+  routine mirrors two interface globals into the array just before writing it
+  (Curse `GAME.OVR:0x1F8D4`, Silver Blades `0x26AE0`), and the loader unpacks
+  them again -- so a converted save must carry the initialiser's 4 and 3,
+  which every Curse and Silver Blades container holds, rather than the zero
+  Pool of Radiance writes and the portrait gate Pool of Radiance keeps at
+  `$49FF`. The later titles draw no sheet portrait, so `$49FF` is the two
+  engine flags there, not a face.
+
+## The one byte the plan flagged, sourced (#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing can be converted to DOS for the later titles))
+
+`$503F` reads 4 in a played Curse container and 0 everywhere else, and Pool of
+Radiance's byte account does not name it. Read off the overlays rather than
+guessed: `GAME.OVR:0x0B1F` (Curse) and `0x0DD4` (Silver Blades) are the ECL
+VM arithmetic handler's divide arm storing the division remainder into VM word
+`$6E3F`, which the file's contiguous naming calls `$503F`
+(`docs/163-dos-vm-address-map.md`). It is the only site in either overlay that
+writes it, nothing reads it, and no script of either title names it
+(`tools/dosptrfields.py`, `tools/eclcensus.py`). So the conversion writes it
+**zero** with that reason in `SAVGAM_UNSOURCED_LATER`, and the running game
+confirmed the zero loads and plays. It is a stale VM register, not party
+state.
+
+## What is left
+
+The library now writes the whole later-title save; what remains is
+`editor/convert.py`'s `DIRECTIONS` rows, so the four cells of `#51 (Every
+permutation of DOS, C64 and Amiga, in both directions)` are offered -- a
+`junior-dev` step, gated behind `WISH_EXPERIMENTAL_*` and needing Donald's
+wording. `#234 (A dual-classed Curse or Silver Blades character converted to
+DOS loses the class he trained out of)` is unblocked: PHILIPPE now loads from
+a whole Wish-built Curse save with her magic-user 6 on the sheet.
 
 ## Where the tests are
 

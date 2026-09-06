@@ -407,6 +407,58 @@ class DosSaveShape:
     def party_table(self) -> int:
         return self.square + self.unnamed + self.square_bytes
 
+    @property
+    def tail_scratch(self) -> int:
+        """The two bytes after the facing: 12804 and 12805 in Pool of
+        Radiance, the last two of the five the engine writes from one
+        data-segment address (`DS:0x6AAD`, `DS:0x7229`, `DS:0x89D7`).
+        `docs/163-dos-vm-address-map.md` read Pool of Radiance's as the
+        wall-art nibble in front of the party and the square's attribute
+        byte, recomputed on the first step or turn."""
+        return self.square + 3
+
+    @property
+    def previous_mode(self) -> int:
+        """Byte 12806 in Pool of Radiance: the one-byte global the engine
+        writes after the five-byte square block (`DS:0x4FD4` in Curse,
+        `DS:0x67E8` in Silver Blades).  See `mode` for what the pair is."""
+        return self.square + 5
+
+    @property
+    def mode(self) -> int:
+        """Byte 12807 in Pool of Radiance, and **the engine's interface
+        mode** in Curse and Silver Blades (#299).
+
+        `DS:0x4FD3` in Curse has 101 sites in `GAME.OVR`, compared against
+        0-7 and assigned 0-7 by immediates, and the byte before it in the
+        file, `DS:0x4FD4`, is assigned from it (`GAME.OVR:0x4059`, `mov al,
+        [0x4FD3] / mov [0x4FD4], al`) -- the same current/previous pair
+        Pools of Darkness keeps at `POD_MODE`/`POD_PREVIOUS_MODE`, where 2
+        is camp, 3 the wilderness and 4 a dungeon.  Curse's initialiser
+        writes 4 into it (`GAME.OVR:0xFAA2`).  Every played Curse container
+        holds 2 here, which is camp, where every engine save is made; the
+        shipped stubs hold 0.
+
+        Pool of Radiance's `TAIL_CONSTANT` of 2 and `VIEW_MODE_BYTE` of 1
+        indoors / 3 outdoors are the same pair read the same way: camp, and
+        the mode the party was in before it camped.
+        """
+        return self.square + 6
+
+    @property
+    def wall_block(self) -> int:
+        """Where the `unnamed` twelve bytes begin, or None where there are
+        none: the two interleaved `u16[1..3]` arrays between the mode byte
+        and the party-size byte, 12808 in Curse and 5128 in Silver Blades."""
+        if not self.unnamed:
+            return None
+        return self.party_table - 1 - self.unnamed
+
+    @property
+    def party_size_byte(self) -> int:
+        """The party-size byte, which ends the square block."""
+        return self.party_table - 1
+
 
 #: Pool of Radiance, 13137 bytes.  Every offset above is this row's.
 SAVE_POOL_OF_RADIANCE = DosSaveShape(
@@ -657,16 +709,6 @@ def _shaped(save: bytes, shape: "DosSaveShape | None" = None) -> DosSaveShape:
     return shape
 
 
-def _whole(save: bytes) -> bytes:
-    """Refuse a buffer that is not a Pool of Radiance saved game.
-
-    The writers below encode the Pool of Radiance conversion and its offsets;
-    reading is shape-aware and reading is what the other three titles get.
-    """
-    _shaped(save, SAVE_POOL_OF_RADIANCE)
-    return save
-
-
 def word(save: bytes, address: int,
          shape: "DosSaveShape | None" = None) -> int:
     shape = _shaped(save, shape)
@@ -869,7 +911,8 @@ def wall_triple(save: bytes) -> tuple[int, int, int]:
     return tuple(word(save, WALLSET + i) for i in range(3))
 
 
-def put_character_files(save: bytearray, slot: str) -> None:
+def put_character_files(save: bytearray, slot: str,
+                        shape: "DosSaveShape | None" = None) -> None:
     """Name the files the engine will load the party from.
 
     The engine loads the party from these names and not from the slot letter
@@ -880,9 +923,9 @@ def put_character_files(save: bytearray, slot: str) -> None:
     shows what a blanked entry does, and the party size says how many are
     read.
     """
-    _whole(save)
+    shape = _shaped(save, shape)
     for n in range(PARTY_ENTRIES):
-        at = PARTY_TABLE + n * PARTY_ENTRY
+        at = shape.party_table + n * PARTY_ENTRY
         name = f"CHRDAT{slot.upper()}{n + 1}".encode("ascii")
         save[at] = len(name)
         save[at + 1:at + 1 + len(name)] = name
@@ -1028,9 +1071,12 @@ def dax_block(data: bytes, block_id: int, name: str = "dax") -> bytes:
 # ---------------------------------------------------------------------------
 # Writing: the retarget, and the two fields a conversion carries
 # ---------------------------------------------------------------------------
-def put_word(save: bytearray, address: int, value: int) -> None:
-    _whole(save)
-    struct.pack_into("<H", save, word_offset(address), value & 0xFFFF)
+def put_word(save: bytearray, address: int, value: int,
+             shape: "DosSaveShape | None" = None) -> None:
+    """One VM word, by its Pool of Radiance address -- a word index, see
+    `word_offset`.  `shape` defaults to whatever the buffer's length names."""
+    shape = _shaped(save, shape)
+    struct.pack_into("<H", save, word_offset(address, shape), value & 0xFFFF)
 
 
 def put_position(save: bytearray, x: int, y: int, facing: int,
@@ -1043,71 +1089,165 @@ def put_position(save: bytearray, x: int, y: int, facing: int,
     array. `shape` defaults to whichever the buffer's own length names, so an
     existing Pool of Radiance caller is unaffected.
 
-    **This is the one writer here that takes a title other than Pool of
-    Radiance, and that is deliberate rather than an oversight.** Every other
-    one opens with `_whole`, which refuses anything but a 13137-byte buffer;
-    this one opens with `_shaped`, which takes any of the four known sizes.
-    It is groundwork for #192, and the rest of the module follows when that
-    lands. Until then a caller writing a whole Curse save gets this call and
-    a `DosSaveError` from the next one, which is loud rather than silent.
+    Every writer here opens with `_shaped` since #299, which takes any of
+    the four known sizes; this was the first to, as groundwork for #192,
+    and the rest were Pool of Radiance-only until the later titles'
+    containers were written.
     """
     shape = _shaped(save, shape)
     save[shape.pos_x], save[shape.pos_y] = x, y
     save[shape.pos_facing] = facing * FACING_SCALE
 
 
-def put_tail_state(save: bytearray, *, indoors: bool = True) -> None:
+#: What a Curse or Silver Blades conversion writes into the four tail bytes,
+#: which is zero in all four, and why (#299).
+#:
+#: **The two scratch bytes** (`shape.tail_scratch`) are the last two of the
+#: five the engine writes from `DS:0x7229` / `DS:0x89D7`, the same struct
+#: whose Pool of Radiance twin `docs/163-dos-vm-address-map.md` read as the
+#: wall-art nibble in front of the party and the square's attribute byte,
+#: recomputed on the first step or turn.  They read `00 00` in all four
+#: shipped stubs and in three of the four played Silver Blades containers,
+#: `01 03` in both played Curse ones and `00 87` in the fourth Silver Blades
+#: one -- a function of the square, not of the party.
+#:
+#: **The mode pair** (`shape.previous_mode`, `shape.mode`) reads `00 00` in
+#: all four shipped stubs, which are saves the engine loads and plays from
+#: -- `#113` drove the shipped Curse party out of its inn -- and in the
+#: Silver Blades container `WISH-SPEC-ssb-234-party-pair` slot D, which
+#: `tools/dossheetread.py` loaded for `#299`'s record proof.  The played
+#: values vary between two saves of the same party on the same square (4/2,
+#: 2/0 and 0/0 across three Silver Blades saves at (3,12)), so they are the
+#: menu the save was made from rather than anything the party carries.
+LATER_TAIL_ZERO = ("zero: what the four shipped Curse and Silver Blades "
+                   "stubs hold, and what the engine loaded and played from "
+                   "(#113, #299); the two scratch bytes are recomputed from "
+                   "the map on the first step and the two mode bytes are "
+                   "the menu the save was made from")
+
+
+def put_tail_state(save: bytearray, *, indoors: bool = True,
+                   shape: "DosSaveShape | None" = None) -> None:
     """Bytes 12804-12807, from measurement rather than from the template.
 
-    `indoors` sets **two** of them, not one: the view-mode byte, which is a
-    function of `$49E6` in 12 of 12 specimens, and the scratch byte at 12804,
-    which is not.  12804 reads 0 in eight of the nine indoor specimens and 14
-    in the ninth and in all three outdoor ones, so 0 and 14 are the values an
-    engine-written save of a party standing in each place has held -- and
-    that is all they are.  The engine maintains the byte itself: it replaced
-    a written 0 with 9 in #59's run 9 and with 14 in #26's, the second of
-    those standing **indoors**, which is what refuted reading it as an
-    indoors flag.
+    **Pool of Radiance**: `indoors` sets **two** of them, not one: the
+    view-mode byte, which is a function of `$49E6` in 12 of 12 specimens,
+    and the scratch byte at 12804, which is not.  12804 reads 0 in eight of
+    the nine indoor specimens and 14 in the ninth and in all three outdoor
+    ones, so 0 and 14 are the values an engine-written save of a party
+    standing in each place has held -- and that is all they are.  The
+    engine maintains the byte itself: it replaced a written 0 with 9 in
+    #59's run 9 and with 14 in #26's, the second of those standing
+    **indoors**, which is what refuted reading it as an indoors flag.
 
     `TAIL_CONSTANT_BYTE` is 2 in all twelve genuine specimens regardless.
     `VM_COPY_BYTE` is written from `$5200` as it stands in this save, which is
     the relationship 13 of 13 files show.
+
+    **Curse and Silver Blades**: all four bytes zero, see `LATER_TAIL_ZERO`.
+    Their mode byte is not Pool of Radiance's constant 2 -- it varies 0/2
+    across engine-written saves of one party -- and the shipped stubs, which
+    the engine loads and plays from, hold zero in all four (#299).
     """
-    _whole(save)
-    save[SCRATCH_BYTE] = SCRATCH_INDOORS if indoors else SCRATCH_OUTDOORS
-    save[VM_COPY_BYTE] = word(bytes(save), VM_SCRATCH) & 0xFF
-    save[VIEW_MODE_BYTE] = VIEW_MODE_INDOORS if indoors else VIEW_MODE_OUTDOORS
-    save[TAIL_CONSTANT_BYTE] = TAIL_CONSTANT
+    shape = _shaped(save, shape)
+    if shape is SAVE_POOL_OF_RADIANCE:
+        save[SCRATCH_BYTE] = SCRATCH_INDOORS if indoors else SCRATCH_OUTDOORS
+        save[VM_COPY_BYTE] = word(bytes(save), VM_SCRATCH) & 0xFF
+        save[VIEW_MODE_BYTE] = (VIEW_MODE_INDOORS if indoors
+                                else VIEW_MODE_OUTDOORS)
+        save[TAIL_CONSTANT_BYTE] = TAIL_CONSTANT
+        return
+    if not shape.var_words:
+        raise DosSaveError(
+            f"a {shape.title} saved game's square block is not written here")
+    save[shape.tail_scratch:shape.tail_scratch + 2] = bytes(2)
+    save[shape.previous_mode] = 0
+    save[shape.mode] = 0
 
 
-def put_travel_square(save: bytearray, x: int, y: int) -> None:
+def put_travel_square(save: bytearray, x: int, y: int,
+                      shape: "DosSaveShape | None" = None) -> None:
     """The overland square, window-local, into `$49C3`/`$49C4`.
 
     The facing byte still matters out there: the engine keeps 12803 live
     (doubled, as indoors) while 12801/12802 go stale, so a writer placing a
     party outdoors sets this *and* `put_position`'s facing.
     """
-    _whole(save)
-    put_word(save, TRAVEL_X, x)
-    put_word(save, TRAVEL_Y, y)
+    shape = _shaped(save, shape)
+    put_word(save, TRAVEL_X, x, shape)
+    put_word(save, TRAVEL_Y, y, shape)
 
 
-def put_clock(save: bytearray, digits) -> None:
+def put_clock(save: bytearray, digits,
+              shape: "DosSaveShape | None" = None) -> None:
     """The six digit words, in the C64's own order and encoding."""
-    _whole(save)
+    shape = _shaped(save, shape)
     digits = list(digits)
     if len(digits) != CLOCK_DIGITS:
         raise DosSaveError(f"the clock is {CLOCK_DIGITS} digits, not "
                            f"{len(digits)}")
     for i, d in enumerate(digits):
-        put_word(save, CLOCK + i, d)
+        put_word(save, CLOCK + i, d, shape)
 
 
-def put_party_size(save: bytearray, count: int) -> None:
-    """Both copies, which move together."""
-    _whole(save)
-    put_word(save, PARTY_SIZE, count)
-    save[PARTY_SIZE_BYTE] = count
+def put_party_size(save: bytearray, count: int,
+                   shape: "DosSaveShape | None" = None) -> None:
+    """Both copies, which move together.
+
+    The byte is the last of the square block in every title, which is
+    `shape.party_size_byte`: 12808 in Pool of Radiance, 12820 in Curse and
+    5140 in Silver Blades, each read off that engine's own `BlockWrite`
+    chain (#253).
+    """
+    shape = _shaped(save, shape)
+    put_word(save, PARTY_SIZE, count, shape)
+    save[shape.party_size_byte] = count
+
+
+def wall_block(save: bytes, shape: "DosSaveShape | None" = None
+               ) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """The two `u16[1..3]` arrays inside a Curse or Silver Blades square
+    block, as `(wallset, wallmap)`.
+
+    Interleaved, in the order the writer emits them: for *i* in 1..3 the
+    word at `DS:0x722A + 4i` and then the one at `DS:0x722C + 4i` (Curse;
+    `DS:0x89D8`/`DS:0x89DA` in Silver Blades), so the file reads `set1
+    map1 set2 map2 set3 map3`.  Which array is which is read off the
+    initialiser, `GAME.OVR:0xF982`: it writes 0 into `[0x722E]` and 1 into
+    `[0x7230]`, and every shipped container holds `00 00 01 00` there --
+    `(0, $FFFF, $FFFF)` and `(1, $FFFF, $FFFF)`, which is Pool of Radiance's
+    `OUTDOOR_WALLSET` beside its "`(1, $FFFF, $FFFF)` with one set loaded".
+    A played Silver Blades container reads `15 00 01 00 ff ff ...`: wallset
+    `(21, $FFFF, $FFFF)`, wallmap `(1, $FFFF, $FFFF)`, in that order (#299).
+    """
+    shape = _shaped(save, shape)
+    at = shape.wall_block
+    if at is None:
+        raise DosSaveError(
+            f"a {shape.title} saved game keeps its wall triples in the "
+            f"variable array, not in the square block")
+    words = struct.unpack_from("<6H", save, at)
+    return tuple(words[0::2]), tuple(words[1::2])
+
+
+def put_wall_block(save: bytearray, wallset,
+                   shape: "DosSaveShape | None" = None) -> None:
+    """Write the wallset triple and its index map into the square block,
+    interleaved as `wall_block` reads them."""
+    shape = _shaped(save, shape)
+    at = shape.wall_block
+    if at is None:
+        raise DosSaveError(
+            f"a {shape.title} saved game has no wall block in its square "
+            f"block; write WALLSET/WALLMAP instead")
+    wallset = tuple(wallset)
+    if len(wallset) != 3:
+        raise DosSaveError(f"a wallset triple has three words, not "
+                           f"{len(wallset)}")
+    words = []
+    for w, m in zip(wallset, wall_map(wallset)):
+        words += [w & 0xFFFF, m & 0xFFFF]
+    struct.pack_into("<6H", save, at, *words)
 
 
 def wall_map(wallset) -> tuple[int, int, int]:
@@ -1115,9 +1255,19 @@ def wall_map(wallset) -> tuple[int, int, int]:
     return tuple(EMPTY if w == EMPTY else i + 1 for i, w in enumerate(wallset))
 
 
-def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes,
-             outdoors: bool = False, geo: "int | None" = None) -> None:
-    """Move a saved game to another area.  `script` is its `ECL` DAX block.
+def retarget(save: bytearray, *, area: int, dax: int, wallset,
+             script: "bytes | None", outdoors: bool = False,
+             geo: "int | None" = None,
+             shape: "DosSaveShape | None" = None) -> None:
+    """Move a saved game to another area.  `script` is its `ECL` DAX block,
+    or None for a title that stages none (Silver Blades).
+
+    **Shape-aware since #299.**  The four writes every title shares --
+    the container byte, `$49C5`, `$49F2`, `$5012` -- land at the shape's
+    own offsets; the wall triples go into the variable array in Pool of
+    Radiance and into the twelve-byte block inside the square block in
+    Curse and Silver Blades (`put_wall_block`); and the script is staged
+    only where the shape has a buffer for it.
 
     Every write `RETARGET_WRITES` lists except the square and the party
     size, which a conversion sets separately because they change on their
@@ -1139,19 +1289,36 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes,
     the field that says the overland names no `GEO`.  The C64 is not the
     same here: its `$49C5` outdoors holds the `SQRDATA` number.
     """
-    _whole(save)
+    shape = _shaped(save, shape)
     if geo is None:
         geo = area
-    save[0] = dax
-    put_word(save, AREA, 0 if outdoors else geo)
-    put_word(save, SCRIPT, area)
-    put_word(save, DISK, dax)
-    for i, w in enumerate(wallset):
-        put_word(save, WALLSET + i, w)
-    for i, w in enumerate(wall_map(wallset)):
-        put_word(save, WALLMAP + i, w)
+    save[shape.head] = dax
+    put_word(save, AREA, 0 if outdoors else geo, shape)
+    put_word(save, SCRIPT, area, shape)
+    put_word(save, DISK, dax, shape)
+    if shape.unnamed:
+        # Curse and Silver Blades keep the triples inside the square block
+        # and hold `$4AFA`/`$4AFD` at zero in all 121 containers (#253); in
+        # both, `$4AFD` is a quest flag the scripts use (`goldbox.dos.
+        # quest_flags`), so writing a wallmap there would overwrite one.
+        put_wall_block(save, wallset, shape)
+    else:
+        for i, w in enumerate(wallset):
+            put_word(save, WALLSET + i, w, shape)
+        for i, w in enumerate(wall_map(wallset)):
+            put_word(save, WALLMAP + i, w, shape)
+    if shape.script_buffer is None:
+        if script:
+            raise DosSaveError(
+                f"a {shape.title} saved game stages no script; it reloads "
+                f"the area's from ECL{dax}.DAX")
+        return
+    if script is None:
+        raise DosSaveError(
+            f"a {shape.title} saved game stages the area's script and none "
+            f"was given")
     body = script[ECL_HEADER:]
-    start, end = ECL_BUFFER
+    start, end = shape.script_buffer
     if len(body) > end - start:
         raise DosSaveError(f"area {area}'s script is {len(body)} bytes and the "
                            f"buffer holds {end - start}")

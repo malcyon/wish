@@ -51,6 +51,35 @@ from tools import dosbox  # noqa: E402
 TRAIN_LEVEL = 0xD51
 
 
+def install_whole(save: pathlib.Path, save_dir: pathlib.Path,
+                  letter: str, source: str) -> dict:
+    """Put a whole save this project wrote into a clean `SAVE` (#299).
+
+    The other half of :func:`install`: here the container is **ours too**,
+    built from nothing by `goldbox.dos.new_dos_save`, so every file of the
+    slot comes from `save` and nothing is borrowed from a specimen.  The
+    slot letter is kept as written unless `letter` differs from `source`,
+    and Silver Blades refuses a save installed under a different letter from
+    the one it was written as, so pass the same letter for it.
+    """
+    letter, source = letter.upper(), source.upper()
+    took = {"container": None, "records": []}
+    for path in sorted(save.iterdir()):
+        name = path.name.upper()
+        if name == f"SAVGAM{source}.DAT":
+            dest = save_dir / f"SAVGAM{letter}.DAT"
+            dest.write_bytes(path.read_bytes())
+            took["container"] = f"{path.name} ({path.stat().st_size} bytes)"
+        elif name.startswith(f"CHRDAT{source}"):
+            dest = save_dir / f"CHRDAT{letter}{name[7:]}"
+            dest.write_bytes(path.read_bytes())
+            took["records"].append(f"{name} -> {dest.name} "
+                                   f"({path.stat().st_size} bytes)")
+    if took["container"] is None:
+        raise FileNotFoundError(f"no SAVGAM{source}.DAT in {save}")
+    return took
+
+
 def install(container: pathlib.Path, records: pathlib.Path,
             save_dir: pathlib.Path, letter: str, source: str,
             train_level: int | None) -> dict:
@@ -98,8 +127,14 @@ def run(args) -> int:
         (session.dir / "shots").mkdir(parents=True, exist_ok=True)
         for old in session.save_dir.glob("*"):
             old.unlink()
-        took = install(pathlib.Path(args.container), pathlib.Path(args.records),
-                       session.save_dir, args.slot, args.from_slot, args.level)
+        if args.save:
+            took = install_whole(pathlib.Path(args.save), session.save_dir,
+                                 args.slot, args.from_slot)
+        else:
+            took = install(pathlib.Path(args.container),
+                           pathlib.Path(args.records),
+                           session.save_dir, args.slot, args.from_slot,
+                           args.level)
         note(event="staged", slot=args.slot, **took)
         session.boot(fresh=False)
         if args.probe:
@@ -161,10 +196,14 @@ def run(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--game", default="CURSE", help="the game directory stem")
-    ap.add_argument("--container", required=True,
+    ap.add_argument("--container",
                     help="a specimen directory holding SAVGAM<from-slot>.DAT")
-    ap.add_argument("--records", required=True,
+    ap.add_argument("--records",
                     help="a directory of CHRDAT* files to install")
+    ap.add_argument("--save",
+                    help="a whole save this project wrote -- SAVGAM and "
+                         "CHRDAT files together -- installed instead of "
+                         "--container and --records (#299)")
     ap.add_argument("--slot", default="D", help="which letter to install as")
     ap.add_argument("--from-slot", default="D",
                     help="which slot of the container to take")
@@ -188,7 +227,10 @@ def main(argv: list[str] | None = None) -> int:
                          "settle")
     ap.add_argument("--note", default="issue234 converted sheets")
     ap.add_argument("--out", default="work/issue234/dosrun")
-    return run(ap.parse_args(argv))
+    args = ap.parse_args(argv)
+    if not args.save and not (args.container and args.records):
+        ap.error("give --save, or both --container and --records")
+    return run(args)
 
 
 if __name__ == "__main__":

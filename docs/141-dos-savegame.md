@@ -367,6 +367,19 @@ writes a real block id. Settling experiment: a DOSBox-X `BPM` on `DS:0x722E`
 while the party walks into an area with three wall sets loaded, and see
 whether the writer is the routine that fills `$4AFA` in Pool of Radiance.
 
+**#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing can be converted to DOS for the later titles) sourced the block from the C64 cache and the running game accepted
+it.** A whole Curse container built from nothing, its twelve-byte block
+carrying the C64 loaded-files cache's `(1, 2, 3)` (the disk holds `81 82 83`
+there, bit 7 masked), loaded in DOS Curse and drew its dungeon view indoors
+at area 1; a Silver Blades one carrying `(21, $FFFF, $FFFF)` loaded and the
+party walked in area 16. So a block sourced this way **loads indoors**, which
+Pool of Radiance's `LoadWallSet` does not do on a wrong triple — that is the
+load-succeeds half. It does not upgrade the grade to CONFIRMED on its own,
+because a load that ignores the block would look the same; the BPM experiment
+above is still what separates "the load reads it" from "the load does not
+care". The writer sources it from the same cache Pool of Radiance's own
+wallset words come from, so it is a measured value either way.
+
 ## Pools of Darkness: the byte-wide variable array (#175 (Decode the first 1024 bytes of the Pools of Darkness saved game))
 
 **The 1024 bytes at the front are the ECL variable array, one byte per

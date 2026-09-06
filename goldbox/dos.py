@@ -4286,7 +4286,9 @@ def save_disk(save0: bytes, save1: bytes, game=None):
 ECL_DAX = "ECL{dax}.DAX"
 
 
-def c64_wall_triple(save0: bytes) -> tuple[int, int, int]:
+def c64_wall_triple(save0: bytes,
+                    container: "c64_save.Container | None" = None
+                    ) -> tuple[int, int, int]:
     """The wallset triple a DOS save wants, out of the C64 loaded-files cache.
 
     Cache slots 15-17 hold the three `WALLSET` pieces, and the DOS save holds
@@ -4294,18 +4296,62 @@ def c64_wall_triple(save0: bytes) -> tuple[int, int, int]:
     J's, PORSAVE's Sokol Keep (1,5,9) is slot B's.  An empty C64 slot becomes
     an empty DOS word.
 
+    **The same slots in Curse and Silver Blades, at the container's own
+    cache offset** (#299): the Curse disk `WISH-SPEC-curse-dual-classed`
+    holds `81 82 83` there and both played DOS Curse containers hold
+    `(1, 2, 3)` in their square block; the Silver Blades disk
+    `WISH-SPEC-ssb-d-engine-resave` holds `95 FF FF` and all four played
+    DOS Silver Blades containers hold `(21, $FFFF, $FFFF)`.  Where the DOS
+    value lands is `dos_savegame.put_wall_block`'s business.
+
     **New Phlan is the exception**: the C64 loads no `WALLSET` there at all
     and every slot reads `$FF`, where DOS slot A holds `(0, $FFFF, $FFFF)`.
     So this returns three empties for a New Phlan save, which is not what the
     DOS engine's own save says -- and is measured to draw the identical view
     anyway, `work/p60/run3` Z0.
     """
-    at = FILE_CACHE[0] - SAVE0_BASE + CACHE_WALLSET
+    container = c64_save.container_for(container)
+    at = container.cache[0] + CACHE_WALLSET
     out = []
     for b in save0[at:at + CACHE_WALLSET_PIECES]:
         v = b & ~FILE_CACHE_RELOAD & 0xFF
         out.append(dos_savegame.EMPTY if v == CACHE_UNSET else v)
     return tuple(out)
+
+
+def dos_dax_number(game: "str | pathlib.Path | None", area: int
+                   ) -> "int | None":
+    """Which `ECL<n>.DAX` in the DOS game directory holds this area's
+    script -- the number the container's byte 0 and `$5012` want.
+
+    **The C64 side number is not that number in Silver Blades** (#299).
+    Pool of Radiance and Curse pack their scripts into one `ECL<n>.DAX` per
+    C64 side, so `areas.Area.disk` is the DOS number too -- 29 of 29 Pool
+    of Radiance rows with a block and 24 of 24 Curse ones, checked file by
+    file against the archives.  Silver Blades has three DOS containers for
+    six C64 sides: `ECL1.DAX` holds `$03`, `$10`, `$20`-`$22`, `ECL2.DAX`
+    holds `$11` and `$30`-`$44`, and `ECL3.DAX` holds `$50`-`$63`, so the
+    table's disk column names a `ECL4.DAX` that does not exist for area
+    `$40`.  The table is right for what it is -- the side the C64 loader
+    asks for -- and this reads the DOS answer off the DOS files instead.
+
+    None when no container holds the block, which is the case for both
+    titles' overland ids (`$1E`), and for a directory with no `ECL` files.
+    """
+    if not game:
+        return None
+    root = pathlib.Path(game)
+    for path in sorted(root.glob("ECL*.DAX")):
+        stem = path.stem[3:]
+        if not stem.isdigit():
+            continue
+        try:
+            index = dos_savegame.dax_index(path.read_bytes(), path.name)
+        except dos_savegame.DosSaveError:
+            continue
+        if any(bid == area for bid, *_ in index):
+            return int(stem)
+    return None
 
 
 #: Which way a converted party faces on the travel grid, and **the one field
@@ -4460,6 +4506,168 @@ SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
                 "games hold. What it means is unknown"),
 )
 
+# ---------------------------------------------------------------------------
+# The same account for Curse of the Azure Bonds and Secret of the Silver
+# Blades (#299).  Every address below is the file's word index named Pool of
+# Radiance's way -- `$49FC` is word `$FC`, which the later titles' scripts
+# call `$4BFC` -- because that is how `dos_savegame.word_offset` and every
+# census on this machine name them.  The VM's own address for a word above
+# `$4CFF` is in `docs/163-dos-vm-address-map.md`: `$503F` is `$6E3F`.
+# ---------------------------------------------------------------------------
+#: Where the three engines' save routines mirror two engine globals into
+#: the variable array just before writing it, read off each `GAME.OVR`
+#: (Pool of Radiance `0x1FECE`, Curse `0x1F8D4`, Silver Blades `0x26AE0`):
+#: word `$FC` takes a one-byte mode global and word `$FF` takes
+#: `2 * flagA + flagB`.  The loaders put them straight back
+#: (Silver Blades `0x26457`-`0x26482`).  Each later title's initialiser
+#: sets the mode byte to 4 and both flags to 1 -- Curse `GAME.OVR:0xF9FA`,
+#: `0xF9C6` and `0xF9CB`; Silver Blades `0x1078E`, `0x10752` and `0x10757`
+#: -- and the fourteen Curse and Silver Blades containers on this machine,
+#: shipped stubs included, all hold 4 and 3.  Pool of Radiance's initialiser
+#: sets its mode byte to 1 and its containers read 6 or 4 by area, which is
+#: why its own account zeroes `$49FC` and gates `$49FF` on the portrait.
+LATER_MODE_WORD = 0x49FC
+LATER_FLAGS_WORD = 0x49FF
+#: `$6DE1` in the VM's own naming.  The routine at Curse `GAME.OVR:0x832F`
+#: (Silver Blades `0x9295`) stores `$FF` into it and zeroes the two
+#: rest-interruption words after it; it is compared against `$FF` at three
+#: sites in each title.  Zero in the four shipped stubs, 255 in all six
+#: played later-title containers, and 255 in every Pool of Radiance one,
+#: which is why `dos_savegame.SAVGAM_CONSTANTS` already writes it there.
+LATER_BEGUN_WORD = 0x4FE1
+
+#: Words written to a value every engine-written container of the title
+#: holds, per title, as `(address, value, why)`.  The mirror of
+#: `dos_savegame.SAVGAM_CONSTANTS`, which is Pool of Radiance's; the sets
+#: differ, and a writer that used Pool of Radiance's for Silver Blades would
+#: put 16 and 1 into two words every Silver Blades container holds at zero.
+SAVGAM_CONSTANTS_LATER: dict[str, tuple[tuple[int, int, str], ...]] = {
+    "curse-of-the-azure-bonds": (
+        (LATER_MODE_WORD, 4, "the engine's mode byte, mirrored into the "
+                             "array by the save routine (GAME.OVR:0x1F8D4) "
+                             "and set to 4 by the initialiser (0xF9FA); 4 "
+                             "in all 8 Curse containers here"),
+        (LATER_FLAGS_WORD, 3, "two engine flags packed as 2*a+b by the "
+                              "save routine (GAME.OVR:0x1F8E2), both set to "
+                              "1 by the initialiser (0xF9C6, 0xF9CB); 3 in "
+                              "all 8 Curse containers here"),
+        (LATER_BEGUN_WORD, 255, "written $FF by GAME.OVR:0x832F, the routine "
+                                "that also zeroes the rest-interruption "
+                                "words, and compared against $FF at three "
+                                "sites; 255 in both played Curse containers "
+                                "and in every Pool of Radiance one"),
+        (0x506D, 16, "16 in both played Curse containers and in every Pool "
+                     "of Radiance one, 0 in the four Curse stubs and in "
+                     "every Silver Blades container; read at two GAME.OVR "
+                     "sites (0x7791, 0x7BCC) that dispatch on it and "
+                     "written by nothing in the overlay. PROBABLE: the "
+                     "played value, from one party's two saves"),
+        (0x50F6, 1, "1 in both played Curse containers and in every Pool of "
+                    "Radiance one, 0 in the four Curse stubs and in every "
+                    "Silver Blades container; no site in the overlay "
+                    "touches it. PROBABLE: the played value, from one "
+                    "party's two saves"),
+    ),
+    "secret-of-the-silver-blades": (
+        (LATER_MODE_WORD, 4, "the engine's mode byte, mirrored into the "
+                             "array by the save routine (GAME.OVR:0x26AE0) "
+                             "and set to 4 by the initialiser (0x1078E); 4 "
+                             "in all 6 Silver Blades containers here"),
+        (LATER_FLAGS_WORD, 3, "two engine flags packed as 2*a+b by the "
+                              "save routine (GAME.OVR:0x26AEE), both set to "
+                              "1 by the initialiser (0x10752, 0x10757), "
+                              "and unpacked again by the loader (0x26457); "
+                              "3 in all 6 Silver Blades containers here"),
+        (LATER_BEGUN_WORD, 255, "written $FF by GAME.OVR:0x9295, the routine "
+                                "that also zeroes the rest-interruption "
+                                "words, and compared against $FF at three "
+                                "sites; 255 in all four played Silver "
+                                "Blades containers, 0 in the two stubs"),
+    ),
+}
+
+#: Words of the later titles' variable arrays that some engine-written
+#: container holds live and this conversion writes **zero**, with the
+#: reason each is nobody's -- the later-title `SAVGAM_UNSOURCED`.  The
+#: evidence is per title: the six Curse containers (two played, four
+#: stubs) and six Silver Blades ones (four played, two stubs) in
+#: `~/wish-specimens/por-dos` and the archives, `tools/dossavcensus.py`.
+#: Everything else in the array reads zero in every one of them and is
+#: swept by `savgam_zeroes`.
+LATER_SCRIPT_REFILLED = ("the arriving area's own script writes it from its "
+                         "entry code, so no value outlives a load")
+SAVGAM_UNSOURCED_LATER: tuple[tuple[int, int, str], ...] = (
+    (0x49F0, 2, f"the previous square -- {ENGINE_REBUILT}; (3,12) in both "
+                f"played Curse containers and in three Silver Blades ones, "
+                f"0 in the fourth and in every stub"),
+    (0x49FD, 2, f"the two wall colours -- {LATER_SCRIPT_REFILLED}: ECL01 "
+                f"is one of the 19 Curse scripts that write $4BFD and the "
+                f"25 that write $4BFE, and Silver Blades' scripts write "
+                f"them 8 and 16 times (#192, #193). The C64 holds 8 where "
+                f"DOS Curse holds 11, so the C64 byte is not the DOS one"),
+    (0x4FA8, 1, "the training hall's class filter or level word, file "
+                "offset 0xD51 (#249, #234): 20 in the three Silver Blades "
+                "containers this project poked it to 20 in before the "
+                "engine resaved them, 0 in every other later-title "
+                "container -- our own poke read back, not a value the "
+                "engine writes outside a hall"),
+    (0x4FC6, 1, f"{DOS_ONLY}; $6DC6 in the VM's naming, read at two "
+                f"GAME.OVR sites and written by none; 99 in the played "
+                f"Curse containers, 80 in the played Silver Blades ones, 0 "
+                f"in every stub"),
+    (0x4FD2, 2, "the rest-interruption interval and chance, $6DD2/$6DD3 "
+                "(docs/163-dos-vm-address-map.md): zeroed by the same "
+                "routine that sets $4FE1 (GAME.OVR:0x833C, 0x8347) and "
+                "written by the area script on ENCAMP; (1,100) in the "
+                "played Curse containers, 0 in every Silver Blades one"),
+    (0x503F, 1, "the ECL VM's division remainder: GAME.OVR:0x0B1F (Curse) "
+                "and 0x0DD4 (Silver Blades) are the arithmetic handler's "
+                "divide arm storing the remainder into VM word $6E3F, the "
+                "one site in either overlay that writes it; nothing in "
+                "either overlay reads it and no script of either title "
+                "names it (tools/dosptrfields.py, tools/eclcensus.py). 4 "
+                "in both played Curse containers, 0 everywhere else"),
+    (0x5079, 3, f"the VM's own working registers $6E79-$6E7B, {ENGINE_REBUILT}"
+                f"; no site in either overlay reaches them by "
+                f"displacement, so they are written through the VM's own "
+                f"store. 11/8/4 in a played Curse container, 7 in one "
+                f"Silver Blades one, 0 in every stub"),
+    (dos_savegame.ENCOUNTER_TEXT,
+     dos_savegame.VAR_LAST - dos_savegame.ENCOUNTER_TEXT + 1,
+     "the encounter and monster message buffers, one ASCII character per "
+     "word -- WEAPONERS OF CORMYR in the played Curse containers, PRIVATE "
+     "RESIDENCE in three Silver Blades ones -- and a converted party is "
+     "not being shouted at"),
+)
+
+
+def savgam_constants(shape: "dos_savegame.DosSaveShape"
+                     ) -> tuple[tuple[int, int, str], ...]:
+    """The words written to a measured constant for this title."""
+    if shape is dos_savegame.SAVE_POOL_OF_RADIANCE:
+        return dos_savegame.SAVGAM_CONSTANTS
+    return SAVGAM_CONSTANTS_LATER[shape.key]
+
+
+def savgam_unsourced(shape: "dos_savegame.DosSaveShape"
+                     ) -> tuple[tuple[int, int, str], ...]:
+    """The words written zero with a reason, for this title."""
+    if shape is dos_savegame.SAVE_POOL_OF_RADIANCE:
+        return SAVGAM_UNSOURCED
+    return SAVGAM_UNSOURCED_LATER
+
+
+#: The three bytes at `+$E7`-`+$E9` of a later title's C64 header, copied
+#: into words `$49E7`-`$49E9` (#299).  They cross the other way already:
+#: `c64_save.SECRET_OF_THE_SILVER_BLADES.copied` takes all three from the
+#: DOS save and Curse's takes two, because that title's scripts write them
+#: at their heads and `DUNGEON` reads them.  Measured at the same index on
+#: both ports: `1,1,1` in every played Silver Blades container and in both
+#: Silver Blades C64 disks, `0,0,0` in every Curse container and disk.
+#: Pool of Radiance zeroes them on the C64 side and its DOS containers hold
+#: them at zero, so they stay in its sweep.
+LATER_HEADER_COPIED = (0xE7, 3)
+
 
 def retarget_reason(area: int) -> str | None:
     """Why this area cannot be a retarget target, or `None` if it can.
@@ -4490,8 +4698,13 @@ def retarget_reason(area: int) -> str | None:
     return None
 
 
-def conversion_reason(area: int) -> str | None:
+def conversion_reason(area: int,
+                      title: "str | None" = None) -> str | None:
     """Why a *conversion* cannot write this area, or `None` if it can.
+
+    `title` is the game's title as `goldbox.areas` names it, Pool of
+    Radiance's by default; a Curse or Silver Blades id is looked up in that
+    title's own table (#299).
 
     **A conversion is not a retarget, and the difference is where the map
     comes from** (#276).  :func:`retarget_reason` refuses six areas because
@@ -4516,15 +4729,62 @@ def conversion_reason(area: int) -> str | None:
     areas 3, 5, 8, 19 and 30 -- the same argument and no C64 save made in any
     of them exists on this machine to run it with.
     """
-    where = areas.area(area)
+    title = title or areas.POOL_OF_RADIANCE
+    where = areas.area_in(area, title)
     if where is None:
-        return (f"area {area} is not an area of Pool of Radiance, so there is "
+        return (f"area {area} is not an area of {title}, so there is "
                 f"no map file and no script to name")
     return None
 
 
+def _area_dax(area: int, template: "pathlib.Path | None",
+              game: "str | pathlib.Path | None",
+              title: "str | None" = None) -> tuple["areas.Area", int]:
+    """The area's row and the DOS `ECL<n>.DAX` number that holds it.
+
+    The number comes off the DOS game directory's own files
+    (:func:`dos_dax_number`), because in Silver Blades the C64 side is not
+    the DOS container (#299).  With no game directory -- the template
+    experiment, Pool of Radiance only -- the table's side stands in, which
+    is the same number for every Pool of Radiance and Curse row that has a
+    block.  The two are compared where both are known, and a disagreement
+    in a title where they are measured equal is refused rather than
+    written.
+    """
+    title = title or areas.POOL_OF_RADIANCE
+    why = conversion_reason(area, title)
+    if why is not None:
+        raise DosRecordError(why)
+    where = areas.area_in(area, title)
+    dax = dos_dax_number(game, area)
+    if dax is None:
+        if game:
+            # Silver Blades' side is not its DOS number, so the file that
+            # is missing cannot be named there; everywhere else it can.
+            missing = ("ECL<n>.DAX"
+                       if title == areas.SECRET_OF_THE_SILVER_BLADES
+                       else ECL_DAX.format(dax=where.disk))
+            raise DosRecordError(
+                f"no {missing} in the game directory holds area {area}'s "
+                f"script, and the game's own files are the only copy of it; "
+                f"without it the save would carry somebody else's area")
+        if title != areas.POOL_OF_RADIANCE:
+            raise DosRecordError(
+                f"a {title} conversion needs the DOS game directory, whose "
+                f"ECL<n>.DAX files say which container holds area {area}")
+        dax = where.disk
+    elif title != areas.SECRET_OF_THE_SILVER_BLADES and dax != where.disk:
+        raise DosRecordError(
+            f"area {area} is in ECL{dax}.DAX where the area table puts it "
+            f"on side {where.disk}; the two are measured equal in every "
+            f"{title} row and this game directory disagrees")
+    return where, dax
+
+
 def _area_script(area: int, template: "pathlib.Path | None",
-                 game: "str | pathlib.Path | None") -> bytes:
+                 game: "str | pathlib.Path | None",
+                 title: "str | None" = None, dax: "int | None" = None
+                 ) -> bytes:
     """The area's own `ECL<n>.DAX` block, or a refusal saying why not.
 
     Three refusals, and all three used to be a warning with the party left
@@ -4537,32 +4797,57 @@ def _area_script(area: int, template: "pathlib.Path | None",
     `retarget_reason`** (#276): this is the conversion path, whose party
     brings its own resident map with it.
     """
-    why = conversion_reason(area)
-    if why is not None:
-        raise DosRecordError(why)
-    where = areas.area(area)
-    data = _read_ecl_dax(template, game, where.disk)
+    if dax is None:
+        _where, dax = _area_dax(area, template, game, title)
+    data = _read_ecl_dax(template, game, dax)
     if data is None:
         raise DosRecordError(
-            f"no {ECL_DAX.format(dax=where.disk)} in the game directory, and "
+            f"no {ECL_DAX.format(dax=dax)} in the game directory, and "
             f"the game's own files are the only copy of area {area}'s script; "
             f"without it the save would carry somebody else's area")
     try:
         return dos_savegame.dax_block(data, area)
     except dos_savegame.DosSaveError as e:
         raise DosRecordError(
-            f"{ECL_DAX.format(dax=where.disk)} is unreadable: {e}") from e
+            f"{ECL_DAX.format(dax=dax)} is unreadable: {e}") from e
 
 
 def _note_word(report: "SaveReport", address: int, words: int,
-               why: str) -> None:
+               why: str, shape: "dos_savegame.DosSaveShape | None" = None
+               ) -> None:
     """Provenance for `words` VM words, at the file offset they live at."""
-    report.note(dos_savegame.word_offset(address), 2 * words, why)
+    report.note(dos_savegame.word_offset(address, shape), 2 * words, why)
+
+
+def c64_title(save0: bytes, title=None) -> games.Game:
+    """Which C64 title a `SAVEDGAME0` payload belongs to.
+
+    `title` is a `goldbox.games.Game`, its key, or None.  **A 7424-byte
+    payload is refused without one**: Curse of the Azure Bonds and Secret
+    of the Silver Blades write the same size, their DOS containers differ
+    (13149 against 5469 bytes, one staging a script and one not), and
+    guessing between them would build a save the wrong engine loads
+    (#299).  Pool of Radiance's 7168 bytes name themselves.
+    """
+    if title is not None:
+        game = games.by_key(getattr(title, "key", title))
+        if len(save0) != game.save_size:
+            raise DosRecordError(
+                f"a {game.title} save is {game.save_size} bytes; this is "
+                f"{len(save0)}")
+        return game
+    if len(save0) == games.POOL_OF_RADIANCE.save_size:
+        return games.POOL_OF_RADIANCE
+    same = [g.title for g in games.GAMES if g.save_size == len(save0)]
+    raise DosRecordError(
+        f"a {len(save0)}-byte C64 save is one of {', '.join(same) or 'no'} "
+        f"titles; say which with `title=`")
 
 
 def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
-                  slot: str, count: int, script: bytes, *,
-                  portraits: bool = False) -> None:
+                  slot: str, count: int, script: "bytes | None", *,
+                  portraits: bool = False, game=None,
+                  dax: "int | None" = None) -> None:
     """Write everything a C64 save sources into a `SAVGAM<slot>.DAT` buffer.
 
     `savgam` is modified in place and every byte written gets a line in
@@ -4573,7 +4858,16 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
     path here without one: the load path reads the staged script and dies in
     `Load3DMap` when it is somebody else's (#60), and a conversion that
     cannot read the game's files has nothing to put there but a stranger's
-    area.  The caller refuses instead.
+    area.  The caller refuses instead.  **Silver Blades stages none**, and
+    passes None.
+
+    **`game` is the C64 title** (`goldbox.games.Game`, or None for Pool of
+    Radiance), and it chooses both ends of the join (#299): the C64 offsets
+    come from `c64_save.container_for(game)` and the DOS ones from
+    `dos_savegame.save_shape_for(game.key)`, whose size `savgam` must
+    already be.  `dax` is the DOS `ECL<n>.DAX` number holding the area,
+    from `_area_dax`; with none the area table's side stands in, which is
+    right for Pool of Radiance and Curse and wrong for Silver Blades.
 
     **A party on the travel grid takes a different value in four places**
     (#190), and everything else about the write is the same: `$49C5` = 0
@@ -4591,11 +4885,21 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
     right for the areas that load their own map and wrong for the six
     `retarget_reason` refuses before this can run.
     """
-    area = save0[CURRENT_SCRIPT - SAVE0_BASE]
-    geo = save0[CURRENT_GEO - SAVE0_BASE]
-    where = areas.area(area)
-    x, y, facing = (save0[PARTY_X - SAVE0_BASE], save0[PARTY_Y - SAVE0_BASE],
-                    save0[PARTY_FACING - SAVE0_BASE])
+    game = games.by_key(getattr(game, "key", game)) if game else \
+        games.POOL_OF_RADIANCE
+    container = c64_save.container_for(game)
+    shape = dos_savegame.save_shape_for(game.key)
+    later = shape is not dos_savegame.SAVE_POOL_OF_RADIANCE
+    if len(savgam) != shape.size:
+        raise DosRecordError(
+            f"a {shape.title} saved game is {shape.size} bytes; the buffer "
+            f"is {len(savgam)}")
+    area = save0[container.current_script]
+    geo = save0[container.current_geo]
+    where = areas.area_in(area, game.title)
+    if dax is None:
+        dax = where.disk
+    x, y, facing = save0[container.position:container.position + 3]
     indoors = not where.outdoors
 
     # Outdoors the C64's own cache slots 15-17 read `$FF` -- the travel grid
@@ -4603,56 +4907,68 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
     # `($FFFF, $FFFF, $FFFF)` where every engine-written outdoor DOS save
     # holds `(0, $FFFF, $FFFF)`.  So the measured overland value is written
     # instead of the empty read, and `OUTDOOR_WALLSET` carries the evidence.
-    wallset = (c64_wall_triple(save0) if indoors
+    wallset = (c64_wall_triple(save0, container) if indoors
                else dos_savegame.OUTDOOR_WALLSET)
-    dos_savegame.retarget(savgam, area=area, dax=where.disk,
+    dos_savegame.retarget(savgam, area=area, dax=dax,
                           wallset=wallset, script=script,
-                          outdoors=not indoors, geo=geo)
-    report.note(dos_savegame.DAX_NUMBER, 1,
-                f"the DAX container number, {where.disk}, for area "
-                f"{area} ({where.name or where.ecl})")
+                          outdoors=not indoors, geo=geo, shape=shape)
+    report.note(shape.head, shape.dax_bytes,
+                f"the DAX container number, {dax}, for area "
+                f"{area} ({where.name or where.ecl})"
+                + ("" if dax == where.disk else
+                   f" -- the DOS ECL{dax}.DAX that holds the block, not "
+                   f"the C64 side {where.disk} (#299)"))
     _note_word(report, dos_savegame.AREA, 1,
                "the resident GEO, the C64's own $49C5" if indoors else
                "zero: the overland names no GEO, which is what an outdoor "
                "DOS save holds here in 10 of 10 -- and it is not the C64's "
-               "own $49C5, which outdoors holds the SQRDATA number (#59)")
-    _note_word(report, dos_savegame.SCRIPT, 1, "the area's script id")
+               "own $49C5, which outdoors holds the SQRDATA number (#59)",
+               shape)
+    _note_word(report, dos_savegame.SCRIPT, 1, "the area's script id", shape)
     _note_word(report, dos_savegame.DISK, 1,
                "the DAX container number again -- the geo load reads "
-               "this word and not the header byte (#59)")
-    _note_word(report, dos_savegame.WALLSET, 3,
-               "the wallset triple, from the C64 loaded-files cache "
-               "slots 15-17, which carry the same three numbers" if indoors
-               else "the overland wallset triple (0,$FFFF,$FFFF), which the "
-               "engine writes for itself out there -- it replaced a seeded "
-               "(1,5,9) three times of three, and no outdoor load reads it "
-               "(#59, #190)")
-    _note_word(report, dos_savegame.WALLMAP, 3,
-               "the wall-index map that goes with the triple")
-    start, end = dos_savegame.ECL_BUFFER
-    report.note(start, end - start,
-                f"the area's own ECL{where.disk}.DAX block from byte "
-                f"{dos_savegame.ECL_HEADER} on, then zero to the end of "
-                f"the buffer -- which is what an engine-written save "
-                f"holds past its script's end, 6 of 6 (#59)")
-    dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1 if indoors else 0)
+               "this word and not the header byte (#59)", shape)
+    wallset_why = (
+        "the wallset triple, from the C64 loaded-files cache "
+        "slots 15-17, which carry the same three numbers" if indoors
+        else "the overland wallset triple (0,$FFFF,$FFFF), which the "
+        "engine writes for itself out there -- it replaced a seeded "
+        "(1,5,9) three times of three, and no outdoor load reads it "
+        "(#59, #190)")
+    if shape.unnamed:
+        report.note(shape.wall_block, shape.unnamed,
+                    f"the twelve-byte block inside the square block: "
+                    f"{wallset_why}, interleaved with its wall-index map "
+                    f"(#253, #299)")
+    else:
+        _note_word(report, dos_savegame.WALLSET, 3, wallset_why, shape)
+        _note_word(report, dos_savegame.WALLMAP, 3,
+                   "the wall-index map that goes with the triple", shape)
+    if shape.script_buffer is not None:
+        start, end = shape.script_buffer
+        report.note(start, end - start,
+                    f"the area's own ECL{dax}.DAX block from byte "
+                    f"{dos_savegame.ECL_HEADER} on, then zero to the end of "
+                    f"the buffer -- which is what an engine-written save "
+                    f"holds past its script's end, 6 of 6 (#59)")
+    dos_savegame.put_word(savgam, dos_savegame.INDOORS, 1 if indoors else 0,
+                          shape)
     _note_word(report, dos_savegame.INDOORS, 1,
                "indoors" if indoors else "outdoors -- 0 boots the engine "
-               "into travel mode")
+               "into travel mode", shape)
 
     if indoors:
-        dos_savegame.put_position(savgam, x, y, facing)
-        report.note(dos_savegame.POS_X, 3,
+        dos_savegame.put_position(savgam, x, y, facing, shape)
+        report.note(shape.pos_x, 3,
                     f"the square ({x},{y}) facing {facing}, the C64's own "
                     f"facing doubled")
     else:
-        tx, ty = (save0[dos_savegame.TRAVEL_X - SAVE0_BASE],
-                  save0[dos_savegame.TRAVEL_Y - SAVE0_BASE])
-        dos_savegame.put_travel_square(savgam, tx, ty)
+        tx, ty = save0[container.travel_position:container.travel_position + 2]
+        dos_savegame.put_travel_square(savgam, tx, ty, shape)
         _note_word(report, dos_savegame.TRAVEL_X, 2,
                    f"the travel square ({tx},{ty}), window-local, the C64's "
                    f"own $49C3/$49C4 -- the same pair at the same address on "
-                   f"both ports (#47, #59)")
+                   f"both ports (#47, #59)", shape)
         # 12801/12802 are the square the party last stood on **indoors**,
         # frozen on both ports the moment it reached the grid -- C64
         # `DUNGEON $1A3C` copies `$C04B` into `$49C0` only while `$49E6` is
@@ -4662,56 +4978,83 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
         #
         # 12803 is the exception and is the one field this conversion
         # **cannot** carry outdoors.  See OUTDOOR_FACING.
-        dos_savegame.put_position(savgam, x, y, OUTDOOR_FACING)
-        report.note(dos_savegame.POS_X, 2,
+        dos_savegame.put_position(savgam, x, y, OUTDOOR_FACING, shape)
+        report.note(shape.pos_x, 2,
                     f"the stale indoor square ({x},{y}) the party left the "
                     f"grid on, the C64's own $49C0/$49C1 -- frozen on both "
                     f"ports out here and read by neither")
         # The note keeps the addresses; the player-facing copy of this
         # sentence is gone (#248, and see OUTDOOR_FACING above).
-        report.note(dos_savegame.POS_FACING, 1, OUTDOOR_FACING_WHY)
-    dos_savegame.put_tail_state(savgam, indoors=indoors)
+        report.note(shape.pos_facing, 1, OUTDOOR_FACING_WHY)
+    dos_savegame.put_tail_state(savgam, indoors=indoors, shape=shape)
     where_stood = "indoors" if indoors else "outdoors"
-    report.note(dos_savegame.SCRATCH_BYTE, 4,
-                f"the four tail bytes: 12804 at the value an engine-written "
-                f"save of a party standing {where_stood} has held (the "
-                f"engine rewrites it anyway), the low byte of $5200, the "
-                f"view mode from $49E6, and the constant "
-                f"{dos_savegame.TAIL_CONSTANT}")
-    dos_savegame.put_party_size(savgam, count)
-    _note_word(report, dos_savegame.PARTY_SIZE, 1, f"the party size, {count}")
-    report.note(dos_savegame.PARTY_SIZE_BYTE, 1,
-                f"the party size again, {count}")
+    if later:
+        report.note(shape.tail_scratch, 4,
+                    f"the four tail bytes, {dos_savegame.LATER_TAIL_ZERO}")
+    else:
+        report.note(dos_savegame.SCRATCH_BYTE, 4,
+                    f"the four tail bytes: 12804 at the value an "
+                    f"engine-written save of a party standing {where_stood} "
+                    f"has held (the engine rewrites it anyway), the low "
+                    f"byte of $5200, the view mode from $49E6, and the "
+                    f"constant {dos_savegame.TAIL_CONSTANT}")
+    dos_savegame.put_party_size(savgam, count, shape)
+    _note_word(report, dos_savegame.PARTY_SIZE, 1, f"the party size, {count}",
+               shape)
+    report.note(shape.party_size_byte, 1, f"the party size again, {count}")
 
-    dos_savegame.put_character_files(savgam, slot)
+    dos_savegame.put_character_files(savgam, slot, shape)
     for n in range(dos_savegame.PARTY_ENTRIES):
         report.note(
-            dos_savegame.PARTY_TABLE + n * dos_savegame.PARTY_ENTRY,
+            shape.party_table + n * dos_savegame.PARTY_ENTRY,
             dos_savegame.PARTY_NAME_LEN,
             f"CHRDAT{slot.upper()}{n + 1}, which is what the engine loads "
             f"the party from -- not the slot letter at the LOAD menu (#59)")
 
-    for addr in range(FLAGS_FIRST, FLAGS_LAST + 1):
-        dos_savegame.put_word(savgam, addr, save0[addr - SAVE0_BASE])
-    _note_word(report, FLAGS_FIRST, FLAGS_LAST - FLAGS_FIRST + 1,
+    # The quest flags: the C64 byte at the same ECL address, widened to a
+    # word.  The window is the container's own, because where the page
+    # ends is per title -- Pool of Radiance stops at `$4AF8` with its wall
+    # triples after it, and the later titles use the page to `$4AFF`
+    # (`quest_flags`, #193).  A later-title payload offset is a word index
+    # directly: `+$120` is word `$120`, which Pool of Radiance calls `$4A20`.
+    first, size = container.quest_flags
+    for i in range(size):
+        dos_savegame.put_word(savgam, dos_savegame.VAR_BASE + first + i,
+                              save0[first + i], shape)
+    _note_word(report, dos_savegame.VAR_BASE + first, size,
                "a quest flag: the C64 byte at the same ECL address, widened "
-               "to a word")
+               "to a word", shape)
     for addr in SHARED_SCRATCH:
-        dos_savegame.put_word(savgam, addr, save0[addr - SAVE0_BASE])
+        dos_savegame.put_word(savgam, addr, save0[addr - SAVE0_BASE], shape)
         _note_word(report, addr, 1,
                    "script scratch: the C64 byte at the same ECL address, "
-                   "widened to a word")
+                   "widened to a word", shape)
+    if later:
+        first, size = LATER_HEADER_COPIED
+        for i in range(size):
+            dos_savegame.put_word(savgam, dos_savegame.VAR_BASE + first + i,
+                                  save0[first + i], shape)
+        _note_word(report, dos_savegame.VAR_BASE + first, size,
+                   "a per-area byte the arriving script writes and DUNGEON "
+                   "reads: the C64 byte at the same ECL address, widened to "
+                   "a word -- 1,1,1 in every Silver Blades container and "
+                   "disk, 0,0,0 in every Curse one (#193, #299)", shape)
 
-    digits = [save0[dos_savegame.CLOCK + i - SAVE0_BASE]
+    digits = [save0[container.clock + i]
               for i in range(dos_savegame.CLOCK_DIGITS)]
-    dos_savegame.put_clock(savgam, digits)
+    dos_savegame.put_clock(savgam, digits, shape)
     _note_word(report, dos_savegame.CLOCK, dos_savegame.CLOCK_DIGITS,
-               "a clock digit, the C64's own byte at the same address")
+               "a clock digit, the C64's own byte at the same address", shape)
 
-    for address, value, why in dos_savegame.SAVGAM_CONSTANTS:
-        dos_savegame.put_word(savgam, address, value)
-        _note_word(report, address, 1, f"a documented constant: {why}")
+    for address, value, why in savgam_constants(shape):
+        dos_savegame.put_word(savgam, address, value, shape)
+        _note_word(report, address, 1, f"a documented constant: {why}", shape)
 
+    if later:
+        # `$49FF` is in the title's own constants above -- the later
+        # titles draw no sheet portrait (`draws_sheet_portrait`), so the
+        # word is the engine's two flags and not a portrait gate.
+        return
     for address, value, why in SAVGAM_MEASURED:
         if address == PORTRAIT_DRAWN and not portraits:
             # **Only when a portrait actually crossed.** Every specimen that
@@ -4722,28 +5065,33 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
             # Writing 3 there would be inventing a state rather than
             # reproducing a measured one (#57).
             continue
-        dos_savegame.put_word(savgam, address, value)
-        _note_word(report, address, 1, f"measured in the running game: {why}")
+        dos_savegame.put_word(savgam, address, value, shape)
+        _note_word(report, address, 1, f"measured in the running game: {why}",
+                   shape)
 
 
-def savgam_zeroes(savgam: bytearray, report: "SaveReport") -> None:
+def savgam_zeroes(savgam: bytearray, report: "SaveReport",
+                  shape: "dos_savegame.DosSaveShape | None" = None) -> None:
     """Account for every byte of the file :func:`savgam_writes` left zero.
 
     Called only when the buffer started zeroed, because that is the only case
     in which "not written" and "written zero" are the same thing.  Three
     groups: the words no C64 save can source, named one at a time in
-    :data:`SAVGAM_UNSOURCED`; the character table's heap scratch; and the
-    remainder of the variable space, which reads zero in every genuine
-    specimen.
+    :data:`SAVGAM_UNSOURCED` (:data:`SAVGAM_UNSOURCED_LATER` for Curse and
+    Silver Blades); the character table's heap scratch; and the remainder of
+    the variable space, which reads zero in every genuine specimen of the
+    title.
     """
-    for address, words, why in SAVGAM_UNSOURCED:
-        _note_word(report, address, words, f"zeroed -- {why}")
+    shape = dos_savegame.save_shape_for(
+        len(savgam) if shape is None else shape)
+    for address, words, why in savgam_unsourced(shape):
+        _note_word(report, address, words, f"zeroed -- {why}", shape)
     for n in range(dos_savegame.PARTY_ENTRIES):
-        at = (dos_savegame.PARTY_TABLE + n * dos_savegame.PARTY_ENTRY
+        at = (shape.party_table + n * dos_savegame.PARTY_ENTRY
               + dos_savegame.PARTY_NAME_LEN)
         report.note(at, dos_savegame.PARTY_ENTRY - dos_savegame.PARTY_NAME_LEN,
                     PARTY_TABLE_SCRATCH)
-    report.note(dos_savegame.SAVGAM_SIZE - dos_savegame.UI_SCRATCH,
+    report.note(shape.size - dos_savegame.UI_SCRATCH,
                 dos_savegame.UI_SCRATCH, PARTY_TABLE_SCRATCH)
     # The sweep, and the one claim here that rests on a census rather than on
     # a run: these words read zero in all four engine-written containers on
@@ -4759,21 +5107,26 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport") -> None:
     # what catches a word this line is wrong about is
     # `test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared`,
     # which reads the player's own saves.
-    rest = [i for i in range(dos_savegame.VAR_OFFSET,
-                             dos_savegame.VAR_OFFSET
-                             + 2 * dos_savegame.VAR_WORDS)
+    # The later titles' sweep rests on the same kind of count over their own
+    # containers: 2516 of 2560 words are zero in every Curse and Silver
+    # Blades container on this machine (`tools/dossavcensus.py --title`),
+    # and every one of the live words is written or declared above (#299).
+    rest = [i for i in range(shape.var_offset,
+                             shape.var_offset + 2 * shape.var_words)
             if i not in report.sources]
     for i in rest:
         report.sources[i] = (
-            "zeroed: this word reads zero in every genuine specimen on this "
-            "machine, and nothing in a C64 save corresponds to it")
+            f"zeroed: this word reads zero in every genuine {shape.title} "
+            f"specimen on this machine, and nothing in a C64 save "
+            f"corresponds to it")
 
 
 def write_dos_save(save0: bytes, save1: bytes | None,
                    template: str | pathlib.Path | None,
                    out: str | pathlib.Path,
                    slot: str = "A",
-                   game: str | pathlib.Path | None = None) -> "SaveReport":
+                   game: str | pathlib.Path | None = None,
+                   title=None) -> "SaveReport":
     """Write a C64 save into a DOS save directory.
 
     `save0` and `save1` are the C64 `SAVEDGAME0`/`SAVEDGAME1` payloads; `out`
@@ -4781,6 +5134,15 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     holding `ECL<n>.DAX`, and it is **not optional in practice**: the party's
     own area's script has to be staged in the save or the game exits to DOS
     on load, and the game's files are the only copy of it.
+
+    **`title` is the C64 title** -- a `goldbox.games.Game`, its key, or
+    None for Pool of Radiance -- and it chooses both ends of the join
+    (#299): the payload is read through `c64_save.container_for(title)`
+    and the DOS file is built to `dos_savegame.save_shape_for(title)`, so a
+    Curse party comes out as a 13149-byte `SAVGAM<slot>.DAT` with its
+    script staged and a Silver Blades one as 5469 bytes with none.  A
+    7424-byte payload is refused without it, because Curse and Silver
+    Blades are the same size on the C64 and different files on DOS.
 
     **`template` is `None` for a conversion**, and :func:`new_dos_save` is
     the call that says so.  Passing a DOS save directory builds the file on
@@ -4850,8 +5212,18 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         raise DosRecordError(
             f"a save slot is a single letter, not {slot!r}")
 
-    sg = SaveGame0.from_bytes(bytes(save0))
-    sg1 = SaveGame1(bytes(save1)) if save1 is not None else None
+    c64 = c64_title(save0, title)
+    container = c64_save.container_for(c64)
+    shape = dos_savegame.save_shape_for(c64.key)
+    sg = SaveGame0.from_bytes(bytes(save0), c64)
+    if c64.roster_in_payload:
+        # Every later title keeps the roster inside the one payload, and
+        # `load_save` hands back a `SaveGame1` over that page; a caller
+        # passing `save1` for such a title has a second copy of the same
+        # bytes, so the payload's own page is the one read.
+        sg1 = SaveGame1(sg.roster_page(), c64)
+    else:
+        sg1 = SaveGame1(bytes(save1), c64) if save1 is not None else None
     party = sg.characters
     if len(party) > 6:
         raise DosRecordError(
@@ -4861,10 +5233,18 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # `out` is touched: a missing `SAVGAM<slot>.DAT` or an area with no legal
     # answer must fail with the slot still as the last conversion left it,
     # not half cleared.
-    savgam = bytearray(dos_savegame.SAVGAM_SIZE) if template is None else \
-        bytearray((template / f"SAVGAM{slot}.DAT").read_bytes())
-    c64_area = save0[CURRENT_SCRIPT - SAVE0_BASE]
-    script = _area_script(c64_area, template, game)
+    savgam = bytearray(shape.size) if template is None else \
+        bytearray((template / f"SAVGAM{slot}{shape.suffix}").read_bytes())
+    if len(savgam) != shape.size:
+        raise DosRecordError(
+            f"the template's SAVGAM{slot}{shape.suffix} is {len(savgam)} "
+            f"bytes, not the {shape.size} a {shape.title} save is")
+    c64_area = save0[container.current_script]
+    where, dax = _area_dax(c64_area, template, game, c64.title)
+    # Silver Blades stages no script (`script_bytes` = 0) and reloads the
+    # area's from `ECL<dax>.DAX` on load; the number is all it needs.
+    script = (_area_script(c64_area, template, game, c64.title, dax)
+              if shape.script_buffer is not None else None)
 
     # The unit a conversion overwrites is the *slot*, not the characters this
     # party happens to fill.  Converting one character into a directory that
@@ -4880,14 +5260,17 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # is #68's own failure reached through the write path instead of the
     # leftover path, and it is worse, because the save then names files that
     # are not there.
-    report = SaveReport(total=dos_savegame.SAVGAM_SIZE)
+    report = SaveReport(total=shape.size)
     # The sheet portrait crosses through the creation menu's own tables, and
     # they are in the game's own `START.EXE` -- the directory this function
     # already needs for the party's area script (#57).  A directory that
     # cannot answer for them costs the party its faces and nothing else, so
-    # it is reported rather than raised.
-    faces, why_not = portrait_tables(game)
-    if faces is None:
+    # it is reported rather than raised.  **Only Pool of Radiance draws
+    # one** (`draws_sheet_portrait`, #300): a Curse or Silver Blades party
+    # has no face to lose, so nothing is looked up and nothing is said.
+    faces, why_not = (portrait_tables(game) if draws_sheet_portrait(c64.key)
+                      else (None, ""))
+    if faces is None and why_not:
         # A warning rather than a `converted` line: `converted` is what *did*
         # cross, and `editor/exports.py`'s `losses` does not read it, so the
         # one sentence saying why every character lost its face would not
@@ -4899,9 +5282,11 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         block = sg1.roster(char_slot.index) if sg1 is not None else None
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
         char = c64_codec.read(char_slot.record, roster=block, inventory=inv,
-                              source=f"C64 slot {char_slot.index}")
+                              game=c64, source=f"C64 slot {char_slot.index}")
         rec, itm, spc, one = write(char, portraits=faces)
         built.append((char, rec, itm, spc, one, char_slot))
+    record_shape = write_shape(built[0][0]) if built else shape_for(c64.key)
+    suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
 
     # **The two ports list the party from opposite ends** (#101).  The C64
     # displays the highest occupied slot first -- its own `ENCAMP > ALTER >
@@ -4918,7 +5303,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # So this line stops the record disagreeing with itself before the game
     # ever sees it, rather than deciding anything the game will keep.
     built.reverse()
-    order = FIELDS_BY_NAME["party_order"].offset
+    order = FIELDS_BY_NAME_FOR[record_shape.key]["party_order"].offset
     for position, entry in enumerate(built):
         record = bytearray(entry[1])
         record[order] = position
@@ -4930,15 +5315,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # from the six filenames in `SAVGAM<slot>.DAT` (#59), so it read five
     # strangers back (#68).  Only the engine's own six names are removed, by
     # enumeration rather than by glob: nothing else in `out` is ours to touch.
-    cleared = 0
-    for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
-        stale = out / f"CHRDAT{slot}{n}"
-        for suffix in (".SAV", ".ITM", ".SPC"):
-            path = stale.with_suffix(suffix)
-            if path.exists():
-                path.unlink()
-                cleared += 1
-
+    cleared = _clear_slot(out, slot, suffixes)
     if cleared:
         report.converted.append(
             f"slot {slot} was already written here: {cleared} stale "
@@ -4952,25 +5329,24 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         # (`WEAPON 254 PASSS`), and writes it into the save on the next resave.
         # See ITM_OMITTED_WHEN_EMPTY.  Nothing is unlinked here: the slot was
         # cleared above, so "not written" and "not present" are the same.
+        # The suffix is the title's own: `.ITM`, `.SWG` or `.STF` (#113).
         if itm:
-            stem.with_suffix(".ITM").write_bytes(itm)
+            stem.with_suffix(record_shape.item_suffix).write_bytes(itm)
         # A character with no innate effects gets no `.SPC`, which is what the
         # engine's own save writes for one with nothing running (#61): every
         # human in the archives' twelve saved parties has no file at all.
         if spc:
-            stem.with_suffix(".SPC").write_bytes(spc)
+            stem.with_suffix(record_shape.effect_suffix).write_bytes(spc)
         who = char.get("name", f"slot {char_slot.index}")
         report.dropped.extend(d for d in one.dropped
                               if d not in report.dropped)
         report.warnings.extend(f"{who}: {w}" for w in one.warnings)
 
     savgam_writes(savgam, report, save0, slot, len(party), script,
-                  portraits=bool(faces))
+                  portraits=bool(faces), game=c64, dax=dax)
     if template is None:
-        savgam_zeroes(savgam, report)
-    where = areas.area(c64_area)
-    x, y, facing = (save0[PARTY_X - SAVE0_BASE], save0[PARTY_Y - SAVE0_BASE],
-                    save0[PARTY_FACING - SAVE0_BASE])
+        savgam_zeroes(savgam, report, shape)
+    x, y, facing = save0[container.position:container.position + 3]
     hour, minute, day, month = dos_savegame.clock(bytes(savgam))
     # Where the party is standing, said in the terms of the world it is in.
     # Outdoors `$49C0`/`$49C1` are the frozen square it left the grid on, so
@@ -4983,44 +5359,71 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                  f"({world},{ty}) on the status line")
     else:
         stood = f"at ({x},{y}) facing {facing}"
+    script_line = (f", including the area's own script out of "
+                   f"{ECL_DAX.format(dax=dax)}" if script is not None else
+                   f"; the script is not staged, {shape.title} reloads it "
+                   f"from {ECL_DAX.format(dax=dax)}")
     report.converted.extend((
-        f"the place: area {c64_area}, {where.name}, {stood} -- every write "
-        f"dos_savegame.RETARGET_WRITES names, including the area's own "
-        f"script out of {ECL_DAX.format(dax=where.disk)}",
+        f"the place: area {c64_area}, {where.name or where.ecl}, {stood} -- "
+        f"every write dos_savegame.RETARGET_WRITES names{script_line}",
         f"the party's filenames: CHRDAT{slot.upper()}1-"
         f"{dos_savegame.PARTY_ENTRIES}, which is what the engine loads from",
-        f"quest flags: {FLAGS_LAST - FLAGS_FIRST + 1} C64 bytes widened to "
+        f"quest flags: {container.quest_flags[1]} C64 bytes widened to "
         f"words at the same ECL addresses",
         f"the script scratch: $49EB and $4A00-$4A1F, {len(SHARED_SCRATCH)} "
         f"more C64 bytes widened to words at the same ECL addresses",
         f"the clock: {hour}:{minute:02d}, day {day} month {month} -- the "
         f"C64's own six digit bytes at $49C6-$49CB",
         f"the party size, {len(party)}, into both $503E and byte "
-        f"{dos_savegame.PARTY_SIZE_BYTE}",
+        f"{shape.party_size_byte}",
     ))
 
     # What is left is what the file owes to somebody else's save, and it is
     # empty when there was no template.  `new_dos_save` refuses on it rather
     # than returning a save with a stranger's byte in it (#26).
-    report.unwritten = [i for i in range(dos_savegame.SAVGAM_SIZE)
+    report.unwritten = [i for i in range(shape.size)
                         if i not in report.sources]
     for i in report.unwritten:
         report.sources[i] = (
             f"{report.address(i)}: not converted -- left as the template "
             f"had it")
-    (out / f"SAVGAM{slot}.DAT").write_bytes(bytes(savgam))
+    (out / f"SAVGAM{slot}{shape.suffix}").write_bytes(bytes(savgam))
     return report
+
+
+def _clear_slot(out: pathlib.Path, slot: str,
+                suffixes: Sequence[str]) -> int:
+    """Remove `CHRDAT<slot>1`-`6` and their siblings; return how many.
+
+    Only the engine's own six names in the title's own suffixes, by
+    enumeration rather than by glob: nothing else in `out` is ours to touch
+    (#68).
+    """
+    cleared = 0
+    for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
+        stale = out / f"CHRDAT{slot}{n}"
+        for suffix in suffixes:
+            path = stale.with_suffix(suffix)
+            if path.exists():
+                path.unlink()
+                cleared += 1
+    return cleared
 
 
 def new_dos_save(save0: bytes, save1: bytes | None,
                  out: str | pathlib.Path, slot: str,
-                 game: str | pathlib.Path) -> "SaveReport":
+                 game: str | pathlib.Path, title=None) -> "SaveReport":
     """A whole DOS save from a C64 one, owing nothing to another save (#26).
 
     The mirror of :func:`new_save`, and the same refusal: `game` is the DOS
     game directory the area's own `ECL<n>.DAX` is read out of, there is no
     default for it, and a conversion that cannot read it would have to invent
     an area rather than write the one the party is standing in.
+
+    `title` is the C64 title, as :func:`c64_title` takes it; a Curse or
+    Silver Blades payload needs it, and the whole save then comes out in
+    that title's own container -- 13149 bytes with the script staged, or
+    5469 without (#299).
 
     Returns the report, whose `unwritten` is empty.  A byte here with no
     source is a byte written zero by accident instead of by measurement, and
@@ -5040,7 +5443,8 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     out.mkdir(parents=True, exist_ok=True)
     staging = pathlib.Path(tempfile.mkdtemp(prefix=f".wish-{slot}-", dir=out))
     try:
-        report = write_dos_save(save0, save1, None, staging, slot, game=game)
+        report = write_dos_save(save0, save1, None, staging, slot, game=game,
+                                title=title)
         if report.unwritten:
             raise DosRecordError(
                 f"{len(report.unwritten)} bytes of the saved game have no "
@@ -5050,15 +5454,12 @@ def new_dos_save(save0: bytes, save1: bytes | None,
 
         # The slot is the unit a conversion overwrites, and the clearing has
         # to happen here rather than in `write_dos_save`, which only ever saw
-        # the empty staging directory.  Same enumeration, same reason (#68).
-        cleared = 0
-        for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
-            stale = out / f"CHRDAT{slot}{n}"
-            for suffix in (".SAV", ".ITM", ".SPC"):
-                path = stale.with_suffix(suffix)
-                if path.exists():
-                    path.unlink()
-                    cleared += 1
+        # the empty staging directory.  Same enumeration, same reason (#68),
+        # in the title's own suffixes.
+        record_shape = shape_for(c64_title(save0, title).key)
+        cleared = _clear_slot(
+            out, slot, (".SAV", record_shape.item_suffix,
+                        record_shape.effect_suffix))
         if cleared:
             report.converted.append(
                 f"slot {slot} was already written here: {cleared} stale "
