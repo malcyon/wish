@@ -16,17 +16,28 @@ rule against a template. Today that is:
   nothing)`, Curse of the Azure Bonds by `#192 (Convert a Curse of the Azure
   Bonds DOS save into a C64 one, which the importer refuses today)`, Secret
   of the Silver Blades by `docs/175-silver-blades-save-conversion.md`);
-* C64 `.D64` → DOS save folder, Pool of Radiance only
-  (`goldbox.dos.new_dos_save`, proven in DOSBox by `tools/dosnewsave.py`
-  under `#26 (Write a DOS save, not just read one)`).
+* C64 `.D64` → DOS save folder, one row per entry of `goldbox.dos.WRITES` --
+  the same three titles (`goldbox.dos.new_dos_save`; Pool of Radiance proven
+  in DOSBox by `tools/dosnewsave.py` under `#26 (Write a DOS save, not just
+  read one)`, Curse of the Azure Bonds and Secret of the Silver Blades by
+  `#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing
+  can be converted to DOS for the later titles)`, whose container writer this
+  registry was waiting on, and `#234 (A dual-classed Curse or Silver Blades
+  character converted to DOS loses the class he trained out of)`, whose own
+  dual-classed Curse character loaded from a save this direction writes).
 
-**This registry derives its DOS → C64 rows from `goldbox.dos.CONVERTS`
-rather than listing them, which is the point:** a title joins `CONVERTS` when
-its C64 writer exists, and it appears here with no edit to this module.
-`DOS_TO_C64_NAMES` below is the one thing `CONVERTS` does not carry -- the
-`.D64` file name each title's conversion writes -- and a `CONVERTS` entry
-missing a row there fails loudly when `DIRECTIONS` is built, at import time,
-rather than answering `[]` for a title the library can actually write.
+**This registry derives both directions' rows from `goldbox.dos` rather than
+listing them, which is the point:** DOS → C64 from `CONVERTS`, C64 → DOS from
+`WRITES`; a title joins either tuple when its writer exists, and it appears
+here with no edit to this module. `DOS_TO_C64_NAMES` below is the one thing
+`CONVERTS` does not carry -- the `.D64` file name each title's DOS → C64
+conversion writes -- and a `CONVERTS` entry missing a row there fails loudly
+when `DIRECTIONS` is built, at import time, rather than answering `[]` for a
+title the library can actually write. `WRITES` needs no such table: a C64 →
+DOS conversion always writes the same file names (`SAVGAM<slot>.DAT`,
+`CHRDAT<slot><n>.SAV`...), whatever the title, so `games.by_key(shape.key)`
+-- which already raises loudly on a key with no C64 game -- is the whole of
+the check that direction needs.
 
 **The source is a path, not the open window.** `Source.detect` reads a
 `.D64`, a `SAVGAM<slot>.DAT`/`.PTY` file, or a DOS save folder directly, the
@@ -329,7 +340,7 @@ class DosToC64(Direction):
 
 @dataclasses.dataclass
 class DosWriteRehearsal(Rehearsal):
-    """What `PoolOfRadianceC64ToDos.write` needs to run the conversion again.
+    """What `C64ToDos.write` needs to run the conversion again.
 
     `goldbox.dos.new_dos_save` writes real files, so the rehearsal itself
     runs into a scratch directory and `write` calls it a second time straight
@@ -344,19 +355,35 @@ class DosWriteRehearsal(Rehearsal):
     game_dir: pathlib.Path
 
 
-class PoolOfRadianceC64ToDos(Direction):
-    """A C64 Pool of Radiance save becomes a DOS save folder (#26).
+class C64ToDos(Direction):
+    """A C64 save becomes a DOS save folder, for any title in
+    `goldbox.dos.WRITES` (#26, #299, #234).
 
-    No template anywhere (`.claude/rules/conversions.md`):
-    `goldbox.dos.new_dos_save` is the no-template call, and `options` is the
-    DOS game directory `ECL<n>.DAX` lives in -- mandatory, since the party's
-    own area script has to be staged or the game exits to DOS on load.
+    One instance per entry of `WRITES` -- see `DIRECTIONS` below -- so a
+    title joining that tuple needs no edit to this class.  `goldbox.dos.
+    new_dos_save` is the no-template call for every title alike; `title=`
+    is what tells it which one, since Curse of the Azure Bonds and Secret
+    of the Silver Blades write the same 7424-byte C64 payload and only the
+    title says which DOS container it becomes (`goldbox.dos.c64_title`).
+    `options` is the DOS game directory `ECL<n>.DAX` lives in -- mandatory,
+    since a Curse party's own area script has to be staged or the game
+    exits to DOS on load; Silver Blades stages none and Pool of Radiance's
+    own area machinery is unchanged.
     """
 
     source_port = "c64"
-    source_key = games.POOL_OF_RADIANCE.key
     destination_port = "dos"
-    destination_game = dos_layout.POOL_OF_RADIANCE
+
+    def __init__(self, shape: dos_layout.DosShape):
+        self.shape = shape
+        self.source_key = shape.key
+        self.destination_game = shape
+        # Raises `games.UnknownGameError` at import time (via `DIRECTIONS`
+        # below) if `WRITES` ever named a title with no C64 port -- the
+        # loud failure `DOS_TO_C64_NAMES` gives the other direction, with no
+        # table of its own needed: a C64 → DOS conversion writes the same
+        # file names whatever the title.
+        self.title = games.by_key(shape.key)
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path") -> DosWriteRehearsal:
@@ -364,7 +391,8 @@ class PoolOfRadianceC64ToDos(Direction):
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
             report = dos.new_dos_save(source.save0, source.save1,
-                                      scratch_path, slot, game_dir)
+                                      scratch_path, slot, game_dir,
+                                      title=self.title)
             files = {p.name: p.read_bytes()
                     for p in sorted(scratch_path.iterdir())}
         return DosWriteRehearsal(report, files, source.save0, source.save1,
@@ -374,19 +402,21 @@ class PoolOfRadianceC64ToDos(Direction):
              folder: str | pathlib.Path) -> list[pathlib.Path]:
         folder = pathlib.Path(folder)
         dos.new_dos_save(rehearsal.save0, rehearsal.save1, folder,
-                         rehearsal.slot, rehearsal.game_dir)
+                         rehearsal.slot, rehearsal.game_dir, title=self.title)
         return sorted(folder / name for name in rehearsal.files)
 
 
-#: One DOS → C64 row per entry of `goldbox.dos.CONVERTS` -- today Pool of
-#: Radiance and Curse of the Azure Bonds -- plus the one C64 → DOS row. See
-#: the module docstring for what would extend this and the issues it waits
-#: on. `UnnamedConversionError` fires here, at import time, if `CONVERTS`
-#: ever names a title `DOS_TO_C64_NAMES` does not.
+#: One DOS → C64 row per entry of `goldbox.dos.CONVERTS` and one C64 → DOS
+#: row per entry of `goldbox.dos.WRITES` -- today Pool of Radiance, Curse of
+#: the Azure Bonds and Secret of the Silver Blades, both ways. See the
+#: module docstring for what would extend this and the issues it waits on.
+#: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
+#: names a title `DOS_TO_C64_NAMES` does not; `games.UnknownGameError` does
+#: the same for `WRITES` and a title with no C64 game at all.
 DIRECTIONS: tuple[Direction, ...] = tuple(
     DosToC64(shape) for shape in dos.CONVERTS
-) + (
-    PoolOfRadianceC64ToDos(),
+) + tuple(
+    C64ToDos(shape) for shape in dos.WRITES
 )
 
 

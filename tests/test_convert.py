@@ -228,8 +228,39 @@ def test_destinations_for_lists_the_two_registered_directions():
 
     c64_source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
                                 path=pathlib.Path("."))
-    assert [type(d) for d in convert.destinations_for(c64_source)] == \
-        [convert.PoolOfRadianceC64ToDos]
+    directions = convert.destinations_for(c64_source)
+    assert [type(d) for d in directions] == [convert.C64ToDos]
+    assert directions[0].destination_game is dos_layout.POOL_OF_RADIANCE
+
+
+@pytest.mark.parametrize("shape", [dos_layout.CURSE_OF_THE_AZURE_BONDS,
+                                   dos_layout.SECRET_OF_THE_SILVER_BLADES],
+                        ids=lambda s: s.key)
+def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
+        shape):
+    """`#299 (goldbox.dos.write builds only Pool of Radiance's record, so
+    nothing can be converted to DOS for the later titles)`'s container
+    writer put both later titles on `goldbox.dos.WRITES`, so each is offered
+    with no edit to this module beyond the derivation itself -- the same
+    shape `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
+    already proves for the other direction."""
+    c64_source = convert.Source(port="c64", title=games.by_key(shape.key),
+                                path=pathlib.Path("."))
+    directions = convert.destinations_for(c64_source)
+    assert [type(d) for d in directions] == [convert.C64ToDos]
+    assert directions[0].destination_game is shape
+
+
+def test_directions_holds_six_rows_three_titles_both_ways():
+    """Three titles read DOS → C64 (`goldbox.dos.CONVERTS`) and the same
+    three write C64 → DOS (`goldbox.dos.WRITES`, as of `#299`), so the
+    registry holds six rows in total -- up from four before `#299`'s
+    container writer let the later titles' C64 → DOS row be registered."""
+    assert len(convert.DIRECTIONS) == 6
+    assert sum(1 for d in convert.DIRECTIONS
+              if type(d) is convert.DosToC64) == 3
+    assert sum(1 for d in convert.DIRECTIONS
+              if type(d) is convert.C64ToDos) == 3
 
 
 def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
@@ -461,7 +492,7 @@ def test_c64_to_dos_direction_rehearses_with_no_write(tmp_path):
     save0, save1 = _fixture_payloads()
     source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
-    direction = convert.PoolOfRadianceC64ToDos()
+    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
 
     direction.rehearse(source, "Z", _game_dir())
 
@@ -473,7 +504,7 @@ def test_c64_to_dos_direction_writes_only_into_its_own_folder(tmp_path):
     save0, save1 = _fixture_payloads()
     source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
-    direction = convert.PoolOfRadianceC64ToDos()
+    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, "Z", _game_dir())
 
     outside = tmp_path / "elsewhere.txt"
@@ -499,7 +530,7 @@ def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
     source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
 
-    direction = convert.PoolOfRadianceC64ToDos()
+    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_dir)
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
@@ -513,6 +544,81 @@ def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
     for name in written_names:
         assert (destination / name).read_bytes() == \
             (reference / name).read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# `#234 (A dual-classed Curse or Silver Blades character converted to DOS
+# loses the class he trained out of)`'s own proof, through this registry
+# rather than a direct `goldbox.dos` call -- the row this issue was waiting
+# on `#299 (goldbox.dos.write builds only Pool of Radiance's record, so
+# nothing can be converted to DOS for the later titles)` for.
+# ---------------------------------------------------------------------------
+
+def _dual_classed_curse_disk() -> pathlib.Path | None:
+    """`WISH-SPEC-curse-dual-classed`, the one C64 dual-classed Curse
+    specimen on this machine (`#234`'s comment of 2026-09-05 08:34): PHILIPPE,
+    a human magic-user 6, used `HUMAN CHANGE CLASS` at Curse's own training
+    hall to become a fighter 1 (`#18 (Measure Curse's trainer so Level Up
+    works there)`)."""
+    from gamedata import specimen_root
+    root = specimen_root()
+    if root is None:
+        return None
+    found = list(
+        (root / "por-c64").glob("WISH-SPEC-curse-dual-classed.[dD]64"))
+    return found[0] if found else None
+
+
+def _curse_game_dir() -> pathlib.Path | None:
+    """The DOS Curse game directory, for the area script `new_dos_save`
+    stages -- `tests/test_doslatercontainer.py`'s own helper, repeated here
+    rather than imported across `#52`'s lane."""
+    from tools import dosbox
+    try:
+        return dosbox.find_game("CURSE")
+    except FileNotFoundError:
+        return None
+
+
+needs_dual_classed_curse_specimen = pytest.mark.skipif(
+    _dual_classed_curse_disk() is None or _curse_game_dir() is None,
+    reason="needs ~/wish-specimens/por-c64/WISH-SPEC-curse-dual-classed.D64 "
+          "(tools/specimens.py) and the DOS Curse archives ($FR_ARCHIVES)")
+
+
+@needs_dual_classed_curse_specimen
+def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_registry(
+        tmp_path):
+    """`#234`'s own case, run through `editor.convert.DIRECTIONS` rather
+    than the direct `goldbox.dos.new_dos_save` call its comments proved this
+    with: converting PHILIPPE's disk through the registered Curse C64 → DOS
+    direction and reading the DOS record back gets the same answer -- fighter
+    1, no experience, carrying the magic-user 6 she left in the two places
+    the DOS engine keeps it (`#234`'s comment of 2026-09-05 20:15)."""
+    disk = _dual_classed_curse_disk()
+    source = convert.Source.detect(disk)
+    assert source.port == "c64"
+    assert source.key == games.CURSE_OF_THE_AZURE_BONDS.key
+
+    directions = convert.destinations_for(source)
+    assert len(directions) == 1
+    direction = directions[0]
+    assert type(direction) is convert.C64ToDos
+    assert direction.destination_game is dos_layout.CURSE_OF_THE_AZURE_BONDS
+
+    rehearsal = direction.rehearse(source, "Z", _curse_game_dir())
+    destination = tmp_path / "out"
+    direction.write(rehearsal, destination)
+
+    records = [dos.read_character(p)
+              for p in sorted(destination.glob("CHRDATZ?.SAV"))]
+    philippe = next(c for c in records if c.name == "PHILIPPE")
+
+    assert philippe.class_levels == {"fighter": 1}
+    assert philippe.get("experience") == 0
+    # magic-user is slot 5 of `dos.CLASS_LEVEL_SLOTS` -- the class she left.
+    assert philippe.raw("former_class_levels")[5] == 6
+    assert philippe.raw("former_level")[0] == 6
 
 
 # ---------------------------------------------------------------------------
