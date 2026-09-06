@@ -207,3 +207,59 @@ def test_a_size_no_player_record_holds_is_refused():
     assert dos_size(2) == "large"
     with pytest.raises(ValueError, match="size 0"):
         dos_size(0)
+
+
+def test_the_shipped_table_answers_differently_by_size_and_by_title():
+    """The property that makes the wiring worth having.
+
+    If every title and size resolved to the same table, passing them
+    through would change nothing and the test below would pass against
+    unwired code. So this asserts the shipped `tools/iconproposal.yaml`
+    really does answer differently -- by size for Pool of Radiance, and by
+    title for Silver Blades -- which is what Donald spent the evening
+    deciding (`#335 (Two combat-figure rows describe Pool of Radiance's
+    art, and Silver Blades draws those two options differently)`).
+    """
+    from goldbox import iconparts
+
+    small = iconparts.dos_icon_tables(title="pool-of-radiance", size="small")
+    large = iconparts.dos_icon_tables(title="pool-of-radiance", size="large")
+    assert (small.weapons, small.heads) != (large.weapons, large.heads), (
+        "no size-specific row in the shipped table, so nothing downstream "
+        "can depend on the size being passed")
+
+    ssb = iconparts.dos_icon_tables(
+        title="secret-of-the-silver-blades", size="large")
+    assert (ssb.weapons, ssb.heads) != (large.weapons, large.heads), (
+        "no per-title row in the shipped table, so nothing downstream can "
+        "depend on the title being passed")
+
+
+def test_icon_for_uses_the_tables_it_is_given(monkeypatch):
+    """The argument is not merely accepted, it is passed through.
+
+    Watched failing against the version that called `dos_icon` with no
+    `tables`: this asserts the object handed in is the object composed
+    with.
+    """
+    from goldbox import dos
+    from goldbox.iconparts import IconParts
+
+    seen = {}
+
+    class Spy(IconParts):
+        def __init__(self):
+            pass
+
+        def dos_icon(self, head, body, size, colours, tables=None):
+            seen["tables"] = tables
+            return bytes(36)
+
+    class Char:
+        def get(self, name):
+            return {"icon_head": 1, "icon_body": 2, "size": 1,
+                    "icon_colours": bytes(6)}[name]
+
+    sentinel = object()
+    assert dos._icon_for(Char(), Spy(), sentinel) == bytes(36)
+    assert seen["tables"] is sentinel

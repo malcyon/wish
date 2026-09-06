@@ -76,7 +76,7 @@ from .dos_layout import (
     DosShapeError,
     shape_for,
 )
-from .iconparts import IconParts, dos_size
+from .iconparts import DosIconTables, IconParts, dos_icon_tables, dos_size
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
 from .portraits import (
@@ -1720,8 +1720,8 @@ def to_neutral(dos: DosCharacter,
     return out
 
 
-def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None"
-             ) -> bytes | None:
+def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
+              tables: "DosIconTables | None" = None) -> bytes | None:
     """The 36 bytes this character's own combat figure becomes (#130).
 
     `icon` is either the composed bytes every character shares -- which is
@@ -1729,12 +1729,19 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None"
     tables, in which case each character gets the figure his own record
     names.  `IconParts.dos_icon` composes it the way the game's own ICON
     menu composes one, so every icon written here is one the game can make.
+
+    `tables` is this title's own correspondence, read once by the caller --
+    `tools/iconproposal.yaml` names a different C64 option for a few DOS
+    figures at the small size, and for one of Silver Blades' heads, and
+    without it every character would be composed from the base table
+    whatever he is being converted into (#335).
     """
     if not isinstance(icon, IconParts):
         return icon
     return icon.dos_icon(char.get("icon_head"), char.get("icon_body"),
                          dos_size(char.get("size")),
-                         bytes(char.get("icon_colours")))
+                         bytes(char.get("icon_colours")),
+                         tables=tables)
 
 
 def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
@@ -4013,11 +4020,25 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "and nothing in the game reads it there, measured at 0 reads "
                 "across a load, eight travel steps and an area change (#118)")
 
+    #: This title's own correspondence, once for each size rather than once
+    #: per character: the file is read from disk and six characters would
+    #: read it six times.  Both sizes because a party mixes them -- a
+    #: halfling and a human in the same six -- and the small list is not the
+    #: large one scaled, so a few rows name a different C64 option there
+    #: (#335).
+    icon_tables = {
+        which: dos_icon_tables(title=container.game.key, size=which)
+        for which in ("small", "large")
+    } if isinstance(icon, IconParts) else {}
+
     all_faced = True
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
-        rec, one = to_c64_record(char, icon=_icon_for(char, icon),
-                                 portraits=portraits)
+        rec, one = to_c64_record(
+            char,
+            icon=_icon_for(char, icon,
+                           icon_tables.get(dos_size(char.get("size")))),
+            portraits=portraits)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
