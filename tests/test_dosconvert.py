@@ -1840,3 +1840,27 @@ def test_an_indoor_dos_save_still_carries_its_own_dungeon_square():
     assert not sg.outdoors(_savgam(slot)), \
         "this test needs an indoor slot; all three archives saves are indoors"
     assert tuple(save0[at:at + 3]) == want
+
+
+def test_an_unmeasured_titles_saves_are_carried_rather_than_computed():
+    """A guessed number is worse than the one the player had.
+
+    `#311 (A DOS dwarf, gnome or halfling converted to the C64 loses his
+    constitution bonus to saving throws...)` recomputes the five save
+    columns the way the C64's own trainer stores them. Pool of Radiance's
+    trainer is measured whole, and Curse's five saving throws agreed with
+    the engine across five driven level-ups (`#18 (Measure Curse's trainer
+    so Level Up works there)`). Silver Blades' constitution inputs are
+    unread, so it keeps the row its source held.
+
+    The predicate is deliberately **not** `trainer_measured`: that asks a
+    broader question -- whether the whole trainer is reproduced -- and does
+    not yet name Curse for reasons belonging to `#18` rather than to this
+    writer. Gating on it would suppress a computation that is correct.
+    """
+    from goldbox import levels
+
+    assert levels.racial_save_bonus_measured("pool-of-radiance")
+    assert levels.racial_save_bonus_measured("curse-of-the-azure-bonds")
+    assert not levels.racial_save_bonus_measured(
+        "secret-of-the-silver-blades")

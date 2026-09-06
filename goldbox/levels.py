@@ -1111,6 +1111,37 @@ DEFAULT = POOL_OF_RADIANCE
 #: character record. A writer asks this instead.
 TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
 
+#: Titles whose **racial saving-throw bonus** is confirmed, which is a
+#: narrower question than :data:`TRAINER_MEASURED` and the only one
+#: `goldbox/c64_codec.py` needs when it recomputes the five save columns for
+#: a converted character (#311).
+#:
+#: Pool of Radiance's whole trainer is measured. Curse's `$0F19` was graded
+#: PROBABLE while the module docstring said *"no dwarf, gnome or halfling
+#: Curse character exists to check it against"* -- **TRAVIS refuted that on
+#: 2026-09-04**, and five driven Curse level-ups on 2026-09-05 agreed with
+#: the engine on 75 of 75 derived fields including the five saving throws
+#: (`#18 (Measure Curse's trainer so Level Up works there)`,
+#: `tools/cursetrain.py`). So Curse belongs here even though it is not yet
+#: in `TRAINER_MEASURED`, whose own condition covers more than this.
+#:
+#: Silver Blades does not: `docs/121-silver-blades.md` has its trainer's
+#: constitution inputs unread or unattributed, so a recomputed row there
+#: would be a guess written over the row the source actually held -- and a
+#: wrong saving throw looks exactly like a right one on a character sheet
+#: (`#343`).
+RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
+    {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key})
+
+
+def racial_save_bonus_measured(game=None) -> bool:
+    """Is this title's racial saving-throw bonus confirmed in the game?"""
+    if game is None:
+        return DEFAULT.key in RACIAL_SAVE_BONUS_MEASURED
+    key = game.key if isinstance(game, LevelTables) else getattr(game, "key",
+                                                                 game)
+    return key in RACIAL_SAVE_BONUS_MEASURED
+
 
 def trainer_measured(game=None) -> bool:
     """Has this title's trainer been measured? None means the default title."""

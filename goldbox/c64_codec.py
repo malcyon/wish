@@ -619,9 +619,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # would have made him (#311).  `w.get`, not `use`: the levels, race and
     # constitution feeding this were already taken above, and a second `use`
     # would report them dropped a second time.
-    computed_saves = level_tables.saving_throws(
-        w.get("levels", {}), w.get("race", 0), w.get("constitution", 0),
-        char.game)
+    #
+    # **Only where the racial bonus has been confirmed in the game.**  Pool
+    # of Radiance's whole trainer is measured, and Curse's five saving
+    # throws agreed with the engine on five driven level-ups (#18).  Silver
+    # Blades' constitution inputs are unread, so recomputing there would
+    # write a guess over the row the source actually held -- and a wrong
+    # saving throw looks exactly like a right one on a character sheet
+    # (#343).  Not `trainer_measured`, which asks a broader question and
+    # does not yet hold Curse for reasons that are #18's rather than this
+    # writer's.
+    computed_saves = None
+    if level_tables.racial_save_bonus_measured(char.game):
+        computed_saves = level_tables.saving_throws(
+            w.get("levels", {}), w.get("race", 0), w.get("constitution", 0),
+            char.game)
     if computed_saves is not None:
         for column, (field, c64_name) in enumerate(_SAVE_COLUMNS):
             if not rec.is_stored(c64_name):
