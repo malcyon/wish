@@ -202,8 +202,17 @@ rather than one state word spelled two ways in one window — and set
 tooltip's third line, `_side_quest_tip`'s rendering of a `QuestFlag.meaning`,
 which nothing drew before this feature existed and which Donald has not yet
 seen; the mechanism (steps A-C of #158 (Track the quests the game itself
-forgets, starting with Ohlo's potion)) is done, and the live check against a
-running game (steps E and F) is not.
+forgets, starting with Ohlo's potion)) is done.
+
+**The live check is done, 2026-09-05.** A party in the running game collected
+the potion at the booth and delivered it to Ohlo, and the row followed both
+writes: `$4A81` 0 → 250 at `ECL14 $B048` and the row appears reading
+`In progress`, then 250 → 255 at `$A3A8` and it reads `Finished` and is drawn
+muted. The panel was rendered from the live `$4900`-`$64FF` read rather than
+from a file, which is the whole chain the flag was waiting on -- the run is
+"The Quest Log's side-quest row, watched arriving" in
+`docs/50-experiments.md`, and `tools/ohlowatch.py` repeats it. So the tooltip
+sentences are the only thing left in front of the flag.
 
 ## Where the code is
 

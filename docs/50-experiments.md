@@ -6759,3 +6759,90 @@ table is *not* shifted at the bottom even though it is at the top. Two things
 it also says: 14 and 15 share `+1`, and above 18 the bonus keeps climbing —
 `+5` at 21 and `+6` at 24 — where `dexterity_ac_bonus` caps at 4. Only a
 magically raised score reaches those rows.
+
+
+## The Quest Log's side-quest row, watched arriving (#158 (Track the quests the game itself forgets, starting with Ohlo's potion))
+
+`goldbox/commissions.py`'s `SIDE_QUESTS` was built from the bytecode and
+checked against six of the player's own save disks, and
+`automap/questlog.py`'s `WISH_EXPERIMENTAL_QUESTS` is held up until the row
+has been **seen** to change with the game running. This is that run.
+`tools/ohlowatch.py` repeats it in one command.
+
+**Method.** Pool slot 0, headless, `NEWSAVE4.D64` — the party standing in the
+Slums with `$4A04` = 250 and `$4A81` = 0. At each stage the driver reads
+`$4900`-`$64FF` out of the running machine, which is the block
+`automap/window.py`'s `_refresh_roster` hands `QuestLogPanel`, and renders the
+panel from those bytes offscreen with the flag on. So the chain measured is
+the whole one: the engine's own `SAVE` statement, the poll's own window, the
+decoder, the row.
+
+Two teleports and two walked steps. The party is put on a square by writing
+`$C04B`-`$C04D`, which is the three bytes a fast travel writes and nothing
+near a flag; the step from there is the game's own, so `ECL14`'s dispatch runs
+the block. `$4A80` is held at 15 while the party walks and put back before
+anything is read — both wandering spawns are `COMPARE [$4A80], 15 / IF>= /
+EXIT`, at `$9B32` and `$ADD6` — because the first attempt at this run lost its
+whole budget to a group of goblins that arrived on the step into the booth.
+
+**What happened.** Each row is a capture; the flag values are read out of the
+machine and the panel row is what the panel drew from the same bytes.
+
+| | `$C04B` | `$4A04` | `$4A19` | `$4A81` | `$4ABB` | the side-quest row |
+|---|---|---:|---:|---:|---:|---|
+| loaded | (9,14) S | 250 | 0 | 0 | 9 | none |
+| after the booth | (15,12) E | 250 | **255** | **250** | 9 | `In progress` |
+| after Ohlo | (14,10) E | **255** | 255 | **255** | **10** | `Finished`, muted |
+
+`$4A81` reached 250 22.1 s into the booth visit and 255 48.7 s into Ohlo's,
+sampled every 0.4 s. Every other byte moved exactly where the script says it
+should: `$4A19` at `$B042`, `$4A04` at `$A3A2`, `$4ABB` through `$B69C`, and
+the party's final square is the (14,10) facing east that Ohlo's own `LEAVE`
+arm writes at `$A01B`-`$A027`. The three commission rows either side are
+byte-identical across all three captures apart from the slums' own sub-line,
+which goes from `9 of 25 encounters cleared` to `10 of 25` with `$4ABB`.
+
+**CONFIRMED**, and both halves twice, from separate boots. Runs 5 and 6 took
+22.1 s and 22.1 s at the booth and 48.7 s and 48.5 s at Ohlo, and the whole
+7168-byte window is **byte-identical between the two runs at all three
+captures** — `83e7afbe…`, `96fe3ee0…`, `7a2f4130…`. So nothing on the path is
+nondeterministic: the same keys through the same script leave the same save
+image, and the row is a function of it. Run 4 measured 22.2 s at the booth with
+an earlier build of the driver.
+
+### Four things the run had to find out first
+
+* **`GEO14` (15,12) is the only booth square, and Ohlo's block is six.**
+  `ECL14 $99C9`'s `ONGOTO` has 21 pointers; the booth is id 19 and Ohlo id 3,
+  and sweeping `GEO14`'s attributes for those gives one square and x 11-13,
+  y 9-10.
+* **The only way into Ohlo's block is a locked door.** Every other edge of
+  x 11-13, y 9-10 is solid; (14,10) heading west is barrier 2. The run steps
+  *within* the block instead, (11,9) to (12,9), which is a genuine dispatch of
+  id 3 and not a walk in through the door. Bashing it is unbounded and is not
+  what the ticket asks about.
+* **The scratch page survives a load.** `$4A04` read 250 after
+  `LOAD SAVED GAME` and `BEGIN ADVENTURING`, in each of two boots, so
+  `DUNGEON $202A`'s wipe loop does not run on the way to the world. That is
+  what `#158 (Track the quests the game itself forgets, starting with Ohlo's
+  potion)` assumes when it says the next session in the Slums catches an
+  acceptance the panel missed. Two boots of one save, so PROBABLE as a rule
+  about loading generally. It changes nothing that is drawn: the panel never
+  reads the scratch page.
+* **`Session.walk_one` cannot verify a step in the Slums.** The status line
+  there is `S 8:07` with no coordinates, so `parse_status` finds nothing and
+  every step reads as blocked. The driver verifies by `$C04B` instead.
+
+### One harness failure worth writing down
+
+`Session.begin_adventuring` failed on two of five boots, and it is the screen
+reader rather than the prompt handler. The game asks for side 2 on the way
+into the Slums; a screenshot of that moment shows
+`INSERT SIDE # 2, AND PRESS ANY KEY.` on the bottom row while
+`Session.screen()` at the same moment returns a screen whose row 24 is forty
+spaces — so `handle_prompt`'s regex never sees the text, `wait_for_world` sits
+out its whole 240 s, and nothing that reads the screen can recover. The driver
+gets out of it by attaching side 2 and pressing the key without reading
+anything. Whether the screen matrix has moved somewhere `screen_address` does
+not follow is not established here; it is `#336 (The screen reader goes blind on
+the insert-a-side prompt, and every screen-driven recovery fails with it)`.
