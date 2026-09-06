@@ -187,5 +187,27 @@ The specification `#258 (The C64 side of 0x0AB is unnamed, so the conversion dro
   `0x0AB` round-trips; convert the six `PORSAVE.D64` exports to DOS and assert
   their `0x0AB` values are the six `0x0E6` bytes, distinct.
 
+## The ruling: written for all three titles, and never reported
+
+Donald, 2026-09-05: *"Yes, write the identity byte. No, don't tell the user
+about it."* The measurement above still stands -- Curse's and Silver Blades'
+own GEN never draws the pair, and their shipped parties hold `00 00` there --
+but `0x0E6`-`0x0E7` are part of every title's 580-byte layout, and nothing on
+the C64 reads them in any of the three. So `goldbox.c64_codec.write` now puts
+DOS's `unnamed_0ab` into `0x0E6` for Curse and Silver Blades exactly as it
+already did for Pool of Radiance, changes nothing either game does, and says
+nothing about it: the "nowhere on the C64 to put it" drop line this file
+previously specified for the other two titles is gone.
+
+**This is the write direction alone, and the round trip is not yet
+finished.** `read` still asks `RecordShape.identity_pair` -- False for Curse
+and Silver Blades -- before trusting a stored `0x0E6` as the pair GEN drew, so
+a Curse or Silver Blades character converted to the C64 and back to DOS today
+still gets `goldbox.dos.identity_byte`'s digest, the same as before this
+change. What this change buys is a home for the byte on the C64 side and the
+gone drop line; teaching `read` to trust `0x0E6` for these two titles once it
+is *our own* writer's value there, and telling that apart from a shipped
+record's untouched `00 00`, is left for whoever finishes the round trip.
+
 Under `.claude/rules/conversions.md`'s three reasons this was "the destination
 has no such field", and reading the layout turned it into a field with a home.

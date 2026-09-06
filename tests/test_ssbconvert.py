@@ -477,6 +477,23 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
             assert keyword not in lowered, line
 
 
+def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
+    """#329 (A converted Curse or Silver Blades party still shows two
+    portrait drop lines, though #300 proved neither title's sheet draws a
+    face), plus #258's identity byte (docs/170-c64-identity-pair.md), written
+    for all three titles now rather than reported as dropped.
+
+    `WISH-SPEC-ssb-234-party-pair` slot D through `editor.dosimport.rehearse`
+    showed three lines before this pair of fixes -- two portrait, one
+    identity -- and shows none now."""
+    from editor.dosimport import GameFiles, rehearse
+
+    folder = gamedata.specimen("ssb-234-party-pair")
+    files = GameFiles(icon=bytes(36), animate=bytes(852), portraits=None)
+    conversion = rehearse(folder, "D", files)
+    assert conversion.report.dropped == []
+
+
 # --- the engine's own rewrite, from this ticket's VICE session ---------------
 #: The specimen tree first, because `work/` is gitignored and a save the
 #: engine wrote is the one thing here that cannot be regenerated without an

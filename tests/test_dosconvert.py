@@ -541,6 +541,27 @@ def test_a_status_drop_line_does_not_say_not_carried():
         assert "not carried" not in line, line
 
 
+def test_the_identity_byte_is_written_for_all_three_c64_titles():
+    """Donald, 2026-09-05: "Yes, write the identity byte. No, don't tell the
+    user about it." `docs/170-c64-identity-pair.md`: only Pool of Radiance's
+    own GEN draws the pair at `0x0E6`-`0x0E7`, but the field exists in every
+    title's 580-byte layout and nothing reads it back in any of them, so
+    `goldbox.c64_codec.write` puts it there for Curse of the Azure Bonds and
+    Secret of the Silver Blades too, and says nothing about it either way."""
+    from goldbox import c64_codec, games
+    from goldbox.layout import Confidence
+    from goldbox.neutral import NeutralCharacter
+
+    for game in (games.POOL_OF_RADIANCE, games.CURSE_OF_THE_AZURE_BONDS,
+                games.SECRET_OF_THE_SILVER_BLADES):
+        char = NeutralCharacter("test", game=game)
+        char.set("unnamed_0ab", 0x57, "made up", Confidence.CONFIRMED)
+        rec, rep = c64_codec.write(char)
+        assert rec.get_raw("identity_pair") == b"\x57\x00", game.key
+        assert not [d for d in rep.dropped if "identity" in d.lower()], \
+            (game.key, rep.dropped)
+
+
 # --- the saved game ----------------------------------------------------------
 
 def _savgam(slot: str) -> bytes:

@@ -24,6 +24,7 @@ from . import derive, games, neutral, spells
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
+from .portraits import draws_sheet_portrait
 from .record import CharacterRecord
 
 __all__ = [
@@ -161,11 +162,17 @@ class RecordShape:
     spell_slots: bool = True
     #: Does the record store the dual-class pair at `0x0B9`/`0x0BA`?
     dual_class: bool = False
-    #: Does this title's GEN draw the identity pair at `0x0E6`-`0x0E7`? Pool
-    #: of Radiance's alone -- Curse of the Azure Bonds and Secret of the
+    #: Does this title's own GEN draw the identity pair at `0x0E6`-`0x0E7`?
+    #: Pool of Radiance's alone -- Curse of the Azure Bonds and Secret of the
     #: Silver Blades never write it and hold `00 00` in every shipped party
     #: (#258, The C64 side of 0x0AB is unnamed, so the conversion drops it
-    #: with no issue behind it).
+    #: with no issue behind it).  A fact about the shipped engines, not a
+    #: gate on the writer: `write` puts the pair into `0x0E6`-`0x0E7` for
+    #: every title regardless, since the field exists in all three layouts
+    #: and nothing reads it back in any of them (docs/170-c64-identity-
+    #: pair.md).  `read` still asks this flag, to decide whether a value
+    #: found there is the pair GEN drew or a leftover from ours (#216's
+    #: digest for the other two).
     identity_pair: bool = False
 
 
@@ -887,15 +894,22 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # art (#57).  A source that gave no id leaves the byte zero, and zero is
     # a real portrait -- `HEAD00` is the first entry of the menu -- so a
     # character with no id is reported rather than quietly given that face.
+    #
+    # But that reporting only applies where the sheet draws a face at all.
+    # Curse of the Azure Bonds and Secret of the Silver Blades never call the
+    # routine that draws one (#300, docs/188-the-sheet-portrait-per-title.md):
+    # a character arriving there with no portrait id is a character arriving
+    # correct, the way one of their own engine's own would (#329).
     both = True
     for name, offset, stem in (("portrait_head", 0x0FE, "HEAD"),
                                ("portrait_body", 0x0FF, "BODY")):
         v = use(name)
         if v is None:
             both = False
-            rep.dropped.append(
-                f"the character sheet's portrait {stem[:4].lower()}: "
-                f"{port} gave none, so the sheet draws no face")
+            if draws_sheet_portrait(shape.key):
+                rep.dropped.append(
+                    f"the character sheet's portrait {stem[:4].lower()}: "
+                    f"{port} gave none, so the sheet draws no face")
         else:
             rec.set(name, v.value)
             emit(v, name, offset, 1, f"{stem}{v.value:02X}")
@@ -976,20 +990,21 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # -- the identity draw: a home instead of a drop --------------------------
     # GEN draws two bytes at 0x0E6-0x0E7 at creation and nothing on the C64
     # reads them back; DOS's own 0x0AB is the same field on one byte (#258,
-    # docs/170-c64-identity-pair.md).  Only Pool of Radiance's GEN draws the
-    # pair -- Curse of the Azure Bonds and Secret of the Silver Blades never
-    # write it -- so a source with a value and a title with nowhere to put it
-    # is reported rather than written.
+    # docs/170-c64-identity-pair.md).  Only Pool of Radiance's own GEN draws
+    # the pair -- Curse of the Azure Bonds and Secret of the Silver Blades
+    # never write it, and every shipped record of theirs holds `00 00` there
+    # -- but the two bytes are part of every title's 580-byte layout and
+    # nothing on the C64 reads them in any of the three, so writing them
+    # changes nothing either game does (Donald, 2026-09-05).  Writing it for
+    # all three, rather than only where GEN happens to draw it, is also what
+    # lets a later conversion back to DOS return the player's own number
+    # instead of inventing one.
     identity = use("unnamed_0ab")
-    if identity is not None and shape.identity_pair:
+    if identity is not None:
         rec.set_raw("identity_pair", bytes([int(identity.value) & 0xFF, 0]))
         emit(identity, "identity_pair", 0x0E6, 2,
              "; 0x0E7 is the pair's second byte, which nothing on the C64 "
              "reads back")
-    elif identity is not None:
-        rep.dropped.append(
-            "the identity byte: this title's GEN never draws the identity "
-            "pair, so there is nowhere on the C64 to put it")
 
     # -- the closing sweep: unwritten fields, then the reader's own drops ----
     w.finish()
