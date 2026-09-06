@@ -2,11 +2,12 @@
 """Watch Ohlo's errand move the Quest Log row, in the running game.
 
 `#158 (Track the quests the game itself forgets, starting with Ohlo's potion)`
-built the reading side and gated the row behind `WISH_EXPERIMENTAL_QUESTS`.
-The flag's removal condition has two halves and this tool is the second: the
-row has to be **seen** to appear while a party collects the potion and to
-change when it delivers it.  Everything before this was a save file read
-offline; nothing had watched the engine write `$4A81` with the panel attached.
+built the reading side, once behind `WISH_EXPERIMENTAL_QUESTS` and now
+shipped unconditionally. The flag's removal condition had two halves and this
+tool took the second: the row has to be **seen** to appear while a party
+collects the potion and to change when it delivers it.  Everything before
+this was a save file read offline; nothing had watched the engine write
+`$4A81` with the panel attached.
 
     POR_HEADLESS=1 tools/ohlowatch.py --out work/issue158
 
@@ -247,7 +248,6 @@ def render(bin_path: pathlib.Path, png_path: pathlib.Path) -> dict:
         env.pop(key, None)
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["GDK_BACKEND"] = "x11"
-    env["WISH_EXPERIMENTAL_QUESTS"] = "1"
     r = subprocess.run(
         [sys.executable, str(TOOLS / "ohlowatch.py"), "rows",
          "--bin", str(bin_path), "--png", str(png_path)],

@@ -270,7 +270,7 @@ def test_durable_state_on_real_saves_never_shows_accepted(stem, expected):
     assert state.durable_state == expected
 
 
-# --- the panel, against real saves, behind WISH_EXPERIMENTAL_QUESTS ---------
+# --- the panel, against real saves -------------------------------------------
 
 @needs_disks
 @pytest.mark.parametrize("stem,drawn,dim", [
@@ -284,18 +284,17 @@ def test_durable_state_on_real_saves_never_shows_accepted(stem, expected):
     ("PORSAVE", False, None),
     ("PORSAVE13", False, None),
 ])
-def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn,
-                                                               dim, monkeypatch):
+def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn, dim):
     """Every save in `SAVE_STATES`, through the actual panel this time.
 
     The side-quest row, when there is one, is appended to the commissions
     group rather than drawn in a group of its own (#158) -- so the row is
-    whatever visible row comes after however many commission rows this same
-    save produces with the flag off.
+    whatever visible row comes after however many commission rows
+    `commission_rows` alone produces for this save.
     """
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
-    from automap.questlog import ENV, QuestLogPanel
+    from automap import questlog
     from wish.ui_window import Ui_WishWindow
 
     payload = _savedgame0(stem)
@@ -303,21 +302,13 @@ def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn,
         pytest.skip(f"no {stem}.D64 with a SAVEDGAME0 here")
     QApplication.instance() or QApplication([])
 
-    monkeypatch.delenv(ENV, raising=False)
-    base_root = QMainWindow()
-    Ui_WishWindow().setupUi(base_root)
-    base_panel = QuestLogPanel(base_root)
-    base_panel.update_from(payload)
-    base_count = len(base_panel.groups["commissions"].visible_rows())
+    base_count = len(questlog.commission_rows(commissions.flags(payload)))
 
-    monkeypatch.setenv(ENV, "1")
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    panel = QuestLogPanel(root)
+    panel = questlog.QuestLogPanel(root)
     panel.update_from(payload)
     all_rows = panel.groups["commissions"].visible_rows()
-    assert [r.what.text() for r in all_rows[:base_count]] == [
-        r.what.text() for r in base_panel.groups["commissions"].visible_rows()]
     rows = all_rows[base_count:]
     assert len(rows) == (1 if drawn else 0), stem
     if drawn:

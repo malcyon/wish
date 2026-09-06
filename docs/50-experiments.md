@@ -6765,8 +6765,9 @@ magically raised score reaches those rows.
 
 `goldbox/commissions.py`'s `SIDE_QUESTS` was built from the bytecode and
 checked against six of the player's own save disks, and
-`automap/questlog.py`'s `WISH_EXPERIMENTAL_QUESTS` is held up until the row
-has been **seen** to change with the game running. This is that run.
+`automap/questlog.py`'s `WISH_EXPERIMENTAL_QUESTS` flag was held up until the
+row had been **seen** to change with the game running. This is that run; it
+is the measurement that let the flag come off on 2026-09-05.
 `tools/ohlowatch.py` repeats it in one command.
 
 **Method.** Pool slot 0, headless, `NEWSAVE4.D64` — the party standing in the

@@ -183,36 +183,31 @@ whose `SideQuestState.durable_state` is not `QUEST_UNSEEN` gets a row appended
 to the *commissions* group, after the ledger's own rows and before the
 `Summoned to` group — `goldbox.commissions.side_quests()` reads the durable
 half only, `side_quest_rows()` in `automap/questlog.py` turns that into a row,
-and `update_from` does the appending. The join stays display-only: the two
-kinds of row are still kept apart in the code — `side_quest_rows()` is its own
-function, gated on its own — and the commissions group carries no heading
-either way. A finished side quest stays on the log, drawn muted, the way a
-paid commission does.
+and `update_from` does the appending, always. The join stays display-only: the
+two kinds of row are still kept apart in the code — `side_quest_rows()` is its
+own function — and the commissions group carries no heading either way. A
+finished side quest stays on the log, drawn muted, the way a paid commission
+does.
 
-**The flag gates the rows, not the group.** `enabled()`
-(`WISH_EXPERIMENTAL_QUESTS`, `.claude/rules/feature-flags.md`) wraps only the
-`side_quest_rows()` call inside `update_from`; the commissions group itself is
-always built. Donald approved all six placeholder strings from a screenshot on
-2026-09-04, with one change applied everywhere: each opens with a capital
-letter, `AGENTS.md`'s standing rule, which the proposals had missed. That pulled
-`goldbox/commissions.py`'s `IN_PROGRESS` along with it — it already shipped
-lowercase in the Commissions panel, so it is now `"In progress"` in both places
-rather than one state word spelled two ways in one window — and set
-`SIDE_QUEST_FINISHED` to `"Finished"`. What still holds the flag up is the
-tooltip's third line, `_side_quest_tip`'s rendering of a `QuestFlag.meaning`,
-which nothing drew before this feature existed and which Donald has not yet
-seen; the mechanism (steps A-C of #158 (Track the quests the game itself
-forgets, starting with Ohlo's potion)) is done.
+**The words are shipped.** Donald approved all six on-screen strings from a
+screenshot on 2026-09-04, with one change applied everywhere: each opens with
+a capital letter, `AGENTS.md`'s standing rule, which the proposals had missed.
+That pulled `goldbox/commissions.py`'s `IN_PROGRESS` along with it — it already
+shipped lowercase in the Commissions panel, so it is now `"In progress"` in
+both places rather than one state word spelled two ways in one window — and
+set `SIDE_QUEST_FINISHED` to `"Finished"`. The tooltip's third line,
+`_side_quest_tip`'s rendering of a `QuestFlag.meaning` — "Ohlo's potion
+collected." and "Ohlo's quest completed." — was approved on 2026-09-05.
 
 **The live check is done, 2026-09-05.** A party in the running game collected
 the potion at the booth and delivered it to Ohlo, and the row followed both
 writes: `$4A81` 0 → 250 at `ECL14 $B048` and the row appears reading
 `In progress`, then 250 → 255 at `$A3A8` and it reads `Finished` and is drawn
 muted. The panel was rendered from the live `$4900`-`$64FF` read rather than
-from a file, which is the whole chain the flag was waiting on -- the run is
-"The Quest Log's side-quest row, watched arriving" in
-`docs/50-experiments.md`, and `tools/ohlowatch.py` repeats it. So the tooltip
-sentences are the only thing left in front of the flag.
+from a file — the run is "The Quest Log's side-quest row, watched arriving"
+in `docs/50-experiments.md`, and `tools/ohlowatch.py` repeats it. Both halves
+of the removal condition were met, and `WISH_EXPERIMENTAL_QUESTS` came off on
+2026-09-05: the row and the group are built unconditionally now.
 
 ## Where the code is
 

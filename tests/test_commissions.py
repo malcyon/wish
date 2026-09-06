@@ -493,7 +493,8 @@ def test_no_quest_log_tooltip_shows_a_memory_address():
         assert not address.search(text), f"a memory address reaches a player: {text!r}"
 
 
-# --- side quests, #158, behind WISH_EXPERIMENTAL_QUESTS ---------------------
+# --- side quests, #158 (Track the quests the game itself forgets, starting
+# --- with Ohlo's potion) -----------------------------------------------------
 
 def _flags_4a81(value) -> bytearray:
     return put(blank(), 0x4A81, value)
@@ -506,7 +507,16 @@ def _page_4a04(value) -> bytearray:
     return page
 
 
-def test_no_quest_log_tooltip_shows_a_memory_address_side_quests(monkeypatch):
+def _commission_only_rows(flags_bytes):
+    """(name, state, sub-line) for the commission rows alone, matching
+    `rows()`'s shape -- the panel's prefix before the side-quest tail."""
+    from automap import questlog
+
+    return [(name, state, note) for name, state, _tip, note, _dim
+            in questlog.commission_rows(book.flags(flags_bytes))]
+
+
+def test_no_quest_log_tooltip_shows_a_memory_address_side_quests():
     """The same guarantee as the test above, for the side-quest rows.
 
     `QuestFlag.where` is a script address for developers -- `goldbox/
@@ -517,7 +527,6 @@ def test_no_quest_log_tooltip_shows_a_memory_address_side_quests(monkeypatch):
     from automap import questlog
     from goldbox import commissions as book
 
-    monkeypatch.setenv(questlog.ENV, "1")
     address = re.compile(r"\$[0-9A-F]{4}\b")
     quest = book.SIDE_QUESTS[0]
     for value in (0, 250, 255):
@@ -535,24 +544,19 @@ def test_no_quest_log_tooltip_shows_a_memory_address_side_quests(monkeypatch):
     (250, True, "In progress", False),
     (255, True, "Finished", True),
 ])
-def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, monkeypatch,
-                                                              value, has_row,
-                                                              state, dim):
+def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, value,
+                                                              has_row, state,
+                                                              dim):
     """`$4A81` alone decides the row: 0 draws nothing, 250 and 255 draw one.
 
     Donald's decision of 2026-09-04: the log shows the errand once the potion
     is in hand, never merely for having talked to Ohlo. The row lands in the
     commissions group, appended after the commission rows (#158), so this
-    also pins the order: the same commission rows come first, unchanged,
-    whichever way the flag goes.
+    also pins the order: the same commission rows come first, unchanged.
     """
-    from automap import questlog
-
-    monkeypatch.delenv(questlog.ENV, raising=False)
-    commissions_only = rows(panel_for(app, _flags_4a81(value)), "commissions")
-
-    monkeypatch.setenv(questlog.ENV, "1")
-    panel = panel_for(app, _flags_4a81(value))
+    flags = _flags_4a81(value)
+    commissions_only = _commission_only_rows(flags)
+    panel = panel_for(app, flags)
     everything = rows(panel, "commissions")
     assert everything[:len(commissions_only)] == commissions_only
     drawn = everything[len(commissions_only):]
@@ -565,48 +569,39 @@ def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, monkeypatch,
     assert bool(dimmed.what.styleSheet()) == dim
 
 
-def test_a_side_quest_row_never_appears_from_the_accepted_flag_alone(app,
-                                                                      monkeypatch):
+def test_a_side_quest_row_never_appears_from_the_accepted_flag_alone(app):
     """The decision, pinned at the panel: a full `$4A00` page with `$4A04` =
     250 and `$4A81` = 0 appends no row to the commissions group, even though
     `side_quests()` itself reads `accepted` from the same bytes."""
-    from automap import questlog
-
-    monkeypatch.delenv(questlog.ENV, raising=False)
-    commissions_only = rows(panel_for(app, _page_4a04(250)), "commissions")
-
-    monkeypatch.setenv(questlog.ENV, "1")
-    panel = panel_for(app, _page_4a04(250))
+    flags = _page_4a04(250)
+    commissions_only = _commission_only_rows(flags)
+    panel = panel_for(app, flags)
     assert rows(panel, "commissions") == commissions_only
 
 
-def test_the_side_quest_rows_are_not_appended_unless_the_flag_says_so(app,
-                                                                       monkeypatch):
-    """The gate, three ways -- `tests/test_dosimport.py` does the DOS import
-    flag the same way. Force it on and watch the other two fail first.
-
-    The rows now share a container with the commissions, which are always
-    drawn, so the thing worth pinning is that the flag governs only the
-    side-quest tail of the list and leaves the commissions list itself
-    byte-for-byte the same either way (#158).
-    """
-    from automap.questlog import ENV
-
-    flags = _flags_4a81(250)            # would draw a row if the flag allowed it
-    monkeypatch.delenv(ENV, raising=False)
-    commissions_only = rows(panel_for(app, flags), "commissions")
-
-    for value in (None, "", "0", "off", "no"):
-        if value is None:
-            monkeypatch.delenv(ENV, raising=False)
-        else:
-            monkeypatch.setenv(ENV, value)
-        panel = panel_for(app, flags)
-        assert rows(panel, "commissions") == commissions_only, value
-
-    monkeypatch.setenv(ENV, "1")
+def test_the_side_quest_row_is_drawn_with_no_environment_variable_set(
+        app, monkeypatch):
+    """The row used to be gated behind `WISH_EXPERIMENTAL_QUESTS`; #158 (Track
+    the quests the game itself forgets, starting with Ohlo's potion) removed
+    the gate, so it is drawn whenever the flags earn it, with nothing set."""
+    monkeypatch.delenv("WISH_EXPERIMENTAL_QUESTS", raising=False)
+    flags = _flags_4a81(250)
     panel = panel_for(app, flags)
-    assert rows(panel, "commissions") != commissions_only
+    drawn = rows(panel, "commissions")
+    assert drawn[-1][1] == "In progress"
+
+
+@pytest.mark.parametrize("value", ["1", "0", "true", "off", "", "no"])
+def test_the_side_quest_row_does_not_depend_on_the_removed_variable(
+        app, monkeypatch, value):
+    """A player who exported the old flag once, before its removal (#158),
+    must not now get a different window from everyone else."""
+    flags = _flags_4a81(250)
+    monkeypatch.setenv("WISH_EXPERIMENTAL_QUESTS", value)
+    with_var = rows(panel_for(app, flags), "commissions")
+    monkeypatch.delenv("WISH_EXPERIMENTAL_QUESTS", raising=False)
+    without_var = rows(panel_for(app, flags), "commissions")
+    assert with_var == without_var
 
 
 

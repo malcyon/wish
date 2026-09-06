@@ -31,7 +31,6 @@ they are useful and harmless. See `docs/103-quest-log-panel.md`.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass
 
@@ -52,37 +51,6 @@ from goldbox import commissions as book
 from .panel import CARD, LATTICE, MUTED
 
 PANEL_WIDTH = 248
-
-# ---------------------------------------------------------------------------
-# The gate for the side-quest group below the council's rows (#158). The
-# mechanism is proven -- `SideQuestState.durable_state` is a pure function of
-# `SAVEDGAME0`, and the poll that already feeds this panel already carries
-# it -- but every word the group draws is still a placeholder, listed beside
-# `side_quest_rows` below, and `.claude/rules/gui-text.md` says a player must
-# not meet one. So the group is not built at all unless the flag says to.
-#
-# **Comes off when both are true, on #158 (Track the quests the game itself
-# forgets, starting with Ohlo's potion):** Donald has approved the six
-# placeholder strings from a screenshot, and the row has been seen to appear
-# live against a running game -- a party collecting Ohlo's potion at the
-# booth, then delivering it, each within one poll. Both are the plan's step F.
-#
-# **Both are now met.** The strings were approved on 2026-09-04 and the two
-# tooltip sentences that were missed on 2026-09-05; the live watch ran on
-# 2026-09-05, two boots of each transition, with the whole 7168-byte window
-# byte-identical between runs at all three captures. What is left is the
-# removal itself, which is step E.
-ENV = "WISH_EXPERIMENTAL_QUESTS"
-
-#: Anything else -- an empty string, `0`, `off` -- is off, matching
-#: `wish/debugmode.py`. A variable somebody exported once and forgot must not
-#: put an unapproved row in front of a player.
-TRUE = ("1", "true", "yes", "on")
-
-
-def enabled() -> bool:
-    """Is the side-quest group drawn in this run?"""
-    return os.environ.get(ENV, "").strip().lower() in TRUE
 
 #: The fourth state word. The other three are the decoder's own.
 OFFERED = "offered"
@@ -391,17 +359,16 @@ def commission_rows(flags) -> list[tuple]:
     return rows
 
 
-# --- side quests, #158, behind `WISH_EXPERIMENTAL_QUESTS` -------------------
+# --- side quests, #158 (Track the quests the game itself forgets, starting
+# --- with Ohlo's potion) -----------------------------------------------------
 #
-# ===========================================================================
-# **Donald approved every string below on 2026-09-04**, with one change: each
-# opens with a capital letter, which is `AGENTS.md`'s standing rule and was
-# what the proposals got wrong.  That approval reaches `book.IN_PROGRESS` too
-# -- it was already shipping lowercase in the Commissions panel and is now
-# "In progress" in both places, because the same state word spelled two ways
-# in one window is worse than changing a string a player has already seen.
-#
-# He also settled two things underneath the wording.
+# Every string a side-quest row draws was approved from a screenshot: the six
+# on-screen words on 2026-09-04, and the tooltip's third line -- "Ohlo's
+# potion collected." and "Ohlo's quest completed." -- on 2026-09-05. That
+# approval also reached `book.IN_PROGRESS`, which was already shipping
+# lowercase in the Commissions panel and is now "In progress" in both places,
+# because the same state word spelled two ways in one window is worse than
+# changing a string a player has already seen.
 #
 # **A side quest is not marked as Wish's own record rather than the game's.**
 # The reason is `durable_state`: it back-fills from `$4A81` in every case but
@@ -411,49 +378,32 @@ def commission_rows(flags) -> list[tuple]:
 # inside a window that shuts by itself, which is not worth a sentence in front
 # of a player.
 #
-# **And there is no separate group on screen.**  Donald, 2026-09-04: *"I don't
+# **There is no separate group on screen.**  Donald, 2026-09-04: *"I don't
 # think we need a separate 'Side Quests' section. Just lump them all
 # together."*  Then, once this was under way, he narrowed how far that goes:
 # *"You can keep track of commissions separately on the backend. Just display
 # them together? The player will not care about the difference."*  So the
-# merge is display only. `side_quest_rows()` stays its own function, still
-# gated by `enabled()` on its own, and `update_from` appends its rows to the
-# commissions `Group` rather than building one of their own.
-# `SIDE_QUEST_HEADING` is gone rather than merely unused, because it was the
-# only thing on screen that told the two kinds of row apart -- which is
-# exactly what the second instruction gave up. The distinction still exists
-# in the code, in this function and this table; it only stopped being
-# something a player sees.
+# merge is display only. `side_quest_rows()` stays its own function, and
+# `update_from` appends its rows to the commissions `Group` rather than
+# building one of their own. `SIDE_QUEST_HEADING` is gone rather than merely
+# unused, because it was the only thing on screen that told the two kinds of
+# row apart -- which is exactly what the second instruction gave up. The
+# distinction still exists in the code, in this function and this table; it
+# only stopped being something a player sees.
 #
-# The flag does not come off yet: `.claude/rules/feature-flags.md` wants the
-# row seen to change at the booth, and that has not happened.  #158 (Track the
-# quests the game itself forgets, starting with Ohlo's potion) carries it.
-#
-# | what               | where it shows      | this placeholder            |
-# |---------------------|---------------------|------------------------------|
-# | in-hand state word    | right-hand column   | reuses `book.IN_PROGRESS`, already Donald's |
-# | finished state word   | right-hand column   | SIDE_QUEST_FINISHED         |
-# | sub-line               | under the name      | none -- left out, per the plan |
-# | tooltip line 1          | hover               | `SideQuest.name`, below |
-# | tooltip line 2          | hover               | the area's own name, `goldbox/areas.py` -- already Donald's |
-# | tooltip line 3          | hover               | **`QuestFlag.meaning`, `goldbox/commissions.py`** -- three sentences, see below |
-# | name                    | left column         | `SideQuest.name`, `goldbox/commissions.py` -- "Ohlo's potion" |
-#
-# **The tooltip's third line is not written in this file and is easy to miss
-# when approving the rest.** `_side_quest_tip` composes it from the
-# `QuestFlag.meaning` of whichever flag explains the state, and those
+# **The tooltip's third line is `_side_quest_tip`'s rendering of a
+# `QuestFlag.meaning`**, from whichever flag explains the state -- those
 # sentences live in `goldbox/commissions.py` beside the flags themselves.
-# Nothing drew them before this feature existed, so they were missed when the
-# words above were approved on 2026-09-04.
+# `_side_quest_flag` can only reach `accept.meaning` when `durable_state` is
+# `QUEST_ACCEPTED`, and Ohlo's accept flag is `durable=False`, so that third
+# sentence is unreachable from the panel today and survives only for the
+# debug log and the tests.
 #
-# **Donald approved them on 2026-09-05**: "Ohlo's potion collected." and
-# "Ohlo's quest completed." Two rather than three, because `_side_quest_flag`
-# can only reach `accept.meaning` when `durable_state` is `QUEST_ACCEPTED`,
-# and Ohlo's accept flag is `durable=False` -- his own decision of 2026-09-04
-# made the row a function of the durable bytes alone, so that third sentence
-# is unreachable from the panel and survives only for the debug log and the
-# tests.
-# ===========================================================================
+# The row was watched appearing and changing live against a running game --
+# a party collecting Ohlo's potion at the booth, then delivering it, each
+# within one poll -- "The Quest Log's side-quest row, watched arriving" in
+# `docs/50-experiments.md`.
+#
 #: A side-quest state nobody has proposed a word for goes here rather than on
 #: the face of the window: it is what a bug report needs and nothing a player
 #: asked for. A child of `wish`, so `wish/debuglog.py`'s handler picks it up
@@ -597,9 +547,7 @@ class QuestLogPanel(QObject):
         if self.completed is not None:
             self.completed.setText(f"Quests completed: {state.completed}")
 
-        rows = commission_rows(flags)
-        if enabled():                   # the gate covers only these rows now
-            rows = rows + side_quest_rows(flags)
+        rows = commission_rows(flags) + side_quest_rows(flags)
         self.groups["commissions"].show_rows(
             rows or [("The clerk has nothing on the books for this party", "", "")])
         self.groups["summons"].show_rows(
