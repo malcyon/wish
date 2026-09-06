@@ -117,7 +117,7 @@ class WishWindow(QMainWindow):
             settings=self.settings)
         apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
 
-        self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder, saves_folder=self.settings.saves_folder)
+        self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder, saves_folder=self.settings.saves_folder, game_folders=self.settings.game_folders)
         # The divider between the roster and Character and the sheet below
         # them, and the heights the user last dragged it to (#97). Built here
         # rather than inside `EditorBinding` because the settings file is the

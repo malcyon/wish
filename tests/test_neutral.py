@@ -15,6 +15,7 @@ import pytest
 from test_dossave import _save_dir, needs_dos_saves
 
 from goldbox import amiga, c64_codec, dos, dos_layout, games, neutral
+from goldbox import levels as level_tables
 from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, Provenance
@@ -130,15 +131,39 @@ def _filled(game=None) -> NeutralCharacter:
 
 def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     """The round trip the neutral layer can have on its own: put a value in,
-    write it, and read the same value back off the C64 record."""
+    write it, and read the same value back off the C64 record.
+
+    The five saving-throw columns are the deliberate exception, checked on
+    their own below: `write` recomputes them from level, race and
+    constitution the way the C64's own trainer stores them, rather than
+    copying the neutral value across, for a title whose racial saving-throw
+    bonus is measured (`#311 (A DOS dwarf, gnome or halfling converted to the
+    C64 loses his constitution bonus to saving throws, because the C64 keeps
+    it inside the five stored bytes)`) -- `_filled()` defaults to Pool of
+    Radiance, which is one. A field that quietly stopped round-tripping for a
+    different reason must still fail the loop below, so the five are named
+    and excluded rather than the loop being weakened.
+    """
     from goldbox import spells
 
     char = _filled()
     rec, rep = c64_codec.write(char)
+    save_columns = {field for field, _ in c64_codec._SAVE_COLUMNS}
 
     assert rec.name == "ROUNDTRIP"
     for field, c64 in c64_codec.DIRECT:
+        if field in save_columns:
+            continue
         assert rec.get(c64) == char.get(field), field
+    assert level_tables.racial_save_bonus_measured(char.game)
+    expected_saves = level_tables.saving_throws(
+        char.get("levels"), char.get("race"), char.get("constitution"),
+        char.game)
+    for value, (field, c64) in zip(expected_saves, c64_codec._SAVE_COLUMNS):
+        assert rec.get(c64) == value, field
+        # Not a round trip: the class row less the constitution bonus, not
+        # the plain value this test put in.
+        assert value != char.get(field), field
     assert spells.spells_known(rec.to_bytes()) == [1, 5, 55]
     assert [b for b in rec.get_raw("spells_memorised") if b] == [44, 21, 3]
     assert rec.get("level_fighter") == 7

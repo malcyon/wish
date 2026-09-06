@@ -33,6 +33,7 @@ from test_neutral import _filled
 
 from goldbox import c64_codec, dos, dos_layout, neutral
 from goldbox import dos_savegame as sg
+from goldbox import levels as level_tables
 from goldbox.layout import Confidence
 
 # --- the tables, which need no save -----------------------------------------
@@ -1027,19 +1028,55 @@ def test_a_record_round_trips_through_the_neutral_middle():
     assert granted, "no record here carries a permanent non-innate effect"
 
 
+#: The five DOS saving-throw bytes -- masked from the C64 round trip below,
+#: and only from it.  `c64_codec.write` recomputes them from level, race and
+#: constitution the way the C64's own trainer stores them, for a title whose
+#: racial bonus is measured (`#311 (A DOS dwarf, gnome or halfling converted
+#: to the C64 loses his constitution bonus to saving throws, because the C64
+#: keeps it inside the five stored bytes)`), rather than copying DOS's own
+#: plain class row through -- so a dwarf, gnome or halfling that gets the
+#: bonus cannot come back byte-identical, on purpose.  Checked separately
+#: below against `goldbox.levels.saving_throws` itself, so a value that
+#: stopped matching *that* would still fail.
+_SAVE_THROW_NAMES = ("save_paralysis", "save_petrification", "save_wands",
+                     "save_breath", "save_spell")
+
+
+def _save_throw_offsets() -> set[int]:
+    out: set[int] = set()
+    for name in _SAVE_THROW_NAMES:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        out.update(range(f.offset, f.end))
+    return out
+
+
 @needs_dos_saves
 def test_a_record_round_trips_through_the_c64_record():
     """The architecture's whole claim, measured: DOS -> neutral -> **C64
     record** -> neutral -> DOS loses nothing the direct trip keeps.  The C64
     record is a sufficient interchange for everything the DOS writer can
-    source."""
+    source.
+
+    The five saving-throw bytes are the one deliberate exception (#311, see
+    `_save_throw_offsets`) and are pinned against `goldbox.levels.saving_throws`
+    instead of against DOS's own bytes."""
     total = 0
+    save_mask = _save_throw_offsets()
     for char in _records():
-        c64_rec, _ = c64_codec.write(dos.to_neutral(char))
+        neutral_char = dos.to_neutral(char)
+        c64_rec, _ = c64_codec.write(neutral_char)
         back = c64_codec.read(c64_rec, source="round trip")
         rec, _, _, _ = dos.write(back)
         outside, _ = _diff_against(char, rec)
-        assert outside == set(), (char.name, sorted(hex(i) for i in outside))
+        assert outside - save_mask == set(), \
+            (char.name, sorted(hex(i) for i in outside))
+        assert level_tables.racial_save_bonus_measured(neutral_char.game)
+        expected = level_tables.saving_throws(
+            neutral_char.get("levels"), neutral_char.get("race"),
+            neutral_char.get("constitution"), neutral_char.game)
+        for value, name in zip(expected, _SAVE_THROW_NAMES):
+            f = dos_layout.FIELDS_BY_NAME[name]
+            assert rec[f.offset] == value, (char.name, name)
         total += 1
     assert total >= 24
 

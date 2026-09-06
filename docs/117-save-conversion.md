@@ -1864,6 +1864,7 @@ graph LR
   c64_codec --> encoding
   c64_codec --> games
   c64_codec --> layout
+  c64_codec --> levels
   c64_codec --> neutral
   c64_codec --> portraits
   c64_codec --> record

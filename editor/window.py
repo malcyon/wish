@@ -499,7 +499,8 @@ class EditorBinding(QObject):
     def __init__(self, root: QWidget, path: str | None = None,
                  game_disk: str | None = None, disks: str | None = None,
                  backups: str | None = None, last_save_folder: str = "",
-                 saves_folder: str = ""):
+                 saves_folder: str = "",
+                 game_folders: dict[str, str] | None = None):
         super().__init__(root)
         self.root = root
         self.party: Party | None = None
@@ -509,6 +510,12 @@ class EditorBinding(QObject):
         self.backups = backups
         self.last_save_folder = last_save_folder
         self.saves_folder = saves_folder
+        # `Settings.game_folders` (`#22 (A disk folder setting per game, not
+        # one shared by all six)`), handed in by the caller rather than read
+        # here: `editor/` may not import `automap` (`INDEX.md`), so whoever
+        # constructs this binding -- `wish.window.WishWindow`, which already
+        # imports `automap.config` -- passes the mapping on.
+        self.game_folders = game_folders or {}
         self.game_disk_found: str | None = None
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
@@ -1184,11 +1191,12 @@ class EditorBinding(QObject):
         view.setMaximumHeight(height + ROSTER_SLACK)
 
     def _own_disk_folder(self, game: por_games.Game) -> str | None:
-        """`game`'s own folder in Preferences (`Settings.game_folders`,
-        `#22 (A disk folder setting per game, not one shared by all six)`),
+        """`game`'s own folder out of `self.game_folders` -- the constructor
+        argument sourced from Preferences (`Settings.game_folders`,
+        `#22 (A disk folder setting per game, not one shared by all six)`) --
         or `None` with no entry for it.
 
-        Reads only that one field, not `automap.paths.resolve_disks`'s full
+        Reads only that one mapping, not `automap.paths.resolve_disks`'s full
         precedence -- which also falls back to the shared `disks` setting,
         `$POR_DISKS` and finally a search of common directories when nothing
         is set. Every caller here already has `self.disks` and the rest of
@@ -1196,9 +1204,7 @@ class EditorBinding(QObject):
         would mean a conversion with no folder set for either title quietly
         starts scanning the whole machine.
         """
-        from automap.config import Settings
-        per_game = getattr(Settings.load(), "game_folders", None) or {}
-        own = (per_game.get(game.key, "") or "").strip()
+        own = (self.game_folders.get(game.key, "") or "").strip()
         return own or None
 
     def _disk_candidates(self, pattern: str | None = None,
