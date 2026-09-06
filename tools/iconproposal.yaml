@@ -92,3 +92,22 @@ colours:
   13: {c64: 4}                        # light magenta -> purple
   14: {c64: 7}                        # yellow
   15: {c64: 1}                        # white
+
+# Per-title overrides (#330, #335). Curse of the Azure Bonds ships the
+# identical art in every row above and never appears here; a title appears
+# only where it actually redrew a DOS option's art, and holds only that row.
+#
+# Shape, one section per title key, each holding "weapons" and/or "heads"
+# exactly like the tables above:
+#
+#   overrides:
+#     secret-of-the-silver-blades:
+#       heads:
+#         10: {c64: ...}   # large head 10 -- Silver Blades draws a hat
+#                          # here that Pool of Radiance's does not
+#       weapons:
+#         11: {c64: ...}   # small body 11 -- Silver Blades draws no
+#                          # weapon where Pool of Radiance's draws one
+#
+# Left empty until Donald picks the two rows on #335.
+overrides: {}

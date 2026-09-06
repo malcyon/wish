@@ -193,8 +193,20 @@ class DosIconTables:
     ega_to_c64: tuple[int, ...]     # 16 EGA indices -> the C64's eight
 
 
-def dos_icon_tables(path: "pathlib.Path | str | None" = None) -> DosIconTables:
-    """Read the three tables out of :data:`PROPOSAL_PATH`."""
+def dos_icon_tables(path: "pathlib.Path | str | None" = None,
+                    title: str | None = None) -> DosIconTables:
+    """Read the three tables out of :data:`PROPOSAL_PATH`.
+
+    `title` is a `goldbox.games.Game.key` such as
+    `"secret-of-the-silver-blades"`. With no `title`, or a title that names no
+    `overrides:` section of its own, this is exactly the base table every
+    conversion has always read (#330) -- the section is empty until Donald
+    picks the two rows `#335 (Two combat-figure rows describe Pool of
+    Radiance's art, and Silver Blades draws those two options differently)`
+    is about, and no caller passes `title` yet. Where a title's own section
+    names a row, its `c64` replaces the base table's for that DOS index only;
+    every other row is untouched.
+    """
     source = pathlib.Path(path or PROPOSAL_PATH)
     try:
         data = yaml.safe_load(source.read_text())
@@ -202,9 +214,16 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None) -> DosIconTables:
         raise FileNotFoundError(
             f"the combat-figure table is not at {source}; without it a DOS "
             f"figure has no C64 option to become") from exc
+    weapons = {int(k): v["c64"] for k, v in data["weapons"].items()}
+    heads = {int(k): v["c64"] for k, v in data["heads"].items()}
+    override = (data.get("overrides") or {}).get(title) if title else None
+    if override:
+        weapons.update({int(k): v["c64"]
+                        for k, v in override.get("weapons", {}).items()})
+        heads.update({int(k): v["c64"]
+                      for k, v in override.get("heads", {}).items()})
     return DosIconTables(
-        weapons={int(k): v["c64"] for k, v in data["weapons"].items()},
-        heads={int(k): v["c64"] for k, v in data["heads"].items()},
+        weapons=weapons, heads=heads,
         ega_to_c64=tuple(data["colours"][i]["c64"]
                          for i in sorted(data["colours"])))
 

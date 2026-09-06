@@ -310,3 +310,70 @@ def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
         copies = code[key]["copies"]
         for field in ("icon_head", "icon_body", "size", "icon_colours"):
             assert len(copies[field]) == 1, f"{key}: {field} {copies[field]}"
+
+
+# -- the per-title override section (#330, #335) -----------------------------
+#
+# `tools/iconproposal.yaml` gained an `overrides:` section for a title whose
+# C64 art disagrees with Pool of Radiance's, keyed by `goldbox.games.Game.key`.
+# It is empty until Donald picks Silver Blades' two rows on
+# `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
+# Blades draws those two options differently)`, and these pin that `dos_icon_
+# tables` goes on reading exactly the base table -- for every title, since
+# nothing calls it with one yet -- until a title's own section actually names
+# a row.
+
+def _table_yaml(tmp_path, overrides: str = "") -> pathlib.Path:
+    """A minimal table -- two weapons, two heads, all sixteen colours."""
+    path = tmp_path / "table.yaml"
+    path.write_text(
+        "weapons:\n" + "".join(f"  {i}: {{c64: {i}}}\n" for i in range(2))
+        + "heads:\n" + "".join(f"  {i}: {{c64: {i}}}\n" for i in range(2))
+        + "colours:\n" + "".join(f"  {i}: {{c64: 0}}\n" for i in range(16))
+        + overrides)
+    return path
+
+
+def test_dos_icon_tables_with_no_title_ignores_any_overrides_section(tmp_path):
+    path = _table_yaml(tmp_path, "overrides:\n  some-title:\n"
+                                 "    weapons:\n      0: {c64: 99}\n")
+    from goldbox.iconparts import dos_icon_tables
+    assert dos_icon_tables(path).weapons[0] == 0
+
+
+def test_a_title_with_no_override_composes_exactly_what_it_composes_today(
+        tmp_path):
+    """The regression: `title` used to be an argument `dos_icon_tables` did
+    not accept at all, so this is also the test that the parameter exists."""
+    path = _table_yaml(tmp_path, "overrides: {}\n")
+    from goldbox.iconparts import dos_icon_tables
+    base = dos_icon_tables(path)
+    assert dos_icon_tables(path, title="curse-of-the-azure-bonds") == base
+    assert dos_icon_tables(path, title="secret-of-the-silver-blades") == base
+    assert dos_icon_tables(path, title=None) == base
+
+
+def test_a_title_with_an_override_uses_it_for_that_row_alone(tmp_path):
+    path = _table_yaml(tmp_path,
+                       "overrides:\n  secret-of-the-silver-blades:\n"
+                       "    heads:\n      1: {c64: 9}\n")
+    from goldbox.iconparts import dos_icon_tables
+    base = dos_icon_tables(path)
+    overridden = dos_icon_tables(path, title="secret-of-the-silver-blades")
+    assert base.heads[1] == 1                    # the un-overridden reading
+    assert overridden.heads[1] == 9               # the row the override names
+    assert overridden.heads[0] == base.heads[0]   # every other row untouched
+    assert overridden.weapons == base.weapons     # the other table untouched
+    # A different title's own key must never see another title's override.
+    assert dos_icon_tables(path, title="pool-of-radiance") == base
+    assert dos_icon_tables(path, title="curse-of-the-azure-bonds") == base
+
+
+def test_the_shipped_table_has_no_override_yet_for_any_title():
+    """`#335` has not been settled, so every real title reads the base table
+    -- the property the conversion actually relies on today."""
+    from goldbox.games import GAMES
+    from goldbox.iconparts import dos_icon_tables
+    base = dos_icon_tables()
+    for game in GAMES:
+        assert dos_icon_tables(title=game.key) == base, game.key
