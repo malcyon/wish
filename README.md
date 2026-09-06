@@ -13,6 +13,11 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 - Combat view that shows the whole battlefield.
 - Party stats. HP, XP, class, level, readied items, etc.
 - Quest log. Shows what commissions you have from the council.
+- Instantly heal your party.
+- Save a snapshot of your memorized spells.
+- Restore your memorized spells with the click of a button.
+- Disable quickfight.
+- Fast travel to any zone
 - Support for the VICE emulator or the Commodore 64 Ultimate.
 
 
