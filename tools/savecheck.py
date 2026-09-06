@@ -169,15 +169,24 @@ def walk_step_routed(sess, log: Log, answer: str = "NO") -> str:
 
 
 def icon_bytes(disks: pathlib.Path) -> bytes:
-    """The 36 bytes of the icon a conversion writes, off a game disk.
+    """The 36 bytes of the figure the game's own creation writes.
 
-    `tools/dosdisk.py` composes the same icon when it builds the save, so
-    this is what the floor is compared against.  The bytes are never stored
-    here: they are read off the player's own disk both times.
+    Composed off the player's own disk rather than stored, the same way
+    `tools/dosdisk.py` composes it.  Once it was *the* icon a conversion
+    wrote, into all six slots; since `#130 (A converted DOS party arrives
+    with six identical combat figures, not its own)` each character gets his
+    own instead, so this is now a **control**: a converted party none of
+    whose figures matches these bytes is a party that got its own figures,
+    and `slot_icons` below is what says which.
+
+    `dosdisk.game_files` returns the option **tables** rather than the
+    composed bytes -- it did not before the wiring landed, and this line kept
+    passing an `IconParts` into `icon_evidence`, where a run that had already
+    walked to an encounter died on `'IconParts' object is not subscriptable`.
     """
     import dosdisk
 
-    return dosdisk.game_files(disks)[0]
+    return dosdisk.game_files(disks)[0].default_icon()
 
 
 def slot_icons(disk: pathlib.Path) -> list[dict]:

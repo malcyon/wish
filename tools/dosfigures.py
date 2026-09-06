@@ -11,14 +11,14 @@ DOS record names, through `goldbox.iconparts.IconParts.dos_icon`.
     tools/dosfigures.py --folder ~/wish-specimens/... --slot C \\
         --out work/issue130/FIGURES.D64 --json work/issue130/figures.json
 
-**This is the mechanism, not the button.**  `goldbox/dos.py`'s `convert_save`
-takes one 36-byte `icon` and hands the same bytes to every character, so the
-per-character composition cannot yet happen inside it; this tool composes the
-six icons and writes them over the icon table after `dos.new_save` has run.
-The bytes it produces are the bytes the one-argument change to `convert_save`
-would produce, and the point of the tool is that they can be booted and
-looked at before that change lands.  When it has landed, this becomes a
-reporting tool and the two writes below come out.
+**The disk is built by the shipped conversion, not by this tool.**
+`goldbox/dos.py`'s `convert_save` takes an `IconParts` as its `icon` and
+gives each character the figure his own record names, so this hands it the
+option tables and then *reports* what came out -- it composes the same six
+icons a second time only to say what each character asked for and to check
+that the disk holds it.  Until 2026-09-05 the wiring was not there and this
+tool wrote the six icons over the table itself; a run then proved the
+composition and not the button, which is the failure that check now catches.
 
 The DOS folder is `--folder`, or found the way `tools/dosdisk.py` finds it.
 The game disks come from `$POR_DISKS`, then `automap.paths.find_disks()`, and
@@ -106,7 +106,13 @@ def figures(folder: pathlib.Path, slot: str, parts: IconParts,
 
 def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
           out: pathlib.Path) -> list[dict]:
-    """Write `out` and return one row a character.  Nothing else is touched."""
+    """Write `out` and return one row a character.  Nothing else is touched.
+
+    `dos.new_save` is handed the `IconParts` themselves, so the six icons on
+    the disk are the shipped conversion's own work.  What this composes is
+    read back out of the finished payload and compared against it, which is
+    what makes the run a check on `convert_save` rather than on this file.
+    """
     parts = parts_from(disks)
     rows = figures(folder, slot, parts)
     try:
@@ -114,12 +120,12 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
     except PortraitError:
         portraits = None
     save0, save1, _report = dos.new_save(
-        folder, slot, parts.default_icon(),
-        dosdisk_animate(disks), portraits=portraits)
-    save0 = bytearray(save0)
+        folder, slot, parts, dosdisk_animate(disks), portraits=portraits)
     for row in rows:
         at = (ICON_TABLE_BASE - SAVE0_LOAD_ADDRESS + row["slot"] * ICON_SIZE)
-        save0[at:at + ICON_SIZE] = (bytes.fromhex(row["codes"])
+        written = bytes(save0[at:at + ICON_SIZE])
+        row["written"] = written.hex()
+        row["agrees"] = written == (bytes.fromhex(row["codes"])
                                     + bytes.fromhex(row["colours"]))
     disk: D64 = dos.save_disk(bytes(save0), bytes(save1))
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -280,11 +286,12 @@ def main(argv=None) -> int:
     rows = build(folder, args.slot, pathlib.Path(args.disks),
                  pathlib.Path(args.out))
     for row in rows:
-        print(f"slot {row['slot']} {row['name']:<12} "
+        print(f"slot {row['slot']} {row['name']:<14} "
               f"DOS body {row['dos_body']:>2} head {row['dos_head']:>2} "
               f"{row['dos_size']:<5} {row['dos_colours']}  ->  "
               f"C64 weapon {row['c64_weapon']:>2} head {row['c64_head']:>2}  "
-              f"{row['codes']}")
+              f"{row['codes']}"
+              f"{'' if row.get('agrees', True) else '  DISK DISAGREES'}")
     distinct = len({row["codes"] for row in rows})
     print(f"{distinct} distinct figures among {len(rows)} characters")
     if args.json:
@@ -293,6 +300,10 @@ def main(argv=None) -> int:
         path.write_text(json.dumps(rows, indent=2))
     if args.png:
         png(rows, pathlib.Path(args.disks), pathlib.Path(args.png))
+    disagree = [row["name"] for row in rows if not row.get("agrees", True)]
+    if disagree:
+        print(f"the conversion wrote something else for {', '.join(disagree)}")
+        return 1
     return 0
 
 
