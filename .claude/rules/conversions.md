@@ -129,12 +129,28 @@ not get a line.
 the accounting; `#131` is blocked on it either way. Only the line in the pane
 goes.
 
-**No player ever sees a dropped-field message.** Donald, 2026-09-05: *"I don't
-want the player to EVER see a message saying any field was dropped. The
-conversion needs to be perfect."* So the drop list is **our accounting**, and
-and the list of losses is not something a player reads. Rewording an entry is
-worth less than removing it, and an agent polishing a drop line is usually an
-agent working on the wrong half of the problem.
+**A player is shown a dropped field unless the destination derives it.**
+Donald, 2026-09-06: *"do not show dropped fields if they are derived in the new
+game. Show others for now. I will refine them as we go."*
+
+**This supersedes his ruling of 2026-09-05**, which was *"I don't want the
+player to EVER see a message saying any field was dropped. The conversion needs
+to be perfect."* That sentence was made when the list held fourteen entries,
+nine of which turned out not to be losses at all. With those nine moved to
+`goldbox.dos.DERIVED` and `CONSTANTS`, what is left is short enough for him to
+read and rule on one at a time -- and hiding it put an agent's judgement
+between him and his own program.
+
+So `DERIVED` and `CONSTANTS` are silent, and everything still on `DROPPED`
+reaches the pane. **No agent decides that an entry is not worth showing**; that
+is the judgement he took back. `UNREPORTED_DROPS` existed to make exactly that
+call and is gone.
+
+What has not changed: **a dropped field is still a bug**, and the pane is a
+working state rather than a finished feature. *"I will refine them as we go"*
+is a plan for the sentences, not permission for the entries -- an entry is
+removed by converting the field, not by wording it better. An agent polishing a
+drop line is usually an agent working on the wrong half of the problem.
 
 **The pane itself stays, and becomes a smaller one that says what Wish did.**
 Donald, 2026-09-05: *"you could reduce the size of the drop pane and make it a
