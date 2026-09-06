@@ -128,6 +128,8 @@ def test_the_readers_resolve_through_it(monkeypatch, tmp_path):
         appicon = importlib.reload(appicon)
         about = importlib.reload(wish.about)
         assert appicon.ASSET == tmp_path / "assets" / "logo" / "mark.svg"
+        for side, path in appicon.RASTERS.items():
+            assert path == tmp_path / "assets" / "logo" / f"mark-{side}.png"
         assert about.PICTURE_ASSET == (
             tmp_path / "assets" / "logo" / "combo-mark-color.svg")
     finally:
@@ -140,11 +142,14 @@ def test_the_readers_resolve_through_it(monkeypatch, tmp_path):
 
 
 def test_something_is_asked_for():
-    """The scan finds the two readers `#351` is about; an empty result would
-    mean the regex has stopped matching and the checks below pass vacuously."""
+    """The scan finds the two readers `#351` is about, and the four PNGs the
+    taskbar icon is scaled from; an empty result would mean the regex has
+    stopped matching and the checks below pass vacuously."""
     asked = _asked_for()
     assert pathlib.Path("assets/logo/mark.svg") in asked
     assert pathlib.Path("assets/logo/combo-mark-color.svg") in asked
+    for side in (80, 150, 200, 500):
+        assert pathlib.Path(f"assets/logo/mark-{side}.png") in asked, side
 
 
 @pytest.mark.parametrize("relative", sorted(_asked_for()),

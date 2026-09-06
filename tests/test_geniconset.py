@@ -73,11 +73,11 @@ def test_the_committed_icns_is_todays_drawing(app):
     assert not why, f"run packaging/geniconset.py: {why}"
 
 
-def test_every_size_is_rendered_from_the_vector_not_scaled(app):
-    """The whole reason the source is an SVG: `ic07`'s 128px square renders
-    with the same ground colour as `ic10`'s 1024, sampled where no stroke
-    reaches, which a scaled bitmap would not disturb but a wrong render
-    might."""
+def test_the_png_sizes_and_the_svg_sizes_share_a_ground(app):
+    """`ic07`'s 128 is the artist's 150 PNG scaled down and `ic10`'s 1024 is
+    his SVG rendered -- `ui.appicon.image`'s rule -- so the ground colour,
+    sampled where no stroke reaches, has to agree between the two sources
+    or the Dock would show two different squares at two zoom levels."""
     chunks = {c["tag"]: c["payload"] for c in geniconset.entries(
         ICNS.read_bytes())}
     small = QImage.fromData(chunks["ic07"], "PNG").convertToFormat(

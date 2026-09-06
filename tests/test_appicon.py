@@ -4,12 +4,15 @@ from __future__ import annotations
 
 Two different things are checked here and they fail for different reasons.
 
-**The drawing.** `ui/appicon.py` renders the artist's own `assets/logo/mark.svg`
-at whatever size is asked for. What is measured here is that the asset is
-still theirs -- a hash pinned against the committed file, because moving a
-point would be redrawing somebody else's art -- and that the square it
-delivers is what an application icon needs: opaque on every side, so there is
-nothing for an unknown taskbar or dock to show through.
+**The drawing.** `ui/appicon.py` scales the artist's own PNG export of the
+mark -- the smallest he delivered that is no smaller than the size asked for
+-- and renders `assets/logo/mark.svg` only above the largest of them. What is
+measured here is that every asset is still his -- a hash pinned against each
+committed file, because moving a point would be redrawing somebody else's art
+-- that the taskbar sizes really do come off the PNG, which is where the
+mark's hairline rings survive and the SVG render's do not, and that the
+square it delivers is what an application icon needs: opaque on every side,
+so there is nothing for an unknown taskbar or dock to show through.
 
 **The files.** `assets/` is committed, which means it can go stale. Every
 artefact is re-rendered here and compared with what is on disk, so a change to
@@ -75,6 +78,132 @@ def test_the_asset_is_a_valid_svg(app):
     assert renderer.isValid()
 
 
+# --- the artist's PNGs, and which size comes from which ------------------
+
+#: `Marks/Color/Color Mark NxN.png` as delivered on 2026-08-31 and committed
+#: on 2026-09-06 as `assets/logo/mark-N.png`, byte for byte. Pinned for the
+#: reason `MARK_SHA256` is; `tests/test_taskbaricon.py` checks the same
+#: bytes against the delivery itself where that is present.
+RASTER_SHA256 = {
+    80: "f07337ae041ff3c25dffe0c9a76ec93951ec6808b9267f4f21f7d2ccb4dca872",
+    150: "b55060d40dbe234344058b63f0bfcee58cca15802096b730558d173ada2c8d65",
+    200: "35df3f112140f36ef794b9a7be187508e63beb2c46413d5c07faa182b51b8d24",
+    500: "19d0e1c6cf639cabfd0f063946cb914ea30279cc6c2d7f3779b56c3717717ca1",
+}
+
+
+def test_the_pngs_are_the_artists_own_exports_unmodified():
+    assert set(appicon.RASTERS) == set(RASTER_SHA256)
+    for side, path in appicon.RASTERS.items():
+        assert path.exists(), path
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert digest == RASTER_SHA256[side], (
+            f"{path.name} has changed -- if this is a deliberate new delivery "
+            "from the artist, update RASTER_SHA256 to match; if it is an edit "
+            "of the existing file, it should not be one")
+
+
+def test_each_png_is_the_square_its_name_says(app):
+    for side, path in appicon.RASTERS.items():
+        image = QImage(str(path))
+        assert (image.width(), image.height()) == (side, side), path.name
+
+
+def test_every_size_the_window_asks_for_is_a_delivered_file_scaled_down():
+    """The rule: the smallest delivered PNG no smaller than the size, so a
+    raster is only ever scaled down and never up; the SVG only above the
+    largest PNG, which none of the window's sizes reaches."""
+    for size in appicon.WINDOW_SIZES:
+        side = appicon.raster_side(size)
+        assert side is not None and side >= size, size
+        assert all(other < size for other in appicon.RASTERS if other < side)
+        assert appicon.source(size) == appicon.RASTERS[side]
+    assert [appicon.raster_side(s) for s in (16, 20, 24, 32, 48, 64)] == [80] * 6
+    assert appicon.raster_side(128) == 150
+    assert appicon.raster_side(256) == 500
+    assert appicon.raster_side(500) == 500
+
+
+def test_above_the_largest_png_it_is_the_svg():
+    assert appicon.raster_side(501) is None
+    assert appicon.source(1024) == appicon.ASSET
+
+
+#: How many points around the outer ring are sampled, and how much brighter
+#: than the ground a point has to be to count as the ring being there.
+RING_SAMPLES = 72
+RING_LIT = 20
+
+
+def _ring_coverage(image: QImage) -> int:
+    """How many of `RING_SAMPLES` points around the mark's outer ring are
+    lit, at whichever radius between 0.6 and 0.95 of the half-side lights
+    the most -- the ring's own radius, wherever the scaler put it."""
+    import math
+
+    size = image.width()
+    centre = (size - 1) / 2
+    ground = image.pixelColor(0, 0)
+
+    def lit(x: int, y: int) -> bool:
+        c = image.pixelColor(x, y)
+        return (c.red() + c.green() + c.blue()
+                - ground.red() - ground.green() - ground.blue()) > RING_LIT
+
+    best = 0
+    radius = 0.6 * centre
+    while radius <= 0.95 * centre:
+        count = sum(
+            1 for i in range(RING_SAMPLES)
+            for angle in (2 * math.pi * i / RING_SAMPLES,)
+            if lit(round(centre + radius * math.cos(angle)),
+                   round(centre + radius * math.sin(angle))))
+        best = max(best, count)
+        radius += 0.25
+    return best
+
+
+@pytest.mark.parametrize("size", (24, 32))
+def test_the_ring_is_a_circle_at_the_taskbar_sizes(app, size):
+    """The whole of the choice between row A and row B on the 2026-09-06
+    sheet, as pixels. The mark's two rings are hairline bitmaps in the
+    artist's SVG and Qt's renderer drops most of each at a taskbar size,
+    leaving scattered dots; his own PNG export kept them as a faint circle.
+    So the shipped icon's outer ring is sampled all the way round and has to
+    be there at nearly every point, and the SVG rendered at the same size,
+    measured the same way, has to be the worse of the two -- which is what
+    makes this a test of the reason and not only of the outcome.
+
+    Measured on 2026-09-06 with a 20-of-765 threshold: the scaled PNG lights
+    72 of 72 samples at both sizes; the SVG render lights 20 at 24 and 34
+    at 32.
+    """
+    shipped = _ring_coverage(appicon.image(size))
+    vector = _ring_coverage(appicon.render_svg(size))
+    assert shipped >= RING_SAMPLES * 5 // 6, (
+        f"the outer ring is lit at only {shipped} of {RING_SAMPLES} points "
+        f"at {size}px -- is the icon coming off the SVG again?")
+    assert vector < RING_SAMPLES * 2 // 3, (
+        f"the SVG render lights {vector} of {RING_SAMPLES} at {size}px; if "
+        "Qt has learnt to keep the rings, the PNG rule may no longer be "
+        "needed -- see ui/appicon.py")
+    assert shipped > vector
+
+
+@pytest.mark.parametrize("size", (24, 32))
+def test_the_taskbar_sizes_are_the_80_scaled_and_nothing_else(app, size):
+    """Row B on the sheet, exactly: the delivered 80 scaled to the size,
+    whole, area-averaged. The same comparison `tests/test_taskbaricon.py`
+    makes of every row on the sheet."""
+    from PyQt6.QtCore import Qt
+
+    want = QImage(str(appicon.RASTERS[80])).convertToFormat(
+        QImage.Format.Format_ARGB32_Premultiplied).scaled(
+            size, size, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+    assert appicon.image(size) == want
+
+
 def test_the_icon_is_opaque_at_every_size(app):
     """The mark carries its own ground -- `docs/132-logo.md` §2 -- so unlike
     the stand-ins before it there is no tile to composite and nothing here
@@ -98,12 +227,13 @@ def test_the_icon_is_not_blank_at_16(app):
 
 
 def test_the_icon_reads_the_same_drawing_at_every_size(app):
-    """Every size is rendered from the vector, never a downscale of another
-    size -- so the ground colour, sampled well away from any stroke, is the
-    same at 16 as at 256."""
+    """16 comes off the 80 PNG, 256 off the 500 and 1024 off the SVG: three
+    sources, one drawing, so the ground colour sampled well away from any
+    stroke is the same from each."""
     corner_16 = _pixels(16)[0][0]
     corner_256 = _pixels(256)[0][0]
-    assert corner_16 == corner_256
+    corner_1024 = _pixels(1024)[0][0]
+    assert corner_16 == corner_256 == corner_1024
 
 
 # --- the icon Qt hands the window ---------------------------------------
@@ -214,7 +344,8 @@ def test_the_small_entries_are_dibs_and_the_256_is_a_png():
 
 def test_the_16_is_drawn_and_not_a_squeezed_256(app):
     """The whole reason the file has eight entries. A 256 scaled to 16 is
-    mush; this compares the stored pixels with a fresh render at 16.
+    mush; this compares the stored pixels with a fresh 16 -- the artist's
+    80 scaled down, which is what `appicon.image(16)` is now.
 
     To `genicons.TOLERANCE`, for the reason the comparison of the whole of
     `assets/` is: the committed bytes were rasterised on somebody else's

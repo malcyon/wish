@@ -15,7 +15,8 @@
 # nothing depends on it.
 #
 # `DATAS` is every file the window reads at run time that is not a Python
-# module: the artist's two SVGs today. Each lands under `sys._MEIPASS` at the
+# module: the artist's two SVGs and his four PNG exports of the mark, which
+# the taskbar icon is scaled from. Each lands under `sys._MEIPASS` at the
 # same relative path it has in the checkout, and `goldbox/assets.py` is the
 # one place that resolves such a path, so a reader finds the file in either
 # tree. This list used to be empty and the header said so -- "there are no
@@ -46,6 +47,12 @@ COMMON_EXCLUDES = [
 DATAS = [
     ("assets/logo/mark.svg", "assets/logo"),
     ("assets/logo/combo-mark-color.svg", "assets/logo"),
+    # `ui/appicon.py` scales the taskbar icon from the smallest of these no
+    # smaller than the size it wants, and renders the SVG only above 500.
+    ("assets/logo/mark-80.png", "assets/logo"),
+    ("assets/logo/mark-150.png", "assets/logo"),
+    ("assets/logo/mark-200.png", "assets/logo"),
+    ("assets/logo/mark-500.png", "assets/logo"),
 ]
 
 window = Analysis(
@@ -72,8 +79,9 @@ window = Analysis(
 # draws on the file, from the executable's own resource -- not from Qt. The
 # running window's icon is `QApplication.setWindowIcon` in `wish/window.py`,
 # from the same drawing; both are needed and neither substitutes for the other.
-# PyInstaller ignores this on Linux. `tools/genicons.py` writes the file and
-# `tests/test_appicon.py` fails the build if it has drifted from the glyph.
+# PyInstaller ignores this on Linux. `tools/genicons.py` writes the file from
+# the same PNGs, so a pinned shortcut matches the running window's button, and
+# `tests/test_appicon.py` fails the build if it has drifted from the drawing.
 ICON = "assets/wish.ico"
 
 exe = EXE(

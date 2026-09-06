@@ -3,16 +3,18 @@
     .venv/bin/python packaging/geniconset.py            # rewrite assets/wish.icns
     .venv/bin/python packaging/geniconset.py --check    # is it in step?
 
-Offscreen, through `ui.appicon`, exactly as `tools/genicons.py` renders the
-`.ico` and the hicolor tree: `assets/logo/mark.svg` is the vector source and
-this is a size-tuned export of it, so the Dock icon can never drift from the
-drawing the taskbar and the About box use.
+Offscreen, through `ui.appicon`, exactly as `tools/genicons.py` makes the
+`.ico` and the hicolor tree: the artist's files under `assets/logo/` are the
+source and this is a size-tuned export of them, so the Dock icon can never
+drift from the drawing the taskbar uses.
 
-**Every size is rendered from the vector, never scaled.** `docs/132-logo.md`
-§1b's `.icns` row: 16, 32, 64, 128, 256, 512 and 1024, each rendered once, and
-some of those pixel sizes are stored twice under different Apple type codes --
-`32x32` and `16x16@2x` are the same 32 pixels, tagged `icp5` and `ic11`, and
-the drawing behind both is one call to `ui.appicon.image(32)`.
+**Every size is made once, from the smallest delivered file no smaller than
+it** -- `ui.appicon.image`'s rule: the artist's PNGs up to 256 and his SVG at
+512 and 1024, never a scaled copy of another size of ours. `docs/132-logo.md`
+§1b's `.icns` row: 16, 32, 64, 128, 256, 512 and 1024, and some of those
+pixel sizes are stored twice under different Apple type codes -- `32x32` and
+`16x16@2x` are the same 32 pixels, tagged `icp5` and `ic11`, and the drawing
+behind both is one call to `ui.appicon.image(32)`.
 
 **The container is written here**, in `icns_bytes`, the same reason
 `tools/genicons.py` writes its own `.ico`: an `.icns` is a short sequence of

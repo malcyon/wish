@@ -68,9 +68,10 @@ nothing about the entry itself needed to change.
 
 **The `.icns` is new** -- `assets/wish.icns`, from `packaging/geniconset.py`,
 covering the sizes `docs/132-logo.md` §1b always asked for: 16, 32, 64, 128,
-256, 512 and 1024, each rendered once from the vector and stored under the
-Apple type codes that share a pixel size. Nobody has dropped it on a real
-Dock; `packaging/README.md` says so.
+256, 512 and 1024, each made once -- from the artist's PNGs up to 256, from
+the vector at 512 and 1024, §7's rule -- and stored under the Apple type
+codes that share a pixel size. Nobody has dropped it on a real Dock;
+`packaging/README.md` says so.
 
 ---
 
@@ -100,8 +101,12 @@ sizes Windows asks for, and the hicolor tree carries 16, 22, 24, 32, 48, 64,
 Windows; 20 and 40 mean nothing to GNOME. `appicon.WINDOW_SIZES` — what Qt gets
 for the running window — is the union of the useful ones.
 
-Every one of them is **rendered from the vector at its own size**, never
-downscaled from a bigger one.
+Every one of them is **made at its own size from the smallest delivered file
+that is no smaller** -- the artist's 80-pixel PNG up to 80, his 150 and 500
+above that, the vector only past 500 -- never downscaled from a bigger
+square of ours. Why the PNGs and not the vector at the small sizes is §7:
+Qt's renderer loses the mark's rings below 48 and the artist's exports do
+not.
 
 ---
 
@@ -269,14 +274,17 @@ deliberate trade.** Every icon before this one was painted at run time from
 `ui/icons.py`'s path data, specifically so no raster could drift from a glyph
 the program painted somewhere else. Nothing else in the program paints this
 mark, so that property bought nothing here: `assets/logo/mark.svg` is the
-artist's own file, committed verbatim, and `ui/appicon.py` renders it with
-`QSvgRenderer` at whatever size is asked for. The mark is not modified --
-composing it into an icon's sizes is placement, not art, the same rule §6
-holds `pointy-hat` to.
+artist's own file, committed verbatim, beside his four PNG exports of it,
+`assets/logo/mark-{80,150,200,500}.png`, also verbatim. `ui/appicon.py`
+scales the smallest PNG no smaller than the size asked for, and renders the
+SVG with `QSvgRenderer` only above 500 -- since 2026-09-06, for the reason
+in §7. The mark is not modified -- resizing a delivered file into an icon's
+sizes is placement, not art, the same rule §6 holds `pointy-hat` to.
 
 **The generator** is `tools/genicons.py`, unchanged in shape from the
-stand-in days: it still renders every size from the vector through
-`ui.appicon.image`, never a downscale of another size, and still writes:
+stand-in days: it still makes every size on its own through
+`ui.appicon.image`, never a downscale of another size of ours, and still
+writes:
 
 | file | what |
 |---|---|
@@ -541,3 +549,41 @@ from a file he already delivered, with nothing to detect. The choice is
 Donald's; `tests/test_taskbaricon.py` checks that every cell on the sheet
 is a delivered file resized and that the delivery's hashes are unchanged
 after drawing it.
+
+### Row B shipped
+
+Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
+
+* **The four Color Mark PNGs are committed**, byte for byte, as
+  `assets/logo/mark-80.png`, `mark-150.png`, `mark-200.png` and
+  `mark-500.png`. They are Wish's own commissioned art, not the game's, so
+  `AGENTS.md`'s ban on committed art does not reach them. The delivery
+  under `~/Downloads/` is a downloads folder and may not survive; the
+  program never reads from it, only from `assets/`.
+* **`ui/appicon.py`'s rule: the smallest delivered PNG no smaller than the
+  size, scaled down whole; the SVG only above 500.** So 16, 20, 22, 24, 32,
+  40, 48 and 64 come from the 80; 128 from the 150; 256 and 500 from the
+  500; 512 and 1024 from the SVG. The 200 is never used by any size asked
+  for today and is committed so the rule has no gap if one is added. The
+  same `image()` feeds `setWindowIcon`, `tools/genicons.py`'s `.ico`,
+  `wish.png` and hicolor tree, and `packaging/geniconset.py`'s `.icns`, so
+  a pinned shortcut, Explorer, a GNOME panel and a Dock all match the
+  running window's button.
+* **Why the PNG and not the vector, kept as a test.** The rings are
+  hairline bitmaps in the SVG and Qt's renderer drops most of each below
+  48. Sampled at 72 points around the outer ring, the scaled 80 lights 72
+  of 72 at both 24 and 32; the SVG render lights 20 at 24 and 34 at 32.
+  `tests/test_appicon.py::test_the_ring_is_a_circle_at_the_taskbar_sizes`
+  asserts the shipped icon lights at least 60 and the SVG render fewer than
+  48, so the test fails if somebody simplifies the rule away, and fails the
+  other way if a later Qt learns to keep the rings and the rule stops being
+  needed.
+* **The package carries them**: four more `DATAS` rows in `wish.spec`, and
+  `tests/test_assets.py` fails for each PNG missing from that list, as it
+  did for the SVGs.
+
+`tools/taskbaricon.py --shipped` draws the result --
+`work/issue351/taskbar-shipped.png`, the icon at 16, 20, 24, 32, 48 and 256
+through `ui.appicon.image`, on a light taskbar and a dark one -- so what
+shipped can be looked at rather than described. Not yet seen on a Windows
+taskbar itself; that is Donald's to photograph.

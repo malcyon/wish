@@ -21,10 +21,15 @@ by hand. A choice that cannot be made by scaling a file he delivered is not a
 choice this sheet offers.
 
 **What he delivered** is read from `~/Downloads/wish_logo/` (or
-`$WISH_LOGO_DELIVERY`) and is not copied into the repository: three
-families -- `Marks/`, the pentacle alone; `Combo Marks/`, the pentacle with
-lettering; `Logos/`, the wide lockup -- each in Color, Black and White, each
-as an SVG and PNGs at 80, 150, 200 and 500 (the logos at 300x100, 600x200 and
+`$WISH_LOGO_DELIVERY`), and only the files the program uses are copied into
+the repository -- the two Color SVGs, and since Donald chose row B on
+2026-09-06 the four Color Mark PNGs, as `assets/logo/mark-N.png`, byte for
+byte. `--shipped` draws a one-row sheet of what `ui.appicon.image` now
+makes at the same sizes, from `assets/` and not from the delivery, so what
+shipped can be looked at the way the candidates were. Three families --
+`Marks/`, the pentacle alone; `Combo Marks/`, the pentacle with lettering;
+`Logos/`, the wide lockup -- each in Color, Black and White, each as an SVG
+and PNGs at 80, 150, 200 and 500 (the logos at 300x100, 600x200 and
 1200x400). The two colour SVGs are byte-identical to `assets/logo/mark.svg`
 and `assets/logo/combo-mark-color.svg`. The logos are 3:1 and not square, so
 they are not taskbar candidates and are not drawn.
@@ -68,9 +73,9 @@ from PyQt6.QtGui import (  # noqa: E402
 )
 from PyQt6.QtSvg import QSvgRenderer  # noqa: E402
 
-#: Where the artist's delivery sits. Read in place, never copied in: the two
-#: files the program uses are already committed under `assets/logo/` and the
-#: rest are his to hand over when a choice is made.
+#: Where the artist's delivery sits. Read in place: the six files the program
+#: uses are committed under `assets/logo/`, the rest stay his, and nothing the
+#: program runs reads from here.
 DELIVERY = pathlib.Path(
     os.environ.get("WISH_LOGO_DELIVERY", "~/Downloads/wish_logo")).expanduser()
 
@@ -250,6 +255,39 @@ def rows() -> list[Row]:
     return out
 
 
+class ShippedRow(Row):
+    """What the window gets: `ui.appicon.image` at each size, drawn from the
+    committed copies under `assets/logo/` rather than from the delivery.
+    Row B was chosen on 2026-09-06 and this is row B as it ships; the sheet
+    it makes is a picture of the program's own icon and not of a candidate."""
+
+    def __init__(self) -> None:
+        super().__init__("B", "Marks", "Color", raster=True)
+
+    @property
+    def name(self) -> str:
+        return "Color Mark, as shipped (ui.appicon.image)"
+
+    def source(self, size: int) -> pathlib.Path:
+        from ui import appicon
+        return appicon.source(size)
+
+    def draw(self, size: int) -> QImage:
+        from ui import appicon
+        return appicon.image(size)
+
+    def what(self) -> str:
+        from ui import appicon
+        files = ", ".join(f"{s}" for s in sorted(appicon.RASTERS))
+        return (f"assets/logo/mark-N.png (N = {files}), the smallest no "
+                "smaller than the cell, scaled down; the SVG only above "
+                f"{max(appicon.RASTERS)}. Ground: {ground(self.draw(48))}.")
+
+
+def shipped_row() -> ShippedRow:
+    return ShippedRow()
+
+
 # --- the sheet -------------------------------------------------------------
 
 #: The theming question, in words, under the rows. Donald, 2026-09-06: *"If
@@ -299,6 +337,9 @@ def _on(image: QImage, taskbar: QColor, pad: int = 6) -> QImage:
 
 def sheet(the_rows: list[Row] | None = None) -> QImage:
     the_rows = rows() if the_rows is None else the_rows
+    # A sheet of only the shipped row is a picture of the program's icon,
+    # not of candidates, so it says so and leaves the theming question off.
+    shipped_only = all(isinstance(r, ShippedRow) for r in the_rows)
     columns = []       # (size, x, true-cell width, magnified width)
     x = LABEL_W
     for size in SIZES:
@@ -309,7 +350,7 @@ def sheet(the_rows: list[Row] | None = None) -> QImage:
     width = x
     header_h = 70
     row_h = 256 + ROW_PAD * 2 + 30
-    footer_h = 150
+    footer_h = 30 if shipped_only else 150
     height = header_h + row_h * len(the_rows) + footer_h
 
     out = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
@@ -326,6 +367,8 @@ def sheet(the_rows: list[Row] | None = None) -> QImage:
     painter.setPen(INK)
     painter.setFont(title)
     painter.drawText(QRectF(GAP, 8, width, 30),
+                     "Wish taskbar icon, as shipped: the artist's PNG "
+                     "exports, resized and nothing else" if shipped_only else
                      "Wish taskbar icon: every square mark the artist "
                      "delivered, resized and nothing else")
     painter.setFont(small)
@@ -367,11 +410,12 @@ def sheet(the_rows: list[Row] | None = None) -> QImage:
             painter.fillRect(QRectF(mx + half, y, big.width() - half,
                                     big.height()), TASKBAR_DARK)
             painter.drawImage(QPointF(mx, y), big)
-    painter.setFont(small)
-    painter.setPen(INK)
-    painter.drawText(QRectF(GAP, height - footer_h + 10, width - GAP * 2,
-                            footer_h - 10),
-                     int(Qt.TextFlag.TextWordWrap), FOOTER)
+    if not shipped_only:
+        painter.setFont(small)
+        painter.setPen(INK)
+        painter.drawText(QRectF(GAP, height - footer_h + 10, width - GAP * 2,
+                                footer_h - 10),
+                         int(Qt.TextFlag.TextWordWrap), FOOTER)
     painter.end()
     return out
 
@@ -400,14 +444,18 @@ def main(argv: list[str]) -> int:
         for family, colourway, g24, g32 in measure():
             print(f"{family:13s} {colourway:10s} {g24:6d}  {g32:6d}")
         return 0
-    out = pathlib.Path(argv[1] if len(argv) > 1
-                       else "work/issue351/taskbar-marks.png")
+    shipped = "--shipped" in argv
+    paths = [a for a in argv[1:] if not a.startswith("--")]
+    out = pathlib.Path(paths[0] if paths else
+                       "work/issue351/taskbar-shipped.png" if shipped else
+                       "work/issue351/taskbar-marks.png")
     out.parent.mkdir(parents=True, exist_ok=True)
-    image = sheet()
+    the_rows = [shipped_row()] if shipped else rows()
+    image = sheet(the_rows)
     if not image.save(str(out)):
         raise RuntimeError(f"could not write {out}")
     print(f"{out}  {image.width()}x{image.height()}")
-    for row in rows():
+    for row in the_rows:
         print(f"  {row.letter}. {row.name} -- {row.what()}")
     return 0
 

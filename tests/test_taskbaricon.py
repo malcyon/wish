@@ -15,6 +15,11 @@ done to it -- and the delivery on disk is unchanged afterwards.
 The delivery lives outside the repository (`~/Downloads/wish_logo/`, or
 `$WISH_LOGO_DELIVERY`), so every test that reads it skips where it is
 absent, which is CI. The two tests that need no delivery run everywhere.
+
+Row B is what shipped, and the four Color Mark PNGs it is scaled from are
+committed under `assets/logo/`; the last test here checks those are the
+delivery's bytes, so the copy the program reads cannot quietly stop being
+what the artist sent.
 """
 
 import hashlib
@@ -104,3 +109,27 @@ def test_drawing_the_sheet_leaves_the_delivery_alone(app):
     image = taskbaricon.sheet()
     assert image.width() > 1500 and image.height() > 1500
     assert _digests() == before
+
+
+@delivered
+def test_the_committed_pngs_are_the_delivered_pngs():
+    """`assets/logo/mark-N.png` is `Marks/Color/Color Mark NxN.png`, byte
+    for byte -- row B as delivered, copied and nothing else."""
+    from ui import appicon
+
+    for side, committed in appicon.RASTERS.items():
+        delivered_file = taskbaricon.png_path("Marks", "Color", side)
+        assert committed.read_bytes() == delivered_file.read_bytes(), (
+            f"{committed.name} is not {delivered_file.name}")
+
+
+def test_the_shipped_sheet_is_the_icon_the_window_gets(app):
+    """`--shipped` draws `ui.appicon.image` and nothing of its own: each
+    cell is the window's icon at that size, so the sheet under `work/` is
+    a picture of what ships rather than a picture of something like it."""
+    from ui import appicon
+
+    for size in taskbaricon.SIZES:
+        assert taskbaricon.shipped_row().draw(size) == appicon.image(size)
+    image = taskbaricon.sheet([taskbaricon.shipped_row()])
+    assert image.width() > 1500 and image.height() > 256

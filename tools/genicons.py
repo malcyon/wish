@@ -3,16 +3,19 @@
     .venv/bin/python tools/genicons.py            # rewrite assets/
     .venv/bin/python tools/genicons.py --check    # is assets/ in step?
 
-Offscreen, through `ui.iconpaint`, exactly as `tools/iconsheet.py` renders the
-sheet: `ui/icons.py` is the vector source and this is a size-tuned export of
-it, so the icon on the taskbar can never drift from the glyph the map and the
-roster paint. Nothing here is drawn by hand.
+Offscreen, through `ui.appicon`, which is also what `setWindowIcon` gets: the
+artist's files under `assets/logo/` are the source and this is a size-tuned
+export of them, so a pinned shortcut can never drift from the running
+window's taskbar button. Nothing here is drawn by hand.
 
-**Every size is rendered, not scaled.** Windows picks the entry nearest the
-size it wants and bilinearly scales when it has to, so a `.ico` holding only a
-256 gives mush at 16 -- and 16 is the title bar, Alt-Tab and Explorer's list
-view. 20, 24 and 40 are the same slots at 125 %, 150 % and 250 % display
-scaling, which Windows asks for rather than rounding to 16 or 32.
+**Every size is made on its own, not scaled from another size of ours.**
+Windows picks the entry nearest the size it wants and bilinearly scales when
+it has to, so a `.ico` holding only a 256 gives mush at 16 -- and 16 is the
+title bar, Alt-Tab and Explorer's list view. 20, 24 and 40 are the same slots
+at 125 %, 150 % and 250 % display scaling, which Windows asks for rather than
+rounding to 16 or 32. What each size is made *from* is `ui.appicon.image`'s
+rule -- the artist's smallest PNG no smaller than it, his SVG only above 500
+-- and the reason is written there.
 
 **The `.ico` container is written here**, in `ico_bytes`, rather than by a
 library. Not for the fun of it: a `.ico` wants a 32-bit DIB for the small
