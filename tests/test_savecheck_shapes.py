@@ -207,15 +207,24 @@ def test_a_figure_facing_the_other_way_is_the_same_nine_bitmaps_turned_over():
     turned = savecheck.mirrored(want, colours[:9])
     charset_at = {0xD000 // 8 + 0x5E + n: bits
                   for n, bits in enumerate(turned)}
+    # The colour block the engine puts in colour RAM for a mirrored figure
+    # is the save's own nine hues with the cells reversed row by row, not
+    # bit-reversed the way a bitmap is -- a colour just moves to the cell
+    # next to it.
+    screen_colours = bytearray(1000)
+    for cell, hue in enumerate(colours[:9]):
+        row, col = divmod(cell, 3)
+        screen_colours[(1 + row) * 40 + 1 + (2 - col)] = hue
 
     sess = FakeSession(floor_codes([(1, 1, 0x5E)]),
-                       FakeMonitor(charset_at, bytes(1000)))
+                       FakeMonitor(charset_at, bytes(screen_colours)))
     found = savecheck.icon_evidence(sess, bytes(36), slots=slots,
                                     charset=charset)
 
     figure = found["figures"][0]
     assert figure["best"] == 9
     assert figure["exact"] == [(0, 0, "mirrored")]
+    assert figure["exact_colours"] == [(0, 0, "mirrored")]
 
 
 def test_a_hi_res_cell_is_not_turned_over_in_pairs():

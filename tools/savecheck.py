@@ -615,12 +615,13 @@ def figure_reading(row: int, col: int, block: bytes, drawn: list[bytes],
             codes = shape[pose * 9:pose * 9 + 9]
             hues = colour[pose * 9:pose * 9 + 9]
             want = [glyph_of(charset, code) for code in codes]
-            for kind, cells in (("plain", want),
-                                ("mirrored", mirrored(want, hues))):
+            for kind, cells, want_hues in (
+                    ("plain", want, hues),
+                    ("mirrored", mirrored(want, hues), mirrored_colours(hues))):
                 same = sum(1 for a, b in zip(drawn, cells) if a == b)
                 scored.append({"slot": entry["slot"], "pose": pose,
                                "kind": kind, "glyphs": same,
-                               "colours": hues == colours})
+                               "colours": want_hues == colours})
     best = max((s["glyphs"] for s in scored), default=0)
     return {
         "row": row, "col": col, "code": block[0],
@@ -666,6 +667,21 @@ def mirrored(cells: list[bytes], colours: bytes) -> list[bytes]:
         row, col = divmod(cell, 3)
         out[row * 3 + (2 - col)] = turned
     return out
+
+
+def mirrored_colours(hues: bytes) -> bytes:
+    """The save's own nine hues, in the cells a mirrored figure draws them.
+
+    A colour is one nibble per cell copied straight to colour RAM (#339): it
+    moves to the cell across the row from it, the same 3x3 transform
+    `mirrored` applies to the glyph cells, but nothing about the nibble
+    itself reverses the way a bitmap's bits do.
+    """
+    out = bytearray(len(hues))
+    for cell, hue in enumerate(hues):
+        row, col = divmod(cell, 3)
+        out[row * 3 + (2 - col)] = hue
+    return bytes(out)
 
 
 def watch_turns(seen: list, evidence=None) -> object:
