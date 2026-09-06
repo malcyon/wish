@@ -11,7 +11,7 @@ and 20 and 40 between. Nothing in `automap/` changes; the square is drawn
 here, through one function, and `automap/window.py` takes whichever look he
 picks afterwards.
 
-    tools/combatbarsheet.py                    # everything, under work/reports/345/bars/
+    tools/combatbarsheet.py                    # everything, under work/345/bars/
     tools/combatbarsheet.py --out work/x/      # somewhere else
 
 What comes out:
@@ -479,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Draw the combat square as a letter over a health bar, "
                     "three ways, at every cell the canvas paints.")
-    ap.add_argument("--out", default="work/reports/345/bars", metavar="DIR",
+    ap.add_argument("--out", default="work/345/bars", metavar="DIR",
                     help="where the PNGs go (default: %(default)s)")
     ap.add_argument("--no-canvas", action="store_true",
                     help="skip the real-canvas shots (no fixtures needed)")

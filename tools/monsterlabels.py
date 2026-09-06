@@ -16,7 +16,7 @@ Our judgement rather than the game's data, so it is committed.
 
     tools/monsterlabels.py                       # the report, to the terminal
     tools/monsterlabels.py --propose             # add a draft row for every name the YAML lacks
-    tools/monsterlabels.py --markdown work/reports/345/monster-labels.md
+    tools/monsterlabels.py --markdown work/345/monster-labels.md
 
 **`--propose` writes a first guess so he is correcting rather than starting
 from nothing.** The guess is the first letter of each word, skipping ordinals,
