@@ -200,24 +200,39 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
 
     `title` is a `goldbox.games.Game.key` such as
     `"secret-of-the-silver-blades"`, and `size` is `"small"` or `"large"`.
-    With neither, or a title that names no `overrides:` section of its own,
-    this is exactly the base table every conversion has always read (#330).
-    Where a title's own section names a row, its `c64` replaces the base
-    table's for that DOS index only; every other row is untouched.
+    With neither, this is exactly the base table every conversion has
+    always read (#330). Where a title's own `overrides:` section names a
+    row, its `c64` replaces the base table's for that DOS index only; every
+    other row is untouched.
 
     **The base tables serve both sizes**, which is right for all but a
     handful of rows: the C64 draws a small character from a 28-weapon and
     14-head list where a large one has 35 and 23, and the shared designs are
     redrawn rather than scaled. So a row chosen against the large picture
-    can be the wrong answer for a halfling, and a title's section may hold a
-    `small:` or `large:` subsection for those. A size-specific row wins over
-    a size-free one in the same section.
+    can be the wrong answer for a halfling, and the base table carries a
+    top-level `small:` or `large:` section for those, applying to every
+    title alike -- Curse ships the identical art to Pool of Radiance's and
+    Silver Blades' own redraws change none of these answers (#330, #335).
+    A title's own `overrides:` section may hold a `small:` or `large:`
+    subsection too, for a row that is only right for *that* title at one
+    size. Either way, a size-specific row wins over a size-free one at the
+    same level.
 
-    **The section is no longer empty and no caller passes `title` yet**, so
-    a converted Silver Blades character still gets the base table's row.
+    **The merge order is base, then base size, then title, then title
+    size** -- each level replacing only the rows it names, so a row no
+    level touches keeps whatever the level below it said. With no `size`
+    given, neither size section is applied, which keeps `dos_icon_tables()`
+    with no arguments meaning exactly what it has always meant.
+
+    **No caller passes `title` or `size` yet.** `IconParts.dos_icon` knows
+    its own character's size -- it is a parameter of that method -- but
+    calls `dos_icon_tables()` with neither, so today's base weapons and
+    heads reach every conversion (moving them out of a per-title override
+    is what made that happen, #130) while the base table's own `small:`
+    section does not, any more than a title's `overrides:` section does.
     Donald picked Silver Blades' head 10 on 2026-09-05 and it reaches a
     document but not a conversion; giving `_icon_for` in `goldbox/dos.py`
-    the title it is composing for is the rest of
+    the title and size it is composing for is the rest of
     `#335 (Two combat-figure rows describe Pool of Radiance's art, and
     Silver Blades draws those two options differently)`.
     """
@@ -230,6 +245,12 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
             f"figure has no C64 option to become") from exc
     weapons = {int(k): v["c64"] for k, v in data["weapons"].items()}
     heads = {int(k): v["c64"] for k, v in data["heads"].items()}
+    if size:
+        base_size = data.get(size) or {}
+        weapons.update({int(k): v["c64"]
+                        for k, v in (base_size.get("weapons") or {}).items()})
+        heads.update({int(k): v["c64"]
+                      for k, v in (base_size.get("heads") or {}).items()})
     override = (data.get("overrides") or {}).get(title) if title else None
     if override:
         #: A title's section may name rows directly -- those apply at both

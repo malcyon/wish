@@ -153,6 +153,30 @@ DOS_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
              "secret-of-the-silver-blades")
 
 
+def load_base_sizes(path: pathlib.Path = TABLE_PATH,
+                    ) -> dict[str, tuple[Table, Table]]:
+    """The base table's own `small:`/`large:` sections.
+
+    `{"small": (weapons, heads), "large": (weapons, heads)}`, reaching every
+    title alike -- unlike a title's own `overrides:` section, which is read
+    by `load_overrides`. Empty tables where the base holds no rows for that
+    size, which today is `large:` (only `heads[1]` needed a size-specific
+    row, and it turned out to hold at both sizes, so it moved into the base
+    `heads:` table instead).
+    """
+    data = yaml.safe_load(path.read_text())
+    out: dict[str, tuple[Table, Table]] = {}
+    for size in ("small", "large"):
+        section = data.get(size) or {}
+        out[size] = (
+            {int(k): row["c64"]
+             for k, row in (section.get("weapons") or {}).items()},
+            {int(k): row["c64"]
+             for k, row in (section.get("heads") or {}).items()},
+        )
+    return out
+
+
 def load_overrides(path: pathlib.Path = TABLE_PATH,
                    ) -> dict[str, dict[str, Table]]:
     """The `overrides:` section: `{title: {"weapons": {...}, "heads": {...}}}`.
@@ -164,7 +188,8 @@ def load_overrides(path: pathlib.Path = TABLE_PATH,
     options differently)`.  This is `--markdown`'s own reading of the
     section, for saying in a title's document whether a row is still the
     base table's; `goldbox.iconparts.dos_icon_tables` is the reader the
-    conversion itself uses.
+    conversion itself uses.  It does not read the base table's own
+    `small:`/`large:` sections -- `load_base_sizes` does that.
     """
     data = yaml.safe_load(path.read_text())
     out: dict[str, dict[str, Table]] = {}
@@ -184,9 +209,10 @@ def tables_for_title(title: str, path: pathlib.Path = TABLE_PATH,
                      size: str | None = None) -> tuple[Table, Table]:
     """This title's own weapon and head tables, with its override applied.
 
-    The base tables plus whatever `load_overrides` names for `title` -- the
-    same merge `goldbox.iconparts.dos_icon_tables` makes for the conversion,
-    so a title's document shows the C64 option a save of that title would
+    The base tables, then the base's own size section, then whatever
+    `load_overrides` names for `title` -- the same four-level merge
+    `goldbox.iconparts.dos_icon_tables` makes for the conversion, so a
+    title's document shows the C64 option a save of that title would
     actually become. Takes `path` itself, rather than reading the
     module-level `WEAPONS`/`HEADS`, so it can be pointed at a table other
     than `tools/iconproposal.yaml` in a test.
@@ -195,6 +221,10 @@ def tables_for_title(title: str, path: pathlib.Path = TABLE_PATH,
     overrides = load_overrides(path)
     weapons = dict(weapons)
     heads = dict(heads)
+    if size:
+        base_weapons, base_heads = load_base_sizes(path)[size]
+        weapons.update(base_weapons)
+        heads.update(base_heads)
     #: Size-free rows first, then this size's, so a `small:` row wins over a
     #: row the same section names for both -- the order
     #: `goldbox.iconparts.dos_icon_tables` merges in.

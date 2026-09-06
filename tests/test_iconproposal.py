@@ -207,16 +207,35 @@ def test_load_overrides_keeps_a_size_section_apart_from_the_rest(tmp_path):
 
 def test_a_title_with_no_override_of_its_own_gets_the_base_tables_unchanged():
     """The property a title's document relies on to say "nothing here needs
-    judging" -- read against the real `tools/iconproposal.yaml`, so it holds
-    whatever Donald has put in the section rather than only while it is
-    empty."""
-    overridden = ip.load_overrides()
-    plain = [t for t in ip.DOS_TITLES if not any(overridden.get(t, {}).values())]
-    assert plain, "every title now has an override; this test needs one without"
-    for title in plain:
-        weapons, heads = ip.tables_for_title(title)
-        assert weapons == ip.WEAPONS, title
-        assert heads == ip.HEADS, title
+    judging".
+
+    Read against a table of its own rather than the real
+    `tools/iconproposal.yaml`. It used to read the real file and find a
+    title with no section -- which worked while the section was nearly
+    empty and stopped working the moment every title had one. A test that
+    depends on Donald not having filled something in is a test that expires,
+    and this rule does not: whatever the file holds, a title the section
+    does not name gets the base tables unchanged.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "table.yaml"
+        path.write_text(
+            "weapons:\n  0: {c64: 1}\n  7: {c64: 9}\n"
+            "heads:\n  0: {c64: 3}\n"
+            "colours:\n"
+            + "".join(f"  {i}: {{c64: {i % 8}}}\n" for i in range(16))
+            + "overrides:\n  pool-of-radiance:\n"
+              "    weapons:\n      7: {c64: 2}\n")
+        base_w, _, base_h, _, _ = ip.load_tables(path)
+        for title in ip.DOS_TITLES:
+            weapons, heads = ip.tables_for_title(title, path)
+            if title == "pool-of-radiance":
+                assert weapons[7] == 2, title
+                continue
+            assert weapons == base_w, title
+            assert heads == base_h, title
 
 
 def test_a_title_with_an_override_gets_those_rows_and_no_others_changed():
@@ -255,6 +274,168 @@ def test_tables_for_title_applies_a_titles_own_override_and_only_that_row(
     # A different title's own section, if any, must never leak into this one.
     assert ip.tables_for_title("curse-of-the-azure-bonds", path) == (
         base_weapons, base_heads)
+
+
+# -- the base table's restructure: sixteen matched rows moved out of
+# `overrides: pool-of-radiance:` (#130) --------------------------------------
+#
+# These sixteen used to sit under `overrides: pool-of-radiance:`, and Curse
+# and Silver Blades read them by inheriting that whole section through a
+# YAML merge (`<<: *pool`) -- not because either title's own art disagreed
+# with Pool of Radiance's, but because nothing had given the base tables a
+# size dimension yet. Ten of them only hold at the small size, so they moved
+# into a new top-level `small:` section that reaches every title; the other
+# seven weapons and one head hold at both sizes, so they replace the base
+# `weapons:`/`heads:` table's own row for that DOS index. These pin that the
+# move changed no title's answer.
+
+#: (kind, dos_index, expected c64 option) for the eight rows that hold at
+#: both sizes -- the seven weapons, and `heads[1]`, which used to live under
+#: `overrides: pool-of-radiance: large:`. `heads[1]` is checked at "large"
+#: and with no size only: it also has a small-specific row of its own (see
+#: `MOVED_TO_SMALL` below), which wins at the small size, so a small
+#: character never sees this row at all.
+MOVED_SIZE_FREE = [
+    ("weapons", 10, 11), ("weapons", 13, 19), ("weapons", 14, 11),
+    ("weapons", 21, 22), ("weapons", 23, 17), ("weapons", 26, 12),
+    ("weapons", 30, 29), ("heads", 1, 22),
+]
+
+#: (kind, dos_index, expected c64 option) for the eleven rows that only hold
+#: at the small size -- ten heads and one weapon, all now in the base
+#: table's own `small:` section.
+MOVED_TO_SMALL = [
+    ("weapons", 7, 2), ("heads", 0, 1), ("heads", 1, 0), ("heads", 2, 2),
+    ("heads", 3, 6), ("heads", 4, 4), ("heads", 7, 7), ("heads", 8, 13),
+    ("heads", 9, 8), ("heads", 10, 9), ("heads", 11, 3),
+]
+
+#: What a *large* character reads instead, at the same DOS indices as
+#: `MOVED_TO_SMALL` -- the base table's own row, pinned here so a future
+#: edit to the base table cannot make the "large is untouched" test agree
+#: with itself by accident.
+LARGE_INSTEAD_OF_SMALL = {
+    ("weapons", 7): 1, ("heads", 0): 5, ("heads", 1): 22, ("heads", 2): 21,
+    ("heads", 3): 3, ("heads", 4): 2, ("heads", 7): 9, ("heads", 8): 17,
+    ("heads", 9): 4, ("heads", 10): 15, ("heads", 11): 6,
+}
+
+
+@pytest.mark.parametrize("kind,dos_index,expected", MOVED_SIZE_FREE)
+def test_the_size_free_moved_rows_resolve_as_they_did_under_the_override(
+        kind, dos_index, expected):
+    """These seven weapons and this one head used to be Pool of Radiance's
+    `overrides:` rows, inherited by Curse and Silver Blades through
+    `<<: *pool`. They are now the base table's own row, read by every title
+    with no `overrides:` section to inherit from at all -- so the answer
+    must be the same for all three titles, at every size the row still
+    reaches (`heads[1]`'s own small-specific row wins at the small size,
+    so it is not checked there -- `MOVED_TO_SMALL` covers it instead)."""
+    sizes = ("large", None) if (kind, dos_index) == ("heads", 1) else (
+        "small", "large", None)
+    for title in ip.DOS_TITLES:
+        for size in sizes:
+            weapons, heads = ip.tables_for_title(title, size=size)
+            table = weapons if kind == "weapons" else heads
+            assert table[dos_index] == expected, (title, size, kind, dos_index)
+
+
+@pytest.mark.parametrize("kind,dos_index,expected", MOVED_TO_SMALL)
+def test_the_small_specific_moved_rows_reach_every_title_at_small_size(
+        kind, dos_index, expected):
+    """These used to live under `overrides: pool-of-radiance: small:`,
+    inherited by Curse and Silver Blades the same way. They are now the
+    base table's own `small:` section, read for every title alike --
+    except Secret of the Silver Blades' own head 10, which keeps its own
+    override at every size and is checked separately, below."""
+    titles = [t for t in ip.DOS_TITLES
+             if (kind, dos_index) != ("heads", 10)
+             or t != "secret-of-the-silver-blades"]
+    for title in titles:
+        weapons, heads = ip.tables_for_title(title, size="small")
+        table = weapons if kind == "weapons" else heads
+        assert table[dos_index] == expected, (title, kind, dos_index)
+
+
+@pytest.mark.parametrize("kind,dos_index,expected", MOVED_TO_SMALL)
+def test_a_large_character_reads_the_base_table_instead_of_the_small_row(
+        kind, dos_index, expected):
+    """The other half of the same property: a row that only holds at the
+    small size must not leak into a large character's table, for any
+    title -- again except Silver Blades' own head 10."""
+    titles = [t for t in ip.DOS_TITLES
+             if (kind, dos_index) != ("heads", 10)
+             or t != "secret-of-the-silver-blades"]
+    for title in titles:
+        weapons, heads = ip.tables_for_title(title, size="large")
+        table = weapons if kind == "weapons" else heads
+        assert table[dos_index] == LARGE_INSTEAD_OF_SMALL[(kind, dos_index)], (
+            title, kind, dos_index)
+
+
+def test_pool_of_radiance_and_curse_have_no_overrides_section_left():
+    """The restructure's whole point: neither title's corrections were ever
+    a per-title difference, so once they are in the base table neither
+    title needs an `overrides:` section at all -- only Secret of the Silver
+    Blades, whose head 10 really is its own art (#335)."""
+    data = yaml.safe_load(ip.TABLE_PATH.read_text())
+    assert set(data["overrides"]) == {"secret-of-the-silver-blades"}
+
+
+def test_the_small_section_is_a_base_level_key_not_a_titles_override():
+    """`small:` now lives beside `weapons:`/`heads:`, not under any title's
+    `overrides:` section -- the shape the restructure moved it to."""
+    data = yaml.safe_load(ip.TABLE_PATH.read_text())
+    assert "small" in data
+    assert set(data["small"]) <= {"weapons", "heads"}
+    #: The corrections that apply to every title live at the base. A title's
+    #: own section may still hold a size subsection -- Silver Blades' does,
+    #: for the one head it redraws at one size -- so what this pins is that
+    #: the shared `small:` is not duplicated into any title's override.
+    for title, section in data["overrides"].items():
+        base_rows = {k: v for k, v in section.items()
+                     if k in ("weapons", "heads")}
+        for size in ("small", "large"):
+            rows = (section.get(size) or {})
+            for kind, entries in rows.items():
+                shared = (data.get(size) or {}).get(kind) or {}
+                for dos_index in entries:
+                    assert dos_index not in shared or \
+                        entries[dos_index] != shared[dos_index], (
+                            f"{title}/{size} {kind} {dos_index} restates the "
+                            f"base, which is noise in a file a person reads")
+        assert set(section) <= {"weapons", "heads", "small", "large"}, title
+        del base_rows
+
+
+def test_silver_blades_head_ten_wins_for_silver_blades_and_only_silver_blades():
+    """The one row that stays a per-title override, since it is Secret of
+    the Silver Blades' own art and not Pool of Radiance's (#335).
+
+    **At the large size only, and that is measured rather than chosen.**
+    `docs/168-dos-dax-and-combat-icons.md` counted the four blocks Silver
+    Blades redraws: head 10 is one of them **at the large size**, and its
+    *small* head 10 is byte for byte Pool of Radiance's. So a small Silver
+    Blades character picked the same picture a Pool of Radiance player
+    picked and takes the same answer -- C64 head 9 from the base `small:`
+    section -- while a large one picked a head wearing a hat and takes
+    Donald's C64 head 2.
+
+    The restructure briefly made both sizes read 2, because the row named
+    no size. That was flagged rather than shipped, and scoping it to
+    `large:` is what the art measurement says.
+    """
+    _, large = ip.tables_for_title("secret-of-the-silver-blades",
+                                   size="large")
+    assert large[10] == 2
+    _, small = ip.tables_for_title("secret-of-the-silver-blades",
+                                   size="small")
+    assert small[10] == 9, "small head 10 is Pool of Radiance's own picture"
+    for title in ("pool-of-radiance", "curse-of-the-azure-bonds"):
+        _, small_heads = ip.tables_for_title(title, size="small")
+        _, large_heads = ip.tables_for_title(title, size="large")
+        assert small_heads[10] == 9, title
+        assert large_heads[10] == 15, title
 
 
 # -- comparing a title's own art against Pool of Radiance's (#330, #335) -----

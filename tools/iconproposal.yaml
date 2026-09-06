@@ -18,38 +18,51 @@
 # is composed as a large weapon under a small head, which the game accepts
 # (HOGARTH's icon on the player's own disks is such a mix).
 weapons:
-  0:  {c64: 0}         
-  1:  {c64: 26}        
-  2:  {c64: 10}            
-  3:  {c64: 23}                 
-  4:  {c64: 24}               
-  5:  {c64: 21}           
-  6:  {c64: 27}      
-  7:  {c64: 1}                
-  8:  {c64: 8}            
-  9:  {c64: 27}                
-  10: {c64: 5}                    
-  11: {c64: 25}          
-  12: {c64: 5}        
-  13: {c64: 5}         
-  14: {c64: 5}         
-  15: {c64: 27}            
-  16: {c64: 28}              
-  17: {c64: 2}            
-  18: {c64: 11}      
-  19: {c64: 13}  
-  20: {c64: 12}        
-  21: {c64: 3}    
-  22: {c64: 17}                    
-  23: {c64: 6}       
-  24: {c64: 3}                       
-  25: {c64: 9}           
-  26: {c64: 20}    
-  27: {c64: 34}      
-  28: {c64: 31}          
-  29: {c64: 32}      
-  30: {c64: 33}              
-  31: {c64: 30}       
+  0:  {c64: 0}
+  1:  {c64: 26}
+  2:  {c64: 10}
+  3:  {c64: 23}
+  4:  {c64: 24}
+  5:  {c64: 21}
+  6:  {c64: 27}
+  7:  {c64: 1}
+  8:  {c64: 8}
+  9:  {c64: 27}
+  10: {c64: 11}      # axe raised overhead, blade to the left; 11 is the
+                      # C64's one straight-bladed axe, 5 is a mace
+  11: {c64: 25}
+  12: {c64: 5}
+  13: {c64: 19}      # mace with a small round head; 19 is a knob on a
+                      # stick, 5 has a hammer-shaped head. Judgement
+  14: {c64: 11}      # axe on a long handle held up and back; 11 is the
+                      # axe, 5 is a mace. C64 4 has the same diagonal
+                      # pose but no visible blade
+  15: {c64: 27}
+  16: {c64: 28}
+  17: {c64: 2}
+  18: {c64: 11}
+  19: {c64: 13}
+  20: {c64: 12}
+  21: {c64: 22}      # shield held up front with no weapon showing, then
+                      # sword thrust level; 22 is that pair of poses,
+                      # 3 has the sword raised in the first
+  22: {c64: 17}
+  23: {c64: 17}      # pick raised straight up with shield; 17 is a
+                      # raised head on a stick with shield, 6 is a
+                      # spear held diagonally. Judgement
+  24: {c64: 3}
+  25: {c64: 9}
+  26: {c64: 12}      # axe raised high with shield; 12 is a raised
+                      # blade-left head with shield, 20 is a spear over
+                      # the shoulder -- 20 has the closer pose, 12 the
+                      # closer weapon. Judgement
+  27: {c64: 34}
+  28: {c64: 31}
+  29: {c64: 32}
+  30: {c64: 29}      # robed, holding a small thing at shoulder height,
+                      # then arm out empty; 29 does both, 33 shows a
+                      # staff held level
+  31: {c64: 30}
 
 # DOS head n -> C64 large head option. The C64 small list is 14 heads and its
 # large list 23; the DOS small heads are the large designs eight rows tall
@@ -57,20 +70,21 @@ weapons:
 # head is two cells of art on the C64 and ten rows on DOS, and half of them
 # differ by one band of pixels.
 heads:
-  0:  {c64: 5}    
-  1:  {c64: 2}    
-  2:  {c64: 21}   
-  3:  {c64: 3}        
-  4:  {c64: 2} 
-  5:  {c64: 1}                  
-  6:  {c64: 2}  
-  7:  {c64: 9}          
-  8:  {c64: 17}  
-  9:  {c64: 4}      
-  10: {c64: 15}       
-  11: {c64: 6}             
-  12: {c64: 13}     
-  13: {c64: 7}  
+  0:  {c64: 5}
+  1:  {c64: 22}      # hair with a small grey patch at the top back and
+                      # no cap; 22 has the same patch, 2 is a purple cap
+  2:  {c64: 21}
+  3:  {c64: 3}
+  4:  {c64: 2}
+  5:  {c64: 1}
+  6:  {c64: 2}
+  7:  {c64: 9}
+  8:  {c64: 17}
+  9:  {c64: 4}
+  10: {c64: 15}
+  11: {c64: 6}
+  12: {c64: 13}
+  13: {c64: 7}
 
 # EGA index -> C64 colour 0-7, the proposal of the colour comment on the
 # issue. Four of these are not the nearest colour by RGB: brown to yellow,
@@ -93,9 +107,60 @@ colours:
   14: {c64: 7}                        # yellow
   15: {c64: 1}                        # white
 
-# Per-title overrides (#330, #335). Curse of the Azure Bonds ships the
-# identical art in every row above and never appears here; a title appears
-# only where it actually redrew a DOS option's art, and holds only that row.
+# The base table serves every title, and it serves both sizes -- except for
+# the rows below, because the C64 draws a small character from a 28-weapon,
+# 14-head list where a large one has 35 and 23, and the shared designs are
+# redrawn rather than scaled, so a row chosen against the large picture can
+# be wrong for a dwarf, gnome or halfling. `small:` and `large:` hold the
+# rows that are only right at one size; a size-specific row wins over the
+# base table's size-free one, at any size it names, for every title alike
+# (#330, #335: Curse ships the identical art to Pool of Radiance's, and
+# Silver Blades' own redraws change none of the answers below).
+small:
+  weapons:
+    7: {c64: 2}        # Donald, 2026-09-05: "DOS weapon 7 should be
+                        # C64 weapon 2" for a small character. The base
+                        # table sends it to C64 weapon 1, which is the
+                        # answer for a large one.
+  # The small DOS heads lose most of the grey and magenta that mark a
+  # helmet or hat at the large size, so the base table's cap and hood
+  # rows are wrong in kind here, and a large head (15, 17, 21) composed
+  # on a small body reaches down to its belt. Every row below picks from
+  # the C64's own 14 small heads.
+  heads:
+    0: {c64: 1}        # Donald, 2026-09-05: "DOS head 0 = C64 head 1"
+                        # for a small character. The base table sends it
+                        # to C64 head 5.
+    1: {c64: 0}        # hair with a fringe, no cap at this size; 0 is
+                        # hair with a fringe, 2 is a purple cap.
+                        # Judgement between 0 and 5
+    2: {c64: 2}        # the large hood, drawn here as a solid covering;
+                        # 2 is the one small head wearing something,
+                        # 21 is a large hood on a small body
+    3: {c64: 6}        # hair with a plume curling up and back; 6 has
+                        # the curl, 3 is plain hair. Judgement
+    4: {c64: 4}        # hair with a tail out the back, no cap at this
+                        # size; 4 has a tail, 2 is a purple cap.
+                        # Judgement between 4 and 10
+    7: {c64: 7}        # hair with a tuft up at the back, no cap at
+                        # this size; 7 has the tuft, 9 has a black band
+                        # on top. Judgement
+    8: {c64: 13}       # long hair down the back; 13 is the longest of
+                        # the small heads, 17 is a large head
+    9: {c64: 8}        # nearly bald, one tuft at the top back; 8 is
+                        # that, 4 has a full head with a tail
+    10: {c64: 9}       # squared-off covering over the top and back;
+                        # 9 wears a band on top, 15 is a large head.
+                        # Judgement between 9 and 11
+    11: {c64: 3}       # bald; the C64 has no bald small head, 3 is a
+                        # thin line of hair, 6 has a curl
+
+# Per-title overrides (#330, #335). A title's section holds the rows where
+# its own picture, at the named size, wants a different C64 option from
+# both the base table above and its `small:`/`large:` sections -- a
+# genuine difference in that title's own art, not a correction every title
+# shares alike, which is what the base table and its size sections are for.
+# Secret of the Silver Blades is the only title with one today.
 #
 # Shape, one section per title key, each holding "weapons" and/or "heads"
 # exactly like the tables above:
@@ -110,11 +175,10 @@ colours:
 #                          # weapon where Pool of Radiance's draws one
 #
 # A title's section may name rows directly -- those apply at both sizes --
-# and may hold a "small:" or "large:" section for rows that are only right at
-# one of them. The C64 draws a small character from a 28-weapon, 14-head list
-# where a large one has 35 and 23, and the shared designs are redrawn rather
-# than scaled, so a row chosen against the large picture can be wrong for a
-# dwarf, gnome or halfling. A size-specific row wins over a size-free one.
+# and may hold a "small:" or "large:" section of its own for a row that is
+# only right for that title at one size, the same way the base table's
+# `small:`/`large:` sections work. A size-specific row wins over a
+# size-free one in the same section.
 #
 #   overrides:
 #     <title key>:
@@ -122,24 +186,27 @@ colours:
 #       small:
 #         heads: {N: {c64: M}}     # small characters only
 #
-# Donald picked these on 2026-09-05; more rows are his to add.
+# Donald picked this row on 2026-09-05. Two more of his are in the `small:`
+# section above; the rest of both were proposed by a Claude agent the same
+# day, from the pictures in work/issue130/proposal*/ -- weapon first, then
+# pose, then shield -- and are his to accept, adjust or delete. "Judgement"
+# in a comment means two options looked as close.
 overrides:
-  pool-of-radiance:
-    small:
-      weapons:
-        7: {c64: 2}        # Donald, 2026-09-05: "DOS weapon 7 should be
-                           # C64 weapon 2" for a small character. The base
-                           # table sends it to C64 weapon 1, which is the
-                           # answer for a large one.
-      heads:
-        0: {c64: 1}        # Donald, 2026-09-05: "DOS head 0 = C64 head 1"
-                           # for a small character. The base table sends it
-                           # to C64 head 5.
   secret-of-the-silver-blades:
-    heads:
-      10: {c64: 2}         # Silver Blades draws a hat on this head where
+    large:
+      heads:
+        10: {c64: 2}       # Silver Blades draws a hat on this head where
                            # Pool of Radiance draws a bare one, so it wants
                            # a C64 head that wears something rather than
                            # head 15, which is hair and nothing on top.
                            # Donald, 2026-09-05: "The #10 DOS head should be
                            # matched with the #2 C64 head."
+                           #
+                           # Large only, and that is measured rather than
+                           # chosen: Silver Blades redraws this head at the
+                           # large size and its SMALL head 10 is byte for
+                           # byte Pool of Radiance's (docs/168, the four
+                           # redrawn blocks). A small character therefore
+                           # picked the same picture a Pool of Radiance
+                           # player picked, and takes the same answer --
+                           # C64 head 9 from the base small section.

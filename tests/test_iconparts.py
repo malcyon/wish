@@ -471,3 +471,85 @@ def test_a_size_specific_override_wins_and_only_at_that_size(tmp_path):
     other = iconparts.dos_icon_tables(table, title="curse-of-the-azure-bonds",
                                       size="small")
     assert (other.weapons[7], other.heads[0]) == (1, 5)
+
+
+# -- the base table's own small:/large: sections (#130) ----------------------
+#
+# Sixteen rows Donald had corrected under `overrides: pool-of-radiance:`
+# moved into the base tables and a new top-level `small:` section, because
+# none of them were ever a per-title difference -- every title's own art
+# agrees on all sixteen (#330, #335). These pin the mechanism that reads the
+# new section: applied only when `size` is given, and only ever a base-level
+# fact, never a title's own.
+
+def test_dos_icon_tables_applies_the_bases_own_small_section_when_asked(
+        tmp_path):
+    """The base table's `small:` section reaches every title -- unlike a
+    title's own `overrides:` section, it needs no `title` argument, only
+    `size`."""
+    path = _table_yaml(tmp_path, "small:\n  weapons:\n    0: {c64: 9}\n")
+    from goldbox.iconparts import dos_icon_tables
+
+    assert dos_icon_tables(path).weapons[0] == 0            # no size: base
+    assert dos_icon_tables(path, size="large").weapons[0] == 0
+    assert dos_icon_tables(path, size="small").weapons[0] == 9
+    #: reaches a title with no `overrides:` section of its own too
+    assert dos_icon_tables(path, title="secret-of-the-silver-blades",
+                           size="small").weapons[0] == 9
+
+
+def test_a_titles_own_override_wins_over_the_bases_small_section(tmp_path):
+    """A title's own row is more specific than the shared `small:` section
+    and must win wherever the two happen to name the same DOS index -- the
+    order `#335`'s Silver Blades head 10 relies on, now the base table has
+    a `small:` section of its own to compete with a title's row."""
+    path = _table_yaml(
+        tmp_path,
+        "small:\n  heads:\n    0: {c64: 9}\n"
+        "overrides:\n  secret-of-the-silver-blades:\n"
+        "    heads:\n      0: {c64: 3}\n")
+    from goldbox.iconparts import dos_icon_tables
+
+    mine = dos_icon_tables(path, title="secret-of-the-silver-blades",
+                          size="small")
+    assert mine.heads[0] == 3                    # title beats base small
+    other = dos_icon_tables(path, title="pool-of-radiance", size="small")
+    assert other.heads[0] == 9                   # untouched by the title row
+
+
+def test_dos_icon_tables_with_no_size_ignores_the_bases_own_sections(
+        tmp_path):
+    """The other half of `#130`'s contract: with no `size`, neither the
+    base table's own size section nor a title's applies -- the same rule
+    `dos_icon_tables()` with no arguments has always followed for a
+    title's `overrides:` section."""
+    path = _table_yaml(tmp_path,
+                       "small:\n  weapons:\n    0: {c64: 9}\n"
+                       "large:\n  weapons:\n    1: {c64: 8}\n")
+    from goldbox.iconparts import dos_icon_tables
+
+    untitled = dos_icon_tables(path)
+    assert untitled.weapons[0] == 0 and untitled.weapons[1] == 1
+    assert dos_icon_tables(path, title="pool-of-radiance").weapons == (
+        untitled.weapons)
+
+
+def test_iconproposal_and_iconparts_agree_on_every_title_and_size():
+    """`tools/iconproposal.py`'s own merge, which a document is drawn from,
+    and `goldbox.iconparts.dos_icon_tables`'s, which a conversion reads,
+    must never diverge -- a document that shows one answer and a conversion
+    that makes another would be worse than either alone being wrong."""
+    import sys
+
+    from goldbox.iconparts import dos_icon_tables
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
+                          / "tools"))
+    import iconproposal as ip
+
+    for title in ip.DOS_TITLES:
+        for size in (None, "small", "large"):
+            mine = dos_icon_tables(title=title, size=size)
+            weapons, heads = ip.tables_for_title(title, size=size)
+            assert mine.weapons == weapons, (title, size)
+            assert mine.heads == heads, (title, size)
