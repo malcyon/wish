@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConvertDialog</class>
+ <widget class="QDialog" name="ConvertDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>680</width>
+    <height>480</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string></string>
+  </property>
+  <layout class="QVBoxLayout" name="outer_layout" stretch="0,1,0">
+   <item>
+    <layout class="QFormLayout" name="form">
+     <item row="0" column="0">
+      <widget class="QLabel" name="label_source"/>
+     </item>
+     <item row="0" column="1">
+      <layout class="QHBoxLayout" name="source_row" stretch="1,0">
+       <item>
+        <widget class="QLabel" name="convert_source"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="convert_choose_source"/>
+       </item>
+      </layout>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="label_to"/>
+     </item>
+     <item row="1" column="1">
+      <widget class="QComboBox" name="convert_destination"/>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="label_game"/>
+     </item>
+     <item row="2" column="1">
+      <layout class="QHBoxLayout" name="game_row" stretch="1,0">
+       <item>
+        <widget class="QLabel" name="convert_game"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="convert_choose_game"/>
+       </item>
+      </layout>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="label_folder"/>
+     </item>
+     <item row="3" column="1">
+      <layout class="QHBoxLayout" name="folder_row" stretch="1,0">
+       <item>
+        <widget class="QLabel" name="convert_folder"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="convert_choose_folder"/>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="convert_report">
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttons">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttons</sender>
+   <signal>accepted()</signal>
+   <receiver>ConvertDialog</receiver>
+   <slot>accept()</slot>
+  </connection>
+  <connection>
+   <sender>buttons</sender>
+   <signal>rejected()</signal>
+   <receiver>ConvertDialog</receiver>
+   <slot>reject()</slot>
+  </connection>
+ </connections>
+</ui>

@@ -36,9 +36,11 @@ from types import SimpleNamespace
 
 import pytest
 from gamedata import disk_dir
+from PyQt6.QtWidgets import QApplication, QDialog
 from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
+from editor.window import EditorBinding
 from goldbox import dos, dos_layout, dos_savegame, games
 from goldbox.savegame import SaveGame0, SaveGame1
 
@@ -511,3 +513,432 @@ def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
     for name in written_names:
         assert (destination / name).read_bytes() == \
             (reference / name).read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# Step B of `work/reports/52-plan.md`: `ConvertDialog`, and the rows a
+# direction needs before Convert becomes pressable. Every test here drives
+# the dialog directly -- a fake `game_files` lookup, never a real picker --
+# so nothing here opens a window (`tests/conftest.py` forces
+# `QT_QPA_PLATFORM=offscreen`).
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def app():
+    """The session-wide application `tests/conftest.py` holds a reference to."""
+    return QApplication.instance() or QApplication([])
+
+
+def _make_root():
+    from PyQt6.QtWidgets import QWidget
+    return QWidget()
+
+
+def _synthetic_dos_folder(tmp_path, shape, slot="A", suffix="DAT",
+                          name="dos"):
+    """A folder just real enough for `Source.detect` to name its shape --
+    one `SAVGAM<slot>.<suffix>` and one right-sized `CHRDAT<slot>1.SAV`,
+    neither of them anything `goldbox.dos` could actually read. Every test
+    that uses this is testing the dialog's wiring, not the game
+    (`.claude/rules/testing.md`, "A specimen is only evidence if we know who
+    wrote it").
+    """
+    folder = tmp_path / name
+    folder.mkdir(exist_ok=True)
+    (folder / f"SAVGAM{slot}.{suffix}").write_bytes(b"\x00")
+    (folder / f"CHRDAT{slot}1.SAV").write_bytes(b"\x00" * shape.record_size)
+    return folder
+
+
+def _por_c64_disk(tmp_path, name="PORSAVEA.D64"):
+    """A real, readable Pool of Radiance C64 save disk."""
+    save0, save1 = _fixture_payloads()
+    disk = dos.save_disk(save0, save1)
+    path = tmp_path / name
+    path.write_bytes(disk.to_bytes())
+    return path
+
+
+def _no_disks(_game):
+    return None
+
+
+def test_a_pool_of_radiance_d64_lists_dos(tmp_path):
+    """A C64 source offers exactly the one registered C64 -> DOS row."""
+    path = _por_c64_disk(tmp_path)
+
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        assert dialog.source is not None and dialog.source.port == "c64"
+        labels = [dialog.ui.convert_destination.itemData(i)
+                 for i in range(dialog.ui.convert_destination.count())]
+        assert labels == ["dos"]
+    finally:
+        dialog.close()
+
+
+def test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot(
+        tmp_path):
+    """Picking `SAVGAMB.DAT` directly names slot B, with no slot row
+    anywhere in the dialog (`work/reports/52-plan.md`, step B: "one file
+    picker ... so there is no slot row")."""
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE,
+                                   slot="B")
+    dialog = convert.ConvertDialog(
+        str(folder / "SAVGAMB.DAT"), None, _no_disks)
+    try:
+        assert dialog.source is not None
+        assert dialog.source.port == "dos"
+        assert dialog.source.slot == "B"
+        labels = [dialog.ui.convert_destination.itemData(i)
+                 for i in range(dialog.ui.convert_destination.count())]
+        assert labels == ["c64"]
+    finally:
+        dialog.close()
+
+
+@pytest.mark.parametrize("shape", [dos_layout.CURSE_OF_THE_AZURE_BONDS,
+                                   dos_layout.SECRET_OF_THE_SILVER_BLADES],
+                        ids=lambda s: s.key)
+def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
+    """Both later titles convert now (`goldbox.dos.CONVERTS`), so the
+    dialog offers the Commodore 64 for either without an edit here."""
+    folder = _synthetic_dos_folder(tmp_path, shape)
+    dialog = convert.ConvertDialog(
+        str(folder / "SAVGAMA.DAT"), None, _no_disks)
+    try:
+        labels = [dialog.ui.convert_destination.itemData(i)
+                 for i in range(dialog.ui.convert_destination.count())]
+        assert labels == ["c64"]
+    finally:
+        dialog.close()
+
+
+def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
+    """The one title with no C64 port: the pane names the approved refusal
+    and the button never becomes pressable, with no destination offered and
+    then refused."""
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOLS_OF_DARKNESS,
+                                   suffix="PTY")
+    dialog = convert.ConvertDialog(
+        str(folder / "SAVGAMA.PTY"), None, _no_disks)
+    try:
+        assert dialog.ui.convert_destination.count() == 0
+        assert dialog.ui.convert_report.toPlainText() == convert.CANNOT_CONVERT
+        ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+        assert not ok.isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_the_game_files_row_is_shown_only_for_a_dos_destination(tmp_path):
+    """Hidden for the C64: the Game Disk folder preference already answers
+    it (`#52`'s plan, step B's row table)."""
+    path = _por_c64_disk(tmp_path)
+
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        assert dialog.direction.destination_port == "dos"
+        assert dialog.ui.form.isRowVisible(dialog.ui.game_row)
+        assert dialog.ui.label_game.text() == convert.LABEL_GAME
+    finally:
+        dialog.close()
+
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE,
+                                   slot="C", name="dos2")
+    dialog2 = convert.ConvertDialog(
+        str(folder / "SAVGAMC.DAT"), None, _no_disks)
+    try:
+        assert dialog2.direction.destination_port == "c64"
+        assert not dialog2.ui.form.isRowVisible(dialog2.ui.game_row)
+    finally:
+        dialog2.close()
+
+
+def test_the_c64_disks_are_looked_up_by_the_destination_title(tmp_path):
+    """With no party open and a Curse folder chosen, the game-files lookup
+    is asked for Curse's own title, never Pool of Radiance's --
+    `editor.window.EditorBinding.game_files_for`'s whole reason to exist
+    over `game_files_for_import`, which only ever asked for the open
+    party's title."""
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.CURSE_OF_THE_AZURE_BONDS)
+    seen = []
+
+    def fake_lookup(game):
+        seen.append(game.key)
+        return None
+
+    dialog = convert.ConvertDialog(
+        str(folder / "SAVGAMA.DAT"), None, fake_lookup)
+    try:
+        assert seen == [games.CURSE_OF_THE_AZURE_BONDS.key]
+        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISKS
+    finally:
+        dialog.close()
+
+
+def test_disk_candidates_picks_the_destination_pattern_not_the_open_partys(
+        tmp_path):
+    """`EditorBinding._disk_candidates`'s new `pattern` argument: a fake
+    disks folder holding both a `POOL*` and a `CURSE*` name, asked for each
+    in turn, answers only the one that matches (`work/reports/52-plan.md`
+    step B's own suggested test shape)."""
+    disks = tmp_path / "disks"
+    disks.mkdir()
+    (disks / "POOL1.D64").write_bytes(b"pool")
+    (disks / "CURSE1.D64").write_bytes(b"curse")
+
+    window = EditorBinding(_make_root(), disks=str(disks))
+    try:
+        assert window._disk_candidates(games.POOL_OF_RADIANCE.disk_glob) == \
+            [str(disks / "POOL1.D64")]
+        assert window._disk_candidates(
+            games.CURSE_OF_THE_AZURE_BONDS.disk_glob) == \
+            [str(disks / "CURSE1.D64")]
+    finally:
+        window.close()
+
+
+@needs_dos_saves
+def test_the_writes_block_names_the_full_path_before_the_button_is_enabled(
+        tmp_path):
+    """The pane says where the file would land, not only its name, so a
+    player never has to guess which folder Convert is about to write into --
+    and the button is enabled only once it does."""
+    path = _por_c64_disk(tmp_path)
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                   folder=str(destination),
+                                   game=str(_game_dir()))
+    try:
+        today = datetime.date.today().isoformat()
+        expected = str(destination / f"wish-{today}" / "SAVGAMA.DAT")
+        assert expected in dialog.ui.convert_report.toPlainText()
+        ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+        assert ok.isEnabled()
+    finally:
+        dialog.close()
+
+
+@needs_dos_saves
+@needs_disks
+def test_convert_writes_into_a_fresh_folder_and_a_second_the_same_day_gets_dash_2(
+        tmp_path, monkeypatch):
+    """The whole path, `EditorBinding.convert` end to end: nothing else in
+    the destination changes, and a second conversion the same day does not
+    collide with the first (`#52`'s 2026-09-04 ruling)."""
+    save_dir = _save_dir()
+    disks = disk_dir()
+    window = EditorBinding(_make_root(), disks=str(disks))
+    destination = tmp_path / "out"
+    destination.mkdir()
+    outside = destination / "leftover.txt"
+    outside.write_text("untouched")
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    try:
+        first = window.convert(source=str(save_dir / "SAVGAMA.DAT"),
+                               folder=str(destination))
+        second = window.convert(source=str(save_dir / "SAVGAMA.DAT"),
+                                folder=str(destination))
+    finally:
+        window.close()
+
+    today = datetime.date.today().isoformat()
+    assert (destination / f"wish-{today}").is_dir()
+    assert (destination / f"wish-{today}-2").is_dir()
+    assert outside.read_text() == "untouched"
+    assert first != second
+    assert not list((destination / f"wish-{today}").glob("*")) == []
+
+
+@needs_dos_saves
+@needs_disks
+def test_the_open_saves_unsaved_edits_cross(tmp_path, monkeypatch):
+    """Converting the save already open in the editor uses the bytes on
+    screen, edits included -- the same rule
+    `exports.Source.from_party` followed, ported here rather than argued
+    from plausibility."""
+    path = _por_c64_disk(tmp_path, name="open.d64")
+    window = EditorBinding(_make_root())
+    window.load(str(path))
+    assert window.party is not None
+
+    original = window.party.save0.to_bytes()
+    edited = bytearray(original)
+    edited[0] = (edited[0] + 1) % 256
+    window.party.save0 = window.party.save0.__class__.from_bytes(
+        bytes(edited), window.party.game)
+
+    game_dir = _game_dir()
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    try:
+        window.convert(source=str(path), folder=str(destination),
+                      game=str(game_dir))
+    finally:
+        window.close()
+
+    written = next((destination).glob("wish-*/SAVGAMA.DAT"))
+    assert written.read_bytes()[:1] != original[:1]
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_c64_destinations_result_is_the_party_on_screen_afterwards(
+        tmp_path, monkeypatch):
+    """After a DOS -> C64 write, the editor has the written disk open --
+    the same thing `File ▸ Open` would show, reached without a second click
+    (`work/reports/52-plan.md` step B: "for a C64 destination the editor
+    opens written[0]")."""
+    save_dir = _save_dir()
+    disks = disk_dir()
+    window = EditorBinding(_make_root(), disks=str(disks))
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    opened = []
+    window.opened.connect(opened.append)
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    try:
+        window.convert(source=str(save_dir / "SAVGAMA.DAT"),
+                      folder=str(destination))
+    finally:
+        pass
+
+    assert window.party is not None and window.party.is_save
+    assert window.party.game is games.POOL_OF_RADIANCE
+    assert len(opened) == 1
+    window.close()
+
+
+def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
+    """`.claude/rules/gui-text.md`: no memory address or file offset in
+    front of a player. Every pane state this module can reach with no real
+    game disks, checked at once."""
+    import re
+
+    hexish = re.compile(r"(?:0x[0-9A-Fa-f]+|\$[0-9A-Fa-f]{2,})")
+
+    states = []
+
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOLS_OF_DARKNESS,
+                                   suffix="PTY", name="pod")
+    d1 = convert.ConvertDialog(str(folder / "SAVGAMA.PTY"), None, _no_disks)
+    states.append(d1.ui.convert_report.toPlainText())
+    d1.close()
+
+    path = _por_c64_disk(tmp_path)
+    d2 = convert.ConvertDialog(str(path), None, _no_disks)
+    states.append(d2.ui.convert_report.toPlainText())
+    d2.close()
+
+    d3 = convert.ConvertDialog("", None, _no_disks)
+    states.append(d3.ui.convert_report.toPlainText())
+    d3.close()
+
+    for text in states:
+        assert not hexish.search(text), text
+
+
+def test_every_placeholder_string_ends_in_not_approved():
+    """The whole flag's first removal condition
+    (`work/reports/52-plan.md`): nobody ships this dialog with an
+    unapproved sentence in it and no way to find which one."""
+    placeholders = [
+        convert.MENU_CONVERT,
+        convert.DIALOG_TITLE,
+        convert.LABEL_SOURCE,
+        convert.LABEL_TO,
+        convert.SOURCE_TITLE,
+        convert.NO_GAME_FOLDER,
+        convert.CONVERTED_DOS,
+        *convert.DESTINATION_LABELS.values(),
+    ]
+    for text in placeholders:
+        assert text.endswith(" (NOT APPROVED)"), text
+
+    # `SOURCE_FILTER` is a Qt file-dialog filter, not a sentence: the marker
+    # has to sit before the final `(*)` pattern group or Qt reads it as the
+    # glob itself, so it carries the marker mid-string instead of at the
+    # end. Still checked, just not by `endswith`.
+    assert " (NOT APPROVED) " in convert.SOURCE_FILTER
+
+    # And the reused ones do *not* carry the marker, so the grep above is
+    # not vacuously true because every string in the module ends that way.
+    approved = [
+        convert.LABEL_GAME, convert.LABEL_FOLDER, convert.BUTTON_CHOOSE,
+        convert.BUTTON_CONVERT, convert.GAME_TITLE, convert.FOLDER_TITLE,
+        convert.NO_FOLDER, convert.CANNOT_CONVERT, convert.NO_DISKS,
+        convert.DROPPED_HEADING, convert.WRITES_HEADING,
+    ]
+    for text in approved:
+        assert not text.endswith(" (NOT APPROVED)"), text
+
+
+# ---------------------------------------------------------------------------
+# The flag -- `tests/test_dosimport.py:708-750`'s shape, ported: "the gate,
+# asserted from the outside" rather than a direct call to `enabled()`, so a
+# passing test also proves `wish/window.py`'s wiring and not only the
+# function. `_wish_window`/`_file_menu` are that file's private helpers,
+# copied rather than imported -- a subagent's files may not import another
+# test module's private helpers across `#52`'s lane
+# (`work/reports/52-plan.md`).
+# ---------------------------------------------------------------------------
+
+def _wish_window(tmp_path, monkeypatch):
+    """A window with nothing to attach to. The caller closes it."""
+    from wish.session import Session
+    from wish.window import WishWindow
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    # Nothing answering, and nothing looked for: a menu test must not go
+    # probing the ports a human's own game session is on.
+    return WishWindow(maps={}, session=Session(find=lambda pref=None: None))
+
+
+def _file_menu(window):
+    return next(a.menu() for a in window.menuBar().actions()
+               if a.text() == "&File")
+
+
+def test_convert_is_not_offered_unless_it_is_asked_for(app, tmp_path,
+                                                       monkeypatch):
+    """No menu entry, not a greyed one -- `convert.ENV` unset is the shipped
+    state."""
+    monkeypatch.delenv(convert.ENV, raising=False)
+    window = _wish_window(tmp_path, monkeypatch)
+    assert convert.MENU_CONVERT not in [a.text()
+                                        for a in _file_menu(window).actions()]
+    assert window.convert_action is None
+    window.close()
+
+
+def test_a_variable_somebody_forgot_does_not_turn_convert_on(app, tmp_path,
+                                                             monkeypatch):
+    """`0` and `off` are off, the same rule `wish/debugmode.py` follows."""
+    for value in ("", "0", "off", "no"):
+        monkeypatch.setenv(convert.ENV, value)
+        window = _wish_window(tmp_path, monkeypatch)
+        assert convert.MENU_CONVERT not in [
+            a.text() for a in _file_menu(window).actions()], value
+        window.close()
+
+
+def test_the_file_menu_carries_convert_when_asked_for(app, tmp_path,
+                                                      monkeypatch):
+    monkeypatch.setenv(convert.ENV, "1")
+    window = _wish_window(tmp_path, monkeypatch)
+    assert convert.MENU_CONVERT in [a.text()
+                                    for a in _file_menu(window).actions()]
+    assert window.convert_action.text() == convert.MENU_CONVERT
+    window.close()

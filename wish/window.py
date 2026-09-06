@@ -190,6 +190,28 @@ class WishWindow(QMainWindow):
             action.triggered.connect(lambda _checked=False, s=slot: s())
             menu.addAction(action)
 
+        # One entry for every direction the registry holds, rather than a
+        # submenu per port -- `#52 (File ▸ Import and File ▸ Export for
+        # every direction the library supports)`'s 2026-09-02 ruling. Never
+        # greyed: what varies is the destination list *inside* the dialog
+        # (`editor.convert.destinations_for`), so a save with nothing to
+        # convert to shows the approved refusal rather than a disabled menu
+        # item nobody can explain.
+        #
+        # Built only when `WISH_EXPERIMENTAL_CONVERT` says so -- see
+        # `editor/convert.py`, where every placeholder string still ends in
+        # ` (NOT APPROVED)`. Replaces `WISH_EXPERIMENTAL_DOS_IMPORT` and
+        # `WISH_EXPERIMENTAL_EXPORT` below, which stay until `#52`'s step 5
+        # removes the two submenus they gate.
+        from editor import convert
+        self.convert_action = None
+        if convert.enabled():
+            convert_action = QAction(convert.MENU_CONVERT, self)
+            convert_action.triggered.connect(
+                lambda _checked=False: self.editor.convert())
+            menu.addAction(convert_action)
+            self.convert_action = convert_action
+
         # A submenu with one item in it, because the thing it imports is one
         # of several ports and the next one goes beside it rather than growing
         # the File menu another top-level verb.

@@ -908,6 +908,56 @@ class EditorBinding(QObject):
                            "%s and %s", icon_disk, animate_disk)
             return None
 
+    def game_files_for(self, game):
+        """The icon, `ANIMATE00` and the creation menu a conversion into
+        `game` needs, or `None` for the first two.
+
+        `game_files_for_import` above answers the same question for the
+        *open* party's title; this is `#52 (File ▸ Import and File ▸ Export
+        for every direction the library supports)`'s `ConvertDialog`'s own
+        version, which asks for the **destination**'s disks instead. Three
+        C64 titles convert now (`editor.convert.DIRECTIONS`), so a Curse DOS
+        save converted with a Pool of Radiance party open -- or none open at
+        all -- has to read `ANIMATE00` off a `CURSE*` disk, not a `POOL*`
+        one; `_disk_candidates`'s `pattern` argument is what makes that
+        possible without it caring what, if anything, is open.
+
+        Portrait tables are asked for only when `game` is Pool of Radiance:
+        `#300 (A Curse or Silver Blades party imported to the C64 arrives
+        with no sheet portrait, because the creation menu is read only off a
+        POOL<n>.D64)` established that Curse and Silver Blades draw no sheet
+        face at all, so `portraits=None` is the right answer for them and
+        not a loss.
+        """
+        from goldbox import dos, games
+        from goldbox.d64 import load_payload
+        from goldbox.portraits import PortraitError, tables_from_disks
+
+        from .dosimport import GameFiles
+
+        def read_animate(disk):
+            return load_payload(disk, dos.ANIMATE_FILE)
+
+        pattern = game.disk_glob
+        icon_disk = self._find_disk(IconParts.load, pattern)
+        animate_disk = self._find_disk(read_animate, pattern)
+        if icon_disk is None or animate_disk is None:
+            return None
+        portraits = None
+        if self.disks and game.key == games.POOL_OF_RADIANCE.key:
+            try:
+                portraits = tables_from_disks(self.disks)
+            except (PortraitError, OSError) as exc:
+                _log.debug("no creation menu off %s: %s", self.disks, exc)
+        try:
+            return GameFiles(icon=IconParts.load(icon_disk),
+                             animate=read_animate(animate_disk),
+                             portraits=portraits)
+        except Exception:
+            _log.exception("could not read the conversion's game files off "
+                           "%s and %s", icon_disk, animate_disk)
+            return None
+
     def import_dos_save(self, folder: str | None = None) -> str:
         """File > Import > DOS Save Folder… Returns what happened, for a test."""
         from goldbox import dos
@@ -960,6 +1010,69 @@ class EditorBinding(QObject):
         party = Party("", game=conversion.game, disk=conversion.disk)
         self._adopt(party, path, note=note, dirty=True)
         return note or ""
+
+    # -- converting ---------------------------------------------------------
+
+    def convert(self, source: str | None = None, destination: str | None = None,
+               folder: str | None = None, game: str | None = None) -> str:
+        """File ▸ Convert… Returns what happened, for a test.
+
+        `source`, `destination`, `folder` and `game` pre-fill the dialog's
+        rows the way `import_dos_save(folder=...)` pre-fills its one row --
+        given every argument, no picker ever opens, which is how a test
+        drives the whole path (`work/reports/52-plan.md` step C). The write
+        itself happens here rather than inside `ConvertDialog`, the same
+        split `import_dos_save` keeps between rehearsing (the dialog) and
+        committing (this method): `fresh_folder` names a folder and
+        `mkdir()`s it immediately afterwards (the review of `a60e829`: it
+        names a folder, it does not reserve one), then `Direction.write`
+        puts the files in it. A C64 destination is opened afterwards the
+        same way `File ▸ Open` opens anything; a DOS destination is not
+        something the editor can show, so it only gets a status line.
+        """
+        from editor import convert as convert_mod
+
+        if source is None:
+            path, _ = QFileDialog.getOpenFileName(
+                self.root, convert_mod.SOURCE_TITLE,
+                files.open_start_dir(self.last_save_folder, self.path,
+                                     self.saves_folder),
+                convert_mod.SOURCE_FILTER)
+            if not path:
+                return "cancelled"
+            source = path
+
+        dialog = convert_mod.ConvertDialog(
+            source, self.party, self.game_files_for,
+            destination=destination, game=game, folder=folder,
+            parent=self.root,
+            start_dir=files.open_start_dir(self.last_save_folder, self.path,
+                                           self.saves_folder))
+        while True:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return "cancelled"
+            if dialog.rehearsal is None:
+                return "cancelled"
+            destination_root = pathlib.Path(dialog.folder)
+            fresh = convert_mod.fresh_folder(destination_root)
+            fresh.mkdir(parents=True)
+            try:
+                written = dialog.direction.write(dialog.rehearsal, fresh)
+            except Exception:
+                _log.exception("could not write a conversion into %s", fresh)
+                try:
+                    fresh.rmdir()
+                except OSError:
+                    pass
+                dialog.refuse(convert_mod.CANNOT_CONVERT)
+                continue
+            if dialog.direction.destination_port == "c64":
+                self.load(str(written[0]))
+                return f"converted into {fresh}"
+            note = convert_mod.CONVERTED_DOS.format(
+                slot=dialog.slot or "", folder=fresh)
+            self.status(note)
+            return note
 
     # -- exports ----------------------------------------------------------
 
@@ -1041,14 +1154,23 @@ class EditorBinding(QObject):
         view.setMinimumHeight(height + ROSTER_SLACK)
         view.setMaximumHeight(height + ROSTER_SLACK)
 
-    def _disk_candidates(self) -> list[str]:
+    def _disk_candidates(self, pattern: str | None = None) -> list[str]:
         """`--game-disk`, then the Game directory setting, then
         $POR_GAME_DISK, then any game disk of the open title beside the save.
+
+        `pattern` overrides the title the glob searches for -- Pool of
+        Radiance's `disk_glob` by default, or the open party's own when one
+        is open. `editor.convert.ConvertDialog` passes the *destination*
+        title's pattern instead, because a Curse DOS save converted with a
+        Pool of Radiance party open needs Curse's own disks, not the open
+        party's (`#52`'s plan, "three C64 titles means the disks are chosen
+        by the destination title").
         """
         import glob
         import os
-        pattern = (self.party.game.disk_glob if self.party is not None
-                   else por_games.DEFAULT.disk_glob)
+        pattern = pattern or (self.party.game.disk_glob
+                              if self.party is not None
+                              else por_games.DEFAULT.disk_glob)
         candidates = []
         if self.game_disk:
             candidates.append(self.game_disk)
@@ -1071,9 +1193,9 @@ class EditorBinding(QObject):
                 unique.append(c)
         return unique
 
-    def _find_disk(self, read) -> str | None:
+    def _find_disk(self, read, pattern: str | None = None) -> str | None:
         """The first candidate `read` succeeds on."""
-        for c in self._disk_candidates():
+        for c in self._disk_candidates(pattern):
             try:
                 read(c)
             except Exception as exc:
