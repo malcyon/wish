@@ -81,8 +81,8 @@ def columns(spec) -> dict[str, str]:
     former = field(spec, "former_class_levels")
     out = {
         "abilities differ": ",".join(n[:3] for n in differing) or "-",
-        "0x0E6": f"{field(spec, 'gap_0e6')[0]:02X}"
-                 if field(spec, "gap_0e6") else "-",
+        "0x0E6": f"{field(spec, 'former_level')[0]:02X}"
+                 if field(spec, "former_level") else "-",
         "former": former.hex() if any(former) else "-",
         "memorised": str(memorised_ids(spec)),
     }
