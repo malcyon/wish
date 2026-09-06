@@ -1125,13 +1125,19 @@ TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
 #: `tools/cursetrain.py`). So Curse belongs here even though it is not yet
 #: in `TRAINER_MEASURED`, whose own condition covers more than this.
 #:
-#: Silver Blades does not: `docs/121-silver-blades.md` has its trainer's
-#: constitution inputs unread or unattributed, so a recomputed row there
-#: would be a guess written over the row the source actually held -- and a
-#: wrong saving throw looks exactly like a right one on a character sheet
-#: (`#344`).
+#: Silver Blades' `$11D8` was watched on 2026-09-06 (`#344 (A converted
+#: Silver Blades dwarf, gnome or halfling keeps DOS's saving throws, because
+#: that title's racial bonus has never been watched in the game)`,
+#: `tools/ssbtrain.py`): MALACHITE, thief 8 / fighter 7 with constitution
+#: 17, was trained to thief 9 five times on one boot with only the race byte
+#: changed between presses, and the engine wrote `6 10 6 12 7` for the dwarf
+#: (twice) and `10 10 10 12 11` for the gnome, the halfling and the human --
+#: 25 of 25 columns what `saving_throws` computes. So the reading that
+#: **only the dwarf** takes the bonus in this title is measured, not read,
+#: and `tests/test_ssblevels.py` pins the five rows.
 RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
-    {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key})
+    {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key,
+     SECRET_OF_THE_SILVER_BLADES.key})
 
 
 def racial_save_bonus_measured(game=None) -> bool:

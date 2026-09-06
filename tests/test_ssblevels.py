@@ -144,3 +144,41 @@ def test_silver_blades_is_among_the_titles_a_race_with_no_bonus_covers():
     new title's own tests."""
     assert SSB in levels.TITLES
     assert games.SECRET_OF_THE_SILVER_BLADES.key == SSB.key
+
+
+#: What Silver Blades' own trainer wrote at `0x09A`-`0x09E` for MALACHITE --
+#: thief 8 / fighter 7, constitution 17 -- raised to thief 9 five times on
+#: one boot (VICE pool slot 0, 2026-09-06, `tools/ssbtrain.py`,
+#: `work/issue344/m1..m6`), with only the race byte poked between presses and
+#: the five stored saves poked to 14 first so each row is a write and not a
+#: keep. The DOS values he arrived with were `10 7 5 9 6`.
+MALACHITE_PRESSES = (
+    (3, (6, 10, 6, 12, 7)),       # dwarf, from the DOS row
+    (4, (10, 10, 10, 12, 11)),    # gnome, from 14s
+    (5, (10, 10, 10, 12, 11)),    # halfling, from 14s
+    (6, (10, 10, 10, 12, 11)),    # human, from 14s
+    (3, (6, 10, 6, 12, 7)),       # dwarf again, from 14s
+)
+
+
+def test_the_trainer_gave_the_bonus_to_the_dwarf_and_to_nobody_else():
+    """`#344 (A converted Silver Blades dwarf, gnome or halfling keeps DOS's
+    saving throws, because that title's racial bonus has never been watched
+    in the game)`: `GEN $11D8` is `LDA $7C72 / CMP #$03 / BNE rts`, an
+    equality test on race 3, where Pool of Radiance and Curse give the bonus
+    to three races. This is the five rows the engine wrote against what
+    `saving_throws` computes, and it is what put the title into
+    `RACIAL_SAVE_BONUS_MEASURED`.
+
+    Give the gnome the bonus too -- `sturdy_races=(3, 4, 5)`, Pool of
+    Radiance's shape under this title's numbering -- and rows 2 and 3 fail.
+    """
+    for race, wrote in MALACHITE_PRESSES:
+        got = levels.saving_throws({"thief": 9, "fighter": 7}, race, 17,
+                                   game=SSB)
+        assert got == wrote, (race, got, wrote)
+    # The discriminating half: the dwarf's row is not the others', so a
+    # table that gave everybody the bonus, or nobody, cannot pass.
+    assert MALACHITE_PRESSES[0][1] != MALACHITE_PRESSES[1][1]
+    assert levels.racial_save_bonus_measured(SSB)
+    assert levels.racial_save_bonus_measured(games.SECRET_OF_THE_SILVER_BLADES)

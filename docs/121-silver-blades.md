@@ -333,6 +333,36 @@ class held, take 2 off every column for a paladin (`$11C0`), and take
 where Pool of Radiance gives that bonus to the dwarf, the gnome and the halfling
 and to all five columns. It reproduces all six shipped characters' stored saves.
 
+**And the dwarf-only rule has now been watched, not only read** (`#344 (A
+converted Silver Blades dwarf, gnome or halfling keeps DOS's saving throws,
+because that title's racial bonus has never been watched in the game)`,
+2026-09-06, `tools/ssbtrain.py`). The training hall opens here the way Curse's
+does -- the party-menu builder is `$12AF` moved to `GEN $0991` and still reads
+`$7EA8` -- so MALACHITE, thief 8 / fighter 7 at constitution 17, was raised to
+thief 9 five times on one boot with only the race byte poked between presses,
+and the five stored saves poked to 14 first so each row is a write:
+
+| race byte | what `GEN` wrote at `0x09A`-`0x09E` | `levels.saving_throws` |
+|---|---|---|
+| 3, dwarf (twice) | 6 10 6 12 7 | 6 10 6 12 7 |
+| 4, gnome | 10 10 10 12 11 | 10 10 10 12 11 |
+| 5, halfling | 10 10 10 12 11 | 10 10 10 12 11 |
+| 6, human | 10 10 10 12 11 | 10 10 10 12 11 |
+
+25 of 25 columns. So the title is in `levels.RACIAL_SAVE_BONUS_MEASURED` and a
+converted Silver Blades dwarf gets the C64's own row rather than DOS's. Two
+things from the same session that are not the answer: **the sheet is drawn
+before the arithmetic runs** -- a record read the moment `YOU ARE NOW A LEVEL
+9 THIEF` appears still holds the old saves, and a second or two later holds
+the new ones -- and **the training cost nothing and clamped nothing**: 3,000
+platinum and 124,000 experience were the same after five presses, where Curse
+takes 1,000 gp a class and lowers the experience to one under the next
+threshold. The thief skills were rewritten from a dexterity the engine read
+(`0x0A5`-`0x0AC` all moved), which is the input `goldbox/levelup.py` still
+refuses this title for; the pairs are in `work/issue344/` for whoever reads
+`$126D` next. The engine's own save of the trained party is
+`~/wish-specimens/por-c64/WISH-SPEC-ssb-malachite-trained.D64`.
+
 **The racial limits are a third independent source for the race table.** The
 routine at `$178A` refuses to look one up for race 6 or above — the human rule —
 and the five rows below it are AD&D's elf, half-elf, dwarf, gnome and halfling
