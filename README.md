@@ -7,13 +7,13 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 
 ## Features
 
-### 🗺️ Live automapper
-- 🧭 Reveals the area map as you explore.
-- 📍 Pin notes to the map.
-- ⚔️ Combat view that shows the whole battlefield.
-- 🛡️ Party stats. HP, XP, class, level, readied items, etc.
-- 📋 Quest log. Shows what commissions you have from the council.
-- 🕹️ Support for the VICE emulator or the Commodore 64 Ultimate.
+### Live Automapper
+- Reveals the area map as you explore.
+- Pin notes to the map.
+- Combat view that shows the whole battlefield.
+- Party stats. HP, XP, class, level, readied items, etc.
+- Quest log. Shows what commissions you have from the council.
+- Support for the VICE emulator or the Commodore 64 Ultimate.
 
 
 <a href="images/automapper1.png">
@@ -21,11 +21,11 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 </a>
 
 
-### ✏️ Character Editor
-- 🎲 Update your stats. HP, XP, gold, etc.  
-- 📖 Spells. Change what spells you know.
-- 🎒 Inventory. Edit your items, or add new ones.
-- 🖼️ Combat Icon Editor. A faster way to update your icon.
+### Character Editor
+- Update your stats. HP, XP, gold, etc.  
+- Spells. Change what spells you know.
+- Inventory. Edit your items, or add new ones.
+- Combat Icon Editor. A faster way to update your icon.
 
 <a href="images/character_editor1.png">
   <img src="images/character_editor1.png" alt="Character Editor" title="Character Editor" width="700">
