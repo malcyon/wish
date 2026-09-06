@@ -1,225 +1,281 @@
-"""Draw the taskbar-icon choices side by side, at the sizes Windows draws.
+"""Draw every square mark the artist delivered, resized to the sizes Windows
+draws, on a light taskbar and a dark one.
 
-    .venv/bin/python tools/taskbaricon.py work/reports/taskbar-choices.png
+    .venv/bin/python tools/taskbaricon.py work/issue351/taskbar-marks.png
 
-Donald, 2026-09-06, of the artist's mark on a Windows taskbar: *"It is too
-small for the color image. I am open to suggestions."* And then: *"I don't
-really understand your choices. please offer me an image with comparisons."*
-This is that image. One row per option, one column per size Windows asks a
-`.ico` for -- 16, 20, 24, 32, 48 and 256 -- each shown at true size on a
-light and a dark taskbar and then magnified beside it, because nobody can
-judge a 16-pixel icon by squinting at it.
+For `#351 (The Windows build shows no logo in About and a black square on
+the taskbar, because the artist's SVGs are not in the package)`. Donald,
+2026-09-06, of the colour mark on a Windows taskbar: *"It is too small for
+the color image. I am open to suggestions."* And then: *"please offer me an
+image with comparisons."*
 
-**Nothing here decides.** The mark is Dustin Geddy Parker's and the choice is
-Donald's; the rows are labelled so he can answer with a letter.
+**Resize. Nothing else.** The first sheet drawn for this switched off two
+`<image>` elements in an in-memory copy of the artist's file, cropped the
+lettering out of the combo mark with a viewBox, and drew a pentagram of its
+own, and Donald refused it: *"you're editing the artist's image, which is
+forbidden. We should only be resizing what the original artist gave us."*
+In-memory is still editing. So every cell on this sheet is one of Dustin
+Geddy Parker's delivered files, whole, scaled to a square: no element left
+out, no viewBox moved, no colour changed, no stroke thickened, nothing drawn
+by hand. A choice that cannot be made by scaling a file he delivered is not a
+choice this sheet offers.
 
-**The artist's files are not modified.** Every row is rendered off
-`assets/logo/mark.svg` or `assets/logo/combo-mark-color.svg` as committed,
-by three kinds of placement: rendering the file at a size, rendering a
-*window* of it (`QSvgRenderer.setViewBox`, a crop), and rendering it with
-the two ring bitmaps left out (a layer switched off, the polygons untouched).
-The one row that is not the artist's drawing says so in its label: a
-pentagram drawn from five points, as a stand-in for what a hand-tuned small
-glyph could look like, never as the glyph itself -- `.claude/rules/art.md`.
+**What he delivered** is read from `~/Downloads/wish_logo/` (or
+`$WISH_LOGO_DELIVERY`) and is not copied into the repository: three
+families -- `Marks/`, the pentacle alone; `Combo Marks/`, the pentacle with
+lettering; `Logos/`, the wide lockup -- each in Color, Black and White, each
+as an SVG and PNGs at 80, 150, 200 and 500 (the logos at 300x100, 600x200 and
+1200x400). The two colour SVGs are byte-identical to `assets/logo/mark.svg`
+and `assets/logo/combo-mark-color.svg`. The logos are 3:1 and not square, so
+they are not taskbar candidates and are not drawn.
 
-**Why the rings are the problem** is measured rather than argued.
-`docs/132-logo.md` §5: the two rings are the only parts of the file that are
-not vector -- embedded PNGs about 3,600 pixels square carrying a hairline
-each. At 1080 the ring strokes are 4 pixels wide and the star's strokes 12;
-at 16 those are 0.06 and 0.18 of a pixel, so the renderer blends both into
-the ground and what is left is a faint smudge of gold where a star was.
+**Each row is one file at one size in two ways where the two differ**: the
+SVG rendered at the size, and the smallest delivered PNG no smaller than the
+size scaled down to it. He exported PNGs at 80 and 150 for a reason, and a
+hand-tuned raster can beat a downscaled vector at 24 pixels. Where the two
+were measured indistinguishable the PNG row is dropped rather than padding
+the sheet -- `PNG_ROWS` says which were kept and the docstring beside it
+says what was measured.
+
+**Each row says whether the file has its own ground.** The Color files carry
+an opaque near-black square (`#17140e`) under the gold; the Black and White
+files are line art on transparency. That is not a detail: an opaque square
+looks the same on a light taskbar and a dark one, while transparent line art
+is invisible on the taskbar that matches its colour.
+
+**Nothing here decides.** The rows are lettered so Donald can answer with a
+letter, and the judgement of which sizes each survives is in
+`docs/132-logo.md` §7, not on the sheet.
 """
 
 from __future__ import annotations
 
-import math
 import os
 import pathlib
-import re
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt6.QtCore import QByteArray, QPointF, QRectF, Qt  # noqa: E402
+from PyQt6.QtCore import QPointF, QRectF, Qt  # noqa: E402
 from PyQt6.QtGui import (  # noqa: E402
     QColor,
     QFont,
     QGuiApplication,
     QImage,
     QPainter,
-    QPen,
 )
 from PyQt6.QtSvg import QSvgRenderer  # noqa: E402
 
-from ui import appicon  # noqa: E402
+#: Where the artist's delivery sits. Read in place, never copied in: the two
+#: files the program uses are already committed under `assets/logo/` and the
+#: rest are his to hand over when a choice is made.
+DELIVERY = pathlib.Path(
+    os.environ.get("WISH_LOGO_DELIVERY", "~/Downloads/wish_logo")).expanduser()
 
 #: The sizes a Windows `.ico` is asked for -- `docs/132-logo.md` §1b -- minus
 #: 40 and 64, which are 32 and 48 at a display scaling and add no new
-#: judgement. 256 is Explorer's big view and the Properties sheet.
+#: judgement. The taskbar button is 24 logical pixels on Windows 10 and 11,
+#: 32 at 150 % scaling; 256 is Explorer's big view and nearly decoration.
 SIZES = (16, 20, 24, 32, 48, 256)
 
 #: How much each size is blown up beside its true-size cell, chosen so every
-#: magnified cell is about 192 pixels: 256 is shown at true size only.
+#: magnified cell is about 192 pixels; 256 is shown at true size only.
 MAGNIFY = {16: 12, 20: 9, 24: 8, 32: 6, 48: 4, 256: 1}
 
-#: The artist's own two colours, read off the files: the ground the mark
-#: carries and the gold of its strokes.
-GROUND = QColor("#17140e")
-GOLD = QColor("#ebb551")
+#: The PNG sizes he delivered for the square families.
+PNG_SIZES = (80, 150, 200, 500)
 
 #: A Windows 11 taskbar, light theme and dark theme, so each true-size cell
-#: sits on what it will actually sit on.
-TASKBAR_LIGHT = QColor("#eeeeee")
+#: sits on what it will actually sit on. Windows 11 follows the system theme,
+#: so both are real.
+TASKBAR_LIGHT = QColor("#f3f3f3")
 TASKBAR_DARK = QColor("#202020")
 
 PAPER = QColor("#fbfcfd")
 INK = QColor("#16202b")
 MUTED = QColor("#5c6b7a")
 
-MARK = appicon.ASSET
-COMBO = MARK.parent / "combo-mark-color.svg"
+
+# --- the delivered files ---------------------------------------------------
 
 
-# --- the drawings ----------------------------------------------------------
+def svg_path(family: str, colourway: str) -> pathlib.Path:
+    """`Marks/Color/SVG Color Mark.svg`, `Combo Marks/Black/SVG Black Combo.svg`."""
+    word = "Combo" if family == "Combo Marks" else "Mark"
+    return DELIVERY / family / colourway / f"SVG {colourway} {word}.svg"
 
 
-def _renderer(text: str) -> QSvgRenderer:
-    renderer = QSvgRenderer(QByteArray(text.encode("utf-8")))
+def png_path(family: str, colourway: str, side: int) -> pathlib.Path:
+    """`Marks/Color/Color Mark 80x80.png`. One file is named with a lowercase
+    `combo`, so the name is matched case-insensitively rather than assumed."""
+    folder = DELIVERY / family / colourway
+    want = f"{colourway} {family[:-1]} {side}x{side}.png".lower()
+    for candidate in folder.iterdir():
+        if candidate.name.lower() == want:
+            return candidate
+    raise FileNotFoundError(f"{folder}/{want}")
+
+
+def nearest_png(side: int) -> int:
+    """The smallest delivered PNG no smaller than `side`, so a raster is only
+    ever scaled down: 80 for everything up to 80, 500 for 256."""
+    return next(s for s in PNG_SIZES if s >= side)
+
+
+def render_svg(path: pathlib.Path, size: int) -> QImage:
+    """`path` rendered whole into a `size` square, on transparency."""
+    renderer = QSvgRenderer(str(path))
     if not renderer.isValid():
-        raise RuntimeError("the SVG did not parse")
-    return renderer
-
-
-def _render(renderer: QSvgRenderer, size: int,
-            window: QRectF | None = None) -> QImage:
-    """`renderer` into a `size` square; `window` is the part of the file's
-    1080-unit canvas to show, the whole of it when None."""
-    if window is not None:
-        renderer.setViewBox(window)
+        raise RuntimeError(f"{path} did not parse")
     out = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     out.fill(0)
     painter = QPainter(out)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
     renderer.render(painter, QRectF(0, 0, size, size))
     painter.end()
     return out
 
 
-_IMAGE = re.compile(r"<image\b[^>]*?/>", re.S)
+def scale_png(path: pathlib.Path, size: int) -> QImage:
+    """`path` scaled whole to a `size` square, area-averaged."""
+    source = QImage(str(path))
+    if source.isNull():
+        raise RuntimeError(f"{path} did not load")
+    return source.convertToFormat(
+        QImage.Format.Format_ARGB32_Premultiplied).scaled(
+            size, size, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
 
 
-def mark_as_is(size: int) -> QImage:
-    """A. The mark, rendered down -- exactly what `ui.appicon` does today."""
-    return appicon.image(size)
+def ground(image: QImage) -> str:
+    """What the file brings with it: read off the pixels rather than asserted."""
+    w, h = image.width(), image.height()
+    alphas = [image.pixelColor(x, y).alpha() for y in range(h) for x in range(w)]
+    if min(alphas) == 255:
+        c = image.pixelColor(0, 0)
+        return f"opaque, its own ground {c.name()}"
+    clear = sum(1 for a in alphas if a == 0)
+    return f"transparent ({clear * 100 // len(alphas)} % of the square is empty)"
 
 
-def star_cropped(size: int) -> QImage:
-    """B. The artist's star with the two ring bitmaps switched off, cropped to
-    fill the square.
+# --- the rows --------------------------------------------------------------
 
-    The polygons and their glow are rendered as drawn; only the two `<image>`
-    elements are left out of the document handed to the renderer, and the
-    file on disk is untouched. The star's bounding box on the 1080 canvas is
-    x 188..891, y 162..839 (measured off a render); the window is that box
-    made square with a margin of 30 units.
-    """
-    text = _IMAGE.sub("", MARK.read_text(encoding="utf-8"))
-    box = QRectF(188, 162, 703, 677)
-    side = max(box.width(), box.height()) + 60
-    window = QRectF(box.center().x() - side / 2, box.center().y() - side / 2,
-                    side, side)
-    return _render(_renderer(text), size, window)
-
-
-def star_heavy(size: int) -> QImage:
-    """C. A pentagram drawn from five points with strokes a tenth of the box
-    wide, gold on the artist's ground.
-
-    **Not the artist's drawing.** A stand-in for the shape a hand-tuned small
-    glyph would take -- one silhouette, strokes that survive a pixel grid --
-    drawn here so the sheet can show what that shape buys at 16 before
-    anybody is asked to draw one.
-    """
-    out = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    out.fill(GROUND)
-    painter = QPainter(out)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    radius = 0.42 * size
-    # A pentagram's visual centre sits above its circumcircle's, since three
-    # of the five points lie below the middle; the shift is the difference
-    # between the top point and the bottom pair, halved.
-    cx = size / 2
-    cy = size / 2 + radius * (1 - math.cos(math.radians(36))) / 2
-    points = [QPointF(cx + radius * math.sin(math.radians(72 * i)),
-                      cy - radius * math.cos(math.radians(72 * i)))
-              for i in range(5)]
-    pen = QPen(GOLD, max(1.0, 0.1 * size))
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(pen)
-    for i in range(5):
-        painter.drawLine(points[i], points[(i + 2) % 5])
-    painter.end()
-    return out
-
-
-def monogram(size: int) -> QImage:
-    """D. The W of the artist's wordmark, on the artist's ground.
-
-    Cropped out of `combo-mark-color.svg`: the document handed to the
-    renderer is the file's own header, its ground rectangle and its lettering
-    group, with the star and rings left out, and the window is the W's
-    bounding box -- x 164..413, y 457..635 on the 1080 canvas, measured off
-    a render of the lettering -- made square with a margin.
-    """
-    text = COMBO.read_text(encoding="utf-8")
-    head = text[:text.index("<rect")]
-    ground = re.search(r"<rect\b[^>]*?/>", text, re.S).group(0)
-    letters = re.search(r'<g filter="url\(#outer-glow-2\)">.*?</g>',
-                        text, re.S).group(0)
-    box = QRectF(164, 457, 249, 178)
-    side = max(box.width(), box.height()) * 1.3
-    window = QRectF(box.center().x() - side / 2, box.center().y() - side / 2,
-                    side, side)
-    return _render(_renderer(head + ground + letters + "</svg>"), size,
-                   window)
-
-
-def two_drawings(small, size: int) -> QImage:
-    """E and F. `small` below 32, the full mark from 32 up -- what a `.ico`
-    is for, and what `packaging/geniconset.py` already does for macOS."""
-    return small(size) if size < 32 else mark_as_is(size)
-
-
-#: `(letter, title, what it is, drawing)`. The order is the order on the sheet.
-OPTIONS = [
-    ("A", "The mark as it is",
-     "assets/logo/mark.svg rendered at each size -- what ships today",
-     mark_as_is),
-    ("B", "The star, rings off, cropped",
-     "the artist's own star, the two ring bitmaps left out, filling the square",
-     star_cropped),
-    ("C", "A heavier star (a stand-in, not the artist's)",
-     "five points, strokes a tenth of the box: the shape a hand-tuned glyph could take",
-     star_heavy),
-    ("D", "The W of the wordmark",
-     "cropped from assets/logo/combo-mark-color.svg, on the artist's ground",
-     monogram),
-    ("E", "Two drawings: B below 32, A from 32",
-     "a .ico can hold a different drawing per size; small sizes get the star",
-     lambda size: two_drawings(star_cropped, size)),
-    ("F", "Two drawings: D below 32, A from 32",
-     "the same, with the W at the small sizes",
-     lambda size: two_drawings(monogram, size)),
+#: `(family, colourway)` in the order they are drawn: the marks first, since
+#: they are the taskbar candidates, then the combo marks so the lettering can
+#: be seen failing rather than described failing.
+FILES = [
+    ("Marks", "Color"),
+    ("Marks", "Black"),
+    ("Marks", "White"),
+    ("Combo Marks", "Color"),
+    ("Combo Marks", "Black"),
+    ("Combo Marks", "White"),
 ]
+
+#: Which files get a second row scaled from the delivered PNG. Measured on
+#: 2026-09-06 with `difference()` below at 24 and 32: the largest per-channel
+#: gap between the SVG render and the scaled PNG was 89 or more of 255 for
+#: every family, and the sheet shows why. The Color files' two rings are
+#: embedded bitmaps carrying a hairline each, and Qt's renderer loses them
+#: below 48 while the artist's PNG export kept them as a faint circle; the
+#: Black and White PNGs are a little lighter than Qt's render of the same
+#: paths (alpha coverage 89 against 99 at 32). So every file keeps its PNG
+#: row. `python tools/taskbaricon.py --measure` reprints the figures; drop a
+#: pair here if it falls under `SAME_ENOUGH`.
+PNG_ROWS = frozenset(FILES)
+
+#: Below this largest per-channel gap two renders are the same to the eye.
+SAME_ENOUGH = 24
+
+
+def difference(a: QImage, b: QImage) -> int:
+    """The largest per-channel gap between two same-sized images, alpha
+    included, out of 255."""
+    gap = 0
+    for y in range(a.height()):
+        for x in range(a.width()):
+            p, q = a.pixelColor(x, y), b.pixelColor(x, y)
+            gap = max(gap, abs(p.red() - q.red()), abs(p.green() - q.green()),
+                      abs(p.blue() - q.blue()), abs(p.alpha() - q.alpha()))
+    return gap
+
+
+class Row:
+    """One lettered row: one delivered file, scaled one way."""
+
+    def __init__(self, letter: str, family: str, colourway: str,
+                 raster: bool) -> None:
+        self.letter = letter
+        self.family = family
+        self.colourway = colourway
+        self.raster = raster
+
+    @property
+    def name(self) -> str:
+        what = "Combo mark" if self.family == "Combo Marks" else "Mark"
+        how = "from the PNGs" if self.raster else "from the SVG"
+        return f"{self.colourway} {what}, {how}"
+
+    def source(self, size: int) -> pathlib.Path:
+        if self.raster:
+            return png_path(self.family, self.colourway, nearest_png(size))
+        return svg_path(self.family, self.colourway)
+
+    def draw(self, size: int) -> QImage:
+        if self.raster:
+            return scale_png(self.source(size), size)
+        return render_svg(self.source(size), size)
+
+    def what(self) -> str:
+        """The row's caption: which file, and what ground it brings."""
+        if self.raster:
+            files = ", ".join(f"{s}x{s}" for s in PNG_SIZES)
+            which = (f"{self.source(24).parent.relative_to(DELIVERY)}/ PNGs "
+                     f"({files}), the smallest no smaller than the cell, "
+                     "scaled down")
+        else:
+            which = f"{self.source(24).relative_to(DELIVERY)}, rendered"
+        return f"{which}. Ground: {ground(self.draw(48))}."
+
+
+def rows() -> list[Row]:
+    out: list[Row] = []
+    letters = iter("ABCDEFGHIJKLMNOP")
+    for family, colourway in FILES:
+        out.append(Row(next(letters), family, colourway, raster=False))
+        if (family, colourway) in PNG_ROWS:
+            out.append(Row(next(letters), family, colourway, raster=True))
+    return out
 
 
 # --- the sheet -------------------------------------------------------------
 
-LABEL_W = 400
+#: The theming question, in words, under the rows. Donald, 2026-09-06: *"If
+#: there is something fancy we need to do around theming or dark mode, let me
+#: know. His images are transparent. I agree that simple will work better."*
+#: Two shapes are possible and the sheet is drawn so both can be judged from
+#: the pictures; it names neither.
+FOOTER = (
+    "Theming. Windows 11 paints the taskbar in the system theme, light or "
+    "dark, and a transparent file shows whatever is behind it. Two ways to "
+    "ship:\n"
+    "1. One icon for both themes: a row whose light cell and dark cell both "
+    "read. Nothing to detect, nothing to maintain. The Color rows carry their "
+    "own opaque ground, so they are the same picture on both; the Black and "
+    "White rows are transparent and each is invisible on the taskbar that "
+    "matches it.\n"
+    "2. A colourway per theme, swapped at run time from Qt's colorScheme() "
+    "and colorSchemeChanged: the White mark on a dark taskbar, the Black on "
+    "a light one. More to build and a second thing to go wrong, and Help > "
+    "About already chose the colour combo mark on 2026-09-05 because it "
+    "carries its own ground and needs no detection.\n"
+    "3. Not on this sheet: a version with its own ground drawn for 24 and 32 "
+    "pixels, which is a thing to ask the artist for."
+)
+
+LABEL_W = 420
 GAP = 14
 ROW_PAD = 26
 
@@ -230,18 +286,31 @@ def _magnified(image: QImage, factor: int) -> QImage:
                         Qt.TransformationMode.FastTransformation)
 
 
-def sheet() -> QImage:
+def _on(image: QImage, taskbar: QColor, pad: int = 6) -> QImage:
+    """`image` at true size on a patch of `taskbar`."""
+    side = image.width() + pad * 2
+    out = QImage(side, side, QImage.Format.Format_ARGB32_Premultiplied)
+    out.fill(taskbar)
+    painter = QPainter(out)
+    painter.drawImage(QPointF(pad, pad), image)
+    painter.end()
+    return out
+
+
+def sheet(the_rows: list[Row] | None = None) -> QImage:
+    the_rows = rows() if the_rows is None else the_rows
     columns = []       # (size, x, true-cell width, magnified width)
     x = LABEL_W
     for size in SIZES:
-        true_w = size * 2 + 3 * 6 if size < 256 else 0
+        true_w = (size + 12) * 2 if size < 256 else 0
         mag_w = size * MAGNIFY[size]
         columns.append((size, x, true_w, mag_w))
         x += true_w + (GAP if true_w else 0) + mag_w + GAP * 2
     width = x
     header_h = 70
     row_h = 256 + ROW_PAD * 2 + 30
-    height = header_h + row_h * len(OPTIONS) + 20
+    footer_h = 150
+    height = header_h + row_h * len(the_rows) + footer_h
 
     out = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
     out.fill(PAPER)
@@ -257,54 +326,89 @@ def sheet() -> QImage:
     painter.setPen(INK)
     painter.setFont(title)
     painter.drawText(QRectF(GAP, 8, width, 30),
-                     "Wish taskbar icon: six choices at the sizes Windows draws")
+                     "Wish taskbar icon: every square mark the artist "
+                     "delivered, resized and nothing else")
     painter.setFont(small)
     painter.setPen(MUTED)
     painter.drawText(QRectF(GAP, 36, width, 20),
-                     "Each size: true size on a light and a dark taskbar, then "
-                     "magnified. 256 is true size only.")
+                     "Each size: true size on a light taskbar and a dark one, "
+                     "then magnified. 256 is true size only. The taskbar "
+                     "button is 24, or 32 at 150 % scaling.")
     for size, cx, true_w, mag_w in columns:
         painter.drawText(QRectF(cx, 52, true_w + GAP + mag_w, 16),
                          f"{size} px" + ("" if size < 256 else " (true size)"))
 
-    for row, (letter, name, what, draw) in enumerate(OPTIONS):
-        top = header_h + row * row_h
+    for index, row in enumerate(the_rows):
+        top = header_h + index * row_h
         painter.setPen(INK)
         painter.setFont(label)
         painter.drawText(QRectF(GAP, top + ROW_PAD, LABEL_W - GAP, 22),
-                         f"{letter}.  {name}")
+                         f"{row.letter}.  {row.name}")
         painter.setFont(small)
         painter.setPen(MUTED)
-        painter.drawText(QRectF(GAP, top + ROW_PAD + 26, LABEL_W - GAP * 2, 120),
-                         int(Qt.TextFlag.TextWordWrap), what)
+        painter.drawText(QRectF(GAP, top + ROW_PAD + 26, LABEL_W - GAP * 2, 200),
+                         int(Qt.TextFlag.TextWordWrap), row.what())
         for size, cx, true_w, mag_w in columns:
-            image = draw(size)
+            image = row.draw(size)
             y = top + ROW_PAD
             if true_w:
-                # True size, twice: on the light taskbar and on the dark one.
-                painter.fillRect(QRectF(cx, y, true_w, size + 12), TASKBAR_LIGHT)
-                painter.drawImage(QPointF(cx + 6, y + 6), image)
-                painter.fillRect(QRectF(cx + size + 12, y, true_w - size - 12,
-                                        size + 12), TASKBAR_DARK)
-                painter.drawImage(QPointF(cx + size + 18, y + 6), image)
+                painter.drawImage(QPointF(cx, y), _on(image, TASKBAR_LIGHT))
+                painter.drawImage(QPointF(cx + size + 12, y),
+                                  _on(image, TASKBAR_DARK))
                 mx = cx + true_w + GAP
             else:
                 mx = cx
-            painter.drawImage(QPointF(mx, y), _magnified(image, MAGNIFY[size]))
+            big = _magnified(image, MAGNIFY[size])
+            # The magnified cell sits on the light taskbar in its left half
+            # and the dark one in its right, so a transparent file shows
+            # against both without doubling the sheet's width.
+            half = big.width() // 2
+            painter.fillRect(QRectF(mx, y, half, big.height()), TASKBAR_LIGHT)
+            painter.fillRect(QRectF(mx + half, y, big.width() - half,
+                                    big.height()), TASKBAR_DARK)
+            painter.drawImage(QPointF(mx, y), big)
+    painter.setFont(small)
+    painter.setPen(INK)
+    painter.drawText(QRectF(GAP, height - footer_h + 10, width - GAP * 2,
+                            footer_h - 10),
+                     int(Qt.TextFlag.TextWordWrap), FOOTER)
     painter.end()
     return out
 
 
+def measure() -> list[tuple[str, str, int, int]]:
+    """Per file, the largest per-channel gap between the SVG render and the
+    scaled PNG at 24 and at 32 -- what decided `PNG_ROWS`."""
+    out = []
+    for family, colourway in FILES:
+        gaps = []
+        for size in (24, 32):
+            vector = render_svg(svg_path(family, colourway), size)
+            raster = scale_png(png_path(family, colourway, nearest_png(size)),
+                               size)
+            gaps.append(difference(vector, raster))
+        out.append((family, colourway, gaps[0], gaps[1]))
+    return out
+
+
 def main(argv: list[str]) -> int:
-    out = pathlib.Path(argv[1] if len(argv) > 1
-                       else "work/reports/taskbar-choices.png")
-    out.parent.mkdir(parents=True, exist_ok=True)
     app = QGuiApplication(["taskbaricon"])
     assert app is not None
+    if "--measure" in argv:
+        print("family        colourway  gap@24  gap@32   (of 255; same to the "
+              f"eye below {SAME_ENOUGH})")
+        for family, colourway, g24, g32 in measure():
+            print(f"{family:13s} {colourway:10s} {g24:6d}  {g32:6d}")
+        return 0
+    out = pathlib.Path(argv[1] if len(argv) > 1
+                       else "work/issue351/taskbar-marks.png")
+    out.parent.mkdir(parents=True, exist_ok=True)
     image = sheet()
     if not image.save(str(out)):
         raise RuntimeError(f"could not write {out}")
     print(f"{out}  {image.width()}x{image.height()}")
+    for row in rows():
+        print(f"  {row.letter}. {row.name} -- {row.what()}")
     return 0
 
 

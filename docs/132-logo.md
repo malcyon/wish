@@ -361,9 +361,10 @@ executables, audio and PDFs, which is the part that was ever about the game.
   file yet and nobody has dropped it on a real Dock. Wire it up when there is
   a macOS package.
 * **The Windows taskbar drawing is still Donald's to choose.** §7: the
-  mark's rings dissolve below 32 pixels, he has asked for something different
-  at those sizes, and `tools/taskbaricon.py` draws the choices. Until he
-  picks one, every size is the full mark.
+  colour mark's rings dissolve below 48 when rendered from the SVG, and
+  `tools/taskbaricon.py` draws every square file he delivered, resized and
+  nothing else, on a light and a dark taskbar. Until he picks one, every
+  size is the full mark rendered from the SVG.
 * **Nobody has seen the fixed build on a Windows taskbar.** The first build
   seen there showed a black square -- §7 -- and the fix has been proven only
   as far as a Linux build with the SVGs inside it. That is a row for
@@ -467,27 +468,76 @@ still unseen with the fix in.
 ### The mark below 32 pixels
 
 Donald, of the taskbar: *"It is too small for the color image. I am open to
-suggestions."* The reason is in the file rather than in the renderer: the
-two rings are embedded bitmaps carrying a hairline each, 4 units wide on
-the 1080 canvas against 12 for the star's strokes. At 16 pixels those are
-0.06 and 0.18 of a pixel, so both blend into the ground and the icon is a
-faint smudge -- row A of the sheet below shows exactly that.
+suggestions."* And, 2026-09-06: *"If there is something fancy we need to do
+around theming or dark mode, let me know. His images are transparent. I
+agree that simple will work better."*
 
-`tools/taskbaricon.py` draws the choices side by side, at 16, 20, 24, 32,
-48 and 256, each at true size on a light and a dark taskbar and magnified
-beside it. Six rows, lettered so the answer can be a letter:
+**The first comparison sheet was refused, and the rule it broke governs
+everything below.** It switched off the two ring bitmaps in an in-memory
+copy of the artist's SVG, cropped the W out of the combo mark with a
+viewBox, and drew a pentagram of its own. Donald: *"you're editing the
+artist's image, which is forbidden. We should only be resizing what the
+original artist gave us."* In-memory is still editing. **Resize, nothing
+else**: no element left out, no crop, no recolouring, nothing drawn. A
+choice that cannot be made by scaling a delivered file is not a choice.
 
-| row | what | how it is made |
-|---|---|---|
-| A | the mark as it ships | `ui.appicon.image` |
-| B | the artist's star, rings off, cropped to fill | the two `<image>` elements left out of an in-memory copy; polygons untouched |
-| C | a heavier pentagram | drawn from five points -- **a stand-in, not the artist's**, to show what a hand-tuned glyph could buy |
-| D | the W of the wordmark | a viewBox crop of `combo-mark-color.svg`'s lettering, on its ground |
-| E | B below 32, A from 32 | what a `.ico` is for; `packaging/geniconset.py` already does this per size for macOS |
-| F | D below 32, A from 32 | the same pairing with the W |
+**What he delivered**, at `~/Downloads/wish_logo/` and read there rather
+than copied in: `Marks/`, the pentacle alone, square; `Combo Marks/`, the
+pentacle with WISH across it, square; `Logos/`, the 3:1 lockup. Each in
+Color, Black and White, each as an SVG and as PNGs at 80, 150, 200 and 500.
+The Color SVGs are byte-identical to the two committed under `assets/logo/`.
 
-**No file under `assets/logo/` is changed by any of it**, and
-`tests/test_taskbaricon.py` checks the hash after drawing. If the answer is
-B, C or a two-drawing pairing, the small glyph is a thing to ask the artist
-for -- §3's own advice, *"hand-tuned 16, 24 and 32, not exports of the
-1024"* -- and C is only the shape of that request.
+**Not all of them are transparent.** The Color files carry an opaque
+near-black square, `#17140e`, under the gold -- every Color PNG has zero
+transparent pixels and the SVGs open with a filled `<rect>`. The Black and
+White files are line art on transparency, rings included, drawn as paths
+rather than the Color file's embedded ring bitmaps. That split is what
+decides the taskbar question: an opaque square is the same picture on a
+light taskbar and a dark one, and transparent line art is invisible on the
+taskbar that matches it.
+
+`tools/taskbaricon.py` draws the sheet, `work/issue351/taskbar-marks.png`:
+twelve lettered rows, every square file rendered from its SVG and scaled
+from its nearest delivered PNG, at 16, 20, 24, 32, 48 and 256, each at true
+size on a light and a dark taskbar and magnified beside it. The taskbar
+button is 24 logical pixels, 32 at 150 % scaling, so those two columns are
+the ones that matter. Read off the sheet on 2026-09-06:
+
+| row | file | ground | at 24 and 32 |
+|---|---|---|---|
+| A | Color Mark, SVG | opaque | the rings vanish below 48 -- Qt's renderer drops the hairline bitmaps, leaving scattered dots -- and the star is a dim smudge at 24, just a star at 32 |
+| B | Color Mark, PNG | opaque | the artist's export kept the rings as a faint circle and the star reads at both sizes, on both taskbars; a smudge at 16 |
+| C, D | Black Mark, SVG and PNG | transparent | reads on the light taskbar at 24 and 32, a grey blob at 16; invisible on the dark one. D is a little lighter than C |
+| E, F | White Mark, SVG and PNG | transparent | reads on the dark taskbar at 24 and 32, crisper than B there; invisible on the light one |
+| G-L | the three combo marks | as their mark | the lettering is a smear at every size up to 32 and first legible at 48; the ring and star behave as the mark of the same colour |
+
+**The SVG and PNG rows differ visibly for every file** -- the largest
+per-channel gap between the two renders at 24 is 89 of 255 or more,
+`--measure` prints the table -- so no PNG row was dropped. For the Color
+mark the PNG is the better of the two at every taskbar size, because the
+artist's exporter downsampled the ring bitmaps and Qt's renderer does not.
+
+**Theming, in Donald's terms.** Two ways to ship, and a third the sheet
+cannot draw:
+
+1. **One icon for both themes.** A row whose light and dark cells both
+   read. Nothing to detect, nothing to maintain. Among his files that is
+   the Color mark and only the Color mark, because it brings its own
+   ground; row B is the one that reads at 24 and 32.
+2. **A colourway per theme**, the White mark on a dark taskbar and the
+   Black on a light one, swapped at run time from `QStyleHints.colorScheme()`
+   and re-set on `colorSchemeChanged`. Each is crisper on its own taskbar
+   than B is. It is more to build, a second thing to go wrong, and Help >
+   About already chose the colour combo mark on 2026-09-05 *because* it
+   carries its own ground and needs no detection -- a precedent against
+   rather than a rule against.
+3. **A version with its own ground drawn for 24 and 32 pixels**, which
+   none of the delivered files is, and is the thing to ask the artist for
+   if neither of the above is good enough. §3's own advice: *"hand-tuned
+   16, 24 and 32, not exports of the 1024."*
+
+Simplest to ship is 1 with row B: it is a `.ico` and `setWindowIcon` built
+from a file he already delivered, with nothing to detect. The choice is
+Donald's; `tests/test_taskbaricon.py` checks that every cell on the sheet
+is a delivered file resized and that the delivery's hashes are unchanged
+after drawing it.
