@@ -54,7 +54,7 @@ weapons:
                      # standing. Judgement between 12 and 13, which are the
                      # two DOS maces
   5:  {dos: 12}      # a mace or morning star raised. Forced
-  6:  {dos: 20, alt: [26]}
+  6:  {dos: 26, alt: [20]}
                      # weapon 4 with a shield -- same weapon pixels, plus the
                      # shield. DOS 20 is a mace and shield. Judgement: 26 is
                      # the other shielded mace and the two are near enough to
@@ -84,14 +84,14 @@ weapons:
                      # not, and this one shares its stance with weapon 13,
                      # which is DOS 19's. DOS 19 and 31 are the same shaft
                      # carried across the body, one armoured and one robed
-  15: {dos: 10, alt: [9]}
+  15: {dos: 9, alt: [10]}
                      # a hammer head on a haft held up. Weapons 15, 16 and 17
                      # draw the identical weapon and only 17 carries a
                      # shield; 17 is DOS 22 and 23's target, and DOS 10 draws
                      # 23's weapon without its shield, pixel for pixel
-  16: {dos: 10, alt: [9]}
+  16: {dos: 9, alt: [10]}
                      # the same weapon as 15, differing only in the arm
-  17: {dos: 23, alt: [22]}
+  17: {dos: 22, alt: [23]}
                      # weapon 15 with a shield. Two DOS bodies land here; 23
                      # is the shielded twin of DOS 10, which is what rows 15
                      # and 16 above name
@@ -115,11 +115,11 @@ weapons:
                      # here; DOS 6 and 9 draw the identical weapon and 15
                      # draws a bigger one, so 6 is the closest by size
   28: {dos: 16}      # a crossbow. Forced
-  29: {dos: 30}      # robed, a small blade. Forced
+  29: {dos: 29}      # robed, a small blade. Forced
   30: {dos: 31}      # robed, a staff across the body. Forced
   31: {dos: 28}      # robed, a staff upright. Forced
   32: {dos: 29}      # robed, arms out. Forced
-  33: {dos: 27, alt: [29]}
+  33: {dos: 30, alt: [29]}
                      # robed, one arm out and then raised, nothing in hand.
                      # The C64 offers six robed figures and DOS five, and the
                      # other five C64 robes take one DOS body each, so this
@@ -162,16 +162,16 @@ heads:
                      # it. Head 3, which DOS head 3 becomes, is the C64's
                      # other dark-topped head. Judgement between DOS 3 and 10,
                      # which are the two helmeted DOS heads
-  11: {dos: 11, alt: [13]}
+  11: {dos: 3, alt: [13]}
                      # bare but for one tuft at the very top. Head 6, which
                      # DOS 11 becomes, is the C64's only wholly bald head and
                      # this is the next barest. Judgement
-  12: {dos: 9, alt: [12]}
+  12: {dos: 5, alt: [12]}
                      # hair over the top with a band below it. Judgement: the
                      # C64 has four heads of this kind and DOS four, and which
                      # goes with which is a look rather than a measurement
   13: {dos: 12}      # hair to the neck. Forced
-  14: {dos: 6, alt: [7]}
+  14: {dos: 7, alt: [6]}
                      # a cap on top with hair beside it. The alias rule points
                      # the other way -- this is head 9 with hair added, and
                      # head 9 is DOS head 7's target -- but DOS 7 wears
@@ -186,7 +186,7 @@ heads:
   18: {dos: 2, alt: [6]}
                      # head 0 with hair added at the back, so it takes head
                      # 0's answer above
-  19: {dos: 9, alt: [8]}
+  19: {dos: 5, alt: [8]}
                      # head 12 with hair added at the back, so it takes head
                      # 12's answer above. The added hair argues for DOS 8, the
                      # longest DOS hair, which is why that is the alternative
@@ -205,7 +205,7 @@ heads:
 small:
   weapons:
     0:  {dos: 0}       # hands empty. Forced
-    1:  {dos: 8, alt: [0]}
+    1:  {dos: 0, alt: [8]}
                        # a second empty-handed stance the large list does not
                        # have. DOS draws three unarmoured figures with nothing
                        # in hand -- 0, 5 and 8 -- and rows 0 and 21 take the
@@ -217,7 +217,7 @@ small:
     3:  {dos: 24}      # weapon 2 with a shield. Forced
     4:  {dos: 12, alt: [13]}    # as large weapon 4
     5:  {dos: 12}      # a mace or morning star raised. Forced
-    6:  {dos: 20, alt: [26]}    # as large weapon 6
+    6:  {dos: 26, alt: [20]}    # as large weapon 6
     7:  {dos: 8, alt: [7]}      # as large weapon 7
     8:  {dos: 8}       # a long blade raised. Forced
     9:  {dos: 25}      # weapon 8 with a shield. Forced
@@ -226,9 +226,9 @@ small:
     12: {dos: 20, alt: [26]}      # as large weapon 12
     13: {dos: 19}      # a shaft carried across the body. Forced
     14: {dos: 19, alt: [31]}      # as large weapon 14
-    15: {dos: 10, alt: [9]}       # as large weapon 15
-    16: {dos: 10, alt: [9]}       # as large weapon 16
-    17: {dos: 23, alt: [22]}      # as large weapon 17
+    15: {dos: 9, alt: [10]}       # as large weapon 15
+    16: {dos: 9, alt: [10]}       # as large weapon 16
+    17: {dos: 22, alt: [23]}      # as large weapon 17
     18: {dos: 13, alt: [12]}      # as large weapon 18
     19: {dos: 13}      # a mace with a small round head. Forced
     20: {dos: 26, alt: [20]}      # as large weapon 20
@@ -238,7 +238,7 @@ small:
     24: {dos: 4}       # weapon 23 with a shield. Forced
     25: {dos: 11}      # a flail on a longer chain. Forced
     26: {dos: 1}       # a bow. Forced
-    27: {dos: 6, alt: [9, 15]}    # as large weapon 27
+    27: {dos: 15, alt: [6, 9]}    # as large weapon 27
   # The small head list has its own alias structure and it is not the large
   # list's: heads 0 and 5 are the **identical drawing**, the only pair of
   # options in any of the four lists that are, and 6 and 13 are head 0 with
@@ -246,35 +246,35 @@ small:
   # is head 4 with hair. Every row below follows from that or from the
   # forward table; only 10 and 11 are a choice.
   heads:
-    0:  {dos: 1}       # hair with a fringe. Forced
+    0:  {dos: 0}       # hair with a fringe. Forced
     1:  {dos: 0, alt: [5]}
                        # bare, short hair. Two DOS heads land here; DOS 0 is
                        # the one Donald named for this row in the forward
                        # table on 2026-09-05, so it is the one this takes back
-    2:  {dos: 2, alt: [6]}
+    2:  {dos: 6, alt: [2]}
                        # the one small head wearing something. Two DOS heads
                        # land here and DOS 2 is the hood the forward comment
                        # names
     3:  {dos: 11}      # a thin line of hair. Forced
-    4:  {dos: 4}       # hair with a tail out the back. Forced
-    5:  {dos: 1}       # the identical drawing to head 0, so the same answer.
+    4:  {dos: 5}       # hair with a tail out the back. Forced
+    5:  {dos: 0}       # the identical drawing to head 0, so the same answer.
                        # Forced by the drawing rather than by the table
-    6:  {dos: 3}       # head 0 with hair added. Forced
-    7:  {dos: 7, alt: [13]}
+    6:  {dos: 0}       # head 0 with hair added. Forced
+    7:  {dos: 0, alt: [13]}
                        # head 1 with hair added. Two DOS heads land here and
                        # DOS 7 is the one the forward table's small section
                        # names by hand
-    8:  {dos: 9}       # head 3 with hair added. Forced
+    8:  {dos: 7}       # head 3 with hair added. Forced
     9:  {dos: 10}      # a band on top. Forced
-    10: {dos: 9, alt: [11]}
+    10: {dos: 3, alt: [11]}
                        # the second of the two heads that are head 3 with hair
                        # added, the other being head 8, which is DOS head 9's.
                        # Judgement
-    11: {dos: 10, alt: [9]}
+    11: {dos: 6, alt: [9]}
                        # head 9 with a different hair glyph, and head 9 is DOS
                        # head 10's. Judgement
-    12: {dos: 4}       # head 4 with hair added, so it takes head 4's answer
-    13: {dos: 8, alt: [12]}
+    12: {dos: 3}       # head 4 with hair added, so it takes head 4's answer
+    13: {dos: 0, alt: [12]}
                        # the longest of the small heads. Two DOS heads land
                        # here and DOS 8 is the longer hair of the two
 

@@ -188,6 +188,23 @@ def test_the_reverse_table_has_a_row_for_every_option_the_game_offers(table):
                 assert other != dos, (size, kind, c64)
 
 
+#: The rows Donald chose against the forward table, 2026-09-07, having been
+#: shown every figure and told what it costs: a C64 figure on one of these
+#: rows becomes a DOS figure that comes back as a *different* C64 figure, so
+#: a party converted out and back does not keep it. He ruled *"Apply them;
+#: the picture matters more"* -- the figure a player is given in DOS should
+#: look like the one he had, ahead of surviving a round trip nobody makes.
+#:
+#: **This is a record of a decision, not a defect to be tidied away.** A
+#: later reader who "fixes" one of these back is undoing his judgement. Six
+#: of the seven are small heads, where four separate C64 heads now become DOS
+#: head 0.
+DONALDS_OVERRIDES = {
+    ("large", "weapons"): (29,),
+    ("small", "heads"): (0, 4, 6, 7, 8, 13),
+}
+
+
 def test_a_row_the_forward_table_decided_is_not_re_decided_here(table):
     """The property that makes a converted party keep its own figures.
 
@@ -203,7 +220,10 @@ def test_a_row_the_forward_table_decided_is_not_re_decided_here(table):
         for dos, c64 in source.items():
             if c64 < count:
                 preimages.setdefault(c64, []).append(dos)
+        allowed = DONALDS_OVERRIDES.get((size, kind), ())
         for c64, pre in preimages.items():
+            if c64 in allowed:
+                continue
             assert table[(size, kind)][c64][0] in pre, (size, kind, c64, pre)
 
 
@@ -223,16 +243,18 @@ def test_a_c64_figure_survives_a_round_trip_through_dos(parts, table):
         for c64, (dos, _) in table[(size, kind)].items():
             if source[dos] != c64:
                 lost.append((size, kind, c64, dos, source[dos]))
-    # 35 + 23 + 28 + 14 = 100 rows, and the ones that cannot come home are
-    # the C64 figures no DOS figure becomes -- 32 of them, which is the
-    # number `tools/iconreverse.py --coverage` calls "fresh".
-    assert len(lost) == 32
+    # 35 + 23 + 28 + 14 = 100 rows. Thirty-two cannot come home because DOS
+    # has no figure for them -- the count `tools/iconreverse.py --coverage`
+    # calls "fresh" -- and seven more because Donald chose the picture over
+    # the round trip; see `DONALDS_OVERRIDES`.
+    assert len(lost) == 32 + sum(len(v) for v in DONALDS_OVERRIDES.values())
     for size, kind, count in LISTS:
         forward = dos_icon_tables(size=size)
         source = forward.weapons if kind == "weapons" else forward.heads
         targets = {c for c in source.values() if c < count}
+        allowed = DONALDS_OVERRIDES.get((size, kind), ())
         for entry in lost:
-            if entry[:2] == (size, kind):
+            if entry[:2] == (size, kind) and entry[2] not in allowed:
                 assert entry[2] not in targets, entry
 
 
@@ -301,7 +323,9 @@ def test_the_coverage_report_accounts_for_every_row(table):
     counts = {"forced": 0, "choice": 0, "fresh": 0}
     for (size, kind), row in iconreverse.coverage(table).items():
         assert not row["missing"], (size, kind, row["missing"])
-        assert not row["disagrees"], (size, kind, row["disagrees"])
+        assert (sorted(row["disagrees"])
+                == sorted(DONALDS_OVERRIDES.get((size, kind), ()))), (
+            size, kind, row["disagrees"])
         for kind_name in row["kinds"].values():
             counts[kind_name] += 1
     assert sum(counts.values()) == 100
