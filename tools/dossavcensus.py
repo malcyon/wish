@@ -19,8 +19,18 @@ What it does, and it reads only -- it never writes a saved game:
 2. **Classifies each specimen**: its area, whether it stands indoors, its
    square, its clock, its party size, its wallset triple, and whether its ECL
    buffer is a real script or 7680 zeroes.  A save whose buffer is zero and
-   whose clock is 00:00 is a **shipped stub**, not a played party, and is
-   excluded from the counts by default -- `--include-stubs` keeps it.
+   whose clock is 00:00 is one made before the party set out -- the same
+   state `goldbox.dos.never_adventured` and `tools/neveradventured.py` name,
+   whoever wrote it -- and is excluded from the counts by default, on the
+   reasoning that a census of world state has nothing to say about a party
+   that has none yet: `--include-never-adventured` keeps it in.  Nothing here
+   claims such a save is *shipped*; a shipped stub (`Default files/Saves`'s
+   `SAVGAMB.DAT` on each title) is one example of it, and
+   `work/issue304/probe/created/SAVGAMC.DAT` -- a save this project drove
+   under DOSBox on `#304 (field_83_87 is written as a constant that the
+   characters we rolled ourselves do not hold)` -- is another
+   (`#327 (dossavcensus calls a party saved before it set out a shipped
+   stub, and drops thirteen engine-written containers from every count)`).
 3. **Censuses all 2560 `u16le` variables**: how many are zero in every
    specimen, which are not, and what value each takes per specimen.  The
    *partition* -- which specimens agree with which -- is what names a field,
@@ -184,7 +194,7 @@ def describe(path: pathlib.Path,
         # whose meaning is "the word at this ECL address".
         out.update(area=None, area_name=None, indoors=None, travel=None,
                    clock=None, disk_word=None, wallset=None, wallmap=None,
-                   flags=None, stub=None)
+                   flags=None, never_adventured=None)
         if shape.var_bytes:
             digits = [sg.pod_var(save, sg.POD_CLOCK + i)
                       for i in range(sg.POD_CLOCK_DIGITS)]
@@ -193,11 +203,11 @@ def describe(path: pathlib.Path,
                 pod_in_dungeon=sg.pod_in_dungeon(save),
                 pod_party_count=sg.pod_var(save, sg.POD_PARTY_COUNT),
                 pod_live=[i + 1 for i in range(shape.var_bytes) if save[i]],
-                # A clock that has never run is the shipped stub, by the same
-                # test this tool applies to Pool of Radiance.  Both shipped
-                # containers read 00:00 and all eight engine-written ones on
-                # this machine read a time (#175).
-                stub=not any(digits))
+                # A clock that has never run is the same never-adventured
+                # state, by the same test this tool applies to Pool of
+                # Radiance.  Both shipped containers read 00:00 and all eight
+                # engine-written ones on this machine read a time (#175).
+                never_adventured=not any(digits))
         return out
     area = sg.current_area(save)
     where = areas.area(area)
@@ -212,7 +222,17 @@ def describe(path: pathlib.Path,
         wallmap=[sg.word(save, sg.WALLMAP + i) for i in range(3)],
         flags=sum(1 for a in range(sg.FLAGS_FIRST, sg.FLAGS_LAST + 1)
                   if sg.word(save, a)),
-        stub=_buffer_zero(save, shape) and not any(sg.clock(save)),
+        # The state `goldbox.dos.never_adventured` and
+        # `tools/neveradventured.py` name: a party saved before
+        # `BEGIN ADVENTURING` carries the initialiser's world state rather
+        # than a played one.  It is legitimate evidence about what the
+        # initialiser writes and is not evidence about a party in the world,
+        # so it is excluded from the counts below by default -- a stated
+        # choice, not a side effect of what it is called
+        # (`#327 (dossavcensus calls a party saved before it set out a
+        # shipped stub, and drops thirteen engine-written containers from
+        # every count)`).
+        never_adventured=_buffer_zero(save, shape) and not any(sg.clock(save)),
     )
     return out
 
@@ -256,8 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--title", default="pool-of-radiance",
                     help="Which title's containers to sweep: "
                          + ", ".join(s.key for s in sg.SAVE_SHAPES))
-    ap.add_argument("--include-stubs", action="store_true",
-                    help="Keep shipped stubs in the counts")
+    ap.add_argument("--include-never-adventured", action="store_true",
+                    help="Keep parties saved before BEGIN ADVENTURING in "
+                         "the counts")
     ap.add_argument("--include-built", action="store_true",
                     help="Keep hand-built seeds in the counts (they are not "
                          "evidence about what the engine writes)")
@@ -280,7 +301,12 @@ def main(argv: list[str] | None = None) -> int:
     def counted(s: dict) -> bool:
         if s["hand_built"] and not args.include_built:
             return False
-        return bool(args.include_stubs) or not s["stub"]
+        # Excluded by default: a party saved before it set out carries the
+        # initialiser's world state rather than a played one, so a census of
+        # world state has nothing to count in it. This is a stated choice
+        # about what this census is *for*, not a consequence of the name --
+        # `tools/neveradventured.py` takes the same reading and counts it.
+        return bool(args.include_never_adventured) or not s["never_adventured"]
 
     kept = [(s, p) for s, p in zip(specimens, paths) if counted(s)]
     saves = [p.read_bytes() for _, p in kept]
@@ -296,7 +322,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{shape.title}: {len(paths)} distinct containers, "
           f"{len(kept)} counted ({len(kept) - outdoor} indoors, "
           f"{outdoor} outdoors), "
-          f"{len(paths) - len(kept)} excluded as stubs or hand-built")
+          f"{len(paths) - len(kept)} excluded as never-adventured or "
+          f"hand-built")
     print()
     head = f"{'specimen':<22} {'area':>4} {'in':>3} {'square':>12} " \
            f"{'clock':>14} {'sz':>3} {'wallset':>16} {'flags':>5}"
@@ -304,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     print("-" * len(head))
     for s in specimens:
         mark = "" if counted(s) else ("  (built)" if s["hand_built"]
-                                      else "  (stub)")
+                                      else "  (never adventured)")
         clock = ("%02d:%02d d%d m%d" % tuple(s["clock"])
                  if s["clock"] and len(s["clock"]) == 4 else "-")
         if s.get("pod_clock"):

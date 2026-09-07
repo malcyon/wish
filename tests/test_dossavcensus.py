@@ -83,27 +83,74 @@ def test_an_engine_written_file_is_not_hand_built(tmp_path, name):
     assert not census.hand_built(tmp_path / "run2" / name)
 
 
-def test_the_counts_exclude_hand_built_and_stubs(tmp_path):
+def test_the_counts_exclude_hand_built_and_never_adventured(tmp_path):
     """End to end: three files in, one counted.
 
-    A seed, a stub and an engine-written save. Only the last has anything to
-    say about what the engine writes, and `census` is handed only that one.
+    A seed, a never-adventured save and an engine-written one. Only the last
+    has anything to say about what the engine writes, and `census` is handed
+    only that one.
     """
-    # `$49C9` is the hour: the stub test is "zero script buffer and a clock
-    # that reads 00:00", and `$49C6` is the sub-minute digit, which `clock()`
-    # does not return -- setting only that leaves a save looking like a stub.
+    # `$49C9` is the hour: the never-adventured test is "zero script buffer
+    # and a clock that reads 00:00", and `$49C6` is the sub-minute digit,
+    # which `clock()` does not return -- setting only that leaves a save
+    # looking never-adventured.
     played = _blank(a49E6=1, a49C9=10, a5012=2, a4900=7)
     seed = _blank(a49E6=1, a49C9=10, a5012=2, a4900=9)
-    stub = _blank()                       # zero clock, zero script buffer
+    never_adventured = _blank()           # zero clock, zero script buffer
     _write(tmp_path, "SAVGAMA.DAT", played)
     _write(tmp_path, "SEED-SAVGAMB.DAT", seed)
-    _write(tmp_path, "SAVGAMC.DAT", stub)
+    _write(tmp_path, "SAVGAMC.DAT", never_adventured)
 
     found = [p for p in census.find_saves([tmp_path])
              if tmp_path in p.parents or p.parent == tmp_path]
     kept = [census.describe(p) for p in found]
-    counted = [s for s in kept if not s["hand_built"] and not s["stub"]]
+    counted = [s for s in kept
+               if not s["hand_built"] and not s["never_adventured"]]
     assert [s["label"].split(":")[-1] for s in counted] == ["A"]
+
+
+def test_never_adventured_is_named_for_what_it_is_not_for_shipping(tmp_path):
+    """#327 (dossavcensus calls a party saved before it set out a shipped
+    stub, and drops thirteen engine-written containers from every count):
+    an engine-written save this project drove itself -- the shape of
+    `work/issue304/probe/created/SAVGAMC.DAT` -- carries the same zero
+    script buffer and 00:00 clock a shipped never-adventured save does, and
+    the classification has to say so without claiming it shipped with the
+    game.  `describe` no longer has a `stub` key at all: the field is
+    `never_adventured`, and `hand_built` -- a wholly separate question -- is
+    false for a save we merely drove rather than assembled.
+    """
+    driven = _blank()                     # zero clock, zero script buffer
+    path = _write(tmp_path, "SAVGAMD.DAT", driven)
+    got = census.describe(path)
+    assert got["never_adventured"] is True
+    assert got["hand_built"] is False
+    assert "stub" not in got
+
+
+def test_the_exclusion_is_a_stated_choice_not_a_side_effect_of_the_name(
+        tmp_path, capsys, monkeypatch):
+    """The counted totals, and the words the CLI prints about them, no
+    longer say "stub" or "shipped" -- and `--include-never-adventured`
+    is what brings a never-adventured save back into the counts, replacing
+    `--include-stubs`.
+    """
+    monkeypatch.setattr(census, "_roots", lambda: [])
+    never = _blank()                      # zero clock, zero script buffer
+    played = _blank(a49E6=1, a49C9=10, a5012=2, a4900=7)
+    _write(tmp_path, "SAVGAMA.DAT", never)
+    _write(tmp_path, "SAVGAMB.DAT", played)
+
+    assert census.main([str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "1 counted" in out
+    assert "1 excluded as never-adventured or hand-built" in out
+    assert "stub" not in out.lower()
+
+    assert census.main([str(tmp_path), "--include-never-adventured"]) == 0
+    out2 = capsys.readouterr().out
+    assert "2 counted" in out2
+    assert "0 excluded as never-adventured or hand-built" in out2
 
 
 # -- find_saves ----------------------------------------------------------

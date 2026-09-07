@@ -11,9 +11,10 @@ hand, so the game can be asked whether it offers it.
 
     tools/porslot.py work/por1.adf --from A --to F --out work/por1-F.adf
 
-The party is read back out of the disk through `read_amiga_por` and
-`to_neutral`, so it goes through the same neutral record a converted party
-would, and anything that cannot cross is reported rather than dropped.
+The party is read back out of the disk through `goldbox.amiga.read_por_slot`
+and `goldbox.dos.to_neutral`, so it goes through the same neutral record a
+converted party would, and anything that cannot cross is reported rather than
+dropped.
 
 **The input disk is opened read-only and `--out` is required.** The player's
 own disks are not written to; work on a copy.
@@ -24,52 +25,26 @@ from __future__ import annotations
 import argparse
 import pathlib
 import sys
-import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga  # noqa: E402
-from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
+from goldbox import amiga, dos  # noqa: E402
+from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 
 
 def read_slot(disk: AmigaDisk, slot: str):
     """The characters of one slot, as neutral records, and its saved game.
 
-    `read_amiga_por` wants a path, because a `.sav` is read with its sibling
-    `.itm` and `.spc` and the record's own item count decides how much of the
-    `.itm` is this character's.  So the three files come off the disk into a
-    temporary directory and are read from there, rather than teaching the
-    reader a second way in that would then have to be kept in step.
+    Reads through `goldbox.amiga.read_por_slot`, which reads the `.sav`,
+    `.itm` and `.spc` blocks straight off the disk -- nothing here is written
+    to the host filesystem to read a slot.  `read_por_slot` answers
+    `list[goldbox.dos.DosCharacter]`, so each one is turned neutral with
+    `dos.to_neutral`.  Raises `amiga.AmigaRecordError` for a slot with no
+    characters, and for one with characters and no saved game.
     """
     letter = slot.upper()
-    characters = []
-    with tempfile.TemporaryDirectory() as tmp:
-        for index in range(1, amiga.POR_PARTY_MAX + 1):
-            stem = f"/{amiga.POR_SAVE_DRAWER}/" \
-                   f"{amiga.por_filename(letter, index, '')}"
-            try:
-                record = disk.read_file(stem + ".sav")
-            except AmigaDiskError:
-                break
-            here = pathlib.Path(tmp) / f"{letter}{index}.sav"
-            here.write_bytes(record)
-            for suffix in (".itm", ".spc"):
-                try:
-                    here.with_suffix(suffix).write_bytes(
-                        disk.read_file(stem + suffix))
-                except AmigaDiskError:
-                    pass
-            characters.append(amiga.read_amiga_por(here))
-    try:
-        savegame = disk.read_file(
-            f"/{amiga.POR_SAVE_DRAWER}/{amiga.por_savegame_filename(letter)}")
-    except AmigaDiskError:
-        # The characters above already fail with a sentence rather than a
-        # traceback; a slot with records and no saved game is the same kind of
-        # half-built disk and deserves the same answer.
-        raise SystemExit(
-            f"Slot {letter} has character files but no saved game") from None
-    return characters, savegame
+    characters, savegame = amiga.read_por_slot(disk, letter)
+    return [dos.to_neutral(c) for c in characters], savegame
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,18 +72,15 @@ def main(argv: list[str] | None = None) -> int:
           f"{disk.read_file(amiga.POR_SLOT_LIST)!r} "
           f"{amiga.read_slot_list(disk)}")
 
-    characters, savegame = read_slot(disk, args.source)
-    if not characters:
-        raise SystemExit(f"Slot {args.source.upper()} has no characters on "
-                         f"{args.disk}")
-    neutral = []
-    for char in characters:
-        record = amiga.to_neutral(char)
+    try:
+        neutral, savegame = read_slot(disk, args.source)
+    except amiga.AmigaRecordError as ex:
+        raise SystemExit(str(ex)) from None
+    for record in neutral:
         for line in list(record.warnings) + list(record.dropped):
-            print(f"  {char.name}: {line}")
-        neutral.append(record)
+            print(f"  {record.get('name')}: {line}")
     print(f"Read {len(neutral)} characters from slot {args.source.upper()}: "
-          f"{', '.join(c.name for c in characters)}")
+          f"{', '.join(c.get('name') for c in neutral)}")
 
     written = amiga.write_por_slot(disk, args.target, neutral, savegame)
     print(f"Wrote {len(written)} files:")
