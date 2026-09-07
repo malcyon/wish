@@ -29,6 +29,7 @@ Pool of Radiance.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import pathlib
 import re
@@ -512,39 +513,68 @@ class CurseSession(por.Session):
         return False
 
 
-if __name__ == "__main__":
-    argv = sys.argv[1:]
-    watch = "--watch" in argv
-    stock = "--stock-kernal" in argv
-    argv = [a for a in argv if a not in ("--watch", "--stock-kernal")]
+#: A sentinel distinct from every valid `--pool` value, including the `None`
+#: `argparse` hands back for a bare `--pool` with no number after it -- so
+#: "the flag was never given" and "the flag was given with no number" (claim
+#: the next free slot) are still two different things once `main` reads
+#: `args.pool` (`#403 (A tool with no argument parser reads --help as input
+#: and boots an emulator)`).
+_NO_POOL = object()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`--pool [N]` claims slot *N*, or the next free one with no number.
+
+    Everything below the title screen -- the monitor, the keyboard, the
+    screen reader -- is `tools/session.py`'s; what this adds is Curse's own
+    sides, save disk and start-up check, in the class above.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--watch", action="store_true",
+                    help="launch and serve with no boot, to read a screen "
+                         "the disk-prompt wording does not recognise yet")
+    ap.add_argument("--stock-kernal", dest="stock", action="store_true",
+                    help="remove JiffyDOS from this slot's vicerc (needs "
+                         "--pool)")
+    ap.add_argument("--pool", nargs="?", type=int, const=None,
+                    default=_NO_POOL, metavar="N",
+                    help="claim an instance-pool slot: a specific one, or "
+                         "the next free one with no number")
+    ap.add_argument("--disks", default="",
+                    help="stage the Curse sides into the slot first (needs "
+                         "--pool)")
+    ap.add_argument("--save", default="",
+                    help="the save disk to copy in alongside --disks")
+    ap.add_argument("disk", nargs="?", default=None,
+                    help="the disk image CurseSession() boots; replaced by "
+                         "the staged copy when --disks is given")
+    args = ap.parse_args(argv)
+
     slot = None
-    if argv and argv[0] == "--pool":
-        argv = argv[1:]
-        want = None
-        if argv and argv[0].isdigit():
-            want, argv = int(argv[0]), argv[1:]
-        slot = por.claim_slot(want, note=os.environ.get("POR_AGENT", "curse"))
+    if args.pool is not _NO_POOL:
+        slot = por.claim_slot(args.pool,
+                              note=os.environ.get("POR_AGENT", "curse"))
         slot.seed_vicerc()
         print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
               f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
               flush=True)
-    disks = save = ""
-    while len(argv) > 1 and argv[0] in ("--disks", "--save"):
-        if argv[0] == "--disks":
-            disks = argv[1]
-        else:
-            save = argv[1]
-        argv = argv[2:]
-    if disks:
+
+    disk_arg = args.disk
+    if args.disks:
         assert slot is not None, "--disks needs --pool"
-        argv = [stage(slot, disks, save)] + list(argv)
-    if stock:
+        disk_arg = stage(slot, args.disks, args.save)
+    if args.stock:
         assert slot is not None, "--stock-kernal needs --pool"
         stock_kernal(slot)
         print("JiffyDOS removed from this slot's vicerc", flush=True)
-    sess = CurseSession(argv[0] if argv else None, slot=slot)
-    if watch:
+    sess = CurseSession(disk_arg, slot=slot)
+    if args.watch:
         sess.launch()
     elif not sess.boot():
         print("boot incomplete")
     por.serve(sess)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

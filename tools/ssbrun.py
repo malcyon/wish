@@ -35,6 +35,7 @@ pool slot, and the save disk is one this project built from a DOS save.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import pathlib
 import sys
@@ -51,47 +52,47 @@ from tools import (  # noqa: E402
 from tools import session as por  # noqa: E402
 
 
-def run(argv: list[str]) -> None:
-    watch = "--watch" in argv
-    argv = [a for a in argv if a != "--watch"]
-    want = None
-    save = disks = out = ""
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--pool":
-            i += 1
-            if i < len(argv) and argv[i].isdigit():
-                want = int(argv[i])
-                i += 1
-            continue
-        if argv[i] in ("--save", "--disks", "--out") and i + 1 < len(argv):
-            value = argv[i + 1]
-            if argv[i] == "--save":
-                save = value
-            elif argv[i] == "--disks":
-                disks = value
-            else:
-                out = value
-            i += 2
-            continue
-        i += 1
+def run(argv: list[str] | None = None) -> None:
+    """Claim a slot, stage the six sides and a save, boot, and serve.
 
-    disks = disks or str(gamedisks.find("secret-of-the-silver-blades") or "")
+    `tools/ssbtrain.py`'s `drive` builds `argv` itself and calls this
+    directly, so the signature stays `run(argv)` rather than the `main`
+    other `tools/*run.py` scripts use.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--watch", action="store_true",
+                    help="launch and serve with no boot, for reading a "
+                         "screen nothing recognises")
+    ap.add_argument("--pool", type=int, default=None, metavar="N",
+                    help="claim this instance-pool slot rather than the "
+                         "first free one")
+    ap.add_argument("--save", default="",
+                    help="a save disk this project built, staged as SIDE0")
+    ap.add_argument("--disks", default="",
+                    help="the six Silver Blades sides (default: $SSB_DISKS "
+                         "or the disks this machine already has)")
+    ap.add_argument("--out", default="",
+                    help="a directory for this run's own files")
+    args = ap.parse_args(argv)
+
+    disks = args.disks or str(
+        gamedisks.find("secret-of-the-silver-blades") or "")
     if not disks:
         raise SystemExit("no Silver Blades disks: set $SSB_DISKS or pass "
                          "--disks")
-    slot = por.claim_slot(want, note=os.environ.get("POR_AGENT", "ssb193"))
+    slot = por.claim_slot(args.pool, note=os.environ.get("POR_AGENT",
+                                                          "ssb193"))
     print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
           f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
           flush=True)
-    first = ssbwarp.stage(slot, disks, save)
-    if save:
-        print(f"save disk: {save} -> {slot.dir}/SIDE0.D64", flush=True)
+    first = ssbwarp.stage(slot, disks, args.save)
+    if args.save:
+        print(f"save disk: {args.save} -> {slot.dir}/SIDE0.D64", flush=True)
     sess = ssbwarp.SSBSession(first, slot=slot)
     sess.save_disk = f"{slot.dir}/SIDE0.D64"
-    if out:
-        pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-    if watch:
+    if args.out:
+        pathlib.Path(args.out).mkdir(parents=True, exist_ok=True)
+    if args.watch:
         sess.launch()
     else:
         booted = sess.boot()

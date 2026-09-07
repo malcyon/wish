@@ -29,6 +29,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import argparse  # noqa: E402
 import pathlib  # noqa: E402
 import tempfile  # noqa: E402
 
@@ -138,9 +139,12 @@ def _ready_states(root: pathlib.Path):
            ("06-ready-to-write-dos", ready_dos)]
 
 
-def main(argv: list[str]) -> int:
-    out_dir = pathlib.Path(argv[1] if len(argv) > 1
-                           else "work/convertshots")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("out_dir", nargs="?", default="work/convertshots",
+                    help="where the PNGs go (default: %(default)s)")
+    args = ap.parse_args(argv)
+    out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     app = QApplication.instance() or QApplication(["convertshots"])
@@ -162,4 +166,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main())

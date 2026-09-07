@@ -14,6 +14,7 @@ which is what `tests/test_licenses.py` runs.
 """
 from __future__ import annotations
 
+import argparse
 import pathlib
 import sys
 
@@ -25,9 +26,16 @@ OUT = pathlib.Path(__file__).resolve().parent.parent / "THIRD_PARTY_LICENSES.md"
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true",
+                    help="fail if the committed file is out of date instead "
+                         "of regenerating it, which is what "
+                         "tests/test_licenses.py runs (#403: an unrecognised "
+                         "argument used to fall through to the write "
+                         "branch)")
+    args = ap.parse_args(argv)
     text = licenses.markdown()
-    if "--check" in argv:
+    if args.check:
         if not OUT.exists():
             print(f"{OUT.name} is missing")
             return 1

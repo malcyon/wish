@@ -31,6 +31,7 @@ now, so the rule binds on the notes list and nowhere else -- see
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
@@ -244,18 +245,21 @@ def build() -> QImage:
     return image
 
 
-def main(argv: list[str]) -> int:
-    out = argv[1] if len(argv) > 1 else "work/reports/icon-sheet.png"
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("out", nargs="?", default="work/reports/icon-sheet.png",
+                    help="where the PNG goes (default: %(default)s)")
+    args = ap.parse_args(argv)
     app = QGuiApplication(["iconsheet"])     # a QImage still wants one
     assert app is not None                  # and wants it kept alive
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     image = build()
-    if not image.save(out):
-        print(f"could not write {out}", file=sys.stderr)
+    if not image.save(args.out):
+        print(f"could not write {args.out}", file=sys.stderr)
         return 1
-    print(f"{out}  {image.width()}x{image.height()}")
+    print(f"{args.out}  {image.width()}x{image.height()}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main())

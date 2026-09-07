@@ -21,6 +21,7 @@ never in the drive.
 """
 from __future__ import annotations
 
+import argparse
 import contextlib
 import io
 import os
@@ -2425,40 +2426,70 @@ def serve(sess: Session, port: int | None = None) -> None:
     srv.close()
 
 
-if __name__ == "__main__":
-    # `--pool` claims an instance slot and holds its lease for as long as this
-    # process lives; without it the session is the legacy one on 6502/6510/6600
-    # and `work/drive/`, which is what `tools/porcmd` still talks to.
-    #
-    # `--pool N` demands slot *N*, which is what a brief names; `--disks DIR`
-    # and `--save NAME` copy the player's disks into the slot first, so the
-    # session comes up ready to load a save rather than needing a `work/drive`
-    # laid out by hand.
-    argv = sys.argv[1:]
+#: A sentinel distinct from every valid `--pool` value, including the `None`
+#: `argparse` hands back for a bare `--pool` with no number after it -- so
+#: "the flag was never given" (the legacy session on 6502/6510/6600) and
+#: "the flag was given with no number" (the next free pool slot) are still
+#: two different things once `main` reads `args.pool`
+#: (`#403 (A tool with no argument parser reads --help as input and boots an
+#: emulator)`).
+_NO_POOL = object()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`--pool` claims an instance slot and holds its lease for as long as
+    this process lives; without it the session is the legacy one on
+    6502/6510/6600 and `work/drive/`, which is what `tools/porcmd` still
+    talks to.
+
+    `--pool N` demands slot *N*, which is what a brief names; `--disks DIR`
+    and `--save NAME` copy the player's disks into the slot first, so the
+    session comes up ready to load a save rather than needing a `work/drive`
+    laid out by hand.
+    """
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--pool", nargs="?", type=int, const=None,
+                    default=_NO_POOL, metavar="N",
+                    help="claim an instance-pool slot: a specific one, or "
+                         "the next free one with no number. Without this, "
+                         "the session is the legacy one on Donald's own "
+                         "6502/6510/6600")
+    ap.add_argument("--disks", default="",
+                    help="stage the player's disks into the slot first "
+                         "(needs --pool)")
+    ap.add_argument("--save", default="",
+                    help="the save to copy in alongside --disks")
+    ap.add_argument("disk", nargs="?", default=None,
+                    help="the disk image Session() boots; replaced by the "
+                         "staged copy when --disks is given")
+    ap.add_argument("save_disk", nargs="?", default=None,
+                    help="override the save disk path")
+    args = ap.parse_args(argv)
+
     slot = None
-    if argv and argv[0] == "--pool":
-        argv = argv[1:]
-        want = None
-        if argv and argv[0].isdigit():
-            want, argv = int(argv[0]), argv[1:]
-        slot = claim_slot(want, note=os.environ.get("POR_AGENT", ""))
+    if args.pool is not _NO_POOL:
+        slot = claim_slot(args.pool, note=os.environ.get("POR_AGENT", ""))
         slot.seed_vicerc()
         print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
               f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
               flush=True)
-    disks = save = ""
-    while len(argv) > 1 and argv[0] in ("--disks", "--save"):
-        if argv[0] == "--disks":
-            disks = argv[1]
-        else:
-            save = argv[1]
-        argv = argv[2:]
-    if disks:
-        assert slot is not None, "--disks needs --pool: nothing stages work/drive"
-        argv = [stage_disks(slot, disks, save)] + list(argv)
-    sess = Session(argv[0] if argv else None, slot=slot)
-    if len(argv) > 1:
-        sess.save_disk = os.path.abspath(argv[1])
+
+    disk_arg, save_disk_arg = args.disk, args.save_disk
+    if args.disks:
+        assert slot is not None, \
+            "--disks needs --pool: nothing stages work/drive"
+        disk_arg = stage_disks(slot, args.disks, args.save)
+        save_disk_arg = args.disk
+        if args.save_disk is not None:
+            ap.error(f"unexpected extra argument: {args.save_disk!r}")
+    sess = Session(disk_arg, slot=slot)
+    if save_disk_arg is not None:
+        sess.save_disk = os.path.abspath(save_disk_arg)
     if not sess.boot():
         print("boot failed")
     serve(sess)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

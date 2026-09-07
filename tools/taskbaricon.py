@@ -55,6 +55,7 @@ letter, and the judgement of which sizes each survives is in
 
 from __future__ import annotations
 
+import argparse
 import os
 import pathlib
 import sys
@@ -435,22 +436,30 @@ def measure() -> list[tuple[str, str, int, int]]:
     return out
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--measure", action="store_true",
+                    help="print the gap-to-shipped-icon table instead of "
+                         "drawing a sheet")
+    ap.add_argument("--shipped", action="store_true",
+                    help="draw only the row that matches what ships")
+    ap.add_argument("out", nargs="?", default=None,
+                    help="where the PNG goes (default: work/issue351/"
+                         "taskbar-shipped.png or -marks.png)")
+    args = ap.parse_args(argv)
     app = QGuiApplication(["taskbaricon"])
     assert app is not None
-    if "--measure" in argv:
+    if args.measure:
         print("family        colourway  gap@24  gap@32   (of 255; same to the "
               f"eye below {SAME_ENOUGH})")
         for family, colourway, g24, g32 in measure():
             print(f"{family:13s} {colourway:10s} {g24:6d}  {g32:6d}")
         return 0
-    shipped = "--shipped" in argv
-    paths = [a for a in argv[1:] if not a.startswith("--")]
-    out = pathlib.Path(paths[0] if paths else
-                       "work/issue351/taskbar-shipped.png" if shipped else
-                       "work/issue351/taskbar-marks.png")
+    out = pathlib.Path(args.out or (
+        "work/issue351/taskbar-shipped.png" if args.shipped
+        else "work/issue351/taskbar-marks.png"))
     out.parent.mkdir(parents=True, exist_ok=True)
-    the_rows = [shipped_row()] if shipped else rows()
+    the_rows = [shipped_row()] if args.shipped else rows()
     image = sheet(the_rows)
     if not image.save(str(out)):
         raise RuntimeError(f"could not write {out}")
@@ -461,4 +470,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main())

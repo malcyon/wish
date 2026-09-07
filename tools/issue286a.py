@@ -1,3 +1,12 @@
+"""Replay #286's load-failure hardware state on a pooled VICE instance and
+confirm the vectors and BASIC interpreter match the bug's own screenshots.
+
+Takes no arguments -- the crash state it pokes in is fixed -- so the only
+thing a command line can do here is ask for `--help` or refuse anything else
+(`#403 (A tool with no argument parser reads --help as input and boots an
+emulator)`: this used to boot regardless of what followed the script name).
+"""
+import argparse
 import time
 
 from tools.instance import claim
@@ -50,5 +59,11 @@ def run():
                 chars.append(f'[{hex(b)}]')
         print(f"$CC00: {''.join(chars)}")
 
-if __name__ == '__main__':
+def main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args(argv)
     run()
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -11,6 +11,7 @@ restart the editor, done.
 
 from __future__ import annotations
 
+import argparse
 import pathlib
 import subprocess
 import sys
@@ -92,7 +93,13 @@ def body(source: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true",
+                    help="fail if a compiled file differs from its .ui "
+                         "instead of regenerating it, which is what CI wants "
+                         "(#403: an unrecognised argument used to fall "
+                         "through to the write branch)")
+    args = ap.parse_args(argv)
     pairs = discover()
     if not pairs:
         print("no .ui files found", file=sys.stderr)
@@ -100,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     failed = False
     for ui, py in pairs:
         source = compile_ui(ui)
-        if "--check" in argv:
+        if args.check:
             if not py.exists() or body(py.read_text(encoding="utf-8")) != body(source):
                 print(f"{py.name} is stale; run tools/genui.py",
                       file=sys.stderr)
