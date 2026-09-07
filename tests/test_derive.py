@@ -7,8 +7,10 @@ MALCYON's THAC0 improved by a point when he bought darts and `wish` reported
 his roster as stale for years afterwards (#202).
 
 The synthetic tests need no disks. The live ones read the player's own saves,
-which is where the population is: 112 of 114 character records agree with the
-recomputed THAC0 under this rule and 96 did under the last one.
+which is where the population is: 122 of 126 character records agree with the
+recomputed THAC0 and 121 with the recomputed damage bonus, and the nine that do
+not are named one at a time in `THAC0_EXPLAINED` and `DAMAGE_EXPLAINED` rather
+than counted.
 """
 
 import pytest
@@ -151,14 +153,40 @@ def _party(path, types):
         yield slot.record, save1.roster(slot.index), readied
 
 
-@needs_disks
-def test_every_cached_thac0_but_two_agrees_with_the_recomputed_one():
-    """The sample is the finding: 114 records across the player's save disks.
+#: Every record on the player's disks whose cached THAC0 is not what the rules
+#: give, and the reason each one is not a defect in `goldbox/derive.py`.
+#:
+#: **A named set rather than a count.** `assert agree >= total - 2` said
+#: nothing about *which* two, so when the player added two disks it went red
+#: with no clue why and a whole session went into re-deriving what the two had
+#: been. This fails when a new record disagrees **and** when one of these stops
+#: -- which is what makes it the test that `#366 (A converted magic-user or
+#: thief arrives with the other port's THAC0, because the two ports ship
+#: different tables and the conversion copies the byte)` will change.
+THAC0_EXPLAINED = {
+    ("PORSAVEA.D64", "ASTRID"): "converted from DOS; carries the DOS table's "
+                                "20 for a magic-user 3 where the C64's is 21",
+    ("PORSAVEA.D64", "GILES"): "the same, and the same party",
+    ("PORSAVEB.D64", "ASTRID"): "the same party, saved again",
+    ("PORSAVEB.D64", "GILES"): "the same",
+}
 
-    The two that disagree are GARRETT in NEWSAVE1 and NEWSAVE2, whose record
-    was edited and never played -- which is what this check exists to report,
-    so they are counted rather than excused.
-    """
+#: The same, for the damage bonus. All five are on the two disks GARRETT's
+#: party lives on, and all five are the check doing its job: GRIMNIR and BRUTUS
+#: cache 3 with an 18/00 strength, which is the number for a percentile of 1 to
+#: 50, and ROLAND on `NEWSAVE2` caches 2 while holding a mace worth 3 -- caches
+#: left behind by an edit, which is what `derive.check` exists to report.
+DAMAGE_EXPLAINED = {
+    ("NEWSAVE1.D64", "GRIMNIR"): "cached 3 for an 18/00 strength worth 2",
+    ("NEWSAVE1.D64", "BRUTUS"): "cached 3 for an 18/00 strength worth 2",
+    ("NEWSAVE2.D64", "GRIMNIR"): "cached 3 for an 18/00 strength worth 2",
+    ("NEWSAVE2.D64", "BRUTUS"): "cached 3 for an 18/00 strength worth 2",
+    ("NEWSAVE2.D64", "ROLAND"): "cached 2 with a mace readied, which is 3",
+}
+
+
+def _population(kind):
+    """`(total, {(disk, name): (cached, expected)})` over every save disk."""
     from gamedata import disk_dir, game_disk
 
     types = load_item_types(str(game_disk("POOL1")))
@@ -166,7 +194,9 @@ def test_every_cached_thac0_but_two_agrees_with_the_recomputed_one():
                    if p.name.upper().startswith(("PORSAVE", "NEWSAVE")))
     if not disks:
         pytest.skip("no save disks")
-    total = agree = 0
+    recompute = {"thac0": derive.expected_thac0,
+                 "damage_bonus": derive.expected_damage_bonus}[kind]
+    total, off = 0, {}
     for path in disks:
         try:
             party = list(_party(path, types))
@@ -174,39 +204,90 @@ def test_every_cached_thac0_but_two_agrees_with_the_recomputed_one():
             continue
         for record, roster, readied in party:
             total += 1
-            agree += derive.expected_thac0(record, readied) == roster.thac0
-    assert total >= 100, f"only {total} records; the disks look incomplete"
-    assert agree >= total - 2
+            want, got = recompute(record, readied), getattr(roster, kind)
+            if want != got:
+                off[(path.name.upper(), record.name)] = (got, want)
+    return total, off
 
 
 @needs_disks
-def test_every_cached_damage_bonus_but_five_agrees_with_the_recomputed_one():
+def test_every_cached_thac0_agrees_with_the_recomputed_one():
+    """The sample is the finding: 126 records across the player's save disks,
+    122 of which agree, and the four that do not are named in
+    `THAC0_EXPLAINED` one at a time.
+
+    GARRETT on `NEWSAVE1` and `NEWSAVE2` used to be here and is not any more,
+    and that is a fix rather than an excuse: he has `level` 5, `level_thief` 1
+    and no experience, and the game's own loop reads the per-class array. His
+    cached 21 is right for the thief 1 he is; it was `derive.base_thac0`
+    reading `level` that made him look stale.
+    """
+    total, off = _population("thac0")
+    assert total >= 100, f"only {total} records; the disks look incomplete"
+    assert set(off) == set(THAC0_EXPLAINED), \
+        "\n".join(f"{d} {n}: cached {c}, rules give {w}"
+                  for (d, n), (c, w) in sorted(off.items()))
+
+
+@needs_disks
+def test_every_cached_damage_bonus_agrees_with_the_recomputed_one():
     """Before #201, only 91 of 114 records agreed -- the unsigned byte and the
     ungated strength term between them threw off every readied weapon with a
-    negative bonus or a bit-1-only flag. After it, 109 agree, and the five
-    left are on GARRETT's own NEWSAVE1 and NEWSAVE2: every character on those
-    two disks disagrees on *something* (armour class too), the same
-    edited-and-never-played saves the THAC0 population test above already
-    excuses two records on, for GARRETT.
-    """
-    from gamedata import disk_dir, game_disk
+    negative bonus or a bit-1-only flag.
 
-    types = load_item_types(str(game_disk("POOL1")))
-    disks = sorted(p for p in disk_dir().glob("*.[dD]64")
-                   if p.name.upper().startswith(("PORSAVE", "NEWSAVE")))
-    if not disks:
-        pytest.skip("no save disks")
-    total = agree = 0
-    for path in disks:
-        try:
-            party = list(_party(path, types))
-        except Exception:            # PORSAVE10 is a roster disk with no save
-            continue
-        for record, roster, readied in party:
-            total += 1
-            agree += derive.expected_damage_bonus(record, readied) == roster.damage_bonus
+    It went to twelve out of 126 when a party carrying *magical* weapons
+    arrived, and that was a third term missing rather than a third kind of
+    edited record: `LIBRARY $36E3` adds the readied item's own bonus to the
+    damage the same way `$36C2` adds it to the THAC0, and this did not. Seven
+    records agreed the moment it was added. The five left are named in
+    `DAMAGE_EXPLAINED`, all on the two disks GARRETT's party lives on.
+    """
+    total, off = _population("damage_bonus")
     assert total >= 100, f"only {total} records; the disks look incomplete"
-    assert agree >= total - 5
+    assert set(off) == set(DAMAGE_EXPLAINED), \
+        "\n".join(f"{d} {n}: cached {c}, rules give {w}"
+                  for (d, n), (c, w) in sorted(off.items()))
+
+
+def test_a_magical_weapons_own_bonus_reaches_the_damage():
+    """The term that was missing: `LIBRARY $36E3` adds `$6D80`, the readied
+    item's enchantment, to the damage bonus unconditionally.
+
+    A long sword +1 in the hands of an 18/00 fighter caches 3 on the player's
+    own `PORSAVEA.D64` -- 2 for the strength, 0 for the type's flat damage and
+    1 for the enchantment -- and this returned 2 until the third term went in.
+    """
+    rec = a_character(strength=18, percentile=0)
+    _, damage = derive.strength_bonuses(18, 0)
+    assert damage == 2
+    sword = [(FakeItem(bonus=1), a_weapon(WEAPON_ADDS_STRENGTH, bonus=0))]
+    assert derive.expected_damage_bonus(rec, sword) == 3
+    # And it is added for a weapon that takes no strength at all, because the
+    # engine adds it outside the `AND #$04` block.
+    dart = [(FakeItem(bonus=2), a_weapon(WEAPON_RANGED, bonus=0))]
+    assert derive.expected_damage_bonus(rec, dart) == 2
+
+
+@needs_disks
+def test_the_thac0_base_comes_from_the_per_class_array():
+    """`GEN $1EF3` reads `$6BC9,X` -- the per-class array at `0x0C9` -- and
+    never `level` at `0x0BA`, and GARRETT on `NEWSAVE1` is the record where the
+    two disagree: `level` 5, `level_thief` 1, no experience, cached THAC0 21.
+
+    21 is the thief 1 row and 19 is the thief 5 row, so reading the wrong field
+    reported a record that is right about its THAC0 as stale, and pointed the
+    reader at the wrong number.
+    """
+    assert derive.base_thac0(4, 5) == 19                    # the old reading
+    assert derive.base_thac0(4, 5, {"thief": 1}) == 21      # the engine's
+    rec = a_character()
+    rec.set("class_bits", 4)
+    rec.set("level", 5)
+    rec.set("level_fighter", 0)
+    rec.set("level_thief", 1)
+    assert derive.class_levels(rec) == {"thief": 1}
+    assert derive.expected_thac0(rec, []) == 21 - derive.strength_bonuses(
+        rec.get("strength"), rec.get("exceptional_strength"))[0]
 
 
 @needs_disks

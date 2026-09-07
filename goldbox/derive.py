@@ -15,7 +15,9 @@ dexterity table below being AD&D's rather than the game's, and with the boundary
 corrected every character in every save is consistent. MALCYON's THAC0 improving
 by one when he readies darts was the last discrepancy, and it was his dexterity:
 a ranged weapon takes the missile attack adjustment at record 0x0EC where a
-melee one takes the strength bonus (#202).
+melee one takes the strength bonus (#202). The one after that was a party
+carrying magical weapons: the damage bonus was missing the item's own
+enchantment, which `LIBRARY $36E3` adds -- see `expected_damage_bonus`.
 See docs/30-savegame-layout.md.
 
 **One value here is written rather than only checked**, and it is the
@@ -103,10 +105,60 @@ def dexterity_ac_bonus(dexterity: int) -> int:
     return _DEX_AC.get(dexterity, 0)
 
 
-def base_thac0(class_bits: int, level: int) -> int:
-    """The best THAC0 among the character's classes, before any adjustment."""
-    level = max(1, min(int(level or 1), 9))
+#: One field a class, the per-class level array at record `0x0C9`.  `GEN $1EF3`
+#: walks exactly these four slots -- `LDA $6BC9,X` for X = 3 down to 0 -- and
+#: never reads `level` at `0x0BA`.
+LEVEL_FIELDS = (("magic-user", "level_magic_user"), ("cleric", "level_cleric"),
+                ("thief", "level_thief"), ("fighter", "level_fighter"))
+
+
+def class_levels(record) -> dict[str, int]:
+    """The per-class levels the engine's own THAC0 loop reads.
+
+    Empty for a record with nothing in the array, which is what a caller has to
+    fall back from.
+    """
+    out = {}
+    for name, field in LEVEL_FIELDS:
+        try:
+            level = record.get(field)
+        except Exception:
+            continue
+        if level:
+            out[name] = int(level)
+    return out
+
+
+def base_thac0(class_bits: int, level: int, levels=None) -> int:
+    """The best THAC0 among the character's classes, before any adjustment.
+
+    **`levels` -- the per-class array at `0x0C9` -- wins when it is given**,
+    because that is the array `GEN $1EF3` walks; `class_bits` and the single
+    `level` at `0x0BA` are the fallback for a caller that has only those. The
+    two differ for a multi-class character whose classes are not at the same
+    level, and for an edited record: GARRETT on `NEWSAVE1` and `NEWSAVE2` has
+    `level` 5, `level_thief` 1 and no experience, and his stored THAC0 of 21 is
+    right for the thief 1 the array says he is. Reading `level` reported him as
+    stale for years and pointed at the wrong field.
+
+    **`_THAC0` is the C64's table and this module is only ever handed C64
+    records**, so that is right rather than an oversight. The DOS build ships
+    40 -- THAC0 20 -- in the magic-user's rows 1-5 and the thief's rows 1-4
+    where the C64 ships 39, and `goldbox.levels.dos_base_thac0` is the number
+    for those. A DOS party converted to the C64 arrives carrying the DOS
+    number, so `check` reports its magic-users as stale when they are not:
+    `#366 (A converted magic-user or thief arrives with the other port's
+    THAC0, because the two ports ship different tables and the conversion
+    copies the byte)`.
+    """
     best = 99
+    for name, got in (levels or {}).items():
+        row = _THAC0.get(name)
+        if row and got:
+            best = min(best, row[max(1, min(int(got), len(row))) - 1])
+    if best != 99:
+        return best
+    level = max(1, min(int(level or 1), 9))
     for bit, name in CLASS_BITS:
         if class_bits & bit:
             best = min(best, _THAC0[name][level - 1])
@@ -158,14 +210,32 @@ def expected_thac0(record, readied: list[tuple[object, ItemType]]) -> int:
         if kind.adds_strength:
             adjustment += hit
         bonus = getattr(weapon, "bonus", 0) or 0
-    return (base_thac0(record.get("class_bits"), record.get("level"))
+    return (base_thac0(record.get("class_bits"), record.get("level"),
+                       class_levels(record))
             - adjustment - bonus)
 
 
 def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int:
-    """Strength damage bonus plus the readied weapon's own.
+    """Strength damage bonus, the weapon type's flat damage, and the item's own
+    enchantment.
 
-    The weapon's own bonus is signed two's complement -- $FF is -1, not +255
+    **Three terms, and the third was missing until a party carrying magical
+    weapons turned up.** `LIBRARY $36CC` onwards is the roster recompute:
+
+        $36CC  LDA $6D97 / STA $6C17     ; the type's flat damage
+        $36D2  AND #$04 / BEQ            ; WEAPON_ADDS_STRENGTH
+        $36DD  ADC $6DE7                 ; the strength damage bonus
+        $36E3  CLC / LDA $6C17 / ADC $6D80 / STA $6C17
+
+    `$6D80` is the readied item's own bonus and `$36E3` adds it
+    unconditionally, exactly as `$36C2` adds the same byte to the THAC0 four
+    instructions earlier -- which is why `expected_thac0` has always taken it
+    and this did not. On the player's disks the term is zero for every level-1
+    party, so nothing showed it until a converted party carrying a Long Sword
+    +1 arrived: seven records went from disagreeing to agreeing when it was
+    added, and 121 of 126 now agree against 114 before.
+
+    The type's flat damage is signed two's complement -- $FF is -1, not +255
     (#201, the same fault #188 fixed in `goldbox/items.py`). And the strength
     term is the weapon's business, not the character's: LIBRARY $36D2 adds it
     only when the readied type's +14 has bit 2 set, `WEAPON_ADDS_STRENGTH`. A
@@ -180,7 +250,7 @@ def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int
             if bonus > 127:
                 bonus -= 256
             strength = damage if kind.weapon_flags & WEAPON_ADDS_STRENGTH else 0
-            return strength + bonus
+            return strength + bonus + (getattr(item, "bonus", 0) or 0)
     return damage
 
 
