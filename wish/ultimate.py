@@ -40,10 +40,19 @@ discovered late:
 * **Latency is a network round trip**, not a loopback socket, hence a slower
   default interval and hence batching -- one read of `$4900`-`$64FF` beats
   sixty small ones. The four reads a fix costs are the budget worth watching.
-* **It should not disturb the machine.** VICE's 7%-fast effect comes from
-  stopping and resuming the CPU; DMA does not stop it. Nothing here assumes
-  that either way, and `Backend.disturbs` says False only as documentation --
-  tonight's session did not measure it either way.
+* **It stops the machine, and this was measured wrong for a day.** The
+  paragraph here used to say DMA does not stop the CPU. It does: the cartridge
+  bus halts the 6510 for the length of the transfer, about 42 microseconds of
+  fixed cost plus 1.1 microseconds a byte, so a 32 KB read holds it for about
+  36 milliseconds. Harmless while the game is drawing a map and not harmless
+  during a disk load, where the KERNAL is bit-banging the serial bus with
+  interrupts off and a halt in the middle of a byte loses the transfer -- the
+  drive keeps going, the KERNAL waits for a bit that has been and gone, and
+  the game hangs where it stands
+  (`#286 (Find out why the C64 Ultimate hangs)`, `docs/197-duplicating-the-c64u-hang.md`).
+  So `Backend.disturbs` is True, and `UltimateTarget.halts_on_read` tells the
+  automapper to hold its tick while the drive is transferring
+  (`#375 (Wish has to work around the Ultimate freezing the C64 mid-load, which hangs the game while the automapper follows along)`).
 
 Known-unknown, stated rather than buried: `party_fix` (`automap/target.py:145`)
 reads `$D011`, `$D018` and `$DD00` to find the screen, and it is not
@@ -111,7 +120,19 @@ class UltimateTarget:
     back levelled. So the whole path -- read the save off the hardware, edit
     it, write it back, and have the machine accept it -- has been round-tripped
     once on real hardware.
+
+    **`halts_on_read` is the one thing a caller has to design around.** Every
+    `readmem` stops the 6510 for the length of the transfer, and a stop inside
+    a disk load loses the byte the KERNAL was in the middle of receiving, so
+    the game hangs. `automap.busguard` reads `$DD00` first and skips the tick
+    while the drive is mid-transfer, which is what this attribute asks it to do
+    (`#375 (Wish has to work around the Ultimate freezing the C64 mid-load,
+    which hangs the game while the automapper follows along)`).
     """
+
+    #: `automap.busguard.HALTS_ON_READ`: hold the tick while the serial bus is
+    #: busy, because a DMA read during a load hangs the machine.
+    halts_on_read = True
 
     def __init__(self, host: str | None = None, port: int | None = None,
                  password: str | None = None, timeout: float = 5.0):
@@ -223,10 +244,14 @@ ULTIMATE = Backend(
     connect=UltimateTarget,
     setup_hint=("set $POR_ULTIMATE to the device's host name (firmware 3.11+ "
                 "serves the REST API; 3.12+ may need $POR_ULTIMATE_PASSWORD)"),
-    # A network round trip per read, and reading is believed not to disturb the
-    # machine, so a slower poll costs freshness and nothing else.
+    # A network round trip per read, so a slower poll costs freshness -- and
+    # each read halts the 6510 for the length of the transfer, so it costs the
+    # machine a little time as well.
     default_interval_ms=500,
-    disturbs=False,
+    # Measured 2026-09-07: the DMA read stops the processor, about 42us plus
+    # 1.1us a byte. This said False for a day on the belief that DMA runs
+    # beside the CPU rather than instead of it (#286).
+    disturbs=True,
     # Reads confirmed on real hardware, 2026-09-04 (module docstring, #240).
     # `write` and the password header are not part of what that proved.
     verified=True,

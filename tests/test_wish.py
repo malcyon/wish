@@ -749,8 +749,17 @@ def test_the_ultimate_is_marked_verified():
     pins the flag the read confirmation earned."""
     from wish.ultimate import ULTIMATE
     assert ULTIMATE.verified is True
-    assert ULTIMATE.disturbs is False
     assert ULTIMATE.default_interval_ms > bk.VICE.default_interval_ms
+
+
+def test_reading_the_ultimate_is_marked_as_disturbing_the_machine():
+    """It said False for a day, on the belief that a cartridge-bus DMA read
+    runs beside the processor rather than instead of it. It stops the
+    processor, about 42us plus 1.1us a byte, and a stop during a disk load
+    hangs the game (#286, `docs/197-duplicating-the-c64u-hang.md`)."""
+    from wish.ultimate import ULTIMATE, UltimateTarget
+    assert ULTIMATE.disturbs is True
+    assert UltimateTarget.halts_on_read is True
 
 
 def test_a_device_that_does_not_answer_is_simply_absent(monkeypatch):

@@ -27,10 +27,16 @@ machine is built, not measurements this project has taken:
    (`docs/131-fastloader.md`), copy protection, and drive timing are exactly
    where an emulator is most likely to diverge, and where nobody would notice
    if it did.
-2. **A DMA read does not stop the CPU.** VICE's monitor stops and resumes it —
-   `wish/ultimate.py`'s docstring records the resulting 7%-fast effect.
-   Watching a value evolve under real timing is a different instrument, not a
-   slower one.
+2. **Real timing, but a DMA read is not free.** This item used to claim a DMA
+   read does not stop the CPU. It does: the cartridge bus halts the 6510 for
+   the length of the transfer, about 42 µs of fixed cost plus 1.1 µs a byte,
+   measured 2026-09-07 while chasing
+   `#286 (Find out why the C64 Ultimate hangs)`. That is far cheaper than
+   VICE's monitor, which hands the machine ~14.3 ms of extra emulated time per
+   resume, so watching a value evolve here is still much closer to real
+   timing — but it is a lighter instrument rather than a free one, and during a
+   disk load it is not safe at all
+   (`docs/197-duplicating-the-c64u-hang.md`).
 3. **It is the arbiter.** Every C64 measurement this project has made came out
    of VICE. When a reading is surprising, the Ultimate is the only thing that
    can say whether the emulator was wrong.
