@@ -1870,6 +1870,7 @@ graph LR
   amiga -.->|deferred| traits
   areas -.->|deferred| geo
   areas --> layout
+  c64_codec --> classcode
   c64_codec --> derive
   c64_codec --> encoding
   c64_codec --> games
@@ -1880,11 +1881,13 @@ graph LR
   c64_codec --> record
   c64_codec --> spells
   c64_save --> games
+  classcode --> games
   derive --> items
   derive -.->|deferred| levels
   dos --> areas
   dos --> c64_codec
   dos --> c64_save
+  dos --> classcode
   dos -.->|deferred| d64
   dos --> dos_layout
   dos --> dos_savegame
@@ -1933,6 +1936,7 @@ graph LR
   strength --> savegame
   world --> d64
   yaml_io --> c64_codec
+  yaml_io --> classcode
   yaml_io --> d64
   yaml_io --> derive
   yaml_io --> games

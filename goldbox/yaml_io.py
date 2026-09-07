@@ -48,7 +48,7 @@ from typing import Any
 
 import yaml
 
-from . import c64_codec, derive
+from . import c64_codec, classcode, derive
 from .d64 import D64
 from .games import DEFAULT as DEFAULT_GAME
 from .games import Game, by_key, class_table, classes_to_names, race_table
@@ -224,24 +224,15 @@ FIELD_COMMENTS = {
 }
 
 # char_class (0x073) says the same thing as the class_bits mask (0x0EB), and
-# every specimen encodes it twice and agrees. Writing one without the other
-# leaves a record no save has ever been seen in, so we keep them in step.
+# they can disagree -- the game ships NPCs that do, and Curse of the Azure
+# Bonds' own trainer leaves the code stale on a player character too (#310).
 # Codes are the game's own, from the table the 1989 BASIC editor displays,
 # which agrees with all four multi-class codes derived from the bitmask.
-CLASS_CODES = {
-    2: 0,        # cleric
-    8: 2,        # fighter
-    1: 5,        # magic-user
-    4: 6,        # thief
-    2 | 8: 8,        # cleric/fighter
-    1 | 2 | 8: 9,    # cleric/fighter/magic-user
-    1 | 2: 11,       # cleric/magic-user
-    2 | 4: 12,       # cleric/thief
-    1 | 8: 13,       # fighter/magic-user
-    4 | 8: 14,       # fighter/thief
-    1 | 4 | 8: 15,   # fighter/magic-user/thief
-    1 | 4: 16,       # magic-user/thief
-}
+#
+# Moved to `goldbox/classcode.py` (#310), which both this module and
+# `goldbox/c64_codec.py` can reach, and re-exported here so nothing that
+# already imported this name has to change.
+CLASS_CODES = classcode.POOL_OF_RADIANCE_CLASS_CODES
 
 
 def comments_for(game: Game | None) -> dict[str, str]:
@@ -264,21 +255,27 @@ def comments_for(game: Game | None) -> dict[str, str]:
     return out
 
 
-def class_code_for(bits: int) -> int:
+def class_code_for(bits: int, game: Game | None = None) -> int:
     """The single class code matching a class bitmask.
 
     Three combinations have no code in the game's table -- magic-user/cleric/
     thief, cleric/thief/fighter, and all four at once. Refuse them rather than
     write a code that means something else.
+
+    Delegates to `goldbox.classcode.code_for` (#310), which is the mask-only
+    case of the same rule `goldbox.dos.write` and `goldbox.c64_codec.read`
+    both repair a stale code with. `game` picks the title's own table --
+    `None` means Pool of Radiance's, the table this function has always used.
     """
-    try:
-        return CLASS_CODES[bits]
-    except KeyError:
+    table = classcode.table_for(game) if game is not None else CLASS_CODES
+    code = table.get(bits)
+    if code is None:
         raise ValueError_(
-            f"the game has no class code for {classes_to_names(bits)}; "
+            f"the game has no class code for {classes_to_names(bits, game)}; "
             f"valid combinations are: "
-            + "; ".join(sorted(", ".join(classes_to_names(b))
-                               for b in CLASS_CODES))) from None
+            + "; ".join(sorted(", ".join(classes_to_names(b, game))
+                               for b in table))) from None
+    return code
 
 
 # Groups get a blank line and a heading, so a long record stays readable.
@@ -924,6 +921,15 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             raise ValueError(f"slot {slot} holds no character")
         who = rec.name
 
+        # The code `export_save` actually wrote for this character, taken
+        # before anything below edits the record -- `goldbox.c64_codec.read`
+        # repairs a stale `char_class` against the record's *own* classes
+        # (#310), and the class-code block further down has to compare
+        # against that repaired number rather than the raw stored byte, or
+        # an unedited export-then-import of a trained Curse party would
+        # count as an instruction and rewrite the disk.
+        exported_code = c64_codec.read(rec, game=game).get("char_class")
+
         # The name identifies the character in the file and is exported for
         # that reason, but it is not editable through this import: #145 is
         # what an unsanitised rename did to the GUI, and the fix there is to
@@ -984,12 +990,13 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         old_code = rec.get("char_class")
         given_code = entry.get("class_code")
         # A code equal to the one exported was not touched by anybody, so it
-        # does not count as an instruction -- same rule as `level`.
-        explicit = given_code is not None and int(given_code) != old_code
+        # does not count as an instruction -- same rule as `level`, against
+        # `exported_code` rather than the raw stored byte (see above, #310).
+        explicit = given_code is not None and int(given_code) != exported_code
         if explicit:
             want_code = int(given_code)
         elif classes_changed:
-            want_code = class_code_for(rec.class_bits)
+            want_code = class_code_for(rec.class_bits, game)
         else:
             want_code = old_code
         if want_code != old_code:
@@ -999,7 +1006,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             changes.append(f"slot {slot} {who}: class_code {old_code} -> "
                            f"{want_code}")
             rec.set("char_class", want_code)
-            if want_code != class_code_for(rec.class_bits):
+            if want_code != class_code_for(rec.class_bits, game):
                 changes.append(
                     f"slot {slot} {who}: NOTE class_code {want_code} does not "
                     f"match classes {classes_to_names(rec.class_bits, game)}. The "

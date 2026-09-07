@@ -192,12 +192,43 @@ highlighted, so the former-class array `#234 (A dual-classed Curse or Silver
 Blades character converted to DOS loses the class he trained out of)` is about
 still reads the way it did.
 
-**What this does not fix.** The neutral record still carries the stale code,
-because the repair is in the DOS writer rather than in the C64 reader --
-`goldbox/c64_codec.py` -- so `goldbox/yaml_io.py`'s `class_code` export still
-shows it. `editor/roster.py` draws the class from `class_bits` and is not
-affected. `#310 (A trained C64 Curse character arrives in DOS with the wrong
-class on his sheet)` stays open for the reader's half.
+## The reader repairs it too, so the neutral record is never stale
+
+The write-side fix above leaves one gap: the neutral record itself still
+carries the stale code, because the repair lived only in `goldbox.dos.write`.
+`goldbox/c64_codec.py`'s reader now makes the same repair on the way in,
+against the same rule, so nothing downstream of it -- `goldbox/yaml_io.py`'s
+`class_code` export, a C64-to-C64 round trip, and any future writer that is
+not `goldbox.dos.write` -- ever sees the stale number.
+
+**The rule lives once, in `goldbox/classcode.py`**, which both codecs import:
+`goldbox/c64_codec.py` cannot import `goldbox/dos.py` and `goldbox/dos.py`
+imports `goldbox/c64_codec.py`, so the table and the mask-then-levels rule
+belong in the middle. `classcode.code_for` is the rule this page describes --
+mask first, the level array only for a dual-classed character -- and
+`classcode.repair` says what should replace a stored code that disagrees.
+`goldbox.dos.CLASS_CODE_TABLE`, `goldbox.dos.CLASS_CODE_FOR_BITS` and
+`goldbox.yaml_io.CLASS_CODES` re-export the two tables, so nothing that
+already imported them by name had to change.
+
+`goldbox.c64_codec.read` sets `char_class` with `Provenance.COMPUTED` and an
+origin naming both numbers whenever the repair fires, exactly the way
+`goldbox.dos.write`'s report line does -- our own accounting, not a warning a
+player sees. `goldbox.yaml_io.entry_for` exports that repaired number as
+`class_code`, which means `import_into`'s "was this edited" check has to
+compare against what export actually wrote rather than the raw stored byte:
+before that fix, an untouched export-then-import of a trained Curse party
+looked like an edit and rewrote every trained character's `char_class` back
+on the disk. `editor/roster.py` draws the class from `class_bits` and was
+never affected either way.
+
+`tests/test_c64classcode.py` is the reader's regression test, the same shape
+as `tests/test_dosclasscode.py`: a trained record reads with the repaired
+code and `Provenance.COMPUTED`; SILAS's shape reads unchanged and
+`Provenance.COPIED`; a dual-classed record takes the level array; the
+specimen tree's Pool of Radiance and Silver Blades C64 disks read through the
+neutral record with the same zero disagreements the raw census finds; and an
+unedited export of `WISH-SPEC-curse-trained-party` imports with no changes.
 
 ## Where the numbers came from
 

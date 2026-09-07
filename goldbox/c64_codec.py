@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import derive, games, neutral, spells
+from . import classcode, derive, games, neutral, spells
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
@@ -1472,6 +1472,37 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "dual-class pair" if held
                 else "the C64's dual-class pair, both zero",
                 grade("dual_class_slot"), Provenance.RESHAPED)
+
+    # -- the class code, repaired when the source contradicts itself (#310) --
+    # Curse of the Azure Bonds' own `GEN $1939` stops maintaining `char_class`
+    # the moment a character is trained -- it computes the code, holds the
+    # answer in X and stores A, which is zero on the matching path and the
+    # level he left his old class at for a dual-classed one -- so a record
+    # read straight off the disk can disagree with its own classes.  Curse is
+    # not named below: the predicate is title-agnostic and fires only on
+    # self-contradiction, which Pool of Radiance and Silver Blades records
+    # never show (`docs/187-the-class-code-byte.md`'s census, 48 of 48 clean).
+    #
+    # Repairing it here, rather than only in `goldbox.dos.write`, is what
+    # makes a C64-to-C64 round trip through `goldbox/yaml_io.py` stop writing
+    # the stale byte back, and what a future writer sees without re-deriving
+    # the same rule.  `editor/roster.py` reads `class_bits` and never this
+    # field, so nothing in the window changes.
+    klass = out.get("char_class")
+    if klass is not None:
+        bits = out.get("class_bits") or 0
+        levels = out.get("levels") or {}
+        former = out.get("former_levels") or {}
+        want = classcode.repair(int(klass), int(bits), levels, former, game)
+        if want is not None:
+            source = "levels" if any(former.values()) else "class_bits"
+            detail = levels if source == "levels" else f"{int(bits):#04x}"
+            out.set("char_class", want,
+                    f"C64 char_class @{_field('char_class').offset:#05x} "
+                    f"reads {klass}; recomputed from {source} {detail} "
+                    f"through the game's own class table, since Curse's "
+                    f"trainer stores the wrong register (#310)",
+                    grade("class_bits"), Provenance.COMPUTED)
 
     out.set("attack_forms", rec.get_raw("attack_forms"),
             origin("attack_forms"), grade("attack_forms"))

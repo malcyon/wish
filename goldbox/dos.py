@@ -57,7 +57,16 @@ import shutil
 import tempfile
 from typing import Any, Iterable, Sequence
 
-from . import areas, c64_codec, c64_save, dos_savegame, games, neutral, traits
+from . import (
+    areas,
+    c64_codec,
+    c64_save,
+    classcode,
+    dos_savegame,
+    games,
+    neutral,
+    traits,
+)
 from .c64_codec import Report
 from .dos_layout import (
     CLASS_NUMBERS,
@@ -682,61 +691,12 @@ def dos_class_bits(neutral_bits: int) -> int:
 
 
 #: The class code table Curse of the Azure Bonds' C64 `GEN` walks at `$1951`,
-#: indexed by the class code and holding the bitmask that code stands for.
-#: 0 cleric, 1 druid, 2 fighter, 3 paladin, 4 ranger, 5 magic-user, 6 thief,
-#: 7 monk, and 8 upward for the multi-class combinations, which is the order
-#: `goldbox/layout.py`'s `char_class` note documents.  The druid's entry and
-#: the monk's are 0 because no Gold Box record carries either class.
-#:
-#: **It is the C64's bit order**, the one the neutral record uses, so a DOS
-#: mask goes through :func:`neutral_class_bits` first.  And it is **Curse's**
-#: table: index 10 is `0x82`, cleric and ranger, where Pool of Radiance --
-#: which has neither a paladin nor a ranger -- carries cleric/magic-user
-#: there, the row `goldbox/yaml_io.py`'s `CLASS_CODES` records.  The two agree
-#: on every combination either title can actually make.
+#: and its inverse -- moved to `goldbox/classcode.py` (#310), which both this
+#: module and `goldbox/c64_codec.py` can reach, and re-exported here so
+#: nothing that already imported them by name has to change.
 #: `docs/187-the-class-code-byte.md` has the reading.
-CLASS_CODE_TABLE: tuple[int, ...] = (
-    0x02, 0x00, 0x08, 0x40, 0x80, 0x01, 0x04, 0x00,
-    0x0A, 0x0B, 0x82, 0x03, 0x06, 0x09, 0x0C, 0x0D, 0x05)
-
-#: Bitmask -> class code, from the table above, first occurrence winning so
-#: the two zero entries do not claim the empty mask.
-CLASS_CODE_FOR_BITS: dict[int, int] = {
-    bits: code for code, bits in reversed(list(enumerate(CLASS_CODE_TABLE)))
-    if bits}
-
-#: Class name -> its bit in the shared order, from `goldbox/games.py`'s own
-#: per-title lists so the two cannot drift apart.  Krynn's is the widest,
-#: adding the Knight of Solamnia at `0x10`; every other title's is a subset.
-CLASS_BIT_FOR_NAME: dict[str, int] = {
-    name: bit for bit, name in games.CLASS_BITS_KRYNN}
-
-
-def _class_code(levels: "dict[str, int] | None") -> int | None:
-    """The class code for the classes a character holds levels in, or None.
-
-    None when there is no level array to read, or when the classes it names
-    are a combination the game's own table has no code for -- three exist,
-    and `goldbox/yaml_io.py`'s `class_code_for` refuses them for the same
-    reason: a code that is not in the table means a different class.
-
-    **This is the dual-class answer, not the general one** (#310). A
-    dual-classed character gets the old class's bit back in `class_bits` once
-    his new class passes the level he left the old one at, so the mask names
-    two classes where the code names the one he *is*; his level array holds
-    exactly the class he is now, because the old class's slot is zeroed at
-    the change. For everybody else :func:`write` reads the mask instead --
-    SILAS, the shipped Pool of Radiance fighter, carries a thief 1 in his
-    level array that neither his mask nor his code knows about, and taking
-    the levels there would give him a class the game does not.
-    """
-    if not levels:
-        return None
-    bits = 0
-    for name, level in levels.items():
-        if level:
-            bits |= CLASS_BIT_FOR_NAME.get(name, 0)
-    return CLASS_CODE_FOR_BITS.get(bits)
+CLASS_CODE_TABLE = classcode.CLASS_CODE_TABLE
+CLASS_CODE_FOR_BITS = classcode.CLASS_CODE_FOR_BITS
 
 
 def class_bits_for(char: "DosCharacter") -> int:
@@ -2768,9 +2728,9 @@ def write(char: NeutralCharacter,
     if code is not None:
         former = w.get("former_levels") or {}
         source = "levels" if any(former.values()) else "class_bits"
-        want = (_class_code(w.get("levels")) if source == "levels"
-                else CLASS_CODE_FOR_BITS.get(int(w.get("class_bits") or 0)))
-        if want is None or want == int(code.value):
+        want = classcode.repair(int(code.value), int(w.get("class_bits") or 0),
+                                w.get("levels"), former, shape.key)
+        if want is None:
             put(code, "char_class")
         else:
             # **Not a warning**, and deliberately: `editor/exports.py`'s
