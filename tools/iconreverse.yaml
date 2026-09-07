@@ -1,0 +1,304 @@
+# The proposed C64-to-DOS combat-figure table for #320 (A C64 party converted
+# to DOS arrives with no combat figure at all, because the table only runs one
+# way).
+#
+# This is the single source: edit `dos:` and `alt:` here, never in the
+# generated document. Regenerate it with:
+#
+#     tools/iconreverse.py --markdown work/issue320/proposal/proposal.md
+#
+# `dos` is the proposed DOS option number, `alt` (when present) lists any
+# other DOS option that looked as close, and the trailing comment says what
+# the C64 figure shows and why this row picks what it picks.
+#
+# **The key is a C64 option and the value is a DOS one**, which is the
+# opposite way round from `tools/iconproposal.yaml`. Read the two together:
+# that file answers "a DOS player picked body 7, what should the C64 draw",
+# and this one answers "a C64 player picked weapon 7, what should DOS draw".
+#
+# **And the two size sections are complete lists, not exceptions.** In
+# `tools/iconproposal.yaml` the base table serves both sizes and `small:`
+# holds the handful of rows that differ, because a DOS option number means
+# the same design at either size. Here it cannot: C64 large weapon 3 and C64
+# small weapon 3 are different drawings out of different tables, so the base
+# section below is the **large** lists in full (35 weapons, 23 heads) and the
+# `small:` section is the **small** lists in full (28 weapons, 14 heads).
+#
+# Where a row's comment says "forced", the forward table already decided it:
+# exactly one DOS option becomes this C64 one, so reversing it is the only
+# answer that returns a player their own figure when a save goes back the
+# other way. Those rows are here to be read, not to be chosen. "Judgement"
+# means the C64 draws something DOS has no figure for and the row is the
+# nearest one -- Donald, 2026-09-07, on what a player should get for a C64
+# figure with no good DOS match: "Nearest figure, and say so."
+
+# ---------------------------------------------------------------------------
+# C64 LARGE weapon n -> DOS icon_body.
+#
+# Three kinds of row. 22 are forced -- one DOS body becomes this C64 weapon
+# and nothing else does. 4 are a choice between the DOS bodies the forward
+# table merged onto one C64 option. 9 are a C64 figure no DOS body becomes,
+# and every one of those but weapon 33 is settled by a measured twin: the
+# C64 draws the same weapon pixels for two or three options that differ only
+# in the arm or the shield, so the twin's DOS answer is this one's too.
+weapons:
+  0:  {dos: 0}       # empty hands. Forced
+  1:  {dos: 7}       # a blade raised, then swung down right. Forced
+  2:  {dos: 17}      # a blade held up in front, then thrust. Forced
+  3:  {dos: 24}      # weapon 1 with a shield. Forced
+  4:  {dos: 12, alt: [13]}
+                     # nothing in the standing pose, a swung head in the
+                     # second. Its second pose is the same weapon pixels as
+                     # weapon 5, which is DOS body 12's target, so this is
+                     # weapon 5's figure with the head out of sight while
+                     # standing. Judgement between 12 and 13, which are the
+                     # two DOS maces
+  5:  {dos: 12}      # a mace or morning star raised. Forced
+  6:  {dos: 20, alt: [26]}
+                     # weapon 4 with a shield -- same weapon pixels, plus the
+                     # shield. DOS 20 is a mace and shield. Judgement: 26 is
+                     # the other shielded mace and the two are near enough to
+                     # a tie that the pair (6, 20) below could swap
+  7:  {dos: 8, alt: [7]}
+                     # draws the identical weapon to weapon 8, and differs
+                     # from it only in the arm; weapon 8 is DOS body 8's
+                     # target, so this row copies its twin. The picture
+                     # argues for DOS 7 instead -- a raised sword -- which is
+                     # why it is the alternative. A row for Donald's eye
+  8:  {dos: 8}       # a long blade raised, swept down right. Forced
+  9:  {dos: 25}      # weapon 8 with a shield. Forced
+  10: {dos: 2}       # a blade held out at the top left. Forced
+  11: {dos: 18, alt: [10, 14]}
+                     # the biggest blade in the list, raised and then swung
+                     # wide. Three DOS bodies land here in the forward table;
+                     # 18 is the one with the most weapon pixels in both
+                     # poses, which is what this drawing is
+  12: {dos: 20, alt: [26]}
+                     # weapon 10 with a shield. Two DOS bodies land here; DOS
+                     # 20 draws the identical weapon pixels to DOS 2, which
+                     # is weapon 10's own DOS body, so 20 is 12's
+  13: {dos: 19}      # a shaft carried across the body. Forced
+  14: {dos: 19, alt: [31]}
+                     # the same weapon pixels as weapon 30, which is DOS body
+                     # 31's target -- but 30 is a robed figure and this one is
+                     # not, and this one shares its stance with weapon 13,
+                     # which is DOS 19's. DOS 19 and 31 are the same shaft
+                     # carried across the body, one armoured and one robed
+  15: {dos: 10, alt: [9]}
+                     # a hammer head on a haft held up. Weapons 15, 16 and 17
+                     # draw the identical weapon and only 17 carries a
+                     # shield; 17 is DOS 22 and 23's target, and DOS 10 draws
+                     # 23's weapon without its shield, pixel for pixel
+  16: {dos: 10, alt: [9]}
+                     # the same weapon as 15, differing only in the arm
+  17: {dos: 23, alt: [22]}
+                     # weapon 15 with a shield. Two DOS bodies land here; 23
+                     # is the shielded twin of DOS 10, which is what rows 15
+                     # and 16 above name
+  18: {dos: 13, alt: [12]}
+                     # nothing standing, a small round head swung in the
+                     # second pose -- the same weapon pixels as weapon 19,
+                     # which is DOS body 13's target
+  19: {dos: 13}      # a mace with a small round head. Forced
+  20: {dos: 26, alt: [20]}
+                     # weapon 18 with a shield. DOS 26 and 20 are the two
+                     # shielded maces and this is the near-tie flagged at row
+                     # 6: whichever of them row 6 takes, this takes the other
+  21: {dos: 5}       # hands empty, arms out. Forced
+  22: {dos: 21}      # a shield up front and nothing else showing. Forced
+  23: {dos: 3}       # a flail hanging, swung. Forced
+  24: {dos: 4}       # weapon 23 with a shield. Forced
+  25: {dos: 11}      # a flail on a longer chain. Forced
+  26: {dos: 1}       # a bow. Forced
+  27: {dos: 6, alt: [9, 15]}
+                     # the smallest weapon in the list. Three DOS bodies land
+                     # here; DOS 6 and 9 draw the identical weapon and 15
+                     # draws a bigger one, so 6 is the closest by size
+  28: {dos: 16}      # a crossbow. Forced
+  29: {dos: 30}      # robed, a small blade. Forced
+  30: {dos: 31}      # robed, a staff across the body. Forced
+  31: {dos: 28}      # robed, a staff upright. Forced
+  32: {dos: 29}      # robed, arms out. Forced
+  33: {dos: 27, alt: [29]}
+                     # robed, one arm out and then raised, nothing in hand.
+                     # The C64 offers six robed figures and DOS five, and the
+                     # other five C64 robes take one DOS body each, so this
+                     # one has no partner left. Judgement, and the row on this
+                     # table with the least under it
+  34: {dos: 27}      # robed, hands empty. Forced
+
+# ---------------------------------------------------------------------------
+# C64 LARGE head n -> DOS icon_head.
+#
+# 12 forced, 1 a choice between the two DOS heads the forward table merged,
+# and 10 with no DOS head of their own. Five of those ten are settled by a
+# measured relation rather than by eye: **seven of the 23 large heads are
+# another head with a hair glyph added in cells 0 and 9** -- (0,18), (4,22),
+# (5,17), (7,20), (8,13), (9,14) and (12,19), the second of each pair being
+# the first plus hair. Where one of a pair has a DOS head and the other does
+# not, the other takes it.
+heads:
+  0:  {dos: 2, alt: [6]}
+                     # a cap over the top of the head and down the side. DOS
+                     # 2 is the one DOS head whose hat covers the same rows;
+                     # 6's is a tall hat sitting on top. Judgement
+  1:  {dos: 5}       # a full head of hair. Forced
+  2:  {dos: 4, alt: [6]}
+                     # a small cap on top and no hair. DOS 4 and 6 both land
+                     # here in the forward table; 4's hat is the smaller of
+                     # the two and this is the smaller C64 cap
+  3:  {dos: 3}       # dark on top with a little hair at the side. Forced
+  4:  {dos: 9}       # hair over the top, tall. Forced
+  5:  {dos: 0}       # bare head, short hair. Forced
+  6:  {dos: 11}      # bald. Forced
+  7:  {dos: 13}      # bare head with the shortest hair. Forced
+  8:  {dos: 12, alt: [0]}
+                     # head 13 is this head with hair added at the back and
+                     # is DOS head 12's target, so this is the same head
+                     # without it
+  9:  {dos: 7}       # a cap on top. Forced
+  10: {dos: 3, alt: [10]}
+                     # a dark band across the top with a tuft of hair behind
+                     # it. Head 3, which DOS head 3 becomes, is the C64's
+                     # other dark-topped head. Judgement between DOS 3 and 10,
+                     # which are the two helmeted DOS heads
+  11: {dos: 11, alt: [13]}
+                     # bare but for one tuft at the very top. Head 6, which
+                     # DOS 11 becomes, is the C64's only wholly bald head and
+                     # this is the next barest. Judgement
+  12: {dos: 9, alt: [12]}
+                     # hair over the top with a band below it. Judgement: the
+                     # C64 has four heads of this kind and DOS four, and which
+                     # goes with which is a look rather than a measurement
+  13: {dos: 12}      # hair to the neck. Forced
+  14: {dos: 6, alt: [7]}
+                     # a cap on top with hair beside it. The alias rule points
+                     # the other way -- this is head 9 with hair added, and
+                     # head 9 is DOS head 7's target -- but DOS 7 wears
+                     # nothing on its head and DOS 6 has the tall hat, so the
+                     # picture wins and 7 is the alternative. A row for
+                     # Donald's eye
+  15: {dos: 10}      # hair with a peak at the top left. Forced
+  16: {dos: 10, alt: [5]}
+                     # the same peaked hair as head 15, which DOS 10 becomes.
+                     # Judgement
+  17: {dos: 8}       # long hair. Forced
+  18: {dos: 2, alt: [6]}
+                     # head 0 with hair added at the back, so it takes head
+                     # 0's answer above
+  19: {dos: 9, alt: [8]}
+                     # head 12 with hair added at the back, so it takes head
+                     # 12's answer above. The added hair argues for DOS 8, the
+                     # longest DOS hair, which is why that is the alternative
+  20: {dos: 13, alt: [0]}
+                     # head 7 with hair added at the back, and head 7 is DOS
+                     # head 13's target
+  21: {dos: 2}       # a cap covering the whole top and side. Forced
+  22: {dos: 1}       # head 4 with hair added at the back. Forced
+
+# ---------------------------------------------------------------------------
+# The small lists, in full. A C64 dwarf, gnome or halfling draws from these,
+# and a C64 option number here is a different picture from the same number
+# above. 14 of the 28 weapons and 6 of the 14 heads are forced; the rest
+# follow the same twin and alias rules the large lists do, which is why the
+# comments below are short where a large row already argues the case.
+small:
+  weapons:
+    0:  {dos: 0}       # hands empty. Forced
+    1:  {dos: 8, alt: [0]}
+                       # a second empty-handed stance the large list does not
+                       # have. DOS draws three unarmoured figures with nothing
+                       # in hand -- 0, 5 and 8 -- and rows 0 and 21 take the
+                       # first two, so this takes the third
+    2:  {dos: 7, alt: [17]}
+                       # a raised blade. Two DOS bodies land here; weapon 3 is
+                       # this weapon with a shield and is DOS 24's, and DOS 7
+                       # is DOS 24 without its shield, pixel for pixel
+    3:  {dos: 24}      # weapon 2 with a shield. Forced
+    4:  {dos: 12, alt: [13]}    # as large weapon 4
+    5:  {dos: 12}      # a mace or morning star raised. Forced
+    6:  {dos: 20, alt: [26]}    # as large weapon 6
+    7:  {dos: 8, alt: [7]}      # as large weapon 7
+    8:  {dos: 8}       # a long blade raised. Forced
+    9:  {dos: 25}      # weapon 8 with a shield. Forced
+    10: {dos: 2}       # a blade held out at the top left. Forced
+    11: {dos: 18, alt: [10, 14]}  # as large weapon 11
+    12: {dos: 20, alt: [26]}      # as large weapon 12
+    13: {dos: 19}      # a shaft carried across the body. Forced
+    14: {dos: 19, alt: [31]}      # as large weapon 14
+    15: {dos: 10, alt: [9]}       # as large weapon 15
+    16: {dos: 10, alt: [9]}       # as large weapon 16
+    17: {dos: 23, alt: [22]}      # as large weapon 17
+    18: {dos: 13, alt: [12]}      # as large weapon 18
+    19: {dos: 13}      # a mace with a small round head. Forced
+    20: {dos: 26, alt: [20]}      # as large weapon 20
+    21: {dos: 5}       # hands empty, arms out wide. Forced
+    22: {dos: 21}      # a shield up front. Forced
+    23: {dos: 3}       # a flail hanging. Forced
+    24: {dos: 4}       # weapon 23 with a shield. Forced
+    25: {dos: 11}      # a flail on a longer chain. Forced
+    26: {dos: 1}       # a bow. Forced
+    27: {dos: 6, alt: [9, 15]}    # as large weapon 27
+  # The small head list has its own alias structure and it is not the large
+  # list's: heads 0 and 5 are the **identical drawing**, the only pair of
+  # options in any of the four lists that are, and 6 and 13 are head 0 with
+  # hair added, 7 is head 1 with hair, 8 and 10 are head 3 with hair, and 12
+  # is head 4 with hair. Every row below follows from that or from the
+  # forward table; only 10 and 11 are a choice.
+  heads:
+    0:  {dos: 1}       # hair with a fringe. Forced
+    1:  {dos: 0, alt: [5]}
+                       # bare, short hair. Two DOS heads land here; DOS 0 is
+                       # the one Donald named for this row in the forward
+                       # table on 2026-09-05, so it is the one this takes back
+    2:  {dos: 2, alt: [6]}
+                       # the one small head wearing something. Two DOS heads
+                       # land here and DOS 2 is the hood the forward comment
+                       # names
+    3:  {dos: 11}      # a thin line of hair. Forced
+    4:  {dos: 4}       # hair with a tail out the back. Forced
+    5:  {dos: 1}       # the identical drawing to head 0, so the same answer.
+                       # Forced by the drawing rather than by the table
+    6:  {dos: 3}       # head 0 with hair added. Forced
+    7:  {dos: 7, alt: [13]}
+                       # head 1 with hair added. Two DOS heads land here and
+                       # DOS 7 is the one the forward table's small section
+                       # names by hand
+    8:  {dos: 9}       # head 3 with hair added. Forced
+    9:  {dos: 10}      # a band on top. Forced
+    10: {dos: 9, alt: [11]}
+                       # the second of the two heads that are head 3 with hair
+                       # added, the other being head 8, which is DOS head 9's.
+                       # Judgement
+    11: {dos: 10, alt: [9]}
+                       # head 9 with a different hair glyph, and head 9 is DOS
+                       # head 10's. Judgement
+    12: {dos: 4}       # head 4 with hair added, so it takes head 4's answer
+    13: {dos: 8, alt: [12]}
+                       # the longest of the small heads. Two DOS heads land
+                       # here and DOS 8 is the longer hair of the two
+
+# ---------------------------------------------------------------------------
+# C64 colour 0-7 -> the DOS `icon_colours` pair, low nibble then high.
+#
+# **Nothing here is a judgement.** The forward table's sixteen EGA colours
+# fold onto the C64's eight, and its first eight rows -- EGA 0 to 7 -- are
+# already a bijection onto them, so inverting those eight is forced. The
+# high nibble is the low one plus 8, which is what the game's own shipped
+# default set does for all six parts: `91 A2 B3 C4 E6 F7` is (1,9), (2,A),
+# (3,B), (4,C), (6,E), (7,F). So a DOS figure converted to the C64 and back
+# comes home with the six bytes it started with.
+#
+# The C64's seventh part, CAP, has nowhere to go: DOS draws every hat and
+# plume in pixel values 5 and 13, which a record cannot recolour, so a C64
+# cap colour is lost on the way to DOS. That is the destination platform
+# holding fewer things than the source, not a field nobody has decoded.
+colours:
+  0: {dos: [0, 8]}     # black       -> EGA black / dark grey
+  1: {dos: [7, 15]}    # white       -> EGA light grey / white
+  2: {dos: [4, 12]}    # red         -> EGA red / light red
+  3: {dos: [3, 11]}    # cyan        -> EGA cyan / light cyan
+  4: {dos: [5, 13]}    # purple      -> EGA magenta / light magenta
+  5: {dos: [2, 10]}    # green       -> EGA green / light green
+  6: {dos: [1, 9]}     # blue        -> EGA blue / light blue
+  7: {dos: [6, 14]}    # yellow      -> EGA brown / yellow
