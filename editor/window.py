@@ -1513,7 +1513,22 @@ class EditorBinding(QObject):
                     if record.name != w.text():
                         record.name = w.text()
                 elif isinstance(w, QComboBox):
-                    if record.get(name) != w.currentData():
+                    # **What was shown, not what is stored.**  For
+                    # `char_class` those differ by design since #356: the
+                    # combo draws the class the character actually is, and
+                    # the record keeps the stale byte Curse's trainer left.
+                    # Comparing against the record would make merely opening
+                    # a trained Curse save a change, so File > Save would
+                    # rewrite a byte the player never touched and
+                    # `test_the_editor_writes_a_curse_save_back_unchanged`
+                    # would be right to fail.  Comparing against what was
+                    # drawn means the repair is a display and a real choice
+                    # by the player is still an edit.
+                    shown = record.get(name)
+                    if name == "char_class":
+                        shown = _char_class_shown(
+                            shown, record, self.party.member(row).game)
+                    if shown != w.currentData():
                         record.set(name, w.currentData())
                 elif isinstance(w, SpellbookEditor):
                     self._set_spellbook_raw(record, w.to_bytes())

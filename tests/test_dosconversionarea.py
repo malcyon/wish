@@ -93,16 +93,26 @@ def _c64_in_the_training_hall() -> bytes:
 
 
 def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
-    """The six areas `retarget_reason` refuses are all conversions can write.
+    """The five areas `retarget_reason` refuses are all conversions can write.
 
-    Four of them load no map at all (8, 11, 19, 30) and two pick theirs at run
+    Three of them load no map at all (8, 11, 19) and two pick theirs at run
     time (3, 5).  Every one of those is a statement about the *area table*,
     and a conversion does not read the area table for the map -- it reads the
     save.
+
+    **Area 30 was in this list until 2026-09-07** and came off it when it
+    turned out to have a map after all: `ECL1E` carries `LOADFILES 18, 2, 255`
+    and file 18 is `GEO12`, read off the player's own POOL1
+    (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
+    `retarget_reason` stopped refusing it in the same change, which is right
+    and is why this test moved rather than the code.
     """
-    for area in (3, 5, 8, TRAINING_HALL, 19, 30):
+    for area in (3, 5, 8, TRAINING_HALL, 19):
         assert dos.retarget_reason(area) is not None, area
         assert dos.conversion_reason(area) is None, area
+    # The area that left the list, asserted rather than merely absent.
+    assert dos.retarget_reason(30) is None
+    assert dos.conversion_reason(30) is None
 
 
 def test_a_conversion_still_refuses_an_area_with_no_row():
