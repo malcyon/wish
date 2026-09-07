@@ -187,6 +187,22 @@ class RecordShape:
     #: found there is the pair GEN drew or a leftover from ours (#216's
     #: digest for the other two).
     identity_pair: bool = False
+    #: Does this title's own engine leave `char_class` stale after a
+    #: training-hall visit or a class change, so `read` should recompute it
+    #: from the record's own classes rather than trust the stored byte?
+    #: **Curse of the Azure Bonds alone.** `GEN $1939` stores the wrong CPU
+    #: register there (#310, A trained C64 Curse character arrives in DOS
+    #: with the wrong class on his sheet), and its own census is
+    #: title-specific: Pool of Radiance agrees 24 of 24 measured, and Secret
+    #: of the Silver Blades never writes the byte at all, so what its own
+    #: creation code leaves there is UNMEASURED and repairing it would
+    #: invent a value rather than restore one.  A blanket, title-agnostic
+    #: predicate here reintroduced the defect `docs/50-experiments.md`'s "A
+    #: losslessness bug, found by taking the NPCs seriously" already fixed
+    #: once: a Pool of Radiance record whose bits and code legitimately
+    #: disagree -- the `DWARVEN FIGHTER` shape -- came out of `read` with a
+    #: fabricated code nobody wrote.
+    class_code_repairable: bool = False
 
 
 #: Pool of Radiance: **81 memorised slots, `0x020`-`0x070`**, and no second
@@ -235,7 +251,8 @@ POOL_OF_RADIANCE_RECORD = RecordShape(
 CURSE_RECORD = RecordShape(
     key="curse-of-the-azure-bonds",
     memorised=("spells_memorised",),
-    second_abilities=True, spell_slots=False, dual_class=True)
+    second_abilities=True, spell_slots=False, dual_class=True,
+    class_code_repairable=True)
 
 #: Secret of the Silver Blades: **74 memorised slots, `0x01B`-`0x064`** -- the
 #: only title measured whose list does not start at `0x020`.
@@ -1478,10 +1495,19 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # the moment a character is trained -- it computes the code, holds the
     # answer in X and stores A, which is zero on the matching path and the
     # level he left his old class at for a dual-classed one -- so a record
-    # read straight off the disk can disagree with its own classes.  Curse is
-    # not named below: the predicate is title-agnostic and fires only on
-    # self-contradiction, which Pool of Radiance and Silver Blades records
-    # never show (`docs/187-the-class-code-byte.md`'s census, 48 of 48 clean).
+    # read straight off the disk can disagree with its own classes.
+    #
+    # **Gated on `shape.class_code_repairable`, Curse only.** A blanket,
+    # title-agnostic predicate here once fired on any self-contradiction at
+    # all, which is exactly the shape `docs/50-experiments.md`'s "A
+    # losslessness bug, found by taking the NPCs seriously" already
+    # condemned once: a Pool of Radiance record whose bits and code
+    # legitimately disagree -- `DWARVEN FIGHTER`'s own shape -- came out
+    # with a fabricated code nobody wrote. Silver Blades never writes the
+    # byte at all, so what its own creation code leaves there is
+    # UNMEASURED and repairing it would be inventing a value rather than
+    # restoring one (#310's own census: Pool of Radiance agrees 24 of 24,
+    # Curse disagrees 8 of 30, all after a training or a class change).
     #
     # Repairing it here, rather than only in `goldbox.dos.write`, is what
     # makes a C64-to-C64 round trip through `goldbox/yaml_io.py` stop writing
@@ -1489,7 +1515,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # the same rule.  `editor/roster.py` reads `class_bits` and never this
     # field, so nothing in the window changes.
     klass = out.get("char_class")
-    if klass is not None:
+    if klass is not None and shape.class_code_repairable:
         bits = out.get("class_bits") or 0
         levels = out.get("levels") or {}
         former = out.get("former_levels") or {}

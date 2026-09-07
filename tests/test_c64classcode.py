@@ -69,6 +69,37 @@ def test_silas_shape_reads_copied_and_unchanged():
     assert out.value("char_class").how is Provenance.COPIED
 
 
+def test_a_pool_of_radiance_records_disagreement_is_left_alone():
+    """`DWARVEN FIGHTER`'s own shape -- fighter bits, cleric code -- is a
+    disagreement Pool of Radiance's own NPCs ship with, not a Curse-trainer
+    artifact (`docs/50-experiments.md`, "A losslessness bug, found by
+    taking the NPCs seriously": *"if the game ships records like that, an
+    editor that forces them into agreement cannot represent them."*)
+
+    A blanket, title-agnostic repair fired on this shape too -- `class_bits`
+    `0x08` (fighter) and `char_class` 0 (cleric) came back **2**, a
+    fabricated code nobody wrote, because nothing distinguished Curse's
+    stale byte from a title that never stops maintaining its own. Pool of
+    Radiance's own census is 24 of 24 clean (`#310`), so there is no defect
+    of this title's own to repair, and the record must survive untouched."""
+    rec = _c64_record(class_bits=0x08, char_class=0, level_fighter=4)
+    out = c64_codec.read(rec, game=POOL)
+    assert out.get("char_class") == 0
+    assert out.value("char_class").how is Provenance.COPIED
+
+
+def test_a_silver_blades_records_disagreement_is_also_left_alone():
+    """Silver Blades' own `GEN` never stores to `char_class` at all
+    (`#310`'s census), so what its own creation code leaves there is
+    UNMEASURED -- repairing a disagreement here would invent a value
+    rather than restore one, the same reason Pool of Radiance's is left
+    alone above."""
+    rec = _c64_record(class_bits=0x08, char_class=0, level_fighter=4)
+    out = c64_codec.read(rec, game=SSB)
+    assert out.get("char_class") == 0
+    assert out.value("char_class").how is Provenance.COPIED
+
+
 def test_a_dual_classed_records_code_takes_the_levels():
     """A human who dual-classed out of magic-user 6 into fighter, one level
     short of regaining the old class: `char_class` reads 6, her old level,
