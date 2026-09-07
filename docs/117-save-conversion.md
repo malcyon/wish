@@ -537,6 +537,99 @@ it is one more codec now, and `goldbox/yaml_io.entry_for` takes a
 
 ---
 
+## The world state
+
+**Where the party is standing, and when.** Not a character — everything about
+the party's *situation* that a character record has no room for: its square
+and which way it faces, the six-digit clock (sub-minute, minute units, minute
+tens, hour, day, month), which area it is in, which map is loaded there (the
+resident `GEO`, which parts company from the area for a script that loads no
+map of its own, such as the training hall), the wallset the current view is
+drawn from, and which of the game's own quest flags are set. Convert a save
+standing in the Slums at half past nine at night with half the quests done,
+and the result has to stand in the Slums at half past nine at night with half
+the quests done — that is what this shape exists to hold.
+
+Donald named it on 2026-09-07, reading what the class actually held: *"what
+you are describing sounds like 'World State'... I think world_state is a good
+description."* `goldbox/world_state.py`'s `WorldState` is that shape, and it
+fills the same role for the party's situation that `goldbox/neutral.py`'s
+`NeutralCharacter` fills for a character.
+
+**Why it exists.** Before it, the C64 saved-game writer read a DOS
+`SAVGAM<slot>.DAT` directly (`apply_position`, `apply_clock`,
+`apply_quest_flags`, `apply_file_cache`, `_where_the_party_is`,
+`never_adventured`, `Container.copied`), and the DOS writer read a C64
+payload directly (`container.position`, `.travel_position`, `.clock`,
+`.quest_flags`, `.current_script`, `.current_geo`, `c64_wall_triple`,
+`SHARED_SCRATCH`, `LATER_HEADER_COPIED`). That was tenable with two ports.
+Adding the Amiga would have meant writing the C64 and DOS container writers a
+second time, this time reading an Amiga source, or parametrising each on
+where its values come from — which is a shared shape under another name.
+`#352 (Handle world state for Amiga saves)` lifted `goldbox.amiga.PorSaveState`
+— which had already proved the shape for a Pool of Radiance party standing
+indoors — into `WorldState`: one shape, filled by a reader per port, taken by
+all three container writers.
+
+**Three readers, three writers.**
+
+| port | container -> `WorldState` | `WorldState` -> container |
+|---|---|---|
+| C64 `SAVEDGAME0`/`SAVEDGAME1` | `goldbox.world_state.from_c64` | `goldbox.dos.write_c64_save`, or `new_save_from` for a save owing nothing to another (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)) |
+| DOS `SAVGAM<slot>.DAT` | `goldbox.world_state.from_dos` | `goldbox.dos.write_dos_save_from`, or `new_dos_save_from` for a save owing nothing to another (#26 (Write a DOS save, not just read one)) |
+| Amiga `savgam<letter>.dat` | `goldbox.world_state.from_amiga` | `goldbox.amiga.por_savegame_writes`, or `new_por_savegame` for a save owing nothing to another |
+
+`goldbox.amiga.por_state_from_c64`, `.por_state_from_dos`, `.por_state_from_amiga`
+and `.read_por_state` are wrappers around the readers above kept for the
+Amiga's existing callers — `tools/toamigapor.py` and `tools/fromamigapor.py`
+among them — and `PorSaveState` is `WorldState` under its old name.
+
+**What the shape holds, and what it deliberately does not.** `title`, `area`,
+`geo`, `x`, `y`, `facing`, the six-digit `clock`, the `wallset` triple, the
+`flags` tuple (217 addresses for Pool of Radiance, 224 for Curse of the Azure
+Bonds and Secret of the Silver Blades), the per-script `scratch`, whether the
+party is `outdoors`, its `travel` square, whether it has `set_out` at all —
+false only for a save made from the party-formation menu, before `BEGIN
+ADVENTURING`, substituted from `goldbox.areas.STARTS` rather than refused
+(#301 (A DOS Curse save standing in area 0 is refused by the import, because
+no row of the area table names area 0), #326 (A Pool of Radiance save made
+before the party began adventuring is refused, because the initialiser left
+$49E6 at 0 and New Phlan is indoors)) — and the later titles' own copied
+`header` words (`+$E7`-`+$E9`, `+$FD`-`+$FE`; empty of meaning for Pool of
+Radiance, which copies none of them). The addresses it reads are the ones
+`docs/141-dos-savegame.md` maps for DOS and C64 and `docs/165-amiga-savegame.md`
+confirms for the Amiga.
+
+Everything else a container holds is deliberately left out: the C64's
+loaded-files cache and icon table, `ANIMATE00` and the bitmap buffer; DOS's
+container byte, mode pair, name table and wall block; the Amiga's pad bytes
+and name-table stride. Every one of those is sourced from the area table, a
+measured constant, the slot letter or a declared zero — never from the source
+save (`#352 (Handle world state for Amiga saves)`'s own "What is known"). That
+is what makes the shape provably lossless: nothing it leaves out was ever the
+source save's own to begin with, so converting through it loses nothing a
+player would notice.
+
+**The character does not travel this way.** `goldbox.dos.write_c64_save`
+still takes `party: list[DosCharacter]` rather than `NeutralCharacter`,
+because the combat figure crosses through `icon_head`, `icon_body`,
+`icon_colours` and `size` — DOS's own raw fields for building the figure, not
+world-state fields and not ones a `NeutralCharacter` carries either. That
+stays true with an Amiga source too: the Amiga stores a character in DOS's
+own field order, big-endian ("What the two formats actually are" above), so
+`goldbox.amiga.read_por_slot` turns each record into a `DosCharacter`
+directly (`to_dos_character`), never through a `WorldState` field; only the
+DOS-bound direction sends the same party through `dos.to_neutral` afterwards,
+the same conversion a DOS source has always used.
+
+**`world.py` and `world_state.py` are not the same file.** `goldbox/world.py`
+is the overland travel map, the `SQRDATA0n` grid the wilderness is drawn
+from; `goldbox/world_state.py` is where one party is standing on it, and
+when. Donald: *"Having world.py and world_state.py is fine. I can tell the
+difference."*
+
+---
+
 ## What cannot survive the trip
 
 * **The combat icon.** C64 icons are 18 screen codes into `CHARPIC00` plus 18
@@ -1175,7 +1268,7 @@ checking was better than the question:
 **3. The clock is read, and this said it was not.** `$49C6`-`$49CB` is six
 digits on the C64 and the DOS save keeps the same six as words at the same
 address; `apply_clock` copies them digit for digit in both directions (#58 (Decode the DOS clock, so converted saves keep the time of day),
-#67 (Carry the clock and the party count into a converted DOS save)). The paragraph that stood here said the converter left the template
+#67 (Write the clock and the party count into a converted DOS save)). The paragraph that stood here said the converter left the template
 save's clock alone — which is what put a party that saved at 10:15 in the
 game reading 21:15, and #103 (A DOS party converted to the C64 arrives at the template save's time of day) is where that was found and fixed.
 
@@ -2016,8 +2109,8 @@ DOS save from nothing" below.
 | what | where | grade |
 |---|---|---|
 | the quest flags | `$4A20`-`$4AF8`, 217 C64 bytes widened to words at the same ECL addresses | CONFIRMED |
-| the clock (#67 (Carry the clock and the party count into a converted DOS save)) | six digit words at `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses | CONFIRMED — read back in the game as 21:15 and 16:58, the two C64 saves' own times |
-| the party size (#67 (Carry the clock and the party count into a converted DOS save)) | the word at `$503E` **and** byte 12808; they move together | CONFIRMED |
+| the clock (#67 (Write the clock and the party count into a converted DOS save)) | six digit words at `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses | CONFIRMED — read back in the game as 21:15 and 16:58, the two C64 saves' own times |
+| the party size (#67 (Write the clock and the party count into a converted DOS save)) | the word at `$503E` **and** byte 12808; they move together | CONFIRMED |
 | the party's filenames | six entries from 12809, named for the slot being written — the engine loads the party from these, not from the letter chosen at the LOAD menu | CONFIRMED — #59 (Map the DOS saved game, not just the character record) |
 | the square | 12801-12803, facing doubled | CONFIRMED |
 | **the area** (#60 (Put a converted party where it actually stood, not where the template stood)) | every write of `goldbox.dos_savegame.RETARGET_WRITES` | CONFIRMED — three area pairs, loaded and walked |
@@ -2375,7 +2468,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   the C64's own READY routine sometimes does, is `#252 (Does a C64 trait
   slot apply an item-granted effect id, or only the ones its own READY
   routine wrote?)`, still open.
-* **The day and the month.** The clock itself is converted now (#67 (Carry the clock and the party count into a converted DOS save)) — six
+* **The day and the month.** The clock itself is converted now (#67 (Write the clock and the party count into a converted DOS save)) — six
   digit words at `$49C6`-`$49CB`, the C64's own six bytes at the C64's own
   addresses — but the C64 holds 0 in the sub-minute, day and month digits of
   every save on Donald's disks, so a converted party arrives on day 0 of
