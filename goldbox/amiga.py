@@ -37,12 +37,15 @@ from __future__ import annotations
 import contextlib
 import struct
 from dataclasses import dataclass, field, replace
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 from . import areas, dos_layout, dos_savegame, games, neutral, world_state
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
+
+if TYPE_CHECKING:          # avoided at runtime: goldbox.dos is the heavier
+    from .iconparts import DosIcon  # module and this file only needs the name
 
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
 COMBAT_BIAS = 60
@@ -3974,6 +3977,22 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
 #: `abilities_second` is one more: it has no DOS field name of its own, so it
 #: never appears in `later_field_disposition`'s table, the same way DOS's own
 #: `field_disposition` never names it either.
+#:
+#: **The combat icon is a fourth kind of "not here", by design rather than by
+#: omission.** `icon_head`, `icon_body` and `icon_colours` are TRANSFORMED
+#: below -- and `icon_dimension` stays DROPPED -- but none of the three is
+#: ever set on the `NeutralCharacter` this function returns, the same way
+#: `goldbox.dos.to_neutral` neither sets nor drops them for a DOS source
+#: (watched: a synthetic DOS record with a chosen figure comes back from
+#: `goldbox.dos.to_neutral` with no `icon_head` field and nothing in
+#: `dropped`). The neutral vocabulary has nowhere to put a combat figure --
+#: the C64 stores drawn cells, not an index -- so both readers leave these
+#: three silent and the actual conversion is a raw-record bypass:
+#: `editor.convert.amiga_combat_icon` reads them straight off this
+#: `AmigaCharacter` (or off a `DosCharacter`, for Pool of Radiance) and hands
+#: the result to `goldbox.dos.write`'s own `icon` argument, which
+#: `goldbox.amiga.write_later` now takes too (#396, #319,
+#: docs/199-amiga-combat-icons.md).
 LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "reread from the level array into the shared bit order, "
                    "the way the DOS reader rereads its own: this port gives "
@@ -4008,6 +4027,21 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "converted"),
     ("encumbrance", "copied, and it is money plus item weight -- a writer "
                     "that recomputes it should"),
+    ("icon_head", "the combat icon's head: DOS's own CHEAD.DAX index, read "
+                  "by the same routine at the same offset both Amiga "
+                  "binaries carry (#396, docs/199-amiga-combat-icons.md). "
+                  "Converted the way `goldbox.dos`'s own icon_head is -- "
+                  "the caller who has a raw record in hand builds a "
+                  "`goldbox.iconparts.DosIcon` from it (`editor.convert."
+                  "amiga_combat_icon`) rather than through this reader's "
+                  "own neutral vocabulary, which has nowhere to put a "
+                  "combat figure (#379)"),
+    ("icon_body", "the combat icon's body: DOS's own CBODY.DAX index, "
+                  "likewise -- see icon_head"),
+    ("icon_colours", "the six DOS icon_colours pairs, unchanged: both "
+                     "Amiga binaries recolour with DOS's own six-byte part "
+                     "table (docs/199-amiga-combat-icons.md) -- see "
+                     "icon_head"),
 ) + tuple(
     (name, "a (base, current) pair here as it is on DOS from Curse onwards; "
            "the first byte crosses as the neutral score and the second goes "
@@ -4030,10 +4064,12 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
     ("hands_used", "live combat state"),
     ("unnamed_0ab", "one unattributed byte, stable per character"),
     ("strength_bonus", "a boolean on DOS, derived from strength"),
-    ("icon_colours", "the combat icon's colour pairs, which are art"),
-    ("icon_head", "combat icon art, an index into this port's own library"),
-    ("icon_body", "combat icon art, likewise"),
-    ("icon_dimension", "the combat icon's size"),
+    ("icon_dimension", "the combat icon's size: 1 for every player character "
+                       "(#396, docs/199-amiga-combat-icons.md), and the C64 "
+                       "has one size byte where DOS and the Amiga both keep "
+                       "two fields -- see icon_head's LATER_TRANSFORMED "
+                       "entry for the other three combat-icon fields, which "
+                       "this reader used to drop alongside it"),
     ("portrait_head", "the sheet portrait's head: a position in the Amiga's "
                       "own creation menu, and nobody has read that menu's "
                       "tables out of the Amiga executables. Reading them is "
@@ -4097,18 +4133,14 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
                   "next time the character fights",
     "unnamed_0ab": "One byte in the character record nobody has identified "
                    "yet",
-    "icon_colours": "Combat icon colours: this game's own combat-icon art "
-                    "has not been read yet, so the colours cannot be "
-                    "matched (NOT APPROVED)",
-    "icon_head": "Combat icon (head): this game's own combat-icon art has "
-                 "not been read yet, so the head cannot be matched "
-                 "(NOT APPROVED)",
-    "icon_body": "Combat icon (body): this game's own combat-icon art has "
-                 "not been read yet, so the body cannot be matched "
-                 "(NOT APPROVED)",
-    "icon_dimension": "Combat icon size: this game's own combat-icon art "
-                      "has not been read yet, so the size cannot be "
-                      "matched (NOT APPROVED)",
+    # icon_head, icon_body and icon_colours came off this table on
+    # 2026-09-07 (#396, #319): the combat icon is DOS's own art, DOS's own
+    # numbering and DOS's own colour pairs, and converts rather than drops.
+    # icon_dimension stays on `LATER_DROPPED` -- the C64 has one size byte
+    # where the Amiga keeps two -- but carries no line here, matching
+    # Donald's ruling on the identical DOS line, 2026-09-06: "All PCs are
+    # the same size, so it doesn't matter. Just leave that line out during
+    # conversions."
     "portrait_head": "Character portrait (head): the character-creation art "
                      "this game chooses portraits from has not been read, so "
                      "the portrait cannot be matched",
@@ -4491,33 +4523,36 @@ LATER_ITEM_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
 #: corresponding place, three of three.  So the value has no neutral source
 #: and a converted character loses it.
 #:
-#: UNKNOWN, and refuted along the way: it is not a copy of any byte of the
-#: character's own record (the value appears at no offset of any of the three
-#: records), and the party-add routine at `/Secret` `0x1E386` copies all ten
-#: bytes of a node with two `move.l` and a `move.w` without looking at any of
-#: them, so being unchanged across a resave says only that the engine keeps
-#: it.  What would settle it: find the instruction that reads offset 1 of a
-#: node reached through the record's `0x096` chain, or cast a spell on an
-#: Amiga Silver Blades character and read the new node.  #387.
+#: **CONFIRMED, from the code, as nothing** -- `#387`, settled and written up
+#: at `docs/202-the-amiga-effect-node-pad.md`.  It is the alignment pad a C
+#: compiler leaves in front of the node's `UWORD` duration at offset 2: both
+#: titles keep effect nodes in a fixed-size pool `AllocMem`'d with no
+#: `MEMF_CLEAR` and never cleared afterwards, the ten-byte constructor both
+#: binaries share takes five arguments and ends in five stores that skip
+#: offset 1, and a census of every load of a node's chain-head field --
+#: 42 sites in `/Curse`, 39 in `/Secret`, plus the removal routine, the 97
+#: per-effect expiry handlers, the 24 callees reached with a node live, and
+#: every indexed access in both binaries -- finds **zero** that reach it.
+#: `0x2E`, `0x6D` and `0x64` are whatever the Amiga's public memory held
+#: under the pool's first three slots when SSI saved that party in 1990,
+#: copied faithfully from file to file since; `#384`'s own converted party
+#: went through the running game twice with zero there and came back with
+#: zero still there.  Writing zero is therefore not a loss: nothing reads
+#: this byte and nothing ever will.
 AMIGA_LATER_EFFECT_UNKNOWN = 1
 
 #: Bytes of a written effect node with no neutral source.
 LATER_EFFECT_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
     (AMIGA_LATER_EFFECT_UNKNOWN, 1,
      "the byte Silver Blades keeps beside the effect id and no other Gold "
-     "Box record has: see AMIGA_LATER_EFFECT_UNKNOWN. Written zero, which "
-     "is right for Curse in 24 of 24 and wrong for 3 of the 5 Silver Blades "
-     "nodes anybody has ever seen"),
+     "Box record has: see AMIGA_LATER_EFFECT_UNKNOWN. Written zero -- a "
+     "pad nothing computes and nothing consults, not a loss, though 3 of "
+     "the 5 Silver Blades nodes anybody has ever seen hold something else "
+     "there"),
     (AMIGA_LATER_EFFECT_NEXT, 4,
      "the next pointer: a live Amiga heap address in a record the game "
      "wrote, and here a 1 or a 0 according to whether another node follows"),
 )
-
-#: The player's half of the one drop this writer adds of its own.
-LATER_EFFECT_UNKNOWN_PLAYER_TEXT = (
-    "One byte the Amiga version of Secret of the Silver Blades keeps beside "
-    "each magical effect. No other version of the game has it and nobody has "
-    "worked out what it holds, so it is left empty")
 
 
 def later_unsourced_offsets(shape: AmigaShape) -> tuple[int, ...]:
@@ -4749,7 +4784,8 @@ def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
 
 
 def write_later(char: NeutralCharacter,
-                shape: "AmigaShape | str | None" = None
+                shape: "AmigaShape | str | None" = None,
+                icon: "DosIcon | None" = None
                 ) -> tuple[AmigaCharacter, LaterWriteReport]:
     """Build an Amiga Curse or Silver Blades character block.
 
@@ -4762,11 +4798,26 @@ def write_later(char: NeutralCharacter,
     `goldbox.dos.write` does the conversion, so every drop, every warning
     and every provenance line comes from the DOS side and the lines added
     here are the pads, the re-encoded spellbook and the effect chain.
+
+    `icon` is this character's own combat figure -- `icon_head`, `icon_body`
+    and the six `icon_colours` bytes -- passed straight through to
+    `goldbox.dos.write`'s own `icon` argument, which is where it is actually
+    written: the neutral vocabulary has nowhere to put a combat figure, so
+    `LATER_TRANSFORMED`'s entries for these three names describe this
+    bypass rather than anything this function's own body does with `char`.
+    Build one with `editor.convert.amiga_combat_icon`, which reads the
+    numbers straight off a source record that already stores DOS's own
+    ones -- an `AmigaCharacter` of either later title, or a `DosCharacter`
+    for Pool of Radiance -- or with `goldbox.iconparts.IconParts.
+    dos_icon_from_c64` for a C64 source (#396, #319,
+    docs/199-amiga-combat-icons.md).  With none given, `icon_head` and
+    `icon_body` are written zero and `icon_colours` the game's own
+    freshly-made default, exactly as before this parameter existed.
     """
     from . import dos as _dos
 
     shape = later_write_shape(char, shape)
-    record, itm, spc, dosrep = _dos.write(char, shape=shape.dos)
+    record, itm, spc, dosrep = _dos.write(char, shape=shape.dos, icon=icon)
     out = from_dos_record_later(record, shape)
 
     stride = shape.dos.item_size
@@ -4799,8 +4850,6 @@ def write_later(char: NeutralCharacter,
         f"byte was transposed from, which is the field table both ports "
         f"share")
     rep.warnings.append(LATER_EFFECTS_FROM_NEUTRAL)
-    if effects and shape is SILVER_BLADES_SHAPE:
-        rep.dropped.append(LATER_EFFECT_UNKNOWN_PLAYER_TEXT)
     rep.total = len(block)
 
     def converted(name: str) -> str:
@@ -4859,15 +4908,11 @@ def write_later(char: NeutralCharacter,
     for n in range(len(effects)):
         at = base + n * shape.effect_size
         rep.note(at, 1, f"effect {n}: the id, from the neutral record")
-        # **Not the same byte on the two titles, and this note said it was
-        # until the review of `39ceb7a` caught it.**  On Curse it is a pad,
-        # zero in 24 of 24 nodes.  On Silver Blades it is the one thing this
-        # writer cannot source -- 3 of the 5 nodes anybody has seen hold
-        # `0x2E`, `0x6D` or `0x64` -- so the account has to say so, or a
-        # person reading `--report` is told a byte is understood padding
-        # while `LATER_EFFECT_WRITE_UNSOURCED` two hundred lines up says the
-        # opposite (`#387 (The Amiga Silver Blades effect node keeps a byte
-        # DOS has not got, and a converted character loses it)`).
+        # A pad on both titles (#387, docs/202-the-amiga-effect-node-pad.md):
+        # zero in 24 of 24 Curse nodes, and on Silver Blades the byte no
+        # instruction in either binary ever reads, so the three shipped
+        # nodes that hold `0x2E`, `0x6D` or `0x64` are stale memory rather
+        # than something this writer fails to reproduce.
         if shape is SILVER_BLADES_SHAPE:
             rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
                      f"effect {n}: "

@@ -559,18 +559,24 @@ class C64ToDos(Direction):
 def amiga_combat_icon(char: Any) -> Any:
     """One Amiga character's own combat figure, in the DOS record's terms.
 
-    An Amiga Pool of Radiance record keeps `icon_head`, `icon_body` and the
-    six `icon_colours` bytes at the same offsets the DOS record does
-    (`goldbox.amiga.to_dos_record` re-cuts them into it), so the figure a
-    player drew on the Amiga is already the number DOS stores -- nothing is
-    recognised, composed or looked up.  What it is **not** is a neutral
-    field: `goldbox.dos.to_neutral` has nowhere to put it, since the C64
-    stores drawn cells rather than an index, so a party read into neutral
-    records and written back out would arrive with six identical default
-    figures.  That is `#130 (A converted DOS party arrives with six
-    identical combat figures, not its own)` in this direction, and this is
-    what stops it: `goldbox.dos.write`'s own `icon` argument, which bypasses
-    the neutral vocabulary for exactly this reason.
+    Any of the three Amiga Gold Box titles keeps `icon_head`, `icon_body`
+    and the six `icon_colours` bytes at the same DOS offsets its own
+    `.get()` reads through -- `goldbox.amiga.AmigaPorCharacter` re-cuts a
+    Pool of Radiance record into the DOS one (`goldbox.amiga.to_dos_record`,
+    #354) and `goldbox.amiga.AmigaCharacter` reads a Curse or Silver Blades
+    one through its own shift map (#396, docs/199-amiga-combat-icons.md) --
+    so the figure a player drew on the Amiga is already the number DOS
+    stores, in all three titles: nothing is recognised, composed or looked
+    up. `char` is duck-typed to either -- and to `goldbox.dos.DosCharacter`,
+    which shares the same `.get()`.  What it is **not** is a neutral field:
+    `goldbox.dos.to_neutral` and `goldbox.amiga.to_neutral_later` both have
+    nowhere to put it, since the C64 stores drawn cells rather than an
+    index, so a party read into neutral records and written back out would
+    arrive with six identical default figures.  That is `#130 (A converted
+    DOS party arrives with six identical combat figures, not its own)` in
+    this direction, and this is what stops it: `goldbox.dos.write`'s own
+    `icon` argument, which bypasses the neutral vocabulary for exactly this
+    reason, and which `goldbox.amiga.write_later` now takes as well.
 
     **`figure_source` and `colours_source` say so**, rather than the sentence
     `goldbox.dos.write` used to build unconditionally around any `DosIcon`,
@@ -592,13 +598,18 @@ def amiga_combat_icon(char: Any) -> Any:
     figure_source = (
         "the Amiga source record's own combat icon, already stored as "
         "these DOS icon_head/icon_body numbers and copied across unchanged "
-        "(#354, goldbox.amiga.to_dos_record)")
+        "(#354, #396, goldbox.amiga)")
     colours_source = (
         "the Amiga source record's own combat icon colours, already "
         "stored as these DOS icon_colours pairs and copied across "
-        "unchanged (#354, goldbox.amiga.to_dos_record)")
+        "unchanged (#354, #396, goldbox.amiga)")
+    # `.get()`, not `.raw()`: a `DosCharacter`'s two methods return the same
+    # bytes for a RAW-kind field like `icon_colours`, but `AmigaCharacter`
+    # (Curse and Silver Blades, #396) has no `.raw(name)` method -- its own
+    # `raw` is the record's bytes, not a lookup -- so `.get()` is the one
+    # spelling that works on every port this function is handed.
     return DosIcon(head=head, body=body,
-                   colours=bytes(char.raw("icon_colours")),
+                   colours=bytes(char.get("icon_colours")),
                    figure_source=figure_source,
                    colours_source=colours_source)
 

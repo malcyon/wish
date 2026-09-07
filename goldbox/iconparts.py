@@ -578,6 +578,17 @@ class IconParts:
         the way the ICON menu composes one -- so every icon this returns is
         an icon the game itself can make.
 
+        **Also what an Amiga Curse or Silver Blades record's own combat
+        icon becomes**, unchanged: those four values are DOS's own fields
+        holding DOS's own numbers, read out of both engines' drawing
+        routines rather than inferred (`#396 (Whether an Amiga Curse or
+        Silver Blades record's combat-icon fields share DOS's own numbering
+        is unmeasured)`, `docs/199-amiga-combat-icons.md`).  A caller
+        composing for one of those two titles should pass `tables=
+        dos_icon_tables(title=..., size=size)`, so Silver Blades' own
+        redrawn head 10 and body 11 (`#335`) apply to its Amiga art too --
+        it is identical to the DOS art these four values already describe.
+
         **A row that lands past a small character's own list is composed
         large.**  The C64 offers a small character 28 weapons and 14 heads
         against a large one's 35 and 23, and six of the thirty-two weapon
