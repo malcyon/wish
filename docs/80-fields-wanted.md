@@ -351,6 +351,13 @@ from five NPCs exactly here.
 The eight `$FF` bytes were fill residue after all, as the earlier note suspected.
 `wish` now writes bit 7 and leaves them untouched.
 
+**The other seven bits are the character's morale**, a percentage stored
+halved: `DUNGEON $2753` makes a companion with `LSR A` / `ORA #$80` from a
+script argument, and `COMBAT $211C` reads it back with `AND #$7F` / `ASL A`
+against his hit points. Bit 0 is the trainer flag on top of that, which only a
+player character can have. The same byte is DOS `0x084` in the same encoding —
+[195-three-dos-record-bytes-named-from-the-overlays.md](195-three-dos-record-bytes-named-from-the-overlays.md).
+
 ~~**Constructing an item**~~ — **done, and proven in game.** A `LONG SWORD +4`,
 which ships on no disk, was built from word indices, type, bonus, cost and
 weight with no template copied, written to a save and booted: the sheet showed

@@ -18,6 +18,11 @@ having nowhere to go)`.
 | `0x0BF` | `0x143` | the combat-icon slot, 0-7, **not** the marching order | CONFIRMED |
 | `0x10D` | `0x196` | the engine's `in_combat`, which is `#235 (Two unattributed DOS byte ranges in the combat tail are dropped converting to C64, and nobody knows what they hold)`'s active flag under another name | CONFIRMED |
 
+The control byte is **C64 `0x0B8`** as well, in the same encoding, and the two
+ports read against each other are what settled its low seven bits: they are a
+morale percentage stored halved. That is the second half of this page and
+`tools/controlbyte.py` is its census.
+
 ## The method: what constants the engine puts in a byte
 
 `tools/dosfieldrefs.py` counts the instructions that address a record offset
@@ -177,6 +182,97 @@ records this project rolled and never modified read 0. Silver Blades' MALACHITE
 reads 0 for the same reason, and not because he is a companion -- his control
 byte is 0.
 
+## The low seven bits are a morale percentage, and the C64 keeps the same byte
+
+This section settled the UNKNOWN the rest of the page left -- what a plain
+companion's control byte holds -- and it needed no companion and no emulator.
+The C64 port answers it, because **C64 `0x0B8` is the same field as DOS
+`0x084`, with the same encoding**, and the two engines can be read against each
+other. `tools/recordsweep.py --game pool --offset 0xB8 --context` is the C64
+census and `tools/dosdis16.py` the DOS listing.
+
+| what happens | Pool of Radiance, C64 | Pool of Radiance, DOS |
+|---|---|---|
+| a script makes a character a companion with a morale | `DUNGEON $2753`: `JSR $1B87` (fetch the script argument) / `LSR A` / `ORA #$80` / `STA $6BB8` | `0x00390A`: a call returning the argument / `shr ax, 1` / `or al, 80h` / `mov es:[di+84h], al` |
+| a script makes a character a companion, morale untouched | `DUNGEON $1AF6`: `LDA #$80` / `ORA $6BB8` / `STA $6BB8` | `0x007FAB`: script command `0B8h`, the supplied value stored straight in |
+| the engine uses the morale | `COMBAT $211C`: `LDA $6BB8` / `BPL` out / `AND #$7F` / `ASL A` | `0x00BD09`, behind `cmp es:[di+84h], 7Fh` / `ja`: `and al, 7Fh` / `shl ax, 1` |
+| a spell drives a character berserk | `SPELLE00 $0C76`, `SPELLE04 $0AFA`: `LDA #$B2` / `LDX $6BB8` / `BMI` / `TXA` / `ORA #$FE` | `0x02917F`: `cmp es:[di+84h], 7Fh` / `jbe` / `mov` `0B2h` or `0B3h` |
+
+**So the low seven bits are a morale percentage stored halved**, and the scale
+is the clamp in Curse's own C64 code at `SECSET64 $0A14` -- Pool of Radiance's
+`COMBAT $211C` with the ceiling written out:
+
+```
+LDA $7CB8 / BPL out      ; only for a character the engine drives
+AND #$7F / ASL A         ; the stored value, doubled
+CMP #$64 / BCC / LDA #$64 ; clamped at 100
+EOR #$FF / SEC / ADC #$64 ; 100 - it, and then the hit points
+```
+
+The two reads after it are `hp_current` and `hp_max` (`0x119` and `0x076` in
+the C64 record), which is an AD&D morale check adjusted by how hurt the
+character is. DOS's own out-of-range guard agrees on the scale: at
+`0x00D976` it takes `& 7Fh`, and if the result is 0 or above `66h` it replaces
+the whole byte with `80h` plus a default from the encounter -- so a raw value
+of 1 to 102 is what the engine considers sane. CONFIRMED for the encoding, and
+the *name* morale is PROBABLE: it is what coab calls the byte, it is a
+percentage, and it is checked against the character's wounds, but no
+disassembly here reaches the consequence of failing the check.
+
+**There is therefore no single "plain companion" constant to find**, which is
+why no immediate anywhere is a bare `80h`. A companion's byte is `0x80 | (his
+own morale / 2)`, supplied per companion by the area script, and every value
+from `0x80` to `0xFF` is legitimate.
+
+**The one place the two ports disagree is the berserk player character.** DOS
+writes `0xB3` and reads it back with `cmp ..., 0B3h` / `mov ..., 0`; the C64
+writes `old | 0xFE` and reads it back with `SQRPACI64 $09B5`, `CMP #$FE` /
+`BCC` / `AND #$01` -- which preserves bit 0, the C64's own trainer flag, where
+DOS has nothing to preserve. Both ports write `0xB2` for a berserk companion.
+
+### What the records hold, both ports
+
+`tools/controlbyte.py`, 2026-09-07. The C64 half is new; the DOS half
+reproduces the counts above through `tools/dostailcensus.py`'s finder.
+
+| port | records | `$00` | `$01` | engine-driven |
+|---|---|---|---|---|
+| C64, all three titles | 297 | 276 | 16 | 5, all in `npc_party.d64` |
+| DOS, all four titles | 458 | 457 | 0 | 1, OUGO at `$B2` |
+
+The five C64 companions are MAD MAN `$80`, DIRTEN `$B1`, and GENHEERIS,
+PRINCESS FATIMA and SKULLCRUSHER at `$B2` -- morale 0, 98 and 100. **A bare
+`0x80` does exist in a save**, which the page previously said no specimen held.
+`npc_party.d64` has been through an editor (`docs/90-specimens.md`), so it
+corroborates rather than proves; what makes it more than a curiosity is that
+`$B1` is a value no immediate in either engine writes and only the
+halve-and-set-bit-7 producer can make.
+
+The sixteen C64 records at `$01` are BRUTUS, thirteen times, plus three players
+of `npc_party.d64`: bit 0 is the trainer flag, set by `GEN $155D` when a score
+is changed in the character-modification screen and restored from a saved copy
+at `$157F` if the player leaves without keeping. **DOS records the same thing
+in the share byte instead** -- 174 of 318 Pool of Radiance records at
+`0x085` = 1 -- so the ports keep one flag in two different bytes, and a DOS
+control byte's bit 0 stands for nothing.
+
+### The C64's own treasure share is `0x0FA`, not the byte beside the control
+
+`POST.COM $194A` is DOS `0x006885` on the other port, guard for guard:
+
+```
+LDA $6BB8 / BPL out      ; only for a character the engine drives
+LDA $6BFA / BEQ out      ; a share of zero takes nothing
+AND #$03                 ; DOS masks with 7 here
+... added to two running totals
+```
+
+`tools/recordsweep.py --game pool --offset 0xFA` finds **one** reference to it
+in 589 Pool of Radiance files, and that is it. So the C64 does not keep the
+share next to the control byte the way DOS does, and `goldbox/layout.py` has no
+field there yet. PROBABLE: one reference, and no record on this machine holds a
+non-zero value -- 0 in all five C64 companions and in all 297 records.
+
 ## What the conversion does with them, and what it still cannot
 
 `goldbox.dos.WRITE_CONSTANTS` writes `00 00 01 00 00` into the five-byte run
@@ -191,17 +287,40 @@ difference instead of converting it.
 **The neutral `npc` flag now has a DOS home that nobody has wired up**: bit 7
 of the control byte, in all four titles, against bit 7 of `0x0B8` on the C64
 (`goldbox/record.py`'s `is_npc`). `goldbox.dos.WRITE_DROPPED`'s reason -- "no
-attributed DOS field holds it" -- is wrong as of this page. Two things block
-the wiring and one blocks the value:
+attributed DOS field holds it" -- is wrong as of this page.
+
+**And the value is settled too**, by the section above: the two ports keep the
+same byte in the same encoding, so the converter has nothing to invent. What
+each side of the conversion has to do:
+
+* **C64 to DOS.** Write the source's own `0x0B8` into the destination's
+  control byte when bit 7 is set, and `0x00` when it is clear. Copying the
+  byte unconditionally would be wrong in one case a player can reach: a C64
+  character whose trainer bit is set holds `0x01`, and a DOS record at `0x01`
+  is neither `0` nor `0xB3`, which is the test at `0x0251B7` that decides
+  whose coins go into the party's pooled money -- so his gold would stop
+  being counted. The trainer bit has its own DOS home in the share byte and
+  the constant `1` already written there.
+* **DOS to C64.** The reverse, with the same rule. It drops today for a
+  second reason as well: `field_83_87` is on `goldbox.dos.CONSTANTS`, which is
+  silent, so a DOS companion imports as a player character with the flag lost
+  and nothing said about it in the reader's own list. `goldbox/c64_codec.py`'s
+  `DROPPED` does report it from the writer's side.
+* **The morale needs somewhere neutral to live.** `npc` is a boolean, so a
+  conversion through it keeps bit 7 and loses the other seven bits -- a
+  companion arrives with morale 0, which DOS's own load-time guard at
+  `0x00D976` treats as out of range. A neutral byte-wide field beside `npc`,
+  or `npc` widened to a byte, is what would convert it.
+
+Two things still block the wiring, and neither is a measurement:
 
 * splitting `field_83_87` into named bytes needs `goldbox/amiga.py`, which
   names the whole run in its own drop table;
 * the C64 side drops the flag in the other direction too, in
-  `goldbox/c64_codec.py`;
-* **what a plain companion's control byte holds is UNKNOWN.** Every immediate
-  the engines store is `00`, `B2` or `B3`; not one is a bare `80h`. A plain
-  companion's value arrives from a register store fed by monster data or a
-  script, and the only specimen anywhere is OUGO's `B2`. Writing `0x80` would
-  be a guess at the low seven bits, which `PC_Mask` says carry a morale value.
-  **What would settle it:** pick up a companion in DOS Curse or Silver Blades,
-  save, and read the byte.
+  `goldbox/c64_codec.py`.
+
+**Still UNKNOWN, and it costs nothing:** what a *Curse* or *Silver Blades*
+companion's morale actually is, since the only companions in any corpus here
+are Pool of Radiance's five and OUGO. The producer is the area script in every
+title, so the answer is per companion rather than per title, and a converter
+copying the source's byte never needs it.

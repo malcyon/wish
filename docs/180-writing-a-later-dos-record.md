@@ -295,8 +295,11 @@ each engine stores and compares, the eight-record Treasures of the Savage
 Frontier party whose seventh member holds `0xB2`, and why MALACHITE's share of
 zero says nothing about companions.
 `#303 (The DOS record may hold the NPC flag that the conversion reports as
-having nowhere to go)` carries what is left, which is the wiring and one
-unmeasured value.
+having nowhere to go)` holds what is left, which is the wiring alone: the
+value stopped being unmeasured on 2026-09-07, when the C64's own `0x0B8` was
+read as the same byte in the same encoding and the low seven bits came out a
+morale percentage stored halved. A converted companion is written the source's
+own byte and nothing is invented.
 
 ## What a converted character still loses
 

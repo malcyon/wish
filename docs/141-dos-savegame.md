@@ -797,23 +797,30 @@ patterns including `FF FF FF FF FF`, all kept byte for byte), and BRUTUS's
 character sheet carrying `11 22 33 44 55` is pixel-identical to his sheet
 carrying the constant, so nothing the player sees is driven by it.
 
-Two limits, so nobody reads more into that than it holds. **No specimen on
-this machine is above level 4**, so a field that only fills later would not
-show. And the **third-party names** for the five bytes — `Morale` at `0x084`,
-`TreasureShare` at `0x085` — are neither confirmed nor refuted: a player
-character has no morale and takes one share, which is consistent with what is
-there and consistency is not evidence. A Pool of Radiance **monster or NPC**
-record, which shares this format, is where a morale value would have to
-appear.
+One limit, so nobody reads more into that than it holds: **no specimen on this
+machine is above level 4**, so a field that only fills later would not show.
 
-The **later titles do vary** in the window — Silver Blades' MALACHITE reads
-`00 00 00 00` where the other eleven read `00 01 00 00`, and Pools of Darkness
-splits 23 to 8 — but `goldbox/dos_layout.py` shrinks the field from five bytes
-to four in both of those shapes to make the record's widths add up, and
-nothing independent places the shrink there. The variation is real; which byte
-it is in is not settled, and it is not the class, the level or the dual-class
-array. A lead for `#53 (Read and write DOS saves for Curse, Silver Blades and
-Pools of Darkness)`.
+**It is a constant because of what the corpus is, and three of the five bytes
+now have names** —
+[`195-three-dos-record-bytes-named-from-the-overlays.md`](195-three-dos-record-bytes-named-from-the-overlays.md),
+all read out of the shipped overlays rather than off a save. `0x084` is the
+**control byte**: the engine drives the character when it is at or above
+`0x80`, and the low seven bits are his morale as a percentage stored halved.
+`0x085` is the **treasure share**, `& 7`, read only for such a character, and
+it is also what MODIFY CHARACTER writes a 1 into when the player keeps the
+change, which is why the archives read 1 and the characters this project
+rolled read 0. The third-party names `Morale` and `TreasureShare` were
+therefore right, and the reason every record here reads zero at `0x084` is that
+no companion has ever been in a corpus: 457 of 458 DOS records and 292 of 297
+C64 ones are player characters.
+
+The **later titles' variation** is that same share byte. Their run is Pool of
+Radiance's with the **first** byte gone — Curse's own Pool of Radiance
+importer copies `0x083`-`0x087` into `0x0F6`-`0x0FA` one for one — so Silver
+Blades' MALACHITE reading `00 00 00 00` where the others read `00 01 00 00` is
+a character nobody put through MODIFY CHARACTER, and nothing about him being a
+companion. `goldbox/dos_layout.py`'s five-to-four shrink is placed by the
+importer, not fitted to make the widths add up.
 
 ## What this leaves open
 
@@ -867,12 +874,10 @@ Pools of Darkness)`.
   Nothing in this file bears on it, which is the answer rather than a gap.
 * ~~**What `0x10E` is.**~~ Settled: the combat side, 0 the party's and 1 the
   enemy's — [`docs/169-dos-combat-side.md`](169-dos-combat-side.md).
-* **Whether `0x084`/`0x085` are morale and treasure share.** Experiment: a
-  Pool of Radiance record for a monster or a joined NPC, which is the only
-  kind of character either value could be nonzero for.
-* **Which byte varies in Silver Blades' and Pools of Darkness'
-  `0x083`-`0x087` window**, and what it tracks. Their five-to-four shrink is
-  fitted to make the record's widths add up and nothing places it.
-  Experiment: anchor the window from the money block backwards in a played
-  save of each, then census the byte against the class, the level and the
-  party position.
+* ~~**Whether `0x084`/`0x085` are morale and treasure share.**~~ Settled: they
+  are, read out of all four engines —
+  [`195-three-dos-record-bytes-named-from-the-overlays.md`](195-three-dos-record-bytes-named-from-the-overlays.md).
+* ~~**Which byte varies in Silver Blades' and Pools of Darkness'
+  `0x083`-`0x087` window.**~~ Settled: the treasure share, and their run is
+  Pool of Radiance's without its first byte, placed by Curse's own importer
+  rather than by fitting the widths.
