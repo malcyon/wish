@@ -2153,34 +2153,28 @@ def por_slots_present(disk, drawer: str | None = None) -> list[str]:
 
 
 #: Why an Amiga party standing on the travel grid is refused as the *source*
-#: of a conversion, which is a different question from
-#: :data:`POR_OUTDOORS_UNMEASURED` and has the same answer.
+#: of a conversion.  This is about the Amiga saved game the project
+#: **reads**; the writer's side of the same question was lifted on
+#: 2026-09-07 and this one has not been, which is the whole of the
+#: difference between them.
 #:
-#: That one is about the Amiga saved game this project **writes**: two bytes
-#: of an outdoor one have never been seen, so writing either would be
-#: inventing a value.  This one is about the Amiga saved game it **reads**.
-#: The travel square is read at `goldbox.dos_savegame.TRAVEL_X` and
-#: `TRAVEL_Y`, which is where the DOS container keeps it, and
-#: `docs/196-the-amiga-saved-game-built.md` §2 has the Amiga container
-#: agreeing with the DOS one address for address -- on **indoor** saves,
-#: which is every Amiga saved game anybody has read.  So the two travel
-#: bytes a converted C64 or DOS save would stand the party on rest on the
-#: map holding outdoors as well, and nothing has shown that.
+#: **The reason this sentence gives has since been measured away.**  Two
+#: saved games the Amiga game itself made on the travel grid -- the run of
+#: `#321 (An Amiga Pool of Radiance conversion refuses a party standing on
+#: the travel grid, because no outdoor Amiga saved game has ever been read)`,
+#: 2026-09-07 -- hold the travel square at
+#: `goldbox.dos_savegame.TRAVEL_X` and `TRAVEL_Y`, exactly where the DOS
+#: container keeps it: `(7, 29)` and `(7, 28)` against `20,29` and `20,28`
+#: on the game's own status line, which prints the world coordinate where
+#: the save holds the window-local one.  So the map `docs/196-the-amiga-
+#: saved-game-built.md` §2 gives holds outdoors as well, on 2 of 2, and
+#: reading an outdoor Amiga save is a measured thing rather than a guess.
 #:
-#: The experiment that settles both is the same one, and it is one WinUAE
-#: run: walk a party out of New Phlan onto the travel grid, save, and read
-#: the file the engine wrote.  `#321 (An Amiga Pool of Radiance conversion
-#: refuses a party standing on the travel grid, because no outdoor Amiga
-#: saved game has ever been read)` is that experiment.
-#:
-#: It was unrunnable until 2026-09-07, when
-#: `#361 (An Amiga party cannot be made to walk, because the WinUAE driver
-#: sends only keystrokes)` closed: `tools/amigadrive.py` presses the numeric
-#: keypad now, which is what moves a party in Amiga Curse and Amiga Silver
-#: Blades.  **Whether Pool of Radiance walks on those same keys is not
-#: measured** -- that title was not one of the two the keys were read on --
-#: so the first step of the experiment is still to find out, rather than to
-#: assume the other titles' keys.
+#: Removing the guard below is one line and a rewritten test in
+#: `tests/test_amigatoc64.py`, which belongs to
+#: `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+#: standing in the Slums on the Amiga arrives there in VICE)`.  It was left
+#: in place deliberately rather than changed under that work.
 #:
 #: Unapproved wording -- a player never sees this string, because
 #: `editor/convert.py` shows its own approved sentence for anything that is
@@ -2517,16 +2511,37 @@ POR_POS_X, POR_POS_Y, POR_POS_FACING = 12800, 12801, 12802
 #: The wall art in front of the party, `fn(x, y, facing)`, recomputed by the
 #: step routine at `/program` `0x2ec1c`.
 POR_WALL_BYTE = 12803
+#: What the engine leaves in :data:`POR_WALL_BYTE` **outdoors**, where there
+#: is no wall in front of anybody: 14, in both engine-written outdoor Amiga
+#: saved games (`#321 (An Amiga Pool of Radiance conversion refuses a party
+#: standing on the travel grid, because no outdoor Amiga saved game has ever
+#: been read)`, 2026-09-07).  It did not move across an overland step that
+#: changed the square and the facing, and it is the same 14 DOS's own
+#: engine-written outdoor saves hold at `goldbox.dos_savegame.SCRATCH_BYTE`.
+POR_WALL_OUTDOORS = 14
 #: A square property, `fn(x, y)` at `0x2ec54`, and the low byte of `$5200`.
+#: The two engine-written outdoor saves hold 1 here with `$5200` = 1, keeping
+#: that relationship; this writer leaves `$5200` zero, so it writes zero.
 POR_SQUARE_PROPERTY = 12804
 #: `(start, end)` of the five bytes nothing reads: two the struct pads to and
 #: the first three of wallset entry 0.  The write is ten bytes long and the
 #: struct is seven (`docs/165-amiga-savegame.md`).
 POR_SQUARE_PAD = (12805, 12810)
-#: 1 = 3D, 2 = overland, from the code beside the write.
+#: The view type.  The code beside the write names **1 = 3D and 2 = overland**
+#: and that second value is not what the engine stores: two saved games the
+#: Amiga game itself made on the travel grid hold **3**, which is what DOS
+#: holds at `goldbox.dos_savegame.VIEW_MODE_BYTE` in 10 of 10 outdoor
+#: specimens.  So the two ports agree after all, and 2 belongs to a mode
+#: nothing here has seen -- `#321 (An Amiga Pool of Radiance conversion
+#: refuses a party standing on the travel grid, because no outdoor Amiga
+#: saved game has ever been read)`, 2026-09-07.
 POR_VIEW_TYPE = 12810
 POR_VIEW_TYPE_3D = 1
-POR_VIEW_TYPE_OVERLAND = 2
+POR_VIEW_TYPE_OVERLAND = 3
+#: What the code beside the write calls the overland, and what no saved game
+#: on this machine has ever held.  Kept named so the disagreement above is
+#: readable rather than looking like a typo.
+POR_VIEW_TYPE_CODE_OVERLAND = 2
 #: The game mode.  A save is taken from camp, so this is 2 in every saved game
 #: the engine writes -- all ten here.
 POR_GAME_MODE = 12811
@@ -2567,9 +2582,10 @@ def por_put_word(save: bytearray, address: int, value: int) -> None:
 #: a strict superset of those, so nothing here has to convert one into the
 #: other.  The three `por_state_from_*` readers are one-line wrappers of
 #: `goldbox.world_state`'s three general ones, each keeping the one thing
-#: that was Amiga-specific about it: refusing a party the Amiga writer still
-#: cannot place, because writing an outdoor Amiga save stays unmeasured
-#: (`#316 (Write the Amiga Pool of Radiance saved game from the source
+#: that was Amiga-specific about it.  **They no longer refuse an outdoor
+#: party**: the two bytes that had never been seen were measured on
+#: 2026-09-07, on two saved games the Amiga game itself made on the travel
+#: grid (`#316 (Write the Amiga Pool of Radiance saved game from the source
 #: save, so a converted party arrives where it was standing)`, `#321 (An
 #: Amiga Pool of Radiance conversion refuses a party standing on the travel
 #: grid, because no outdoor Amiga saved game has ever been read)`).
@@ -2577,27 +2593,13 @@ PorSaveState = world_state.WorldState
 
 
 def por_state_from_c64(save0: bytes, source: str = "") -> PorSaveState:
-    """A C64 Pool of Radiance `SAVEDGAME0` payload, as a place and a clock.
-
-    **Outdoors is refused here rather than written wrong.**  See
-    :func:`por_conversion_reason`.
-    """
-    state = world_state.from_c64(save0, source=source)
-    if state.outdoors:
-        raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
-    return state
+    """A C64 Pool of Radiance `SAVEDGAME0` payload, as a place and a clock."""
+    return world_state.from_c64(save0, source=source)
 
 
 def por_state_from_dos(savgam: bytes, source: str = "") -> PorSaveState:
-    """A DOS `SAVGAM<slot>.DAT`, as a place and a clock.
-
-    **Outdoors is refused here rather than written wrong.**  See
-    :func:`por_conversion_reason`.
-    """
-    state = world_state.from_dos(savgam, source=source)
-    if state.outdoors:
-        raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
-    return state
+    """A DOS `SAVGAM<slot>.DAT`, as a place and a clock."""
+    return world_state.from_dos(savgam, source=source)
 
 
 def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
@@ -2614,32 +2616,29 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
         raise AmigaRecordError(
             f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
             f"bytes, got {len(savgam)}")
-    state = world_state.from_amiga(savgam, source=source)
-    if state.outdoors:
-        raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
-    return state
+    return world_state.from_amiga(savgam, source=source)
 
 
-#: Why a party standing on the travel grid is refused rather than written.
+#: The travel grid used to be refused here, because two bytes of an outdoor
+#: Amiga saved game had never been seen.  **Both were measured on 2026-09-07**
+#: and both agree with DOS: byte 12810, the view type, is
+#: :data:`POR_VIEW_TYPE_OVERLAND` = 3, and byte 12803, the wall in front, is
+#: :data:`POR_WALL_OUTDOORS` = 14.  A party bought passage from New Phlan's
+#: harbour master, sailed to the west landing and camped and saved there
+#: twice, one overland step apart, in Amiga Pool of Radiance under WinUAE;
+#: `tools/porboat.py` staged the eight bytes that put it in front of the
+#: harbour master and the engine wrote everything else.  `#321 (An Amiga Pool
+#: of Radiance conversion refuses a party standing on the travel grid,
+#: because no outdoor Amiga saved game has ever been read)` and
+#: `docs/196-the-amiga-saved-game-built.md` have the numbers.
 #:
-#: **Two bytes of an outdoor Amiga saved game have never been seen.**  DOS's
-#: view-mode byte reads 3 outdoors in 10 of 10 specimens, and the Amiga's own
-#: code names the same byte 1 = 3D and 2 = overland -- so the two ports either
-#: disagree or the DOS reading is of a different field, and there is no Amiga
-#: overland save anywhere on this machine to say which.  The wall byte is the
-#: second.  Writing either would be inventing a value, which is the whole of
-#: what #316 exists to stop.
-#:
-#: The experiment that settles it, and it is one WinUAE run: load the shipped
-#: slot A, walk out of New Phlan onto the travel grid, save to a fresh slot,
-#: and read bytes 12803 and 12810 of the `savgam<letter>.dat` the engine
-#: wrote.  `#321 (An Amiga Pool of Radiance conversion refuses a party
-#: standing on the travel grid, because no outdoor Amiga saved game has ever
-#: been read)`.  Unapproved wording -- a player never sees this string today.
-POR_OUTDOORS_UNMEASURED = (
-    "this party is on the travel grid, and no Amiga saved game made outdoors "
-    "has ever been read, so two bytes of the one this would write have no "
-    "measured value")
+#: What an outdoor container needs beyond those two, all of it now written by
+#: :func:`por_savegame_writes` and all of it the same as DOS's outdoor path
+#: (`#190 (A C64 party standing on the travel grid cannot be written into a
+#: DOS save)`): `$49E6` = 0, `$49C5` = 0, the travel square in
+#: `$49C3`/`$49C4`, the area in `$49F2`, the wallset triple
+#: `(0, $FFFF, $FFFF)`, and the indoor square left stale in bytes 12800-12801
+#: while the facing at 12802 stays live.
 
 #: Why an area cannot be written, or `None`.  Two refusals, and both are about
 #: the script rather than about the party.
@@ -2658,17 +2657,18 @@ def por_conversion_reason(area: int) -> "str | None":
     """Why this area cannot be converted to the Amiga, or `None` if it can.
 
     The mirror of `goldbox.dos.conversion_reason`.  An area with no row has no
-    disk number and no script; the travel grid is refused for the reason
-    :data:`POR_OUTDOORS_UNMEASURED` gives.  Whether `ecl.dax` holds the block
-    is checked by :func:`por_area_script`, which is the only place that can
-    see the player's own disk.
+    disk number and no script.  **The three travel windows are no longer
+    refused**: areas 25, 26 and 27 have blocks in `ecl.dax` and the two bytes
+    that stopped this were measured (`#321 (An Amiga Pool of Radiance
+    conversion refuses a party standing on the travel grid, because no
+    outdoor Amiga saved game has ever been read)`).  Whether `ecl.dax` holds
+    the block is checked by :func:`por_area_script`, which is the only place
+    that can see the player's own disk.
     """
     where = areas.area(area)
     if where is None:
         return (f"area {area} is not an area of Pool of Radiance, so there is "
                 f"no script to stage")
-    if where.outdoors:
-        return POR_OUTDOORS_UNMEASURED
     return None
 
 
@@ -2831,8 +2831,13 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
     if why is not None:
         raise AmigaRecordError(why)
 
-    por_put_word(save, dos_savegame.AREA, state.geo)
+    outdoors = state.outdoors
+    por_put_word(save, dos_savegame.AREA, 0 if outdoors else state.geo)
     _por_note_word(report, dos_savegame.AREA, 1,
+                   "zero, which is what both engine-written outdoor Amiga "
+                   "saves hold: a travel window loads a SQRDATA rather than "
+                   "a GEO and $49E6 is what picks the file type (#321)"
+                   if outdoors else
                    "the resident GEO, the source save's own $49C5 -- which is "
                    "not the area id for a script that loads no map of its own")
     por_put_word(save, dos_savegame.SCRIPT, state.area)
@@ -2843,12 +2848,18 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
     _por_note_word(report, dos_savegame.DISK, 1,
                    f"the container number, {where.disk}. The Amiga keeps it "
                    f"only here: it has no header byte where DOS has one")
-    for i, w in enumerate(state.wallset):
+    wallset = (dos_savegame.OUTDOOR_WALLSET if outdoors else state.wallset)
+    for i, w in enumerate(wallset):
         por_put_word(save, POR_WALLSET + i, w)
     _por_note_word(report, POR_WALLSET, 3,
+                   "the overland wallset triple (0, $FFFF, $FFFF), which is "
+                   "the engine's own out here rather than whatever the party "
+                   "left the grid on -- both Amiga saved games made outdoors "
+                   "hold it, as do six DOS ones (#190, #321)"
+                   if outdoors else
                    "the wallset triple, the source save's own three "
                    "WALLDEF/8X8D block ids")
-    for i, w in enumerate(dos_savegame.wall_map(state.wallset)):
+    for i, w in enumerate(dos_savegame.wall_map(wallset)):
         por_put_word(save, POR_WALLMAP + i, w)
     _por_note_word(report, POR_WALLMAP, 3,
                    "the wall-index map that goes with the triple")
@@ -2866,17 +2877,37 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                 f"which is what the shipped saved game holds past its "
                 f"script's end, byte for byte over 7468 bytes")
 
-    por_put_word(save, dos_savegame.INDOORS, 1)
-    _por_note_word(report, dos_savegame.INDOORS, 1, "indoors")
+    por_put_word(save, dos_savegame.INDOORS, 0 if outdoors else 1)
+    _por_note_word(report, dos_savegame.INDOORS, 1,
+                   "outdoors" if outdoors else "indoors")
+    if outdoors:
+        travel_x, travel_y = state.travel
+        por_put_word(save, dos_savegame.TRAVEL_X, travel_x)
+        por_put_word(save, dos_savegame.TRAVEL_Y, travel_y)
+        _por_note_word(report, dos_savegame.TRAVEL_X, 2,
+                       f"the travel square ({travel_x},{travel_y}), "
+                       f"window-local, the source save's own. The Amiga "
+                       f"keeps it where DOS does and the status line prints "
+                       f"the world coordinate instead (#321)")
 
     save[POR_POS_X] = state.x
     save[POR_POS_Y] = state.y
     save[POR_POS_FACING] = state.facing * dos_savegame.FACING_SCALE
     report.note(POR_POS_X, 3,
+                f"the indoor square ({state.x},{state.y}) the party left, "
+                f"which the engine freezes out here, and facing "
+                f"{state.facing}, which stays live and steps with the party"
+                if outdoors else
                 f"the square ({state.x},{state.y}) facing {state.facing}, the "
                 f"source save's own, doubled the way both ports store it")
-    save[POR_WALL_BYTE] = 0
+    save[POR_WALL_BYTE] = POR_WALL_OUTDOORS if outdoors else 0
     report.note(POR_WALL_BYTE, 1,
+                f"the wall in front of the party: {POR_WALL_OUTDOORS}, which "
+                f"is what both saved games the Amiga game itself made on the "
+                f"travel grid hold, unmoved across a step that changed the "
+                f"square and the facing (#321). DOS holds the same 14 there "
+                f"outdoors"
+                if outdoors else
                 "the wall art in front of the party: zero. It is a function "
                 "of the map and the facing and the step routine recomputes it "
                 "(/program 0x2ec1c). Measured: the engine's own ENCAMP > SAVE "
@@ -2887,15 +2918,22 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                 "the square property: zero. It is the low byte of $5200, "
                 "which nothing can source, and the same step routine "
                 "rewrites it. The engine's own resave holds zero here too "
-                "(#316)")
+                "(#316), and its own outdoor saves hold 1 with $5200 at 1, "
+                "which is the same relationship (#321)")
     pad_start, pad_end = POR_SQUARE_PAD
     report.note(pad_start, pad_end - pad_start,
                 "five bytes nothing reads: two the seven-byte square struct "
                 "pads to and the first three of wallset entry 0, which the "
                 "game's own ten-byte write runs into. Zero in all ten Amiga "
                 "saved games here")
-    save[POR_VIEW_TYPE] = POR_VIEW_TYPE_3D
+    save[POR_VIEW_TYPE] = (POR_VIEW_TYPE_OVERLAND if outdoors
+                           else POR_VIEW_TYPE_3D)
     report.note(POR_VIEW_TYPE, 1,
+                f"the view type: {POR_VIEW_TYPE_OVERLAND}, the travel grid. "
+                f"Both saved games the Amiga game itself made out there hold "
+                f"it, and it is what DOS holds in 10 of 10 outdoor specimens "
+                f"-- not the 2 the code beside the write names (#321)"
+                if outdoors else
                 "the view type: 1, the 3D view, from the code beside the "
                 "write and 1 in all ten Amiga saved games")
     save[POR_GAME_MODE] = POR_GAME_MODE_CAMP
@@ -2993,9 +3031,13 @@ def new_por_savegame(state: PorSaveState, slot: str, count: int,
     por_savegame_zeroes(save, report)
     where = areas.area(state.area)
     report.converted = [
-        f"the party is in {where.name or where.ecl} at "
-        f"({state.x},{state.y}) facing "
-        f"{'NESW'[state.facing % 4]}",
+        (f"the party is on the travel grid in "
+         f"{where.name or where.ecl} at "
+         f"({state.travel[0]},{state.travel[1]}), window-local"
+         if state.outdoors else
+         f"the party is in {where.name or where.ecl} at "
+         f"({state.x},{state.y}) facing "
+         f"{'NESW'[state.facing % 4]}"),
         f"the clock reads {state.clock[3]:02d}:"
         f"{state.clock[2]}{state.clock[1]}",
         f"{sum(1 for f in state.flags if f)} quest flags are set",

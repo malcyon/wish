@@ -758,11 +758,20 @@ roster; two more steps are not guessable:
 4. `PATH FOR SAVE  RETURN = POOLSAVE:` — type **`SAVE/`**;
 5. `LOAD WHICH GAME: A` — **type the letter**, then RETURN. RETURN alone
    leaves the prompt sitting there;
-6. **movement is the number keys `4`, `6`, `8`.** The arrow keys and the
-   numeric keypad do nothing — `VK_LEFT`, `VK_RIGHT`, `VK_UP`, `VK_DOWN`,
-   `VK_NUMPAD6` and `VK_NUMPAD8` all left the status line where it was;
+6. **movement is the number keys `4`, `6`, `8`** — `8` forward, `4` and `6`
+   the two turns, re-measured on 2026-09-07 across eleven steps and confirmed
+   with `joyport1=none` in the config, so it is the title rather than the
+   emulator eating the alternatives. This build has no console.device, no
+   gameport.device and no keymap patch, which is why the numeric keypad the
+   two later titles use does nothing here; the arrows did nothing in the
+   original run and that run predates the `joyport1` fix, so **whether an
+   arrow key reaches this title is untested** rather than answered.
+   **Outdoors the same `8` steps north**: overland movement is absolute and
+   the facing shown is the direction of the last step;
 7. saving — **`E`** ENCAMP, **`S`** SAVE, the slot letter, RETURN, then
-   **`N`** to `QUIT TO WORKBENCH  YES  NO`.
+   **`N`** to `QUIT TO WORKBENCH  YES  NO`. It works on the travel grid as
+   well as indoors, which had been an open question
+   (`docs/113-world-map.md`).
 
 **Amiga Curse cannot be driven this way.** Its rip still asks the code wheel:
 `P` at the option bar reaches *"TYPE THE CHARACTER IN BOX NUMBER 3 UNDER THE

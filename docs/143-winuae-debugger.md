@@ -448,6 +448,17 @@ unattended boot possible at all. Curse runs straight from its title art to
 QUIT menu; an original disk would stop for a code-wheel question with nobody
 there to answer it.
 
+**`-log` is not free, and on Pool of Radiance it costs the run.** The console
+it opens fills with `Denise queue without lock! id=1` -- thousands of lines,
+the same flood §5's `use_debugger` paragraph describes, with no `use_debugger`
+anywhere. Measured on 2026-09-07: with `-log` the emulator was still a blank
+white window three and a half minutes in; the same command line without it
+reached the code wheel in 44 seconds. It also defeats `tools/winvmsettle.py`
+outright, because `winvm shot` grabs the whole desktop and a scrolling console
+means no two grabs are ever identical. **A menu drive needs no console at
+all** -- `key` alone carries a Gold Box title from the title screen to a saved
+game -- so pass `-log` only when `send` is going to read the debugger back.
+
 **`C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt` is the
 first place to look when a run misbehaves.** It records which config loaded,
 the Kickstart version (`KS ver = 34 (0x22)` for 1.3), and every rejected line as
@@ -1068,6 +1079,19 @@ trap 7:
 made to walk, because the WinUAE driver sends only keystrokes)` -- §5.1 and
 §5.2:
 
+* **Amiga Pool of Radiance walks on the plain top-row digits**, and needs
+  none of the keypad work below: `8` stepped a party forward eleven times and
+  `6` turned it right, every one read off the status line, each sent as an
+  ordinary ASCII virtual key with no `-Extended`. That build has no
+  console.device, no gameport.device and no keymap patch, so it is the other
+  half of §5.1 rather than an exception to it. Outdoors the same `8` steps
+  **north** -- overland movement is absolute and the facing shown is the
+  direction of the last step. `#321 (An Amiga Pool of Radiance conversion
+  refuses a party standing on the travel grid, because no outdoor Amiga saved
+  game has ever been read)`
+* **the whole run needed no debugger.** Three boots, about sixty keystrokes,
+  five saved games and two disk images pulled back, all of it `winuae.ps1 key`
+  and `winvm shot`. §9 and §10 stay unexercised
 * **a party walks.** Amiga Silver Blades, slot D of a run disk, party at
   `5,9 W 00:00` on the status line: keypad `4` turned it to `S`, keypad `4`
   again to `E`, keypad `8` stepped it to `6,9 E 00:01`, and the cursor key

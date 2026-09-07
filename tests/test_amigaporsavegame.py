@@ -91,6 +91,19 @@ def _dos_specimen(name: str) -> pathlib.Path:
     return where
 
 
+def _amiga_outdoor_specimen(name: str) -> bytes:
+    """One file out of `WISH-SPEC-por-amiga-outdoor`, the run of `#321 (An
+    Amiga Pool of Radiance conversion refuses a party standing on the travel
+    grid, because no outdoor Amiga saved game has ever been read)`."""
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    where = root / "por-amiga" / "WISH-SPEC-por-amiga-outdoor" / name
+    if not where.is_file():
+        pytest.skip(f"needs WISH-SPEC-por-amiga-outdoor/{name}")
+    return where.read_bytes()
+
+
 def _c64_state(name: str) -> amiga.PorSaveState:
     from goldbox import games
     from goldbox.d64 import load_payload
@@ -255,27 +268,13 @@ def test_the_regions_a_player_would_notice_round_trip_byte_for_byte(
 # What it refuses
 # ---------------------------------------------------------------------------
 
-def test_a_party_on_the_travel_grid_is_refused_rather_than_guessed_at():
-    """Two bytes of an outdoor Amiga saved game have never been seen.
+def _outdoor_dos_state() -> amiga.PorSaveState:
+    """A DOS saved game of a party on the west travel window, built here.
 
-    DOS's view-mode byte reads 3 outdoors and the Amiga's own code names the
-    same byte 1 = 3D and 2 = overland, and there is no Amiga overland save
-    anywhere to say which is right here.  Writing one would be inventing a
-    value, which is what #316 exists to stop.
-
-    Built rather than read off `WISH-SPEC-por-party-l1`, which this test used
-    until `#352 (Handle world state for Amiga saves)`: that specimen
-    is a save from the party-formation menu (`provenance.toml`: "written by
-    the game's own SAVE CURRENT GAME to slot C" before `BEGIN ADVENTURING`),
-    and its `$49E6` = 0 is the initialiser's, the same byte a party genuinely
-    on the travel grid also holds zero -- the ambiguity `#326 (A Pool of
-    Radiance save made before the party began adventuring is refused, because
-    the initialiser left $49E6 at 0 and New Phlan is indoors)` fixed for the
-    DOS -> C64 direction.  `world_state.from_dos` now resolves that specimen
-    correctly, to New Phlan's arrival square rather than a refusal, so this
-    test needs a save that is genuinely outdoors and has genuinely set out:
-    an area whose script is staged, in one of the three measured overland
-    windows (`#59`, area 26).
+    Built rather than read off a specimen so this never skips: the values
+    are the ones `#59 (Map the DOS saved game, not just the character
+    record)` measured for an outdoor container, and the point of the test is
+    what the **Amiga** writer does with them.
     """
     from goldbox import dos_savegame
 
@@ -288,9 +287,84 @@ def test_a_party_on_the_travel_grid_is_refused_rather_than_guessed_at():
     savgam[start] = 0x01
     savgam = bytes(savgam)
     assert dos_savegame.outdoors(savgam)
-    with pytest.raises(AmigaRecordError) as e:
-        amiga.por_state_from_dos(savgam)
-    assert "travel grid" in str(e.value)
+    return amiga.por_state_from_dos(savgam)
+
+
+def test_a_party_on_the_travel_grid_gets_the_bytes_the_engine_writes(ecl_dax):
+    """The two bytes `#321 (An Amiga Pool of Radiance conversion refuses a
+    party standing on the travel grid, because no outdoor Amiga saved game
+    has ever been read)` measured, and the container around them.
+
+    This used to be a refusal, because byte 12810 and byte 12803 of an
+    outdoor Amiga saved game had never been seen.  On 2026-09-07 a party
+    bought passage from New Phlan's harbour master, sailed to the west
+    landing and saved there twice: **12810 reads 3 and 12803 reads 14**, both
+    2 of 2 and both the same as DOS.
+    """
+    from goldbox import dos_savegame
+
+    state = _outdoor_dos_state()
+    assert state.outdoors is True
+    save, report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
+
+    assert save[amiga.POR_VIEW_TYPE] == amiga.POR_VIEW_TYPE_OVERLAND == 3
+    assert save[amiga.POR_WALL_BYTE] == amiga.POR_WALL_OUTDOORS == 14
+    assert amiga.por_word(save, dos_savegame.INDOORS) == 0
+    assert amiga.por_word(save, dos_savegame.AREA) == 0
+    assert amiga.por_word(save, dos_savegame.SCRIPT) == 26
+    assert (amiga.por_word(save, dos_savegame.TRAVEL_X),
+            amiga.por_word(save, dos_savegame.TRAVEL_Y)) == (7, 29)
+    assert amiga.por_word(save, dos_savegame.DISK) == 7
+    assert report.unwritten == []
+
+
+def test_an_indoor_party_still_gets_the_indoor_pair(ecl_dax):
+    """The other half of the gate, which is what makes it a gate.
+
+    Force the outdoor branch and this fails: an indoor party would arrive
+    with the travel grid's view type and a wall in front of it that the map
+    does not have.
+    """
+    from goldbox import dos_savegame
+
+    state = _c64_state("por-party-twin-pair")
+    assert state.outdoors is False
+    save, _report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
+    assert save[amiga.POR_VIEW_TYPE] == amiga.POR_VIEW_TYPE_3D == 1
+    assert save[amiga.POR_WALL_BYTE] == 0
+    assert amiga.por_word(save, dos_savegame.INDOORS) == 1
+    assert amiga.por_word(save, dos_savegame.TRAVEL_X) == 0
+    assert amiga.por_word(save, dos_savegame.TRAVEL_Y) == 0
+
+
+def test_the_engines_own_outdoor_saved_game_round_trips(ecl_dax):
+    """The strongest form: read what the Amiga engine wrote outdoors, build
+    it again, and let the declared list be the mask.
+
+    `WISH-SPEC-por-amiga-outdoor` slot B is the first Amiga saved game ever
+    made on the travel grid -- world 20,29 on the status line, window-local
+    (7, 29) in the file, area 26, six characters.
+    """
+    savgam = _amiga_outdoor_specimen("savgamB.dat")
+    state = amiga.por_state_from_amiga(savgam, "WISH-SPEC-por-amiga-outdoor B")
+    assert state.outdoors is True
+    assert state.travel == (7, 29)
+    assert state.area == 26
+    built, report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
+    unexplained = []
+    for i, (was, now) in enumerate(zip(savgam, built)):
+        if was == now:
+            continue
+        why = report.sources.get(i, "")
+        if not why.startswith(DECLARED):
+            unexplained.append((i, report.address(i), why))
+    assert unexplained == []
+    start, end = amiga.POR_ECL_BUFFER
+    assert built[start:end] == savgam[start:end]
+    assert built[amiga.POR_POS_X:amiga.POR_POS_FACING + 1] == \
+        savgam[amiga.POR_POS_X:amiga.POR_POS_FACING + 1]
+    assert built[amiga.POR_VIEW_TYPE] == savgam[amiga.POR_VIEW_TYPE]
+    assert built[amiga.POR_WALL_BYTE] == savgam[amiga.POR_WALL_BYTE]
 
 
 def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):

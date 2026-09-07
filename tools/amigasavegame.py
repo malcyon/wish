@@ -55,8 +55,16 @@ NAME_BYTES = 8
 GAME_MODES = {2: "camp", 3: "overland", 4: "3D adventuring", 5: "combat",
               7: "ending"}
 #: Pool of Radiance keeps a view type where the later titles keep the mode
-#: before the current one.
-VIEW_TYPES = {1: "3D", 2: "overland"}
+#: before the current one.  **The code beside the write names 1 and 2 and the
+#: engine stores 3 outdoors**: both saved games the Amiga game itself made on
+#: the travel grid hold 3, which is what DOS holds in 10 of 10 outdoor
+#: specimens, and 2 has never been seen in any Amiga saved game on this
+#: machine (`#321 (An Amiga Pool of Radiance conversion refuses a party
+#: standing on the travel grid, because no outdoor Amiga saved game has ever
+#: been read)`).  2 is kept in the table so a file holding it reads as
+#: something rather than as `?`.
+VIEW_TYPES = {1: "3D", 2: "overland, from the code and never yet seen",
+              3: "the travel grid"}
 
 #: Variable-array words the code names, by address.
 NAMED_WORDS = {

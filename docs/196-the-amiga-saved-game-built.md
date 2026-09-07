@@ -172,24 +172,73 @@ mode and the party count are byte for byte identical**, in both runs.
 ### Two bytes the runs settled that no census could
 
 12803 (the wall in front) and 12804 (the square property) are `fn(x, y,
-facing)` and `fn(x, y)`, and nothing offline can compute them, so the writer
-writes 0. **The engine's own resave holds 0 in both, in both runs**, at the
-square the party loaded onto. Zero there is what the engine itself had, not
-merely something it tolerated.
+facing)` and `fn(x, y)` **indoors**, and nothing offline can compute them, so
+the writer writes 0. **The engine's own resave holds 0 in both, in both
+runs**, at the square the party loaded onto. Zero there is what the engine
+itself had, not merely something it tolerated.
+
+Outdoors 12803 is not that function at all -- it is the constant 14 -- which
+is the next section.
+
+### The travel grid, and the two bytes that had stopped it
+
+**A party on the travel grid was refused until 2026-09-07**, because byte
+12810 (the view type) and byte 12803 (the wall in front) had never been seen
+in an outdoor Amiga saved game and writing either would have been inventing a
+value. A third WinUAE run made two,
+`#321 (An Amiga Pool of Radiance conversion refuses a party standing on the
+travel grid, because no outdoor Amiga saved game has ever been read)`, and
+both bytes agree with DOS:
+
+| byte | outdoors | indoors | what DOS holds outdoors |
+|---|---|---|---|
+| 12810, the view type | **3** | 1 | 3, in 10 of 10 specimens |
+| 12803, the wall in front | **14** | 0 | 14 |
+
+The code beside the Amiga's own write names 1 = 3D and 2 = overland;
+**2 is in no saved game on this machine**, so that enumeration names a mode
+nothing here has reached and `docs/165-amiga-savegame.md` has been corrected.
+
+**How the party got there, since there is no walk.** Every route from the
+shipped slot's `(0, 4)` to the pier crosses an event square and one of them,
+`(4, 4)`, runs `NEWECL 8` into Phlan City Hall. So `tools/porboat.py` staged
+eight bytes of the shipped engine-written saved game -- the square to
+`(11, 2)` facing north and `$4AA7` to 255 -- and the party bought WEST
+passage from New Phlan's harbour master, walked four squares to the boat and
+sailed. **Not the destination word `$4AC4`**: `ECL00 $9AF2 SAVE 0, [$4AC4]`
+is the first statement of New Phlan's own entry-4 prologue, so a staged one is
+zeroed before the first keystroke, and the run that tried it sailed to Sokol
+Keep instead.
+
+The rest of the outdoor container is DOS's outdoor path exactly, which is
+what `#190 (A C64 party standing on the travel grid cannot be written into a
+DOS save)` predicted: `$49E6` = 0, `$49C5` = 0, the window-local travel
+square in `$49C3`/`$49C4`, the area in `$49F2`, `(0, $FFFF, $FFFF)` in the
+wallset with `(1, $FFFF, $FFFF)` in its index map, and bytes 12800-12801 left
+frozen on the indoor square the party sailed from. The facing at 12802 stays
+**live**: it went 2 (east) to 0 (north) across one overland step, which is the
+only square byte that moved. Two saves one step apart differ in 15 bytes of
+13,141.
+
+### A converted outdoor party, in the running game
+
+`tools/toamigapor.py` built a save disk from the C64 outdoor party in
+`work/p190/C64OUT1.D64` -- window-local (8,27) in the Wilderness Middle
+Window, clock 21:18, 13,141 of 13,141 bytes accounted for. Amiga Pool of
+Radiance loaded it and drew the overland view with the status line reading
+**`21,27 W 21:18`**: world x = window-local 8 + 13, the offset
+`docs/113-world-map.md` records, and the clock to the minute. The party
+stepped north to `21,26 N 09:18` and camped and saved.
+
+**The engine's own resave differs from ours in 13 bytes outside the character
+table**, and every one is either the step or a word the writer declares:
+`$49C4` 27 → 26, the clock's `$49C9` and `$49CA`, the scratch at `$49F0`,
+`$49F1`, `$4FD2`, `$4FD3` and `$5079`-`$507D`, and the facing at 12802 going
+from the C64's stale west to the north it had just walked. **Bytes 12803 and
+12810, `$49C5`, `$49E6`, `$49C3`, the wallset triple and its index map all
+came back exactly as written.**
 
 ## 5. What is refused, and why refusing is the answer
-
-**A party on the travel grid.** Two bytes of an outdoor Amiga saved game have
-never been seen: `docs/141` reads DOS's view-mode byte as 3 outdoors, while the
-Amiga's own code names the same byte 1 = 3D and 2 = overland, and there is no
-Amiga overland saved game anywhere on this machine to say which is right here.
-The wall byte is the second. Writing either would be inventing a value.
-
-*The experiment, and it is one WinUAE run*: load a slot, walk out of New Phlan
-onto the travel grid, save to a fresh slot, and read bytes 12803 and 12810 of
-the `savgam<letter>.dat` the engine wrote.
-`#321 (An Amiga Pool of Radiance conversion refuses a party standing on the
-travel grid, because no outdoor Amiga saved game has ever been read)`.
 
 **An area with no block in `ecl.dax`** -- area 30 -- and an area with no row in
 `goldbox/areas.py`. Neither has a script to stage.
@@ -225,6 +274,11 @@ travel grid, because no outdoor Amiga saved game has ever been read)`.
 tools/toamigapor.py work/por2.adf --to B --save-disk work/poolsave.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-porunconscious1.d64 --provenance
 ```
+
+An outdoor party is the same command with an outdoor source save --
+`work/p190/C64OUT1.D64` is the one the run above used -- and needs no other
+argument: the writer picks the outdoor branch off the source save's own
+`$49E6`.
 
 `work/por2.adf` is a copy of Amiga disk 2. `--provenance` prints one line per
 run of bytes saying where each came from; the run's summary line says

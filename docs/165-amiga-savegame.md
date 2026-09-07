@@ -106,9 +106,19 @@ The save writes **ten** bytes from `h32+0x176f` and the struct there is
 (computed at `0x2ec1c`), the square's attribute byte (computed at `0x2ec54`),
 and two bytes nothing references. The wallset table sits at `h32+0x1776`, so the write's last three
 bytes are the first three of table entry 0, which is never written. Then
-`h32+0xc1`, the **view type** (1 = 3D, 2 = overland; saved and restored as a
-(previous, current) pair the way Curse saves its mode), `h32+0xba`, the game
-mode, and the count byte. The five zeros at 12805-12809 are therefore not
+`h32+0xc1`, the **view type** (saved and restored as a (previous, current)
+pair the way Curse saves its mode), `h32+0xba`, the game mode, and the count
+byte.
+
+**The view type reads 1 indoors and 3 on the travel grid**, measured on
+2026-09-07 on the first two Amiga saved games ever made outdoors
+(`#321 (An Amiga Pool of Radiance conversion refuses a party standing on the
+travel grid, because no outdoor Amiga saved game has ever been read)`). This
+page said "1 = 3D, 2 = overland" from the code beside the write until then,
+and **2 is not what the engine stores**: no Amiga saved game on this machine
+holds it. 3 is what DOS holds at its own 12806 in 10 of 10 outdoor specimens,
+so the two ports agree and the enumeration read off the code names a mode
+nothing here has reached. The five zeros at 12805-12809 are therefore not
 fields, and nothing reads them from the file for any purpose.
 
 The Pool of Radiance wallset table is copied into the VM array before the
@@ -140,6 +150,15 @@ the matching nibble, which is why the field's old name here -- "the wall in
 front of the party" -- was wrong and has been corrected: it is a wall **type**,
 0 to 15, and it reads 0 at both `3,3 S` and `5,9 W` where the view draws a wall.
 
+**Outdoors it is 14 and stops tracking the square**, in both engine-written
+outdoor Amiga saved games -- unmoved across a step that changed the travel
+square and the facing, where indoors the same byte is recomputed on every
+step. It is the same 14 DOS holds at `goldbox.dos_savegame.SCRATCH_BYTE` in
+its own engine-written outdoor saves, and the value
+`goldbox.amiga.POR_WALL_OUTDOORS` now writes (`#321 (An Amiga Pool of
+Radiance conversion refuses a party standing on the travel grid, because no
+outdoor Amiga saved game has ever been read)`).
+
 **The map on the disk agrees with the saved games.** `/DISK2/GEO.GLB` on Silver
 Blades disk B is a `GLIB` of 18 blocks: block 0 is a 70-byte index holding a
 `u16be` count of 17 and then 17 `(id, block)` pairs, the first of which is
@@ -166,9 +185,11 @@ shipped save reads **0**, the value a load leaves in it (`prev = mode; mode =
 specimen, and a fact about the specimen rather than the format.
 
 **Hand-off to DOS.** DOS's 12806 (1 indoors, 3 outdoors) and 12807 (always 2)
-are the view type and the game mode of this same source. PROBABLE for DOS --
-read off the Amiga port, not off `GAME.OVR`; the same routine there settles
-it.
+are the view type and the game mode of this same source. **CONFIRMED for the
+Amiga as well since 2026-09-07**: its own byte reads 1 indoors in ten saved
+games and 3 in the two made outdoors, which is DOS's pair exactly. Whether
+`GAME.OVR`'s own routine names the same values is still read off the Amiga
+port rather than out of DOS.
 
 ## Variable words the code names
 
