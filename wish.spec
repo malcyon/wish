@@ -15,16 +15,17 @@
 # nothing depends on it.
 #
 # `DATAS` is every file the window reads at run time that is not a Python
-# module: the artist's two SVGs and his four PNG exports of the mark, which
-# the taskbar icon is scaled from. Each lands under `sys._MEIPASS` at the
-# same relative path it has in the checkout, and `goldbox/assets.py` is the
-# one place that resolves such a path, so a reader finds the file in either
-# tree. This list used to be empty and the header said so -- "there are no
-# data files to carry" -- which stopped being true when the artist delivered
-# and nothing noticed: the Windows build shipped with no picture in Help >
-# About and a black square on the taskbar (#351). `tests/test_assets.py` now
-# reads every `asset_path(...)` call out of the source and fails when one
-# names a file that is not here.
+# module: the artist's two SVGs, his four PNG exports of the mark (which the
+# taskbar icon is scaled from), and Donald's own combat-figure table. Each
+# lands under `sys._MEIPASS` at the same relative path it has in the
+# checkout, and `goldbox/assets.py` is the one place that resolves such a
+# path, so a reader finds the file in either tree. This list used to be
+# empty and the header said so -- "there are no data files to carry" --
+# which stopped being true when the artist delivered and nothing noticed:
+# the Windows build shipped with no picture in Help > About and a black
+# square on the taskbar (#351). `tests/test_assets.py` now reads every
+# `asset_path(...)` call out of the source and fails when one names a file
+# that is not here.
 #
 # `editor/character.ui` is not a data file: it is compiled ahead of time into
 # `editor/ui_character.py`, and `wish/__main__.py` skips the Designer
@@ -42,8 +43,6 @@ COMMON_EXCLUDES = [
 ]
 
 # (source in the checkout, directory it lands in under `sys._MEIPASS`).
-# `tools/iconproposal.yaml` joins this list when #315 moves
-# `goldbox/iconparts.py` onto `goldbox.assets`.
 DATAS = [
     ("assets/logo/mark.svg", "assets/logo"),
     #: The PNG is what Help > About draws -- Qt drops four of the five
@@ -58,6 +57,10 @@ DATAS = [
     ("assets/logo/mark-150.png", "assets/logo"),
     ("assets/logo/mark-200.png", "assets/logo"),
     ("assets/logo/mark-500.png", "assets/logo"),
+    # Donald's judgement on which C64 combat figure a DOS one becomes
+    # (`goldbox/iconparts.py`, `#315`); a build with no copy of it cannot
+    # convert a figure.
+    ("tools/iconproposal.yaml", "tools"),
 ]
 
 window = Analysis(

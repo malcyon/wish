@@ -54,6 +54,7 @@ from dataclasses import dataclass
 
 import yaml
 
+from .assets import asset_path
 from .d64 import D64, load_payload
 
 PARTS_FILE = b"SPELLE64"
@@ -159,12 +160,15 @@ DEFAULT_BACKGROUND = 6
 #: Donald's table, the single source.  `tools/iconproposal.py` draws it and
 #: `dos_icon_tables` reads it; nothing else may hold a second copy.
 #:
-#: **This is outside the package**, so a frozen build does not carry it --
-#: `wish.spec` has no `datas` at all.  `#315 (A frozen Wish cannot convert a
-#: combat figure, because the table it needs lives outside the package)` is
-#: the work of giving it a home that ships.
-PROPOSAL_PATH = (pathlib.Path(__file__).resolve().parent.parent
-                 / "tools" / "iconproposal.yaml")
+#: It stays in `tools/` -- Donald edits it where he has already been shown it
+#: -- and reaches a frozen build through `goldbox.assets.asset_path`, the
+#: resolver `#351 (The Windows build shows no logo in About and a black
+#: square on the taskbar, because the artist's SVGs are not in the package)`
+#: added: `sys._MEIPASS` when frozen, this checkout otherwise. `wish.spec`'s
+#: `DATAS` carries `tools/iconproposal.yaml` alongside it, which is what
+#: `#315 (A frozen Wish cannot convert a combat figure, because the table it
+#: needs lives outside the package)` was waiting on.
+PROPOSAL_PATH = asset_path("tools", "iconproposal.yaml")
 
 #: Record bytes `0x0C1`-`0x0C6` in order, and which C64 part class each one
 #: paints.  `GAME.OVR:0x1E55C` builds its recolour lookup from the table at

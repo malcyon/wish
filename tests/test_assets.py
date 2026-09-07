@@ -182,18 +182,17 @@ def test_the_spec_lists_it_on_both_platforms():
 # --- nobody else builds the path ------------------------------------------
 
 #: `Path(__file__)...parent.parent` outside `goldbox/assets.py` is a reader
-#: that will not find its file in a frozen build. Two are known and allowed:
-#: `wish/__main__.py` and `tools/wish.py` put the checkout on `sys.path` for
-#: a run from a checkout, which is not a file read. `goldbox/iconparts.py`
-#: is the open one -- `#315 (A frozen Wish cannot convert a combat figure,
-#: because the table it needs lives outside the package)` -- and comes off
-#: this list when that closes.
+#: that will not find its file in a frozen build. Both known exceptions put
+#: the checkout on `sys.path` for a run from a checkout, which is not a file
+#: read: `wish/__main__.py` and `tools/wish.py`. `goldbox/iconparts.py` came
+#: off this list when `#315 (A frozen Wish cannot convert a combat figure,
+#: because the table it needs lives outside the package)` moved it onto
+#: `goldbox.assets.asset_path`.
 ROOT_FROM_FILE = re.compile(r"__file__\)[^\n]*\.parent\.parent")
 ALLOWED = {
     "goldbox/assets.py",
     "wish/__main__.py",
     "tools/wish.py",
-    "goldbox/iconparts.py",     # #315
 }
 
 

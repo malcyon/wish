@@ -1,35 +1,39 @@
 """The combat-figure table has to reach a Wish that was installed (#315).
 
 `#315 (A frozen Wish cannot convert a combat figure, because the table it
-needs lives outside the package)`: `goldbox.iconparts.PROPOSAL_PATH` resolves
-to `<package parent>/tools/iconproposal.yaml`, so what a user gets when he
-imports a DOS save depends on how his copy of Wish was built.  He picks
-`File > Import`, chooses his DOS party, and either every character arrives
-with his own figure or the conversion stops with `the combat-figure table is
-not at ...` and no party at all.
+needs lives outside the package)`: `goldbox.iconparts.PROPOSAL_PATH` used to
+resolve to `<package parent>/tools/iconproposal.yaml`, so what a user got
+when he imported a DOS save depended on how his copy of Wish was built. He
+picks `File > Import`, chooses his DOS party, and either every character
+arrives with his own figure or the conversion stops with `the combat-figure
+table is not at ...` and no party at all.
 
-Two build shapes, measured on 2026-09-05:
+Two build shapes, both now carrying the file:
 
 * **The wheel carries it.**  `pyproject.toml` lists `tools` among the wheel's
   packages and hatchling ships every file in a package directory, so
   `tools/iconproposal.yaml` is in the built wheel and `<site-packages>/tools`
   is exactly where `PROPOSAL_PATH` looks.  Unpacked onto `sys.path`,
   `dos_icon_tables()` read 32 weapon rows and 14 head rows.
-* **The PyInstaller build does not.**  `wish.spec` declares no `datas` at all
-  and says so in a comment, and PyInstaller copies no file that is not a
-  module, so `dist/wish/` has no `tools/` directory.  That is the open half
-  of `#315 (A frozen Wish cannot convert a combat figure, because the table
-  it needs lives outside the package)` and the fix is a decision about where
-  the file lives, which is not made here.
+* **The PyInstaller build now does too.**  `PROPOSAL_PATH` resolves through
+  `goldbox.assets.asset_path`, the resolver `#351 (The Windows build shows no
+  logo in About and a black square on the taskbar, because the artist's SVGs
+  are not in the package)` added, and `wish.spec`'s `DATAS` carries
+  `("tools/iconproposal.yaml", "tools")` -- so `dist/wish/tools/` has the
+  file and a frozen import converts a figure the way a checkout always has.
 
-So what these tests hold is the half that works: the table stays inside a
-directory a build ships, and a build that has lost it says where it should
-have been rather than raising something a packager cannot act on.
+So what these tests hold: the table stays inside a directory both builds
+ship, a frozen import resolves it under a simulated `sys._MEIPASS`, and a
+build that has genuinely lost it still says where it should have been rather
+than raising something a packager cannot act on.
 """
 
 from __future__ import annotations
 
+import importlib
 import pathlib
+import shutil
+import sys
 import tomllib
 
 import pytest
@@ -73,6 +77,46 @@ def test_the_table_is_read_from_wherever_it_is_put():
     tables = iconparts.dos_icon_tables(iconparts.PROPOSAL_PATH)
     assert tables.weapons and tables.heads
     assert len(tables.ega_to_c64) == 16
+
+
+def test_the_frozen_build_carries_the_table():
+    """The half `#315 (A frozen Wish cannot convert a combat figure, because
+    the table it needs lives outside the package)` left open: a PyInstaller
+    `dist/wish/` had no `tools/` directory at all, because `wish.spec`
+    declared no `datas`. `goldbox.assets.asset_path` is the resolver added
+    for `#351`; this checks the file `PROPOSAL_PATH` names is one
+    `wish.spec`'s `DATAS` actually carries, not merely one that exists in
+    this checkout.
+    """
+    from goldbox import assets
+    from tests.test_packaging import _run_spec
+
+    relative = pathlib.Path(iconparts.PROPOSAL_PATH).resolve().relative_to(
+        assets.CHECKOUT)
+    analysis, = _run_spec("win32")["Analysis"]
+    datas = analysis.kwargs.get("datas", [])
+    assert any(pathlib.Path(source) == relative for source, _dest in datas), (
+        f"{relative} is not in wish.spec's DATAS, so a frozen build would "
+        f"not carry it and dos_icon_tables would raise FileNotFoundError")
+
+
+def test_it_resolves_under_a_frozen_root(monkeypatch, tmp_path):
+    """`PROPOSAL_PATH` is a module-level constant, so this reloads
+    `goldbox.iconparts` under a simulated `sys._MEIPASS` rather than reading
+    the constant as it stands -- the shape PyInstaller's bootloader leaves,
+    per `tests/test_assets.py`.
+    """
+    (tmp_path / "tools").mkdir()
+    shutil.copy(iconparts.PROPOSAL_PATH, tmp_path / "tools" / "iconproposal.yaml")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    try:
+        reloaded = importlib.reload(iconparts)
+        assert reloaded.PROPOSAL_PATH == tmp_path / "tools" / "iconproposal.yaml"
+        assert reloaded.PROPOSAL_PATH.is_file()
+    finally:
+        monkeypatch.undo()
+        importlib.reload(iconparts)
 
 
 def test_a_build_that_lost_the_table_says_where_it_should_have_been(tmp_path):
