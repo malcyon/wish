@@ -183,9 +183,26 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
     """Cut the game's screen out of the desktop at the reader's own pitch.
 
     Returns the `(X0, Y0, PITCH)` the reader should use on `out`, or `None`
-    when no character grid could be fitted.  The rescale is nearest neighbour
-    and the origin is kept as a float: rounding it into a paste offset instead
-    moved the sampling phase inside a glyph and read a `0` as an `8`.
+    when no character grid could be fitted.
+
+    `#371 (The Silver Blades journal reader misreads a 6 as an 8, so a boot
+    is spent on a question the disk can answer)`: rescaling the whole cut-out
+    with one nearest-neighbour resize duplicated some source columns twice
+    and others once, because the reader's pitch is never an integer multiple
+    of the capture's -- and where that duplication lands drifts across the
+    width of the cut, so it landed inside a glyph's own strokes rather than
+    between them, on the challenge that motivated the issue.
+
+    The game draws each of the 8 pixels in its character cell as a
+    `pitch / 8`-pixel block of the capture -- an exact 2-pixel block at
+    `winvm shot`'s pitch of 16 -- so every Amiga pixel has one true centre in
+    the capture, and this samples that centre directly out of the untouched
+    screenshot, once per Amiga pixel, with no intermediate resize to drift
+    out of phase.  Only the *replication* of those samples up to
+    `target_pitch` is left to a resize, and that one duplicates or drops
+    output pixels inside one already-uniform Amiga pixel rather than across
+    the boundary between two of them, so it cannot blur one glyph into
+    another.
 
     `target_pitch` defaults to the pitch the private reader declares, and is
     an argument so that the arithmetic can be exercised without it.
@@ -194,22 +211,29 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
 
     if target_pitch is None:
         target_pitch = _blades_modules()[0].PITCH
-    image = Image.open(shot)
+    image = Image.open(shot).convert("RGB")
     grid = fit_grid(text_bands(image))
     if grid is None:
         return None
     x0, y0, pitch = grid
-    left = max(0, int(x0 - MARGIN * pitch))
-    top = max(0, int(y0 - MARGIN * pitch))
-    crop = image.convert("RGB").crop((
-        left, top,
-        min(image.width, int(x0 + (COLUMNS + MARGIN) * pitch)),
-        min(image.height, int(y0 + (LINES + MARGIN) * pitch))))
-    factor = target_pitch / pitch
-    crop = crop.resize((round(crop.width * factor),
-                        round(crop.height * factor)), Image.NEAREST)
-    crop.save(out)
-    return (x0 - left) * factor, (y0 - top) * factor, pitch * factor
+    amiga_px = pitch / 8.0
+    ox, oy = x0 - MARGIN * pitch, y0 - MARGIN * pitch
+    columns = (COLUMNS + 2 * MARGIN) * 8
+    rows = (LINES + 2 * MARGIN) * 8
+    width, height = image.size
+    source = image.load()
+    canonical = Image.new("RGB", (columns, rows))
+    canonical_px = canonical.load()
+    for ay in range(rows):
+        sy = min(height - 1, max(0, round(oy + (ay + 0.5) * amiga_px)))
+        for ax in range(columns):
+            sx = min(width - 1, max(0, round(ox + (ax + 0.5) * amiga_px)))
+            canonical_px[ax, ay] = source[sx, sy]
+    factor = target_pitch / 8.0
+    scaled = canonical.resize((round(columns * factor), round(rows * factor)),
+                              Image.NEAREST)
+    scaled.save(out)
+    return MARGIN * target_pitch, MARGIN * target_pitch, target_pitch
 
 
 def find_disk(named: str | None = None) -> pathlib.Path:

@@ -240,3 +240,187 @@ def test_a_challenge_the_tables_do_not_hold_is_reported_without_quoting_it(
     for leak in ("40", "35", "entry", "word"):
         assert leak not in str(raised.value)
     assert pressed == []
+
+
+# `#371 (The Silver Blades journal reader misreads a 6 as an 8, so a boot is
+# spent on a question the disk can answer)`.  The game's own font is the
+# game's own art and stays out of this repository; the ten shapes below are
+# invented for these tests alone, plain enough to be read at a glance and
+# distinct enough from each other that a resample which blurs one stroke
+# into the next would be caught, without needing the actual glyph that
+# prompted the issue.
+_DIGIT_FONT = {
+    "0": ["..####..", ".#....#.", "#......#", "#......#",
+          "#......#", "#......#", ".#....#.", "..####.."],
+    "1": ["...##...", "..###...", "...##...", "...##...",
+          "...##...", "...##...", "...##...", "..####.."],
+    "2": [".####...", "#....#..", ".....#..", "....#...",
+          "...#....", "..#.....", ".#......", "######.."],
+    "3": [".####...", "#....#..", ".....#..", "..###...",
+          ".....#..", "#....#..", ".####...", "........"],
+    "4": ["....#...", "...##...", "..#.#...", ".#..#...",
+          "######..", "....#...", "....#...", "........"],
+    "5": ["######..", "#.......", "#####...", ".....#..",
+          ".....#..", "#....#..", ".####...", "........"],
+    "6": ["..###...", ".#......", "#.......", "#.###...",
+          "##...#..", "#....#..", ".#####..", "........"],
+    "7": ["######..", ".....#..", "....#...", "...#....",
+          "..#.....", ".#......", ".#......", "........"],
+    "8": [".#####..", "#.....#.", "#.....#.", ".#####..",
+          "#.....#.", "#.....#.", ".#####..", "........"],
+    "9": [".#####..", "#.....#.", "#.....#.", ".######.",
+          ".....#..", "....#...", "..###...", "........"],
+}
+
+
+def _glyph_frame(path, bitmap, *, x0=58.0, y0=59.0, pitch=16.0,
+                 size=(1920, 1080), row=6, col=None):
+    """A capture like `_stripes()`'s, with one rendered digit on a third line.
+
+    Two solid lines anchor `fit_grid`'s pitch and origin the same way
+    `_stripes()` does; the third carries `bitmap`, drawn at sixteen times the
+    cell's own resolution and blended down with `Image.BILINEAR` -- a real
+    `winvm shot` capture is a scaled copy of the game's framebuffer, not a
+    clean block of doubled pixels, and #371's defect only shows up once a
+    stroke's edge is soft and the grid's own origin lands off a whole pixel
+    of the capture, which is what `to_reader_scale`'s crop used to truncate
+    away.
+    """
+    Image = pytest.importorskip("PIL.Image")
+    col = journal.LEFT_MARGIN if col is None else col
+    image = Image.new("RGB", size, (0, 0, 0))
+    pixels = image.load()
+    for line_row in (2, 4):
+        top = int(y0 + line_row * pitch)
+        for y in range(top, top + int(pitch) - 2):
+            for x in range(int(x0 + journal.LEFT_MARGIN * pitch),
+                           int(x0 + (journal.LEFT_MARGIN + 16) * pitch)):
+                pixels[x, y] = journal.GREEN
+    sub = 16
+    hi = Image.new("RGB", (8 * sub, 8 * sub), (0, 0, 0))
+    hi_px = hi.load()
+    for j, line in enumerate(bitmap):
+        for k, ch in enumerate(line):
+            if ch != "#":
+                continue
+            for dy in range(sub):
+                for dx in range(sub):
+                    hi_px[k * sub + dx, j * sub + dy] = journal.GREEN
+    amiga_px = pitch / 8.0
+    small = hi.resize((round(8 * amiga_px), round(8 * amiga_px)),
+                      Image.BILINEAR)
+    left, top = x0 + col * pitch, y0 + row * pitch
+    ix, iy = int(left), int(top)
+    fx, fy = left - ix, top - iy
+    if fx or fy:
+        small = small.transform(small.size, Image.AFFINE,
+                                (1, 0, -fx, 0, 1, -fy), resample=Image.BILINEAR)
+    image.paste(small, (ix, iy))
+    image.save(path)
+    return path
+
+
+def _read_cell(image, row, col, x0, y0, pitch):
+    """Mirrors the private reader's own `cell()`: crop to ink, resize to 8x8.
+
+    Reimplemented here from the algorithm `screen.py`'s module docstring and
+    functions describe -- window margins, a crop to the ink's own bounding
+    box, a resize to 8x8, a threshold at 110 -- and not by calling into the
+    private repository, so this file's own claim of never touching it at
+    test time stays true.
+    """
+    PILImage = pytest.importorskip("PIL.Image")
+    y, x = round(y0 + row * pitch), round(x0 + col * pitch)
+    box = image.crop((x + 3, max(0, y - 3),
+                      x + round(pitch) - 1, y + round(pitch) + 3))
+    mask = journal._ink_mask(box)
+    bbox = mask.getbbox()
+    if bbox is None:
+        return [[0] * 8 for _ in range(8)]
+    crop = mask.crop(bbox).resize((8, 8), PILImage.BILINEAR)
+    return [[1 if crop.getpixel((cx, cy)) > 110 else 0 for cx in range(8)]
+            for cy in range(8)]
+
+
+def _l1(a, b):
+    return sum(abs(a[j][k] - b[j][k]) for j in range(8) for k in range(8))
+
+
+def _clean_template(tmp_path, digit, bitmap):
+    """`bitmap`, normalised by the same crop-and-resize `_read_cell` applies.
+
+    Drawn at a pitch divisible by 8 -- an exact 4 capture pixels per Amiga
+    pixel -- so nothing here needs a resample to get it there, and the
+    result is what a perfect read of that digit looks like.
+    """
+    PILImage = pytest.importorskip("PIL.Image")
+    path = _glyph_frame(tmp_path / f"tmpl-{digit}.png", bitmap, pitch=32.0)
+    image = PILImage.open(path).convert("RGB")
+    return _read_cell(image, 6, journal.LEFT_MARGIN, 58.0, 59.0, 32.0)
+
+
+def test_every_digit_reads_back_as_itself(tmp_path):
+    # #371's own account: `winvm shot` puts 16 native pixels behind every
+    # character cell, and a real desktop window can start at any of them --
+    # so four sub-pixel origins, one on a whole pixel and three off it by a
+    # different fraction, stand in for the phases a real capture can land
+    # on.  40 renders checked (4 origins x the 10 digits 0-9), all synthetic:
+    # no disk and no emulator are needed for this one.
+    pytest.importorskip("PIL.Image")
+    templates = {digit: _clean_template(tmp_path, digit, bitmap)
+                for digit, bitmap in _DIGIT_FONT.items()}
+    checked = 0
+    for x0 in (58.0, 58.25, 58.5, 58.75):
+        for digit, bitmap in _DIGIT_FONT.items():
+            src = _glyph_frame(tmp_path / f"{digit}-{x0}.png", bitmap, x0=x0)
+            out = tmp_path / f"{digit}-{x0}-out.png"
+            geometry = journal.to_reader_scale(src, out, target_pitch=30.64)
+            assert geometry is not None
+            PILImage = pytest.importorskip("PIL.Image")
+            got = _read_cell(PILImage.open(out).convert("RGB"), 6,
+                             journal.LEFT_MARGIN, *geometry)
+            best = min(templates, key=lambda k: _l1(got, templates[k]))
+            assert best == digit, f"{digit!r} at x0={x0} read back as {best!r}"
+            checked += 1
+    assert checked == 40
+
+
+def test_the_old_whole_crop_rescale_lost_a_digit_the_fix_keeps(tmp_path):
+    """#371's own mechanism, reproduced without the game's font.
+
+    Not literally the 6-and-8 pair the issue names -- that font is the
+    game's own and stays out of this repository -- but the same defect on a
+    digit of this file's own invented font: `3`, drawn with a soft
+    (antialiased) edge at a sub-pixel origin, reads as `0` under the old
+    whole-crop `Image.resize(..., Image.NEAREST)`, because the crop's own
+    left edge truncated that origin to a whole pixel first.  Sampling each
+    Amiga pixel's own centre out of the untouched capture, as
+    `to_reader_scale` does now, reads it correctly at the same origin.
+    """
+    PILImage = pytest.importorskip("PIL.Image")
+    templates = {digit: _clean_template(tmp_path, digit, bitmap)
+                for digit, bitmap in _DIGIT_FONT.items()}
+    src = _glyph_frame(tmp_path / "three.png", _DIGIT_FONT["3"], x0=58.5)
+
+    out = tmp_path / "fixed.png"
+    geometry = journal.to_reader_scale(src, out, target_pitch=30.64)
+    got = _read_cell(PILImage.open(out).convert("RGB"), 6,
+                     journal.LEFT_MARGIN, *geometry)
+    assert min(templates, key=lambda k: _l1(got, templates[k])) == "3"
+
+    # The old algorithm, kept here rather than restored in the tool, so this
+    # regression test still runs after #371's fix is in place.
+    image = PILImage.open(src).convert("RGB")
+    x0, y0, pitch = journal.fit_grid(journal.text_bands(image))
+    left = max(0, int(x0 - journal.MARGIN * pitch))
+    top = max(0, int(y0 - journal.MARGIN * pitch))
+    crop = image.crop((
+        left, top,
+        int(x0 + (journal.COLUMNS + journal.MARGIN) * pitch),
+        int(y0 + (journal.LINES + journal.MARGIN) * pitch)))
+    factor = 30.64 / pitch
+    crop = crop.resize((round(crop.width * factor), round(crop.height * factor)),
+                       PILImage.NEAREST)
+    old_geometry = (x0 - left) * factor, (y0 - top) * factor, pitch * factor
+    got_old = _read_cell(crop, 6, journal.LEFT_MARGIN, *old_geometry)
+    assert min(templates, key=lambda k: _l1(got_old, templates[k])) == "0"
