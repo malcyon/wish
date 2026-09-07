@@ -2701,6 +2701,43 @@ def test_a_later_amiga_ability_pair_splits_first_and_second_byte():
         assert out.get("abilities_second")["dexterity"] == 0x0B, shape.key
 
 
+# --- the NPC control byte: field_83_87's one homed byte ---------------------
+def _control_byte_record(shape, control: int):
+    """A record of `shape` holding only a control byte in `field_83_87`.
+
+    Built the way `_later_record` and `_ability_record` are, so it belongs to
+    this project and runs with no disks.
+    """
+    raw = bytearray(shape.record_size)
+    raw[:6] = b"TESTER"
+    f = shape.dos_field("field_83_87")
+    index = 1 if f.size == 5 else 0
+    raw[shape.offset(f.offset) + index] = control
+    return amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
+
+
+def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
+    """`#386 (An Amiga Curse or Silver Blades companion converts to an
+    ordinary character, because the later-titles reader never looks at the
+    control byte)`.
+
+    Curse's `field_83_87` run is five bytes and the control byte is the
+    second; Silver Blades' is four and it is the first -- the same index
+    `goldbox.dos.to_neutral` computes (#303), and the four-byte alignment is
+    the one nothing had exercised before this test.
+    """
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        companion = _control_byte_record(shape, 0x93)   # bit 7 + morale 0x13
+        out = amiga.to_neutral_later(companion)
+        assert out.get("npc") is True, shape.key
+        assert out.get("npc_control_byte") == 0x93, shape.key
+
+        player = _control_byte_record(shape, 0x00)
+        out = amiga.to_neutral_later(player)
+        assert out.get("npc") is False, shape.key
+        assert "npc_control_byte" not in out.fields, shape.key
+
+
 def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
     """21 of 21, against the records on the disks: every ability score
     reaches the neutral record as a number in range and the conversion

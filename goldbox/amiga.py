@@ -4050,16 +4050,17 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                     "`goldbox.dos.FIELD_83_87` byte for byte. The eleven "
                     ".guy pregens and Silver Blades' MALACHITE hold zeros, "
                     "and they were what the old reading rested on. The "
-                    "reader still drops it and `write_later` writes the DOS "
-                    "constant, which is what the engine writes. **Only one "
-                    "of the bytes is genuinely homeless**: the neutral "
-                    "record has no field for a treasure share, but byte 1 "
-                    "of the same run is the control byte, which `npc` and "
-                    "`npc_control_byte` already model and `to_neutral_later` "
-                    "simply never reads -- `#386 (An Amiga Curse or Silver "
-                    "Blades companion converts to an ordinary character, "
-                    "because the later-titles reader never looks at the "
-                    "control byte)`"),
+                    "reader still drops the whole run and `write_later` "
+                    "writes the DOS constant, which is what the engine "
+                    "writes. **Only one of the remaining bytes is genuinely "
+                    "homeless**: the neutral record has no field for a "
+                    "treasure share, and no specimen has separated it from "
+                    "the run's other constant bytes. The control byte -- "
+                    "byte 1 of Curse's run, byte 0 of Silver Blades' -- is "
+                    "no longer one of them: `to_neutral_later` reads it into "
+                    "`npc` and `npc_control_byte` itself now, the same index "
+                    "`goldbox.dos.to_neutral` computes (#386, closed "
+                    "2026-09-07)"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
                                      "array, which no character of either "
                                      "port sets a byte of and no class has "
@@ -4339,6 +4340,31 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             f"the {shape.item_size}-byte Amiga item nodes, each re-cut to the "
             f"63 DOS holds and projected onto sixteen",
             Confidence.CONFIRMED)
+
+    # -- the NPC control byte: bit 7 says the engine drives this character --
+    # The second byte of `field_83_87`'s five-byte run in Curse, the first of
+    # Silver Blades' four -- `goldbox.dos.to_neutral` computes the same index
+    # the same way (#303), and this reader used to leave the whole run on
+    # `LATER_DROPPED` without ever taking the one byte that has a home
+    # (`#386 (An Amiga Curse or Silver Blades companion converts to an
+    # ordinary character, because the later-titles reader never looks at the
+    # control byte)`).
+    f83 = table["field_83_87"]
+    control_raw = char.get("field_83_87")
+    control_index = 1 if len(control_raw) == 5 else 0
+    control_offset = shape.offset(f83.offset) + control_index
+    control = control_raw[control_index]
+    out.set("npc", bool(control & 0x80),
+            f"bit 7 of Amiga {shape.title} field_83_87 "
+            f"@{control_offset:#05x}, the same control byte "
+            f"`goldbox.dos.to_neutral` reads",
+            Confidence.CONFIRMED)
+    if control & 0x80:
+        out.set("npc_control_byte", control,
+                f"Amiga {shape.title} field_83_87 @{control_offset:#05x}, "
+                f"unchanged -- bit 7 plus the low seven bits of morale, "
+                f"stored halved",
+                Confidence.PROBABLE)
 
     declared = {f.name for f in dos_layout.layout_for(shape.dos)}
     for name, _why in LATER_DROPPED:
