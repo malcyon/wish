@@ -108,6 +108,21 @@ loads GEO12)`: it carries `LOADFILES 18, 2, 255` and file 18 is `GEO12`,
 already area 18's own -- so it is Podol Plaza's map, shared, rather than
 having none.
 
+**The confidence column grades the *name* and nothing else.** Every PROBABLE
+row is one where the name is a guess -- the five Valjevo Castle floors and
+lower Yarash's Pyramid -- and `goldbox/areas.py`'s own grades agree row for row.
+Area 30 is UNKNOWN because it has no name: it is not a place, it is the
+attract-mode demo, so "The Attract-Mode Demo" is a description this project
+wrote rather than anything the game calls it. **That row read CONFIRMED until
+2026-09-07**, which was the one disagreement between this table and the code,
+and it read as though somebody had established a name nobody had.
+
+Everything else about area 30 *is* established: its `ECL`, its disk, that
+travelling there ends the session, and now its `GEO` -- `ECL1E` carries
+`LOADFILES 18, 2, 255` and file 18 is `GEO12`, read off the player's own POOL1
+on 2026-09-07 (`#260 (Area 30 is recorded as having no map, and ECL1E loads
+GEO12)`). Those facts are graded where they are stated, not by this column.
+
 Arrival is the square the game itself puts you on, harvested from the departing
 scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 `0 N, 1 E, 2 S, 3 W`. Sokol Keep's is the one that came from an arriving script
@@ -146,7 +161,7 @@ watched it place a fasttraveled-in party. Fourteen areas still have none.
 | 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — (overland 9,29 †) | CONFIRMED |
 | 28 | `1C` | `1C` | POOL6 | Zhentil Keep Outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
-| 30 | `1E` | `12` | POOL1 | The Attract-Mode Demo (**not fasttravelable**) | — | CONFIRMED |
+| 30 | `1E` | `12` | POOL1 | — (the attract-mode demo, **not fasttravelable**) | — | UNKNOWN |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
 geometry), the wilderness site list and the quest flags (write-ups lost —

@@ -194,6 +194,18 @@ class Area:
     #: 2026-09-02, when nothing displayed it yet and the trap was one
     #: dropdown column away.
     overland: tuple[int, int] | None = None
+    #: **What this grades is the `name`, and only the name.** Every PROBABLE
+    #: row is one whose name is a guess -- the five Valjevo Castle floors and
+    #: lower Yarash's Pyramid -- and the one UNKNOWN is area 30, which has no
+    #: name because it is not a place: it is the attract-mode demo. A row's
+    #: other facts are graded where they are stated, in the comment beside it,
+    #: which is why area 30 reads UNKNOWN here while its `ECL`, its disk, its
+    #: `GEO` and its refusal to be fasttraveled are all CONFIRMED.
+    #:
+    #: Said here because `docs/118-debug-mode.md`'s own table carries the same
+    #: column and had graded area 30 CONFIRMED, against this file's UNKNOWN,
+    #: since before either said what the column was for. Settled 2026-09-07 at
+    #: Donald's asking: the two now agree, and both say what they are grading.
     confidence: Confidence = Confidence.UNKNOWN
     #: Names for individual maps of a two-map area, where the second map is a
     #: place in its own right -- area 29's `GEO20` is the catacombs under
