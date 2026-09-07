@@ -844,6 +844,62 @@ def test_convert_save_accounts_for_save0_alone_when_there_is_no_save1():
     assert report.unaccounted == []
 
 
+@pytest.mark.skipif(not gamedata.have_specimen("por-item-twenty"),
+                    reason="needs the twenty-item specimen")
+def test_a_character_with_more_items_than_the_c64_holds_reports_a_loss():
+    """#399 (A conversion that runs out of item or trait slots tells the
+    player nothing, because the pane never shows a warning).
+
+    `WISH-SPEC-por-item-twenty` is WISHFTR, whose `.ITM` an editor widened to
+    twenty items before the engine loaded and re-saved all of them intact
+    (`provenance.toml`).  Converting him to the C64 truncates to sixteen, and
+    that is a fact about *his* items -- `losses` is where it has to land for
+    `editor.dosimport.pane_text` to ever show it.
+    """
+    save0 = bytearray(0x1C00)
+    save1 = bytearray(0x0800)
+    report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
+                              save0, save1)
+    assert any("WISHFTR" in w and "sixteen slots" in w
+              for w in report.losses)
+    # Still in `warnings` too -- log visibility does not move.
+    assert any("WISHFTR" in w and "sixteen slots" in w
+              for w in report.warnings)
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-party-l1"),
+                    reason="needs the party-l1 specimen")
+def test_a_conversion_that_truncates_nothing_reports_no_loss():
+    """The control for the test above: six characters, nothing over any
+    ceiling (`WISH-SPEC-por-party-l1`'s own `provenance.toml`).  `losses`
+    has to stay empty here or every DOS-to-C64 conversion would show a line
+    that names no actual loss."""
+    save0 = bytearray(0x1C00)
+    save1 = bytearray(0x0800)
+    report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
+                              save0, save1)
+    assert report.losses == []
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-party-l1"),
+                    reason="needs the party-l1 specimen")
+def test_the_partys_own_bookkeeping_never_reaches_losses():
+    """The two lines `write_c64_save` appends about the party as a whole --
+    the quest-flag byte count and the roster slots a six-character DOS party
+    leaves empty in the C64's eight -- fire on *every* conversion (measured
+    at 0 of 217 quest-flag bytes here) and are not a fact about anything the
+    player owns.  They stay in `warnings`, for the log, and never reach
+    `losses`, which is the list `editor.dosimport.pane_text` reads (#399)."""
+    save0 = bytearray(0x1C00)
+    save1 = bytearray(0x0800)
+    report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
+                              save0, save1)
+    assert any("quest-flag" in w for w in report.warnings)
+    assert any("emptied" in w for w in report.warnings)
+    assert not any("quest-flag" in w for w in report.losses)
+    assert not any("emptied" in w for w in report.losses)
+
+
 @needs_dos_saves
 def test_a_template_from_another_area_is_retargeted_not_refused():
     """`$FF` in all twenty-five slots, then slot 2 = the `GEO`, slot 8 = the

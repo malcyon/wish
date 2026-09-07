@@ -11,11 +11,13 @@ clicks the Convert button, it does what the user expects. it converts."* The
 write itself is still the editor's own Save, so the backup guarantee in
 `editor/files.py` covers this the way it covers every other write.
 
-**The pane is headed `Conversion Info` and shows two things**: the
-conversion's own messages (`C64SaveReport.messages`), and then every field
-it did not convert that the C64 does not derive for itself.  The second half
-was off for a night: Donald on 2026-09-05 -- *"I don't want the player to
-EVER see a message saying any field was dropped."* -- and then on
+**The pane is headed `Conversion Info` and shows three things**: the
+conversion's own messages (`C64SaveReport.messages`), then a genuine platform
+ceiling a character's own data hit (`C64SaveReport.losses` -- twenty items
+arriving where the C64 holds sixteen slots is the worked example, #399), and
+then every field it did not convert that the C64 does not derive for itself.
+The last half was off for a night: Donald on 2026-09-05 -- *"I don't want the
+player to EVER see a message saying any field was dropped."* -- and then on
 2026-09-06, having seen the pane: *"do not show dropped fields if they are
 derived in the new game. Show others for now. I will refine them as we go."*
 So what is silent is exactly what `goldbox.dos.DERIVED` and
@@ -23,6 +25,13 @@ So what is silent is exactly what `goldbox.dos.DERIVED` and
 is drawn, in the words `DROPPED_PLAYER_TEXT` gives it, with no heading of
 its own.  Which of those lines stay is his call, line by line, and not a
 judgement to make here (`.claude/rules/conversions.md`).
+
+**`report.warnings` is not shown wholesale, and never has been** -- most of
+it is this project's own bookkeeping (a quest-flag byte count, a party's
+roster slots left empty), which fires on every conversion and is not a fact
+about anything the player owns.  `losses` is the hand-picked subset
+`write_c64_save` already knows is the player's own loss; see its docstring
+in `goldbox/dos.py` for which lines those are.
 
 **There is no template any more** (#118). The dialog used to make the user
 pick an existing `.d64` to convert *onto*, and every byte the conversion did
@@ -239,25 +248,38 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
 
 def pane_text(report: dos.Report) -> str:
-    """What the pane shows: the messages, then the fields not converted.
+    """What the pane shows: the messages, then a ceiling a character's own
+    data hit, then the fields not converted.
 
     `C64SaveReport.messages` is the sentences a player reads about what the
     conversion did to their own save -- Donald's *"Your party had not set
     out yet, so it starts at the beginning of the story."* is the first --
-    and `report.dropped` is every field the conversion did not convert that
-    the C64 does not derive for itself, in the words
-    `goldbox.dos.DROPPED_PLAYER_TEXT` gives each.  Both are
-    `goldbox/dos.py`'s own lines, the same words `summary()` prints, so the
-    pane and the terminal cannot drift into two accounts of one conversion.
+    `C64SaveReport.losses` is a genuine platform limit a character's own data
+    ran into (#399, `.claude/rules/conversions.md`'s platform-limit
+    carve-out) -- twenty items and the C64 holding sixteen slots is the
+    worked example -- and `report.dropped` is every field the conversion did
+    not convert that the C64 does not derive for itself, in the words
+    `goldbox.dos.DROPPED_PLAYER_TEXT` gives each.  All three are
+    `goldbox/dos.py`'s own lines, so the pane and the terminal cannot drift
+    into two accounts of one conversion.
 
-    One blank line between the two halves when both are there, and no
-    heading over either: the pane's own `Conversion Info` label is the
-    heading, and Donald has asked to see the drop lines as they are so he
-    can refine them himself (2026-09-06).  Empty when there is nothing to
-    say.  A plain `Report` has no `messages` -- `to_c64_record`'s
-    per-character one -- and contributes only its drops.
+    **Not `report.warnings` wholesale.**  That list also carries this
+    project's own bookkeeping -- how many quest-flag bytes changed, how many
+    roster slots a six-character DOS party leaves empty in an eight-slot C64
+    save -- which fires on every conversion, truncation or not, and is not a
+    fact about anything the player owns.  `losses` is the subset of
+    `warnings` `write_c64_save` already knows is a character's own loss.
+
+    One blank line between whichever halves are non-empty, and no heading
+    over any of them: the pane's own `Conversion Info` label is the heading,
+    and Donald has asked to see the drop lines as they are so he can refine
+    them himself (2026-09-06).  Empty when there is nothing to say.  A plain
+    `Report` has no `messages` or `losses` -- `to_c64_record`'s per-character
+    one -- and contributes only its drops.
     """
-    halves = [list(getattr(report, "messages", ())), list(report.dropped)]
+    halves = [list(getattr(report, "messages", ())),
+              list(getattr(report, "losses", ())),
+              list(report.dropped)]
     return "\n\n".join("\n".join(half) for half in halves if half)
 
 

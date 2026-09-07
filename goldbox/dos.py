@@ -4401,6 +4401,21 @@ class C64SaveReport(Report):
     #: lost).  `NOT_SET_OUT` is the first and, so far, the only one.
     messages: list[str] = dataclasses.field(default_factory=list)
 
+    #: The subset of `warnings` a player is entitled to see: a genuine ceiling
+    #: of the C64's own record that a character's own data ran into --
+    #: sixteen item slots, ten trait slots, a title's spellbook mask, its
+    #: eight-slot level array (#399, `.claude/rules/conversions.md`'s
+    #: platform-limit carve-out).  Each line already carries the character's
+    #: own name, copied verbatim from `goldbox.c64_codec.write`'s own report
+    #: rather than reworded here, so the pane and the log never disagree on
+    #: what a line says.
+    #:
+    #: **Never this project's own bookkeeping.**  The quest-flag byte count
+    #: and the "slots emptied" line below are appended straight to `warnings`
+    #: and never copied here: they fire on every conversion, truncation or
+    #: not, and told a player nothing about anything of theirs.
+    losses: list[str] = dataclasses.field(default_factory=list)
+
     def summary_notes(self) -> list[str]:
         lines = super().summary_notes()
         lines.extend(f"  {m}" for m in self.messages)
@@ -4577,7 +4592,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                         f"roster block: the derived combat numbers the "
                         f"character record does not hold")
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
-        report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
+        # `one.warnings` is `to_c64_record`'s own report and holds nothing but
+        # a ceiling this character's own data hit -- never bookkeeping about
+        # the party as a whole -- so every line here is copied to `losses` as
+        # well as `warnings` (#399).
+        named = [f"{char.name}: {w}" for w in one.warnings]
+        report.warnings.extend(named)
+        report.losses.extend(named)
 
     at = container.portrait_switch
     faces = bool(party) and all_faced

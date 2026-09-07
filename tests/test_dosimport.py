@@ -27,6 +27,7 @@ platform before Qt is imported.
 """
 
 
+import gamedata
 import pytest
 from gamedata import disk_dir, game_disk
 from test_dossave import _save_dir, needs_dos_saves
@@ -250,6 +251,71 @@ def test_pane_text_is_the_messages_then_the_drops():
     assert pane_text(plain) == ""
     plain.dropped.append("Only a drop")
     assert pane_text(plain) == "Only a drop"
+
+
+def test_pane_text_puts_a_loss_between_the_messages_and_the_drops():
+    """#399 (A conversion that runs out of item or trait slots tells the
+    player nothing, because the pane never shows a warning): `losses` is a
+    third source `pane_text` reads, between `messages` and `dropped`, with
+    the same blank-line rule as the other two -- and a plain `Report`, which
+    has no `losses` either, still renders its drops alone."""
+    from editor.dosimport import pane_text
+    from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
+
+    report = C64SaveReport(save0_size=0x1C00)
+    report.losses.append("WISHFTR: 20 items and the C64 has sixteen slots; "
+                         "4 dropped from the end")
+    assert pane_text(report) == \
+        ("WISHFTR: 20 items and the C64 has sixteen slots; "
+         "4 dropped from the end")
+    report.messages.append(NOT_SET_OUT)
+    report.dropped.append("A drop line")
+    assert pane_text(report) == (
+        f"{NOT_SET_OUT}\n\n"
+        "WISHFTR: 20 items and the C64 has sixteen slots; "
+        "4 dropped from the end\n\n"
+        "A drop line")
+    plain = Report()
+    plain.dropped.append("Only a drop")
+    assert pane_text(plain) == "Only a drop"
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-item-twenty"),
+                    reason="needs the twenty-item specimen")
+def test_a_real_conversion_that_truncates_items_shows_it_in_the_pane():
+    """The same specimen `#399`'s own measurement used, driven through
+    `dos.convert_save` exactly as `rehearse` drives it -- no game disks
+    needed, since neither the combat icon nor `ANIMATE00` change whether the
+    inventory truncates."""
+    from editor.dosimport import pane_text
+
+    save0 = bytearray(0x1C00)
+    save1 = bytearray(0x0800)
+    report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
+                              save0, save1)
+    text = pane_text(report)
+    assert "WISHFTR" in text and "sixteen slots" in text
+    # And none of this project's own bookkeeping about the party as a whole.
+    assert "quest-flag" not in text
+    assert "emptied" not in text
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-party-l1"),
+                    reason="needs the party-l1 specimen")
+def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
+    """The control: `WISH-SPEC-por-party-l1` has nothing over any ceiling, so
+    the pane must show no line about one -- the case that fails if `losses`
+    were ever wired from `report.warnings` wholesale instead."""
+    from editor.dosimport import pane_text
+
+    save0 = bytearray(0x1C00)
+    save1 = bytearray(0x0800)
+    report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
+                              save0, save1)
+    text = pane_text(report)
+    assert "slots" not in text
+    assert "quest-flag" not in text
+    assert "emptied" not in text
 
 
 def test_the_pane_is_headed_conversion_info_and_is_half_the_height_it_was(
