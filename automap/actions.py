@@ -1757,7 +1757,12 @@ class FastTravel(Action):
                            "area (NOT APPROVED)",
                            writes, tuple(notes))
         self.back = was
-        name = getattr(area, "name", None) or getattr(area, "ecl", str(to))
+        # Never the `ecl` fallback: it is a script filename, and
+        # `.claude/rules/gui-text.md` keeps those out of anything a player
+        # reads.  Unreachable today -- area 30 is the only nameless area and
+        # it is not fasttravelable -- but it is the same defect the review of
+        # `4badec4` found at the `has_map` warning, in the same function.
+        name = getattr(area, "name", None) or "this area"
         return Outcome(True, f"Traveling to {name}.",
                        writes, tuple(notes))
 

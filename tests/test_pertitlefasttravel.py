@@ -260,7 +260,19 @@ def test_the_key_wait_window_is_the_running_titles_own():
     target = machine(CURSE, pc=0x10C2)
     verdict = actions.FastTravel(CURSE).legality(target, Row(3, disk=2))
     assert not verdict
-    assert "$101D" in verdict.reason and "$10C2" in verdict.reason
+    # **The refusal used to carry both addresses** and this asserted on them.
+    # `#306 (The Fast Travel button's own disabled tooltip carries a memory
+    # address)` took every address out of what a player reads, so the reason
+    # is now the one sentence Donald approved and the numbers went to the log.
+    # What this test is actually about is unchanged: the *same* PC is refused
+    # in a Curse session and accepted in a Pool of Radiance one, which is
+    # asserted here and in the sibling test rather than by reading a number
+    # out of a sentence.
+    assert verdict.reason == actions.FASTTRAVEL_BUSY
+    assert "$" not in verdict.reason
+    # The control: Pool of Radiance accepts the very same program counter.
+    por = machine(POOL, pc=0x10C2)
+    assert actions.FastTravel(POOL).legality(por, Row(3, disk=2))
     assert actions.FastTravel(CURSE).legality(
         machine(CURSE, pc=0x101D), Row(3, disk=2)).ok
 
@@ -315,3 +327,35 @@ def test_the_way_back_is_looked_up_in_the_title_being_travelled_in():
     assert actions.FastTravel()._row(21).name == "Sokol Keep"
     assert actions.FastTravel(SILVER)._row(0x0C) is None
     assert actions.FastTravel(CURSE)._row(0x0C) is None
+
+
+def test_a_jump_that_fails_tells_the_player_no_address(caplog):
+    """The Messages panel line when Fast Travel writes but cannot start.
+
+    `Outcome.message` is not a log line -- `automap/actionbar.py` puts it
+    straight into the Messages panel -- and it carried
+    `$xxxx is flagged for reload` until
+    `#306 (The Fast Travel button's own disabled tooltip carries a memory
+    address)`.  That issue's sweep walked `legality`, and this line is in
+    `apply`, so it survived; the review of `4badec4` found it.
+
+    Both halves are asserted.  Taking the address out of the interface and
+    out of the log as well would trade one defect for another, so the number
+    still reaches `_log.debug` for whoever is debugging.
+
+    `jump` uses a backend's own `set_pc` when it has one and falls through to
+    the monitor otherwise, so a machine with neither is what a refusal looks
+    like from here.
+    """
+    import logging
+
+    target = machine(POOL, area=1, disk=3)
+    target.set_pc = None                        # no `set_pc`, and no `_mon`
+    with caplog.at_level(logging.DEBUG, logger="wish.automap.actions"):
+        outcome = actions.FastTravel().apply(
+            target, area=Row(20, disk=4, arrival=(1, 14, 1)))
+    assert not outcome.ok
+    assert "$" not in outcome.message
+    assert "flagged for reload" not in outcome.message
+    assert any("flagged for reload" in r.getMessage()
+               for r in caplog.records), "the address did not reach the log"
