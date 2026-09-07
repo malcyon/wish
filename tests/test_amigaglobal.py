@@ -22,12 +22,17 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amiga68k, amigaglobal  # noqa: E402
-from tools.amiga68k import Executable  # noqa: E402
-
+# Before importing `tools.amigaglobal`, which imports capstone at module
+# scope: capstone is not a declared dependency of this project, only a
+# disassembler that happens to be in the developer's own environment. Below
+# the import instead of above it, this skip never runs -- the ImportError
+# fires first -- and every CI job goes red while the local suite passes.
+# That is exactly what happened on 2026-09-07.
 pytest.importorskip("capstone")
 
 from tests.test_amiga68k import hunk_file, pad4, u32  # noqa: E402
+from tools import amiga68k, amigaglobal  # noqa: E402
+from tools.amiga68k import Executable  # noqa: E402
 
 #: The Silver Blades party's x byte, so the numbers in the test are the ones
 #: in `docs/165-amiga-savegame.md`.
