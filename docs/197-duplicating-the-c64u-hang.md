@@ -181,27 +181,46 @@ What is measured, on this unit:
 |---|---|---|
 | 1 byte | ~42 µs | shorter than one serial bit |
 | 1000 bytes | ~1.1 ms | past the drive's own byte timeout |
-| 2048 bytes | ~2.3 ms | ~380 reads over 7 min, no hang |
+| 2048 bytes | ~2.3 ms | ~380 reads, no hang |
 | 7168 bytes | ~7.9 ms | ~240 reads over 18 min, no hang |
-| 8192 bytes | ~9 ms | ~380 reads over 7 min, no hang |
-| 16384 bytes | ~18 ms | ~360 reads over 7 min, no hang |
-| 32768 bytes | ~36 ms | **hung in 5.6 min** |
-| 53248 bytes | ~57 ms | **hung in 23 min** (98 reads) |
+| 8192 bytes | ~9 ms | ~380 reads, no hang |
+| 16384 bytes | ~18 ms | ~360 reads, no hang |
+| 32768 bytes | ~36 ms | **hung in 5.6 min**, ~170 reads |
+| 53248 bytes | ~57 ms | **hung in 23 min**, 98 reads |
+| 65536 bytes | ~72 ms | 225 reads, **no hang** |
 
-**Those negatives are a bound, not a cliff.** About two hundred reads at each
-of 16 KB and under did not hang, which puts the hazard per read below roughly
-one in two hundred at those sizes. It does not say they are safe, and nothing
-here locates a threshold — the sizes that hung were simply tried first and
-worked.
+**Read size does not order the hazard, on this evidence.** Sixty-four kilobytes
+— twice the size that hung — survived 225 reads, all of them verified
+full-length. There have been **two hangs, ever**, against non-hangs at every
+other size tried. Two events cannot separate "bigger is worse" from "it happens
+occasionally and we were unlucky twice".
+
+What the runs do support: **a hang occurs, and the per-read hazard during
+loading is of order one in a thousand.** That is the claim to send upstream.
+
+An earlier version of this page said *"the length of each halt decides it, not
+how many you take"*, on one observation at each of two sizes. The 64 KB run
+contradicts it and it is withdrawn. The mechanism in §4 stands — a halt inside
+the serial wait breaks the transfer — but how the odds vary with halt length is
+unmeasured.
 
 The cost is about 42 µs fixed plus 1.1 µs a byte. A KERNAL serial bit is 60–70
 µs wide and the drive waits about a millisecond for each byte to be
 acknowledged, so a halt of milliseconds inside that exchange desynchronises it.
 
-**The length of each halt decides it, not how many you take** — 240 smaller
-reads survived where 98 larger ones did not. That is why an earlier proposal to
-coalesce many small reads into fewer large ones is backwards and must not be
-revived.
+**So what the workaround should do, in this order** — revised once the 64 KB
+run showed size does not order the hazard:
+
+1. **an upstream `readmem` that waits for an idle bus.** Only the firmware
+   knows when its own 1541 is on the wire, so only the firmware can close the
+   window. This is the actual fix and it helps every tool, not only ours;
+2. **a bus guard**, reading one byte of `$DD00` and skipping the rest of the
+   tick when the drive is mid-conversation. It races — a load starting between
+   the guard and the reads after it is still hit — but it addresses *when* a
+   read lands, which is what the evidence points at;
+3. **poll less**, which is linear help;
+4. **a size ceiling**, as hygiene rather than as the fix it was first taken
+   for.
 
 
 ## 6. What it is not
