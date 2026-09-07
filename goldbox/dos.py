@@ -122,6 +122,7 @@ __all__ = [
     "Report",
     "WRITE_DEFAULTS",
     "WRITE_DERIVED",
+    "IDENTITY_HELD_PORTS",
     "identity_byte",
     "PortraitTables",
     "portrait_tables",
@@ -2070,12 +2071,15 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "records, each one's own five bytes with the next "
                         "pointer NULLed -- the value byte and the removal "
                         "flag are the record's, not INNATE_PAYLOAD's"),
-    ("unnamed_0ab", "taken and written to 0x0AB when the source is a C64 "
-                    "Pool of Radiance record, whose GEN draws the same "
-                    "value at 0x0E6; anything else -- a DOS source, or a "
-                    "Curse of the Azure Bonds or Silver Blades one, whose "
-                    "GEN never draws it -- gets `identity_byte`'s digest "
-                    "instead, exactly as before (#258, WRITE_DERIVED)"),
+    ("unnamed_0ab", "taken and written to 0x0AB when the source's own "
+                    "record holds a genuine identity draw -- a C64 Pool of "
+                    "Radiance record's GEN pair at 0x0E6, or an Amiga Pool "
+                    "of Radiance record's own copy at the same offset DOS "
+                    "reads (#378); anything else -- a DOS source, or a "
+                    "Curse of the Azure Bonds or Silver Blades C64 record, "
+                    "whose GEN never draws it -- gets `identity_byte`'s "
+                    "digest instead, exactly as before (#258, WRITE_DERIVED, "
+                    "IDENTITY_HELD_PORTS)"),
     ("npc", "written over the WRITE_CONSTANTS blob below, into "
             "field_83_87's control byte -- 0x00 for a player character "
             "whatever the source's own trainer bit or treasure share hold "
@@ -2337,16 +2341,33 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
      "record instead -- a digest rather than a random draw, because a "
      "converter that writes different bytes on two runs of the same save "
      "cannot be diffed against itself.\n"
-     "**One exception**: a C64 Pool of Radiance record keeps this same "
-     "draw at 0x0E6-0x0E7 and never rewrites it either (#258, The C64 "
-     "side of 0x0AB is unnamed, so the conversion drops it with no issue "
-     "behind it), so a source that supplies one -- `write` checks "
-     "`char.port == 'C64'` before taking it -- writes that byte back "
-     "instead of a digest of a record it never held. A DOS source's own "
-     "copy of this field is not eligible: `to_neutral` carries it only so "
+     "**Two exceptions, both a source whose own record holds this same "
+     "draw and never rewrites it**: a C64 Pool of Radiance record at "
+     "0x0E6-0x0E7 (#258, The C64 side of 0x0AB is unnamed, so the "
+     "conversion drops it with no issue behind it) and an Amiga Pool of "
+     "Radiance record at the same offset DOS reads (#378, An Amiga "
+     "character converted to DOS loses the identity byte his own record "
+     "has always held) -- `write` checks `char.port` against "
+     ":data:`IDENTITY_HELD_PORTS` before taking either, and writes that "
+     "byte back instead of a digest of a record it never held. A DOS "
+     "source's own copy of this field is not eligible, even though it is "
+     "physically the same kind of draw: `to_neutral` carries it only so "
      "`goldbox.c64_codec.write` has something to give the C64, and a pure "
-     "DOS-to-DOS conversion keeps deriving the digest exactly as before"),
+     "DOS-to-DOS conversion keeps deriving the digest exactly as before -- "
+     "a real shipped party already holds zero there for one of its six "
+     "(dos_layout.py's own note, `\"165, 204, 0, 120, 154, 231 for the "
+     "party\"`), so passing a DOS source's own copy through would risk "
+     "exactly the zero-collision #216 fixed"),
 )
+
+#: Ports whose own record draws `unnamed_0ab` for real, per character, and
+#: never rewrites it -- so a value the neutral record carries from one of
+#: these is the source's own identity rather than something `write` has to
+#: invent.  Every port but DOS: the C64's identity pair (#258) and the
+#: Amiga's own copy at the same offset (#378) are each a measured,
+#: per-character creation-time draw; DOS's own copy is the one exception,
+#: for the reason :data:`WRITE_DERIVED`'s note gives.
+IDENTITY_HELD_PORTS = ("C64", "Amiga")
 
 
 def identity_byte(record: bytes | bytearray,
@@ -3311,15 +3332,22 @@ def write(char: NeutralCharacter,
     # Last, so the digest covers the finished record: a field written after
     # this would change the character without changing its identity byte.
     # `WRITE_DERIVED` is the declaration the tests read; the rule itself is
-    # per field, and there is one -- with the one exception its own note
-    # describes: a C64 Pool of Radiance source's own draw, taken instead of
-    # a digest of a record it never held (#258).  `w.use`, not `char.get`,
-    # so a value graded below the floor is refused and reported rather than
-    # taken, and so the field counts as consumed either way.
+    # per field, and there is one -- with the exceptions its own note
+    # describes: a C64 Pool of Radiance source's own draw (#258) or an Amiga
+    # Pool of Radiance source's own draw (#378), each taken instead of a
+    # digest of a record it never held.  `IDENTITY_HELD_PORTS` asks which
+    # *port* the value came from because that is the signal every reader
+    # already gives -- `NeutralCharacter.port`, "so a writer can say whose
+    # value it is turning away" -- and the true question is not "which port"
+    # but "does this port's own record hold a genuine draw rather than
+    # something DOS itself would have to invent", which is every port but
+    # DOS.  `w.use`, not `char.get`, so a value graded below the floor is
+    # refused and reported rather than taken, and so the field counts as
+    # consumed either way.
     (_derived_name, _derived_why), = WRITE_DERIVED
     f = table[_derived_name]
     supplied = w.use(_derived_name)
-    if supplied is not None and char.port == "C64":
+    if supplied is not None and char.port in IDENTITY_HELD_PORTS:
         rec[f.offset] = int(supplied.value) & 0xFF
         rep.note(f.offset, f.size,
                  f"{_derived_name}: {rec[f.offset]:#04x} <- {supplied.origin}")

@@ -1248,6 +1248,84 @@ def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
         assert not clash, f"party {slot}: {clash}"
 
 
+#: The Amiga disk 1 slot A party's own `0x0AB` byte, the "Amiga record
+#: 0x0AB" column of `#378 (An Amiga character converted to DOS loses the
+#: identity byte his own record has always held)` -- what the fixed DOS
+#: writer must now produce, as against the "written DOS record 0x0AB"
+#: column, which is what the digest wrote *before* the fix (149, 92, 148,
+#: 201, 50, 149) and must not come back.
+AMIGA_POR_IDENTITY_BYTES = {
+    "GARWAN": 34,
+    "STONEBEARD": 190,
+    "GOLDLEAF": 181,
+    "LAURANN": 189,
+    "CONLY": 213,
+    "MELCAR": 67,
+}
+
+
+def test_an_amiga_source_writes_its_own_identity_byte_not_a_digest():
+    """The whole of `#378`: an Amiga source's own `0x0AB` survives the DOS
+    writer instead of being replaced by `identity_byte`'s digest.
+
+    The shipped Amiga disk 1 slot A party, six characters read through
+    `goldbox.amiga.to_neutral` and `goldbox.dos.write` -- the same route
+    `goldbox.dos.new_dos_save_from` takes -- against the six bytes `#378`'s
+    table measured for the Amiga's own record. Needs no DOS save: the six
+    records are the Amiga's own, read through `amiga_por_with_items`
+    (`tests/test_amiga.py`), which is the party with a `.itm` file beside
+    it.
+    """
+    from test_amiga import amiga_por_with_items
+
+    from goldbox import amiga
+
+    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    seen = {}
+    for path in amiga_por_with_items():
+        char = amiga.read_amiga_por(path)
+        if char.name not in AMIGA_POR_IDENTITY_BYTES:
+            continue
+        neutral_char = amiga.to_neutral(char)
+        assert neutral_char.port == "Amiga"
+        rec, _, _, _ = dos.write(neutral_char)
+        seen[char.name] = rec[f.offset]
+    assert seen == AMIGA_POR_IDENTITY_BYTES, seen
+
+
+def test_a_c64_curse_or_silver_blades_source_still_gets_the_digest():
+    """The behaviour `#378` must not change: a C64 title whose GEN never
+    draws the identity pair -- Curse of the Azure Bonds or Secret of the
+    Silver Blades -- has no `unnamed_0ab` in the neutral record at all
+    (`goldbox.c64_codec.read` sets it only when `shape.identity_pair`,
+    which is Pool of Radiance's alone), so the DOS writer must keep
+    deriving the digest for it exactly as before, whatever `char.port`
+    says.
+    """
+    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    char = _filled()
+    char.port = "C64"
+    assert "unnamed_0ab" not in char
+    rec, _, _, _ = dos.write(char)
+    assert rec[f.offset] == dos.identity_byte(rec)
+
+
+def test_a_pure_dos_source_still_gets_the_digest_not_its_own_byte():
+    """The other behaviour `#378` must not change: a native DOS source's
+    own `0x0AB` is not eligible even though the record holds it, because a
+    real shipped record can hold zero there and passing it through would
+    risk the zero-collision `#216 (Every converted DOS character carries
+    the same identity byte at 0x0AB)` fixed.
+    """
+    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    char = _filled()
+    char.port = "DOS"
+    char.set("unnamed_0ab", 0x00, "made up: a DOS source's own zero byte")
+    rec, _, _, _ = dos.write(char)
+    assert rec[f.offset] == dos.identity_byte(rec)
+    assert "DOS" not in dos.IDENTITY_HELD_PORTS
+
+
 @needs_dos_saves
 def test_a_record_round_trips_through_the_neutral_middle():
     """DOS -> to_neutral -> write, against the original bytes.  Everything
