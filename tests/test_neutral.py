@@ -215,14 +215,14 @@ def test_a_spell_the_target_has_no_bit_for_is_reported():
     char = _filled()
     char.set("spells_known", [1, 56], "made up")
     _, rep = c64_codec.write(char)
-    assert any("56" in w for w in rep.warnings)
+    assert any("Restoration" in w for w in rep.warnings)
 
 
 def test_more_items_than_slots_is_reported():
     char = _filled()
     char.set("inventory", [bytes(16)] * 20, "made up")
     _, rep = c64_codec.write(char)
-    assert any("sixteen slots" in w for w in rep.warnings)
+    assert any("carry only sixteen" in w for w in rep.warnings)
 
 
 def test_more_innate_effects_than_slots_is_reported():
@@ -232,7 +232,7 @@ def test_more_innate_effects_than_slots_is_reported():
     char = _filled()
     char.set("innate_effects", list(range(1, 12)), "made up")
     _, rep = c64_codec.write(char)
-    assert any("11" in w and "ten slots" in w for w in rep.warnings)
+    assert any("11" in w and "on their own" in w for w in rep.warnings)
 
 
 def _granted(effect_id: int) -> bytes:
@@ -273,8 +273,8 @@ def test_more_granted_effects_than_free_slots_is_reported():
     char.set("innate_effects", list(range(1, 10)), "made up")
     char.set("granted_effects", [_granted(61), _granted(89)], "made up")
     _, rep = c64_codec.write(char)
-    assert any("2 item-granted effects" in w and "1 free trait slots" in w
-               for w in rep.warnings)
+    assert any("2 effects your character's items grant" in w
+               and "1 of the ten allowed" in w for w in rep.warnings)
 
 
 # --- the DOS reader, against real files --------------------------------------

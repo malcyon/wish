@@ -695,10 +695,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
              f" (the C64 fills this title's {mem_size} slots from the start, "
              f"which is the neutral order)")
         if len(memorised.value) > mem_size:
+            # NOT APPROVED (#399, A conversion that runs out of item or
+            # trait slots tells the player nothing, because the pane never
+            # shows a warning): this reached a player for the first time
+            # when `losses` started reaching the pane, and its old wording
+            # named "C64 record" and "slots" -- reworded to say what did not
+            # fit rather than name the field.
             rep.warnings.append(
-                f"{len(memorised.value)} memorised spells and this title's "
-                f"C64 record has {mem_size} slots; "
-                f"{len(memorised.value) - mem_size} dropped from the end")
+                f"{len(memorised.value)} memorised spells, and the C64 can "
+                f"hold only {mem_size} at once; the last "
+                f"{len(memorised.value) - mem_size} do not fit. "
+                f"(NOT APPROVED)")
 
     # -- the second ability array -------------------------------------------
     # Curse of the Azure Bonds keeps every ability twice and works in this
@@ -729,8 +736,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # character written back keeps the spells the reader found -- the read half
     # widened in #85 and this is the other end of it.
     #
-    # UNAPPROVED WORDING: the warning below is reworded, because "the C64's
-    # seven-byte mask" is not true of every title. Donald has not seen it.
+    # NOT APPROVED (#399, A conversion that runs out of item or trait slots
+    # tells the player nothing, because the pane never shows a warning):
+    # this reached a player for the first time when `losses` started
+    # reaching the pane. The old wording named "spell id", "byte mask" and
+    # "bit"; reworded below to say which spell did not fit, when its name is
+    # known, and otherwise that one did not without naming its internal id.
+    # Donald has not seen either wording.
     known = use("spells_known")
     if known is not None:
         table = spells.for_game(char.game)
@@ -741,12 +753,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
              " packed to one bit; ids are identical")
         for i in known.value:
             if i > ceiling:
-                rep.warnings.append(
-                    f"Spell id {i} is set in the {port} spellbook and "
-                    f"{table.title}'s {table.spellbook_size}-byte mask has no "
-                    f"bit for it (ids 1-{ceiling})"
-                    + ("; id 56 is RESTORATION"
-                       if table is spells.POOL_OF_RADIANCE else ""))
+                if table is spells.POOL_OF_RADIANCE and i == 56:
+                    rep.warnings.append(
+                        "Restoration is set as a known spell, and the C64 "
+                        "version of Pool of Radiance has no room in its "
+                        "spellbook for it, so it is left off. "
+                        "(NOT APPROVED)")
+                else:
+                    rep.warnings.append(
+                        f"A spell known on {port} is not one the C64 "
+                        f"version of {table.title} can record as known, "
+                        f"so it is left off the spellbook. (NOT APPROVED)")
 
     # -- the per-class level array: indexed by the class bit -----------------
     levels = use("levels")
@@ -755,9 +772,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             field = LEVEL_FIELDS.get(name_)
             if field is None:
                 if level:
+                    # NOT APPROVED (#399, A conversion that runs out of item
+                    # or trait slots tells the player nothing, because the
+                    # pane never shows a warning): this reached a player for
+                    # the first time when `losses` started reaching the
+                    # pane, and its old wording named "the C64's eight-slot
+                    # array" -- reworded to name the class rather than the
+                    # array.
                     rep.warnings.append(
-                        f"{port} carries {name_} level {level}, and the C64's "
-                        f"eight-slot array has no {name_} slot")
+                        f"{port} has {name_} at level {level}, and the C64 "
+                        f"game has no class like {name_}, so that class is "
+                        f"left off the sheet. (NOT APPROVED)")
                 continue
             rec.set(field, level)
         for f in _LEVEL_ORDER:
@@ -965,15 +990,24 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                  "the removal flag the other ports keep beside it have no "
                  "C64 counterpart, because the C64 removes by id alone and "
                  "its handler holds the magnitude")
+        # NOT APPROVED, both lines below (#399, A conversion that runs out
+        # of item or trait slots tells the player nothing, because the pane
+        # never shows a warning): they reached a player for the first time
+        # when `losses` started reaching the pane, and the old wording
+        # named "the C64 has ten slots" and "free trait slots" -- reworded
+        # to say what did not fit rather than name the mechanism it uses.
         if len(innate_ids) > 10:
             rep.warnings.append(
-                f"{len(innate_ids)} innate effects and the C64 has ten "
-                f"slots; {len(innate_ids) - 10} dropped from the end")
+                f"{len(innate_ids)} effects your character has on their "
+                f"own, and the C64 allows ten on one character; the last "
+                f"{len(innate_ids) - 10} do not fit. (NOT APPROVED)")
         if len(granted_ids) > len(free):
             rep.warnings.append(
-                f"{len(granted_ids)} item-granted effects and only "
-                f"{len(free)} free trait slots after the innate ones; "
-                f"{len(granted_ids) - len(free)} dropped from the end")
+                f"{len(granted_ids)} effects your character's items "
+                f"grant, and only {len(free)} of the ten allowed are "
+                f"still free once your own effects are counted; "
+                f"{len(granted_ids) - len(free)} do not fit. "
+                f"(NOT APPROVED)")
 
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
@@ -985,9 +1019,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set_raw("inventory", bytes(inv))
         emit(inventory, "inventory", 0x120, 256)
         if len(converted) > ITEM_SLOTS:
+            # NOT APPROVED (#399, A conversion that runs out of item or
+            # trait slots tells the player nothing, because the pane never
+            # shows a warning): this sentence is the one #399's own
+            # measurement quoted reaching the pane through `losses`, and its
+            # old wording named "the C64 has sixteen slots" -- reworded here
+            # for the same reason as the other five, so every sentence this
+            # file can put in front of a player avoids "slot" alike.
             rep.warnings.append(
-                f"{len(converted)} items and the C64 has sixteen slots; "
-                f"{len(converted) - ITEM_SLOTS} dropped from the end")
+                f"{len(converted)} items, and the C64 can carry only "
+                f"sixteen at once; the last "
+                f"{len(converted) - ITEM_SLOTS} do not fit. "
+                f"(NOT APPROVED)")
 
     # -- the combat icon: only the C64 has one -------------------------------
     if icon is not None:

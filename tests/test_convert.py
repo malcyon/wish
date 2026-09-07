@@ -1285,6 +1285,69 @@ def test_no_string_the_player_reads_is_unapproved():
         assert "NOT APPROVED" not in text, text
 
 
+def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper():
+    """The same guarantee as `test_no_string_the_player_reads_is_unapproved`,
+    for the three other modules that can put a string in front of a player
+    and mark it unapproved the same way.
+
+    `#306 (The Fast Travel button's own disabled tooltip carries a memory
+    address)`'s last comment found that the `(NOT APPROVED)` marker was
+    checked only in `editor/convert.py`, so a marked string in
+    `goldbox/c64_codec.py`, `goldbox/amiga.py` or `automap/actions.py`
+    shipped to a player silently instead of failing here first. This walks
+    each module's own source, the way the test above does, rather than a
+    typed list of strings, so a new marked string added to any of the three
+    fails here too.
+
+    **Expected to fail today.** `#399 (A conversion that runs out of item or
+    trait slots tells the player nothing, because the pane never shows a
+    warning)` put six per-character sentences from `goldbox/c64_codec.py` in
+    front of a player for the first time, three of them written in developer
+    terms -- "spell id", "byte mask", "bit", "eight-slot array", "C64
+    record". All six are reworded here and marked `(NOT APPROVED)` rather
+    than shipped guessed at; two more marked strings in `c64_codec.py`
+    predate this ticket (the combat-icon lines, both directions), and one
+    each in `goldbox/amiga.py` and `automap/actions.py` predate it too. None
+    of the ten is this test's to approve.
+    """
+    import inspect
+
+    from automap import actions
+    from goldbox import amiga, c64_codec
+
+    #: How many marked strings each module carries today, waiting on Donald.
+    #: **This is a count of what he has to rule on, not a licence.** A new
+    #: marked string makes its module's number wrong and fails here, which is
+    #: the whole point; the number comes down as he rules, and the day one
+    #: reaches zero this test says so rather than passing quietly.
+    #:
+    #: The eleven, listed on `#399 (A conversion that runs out of item or
+    #: trait slots tells the player nothing, because the pane never shows a
+    #: warning)`: nine in `goldbox/c64_codec.py` -- the six per-character
+    #: ceiling sentences that ticket put in front of a player for the first
+    #: time, plus three combat-figure lines that predate it -- one in
+    #: `goldbox/amiga.py` and one in `automap/actions.py`, the Fast Travel
+    #: failure line `#306 (The Fast Travel button's own disabled tooltip
+    #: carries a memory address)` left behind.
+    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 1, "automap.actions": 1}
+
+    found: dict[str, list[str]] = {}
+    for module in (c64_codec, amiga, actions):
+        source = inspect.getsource(module)
+        found[module.__name__] = [
+            f"{module.__name__}:{n}: {line.strip()}"
+            for n, line in enumerate(source.splitlines(), start=1)
+            if '(NOT APPROVED)"' in line or "(NOT APPROVED)'" in line]
+
+    for name, expected in WAITING.items():
+        got = found[name]
+        assert len(got) == expected, (
+            f"{name} carries {len(got)} strings marked (NOT APPROVED), not "
+            f"{expected}. If you added one, it needs Donald's wording before "
+            f"it ships; if he has approved one, take the marker off and drop "
+            f"this number.\n" + "\n".join(got))
+
+
 def test_the_approved_strings_are_the_ones_donald_worded():
     """A spot check that stripping the markers did not also strip a word.
 

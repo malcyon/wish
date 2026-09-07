@@ -860,10 +860,10 @@ def test_a_character_with_more_items_than_the_c64_holds_reports_a_loss():
     save1 = bytearray(0x0800)
     report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
                               save0, save1)
-    assert any("WISHFTR" in w and "sixteen slots" in w
+    assert any("WISHFTR" in w and "carry only sixteen" in w
               for w in report.losses)
     # Still in `warnings` too -- log visibility does not move.
-    assert any("WISHFTR" in w and "sixteen slots" in w
+    assert any("WISHFTR" in w and "carry only sixteen" in w
               for w in report.warnings)
 
 

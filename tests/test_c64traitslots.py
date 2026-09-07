@@ -123,7 +123,7 @@ def test_eleven_ids_fill_every_slot_and_the_eleventh_is_reported():
                     innate_effects=list(range(1, 12)))
     rec, rep = c64_codec.write(char)
     assert _slots(rec) == list(range(1, 11))
-    assert [w for w in rep.warnings if "ten slots" in w]
+    assert [w for w in rep.warnings if "on their own" in w]
 
 
 def test_a_grant_with_no_free_slot_left_is_reported_too():
@@ -133,7 +133,7 @@ def test_a_grant_with_no_free_slot_left_is_reported_too():
                     granted_effects=[_innate_node(61)])
     rec, rep = c64_codec.write(char)
     assert _slots(rec) == list(range(1, 11))
-    assert [w for w in rep.warnings if "free trait slots" in w]
+    assert [w for w in rep.warnings if "items grant" in w]
 
 
 # --- every DOS record on this machine ----------------------------------------

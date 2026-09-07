@@ -294,7 +294,7 @@ def test_a_real_conversion_that_truncates_items_shows_it_in_the_pane():
     report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
                               save0, save1)
     text = pane_text(report)
-    assert "WISHFTR" in text and "sixteen slots" in text
+    assert "WISHFTR" in text and "carry only sixteen" in text
     # And none of this project's own bookkeeping about the party as a whole.
     assert "quest-flag" not in text
     assert "emptied" not in text
@@ -313,7 +313,7 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
     report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
                               save0, save1)
     text = pane_text(report)
-    assert "slots" not in text
+    assert "do not fit" not in text
     assert "quest-flag" not in text
     assert "emptied" not in text
 
