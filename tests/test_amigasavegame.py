@@ -337,3 +337,47 @@ def test_a_specimen_saved_game_rebuilds_byte_for_byte(specimens):
         seen += 1
     if not seen:
         pytest.skip("no Curse or Silver Blades saved game on this machine")
+
+
+# -- with_square, the lever the moved-party run was taken with ---------------
+
+def test_with_square_changes_three_bytes_and_no_others():
+    """The experiment on `#28` was three bytes, so the tool has to be.
+
+    A saved game the game itself wrote, moved by us and handed back, only says
+    what the engine does with the square if the square is the only thing that
+    moved.  The run on 2026-09-07 diffed the two files before booting them and
+    found exactly `0x1401`, `0x1402` and `0x1403`.
+    """
+    before = synthetic_silver_blades()
+    save = parse(before)
+    after = amigasavegame.with_square(save, x=5, y=9, facing=6)
+    moved = [i for i in range(len(before)) if before[i] != after[i]]
+    at = SILVER_BLADES.square_at
+    assert moved == [at, at + 1, at + 2]
+    assert parse(after).square["x"] == 5
+    assert parse(after).square["y"] == 9
+    assert parse(after).square["facing"] == 6
+
+
+def test_with_square_writes_curses_coordinates_as_words():
+    """Curse keeps x and y as `u16be` where the other two keep bytes."""
+    save = parse(synthetic_curse())
+    after = amigasavegame.with_square(save, x=0x0102, y=3)
+    at = CURSE.square_at
+    assert after[at:at + 5] == bytes([1, 2, 0, 3, 2])
+    assert parse(after).square == {"x": 0x0102, "y": 3, "facing": 2,
+                                   "wall_ahead": 0, "square_property": 0,
+                                   "pad": 0}
+
+
+def test_with_square_refuses_a_value_the_field_cannot_hold():
+    save = parse(synthetic_silver_blades())
+    with pytest.raises(AmigaSaveError):
+        amigasavegame.with_square(save, x=256)
+
+
+def test_with_square_refuses_a_field_the_shape_has_not_got():
+    save = parse(synthetic_silver_blades())
+    with pytest.raises(AmigaSaveError):
+        amigasavegame.with_square(save, wallset_entry_0=1)

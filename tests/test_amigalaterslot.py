@@ -164,3 +164,36 @@ def test_writing_over_the_input_is_refused(curse_disk):
     with pytest.raises(SystemExit) as raised:
         run(str(curse_disk), "--to", "B", "--out", str(curse_disk))
     assert "--out" in str(raised.value)
+
+
+def test_the_square_option_moves_three_bytes_and_nothing_else(tmp_path):
+    """The 2026-09-07 run's whole edit, and its whole claim.
+
+    The party stood at `5,9 W` because the file said so, which only means
+    anything if the file said nothing else new.  So the assertion is the diff
+    against the slot it was read from, not the parsed square.
+    """
+    disk = disk_with("/SAVE/savgamA.sav", synthetic_silver_blades(("GAMMA",)))
+    image = tmp_path / "ssb.adf"
+    disk.save(image)
+    out = tmp_path / "out.adf"
+    assert run(str(image), "--to", "B", "--out", str(out),
+               "--square", "5,9,6") == 0
+    written = AmigaDisk.open(out)
+    before = written.read_file("/SAVE/savgamA.sav")
+    after = written.read_file("/SAVE/savgamB.sav")
+    at = amigasavegame.SILVER_BLADES.square_at
+    assert [i for i in range(len(before)) if before[i] != after[i]] == [
+        at, at + 1, at + 2]
+    moved = amigasavegame.parse(after).square
+    assert (moved["x"], moved["y"], moved["facing"]) == (5, 9, 6)
+
+
+def test_a_square_that_is_not_three_numbers_is_refused(tmp_path):
+    disk = disk_with("/SAVE/savgamA.sav", synthetic_silver_blades(("GAMMA",)))
+    image = tmp_path / "ssb.adf"
+    disk.save(image)
+    with pytest.raises(SystemExit) as raised:
+        run(str(image), "--to", "B", "--out", str(tmp_path / "out.adf"),
+            "--square", "5,9")
+    assert "X,Y,FACING" in str(raised.value)

@@ -905,9 +905,12 @@ unattended)` taught on Curse.
 
 **The prompt is answered and the title is drivable, as of 2026-09-06.**
 `tools/amigabladesjournal.py` reads the challenge off the guest's screen and
-types the word, and **the game accepted it twice out of two**, from two
-different challenges on two separate boots -- once from a cold start into the
-opening scene, and once from a saved game straight back to the adventuring bar.
+types the word, and **the game accepted it three times out of three**, from
+three different challenges on three separate boots -- once from a cold start
+into the opening scene, and twice from a saved game straight back to the
+adventuring bar. **Run it with `/usr/bin/python3`**: it reaches into the
+private repository, which imports `numpy`, and this project's virtual
+environment has none.
 Neither the challenge nor the word is recorded anywhere here, per
 `#108 (Amiga Curse asks its code wheel, so the title cannot be driven
 unattended)`'s ruling; what the tool prints is `answered` or `no challenge on screen`.
@@ -925,11 +928,17 @@ to AmigaDOS with `Please re-boot your system.`, so a second run through the
 prompt costs a WinUAE restart. Curse's answer of `N` in §1.11 keeps the party
 in play; there is no `N` route back to the roster on this title.
 
-**Movement is still not found**, and three more candidates are ruled out on
-Silver Blades: the numeric-keypad `8` (VK 0x68), the arrow keys (VK 0x26) and
-the keypad `+` (VK 0x6B) all left the status line at `3,3 S 00:00`. The
-top-row digits were already ruled out on Curse. Whatever steps the party, it
-is none of those five.
+**Movement is not a key, and that is now measured rather than suspected.**
+Twenty virtual keys were pressed one at a time at the adventuring bar on
+2026-09-07 with the party at `5,9 W 00:00`, each followed by a grab of the
+status line, and **not one changed the square or the facing**: the four arrows
+(VK 0x25-0x28), the numeric keypad (0x60, 0x62, 0x64, 0x66, 0x68, 0x6B, 0x6C),
+the top-row digits (0x32, 0x34, 0x36, 0x38) and `I`, `J`, `K`. A **turn**
+cannot be blocked by a wall, so "the party was facing a wall" does not explain
+it. `tools/winuae.ps1` sends keystrokes and nothing else, and these are the
+Amiga releases with a compass widget drawn in the corner of the 3D view --
+`#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
+only keystrokes)`.
 
 **A saved game made from inside the world now exists**, which is the specimen
 `#28 (Decode an Amiga saved game, not just a character file)` could not reach: `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-adventuring/savgamB.sav`,
@@ -1315,6 +1324,40 @@ then **three (WALLDEF block, slot) `u16be` pairs**: the "`u16be` 1" is entry
 1's slot number and the "eight bytes" are entries 2 and 3, `$FFFF` when
 empty, which is what both titles' new-game initialisation writes. Nothing in
 the region is open.
+
+### 1.14a A Silver Blades party stood where we put it (#28 (Decode an Amiga saved game, not just a character file))
+
+WinUAE, 2026-09-07, holder `wish28sq`; screenshots in `work/28ssb/shots/` and
+both files in `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-moved/`.
+
+**The edit is three bytes.** `WISH-SPEC-ssb-amiga-adventuring/savgamB.sav` is
+the game's own save at `3,3 S`; `tools/amigalaterslot.py --square 5,9,6` wrote
+it back as slot C with `0x1401` 3 to 5, `0x1402` 3 to 9 and `0x1403` 4 to 6,
+and **nothing else in 7233 bytes**. The square attribute byte at `0x1405` was
+left at the value belonging to the old square, deliberately.
+
+**The status line read `5,9 W 00:00`** after `PLAY`, `L`, `C`,
+`BEGIN ADVENTURING` and the journal prompt. So `0x1401` is x, `0x1402` is y and
+`0x1403` is the doubled facing with 6 = west -- which the specimen at `3,3`
+could not separate -- and **the engine reads the square out of the file** rather
+than recomputing or resetting it. Loading an in-world save also does **not**
+replay the opening scene, which is the control that attributes the 2750
+experience each character gained on the previous run to that scene.
+
+**The engine's resave differs in 23 bytes of 7233**, from `ENCAMP > SAVE > D`:
+
+| offset | ours | the engine's | what |
+|---|---|---|---|
+| `0x1401`-`0x1403` | 5, 9, 6 | **5, 9, 6** | the square, written back unchanged |
+| `0x1405` | 135 | **128** | the square attribute, **recomputed for the new square** |
+| `0x1407` | 4 | 2 | the mode before |
+| `0x027a` (`$4A3C`) | 1 | **2** | a quest-flag word the visit advanced |
+| 20 bytes | | | `effect_chain` and `heap_104` on the six records |
+
+Everything else is identical, including the whole variable array bar `$4A3C`,
+the wallset table and the party count.
+[`165-amiga-savegame.md`](165-amiga-savegame.md) has what the two map bytes
+read and the `GEO.GLB` block that corroborates them.
 
 ### 1.15 The item record's remaining bytes: they were never fields (#28 (Decode an Amiga saved game, not just a character file), #55 (Decode the Amiga Curse and Silver Blades records))
 

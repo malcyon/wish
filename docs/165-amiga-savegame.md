@@ -64,8 +64,8 @@ names.
 | `0x3201` | x, `u16be` | 3 | `g3f5e`; the step routine wraps it at 15; new game writes 7 |
 | `0x3203` | y, `u16be` | 14 | `g3f60`; new game writes 13 |
 | `0x3205` | facing, doubled: 0 N, 2 E, 4 S, 6 W | 2 | `g3f62`; screen read `3,14 E` |
-| `0x3206` | wall in front of the party, `fn(x, y, facing)` | 0 | `g3f63`, rewritten at `0xdb96` on every step -- the field DOS keeps at 12804 |
-| `0x3207` | a square property, `fn(x, y)` | 0 | `g3f64`, rewritten at `0xdb7e` on the same step; meaning UNKNOWN |
+| `0x3206` | the wall type in the facing direction | 0 | `g3f63`, rewritten at `0xdb96` on every step -- the field DOS keeps at 12804. See "The two map bytes" below |
+| `0x3207` | the square's attribute byte | 0 | `g3f64`, rewritten at `0xdb7e` on the same step |
 | `0x3208` | pad | 0 | `g3f65` is referenced nowhere in the code |
 | `0x3209` | **game mode before the current one** | 4 | `g5889`: `prev = mode; mode = n` at every mode change, restored after |
 | `0x320a` | **game mode** | 2 | `g3d56`, see the enumeration below |
@@ -77,20 +77,34 @@ names.
 ### Silver Blades, 22 bytes at `0x1401`
 
 Single-byte x, y and facing (`g57a0`-`g57a2`; new game writes 7, 13, 0; facing
-written as 0/2/4/6), then the wall in front and the square property from the
-same step routine (`g57a3`, `g57a4`), a pad nobody references (`g57a5`), the
+written as 0/2/4/6), then the two map bytes from the same step routine
+(`g57a3`, `g57a4`), a pad nobody references (`g57a5`), the
 mode before (`g74a3`), the mode (`g525c`), the wallset table (`g7be8` + 4) and
 the `u16be` count. The shipped save reads `07 0d 00 00 00 00 | 04 00 |
 00 00 00 01 ff ff ff ff ff ff ff ff | 00 06`: entry 1 = (block 0, slot 1) and
 entries 2-3 empty, **which is exactly what both titles' new-game
 initialisation writes** (`0x1d6e8` on Curse, `0x1d8c4` on Silver Blades).
 
+**Which byte is x is CONFIRMED twice over**, and it used not to be, because the
+only in-world specimen stood at `3,3`. The step routine at `0x118cc` reads the
+facing and jumps through a table at `0x11924`: north decrements `g57a1`, east
+increments `g57a0`, south increments `g57a1`, west decrements `g57a0`, each
+wrapping at 15. So `g57a0` is x, `g57a1` is y, and both wrap on a 16 x 16
+grid -- which the bounds test at `0x3b612` states directly. And a saved game
+edited to `x = 5, y = 9, facing = 6`, three bytes and nothing else, drew
+**`5,9 W 00:00`** on the status line (`work/28ssb/shots/06-world.png`; the
+specimen is `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-moved/`).
+
+**`docs/124-amiga-port.md` §1.14a has the same run's other half**: the engine
+resaved that party at that square and changed 23 bytes of 7233, of which 20 are
+heap.
+
 ### Pool of Radiance, 13 bytes at 12800
 
 The save writes **ten** bytes from `h32+0x176f` and the struct there is
-**seven**: x, y, facing (doubled), the wall in front (`fn(x, y, facing)` at
-`0x2ec1c`), a square property (`fn(x, y)` at `0x2ec54`), and two bytes nothing
-references. The wallset table sits at `h32+0x1776`, so the write's last three
+**seven**: x, y, facing (doubled), the wall type in the facing direction
+(computed at `0x2ec1c`), the square's attribute byte (computed at `0x2ec54`),
+and two bytes nothing references. The wallset table sits at `h32+0x1776`, so the write's last three
 bytes are the first three of table entry 0, which is never written. Then
 `h32+0xc1`, the **view type** (1 = 3D, 2 = overland; saved and restored as a
 (previous, current) pair the way Curse saves its mode), `h32+0xba`, the game
@@ -102,6 +116,43 @@ write, entry *i* to `$4AF9+i` and `$4AFC+i` for *i* = 1..3 -- which is
 [`141-dos-savegame.md`](141-dos-savegame.md)'s wallset triple and its (1, 2, 3)
 index map. Curse and Silver Blades write the table as its own twelve bytes
 instead.
+
+### The two map bytes, and what they read
+
+**CONFIRMED, three titles from the code and two squares against the map on the
+disk.** Both bytes come out of the loaded 1024-byte `GEO` block, which holds a
+**16 x 16 map**:
+
+| offset in the block | one byte a square | what |
+|---|---|---|
+| `0x000`-`0x0FF` | high nibble | **north** wall |
+| | low nibble | **east** wall |
+| `0x100`-`0x1FF` | high nibble | **south** wall |
+| | low nibble | **west** wall |
+| `0x200`-`0x2FF` | the whole byte | the square's attribute |
+| `0x300`-`0x3FF` | | **UNKNOWN**; neither routine touches it |
+
+The attribute routine is the same on all three -- Silver Blades `0x3b8a6`,
+Curse `0x37b3c`, Pool of Radiance `0x3e176`: bounds-check x and y against 0-15,
+then return `map[0x200 + 16*y + x]`. Its sibling (Silver Blades `0x3b78c`)
+switches on the doubled facing through a jump table at `0x3b880` and returns
+the matching nibble, which is why the field's old name here -- "the wall in
+front of the party" -- was wrong and has been corrected: it is a wall **type**,
+0 to 15, and it reads 0 at both `3,3 S` and `5,9 W` where the view draws a wall.
+
+**The map on the disk agrees with the saved games.** `/DISK2/GEO.GLB` on Silver
+Blades disk B is a `GLIB` of 18 blocks: block 0 is a 70-byte index holding a
+`u16be` count of 17 and then 17 `(id, block)` pairs, the first of which is
+`(16, 1)`. The two saved games both carry `$49C5` = 16:
+
+| square | the save's attribute byte | `GEO.GLB` block 1 at `0x200 + 16y + x` |
+|---|---|---|
+| 3,3 | 135 | **135** |
+| 5,9 | 128 | **128** |
+
+Block 1 is the only one of the seventeen matching both. And the engine
+**recomputed** the byte when it resaved a party we had moved -- handed 135 at
+square 5,9, it wrote 128 -- so a converted save need not get either byte right.
 
 ### The game mode, one enumeration on all three titles
 
@@ -132,6 +183,51 @@ it.
 
 The clock at `$49C6`-`$49CB` is read through the map by `tools/amigasavegame.py`
 and agrees with the status line on the two saves that were read on screen.
+
+### What an in-world Silver Blades save holds, against the DOS map
+
+The shipped `savgamA.sav` and the game's own save of the same party a minute
+into the world differ by **62 bytes of 7233**, and the array half of that is
+fourteen words. Every one lands where
+[`141-dos-savegame.md`](141-dos-savegame.md) says, which is the first time a
+*later* title's array has been checked from inside the world -- every earlier
+specimen was written before the game started.
+
+| address | real VM name | shipped | in the world | what `docs/141` calls it |
+|---|---|---|---|---|
+| `$49C5` | `$49C5` | 0 | **16** | the resident `GEO` block |
+| `$49E7`-`$49E9` | | 0, 0, 0 | **1, 1, 1** | **named on no port** |
+| `$49F2` | `$49F2` | 0 | **16** | the area the party is in |
+| `$49FD`, `$49FE` | | 0, 0 | **11, 9** | the area's own ECL prologue constants |
+| `$4A04` | | 0 | **1** | the per-script scratch `$4A00`-`$4A1F` |
+| `$4A36`, `$4A3C` | | 0, 0 | **1, 1** | the quest flags `$4A20`-`$4AF8` |
+| `$4AFD` | | 0 | **255** | DOS's wall-index map -- see below |
+| `$4FC6` | **`$6DC6`** | 0 | **80** | live and unnamed |
+| `$4FE1` | **`$6DE1`** | 0 | **255** | the documented constant 255 |
+| `$5079` | **`$6E79`** | 0 | **7** | a script register |
+
+Twenty words in 2560 are non-zero in the in-world save and six in the shipped
+one -- and those six (`$49E6`, `$49FC`, `$49FF`, `$4AF4`, `$5012`, `$503E`) are
+exactly the six the **DOS** shipped Silver Blades save holds, value for value.
+With the square reading `7,13,0`, which is what new-game initialisation writes,
+**the shipped Amiga `savgamA.sav` is a party that has never entered the world**.
+
+Two cautions. `$4AFD` = 255 is **not** DOS's wall-index map: `$4AFA`-`$4AFC`
+are zero in all three files because Silver Blades writes its wallset table as
+its own twelve bytes in the square region instead of copying it into the array,
+so there is no triple beside it to index. UNKNOWN. And `$4FD2`/`$4FD3` --
+DOS's rest-interruption pair, which `docs/141` says the file holds *because a
+save is taken inside ENCAMP* -- are **zero** in a save that was taken inside
+ENCAMP. UNKNOWN, one specimen.
+
+**The party region moved nothing but `experience`, on all six characters**:
+200,000 to 202,750 on the five single-classed and 100,000 to 101,250 on the
+multi-classed one, which carries half. The opening scene awards it; there was
+no fight (`work/331run/shots/07-after.png` through `09-adventuring.png` are the
+scene) and the clock never left `00:00`. That is an independent corroboration
+of the field's offset -- it is the one thing the engine moved, by an amount a
+Gold Box award has the shape of. The other 42 bytes are `effect_chain` and
+`heap_104` pointers.
 
 ## The container number
 
@@ -225,10 +321,11 @@ picker)`. A fourth per-title difference.
 
 ## Still open
 
-* **The square property, `fn(x, y)`.** Rewritten on every step on all three
-  titles; 25 on Pool of Radiance's slot A square, 0 after one step, and the
-  same number DOS keeps in `$5200`. What the function reads is not settled.
-  Settling it: read `0x33312` in `/program` (the function that computes it).
+* **The wall nibbles' values.** 0 to 15 in each of the four directions, and 0
+  is what both measured squares hold in the direction the 3D view draws a wall.
+  Naming them needs the drawing routine or a party that can walk, which is
+  `#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
+  only keystrokes)`.
 * **`$49FC` and `$49FF`'s sources** `g3d3e`, `g63d0`, `g63d1`. Named as
   globals, not as meanings. `docs/141` records the two ports disagreeing on
   these words; this is why -- they are engine bytes mirrored into the array.
@@ -238,26 +335,35 @@ picker)`. A fourth per-title difference.
   was not written from the party menu either, and what leaves a 4 in front of a
   0 is still UNKNOWN.
 * **A party on the travel grid, and a party in combat**, on either later title.
-  Every specimen here was saved indoors from camp or from the party menu.
-* **Amiga Silver Blades past its party menu.** It asks for a word out of the
-  printed Adventurer's Journal at `BEGIN ADVENTURING` and there is no journal on
-  this machine --
-  `#331 (Amiga Silver Blades asks a journal word before it will adventure, so
-  the title cannot be driven past its party menu)`.
+  Every specimen here was saved indoors, from camp or from the party menu, and
+  reaching either needs `#361 (An Amiga party cannot be made to walk, because
+  the WinUAE driver sends only keystrokes)`.
+
+**Amiga Silver Blades past its party menu is no longer open.**
+`tools/amigabladesjournal.py` answers the `BEGIN ADVENTURING` prompt and the
+game has accepted it three times out of three, on three different challenges --
+`#331 (Amiga Silver Blades asks a journal word before it will adventure, so the
+title cannot be driven past its party menu)`. It needs `/usr/bin/python3`
+rather than this project's virtual environment, which has no `numpy`.
 
 ## What this does not need
 
-A second Curse save one step apart was the experiment this issue carried for
-weeks, and the WinUAE route to it is open (`docs/143-winuae-debugger.md`,
-`#108 (Amiga Curse asks its code wheel, so the title cannot be driven
-unattended)` closed). It would now confirm a map already read out of the
-writer, and Pool of Radiance's step diff (`docs/124` §1.9b) already shows the
-same engine moving y, facing, the wall byte and the square property on one
-step. It is worth running only when the square property's meaning is chased --
-and note the 2026-09-05 run above never moved the party, because none of what
-it set out to measure needed a step. The movement key on Amiga Curse is still
-unknown: the `4`/`6`/`8` that work in Amiga Pool of Radiance do nothing, and
-neither do the arrow keys.
+**A second later-title save one step apart.** This page kept that experiment on
+its list for weeks. Everything it was going to settle is settled by other
+means: which
+byte is x by the step routine's own jump table, the two map bytes by the
+routines that compute them and by the map on the disk, and the engine's
+willingness to stand a party where the file says by the moved save above. Pool
+of Radiance's step diff (`docs/124` §1.9b) already shows the same engine moving
+y, facing and both map bytes on one step.
+
+**And it could not be run anyway.** Nothing this project can do moves an Amiga
+Curse or Silver Blades party: twenty virtual keys were pressed at the Silver
+Blades adventuring bar on 2026-09-07 and not one changed the square or the
+facing, and `tools/winuae.ps1` sends nothing but keystrokes.
+`#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
+only keystrokes)` is what has to land first, and what a step would then buy is
+the wall nibbles' values and an outdoor save.
 
 ## Method, so it can be repeated
 

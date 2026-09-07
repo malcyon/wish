@@ -108,6 +108,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="rename marching-order character N (0-based)")
     parser.add_argument("--strip-items", type=int, action="append", default=[],
                         metavar="N", help="empty character N's item chain")
+    parser.add_argument("--square", metavar="X,Y,FACING",
+                        help="stand the party somewhere else. Facing is the "
+                             "doubled encoding the file uses -- 0 north, "
+                             "2 east, 4 south, 6 west. The status line draws "
+                             "all three, so this is the one edit a photograph "
+                             "of the screen reads straight back")
     args = parser.parse_args(argv)
 
     if pathlib.Path(args.out).resolve() == pathlib.Path(args.image).resolve():
@@ -129,6 +135,15 @@ def main(argv: list[str] | None = None) -> int:
         party[int(index)] = rename(party[int(index)], name)
 
     data = amigasavegame.rebuild(save, party)
+    if args.square:
+        parts = args.square.split(",")
+        if len(parts) != 3:
+            raise SystemExit("--square takes X,Y,FACING")
+        moved = amigasavegame.parse(data, save.shape, source="rebuilt")
+        x, y, facing = (int(p) for p in parts)
+        data = amigasavegame.with_square(moved, x=x, y=y, facing=facing)
+        print(f"  square {moved.square['x']},{moved.square['y']} "
+              f"facing {moved.square['facing']} -> {x},{y} facing {facing}")
     out = amigasavegame.parse(data, save.shape, source="rebuilt")
     for claim, ok, detail in amigasavegame.check(out):
         print(f"  [{'ok' if ok else 'NO'}] {claim}: {detail}")

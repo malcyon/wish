@@ -149,8 +149,14 @@ class SaveShape:
         return self.vm_at + 2 * (address - VM_BASE)
 
 
-_WALL = "wall in front of the party, fn(x, y, facing), rewritten on a step"
-_PROPERTY = "a square property, fn(x, y), rewritten on the same step"
+# Both are read out of the loaded 1024-byte GEO block, which holds a 16 x 16
+# map: `0x000` north and east walls a nibble each, `0x100` south and west,
+# `0x200` one attribute byte a square.  Silver Blades `0x3B78C` and `0x3B8A6`
+# are the two routines; Curse and Pool of Radiance index the same shape.
+_WALL = ("the wall type in the facing direction, a nibble of "
+         "map[16*y + x] or map[0x100 + 16*y + x]; rewritten on a step")
+_PROPERTY = ("the square's attribute byte, map[0x200 + 16*y + x]; "
+             "rewritten on the same step, and on load")
 _PAD = "never referenced by the code"
 
 CURSE = SaveShape(
@@ -322,6 +328,47 @@ def parse(data: bytes, shape: SaveShape | None = None,
 #: count is a `u16be` in the file and the loader trusts it with no bound of
 #: its own, so this is the game's rule rather than the format's.
 PARTY_MAX = 6
+
+
+def with_square(save: AmigaSavegame, **fields: int) -> bytes:
+    """The same saved game with the party standing somewhere else.
+
+    Every field of the square struct is writable by the name the shape gives
+    it -- `x`, `y`, `facing` -- at the width the save routine writes it, which
+    is a byte on Silver Blades and Pool of Radiance and a `u16be` on Curse.
+
+    This exists for one experiment: a saved game the game itself wrote, moved
+    one square by us and handed back, so that the status line says whether the
+    engine reads the square out of the file or recomputes it.  Nothing in the
+    library calls it, and a conversion must not -- a converted party's square
+    comes from its source save, not from here.
+
+    `wall_ahead` and `square_property` are deliberately writable too, and
+    deliberately not adjusted: both are `fn(x, y[, facing])` over the area's
+    own map and the engine rewrites them on the first step, so leaving them
+    stale is how one learns whether it also rewrites them on the way in.
+    """
+    names = {f.name: f for f in save.shape.square}
+    unknown = set(fields) - set(names)
+    if unknown:
+        raise AmigaSaveError(
+            f"{save.shape.title}'s square has no "
+            f"{', '.join(sorted(unknown))}; it has "
+            f"{', '.join(names)}")
+    data = bytearray(save.data)
+    at = save.shape.square_at
+    for field in save.shape.square:
+        if field.name in fields:
+            value = fields[field.name]
+            top = 1 << (8 * field.size)
+            if not 0 <= value < top:
+                raise AmigaSaveError(
+                    f"{field.name} is {field.size} byte(s) in a "
+                    f"{save.shape.title} saved game, so 0 to {top - 1}; "
+                    f"{value} given")
+            data[at:at + field.size] = value.to_bytes(field.size, "big")
+        at += field.size
+    return bytes(data)
 
 
 def rebuild(save: AmigaSavegame,
