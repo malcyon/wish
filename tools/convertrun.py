@@ -31,8 +31,10 @@ What it does, in order:
    picker opens, the way `tests/test_convert.py` drives it. `exec()` is the
    one thing replaced: it is the modal wait for a person to press Convert,
    and there is no person here;
-3. boots what came out. A C64 destination goes to `tools/savecheck.py`,
-   which reads the party panel and the `VIEW` sheets off the C64's own
+3. boots what came out. A C64 destination goes to the reader that knows
+   its title -- `tools/savecheck.py` for Pool of Radiance,
+   `tools/cursecheck.py` for Curse of the Azure Bonds -- which reads the
+   party panel and the `VIEW` sheets off the C64's own
    screen memory; a DOS destination is copied into a `tools.dosbox` staged
    game tree and loaded through the game's own `LOAD SAVED GAME`, walked,
    and saved back by `ENCAMP ▸ SAVE` so the engine's own rewrite can be
@@ -163,19 +165,57 @@ def write_via_dialog(source: pathlib.Path, to: str, folder: pathlib.Path,
 # Playing a C64 result
 # ---------------------------------------------------------------------------
 
+def c64_title(disk: pathlib.Path) -> str:
+    """Which title the written `.d64` is, off the disk's own directory.
+
+    `goldbox.savegame.load_save` identifies it the same way the editor does,
+    so this asks the disk rather than the command line -- a wrong answer here
+    would boot the wrong game and take an hour to say so.
+    """
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    game, _sg0, _sg1 = load_save(D64.from_bytes(disk.read_bytes()))
+    return game.key
+
+
 def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
              walk: str, view: bool, resave: str | None) -> dict:
-    """Hand the written `.d64` to `tools/savecheck.py` and read its log."""
-    log = out / "savecheck.jsonl"
-    argv = [str(ROOT / ".venv" / "bin" / "python"), str(TOOLS / "savecheck.py"),
-            "--disk", str(disk), "--disks", str(disks),
-            "--out", str(log), "--tag", disk.stem]
-    if walk:
-        argv += ["--walk", walk]
-    if view:
-        argv += ["--view"]
-    if resave:
-        argv += ["--resave", str(out / resave)]
+    """Hand the written `.d64` to whichever reader knows its title.
+
+    `tools/savecheck.py` boots through `tools/session.py`, which knows Pool of
+    Radiance's fastloader prompt, main menu and copy protection and none of
+    Curse's -- so a Curse disk goes to `tools/cursecheck.py`, which boots
+    through `tools/curserun.py` and reads the same things off the same kinds
+    of screen.  Secret of the Silver Blades has no such tool yet and falls
+    through to `savecheck.py`, where it will not boot; that is the row this
+    file cannot run unattended.
+    """
+    curse = c64_title(disk) == "curse-of-the-azure-bonds"
+    log = out / ("cursecheck.jsonl" if curse else "savecheck.jsonl")
+    if curse:
+        argv = [str(ROOT / ".venv" / "bin" / "python"),
+                str(TOOLS / "cursecheck.py"),
+                "--disk", str(disk), "--disks", str(disks),
+                "--out", str(out / "cursecheck")]
+        if walk:
+            argv += ["--walk", walk]
+        if not view:
+            argv += ["--no-view"]
+        if resave:
+            argv += ["--resave", str(out / resave)]
+        log = out / "cursecheck" / "cursecheck.jsonl"
+    else:
+        argv = [str(ROOT / ".venv" / "bin" / "python"),
+                str(TOOLS / "savecheck.py"),
+                "--disk", str(disk), "--disks", str(disks),
+                "--out", str(log), "--tag", disk.stem]
+        if walk:
+            argv += ["--walk", walk]
+        if view:
+            argv += ["--view"]
+        if resave:
+            argv += ["--resave", str(out / resave)]
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
     events = []
     if log.exists():

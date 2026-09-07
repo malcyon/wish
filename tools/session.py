@@ -41,6 +41,7 @@ from typing import NamedTuple
 # and CI answered `ModuleNotFoundError: No module named 'session'`.
 TOOLS = str(pathlib.Path(__file__).resolve().parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
+from goldbox import games as G  # noqa: E402
 from tools import instance  # noqa: E402
 from tools.drive import (  # noqa: E402
     Keyboard,
@@ -86,6 +87,15 @@ FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
 # (`docs/118-debug-mode.md`, `docs/140-loaded-files-cache.md`).  Nothing in
 # this file asked it until `#189`, which is the whole of why the driver could
 # not move an outdoor party: it was written against the dungeon and assumed it.
+#
+# **It is Pool of Radiance's address and Pool of Radiance's question**, which
+# is `#360 (The session driver will not walk a Curse or Silver Blades party in
+# a dungeon, because it reads Pool of Radiance's indoors flag)`: Curse and
+# Silver Blades load at `$4B00` rather than `$4900`, so `$49E6` in those two is
+# a byte of `LIBRARY` code that reads zero -- and a driver that took that for
+# the travel grid sent compass digits at a dungeon and pressed nothing at all.
+# `Session.game` is what decides now, and `goldbox.games` already knows that
+# neither later title has a travel grid to be on.
 INDOORS_AT = 0x49E6
 #: The dungeon's live position triple: x, y, facing.  It freezes outdoors at
 #: the square the party left the grid on, so reading it out there answers the
@@ -494,6 +504,27 @@ class Session:
     two sessions able to run at once.
     """
 
+    #: Which title this driver is driving, and the only thing in this class
+    #: that is per-title.  Everything below the title screen is shared -- the
+    #: monitor, the keyboard, the screen reader, the menu walker -- but the
+    #: *addresses* are not, because Curse and Silver Blades load their save
+    #: page at `$4B00` where Pool of Radiance loads it at `$4900`.
+    #:
+    #: A subclass says which title it is (`tools/curserun.py` does), and
+    #: `indoors()` and `square_and_world()` ask this rather than a module
+    #: constant.  `#360 (The session
+    #: driver will not walk a Curse or Silver Blades party in a dungeon,
+    #: because it reads Pool of Radiance's indoors flag)` is what a wrong
+    #: answer here costs: a Silver Blades
+    #: party standing in a dungeon read as being on the travel grid, so every
+    #: `walk` it was sent threw the direction letter away and reported the
+    #: step as blocked without pressing a key.
+    game = G.POOL_OF_RADIANCE
+
+    #: See `__init__`; here as well so a `Session` built without it -- the
+    #: fake ones in `tests/` -- still answers the attribute.
+    walk_refused: str | None = None
+
     def __init__(self, disk: str | None = None, display: str | None = None,
                  slot=None, fastloader: str | None = None):
         self.slot = slot
@@ -523,6 +554,12 @@ class Session:
         self.save_disk = f"{self.here}/SIDE0.D64"
         self.side_prompts = 0
         self._last_prompt = 0.0
+        # Why the last `walk_one` sent no key, or None when it sent one.  A
+        # step the party took and a step the driver never asked for both
+        # answered `False` before `#360 (The session driver will not walk
+        # a Curse or Silver Blades party in a dungeon, because it reads Pool
+        # of Radiance's indoors flag)`.
+        self.walk_refused: str | None = None
         # The process group `launch()` started.  Teardown kills this and nothing
         # else -- never a process by name.
         self.pgid: int | None = None
@@ -922,6 +959,21 @@ class Session:
             self.log(f"  could not walk the panel highlight onto slot {index}")
         return False
 
+    def sheet_is_up(self, s) -> bool:
+        """Is a character sheet the thing on the screen?
+
+        Pool of Radiance answers it on row 24: its sheet bar begins `VIEW:`
+        and nothing else in the game carries a colon.  **Curse's does not**
+        -- `LIBRARY $4600`'s menu string is
+        `ITEMS SPELLS TRADE DROP CURE HEAL EXIT`
+        (`docs/188-the-sheet-portrait-per-title.md`) -- so a driver looking
+        for `VIEW:` there waits out its whole timeout with the sheet drawn in
+        front of it, reports no sheet, and leaves the session standing on a
+        screen the caller does not know it is on.  `tools/curserun.py`
+        overrides this.
+        """
+        return SHEET_BAR in s.row(24)
+
     def character_sheet(self, index: int | None = None,
                         timeout: float = 30.0,
                         shot: str | None = None) -> list[str] | None:
@@ -945,7 +997,7 @@ class Session:
             # The name row fills in after the bar does, so wait for both --
             # a sheet read on the first screen that says `VIEW:` comes back
             # half drawn.
-            if s is not None and SHEET_BAR in s.row(24) and s.row(1).strip():
+            if s is not None and self.sheet_is_up(s) and s.row(1).strip():
                 time.sleep(0.6)
                 s = self.screen()
                 if s is not None:
@@ -1098,7 +1150,20 @@ class Session:
         None is "the read failed", not a world -- the same degradation
         `mode()` makes, and for the same reason: a caller that took a failed
         read for the travel grid would press compass digits at a dungeon.
+
+        **A title with no travel grid is always in a `GEO` area, and no byte
+        is read at all.**  Curse of the Azure Bonds and Secret of the Silver
+        Blades carry no `SQRDATA`, `SQRPACI` or `WALLS` on either side of any
+        disk (`goldbox.games.Game.travel_grid`,
+        `docs/121-silver-blades.md`), so there is nowhere in either of them
+        for a party to be but a dungeon -- and `$49E6` there is a byte of
+        `LIBRARY` code that happens to read zero, which is what made the
+        driver refuse to walk them
+        (`#360 (The session driver will not walk a Curse or Silver Blades party
+        in a dungeon, because it reads Pool of Radiance's indoors flag)`).
         """
+        if not self.game.travel_grid:
+            return True
         try:
             with self.mon(5) as m:
                 return m.read(INDOORS_AT, 1)[0] != 0
@@ -1126,9 +1191,22 @@ class Session:
         reads of one fact -- the same shape `select_bar`'s docstring names as
         `#173`, where two `$D800` reads were treated as one snapshot.  Found
         in the code review of #189.
+
+        **A title with no travel grid reads its own live triple instead** --
+        `$C04B`, `goldbox.games.Game.live_position`, which
+        `tools/cursewarp.py` has driven Curse from since
+        `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
+        Radiance's alone?)`.  There is no second pair to choose between there,
+        and `$49C0` in Curse or Silver Blades is not the party's square at all
+        (`#360 (The session driver will not walk a Curse or Silver Blades
+        party in a dungeon, because it reads Pool of Radiance's indoors
+        flag)`).
         """
         try:
             with self.mon(5) as m:
+                if not self.game.travel_grid:
+                    x, y = m.read(self.game.live_position, 2)
+                    return x, y, True
                 inside = m.read(INDOORS_AT, 1)[0] != 0
                 x, y = m.read(DUNGEON_XY if inside else TRAVEL_XY, 2)
         except (OSError, MonitorError):
@@ -1177,6 +1255,21 @@ class Session:
         for ch in moves.upper():
             self.walk_one(ch, hold, gap)
 
+    def move_key(self, move: str, hold=0.15, gap=0.30) -> None:
+        """Send one dungeon direction -- `I` forward, `J` left, `K` right, `M`
+        about -- by whatever route this title actually reads.
+
+        Pool of Radiance reads the emulated keyboard, so this is an XTEST
+        press.  It is a method rather than a line inside `walk_one` because
+        Curse's move handler answers only the KERNAL buffer: an XTEST `I`
+        there moves the party not at all and does not even turn it, which
+        from outside looks exactly like a party hemmed in by walls
+        (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
+        which the importer refuses today)`, and `tools/curserun.py` overrides
+        this).
+        """
+        self.kbd.key(move.lower(), hold, gap)
+
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4) -> bool:
         """One move, verified -- by the status line indoors, by memory outdoors.
 
@@ -1203,7 +1296,17 @@ class Session:
         rather than `I J K M`, a turn does not exist so nothing may be re-sent
         on the strength of an unchanged line, and the line itself lags the
         step.  `walk_outdoors` is that world's version of this.
+
+        **A `False` from here means the party tried and a wall stopped it, and
+        it must never mean the driver pressed nothing.**  Those two were the
+        same answer until `#360 (The session driver will not walk a Curse or
+        Silver Blades party in a dungeon, because it reads Pool of Radiance's
+        indoors flag)`, so a run recorded a map fact it had never
+        measured.  `walk_refused` carries the second case: None after a move
+        that was sent, and a sentence saying what the driver would not do
+        after one that was not.
         """
+        self.walk_refused = None
         if self.indoors() is False:
             return self.walk_outdoors(move, hold, gap)
         before = self.status()
@@ -1211,10 +1314,10 @@ class Session:
             s = self.screen()
             row = "" if s is None else s.row(24)
             if MOVE_SUBBAR in row:
-                self.kbd.key(move.lower(), hold, gap)
+                self.move_key(move, hold, gap)
             elif self.select_bar("MOVE", timeout=8):
                 time.sleep(0.6)
-                self.kbd.key(move.lower(), hold, gap)
+                self.move_key(move, hold, gap)
             else:
                 self.leave_move(2)
                 continue
@@ -1241,6 +1344,10 @@ class Session:
         game.
         """
         if move not in COMPASS:
+            self.walk_refused = (
+                f"the driver pressed nothing: it read this party as being on "
+                f"the travel grid, where {move} is not a direction. That is a "
+                f"driver error and not a wall")
             self.log(f"  {move} is not a compass digit; the travel grid takes "
                      f"1-8, not the dungeon's I J K M")
             return False
@@ -2131,6 +2238,13 @@ def handle(sess: Session, line: str) -> bool:
         print(sess.position())
     elif cmd == "walk":
         sess.walk(args[0])
+        # A move the driver would not send is not a wall, and the difference
+        # is the whole of `#360 (The session driver will not walk a Curse or
+        # Silver Blades party in a dungeon, because it reads Pool of
+        # Radiance's indoors flag)`: say so here rather than letting the caller
+        # read an unchanged position as a party hemmed in.
+        if sess.walk_refused:
+            print(sess.walk_refused)
         print(sess.position())
     elif cmd == "save":
         print(sess.save_game(args[0] if args else None))
