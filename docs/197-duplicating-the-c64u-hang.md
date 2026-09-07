@@ -31,10 +31,20 @@ what is on it, or copy anything onto their device.
 
 Substitute your own device's address throughout.
 
+### Set your device's address once
+
+```sh
+export C64U_HOST=192.168.1.231
+```
+
+**`c64u` reads that variable itself**, so none of the commands below need a
+`--host` flag, and `curl` uses the same one. It is the only line in this
+document you have to change.
+
 ### Insert the USB stick and mount the disk it carries
 
 ```sh
-curl -s -X PUT 'http://192.168.1.231/v1/drives/a:mount?image=/USB1/GEOS%20Boot%20Disk.d64&type=d64&mode=readonly'
+curl -s -X PUT "http://$C64U_HOST/v1/drives/a:mount?image=/USB1/GEOS%20Boot%20Disk.d64&type=d64&mode=readonly"
 ```
 
 Mounted **read-only**, so nothing can be written to it. Check the path first if
@@ -66,7 +76,7 @@ both real hangs were sitting in (§4).
 ```sh
 while true; do
   curl -s -o /dev/null \
-    'http://192.168.1.231/v1/machine:readmem?address=0400&length=32768'
+    "http://$C64U_HOST/v1/machine:readmem?address=0400&length=32768"
   sleep 0.5
 done
 ```
@@ -78,15 +88,14 @@ only while interrupts are being serviced:
 
 ```sh
 while true; do
-  curl -s 'http://192.168.1.231/v1/machine:readmem?address=00A0&length=3' \
-    | xxd -p
+  curl -s "http://$C64U_HOST/v1/machine:readmem?address=00A0&length=3" | xxd -p
   sleep 5
 done
 ```
 
-**While the machine lives that number climbs. When it stops and never moves
-again, it has hung** — and the C64 sits frozen mid-load with nothing
-responding, needing a reset.
+**While the machine lives that number climbs. When it starts repeating the same
+value over and over, the machine is hung** — frozen mid-load with nothing
+responding, and only a reset recovers it.
 
 ### What to expect
 
