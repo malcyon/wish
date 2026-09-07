@@ -60,7 +60,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import areas, dos, neutral_save  # noqa: E402
+from goldbox import areas, dos, world_state  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
@@ -75,15 +75,13 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 TRAVEL_HEADING = 0x033D
 
 
-def outdoor_request(area: int, x: int, y: int) -> "neutral_save.NeutralSave":
+def outdoor_request(area: int, x: int, y: int) -> "world_state.WorldState":
     """A place saying only "outdoors, in `area`, at (x,y)".
 
     Not a specimen and not evidence.  `dos.apply_file_cache` and
-    `dos.apply_position` take a `NeutralSave` now (`#352 (Lift PorSaveState
-    into one NeutralSave that every port's saved-game reader fills and both
-    container writers take)`); this builds the shortest DOS buffer that
+    `dos.apply_position` take a `WorldState` now (`#352 (Handle world state for Amiga saves)`); this builds the shortest DOS buffer that
     reads as one -- three words set, the rest zero -- and hands it through
-    `neutral_save.from_dos` rather than assembling a `NeutralSave` by hand,
+    `world_state.from_dos` rather than assembling a `WorldState` by hand,
     so a caller here is reading the same three words those two functions
     always read.  This matters because the only outdoor DOS saves on this
     machine live under `work/` and have been lost once already.
@@ -100,7 +98,7 @@ def outdoor_request(area: int, x: int, y: int) -> "neutral_save.NeutralSave":
     sg.put_word(req, sg.SCRIPT, area)
     sg.put_word(req, sg.INDOORS, 0)
     sg.put_travel_square(req, x, y)
-    return neutral_save.from_dos(bytes(req))
+    return world_state.from_dos(bytes(req))
 
 
 def seed_disk(source: pathlib.Path, out: pathlib.Path, *, area: int,

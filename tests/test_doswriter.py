@@ -31,7 +31,7 @@ from test_dossave import (
 from test_dossave import _records as _archive_records
 from test_neutral import _filled
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, neutral, neutral_save
+from goldbox import c64_codec, c64_save, dos, dos_layout, neutral, world_state
 from goldbox import dos_savegame as sg
 from goldbox import levels as level_tables
 from goldbox.iconparts import (
@@ -1669,7 +1669,7 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
     save0[dos.PARTY_Y - dos.SAVE0_BASE] = 0
     save0[dos.PARTY_FACING - dos.SAVE0_BASE] = 0
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
-    state = neutral_save.from_c64(bytes(save0))
+    state = world_state.from_c64(bytes(save0))
     savgam = bytearray(sg.SAVGAM_SIZE)
     report = dos.SaveReport(total=sg.SAVGAM_SIZE)
     dos.savgam_writes(savgam, report, state, "A", 1, script)

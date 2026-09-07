@@ -39,7 +39,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from . import areas, dos_layout, dos_savegame, games, neutral, neutral_save
+from . import areas, dos_layout, dos_savegame, games, neutral, world_state
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
@@ -2191,7 +2191,7 @@ POR_OUTDOORS_UNREAD = (
     "been seen where the reader looks for it")
 
 
-def read_por_state(savgam: bytes, source: str = "") -> "neutral_save.NeutralSave":
+def read_por_state(savgam: bytes, source: str = "") -> "world_state.WorldState":
     """An Amiga slot's saved game, as the place and clock a writer takes.
 
     The guarded reader for every conversion whose **source** is an Amiga
@@ -2202,7 +2202,7 @@ def read_por_state(savgam: bytes, source: str = "") -> "neutral_save.NeutralSave
     both call it, so the one refusal below is stated once rather than in
     each direction.
 
-    `goldbox.neutral_save.from_amiga` does the reading and refuses nothing;
+    `goldbox.world_state.from_amiga` does the reading and refuses nothing;
     :func:`por_state_from_amiga` is the same reader guarded for the other
     direction, where the Amiga file is the one being written.
     """
@@ -2210,7 +2210,7 @@ def read_por_state(savgam: bytes, source: str = "") -> "neutral_save.NeutralSave
         raise AmigaRecordError(
             f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
             f"bytes, got {len(savgam)}")
-    state = neutral_save.from_amiga(savgam, source=source)
+    state = world_state.from_amiga(savgam, source=source)
     if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNREAD)
     return state
@@ -2237,7 +2237,7 @@ def read_por_slot(disk, slot: str, drawer: str | None = None):
 
     `(list[goldbox.dos.DosCharacter], savgam_bytes)` -- the pair
     `goldbox.dos.write_c64_save` and `goldbox.dos.new_dos_save_from` take,
-    once `goldbox.neutral_save.from_amiga` has turned the second into a
+    once `goldbox.world_state.from_amiga` has turned the second into a
     place and a clock.  This is the Amiga end of
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` and
@@ -2560,20 +2560,20 @@ def por_put_word(save: bytearray, address: int, value: int) -> None:
     save[at:at + 2] = (value & 0xFFFF).to_bytes(2, "big")
 
 
-#: `PorSaveState` is now `NeutralSave` under its old name (`#352 (Lift
-#: PorSaveState into one NeutralSave that every port's saved-game reader
+#: `PorSaveState` is now `WorldState` under its old name (`#352 (Lift
+#: PorSaveState into one WorldState that every port's saved-game reader
 #: fills and both container writers take)`): `por_savegame_writes` below only
-#: ever reads the ten fields Pool of Radiance needed, and a `NeutralSave` is
+#: ever reads the ten fields Pool of Radiance needed, and a `WorldState` is
 #: a strict superset of those, so nothing here has to convert one into the
 #: other.  The three `por_state_from_*` readers are one-line wrappers of
-#: `goldbox.neutral_save`'s three general ones, each keeping the one thing
+#: `goldbox.world_state`'s three general ones, each keeping the one thing
 #: that was Amiga-specific about it: refusing a party the Amiga writer still
 #: cannot place, because writing an outdoor Amiga save stays unmeasured
 #: (`#316 (Write the Amiga Pool of Radiance saved game from the source
 #: save, so a converted party arrives where it was standing)`, `#321 (An
 #: Amiga Pool of Radiance conversion refuses a party standing on the travel
 #: grid, because no outdoor Amiga saved game has ever been read)`).
-PorSaveState = neutral_save.NeutralSave
+PorSaveState = world_state.WorldState
 
 
 def por_state_from_c64(save0: bytes, source: str = "") -> PorSaveState:
@@ -2582,7 +2582,7 @@ def por_state_from_c64(save0: bytes, source: str = "") -> PorSaveState:
     **Outdoors is refused here rather than written wrong.**  See
     :func:`por_conversion_reason`.
     """
-    state = neutral_save.from_c64(save0, source=source)
+    state = world_state.from_c64(save0, source=source)
     if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
     return state
@@ -2594,7 +2594,7 @@ def por_state_from_dos(savgam: bytes, source: str = "") -> PorSaveState:
     **Outdoors is refused here rather than written wrong.**  See
     :func:`por_conversion_reason`.
     """
-    state = neutral_save.from_dos(savgam, source=source)
+    state = world_state.from_dos(savgam, source=source)
     if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
     return state
@@ -2614,7 +2614,7 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
         raise AmigaRecordError(
             f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
             f"bytes, got {len(savgam)}")
-    state = neutral_save.from_amiga(savgam, source=source)
+    state = world_state.from_amiga(savgam, source=source)
     if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
     return state
@@ -3355,7 +3355,7 @@ def amiga_shape_for(size: int) -> "dos_layout.DosShape":
 #: and Secret of the Silver Blades have their records read
 #: (:data:`AMIGA_SHAPES`) and their save disks read
 #: (`goldbox/amiga_later.py`), and what neither has is a saved-game reader:
-#: `goldbox.neutral_save.from_amiga` is Pool of Radiance's own container, and
+#: `goldbox.world_state.from_amiga` is Pool of Radiance's own container, and
 #: `#55`'s work stopped at the records.  Converting a party without the game
 #: around it is the thing `#353 (Convert an Amiga Pool of Radiance save to
 #: the C64, so a party standing in the Slums on the Amiga arrives there in

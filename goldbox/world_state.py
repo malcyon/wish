@@ -1,7 +1,13 @@
-"""One saved game, in the ECL address space all three ports share.
+"""Where a party is standing and when — the world state a save carries.
 
-The lift `#352 (Lift PorSaveState into one NeutralSave that every port's
-saved-game reader fills and both container writers take)` asks for:
+**Not `goldbox/world.py`**, which is the overland travel map -- the
+`SQRDATA0n` grid Pool of Radiance's wilderness is drawn from. This
+module is about a *party*: its square, facing, clock, area, resident
+map, quest flags and script scratch. Donald named the concept on
+2026-09-07 and said the two names side by side are no trouble:
+"Having world.py and world_state.py is fine. I can tell the difference."
+
+The lift `#352 (Handle world state for Amiga saves)` asks for:
 `goldbox.amiga.PorSaveState` proved the shape for a Pool of Radiance party
 standing indoors, and this module is that shape generalised over every
 title and every direction, so the C64 and DOS container writers no longer
@@ -9,13 +15,13 @@ have to read their source straight out of the other port's file.
 
 `goldbox/neutral.py` grades a **character** field because its meaning was
 measured per port and some are still guesses.  Nothing here is graded:
-every address a :class:`NeutralSave` names is read identically by all
+every address a :class:`WorldState` names is read identically by all
 three engines' own save routines (`docs/165-amiga-savegame.md`,
 `docs/141-dos-savegame.md`, `goldbox/c64_save.py`), which is what
 `#352`'s ratifying comment on `#51 (Every permutation of DOS, C64 and
 Amiga, in both directions)` (2026-09-07) calls the whole cost of the lift:
 five fields `PorSaveState` lacked against what DOS <-> C64 already
-converts.  So `NeutralSave` is a frozen dataclass and stays one -- it gets
+converts.  So `WorldState` is a frozen dataclass and stays one -- it gets
 none of `NeutralCharacter`'s `Value`/`Confidence`/`Writer.take` machinery.
 
 **What each container holds that the other two do not never lives here.**
@@ -32,12 +38,12 @@ import dataclasses
 
 from . import areas, c64_save, dos_savegame
 
-__all__ = ["NeutralSave", "HEADER_ADDRESSES", "from_c64", "from_dos",
+__all__ = ["WorldState", "HEADER_ADDRESSES", "from_c64", "from_dos",
            "from_amiga"]
 
 
 @dataclasses.dataclass(frozen=True)
-class NeutralSave:
+class WorldState:
     """Where a party is standing, and when.
 
     The part of a saved game that belongs to the **party** rather than to
@@ -109,7 +115,7 @@ class NeutralSave:
 #: `+$E7`-`+$E9` and `+$FD`-`+$FE` off `$4900`.  Curse of the Azure Bonds
 #: copies `+$E7`-`+$E8`; Secret of the Silver Blades copies all five; Pool of
 #: Radiance copies none.  Read for every title regardless, so a
-#: :class:`NeutralSave` reader never has to know which title it is building.
+#: :class:`WorldState` reader never has to know which title it is building.
 HEADER_ADDRESSES: "tuple[int, ...]" = (0x49E7, 0x49E8, 0x49E9, 0x49FD, 0x49FE)
 
 
@@ -154,11 +160,11 @@ def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosSaveShape"):
     return where.id, geo, x, y, facing, where.outdoors, fresh
 
 
-def from_c64(save0: bytes, game=None, source: str = "") -> NeutralSave:
+def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     """A C64 `SAVEDGAME0` payload, as a place and a clock.
 
     `SAVEDGAME0` is a memory image based at `goldbox.dos.SAVE0_BASE`, so
-    every ECL address :class:`NeutralSave` names is one payload offset away,
+    every ECL address :class:`WorldState` names is one payload offset away,
     and `c64_save.container_for` says which title's own quest-flag width and
     header offsets apply.  Generalises `goldbox.amiga.por_state_from_c64`
     (now a one-line wrapper of this) beyond Pool of Radiance's own 217-byte
@@ -178,7 +184,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> NeutralSave:
     container = c64_save.container_for(game)
     base = _dos.SAVE0_BASE
     first, width = container.quest_flags
-    return NeutralSave(
+    return WorldState(
         title=container.game.title,
         area=save0[container.current_script],
         geo=save0[container.current_geo],
@@ -200,7 +206,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> NeutralSave:
 
 def from_dos(savgam: bytes,
             shape: "dos_savegame.DosSaveShape | int | str | None" = None,
-            source: str = "") -> NeutralSave:
+            source: str = "") -> WorldState:
     """A DOS `SAVGAM<slot>.DAT`, as a place and a clock.
 
     The DOS container is the same array of the same words in the other
@@ -223,7 +229,7 @@ def from_dos(savgam: bytes,
     area_id, geo, x, y, facing, outdoors, fresh = _resolve_dos_place(
         savgam, shape)
     width = c64_save.container_for(shape.key).quest_flags[1]
-    return NeutralSave(
+    return WorldState(
         title=shape.title,
         area=area_id, geo=geo, x=x, y=y, facing=facing,
         clock=tuple(dos_savegame.word(savgam, dos_savegame.CLOCK + i, shape)
@@ -242,7 +248,7 @@ def from_dos(savgam: bytes,
         source=source)
 
 
-def from_amiga(savgam: bytes, source: str = "") -> NeutralSave:
+def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     """An Amiga `savgam<letter>.dat`, as a place and a clock.
 
     Pool of Radiance is the only Amiga container this project reads a party
@@ -260,7 +266,7 @@ def from_amiga(savgam: bytes, source: str = "") -> NeutralSave:
     from . import dos as _dos
     from . import games
 
-    return NeutralSave(
+    return WorldState(
         title=games.POOL_OF_RADIANCE.title,
         area=_amiga.por_word(savgam, dos_savegame.SCRIPT),
         geo=_amiga.por_word(savgam, dos_savegame.AREA),

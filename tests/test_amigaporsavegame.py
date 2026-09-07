@@ -264,15 +264,14 @@ def test_a_party_on_the_travel_grid_is_refused_rather_than_guessed_at():
     value, which is what #316 exists to stop.
 
     Built rather than read off `WISH-SPEC-por-party-l1`, which this test used
-    until `#352 (Lift PorSaveState into one NeutralSave that every port's
-    saved-game reader fills and both container writers take)`: that specimen
+    until `#352 (Handle world state for Amiga saves)`: that specimen
     is a save from the party-formation menu (`provenance.toml`: "written by
     the game's own SAVE CURRENT GAME to slot C" before `BEGIN ADVENTURING`),
     and its `$49E6` = 0 is the initialiser's, the same byte a party genuinely
     on the travel grid also holds zero -- the ambiguity `#326 (A Pool of
     Radiance save made before the party began adventuring is refused, because
     the initialiser left $49E6 at 0 and New Phlan is indoors)` fixed for the
-    DOS -> C64 direction.  `neutral_save.from_dos` now resolves that specimen
+    DOS -> C64 direction.  `world_state.from_dos` now resolves that specimen
     correctly, to New Phlan's arrival square rather than a refusal, so this
     test needs a save that is genuinely outdoors and has genuinely set out:
     an area whose script is staged, in one of the three measured overland

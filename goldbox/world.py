@@ -1,5 +1,8 @@
 """The overland travel map — `SQRDATA0n`, read and stitched into one world.
 
+**Not `goldbox/world_state.py`**, which is where a *party* is standing
+and when. This module is the map itself.
+
 **The overland map is not a `GEO`.** It is the combat square engine --
 `SQRPACI` descriptor, one byte a square -- pointed at `SQRDATA0n` instead of
 a combat arena. `automap/combat.py` reads exactly this shape for a fight;

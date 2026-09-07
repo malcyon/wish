@@ -1866,9 +1866,9 @@ graph LR
   amiga --> games
   amiga --> layout
   amiga --> neutral
-  amiga --> neutral_save
   amiga -.->|deferred| savegame
   amiga -.->|deferred| traits
+  amiga --> world_state
   areas -.->|deferred| geo
   areas --> layout
   c64_codec --> classcode
@@ -1898,12 +1898,12 @@ graph LR
   dos -.->|deferred| items
   dos --> layout
   dos --> neutral
-  dos --> neutral_save
   dos --> portraits
   dos --> record
   dos -.->|deferred| savegame
   dos -.->|deferred| spells
   dos --> traits
+  dos --> world_state
   dos -.->|deferred| yaml_io
   dos_layout --> layout
   effects --> d64
@@ -1921,12 +1921,6 @@ graph LR
   levelup --> spells
   memory --> layout
   neutral --> layout
-  neutral_save -.->|deferred| amiga
-  neutral_save --> areas
-  neutral_save --> c64_save
-  neutral_save -.->|deferred| dos
-  neutral_save --> dos_savegame
-  neutral_save -.->|deferred| games
   portraits -.->|deferred| d64
   portraits --> dos_savegame
   portraits -.->|deferred| games
@@ -1943,6 +1937,12 @@ graph LR
   strength --> petscii
   strength --> savegame
   world --> d64
+  world_state -.->|deferred| amiga
+  world_state --> areas
+  world_state --> c64_save
+  world_state -.->|deferred| dos
+  world_state --> dos_savegame
+  world_state -.->|deferred| games
   yaml_io --> c64_codec
   yaml_io --> classcode
   yaml_io --> d64

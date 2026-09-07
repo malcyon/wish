@@ -32,7 +32,7 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga, c64_codec, dos, dos_savegame, games, neutral_save
+from goldbox import amiga, c64_codec, dos, dos_savegame, games, world_state
 from goldbox.amiga import AmigaRecordError
 from goldbox.amiga_adf import AmigaDisk
 
@@ -266,7 +266,7 @@ def test_the_converted_save_stands_the_party_where_the_amiga_save_did(
     VICE)`: read the place out of the C64 save this writes and it is the
     Amiga save's own place, field for field.
 
-    Read back through `goldbox.neutral_save.from_c64`, which is a different
+    Read back through `goldbox.world_state.from_c64`, which is a different
     reader over a different container -- so this is the two ports agreeing
     rather than one number compared with itself.
     """
@@ -274,7 +274,7 @@ def test_the_converted_save_stands_the_party_where_the_amiga_save_did(
     source = amiga.read_por_state(savgam, "slot C")
     save0, _save1, _report = dos.new_save_from(
         source, party, BLANK_ICON, BLANK_ANIMATE)
-    landed = neutral_save.from_c64(bytes(save0))
+    landed = world_state.from_c64(bytes(save0))
 
     assert landed.area == source.area
     assert landed.geo == source.geo

@@ -1,7 +1,6 @@
-"""`goldbox.neutral_save.NeutralSave`, the lift of `goldbox.amiga.PorSaveState`
+"""`goldbox.world_state.WorldState`, the lift of `goldbox.amiga.PorSaveState`
 into one shape every port's saved-game reader fills
-(`#352 (Lift PorSaveState into one NeutralSave that every port's saved-game
-reader fills and both container writers take)`).
+(`#352 (Handle world state for Amiga saves)`).
 
 `tests/test_amigaporsavegame.py` and `tests/test_toamigapor.py` keep the
 Amiga-specific coverage of the three `goldbox.amiga.por_state_from_*`
@@ -16,7 +15,7 @@ import pathlib
 
 import pytest
 
-from goldbox import c64_save, dos, dos_savegame, games, neutral_save
+from goldbox import c64_save, dos, dos_savegame, games, world_state
 from tests import gamedata
 
 
@@ -30,13 +29,13 @@ def _c64_specimen(name: str) -> pathlib.Path:
     return found[0]
 
 
-def _c64_state(name: str, game=None) -> neutral_save.NeutralSave:
+def _c64_state(name: str, game=None) -> world_state.WorldState:
     from goldbox.d64 import load_payload
 
     game = game or games.POOL_OF_RADIANCE
     disk = _c64_specimen(name)
     payload = load_payload(str(disk), game.save_file)
-    return neutral_save.from_c64(payload, game, str(disk))
+    return world_state.from_c64(payload, game, str(disk))
 
 
 def _dos_savgam(name: str, slot: str) -> bytes:
@@ -75,7 +74,7 @@ def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
     those three are expected to differ and do.
     """
     c64_state = _c64_state("por-c64-hall-resave")
-    dos_state = neutral_save.from_dos(
+    dos_state = world_state.from_dos(
         _dos_savgam("por-party-trained-c2", "F"))
 
     assert c64_state.area == dos_state.area == 11
@@ -118,7 +117,7 @@ def test_the_flag_window_is_the_later_titles_own_wider_one(game, width):
 
 def test_from_dos_reads_the_same_wider_window_for_the_later_titles():
     savgam = _dos_savgam("curse-299-whole-engine-resave", "D")
-    state = neutral_save.from_dos(savgam)
+    state = world_state.from_dos(savgam)
     assert state.title == "Curse of the Azure Bonds"
     assert len(state.flags) == 224
 
@@ -129,8 +128,8 @@ def test_the_later_titles_copied_header_words_are_read():
     Blades all five (`c64_save.Container.copied`) -- read here regardless of
     title, so `header` is never a title-shaped lookup for a caller."""
     savgam = _dos_savgam("curse-299-whole-engine-resave", "D")
-    state = neutral_save.from_dos(savgam)
-    assert set(state.header) == set(neutral_save.HEADER_ADDRESSES)
+    state = world_state.from_dos(savgam)
+    assert set(state.header) == set(world_state.HEADER_ADDRESSES)
 
 
 def _fresh_savgam() -> bytes:
@@ -148,7 +147,7 @@ def test_a_party_that_has_never_set_out_is_placed_at_the_start_of_the_story():
     arrival square, `areas.STARTS`'s own answer -- not the initialiser's
     `15,1` the raw file happens to hold at the same offset by coincidence,
     and not a refusal (`#301`, `#326`)."""
-    state = neutral_save.from_dos(_fresh_savgam())
+    state = world_state.from_dos(_fresh_savgam())
     assert state.set_out is False
     assert state.area == 0
     assert (state.x, state.y, state.facing) == (15, 1, 3)
@@ -163,17 +162,17 @@ def test_a_party_standing_in_the_world_is_left_where_it_is():
     start, _ = dos_savegame.SAVE_POOL_OF_RADIANCE.script_buffer
     savgam[start] = 0x01
     dos_savegame.put_word(savgam, dos.LATER_BEGUN_WORD, 255)
-    state = neutral_save.from_dos(bytes(savgam))
+    state = world_state.from_dos(bytes(savgam))
     assert state.set_out is True
     assert (state.x, state.y, state.facing) == (3, 9, 2)
 
 
 # ---------------------------------------------------------------------------
-# `PorSaveState` is `NeutralSave`, and the Amiga wrappers still refuse an
+# `PorSaveState` is `WorldState`, and the Amiga wrappers still refuse an
 # outdoor party
 # ---------------------------------------------------------------------------
 
-def test_por_save_state_is_neutral_save():
+def test_por_save_state_is_world_state():
     from goldbox import amiga
 
-    assert amiga.PorSaveState is neutral_save.NeutralSave
+    assert amiga.PorSaveState is world_state.WorldState

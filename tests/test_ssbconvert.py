@@ -38,7 +38,7 @@ import gamedata
 import pytest
 from test_neutral import _filled
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, games, neutral_save, savegame
+from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame, world_state
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 
@@ -684,10 +684,10 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     assert dos.never_adventured(bytes(savgam))
     # The refusal used to be `apply_file_cache`'s and `apply_position`'s own,
     # each independently calling `never_adventured`; both checks are
-    # `neutral_save.from_dos`'s `_resolve_dos_place` now, so building `state`
+    # `world_state.from_dos`'s `_resolve_dos_place` now, so building `state`
     # is where it fires -- once, rather than twice.
     with pytest.raises(dos.NotSetOutError) as raised:
-        neutral_save.from_dos(bytes(savgam), shape)
+        world_state.from_dos(bytes(savgam), shape)
     assert raised.value.player_message == (
         "This save has never been played yet. Wish does not yet support "
         "converting these saves.")
@@ -701,7 +701,7 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
     sg.put_word(savgam, sg.AREA, 0x10, shape)
     assert not dos.never_adventured(bytes(savgam))
-    state = neutral_save.from_dos(bytes(savgam), shape)
+    state = world_state.from_dos(bytes(savgam), shape)
     cont = c64_save.container_for(SSB_GAME)
     save0 = bytearray(cont.payload_size)
     dos.apply_file_cache(save0, state, cont)
@@ -727,4 +727,4 @@ def test_the_archives_shipped_silver_blades_party_is_one_that_has_not_set_out():
     assert sg.current_area(savgam) == 0
     assert dos.never_adventured(savgam)
     with pytest.raises(dos.NotSetOutError):
-        neutral_save.from_dos(savgam)
+        world_state.from_dos(savgam)

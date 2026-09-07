@@ -33,7 +33,7 @@ import pathlib
 import gamedata
 import pytest
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, games, neutral_save, savegame
+from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame, world_state
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 
@@ -320,7 +320,7 @@ def test_the_last_flag_word_reaches_the_c64_payload():
     savgam = bytearray(shape.size)
     off = sg.word_offset(0x4AFE, shape)
     savgam[off], savgam[off + 1] = 0xFF, 0x00
-    state = neutral_save.from_dos(bytes(savgam), shape)
+    state = world_state.from_dos(bytes(savgam), shape)
     save0 = bytearray(c64_save.CURSE_OF_THE_AZURE_BONDS.payload_size)
     window = c64_save.CURSE_OF_THE_AZURE_BONDS.quest_flags
     dos.apply_quest_flags(save0, state, window)
@@ -678,7 +678,7 @@ def test_a_curse_party_that_has_not_set_out_converts_to_the_start_of_area_1():
     savgam = _never_adventured_curse()
     assert sg.current_area(savgam) == 0
     assert dos.never_adventured(savgam)
-    state = neutral_save.from_dos(savgam, sg.SAVE_CURSE_OF_THE_AZURE_BONDS)
+    state = world_state.from_dos(savgam, sg.SAVE_CURSE_OF_THE_AZURE_BONDS)
     cont = c64_save.container_for(CURSE_GAME)
     save0 = bytearray(cont.payload_size)
     line = dos.apply_file_cache(save0, state, cont)

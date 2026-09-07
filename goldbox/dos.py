@@ -65,8 +65,8 @@ from . import (
     dos_savegame,
     games,
     neutral,
-    neutral_save,
     traits,
+    world_state,
 )
 from .c64_codec import Report
 from .dos_layout import (
@@ -3374,7 +3374,7 @@ def quest_flags(save: bytes,
     return bytes(out)
 
 
-def apply_quest_flags(save0: bytearray, state: "neutral_save.NeutralSave",
+def apply_quest_flags(save0: bytearray, state: "world_state.WorldState",
                       window: "tuple[int, int] | None" = None) -> int:
     """Copy the flags into a C64 payload. Returns bytes changed.
 
@@ -3382,7 +3382,7 @@ def apply_quest_flags(save0: bytearray, state: "neutral_save.NeutralSave",
     an address is the address less that title's own base.  `window` is the
     container's `quest_flags`; see :func:`quest_flags` for why it is per
     title.  `state.flags` is already narrowed to this title's own width
-    (`neutral_save.from_dos`), so nothing here reads `savgam` again.
+    (`world_state.from_dos`), so nothing here reads `savgam` again.
     """
     first, _size = window or (FLAGS_FIRST - SAVE0_BASE,
                               FLAGS_LAST - FLAGS_FIRST + 1)
@@ -3398,7 +3398,7 @@ def apply_quest_flags(save0: bytearray, state: "neutral_save.NeutralSave",
 CLOCK_LIMITS = (10, 10, 6, 24, 30, 12)
 
 
-def apply_clock(save0: bytearray, state: "neutral_save.NeutralSave"
+def apply_clock(save0: bytearray, state: "world_state.WorldState"
                 ) -> tuple[str, list[str]]:
     """Copy the DOS clock into a `SAVEDGAME0` payload, digit for digit.
 
@@ -3410,7 +3410,7 @@ def apply_clock(save0: bytearray, state: "neutral_save.NeutralSave"
 
     Returns the report line and any complaints, because a digit above what
     its field holds means the six words are not the clock we think they are.
-    `state.clock` is the same six digit words `neutral_save.from_dos` already
+    `state.clock` is the same six digit words `world_state.from_dos` already
     read, so nothing here reads `savgam` again.
     """
     digits = list(state.clock)
@@ -3428,7 +3428,7 @@ def apply_clock(save0: bytearray, state: "neutral_save.NeutralSave"
             warnings)
 
 
-def apply_position(save0: bytearray, state: "neutral_save.NeutralSave"
+def apply_position(save0: bytearray, state: "world_state.WorldState"
                    ) -> tuple:
     """Write the party's square and facing into `SAVEDGAME0`.
 
@@ -3458,7 +3458,7 @@ def apply_position(save0: bytearray, state: "neutral_save.NeutralSave"
     from it -- Curse's save holds `7,13` facing north and `BEGIN
     ADVENTURING` leaves the party at `7,13` facing east (#301).  Pool of
     Radiance's two readings agree, `15,1` facing west, so nothing moves
-    there.  `state.set_out` is `neutral_save.from_dos`'s own reading of that
+    there.  `state.set_out` is `world_state.from_dos`'s own reading of that
     same question, off the container rather than the area word (#326), so
     this no longer asks it a second time -- and `state.x`/`.y`/`.facing`
     already hold the start row's own square when it is false.
@@ -3978,7 +3978,7 @@ def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
     return geo
 
 
-def apply_file_cache(save0: bytearray, state: "neutral_save.NeutralSave",
+def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
                      container: "c64_save.Container | None" = None) -> str:
     """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
 
@@ -4001,7 +4001,7 @@ def apply_file_cache(save0: bytearray, state: "neutral_save.NeutralSave",
     two hold the same number wherever an area loads its own map, which is
     most of them, and part company in the training hall -- where a save read
     through `$49C5` alone converted to a party standing in New Phlan.
-    `state.geo` is already whichever of the two `neutral_save.from_dos`
+    `state.geo` is already whichever of the two `world_state.from_dos`
     resolved, so this reads it once rather than re-deriving it.
 
     **A save made before the party set out is placed at the start of the
@@ -4148,7 +4148,7 @@ class C64SaveReport(Report):
 
 
 def write_c64_save(save0: bytearray, save1: bytearray | None,
-                   state: "neutral_save.NeutralSave",
+                   state: "world_state.WorldState",
                    party: "list[DosCharacter]",
                    icon: "bytes | IconParts | None" = None,
                    animate: bytes | None = None,
@@ -4157,7 +4157,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     The engine `convert_save` and `new_save_from` share.  `state` is the
-    party's place and clock, `neutral_save.from_dos`'s reading of a
+    party's place and clock, `world_state.from_dos`'s reading of a
     `SAVGAM<slot>.DAT` rather than the bytes themselves -- the shape
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` needs once an
@@ -4210,7 +4210,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     # And the header bytes with a source in the DOS save and no attribution:
     # the party's own value at the same distance into the same ECL variable
     # array, rather than a zero nobody has measured for this title.  Header
-    # words and per-script scratch never overlap (`neutral_save.NeutralSave`),
+    # words and per-script scratch never overlap (`world_state.WorldState`),
     # so one merged mapping answers for both of `container.copied`'s kinds.
     sourced = {**state.header, **state.scratch}
     for at, size, why in container.copied:
@@ -4475,13 +4475,13 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
         f"SAVGAM{slot}{shape.suffix}")
-    state = neutral_save.from_dos(savgam_path.read_bytes(), shape,
+    state = world_state.from_dos(savgam_path.read_bytes(), shape,
                                   source=str(savgam_path))
     return write_c64_save(save0, save1, state, party, icon=icon,
                           animate=animate, portraits=portraits, game=container)
 
 
-def new_save_from(state: "neutral_save.NeutralSave",
+def new_save_from(state: "world_state.WorldState",
                   party: "list[DosCharacter]",
                   icon: "bytes | IconParts",
                   animate: bytes, portraits: PortraitTables | None = None,
@@ -4538,7 +4538,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
         f"SAVGAM{slot}{shape.suffix}")
-    state = neutral_save.from_dos(savgam_path.read_bytes(), shape,
+    state = world_state.from_dos(savgam_path.read_bytes(), shape,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
                          game=container)
@@ -5132,7 +5132,7 @@ def c64_title(save0: bytes, title=None) -> games.Game:
 
 
 def savgam_writes(savgam: bytearray, report: "SaveReport",
-                  state: "neutral_save.NeutralSave",
+                  state: "world_state.WorldState",
                   slot: str, count: int, script: "bytes | None", *,
                   portraits: bool = False, game=None,
                   dax: "int | None" = None) -> None:
@@ -5142,7 +5142,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     `report.sources`, so what is *not* written is countable afterwards --
     which is the whole of how "no template" is checked rather than asserted.
 
-    `state` is the party's place and clock, `neutral_save.from_c64`'s
+    `state` is the party's place and clock, `world_state.from_c64`'s
     reading of the C64 save rather than the payload itself -- the shape
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
     standing in the Slums on the Amiga arrives there under DOSBox)` needs
@@ -5522,7 +5522,7 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     return out, icons
 
 
-def write_dos_save_from(state: "neutral_save.NeutralSave",
+def write_dos_save_from(state: "world_state.WorldState",
                         characters: "Sequence[NeutralCharacter]",
                         template: str | pathlib.Path | None,
                         out: str | pathlib.Path,
@@ -5532,7 +5532,7 @@ def write_dos_save_from(state: "neutral_save.NeutralSave",
                         ) -> "SaveReport":
     """The engine `write_dos_save` and `new_dos_save_from` share.
 
-    Takes the place, the clock and the party as a `NeutralSave` and a
+    Takes the place, the clock and the party as a `WorldState` and a
     `list[NeutralCharacter]` already in DOS file order -- `c64_party`'s
     shape -- rather than a C64 payload, which is what
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
@@ -5798,7 +5798,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     not yet supply one is still in.
     """
     c64 = c64_title(save0, title)
-    state = neutral_save.from_c64(save0, game=c64)
+    state = world_state.from_c64(save0, game=c64)
     characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
     return write_dos_save_from(state, characters, template, out, slot, game,
                                icons=icons)
@@ -5823,7 +5823,7 @@ def _clear_slot(out: pathlib.Path, slot: str,
     return cleared
 
 
-def new_dos_save_from(state: "neutral_save.NeutralSave",
+def new_dos_save_from(state: "world_state.WorldState",
                       characters: "Sequence[NeutralCharacter]",
                       out: str | pathlib.Path, slot: str,
                       game: str | pathlib.Path,
@@ -5907,7 +5907,7 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     the difference between those two is invisible in the file.
     """
     c64 = c64_title(save0, title)
-    state = neutral_save.from_c64(save0, game=c64)
+    state = world_state.from_c64(save0, game=c64)
     characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
     return new_dos_save_from(state, characters, out, slot, game, icons=icons)
 
