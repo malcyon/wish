@@ -41,6 +41,7 @@ from . import actions, combat, live, rolls
 from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
+from .busguard import BusGuard
 from .combatlog import CombatLog, recase
 from .config import Settings, remember_geometry
 from .noteeditor import NotePopover
@@ -711,6 +712,14 @@ class AutomapBinding(QObject):
         #: be said on every tick for the rest of the session.
         self._said_wrong_game = False
         self._live_ticks = 0
+        #: One byte of `$DD00` before each tick, for a target whose reads stop
+        #: the processor (`halts_on_read`): the tick is skipped while the
+        #: drive is mid-transfer, because a stop inside a load hangs the C64
+        #: Ultimate -- `#375 (Wish has to work around the Ultimate freezing
+        #: the C64 mid-load, which hangs the game while the automapper
+        #: follows along)`. It reduces the rate and cannot end it; see
+        #: `automap/busguard.py`.
+        self.bus_guard = BusGuard()
         self.snapshot = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
@@ -826,8 +835,14 @@ class AutomapBinding(QObject):
             if self._drive:
                 self._try_connect()
             return
-        self._live_ticks += 1
         try:
+            if not self.bus_guard.clear(self.mapper.target):
+                # The drive is mid-transfer and every read would stop the
+                # processor inside it. Not a tick: the counter stays where it
+                # was, so the roster read lands on the next tick that runs
+                # rather than waiting out another whole cadence.
+                return
+            self._live_ticks += 1
             if self.poll_battle():
                 self._waiting = ""
                 return

@@ -13,11 +13,18 @@ copied onto the device.
 Expect to wait: the hazard is about one read in a thousand, so a session runs
 for tens of minutes rather than a few (§1, "What to expect").
 
-Measured on Donald's unit, **firmware 3.14**, 2026-09-07.
-`#375 (Wish has to work around the Ultimate freezing the C64 mid-load, which
-hangs the game while the automapper follows along)` is the ticket;
-`#286 (Pool of Radiance on the C64 Ultimate sometimes hangs on a disk load)`
-is how it was found and closes with the analysis.
+Measured on Donald's unit, 2026-09-07, **on two firmware releases**: the
+driven runs and his first reproduction by hand on **3.14 / FPGA 121 / core
+1.47**, and his second, following this page unchanged, on **1.1.0 / FPGA 122 /
+core 1.49** after the upgrade. The two hangs are byte for byte the same
+signature -- jiffy frozen across 45 s, `$DD00` `67` on six samples, `$DC0D`
+`81`, `$0314` still `$EA31` -- so all three version numbers moved and none of
+them changed it. `#375 (Wish has to work around the Ultimate freezing the
+C64 mid-load, which hangs the game while the automapper follows along)` is
+the ticket; `#286 (Pool of Radiance on the C64 Ultimate sometimes hangs on a
+disk load)` is how it was found and closes with the analysis.
+`docs/198-upstream-report-readmem-idle-bus.md` is the report drafted from
+this page for the 1541ultimate project.
 
 
 ## 1. The procedure
@@ -191,6 +198,33 @@ So those runs are **real negative results**, not artefacts. Check the bus and
 the screen before believing a verdict either way, and do not name a verdict
 after a register set that two different states share.
 
+### Two resting states, and why a bus check cannot trust one byte
+
+Anything that reads `$DD00` to decide whether the drive is busy -- the
+workaround in §5, or an upstream idle-bus wait done from the C64's side --
+has to know that **the game at rest shows two different values on this
+unit**, and one of them looks busy:
+
+| game at rest | `$DD00` | bus bits 3-7 | samples |
+|---|---|---|---|
+| after a KERNAL load | `$C4` (`$C7` in VIC bank 0) | nothing driven, both lines released | 162 of 373 over three runs, jiffy at full rate throughout, stretches of 101 s without a change |
+| with the game's own loader | `$10` | C64 holds CLOCK low, drive holds DATA low | 3 of 3 readings ten minutes apart, party idle in the Slums, 2026-09-04 (`work/c64u/240/hw-a` to `hw-c`, `cia2.bin`) |
+
+The second is also the KERNAL's between-bytes state while the C64 is sending
+a command, so no rule on a single byte separates "resting with the drive code
+loaded" from "mid-command". CONFIRMED that both rest states occur; PROBABLE,
+on the one session, that `$10` is the fastloader's rest rather than something
+else about that afternoon -- one `readmem` of `$DD00` with the party standing
+still and `DISABLE FASTLOADER` answered `N` would settle it, and `$C4` in the
+same state with it answered `Y`.
+
+What a bus check can do about it: treat only the released state as idle on
+sight, and a busy-looking value that **holds still** across several readings
+as a rest state. A transfer moves through seven bus states in milliseconds
+(565 changes in 1792 samples over one 40 s load, §"The serial bus" in
+`docs/177-a-load-that-goes-wrong.md`); the same reading three times over a
+second and a half is not one. `automap/busguard.py` does exactly that.
+
 
 ## 4. What it looks like when it goes
 
@@ -255,19 +289,32 @@ The cost is about 42 µs fixed plus 1.1 µs a byte. A KERNAL serial bit is 60–
 µs wide and the drive waits about a millisecond for each byte to be
 acknowledged, so a halt of milliseconds inside that exchange desynchronises it.
 
-**So what the workaround should do, in this order** — revised once the 64 KB
-run showed size does not order the hazard:
+**What the workaround does, in this order** — revised once the 64 KB run
+showed size does not order the hazard, and built 2026-09-07:
 
-1. **an upstream `readmem` that waits for an idle bus.** Only the firmware
+1. **An upstream `readmem` that waits for an idle bus.** Only the firmware
    knows when its own 1541 is on the wire, so only the firmware can close the
-   window. This is the actual fix and it helps every tool, not only ours;
-2. **a bus guard**, reading one byte of `$DD00` and skipping the rest of the
-   tick when the drive is mid-conversation. It races — a load starting between
-   the guard and the reads after it is still hit — but it addresses *when* a
-   read lands, which is what the evidence points at;
-3. **poll less**, which is linear help;
-4. **a size ceiling**, as hygiene rather than as the fix it was first taken
-   for.
+   window. This is the actual fix and it helps every tool, not only ours.
+   Not ours to build; `docs/198-upstream-report-readmem-idle-bus.md` is the
+   report, drafted and not yet sent.
+2. **A bus guard** — `automap/busguard.py`, one byte of `$DD00` before each
+   automapper tick, and the rest of the tick (four reads at rest, twelve on
+   a roster tick) is not taken while the drive is mid-conversation. **It
+   reduces the rate and cannot end it**: it races a load that starts after
+   the guard byte, a bus caught between bytes reads as released, and the
+   guard byte is itself a read. On the measured distribution of load states
+   it lets about seven per cent of mid-load ticks through, so during a load
+   the request count falls from about 5.6 a tick to about 1.4. The backend
+   turns it on with `halts_on_read = True` on its target; nothing turns it
+   on for VICE, which stops the machine to read anyway.
+3. **Poll less** — linear help, and Donald's choice rather than an agent's:
+   `default_interval_ms` on the Ultimate backend is 500 and has not been
+   moved.
+4. **A size ceiling** — hygiene only. `READ_CEILING` in `automap/busguard.py`
+   is the 7424-byte save payload, the largest read a tick makes on any
+   title, and `tests/test_busguard.py` holds every read of a walking,
+   roster and combat tick under it. No code splits a bigger read, because
+   the hazard looks per request and splitting would mean more of them.
 
 
 ## 6. What it is not
