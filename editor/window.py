@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import c64_codec
+from goldbox import c64_codec, classcode
 from goldbox import games as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
@@ -121,6 +121,39 @@ def _select(combo: QComboBox, value) -> None:
         at = combo.count() - 1
         _size_combo(combo)
     combo.setCurrentIndex(at)
+
+
+def _char_class_shown(raw, record, game):
+    """0x073, the code the Class combo shows -- `raw` unless the record's own
+    classes name a different one (#356).
+
+    Curse of the Azure Bonds' trainer leaves the byte stale: `GEN $1939`
+    stores the wrong register, so the code can go on naming a class the
+    roster (`editor/roster.py`'s `class_name`) no longer agrees the
+    character is. Donald ruled 2026-09-07 that the combo shows the class he
+    actually is, so this draws from `class_bits` the same way the roster
+    does, through `goldbox.classcode.repair` -- #310's own rule, not a
+    second one.
+
+    **Gated on `goldbox.c64_codec.record_shape(game).class_code_repairable`,
+    Curse only** -- the same gate the neutral reader uses. Pool of Radiance's
+    own disagreements between the two fields are not this bug (a DWARVEN
+    FIGHTER-shaped mismatch is legitimate, `docs/50-experiments.md`), and a
+    title nobody has measured the overlays of raises out of `record_shape`
+    rather than guessing, so that is read as "no known repair" too.
+    """
+    try:
+        repairable = c64_codec.record_shape(game).class_code_repairable
+    except KeyError:
+        repairable = False
+    if not repairable or not isinstance(raw, int):
+        return raw
+    try:
+        bits = int(record.get("class_bits") or 0)
+    except Exception:
+        return raw
+    want = classcode.repair(raw, bits, game=game)
+    return raw if want is None else want
 
 
 WOUNDED = QColor("#b03a2e")
@@ -1534,6 +1567,8 @@ class EditorBinding(QObject):
             except Exception as exc:
                 _log.debug("no %s on this record: %s", name, exc)
                 value = None
+            if name == "char_class":
+                value = _char_class_shown(value, record, member.game)
             if isinstance(w, QSpinBox):
                 if name in COMBAT_FIELDS and isinstance(value, int):
                     value = combat_value(value)

@@ -1073,6 +1073,75 @@ def test_the_two_class_fields_are_allowed_to_disagree(editor, save):
     assert again.party.member(1).record.get("class_bits") == before
 
 
+def _curse_trained_party_specimen():
+    """`WISH-SPEC-curse-trained-party`, verified against its own provenance
+    -- the same rule `tests/test_c64classcode.py`'s `_named_specimen_disk`
+    applies. A party this project trained at Curse's own hall, so its stale
+    `char_class` bytes are engine-written, not somebody's edit
+    (`docs/187-the-class-code-byte.md`)."""
+    import gamedata
+
+    from tools import specimens
+
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    found = sorted((root / "por-c64").glob(
+        "WISH-SPEC-curse-trained-party.[dD]64"))
+    if not found:
+        pytest.skip("needs specimen WISH-SPEC-curse-trained-party")
+    path = found[0]
+    prov = path.with_suffix(".provenance.toml")
+    recorded = specimens.read_provenance(prov).get("sha256", {})
+    actual = specimens.sha256_file(path)
+    if recorded.get(path.name) not in (None, actual):
+        pytest.fail("WISH-SPEC-curse-trained-party: "
+                     f"{path.name} has changed since it was recorded; "
+                     "run tools/specimens.py check")
+    return path
+
+
+def _row_named(party, name: str) -> int:
+    return next(i for i, m in enumerate(party.members)
+                if m.name.strip() == name)
+
+
+def test_the_class_combo_shows_the_class_the_roster_shows(app, tmp_path):
+    """#356. TRAVIS, on `WISH-SPEC-curse-trained-party`, is a dwarf thief
+    6 / fighter 5 (`class_bits` 0x0C) whose Curse trainer left `char_class`
+    at 0 -- the code table's CLERIC. The roster (`editor/roster.py`'s
+    `class_name`) already reads the bits and calls him FIGHTER/THIEF;
+    Donald's ruling, 2026-09-07, is that the Class combo shows the class he
+    actually is, so it must show FIGHTER/THIEF's code (14), the same one
+    `goldbox.classcode.code_for(0x0C, game=CURSE)` and
+    `tests/test_c64classcode.py::test_a_trained_curse_records_zeroed_code_reads_repaired`
+    derive, not the stale 0 on disk.
+
+    MARK, on the same disk, is the control: a paladin whose `char_class` (3)
+    already agrees with his `class_bits` (0x40), because Curse's trainer
+    never touched him (`docs/187-the-class-code-byte.md`) -- the combo must
+    keep showing 3.
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_trained_party_specimen()
+    editor = EditorBinding(make_root(), str(path))
+
+    travis = _row_named(editor.party, "TRAVIS")
+    assert editor.party.member(travis).record.get("char_class") == 0
+    assert editor.party.member(travis).record.get("class_bits") == 0x0C
+    editor.roster.selectRow(travis)
+    assert editor._widgets["char_class"].currentData() == 14
+    shown = editor._widgets["char_class"].currentText().lower()
+    assert "fighter" in shown and "thief" in shown
+    # Showing the repaired code must not touch the stored bitmask.
+    assert editor.party.member(travis).record.get("class_bits") == 0x0C
+
+    mark = _row_named(editor.party, "MARK")
+    editor.roster.selectRow(mark)
+    assert editor._widgets["char_class"].currentData() == 3
+
+
 @game_disks
 def test_choosing_an_alignment_reaches_the_disk(editor, save):
     from editor.window import EditorBinding
