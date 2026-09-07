@@ -374,9 +374,39 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
         dropped = dos.to_neutral(char).dropped
         assert not [d for d in dropped if "portrait" in d.lower()], \
             (shape.key, dropped)
-    pool = dos.DosCharacter(bytes(POOL.record_size), shape=POOL.key)
+    # Pool of Radiance is the control, and it needs a character who actually
+    # chose a face. An all-zero record carries position 0 in both fields,
+    # which is "no face" rather than "a face that could not cross" -- and
+    # since `#377 (A converted character with no portrait at all is shown a
+    # message saying its portrait could not be converted)` that is silent,
+    # correctly. Every real Pool of Radiance record on this machine holds
+    # 1/1, so the control is built that way.
+    # Pool of Radiance is the control, and it has to be a face the menu
+    # cannot answer for -- not "no face". This test used to build an all-zero
+    # record, whose position 0 means **no face chosen**, and assert two lines;
+    # since `#377 (A converted character with no portrait at all is shown a
+    # message saying its portrait could not be converted)` that is silent,
+    # correctly. Position 1 is no good either: it is a real menu entry and
+    # converts. So the control is a position past the end of the table.
+    raw = bytearray(POOL.record_size)
+    raw[0xBB] = 99                      # portrait_head, past the menu
+    raw[0xBC] = 99                      # portrait_body
+    pool = dos.DosCharacter(bytes(raw), shape=POOL.key)
+    assert pool.get("portrait_head") == 99, "the offsets moved"
     assert len([d for d in dos.to_neutral(pool).dropped
                 if "portrait" in d.lower()]) == 2
+
+    # And a face the menu *does* offer converts, with nothing said.
+    chose = bytearray(POOL.record_size)
+    chose[0xBB] = chose[0xBC] = 1
+    assert not [d for d in dos.to_neutral(
+        dos.DosCharacter(bytes(chose), shape=POOL.key)).dropped
+        if "portrait" in d.lower()]
+
+    # And the shape `#377` is about: no face chosen, nothing reported.
+    faceless = dos.DosCharacter(bytes(POOL.record_size), shape=POOL.key)
+    assert not [d for d in dos.to_neutral(faceless).dropped
+                if "portrait" in d.lower()]
 
 
 def test_the_identity_byte_is_digested_at_the_titles_own_offset():

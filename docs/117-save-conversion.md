@@ -1892,11 +1892,13 @@ graph LR
   dos -.->|deferred| d64
   dos --> dos_layout
   dos --> dos_savegame
+  dos --> encoding
   dos --> games
   dos --> iconparts
   dos -.->|deferred| icons
   dos -.->|deferred| items
   dos --> layout
+  dos --> levels
   dos --> neutral
   dos --> portraits
   dos --> record
