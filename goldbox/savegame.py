@@ -83,14 +83,54 @@ ROSTER_AREA_END = SAVE1_LOAD_ADDRESS + ROSTER_COUNT * ROSTER_STRIDE   # $8400
 # converts to DOS alive, because the reader never reads the four bytes past
 # 0x100).
 ROSTER_IN_USE = 0x00
-# Three bytes whose meaning is NOT established. They were read as the number of
-# spells memorised at levels 1, 2 and 3 -- which matches npc_party.d64 level by
-# level, and PORSAVE11 too, and is contradicted by PORSAVE4, where they read
-# 0/0/0 for a party with five spells memorised. That contradicting page is stale
-# (PORSAVE2-PORSAVE9 share one byte-identical roster), which weakens the
-# retraction without settling it. See docs/30-savegame-layout.md; the bytes are
-# carried through a round trip rather than interpreted.
-ROSTER_UNKNOWN_03 = 0x03
+# +0x01 and +0x02 are the character's slice of the party-wide **spell
+# memorisation queue** CAMP keeps at its own $2939: +0x01 the index of his first
+# entry, +0x02 how many entries are his. PROBABLE. CAMP $15A1 appends with
+# `STA $2939,X / INC $2894 / INC $6C02`, CAMP $15EB starts an empty character's
+# slice at the current end (`LDA $6C02 / BNE + / STX $6C01`), and CAMP $11FE
+# walks it (`LDX $6C02 / BEQ + / LDY $6C01 / LDA $2939,Y`). DUNGEON reuses both
+# bytes for something else entirely on a **monster's** block -- $1AB2/$1AB7 make
+# them a group link, and COM.PREP $1610 skips a slot whose +0x01 has bit 7 set
+# -- so this reading is about a party character's block only. The queue's own
+# contents live in CAMP and are not saved, which is not chased here.
+ROSTER_MEMORISE_QUEUE_AT = 0x01
+ROSTER_MEMORISE_QUEUE_COUNT = 0x02
+# **The count of memorised spells at each spell level**, level 1 at +0x03.
+# CONFIRMED, and the earlier retraction of exactly this reading is withdrawn:
+# what made PORSAVE4 read 0/0/0 beside a set memorised list is that nothing
+# recomputes the counters except the start of a fight.
+#
+# COM.PREP $15ED walks all 64 combat slots and, for each live one, clears nine
+# counters and rebuilds them from the record's own memorised-spell list at
+# 0x020: `LDX #$08 / LDA #$00 / STA $6C03,X / DEX / BPL` then `LDY #$50 /
+# LDX $6B20,Y / BEQ + / JSR $1751 / TAX / INC $6C02,X / DEY / BPL`. $1751 is the
+# spell-id-to-level classifier -- `LDA #$01 / CPX #$16 / ADC #$00 / CPX #$24 /
+# ADC #$00 / CPX #$38 / ADC #$00` -- whose three thresholds are goldbox.spells's
+# own _GROUPS_POOL boundaries, reached independently from the spell names. So
+# the counters are **derived from the list, not a second copy of it**, and a
+# save taken before the party's first fight since memorising holds whatever the
+# last fight computed. CAMP touches none of them.
+#
+# Measured in the running game, on the roster page sampled either side of one
+# fight (work/p235c64/run1/roster.jsonl, the #235 Slums ambush): +0x03 went 0
+# -> 1 for MALCYON and 0 -> 1 for LADY KATHERINE between "in the world" and
+# "fight begins", ROLAND's stayed at 3, and the three non-casters stayed at 0 --
+# which is the recompute from each of their memorised lists exactly. The save
+# the engine then wrote carries those values.
+#
+# The nine are levels 1-9, which is the family's width rather than this title's:
+# $1751 returns 1..4, so a Pool of Radiance character never fills past +0x06,
+# and COMBAT $1C57 stores a figure's map position over +0x0A/+0x0B during a
+# fight. Readers: COMBAT $09ED disables the combat CAST menu item when all nine
+# are zero, COMBAT $2348 gates a caster the same way and $2388 decrements one as
+# a spell is cast. See docs/30-savegame-layout.md.
+ROSTER_SPELL_COUNTS = 0x03
+ROSTER_SPELL_COUNTS_LEN = 9
+#: How many of the nine this title can fill -- see the classifier above.
+ROSTER_SPELL_COUNTS_POOL = 4
+# The old names, because `unknown_03_05` is a key in the YAML export and
+# renaming that changes a file format rather than a reading.
+ROSTER_UNKNOWN_03 = ROSTER_SPELL_COUNTS
 ROSTER_UNKNOWN_03_LEN = 3
 # The record's own `combat_side` at 0x10C, one byte before `ROSTER_SLOT_INDEX`
 # -- which side the character fights on and the quickfight flag, packed the
@@ -513,7 +553,9 @@ class RosterBlock:
     """One 32-byte party-roster entry, seen as a live view on its save.
 
     Writes go straight through to the parent `SaveGame1`, so bytes this class
-    does not understand -- fourteen of the thirty-two -- are never disturbed.
+    does not understand -- four of the thirty-two, +0x1C to +0x1F, which the
+    `SPELLE01` and `SPELLE02` spell overlays are the only things to name --
+    are never disturbed.
 
     This is where the game caches what it *derives*. Armour class and THAC0 are
     recomputed when equipment changes and never when an ability score changes,
@@ -690,11 +732,25 @@ class RosterBlock:
         return self._get(ROSTER_COMBAT_SIDE)
 
     @property
-    def unknown_03_05(self) -> tuple[int, ...]:
-        """The three bytes at +0x03-+0x05, whose meaning is not established.
+    def spell_counts(self) -> tuple[int, ...]:
+        """All nine per-level memorised-spell counters, level 1 first.
 
-        Exposed so they can be round-tripped and edited, not because we know
-        what they do. See `ROSTER_UNKNOWN_03`.
+        The number of spells the character has memorised at each spell level,
+        as `COM.PREP $15ED` last recomputed it from the record's own list at
+        `0x020`. Nothing but the start of a fight writes these, so a save taken
+        after memorising and resting still holds the previous fight's numbers.
+        See `ROSTER_SPELL_COUNTS`.
+        """
+        b = self._base + ROSTER_SPELL_COUNTS
+        return tuple(self._data[b:b + ROSTER_SPELL_COUNTS_LEN])
+
+    @property
+    def unknown_03_05(self) -> tuple[int, ...]:
+        """The first three of `spell_counts` -- levels 1, 2 and 3.
+
+        The name is the YAML export's key and is kept for that; the bytes are
+        no longer unknown. Pool of Radiance reaches level 4 at +0x06 for spell
+        id 56 alone, so three covers every value any save here holds.
         """
         b = self._base + ROSTER_UNKNOWN_03
         return tuple(self._data[b:b + ROSTER_UNKNOWN_03_LEN])

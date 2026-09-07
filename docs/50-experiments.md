@@ -1833,14 +1833,13 @@ actually written** and fails only where the page is stale. "They read 0/0/0 for 
 party with five spells memorised" is true, and it is a statement about a cache
 that had not been refreshed since before those spells were chosen.
 
-**Status: still not restored, but only just.** The bytes stay `unknown_03_05`
-in `wish` and UNKNOWN in the docs. Two things are missing. The three bytes have
-never been seen holding **different** values from each other in one of our own
-saves, so "level 1, level 2, level 3" rests on `npc_party.d64` alone; and what
-triggers the refresh is not established, so "the cache was stale" is still an
-explanation reached for rather than tested. What settles both at once is a save
-taken straight after memorising, with a caster who memorises at **two different
-spell levels**.
+**Status: restored, and the two missing things are supplied below.** What was
+missing when this was written was the trigger for the refresh, and it turns out
+the code says it outright — see
+[The spell counts, settled out of the engine's own recompute](#the-spell-counts-settled-out-of-the-engines-own-recompute)
+immediately after this section. The reading is CONFIRMED and `+0x03` onwards are
+nine counters, not three. This paragraph used to say the bytes stayed
+`unknown_03_05` and UNKNOWN in the docs; they no longer are.
 
 **The stale cache from the thirteen-field edit has refreshed, and it landed
 exactly where `wish` predicted.** This is the largest thing in the save.
@@ -1901,6 +1900,118 @@ the refresh.
   silver spent and experience gained and nothing else; his current hit points,
   5 of 7, are in the roster. If the game records having died, or having been
   restored, it is not in the character record.
+
+---
+
+## The spell counts, settled out of the engine's own recompute
+
+**Prompted by** `#365 (Three roster bytes have no established meaning, and a C64
+party converted to DOS is told so with no way to check it)`, filed while
+`#355 (A C64 party converted to DOS is shown nine developer notes, with memory
+addresses, overlay names and issue numbers in them)` was rewording the drop
+pane. The pane was telling a player three bytes of his roster were left behind
+and nobody could say what they were.
+
+**Method: the code first**, which is what
+[`.claude/rules/testing.md`](../.claude/rules/testing.md) asks for when no
+specimen can be trusted, and what the section above never did. The roster block
+is resident at `$6C00`–`$6C1F` while the game runs (`LIBRARY $3189`/`$319A` copy
+it in and out of `$8300 + N*$20`), so the question is which overlays name
+`$6C03` and its neighbours. `tools/absrefsweep.py pool-of-radiance 6C00 6C1F`
+over all 564 files answers it in one command.
+
+**Result 1. Three references, and none of them is to a single byte.**
+
+| address | refs | where |
+|---|---|---|
+| `$6C03` | 3 | `COM.PREP` `STA $6C03,X`, `COMBAT` `LDA $6C03,X`, `DUNGEON` `DEC $6C03,X` |
+| `$6C04`–`$6C09` | **0** | nothing anywhere names them |
+| `$6C02` | 22 | of which `COM.PREP $162A` `INC $6C02,X`, `COMBAT $2348` `LDA $6C02,Y`, `COMBAT $2388` `DEC $6C02,X` are indexed |
+
+All three `$6C03` sites are `,X` with `X` running 0 to 8, which is what says the
+field is **nine bytes**, `+0x03` to `+0x0B`, and why the six in the middle are
+never named on their own.
+
+**Result 2. `COM.PREP $15ED` is the recompute, and it is unambiguous.** It walks
+`$6DB4` from `$3F` down to 0 — all sixty-four combat slots — skipping empty ones
+(`LDA $6C00 / BEQ`), out-of-play ones (`BMI`) and monster-group followers
+(`LDA $6C01 / BMI`). For each survivor it clears the nine and counts the
+memorised list:
+
+```
+$1615  LDX #$08 / LDA #$00 / STA $6C03,X / DEX / BPL
+$161F  LDY #$50 / LDX $6B20,Y / BEQ + / JSR $1751 / TAX / INC $6C02,X / DEY / BPL
+```
+
+`$6B20` is the resident record's `0x020` and `#$50` is its eighty-first slot,
+the same immediate `tools/memorisedwidth.py` reads the field's width from.
+`$1751` is `LDA #$01 / CPX #$16 / ADC #$00 / CPX #$24 / ADC #$00 / CPX #$38 /
+ADC #$00`, so the level is `1 + (id≥22) + (id≥36) + (id≥56)` — which is
+`goldbox/spells.py`'s `_GROUPS_POOL` boundaries, arrived at from the spell names
+with no sight of this routine. Two independent derivations of the same four
+numbers.
+
+`COM.PREP $0911` calls it on the overlay's own main line, right before
+`JSR $4225` loads `COMBAT`, and the only branch around it is
+`JSR $1341 / BEQ`, which is "is there anybody alive to fight".
+
+**Result 3. That is the answer to `PORSAVE4`, and the retraction was wrong.**
+Nothing in `CAMP` touches the counters — every one of `CAMP`'s references to
+`$6C01`/`$6C02` is to those two bytes themselves, the memorisation queue slice,
+and none is indexed. So memorising and resting fills `0x020` and leaves the
+counters holding the previous fight's numbers. `PORSAVE4` reads `0/0/0` because
+it was saved after a rest and before the next fight, which is exactly the "the
+cache was stale" explanation the section above refused to accept without
+evidence. The evidence is the absence of a writer.
+
+**Result 4. Watched happening, at no emulator cost.** `work/p235c64/run1/
+roster.jsonl` — the `#235 (Two unattributed DOS byte ranges in the combat tail
+are dropped converting to C64, and nobody knows what they hold)` Slums ambush on
+`PORSAVE13`, driven by `tools/statusdrive.py`, which samples the whole roster
+page before the fight, on every turn and after it. Nobody had read these four
+bytes out of it.
+
+| block | `+0x03`–`+0x06` in the world | at "fight begins" | recompute from `0x020` |
+|---|---|---|---|
+| 0 MALCYON | 0 0 0 0 | **1** 0 0 0 | 1 0 0 0 |
+| 1 LADY KATHERINE | 0 0 0 0 | **1** 0 0 0 | 1 0 0 0 |
+| 2 ROLAND | 3 0 0 0 | 3 0 0 0 | 3 0 0 0 |
+| 3–5 SILAS, MAGNUS, BRUTUS | 0 0 0 0 | 0 0 0 0 | 0 0 0 0 |
+
+One known change — a fight started — and the delta is in exactly the two bytes
+whose stored value disagreed with the recompute, landing on the recomputed
+value. The save the engine wrote at the end of that fight carries `1 1 3`.
+
+**Result 5. A census, and the one number that carries it.**
+`tools/rosterspellcount.py` compares stored against recomputed for every
+occupied roster block it can find.
+
+| corpus | blocks | nothing memorised | agree | all-zero | partly behind | **higher than the list** |
+|---|---|---|---|---|---|---|
+| 24 of the player's save disks | 144 | 89 | 10 | 40 | 5 | **0** |
+| `~/wish-specimens/por-c64` | 30 | 27 | 3 | 0 | 0 | **0** |
+
+**0 of 55** stored counters anywhere exceed what the memorised list says. A
+cache rebuilt at a fight and only decremented afterwards can be behind the list
+and cannot be ahead of it, and that is the shape the whole corpus has. The
+player's disks are untrusted, which is why the claim rests on the code and the
+driven fight; the census is corroboration, and a single counter above its list
+would have refuted the reading outright.
+
+**A defect found on the way.** `DUNGEON $0F99` is `DEC $6C03,X` where the other
+three sites are `$6C02,X`, and the table it indexes with holds the spells' own
+levels — `02` for `KNOCK` and `03` for `DISPEL MAGIC`, the two spells the locked
+door menu offers. So casting `KNOCK` at a door decrements the level-3 counter.
+Nothing a player sees comes of it, because the next fight rebuilds all nine;
+`docs/125-bug-notes.md` N20.
+
+**What was still not established.** Whether the later titles widen the field —
+Curse of the Azure Bonds has fifth-level spells and its classifier will have
+more thresholds, so `COM.PREP`'s equivalent there wants the same read before any
+Curse conversion leans on this. And roster `+0x01`/`+0x02`, the memorisation
+queue slice, are PROBABLE rather than CONFIRMED: the queue's own contents live
+in `CAMP`'s `$2939` and are not saved, and what happens to a slice pointing into
+a queue that a reload did not restore is not chased here.
 
 ---
 

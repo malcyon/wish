@@ -430,9 +430,10 @@ self-checking against `docs/20-character-record.md`.
 | Offset | Field | Confidence | Notes |
 |---|---|---|---|
 | `+0x00` | **status** | CONFIRMED | `roster_in_use` in `goldbox/layout.py`, and the name is now wrong. 0 empty, 1 `OK`, `$82` `GONE`, `$83` `DEAD`, `$84` `DYING`, `$85` `UNCONSIOUS`, `$86` `RUNNING`, `$87` `STONED` -- the game's own seven names, indexed `AND #$07` by `LIBRARY $38BE`, and bit 7 is a separate out-of-play flag. Watched going `01` -> `84` when an orc reached a character's last hit point and `84` -> `85` when the fight ended, and `85` is what the engine saved: [`128`](128-guide-and-scripting.md) §"The status byte" |
-| `+0x03` | spells memorised, **1st level** | PROBABLE | see below |
-| `+0x04` | spells memorised, **2nd level** | PROBABLE | |
-| `+0x05` | spells memorised, **3rd level** | PROBABLE | |
+| `+0x01` | first entry in the memorisation queue | PROBABLE | this character's slice of the party-wide queue `CAMP` keeps at its own `$2939`. `CAMP $15A1` appends, `$15EB` starts an empty character's slice at the current end, `$11FE` walks it. `DUNGEON $1AB2`/`$1AB7` reuse both bytes as a monster group link, and `COM.PREP $1610` skips a slot whose `+0x01` has bit 7 set |
+| `+0x02` | how many entries are his | PROBABLE | |
+| `+0x03`-`+0x0B` | spells memorised, **one byte per spell level** | CONFIRMED | levels 1 to 9. Recomputed from the record's own list at `0x020` at the start of every fight and at no other time — see below |
+| `+0x0A`-`+0x0B` | a combat figure's map position, during a fight | PROBABLE | `COMBAT $1C57` is `STX $6C0A / STA $6C0B` and `$2A38` reads the pair back into `$FB`/`$FC`. These are the level-8 and level-9 counters, which Pool of Radiance can never fill |
 | `+0x0C` | **quickfight**, bit 7 | CONFIRMED | set by QUICK, read by `COMBAT` at the start of the next fight, never cleared. See [`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3 |
 | `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot — 29 of 29 saves on this machine, 0 mismatches. **Not the marching order**: it stayed 0..5 through three in-game reorders while the records themselves moved between slots (`#160 (The automapper and the editor list the party backwards)`) |
 | `+0x0E` | **THAC0**, stored as `60 - THAC0` | PROBABLE | see below |
@@ -444,45 +445,78 @@ self-checking against `docs/20-character-record.md`.
 | `+0x19` | **current hit points** | CONFIRMED | |
 | `+0x1B` | **movement rate** | CONFIRMED | 12 normally, 9 in banded mail |
 
-### `+0x03`-`+0x05`: retracted as the spell counts, and not settled since
+### `+0x03` onwards: the spells memorised at each spell level
 
-These three bytes were written up as the number of spells memorised at levels 1,
-2 and 3. **That reading is wrong**, and it is worth keeping the whole story
-because it is a good example of a hypothesis that sparse data agreed with.
+**CONFIRMED, and the retraction that stood here is withdrawn.** These are nine
+counters, one per spell level, and the reason a save can hold `0/0/0` beside a
+full memorised list is that **only the start of a fight ever writes them**.
 
-The evidence for it was `npc_party.d64`, where all eight characters fit
-perfectly: every non-caster read `0/0/0`, and for the four casters the sum of the
-three bytes equalled the number of ids in their memorised list exactly -- 13 for
-SIMON, 11 for DIRTEN, 8 for XAVIER, 5 for GENHEERIS. Four for four, at four
-different values.
+`COM.PREP $15ED` walks all sixty-four combat slots and, for each live one,
+clears the nine and rebuilds them from the character record's own memorised list
+at `0x020`:
 
-Then Donald memorised spells on three characters **and rested**, and saved. The
-memorised lists at record offset `0x020` filled in as expected. The roster page
-did not change *at all* -- it is byte-identical to the save before it, and these
-three bytes still read `0/0/0` for a party with five spells memorised between
-them.
+```
+$1615  LDX #$08 / LDA #$00 / STA $6C03,X / DEX / BPL      clear +0x03..+0x0B
+$161F  LDY #$50 / LDX $6B20,Y / BEQ + / JSR $1751 / TAX
+       INC $6C02,X / DEY / BPL                            count by level
+```
 
-So whatever they are, they are not a straightforward count of the list at
-`0x020`. `wish` exports them as `unknown_03_05` rather than pretend otherwise.
+`$6B20` is the resident record's `0x020` and `#$50` is its eighty-first slot,
+the same immediate `tools/memorisedwidth.py` reads the field's width from.
+`$1751` gives a spell id its level:
 
-*An earlier version of this document explained the discrepancy as "memorised but
-not yet rested". Donald had rested. The explanation was invented to save the
-hypothesis, which is exactly what it should not have been used for.*
+```
+$1751  LDA #$01 / CPX #$16 / ADC #$00 / CPX #$24 / ADC #$00 / CPX #$38 / ADC #$00
+```
 
-**A later reading weakens the retraction without overturning it.** Two things
-came out of `PORSAVE11`, the save that had never been read. The per-level
-agreement on `npc_party.d64` is sharper than was recorded — the three bytes
-match the ids **level by level**, eight characters for eight, not merely in
-sum — and in `PORSAVE11` ROLAND's three level-1 cleric spells sit beside a
-`+0x03` of 3 while both magic-users, whose lists are now empty, read 0. Against
-that, the contradicting save is a **single** observation: the roster page is
-byte-identical across `PORSAVE2` through `PORSAVE9`, so it was written once, on
-an equipment change, and was stale for everything that happened afterwards —
-which is the caching behaviour armour class already shows. The bytes stay
-unknown, because "the cache was stale" is exactly the kind of explanation that
-rescued the hypothesis last time. What settles it is a save taken straight after
-memorising at two different spell levels. See
-[the spell counts, and how thin the retraction was](50-experiments.md).
+so id 1-21 is level 1, 22-35 level 2, 36-55 level 3 and 56 level 4 — which are
+`goldbox/spells.py`'s `_GROUPS_POOL` boundaries exactly, arrived at from the
+spell names with no sight of this routine. `COMBAT $26FE` is the same function
+again, spelled with `CPY`.
+
+Three sites read or change a counter, and all three index from `$6C02` by the
+spell's level, so level 1 lands on `+0x03`:
+
+| where | what it does |
+|---|---|
+| `COMBAT $09ED` | `LDX #$08 / LDA $6C03,X / BNE +` — all nine zero disables the combat `CAST` menu item, by `AND`ing `$EF` into the menu mask at `$48F8` |
+| `COMBAT $2348` | `LDA $6C02,Y` with `Y` the spell's level, gating a caster the same way |
+| `COMBAT $2388` | `DEC $6C02,X` as a spell is cast |
+
+**Nothing in `CAMP` touches them.** Memorising and resting fills the list at
+`0x020` and leaves the counters holding whatever the previous fight computed,
+which is the whole of the `PORSAVE4` contradiction: it was saved after a rest
+and before the next fight. The counters are a cache of the list, the same way
+armour class is a cache of what is worn.
+
+**Watched happening.** The roster page sampled either side of one fight —
+`work/p235c64/run1/roster.jsonl`, the `#235 (Two unattributed DOS byte ranges in
+the combat tail are dropped converting to C64, and nobody knows what they hold)`
+Slums ambush on `PORSAVE13` — has `+0x03` going `0` → `1` for MALCYON and `0` →
+`1` for LADY KATHERINE between "in the world" and "fight begins", ROLAND's
+staying at `3`, and the three non-casters staying at `0`. That is the recompute
+from each of their memorised lists exactly, and the save the engine then wrote
+carries it.
+
+**Census.** `tools/rosterspellcount.py` compares the stored counters against the
+recompute for every occupied roster block it can find. Over 24 of the player's
+own save disks, 144 blocks: 89 have nothing memorised, and of the 55 that have
+something to count, 10 agree exactly, 40 hold all zeroes and 5 are partly
+behind. **0 of the 55 hold a counter higher than the list**, which is what a
+cache that is rebuilt at a fight and only ever decremented afterwards looks
+like. The `porunconscious1` specimen, made by driving that same fight, agrees at
+3 of 3.
+
+The nine are levels 1-9 — the family's width, not this title's. `$1751` returns
+1 to 4, so a Pool of Radiance character never fills past `+0x06`, and `COMBAT
+$1C57` stores a figure's map position over `+0x0A`/`+0x0B` during a fight. The
+`porunconscious1` specimen is one fight ending with five characters standing and
+BRUTUS unconscious, and **exactly one of its six blocks carries a pair there**:
+BRUTUS's, reading `28`/`13`. Everyone else's is `0`/`0`.
+
+`DUNGEON` decrements the wrong one when the party casts `KNOCK` or `DISPEL` at a
+door; `docs/125-bug-notes.md` N-entry has it, and nothing a player sees comes of
+it, because the next fight recomputes all nine.
 
 **Where the spell data actually lives**, both in the character record:
 

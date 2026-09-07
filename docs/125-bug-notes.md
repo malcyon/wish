@@ -501,6 +501,37 @@ copying it. Measured for `#225 (A shopped Curse character's stored encumbrance
 is three tenths above the sum)`; how much the shop takes, and why it is always
 three, is bug 11 in [`../goldbox-bugs.md`](../goldbox-bugs.md).
 
+## N20. `KNOCK` at a door decrements the wrong spell-level counter
+
+**What the game does.** The C64's locked-door menu — `BASH`, `PICK LOCK`,
+`KNOCK`, `DISPEL`, `QUIT` — consumes the spell it casts twice over: it zeroes
+the id in the caster's memorised list at record `0x020`, which is right, and it
+decrements the caster's per-level memorised counter in the roster block, which
+lands one level too high. Casting `KNOCK`, a second-level spell, takes one off
+the **third**-level counter; casting `DISPEL MAGIC`, a third-level spell, takes
+one off the **fourth**.
+
+**What it should do.** Decrement the counter for the spell's own level.
+
+**The evidence.** Three sites reach the counters by level and three of them
+index from `$6C02`, so level 1 lands on roster `+0x03`: `COM.PREP $162A` is
+`INC $6C02,X`, `COMBAT $2388` is `DEC $6C02,X`, and `COMBAT $2348` reads
+`LDA $6C02,Y`. `DUNGEON $0F99` is `DEC $6C03,X`. Its `X` comes from
+`LDX $1008,Y` with `Y` the menu item, and the two bytes there read `02` and
+`03` — the **levels** of the two spells, since `DUNGEON $1028` sets the menu up
+with spell id `$1F` (`KNOCK`, magic-user 2) and `$2E` (`DISPEL MAGIC`,
+magic-user 3, falling back to the cleric `$29`). So the table holds the right
+numbers and the instruction applies them to the wrong base. CONFIRMED from the
+bytes; not reproduced in play, because there is nothing to see.
+
+**Why no player sees it.** Nothing reads a counter outside a fight, and
+`COM.PREP $15ED` clears all nine and rebuilds them from the memorised list
+before every fight begins. The wrong value survives only until the party is next
+attacked, and reaches a save disk only if the player saves in between — where it
+shows up as a counter that disagrees with the list, which is the ordinary state
+of that field anyway. `docs/30-savegame-layout.md`,
+`tools/rosterspellcount.py`.
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of
@@ -666,15 +697,21 @@ damning than the evidence supports, and because the failure modes repeat.
 | The 1989 BASIC editor wrongly lists class codes 3, 4 and 5 as `MAGIC-USER` | The game's, not the editor's — and not a bug either. See *Unfinished, not broken* |
 | `WALLDEF`'s colours decode wrongly, so the format is not understood | Ours. `$7A00` is a general RLE expander and its encoding is **count-then-value**; we had it the other way round, and 548 of 780 bytes came out wrong |
 | The C64's Ring of Fire Resistance grants nothing, so the ring is a shipped bug | Ours, mostly. Four of the disks' five records grant effect 61; `load_item_templates` kept the **first** record it met for a printed name and POOL3 sorts before POOL4, so every reading of "the shipped template" was the one flattened copy. The editor handed that copy out to players. `docs/183-the-two-rings-of-fire-resistance.md` |
-| Roster bytes `+0x03`–`+0x05` are memorised-spell counts | Ours. They matched for all four casters on one disk. A controlled test — memorise five spells across three characters, rest, save — produced a byte-identical roster page still reading `0/0/0` |
+| Roster bytes `+0x03`–`+0x05` are **not** memorised-spell counts, because a rest-and-save left them at `0/0/0` | Ours, and this row used to say the opposite. They *are* the counts: `COM.PREP $15ED` rebuilds nine of them from the memorised list at the start of every fight and **nothing else ever writes them**, so a save taken after a rest and before the next fight holds the previous fight's numbers. The controlled test was right about the bytes and wrong about what writes them, and a retraction is a claim that needs its own evidence. `docs/30-savegame-layout.md`, `#365 (Three roster bytes have no established meaning, and a C64 party converted to DOS is told so with no way to check it)` |
 | The combat log picks up garbage because something else is rewriting the file | Ours, twice, both in `automap/combatlog.py`, and both only visible against a running fight |
 | Driving the game wedges at the training hall, four runs running | Ours. Four runs of one wrong assumption is not four pieces of evidence; the training schools are not on that square and not in that area at all |
 
-The pattern worth carrying away is in three of those rows: **a hypothesis that
-sparse data agrees with has not been tested.** The `$400` slot stride survived
-because every specimen then held at most two characters. The spell counts
-survived because four casters agreed. The four-byte level array survived because
-Pool of Radiance never fills the other four slots.
+The pattern to carry away is in three of those rows: **a hypothesis that sparse
+data agrees with has not been tested.** The `$400` slot stride survived because
+every specimen then held at most two characters. The four-byte level array
+survived because Pool of Radiance never fills the other four slots. Wall colours
+survived because count-then-value and value-then-count decode the same run of
+two identical bytes.
+
+**The spell-counts row is the mirror image and cost a year.** One controlled
+observation retracted a reading that was right, because nobody asked *what
+writes the field* before concluding the field was not what it looked like. A
+retraction needs its own evidence exactly as much as the claim it overturns.
 
 ---
 

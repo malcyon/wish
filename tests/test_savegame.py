@@ -354,10 +354,20 @@ class TestStagingPage:
 
 
 class TestRosterSpellCounts:
-    """+0x03-+0x05 were read as per-level counts of the memorised list, and
-    retracted. The evidence on both sides is pinned here so neither is lost.
-    See docs/50-experiments.md, "the spell counts, and how thin the retraction
-    was"."""
+    """Roster +0x03 onwards **are** per-level counts of the memorised list, and
+    the retraction that used to be pinned here is withdrawn.
+
+    `COM.PREP $15ED` clears nine of them and rebuilds them from the record's
+    list at 0x020 for every live combatant at the start of a fight, and nothing
+    else ever writes them -- which is why a save taken after a rest can read
+    0/0/0 beside a full list. Both halves of the old argument are still tested
+    below, because the saves that produced them have not changed; what has
+    changed is which of them needed explaining.
+
+    See docs/50-experiments.md, "The spell counts, settled out of the engine's
+    own recompute", and #365 (Three roster bytes have no established meaning,
+    and a C64 party converted to DOS is told so with no way to check it).
+    """
 
     DISKS = str(disk_dir() or "no-disks-here")
 
@@ -392,13 +402,84 @@ class TestRosterSpellCounts:
         for slot in sg0.characters:
             assert self._by_level(slot.record) == sg1.roster(slot.index).unknown_03_05
 
-    def test_but_porsave4_does_not(self):
-        """The observation that retracted the reading. ROLAND holds three
-        level-1 cleric spells and the roster reads 0/0/0."""
+    def test_porsave4_is_a_save_between_a_rest_and_a_fight(self):
+        """The observation that retracted the reading, and what it really
+        shows. ROLAND holds three level-1 cleric spells and the roster reads
+        0/0/0, because nothing but the start of a fight writes the counters and
+        this save was taken after memorising and resting."""
         sg0, sg1 = self._pair(f"{self.DISKS}/PORSAVE4.D64")
         roland = next(s for s in sg0.characters if s.record.name == "ROLAND")
         assert self._by_level(roland.record) == (3, 0, 0)
         assert sg1.roster(roland.index).unknown_03_05 == (0, 0, 0)
+
+    def test_the_classifier_is_the_engines_own(self):
+        """tools/rosterspellcount.py reads the level off COM.PREP $1751's three
+        thresholds; goldbox/spells.py reads it off the spell names. They are
+        two derivations of the same four bands and must not drift apart."""
+        from goldbox.spells import POOL_OF_RADIANCE, spell_group
+        from tools.rosterspellcount import spell_level
+
+        checked = 0
+        for low, high, _cls, level in POOL_OF_RADIANCE.groups:
+            for spell_id in range(low, high + 1):
+                assert spell_level(spell_id) == level, spell_id
+                assert spell_group(spell_id)[1] == level
+                checked += 1
+        assert checked == 55        # ids 1-55; 56 is RESTORATION, in no group
+
+    def test_a_specimen_written_after_a_fight_holds_the_recompute(self):
+        """porunconscious1 was made by driving the party into the Slums ambush
+        and saving afterwards, so its counters are what COM.PREP computed --
+        the case the player's own disks cannot supply, since nobody watched
+        them being written."""
+        from goldbox.c64_codec import get_memorised
+        from tools import specimens
+        from tools.rosterspellcount import recompute
+
+        disk = next((path
+                     for entry in specimens.list_specimens()
+                     if entry.get("name") == "porunconscious1"
+                     for path in entry["_files"]
+                     if path.name.lower().endswith(".d64")), None)
+        if disk is None:
+            pytest.skip("no porunconscious1 specimen; "
+                        "tools/statusdrive.py --victim 5 makes one")
+        sg0, sg1 = self._pair(str(disk))
+        casters = 0
+        for slot in sg0.characters:
+            # Four, because COM.PREP $1751 returns 1..4 and no Pool of Radiance
+            # spell reaches level 5. +0x0A and +0x0B are the levels the title
+            # cannot fill and COMBAT $1C57 borrows them; the next assertion is
+            # that borrowing.
+            stored = sg1.roster(slot.index).spell_counts[:4]
+            wanted = recompute(get_memorised(slot.record))[:4]
+            assert list(stored) == wanted, slot.record.name
+            casters += 1 if any(wanted) else 0
+        assert casters == 3        # MALCYON, LADY KATHERINE, ROLAND
+
+    def test_the_unconscious_character_keeps_his_place_on_the_combat_map(self):
+        """+0x0A/+0x0B are levels 8 and 9, which this title never fills, and
+        COMBAT $1C57 stores a figure's map position over them (`STX $6C0A /
+        STA $6C0B`, read back at $2A38 into $FB/$FC). In porunconscious1 -- one
+        fight, five characters standing and BRUTUS unconscious at the end --
+        exactly one block carries a pair there, and it is his."""
+        from tools import specimens
+
+        disk = next((path
+                     for entry in specimens.list_specimens()
+                     if entry.get("name") == "porunconscious1"
+                     for path in entry["_files"]
+                     if path.name.lower().endswith(".d64")), None)
+        if disk is None:
+            pytest.skip("no porunconscious1 specimen; "
+                        "tools/statusdrive.py --victim 5 makes one")
+        sg0, sg1 = self._pair(str(disk))
+        pairs = {s.record.name: tuple(sg1.roster(s.index).raw[0x0A:0x0C])
+                 for s in sg0.characters}
+        assert [n for n, v in pairs.items() if any(v)] == ["BRUTUS"]
+        assert pairs["BRUTUS"] == (28, 13)
+        brutus = next(s for s in sg0.characters if s.record.name == "BRUTUS")
+        assert sg1.roster(brutus.index).roster_in_use == 0x85   # UNCONSIOUS
 
     def test_the_contradicting_page_is_one_observation_not_eight(self):
         """PORSAVE2-PORSAVE9 share a byte-identical roster page, so the reading
