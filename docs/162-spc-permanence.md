@@ -137,6 +137,18 @@ including an editor's Detect Magic.
   exist are ours (`INNATE_EFFECTS`) and Curse's importer's.
 * **The ECL VM adds no effects.** None of the 38 `add_affect` call sites
   falls in the VM's overlay unit (`GAME.OVR` `0xD46`-`0x4253`).
+* **The engine does not put a class's own record back when it is missing.**
+  A DOS save the game itself wrote in Curse of the Azure Bonds -- slot D of
+  `WISH-SPEC-curse-52-dialog-converted-resave`, loaded through LOAD SAVED
+  GAME, walked two squares and saved with ENCAMP > SAVE -- holds MATHEW and
+  MARK, both paladin 5, with no `.FX` file at all, because the conversion
+  that built its input dropped id 8 (`#388 (A converted paladin or ranger
+  loses his innate effect on the way to DOS, because the writer filters
+  through Pool of Radiance's id list)`). Loading, walking and saving did
+  not recreate it. So a `.SPC`/`.FX` record is written once, at creation or
+  by the grant, and never re-derived from the class: an innate effect a
+  conversion fails to write is gone for that character until something
+  writes the record. Measured 2026-09-07, one save, two paladins.
 * **`MON*SPC.DAX`, the authored NPC effect files, were not read**:
   `goldbox.dos_savegame.dax_unpack` rejects their blocks ("copy of 7 bytes at
   62 runs 2 past the end"), so whether an authored NPC effect can carry a
