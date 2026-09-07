@@ -282,7 +282,12 @@ def test_the_converted_record_says_what_the_dos_one_said():
         assert rec.hp_max == char.get("hp_max")
         assert rec.get("hp_current") == char.get("hp_current")
         assert rec.level == char.get("level")
-        assert rec.thac0_base == char.get("thac0_base")
+        # `#366 (A converted magic-user or thief arrives with the other
+        # port's THAC0, because the two ports ship different tables and
+        # the conversion copies the byte)`: the C64's own table disagrees
+        # with DOS's for a magic-user 1-5 or a thief 1-4, so the byte is
+        # recomputed through the C64's table rather than copied from DOS's.
+        assert rec.thac0_base_value == levels.base_thac0(char.class_levels)
         assert rec.get("experience") == char.get("experience")
         assert spells.spells_known(rec.to_bytes()) == char.spells_known
         # Memorised spells: DOS fills from the end, the C64 from the start.

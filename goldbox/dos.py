@@ -68,6 +68,7 @@ from . import (
     traits,
     world_state,
 )
+from . import levels as level_tables
 from .c64_codec import Report
 from .dos_layout import (
     CLASS_NUMBERS,
@@ -86,6 +87,7 @@ from .dos_layout import (
     DosShapeError,
     shape_for,
 )
+from .encoding import combat_byte
 from .iconparts import (
     DosIcon,
     DosIconTables,
@@ -1976,6 +1978,13 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "folded back into DOS's own order, where the paladin and "
                    "the ranger share bit 6 and the class number and the "
                    "level array are what tell them apart"),
+    ("thac0_base", "recomputed from the class levels through this title's "
+                   "own DOS table where it is known -- Pool of Radiance "
+                   "only, since Curse of the Azure Bonds' and Secret of "
+                   "the Silver Blades' own records disagree with their "
+                   "read tables and no clamp or second table explains it. "
+                   "For those two the source's own byte is copied "
+                   "unchanged (#366, #348)"),
     ("name", "length-prefixed into one count byte and fifteen ASCII"),
     ("portrait_head", "the C64's HEADnn id becomes the DOS record's menu "
                       "position, through the creation tables in the game's "
@@ -2469,6 +2478,9 @@ WRITE_TARGETS: dict[str, str] = (
                      "folded onto DOS's bit 6",
        "char_class": "from neutral char_class, recomputed from the class "
                      "mask when the source record contradicts itself (#310)",
+       "thac0_base": "from neutral thac0_base, recomputed from the class "
+                     "levels through this title's own DOS table where it "
+                     "is known -- Pool of Radiance only (#366)",
        "spells_memorised": "from neutral spells_memorised, reversed",
        "spellbook": "from neutral spells_known, one byte per id",
        "class_levels": "from neutral levels, permuted to class numbers",
@@ -2711,6 +2723,11 @@ def write(char: NeutralCharacter,
         # mirrors.
         if neutral_name == "char_class":
             continue
+        # Written below, recomputed through this title's own table where it
+        # is known (#366).  Stays in `WRITE_DIRECT` for the same reason:
+        # the reader's `DIRECT` names it too, and the two tables are mirrors.
+        if neutral_name == "thac0_base":
+            continue
         v = use(neutral_name)
         if v is None:
             continue
@@ -2836,6 +2853,40 @@ def write(char: NeutralCharacter,
     if levels is not None:
         _levels_into(levels, "class_levels",
                      ", permuted from class name to class number")
+
+    # -- thac0_base: recomputed through DOS's own table where it is known ----
+    # `WRITE_DIRECT`'s copy is skipped above: a straight copy would hand
+    # back whatever the source port's own trainer had written.  The two
+    # ports run the identical recompute over different tables -- `GEN
+    # $1EF3` on the C64, `GAME.OVR:0x1A659` on DOS -- and this title's
+    # magic-user rows 1-5 and thief rows 1-4 hold one worse than the C64's,
+    # so a value copied straight from a C64 source is the wrong port's
+    # number (#366, A converted magic-user or thief arrives with the other
+    # port's THAC0, because the two ports ship different tables and the
+    # conversion copies the byte).
+    #
+    # `goldbox.levels.dos_base_thac0` carries the DOS table for Pool of
+    # Radiance only.  Curse of the Azure Bonds and Secret of the Silver
+    # Blades lay theirs out the same way, but their own records disagree
+    # with it -- their mage rows keep 39 and 6 of 56 Curse records and 2 of
+    # 56 Silver Blades records store 40 anyway, with no clamp and no second
+    # table found -- so nothing here is confirmed to write for those two,
+    # and the source's own byte is copied unchanged rather than a guess.
+    # `#348 (The THAC0 test votes with two save disks Wish converted from
+    # DOS, whose magic-users carry the DOS build's own THAC0)` names the
+    # settling experiment: train a Curse magic-user from level 1 to 2 and
+    # read `thac0_base` at 0x073.
+    base = use("thac0_base")
+    if base is not None:
+        derived = level_tables.dos_base_thac0(w.get("levels"), shape.key)
+        if derived is None:
+            put(base, "thac0_base")
+        else:
+            put(base, "thac0_base",
+                ", recomputed from the class levels through this title's "
+                "own DOS table: the two ports' magic-user and thief rows "
+                "disagree at low level (#366)",
+                value=combat_byte(derived))
 
     # -- the class a dual-classed human left ---------------------------------
     # Curse of the Azure Bonds and Secret of the Silver Blades keep it twice:

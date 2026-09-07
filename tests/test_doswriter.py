@@ -34,6 +34,7 @@ from test_neutral import _filled
 from goldbox import c64_codec, c64_save, dos, dos_layout, neutral, world_state
 from goldbox import dos_savegame as sg
 from goldbox import levels as level_tables
+from goldbox.encoding import combat_value
 from goldbox.iconparts import (
     DEFAULT_BACKGROUND,
     DEFAULT_PART_COLOURS,
@@ -338,7 +339,15 @@ def test_the_c64_writes_the_granted_effect_into_a_trait_slot():
 
 def test_a_filled_character_lands_field_for_field():
     """Every value the writer takes reads back off the DOS record through the
-    DOS reader's own accessors."""
+    DOS reader's own accessors.
+
+    `thac0_base` is the deliberate exception: `write` recomputes it from the
+    class levels through this title's own DOS table rather than copying the
+    neutral value across, because a source's own port may have written it
+    through a different one (`#366 (A converted magic-user or thief arrives
+    with the other port's THAC0, because the two ports ship different tables
+    and the conversion copies the byte)`).
+    """
     char = _filled()
     rec, itm, _spc, rep = dos.write(char)
     assert len(rec) == dos_layout.RECORD_SIZE
@@ -346,7 +355,15 @@ def test_a_filled_character_lands_field_for_field():
                                         for i in range(0, len(itm), 63)])
     assert back.name == "ROUNDTRIP"
     for neutral_name, dos_name in dos.WRITE_DIRECT:
+        if neutral_name == "thac0_base":
+            continue
         assert back.get(dos_name) == char.get(neutral_name), dos_name
+    expected_thac0 = level_tables.dos_base_thac0(char.get("levels"))
+    assert combat_value(back.get("thac0_base")) == expected_thac0
+    # Not a round trip: `char`'s made-up `thac0_base` is 8 (a value plucked
+    # from `DIRECT`'s position), and the class levels (fighter 7, thief 3)
+    # give 14 through DOS's own table.
+    assert expected_thac0 != combat_value(char.get("thac0_base"))
     assert back.spells_known == [1, 5, 55]
     assert back.spells_memorised == [44, 21, 3]
     assert back.class_levels == {"fighter": 7, "thief": 3}

@@ -619,6 +619,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
              ", re-padded to the C64's 20 NUL-padded bytes")
 
     for field, c64_name in DIRECT:
+        # Recomputed below rather than copied (#366): `DIRECT` still carries
+        # the pair because `read` shares this table and the raw stored byte
+        # is exactly what a reader should hand back.
+        if field == "thac0_base":
+            continue
         v = use(field)
         if v is None:
             continue
@@ -744,6 +749,34 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             dst = _field(f)
             emit(levels, f, dst.offset, dst.size)
     rep.note(0x0CE, 1, "the C64's unused sixth level slot: zero")
+
+    # -- thac0_base: recomputed through this title's own table, not copied --
+    # `DIRECT`'s copy is skipped above: a straight copy would hand back
+    # whatever the source port's own trainer had written. The two ports run
+    # the identical recompute over different tables -- `GEN $1EF3` here,
+    # `GAME.OVR:0x1A659` on DOS -- and DOS's magic-user rows 1-5 and thief
+    # rows 1-4 hold one worse than this table's, so a converted low-level
+    # caster or thief arrived one point better to hit than the C64 game he
+    # landed in would ever have made him (#366, A converted magic-user or
+    # thief arrives with the other port's THAC0, because the two ports ship
+    # different tables and the conversion copies the byte). Recomputed
+    # instead from the class levels, which crossed correctly, through
+    # `goldbox.levels.base_thac0` -- CONFIRMED for all three titles' C64
+    # sides, read off each one's own `GEN`.
+    base = use("thac0_base")
+    if base is not None:
+        dst = _field("thac0_base")
+        derived = level_tables.base_thac0(w.get("levels"), char.game)
+        if derived is None:
+            rec.set("thac0_base", base.value)
+            emit(base, "thac0_base", dst.offset, dst.size)
+        else:
+            rec.set("thac0_base", COMBAT_BIAS - derived)
+            rep.note(dst.offset, dst.size,
+                     f"thac0_base: recomputed through this title's own "
+                     f"table from the class levels, the way GEN $1EF3 "
+                     f"rebuilds it -- {port} may have written this byte "
+                     f"through a different one (#366)")
 
     # -- spell slots: three packed nibbles, cleric high, magic-user low ------
     castable = use("spells_castable")
@@ -1125,6 +1158,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "against neutral level, and written into the old "
                       "class's own level slot (PROBABLE, GEN $20A3, #256 M2)"),
     ("size_small", "copied to the C64's size byte"),
+    ("thac0_base", "**recomputed, not copied**: rebuilt from the class "
+                   "levels through this title's own table (`GEN $1EF3`), "
+                   "because a source's own port may have written the byte "
+                   "through a different one -- DOS's magic-user and thief "
+                   "rows disagree with the C64's at low level (#366)"),
     ("turn_power", "**computed, not copied**: the C64's caster turning byte "
                    "at 0x0A4 is what this title's own GEN writes from the "
                    "cleric and paladin levels, because no port a conversion "

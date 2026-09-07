@@ -16,6 +16,7 @@ from test_dossave import _save_dir, needs_dos_saves
 
 from goldbox import amiga, c64_codec, dos, dos_layout, games, neutral
 from goldbox import levels as level_tables
+from goldbox.encoding import combat_value
 from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, Provenance
@@ -133,16 +134,21 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     """The round trip the neutral layer can have on its own: put a value in,
     write it, and read the same value back off the C64 record.
 
-    The five saving-throw columns are the deliberate exception, checked on
-    their own below: `write` recomputes them from level, race and
-    constitution the way the C64's own trainer stores them, rather than
-    copying the neutral value across, for a title whose racial saving-throw
-    bonus is measured (`#311 (A DOS dwarf, gnome or halfling converted to the
-    C64 loses his constitution bonus to saving throws, because the C64 keeps
-    it inside the five stored bytes)`) -- `_filled()` defaults to Pool of
-    Radiance, which is one. A field that quietly stopped round-tripping for a
-    different reason must still fail the loop below, so the five are named
-    and excluded rather than the loop being weakened.
+    The five saving-throw columns and `thac0_base` are the deliberate
+    exceptions, checked on their own below. `write` recomputes the saves from
+    level, race and constitution the way the C64's own trainer stores them,
+    rather than copying the neutral value across, for a title whose racial
+    saving-throw bonus is measured (`#311 (A DOS dwarf, gnome or halfling
+    converted to the C64 loses his constitution bonus to saving throws,
+    because the C64 keeps it inside the five stored bytes)`) -- `_filled()`
+    defaults to Pool of Radiance, which is one. `thac0_base` is recomputed
+    from the class levels through this title's own table rather than copied,
+    because a source's own port may have written it through a different one
+    (`#366 (A converted magic-user or thief arrives with the other port's
+    THAC0, because the two ports ship different tables and the conversion
+    copies the byte)`). A field that quietly stopped round-tripping for a
+    different reason must still fail the loop below, so both are named and
+    excluded rather than the loop being weakened.
     """
     from goldbox import spells
 
@@ -152,9 +158,15 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
 
     assert rec.name == "ROUNDTRIP"
     for field, c64 in c64_codec.DIRECT:
-        if field in save_columns:
+        if field in save_columns or field == "thac0_base":
             continue
         assert rec.get(c64) == char.get(field), field
+    expected_thac0 = level_tables.base_thac0(char.get("levels"), char.game)
+    assert rec.thac0_base_value == expected_thac0
+    # Not a round trip: `char`'s made-up `thac0_base` is 8 (a value plucked
+    # from `DIRECT`'s position), and the class levels (fighter 7, thief 3)
+    # give 14 through the C64's own table.
+    assert expected_thac0 != combat_value(char.get("thac0_base"))
     assert level_tables.racial_save_bonus_measured(char.game)
     expected_saves = level_tables.saving_throws(
         char.get("levels"), char.get("race"), char.get("constitution"),

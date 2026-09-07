@@ -970,6 +970,31 @@ class LevelTables:
                 best = got if best is None else min(best, got)
         return best
 
+    def base_thac0(self, class_levels) -> int | None:
+        """`thac0_base` as **this title's C64 engine** computes it, best of
+        the classes -- the mirror of :meth:`dos_base_thac0`, over `self.classes`
+        rather than `self.dos_thac0`.
+
+        `GEN $1EF3` clears the byte, walks the per-class level array at
+        `0x0C9` and keeps the best row; this is that recompute, and it is
+        CONFIRMED for all three titles' C64 sides (`self.classes` is read
+        off each title's own `GEN`). A level past this title's own table
+        contributes nothing, the same floor :meth:`saving_throws` applies --
+        a character cannot hold a level the game itself never lets him
+        reach. None where no class has a level the table reaches, which is
+        what the C64 engine leaves as the zero it started from.
+
+        `#366 (A converted magic-user or thief arrives with the other
+        port's THAC0, because the two ports ship different tables and the
+        conversion copies the byte)`: DOS's magic-user rows 1-5 and thief
+        rows 1-4 hold one worse than this table's, so a value copied
+        straight from a DOS source is the wrong port's number.
+        """
+        rows = [self.at_level(name, max(int(level), 1))
+                for name, level in dict(class_levels or {}).items() if level]
+        best = [row.thac0 for row in rows if row is not None]
+        return min(best) if best else None
+
     def clamp_threshold(self, class_name: str, level: int) -> int | None:
         """What `GEN $23D4` reads for a class at that level, ceiling included."""
         want = self.at_level(class_name, level + 1)
@@ -1325,6 +1350,10 @@ def dos_thac0_at(class_name: str, level: int, game=None) -> int | None:
 
 def dos_base_thac0(class_levels, game=None) -> int | None:
     return for_game(game).dos_base_thac0(class_levels)
+
+
+def base_thac0(class_levels, game=None) -> int | None:
+    return for_game(game).base_thac0(class_levels)
 
 
 def next_threshold(class_name: str, level: int, game=None) -> int | None:
