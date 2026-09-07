@@ -840,7 +840,11 @@ class AutomapBinding(QObject):
                 # The drive is mid-transfer and every read would stop the
                 # processor inside it. Not a tick: the counter stays where it
                 # was, so the roster read lands on the next tick that runs
-                # rather than waiting out another whole cadence.
+                # rather than waiting out another whole cadence. `clear()`
+                # itself grows the wait before it will read `$DD00` again
+                # while a load runs, capped at `busguard.BACKOFF_CAP` seconds
+                # -- nothing here has to drive that, it is what makes this
+                # tick come back False without even the guard byte.
                 return
             self._live_ticks += 1
             if self.poll_battle():

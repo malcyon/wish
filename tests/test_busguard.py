@@ -58,6 +58,21 @@ def guarded_machine(dd00: int, **more) -> MemoryTarget:
     return machine
 
 
+class FakeClock:
+    """A clock a test moves by hand, in seconds, so a forty-second load does
+    not cost the suite forty seconds. `BusGuard(clock=...)` takes one of
+    these in place of `time.monotonic`."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 # -- the byte -----------------------------------------------------------------
 
 @pytest.mark.parametrize("value", [0xC4, 0xC7, 0xC0, 0xC3])
@@ -122,6 +137,162 @@ def test_the_bank_bits_do_not_count_as_a_change():
     assert guard.allow(0x4C)
 
 
+# -- the back-off, on a table -------------------------------------------------
+
+def test_each_busy_verdict_grows_the_wait_before_the_next_read():
+    guard = BusGuard()
+    assert guard.wait_seconds == 0.0
+    guard.allow(LOAD_STATES[0])
+    assert guard.wait_seconds == busguard.BACKOFF_START
+    guard.allow(LOAD_STATES[1])
+    assert guard.wait_seconds == busguard.BACKOFF_START * 2
+    guard.allow(LOAD_STATES[2])
+    assert guard.wait_seconds == busguard.BACKOFF_CAP
+
+
+def test_the_wait_stops_growing_at_the_cap_however_long_the_run_goes_on():
+    guard = BusGuard()
+    for i in range(60):
+        guard.allow(LOAD_STATES[i % len(LOAD_STATES)])
+    assert guard.wait_seconds == busguard.BACKOFF_CAP
+
+
+def test_a_released_reading_resets_the_wait_to_zero_at_once():
+    guard = BusGuard()
+    guard.allow(LOAD_STATES[0])
+    guard.allow(LOAD_STATES[1])
+    assert guard.wait_seconds > 0
+    assert guard.allow(RELEASED)
+    assert guard.wait_seconds == 0.0
+
+
+def test_a_settled_reading_resets_the_wait_to_zero_too():
+    """A rest state reached after a busy run that already capped the wait --
+    the guard has just let the tick through, so it has no reason left to
+    hold its own next look back."""
+    guard = BusGuard()
+    for i in range(10):
+        guard.allow(LOAD_STATES[i % len(LOAD_STATES)])
+    assert guard.wait_seconds == busguard.BACKOFF_CAP
+    settled = None
+    for _ in range(busguard.SETTLE):
+        settled = guard.allow(FASTLOADER_REST)
+    assert settled
+    assert guard.wait_seconds == 0.0
+
+
+# -- the back-off, honoured by `clear()` --------------------------------------
+
+def test_clear_does_not_read_the_bus_again_before_the_wait_elapses():
+    clock = FakeClock()
+    guard = BusGuard(clock=clock)
+    machine = guarded_machine(LOAD_STATES[0])
+    assert guard.clear(machine) is False
+    assert machine.reads == [(busguard.CIA2_PORT_A, 1)]
+    machine.reads.clear()
+    assert guard.clear(machine) is False
+    assert machine.reads == [], "held off: the wait has not elapsed yet"
+    assert guard.held_off == 1
+    clock.advance(busguard.BACKOFF_START)
+    assert guard.clear(machine) is False
+    assert machine.reads == [(busguard.CIA2_PORT_A, 1)], "the wait elapsed"
+
+
+def test_a_released_reading_lets_clear_read_again_at_once():
+    clock = FakeClock()
+    guard = BusGuard(clock=clock)
+    machine = guarded_machine(LOAD_STATES[0])
+    guard.clear(machine)                       # 1st busy read, wait -> 1 s
+    clock.advance(busguard.BACKOFF_START)
+    guard.clear(machine)                       # 2nd busy read, wait -> 2 s
+    machine.memory[0xDD00] = bytes([RELEASED])
+    clock.advance(busguard.BACKOFF_START * 2)
+    assert guard.clear(machine) is True
+    machine.reads.clear()
+    assert guard.clear(machine) is True, "no wait left after a released reading"
+    assert machine.reads == [(busguard.CIA2_PORT_A, 1)]
+
+
+def test_a_forty_second_load_costs_far_fewer_guard_reads_than_before():
+    """`#375 (Wish has to work around the Ultimate freezing the C64
+    mid-load, which hangs the game while the automapper follows along)` step
+    3. Before this change, the fixed 500 ms tick read `$DD00` on every one of
+    them for the whole load -- eighty reads over forty seconds. The back-off
+    cuts that to twelve on the same load."""
+    clock = FakeClock()
+    guard = BusGuard(clock=clock)
+    machine = guarded_machine(LOAD_STATES[0])
+    old_style_reads = 0
+    new_reads = 0
+    i = 0
+    while clock.now < 40.0:
+        machine.memory[0xDD00] = bytes([LOAD_STATES[i % len(LOAD_STATES)]])
+        i += 1
+        old_style_reads += 1        # what the fixed 500 ms tick would have done
+        before = len(machine.reads)
+        guard.clear(machine)
+        new_reads += len(machine.reads) - before
+        clock.advance(0.5)
+    assert old_style_reads == 80
+    assert new_reads == 12
+    assert guard.wait_seconds == busguard.BACKOFF_CAP
+
+
+def test_settling_cold_now_takes_three_seconds_against_a_second_and_a_half():
+    """No load beforehand: the guard's own busy streak starts from the first
+    reading of the rest state, so the three readings that confirm it land at
+    zero, one and three seconds rather than every 500 ms -- three seconds
+    end to end, against the `SETTLE` * 500 ms = 1.5 s this cost before."""
+    clock = FakeClock()
+    guard = BusGuard(clock=clock)
+    machine = guarded_machine(FASTLOADER_REST)
+    first_read = settled_at = None
+    while True:
+        before = len(machine.reads)
+        guard.clear(machine)
+        if len(machine.reads) > before:
+            if first_read is None:
+                first_read = clock.now
+            if guard.settled:
+                settled_at = clock.now
+                break
+        clock.advance(guard.wait_seconds or 0.5)
+    assert settled_at - first_read == 3.0
+
+
+def test_settling_straight_out_of_a_load_takes_about_eight_seconds():
+    """The back-off is already capped at four seconds by the time a
+    forty-second load ends, so the readings that confirm the rest state that
+    follows are four seconds apart rather than growing from one -- eight
+    seconds for `SETTLE` = 3 to agree, not the 1.5 s of the fixed tick, and up
+    to about twelve seconds of staleness counted from the load's own last
+    busy reading to the tick that finally goes ahead."""
+    clock = FakeClock()
+    guard = BusGuard(clock=clock)
+    machine = guarded_machine(LOAD_STATES[0])
+    i = 0
+    while clock.now < 40.0:
+        machine.memory[0xDD00] = bytes([LOAD_STATES[i % len(LOAD_STATES)]])
+        i += 1
+        guard.clear(machine)
+        clock.advance(0.5)
+    assert guard.wait_seconds == busguard.BACKOFF_CAP
+
+    machine.memory[0xDD00] = bytes([FASTLOADER_REST])
+    first_rest_read = settled_at = None
+    while True:
+        before = len(machine.reads)
+        guard.clear(machine)
+        if len(machine.reads) > before:
+            if first_rest_read is None:
+                first_rest_read = clock.now
+            if guard.settled:
+                settled_at = clock.now
+                break
+        clock.advance(guard.wait_seconds or 0.01)
+    assert settled_at - first_rest_read == 8.0
+
+
 # -- the guard, in the tick ---------------------------------------------------
 
 def test_the_guard_reads_the_bus_first_and_nothing_else_when_it_is_busy(
@@ -158,46 +329,73 @@ def test_a_target_that_does_not_stop_the_processor_is_never_guarded(
     assert machine.reads[0] != (busguard.CIA2_PORT_A, 1)
 
 
-def test_ticks_are_skipped_for_as_long_as_a_load_runs(
+def test_ticks_are_held_off_for_as_long_as_a_load_runs(
         app, tmp_path, monkeypatch):
+    """Superseded by the back-off: thirty ticks at the ordinary 500 ms
+    cadence over a fifteen-second load used to read `$DD00` all thirty
+    times, one skip each. Now most of those ticks are held off before the
+    guard even reads the bus, and only five reads happen."""
     machine = guarded_machine(LOAD_STATES[0])
     window = make_window(app, tmp_path, monkeypatch, machine)
+    clock = FakeClock()
+    window.bus_guard._clock = clock
     for i in range(30):
         machine.memory[0xDD00] = bytes([LOAD_STATES[i % len(LOAD_STATES)]])
+        machine.reads.clear()
         window.tick()
-    assert len(machine.reads) == 30
-    assert all(r == (busguard.CIA2_PORT_A, 1) for r in machine.reads)
-    assert window.bus_guard.skipped == 30
+        clock.advance(0.5)
+    assert window.bus_guard.skipped == 5
+    assert window.bus_guard.held_off == 25
+    assert window.bus_guard.wait_seconds == busguard.BACKOFF_CAP
 
 
-def test_a_skipped_tick_does_not_spend_the_roster_cadence(
+def test_a_held_off_tick_does_not_spend_the_roster_cadence(
         app, tmp_path, monkeypatch):
     """Four ticks at rest, a load on the fifth, and the roster read lands on
-    the next tick that runs rather than five ticks later."""
+    the next tick that runs rather than five ticks later -- whether that
+    tick reads the bus itself or is held off by the back-off from an earlier
+    one still counted as busy."""
     machine = guarded_machine(RELEASED)
     window = make_window(app, tmp_path, monkeypatch, machine)
+    clock = FakeClock()
+    window.bus_guard._clock = clock
     for _ in range(4):
         window.tick()
+        clock.advance(0.5)
     machine.memory[0xDD00] = bytes([LOAD_STATES[1]])
     machine.reads.clear()
     window.tick()
     assert len(machine.reads) == 1
+    clock.advance(window.bus_guard.wait_seconds)
     machine.memory[0xDD00] = bytes([RELEASED])
     machine.reads.clear()
     window.tick()
     assert len(machine.reads) == 13
 
 
-def test_the_fastloaders_rest_state_costs_settle_ticks_and_no_more(
+def test_the_fastloaders_rest_state_now_costs_settle_seconds_and_no_more(
         app, tmp_path, monkeypatch):
+    """Cold, with no load before it: the shape of the cost is unchanged --
+    `SETTLE - 1` guard-byte-only ticks, then the tick that settles, then
+    ordinary ticks -- but reaching it now takes three seconds rather than
+    the `SETTLE` * 500 ms = 1.5 s of the fixed tick, because the two ticks
+    before the settle are a second and two seconds apart rather than half a
+    second."""
     machine = guarded_machine(FASTLOADER_REST)
     window = make_window(app, tmp_path, monkeypatch, machine)
+    clock = FakeClock()
+    window.bus_guard._clock = clock
     sizes = []
+    settled_at = None
     for _ in range(busguard.SETTLE + 2):
         machine.reads.clear()
         window.tick()
         sizes.append(len(machine.reads))
+        if settled_at is None and window.bus_guard.settled:
+            settled_at = clock.now
+        clock.advance(window.bus_guard.wait_seconds or 0.5)
     assert sizes == [1] * (busguard.SETTLE - 1) + [5, 5, 5]
+    assert settled_at == 3.0
 
 
 def test_a_device_that_vanishes_under_the_guard_read_is_a_disconnection(
