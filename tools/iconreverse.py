@@ -80,6 +80,28 @@ DOS_SIZES = {"weapons": 32, "heads": 14}
 ICON_TABLE_OFFSET = 0x2E0
 SLOTS = 8
 
+#: How many screen pixels one C64 pixel becomes in the document's figures.
+#: Donald, 2026-09-07, reading the first draft: "The combat icons in
+#: proposal.md are very small."  A figure is 24 pixels across, so this is a
+#: 288-pixel drawing -- large enough to tell a mace from an axe without
+#: opening the image.  `--scale` overrides it, and `sheet`'s single-page
+#: layout keeps its own smaller default because it draws a whole list at once.
+DOC_SCALE = 12
+
+#: How wide each figure is *drawn* in the document, in screen pixels. A
+#: markdown table shrinks a plain `![](...)` to whatever its column allows, so
+#: a larger file alone changes nothing on screen -- Donald, 2026-09-07, on the
+#: first attempt: "I can't tell any difference is the size of the icons."
+#: Stating the width on an `<img>` tag is what actually makes them bigger, and
+#: the table is seven columns wide, so this is the number to raise.
+DOC_WIDTH = 300
+
+
+def _img(name: str, width: int = DOC_WIDTH) -> str:
+    """One figure, at a size the table cannot shrink."""
+    return f'<img src="img/{name}" width="{width}">'
+
+
 #: Which save file each title's disks carry, for `--census`.
 SAVE_FILES = {"pool-of-radiance": b"SAVEDGAME0",
               "curse-of-the-azure-bonds": b"SAVEAZURE",
@@ -316,7 +338,9 @@ def sheet(parts: IconParts, charset: bytes, game: pathlib.Path, tables: dict,
 
 def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
              tables: dict, icon_colours: bytes, out: pathlib.Path,
-             title: str = "pool-of-radiance") -> None:
+             title: str = "pool-of-radiance",
+             scale: int = DOC_SCALE,
+             width: int = DOC_WIDTH) -> None:
     """The proposal as a document, generated fresh from the YAML (#320)."""
     comments = _comments(TABLE_PATH.read_text())
     img = out.parent / "img"
@@ -370,16 +394,18 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
                 "|---:|---|---:|---|---|---|---|",
             ]
             for c64, (dos, alt) in sorted(tables[(size, kind)].items()):
-                left = f"c64-{size}-{kind}-{c64:02d}.png"
+                left = f"c64-{size}-{kind}-{c64:02d}@{scale}.png"
                 _save(c64_row_figure(parts, charset, size, kind, c64,
                                      icon_colours),
-                      tuple(icons.C64_PALETTE), img / left)
-                cells = [str(c64), f"![](img/{left})", str(dos),
-                         _dos_cell(game, size, kind, dos, icon_colours, img),
+                      tuple(icons.C64_PALETTE), img / left, scale)
+                cells = [str(c64), _img(left, width), str(dos),
+                         _dos_cell(game, size, kind, dos, icon_colours, img,
+                                   scale, width),
                          row["kinds"][c64],
                          " ".join(
                              f"{d} " + _dos_cell(game, size, kind, d,
-                                                 icon_colours, img)
+                                                 icon_colours, img, scale,
+                                                 width)
                              for d in alt),
                          comments.get((size, kind, c64), "")]
                 lines.append("| " + " | ".join(cells) + " |")
@@ -388,7 +414,7 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
             gallery = []
             for option in range(DOS_SIZES[kind]):
                 gallery.append(f"**{option}**<br>" + _dos_cell(
-                    game, size, kind, option, icon_colours, img))
+                    game, size, kind, option, icon_colours, img, scale, width))
                 if len(gallery) == 3:
                     lines.append("| " + " | ".join(gallery) + " |")
                     gallery = []
@@ -408,17 +434,20 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
     print(f"{out}  {len(lines)} lines, images in {img}")
 
 
-def _save(poses, palette, path: pathlib.Path, scale: int = 6) -> None:
+def _save(poses, palette, path: pathlib.Path, scale: int = DOC_SCALE) -> None:
     ip.save_figure(poses, palette, path, scale)
 
 
 def _dos_cell(game: pathlib.Path, size: str, kind: str, option: int,
-              icon_colours: bytes, img: pathlib.Path) -> str:
-    name = f"dos-{size}-{kind}-{option:02d}.png"
+              icon_colours: bytes, img: pathlib.Path,
+              scale: int = DOC_SCALE, width: int = DOC_WIDTH) -> str:
+    # The scale is in the file name so a document redrawn bigger does not
+    # reuse the smaller images the last run left in the same directory.
+    name = f"dos-{size}-{kind}-{option:02d}@{scale}.png"
     if not (img / name).exists():
         _save(dos_row_figure(game, size, kind, option, icon_colours),
-              ip.ic.EGA, img / name)
-    return f"![](img/{name})"
+              ip.ic.EGA, img / name, scale)
+    return _img(name, width)
 
 
 def _comments(text: str) -> dict[tuple[str, str, int], str]:
@@ -489,6 +518,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kind", default="weapons", choices=("weapons", "heads"))
     ap.add_argument("--colours", default=ip.DEFAULT_COLOURS.hex(),
                     help="a record's six icon_colours bytes, as hex")
+    ap.add_argument("--scale", type=int, default=None, metavar="N",
+                    help=f"screen pixels per C64 pixel; default {DOC_SCALE} "
+                         "for --markdown and 5 for --png")
+    ap.add_argument("--width", type=int, default=DOC_WIDTH, metavar="N",
+                    help="how wide each figure is drawn in --markdown, "
+                         "in screen pixels; default 300")
     ap.add_argument("--coverage", action="store_true",
                     help="how many rows are forced by the forward table")
     ap.add_argument("--census", action="store_true",
@@ -524,10 +559,12 @@ def main(argv: list[str] | None = None) -> int:
         game = ip.title_dos_game(args.title, args.dos, args.archives)
         if args.png:
             sheet(parts, charset, game, tables, args.size, args.kind, colours,
-                  pathlib.Path(args.png))
+                  pathlib.Path(args.png),
+                  **({"scale": args.scale} if args.scale else {}))
         else:
             markdown(parts, charset, game, tables, colours,
-                     pathlib.Path(args.markdown), title=args.title)
+                     pathlib.Path(args.markdown), title=args.title,
+                     scale=args.scale or DOC_SCALE, width=args.width)
         return 0
     print_tables(tables)
     return 0
