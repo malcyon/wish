@@ -928,17 +928,21 @@ to AmigaDOS with `Please re-boot your system.`, so a second run through the
 prompt costs a WinUAE restart. Curse's answer of `N` in §1.11 keeps the party
 in play; there is no `N` route back to the roster on this title.
 
-**Movement is not a key, and that is now measured rather than suspected.**
-Twenty virtual keys were pressed one at a time at the adventuring bar on
-2026-09-07 with the party at `5,9 W 00:00`, each followed by a grab of the
-status line, and **not one changed the square or the facing**: the four arrows
-(VK 0x25-0x28), the numeric keypad (0x60, 0x62, 0x64, 0x66, 0x68, 0x6B, 0x6C),
-the top-row digits (0x32, 0x34, 0x36, 0x38) and `I`, `J`, `K`. A **turn**
-cannot be blocked by a wall, so "the party was facing a wall" does not explain
-it. `tools/winuae.ps1` sends keystrokes and nothing else, and these are the
-Amiga releases with a compass widget drawn in the corner of the 3D view --
-`#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
-only keystrokes)`.
+**Movement is the numeric keypad, and the emulator was eating it.** This
+paragraph used to read "movement is not a key, and that is now measured rather
+than suspected", on the strength of twenty virtual keys pressed at the
+adventuring bar on 2026-09-07 with the party at `5,9 W 00:00` -- the four
+arrows (VK 0x25-0x28), the numeric keypad (0x60, 0x62, 0x64, 0x66, 0x68, 0x6B,
+0x6C), the top-row digits (0x32, 0x34, 0x36, 0x38) and `I`, `J`, `K` -- none of
+which changed the square or the facing. The presses were real and the reading
+of them was wrong: **`tools/goldbox-a500.uae` set no `joyport` line, so WinUAE
+gave Amiga port 2 its default "kbd1", which is Keyboard Layout A, which
+consumes `DIK_NUMPAD4`, `6`, `8`, `2`, `0`, `5`, `DECIMAL` and `NUMPADENTER`
+for a joystick.** Eight of the twenty keys reached that layout and no further
+(`keybd_event` gives `VK_UP` the unprefixed scancode 0x48, which is
+`DIK_NUMPAD8`, so the "arrows" were keypad keys too); the top-row digits and
+`I`, `J`, `K` are not movement in this title and did nothing for that reason.
+`joyport1=none` and the party walks -- §1.11b.
 
 **A saved game made from inside the world now exists**, which is the specimen
 `#28 (Decode an Amiga saved game, not just a character file)` could not reach: `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-adventuring/savgamB.sav`,
@@ -947,6 +951,95 @@ against the 6553** of the four-character saves in
 `WISH-SPEC-ssb-amiga-resave`, and 7233 − 6553 = 680 = 2 × 340, which is two
 more characters at the 340-byte in-save block §1.6a measured -- an
 independent corroboration of that block size from a file neither of us cut.
+
+### 1.11b Walking an Amiga party (#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends only keystrokes))
+
+**An Amiga party took its first step on 2026-09-07**, in Silver Blades, and the
+status line read it out: `5,9 E 00:00` → `6,9 E 00:01`. Everything below is
+that run and the code it was predicted from.
+
+**How the later titles read a direction, out of the executable.** Curse and
+Silver Blades do the same thing in the same order, and neither reads a
+joystick or a mouse for it:
+
+* each asks console.device for the current keymap (`CD_ASKKEYMAP`), copies the
+  256-byte low keymap into a buffer of its own, and rewrites the entry of ten
+  keys -- Amiga rawkeys `$0F`, `$1D`-`$1F`, `$2D`-`$2F`, `$3D`-`$3F`, which are
+  **numeric keypad 0 to 9** -- so that each returns `$B0` + its digit, shifted
+  and unshifted alike, and installs it with `CD_SETKEYMAP`. The originals are
+  kept so they can be put back; read in the running game they are `'0'`-`'9'`,
+  which is why an unpatched keypad is indistinguishable from the top row;
+* the key translator turns `$B0`-`$B9` into the codes `$100`-`$109`, and turns
+  a `CSI A`/`B`/`C`/`D` sequence -- what console.device makes of the four
+  **cursor keys** -- into `$108`, `$104`, `$102`, `$106`, the same four values.
+  So the keypad and the cursor keys are two spellings of one thing;
+* the step routine switches on the facing byte and adds ±1 to x or y with
+  wraparound at 0 and 15, then recomputes the two bytes after the facing: the
+  square's own attribute from `(x, y)` and the wall in front from
+  `(x, y, facing)`. Those five bytes are consecutive globals and are the
+  saved game's square block at `0x1401` in file order.
+
+Curse and Silver Blades each also carry a complete gameport.device reader --
+unit 1, which is Amiga port 2, opened `GPCT_ABSJOYSTICK` with triggers on both
+key edges and on one unit of movement, with a 3×3 table turning
+(`ie_X`, `ie_Y`) into a direction. **It is never called.** The routine that
+opens the device has no caller anywhere in either executable, and the flag it
+would set reads 0 in the running game with a party standing in the world. So
+the joystick is compiled in and inert, and the compass in the corner of the 3D
+view is a drawing rather than a control.
+
+**What the emulator was doing to it** is in §1.11a and in
+`tools/goldbox-a500.uae`: WinUAE's default gives Amiga port 2 the numeric
+keypad as a joystick, which swallowed every movement key before the Amiga saw
+it. `joyport1=none` stops that.
+
+**And `sound_output=none` deadlocks Silver Blades on the second turn.** With
+Paula's emulation off altogether, the first turn drew, the second wrote the
+new facing into the game's own byte and never redrew, and from then on nothing
+was read: the `Secret` process sat in Exec's `Wait` on a single signal, with
+the next keypress still sitting unread in its console buffer. That is not a
+game bug and not a wrong key -- it is an emulator setting, and
+`sound_output=interrupts` (silent on the host, Paula's interrupts emulated)
+fixes it. Eight turns and three steps in a row afterwards, every one drawn.
+
+**The measured vocabulary**, at square 5,9 of Silver Blades' opening area:
+
+| key | what it did |
+|---|---|
+| numeric keypad `8` | one square forward, and the clock one minute on |
+| numeric keypad `2` | about face -- East to West on the spot |
+| numeric keypad `4` | turn left -- West to South, South to East, North to West |
+| numeric keypad `6` | turn right -- West to North |
+| cursor **up**, sent extended | one square forward, exactly as keypad `8` |
+
+The cursor keys need `KEYEVENTF_EXTENDEDKEY`, which is `winuae.ps1 key
+<vk> -Extended` and is what `tools/amigadrive.py` sends for `UP`, `DOWN`,
+`LEFT` and `RIGHT`. Without it `keybd_event` hands `VK_UP` the unprefixed
+scancode `0x48`, which is `DIK_NUMPAD8` -- so before this the driver had no
+way to press a cursor key at all, and its `UP` was keypad `8` under another
+name.
+
+**The step diff, which no Amiga title had.**
+`~/wish-specimens/ssb-amiga/WISH-SPEC-ssbwalk` holds three engine-written
+saves of one party: `savgamD.sav` as it was loaded, `savgamE.sav` one square
+east, `savgamF.sav` one step back. **E and F differ in 7 bytes of 7233:**
+
+| offset | E | F | what |
+|---|---|---|---|
+| `0x190` | 2 | 3 | the clock's minute-units word, `$49C7` |
+| `0x20c` | | | `$4A05`, the per-script scratch |
+| `0x27a` | | | `$4A3C`, a quest flag |
+| `0xef4` | | | `$5079`, one of the words the engine rebuilds by itself |
+| `0x1401` | 6 | 5 | x |
+| `0x1403` | 2 | 6 | facing, doubled: East then West |
+| `0x1404` | 0 | `0x0c` | **the wall in front**, and this is the first time it has been seen to move |
+
+Nothing else in the file changes across a step -- not the map, not the wallset
+table, not one byte of any character record. `0x1404` was the field
+`#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
+only keystrokes)` named as unreadable without a step, and the code says what it
+is: the value the step routine computes from `(x, y, facing)` and stores in the
+byte after the facing.
 
 ### 1.12 Writing an Amiga Pool of Radiance character (#105 (Write an Amiga Pool of Radiance character, not just a Pools of Darkness one))
 

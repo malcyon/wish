@@ -10,7 +10,17 @@ win32.inactive_pause=false
 win32.inactive_nosound=true
 win32.iconified_pause=false
 win32.ctrl_F11_is_quit=false
-sound_output=none
+; sound_output=interrupts is silent on the host and NOT the same as none:
+; "none" turns Paula's emulation off altogether, audio interrupts included, and
+; Amiga Silver Blades then deadlocks the second time the party turns. Measured
+; on 2026-09-07 at square 5,9 of Silver Blades' opening area: with
+; sound_output=none the first turn drew and the second wrote the new facing to
+; the game's own byte and never redrew, and the Secret process sat in Exec's
+; Wait on one signal nothing would ever send, with the keypress it had not read
+; still in the console buffer; with sound_output=interrupts, eight turns and
+; three steps in a row, every one drawn. #361 (An Amiga party cannot be made to
+; walk, because the WinUAE driver sends only keystrokes).
+sound_output=interrupts
 gfx_display=0
 gfx_framerate=1
 gfx_width_windowed=720
@@ -51,6 +61,22 @@ floppy1type=0
 floppy_speed=800
 floppy0=C:\Amiga\Disks\Curse_Of_The_Azure_Bonds\CurseOfTheAzureBonds_A.adf
 floppy1=C:\Amiga\Disks\Curse_Of_The_Azure_Bonds\CurseOfTheAzureBonds_B.adf
+
+; joyport1=none is the line that lets a party walk. WinUAE's default_prefs()
+; stores "mouse" in port 1 and "kbd1" in port 2, and kbd1 is Keyboard Layout A:
+; inputdevice.cpp's setcompakb() then overwrites DIK_NUMPAD4, 6, 8, 2, 0, 5,
+; DECIMAL and NUMPADENTER with joystick events, so those keys stop reaching the
+; Amiga's keyboard at all. Amiga Curse and Amiga Silver Blades move the party
+; on the numeric keypad -- each patches the console keymap so Amiga rawkeys
+; $0F, $1D-$1F, $2D-$2F and $3D-$3F return $B0-$B9 -- so the default silently
+; ate every movement key, which is the twenty-key negative result in #361 (An
+; Amiga party cannot be made to walk, because the WinUAE driver sends only
+; keystrokes). Neither title ever opens gameport.device -- the flag its
+; open routine sets reads 0 in the running game -- so a joystick in port 2
+; would be read by nobody. Port 1 keeps WinUAE's own default, a mouse, because
+; a mouse steals no key.
+joyport0=mouse
+joyport1=none
 
 ; F11 opens WinUAE's debugger. There is no other way in on the Windows port:
 ; od-win32/win32.cpp's debuggable() returns 0 unconditionally, so main.cpp's

@@ -516,6 +516,58 @@ thread held at the `>` prompt, `Get-Process winuae64` still reported
 `[goldbox-a500.uae] - WinUAE` — no `(Not Responding)`. The receipt for F11 is
 the prompt itself, in what §6's console readback returns.
 
+### 5.1 The keys the guest delivers are not the keys you asked for
+
+Two traps sit between `winuae.ps1 key <vk>` and the Amiga, and both cost
+`#361 (An Amiga party cannot be made to walk, because the WinUAE driver sends
+only keystrokes)` a night before they were found.
+
+**WinUAE reads scancodes, and `keybd_event` derives one from the virtual key
+without the `E0` prefix.** So `VK_UP` (0x26) arrives as scancode `0x48`, which
+is `DIK_NUMPAD8`; `VK_DOWN`, `VK_LEFT` and `VK_RIGHT` likewise arrive as
+keypad 2, 4 and 6. Pressing a real cursor key needs
+`KEYEVENTF_EXTENDEDKEY`, which is `key <vk> -Extended`. Before that switch
+existed the driver could not press a cursor key at all, and every "arrow" it
+had ever sent was a keypad key.
+
+**A port set to a keyboard layout eats those keys before the Amiga sees
+them.** WinUAE's `default_prefs()` puts `mouse` in Amiga port 1 and **`kbd1` in
+Amiga port 2**, and `kbd1` is Keyboard Layout A; `inputdevice.cpp`'s
+`setcompakb()` then replaces the mappings of `DIK_NUMPAD4`, `6`, `8`, `2`, `0`,
+`5`, `DECIMAL` and `NUMPADENTER` with joystick events. A config with no
+`joyport` line gets that default, so a game driven on the numeric keypad --
+which is how Amiga Curse and Amiga Silver Blades move a party -- receives
+nothing at all and looks as though it ignores the key.
+`tools/goldbox-a500.uae` now says `joyport0=mouse` and `joyport1=none`.
+
+**And `sound_output=none` is not "silent", it is "no Paula".** Audio interrupts
+are not emulated either, and Amiga Silver Blades deadlocks on the second turn
+of the party: it writes the new facing to its own byte, never redraws, and its
+process sits in Exec's `Wait` on one signal with the next keypress unread in
+its console buffer. `sound_output=interrupts` emulates the interrupts and makes
+no host sound; with it, eight turns and three steps in a row all drew.
+
+### 5.2 Reading a game's own globals in the running Amiga
+
+`docs/143`'s `S` and `m` need an address, and a SAS/C small-data Amiga binary
+gives none: the hunks are relocatable and `a4` is the data hunk plus `$7FFE`.
+The way in is a **string the data hunk carries**. Search memory for it, and
+every `g<offset>` an `amiga68k.py` listing prints is that address minus the
+string's own data-hunk offset plus the `g` value.
+
+Two things about the search, measured on Silver Blades:
+
+* **it gives up after 64K**, whatever range it is given -- `s "blades.cfg" 0
+  1f0000` reported `Aborted at 0000FFFE`. Issue one `s` per 64K instead;
+* **the game is not in chip memory.** With `bogomem_size=2` the loader puts it
+  in slow memory, so the range to sweep is `c00000`-`c80000`.
+
+That located Silver Blades' `a4` and, with it, the party's x, y and facing as
+three bytes in RAM -- which is a better instrument than the status line,
+because it reads the game's own state even when the screen has not been
+redrawn. It is what proved the `sound_output` deadlock was a stalled *redraw*
+rather than a lost keypress: the facing byte had moved and the screen had not.
+
 ## 6. Getting output back without reading the screen
 
 This is the whole trick, and it is the same one `tools/dosboxx.py` uses for
@@ -1012,6 +1064,33 @@ trap 7:
   `tools/winuae-sendcheck.ps1`; the planted-error trap came back as
   `exit 7` with the message and line in the log
 
+**Checked on the VM itself, 2026-09-07**, for `#361 (An Amiga party cannot be
+made to walk, because the WinUAE driver sends only keystrokes)` -- §5.1 and
+§5.2:
+
+* **a party walks.** Amiga Silver Blades, slot D of a run disk, party at
+  `5,9 W 00:00` on the status line: keypad `4` turned it to `S`, keypad `4`
+  again to `E`, keypad `8` stepped it to `6,9 E 00:01`, and the cursor key
+  **up** sent extended stepped it again to `7,9 E 00:02`. Keypad `2` about
+  faced and keypad `6` turned right. Every one read off the status line
+* **the twenty keys of `#28 (Decode an Amiga saved game, not just a character
+  file)` were eaten by `joyport1`'s default.** With `joyport1=none` the same
+  keypad codes move the party; with the default they do nothing. Eight of the
+  twenty were the four keypad keys under two names, because `keybd_event` gives
+  `VK_UP` the unprefixed scancode `DIK_NUMPAD8`
+* **`sound_output=none` deadlocks the title on the second turn**, and
+  `sound_output=interrupts` does not. Watched three times with `none` and not
+  once with `interrupts`
+* **`s "<string>" <a> <b>` aborts 64K in**, whatever `b` is: three separate
+  ranges each reported `Aborted at <start+0xFFFF>`, and eight 64K searches
+  found the string at `00C58D1C`
+* **the debugger reads a running game's globals**, and that is what told a
+  stalled redraw from a lost keypress: with the screen still drawing `5,9 S`,
+  the facing byte in the game's own memory read 2, which is East
+* **`T` names the tasks**, and `Secret` waiting on signal `80000000` with two
+  idle File Systems and two idle trackdisk tasks is what said nothing was ever
+  going to complete
+
 **Not checked, and needing a session at the machine:**
 
 * the §9 trainer loop against a real Gold Box title — `C`, `D` and `Cl` have
@@ -1028,8 +1107,10 @@ trap 7:
   end is the cracked release waiting for something or an emulation fault. The
   game keeps running behind it — memory reads and `g` both work — so it has not
   been chased
-* anything at all about *Pools of Darkness* or *Secret of the Silver Blades*
-  specifically. **Pool of Radiance now boots and plays unattended**, on
+* anything at all about *Pools of Darkness*. **Secret of the Silver Blades
+  boots, loads a slot, answers its journal prompt and walks a party**, as of
+  2026-09-07 -- the block above. **Pool of Radiance boots and plays
+  unattended**, on
   2026-09-01 for `#109 (A save slot written onto an Amiga disk is not offered
   by the game's picker)`: `C:\Amiga\Disks\por\por1.adf` and `por2.adf` are
   unpacked in the guest, the cracked release's code-wheel screen takes a bare

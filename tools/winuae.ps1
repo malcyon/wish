@@ -16,6 +16,8 @@
 #   winvm ssh "$ps roms -Holder por-run"        # once, then winvm promote
 #   winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
 #   winvm ssh "$ps key 7A -Holder por-run"      # F11: enter the debugger
+#   winvm ssh "$ps key 68 -Holder por-run"      # numeric keypad 8
+#   winvm ssh "$ps key 26 -Extended -Holder por-run"   # the cursor key, not KP8
 #   winvm ssh "$ps send '-File C:\Amiga\cmds.txt' -Holder por-run"
 #   winvm ssh "$ps send '-DumpOnly -Tail 40' -Holder por-run"
 #   winvm ssh "$ps front -Holder por-run"
@@ -81,6 +83,11 @@ param(
 # and `-s` belong to WinUAE.
 $Holder   = ''
 $Override = $false
+# `key -Extended` sets KEYEVENTF_EXTENDEDKEY, which is what separates the four
+# cursor keys from the four numeric-keypad keys: without it keybd_event turns
+# VK_UP into scancode 0x48, and 0x48 with no E0 prefix is DIK_NUMPAD8. Every
+# arrow this driver has ever pressed was really a keypad key.
+$Extended = $false
 # @($null) is an array of one $null, not an empty one, so a command with no
 # remaining arguments at all -- `stop`, `status` -- has Count 1 and indexes into
 # nothing. Measured: "Cannot index into a null array" on plain `stop`.
@@ -90,6 +97,7 @@ for ($i = 0; $i -lt $given.Count; $i++) {
   $a = $given[$i]
   if ($a -eq '-Holder') { $i++; if ($i -lt $given.Count) { $Holder = $given[$i] } }
   elseif ($a -eq '-Override') { $Override = $true }
+  elseif ($a -eq '-Extended') { $Extended = $true }
   else { [void]$passthru.Add($a) }
 }
 $Rest = $passthru.ToArray()
@@ -658,6 +666,15 @@ Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id)
     # driver level, so WinUAE's DirectInput keyboard sees it; PostMessage
     # would not. $Rest[0] is a virtual-key code in hex, e.g. 7A for F11.
     #
+    # -Extended adds KEYEVENTF_EXTENDEDKEY, and it is not cosmetic. WinUAE
+    # reads scancodes, and keybd_event derives one from the virtual key
+    # without the E0 prefix unless asked: VK_UP, VK_DOWN, VK_LEFT and
+    # VK_RIGHT then arrive as DIK_NUMPAD8, 2, 4 and 6. So `key 26` is the
+    # keypad and `key 26 -Extended` is the cursor key, and both matter here --
+    # Amiga Curse and Amiga Silver Blades read the party's direction from
+    # either. See #361 (An Amiga party cannot be made to walk, because the
+    # WinUAE driver sends only keystrokes).
+    #
     # `responding` is reported for information and is NOT a receipt for the
     # debugger being up: measured at the debugger's own prompt, with the
     # emulation thread held, `Responding` was still True and the title bar
@@ -667,17 +684,20 @@ Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id)
     if ($deny) { $deny; exit 1 }
     if (-not ($Rest[0] -match '^[0-9A-Fa-f]{1,2}$')) { "fail '$($Rest[0])' is not a hex VK code"; exit 1 }
     $vk = $Rest[0]
+    $down = if ($Extended) { 1 } else { 0 }   # KEYEVENTF_EXTENDEDKEY
+    $up   = $down + 2                         # ... | KEYEVENTF_KEYUP
+    $how  = if ($Extended) { ' extended' } else { '' }
     $mine = Resolve-MyEmulator
     if ($mine.err) { $mine.err; exit 1 }
     $r = Invoke-Session1 'winuae-key' ($Preamble + (Pid-Guard $mine.proc.Id) + $RaiseAndCheck + @"
 
 if (-not `$fg) { Report "fail pid=`$(`$p.Id) did not take the foreground, so the key would go elsewhere"; exit 1 }
-[W]::keybd_event(0x$vk, 0, 0, [IntPtr]::Zero)
+[W]::keybd_event(0x$vk, 0, $down, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 120
-[W]::keybd_event(0x$vk, 0, 2, [IntPtr]::Zero)
+[W]::keybd_event(0x$vk, 0, $up, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 500
 `$p.Refresh()
-Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
+Report "ok pressed VK 0x$vk$how at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
 "@)
     $r
     if ($r -notmatch '^ok') { exit 1 }

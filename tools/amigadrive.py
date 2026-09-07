@@ -8,6 +8,7 @@ path, a RETURN and a slot letter), so the thing that was going to be retyped
 every session is the name-to-virtual-key table and the waiting.
 
     tools/amigadrive.py --holder wish109-por keys RET L S A V E SLASH RET
+    tools/amigadrive.py --holder wish109-por keys NP8 NP4 NP8   # walk, turn, walk
     tools/amigadrive.py --holder wish109-por shot work/109/picker.png
 
 `--holder` is the lane claim `winuae.ps1` enforces, and it is required: every
@@ -39,9 +40,27 @@ KEYS: dict[str, int] = {
     "F11": 0x7A,
     "SLASH": 0xBF, "COLON": 0xBA, "PERIOD": 0xBE, "COMMA": 0xBC,
     "MINUS": 0xBD,
+    # The numeric keypad, which is what walks a party in Amiga Curse and
+    # Amiga Silver Blades: each patches the console keymap so the ten keypad
+    # rawkeys return $B0-$B9, and turns those into the eight compass
+    # directions.  `NP8` is forward, `NP4` and `NP6` turn, `NP2` turns about --
+    # #361 (An Amiga party cannot be made to walk, because the WinUAE driver
+    # sends only keystrokes).
+    "NP0": 0x60, "NP1": 0x61, "NP2": 0x62, "NP3": 0x63, "NP4": 0x64,
+    "NP5": 0x65, "NP6": 0x66, "NP7": 0x67, "NP8": 0x68, "NP9": 0x69,
 }
 for _c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789":
     KEYS.setdefault(_c, ord(_c))
+
+#: Names that must go in with KEYEVENTF_EXTENDEDKEY, because their scancode
+#: needs the E0 prefix.  Without it `keybd_event` turns VK_UP into scancode
+#: 0x48, and 0x48 unprefixed is DIK_NUMPAD8 -- so an unextended `UP` is not
+#: the cursor key at all, it is keypad 8, and `UP` and `NP8` would be the
+#: same keystroke.  Both reach the party's direction in the later Amiga
+#: titles, by different routes (the cursor keys as a `CSI A`-`CSI D`
+#: sequence out of console.device, the keypad through the patched keymap),
+#: so the driver has to be able to press either one deliberately.
+EXTENDED: frozenset[str] = frozenset({"UP", "DOWN", "LEFT", "RIGHT"})
 
 PS = ("powershell -NoProfile -ExecutionPolicy Bypass -File "
       r"C:\Amiga\winuae.ps1")
@@ -67,11 +86,13 @@ def _winvm(*args: str, timeout: int = 180) -> str:
 
 def press(holder: str, name: str, settle: float) -> str:
     """One keystroke into the emulator, named rather than in hex."""
-    code = KEYS.get(name.upper())
+    name = name.upper()
+    code = KEYS.get(name)
     if code is None:
         raise SystemExit(f"'{name}' is not a key this knows; "
                          f"names are {', '.join(sorted(KEYS))}")
-    out = _winvm("ssh", f"{PS} key {code:02X} -Holder {holder}")
+    flag = " -Extended" if name in EXTENDED else ""
+    out = _winvm("ssh", f"{PS} key {code:02X}{flag} -Holder {holder}")
     # Anchored, because `winuae.ps1` anchors its own reply check
     # (`$r -notmatch '^ok'`) and a substring test would read any future
     # failure message containing "ok" -- "unlocked", "broken" -- as a
