@@ -21,6 +21,7 @@ because both of them would spoil a run silently:
 from __future__ import annotations
 
 import pytest
+from gamedata import specimen_root
 
 from goldbox import amiga, dos_layout
 from tools import amigalaterproof as proof
@@ -118,6 +119,70 @@ def test_the_live_heap_pointers_the_engine_fills_in_are_masked(shape):
         field = table[name]
         at = shape.offset(field.offset)
         assert set(range(at, at + field.size)) <= mask, name
+
+
+def test_the_derived_bytes_the_engine_recomputes_are_masked():
+    """`#402 (Amiga Curse recomputes thac0_current and a roster_tail byte on
+    load, and no declared list says so)`: the two Curse offsets in
+    `LATER_WRITE_DERIVED` are exactly `thac0_current` and the sixth byte of
+    `roster_tail`, computed from the shift map rather than typed twice."""
+    shape = amiga.CURSE_SHAPE
+    table = dos_layout.FIELDS_BY_NAME_FOR[shape.dos.key]
+    want = {shape.offset(table["thac0_current"].offset),
+            shape.offset(table["roster_tail"].offset) + 5}
+    mask = proof.declared_record_mask(shape)
+    assert want <= mask
+    got = {at for at, _size, _why in amiga.LATER_WRITE_DERIVED[shape.key]}
+    assert got == want
+
+
+def test_silver_blades_has_no_derived_bytes_declared():
+    """UNMEASURED, not confirmed absent (`#402`): Silver Blades' converted
+    party happened to agree with the engine's resave, which proves nothing,
+    so nothing is masked there yet."""
+    assert amiga.LATER_WRITE_DERIVED[amiga.SILVER_BLADES_SHAPE.key] == ()
+
+
+def test_the_curse_engine_resave_leaves_only_party_order_outside_the_lists():
+    """The live-game evidence `#402` rests on: Amiga Curse loaded a party
+    `write_later` converted and wrote it back through `ENCAMP > SAVE`, and
+    before this fix `thac0_current`, one `roster_tail` byte and
+    `party_order` were the only bytes outside the declared lists.
+    `party_order` is the writer's own known gap; the other two are now on
+    `LATER_WRITE_DERIVED`, so nothing but `party_order` should be left.
+
+    `docs/203-a-converted-later-amiga-party-in-the-running-game.md`.
+    """
+    root = specimen_root()
+    if root is None:
+        pytest.skip("no $WISH_SPECIMENS; see tools/specimens.py")
+    source = (root / "coab-c64" /
+              "WISH-SPEC-curse-52-dialog-converted-resave.D64")
+    theirs_path = (root / "coab-amiga" /
+                   "WISH-SPEC-coab-amiga-converted-resave" / "savgamC.dat")
+    if not source.is_file() or not theirs_path.is_file():
+        pytest.skip("the #384/#402 specimens are not on this machine")
+
+    amigalaterwrite = proof.amigalaterwrite
+    built = amigalaterwrite.convert(amigalaterwrite.party_from(source))
+    ours_by_name = {c.name.strip().upper(): c for _n, c, _r in built}
+
+    theirs_data = theirs_path.read_bytes()
+    theirs_by_name = {c.name.strip().upper(): c
+                      for c in proof.party_of(theirs_data, str(theirs_path))}
+
+    assert {"MATHEW", "PHILIPPE"} <= ours_by_name.keys()
+    loose: set[str] = set()
+    for name, mine in ours_by_name.items():
+        twin = theirs_by_name.get(name)
+        if twin is None:
+            continue
+        a, b = mine.block_bytes(), twin.block_bytes()
+        mask = proof.declared_block_mask(mine)
+        for at in range(min(len(a), len(b))):
+            if a[at] != b[at] and at not in mask:
+                loose.add(proof.field_at(mine.shape, at))
+    assert loose == {"party_order+0"}
 
 
 # ---------------------------------------------------------------------------

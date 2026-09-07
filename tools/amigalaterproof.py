@@ -26,10 +26,14 @@ converts from happens to keep its only item-carrying character last.
 `diff` is the other half.  The engine loads what we wrote, the player camps
 and saves, and the two parties are compared block by block -- masked by the
 lists the writers **declare** (`goldbox.amiga.LATER_WRITE_UNSOURCED`,
-`LATER_ITEM_WRITE_UNSOURCED`, `LATER_EFFECT_WRITE_UNSOURCED` and
-`goldbox.dos`'s six, mapped through the title's shift map) and never by
-whatever happened to differ, which is `.claude/rules/conversions.md`'s rule
-and the reason a new difference is a failure rather than a wider mask.
+`LATER_WRITE_DERIVED`, `LATER_ITEM_WRITE_UNSOURCED`,
+`LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos`'s six, mapped through the
+title's shift map) and never by whatever happened to differ, which is
+`.claude/rules/conversions.md`'s rule and the reason a new difference is a
+failure rather than a wider mask.  `LATER_WRITE_DERIVED` is the one the
+engine itself recomputes on load -- `#402 (Amiga Curse recomputes
+thac0_current and a roster_tail byte on load, and no declared list says
+so)` is the run that put `thac0_current` and one `roster_tail` byte there.
 
 `tools/porslotdiff.py` is the Pool of Radiance equivalent and does not fit
 these two, whose party lives inside the saved game rather than in `CHRDAT`
@@ -83,6 +87,8 @@ def declared_record_mask(shape: amiga.AmigaShape) -> set[int]:
             continue
         out.update(range(at, at + field.size))
     for at, size, _why in amiga.LATER_WRITE_UNSOURCED[shape.key]:
+        out.update(range(at, at + size))
+    for at, size, _why in amiga.LATER_WRITE_DERIVED[shape.key]:
         out.update(range(at, at + size))
     return out
 

@@ -4468,6 +4468,50 @@ LATER_WRITE_UNSOURCED: dict[str, tuple[tuple[int, int, str], ...]] = {
     ),
 }
 
+#: Amiga bytes the **engine** recomputes from the readied weapon when it
+#: loads a saved game, so a resave differing here is the engine's own
+#: arithmetic and not a loss.  `LATER_WRITE_UNSOURCED` is the load-time
+#: counterpart for bytes nothing sources at all; this is for bytes the
+#: writer does source, correctly, and the loader overwrites anyway.  Masked
+#: in the resave diff beside it (`#402 (Amiga Curse recomputes thac0_current
+#: and a roster_tail byte on load, and no declared list says so)`).
+#:
+#: **CURSE ONLY, one WinUAE run, 2026-09-07, lane `wish384`.** A party
+#: `write_later` converted from `WISH-SPEC-curse-52-dialog-converted-resave.D64`
+#: was loaded in Amiga Curse of the Azure Bonds, drawn, and saved back
+#: through `ENCAMP > SAVE`. Against the engine's own resave
+#: (`WISH-SPEC-coab-amiga-converted-resave/savgamC.dat`): MATHEW's
+#: `thac0_current` moved `0x2F` to `0x2A` and PHILIPPE's the same field moved
+#: `0x29` to `0x28`; MATHEW's sheet drew `THAC0 18`, which is `60 - 0x2A`, so
+#: the recomputed value is the one a player reads and the stored one never
+#: reached the screen. MATHEW's `roster_tail`'s sixth byte -- one of the
+#: eight running attack-form bytes the field's own note in
+#: `goldbox/dos_layout.py` describes -- moved `0x08` to `0x02` the same way.
+#: The other five characters and the whole Silver Blades party in the same
+#: run did not move at either byte, which says nothing either way: their
+#: converted values already agreed with what the engine would have
+#: recomputed. `docs/203-a-converted-later-amiga-party-in-the-running-game.md`.
+#:
+#: **Silver Blades is UNMEASURED, not confirmed absent.** Its converted
+#: party happened to already agree, which proves nothing; staging an
+#: impossible value (`tools/cursethac0.py` uses `0x0A`, THAC0 50) into a
+#: converted Silver Blades record and reading a resave back would settle it
+#: in one boot.
+#:
+#: **Only the one measured byte of `roster_tail` is here, not the whole
+#: nine-byte field.** The other eight have never been seen to move, so they
+#: stay outside the mask and a real regression in them would still be
+#: caught.
+LATER_WRITE_DERIVED: dict[str, tuple[tuple[int, int, str], ...]] = {
+    CURSE_SHAPE.key: (
+        (0x19E, 1, "thac0_current, recomputed on load from the readied "
+                   "weapon"),
+        (0x1A5, 1, "roster_tail's sixth byte, one of the eight running "
+                   "attack-form bytes, recomputed the same way"),
+    ),
+    SILVER_BLADES_SHAPE.key: (),
+}
+
 #: The item node's three insertions, the same in both later titles.  **Zero
 #: is what the game itself writes**: each executable's item constructor
 #: (`/Curse` `0x1C1EA`, `/Secret` `0x1B862`) opens `setmem(node, size, 0)`
