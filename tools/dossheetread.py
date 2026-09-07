@@ -14,17 +14,26 @@ and takes one screenshot per character with `VIEW CHARACTER` open.
         --records work/issue234/from-c64 \\
         --out work/issue234/dosrun
 
-**The container is the engine's and the records are ours.**  Nothing here can
-write `SAVGAM<slot>.DAT` for Curse or Silver Blades -- see
-`docs/180-writing-a-later-dos-record.md` -- so the container comes from a
-specimen and only the six `CHRDAT` files are replaced.  That is the same
-staging `#299 (goldbox.dos.write builds only Pool of Radiance's record, so
-nothing can be converted to DOS for the later titles)` used for Silver Blades.
+**Two stagings, and `--save` is the stronger one.**  `--container` plus
+`--records` puts our six `CHRDAT` files beside a `SAVGAM<slot>.DAT` the
+engine wrote, which is all that was possible before
+`#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing
+can be converted to DOS for the later titles)` closed.  `--save` installs a
+**whole** save this project wrote -- container and records together, nothing
+borrowed from a specimen -- which is what a conversion out of the Convert
+dialog produces.  A `CHRDAT` in a `--container` directory is deliberately
+not copied, so a stale effect or item file from the container's own party
+can never be read as one of ours.
 
-`--resave` presses `SAVE CURRENT GAME` at the end and copies the whole `SAVE`
-directory out, so the engine's own rewrite of our records can be diffed
-against what we handed it -- the measurement that says which bytes the loader
-recomputed.
+`--walk` presses `BEGIN ADVENTURING` and walks the party, so the save is
+proven to be a game rather than a file that loads
+(`.claude/rules/conversions.md`: "A conversion is not proven until it
+runs"), and `--engine-save <letter>` then has the game's own `ENCAMP ▸ SAVE`
+write the party back.  `--resave` is the older route to the same place, a
+comma-separated key sequence pressed wherever the run has got to.  Either
+copies the whole `SAVE` directory out, so the engine's own rewrite of our
+records can be diffed against what we handed it -- the measurement that says
+which bytes the loader recomputed.
 
 Nothing outside the instance directory is written and the player's archives
 are opened read only.
@@ -108,6 +117,103 @@ def install(container: pathlib.Path, records: pathlib.Path,
     return took
 
 
+def press_keys(session, keys: str, quiet: float = 0.5,
+               timeout: float = 25.0) -> None:
+    """Press a comma-separated key list, settling after each."""
+    for key in keys.split(","):
+        if key.strip():
+            session.key(key.strip())
+            session.settle(quiet=quiet, timeout=timeout)
+
+
+def walk(session, steps: int, note, begin: str = "b",
+         engine_save: str = "", move_mode: str = "",
+         move_exit: str = "Escape") -> dict:
+    """Leave the party menu, walk `steps` squares, and let the engine save.
+
+    **A save that loads is not yet a game** (`.claude/rules/conversions.md`:
+    "A conversion is not proven until it runs"), and this is the half that
+    says so: the party moves under the engine's own movement code, and the
+    engine's own `ENCAMP ▸ SAVE` afterwards carries the square it reached.
+
+    `LOAD SAVED GAME` leaves the party standing at `CHOOSE A FUNCTION` with
+    the roster drawn, which is where the sheets are read -- so `BEGIN
+    ADVENTURING` has to be pressed before anything can move.  A walk driven
+    without it presses arrow keys at a menu that has none, which reads as
+    six blocked steps rather than as an error.
+
+    `tools/dosbox.py`'s `PoolOfRadiance` is the driver, and nothing in the
+    part of it used here is Pool of Radiance's: `move` presses a key and
+    waits for the command bar recorded on arrival to come back, and
+    `save_game` believes the save only once `SAVGAM<letter>.DAT` changes on
+    disk.  Both are the same in all three titles.
+    """
+    por = dosbox.PoolOfRadiance(session)
+    for key in begin.split(","):
+        if key.strip():
+            session.key(key.strip())
+    screen = session.settle(quiet=0.8, timeout=60.0)
+    por.world_bar = screen.ink(dosbox.BAR)
+    por.world_glyphs = screen.glyphs(dosbox.BAR)
+    session.shot("6-walk-00-arrived")
+    out = {"asked": steps, "walked": 0, "turned": 0,
+           "status_on_arrival": por.status()}
+    map_bar, map_glyphs = por.world_bar, por.world_glyphs
+    if move_mode:
+        # **Silver Blades does not walk on the arrow keys.**  Its map bar
+        # reads `MOVE AREA CAST VIEW ENCAMP SEARCH LOOK` where Pool of
+        # Radiance's and Curse's start at `AREA`, and that first word is a
+        # mode: until it is pressed the arrows do nothing at all, and six
+        # steps in a dungeon read as six walls.  Pressed, the bar becomes
+        # `EXIT` alone and the arrows move the party a square -- 3,3 to 3,4
+        # with the clock going 04:16 to 04:17, watched.  So the bar every
+        # step waits for is that one, not the map's.
+        session.key(move_mode)
+        screen = session.settle(quiet=0.6, timeout=30.0)
+        por.world_bar = screen.ink(dosbox.BAR)
+        por.world_glyphs = screen.glyphs(dosbox.BAR)
+        session.shot("6-walk-00-moving")
+        out["move_mode"] = move_mode
+    for i in range(steps):
+        before = por.status()
+        moved = por.step()
+        after = por.status()
+        session.shot(f"6-walk-{i + 1:02d}", allow_blank=True)
+        if moved and after != before:
+            out["walked"] += 1
+            note(event="step", n=i + 1, moved=True)
+            continue
+        # A wall, or a step into something that put a prompt up.  Turning is
+        # a move the engine makes too, so a party that cannot go forward is
+        # still being driven rather than stuck.
+        por.turn_right()
+        out["turned"] += 1
+        note(event="step", n=i + 1, moved=False, turned=True)
+    out["status_after"] = por.status()
+    if move_mode:
+        session.key(move_exit)
+        session.settle(quiet=0.6, timeout=30.0)
+        por.world_bar, por.world_glyphs = map_bar, map_glyphs
+        session.shot("6-walk-98-back-on-the-map", allow_blank=True)
+        out["back_on_the_map"] = por.bar() == map_bar
+    if engine_save:
+        # `save_game` believes the save only once `SAVGAM<letter>.DAT` has
+        # changed on disk, and *then* walks back out of camp.  Curse's camp
+        # menu is not Pool of Radiance's and `leave_camp` times out at it --
+        # after the file is written.  Losing the run's whole evidence to a
+        # menu the party has finished with is the wrong trade, so the way
+        # out is reported and the files are kept.
+        try:
+            por.save_game(engine_save)
+            out["engine_saved_to"] = engine_save
+        except TimeoutError as e:
+            out["engine_saved_to"] = engine_save
+            out["left_in_camp"] = str(e)
+            note(event="left_in_camp", why=str(e))
+        session.shot("6-walk-99-saved", allow_blank=True)
+    return out
+
+
 def run(args) -> int:
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -153,12 +259,25 @@ def run(args) -> int:
         session.shot("2-party")
         note(event="loaded", digest=session.capture().digest())
         for i in range(args.characters):
-            for k in args.advance.split(","):
-                session.key(k)
-            session.settle(quiet=0.5, timeout=20.0)
-            session.shot(f"3-highlight-{i + 1}")
-            session.key(args.view)
-            session.settle(quiet=0.6, timeout=25.0)
+            if args.sheet_open:
+                press_keys(session, args.sheet_open if i == 0
+                           else (args.sheet_reopen or args.sheet_open))
+                session.shot(f"3-highlight-{i + 1}")
+                # **The picker's highlight is where the last pick left it**,
+                # not back at the top: pressing `i` downs on the i-th
+                # character walks 0, 1, 3, 6, 10, 15 down a list of six and
+                # reads GUY, PAINE, MALACHITE, GUY, DOMINIC, MALACHITE --
+                # measured, by six screen digests of which two pairs matched.
+                # One down per character after the first is what walks it.
+                press_keys(session, args.pick_down if i else "")
+                press_keys(session, args.pick_select)
+            else:
+                for k in args.advance.split(","):
+                    session.key(k)
+                session.settle(quiet=0.5, timeout=20.0)
+                session.shot(f"3-highlight-{i + 1}")
+                session.key(args.view)
+                session.settle(quiet=0.6, timeout=25.0)
             shot = session.shot(f"4-sheet-{i + 1}")
             note(event="sheet", n=i + 1, shot=shot.name,
                  digest=session.capture().digest())
@@ -166,13 +285,19 @@ def run(args) -> int:
                 session.key(k.strip())
                 session.settle(quiet=0.5, timeout=20.0)
             session.shot(f"5-back-{i + 1}", allow_blank=True)
+        if args.walk:
+            note(event="walk", **walk(session, args.walk, note,
+                                      args.begin, args.engine_save,
+                                      args.move_mode, args.move_exit))
         for n, press in enumerate(args.press):
             session.key(press)
             session.settle(quiet=0.6, timeout=30.0)
             session.shot(f"6-press-{n:02d}-{press}")
             note(event="pressed", key=press, digest=session.capture().digest())
-        if args.resave:
-            for k in args.resave.split(","):
+        if args.resave or args.engine_save:
+            for k in (args.resave or "").split(","):
+                if not k.strip():
+                    continue
                 session.key(k.strip())
                 session.settle(quiet=0.6, timeout=40.0)
                 session.shot(f"7-save-{k.strip()}", allow_blank=True)
@@ -182,12 +307,19 @@ def run(args) -> int:
             shutil.copytree(session.save_dir, dest)
             note(event="resaved", to=str(dest),
                  files=sorted(p.name for p in dest.iterdir()))
-        shots = out / "shots"
-        shots.mkdir(parents=True, exist_ok=True)
-        for png in sorted((session.dir / "shots").glob("*.png")):
-            shutil.copy(png, shots / png.name)
-        note(event="done", shots=str(shots))
+        note(event="done", shots=str(out / "shots"))
     finally:
+        # **A specimen dies with the emulator slot that made it**
+        # (`.claude/rules/testing.md`), so the shots come out however the
+        # run ended.  One `TimeoutError` at a menu used to take six
+        # character sheets and a walk with it.
+        try:
+            shots = out / "shots"
+            shots.mkdir(parents=True, exist_ok=True)
+            for png in sorted((session.dir / "shots").glob("*.png")):
+                shutil.copy(png, shots / png.name)
+        except OSError as e:
+            print(f"could not keep the shots: {e}", file=sys.stderr)
         session.close()
         slot.release()
     return 0
@@ -217,6 +349,36 @@ def main(argv: list[str] | None = None) -> int:
                     help="keys that leave the sheet, comma separated")
     ap.add_argument("--load-keys", default="l,D",
                     help="the LOAD SAVED GAME keys, comma separated")
+    ap.add_argument("--sheet-open", default="",
+                    help="Silver Blades and anything else whose party menu "
+                         "is a highlight list rather than letter keys: the "
+                         "keys that take the *first* character's sheet from "
+                         "the party menu, comma separated. Given, this "
+                         "replaces --advance/--view entirely")
+    ap.add_argument("--sheet-reopen", default="",
+                    help="the same for the second and later characters, when "
+                         "leaving a sheet does not put the menu highlight "
+                         "back where it started (default: --sheet-open)")
+    ap.add_argument("--pick-down", default="Down",
+                    help="the key that moves the character picker on by one")
+    ap.add_argument("--pick-select", default="Return",
+                    help="the key that opens the picked character's sheet")
+    ap.add_argument("--walk", type=int, default=0,
+                    help="steps to walk after the sheets, before --resave, "
+                         "so the save is proven to be a game rather than a "
+                         "file that loads")
+    ap.add_argument("--begin", default="b",
+                    help="the BEGIN ADVENTURING keys, comma separated, "
+                         "pressed before the walk")
+    ap.add_argument("--move-mode", default="",
+                    help="Silver Blades: the MOVE key that puts the party "
+                         "into movement mode, without which the arrow keys "
+                         "do nothing at all in a dungeon")
+    ap.add_argument("--move-exit", default="Escape",
+                    help="the key that leaves movement mode again")
+    ap.add_argument("--engine-save", default="",
+                    help="have the game's own ENCAMP > SAVE write the party "
+                         "back to this slot letter after the walk")
     ap.add_argument("--press", action="append", default=[],
                     help="an extra key to press at the end, repeatable")
     ap.add_argument("--resave", default="",
