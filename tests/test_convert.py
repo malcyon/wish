@@ -1063,6 +1063,43 @@ def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
         assert not hexish.search(text), text
 
 
+@needs_dos_saves
+def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detail(
+        tmp_path):
+    """The one pane state `test_no_string_reachable_in_the_pane_contains_a_
+    hex_offset` could not reach with no real game disks: a C64 source with a
+    DOS game folder and a destination folder both chosen, which is what
+    actually rehearses the write and puts the drop list on screen. Every
+    other state that module checks refuses before reaching a drop line at
+    all (#355, A C64 party converted to DOS is shown nine developer notes,
+    with memory addresses, overlay names and issue numbers in them).
+
+    Failed before the fix, on `0x0E3`, `$1633`, `CHARPIC00`, `LIBRARY`,
+    `GEN`, `#277`, `#268` and `#202`.
+    """
+    import re
+
+    hexish = re.compile(r"(?:0x[0-9A-Fa-f]+|\$[0-9A-Fa-f]{2,})")
+    bare_issue = re.compile(r"#\d+")
+    overlay_names = ("LIBRARY", "GEN", "COM.PREP", "CHARPIC00")
+
+    path = _por_c64_disk(tmp_path)
+    destination = tmp_path / "out"
+    destination.mkdir()
+    dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                   game=str(_game_dir()),
+                                   folder=str(destination))
+    try:
+        text = dialog.ui.convert_report.toPlainText()
+    finally:
+        dialog.close()
+
+    assert convert.DROPPED_HEADING in text, text
+    assert not hexish.search(text), text
+    assert not bare_issue.search(text), text
+    assert not any(o in text for o in overlay_names), text
+
+
 def test_no_string_the_player_reads_is_unapproved():
     """The flag's first removal condition, now met.
 

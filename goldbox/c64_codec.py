@@ -1204,8 +1204,60 @@ def field_disposition() -> dict[str, str]:
 #: the way :func:`write` takes the combat icon -- a C64 "character" is spread
 #: across three places and only a `.chr` file has it in one.
 #:
-#: C64 fields this reader deliberately leaves behind, and why.
+#: C64 fields this reader deliberately leaves behind, and why.  Kept short
+#: on purpose: **every** name here that reaches a player does so through
+#: :data:`READ_DROPPED_PLAYER_TEXT` -- the C64 read side's twin of
+#: `goldbox.dos.DROPPED` and `goldbox.dos.DROPPED_PLAYER_TEXT` -- and a name
+#: with no entry there is shown nothing.  A field the C64 or the DOS engine
+#: recomputes rather than one truly lost belongs on :data:`READ_DERIVED`
+#: instead, never here with a shortened line
+#: (#355, A C64 party converted to DOS is shown nine developer notes, with
+#: memory addresses, overlay names and issue numbers in them).
 READ_DROPPED: tuple[tuple[str, str], ...] = (
+    ("abilities_second", "not a field of its own in Pool of Radiance -- these "
+                         "seven bytes are part of that title's memorised list "
+                         "and are read with it (#268, A character with more "
+                         "than sixteen memorised spells loses the rest, "
+                         "because the layout gives the list sixteen bytes "
+                         "and the game gives it eighty-one), and they are "
+                         "zero in every Pool of Radiance specimen. Curse of "
+                         "the Azure Bonds and Secret of the Silver Blades "
+                         "keep a real second ability array at the same "
+                         "offset and `read` takes it whole whenever the "
+                         "record has one -- see the `abilities_second in "
+                         "out` guard below -- so this entry only ever fires "
+                         "for Pool of Radiance"),
+    ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
+                   "colours, a C64 character set no other port can draw. "
+                   "#320 (A C64 party converted to DOS arrives with no "
+                   "combat figure at all, because the table only runs one "
+                   "way) is the reverse table this needs and does not yet "
+                   "have"),
+)
+
+#: What a player reads for each name in :data:`READ_DROPPED` -- the read
+#: side's twin of `goldbox.dos.DROPPED_PLAYER_TEXT`.  A name with no entry
+#: here is shown nothing; `READ_DROPPED`'s own `(name, why)` pairs are
+#: untouched and still carry the byte-level account for whoever is reading
+#: the source.  Every sentence below is a draft: `.claude/rules/gui-text.md`
+#: makes it Donald's to approve, marked ``(NOT APPROVED)`` until he has.
+READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
+    "abilities_second": "This title keeps one set of ability scores, not "
+                        "two, so there is nothing here to lose. (NOT "
+                        "APPROVED)",
+    "region_220": "Combat figure: DOS draws its own combat art from its own "
+                  "table, and Wish does not yet translate the Commodore "
+                  "64's into it, so your character's figure is not set. "
+                  "(NOT APPROVED)",
+}
+
+#: C64 fields the reader leaves behind because the value is recomputed
+#: rather than genuinely lost -- the read side's twin of `goldbox.dos.
+#: DERIVED`.  `(name, why, the run that demonstrated it)`; never shown to a
+#: player, on the same terms as `goldbox.dos.DERIVED`
+#: (#355, A C64 party converted to DOS is shown nine developer notes, with
+#: memory addresses, overlay names and issue numbers in them).
+READ_DERIVED: tuple[tuple[str, str, str], ...] = (
     ("strength_bonus_flag", "the strength-adjustment gate LIBRARY's roster "
                             "recompute reads at 0x0E3. Every character any "
                             "port creates holds 1 there -- GEN writes it at "
@@ -1213,25 +1265,32 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                             "record layout read 0 -- so `write` sets it from "
                             "the same rule rather than from a source value, "
                             "and a C64 record read here and written back "
-                            "keeps it (#277, A DOS character converted to the "
-                            "C64 loses the strength bonus to hit and damage, "
-                            "because 0x0E3 is written zero)"),
-    ("abilities_second", "not a field of its own in Pool of Radiance -- these "
-                         "seven bytes are part of that title's memorised list "
-                         "and are read with it (#268), and they are zero in "
-                         "every Pool of Radiance specimen. In Curse of the "
-                         "Azure Bonds and Silver Blades it is the second "
-                         "ability array and the reader takes it whole"),
+                            "keeps it",
+     "the sibling DOS-side entry in goldbox.dos.DERIVED, closed as #277 "
+     "(A DOS character converted to the C64 loses the strength bonus to "
+     "hit and damage, because 0x0E3 is written zero)"),
     ("turn_class", "zero for every player character -- the undead's row, not "
-                   "the caster's"),
+                   "the caster's",
+     "the turning routine read end to end, and a converted paladin's own "
+     "turn_power put TURN on his combat bar at his own level -- #297 (A "
+     "cleric converted from the C64 to DOS is given an undead's turning "
+     "row, because the DOS writer puts turn_power in the undead's byte) "
+     "and #288 (A converted cleric or paladin arrives on the C64 unable to "
+     "turn undead, because DOS keeps no turning byte and nothing computes "
+     "one), both closed; docs/178-turning-undead.md"),
     ("strength_index", "derived from strength and the percentile; a writer "
-                       "that wants it recomputes it"),
-    ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
-                   "colours, a C64 character set no other port can draw"),
+                       "that wants it recomputes it",
+     "`goldbox.c64_codec.strength_index` computing it at write time, and "
+     "goldbox/dos_layout.py's own byte-level account of 0x0AA, which "
+     "confirms the DOS record has no counterpart of the C64's 0x0E2 to "
+     "read one back from"),
     ("missile_attack_adjustment",
      "a cache of what dexterity is worth to hit at range. COM.PREP $1633 "
-     "rebuilds it from the record's own dexterity, which is carried, at the "
-     "start of every fight and before anything reads it (#202)"),
+     "rebuilds it from the record's own dexterity, which is converted, at "
+     "the start of every fight and before anything reads it",
+     "the routine read end to end -- #202 (Name record offset 0x0EC, which "
+     "is what moves a THAC0 when darts are readied), closed -- and no DOS "
+     "layout field stores an equivalent for `write` to have sourced"),
 )
 
 #: What :func:`read` does with every named field of the C64 layout -- the
@@ -1287,6 +1346,7 @@ READ_TARGETS: dict[str, str] = (
     | {f: "read into neutral levels, named by the class bit"
        for f in _LEVEL_ORDER}
     | {name: f"dropped: {why}" for name, why in READ_DROPPED}
+    | {name: f"derived: {why}" for name, why, _run in READ_DERIVED}
 )
 
 
@@ -1350,8 +1410,20 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "the C64 roster block's +0x10-+0x18: the armour bonus and "
                 "the eight running attack-form bytes",
                 grade("roster_tail"))
-        out.drop("C64 roster +0x03-0x05: the roster's own derived bytes, "
-                 "with no neutral field to hold them")
+        # The roster block's own +0x03-0x05 -- `goldbox.savegame.
+        # ROSTER_UNKNOWN_03` -- have no established meaning: an early
+        # reading as a per-level spell count was RETRACTED (`goldbox/
+        # layout.py`, the note on `spells_memorised`), and nothing has
+        # replaced it.  Undecoded rather than derived, so this stays a
+        # genuine drop rather than moving to `READ_DERIVED`
+        # (conversions.md's third reason: "we do not understand the bytes
+        # well enough to write them ... a bug that has not been filed
+        # yet"); filed as
+        # #365 (Three roster bytes have no established meaning, and a C64
+        # party converted to DOS is told so with no way to check it).
+        out.drop("Three bytes in your character's roster entry have no "
+                 "established meaning yet, so Wish leaves them behind. "
+                 "(NOT APPROVED)")
 
     copy("infravision", "infravision")
     copy("turn_power", "turn_power")
@@ -1566,6 +1638,20 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "the C64's identity pair @0x0E6, the first byte",
                 grade("identity_pair"))
 
-    for name, why in READ_DROPPED:
-        out.drop(f"C64 {name}: {why}")
+    # A name in `READ_DROPPED` is reported **only where
+    # `READ_DROPPED_PLAYER_TEXT` has a sentence for it**, the same rule
+    # `goldbox.dos.to_neutral` follows for `DROPPED_PLAYER_TEXT` -- and only
+    # when this read did not actually set it.  `abilities_second` is in both
+    # halves at once for Curse of the Azure Bonds and Secret of the Silver
+    # Blades, which keep a real second ability array and had it set above;
+    # without this guard every one of their conversions reported the field
+    # both converted and lost in the same pane (#355, A C64 party converted
+    # to DOS is shown nine developer notes, with memory addresses, overlay
+    # names and issue numbers in them).
+    for name, _why in READ_DROPPED:
+        if name in out:
+            continue
+        sentence = READ_DROPPED_PLAYER_TEXT.get(name)
+        if sentence:
+            out.drop(sentence)
     return out

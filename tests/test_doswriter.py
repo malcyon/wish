@@ -60,6 +60,51 @@ def test_read_targets_tile_the_c64_layout():
     assert set(c64_codec.READ_TARGETS) - known == {"region_220"}
 
 
+def test_read_dropped_and_read_derived_are_disjoint():
+    """A name is dropped or derived, never both -- the read side's twin of
+    `test_dosconvert.py`'s `test_every_dropped_field_reaches_the_player_
+    unless_the_c64_derives_it`, which pins the same rule for `goldbox.dos.
+    DROPPED`/`DERIVED`. `.claude/rules/conversions.md`: a field the
+    destination derives needs no line, and everything else on `READ_DROPPED`
+    reaches the player unless it has no sentence."""
+    derived = {name for name, *_ in c64_codec.READ_DERIVED}
+    assert derived.isdisjoint(dict(c64_codec.READ_DROPPED))
+
+
+def test_every_read_dropped_name_has_player_text():
+    """`READ_DROPPED_PLAYER_TEXT`'s twin of `test_dosconvert.py`'s
+    `test_every_dropped_name_has_player_text`: a sentence names a field that
+    is really on `READ_DROPPED`, and every sentence a player reads opens
+    with a capital. **The reverse does not hold** -- a name with no sentence
+    is shown nothing, which is how `READ_DERIVED` fields already leave the
+    pane."""
+    assert (set(c64_codec.READ_DROPPED_PLAYER_TEXT)
+            <= set(dict(c64_codec.READ_DROPPED)))
+    for text in c64_codec.READ_DROPPED_PLAYER_TEXT.values():
+        assert text[:1].isupper(), text
+
+
+def test_no_read_derived_or_dropped_why_text_reaches_a_player():
+    """`READ_DROPPED_PLAYER_TEXT`'s own sentences -- the only strings `read`
+    ever hands to `NeutralCharacter.drop` for a name in `READ_DROPPED` or
+    `READ_DERIVED` -- carry none of the developer detail their `why` clauses
+    keep on purpose: no hex offset, no bare issue number, and none of the
+    overlay or file names `#355 (A C64 party converted to DOS is shown nine
+    developer notes, with memory addresses, overlay names and issue numbers
+    in them)` found in front of a player. `why` itself is untouched and is
+    not checked here -- it is the developer's note `.claude/rules/gui-text.md`
+    keeps out of a pane, not a player's sentence."""
+    import re
+
+    hex_offset = re.compile(r"0[xX][0-9A-Fa-f]+|\$[0-9A-Fa-f]+")
+    bare_issue = re.compile(r"#\d+")
+    overlay_names = ("LIBRARY", "GEN", "COM.PREP", "CHARPIC00")
+    for text in c64_codec.READ_DROPPED_PLAYER_TEXT.values():
+        assert not hex_offset.search(text), text
+        assert not bare_issue.search(text), text
+        assert not any(o in text for o in overlay_names), text
+
+
 def test_every_neutral_field_has_a_write_disposition():
     """The writer's twin of `test_every_neutral_field_has_a_disposition_in_
     every_writer`: a name added to `goldbox/neutral.py`'s FIELDS and never wired

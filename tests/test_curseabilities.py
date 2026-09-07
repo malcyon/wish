@@ -49,3 +49,16 @@ def test_a_curse_second_ability_array_round_trips():
     written, report = c64_codec.write(out)
     assert written.get_raw("abilities_second") == SEVEN_SCORES
     assert "abilities_second" in report.sources[0x065]
+
+
+def test_a_curse_second_ability_array_is_not_also_reported_dropped():
+    """Before the fix, `read`'s closing sweep reported `abilities_second`
+    dropped in the same read that had just converted it -- a Curse or
+    Silver Blades player converting to DOS was told a field was lost right
+    after Wish read it whole (#355, A C64 party converted to DOS is shown
+    nine developer notes, with memory addresses, overlay names and issue
+    numbers in them)."""
+    out = c64_codec.read(_curse_record(), game=CURSE)
+    assert out.get("abilities_second") == dict(
+        zip(neutral.ABILITIES, SEVEN_SCORES))
+    assert not [d for d in out.dropped if "ability" in d.lower()], out.dropped
