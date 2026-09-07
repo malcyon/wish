@@ -3519,6 +3519,14 @@ ITEM_AREA = 0x5900
 ICON_TABLE = 0x4BE0
 ICON_SIZE = 36
 ROSTER_STRIDE = 0x20
+#: The two icon-table slots no DOS party can ever fill.  DOS keeps at most
+#: six characters (`len(party) > 6`, below) against the C64's eight, so
+#: slots 6 and 7 back only a character recruited in the running game
+#: (`ADDNPC`), never a DOS import.  Character creation seeds every one of
+#: the eight slots with the same figure, 8 of 8
+#: (`goldbox.iconparts.IconParts.default_icon`), so a conversion writes that
+#: default there rather than zero (#363).
+NPC_ICON_SLOTS = (6, 7)
 #: The four 64-entry active-effect arrays. Zero is "no effects running", which
 #: is a legal state, and it is what a converted save should carry: every
 #: temporary effect is lost in the trip and dropping them is the honest form
@@ -4176,11 +4184,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     own game disk, `goldbox.iconparts.IconParts.default_icon` -- or an
     `IconParts` itself, in which case each character's own `icon_head`,
     `icon_body` and `icon_colours` become his own figure instead (#130,
-    :func:`_icon_for`).  `animate` is `ANIMATE00`'s 852-byte payload off the
-    same disks, which goes at `$8400`.  Leave either out and that region
-    keeps whatever the payload already held, which is only ever right when
-    the payload came from a real C64 save; `Report.unwritten` is what says
-    so afterwards.
+    :func:`_icon_for`).  Either way, :data:`NPC_ICON_SLOTS` -- the two
+    icon-table slots no DOS party can ever fill -- gets the same default
+    figure creation seeds every slot with, rather than zero (#363).
+    `animate` is `ANIMATE00`'s 852-byte payload off the same disks, which
+    goes at `$8400`.  Leave either out and that region keeps whatever the
+    payload already held, which is only ever right when the payload came
+    from a real C64 save; `Report.unwritten` is what says so afterwards.
 
     `portraits` is the creation menu's two tables, from
     :func:`portrait_tables` -- or `None`, and then :func:`to_neutral` uses
@@ -4238,6 +4248,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         which: dos_icon_tables(title=container.game.key, size=which)
         for which in ("small", "large")
     } if isinstance(icon, IconParts) else {}
+    #: What :data:`NPC_ICON_SLOTS` gets, below -- the same 36 bytes creation
+    #: gives every new character, `IconParts.default_icon` itself when `icon`
+    #: is the option tables, or `icon` unchanged when it is already those
+    #: composed bytes.  `None` when no icon source was given at all, which is
+    #: only ever true when `save0` already came from a real C64 save and this
+    #: whole region is meant to keep what that save already held (#363).
+    npc_icon = (icon.default_icon() if isinstance(icon, IconParts) else icon)
 
     all_faced = True
     for index, char in enumerate(party):
@@ -4338,10 +4355,18 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         if place >= container.party_slots:
             continue
         at = container.icon(place)
-        save0[at:at + ICON_SIZE] = bytes(ICON_SIZE)
-        report.note(at, ICON_SIZE,
-                    f"slot {place}: combat icon zeroed -- nothing draws "
-                    f"an icon for a slot with no character in it")
+        if place in NPC_ICON_SLOTS and npc_icon is not None:
+            save0[at:at + ICON_SIZE] = npc_icon
+            report.note(at, ICON_SIZE,
+                        f"slot {place}: the combat icon the game's own "
+                        f"character creation seeds every slot with -- no "
+                        f"DOS party can ever fill this NPC-only slot, so "
+                        f"nothing else here writes it (#363)")
+        else:
+            save0[at:at + ICON_SIZE] = bytes(ICON_SIZE)
+            report.note(at, ICON_SIZE,
+                        f"slot {place}: combat icon zeroed -- nothing draws "
+                        f"an icon for a slot with no character in it")
         if container.name_table is not None:
             at = container.name(place)
             save0[at:at + container.name_stride] = bytes(container.name_stride)

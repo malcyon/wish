@@ -1536,8 +1536,11 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     combat floor rather than as nothing.
 
     So every occupied slot carries the icon the game's own character creation
-    writes, and every empty one carries zero -- nothing draws an icon for a
-    slot with no character in it.
+    writes, every empty *player* slot carries zero -- nothing draws an icon
+    for a slot with no character in it -- and the two NPC-only slots no DOS
+    party can ever fill carry that same creation default rather than zero
+    (`#363 (A DOS-to-C64 conversion writes zero into the two NPC-only
+    combat-icon slots instead of the engine's own seeded default)`).
     """
     icon, animate = _game_files()
     party = dos.read_party(_save_dir(), "A")
@@ -1545,9 +1548,11 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     for place in range(savegame.SLOT_COUNT):
         at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
         got = bytes(save0[at:at + dos.ICON_SIZE])
-        want = icon if place < len(party) else bytes(dos.ICON_SIZE)
+        occupied = place < len(party)
+        want = icon if occupied or place in dos.NPC_ICON_SLOTS \
+            else bytes(dos.ICON_SIZE)
         assert got == want, place
-        if place < len(party):
+        if occupied or place in dos.NPC_ICON_SLOTS:
             assert any(got), f"slot {place} would draw as black hooks"
 
 
@@ -1711,15 +1716,40 @@ def test_a_party_missing_one_face_leaves_the_portrait_switched_off(tmp_path):
     assert save0[at] == dos.PORTRAIT_OFF
 
 
+#: `(disk, NPC slot)` known not to carry the engine's own seeded default, and
+#: why -- the same style `test_derive.py`'s `THAC0_EXPLAINED` uses, a named
+#: set rather than a count, so a *new* disk failing this still turns the
+#: assertion red instead of being folded silently into a bigger tolerance.
+#:
+#: `PORSAVEA.D64` and `PORSAVEB.D64` are Wish's own historical output,
+#: established by `#346 (The default-icon test reads every save disk the
+#: player owns, and two of them no longer carry the seeded icon in an NPC
+#: slot)`: both NPC slots on both disks are 36 bytes of zero, the pattern
+#: every DOS-to-C64 conversion produced before `#363 (A DOS-to-C64 conversion
+#: writes zero into the two NPC-only combat-icon slots instead of the
+#: engine's own seeded default)` fixed `goldbox.dos.write_c64_save`. That fix
+#: does not rewrite a disk already on the player's machine, so these two stay
+#: exceptions until Donald converts that party again.
+NPC_SLOT_EXPLAINED = {
+    ("PORSAVEA.D64", 6): "converted from DOS before #363's fix; zero, not "
+                          "the seeded default",
+    ("PORSAVEA.D64", 7): "the same",
+    ("PORSAVEB.D64", 6): "the same party, saved again",
+    ("PORSAVEB.D64", 7): "the same",
+}
+
+
 @needs_disks
 def test_the_default_icon_is_what_the_engine_seeded_the_table_with():
     """Composed from the option tables, and checked against the player's own
     save disks rather than against a number written down here.
 
-    Slots 6 and 7 are the NPC-only slots nobody has ever edited, so they still
-    hold what the table was seeded with. **28 of 28** -- every save disk, both
-    slots -- and **0 of 84** in slots 0-5, which is what says the match is the
-    creation default rather than a shape any character happens to carry.
+    Slots 6 and 7 are the NPC-only slots nobody has ever edited, so they
+    still hold what the table was seeded with -- on every disk except the
+    two named in :data:`NPC_SLOT_EXPLAINED`, which are Wish's own past
+    output rather than the engine's. And **0** in slots 0-5, which is what
+    says the match is the creation default rather than a shape any character
+    happens to carry.
     """
     from goldbox import icons
     from goldbox.d64 import D64
@@ -1730,7 +1760,8 @@ def test_the_default_icon_is_what_the_engine_seeded_the_table_with():
     NPC_SLOTS = (6, 7)
 
     want = IconParts.load(str(gamedata.game_disk("POOL3"))).default_icon()
-    checked = seeded = nudged = 0
+    checked = seeded = nudged = explained = 0
+    unexplained = []
     for path in gamedata.save_disks():
         try:
             _game, sg0, _sg1 = savegame.load_save(D64.open(path))
@@ -1741,12 +1772,24 @@ def test_the_default_icon_is_what_the_engine_seeded_the_table_with():
         for place in range(savegame.SLOT_COUNT):
             same = icons.icon_for_slot(payload, place).raw == want
             if place in NPC_SLOTS:
-                seeded += same
+                if same:
+                    seeded += 1
+                elif (path.name.upper(), place) in NPC_SLOT_EXPLAINED:
+                    explained += 1
+                else:
+                    unexplained.append((path.name, place))
             else:
                 nudged += same
     assert checked, "needs at least one save disk to check against"
-    assert seeded == checked * len(NPC_SLOTS), \
-        f"{seeded} of {checked * len(NPC_SLOTS)} NPC slots carry it"
+    # `seeded + explained` accounts for every NPC slot on every disk checked;
+    # what makes this a test rather than bookkeeping is that a slot matching
+    # neither the seed nor a name in NPC_SLOT_EXPLAINED goes to `unexplained`
+    # and fails it -- so a *new* disk in this state turns the suite red
+    # instead of being folded silently into a bigger tolerance.
+    assert seeded + explained == checked * len(NPC_SLOTS)
+    assert not unexplained, \
+        f"{len(unexplained)} of {checked * len(NPC_SLOTS)} NPC slots match " \
+        f"neither the seeded default nor a known exception: {unexplained}"
     assert nudged == 0, "a slot the player edited matches the default"
 
 
