@@ -1241,10 +1241,24 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
 #: untouched and still carry the byte-level account for whoever is reading
 #: the source.  Every sentence below is a draft: `.claude/rules/gui-text.md`
 #: makes it Donald's to approve, marked ``(NOT APPROVED)`` until he has.
+#: Entries on :data:`READ_DROPPED` a player is deliberately **not** told
+#: about.  Donald, 2026-09-07, on the ability-array line: *"the player will
+#: not care and does not need to be notified about this."*  The field is
+#: still a drop and still in the accounting -- this silences the line, not
+#: the loss.  Naming them here rather than leaving them out of
+#: `READ_DROPPED_PLAYER_TEXT` is what keeps the omission a decision somebody
+#: made instead of one nobody noticed: `test_every_read_dropped_name_has_
+#: player_text` requires every name to be in one table or the other.
+#:
+#: `abilities_second` is silent because on Pool of Radiance -- the only title
+#: where the read side drops it -- there is no second array to lose.  **What
+#: that array is for in the later titles is not established**, and calling it
+#: "a second copy" is an assumption rather than a measurement:
+#: `#367 (What is the second ability array at 0x065 for, and which of the two
+#: does the engine treat as current?)`.
+READ_DROPPED_SILENT: tuple[str, ...] = ("abilities_second",)
+
 READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "abilities_second": "This title keeps one set of ability scores, not "
-                        "two, so there is nothing here to lose. (NOT "
-                        "APPROVED)",
     "region_220": "Combat figure: DOS draws its own combat art from its own "
                   "table, and Wish does not yet translate the Commodore "
                   "64's into it, so your character's figure is not set. "

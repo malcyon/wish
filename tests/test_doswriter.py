@@ -75,11 +75,22 @@ def test_every_read_dropped_name_has_player_text():
     """`READ_DROPPED_PLAYER_TEXT`'s twin of `test_dosconvert.py`'s
     `test_every_dropped_name_has_player_text`: a sentence names a field that
     is really on `READ_DROPPED`, and every sentence a player reads opens
-    with a capital. **The reverse does not hold** -- a name with no sentence
-    is shown nothing, which is how `READ_DERIVED` fields already leave the
-    pane."""
-    assert (set(c64_codec.READ_DROPPED_PLAYER_TEXT)
-            <= set(dict(c64_codec.READ_DROPPED)))
+    with a capital.
+
+    **And every name goes in exactly one of the two tables.** A field can
+    leave the pane on purpose -- Donald silenced `abilities_second` on
+    2026-09-07 -- but it leaves by being named in `READ_DROPPED_SILENT`,
+    not by having no sentence. Without this, a field slips out of the pane
+    when somebody deletes a line, and nobody finds out: the pane is the
+    only account a player gets of what happened to his own save.
+    """
+    dropped = set(dict(c64_codec.READ_DROPPED))
+    shown = set(c64_codec.READ_DROPPED_PLAYER_TEXT)
+    silent = set(c64_codec.READ_DROPPED_SILENT)
+    assert shown <= dropped
+    assert silent <= dropped, silent - dropped
+    assert not (shown & silent), shown & silent
+    assert shown | silent == dropped, dropped - (shown | silent)
     for text in c64_codec.READ_DROPPED_PLAYER_TEXT.values():
         assert text[:1].isupper(), text
 
