@@ -992,7 +992,7 @@ _SOURCE_OF: dict[str, str] = {
 
 
 def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
-    """A whole C64 party from a save disk into a `SAVE` drawer's worth of
+    """A whole C64 party from a save disk into a `SAVE` drawer full of
     `.pc` files.
 
     Returns one `(path, Report)` per character. The C64 disk is opened
@@ -2048,7 +2048,7 @@ def _all_or_nothing(disk):
     :func:`write_por_slot` exists to refuse.
 
     The snapshot is the whole image and the undo is `AmigaDisk.restore`, which
-    is cheap enough at 880K not to be worth being clever about.
+    is cheap enough at 880K that being clever about it would buy nothing.
     """
     snapshot = disk.to_bytes()
     try:
@@ -3951,8 +3951,8 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
 #
 #   * `granted_effects` carries **whole nine-byte effect records** -- the id,
 #     a little-endian duration of zero, the value the effect carries and the
-#     flag the engine reads when the item comes off -- because what a ring is
-#     worth is in the record rather than in the id (#232);
+#     flag the engine reads when the item comes off -- because what a ring
+#     does is in the record rather than in the id (#232);
 #   * `status` is converted as a **name** (#235).  Here the name costs nothing:
 #     both later Amiga titles index `neutral.STATUS_NAMES` in DOS's own order,
 #     which is measured rather than assumed -- see
@@ -4050,9 +4050,16 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                     "`goldbox.dos.FIELD_83_87` byte for byte. The eleven "
                     ".guy pregens and Silver Blades' MALACHITE hold zeros, "
                     "and they were what the old reading rested on. The "
-                    "reader still drops it -- the neutral record has no "
-                    "field for a treasure share -- and `write_later` writes "
-                    "the DOS constant, which is what the engine writes"),
+                    "reader still drops it and `write_later` writes the DOS "
+                    "constant, which is what the engine writes. **Only one "
+                    "of the bytes is genuinely homeless**: the neutral "
+                    "record has no field for a treasure share, but byte 1 "
+                    "of the same run is the control byte, which `npc` and "
+                    "`npc_control_byte` already model and `to_neutral_later` "
+                    "simply never reads -- `#386 (An Amiga Curse or Silver "
+                    "Blades companion converts to an ordinary character, "
+                    "because the later-titles reader never looks at the "
+                    "control byte)`"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
                                      "array, which no character of either "
                                      "port sets a byte of and no class has "
@@ -4677,6 +4684,21 @@ def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
 
     :data:`LATER_EFFECTS_FROM_NEUTRAL` says why this reads the neutral
     record instead of `goldbox.dos.write`'s `.SPC` payload.
+
+    **The id check below is a guard against an invariant held elsewhere, and
+    it has never fired.**  Every reader in the tree fills these two lists as
+    disjoint sets: `c64_codec.read_c64` puts every trait-slot id in
+    `innate_effects` and sets `granted_effects` never;
+    `goldbox.dos.to_neutral` partitions on `INNATE_EFFECTS` by construction;
+    `to_neutral_later` puts everything in `granted_effects`.  So no id has
+    ever been in both, and the `continue` has never dropped a node.  It is
+    here because a reader that stopped holding that invariant would otherwise
+    write the same effect twice -- which is the bug
+    :data:`LATER_EFFECTS_FROM_NEUTRAL` records, arriving from the other
+    side.  **A node it skipped would vanish silently**, with nothing in
+    `report.dropped`, so if a future reader can overlap the two lists this
+    needs a report rather than a `continue` (found by the review of
+    `39ceb7a`, 2026-09-07).
     """
     from . import dos as _dos
 
@@ -4806,9 +4828,23 @@ def write_later(char: NeutralCharacter,
     for n in range(len(effects)):
         at = base + n * shape.effect_size
         rep.note(at, 1, f"effect {n}: the id, from the neutral record")
-        rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
-                 f"effect {n}: the extra byte, a pad. Zero in every Pool of "
-                 f"Radiance and Curse record read (68)")
+        # **Not the same byte on the two titles, and this note said it was
+        # until the review of `39ceb7a` caught it.**  On Curse it is a pad,
+        # zero in 24 of 24 nodes.  On Silver Blades it is the one thing this
+        # writer cannot source -- 3 of the 5 nodes anybody has seen hold
+        # `0x2E`, `0x6D` or `0x64` -- so the account has to say so, or a
+        # person reading `--report` is told a byte is understood padding
+        # while `LATER_EFFECT_WRITE_UNSOURCED` two hundred lines up says the
+        # opposite (`#387 (The Amiga Silver Blades effect node keeps a byte
+        # DOS has not got, and a converted character loses it)`).
+        if shape is SILVER_BLADES_SHAPE:
+            rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
+                     f"effect {n}: "
+                     f"{LATER_EFFECT_WRITE_UNSOURCED[0][2]}")
+        else:
+            rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
+                     f"effect {n}: the extra byte, a pad. Zero in every Pool "
+                     f"of Radiance and Curse record read (68)")
         rep.note(at + 2, 2, f"effect {n}: duration, byte-swapped")
         rep.note(at + 4, 2, f"effect {n}: the value the effect carries and "
                             f"the flag the engine reads when the item comes "

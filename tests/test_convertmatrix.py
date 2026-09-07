@@ -202,6 +202,15 @@ def test_dos_to_c64_matches_the_library_for_every_title(
 
     assert len(written) == 1
     assert written[0].read_bytes() == reference.to_bytes()
+    # **This line compares two empty lists on this direction today**, and says
+    # so rather than looking like evidence it is not.  `DOS_TO_C64_NAMES`'
+    # sibling `DROPPED_PLAYER_TEXT` is empty since Donald's ruling of
+    # 2026-09-06 took its only two entries out, so `to_neutral` never drops a
+    # sentence and nothing else on this path does either.  The byte comparison
+    # above is what carries this test; the C64 -> DOS half of the file has
+    # real lines in it and this assertion does real work there.  Found by the
+    # review of `686fd61`.  It stops being vacuous the day a DOS -> C64
+    # conversion drops anything, which is what it is here to catch.
     assert dialog.rehearsal.report.dropped == list(ref_report.dropped)
 
 

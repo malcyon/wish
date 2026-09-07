@@ -33,8 +33,8 @@ Four things it does, cheapest first:
 The `--source` is read-only, `--into` is opened read-only, and `--out` is
 required before anything is written.  Nothing here starts an emulator.
 
-**DOS and the C64 both work**, and the two paths differ in one thing worth
-knowing: a C64 source keeps the paladin's and the ranger's innate effect and
+**DOS and the C64 both work**, and the two paths differ in one thing: a C64
+source keeps the paladin's and the ranger's innate effect and
 a DOS one does not, because `goldbox.dos.write` filtered it out on the way
 into the DOS file -- #388.  So a party that has been round the C64-to-DOS
 conversion arrives here already missing it.
