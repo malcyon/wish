@@ -1740,11 +1740,21 @@ class FastTravel(Action):
                                arrival, overland=overland, addresses=addr)
         _write_all(target, writes)
         if not jump(target, addr.tail):
+            # **`Outcome.message` is read by a player**, not only by a log:
+            # `automap/actionbar.py` puts it straight into the Messages panel.
+            # It carried `$xxxx is flagged for reload` until 2026-09-07, which
+            # is the same defect `#306 (The Fast Travel button's own disabled
+            # tooltip carries a memory address)` fixed in `legality`, by a
+            # route that sweep did not walk. The address goes to the log, as
+            # it does there.
+            _log.debug("fast travel: could not set the PC; $%04X is flagged "
+                       "for reload and the next area change will act on it",
+                       addr.slot)
             return Outcome(False,
-                           f"the writes were made but the program counter "
-                           f"could not be set, so nothing has happened yet -- "
-                           f"${addr.slot:04X} is flagged for reload and the "
-                           f"next area change will act on it",
+                           "the party has not moved. Wish set up the travel "
+                           "but could not start it, and the game will finish "
+                           "the move itself the next time the party changes "
+                           "area (NOT APPROVED)",
                            writes, tuple(notes))
         self.back = was
         name = getattr(area, "name", None) or getattr(area, "ecl", str(to))
@@ -1801,8 +1811,12 @@ class FastTravel(Action):
             out.append("no arrival square is known for this area, so the "
                        "party lands wherever the arriving script leaves it")
         if not getattr(area, "has_map", True):
-            out.append(f"{getattr(area, 'ecl', 'this area')} loads no map of "
-                       "its own")
+            # Never the `ecl` fallback here: that is a script filename, which
+            # `.claude/rules/gui-text.md` keeps out of anything a player reads,
+            # and this string is a warning they see. A nameless area is "this
+            # area" (found by the review of `a5b3f49`, 2026-09-07).
+            out.append(f"{getattr(area, 'name', None) or 'this area'} loads "
+                       f"no map of its own")
         if outdoors_target:
             if overland is not None:
                 x, y = overland
