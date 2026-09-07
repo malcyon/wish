@@ -23,7 +23,16 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter, QPen, QPolygonF
+from PyQt6.QtGui import (
+    QAction,
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPolygonF,
+)
 from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
     QCheckBox,
@@ -385,6 +394,10 @@ class CombatCanvas(QWidget):
     it yields and answers the tooltip.
     """
 
+    #: Below this pixel size nothing reads as a digit -- the floor
+    #: `tools/combatbarsheet.py`'s `fit_font` uses for the same reason.
+    MIN_LABEL_PIXELS = 4
+
     def __init__(self, parent=None, host=None):
         super().__init__(parent)
         from PyQt6.QtWidgets import QSizePolicy
@@ -526,12 +539,40 @@ class CombatCanvas(QWidget):
             p.drawLine(QPointF(prim.x1, prim.y1), QPointF(prim.x2, prim.y2))
         elif isinstance(prim, Label):
             p.setPen(QPen(HP_INK.get(prim.kind, PAPER)))
-            font = QFont("sans", max(7, int(self.cell * 0.36)),
-                         QFont.Weight.Bold)
-            p.setFont(font)
-            p.drawText(QRectF(prim.x - self.cell / 2, prim.y - self.cell / 2,
-                              self.cell, self.cell),
+            cell = self.drawn_cell
+            p.setFont(self._label_font(prim.text, cell))
+            p.drawText(QRectF(prim.x - cell / 2, prim.y - cell / 2,
+                              cell, cell),
                        Qt.AlignmentFlag.AlignCenter, prim.text)
+
+    @staticmethod
+    def _label_font(text: str, cell: int) -> QFont:
+        """The largest bold sans that keeps `text` inside a `cell`-wide
+        square, measured rather than guessed at a fraction of the cell.
+
+        Sized in pixels, not points, because `cell` is itself a pixel count
+        and the same cell has to draw the same digits on every machine --
+        `tools/combatbarsheet.py`'s `fit_font` sizes the letter over the
+        health bar the same way. A one-digit hit-point total and a
+        three-digit one are different widths at the same cell, so this
+        measures the text it is actually asked to draw rather than a
+        worst case that would leave `7` looking as cramped as `118`.
+        """
+        pad = 2  # keeps the digits off the lattice line at any cell size
+        limit = max(1, cell - pad * 2)
+        size = max(CombatCanvas.MIN_LABEL_PIXELS, limit)
+        while size > CombatCanvas.MIN_LABEL_PIXELS:
+            font = QFont("sans")
+            font.setPixelSize(size)
+            font.setWeight(QFont.Weight.Bold)
+            fm = QFontMetricsF(font)
+            if fm.capHeight() <= limit and fm.horizontalAdvance(text) <= limit:
+                return font
+            size -= 1
+        font = QFont("sans")
+        font.setPixelSize(size)
+        font.setWeight(QFont.Weight.Bold)
+        return font
 
 
 class AutomapBinding(QObject):
