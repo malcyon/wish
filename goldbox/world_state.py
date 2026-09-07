@@ -62,8 +62,13 @@ class WorldState:
     fields the DOS <-> C64 pair already needed and the Amiga writer never
     had to ask for, because `#316 (Write the Amiga Pool of Radiance saved
     game from the source save, so a converted party arrives where it was
-    standing)` refuses an outdoor party and a party that has not set out
-    before either ever reaches a `PorSaveState`.
+    standing)` used to refuse an outdoor party and a party that has not set
+    out before either ever reached a `PorSaveState`.  **The outdoor half of
+    that is over**: the two bytes nobody had seen were measured on
+    2026-09-07 and `#321 (An Amiga Pool of Radiance conversion refuses a
+    party standing on the travel grid, because no outdoor Amiga saved game
+    has ever been read)` closed, so an outdoor Amiga party is read like any
+    other.
     """
 
     #: The title this save belongs to, `goldbox.games.Game.title`.
@@ -168,12 +173,12 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     and `c64_save.container_for` says which title's own quest-flag width and
     header offsets apply.  Generalises `goldbox.amiga.por_state_from_c64`
     (now a one-line wrapper of this) beyond Pool of Radiance's own 217-byte
-    flag window, and reads an outdoor party rather than refusing one --
-    only `goldbox.amiga.por_state_from_c64`'s own wrapper still refuses,
-    because writing an outdoor save to the Amiga is unmeasured (`#316`,
+    flag window, and reads an outdoor party rather than refusing one.  **The
+    wrapper refuses nothing either**, as it did until 2026-09-07: the two
+    bytes an outdoor Amiga saved game holds were measured that day and
     `#321 (An Amiga Pool of Radiance conversion refuses a party standing on
     the travel grid, because no outdoor Amiga saved game has ever been
-    read)`) whatever this reader can now represent.
+    read)` closed.
 
     There is no "has this party set out" question on the C64 side: every
     C64 save this project has read represents a party already in the
@@ -218,9 +223,9 @@ def from_dos(savgam: bytes,
     the start of the story rather than refusing.
 
     Reads an outdoor party rather than refusing one, because the C64 side
-    already has a travel square to write it into -- only
-    `goldbox.amiga.por_state_from_dos`'s own wrapper still refuses, for the
-    same reason `from_c64`'s does.
+    already has a travel square to write it into, and
+    `goldbox.amiga.por_state_from_dos` refuses nothing either -- for the
+    same reason `from_c64`'s wrapper stopped, on 2026-09-07.
     """
     from . import dos as _dos
 
@@ -254,10 +259,12 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     Pool of Radiance is the only Amiga container this project reads a party
     out of, so `title` is always its own and `header` is read but empty of
     meaning -- Pool of Radiance's own `c64_save.Container.copied` is empty.
-    Generalises `goldbox.amiga.por_state_from_amiga` (now a one-line wrapper
-    that still checks the file length and still refuses an outdoor save,
-    because writing one to the Amiga stays unmeasured, `#316`, `#321`,
-    whatever this reader can now represent).  There is no "has this party
+    Generalises `goldbox.amiga.por_state_from_amiga`, which is now a
+    one-line wrapper that checks the file length and nothing else -- it
+    refused an outdoor save until 2026-09-07, when the two bytes one holds
+    were measured and `#321 (An Amiga Pool of Radiance conversion refuses a
+    party standing on the travel grid, because no outdoor Amiga saved game
+    has ever been read)` closed.  There is no "has this party
     set out" question read off an Amiga file either -- every Amiga save
     read is a party in the world -- so `set_out` is always true, as on the
     C64 side.
