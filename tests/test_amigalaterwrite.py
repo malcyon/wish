@@ -18,9 +18,12 @@ The corpus is the 21 records on the game's own disks plus the parties inside
 the engine-written saved games in `$WISH_SPECIMENS`.  Nothing is committed:
 the disks are read at run time and the tests skip on a machine without them.
 
-**A conversion is not proven until it runs.**  Nothing here has been in front
-of Amiga Curse or Amiga Silver Blades, which `#384` says is what would close
-it; these tests are what keeps the bytes true once it has.
+**A conversion is not proven until it runs**, and this one has: both games
+loaded a converted party on 2026-09-07, drew the party panel, the sheets and
+one character's twelve items, and wrote it back at the length it went in --
+`docs/203-a-converted-later-amiga-party-in-the-running-game.md`.  These tests
+are what keeps the bytes true now that it has, and the three engine-written
+saved games that run produced are in the corpus below.
 """
 
 from __future__ import annotations
@@ -338,21 +341,25 @@ def test_the_effect_chain_is_the_neutral_records_and_not_the_races():
         assert [node[0] for node in built.effects] == [61, 26, 47]
 
 
-def test_only_silver_blades_reports_the_byte_nobody_has_attributed():
+def test_silver_blades_reports_nothing_for_the_effect_node_pad():
     """`#387 (The Amiga Silver Blades effect node keeps a byte DOS has not
-    got, and a converted character loses it)`.
+    got, and a converted character loses it)`, settled the other way:
+    `docs/202-the-amiga-effect-node-pad.md` finds no instruction in either
+    binary that ever reads the byte, so nothing is lost and neither title's
+    report should say anything about it.
 
-    Zero in 24 of 24 Curse nodes, so Curse loses nothing and says nothing;
-    non-zero in 3 of the 5 Silver Blades nodes anywhere, so Silver Blades
-    reports it.  A character with no effects has nothing to lose either way.
+    This replaces a report line that used to appear only for Silver Blades,
+    claiming the byte "cannot be worked out" -- untrue once the byte is
+    confirmed to be an alignment pad nothing consults.
     """
-    said = amiga.LATER_EFFECT_UNKNOWN_PLAYER_TEXT
     _, curse_report = amiga.write_later(_loaded(amiga.CURSE_SHAPE))
     _, ssb_report = amiga.write_later(_loaded(amiga.SILVER_BLADES_SHAPE))
     _, empty_report = amiga.write_later(_bare(amiga.SILVER_BLADES_SHAPE))
-    assert said not in curse_report.dropped
-    assert said in ssb_report.dropped
-    assert said not in empty_report.dropped
+    for report in (curse_report, ssb_report, empty_report):
+        for line in report.dropped:
+            assert "magical effect" not in line, line
+            assert "left empty" not in line, line
+    assert not hasattr(amiga, "LATER_EFFECT_UNKNOWN_PLAYER_TEXT")
 
 
 def test_no_line_a_player_reads_carries_an_offset():
@@ -370,7 +377,15 @@ def test_no_line_a_player_reads_carries_an_offset():
 # ---------------------------------------------------------------------------
 
 def _round_trip(label: str, char: amiga.AmigaCharacter) -> None:
-    built, report = amiga.write_later(amiga.to_neutral_later(char))
+    from editor.convert import amiga_combat_icon
+
+    # `#396 (Whether an Amiga Curse or Silver Blades record's combat-icon
+    # fields share DOS's own numbering is unmeasured)`: the source record's
+    # own combat icon, read straight off it -- the same builder Amiga Pool
+    # of Radiance uses (#354) -- and handed to `write_later`'s own `icon`
+    # argument, the way `goldbox.dos.write`'s already worked.
+    icon = amiga_combat_icon(char)
+    built, report = amiga.write_later(amiga.to_neutral_later(char), icon=icon)
     got, want = built.block_bytes(), char.block_bytes()
     assert len(got) == len(want), f"{label} {char.name}: block length"
     assert report.unaccounted == [], f"{label} {char.name}: unexplained bytes"
@@ -380,6 +395,19 @@ def _round_trip(label: str, char: amiga.AmigaCharacter) -> None:
     assert differ == [], (
         f"{label} {char.name}: {len(differ)} bytes differ outside the "
         f"declared lists, first at {differ[0]:#05x}" if differ else "")
+    # The combat icon is masked above -- `goldbox.dos.WRITE_UNSOURCED` and
+    # `WRITE_DEFAULTS` name `icon_head`/`icon_body`/`icon_colours`
+    # unconditionally, whether or not this call gave `write` an `icon` --
+    # so the check that actually proves the figure round-trips is this one,
+    # unmasked (#319, #396).
+    for name in ("icon_head", "icon_body"):
+        f = char.shape.dos_field(name)
+        at = char.shape.offset(f.offset)
+        assert got[at] == want[at], f"{label} {char.name}: {name}"
+    f = char.shape.dos_field("icon_colours")
+    at = char.shape.offset(f.offset)
+    assert got[at:at + f.size] == want[at:at + f.size], (
+        f"{label} {char.name}: icon_colours")
 
 
 def test_every_record_on_the_disks_round_trips():
