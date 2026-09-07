@@ -1246,9 +1246,14 @@ CONSTANTS: tuple[tuple[str, str], ...] = (
     # eight classes, levels 1-4, before a fight and after one, and on a
     # character the engine knocked unconscious -- and the sheet is
     # pixel-identical whatever it holds (#235, #304).
-    ("field_83_87", "always the same five bytes, and the character sheet "
-                    "looks identical whichever value they hold, so nothing "
-                    "here is a loss a player would notice"),
+    ("field_83_87", "always the same five bytes for a player character, "
+                    "and the character sheet looks identical whichever "
+                    "value the other four hold, so nothing here is a loss "
+                    "a player would notice. The control byte -- bit 7 plus "
+                    "a companion's morale -- is not silent: `to_neutral` "
+                    "reads it into the neutral npc and npc_control_byte "
+                    "fields before this table's constant applies to what "
+                    "is left (#303)"),
 )
 
 #: The same, for a field only a later title declares -- split off the way
@@ -1547,6 +1552,31 @@ def to_neutral(dos: DosCharacter,
     out.set("unnamed_0ab", dos.get("unnamed_0ab"),
             f"DOS unnamed_0ab @{ident.offset:#05x} ({ident.confidence})",
             ident.confidence)
+
+    # -- the NPC control byte: bit 7 says the engine drives this character --
+    # `field_83_87`'s second byte in Pool of Radiance and Curse of the Azure
+    # Bonds; Secret of the Silver Blades' four bytes are the same run with
+    # the leading byte gone, so it is the first there instead.  Every
+    # title's own GAME.OVR compares it against 0x7F and 0x80 and stores
+    # 0x00, 0xB2 or 0xB3 as an immediate, which is coab's PC_Base / PC_Mask /
+    # NPC_Base / NPC_Berzerk / PC_Berzerk; a companion's own value is a
+    # register store instead, the low seven bits his morale stored halved
+    # (#303). CONFIRMED for the flag, PROBABLE for the morale reading.
+    f83 = dos.fields["field_83_87"]
+    control_raw = dos.raw("field_83_87")
+    control_index = 1 if len(control_raw) == 5 else 0
+    control_offset = f83.offset + control_index
+    control = control_raw[control_index]
+    out.set("npc", bool(control & 0x80),
+            f"bit 7 of DOS field_83_87 @{control_offset:#05x}, the control "
+            f"byte the engine itself tests to decide whether it drives this "
+            f"character",
+            Confidence.CONFIRMED)
+    if control & 0x80:
+        out.set("npc_control_byte", control,
+                f"DOS field_83_87 @{control_offset:#05x}, unchanged -- bit "
+                f"7 plus the low seven bits of morale, stored halved",
+                Confidence.PROBABLE)
 
     # -- the combat tail: how the character is, and which side it fights on --
     # `field_10c_10f` is four bytes and all four are a character's own state
@@ -2046,6 +2076,14 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "Curse of the Azure Bonds or Silver Blades one, whose "
                     "GEN never draws it -- gets `identity_byte`'s digest "
                     "instead, exactly as before (#258, WRITE_DERIVED)"),
+    ("npc", "written over the WRITE_CONSTANTS blob below, into "
+            "field_83_87's control byte -- 0x00 for a player character "
+            "whatever the source's own trainer bit or treasure share hold "
+            "(#303)"),
+    ("npc_control_byte", "written unchanged into field_83_87's control "
+                         "byte when npc is true -- bit 7 plus the low "
+                         "seven bits of morale, stored halved; nothing to "
+                         "write when npc is false (#303)"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -2065,7 +2103,6 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                    "itself, from his own class and level, at the moment the "
                    "player presses the command, so it keeps no byte for it "
                    "and there is nothing to write"),
-    ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
     # The two below are the later titles' fields, and this writer builds a
@@ -2231,7 +2268,9 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "a player character who takes one share of treasure. **Not one value "
      "every record holds**: the third byte is 1 in every record of the "
      "archives and 0 in 45 of the 54 Pool of Radiance records this project "
-     "rolled itself, and `FIELD_83_87` has the counts and why (#304)"),
+     "rolled itself, and `FIELD_83_87` has the counts and why (#304). The "
+     "second byte -- the control byte -- is written over this constant "
+     "afterwards, from the neutral npc and npc_control_byte fields (#303)"),
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
 )
 
@@ -2428,10 +2467,11 @@ WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
 #: **It stays in `WRITE_CONSTANTS` rather than moving to `WRITE_DEFAULTS`,
 #: deliberately.**  A default is masked out of the round trip, and masking
 #: this one would hide MALACHITE's real difference rather than convert it.
-#: The fix that removes the choice is to convert the two meaningful bytes --
-#: the control byte into the neutral `npc`, the share into a neutral field
-#: that does not exist yet -- which needs `goldbox/neutral.py` and
-#: `goldbox/amiga.py`.
+#: **The control byte now converts** -- `write` patches it, over this
+#: constant, from the neutral `npc` and `npc_control_byte` fields (#303) --
+#: and the share byte deliberately does not: it stays the constant `1` this
+#: table writes, which is what keeps a converted companion's own share from
+#: reading `0` and being skipped by the split entirely, the trap named above.
 FIELD_83_87: dict[int, bytes] = {5: b"\x00\x00\x01\x00\x00",
                                  4: b"\x00\x01\x00\x00"}
 
@@ -3151,6 +3191,41 @@ def write(char: NeutralCharacter,
         f = table[cname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size, f"{cname}: {why}")
+
+    # -- the NPC control byte, over the constant just written ----------------
+    # field_83_87's second byte in Pool of Radiance and Curse, first in
+    # Secret of the Silver Blades -- see `to_neutral`'s own comment on the
+    # shift.  The rest of the run -- the treasure share and the two bytes
+    # with no site in any of the four engines' overlays -- keeps the
+    # constant above; only this one byte carries the source's own value
+    # (#303).
+    f83 = table["field_83_87"]
+    control_index = 1 if f83.size == 5 else 0
+    control_offset = f83.offset + control_index
+    npc = use("npc")
+    control = use("npc_control_byte")
+    if npc is not None and npc.value:
+        if control is not None:
+            rec[control_offset] = int(control.value) & 0xFF
+            emit(control, "field_83_87", control_offset, 1,
+                 " -- bit 7 plus the low seven bits of morale, unchanged")
+        else:
+            rec[control_offset] = 0x80
+            rep.note(control_offset, 1,
+                     "field_83_87: 0x80 -- npc is true and the source gave "
+                     "no control byte, so no morale to carry")
+        rep.dropped.extend(npc.dropped)
+    else:
+        rec[control_offset] = 0x00
+        rep.note(control_offset, 1,
+                 "field_83_87: 0x00 -- a player character, bit 7 clear "
+                 "whatever the C64's own trainer bit holds; that is not "
+                 "this byte's business")
+        if npc is not None:
+            rep.dropped.extend(npc.dropped)
+        if control is not None:
+            rep.dropped.append("npc_control_byte: npc is false, so the "
+                               "control byte has nothing to attach to")
 
     # -- measured defaults, where the source holds no matching value --------
     # The provenance note carries both halves: why this value, and what the

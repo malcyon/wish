@@ -491,7 +491,17 @@ _DECLARED: Sequence[Field] = (
            "after INC/DEC $6B14,X and cleared again if the change is "
            "cancelled. **Nothing anywhere reads bit 0 back**, so the forum "
            "rumour that altering a score carries a penalty in play has no code "
-           "behind it on this port"),
+           "behind it on this port. "
+           "**Bit 0 is the only meaning the low bits have for a player "
+           "character, and that is not the whole byte.** For a character "
+           "the engine drives -- bit 7 set -- the low seven bits are his "
+           "morale instead, stored halved: `COMBAT $211C` masks them with "
+           "AND #$7F and doubles them before comparing, and DOS keeps the "
+           "same byte in the same encoding at `field_83_87`'s control byte "
+           "-- #303 (The DOS record may hold the NPC flag that the "
+           "conversion reports as having nowhere to go). npc_party.d64's "
+           "five NPCs read $80, $B1 and $B2 twice more, none of which is "
+           "bit 0 set on any reading"),
     _field(0x0B9, 1, _U8, "dual_class_slot", "Dual class: old class slot", _OK,
            "the slot in the per-class level array at 0x0C9 that a dual-classed "
            "human left behind, with the level it was left at in 0x0BA. Curse "

@@ -985,8 +985,31 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                            "screen codes plus 18 colours and "
                            f"{port} has no equivalent")
 
-    # -- fields with no source, written as documented constants --------------
-    rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 clear")
+    # -- the NPC control byte: bit 7 says the engine drives this character --
+    # DOS keeps the same byte in the same encoding at field_83_87's control
+    # byte, so the source's own value crosses unchanged; a player character
+    # gets 0x00, whatever the C64's own trainer bit (bit 0, unrelated) or
+    # DOS's own treasure-share byte hold (#303).
+    npc = use("npc")
+    control = use("npc_control_byte")
+    if npc is not None and npc.value:
+        if control is not None:
+            rec.set("flags_0b8", int(control.value) & 0xFF)
+            emit(control, "flags_0b8", 0x0B8, 1,
+                 " -- bit 7 plus the low seven bits of morale, unchanged")
+        else:
+            rec.set("flags_0b8", 0x80)
+            rep.note(0x0B8, 1, "flags_0b8: 0x80 -- npc is true and the "
+                     "source gave no control byte, so no morale to carry")
+        rep.dropped.extend(npc.dropped)
+    else:
+        rec.set("flags_0b8", 0x00)
+        rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 clear")
+        if npc is not None:
+            rep.dropped.extend(npc.dropped)
+        if control is not None:
+            rep.dropped.append("npc_control_byte: npc is false, so the "
+                               "control byte has nothing to attach to")
 
     # -- the sheet portrait: the art's own id, both ports' one menu ----------
     # The C64 fetches `HEAD<xx>` and `BODY<xx>` by these two bytes, measured
@@ -1184,6 +1207,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
+    ("npc", "bit 7 of 0x0B8, the byte the game itself counts player "
+            "characters with; a player character gets 0x00 there whatever "
+            "the source held (#303)"),
+    ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
+                         "bit 7 plus the low seven bits of morale, stored "
+                         "halved; nothing to write when npc is false (#303)"),
     ("status", "the name indexed into the C64's own seven-value table, into "
                "the low three bits of record 0x100; a state the C64 does not "
                "have is reported and the character arrives OK"),
@@ -1213,9 +1242,6 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "the C64 computes its own from race, so a source's value "
                     "is recomputed rather than copied"),
-    ("npc", "0x0B8 is written as a player character with bit 7 clear; which "
-            "roster slot a character lands in is the destination save's "
-            "business"),
     ("encumbrance", "derived -- the C64 has no such field and recomputes what "
                     "it needs"),
 )
@@ -1381,7 +1407,9 @@ READ_TARGETS: dict[str, str] = (
                            "and not the declared field's 69 (#268)",
        "spells_castable": "nibbles unpacked into neutral spells_castable",
        "item_effects": "zeroes stripped into neutral innate_effects",
-       "flags_0b8": "bit 7 read as neutral npc",
+       "flags_0b8": "bit 7 read as neutral npc, and the whole byte read "
+                    "again as neutral npc_control_byte when it is set "
+                    "(#303)",
        "attack_forms": "read as neutral attack_forms",
        "infravision": "read as neutral infravision",
        "turn_power": "read as neutral turn_power",
@@ -1494,6 +1522,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     out.set("npc", rec.is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
             "itself counts player characters with", grade("flags_0b8"))
+    if rec.is_npc:
+        # The low seven bits are meaningless for a player character -- bit 0
+        # is the trainer flag `flags_0b8` also carries -- but for a character
+        # the engine drives they are his morale, stored halved, and DOS keeps
+        # the same byte in the same encoding at field_83_87's control byte
+        # (#303).  Copied unchanged rather than decoded, so a converted
+        # companion keeps his own value rather than a guess.
+        out.set("npc_control_byte", rec.get("flags_0b8"),
+                "the C64's own 0x0B8, unchanged: bit 7 plus the low seven "
+                "bits of morale, stored halved", grade("flags_0b8"))
 
     # -- the status byte, unpacked into the two things it holds --------------
     # Zero is not a state: it is an **empty roster slot**, which is what DROP

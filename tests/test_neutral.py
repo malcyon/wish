@@ -438,8 +438,13 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     Silver Blades' own "empty" convention, `{}`, and Pool of Radiance's
     reader leaves the name off entirely rather than guess at a slot number
     the title's own GEN never wrote (#256, #234).
+
+    And `npc_control_byte` is set only for a companion -- `_filled` builds
+    an ordinary player character, so `npc` is set true here to exercise it;
+    otherwise the reader has nothing to set it from (#303).
     """
     char = _filled(game=game)
+    char.set("npc", True, "test fixture: exercise npc_control_byte")
     rec, _ = c64_codec.write(char)
     back = c64_codec.read(rec, game=game)
     taken = ({n for n, _ in c64_codec.DIRECT}

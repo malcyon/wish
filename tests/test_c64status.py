@@ -346,13 +346,18 @@ def test_a_source_with_a_status_and_no_active_flag_takes_bit_seven_from_it():
     assert "computed from the status" in rep.sources[0x100]
 
 
-# --- the run at 0x083 stays a constant ---------------------------------------
+# --- the run at 0x083 stays a constant, except its own control byte ---------
 
 def test_the_five_bytes_at_0x083_still_reach_nothing_in_the_c64_record():
     """The other half of #235, kept from drifting: `field_83_87` is
     `00 00 01 00 00` in 101 of 101 engine-written Pool of Radiance records
     and the character sheet is pixel-identical whatever it holds, so it is a
-    documented constant and **not** converted.
+    documented constant and **not** converted -- with one exception since
+    #303: the second byte, the control byte, crosses when its own bit 7 is
+    set.  Both windows compared below hold that bit clear (`0x00` and
+    `0x22`), so this test still isolates the four bytes that stay inert;
+    `test_a_dos_companions_control_byte_crosses_to_the_c64` is the case
+    where the second byte moves.
 
     Two records differing only in those five bytes have to convert to the
     same C64 record.  The pair below it is the control: two differing only in
@@ -368,6 +373,71 @@ def test_the_five_bytes_at_0x083_still_reach_nothing_in_the_c64_record():
     well, _ = c64_codec.write(dos.to_neutral(_dos_record(b"\x00\x01\x00\x00")))
     hurt, _ = c64_codec.write(dos.to_neutral(_dos_record(b"\x04\x00\x00\x00")))
     assert well.to_bytes() != hurt.to_bytes()
+
+
+# --- #303: the control byte itself, both directions --------------------------
+
+def test_a_c64_companions_control_byte_crosses_to_dos():
+    """A companion's own control byte, bit 7 and his morale together, written
+    unchanged into `field_83_87`'s second byte.
+
+    `0xB2` is `NPC_Berzerk` in every one of the four DOS engines' own
+    `GAME.OVR` and in the C64's own overlays alike (#303) -- the same
+    immediate a spell drives a player character to, and the value
+    GENHEERIS holds at C64 `0x0B8` in `npc_party.d64`.
+    """
+    rec = CharacterRecord.blank()
+    rec.set("flags_0b8", 0xB2)
+    char = c64_codec.read(rec, game="pool-of-radiance")
+    assert char.get("npc") is True
+    assert char.get("npc_control_byte") == 0xB2
+    out, _itm, _spc, _rep = dos.write(char)
+    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    assert out[f.offset + 1] == 0xB2
+
+
+def test_a_c64_trainer_bit_does_not_reach_dos_as_a_control_byte():
+    """The trap #303 names: Pool of Radiance's own `GAME.OVR:0x0251B7` pools
+    a party's money only for a character whose control byte reads **exactly**
+    `0` or `0xB3` -- not merely bit 7 clear.  A C64 character who was kept out
+    of the trainer holds `0x01` at `0x0B8` (bit 0, unrelated to `npc`), and
+    copying that raw byte into DOS's control byte would silently drop him out
+    of the party's pooled gold. `0x00` is the value that keeps him in it.
+    """
+    rec = CharacterRecord.blank()
+    rec.set("flags_0b8", 0x01)
+    char = c64_codec.read(rec, game="pool-of-radiance")
+    assert char.get("npc") is False
+    out, _itm, _spc, _rep = dos.write(char)
+    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    assert out[f.offset + 1] == 0x00
+
+
+def test_a_dos_companions_control_byte_crosses_to_the_c64():
+    """The other direction: a companion's control byte, read out of DOS's
+    `field_83_87`, crosses to the C64's `0x0B8` unchanged."""
+    char = dos.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
+    assert char.get("npc") is True
+    assert char.get("npc_control_byte") == 0xB2
+    rec, _ = c64_codec.write(char)
+    assert rec.get("flags_0b8") == 0xB2
+
+
+def test_npc_is_off_the_dos_writers_drop_list():
+    """Before #303 gave it a home, `npc` was on `dos.WRITE_DROPPED`
+    unconditionally -- a C64 companion converted to DOS arrived an ordinary
+    player character with no line saying so."""
+    assert "npc" not in dict(dos.WRITE_DROPPED)
+
+
+def test_a_dos_source_supplies_npc_rather_than_dropping_it_in_silence():
+    """Before #303, `field_83_87` sat on `dos.CONSTANTS`, silent, and
+    `to_neutral` never set neutral `npc` at all -- a DOS companion imported
+    with nothing said about it anywhere, on either side of the pane."""
+    plain = dos.to_neutral(_dos_record(constant=b"\x00\x00\x01\x00\x00"))
+    companion = dos.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
+    assert plain.get("npc") is False
+    assert companion.get("npc") is True
 
 
 # --- what a player reads ------------------------------------------------------

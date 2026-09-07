@@ -2065,12 +2065,19 @@ def test_a_field_both_engines_work_out_for_themselves_is_not_reported():
 def test_a_writer_drop_that_is_not_silenced_still_reaches_the_report():
     """The other direction, which is what stops the silencing list becoming a
     way to make the pane short: a field with no measurement behind it is
-    still named. `npc` has none -- no attributed DOS field holds it.
+    still named. `abilities_second` has none -- a DOS Pool of Radiance
+    record keeps one copy of each ability score, so a second has nowhere to
+    go.
+
+    `npc` used to be this example until #303 (The DOS record may hold the
+    NPC flag that the conversion reports as having nowhere to go) gave it a
+    home: `field_83_87`'s control byte, so it is converted now and no
+    longer demonstrates an unsilenced drop.
     """
     char = _filled()
-    char.set("npc", 1, "made up: a companion the engine runs itself")
-    assert "npc" not in dos.WRITE_UNREPORTED_DROPS
-    assert [d for d in _writer_drops(char) if d.startswith("npc:")]
+    char.set("abilities_second", {"strength": 18}, "made up: a second copy")
+    assert "abilities_second" not in dos.WRITE_UNREPORTED_DROPS
+    assert [d for d in _writer_drops(char) if d.startswith("abilities_second:")]
 
 
 def test_nothing_measured_leaves_the_code_when_a_writer_drop_goes_silent():

@@ -704,6 +704,9 @@ DROPPED: tuple[tuple[str, str], ...] = (
                         "which PoD recomputes on load"),
     ("npc", "a roster flag of the source save; PoD decides for itself what it "
             "has just imported"),
+    ("npc_control_byte", "a companion's morale, on the two ports that keep "
+                         "it in this same byte -- see npc; PoD decides for "
+                         "itself what it has just imported"),
     ("party_order", "the marching order of a party the character is leaving"),
     ("encumbrance", "PoD recomputes it: a probe that set it to 1234 drew 233, "
                     "which is the character's own coins, gems and jewelry"),

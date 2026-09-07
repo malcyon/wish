@@ -237,6 +237,15 @@ FIELDS: dict[str, str] = {
               "state",
     "npc": "true for a companion the party picked up rather than one the "
            "player made",
+    "npc_control_byte": "the full control byte both the C64 and DOS keep "
+                        "for a companion -- C64 record 0x0B8, DOS's "
+                        "field_83_87 second byte in Pool of Radiance and "
+                        "Curse of the Azure Bonds, first in Secret of the "
+                        "Silver Blades. Bit 7 is always set (npc is true); "
+                        "the low seven bits are morale, stored halved. "
+                        "Neither port decodes it -- a converter copies it "
+                        "unchanged -- and it is set only when npc is true; "
+                        "a player character has no morale to carry (#303)",
     "hostile": "true for a combatant on the enemy's side. Never true for a "
               "character the engine saved into a party: both ports write 0 "
               "for every player character, and it is here because both "
