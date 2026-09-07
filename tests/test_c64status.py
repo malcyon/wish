@@ -611,3 +611,64 @@ def test_a_dead_quick_fought_character_reads_and_converts_correctly_through_slot
     rec, _, _, _ = dos.write(out)
     assert rec[TAIL.offset] == 6           # DOS's own number for Dead
     assert rec[TAIL.offset + 1] == 0       # not active
+
+
+# --- #303's extremes: the byte at its ends, and the four-byte shape ----------
+
+def test_a_companion_with_no_morale_at_all_still_arrives_a_companion():
+    """`0x80` is bit 7 set and every morale bit clear, and it is not a
+    hypothetical: it is MAD MAN's own measured value in `npc_party.d64`.
+
+    The case to guard is a writer that tests the byte for truth rather than
+    for bit 7 -- `0x80` is true, but a companion whose morale is stored as
+    `0` reaches a naive `if control:` as a number that looks like nothing.
+    Found missing by the review of `72fc0af`; the arithmetic was already
+    right and nothing had ever run it.
+    """
+    rec = CharacterRecord.blank()
+    rec.set("flags_0b8", 0x80)
+    char = c64_codec.read(rec, game="pool-of-radiance")
+    assert char.get("npc") is True
+    assert char.get("npc_control_byte") == 0x80
+    out, _itm, _spc, _rep = dos.write(char)
+    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    assert out[f.offset + 1] == 0x80
+
+
+def test_a_companion_at_the_top_of_the_byte_crosses_whole():
+    """`0xFF` -- bit 7 and all seven morale bits -- the other end of the
+    range, and the value a mask applied one bit too wide would truncate."""
+    rec = CharacterRecord.blank()
+    rec.set("flags_0b8", 0xFF)
+    char = c64_codec.read(rec, game="pool-of-radiance")
+    assert char.get("npc") is True
+    assert char.get("npc_control_byte") == 0xFF
+    out, _itm, _spc, _rep = dos.write(char)
+    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    assert out[f.offset + 1] == 0xFF
+
+
+@pytest.mark.parametrize("key,size,index", [
+    ("pool-of-radiance", 5, 1),
+    ("curse-of-the-azure-bonds", 5, 1),
+    ("secret-of-the-silver-blades", 4, 0),
+])
+def test_the_control_byte_lands_at_each_titles_own_index(key, size, index):
+    """Silver Blades shifts the run: `field_83_87` is four bytes there rather
+    than five, and the control byte is its **first** rather than its second.
+
+    Every earlier test of this builds a Pool of Radiance record, so the
+    four-byte alignment had never been exercised at all -- an off-by-one here
+    would write a companion's morale into the treasure share, which decides
+    whether the game counts him when it splits the party's gold.
+    """
+    rec = CharacterRecord.blank()
+    rec.set("flags_0b8", 0xB2)
+    char = c64_codec.read(rec, game="pool-of-radiance")
+    out, _itm, _spc, _rep = dos.write(char, shape=key)
+    f = dos.FIELDS_BY_NAME_FOR[key]["field_83_87"]
+    assert f.size == size
+    assert out[f.offset + index] == 0xB2
+    rest = [out[f.offset + i] for i in range(f.size) if i != index]
+    assert rest == list(dos.FIELD_83_87[size][:index]
+                        + dos.FIELD_83_87[size][index + 1:])
