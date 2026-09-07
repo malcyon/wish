@@ -99,7 +99,8 @@ DOC_WIDTH = 300
 
 def _img(name: str, width: int = DOC_WIDTH) -> str:
     """One figure, at a size the table cannot shrink."""
-    return f'<img src="img/{name}" width="{width}">'
+    return (f'<img src="img/{name}" width="{width}" '
+            f'style="width:{width}px;max-width:none">')
 
 
 #: Which save file each title's disks carry, for `--census`.
@@ -390,37 +391,47 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
                 f"{row['count']} rows: {counts['forced']} forced, "
                 f"{counts['choice']} a choice, {counts['fresh']} judgement.",
                 "",
-                "| C64 | | Proposed | | How | Alternatives | Why |",
-                "|---:|---|---:|---|---|---|---|",
             ]
             for c64, (dos, alt) in sorted(tables[(size, kind)].items()):
                 left = f"c64-{size}-{kind}-{c64:02d}@{scale}.png"
                 _save(c64_row_figure(parts, charset, size, kind, c64,
                                      icon_colours),
                       tuple(icons.C64_PALETTE), img / left, scale)
-                cells = [str(c64), _img(left, width), str(dos),
-                         _dos_cell(game, size, kind, dos, icon_colours, img,
-                                   scale, width),
-                         row["kinds"][c64],
-                         " ".join(
-                             f"{d} " + _dos_cell(game, size, kind, d,
-                                                 icon_colours, img, scale,
-                                                 width)
-                             for d in alt),
-                         comments.get((size, kind, c64), "")]
-                lines.append("| " + " | ".join(cells) + " |")
-            lines += ["", f"#### Every DOS {kind[:-1]}, to swap from", "",
-                      "| | | |", "|---|---|---|"]
+                # Not a table.  A markdown table shrinks a figure to its
+                # column -- VS Code's preview caps every image at the cell
+                # width whatever the tag says -- and these have to be looked
+                # at rather than scanned (#320).
+                why = comments.get((size, kind, c64), "")
+                lines += [
+                    f"#### {c64} \u2192 {dos}"
+                    + (f"  ({row['kinds'][c64]})" if row["kinds"][c64] else ""),
+                    "",
+                    _img(left, width) + " &nbsp;\u2192&nbsp; "
+                    + _dos_cell(game, size, kind, dos, icon_colours, img,
+                                scale, width),
+                    "",
+                ]
+                if why:
+                    lines += [why, ""]
+                if alt:
+                    lines += [
+                        "Alternatives: " + " ".join(
+                            f"**{d}** " + _dos_cell(game, size, kind, d,
+                                                    icon_colours, img, scale,
+                                                    width)
+                            for d in alt),
+                        "",
+                    ]
+            lines += ["", f"#### Every DOS {kind[:-1]}, to swap from", ""]
             gallery = []
             for option in range(DOS_SIZES[kind]):
-                gallery.append(f"**{option}**<br>" + _dos_cell(
+                gallery.append(f"**{option}** " + _dos_cell(
                     game, size, kind, option, icon_colours, img, scale, width))
-                if len(gallery) == 3:
-                    lines.append("| " + " | ".join(gallery) + " |")
+                if len(gallery) == 2:
+                    lines += [" &nbsp; ".join(gallery), ""]
                     gallery = []
             if gallery:
-                lines.append("| " + " | ".join(
-                    gallery + [""] * (3 - len(gallery))) + " |")
+                lines.append(" &nbsp; ".join(gallery))
             lines.append("")
     lines += ["## Colours", "",
               "Nothing here is a judgement; the note in the YAML says why.",
