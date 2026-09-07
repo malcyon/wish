@@ -121,8 +121,16 @@ class Source:
     folder and an Amiga source is an `.adf`, each read fresh by whichever
     `Direction` converts it. `slot` is the save slot the source was detected
     at -- the letter in `SAVGAM<slot>.DAT`/`.PTY`, or the Amiga slot letter
-    in `savgam<slot>.dat` -- so the dialog needs no separate slot row; it
-    stays `None` for a C64 source, which has none.
+    in `savgam<slot>.dat`; it stays `None` for a C64 source, which has none.
+
+    `available_slots` is every slot the source actually holds files for --
+    `None` for a DOS or a C64 source, which the dialog's own save picker or
+    file choice already names exactly one slot for (`_SAVGAM_FILE_RE`'s
+    comment). An Amiga `.adf` has no per-file equivalent: every slot lives
+    inside the one image, so this is what the dialog's slot row
+    (`#372 (An Amiga disk with more than one saved game converts its first
+    slot, whichever one the player meant)`) is built from, and it is a list
+    of one for an Amiga disk that only ever had one game saved to it.
     """
 
     port: str                      # "c64", "dos" or "amiga"
@@ -132,13 +140,15 @@ class Source:
     save1: bytes | None = None
     disk: bytes | None = None
     slot: str | None = None
+    available_slots: list[str] | None = None
 
     @property
     def key(self) -> str:
         return self.title.key
 
     @classmethod
-    def detect(cls, path: str | pathlib.Path, party: Any = None) -> "Source":
+    def detect(cls, path: str | pathlib.Path, party: Any = None,
+              slot: str | None = None) -> "Source":
         """A `.D64`, an Amiga `.adf`, a DOS save folder, or the party
         already open at `path`.
 
@@ -146,6 +156,12 @@ class Source:
         `.save0`, `.save1`, `.disk` -- and is used only when its own path is
         the one asked for, so unsaved edits on screen cross into the
         conversion instead of whatever is on disk.
+
+        `slot` names which of an Amiga disk's several saved games to read --
+        the dialog's own slot row passes the letter the player chose. Every
+        other branch ignores it: a C64 disk holds one saved game, a DOS
+        folder or file already names its own slot, and neither has a row to
+        pick a different one from.
         """
         path = pathlib.Path(path)
         # Both sides resolved: a caller may hand us a relative path where
@@ -168,7 +184,7 @@ class Source:
             if match:
                 return cls._detect_dos_file(path.parent, match.group(1).upper())
             if path.suffix.lower() == AMIGA_SUFFIX:
-                return cls._detect_amiga_disk(path)
+                return cls._detect_amiga_disk(path, slot)
             return cls._detect_c64_disk(path)
         raise ConvertError(
             f"{path} is neither a save disk nor a DOS save folder")
@@ -204,8 +220,11 @@ class Source:
         return cls(port="dos", title=shape, path=folder, slot=slot)
 
     @classmethod
-    def _detect_amiga_disk(cls, path: pathlib.Path) -> "Source":
-        """The Amiga disk at `path`, at the first slot it holds files for.
+    def _detect_amiga_disk(cls, path: pathlib.Path,
+                           slot: str | None = None) -> "Source":
+        """The Amiga disk at `path`, at `slot` -- or the first slot it holds
+        files for, when the caller (or the dialog, before its slot row has
+        anything to offer) names none.
 
         **Detected by its suffix rather than by trying both readers**, and
         the reason is what the other branch would say: an `.adf` handed to
@@ -213,14 +232,21 @@ class Source:
         a sentence about a C64 disk over a floppy that is plainly an Amiga
         one.
 
-        The first slot, the way `_detect_dos_folder` takes the first slot a
-        DOS folder holds -- and for the same reason, that the dialog has one
-        source row and no slot row. `goldbox.amiga.por_slots_present` asks
-        which slots have files rather than which the game's own picker
-        offers, since a slot the picker lists and the disk has lost the
-        files for is not one this can convert.
+        `goldbox.amiga.por_slots_present` asks which slots have files rather
+        than which the game's own picker offers, since a slot the picker
+        lists and the disk has lost the files for is not one this can
+        convert. Every slot it finds is kept as `available_slots`, which is
+        what the dialog's slot row lists (`#372 (An Amiga disk with more
+        than one saved game converts its first slot, whichever one the
+        player meant)`) -- a DOS folder has no row because `SAVGAM<slot>.DAT`
+        picked directly already names its own slot; an `.adf` has no
+        per-file equivalent, since every slot lives inside the one image.
+        A `slot` the disk does not actually hold files for is treated the
+        same as none named, rather than raised on -- the combo below is
+        always built from `available_slots`, so this can only happen when a
+        caller other than the dialog hands in a stale letter.
 
-        The title comes off the first character record's own length
+        The title comes off the chosen slot's own character record length
         (`goldbox.amiga.amiga_shape_for`), never assumed -- so an Amiga
         Curse or Silver Blades disk is detected as itself and simply has no
         registered destination yet, rather than being read as a Pool of
@@ -235,14 +261,15 @@ class Source:
             raise ConvertError(str(exc)) from exc
         if not slots:
             raise ConvertError(f"{path} holds no Amiga saved game")
-        slot = slots[0]
+        chosen = slot if slot in slots else slots[0]
         try:
             record = disk.read_file(amiga.por_save_path(
-                amiga.por_filename(slot, 1), amiga.por_save_drawer(disk)))
+                amiga.por_filename(chosen, 1), amiga.por_save_drawer(disk)))
             shape = amiga.amiga_shape_for(len(record))
         except (AmigaDiskError, amiga.AmigaRecordError) as exc:
             raise ConvertError(str(exc)) from exc
-        return cls(port="amiga", title=shape, path=path, slot=slot)
+        return cls(port="amiga", title=shape, path=path, slot=chosen,
+                  available_slots=slots)
 
     @classmethod
     def _detect_c64_disk(cls, path: pathlib.Path) -> "Source":
@@ -730,7 +757,12 @@ def fresh_folder(destination: str | pathlib.Path,
 #: **Comes off when:** (1) no string below carries the `(NOT APPROVED)`
 #: marker -- **met 2026-09-05**, when Donald read all ten in place and
 #: approved them; `test_no_string_the_player_reads_is_unapproved` keeps it
-#: met, including for a string added later; (2) a Pool of Radiance, a Curse
+#: met, including for a string added later -- the slot row
+#: `#372 (An Amiga disk with more than one saved game converts its first
+#: slot, whichever one the player meant)` added tripped it on 2026-09-07 and
+#: Donald ruled the same day, choosing `Slot` and `Slot B` over two longer
+#: wordings because it is what the Amiga game calls them and what the DOS
+#: side already says; (2) a Pool of Radiance, a Curse
 #: and a Silver Blades DOS save each list the Commodore 64, and a Pools of
 #: Darkness save never does -- **met 2026-09-07**, pinned by
 #: `test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot`,
@@ -814,6 +846,16 @@ LABEL_SOURCE = "Save"
 LABEL_TO = "To"
 LABEL_GAME = "DOS game folder"
 LABEL_FOLDER = "Write to"
+
+#: The slot row's label, shown only when the source names more than one
+#: saved game -- today an Amiga `.adf`, the source port that has no other
+#: way to say which slot (`#372 (An Amiga disk with more than one saved game
+#: converts its first slot, whichever one the player meant)`).
+LABEL_SLOT = "Slot"
+
+#: One combo item per slot `Source.available_slots` lists, `{slot}` the
+#: letter `read_por_slot` takes.
+SLOT_ITEM = "Slot {slot}"
 
 #: Buttons. `BUTTON_CHOOSE` is `editor/exports.py`'s word, approved
 #: 2026-08-25; `BUTTON_CONVERT` is `editor/dosimport.py`'s, approved
@@ -946,9 +988,11 @@ class ConvertDialog(QDialog):
 
         self._source_path = str(source)
         self._wanted_port = destination
+        self._wanted_slot: str | None = None
         self._game_path = game
         self._folder_path = folder
         self._rebuilding_combo = False
+        self._rebuilding_slot_combo = False
 
         #: Set by `replan()`. `source`/`direction` are `None` whenever the
         #: pane is not showing a ready-to-write conversion; `rehearsal` is
@@ -969,6 +1013,8 @@ class ConvertDialog(QDialog):
         self.ui.convert_source.setText(self._source_path)
         self.ui.convert_choose_source.setText(BUTTON_CHOOSE)
         self.ui.convert_choose_source.clicked.connect(self._choose_source)
+
+        self.ui.convert_slot.currentIndexChanged.connect(self._slot_changed)
 
         self.ui.convert_destination.currentIndexChanged.connect(
             self._destination_changed)
@@ -1009,6 +1055,7 @@ class ConvertDialog(QDialog):
             self._source_path = path
             self.ui.convert_source.setText(path)
             self._wanted_port = None
+            self._wanted_slot = None
             self.replan()
 
     def _choose_game(self) -> None:
@@ -1033,6 +1080,12 @@ class ConvertDialog(QDialog):
         self._wanted_port = self.ui.convert_destination.currentData()
         self.replan()
 
+    def _slot_changed(self, _index: int) -> None:
+        if self._rebuilding_slot_combo:
+            return
+        self._wanted_slot = self.ui.convert_slot.currentData()
+        self.replan()
+
     # -- the rehearsal --------------------------------------------------
 
     def replan(self) -> None:
@@ -1046,23 +1099,27 @@ class ConvertDialog(QDialog):
 
         if not self._source_path:
             self._populate_destinations([])
+            self._populate_slots(None)
             self.ui.convert_report.setPlainText("")
             self._settle_game_row()
             self._settle_button()
             return
 
         try:
-            self.source = Source.detect(self._source_path, party=self.party)
+            self.source = Source.detect(self._source_path, party=self.party,
+                                        slot=self._wanted_slot)
             options = destinations_for(self.source)
         except Exception:
             _log.exception("could not read %s", self._source_path)
             self._populate_destinations([])
+            self._populate_slots(None)
             self.ui.convert_report.setPlainText(CANNOT_CONVERT)
             self._settle_game_row()
             self._settle_button()
             return
 
         self._populate_destinations(options)
+        self._populate_slots(self.source)
         if not options:
             self.ui.convert_report.setPlainText(CANNOT_CONVERT)
             self._settle_game_row()
@@ -1156,6 +1213,35 @@ class ConvertDialog(QDialog):
             self._wanted_port = chosen.destination_port
         combo.blockSignals(False)
         self._rebuilding_combo = False
+
+    def _populate_slots(self, source: "Source | None") -> None:
+        """The slot row: shown only when the source names more than one
+        saved game (`#372 (An Amiga disk with more than one saved game
+        converts its first slot, whichever one the player meant)`) -- an
+        Amiga `.adf` today, since a DOS folder or file already names its own
+        slot through the save picker and has nothing to list here.
+
+        Rebuilt from `source.available_slots` every `replan()`, the way
+        `_populate_destinations` rebuilds the destination combo from
+        `destinations_for` -- so a source with one slot never shows a combo
+        of one, and switching to a source with several grows it back."""
+        combo = self.ui.convert_slot
+        slots = source.available_slots if source is not None else None
+        show = bool(slots) and len(slots) > 1
+        self.ui.form.setRowVisible(self.ui.convert_slot, show)
+        if not show:
+            return
+        self.ui.label_slot.setText(LABEL_SLOT)
+        self._rebuilding_slot_combo = True
+        combo.blockSignals(True)
+        combo.clear()
+        for letter in slots:
+            combo.addItem(SLOT_ITEM.format(slot=letter), letter)
+        chosen = source.slot if source.slot in slots else slots[0]
+        combo.setCurrentIndex(slots.index(chosen))
+        self._wanted_slot = chosen
+        combo.blockSignals(False)
+        self._rebuilding_slot_combo = False
 
     def _settle_game_row(self) -> None:
         """The game-files row is shown only for a DOS destination -- the C64

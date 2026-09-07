@@ -1608,3 +1608,141 @@ def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     assert (destination / f"PORSAVE{source.slot}.D64").read_bytes() == \
         reference.to_bytes()
     assert report.unwritten == []
+
+
+# ---------------------------------------------------------------------------
+# An Amiga disk holding more than one saved game (#372)
+# ---------------------------------------------------------------------------
+
+def _outdoor_amiga_disk(tmp_path) -> pathlib.Path:
+    """`WISH-SPEC-por-amiga-outdoor`'s own disk, copied so `Source.detect`'s
+    path stays writable -- the specimen tree itself is read-only.
+
+    Slot A is the shipped save staged next to the harbour master; slots B
+    and C are the first two saved games the Amiga engine itself ever wrote
+    on the travel grid, `tests/test_amigatoc64.py`'s `outdoor_disk` fixture
+    and `#321 (An Amiga Pool of Radiance conversion refuses a party standing
+    on the travel grid, because no outdoor Amiga saved game has ever been
+    read)`'s run: world `(7, 29)` east at 05:53 for B, `(7, 28)` north at
+    17:53 for C, both area 26.
+    """
+    from gamedata import specimen
+
+    where = specimen("por-amiga-outdoor", "amiga")
+    path = tmp_path / "por1-outdoor.adf"
+    path.write_bytes((where / "por1-outdoor.adf").read_bytes())
+    return path
+
+
+def test_a_disk_with_one_slot_shows_no_slot_row(amiga_adf):
+    """The shipped disk holds slot A alone -- the row stays hidden and
+    `Source.detect` still takes it silently, exactly as before this row
+    existed (`#372`'s brief: silently taking the one slot is unchanged)."""
+    source = convert.Source.detect(amiga_adf)
+    assert source.available_slots == ["A"]
+
+    dialog = convert.ConvertDialog(str(amiga_adf), None, _no_disks)
+    try:
+        assert dialog.source.slot == "A"
+        assert not dialog.ui.form.isRowVisible(dialog.ui.convert_slot)
+    finally:
+        dialog.close()
+
+
+def test_a_disk_with_three_slots_offers_a_slot_row(tmp_path):
+    """The regression `#372 (An Amiga disk with more than one saved game
+    converts its first slot, whichever one the player meant)` describes: a
+    disk naming more than one slot gets a row rather than being reduced to
+    its first."""
+    path = _outdoor_amiga_disk(tmp_path)
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        assert dialog.source.available_slots == ["A", "B", "C"]
+        assert dialog.ui.form.isRowVisible(dialog.ui.convert_slot)
+        assert dialog.ui.label_slot.text() == convert.LABEL_SLOT
+        items = [dialog.ui.convert_slot.itemData(i)
+                for i in range(dialog.ui.convert_slot.count())]
+        assert items == ["A", "B", "C"]
+        # Opening the dialog picks nothing for the player -- the row starts
+        # on the first slot, the same one `Source.detect` always took before
+        # this row existed, so a disk with one game keeps behaving the same
+        # way it always has.
+        assert dialog.source.slot == "A"
+    finally:
+        dialog.close()
+
+
+def test_choosing_a_slot_converts_that_partys_own_place_not_the_first(
+        tmp_path):
+    """Picking slot C on a disk that also holds A and B converts C's own
+    party and position, not A's -- the situation `#372` names: *"He points
+    File ▸ Convert… at it and gets the first slot, whichever one he
+    meant."*
+
+    Slot C's own place is world `(7, 28)`, area 26, outdoors
+    (`_outdoor_amiga_disk`'s docstring) -- read back through
+    `goldbox.world_state.from_c64`, a different reader over a different
+    container, so this is the written save agreeing with the source rather
+    than one number compared with itself.
+    """
+    from goldbox import amiga, world_state
+
+    path = _outdoor_amiga_disk(tmp_path)
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        items = [dialog.ui.convert_slot.itemData(i)
+                for i in range(dialog.ui.convert_slot.count())]
+        dialog.ui.convert_slot.setCurrentIndex(items.index("C"))
+        assert dialog.source.slot == "C"
+
+        icon, animate = bytes(36), bytes(852)
+        files = dosimport.GameFiles(icon=icon, animate=animate)
+        direction = convert.destinations_for(dialog.source)[0]
+        rehearsal = direction.rehearse(dialog.source, dialog.source.slot,
+                                       files)
+        written = direction.write(rehearsal, tmp_path / "out")
+
+        disk = amiga.AmigaDisk.open(str(path))
+        party, savgam = amiga.read_por_slot(disk, "C")
+        state = amiga.read_por_state(savgam, str(path))
+        ref0, ref1, report = dos.new_save_from(state, party, icon, animate)
+        reference = dos.save_disk(bytes(ref0), bytes(ref1))
+        assert written[0].read_bytes() == reference.to_bytes()
+        assert report.unwritten == []
+
+        landed = world_state.from_c64(bytes(ref0))
+        assert landed.outdoors is True
+        assert landed.travel == (7, 28)
+        assert landed.area == 26
+    finally:
+        dialog.close()
+
+
+@needs_dos_saves
+def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
+    """The row feeds `Source.detect` once, so both registered directions --
+    `AmigaToC64` and `AmigaToDos` -- read whichever slot the player chose.
+    `AmigaToDos` takes `source.slot` directly (`AmigaToDos.rehearse`'s own
+    docstring: "Two slots, and they are not the same letter"), so this is
+    the other direction reading the row rather than a second mechanism."""
+    from goldbox import amiga
+
+    path = _outdoor_amiga_disk(tmp_path)
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        items = [dialog.ui.convert_slot.itemData(i)
+                for i in range(dialog.ui.convert_slot.count())]
+        dialog.ui.convert_slot.setCurrentIndex(items.index("C"))
+        assert dialog.source.slot == "C"
+
+        directions = convert.destinations_for(dialog.source)
+        direction = next(d for d in directions
+                         if d.destination_port == "dos")
+        rehearsal = direction.rehearse(dialog.source, "A", _game_dir())
+
+        disk = amiga.AmigaDisk.open(str(path))
+        party, _savgam = amiga.read_por_slot(disk, "C")
+        assert [c.fields["name"].value for c in rehearsal.characters] == \
+            [c.name for c in party]
+    finally:
+        dialog.close()
