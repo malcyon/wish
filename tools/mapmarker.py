@@ -251,10 +251,10 @@ def build_window(target, disks: str, out: pathlib.Path):
     root.ui = ui
     mapper = Automapper(target, maps,
                         title=game.title if game is not None else None)
-    # `drive=False` is how `wish/window.py` builds it: the host owns the
-    # connection and calls `tick()`, so nothing polls behind this script's back
-    # while `Session` is driving the game's menus.
-    binding = AutomapBinding(root, mapper, drive=False, disks=disks)
+    # This script owns the connection and calls `tick()` itself, the way
+    # `wish/window.py` does -- nothing here polls behind its own back while
+    # driving the game's menus.
+    binding = AutomapBinding(root, mapper, disks=disks)
     root.resize(1500, 950)
     root.show()
     app.processEvents()

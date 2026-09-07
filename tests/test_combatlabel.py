@@ -22,7 +22,7 @@ import pytest
 from gamedata import synthetic_arena
 from PyQt6.QtGui import QFontMetricsF
 
-from automap import combat
+from automap import combat, window
 from automap.render import Label
 from automap.target import MemoryTarget
 from automap.window import CombatCanvas
@@ -112,6 +112,42 @@ def test_at_the_smallest_cell_the_number_is_not_drawn_at_zero_or_one_pixel(
 
 
 # --- the real pipeline: a captured fight, not just the pure function -----
+
+def test_the_floor_is_measured_even_when_nothing_fits(app, monkeypatch):
+    """A code review of `#347 (The combat map's hit points are drawn at one
+    fixed size however small or large the square is painted)` found that the
+    search fell through to `MIN_LABEL_PIXELS` without ever measuring it --
+    on this machine's DejaVu Sans the floor happens to fit, but a "sans"
+    that resolves to something wider would overflow the square with nobody
+    having checked. Force every candidate size to fail, including the floor,
+    and confirm `_label_font` still measures it (rather than skipping
+    straight to an unmeasured font) and returns it deliberately."""
+    class _NeverFits:
+        def __init__(self, font):
+            pass
+
+        def capHeight(self):
+            return 1000.0
+
+        def horizontalAdvance(self, text):
+            return 1000.0
+
+    calls = []
+    real_init = _NeverFits.__init__
+
+    def recording_init(self, font):
+        calls.append(font.pixelSize())
+        real_init(self, font)
+
+    _NeverFits.__init__ = recording_init
+    monkeypatch.setattr(window, "QFontMetricsF", _NeverFits)
+
+    font = CombatCanvas._label_font("118", combat.CELL_MIN)
+
+    assert font.pixelSize() == CombatCanvas.MIN_LABEL_PIXELS
+    assert CombatCanvas.MIN_LABEL_PIXELS in calls, (
+        "the floor size must be measured, not returned unmeasured")
+
 
 def test_a_captured_fights_labels_fit_at_the_floor_and_when_grown(app):
     """Drives `CombatCanvas` the way the window does: `show_battle`, resize,

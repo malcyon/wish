@@ -52,7 +52,7 @@ from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
 from .busguard import BusGuard
 from .combatlog import CombatLog, recase
-from .config import Settings, remember_geometry
+from .config import Settings
 from .noteeditor import NotePopover
 from .panel import (
     BottomStrip,
@@ -76,7 +76,6 @@ from .render import (
     note_primitives,
     party_marker,
 )
-from .target import MonitorBusy, NotConnected, monitor_listening
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
@@ -548,31 +547,38 @@ class CombatCanvas(QWidget):
     @staticmethod
     def _label_font(text: str, cell: int) -> QFont:
         """The largest bold sans that keeps `text` inside a `cell`-wide
-        square, measured rather than guessed at a fraction of the cell.
+        square, measured rather than guessed at a fraction of the cell --
+        down to `MIN_LABEL_PIXELS`, below which there is no smaller legible
+        digit, so that size is drawn regardless of whether it measures
+        inside the square. On this project's own machine (DejaVu Sans) the
+        floor always fits; a "sans" that resolves to something wider on
+        another platform can overflow the square by a few pixels rather than
+        draw nothing.
 
         Sized in pixels, not points, because `cell` is itself a pixel count
         and the same cell has to draw the same digits on every machine --
         `tools/combatbarsheet.py`'s `fit_font` sizes the letter over the
-        health bar the same way. A one-digit hit-point total and a
-        three-digit one are different widths at the same cell, so this
-        measures the text it is actually asked to draw rather than a
-        worst case that would leave `7` looking as cramped as `118`.
+        health bar the same way, and has the same unmeasured floor. A
+        one-digit hit-point total and a three-digit one are different widths
+        at the same cell, so this measures the text it is actually asked to
+        draw rather than a worst case that would leave `7` looking as
+        cramped as `118`.
         """
         pad = 2  # keeps the digits off the lattice line at any cell size
         limit = max(1, cell - pad * 2)
         size = max(CombatCanvas.MIN_LABEL_PIXELS, limit)
-        while size > CombatCanvas.MIN_LABEL_PIXELS:
+        while True:
             font = QFont("sans")
             font.setPixelSize(size)
             font.setWeight(QFont.Weight.Bold)
             fm = QFontMetricsF(font)
             if fm.capHeight() <= limit and fm.horizontalAdvance(text) <= limit:
                 return font
+            if size <= CombatCanvas.MIN_LABEL_PIXELS:
+                # Nothing fits, not even the floor -- measured above, same
+                # as every other candidate size -- so draw it anyway.
+                return font
             size -= 1
-        font = QFont("sans")
-        font.setPixelSize(size)
-        font.setWeight(QFont.Weight.Bold)
-        return font
 
 
 class AutomapBinding(QObject):
@@ -619,15 +625,13 @@ class AutomapBinding(QObject):
     #: 270px of fixed width whatever the screen was (#41).
     SIDE_SQUEEZED = 160
 
-    def __init__(self, root, mapper, interval_ms: int = 200, connect=None,
-                 settings: Settings | None = None, drive: bool = True,
+    def __init__(self, root, mapper, interval_ms: int = 200,
+                 settings: Settings | None = None,
                  disks: str | None = None):
         super().__init__()
         self.root = root
         self.ui = root.ui if hasattr(root, "ui") else root
-        self._drive = drive
         self.mapper = mapper
-        self.connect_target = connect
         self.state = mapper.state
         self.settings = settings or Settings()
         self.state.reveal = self.settings.reveal
@@ -764,8 +768,6 @@ class AutomapBinding(QObject):
         self.snapshot = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
-        if drive:
-            self.timer.start(interval_ms)
         self._apply_title()
         self._refresh()
 
@@ -869,52 +871,27 @@ class AutomapBinding(QObject):
     def tick(self) -> None:
         """Read one fix and redraw if anything moved.
 
-        Hosted (`drive=False`), trouble is raised rather than absorbed: the
-        host owns the connection and is the only thing that can reattach.
+        Trouble is raised rather than absorbed: the host owns the
+        connection and is the only thing that can reattach.
         """
         if self.mapper.target is None:
-            if self._drive:
-                self._try_connect()
             return
-        try:
-            if not self.bus_guard.clear(self.mapper.target):
-                # The drive is mid-transfer and every read would stop the
-                # processor inside it. Not a tick: the counter stays where it
-                # was, so the roster read lands on the next tick that runs
-                # rather than waiting out another whole cadence. `clear()`
-                # itself grows the wait before it will read `$DD00` again
-                # while a load runs, capped at `busguard.BACKOFF_CAP` seconds
-                # -- nothing here has to drive that, it is what makes this
-                # tick come back False without even the guard byte.
-                return
-            self._live_ticks += 1
-            if self.poll_battle():
-                self._waiting = ""
-                return
-            changed = self.mapper.poll()
-            self.poll_live()
-        except NotConnected:
-            # VICE went away. Not fatal, and not worth a dialog -- go back to
-            # waiting, and pick it up again when it returns.
-            if not self._drive:
-                raise
-            self.mapper.target = None
-            self._waiting = "Game disconnected."
-            self._refresh()
+        if not self.bus_guard.clear(self.mapper.target):
+            # The drive is mid-transfer and every read would stop the
+            # processor inside it. Not a tick: the counter stays where it
+            # was, so the roster read lands on the next tick that runs
+            # rather than waiting out another whole cadence. `clear()`
+            # itself grows the wait before it will read `$DD00` again
+            # while a load runs, capped at `busguard.BACKOFF_CAP` seconds
+            # -- nothing here has to drive that, it is what makes this
+            # tick come back False without even the guard byte.
             return
-        except Exception as exc:                      # keep the window alive
-            if not self._drive:
-                raise
-            trouble = f"trouble reading the emulator: {exc}"
-            # Once per distinct failure. The window survives a poll that throws
-            # on every tick, and five tracebacks a second would bury the log it
-            # is meant to leave behind.
-            if trouble != self._trouble:
-                self._trouble = trouble
-                _log.exception("the poll raised, and was swallowed")
-            self._status.setText(trouble)
-            self.messages.say(trouble, alarm=True)
+        self._live_ticks += 1
+        if self.poll_battle():
+            self._waiting = ""
             return
+        changed = self.mapper.poll()
+        self.poll_live()
         self._waiting = ""
         self._check_the_game()
         if changed:
@@ -1095,24 +1072,6 @@ class AutomapBinding(QObject):
         self.strength_label.setText(
             f"party strength {party.value}")
         self.strength_label.setToolTip(party.detail)
-
-    def _try_connect(self) -> None:
-        """Attach when a monitor appears. Cheap enough to run on the tick."""
-        if self.connect_target is None:
-            return
-        if not monitor_listening():
-            self._waiting = "Waiting to connect..."
-            self._refresh()
-            return
-        try:
-            self.mapper.target = self.connect_target()
-        except MonitorBusy as exc:
-            self._waiting = str(exc)
-        except NotConnected:
-            self._waiting = "Waiting to connect..."
-        else:
-            self._waiting = "connected - waiting for a save to be loaded"
-        self._refresh()
 
     def status_text(self) -> str:
         """The line this window would put in a status bar, right now."""
@@ -1354,22 +1313,15 @@ class AutomapBinding(QObject):
 
         Split out of `closeEvent` because a hosted window is never closed on
         its own -- the host closes, and the notes still have to be written.
-        The connection is only ours to close when we opened it.
+
+        Geometry and the connection are the host's: `wish/window.py`'s own
+        `closeEvent` remembers its own geometry (this widget is a page in a
+        tab, not a window, and has none worth keeping), and calls
+        `Session.close()` -- which closes `mapper.target` -- before it calls
+        here.
         """
-        # Only when this window is the window. Hosted, it is a page inside a
-        # tab and its size is the tab's, not anything worth remembering -- and
-        # writing it here is what used to overwrite the real one.
-        if self._drive:
-            remember_geometry(self, self.settings)
         self.settings.save()
         self.state.save_notes()
-        if self._drive:
-            try:
-                self.mapper.target.close()
-            except Exception:
-                # The window is closing either way; a connection that will not
-                # hang up cleanly must not stop the notes being written.
-                _log.exception("closing the connection raised on shutdown")
 
     def closeEvent(self, event):
         self.shutdown()

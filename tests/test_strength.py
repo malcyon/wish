@@ -249,7 +249,7 @@ def a_window(app, tmp_path, monkeypatch, machine):
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
 
-    return AutomapBinding(root, Automapper(machine, {}), drive=False)
+    return AutomapBinding(root, Automapper(machine, {}))
 
 
 def test_the_window_shows_the_strength_and_follows_the_live_bytes(

@@ -325,7 +325,7 @@ def window_on(target, maps, title):
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    return AutomapBinding(root, Automapper(target, maps, title=title), drive=False)
+    return AutomapBinding(root, Automapper(target, maps, title=title))
 
 
 def ticked(window, times: int = 24):

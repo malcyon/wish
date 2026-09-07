@@ -20,9 +20,11 @@ editor is a file tool with **zero emulator dependency** ([README.md](README.md)
 | `automap/panel.py` | the roster cards and the bottom strip |
 | `automap/window.py` | the PyQt6 window: roster left, map right, strip below |
 
-Run it with the game already running: `wish --tab map` (or `python -m automap`,
-which still opens it alone). Render a map offline with
-`wish --svg GEO00 out.svg`, which needs no emulator.
+Run it with the game already running: `wish --tab map`. `python -m automap`
+was the standalone way to open it alone, dropped in commit `4049fdf`
+("Unified UI integration") when the window it built became the `wish` window's
+own Map tab -- see [146-unified-ui.md](146-unified-ui.md). Render a map
+offline with `wish --svg GEO00 out.svg`, which needs no emulator.
 
 The window and the connection now live in `wish/` -- see
 [99-one-window.md](99-one-window.md). `wish/backends.py` holds the list of

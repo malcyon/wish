@@ -340,7 +340,7 @@ def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
     Ui_WishWindow().setupUi(root)
 
     target = arena_with_screen([])
-    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
     assert window.battle is not None
@@ -371,7 +371,7 @@ def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):
     Ui_WishWindow().setupUi(root)
 
     target = arena_with_screen([])
-    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
     show(target, ["ORC", "IS KILLED"])
@@ -656,7 +656,7 @@ def test_two_identical_roll_lines_are_both_kept(app, tmp_path, monkeypatch):
     memory[rolls.D20] = b"\x04"
     memory[rolls.ATTACK] = attack(actor=8, target=0, hit=False, damage=0)
     target = MemoryTarget(memory)
-    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
     assert window.battle is not None
@@ -725,7 +725,7 @@ def test_a_second_fight_starts_at_round_one(app, tmp_path, monkeypatch):
     root = _window()
 
     target = arena_with_screen([])
-    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}))
     fighting(window, target, True)
     assert window.battle is not None
     assert window.combat_log.round == 1
@@ -760,7 +760,7 @@ def test_the_last_message_of_a_fight_keeps_the_round_it_happened_in(
     root = _window()
 
     target = arena_with_screen([])
-    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}))
     fighting(window, target, True)
     end_the_round(window, target)
     assert window.combat_log.round == 2

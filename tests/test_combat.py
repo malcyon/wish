@@ -263,7 +263,7 @@ def make_window(app, tmp_path, monkeypatch, target):
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    return AutomapBinding(root, Automapper(target, {}), drive=False)
+    return AutomapBinding(root, Automapper(target, {}))
 
 
 def test_the_canvas_swaps_on_the_mode_flag_and_back(app, tmp_path, monkeypatch):

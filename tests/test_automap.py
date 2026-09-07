@@ -1708,7 +1708,60 @@ def make_window(app, tmp_path, monkeypatch, target, maps=None, area=None):
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
     mapper = Automapper(target, maps or {}, area=area)
-    return AutomapBinding(root, mapper, drive=False)
+    return AutomapBinding(root, mapper)
+
+
+def test_the_binding_no_longer_takes_a_drive_flag(app, tmp_path, monkeypatch):
+    """`drive: bool = True` was the vestige of `python -m automap`, the
+    standalone entry point deleted in commit `4049fdf` -- see
+    `#390 (The automapper can drive its own timer and no caller has ever
+    asked it to)`. Every construction in the tree already passed
+    `drive=False`; this pins that nobody can pass it again by habit now
+    that the parameter is gone."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    mapper = Automapper(MemoryTarget({}), {})
+    with pytest.raises(TypeError):
+        AutomapBinding(root, mapper, drive=False)
+
+
+def test_shutdown_leaves_the_connection_and_the_geometry_to_the_host(
+        app, tmp_path, monkeypatch):
+    """`shutdown()` used to remember its own geometry and close
+    `mapper.target` when `drive=True` -- a mode no caller ever selected
+    (`#390 (The automapper can drive its own timer and no caller has ever
+    asked it to)`). Neither survives the removal of `drive`: `wish/window.py`
+    remembers its own geometry before calling here, and `Session.close()`
+    already closes the connection first, in that order, in its own
+    `closeEvent`. Closing the target a second time, or writing this widget's
+    geometry -- it has none, being a `QObject` and not a window -- over the
+    host's, would be adding behaviour rather than deleting dead code."""
+    binding = make_window(app, tmp_path, monkeypatch, MemoryTarget({}))
+
+    class SpyTarget:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    target = SpyTarget()
+    binding.mapper.target = target
+    before = (binding.settings.geometry, binding.settings.window_width,
+              binding.settings.window_height)
+
+    binding.shutdown()
+
+    assert target.closed is False, "the host, not this binding, owns the connection"
+    after = (binding.settings.geometry, binding.settings.window_width,
+             binding.settings.window_height)
+    assert after == before, "shutdown() must not write geometry of its own"
 
 
 def test_a_fresh_binding_over_an_outdoor_fix_never_reads_identifying(
@@ -2811,10 +2864,20 @@ def test_a_fight_disables_what_a_fight_forbids(app):
     bar.attach(MemoryTarget({0x6E11: b"\x02"}))
     # Heal used to be legal mid-fight and no longer is: healing during a
     # fight writes the roster byte the engine is itself using (#146).
+    # **The tooltip said `$6E11 is 2` until 2026-09-07**, which is the address
+    # the mode flag lives at and means nothing to a player hovering a greyed
+    # button.  `#306 (The Fast Travel button's own disabled tooltip carries a
+    # memory address)` took it out of the shared refusal every action uses, so
+    # what a person now reads is the situation they are in.  The address went
+    # to `_log.debug`, where whoever is debugging can still get it.
     assert not bar.buttons["heal"].isEnabled()
-    assert "$6E11 is 2" in bar.buttons["heal"].toolTip()
+    assert bar.buttons["heal"].toolTip() == "Heal party is refused during a fight"
     assert not bar.buttons["identify"].isEnabled()
-    assert "$6E11 is 2" in bar.buttons["identify"].toolTip()
+    assert (bar.buttons["identify"].toolTip()
+            == "Identify is refused during a fight")
+    # And the thing that must stay true of every one of them.
+    for name in ("heal", "identify"):
+        assert "$" not in bar.buttons[name].toolTip()
 
 
 def test_the_whole_row_costs_one_read_of_the_mode_flag(app):

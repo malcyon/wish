@@ -211,8 +211,10 @@ Three changes, in `automap/state.py`:
 **Notes were never misfiled on their own** -- nothing writes one -- but a note
 made by hand inside that window went to the departing area's file, and the
 remembered squares went there every time. A map that still shows a blot from
-another area is a file written before the fix: `python -m automap --forget
-GEO00` clears one area's squares and keeps its notes.
+another area is a file written before the fix: `wish --forget GEO00` clears
+one area's squares and keeps its notes. (`python -m automap --forget GEO00`
+was the command before the standalone entry point was dropped in commit
+`4049fdf`, "Unified UI integration".)
 
 ## What this does not do, on purpose
 

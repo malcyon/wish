@@ -146,7 +146,7 @@ class WishWindow(QMainWindow):
         self.mapper = Automapper(
             None, maps if maps is not None else load_maps(self.disks_text()),
             area=area, title=title or self._open_title())
-        self.map = AutomapBinding(self, self.mapper, settings=self.settings, drive=False, disks=self.disks_text())
+        self.map = AutomapBinding(self, self.mapper, settings=self.settings, disks=self.disks_text())
         #: `(Game.key, folder)` -> maps, so `_other_title_maps` reads a
         #: configured title's disks once rather than on every tick the
         #: machine is running something unexpected
