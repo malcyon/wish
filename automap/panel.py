@@ -1110,10 +1110,24 @@ class MessagesPanel(QObject):
         if detail:
             row.setToolTip(detail)
         if self.list is not None:
+            # Follow the newest line only while the reader is already at the
+            # bottom -- checked *before* the row goes in, because adding it
+            # moves the maximum and would otherwise make every arrival look
+            # like it was already there. A reader who has scrolled up to
+            # reread a round is left where they put themselves; scrolling
+            # back to the bottom by hand resumes following on its own, since
+            # the check is then true again (Donald, 2026-09-06, on
+            # `#349 (The Messages window does not follow the newest line
+            # during a fight, so the log has to be dragged to be read)`:
+            # "Scroll when it's already at the bottom.").
+            scrollbar = self.list.verticalScrollBar()
+            following = (scrollbar is None
+                        or scrollbar.value() >= scrollbar.maximum())
             self.list.addItem(row)
             while self.list.count() > self.LIMIT:
                 self.list.takeItem(0)
-            self.list.scrollToBottom()
+            if following:
+                self.list.scrollToBottom()
 
     def lines(self) -> list[str]:
         """Every line, oldest first. What a test reads."""
