@@ -127,6 +127,33 @@ def test_add_refuses_a_name_that_is_not_a_plain_slug(tree, one_source):
                       title="x", issue="x", made_by="x", what="x")
 
 
+def test_add_accepts_amiga_and_builds_the_dos_shape(tree, one_source):
+    """`#313 (The specimen tree has no Amiga platform, so an engine-written
+    Amiga save disk cannot be kept)`, `#332 (The specimen tree cannot hold an
+    Amiga saved game, so the first two engine-written Amiga parties sit
+    outside its checks)`, `#343 (The specimen tool cannot add an Amiga
+    specimen, so three have been hand-written)`: `add` used to raise
+    `SystemExit: 2` from argparse's `choices=` before `amiga` was in
+    `PLATFORMS`. The directory is `coab-amiga`, not `por-amiga` -- the slug
+    comes from the title, matching what the two hand-written specimens on
+    disk already use."""
+    dest = specimens.add("amiga", "coab-test", one_source, root=tree,
+                         title="Curse of the Azure Bonds",
+                         issue="#28 (test)", made_by="x", what="x")
+    assert dest == tree / "coab-amiga" / "WISH-SPEC-coab-test"
+    assert (dest / "provenance.toml").is_file()
+    fields = specimens.read_provenance(dest / "provenance.toml")
+    assert fields["platform"] == "amiga"
+    assert specimens.check_specimens(tree) == []
+
+
+def test_add_refuses_a_title_with_no_known_slug(tree, one_source):
+    with pytest.raises(ValueError):
+        specimens.add("amiga", "x", one_source, root=tree,
+                      title="Some Title Nobody Has Added Yet",
+                      issue="x", made_by="x", what="x")
+
+
 def test_a_c64_specimen_is_one_file_beside_its_own_provenance(tree, tmp_path):
     d64 = tmp_path / "party.d64"
     d64.write_bytes(b"not a real disk image, just bytes")

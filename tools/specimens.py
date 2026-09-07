@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The specimen tree: DOS and C64 records this project watched being written.
+"""The specimen tree: DOS, C64 and Amiga records this project watched being
+written.
 
 `#249 (Build a DOS party from creation and level it ourselves, so DOS
 measurements rest on records we watched being written)` and `#246 (Nothing
@@ -42,12 +43,21 @@ Shape:
       por-c64/WISH-SPEC-<name>.provenance.toml
       por-dos/WISH-SPEC-<name>/<files...>
       por-dos/WISH-SPEC-<name>/provenance.toml
+      coab-amiga/WISH-SPEC-<name>/<files...>
+      coab-amiga/WISH-SPEC-<name>/provenance.toml
 
-A C64 specimen is one disk image, so its provenance sits beside it as a sibling
-file -- `WISH-SPEC-<name>.provenance.toml` rather than a bare `provenance.toml`,
-since many specimens share one flat directory.  A DOS specimen is usually
-several files (`.CHA`, `.SPC`, `.SAV`, `.ITM`), so it gets its own directory
-and `provenance.toml` sits inside it, unambiguous.
+The top-level directory is `<title-slug>-<platform>` -- `TITLE_SLUGS` names
+the slug -- so a title with specimens on more than one platform gets one
+directory per platform rather than sharing.  A C64 specimen is one disk image,
+so its provenance sits beside it as a sibling file --
+`WISH-SPEC-<name>.provenance.toml` rather than a bare `provenance.toml`, since
+many specimens share one flat directory.  Every other platform's specimen is
+usually several files (DOS: `.CHA`, `.SPC`, `.SAV`, `.ITM`; Amiga: the `.sav`
+or `.dat` the game itself wrote, alongside the one it was made from), so it
+gets its own directory and `provenance.toml` sits inside it, unambiguous. The
+tree tells the two shapes apart structurally: a directory holding
+`WISH-SPEC-*.provenance.toml` files directly is the C64 shape; anything else
+is walked one level down for a `provenance.toml` per specimen.
 
     tools/specimens.py add dos gnomf1 \\
         work/issue84/run1/halfelf-GNOMF1.CHA work/issue84/run1/halfelf-GNOMF1.SPC \\
@@ -78,7 +88,20 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 PROVENANCE_NAME = "provenance.toml"
-PLATFORMS = ("c64", "dos")
+PLATFORMS = ("c64", "dos", "amiga")
+
+#: The directory prefix for a title -- `por-c64`/`por-dos` predate this table
+#: and are what it reproduces; `coab-amiga`/`ssb-amiga` are what two agents
+#: independently wrote by hand for #28 (Decode an Amiga saved game, not just a
+#: character file) and #331 (Amiga Silver Blades asks a journal word before it
+#: will adventure, so the title cannot be driven past its party menu) before
+#: this tool took Amiga specimens at all, and both picked this same shape.
+#: `add` refuses a title that is not here rather than guessing an abbreviation.
+TITLE_SLUGS = {
+    "Pool of Radiance": "por",
+    "Curse of the Azure Bonds": "coab",
+    "Secret of the Silver Blades": "ssb",
+}
 
 #: Required fields for a specimen to count as one at all -- see the module
 #: docstring's "who made it and how ... and its hash".  `sha256` is added by
@@ -188,6 +211,12 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         raise ValueError(f"platform must be one of {PLATFORMS}, got {platform!r}")
     if not _slug_ok(name):
         raise ValueError(f"name must be lowercase alnum/-/_, got {name!r}")
+    slug = TITLE_SLUGS.get(title)
+    if slug is None:
+        raise ValueError(
+            f"no directory slug known for title {title!r} -- add it to "
+            f"TITLE_SLUGS, known: {sorted(TITLE_SLUGS)}")
+    container = f"{slug}-{platform}"
     sources = [pathlib.Path(s) for s in sources]
     for s in sources:
         if not s.is_file():
@@ -212,7 +241,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
     if platform == "c64":
         if len(sources) != 1:
             raise ValueError("a C64 specimen is one disk image")
-        platform_dir = root / "por-c64"
+        platform_dir = root / container
         platform_dir.mkdir(parents=True, exist_ok=True)
         dest = platform_dir / f"WISH-SPEC-{name}{sources[0].suffix}"
         prov = platform_dir / f"WISH-SPEC-{name}.{PROVENANCE_NAME}"
@@ -225,7 +254,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         make_read_only(prov)
         return dest
     else:
-        specimen_dir = root / "por-dos" / f"WISH-SPEC-{name}"
+        specimen_dir = root / container / f"WISH-SPEC-{name}"
         if specimen_dir.exists():
             raise FileExistsError(f"specimen already exists: {specimen_dir}")
         specimen_dir.mkdir(parents=True)
@@ -240,27 +269,36 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         return specimen_dir
 
 
-def _specimen_dirs(root: pathlib.Path) -> list[pathlib.Path]:
-    """Every directory holding a `provenance.toml`, C64's platform directory
-    included -- its specimens are flat files there, not subdirectories."""
-    out = []
-    for platform_dir in ("por-c64", "por-dos"):
-        pdir = root / platform_dir
-        if not pdir.is_dir():
-            continue
-        if platform_dir == "por-c64":
-            out.append(pdir)
-        else:
-            out += [d for d in sorted(pdir.iterdir()) if d.is_dir()]
-    return out
-
-
 def _c64_specimens(pdir: pathlib.Path) -> list[str]:
-    """C64 specimen names, from `WISH-SPEC-<name>.provenance.toml`."""
+    """C64 specimen names, from `WISH-SPEC-<name>.provenance.toml` sitting
+    directly in `pdir` -- also how a platform-title directory is told apart
+    from the DOS/Amiga shape, which has no such file at its own top level."""
     names = []
     for prov in sorted(pdir.glob(f"WISH-SPEC-*.{PROVENANCE_NAME}")):
         names.append(prov.name[len("WISH-SPEC-"):-len(f".{PROVENANCE_NAME}")])
     return names
+
+
+def _platform_title_dirs(root: pathlib.Path) -> list[pathlib.Path]:
+    """Every `<title-slug>-<platform>` directory under the tree -- discovered
+    rather than a fixed pair, since Amiga added a third platform and titles
+    besides Pool of Radiance each get their own directory (`#332`, `#343`)."""
+    if not root.is_dir():
+        return []
+    return [d for d in sorted(root.iterdir()) if d.is_dir()]
+
+
+def _specimen_dirs(root: pathlib.Path) -> list[pathlib.Path]:
+    """Every directory holding a `provenance.toml`, C64's platform-title
+    directory included -- its specimens are flat files there, not
+    subdirectories."""
+    out = []
+    for pdir in _platform_title_dirs(root):
+        if _c64_specimens(pdir):
+            out.append(pdir)
+        else:
+            out += [d for d in sorted(pdir.iterdir()) if d.is_dir()]
+    return out
 
 
 def list_specimens(root: pathlib.Path | None = None) -> list[dict]:
@@ -268,22 +306,26 @@ def list_specimens(root: pathlib.Path | None = None) -> list[dict]:
     checked and hashed against it."""
     root = root or tree_root()
     out = []
-    for pdir in _specimen_dirs(root):
-        if pdir.name == "por-c64":
-            for name in _c64_specimens(pdir):
+    for pdir in _platform_title_dirs(root):
+        c64_names = _c64_specimens(pdir)
+        if c64_names:
+            for name in c64_names:
                 prov_path = pdir / f"WISH-SPEC-{name}.{PROVENANCE_NAME}"
                 fields = read_provenance(prov_path)
                 fields["_files"] = [pdir / n for n in fields.get("sha256", {})]
                 fields["_provenance"] = prov_path
                 out.append(fields)
-        else:
-            prov_path = pdir / PROVENANCE_NAME
+            continue
+        for specimen_dir in sorted(pdir.iterdir()):
+            if not specimen_dir.is_dir():
+                continue
+            prov_path = specimen_dir / PROVENANCE_NAME
             if not prov_path.is_file():
-                out.append({"name": pdir.name, "_no_provenance": True,
-                             "_dir": pdir})
+                out.append({"name": specimen_dir.name, "_no_provenance": True,
+                             "_dir": specimen_dir})
                 continue
             fields = read_provenance(prov_path)
-            fields["_files"] = [pdir / n for n in fields.get("sha256", {})]
+            fields["_files"] = [specimen_dir / n for n in fields.get("sha256", {})]
             fields["_provenance"] = prov_path
             out.append(fields)
     return out
@@ -322,7 +364,7 @@ def check_specimens(root: pathlib.Path | None = None) -> list[str]:
             if field not in entry:
                 problems.append(f"{name}: provenance.toml is missing '{field}'")
     for pdir in _specimen_dirs(root):
-        glob = pdir.glob("*") if pdir.name == "por-c64" else pdir.rglob("*")
+        glob = pdir.glob("*") if _c64_specimens(pdir) else pdir.rglob("*")
         for path in glob:
             if path.is_file() and path not in covered:
                 problems.append(f"{path}: not recorded by any provenance.toml")
@@ -394,7 +436,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("platform", choices=PLATFORMS)
     a.add_argument("name", help="lowercase slug, e.g. gnomf1")
     a.add_argument("sources", nargs="+")
-    a.add_argument("--title", required=True, help="e.g. \"Pool of Radiance\"")
+    a.add_argument("--title", required=True,
+                   help="one of " + ", ".join(sorted(TITLE_SLUGS)))
     a.add_argument("--issue", required=True,
                    help="e.g. \"#84 (Roll a gnome in DOS ...)\"")
     a.add_argument("--made-by", required=True, dest="made_by",
