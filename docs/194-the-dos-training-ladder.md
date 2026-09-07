@@ -192,9 +192,26 @@ engine wrote, against `goldbox/levels.py`. Fighters and clerics agree exactly.
 which is THAC0 20, where the C64's own table at `GEN $1F1F` holds 39, which is
 21. The thief's stored value steps to 41 at level 5 on both ports, so the DOS
 engine is maintaining the field rather than ignoring it.
+
+**Settled on 2026-09-07: the DOS build ships a different THAC0 table, and that
+is the whole of it.** Two readings were open -- a clamp in the DOS code that
+never stores worse than 20, or a cache the trainer does not refresh -- and both
+are refuted. The two engines run the identical routine: clear `thac0_base` to
+zero, walk the class slots, keep the row that beats what is there (`GEN $1EF3`
+against `GAME.OVR:0x1A659`, which reaches its table with `mov dx, 0xB / mul dx
+/ add di, cx / mov al, [di+0x3C7C]`). Neither clamps. Neither goes stale -- the
+ladder's own magic-user steps 20 to 19 at level 6, which a cache nobody
+refreshes could not do. `DS:0x3C7C` is in `START.EXE` and its magic-user and
+thief rows simply hold 40 where `$1F1F` holds 39. 190 of 190 DOS records
+reproduce from it. `tools/thac0census.py` is the sweep,
+`docs/135-levelling.md` has the table and `goldbox/levels.py`'s `dos_thac0`
+carries the rows.
+
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives
-21, and our table holds only the C64's)` has the measurement and what it
-would mean for a converted or Wish-levelled character.
+21, and our table holds only the C64's)` has the measurement, and
+`#366 (A converted magic-user or thief arrives with the other port's THAC0,
+because the two ports ship different tables and the conversion copies the
+byte)` is what it costs a converted character.
 
 ## The party the ladder made
 

@@ -19,7 +19,7 @@ the file.
 | what | where | shape |
 |---|---|---|
 | the level-up sequence | `$1B8C` | fourteen `JSR`s, in the order below |
-| THAC0 | `$1F1F` | 4 rows x 9, index `class * 9 + level`, stored `60 - THAC0` |
+| THAC0 | `$1F1F` | 4 rows x 9, index `class * 9 + level`, stored `60 - THAC0`. **The DOS build ships a different one** -- see below |
 | saving throws | `$1FA2` base, `$1FB6` and `$1FCA` masks | 4 classes x 5 columns each |
 | racial save bonus | `$2359`, race flags at `$2380` | `constitution * 2 / 7` |
 | experience thresholds | `$1DB4`/`$1DD8`/`$1DFC` | parallel low/mid/high, 9 a class |
@@ -36,6 +36,55 @@ the file.
 | turning level | `$2399` | indexed by cleric level |
 | spell level per id | `$268E` | 1-55 |
 | cleric-or-magic-user per id | `$226B` | 1 cleric, 0 magic-user |
+
+## The one table the DOS build does not share
+
+Every other table above is the same number in both ports. THAC0 is not, and it
+is worth being exact about where the difference is, because it looks at first
+like a bug in one of the two engines and is not.
+
+**The routines agree.** `GEN $1EF3` clears `thac0_base` to zero (`SPELLE04
+$0CFF` writes that zero at creation), walks the four class slots at `0x0C9`,
+looks each level up in `$1F1F` and stores it only when it beats what is there
+(`$1F17`: `CMP $6B71 / BCC / STA $6B71`). The DOS engine does the identical
+thing at `GAME.OVR:0x1A659` -- `mov es:[di+0x2D], 0`, then per class
+`mov dx, 0xB / mul dx / add di, cx / mov al, [di+0x3C7C]` and `cmp / jbe /
+mov`. So neither clamps the value and neither leaves it stale.
+
+**The tables do not agree.** `DS:0x3C7C` lives in the DOS `START.EXE`, which is
+EXEPACK-packed; expanded, it is 8 rows of 11 in the class-number order `cleric
+druid fighter paladin ranger magic-user thief monk`, indexed by level 1-10 with
+entry 0 unused -- the same one-based shape `$1F1F` has. Cleric and fighter are
+byte for byte the C64's. The other two are not:
+
+| class | level | C64 `$1F1F` | DOS `DS:0x3C7C` |
+|---|---|---|---|
+| magic-user | 1-5 | 39, THAC0 21 | 40, THAC0 **20** |
+| magic-user | 6-9 | 41, THAC0 19 | 41, THAC0 19 |
+| thief | 1-4 | 39, THAC0 21 | 40, THAC0 **20** |
+| thief | 5-8 | 41, THAC0 19 | 41, THAC0 19 |
+| thief | 9 | 44, THAC0 16 | 44, THAC0 16 |
+
+CONFIRMED: 190 of 190 DOS Pool of Radiance records on this machine reproduce
+from the DOS table with no exceptions, including the nine training-ladder
+specimens the trainer was watched writing one level at a time; every low-level
+magic-user or thief the C64 engine wrote holds 21. `tools/thac0census.py` is
+the sweep and `goldbox/levels.py`'s `dos_thac0` carries the rows.
+
+**Curse and Silver Blades are not settled.** Their DOS tables are the same
+shape at `DS:0x3E3A` (`mul 13`) and its Silver Blades equivalent (`mul 19`),
+and their *thief* rows are clamped to 40 the same way -- but their *mage* rows
+keep 39, and their records store 40 regardless: 6 of 56 Curse records and 2 of
+56 Silver Blades records disagree with their own title's table, every one of
+the eight a magic-user. There is no second table and no clamp in either
+recompute loop. What would settle it: train a Curse magic-user from level 1 to
+2 in the game and read `thac0_base` at `0x073`.
+
+`#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives
+21, and our table holds only the C64's)` is the question and `#366 (A converted
+magic-user or thief arrives with the other port's THAC0, because the two ports
+ship different tables and the conversion copies the byte)` is what it costs a
+player.
 
 ## The sequence
 

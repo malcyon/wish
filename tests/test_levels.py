@@ -22,10 +22,36 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exist
                                 reason="needs the save disks")
 
 
-def _single_class_records():
+#: Save disks that are **not** the C64 engine's own writing, and why.
+#:
+#: `PORSAVEA.D64` and `PORSAVEB.D64` are Wish's conversions of DOS save slots A
+#: and B out of the player's DOS game folder -- same six names, same classes,
+#: same levels, and `thac0_base` copied byte for byte off the DOS record. So
+#: they hold the *DOS* build's THAC0, which is 20 for a low-level magic-user
+#: where the C64's is 21, and voting them into a test about the C64's table
+#: would be voting with our own writer's output twice over
+#: (`.claude/rules/testing.md`, "A specimen is only evidence if we know who
+#: wrote it"). `test_the_wish_converted_disks_carry_the_dos_number` below is
+#: what keeps this from being a way of not looking.
+CONVERTED_DISKS = ("PORSAVEA.D64", "PORSAVEB.D64")
+
+#: One field a class, the array `GEN $1EF3` walks as `LDA $6BC9,X`. `level` at
+#: `0x0BA` is a different field and is not what the THAC0 loop reads.
+LEVEL_FIELDS = (("magic-user", "level_magic_user"), ("cleric", "level_cleric"),
+                ("thief", "level_thief"), ("fighter", "level_fighter"))
+
+
+def _class_levels(record):
+    """The per-class levels, out of the array the engine's own loop reads."""
+    return {name: record.get(field) for name, field in LEVEL_FIELDS
+            if record.get(field)}
+
+
+def _single_class_records(skip=CONVERTED_DISKS):
     """Every character we hold that belongs to exactly one class."""
     out = []
-    paths = sorted(glob.glob(f"{DISKS}/PORSAVE*.D64"))
+    paths = [p for p in sorted(glob.glob(f"{DISKS}/PORSAVE*.D64"))
+             if pathlib.Path(p).name.upper() not in skip]
     for path in paths:
         disk = D64.open(path)
         names = {e.name for e in disk.directory()}
@@ -50,18 +76,56 @@ def _single_class_records():
 @game_disks
 def test_stored_thac0_matches_the_table_for_every_character():
     """0x071 holds base THAC0 as `60 - value`, so each character votes on its own
-    row. This is what caught magic-user and thief level 1 being 21, not 20."""
+    row. This is what caught magic-user and thief level 1 being 21, not 20.
+
+    **No exceptions.** It used to skip fighter 4 as "two specimens disagree;
+    unexplained", and re-run on 2026-09-07 there are none: SILAS and MAGNUS are
+    the only fighter 4s on the disks and both store 17, which is the row. The
+    exception was for something that is not there.
+
+    Levels come from the per-class array at `0x0C9`, which is the array
+    `GEN $1EF3` walks; `level` at `0x0BA` is a different field and disagrees
+    with it on an edited record.
+    """
     checked = 0
     for record, class_name in _single_class_records():
-        row = at_level(class_name, record.level)
+        level = _class_levels(record).get(class_name) or record.level
+        row = at_level(class_name, level)
         if row is None:
             continue                      # a level the table does not reach
         stored = record.thac0_base_value
-        if class_name == "fighter" and record.level == 4:
-            continue                      # two specimens disagree; unexplained
-        assert stored == row.thac0, f"{record.name} {class_name} L{record.level}"
+        assert stored == row.thac0, f"{record.name} {class_name} L{level}"
         checked += 1
     assert checked >= 8
+
+
+@game_disks
+def test_the_wish_converted_disks_carry_the_dos_number():
+    """The two disks the test above leaves out, and what is on them instead.
+
+    `PORSAVEA.D64` and `PORSAVEB.D64` are Wish's conversions of the player's
+    DOS slots A and B. Every one of their twelve records reproduces from the
+    **DOS** build's table rather than the C64's, which is what makes leaving
+    them out of the C64 vote a statement rather than a way of not looking --
+    and it is the failure `#366 (A converted magic-user or thief arrives with
+    the other port's THAC0, because the two ports ship different tables and the
+    conversion copies the byte)` is about, so this test changes when that one
+    is fixed.
+    """
+    seen = 0
+    for path in sorted(glob.glob(f"{DISKS}/PORSAVE*.D64")):
+        if pathlib.Path(path).name.upper() not in CONVERTED_DISKS:
+            continue
+        save = SaveGame0.from_prg(D64.open(path).read_file(b"SAVEDGAME0"))
+        for slot in save.characters:
+            record = slot.record
+            want = levels.dos_base_thac0(_class_levels(record))
+            assert record.thac0_base_value == want, \
+                f"{pathlib.Path(path).name} {record.name}"
+            seen += 1
+    if not seen:
+        pytest.skip("neither converted disk is on this machine")
+    assert seen == 12, f"{seen} records across the two converted disks"
 
 
 def test_the_thresholds_rise():
@@ -281,3 +345,80 @@ def test_only_pool_of_radiances_trainer_has_been_measured():
         "curse-of-the-azure-bonds"
     assert levels.for_game(games.SECRET_OF_THE_SILVER_BLADES).key == \
         "secret-of-the-silver-blades"
+
+
+# --- the DOS build's own THAC0 table -----------------------------------------
+# `goldbox/levels.py`'s rows are the C64's, expanded from `GEN $1F1F`. The DOS
+# build of Pool of Radiance ships a *different* table -- 40, THAC0 20, in the
+# magic-user's rows 1-5 and the thief's rows 1-4, where the C64 ships 39 -- and
+# `dos_thac0` carries it. These read that table back off the player's own
+# `START.EXE` and vote every DOS record on this machine on it, the same way the
+# `GEN` tests above do for the C64.
+#
+# The anchor is deliberately not a THAC0 number: `tools/thac0census.py` locates
+# the table by the **class-bit run** that sits immediately after it, so the read
+# cannot agree with `goldbox/levels.py` by construction.
+
+def _thac0census():
+    return pytest.importorskip("tools.thac0census")
+
+
+def _dos_tables():
+    """The DOS table, or a skip when the player's archives are not here."""
+    census = _thac0census()
+    try:
+        return census.dos_table("pool-of-radiance")
+    except FileNotFoundError as e:
+        pytest.skip(f"needs the DOS archives: {e}")
+
+
+def test_the_dos_thac0_rows_are_the_games_own():
+    """`goldbox.levels`' `dos_thac0` against the bytes in `START.EXE`.
+
+    The geometry is the engine's, not a guess: `GAME.OVR:0x01A68D` reaches the
+    table with `mov dx, 0xB / mul dx / mov di, ax / add di, cx /
+    mov al, [di+0x3C7C]`, so the rows are 11 wide and indexed by level with
+    entry 0 unused. `tools/thac0census.py code` prints every site of that shape
+    and all four Pool of Radiance ones carry the same stride and offset.
+    """
+    table = _dos_tables()
+    rows = dict(levels.POOL_OF_RADIANCE.dos_thac0)
+    assert set(rows) == set(TABLES), "a class is missing from dos_thac0"
+    for name, row in rows.items():
+        assert list(row) == table[name][:len(row)], name
+    # The half that matters: the two ports disagree exactly here and nowhere
+    # else, so a change to either table fails this rather than passing quietly.
+    for name in ("cleric", "fighter"):
+        c64 = [r.thac0 for r in levels.table(name)]
+        assert rows[name][:len(c64)] == tuple(c64), f"{name} should agree"
+    for name, last in (("magic-user", 5), ("thief", 4)):
+        c64 = [r.thac0 for r in levels.table(name)]
+        assert all(v == 21 for v in c64[:last]), name
+        assert all(v == 20 for v in rows[name][:last]), name
+        assert rows[name][last:len(c64)] == tuple(c64[last:]), \
+            f"{name} should agree above level {last}"
+
+
+def test_every_dos_record_reproduces_from_the_dos_table():
+    """The sample is the finding: every DOS Pool of Radiance record on this
+    machine, against the DOS table, best-of-classes and nothing else.
+
+    That is the whole rule `GAME.OVR:0x1A659` implements -- clear the byte,
+    walk the eight class slots, keep the row that beats what is there -- so a
+    record that does not reproduce would mean a clamp, a stale cache or a
+    second table, and none of the three is there. 190 of 190 on 2026-09-07,
+    including the nine `WISH-SPEC-por-party-ladder-rung*` specimens the trainer
+    was watched writing one level at a time.
+    """
+    census = _thac0census()
+    table = _dos_tables()
+    total = 0
+    for source, name, held, stored in census.dos_records("pool-of-radiance"):
+        want = census._best(table, held)
+        if want is None:
+            continue
+        total += 1
+        assert stored == want, f"{source} {name} {held}"
+    if total < 60:
+        pytest.skip(f"only {total} DOS records reachable; needs the specimen "
+                    "tree or the archives")

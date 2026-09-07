@@ -345,7 +345,22 @@ _DECLARED: Sequence[Field] = (
            "level-ups, always to the row of the game's own table at GEN $1F1F "
            "and, for a multi-class character, to the best of its classes -- "
            "GEN $1EF3 keeps a value only when it beats what is already there. "
-           "docs/119-test-party.md"),
+           "docs/119-test-party.md.\n"
+           "**The DOS build stores a different number for the same character, "
+           "and it is the table rather than the routine.** GEN $1EF3 clears "
+           "the byte (SPELLE04 $0CFF writes the zero), walks the four class "
+           "slots at 0x0C9 and keeps the best row; GAME.OVR:0x1A659 does "
+           "exactly the same with `mul 11` into DS:0x3C7C, so neither engine "
+           "clamps and neither leaves the byte stale. The two tables differ: "
+           "DOS ships 40, THAC0 20, in the magic-user's rows 1-5 and the "
+           "thief's rows 1-4 where the C64 ships 39, THAC0 21. 190 of 190 DOS "
+           "records reproduce from the DOS table and every low-level "
+           "magic-user or thief the C64 engine wrote holds 21; the only C64 "
+           "records anywhere holding 20 for one are the five disks this "
+           "project converted from DOS. goldbox.levels.dos_base_thac0 is the "
+           "DOS number, and #366 (A converted magic-user or thief arrives "
+           "with the other port's THAC0, because the two ports ship different "
+           "tables and the conversion copies the byte) is what a player sees"),
     _field(0x072, 1, _U8, "race", "Race", _OK,
            "1-based: DWARF=1 ELF=2 GNOME=3 HALF-ELF=4 HALFLING=5 HALF-ORC=6 "
            "HUMAN=7 MONSTER=8. BRUTUS/ZARRADA=7 human, LARA=2 elf. HALF-ORC "

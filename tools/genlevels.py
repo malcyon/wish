@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from goldbox.levels import TABLES  # noqa: E402
+from goldbox.levels import POOL_OF_RADIANCE, TABLES  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "89-level-tables.md"
 
@@ -32,6 +32,16 @@ for a dwarf, gnome or halfling. That is why two level-1 fighters read
 what settles the fighter's level-4 breath save at **15** where AD&D says 16.
 `tests/test_levels.py` re-expands every row off the player's own `GEN`.
 
+**The THAC0 column is the C64's**, expanded from that port's own table at `GEN
+$1F1F`. The DOS build of Pool of Radiance ships a different one and the **DOS**
+column says so where the two disagree — a magic-user at levels 1-5 and a thief
+at levels 1-4, where DOS gives 20 and the C64 gives 21. It is the table rather
+than the routine: both engines clear the byte and rebuild it from their own
+rows. `docs/135-levelling.md` has the addresses and `#366 (A converted
+magic-user or thief arrives with the other port's THAC0, because the two ports
+ship different tables and the conversion copies the byte)` is what it costs a
+converted character.
+
 """
 
 CONFIRMED = {("cleric", 1), ("cleric", 6), ("fighter", 1), ("fighter", 7),
@@ -43,17 +53,22 @@ def main() -> int:
     for name, rows in TABLES.items():
         out.append(f"## {name}\n")
         spells = any(r.spells for r in rows)
-        head = "| level | experience | hit dice | max hp | THAC0 | attacks | saves |"
+        dos = dict(POOL_OF_RADIANCE.dos_thac0).get(name, ())
+        head = ("| level | experience | hit dice | max hp | THAC0 | DOS "
+                "| attacks | saves |")
         if spells:
             head += " spells |"
         out.append(head)
-        out.append("|---|---|---|---|---|---|---|" + ("---|" if spells else ""))
+        out.append("|---|---|---|---|---|---|---|---|"
+                   + ("---|" if spells else ""))
         for r in rows:
             tick = " ✓" if (name, r.level) in CONFIRMED else ""
             saves = " / ".join(str(s) for s in r.saves)
             attacks = "3/2" if r.attacks == 1.5 else str(int(r.attacks))
+            theirs = dos[r.level - 1] if r.level <= len(dos) else None
+            other = "same" if theirs in (None, r.thac0) else f"**{theirs}**"
             row = (f"| {r.level} | {r.experience:,} | {r.hit_dice} | {r.hp_max} "
-                   f"| {r.thac0}{tick} | {attacks} | {saves} |")
+                   f"| {r.thac0}{tick} | {other} | {attacks} | {saves} |")
             if spells:
                 row += " " + ("/".join(str(s) for s in r.spells) or "—") + " |"
             out.append(row)

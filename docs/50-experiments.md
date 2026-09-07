@@ -6847,3 +6847,171 @@ gets out of it by attaching side 2 and pressing the key without reading
 anything. Whether the screen matrix has moved somewhere `screen_address` does
 not follow is not established here; it is `#336 (The screen reader goes blind on
 the insert-a-side prompt, and every screen-driven recovery fails with it)`.
+
+---
+
+## Two ports, two THAC0 tables
+
+`#348 (The THAC0 test votes with two save disks Wish converted from DOS, whose
+magic-users carry the DOS build's own THAC0)`, `#362 (The two THAC0/damage-bonus
+population tests in test_derive.py have outgrown their exception counts, and
+PORSAVEA/PORSAVEB carry the same anomaly #348 found)` and `#318 (DOS gives a
+low-level magic-user or thief THAC0 20 where the C64 gives 21, and our table
+holds only the C64's)`.
+
+**Question.** `tests/test_levels.py::test_stored_thac0_matches_the_table_for_every_character`
+and the two population tests in `tests/test_derive.py` were red at `HEAD`, on
+records off the player's own disks. A `junior-dev` agent sent to swap the
+corpus stopped and said the corpus was not the problem: specimens this project
+watched being written show the same disagreement. A level-1 DOS magic-user
+stores THAC0 20 where `goldbox/levels.py` says 21.
+
+Two readings were on the table and they predict different things:
+
+* **a clamp** -- the engine never stores worse than 20, because 20 already hits
+  armour class 0 and a worse number would be meaningless. Then 20 is the
+  correct stored value and 21 is the *combat* number rather than the stored
+  one;
+* **a stale cache** -- 21 is right and the engine has not got round to writing
+  it, so a conversion that writes 21 writes what the engine would eventually
+  have written.
+
+**Both are wrong.** The routines are identical on the two ports and the
+*tables* differ.
+
+### What the two engines do
+
+The C64, `GEN $1EF3`, four class slots counting down:
+
+```
+$1EF3  LDA #$03 / STA $2B58          ; class slot 3
+$1EF8  LDX $2B58
+$1EFB  LDA $6BC9,X                   ; class_levels[slot]
+$1EFE  BEQ $1F11                     ; no level in this class -> next
+$1F01  LDA #$09 / JSR $2E30          ; $4C = slot * 9
+$1F08  ADC $4C / TAX                 ; + the level
+$1F0B  LDA $1F1F,X                   ; the table
+$1F0E  JSR $1F17
+$1F14  BPL $1EF8
+$1F17  CMP $6B71 / BCC $1F1F / STA $6B71
+```
+
+`$1F1F` is both the `RTS` the compare branches to and the table's unused entry
+0, which is what makes the index one-based. `SPELLE04 $0CFF` writes the `LDA
+#$00 / STA $6B71` the loop starts from.
+
+DOS, `GAME.OVR:0x1A659`, the same shape with the compiler's own idioms:
+
+```
+mov byte es:[di+0x2D], 0            ; clear it
+mov byte [bp-0x19], 0               ; class = 0
+  cmp byte es:[di+0x96], 0 / jle    ; class_levels[class]
+  mov dx, 0xB / mul dx / add di, cx ; class * 11 + level
+  mov al, [di+0x3C7C]               ; the table
+  cmp al, es:[di+0x2D] / jbe
+  mov byte es:[di+0x2D], al
+```
+
+So **neither clamps** -- there is no compare against 40 anywhere in either --
+and **neither can go stale**, because both clear the byte before rebuilding it.
+The ladder confirms the second from the outside: `WISHMAG` reads 20 at levels 1
+to 5 and steps to 19 at 6, which a cache nobody refreshes cannot do.
+
+### Where `DS:0x3C7C` is, and how it was found without assuming the answer
+
+`START.EXE` is EXEPACK-packed, so a file offset drifts; `tools/unexepack.py`
+expands it, and in the expanded image `seg * 16 + off` is a linear address.
+Two independent anchors put the table at image `0x1043C`:
+
+* `0x1043C - 0x3C7C = 0xC7C0`, a paragraph boundary, so `DS` is `0xC7C`;
+* the eight bytes at `0x10494`, immediately after the table's 88, are
+  `02 20 08 40 80 01 04 10` -- the C64's own class bits, one a class, in class
+  number order (cleric 2, fighter 8, magic-user 1, thief 4). That run occurs
+  **exactly once** in the image. Curse has the same pair, and there `DS:0x3EA2`
+  is read four instructions after the THAC0 lookup, which pins its own base the
+  same way.
+
+`tools/thac0census.py` anchors on the class-bit run rather than on any THAC0
+number, so the read cannot agree with `goldbox/levels.py` by construction.
+
+### The difference, in full
+
+Eight rows of eleven, `cleric druid fighter paladin ranger magic-user thief
+monk`, level 1-10 with entry 0 unused. Cleric and fighter are byte for byte the
+C64's over every level both reach.
+
+| class | levels | C64 stored | DOS stored | THAC0 |
+|---|---|---|---|---|
+| magic-user | 1-5 | 39 | **40** | 21 against 20 |
+| thief | 1-4 | 39 | **40** | 21 against 20 |
+| every other class and level both reach | | same | same | same |
+
+**CONFIRMED.** 190 of 190 DOS Pool of Radiance records reachable on this
+machine reproduce from the DOS table by best-of-classes with no exceptions --
+the nine `WISH-SPEC-por-party-ladder-rung*` specimens, the play folder, the
+archives. 148 of 158 C64 records reproduce from `GEN $1F1F`, and all ten misses
+are on the five disks this project itself converted from DOS.
+
+### So the failing tests were reading Wish's own output
+
+`PORSAVEA.D64` and `PORSAVEB.D64` were written on 2026-09-06, 34 seconds apart,
+and hold the same six names, classes and levels as DOS slots A and B in the
+player's game folder -- BRUTUS, MAGNUS, ROLAND, GILES, ASTRID, SILAS -- with
+`thac0_base` equal character for character. They are conversions, and
+`goldbox/dos.py`'s `DIRECT` carries `("thac0_base", "thac0_base")`, so the DOS
+number came across verbatim. `#366 (A converted magic-user or thief arrives
+with the other port's THAC0, because the two ports ship different tables and
+the conversion copies the byte)` is the defect.
+
+**What a player sees.** ASTRID converts to the C64 and her sheet shows THAC0
+20 where a C64-born magic-user 3 shows 21 -- she hits one point better than the
+game would give her. She keeps it: `WISH-SPEC-por-c64-hall-resave` and
+`WISH-SPEC-por-52-dialog-converted-resave` are C64 saves the engine itself
+wrote by ENCAMP > SAVE after loading a converted party, and both still hold 20
+for a level-1 magic-user, a value the C64's own table never produces. So the
+C64 engine does not rebuild `0x071` on load or on its own save. The next
+*training* does, and then her THAC0 gets one **worse** on gaining a level.
+In Wish, meanwhile, `goldbox.derive.check` reports her as
+`THAC0 is cached as 20, but the rules give 21` when nothing about her is stale.
+
+### Two other things the same sweep found
+
+**`goldbox/derive.py` was reading the wrong level field.** `base_thac0` took
+`level` at `0x0BA`; `GEN $1EF3` reads the per-class array at `0x0C9`. GARRETT
+on `NEWSAVE1` and `NEWSAVE2` is where they disagree -- `level` 5,
+`level_thief` 1, no experience -- and his cached 21 is right for the thief 1 the
+array says he is. He had been counted as an unexplained mismatch in both
+population tests' docstrings for as long as they have existed.
+
+**And it was missing a term in the damage bonus.** `LIBRARY $36E3` adds `$6D80`,
+the readied item's own enchantment, to the damage bonus unconditionally --
+exactly as `$36C2` adds the same byte to the THAC0 four instructions earlier,
+which `expected_thac0` had always taken. Every party on the disks was level 1
+with nothing magical, so nothing showed it until a converted party carrying a
+Long Sword +1 arrived and the mismatch count went from five to twelve. Seven
+records agreed the moment the term went in; 121 of 126 now agree, and the five
+left are caches an edit left behind, which is what the check is for.
+
+### What is not settled
+
+**Curse and Silver Blades.** Both lay their DOS tables out the same way --
+`mul 13` into `DS:0x3E3A`, `mul 19` into Silver Blades' -- and both clamp their
+*thief* rows to 40 like Pool of Radiance. Their *mage* rows keep 39. Their
+records store 40 anyway: 6 of 56 Curse records and 2 of 56 Silver Blades
+records disagree with their own title's table, every one of the eight a
+magic-user at a level the table calls 21, PHILIPPE and BRYTWYN at 5 and MATHEW
+and PAINE freshly dual-classed to 1. There is no second table -- all four Curse
+store sites read `DS:0x3E3A` -- and no clamp after the loop. So `dos_thac0` is
+filled in for Pool of Radiance only. **The experiment**: train a Curse
+magic-user from level 1 to 2 in the game and read `thac0_base` at `0x073`. 39
+means the loop ran and the 40 is a creation-time value nothing had refreshed;
+40 means something clamps and the clamp is what to go and find.
+
+**Whether the DOS engine rebuilds `thac0_base` on load.** The C64 half is
+answered above by two engine-written specimens. No DOS specimen tests it,
+because every converted-and-resaved DOS party this project holds began life on
+DOS and so went round carrying 40 already. It decides nothing about
+`#366 (A converted magic-user or thief arrives with the other port's THAC0,
+because the two ports ship different tables and the conversion copies the
+byte)`, which is about what Wish should write rather than about what survives; it would
+say whether a player who never trains ever sees the difference.

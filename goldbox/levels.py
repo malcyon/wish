@@ -30,6 +30,16 @@ carries, and where:
 `GEN` is resident at `$0800` in all three games whatever its PRG header
 claims.
 
+**One of those tables is not the same on the DOS side.** Everything above is
+the C64's, and for every table but one the DOS build agrees. The exception is
+THAC0: Pool of Radiance's DOS build ships 40 -- THAC0 20 -- where the C64's
+`$1F1F` ships 39, in the magic-user's rows 1-5 and the thief's rows 1-4, so a
+low-level DOS caster or thief hits one point better than the same character on
+the C64. `dos_thac0` carries it and `_DOS_THAC0_POOL` carries the provenance.
+Curse's and Silver Blades' DOS tables are **not** in here: theirs keep 39 in
+the mage row and their records still store 40, so something else is at work in
+those two and nobody has found it -- see `_DOS_THAC0_POOL`.
+
 **Not one Pool of Radiance address survives into Curse**, which is the
 measurement `TRAINER_MEASURED` rests on. The two files were compared byte for
 byte from `$0800` -- Pool of Radiance's 9083 bytes off `POOL3`, Curse's 9455
@@ -236,6 +246,58 @@ TABLES = {
     "magic-user": MAGIC_USER,
     "thief": THIEF,
 }
+
+#: **The DOS build ships a different THAC0 table, and that is the whole of the
+#: difference between the two ports.** Both engines run the same routine -- zero
+#: the field, then walk the eight class slots and keep the best row -- so
+#: neither clamps and neither leaves the value stale:
+#:
+#: * C64 `GEN $1EF3`: `LDA $6BC9,X` (`class_levels[X]`), `X = class * 9 + level`,
+#:   `LDA $1F1F,X`, then `$1F17` stores it only if it beats what is there.
+#:   `SPELLE04 $0CFF` writes the zero this starts from.
+#: * DOS `GAME.OVR:0x1A659`: `mov es:[di+0x2D], 0`, then per class
+#:   `mov dx, 0xB / mul dx / add di, cx / mov al, [di+0x3C7C]` and the same
+#:   store-if-better. `DS:0x3C7C` is the table: **8 rows of 11**, class in the
+#:   class-number order `cleric druid fighter paladin ranger magic-user thief
+#:   monk`, indexed by level 1-10 with entry 0 unused, exactly the shape the
+#:   C64's own `$1F1F` has.
+#:
+#: The cleric and fighter rows are byte for byte the C64's over every level both
+#: reach. The magic-user's and the thief's are not: DOS stores 40 where the C64
+#: stores 39, so a DOS magic-user is THAC0 20 for levels 1-5 and a DOS thief is
+#: 20 for levels 1-4, where the C64 gives both 21. Rows below are THAC0, not the
+#: stored `60 - THAC0`, and run level 1 to 10 whatever this title's ceiling is,
+#: because that is what the table holds. `#318 (DOS gives a low-level magic-user
+#: or thief THAC0 20 where the C64 gives 21, and our table holds only the
+#: C64's)`.
+#:
+#: CONFIRMED: 178 of 178 DOS Pool of Radiance records this machine can reach
+#: reproduce from these rows by best-of-classes, with no exceptions -- the nine
+#: `WISH-SPEC-por-party-ladder-rung*` specimens the trainer was watched writing,
+#: the play saves, and the archives. `tools/thac0census.py` is the sweep and
+#: `tests/test_levels.py` re-reads the rows out of the player's own `START.EXE`.
+#:
+#: **Only Pool of Radiance's DOS table is here, and the reason is a
+#: contradiction nobody has resolved.** Curse and Silver Blades lay their DOS
+#: tables out the same way -- `mul 13` into `DS:0x3E3A` and `mul 19` -- and
+#: their *thief* rows are clamped to 40 like this one, but their *mage* rows
+#: keep 39, the C64 number. Their records store 40 anyway: 6 of 56 Curse
+#: records and 2 of 56 Silver Blades records disagree with their own title's
+#: table, and every one of the eight is a magic-user at a level the table calls
+#: 21. Nothing in either title's recompute loop clamps, and there is no second
+#: table -- all four Curse store sites read `DS:0x3E3A`. So the rows are read
+#: and the mechanism is not, and writing them in here would be writing a number
+#: the game demonstrably does not store. **The experiment that would settle
+#: it**: train a Curse magic-user from level 1 to 2 in the game and read
+#: `thac0_base` at `0x073`. 39 means the loop ran and the 40 those records
+#: carry is a creation-time value nothing had refreshed; 40 means something
+#: clamps and the clamp is what to go and find.
+_DOS_THAC0_POOL = (
+    ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19)),
+    ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14)),
+    ("thief",      (20, 20, 20, 20, 19, 19, 19, 19, 16, 16)),
+    ("fighter",    (20, 19, 18, 17, 16, 15, 14, 13, 12, 11)),
+)
 
 
 # --- Curse of the Azure Bonds ------------------------------------------------
@@ -771,6 +833,12 @@ class LevelTables:
     #: those six bytes and all six shipped characters hold zero -- `ECL65
     #: $880D` rebuilds the number in RAM whenever the sheet is drawn.
     stores_spell_capacity: bool = True
+    #: This title's **DOS** THAC0 rows, where the DOS build does not ship the
+    #: C64's table -- class name to THAC0 by level, index `level - 1`. See
+    #: `_DOS_THAC0_POOL` for the two routines and the provenance. Empty means
+    #: nobody has read this title's DOS copy, and every caller treats that as
+    #: "cannot answer" rather than as agreement with the C64.
+    dos_thac0: tuple[tuple[str, tuple[int, ...]], ...] = ()
 
     def constitution_hp_bonus(self, constitution: int, *,
                               fighter: bool = False,
@@ -871,6 +939,36 @@ class LevelTables:
             row = tuple(a + b for a, b in
                         zip(row, self.thief_skill_race[index]))
         return tuple(row)
+
+    def dos_thac0_at(self, class_name: str, level: int) -> int | None:
+        """What the **DOS** build's own table gives one class at one level.
+
+        None where this title's DOS table has not been read, so a caller that
+        needs the DOS number can tell "we have not looked" from "it is the same
+        as the C64's". Levels below 1 and above the row clamp to its ends, the
+        way `mov al, [di+0x3C7C]` does with whatever `class_levels` holds.
+        """
+        row = dict(self.dos_thac0).get(class_name)
+        if not row:
+            return None
+        return row[max(0, min(int(level or 1), len(row)) - 1)]
+
+    def dos_base_thac0(self, class_levels) -> int | None:
+        """`thac0_base` as the DOS engine computes it, best of the classes.
+
+        The record stores `60 - THAC0`; this returns the THAC0 itself. None
+        where the title's DOS table is unread or the character has no class
+        with a level, which is what `GAME.OVR:0x1A659` leaves as the zero it
+        started from.
+        """
+        best = None
+        for name, level in dict(class_levels or {}).items():
+            if not level:
+                continue
+            got = self.dos_thac0_at(name, level)
+            if got is not None:
+                best = got if best is None else min(best, got)
+        return best
 
     def clamp_threshold(self, class_name: str, level: int) -> int | None:
         """What `GEN $23D4` reads for a class at that level, ceiling included."""
@@ -984,6 +1082,7 @@ POOL_OF_RADIANCE = LevelTables(
     turn_power=_TURN_POWER_POOL,
     clamp_thresholds=(("magic-user", 60001), ("cleric", 55001),
                       ("thief", 160001), ("fighter", 250001)),
+    dos_thac0=_DOS_THAC0_POOL,
 )
 
 #: Curse zeroes the cleric column for dwarf, elf and gnome where Pool of
@@ -1218,6 +1317,14 @@ def turning_level(cleric_level: int, game=None,
 
 def clamp_threshold(class_name: str, level: int, game=None) -> int | None:
     return for_game(game).clamp_threshold(class_name, level)
+
+
+def dos_thac0_at(class_name: str, level: int, game=None) -> int | None:
+    return for_game(game).dos_thac0_at(class_name, level)
+
+
+def dos_base_thac0(class_levels, game=None) -> int | None:
+    return for_game(game).dos_base_thac0(class_levels)
 
 
 def next_threshold(class_name: str, level: int, game=None) -> int | None:
