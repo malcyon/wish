@@ -105,18 +105,38 @@ def test_it_resolves_under_a_frozen_root(monkeypatch, tmp_path):
     `goldbox.iconparts` under a simulated `sys._MEIPASS` rather than reading
     the constant as it stands -- the shape PyInstaller's bootloader leaves,
     per `tests/test_assets.py`.
+
+    **Restored from a snapshot, not by reloading again.** `importlib.reload`
+    redefines every class in the module in place, so `goldbox.iconparts.
+    IconParts` after even the "restoring" reload is a *third* class object,
+    still not the one `goldbox.dos` already holds a reference to from its own
+    `from .iconparts import IconParts` at import time. Any `IconParts`
+    instance built after that -- `tests/test_ssbconvert.py`'s `ssb_parts`
+    fixture makes one straight off a disk -- then fails every `isinstance`
+    check `goldbox/dos.py` runs against its own, older reference, and a
+    combat icon comes back as the unconverted `IconParts` object instead of
+    36 bytes. That is what was failing only inside a full parallel run in
+    `#374 (The Silver Blades figure test fails only inside a full parallel
+    suite run, so the same commit can be green locally and red in CI)` --
+    this test's own reload, whichever worker it landed in, leaking a
+    permanently mismatched `IconParts` into every test that ran after it in
+    that worker. A snapshot taken before the first reload and written back
+    verbatim leaves every class the exact object it was, which a second
+    reload cannot.
     """
     (tmp_path / "tools").mkdir()
     shutil.copy(iconparts.PROPOSAL_PATH, tmp_path / "tools" / "iconproposal.yaml")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    original = dict(vars(iconparts))
     try:
         reloaded = importlib.reload(iconparts)
         assert reloaded.PROPOSAL_PATH == tmp_path / "tools" / "iconproposal.yaml"
         assert reloaded.PROPOSAL_PATH.is_file()
     finally:
         monkeypatch.undo()
-        importlib.reload(iconparts)
+        vars(iconparts).clear()
+        vars(iconparts).update(original)
 
 
 def test_a_build_that_lost_the_table_says_where_it_should_have_been(tmp_path):
