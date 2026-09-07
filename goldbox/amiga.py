@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import contextlib
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from . import areas, dos_layout, dos_savegame, games, neutral, world_state
@@ -4040,8 +4040,19 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                       "what would let the portrait cross, exactly as it did "
                       "for DOS"),
     ("portrait_body", "see portrait_head; the body half of the same pair"),
-    ("field_83_87", "five bytes DOS calls unknown and every specimen of "
-                    "either title reads zero"),
+    ("field_83_87", "five bytes in Curse and four in Silver Blades that DOS "
+                    "calls unknown, one of which is the share of treasure a "
+                    "character takes. **Not zero in a record the Amiga "
+                    "engine wrote**, which this line claimed until "
+                    "2026-09-07: the four played Curse characters in "
+                    "SAVE/savgamA.dat hold 00 00 01 00 00 and five of the "
+                    "six Silver Blades ones hold 00 01 00 00, which is "
+                    "`goldbox.dos.FIELD_83_87` byte for byte. The eleven "
+                    ".guy pregens and Silver Blades' MALACHITE hold zeros, "
+                    "and they were what the old reading rested on. The "
+                    "reader still drops it -- the neutral record has no "
+                    "field for a treasure share -- and `write_later` writes "
+                    "the DOS constant, which is what the engine writes"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
                                      "array, which no character of either "
                                      "port sets a byte of and no class has "
@@ -4327,3 +4338,482 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
         if name in declared and name in LATER_DROPPED_PLAYER_TEXT:
             out.drop(LATER_DROPPED_PLAYER_TEXT[name])
     return out
+
+
+# ---------------------------------------------------------------------------
+# The neutral record -> Amiga Curse and Silver Blades (#384)
+# ---------------------------------------------------------------------------
+#
+# The third Amiga writer, and it is built the way :func:`write_por` is rather
+# than as a new invention: `goldbox.dos.write` does the conversion, because
+# **the Amiga record is the title's DOS record in another shape**, and what
+# is here is the re-cut plus the handful of bytes the Amiga has and DOS does
+# not.  Every grade and every provenance line the DOS side earned crosses
+# with it.
+#
+# Three things differ from Pool of Radiance's writer, each measured:
+#
+#   1. **The chain fields are booleans the loader tests**, so a record with
+#      nodes behind it must carry a non-zero head where `write_por` writes
+#      NULL.  :meth:`AmigaCharacter.block_bytes` already does that, which is
+#      why this returns an `AmigaCharacter` rather than loose bytes -- the
+#      party goes to `tools/amigasavegame.py`'s `rebuild` as blocks.
+#   2. **Silver Blades' spellbook is packed into bits**, LSB first.
+#   3. **The effect chain is not `goldbox.dos.write`'s `.SPC` payload.**  See
+#      :func:`_later_effect_nodes` for the measurement that says why.
+
+#: Amiga record bytes with no DOS counterpart, per title: `(offset, size,
+#: why)`.  The round trip masks **this list** plus `goldbox.dos`'s own
+#: `WRITE_UNSOURCED`, `WRITE_UNSOURCED_LATER`, `WRITE_CONSTANTS`,
+#: `WRITE_DEFAULTS` and `WRITE_DERIVED`, rather than whatever happens to
+#: differ, so a new difference fails instead of being absorbed.
+#:
+#: Every value is zero and every one is measured rather than assumed: the 21
+#: specimens `tools/amigarecords.py` pulls off the disks -- eleven Curse
+#: `.guy` pregens, the four played Curse characters in `SAVE/savgamA.dat` and
+#: the six shipped Silver Blades characters in `SAVE/savgamA.sav` -- read 0 at
+#: all six Curse offsets in 15 of 15 and at all three Silver Blades ones in
+#: 6 of 6.
+LATER_WRITE_UNSOURCED: dict[str, tuple[tuple[int, int, str], ...]] = {
+    CURSE_SHAPE.key: (
+        (0x0FB, 1, "the pad ahead of the fourteen money bytes, which the "
+                   "record unpacker at /Curse 0x270A6 skips over; 0 in 15 "
+                   "of 15"),
+        (0x133, 1, "the sixth byte of the cleric spell-slot array, which "
+                   "DOS spends five on; 0 in 15 of 15"),
+        (0x139, 1, "the sixth byte of the druid array; 0 in 15 of 15"),
+        (0x13F, 1, "the sixth byte of the magic-user array; 0 in 15 of 15"),
+        (0x151, 1, "the pad between item_count at 0x150 and the item "
+                   "pointer array at 0x152; 0 in 15 of 15"),
+        (0x1AB, 1, "the trailing byte that makes 427 into 428, and the "
+                   "reason setmem clears 0x1AC; 0 in 15 of 15"),
+    ),
+    SILVER_BLADES_SHAPE.key: (
+        (0x095, 1, "the pad ahead of the u32 effect chain at 0x096; 0 in 6 "
+                   "of 6"),
+        (0x0C7, 1, "the pad ahead of the u32 experience at 0x0C8; 0 in 6 of "
+                   "6"),
+        (0x0FD, 1, "the pad between item_count at 0x0FC and the item "
+                   "pointer array at 0x0FE; 0 in 6 of 6"),
+    ),
+}
+
+#: The item node's three insertions, the same in both later titles.  **Zero
+#: is what the game itself writes**: each executable's item constructor
+#: (`/Curse` `0x1C1EA`, `/Secret` `0x1B862`) opens `setmem(node, size, 0)`
+#: and then writes fifteen named arguments, none of which lands on one of
+#: these.  The nine nodes in Curse's `SAVE/savgamA.dat` read 0 at `0x02F` in
+#: 9 of 9 and 52 and 47 at the other two in 9 of 9, which is uninitialised
+#: stack the `ITEM<n>` template loader copied -- a different code path from
+#: the one a converted item takes, and not a value to reproduce.
+AMIGA_LATER_ITEM_PADS = (0x02F, 0x03B, 0x03E)
+
+#: Bytes of a written item node with no neutral source, and what they are.
+#: The round trip masks these; everything else in the node has to match.
+LATER_ITEM_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
+    (0x000, 0x02A,
+     "the rendered display line, left NUL. It is a cache the game composes "
+     "when it draws the ITEMS screen and writes back -- watched happening in "
+     "Amiga Pool of Radiance (`docs/182-amiga-por-in-the-running-game.md`), "
+     "where a node of 42 NUL bytes still drew YES LONG SWORD, every column "
+     "coming from a field and none from this buffer"),
+    (0x02A, 4,
+     "the next pointer: a live Amiga heap address in a record the game "
+     "wrote, and here a 1 or a 0 according to whether another node follows, "
+     "which is all the loader's tst.l reads"),
+    (0x02F, 1,
+     "the insertion ahead of name1; 0 in 9 of 9 nodes and 0 is what the "
+     "item constructor's setmem writes"),
+    (0x03B, 1,
+     "an insertion the item constructor never writes. The nine nodes on "
+     "Curse disk 1 read 52 here in 9 of 9 because they came through the "
+     "ITEM<n> template loader, which copies an uninitialised stack struct; "
+     "a node the game builds itself is zero"),
+    (0x03E, 1, "the same, reading 47 in 9 of 9 for the same reason"),
+)
+
+#: An effect node's byte at offset 1, which Pool of Radiance and Curse treat
+#: as a pad and **Silver Blades does not**.
+#:
+#: CONFIRMED zero for Curse: 24 of 24 nodes -- the eleven `.guy` pregens, the
+#: four played characters on disk 1 and both saved games of
+#: `~/wish-specimens/coab-amiga`.  CONFIRMED zero for Amiga Pool of Radiance
+#: on 62 records and for the party shipped on its disk 1 (#55).
+#:
+#: **Non-zero in 3 of the 5 Silver Blades nodes anywhere**, and the same
+#: three values in all eight Amiga Silver Blades saved games on this machine,
+#: including four the engine itself wrote: GUY DE VALOIS' effect `0x08`
+#: carries `0x2E`, PAINE's `0x69` carries `0x6D`, MALACHITE's `0x2F` carries
+#: `0x64`, and MALACHITE's other two (`0x1A`, `0x61`) carry zero.
+#:
+#: **It is not a DOS field.**  The DOS twins of those same three characters
+#: -- `CHRDATA1.SFX`, `CHRDATA2.SFX` and `CHRDATA4.SFX` in the archives'
+#: Silver Blades save directory -- are 9 and 27 bytes and read
+#: `08 00 00 FF 00`, `69 00 00 FF 00` and `2F 00 00 FF 00`: zero in the
+#: corresponding place, three of three.  So the value has no neutral source
+#: and a converted character loses it.
+#:
+#: UNKNOWN, and refuted along the way: it is not a copy of any byte of the
+#: character's own record (the value appears at no offset of any of the three
+#: records), and the party-add routine at `/Secret` `0x1E386` copies all ten
+#: bytes of a node with two `move.l` and a `move.w` without looking at any of
+#: them, so being unchanged across a resave says only that the engine keeps
+#: it.  What would settle it: find the instruction that reads offset 1 of a
+#: node reached through the record's `0x096` chain, or cast a spell on an
+#: Amiga Silver Blades character and read the new node.  #387.
+AMIGA_LATER_EFFECT_UNKNOWN = 1
+
+#: Bytes of a written effect node with no neutral source.
+LATER_EFFECT_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
+    (AMIGA_LATER_EFFECT_UNKNOWN, 1,
+     "the byte Silver Blades keeps beside the effect id and no other Gold "
+     "Box record has: see AMIGA_LATER_EFFECT_UNKNOWN. Written zero, which "
+     "is right for Curse in 24 of 24 and wrong for 3 of the 5 Silver Blades "
+     "nodes anybody has ever seen"),
+    (AMIGA_LATER_EFFECT_NEXT, 4,
+     "the next pointer: a live Amiga heap address in a record the game "
+     "wrote, and here a 1 or a 0 according to whether another node follows"),
+)
+
+#: The player's half of the one drop this writer adds of its own.
+LATER_EFFECT_UNKNOWN_PLAYER_TEXT = (
+    "One byte the Amiga version of Secret of the Silver Blades keeps beside "
+    "each magical effect. No other version of the game has it and nobody has "
+    "worked out what it holds, so it is left empty")
+
+
+def later_unsourced_offsets(shape: AmigaShape) -> tuple[int, ...]:
+    """Amiga record offsets no DOS field of this title reaches.
+
+    Computed from the shift map rather than listed, so
+    :data:`LATER_WRITE_UNSOURCED` cannot quietly disagree with the map it is
+    about -- `tests/test_amigalaterwrite.py` asserts the two are the same
+    offsets.
+    """
+    covered: set[int] = set()
+    if shape.spellbook_bytes is not None:
+        covered.update(range(AMIGA_SSB_SPELLBOOK_AT,
+                             AMIGA_SSB_SPELLBOOK_AT + shape.spellbook_bytes))
+    for f in dos_layout.layout_for(shape.dos):
+        try:
+            at = shape.offset(f.offset)
+        except AmigaRecordError:
+            continue                      # the re-encoded spellbook, above
+        covered.update(range(at, at + f.size))
+    return tuple(sorted(set(range(shape.record_size)) - covered))
+
+
+def later_write_shape(char: NeutralCharacter,
+                      shape: "AmigaShape | str | None" = None) -> AmigaShape:
+    """Which Amiga record :func:`write_later` will build for this character.
+
+    **The title is the character's, not the caller's**, exactly as
+    `goldbox.dos.write_shape` decides it: a conversion is between two ports
+    of the same title and never between titles
+    (`.claude/rules/conversions.md`).  `shape` overrides it for a caller that
+    has already resolved the title.
+
+    Pool of Radiance is refused by name rather than by falling through, since
+    :func:`write_por` is its writer and a caller that lands here has the
+    wrong one.
+    """
+    if shape is None:
+        game = char.game
+        key = getattr(game, "key", game) or dos_layout.POOL_OF_RADIANCE.key
+    else:
+        key = getattr(shape, "key", shape)
+    for known in AMIGA_SHAPES:
+        if known.key == key:
+            return known
+    if key in (dos_layout.POOL_OF_RADIANCE.key, "pools-of-darkness"):
+        raise AmigaRecordError(
+            f"{key} has its own Amiga writer: write_por for Pool of "
+            f"Radiance and write for Pools of Darkness")
+    raise AmigaRecordError(
+        f"no Amiga record of {key} has been decoded; the two this writes "
+        f"are {' and '.join(s.title for s in AMIGA_SHAPES)}")
+
+
+@dataclass
+class LaterWriteReport(PorWriteReport):
+    """Where every byte of an Amiga Curse or Silver Blades block came from.
+
+    The same contract :class:`PorWriteReport` states -- **every** byte
+    explained, not only the non-zero ones -- over the whole block rather than
+    over one file: offsets `0` to `shape.record_size - 1` are the record,
+    then one item node after another, then the effect chain, which is the
+    order the loader reads them in.
+    """
+
+    total: int = 0
+
+
+def _later_name_bytes(record: bytes, shape: AmigaShape) -> bytes:
+    """DOS's count byte and its text as the Amiga's 16 NUL-padded bytes."""
+    size = shape.dos_field("name_text").size
+    count = min(record[0], size)
+    return record[1:1 + count].ljust(AMIGA_NAME_SIZE, b"\0")[:AMIGA_NAME_SIZE]
+
+
+def _later_spellbook_bytes(record: bytes, shape: AmigaShape) -> bytes:
+    """Silver Blades' 117 DOS flag bytes as 15 bytes of mask, LSB first.
+
+    The inverse of :attr:`AmigaCharacter.spellbook`'s unpacking, and the same
+    bit order `/Secret`'s own record unpacker at `0x28260` uses: it sets bit
+    `i mod 8` of `record[0x71 + i / 8]` through a mask table reading
+    `01 02 04 08 10 20 40 80`.
+    """
+    book = shape.dos_field("spellbook")
+    mask = bytearray(shape.spellbook_bytes or 0)
+    for i in range(book.size):
+        if record[book.offset + i]:
+            mask[i // 8] |= 1 << (i % 8)
+    return bytes(mask)
+
+
+def from_dos_record_later(record: bytes, shape: AmigaShape) -> bytes:
+    """This title's DOS record re-cut as its Amiga one.
+
+    The exact inverse of :meth:`AmigaCharacter.get` for every byte either
+    port sources; :data:`LATER_WRITE_UNSOURCED` says what happens to the
+    six (Curse) or three (Silver Blades) the Amiga has and DOS does not.
+
+    **The chain fields are left as `goldbox.dos.write` wrote them, which is
+    zero**, and :meth:`AmigaCharacter.block_bytes` sets them to match what
+    actually follows.  Writing them here would be writing a value the loader
+    tests without knowing what it will be tested against.
+    """
+    if len(record) != shape.dos.record_size:
+        raise AmigaRecordError(
+            f"a DOS {shape.title} record is {shape.dos.record_size} bytes, "
+            f"got {len(record)}")
+    out = bytearray(shape.record_size)
+    out[:AMIGA_NAME_SIZE] = _later_name_bytes(record, shape)
+    for f in dos_layout.layout_for(shape.dos):
+        if f.name in ("name_length", "name_text"):
+            continue
+        if shape.spellbook_bytes is not None and f.name == "spellbook":
+            book = _later_spellbook_bytes(record, shape)
+            out[AMIGA_SSB_SPELLBOOK_AT:
+                AMIGA_SSB_SPELLBOOK_AT + len(book)] = book
+            continue
+        at = shape.offset(f.offset)
+        chunk = record[f.offset:f.offset + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            chunk = chunk[::-1]
+        out[at:at + f.size] = chunk
+    return bytes(out)
+
+
+def amiga_later_item_from_dos(item: bytes, shape: AmigaShape) -> bytes:
+    """One DOS item node of this title as the Amiga's 66 or 70 bytes.
+
+    The display text is left NUL and the `next` pointer NULL; the caller
+    relinks the chain through :meth:`AmigaCharacter.block_bytes`, which is
+    what the loader's `tst.l` reads.
+
+    **Silver Blades' last four bytes go through the same shift map as the
+    rest.**  They are DOS's `ITEM_TAIL` at `0x03F`, zero in 48 of 48 records
+    driven out of the DOS game, and they land on the Amiga's
+    :data:`AMIGA_SSB_SCROLL_CHAIN` -- which is a chain head the vault writer
+    at `/Secret` `0x3D6D2` follows, so NULL is not merely the value that was
+    there but the only value that can be right while no further nodes are
+    written.  A Silver Blades scroll carrying more than three spell ids is
+    the case that would need them, and DOS's own 67-byte item has room for
+    exactly three, so nothing crosses this way that the DOS record could
+    hold (#254).
+    """
+    if shape.item_size is None:
+        raise AmigaRecordError(
+            f"no Amiga {shape.title} item node has been measured")
+    if len(item) != shape.dos.item_size:
+        raise AmigaRecordError(
+            f"a DOS {shape.title} item is {shape.dos.item_size} bytes, got "
+            f"{len(item)}")
+    out = bytearray(shape.item_size)
+    for f in dos_layout.ITEM_LAYOUT:
+        if f.name in ("text_length", "text", "next"):
+            continue
+        at = shape.item_offset(f.offset)
+        chunk = item[f.offset:f.offset + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            chunk = chunk[::-1]
+        out[at:at + f.size] = chunk
+    for n in range(dos_layout.ITEM_SIZE, shape.dos.item_size):
+        out[shape.item_offset(n)] = item[n]
+    return bytes(out)
+
+
+#: Why the effect chain is built here rather than taken from
+#: `goldbox.dos.write`'s `.SPC` payload, and it is a measurement rather than
+#: a preference.
+#:
+#: `to_neutral_later` cannot tell an innate effect from an item's grant in
+#: these two titles (:data:`LATER_EFFECT_SPLIT_UNKNOWN`), so it puts every
+#: node at duration zero into `granted_effects`.  `goldbox.dos.write` then
+#: adds the racial ids **again**, from its own table, and writes both: run
+#: over the 21 specimens, the three Curse dwarves and gnomes come back with
+#: 7, 7 and 8 effect records where the game wrote 3, 3 and 4, and Silver
+#: Blades' MALACHITE with 5 where the game wrote 3.  The other 17 are
+#: unchanged.  Writing that into an Amiga block would put a dwarf's
+#: infravision in the chain twice.
+#:
+#: So the chain here is the neutral record's own effect records and nothing
+#: else: `granted_effects` whole, then `innate_effects` as DOS's own
+#: `id + INNATE_PAYLOAD` for any id the grants do not already carry.  An
+#: Amiga source reproduces exactly, a C64 source brings the ten trait slots
+#: `goldbox.c64_codec` reads into `innate_effects`, and a DOS source brings
+#: both halves of its own `.SPC` file.  **Nothing is derived from a race
+#: table**, which is `#293`'s shape: `goldbox.dos.RACE_COMBAT_EFFECTS` is
+#: Pool of Radiance's, and Curse's own BJORN DARKSTONE, HOLLAND and SUNDRA
+#: contradict it -- 3 of 3 carry the ids that table names bar one it adds.
+LATER_EFFECTS_FROM_NEUTRAL = (
+    "The effects in the character's own record are written as they are; "
+    "none is derived from the character's race")
+
+
+def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
+    """The Amiga effect chain for this character, one 10-byte node each.
+
+    :data:`LATER_EFFECTS_FROM_NEUTRAL` says why this reads the neutral
+    record instead of `goldbox.dos.write`'s `.SPC` payload.
+    """
+    from . import dos as _dos
+
+    nodes: list[bytes] = []
+    seen: set[int] = set()
+    for g in char.get("granted_effects", ()) or ():
+        record = bytes(g)[:5].ljust(5, b"\0") + bytes(4)
+        seen.add(record[0])
+        nodes.append(amiga_por_effect_from_dos(record))
+    for e in char.get("innate_effects", ()) or ():
+        if int(e) in seen:
+            continue
+        seen.add(int(e))
+        nodes.append(amiga_por_effect_from_dos(
+            bytes((int(e),)) + _dos.INNATE_PAYLOAD + bytes(4)))
+    return nodes
+
+
+def write_later(char: NeutralCharacter,
+                shape: "AmigaShape | str | None" = None
+                ) -> tuple[AmigaCharacter, LaterWriteReport]:
+    """Build an Amiga Curse or Silver Blades character block.
+
+    Returns `(character, report)`.  The `AmigaCharacter` is what
+    `tools/amigasavegame.py`'s `rebuild` takes, and
+    :meth:`AmigaCharacter.block_bytes` is the bytes the loader reads -- with
+    `item_count` and the two chain heads set to match what actually follows,
+    which is the thing `write_por` must *not* do and this must.
+
+    `goldbox.dos.write` does the conversion, so every drop, every warning
+    and every provenance line comes from the DOS side and the lines added
+    here are the pads, the re-encoded spellbook and the effect chain.
+    """
+    from . import dos as _dos
+
+    shape = later_write_shape(char, shape)
+    record, itm, spc, dosrep = _dos.write(char, shape=shape.dos)
+    out = from_dos_record_later(record, shape)
+
+    stride = shape.dos.item_size
+    items = [AmigaItem.from_bytes(
+        amiga_later_item_from_dos(itm[n * stride:(n + 1) * stride], shape),
+        shape) for n in range(len(itm) // stride)]
+    effects = _later_effect_nodes(char)
+    built = AmigaCharacter.from_bytes(out, shape, char.source or "converted",
+                                      items, effects)
+    # Read the patched block back, so the object this returns holds the same
+    # `item_count` and chain heads its own `block_bytes` writes.  Without
+    # this the record says nought items while the block behind it holds
+    # sixteen, and a caller reading `built.item_chain` is told NULL when a
+    # node follows -- the one value the loader actually tests.
+    block = built.block_bytes()
+    built, end = _amiga_block(block, 0, shape)
+    if end != len(block):
+        raise AmigaRecordError(
+            f"the {shape.title} block written for {char.get('name', '?')} is "
+            f"{len(block)} bytes and reading it back accounts for {end}")
+    built = replace(built, source=char.source or "converted")
+
+    rep = LaterWriteReport()
+    rep.dropped = list(dosrep.dropped)
+    rep.warnings = list(dosrep.warnings)
+    rep.warnings.append(
+        f"Written as a {shape.record_size}-byte Amiga {shape.title} record "
+        f"by re-cutting the {shape.dos.record_size}-byte DOS one built by "
+        f"goldbox.dos.write; the provenance lines name the DOS field each "
+        f"byte was transposed from, which is the field table both ports "
+        f"share")
+    rep.warnings.append(LATER_EFFECTS_FROM_NEUTRAL)
+    if effects and shape is SILVER_BLADES_SHAPE:
+        rep.dropped.append(LATER_EFFECT_UNKNOWN_PLAYER_TEXT)
+    rep.total = len(block)
+
+    def converted(name: str) -> str:
+        f = shape.dos_field(name)
+        return dosrep.sources.get(f.offset, f"{name}: no DOS provenance")
+
+    rep.note(0, AMIGA_NAME_SIZE,
+             f"name: {AMIGA_NAME_SIZE} NUL-padded bytes composed from DOS's "
+             f"count byte and its text -- {converted('name_length')}")
+    for at, size, why in LATER_WRITE_UNSOURCED[shape.key]:
+        rep.note(at, size, f"{at:#05x}: {why}")
+    for f in dos_layout.layout_for(shape.dos):
+        if f.name in ("name_length", "name_text"):
+            continue
+        if shape.spellbook_bytes is not None and f.name == "spellbook":
+            rep.note(AMIGA_SSB_SPELLBOOK_AT, shape.spellbook_bytes,
+                     f"spellbook: {shape.spellbook_bytes} bytes of bitmask, "
+                     f"least significant bit first -- {converted('spellbook')}")
+            continue
+        rep.note(shape.offset(f.offset), f.size, converted(f.name))
+    for name in ("item_count", "item_chain", "effect_chain"):
+        f = shape.dos_field(name)
+        rep.note(shape.offset(f.offset), 1 if name == "item_count" else 4,
+                 f"{name}: what the loader reads -- the count of nodes "
+                 f"written, and a chain head that is non-zero exactly when a "
+                 f"node follows")
+
+    base = shape.record_size
+    for n in range(len(items)):
+        at = base + n * shape.item_size
+        dos_base = shape.dos.record_size + n * stride
+        rep.note(at, shape.item_text,
+                 f"item {n}: the rendered-line cache, left NUL -- the game "
+                 f"rewrites it whenever it draws the list")
+        rep.note(at + AMIGA_LATER_ITEM_NEXT, 4,
+                 f"item {n}: next pointer, non-zero exactly when another "
+                 f"node follows -- the loader's own tst.l")
+        for f in dos_layout.ITEM_LAYOUT:
+            if f.name in ("text_length", "text", "next"):
+                continue
+            rep.note(at + shape.item_offset(f.offset), f.size,
+                     dosrep.sources.get(dos_base + f.offset,
+                                        f"item {n}: {f.name}"))
+        for pad in AMIGA_LATER_ITEM_PADS:
+            rep.note(at + pad, 1,
+                     f"item {n}: the insertion at {pad:#05x}, zero because "
+                     f"the game's own item constructor clears the node and "
+                     f"never writes here")
+        for i in range(dos_layout.ITEM_SIZE, stride):
+            rep.note(at + shape.item_offset(i), 1,
+                     f"item {n}: Silver Blades' scroll chain at "
+                     f"{AMIGA_SSB_SCROLL_CHAIN:#05x}, NULL because no "
+                     f"further spell node follows (#254)")
+
+    base += len(items) * (shape.item_size or 0)
+    for n in range(len(effects)):
+        at = base + n * shape.effect_size
+        rep.note(at, 1, f"effect {n}: the id, from the neutral record")
+        rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
+                 f"effect {n}: the extra byte, a pad. Zero in every Pool of "
+                 f"Radiance and Curse record read (68)")
+        rep.note(at + 2, 2, f"effect {n}: duration, byte-swapped")
+        rep.note(at + 4, 2, f"effect {n}: the value the effect carries and "
+                            f"the flag the engine reads when the item comes "
+                            f"off")
+        rep.note(at + AMIGA_LATER_EFFECT_NEXT, 4,
+                 f"effect {n}: next pointer, non-zero exactly when another "
+                 f"node follows -- the loader's own tst.l")
+    return built, rep
