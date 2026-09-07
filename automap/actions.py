@@ -98,6 +98,20 @@ def _read(target, addr: int, length: int) -> bytes | None:
 #: write blind. The five actions all use it.
 UNSUPPORTED = "ERROR: Action unsupported on {title}."
 
+#: What a player reads when `FastTravel.legality` refuses because the running
+#: overlay is not `DUNGEON` or the program counter is not in its key-wait loop
+#: -- both mean the game is mid-something-else and cannot safely be jumped
+#: out of. Replaces two sentences that were entirely the developer's own
+#: working (`$6E11 is not 1, so DUNGEON is not the resident overlay and
+#: $2034 is not NEWECL`; `the PC is $10C2, outside DUNGEON's key-wait loop
+#: ($10B0-$10C1) and the key fetcher it calls ($10D4-$10DF): the game is
+#: busy`) with nothing left once the addresses and overlay names come out --
+#: `.claude/rules/gui-text.md` bans both.  **PROPOSED, not yet approved**:
+#: `_log.debug` right beside each call keeps the addresses for whoever is
+#: debugging.
+FASTTRAVEL_BUSY = ("Fast travel cannot act right now: the game is busy with "
+                   "something else. (NOT APPROVED)")
+
 
 def mode(target, game: games.Game | None = None) -> int | None:
     """Which overlay is running, or None if that cannot be established.
@@ -344,8 +358,16 @@ class Action:
         if state is None:
             return Verdict(False, "the machine is not readable right now")
         if state == COMBAT and not self.combat_legal:
-            return Verdict(False, f"{self.label.lower()} is refused during a "
-                                  f"fight (${game.mode_flag:04X} is 2)")
+            # `game.mode_flag` was in the sentence itself -- a developer's
+            # citation that the flag really does read 2, not something a
+            # player facing a greyed-out button can act on
+            # (`#306 (The Fast Travel button's own disabled tooltip carries a
+            # memory address)`). Dropping the parenthetical leaves a complete
+            # sentence, so nothing was invented; the address still reaches
+            # the log.
+            _log.debug("%s refused: $%04X is 2 (combat)",
+                      self.label, game.mode_flag)
+            return Verdict(False, f"{self.label} is refused during a fight")
         return Verdict(True)
 
     def apply(self, target, **kwargs) -> Outcome:
@@ -1646,20 +1668,21 @@ class FastTravel(Action):
             # measured address, which is exactly what this is.
             return Verdict(False, UNSUPPORTED.format(title=self.game.title))
         if mode(target, self.game) != DUNGEON:
-            return Verdict(False, f"${self.game.mode_flag:04X} is not 1, so "
-                                  f"DUNGEON is not the resident overlay and "
-                                  f"${addr.tail:04X} is not NEWECL")
+            _log.debug("fasttravel refused: $%04X is not 1, so DUNGEON is "
+                      "not the resident overlay and $%04X is not NEWECL",
+                      self.game.mode_flag, addr.tail)
+            return Verdict(False, FASTTRAVEL_BUSY)
         pc = program_counter(target)
         if pc is None:
             return Verdict(False, "this backend cannot read the CPU, and "
                                   "fast travel has to set the program counter")
         if not any(lo <= pc < hi for lo, hi in (addr.key_wait, addr.key_fetch)):
-            return Verdict(False, f"the PC is ${pc:04X}, outside DUNGEON's "
-                                  f"key-wait loop (${addr.key_wait[0]:04X}-"
-                                  f"${addr.key_wait[1] - 1:04X}) and the key "
-                                  f"fetcher it calls (${addr.key_fetch[0]:04X}-"
-                                  f"${addr.key_fetch[1] - 1:04X}): the game is "
-                                  f"busy")
+            _log.debug("fasttravel refused: PC $%04X is outside DUNGEON's "
+                      "key-wait loop ($%04X-$%04X) and the key fetcher it "
+                      "calls ($%04X-$%04X)",
+                      pc, addr.key_wait[0], addr.key_wait[1] - 1,
+                      addr.key_fetch[0], addr.key_fetch[1] - 1)
+            return Verdict(False, FASTTRAVEL_BUSY)
         if area is None:
             return Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
@@ -1669,12 +1692,15 @@ class FastTravel(Action):
                 title=self.game.title))
         here = self.current_area(target, addr)
         if here is not None and here == getattr(area, "id", None):
-            return Verdict(False, "the party is already in that area, and "
-                                  "NEWECL skips a same-area transition")
+            # The trailing "and NEWECL skips a same-area transition" was only
+            # the developer's citation of why nothing would happen; the
+            # sentence in front of it already says everything a player needs.
+            return Verdict(False, "the party is already in that area")
         indoors = self.current_indoors(target, addr)
         if indoors == 0 and not getattr(area, "outdoors", False):
-            return Verdict(False, self.OUTDOORS_TRAP.format(
-                indoors=addr.indoors))
+            _log.debug("fasttravel refused: $%04X is 0 (outdoors)",
+                      addr.indoors)
+            return Verdict(False, self.OUTDOORS_TRAP)
         return Verdict(True)
 
     def apply(self, target, area=None, arrival=None, **kwargs) -> Outcome:
@@ -1809,7 +1835,7 @@ class FastTravel(Action):
     #: dropdown (write-up lost, `work/reports/p20-arrivals.md`).
     ATTRACT_TRAP = ("this is the attract-mode demo, not a place: travelling "
                     "there leaves the world -- no map, no status line, and the "
-                    "program counter never returns to DUNGEON's key-wait loop, "
+                    "program counter never returns to the key-wait loop, "
                     "so there is no way back out of it")
 
     #: FastTraveling out of an overland area into an indoors one hangs the loader:
@@ -1824,10 +1850,10 @@ class FastTravel(Action):
     #: Radiance has nothing at, `$102E`-`$103A`, gated on the indoors flag and
     #: calling `GDRIVE00 $C003` (`#19`). The address is the title's own, so a
     #: Curse session does not read back Pool of Radiance's `$49E6`.
-    OUTDOORS_TRAP = ("the party is on the overland map (${indoors:04X} is 0) "
-                     "and this area is indoors: travelling that way hangs the "
-                     "loader asking for the disk for ever. Walk off the "
-                     "overland map first")
+    OUTDOORS_TRAP = ("the party is on the overland map and this area is "
+                     "indoors: travelling that way hangs the loader asking "
+                     "for the disk for ever. Walk off the overland map "
+                     "first")
 
     #: An outdoors row in a title with no travel grid. Nothing can produce it
     #: today -- Pool of Radiance is the only title with a square-engine

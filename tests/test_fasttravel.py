@@ -136,11 +136,16 @@ def test_a_moment_in_the_interrupt_handler_does_not_grey_the_button(app):
 
 def test_the_mode_flag_still_disables_the_button(app):
     """The gate that was kept. `$6E11` is 2 -- a fight -- and it is stable and
-    reliable, so it does what it always did whatever the PC says."""
+    reliable, so it does what it always did whatever the PC says.
+
+    `#306 (The Fast Travel button's own disabled tooltip carries a memory
+    address)` took `$6E11` out of the tooltip itself; the address still
+    reaches `_log.debug` beside the check in `automap/actions.py`."""
     bar = row(app, machine(mode=COMBAT))
     somewhere_else(bar)
     assert not bar.button.isEnabled()
-    assert "$6E11 is 2" in bar.button.toolTip()
+    assert "refused during a fight" in bar.button.toolTip()
+    assert "$6E11" not in bar.button.toolTip()
 
 
 def test_the_mode_flag_is_read_once_per_refresh(app):

@@ -281,6 +281,62 @@ def test_fasttravel_warnings_carry_no_memory_address():
         assert not address.search(note), f"a memory address reaches a player: {note!r}"
 
 
+def test_fasttravel_legality_refusals_carry_no_developer_detail():
+    """`#306 (The Fast Travel button's own disabled tooltip carries a
+    memory address)`: a different tooltip on the same button from #263 --
+    `FastTravel.legality`'s `Verdict.reason`, shown as-is by
+    `FastTravelBar.refresh`. `$6E11`, `$2034`, `DUNGEON` and `NEWECL` all
+    used to reach it.
+
+    Every branch `legality` can take is driven here and swept in one pass,
+    the same shape as `tests/test_commissions.py::
+    test_no_quest_log_tooltip_shows_a_memory_address` -- so the next branch
+    somebody adds is caught by the same assertion rather than needing its
+    own. `NO_TRAVEL_GRID` is the one exception: only Pool of Radiance has a
+    travel grid, so no live scenario in this title reaches it, and it is
+    checked as the class constant instead.
+    """
+    import re
+
+    address = re.compile(r"\$[0-9A-Fa-f]+|0[xX][0-9A-Fa-f]+")
+    bare_issue = re.compile(r"#\d+")
+    overlay_name = re.compile(
+        r"\b(DUNGEON|NEWECL|LOADFILES|SQRDATA|GEO|GDRIVE\w*|WALLS\w*|"
+        r"LINKER|ECL\w*)\b")
+
+    ft = actions.FastTravel()
+    reasons = {
+        "no emulator attached": ft.legality(None, area(20)).reason,
+        "refused during a fight": ft.legality(
+            machine(mode=COMBAT), area(20)).reason,
+        "resident overlay is not DUNGEON": ft.legality(
+            machine(mode=3), area(20)).reason,
+        "backend cannot read the CPU": actions.FastTravel().legality(
+            MemoryTarget({games.MODE_FLAG_POOL: bytes([WORLD])}),
+            area(20)).reason,
+        "PC outside the key-wait loop": ft.legality(
+            machine(pc=0), area(20)).reason,
+        "no area chosen": ft.legality(machine(), None).reason,
+        "the attract-mode demo": ft.legality(machine(), area(30)).reason,
+        "the party is already there": ft.legality(
+            machine(area=20), area(20)).reason,
+        "outdoors/indoors mismatch": ft.legality(
+            machine(indoors=0), area(20)).reason,
+        "no travel grid (class constant, unreachable live in this title)":
+            actions.FastTravel.NO_TRAVEL_GRID.format(
+                title="Secret of the Silver Blades"),
+    }
+
+    for what, reason in reasons.items():
+        assert reason, f"{what}: branch did not refuse as expected"
+        assert not address.search(reason), (
+            f"a memory address reaches a player ({what}): {reason!r}")
+        assert not bare_issue.search(reason), (
+            f"a bare issue number reaches a player ({what}): {reason!r}")
+        assert not overlay_name.search(reason), (
+            f"an overlay or file name reaches a player ({what}): {reason!r}")
+
+
 def test_the_fasttravel_tooltip_capitalises_every_note(app):
     """`#263`: every note opened lowercase, because `FastTravelBar._report`
     joined `outcome.notes` straight into the tooltip. `_report` already
@@ -361,9 +417,17 @@ def test_the_wall_pins_are_cleared_on_every_fast_travel():
 # --- what it refuses ---------------------------------------------------------
 
 def test_a_fasttravel_is_refused_when_dungeon_is_not_resident():
-    """`$2034` is some other overlay's code, and jumping there is a crash."""
+    """`$2034` is some other overlay's code, and jumping there is a crash.
+
+    This scenario is `mode=COMBAT`, which `Action.legality`'s own combat
+    guard refuses on first -- `FastTravel`'s DUNGEON check never runs. Still
+    refused either way, so the assertion is on that rather than on which
+    branch fired; `#306 (The Fast Travel button's own disabled tooltip
+    carries a memory address)`'s own sweep,
+    `test_fasttravel_legality_refusals_carry_no_developer_detail`, drives
+    the DUNGEON-check branch directly."""
     verdict = actions.FastTravel().legality(machine(mode=COMBAT), area(20))
-    assert not verdict and "$6E11" in verdict.reason
+    assert not verdict and "$6E11" not in verdict.reason
 
 
 def test_a_fasttravel_is_refused_from_anywhere_but_the_key_wait_loop():
@@ -371,7 +435,8 @@ def test_a_fasttravel_is_refused_from_anywhere_but_the_key_wait_loop():
     flight. It is also the check that `PC_REGISTER` is the register we think."""
     target = machine(pc=0x2011)
     verdict = actions.FastTravel().legality(target, area(20))
-    assert not verdict and "key-wait" in verdict.reason
+    assert not verdict and "busy" in verdict.reason
+    assert "$" not in verdict.reason
     assert target.jumps == []
 
 
@@ -663,9 +728,14 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
 
 
 def test_the_button_carries_its_refusal_in_its_tooltip(app):
+    """`#306`: `$6E11` used to be in this tooltip. It carries the plain
+    reason now and the address moved to `_log.debug`, beside the check in
+    `Action.legality` -- `test_fasttravel_legality_refusals_carry_no_
+    developer_detail` is the sweep over every branch."""
     row = bar(app, machine(mode=COMBAT))
     assert not row.button.isEnabled()
-    assert "$6E11" in row.button.toolTip()
+    assert "refused during a fight" in row.button.toolTip()
+    assert "$6E11" not in row.button.toolTip()
     assert not row.back_button.isEnabled()
     assert "nothing to go back to" in row.back_button.toolTip()
 
@@ -773,7 +843,7 @@ def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
     row.combo.setCurrentIndex(row.rows.index(area(13)))
     row.run()
     assert said and said[-1][1] is True
-    assert "$6E11" in said[-1][0]
+    assert "refused during a fight" in said[-1][0]
 
 
 # --- the map window ----------------------------------------------------------
