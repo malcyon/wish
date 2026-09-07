@@ -64,12 +64,11 @@ MAP_TAB, EDITOR_TAB = 0, 1
 #: Said in the Messages panel when `#357 (The automapper reads the shared
 #: Game disks folder, so setting a title's own folder does not make it map
 #: that title)` step 4 switches the window to a title the machine turned out
-#: to be running, rather than refusing. Donald's ruling of 2026-09-07 asked
-#: for this shape and for it to be said; **the sentence itself is not
-#: approved** -- he was shown the shape, not the words -- so it carries the
-#: literal suffix `editor/convert.py` uses for the same reason, until he
-#: rules on it (`.claude/rules/gui-text.md`).
-SWITCHED_TITLE = "{title} is running, so its game disks are in use. (NOT APPROVED)"
+#: to be running, rather than refusing. **Approved by Donald, 2026-09-07**,
+#: chosen over two longer wordings that named the disks or the folder: the
+#: line says the thing a player wants to know -- the automapper is on this
+#: title now -- and leaves the reason it changed to the debug log beside it.
+SWITCHED_TITLE = "Now mapping {title}."
 
 #: No preference: `backends.find` takes whichever answers first. The ordinary
 #: case, and what an empty `Settings.backend` means.

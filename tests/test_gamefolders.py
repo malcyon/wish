@@ -306,6 +306,38 @@ def test_the_acceptance_case_from_the_issue(app, tmp_path, monkeypatch):
         win.close()
 
 
+def test_the_switch_says_which_title_it_is_now_mapping(app, tmp_path,
+                                                       monkeypatch):
+    """The one sentence a player reads when the machine names the title.
+
+    Donald approved the wording on 2026-09-07, choosing it over two longer
+    ones that named the disks or the folder: `"Now mapping <title>."`  It is
+    the only evidence on screen that the automapper changed what it is
+    following, so a switch that happens silently is the bug this ticket was
+    filed about wearing different clothes (`#357 (The automapper reads the
+    shared Game disks folder, so setting a title's own folder does not make
+    it map that title)`).
+    """
+    from wish.window import SWITCHED_TITLE
+    nowhere(tmp_path, monkeypatch)
+    pool_geo = walled_geo(art=1)
+    curse_geo = walled_geo(art=5, rooms=3)
+    settings, _ = _configured(tmp_path, pool_geo, curse_geo)
+
+    win = window(app, maps=None, settings=settings)
+    try:
+        win.mapper.target = machine(curse_geo)
+        ticked(win.map)
+        said = [line.split("  ", 1)[-1] for line in win.map.messages.lines()]
+        assert SWITCHED_TITLE.format(title=CURSE.title) in said
+        assert f"Now mapping {CURSE.title}." in said
+        # Nothing a player reads may carry a marker, an address or a path.
+        for line in said:
+            assert "(NOT APPROVED)" not in line
+    finally:
+        win.close()
+
+
 def test_a_title_with_no_row_still_gets_the_refusal(app, tmp_path, monkeypatch):
     """The fail-closed guard the per-title design rests on: a machine
     running an unconfigured title still gets no candidate to switch to."""
