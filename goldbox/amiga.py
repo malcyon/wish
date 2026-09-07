@@ -2152,62 +2152,43 @@ def por_slots_present(disk, drawer: str | None = None) -> list[str]:
     return out
 
 
-#: Why an Amiga party standing on the travel grid is refused as the *source*
-#: of a conversion.  This is about the Amiga saved game the project
-#: **reads**; the writer's side of the same question was lifted on
-#: 2026-09-07 and this one has not been, which is the whole of the
-#: difference between them.
-#:
-#: **The reason this sentence gives has since been measured away.**  Two
-#: saved games the Amiga game itself made on the travel grid -- the run of
-#: `#321 (An Amiga Pool of Radiance conversion refuses a party standing on
-#: the travel grid, because no outdoor Amiga saved game has ever been read)`,
-#: 2026-09-07 -- hold the travel square at
+#: An Amiga party standing on the travel grid used to be refused as the
+#: *source* of a conversion, because no Amiga saved game made outdoors had
+#: ever been read.  Two saved games the Amiga game itself made on the
+#: travel grid -- the run of `#321 (An Amiga Pool of Radiance conversion
+#: refuses a party standing on the travel grid, because no outdoor Amiga
+#: saved game has ever been read)`, 2026-09-07 -- hold the travel square at
 #: `goldbox.dos_savegame.TRAVEL_X` and `TRAVEL_Y`, exactly where the DOS
 #: container keeps it: `(7, 29)` and `(7, 28)` against `20,29` and `20,28`
 #: on the game's own status line, which prints the world coordinate where
 #: the save holds the window-local one.  So the map `docs/196-the-amiga-
 #: saved-game-built.md` §2 gives holds outdoors as well, on 2 of 2, and
-#: reading an outdoor Amiga save is a measured thing rather than a guess.
-#:
-#: Removing the guard below is one line and a rewritten test in
-#: `tests/test_amigatoc64.py`, which belongs to
-#: `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
-#: standing in the Slums on the Amiga arrives there in VICE)`.  It was left
-#: in place deliberately rather than changed under that work.
-#:
-#: Unapproved wording -- a player never sees this string, because
-#: `editor/convert.py` shows its own approved sentence for anything that is
-#: not a `goldbox.dos.DosRecordError`.
-POR_OUTDOORS_UNREAD = (
-    "this party is on the travel grid, and no Amiga saved game made outdoors "
-    "has ever been read, so the travel square this would convert has never "
-    "been seen where the reader looks for it")
+#: reading an outdoor Amiga save is a measured thing rather than a guess --
+#: `#376 (An Amiga party on the travel grid still cannot be converted to the
+#: C64 or DOS, because the reader refuses one)` lifted the guard.
 
 
 def read_por_state(savgam: bytes, source: str = "") -> "world_state.WorldState":
     """An Amiga slot's saved game, as the place and clock a writer takes.
 
-    The guarded reader for every conversion whose **source** is an Amiga
-    Pool of Radiance slot -- `#353 (Convert an Amiga Pool of Radiance save
-    to the C64, so a party standing in the Slums on the Amiga arrives there
-    in VICE)` and `#354 (Convert an Amiga Pool of Radiance save to DOS, so a
+    The reader for every conversion whose **source** is an Amiga Pool of
+    Radiance slot -- `#353 (Convert an Amiga Pool of Radiance save to the
+    C64, so a party standing in the Slums on the Amiga arrives there in
+    VICE)` and `#354 (Convert an Amiga Pool of Radiance save to DOS, so a
     party standing in the Slums on the Amiga arrives there under DOSBox)`
-    both call it, so the one refusal below is stated once rather than in
-    each direction.
+    both call it.  Reads a party on the travel grid rather than refusing
+    one, since `#376 (An Amiga party on the travel grid still cannot be
+    converted to the C64 or DOS, because the reader refuses one)`.
 
     `goldbox.world_state.from_amiga` does the reading and refuses nothing;
-    :func:`por_state_from_amiga` is the same reader guarded for the other
+    :func:`por_state_from_amiga` is the same reader for the other
     direction, where the Amiga file is the one being written.
     """
     if len(savgam) != POR_SAVEGAME_SIZE:
         raise AmigaRecordError(
             f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
             f"bytes, got {len(savgam)}")
-    state = world_state.from_amiga(savgam, source=source)
-    if state.outdoors:
-        raise AmigaRecordError(POR_OUTDOORS_UNREAD)
-    return state
+    return world_state.from_amiga(savgam, source=source)
 
 
 def _por_slot_file(disk, letter: str, index: int, suffix: str,

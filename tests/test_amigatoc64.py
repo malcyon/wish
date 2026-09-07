@@ -32,7 +32,7 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga, c64_codec, dos, dos_savegame, games, world_state
+from goldbox import amiga, c64_codec, dos, games, world_state
 from goldbox.amiga import AmigaRecordError
 from goldbox.amiga_adf import AmigaDisk
 
@@ -118,6 +118,21 @@ def engine_disk() -> AmigaDisk:
         pytest.skip(f"neither $WISH_SPECIMENS/{ENGINE_SPECIMEN} nor "
                     f"{ENGINE_IN_WORK} is on this machine")
     return AmigaDisk.open(str(path))
+
+
+@pytest.fixture(scope="module")
+def outdoor_disk() -> AmigaDisk:
+    """`WISH-SPEC-por-amiga-outdoor`'s own disk.  Slot A is the shipped save
+    staged next to the harbour master; slots B and C are the first two
+    saved games the Amiga engine itself ever wrote on the travel grid,
+    one overland step apart -- `#321 (An Amiga Pool of Radiance conversion
+    refuses a party standing on the travel grid, because no outdoor Amiga
+    saved game has ever been read)`'s run.
+    """
+    from tests import gamedata
+
+    where = gamedata.specimen("por-amiga-outdoor", "amiga")
+    return AmigaDisk.open(str(where / "por1-outdoor.adf"))
 
 
 # ---------------------------------------------------------------------------
@@ -228,27 +243,85 @@ def test_the_three_amiga_record_sizes_name_their_own_titles():
 # The place, which is what this direction adds
 # ---------------------------------------------------------------------------
 
-def test_a_party_on_the_travel_grid_is_refused_rather_than_guessed_at(
-        shipped_disk):
-    """No Amiga saved game made outdoors has ever been read, so the travel
-    square a converted C64 save would stand the party on has never been seen
-    where the reader looks for it -- `#321 (An Amiga Pool of Radiance
-    conversion refuses a party standing on the travel grid, because no
-    outdoor Amiga saved game has ever been read)`.
-
-    The guard is proved on a **real** saved game with one word changed, not
-    on a buffer of zeros: a zeroed buffer reads as outdoors for want of any
-    content at all and would pass this while the guard did nothing.
-    """
+def test_an_indoor_party_still_reads_as_indoors(shipped_disk):
+    """The other half of the gate lifted by `#376 (An Amiga party on the
+    travel grid still cannot be converted to the C64 or DOS, because the
+    reader refuses one)`, so it cannot be a tautology: an indoor party is
+    unaffected by an outdoor one no longer being refused."""
     _party, savgam = amiga.read_por_slot(shipped_disk, "A")
-    indoors = amiga.read_por_state(savgam, "the shipped slot A")
-    assert indoors.outdoors is False
+    state = amiga.read_por_state(savgam, "the shipped slot A")
+    assert state.outdoors is False
 
-    outdoors = bytearray(savgam)
-    amiga.por_put_word(outdoors, dos_savegame.INDOORS, 0)
-    with pytest.raises(AmigaRecordError) as raised:
-        amiga.read_por_state(bytes(outdoors), "the shipped slot A, outdoors")
-    assert str(raised.value) == amiga.POR_OUTDOORS_UNREAD
+
+def test_a_party_on_the_travel_grid_reads_the_travel_square(outdoor_disk):
+    """`read_por_state` used to refuse an outdoor party outright -- `#321
+    (An Amiga Pool of Radiance conversion refuses a party standing on the
+    travel grid, because no outdoor Amiga saved game has ever been read)`.
+    `#376` lifted the guard once `#321` had measured the two bytes that had
+    never been seen.
+
+    `WISH-SPEC-por-amiga-outdoor`'s slots B and C are the first two saved
+    games the Amiga engine itself ever wrote on the travel grid, one
+    overland step apart: world `20,29 E 05:53` and `20,28 N 17:53` on the
+    game's own status line, `#321`'s run.  The status line prints the world
+    coordinate; the file holds the window-local one, `(7, 29)` and
+    `(7, 28)`, and `goldbox/areas.py` names `(7, 29)` area 26's WEST boat
+    landing.
+    """
+    for slot, travel, hour, minute, facing in (
+            ("B", (7, 29), 5, 53, 1),      # east
+            ("C", (7, 28), 17, 53, 0)):    # north
+        _party, savgam = amiga.read_por_slot(outdoor_disk, slot)
+        state = amiga.read_por_state(savgam, f"slot {slot}")
+        assert state.outdoors is True
+        assert state.travel == travel
+        assert state.area == 26
+        assert state.facing == facing
+        assert (state.clock[3], state.clock[2] * 10 + state.clock[1]) == \
+            (hour, minute), slot
+
+
+def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
+    """The headline `#376 (An Amiga party on the travel grid still cannot be
+    converted to the C64 or DOS, because the reader refuses one)` asks for:
+    a party read off the Amiga engine's own outdoor save, written into a C64
+    `SAVEDGAME0`, and read back through `goldbox.world_state.from_c64` --
+    the two ports agreeing rather than one number compared with itself, the
+    way `test_the_converted_save_stands_the_party_where_the_amiga_save_did`
+    proves the indoor case.
+
+    **`geo` is the one field that is not a straight copy.**  The Amiga
+    engine leaves the resident-map word at 0 outdoors, exactly as DOS does,
+    and `goldbox.world_state.from_amiga` substitutes the area table's own
+    `SQRDATA05` for area 26's window rather than pass the 0 through --
+    `work/p190/C64OUT1.D64`, the engine's own outdoor resave from `#190 (A
+    C64 party standing on the travel grid cannot be written into a DOS
+    save)`, holds 5 in the same slot for the same area, and a save built
+    with the raw 0 loaded in VICE, drew the party roster and never reached
+    a world to show.
+
+    **Facing is not asserted.**  Outdoors, the C64 keeps its live overland
+    heading at `$033D`, outside the region `SAVEDGAME0` is an image of, so
+    `goldbox.dos.apply_position` writes only the travel square outdoors and
+    leaves the C64's own `$49C2` however `new_save_from` zeroed it -- a
+    limit of the C64 container itself, the same one `#321`'s own comment
+    found in the other direction, and not something this reader can supply.
+    """
+    party, savgam = amiga.read_por_slot(outdoor_disk, "B")
+    source = amiga.read_por_state(savgam, "slot B")
+    assert source.outdoors is True
+    assert source.geo == 5
+
+    save0, _save1, report = dos.new_save_from(
+        source, party, BLANK_ICON, BLANK_ANIMATE)
+    landed = world_state.from_c64(bytes(save0))
+
+    assert landed.outdoors is True
+    assert landed.travel == source.travel == (7, 29)
+    assert landed.area == source.area == 26
+    assert landed.geo == source.geo == 5
+    assert landed.clock == source.clock
+    assert report.unwritten == []
 
 
 def test_a_saved_game_of_the_wrong_length_is_refused(shipped_disk):

@@ -261,15 +261,37 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     set out" question read off an Amiga file either -- every Amiga save
     read is a party in the world -- so `set_out` is always true, as on the
     C64 side.
+
+    **`geo` is not the raw file word when the party is outdoors.**  Two
+    engine-written outdoor Amiga saves hold 0 at the word `_resident_geo`
+    reads indoors (`#321 (An Amiga Pool of Radiance conversion refuses a
+    party standing on the travel grid, because no outdoor Amiga saved game
+    has ever been read)`), and `_resolve_dos_place` already knows the same
+    is true of a DOS source and substitutes the area table's own `sqrdata`
+    number rather than trust it.  Reading the raw 0 through here instead
+    writes a C64 loaded-files cache with no `SQRDATA` slot filled in --
+    `#376 (An Amiga party on the travel grid still cannot be converted to
+    the C64 or DOS, because the reader refuses one)`: the game accepted the
+    disk, drew the roster, and never reached a world to show, and
+    `work/p190/C64OUT1.D64` -- the engine's own outdoor resave from
+    `#190 (A C64 party standing on the travel grid cannot be written into a
+    DOS save)` -- holds 5 in that slot for the same area 26 this reads 0
+    for.  So this takes the same substitution `_resolve_dos_place` does.
     """
     from . import amiga as _amiga
     from . import dos as _dos
     from . import games
 
+    area = _amiga.por_word(savgam, dos_savegame.SCRIPT)
+    outdoors = not _amiga.por_word(savgam, dos_savegame.INDOORS)
+    where = areas.area_in(area, games.POOL_OF_RADIANCE.title)
+    geo = (_dos._sqrdata_number(where.sqrdata)
+           if outdoors and where is not None and where.sqrdata
+           else _amiga.por_word(savgam, dos_savegame.AREA))
     return WorldState(
         title=games.POOL_OF_RADIANCE.title,
-        area=_amiga.por_word(savgam, dos_savegame.SCRIPT),
-        geo=_amiga.por_word(savgam, dos_savegame.AREA),
+        area=area,
+        geo=geo,
         x=savgam[_amiga.POR_POS_X], y=savgam[_amiga.POR_POS_Y],
         facing=savgam[_amiga.POR_POS_FACING] // dos_savegame.FACING_SCALE,
         clock=tuple(_amiga.por_word(savgam, dos_savegame.CLOCK + i)
@@ -279,7 +301,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
         flags=tuple(_amiga.por_word(savgam, dos_savegame.FLAGS_FIRST + i)
                     for i in range(c64_save.POOL_OF_RADIANCE.quest_flags[1])),
         scratch={a: _amiga.por_word(savgam, a) for a in _dos.SHARED_SCRATCH},
-        outdoors=not _amiga.por_word(savgam, dos_savegame.INDOORS),
+        outdoors=outdoors,
         travel=(_amiga.por_word(savgam, dos_savegame.TRAVEL_X),
                 _amiga.por_word(savgam, dos_savegame.TRAVEL_Y)),
         set_out=True,
