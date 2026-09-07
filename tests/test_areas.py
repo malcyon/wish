@@ -40,6 +40,28 @@ def test_thirty_areas_with_one_hole_at_twelve():
     assert areas.area(areas.MISSING_ID) is None
 
 
+NUMBER_WORDS = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four",
+                5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine"}
+
+
+def test_the_docstrings_mapless_count_matches_the_table():
+    """`goldbox/areas.py`'s module docstring and `Area.geos`' own field comment
+    each say in words how many areas have no map -- "three areas have no map"
+    and "the three mapless Pool of Radiance areas" -- and a number typed by
+    hand goes stale the next time a row changes: `#260 (Area 30 is recorded as
+    having no map, and ECL1E loads GEO12)` is exactly that, it used to say
+    four. Computed from the table rather than asserted as a literal, so this
+    fails the day the two next disagree."""
+    mapless = sum(1 for a in areas.AREAS if not a.geos)
+    word = NUMBER_WORDS[mapless]
+    assert re.search(rf"\b{word} areas have no map\b", areas.__doc__)
+    # The `#:` field comment is not part of the dataclass's introspectable
+    # metadata, so read the module's own source to check it.
+    source = pathlib.Path(areas.__file__).read_text()
+    assert re.search(rf"Empty for the {word} mapless Pool of Radiance areas",
+                     source)
+
+
 def test_the_id_is_the_ecl_number_in_hex():
     """Area 21 is `ECL15`, which is why `area_name` can read a `GEO`'s digits."""
     assert areas.area(21).ecl == "ECL15"
@@ -48,15 +70,22 @@ def test_the_id_is_the_ecl_number_in_hex():
         assert int(a.ecl[3:], 16) == a.id
 
 
-def test_twenty_nine_maps_across_thirty_areas_and_none_shared():
+def test_twenty_nine_maps_across_thirty_areas_and_one_shared():
+    """Thirty `geos` entries, not twenty-nine: area 30's `ECL1E` loads `GEO12`,
+    which is already area 18's (`#260 (Area 30 is recorded as having no map,
+    and ECL1E loads GEO12)`), so it is the one map two scripts share and the
+    twenty-nine distinct names stay the same."""
     names = [g for a in areas.AREAS for g in a.geos]
-    assert len(names) == 29
+    assert len(names) == 30
     assert len(set(names)) == 29
+    assert names.count("GEO12") == 2
 
 
-@pytest.mark.parametrize("id", [8, 11, 19, 30])
-def test_four_areas_have_no_map_at_all(id):
-    """`ECL08`, `ECL0B`, `ECL13` and `ECL1E` issue no `LOADFILES`."""
+@pytest.mark.parametrize("id", [8, 11, 19])
+def test_three_areas_have_no_map_at_all(id):
+    """`ECL08`, `ECL0B` and `ECL13` issue no `LOADFILES`. `ECL1E` used to be
+    counted here too, until `#260 (Area 30 is recorded as having no map, and
+    ECL1E loads GEO12)` found it loads `GEO12`."""
     a = areas.area(id)
     assert a.geos == ()
     assert a.geo is None
@@ -85,6 +114,13 @@ def test_the_geo_to_area_direction_is_a_tuple_too():
     assert areas.areas_for_geo("nonsense") == ()
     for name in ("GEO15", "GEO20"):
         assert isinstance(areas.areas_for_geo(name), tuple)
+
+
+def test_geo12_is_two_areas_since_260():
+    """`ECL1E` loads Podol Plaza's own map, `GEO12`, which is already area
+    18's (`#260 (Area 30 is recorded as having no map, and ECL1E loads
+    GEO12)`)."""
+    assert [a.id for a in areas.areas_for_geo("GEO12")] == [18, 30]
 
 
 def test_the_maps_a_title_loads_are_a_set_and_not_a_range():
@@ -139,10 +175,14 @@ def test_the_three_windows_carry_an_overland_square_inside_the_walkable_band():
 
 
 def test_ecl1e_is_unidentified_and_says_so():
+    """No name and no arrival square, though it does load a map -- `GEO12`,
+    Podol Plaza's own (`#260 (Area 30 is recorded as having no map, and ECL1E
+    loads GEO12)`)."""
     a = areas.area(30)
     assert a.name is None
     assert a.confidence is Confidence.UNKNOWN
-    assert a.label == "ECL1E - no map, POOL1"
+    assert a.geos == ("GEO12",)
+    assert a.label == "ECL1E - GEO12, POOL1"
 
 
 def test_every_row_carries_a_confidence():
@@ -819,24 +859,18 @@ def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
     `dynamic_geo`, their scripts issue no static `LOADFILES` at all, and their
     `geos` is an inference from the id that is known to be wrong for both.
 
-    **Two exceptions in the remaining twenty-eight**, and they are different
-    in kind.
+    **One exception in the remaining twenty-eight.** `ECL07` loads file 3 as
+    well as its own 7, on its way into area 3, and the table gives `GEO03` to
+    area 3 rather than to area 7. That is deliberate, and Silver Blades'
+    `ECL30` does the same thing for areas `$31` and `$32`, so a script loading
+    the *next* area's map is a shape both titles have.
 
-    `ECL07` loads file 3 as well as its own 7, on its way into area 3, and the
-    table gives `GEO03` to area 3 rather than to area 7. That is deliberate,
-    and Silver Blades' `ECL30` does the same thing for areas `$31` and `$32`,
-    so a script loading the *next* area's map is a shape both titles have.
-
-    `ECL1E` is a defect in this table rather than a modelling choice: it
-    carries `LOADFILES 18, 2, 255` at `$9A54` -- `GEO12`, Podol Plaza, which
-    is what the attract-mode demo walks a party around -- so the docstring's
-    "four areas have no map" is three, and area 30's `geos` should hold
-    `GEO12`. Nothing a player can reach depends on it: area 30 is
-    `fasttravelable=False` and is offered nowhere. Pinned here rather than
-    corrected, because the correction moves `areas_for_geo("GEO12")`,
-    `has_map` and four other test modules --
-    `#20 (Build an area table for Silver Blades)` found it and is not the
-    ticket that fixes it."""
+    `ECL1E` used to be a second, unintended exception here: the table gave it
+    no map at all, and its script actually carries `LOADFILES 18, 2, 255` at
+    `$9A54` -- `GEO12`, Podol Plaza, which is what the attract-mode demo walks
+    a party around. `#260 (Area 30 is recorded as having no map, and ECL1E
+    loads GEO12)` gave area 30's `geos` `GEO12`, so it agrees with the script
+    now and drops out of this dict."""
     exceptions = {}
     for a in areas.AREAS:
         if a.dynamic_geo:
@@ -847,5 +881,4 @@ def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
         loaded = set(pool_table[a.ecl].geos())
         if claimed != loaded:
             exceptions[a.ecl] = (sorted(claimed), sorted(loaded))
-    assert exceptions == {"ECL07": ([7], [3, 7]),
-                          "ECL1E": ([], [18])}
+    assert exceptions == {"ECL07": ([7], [3, 7])}

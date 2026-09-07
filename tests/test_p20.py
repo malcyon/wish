@@ -58,10 +58,15 @@ def test_fourteen_areas_have_no_arrival_square():
     assert areas.AREAS_BY_ID[21].arrival == areas.Arrival(8, 14, 0)
 
 
-def test_four_of_them_have_no_map_either():
-    """Areas 8, 11, 19 and 30 load no `GEO`, so there is no square to choose."""
+def test_three_of_them_have_no_map_either():
+    """Areas 8, 11 and 19 load no `GEO`, so there is no square to choose.
+
+    Area 30 used to be a fourth: `ECL1E` was believed to issue no `LOADFILES`
+    at all, until `#260 (Area 30 is recorded as having no map, and ECL1E loads
+    GEO12)` found it loads `GEO12` -- it still has no arrival square, since
+    nothing in `ECL1E`'s bytecode names one."""
     assert [i for i in NO_ARRIVAL if not areas.AREAS_BY_ID[i].geos] == \
-        [8, 11, 19, 30]
+        [8, 11, 19]
 
 
 @pytest.mark.parametrize("name", MAPS)

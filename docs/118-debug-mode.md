@@ -101,8 +101,12 @@ evidence supports are the script and the cache slot; nothing else.
 ## The areas
 
 Thirty scripts, twenty-nine maps, and they are not one-to-one. `ECL0C` does not
-exist; `ECL08`, `ECL0B`, `ECL13` and `ECL1E` have no `LOADFILES` and therefore no
-map of their own; three scripts carry two maps each.
+exist; `ECL08`, `ECL0B` and `ECL13` have no `LOADFILES` and therefore no map of
+their own; three scripts carry two maps each. `ECL1E` was believed a fourth
+mapless script until `#260 (Area 30 is recorded as having no map, and ECL1E
+loads GEO12)`: it carries `LOADFILES 18, 2, 255` and file 18 is `GEO12`,
+already area 18's own -- so it is Podol Plaza's map, shared, rather than
+having none.
 
 Arrival is the square the game itself puts you on, harvested from the departing
 scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
@@ -142,7 +146,7 @@ watched it place a fasttraveled-in party. Fourteen areas still have none.
 | 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — (overland 9,29 †) | CONFIRMED |
 | 28 | `1C` | `1C` | POOL6 | Zhentil Keep Outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
-| 30 | `1E` | — | POOL1 | The Attract-Mode Demo (**not fasttravelable**) | — | CONFIRMED |
+| 30 | `1E` | `12` | POOL1 | The Attract-Mode Demo (**not fasttravelable**) | — | CONFIRMED |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
 geometry), the wilderness site list and the quest flags (write-ups lost —

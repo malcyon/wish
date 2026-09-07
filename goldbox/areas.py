@@ -11,18 +11,22 @@ not the other way round, and the relation is not a bijection:
 
 * **thirty scripts, twenty-nine maps.** `ECL0C` does not exist at all, so id 12
   is absent from the table;
-* **four areas have no map.** `ECL08` (Phlan City Hall), `ECL0B` (the training
-  hall), `ECL13` (Cave of Diogenes) and `ECL1E` issue no `LOADFILES` and never
-  put a `GEO` on the screen;
+* **three areas have no map.** `ECL08` (Phlan City Hall), `ECL0B` (the training
+  hall) and `ECL13` (Cave of Diogenes) issue no `LOADFILES` and never put a
+  `GEO` on the screen. `ECL1E` was believed a fourth until
+  `#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`: it
+  carries `LOADFILES 18, 2, 255` at `$9A54`, four statements after it writes
+  the party's square, and file 18 is `GEO12`, Podol Plaza's own map;
 * **three areas carry two maps each.** `ECL10`, `ECL18` and `ECL1D` each load
   two `GEO`s from the one script;
 * **three areas are outdoors.** Areas 25-27 load a `SQRDATA` as well as a
   `GEO`; `LOADFILES` picks the file type from `$49E6`, not from the operand.
 
-So `Area.geos` is a tuple, which is empty for the four mapless areas and holds
+So `Area.geos` is a tuple, which is empty for the three mapless areas and holds
 two entries for the three doubled ones, and `areas_for_geo` returns a tuple as
 well -- there is nothing in the format that stops two scripts naming one map,
-and `ECL07` already loads `GEO03` on its way into area 5.
+and `ECL07` already loads `GEO03` on its way into area 5. `ECL1E` is a second
+example: its `GEO12` is also area 18's, Podol Plaza's.
 
 Names come from `docs/88-map-files.md` and two write-ups since lost,
 `work/reports/world-map.md` and `work/reports/quest-flags.md`; arrival squares were harvested from the
@@ -153,8 +157,9 @@ class Area:
     """One `ECL` script, and whatever map or maps it loads."""
 
     id: int
-    #: None for `ECL1E`, which has no `LOADFILES`, no `NEWECL` pointing at it
-    #: and no name anybody has been able to attach to it.
+    #: None for `ECL1E`, which has no `NEWECL` pointing at it and no name
+    #: anybody has been able to attach to it, though it does load `GEO12`
+    #: (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
     name: str | None
     #: Which disk side carries the script -- 1-8 in Pool of Radiance, 1-6 in
     #: Secret of the Silver Blades. This is what a fasttravel writes to the
@@ -162,7 +167,7 @@ class Area:
     #: Blades) and what the loader will prompt for.
     disk: int
     #: The `GEO` files the script statically loads, in the order it loads them.
-    #: Empty for the four mapless Pool of Radiance areas, and for the two
+    #: Empty for the three mapless Pool of Radiance areas, and for the two
     #: Silver Blades areas whose map is loaded by the script that sends the
     #: party to them.
     geos: tuple[str, ...] = ()
@@ -338,7 +343,11 @@ AREAS: tuple[Area, ...] = (
     _a(28, "Zhentil Keep Outpost", 6, ("GEO1C",), Arrival(7, 0, 2), C),
     _a(29, "Kuto's Well", 8, ("GEO1D", "GEO20"), None, C,
        geo_names=MappingProxyType({"GEO20": "Kuto's Well Catacombs"})),
-    _a(30, None, 1, (), None, U, fasttravelable=False),
+    # `ECL1E` carries `LOADFILES 18, 2, 255` at `$9A54`, four statements after
+    # writing the party's square, and file 18 is `GEO12` -- CONFIRMED off the
+    # player's own POOL1, `tools/areatable.py pool-of-radiance`, 2026-09-07
+    # (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
+    _a(30, None, 1, ("GEO12",), None, U, fasttravelable=False),
 )
 
 AREAS_BY_ID: Mapping[int, Area] = MappingProxyType({a.id: a for a in AREAS})
