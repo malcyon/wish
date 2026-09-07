@@ -4,9 +4,14 @@ Reading the C64's memory over the Ultimate's REST interface **stops the 6510**.
 If that stop lands inside a disk load, the load never finishes and the machine
 hangs with interrupts off, needing a reset.
 
-This page is how to make that happen on purpose, by hand, in a few minutes. It
-exists so the fault can be shown to somebody else — an upstream maintainer, or
-a second person with the hardware — without any of this project's code.
+This page is how to make that happen on purpose, by hand. It exists so the
+fault can be shown to somebody else — an upstream maintainer, or a second
+person with the hardware — using **only the machine, the USB stick that came
+with it, and `curl`.** Nothing of this project's is needed, and nothing is
+copied onto the device.
+
+Expect to wait: the hazard is about one read in a thousand, so a session runs
+for tens of minutes rather than a few (§1, "What to expect").
 
 Measured on Donald's unit, **firmware 3.14**, 2026-09-07.
 `#375 (Wish has to work around the Ultimate freezing the C64 mid-load, which
@@ -15,88 +20,121 @@ hangs the game while the automapper follows along)` is the ticket;
 is how it was found and closes with the analysis.
 
 
-## 1. The short version
+## 1. The procedure
 
 **Two things have to be true at once: the drive is working, and something is
 reading memory over the network.** That is the whole fault.
 
-1. Start any disk activity on the Ultimate — load a game, load a file, it does
-   not matter what.
-2. While it loads, run this on another machine:
+Nothing here is ours. **The disk is the one that ships with the machine** — the
+USB stick labelled *The Very Second* — so nobody has to take our word about
+what is on it, or copy anything onto their device.
 
-   ```sh
-   while true; do
-     curl -s -o /dev/null \
-       'http://192.168.1.231/v1/machine:readmem?address=0400&length=32768'
-     sleep 2
-   done
-   ```
+Substitute your own device's address throughout.
 
-3. Watch the jiffy clock — three bytes at `$00A0` that the KERNAL increments
-   sixty times a second, and only while interrupts are being serviced:
+### Insert the USB stick and mount the disk it carries
 
-   ```sh
-   while true; do
-     curl -s 'http://192.168.1.231/v1/machine:readmem?address=00A0&length=3' \
-       | xxd -p
-     sleep 5
-   done
-   ```
-
-   While the machine lives, that number climbs. **When it stops climbing and
-   never moves again, the machine has hung.**
-
-Substitute the address of your own device. Ours hung in **5.6 minutes**.
-
-**A single small load is over in a moment, and a read has to land inside one.**
-So load something big, or keep loading things, for as long as the loop runs.
-Section 2 makes that automatic.
-
-
-## 2. The self-contained version
-
-For a report to somebody who has no disk of ours — and for an unattended run —
-`tools/c64uhang.py` builds a disk containing nothing but two generated files:
-
-| file | what |
-|---|---|
-| `HANG` | one line of BASIC |
-| `HANGDATA` | 4 KB of zeroes, loading to `$C000` |
-
-```basic
-10 LOAD"HANGDATA",8,1
+```sh
+curl -s -X PUT 'http://192.168.1.231/v1/drives/a:mount?image=/USB1/GEOS%20Boot%20Disk.d64&type=d64&mode=readonly'
 ```
 
-That is the whole program. **A `LOAD` inside a running BASIC program restarts
-the program**, so this reads the file over and over for ever with no `GOTO`,
-keeping the serial bus busy at full KERNAL speed.
+Mounted **read-only**, so nothing can be written to it. Check the path first if
+your stick enumerates differently:
 
-`$C000` matters. `LOAD"...",8,1` is a *non-relocating* load: it goes to the
-address in the file's own first two bytes. Most files on a disk are BASIC
-programs loading to `$0801`, **which is where the running program lives** — load
-one of those and it overwrites the loop mid-flight. `$C000` is free RAM on a
-bare C64, so nothing cares what lands there.
-
-### If you want to use a file you already have
-
-Use the reading form instead, which never puts the file anywhere:
-
-```basic
-10 OPEN2,8,2,"ANYFILE,P,R"
-20 GET#2,A$:IF ST=0 THEN 20
-30 CLOSE2:GOTO 10
+```sh
+c64u fs ls /USB1
 ```
 
-This is the plainest possible serial read — the KERNAL's byte-in routine,
-which is **exactly the loop both real hangs were sitting in** — and being
-byte-at-a-time it keeps the drive busy longer than a block load does.
+### Start a perpetual disk load
 
-### The tool
+```sh
+c64u machine sendkey '10 OPEN2,8,2,"DESK TOP,P,R"\n'
+c64u machine sendkey '20 GET#2,A$:IF ST=0 THEN 20\n'
+c64u machine sendkey '30 CLOSE2:GOTO 10\n'
+c64u machine sendkey 'RUN\n'
+```
+
+Three lines of BASIC. They open `desk top.cvt` — the largest file on the disk,
+about 30 KB — read it a byte at a time, throw every byte away, close it and
+start again. **Nothing is written, nothing is loaded into memory, nothing can be
+overwritten.** It only keeps the drive working.
+
+This is also the KERNAL's plainest serial read, which is exactly the routine
+both real hangs were sitting in (§4).
+
+### Read memory in a loop
+
+```sh
+while true; do
+  curl -s -o /dev/null \
+    'http://192.168.1.231/v1/machine:readmem?address=0400&length=32768'
+  sleep 0.5
+done
+```
+
+### Watch the jiffy clock
+
+Three bytes at `$00A0`, which the KERNAL increments sixty times a second and
+only while interrupts are being serviced:
+
+```sh
+while true; do
+  curl -s 'http://192.168.1.231/v1/machine:readmem?address=00A0&length=3' \
+    | xxd -p
+  sleep 5
+done
+```
+
+**While the machine lives that number climbs. When it stops and never moves
+again, it has hung** — and the C64 sits frozen mid-load with nothing
+responding, needing a reset.
+
+### What to expect
+
+**It will not hang immediately, and that is normal.** The hazard is roughly one
+read in a thousand (§5), so at one read every half-second:
+
+| running for | reads | chance of a hang |
+|---|---|---|
+| 10 minutes | 1,200 | 70 % |
+| 30 minutes | 3,600 | 97 % |
+
+At one read every two seconds it is 26 % in ten minutes and 59 % in thirty.
+Reproduced by hand on 2026-09-07 in rather under an hour; our driven runs took
+5.6 and 23 minutes.
+
+**Check the machine is really loading** before you conclude anything from a
+quiet hour. The jiffy clock should be advancing at a *fraction* of real time —
+about 14 to 30 per five seconds, against roughly 300 for an idle machine —
+because the KERNAL turns interrupts off while it talks to the drive. Anything
+near 300 means the program is not running and nothing is being tested.
+
+
+## 2. Driving it unattended
+
+`tools/c64uhang.py` does §1 without a person: it builds its own disk — one line
+of BASIC and a 4 KB file of spaces, both generated, containing nothing of
+anybody's — mounts it, boots it, polls at a chosen size and interval, and
+scores the result from the machine's own samples.
 
 ```sh
 tools/c64uhang.py build --out work/hang.d64
 tools/c64uhang.py run --variant load --size 32768 --interval 2 --minutes 10
 ```
+
+Two variants, and they differ in one way that matters:
+
+* **`load`** — `10 LOAD"HANGDATA",8,1`. A `LOAD` inside a running BASIC program
+  restarts it, so this reads the file over and over with no `GOTO`. Its file
+  loads to `$C000` on purpose: `LOAD"...",8,1` goes to the address in the
+  file's own first two bytes, and most files on a disk are BASIC programs
+  loading to `$0801`, **which is where the running program lives** — one of
+  those would overwrite the loop mid-flight. `$C000` is free RAM on a bare C64.
+* **`get`** — the `OPEN`/`GET#`/`CLOSE` loop of §1, which never puts the file
+  anywhere and so works with any file at all.
+
+**Use §1 for a report and this for measurement.** A generated disk is a
+question somebody can raise — *what did you put in that file?* — and the disk
+that shipped with the machine is not.
 
 
 ## 3. Telling a hang from a load
