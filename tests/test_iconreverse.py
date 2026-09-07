@@ -22,9 +22,13 @@ from gamedata import game_file
 
 from goldbox.iconparts import (
     CELLS_PER_POSE,
+    DEFAULT_BACKGROUND,
+    DEFAULT_PART_COLOURS,
+    MULTICOLOUR,
     SPACE,
     WEAPON_ONLY_CELLS,
     IconParts,
+    c64_icon_tables,
     dos_icon_tables,
     dos_part_colours,
 )
@@ -51,6 +55,14 @@ def parts() -> IconParts:
 def table():
     import iconreverse
     return iconreverse.load_tables()
+
+
+@pytest.fixture(scope="module")
+def reverse_tables():
+    """`goldbox.iconparts.c64_icon_tables()` -- the reader `IconParts.
+    dos_icon_from_c64` uses, independent of `tools/iconreverse.py`'s own
+    `load_tables` the way `table` above is not."""
+    return c64_icon_tables()
 
 
 # -- recognising an icon -----------------------------------------------------
@@ -171,6 +183,97 @@ def test_the_default_icon_reads_back_as_the_choices_that_made_it(parts):
     assert (read.weapon_size, read.weapon, read.head_size, read.head) == (
         "large", 0, "large", 1)
     assert read.exact and not read.alternatives
+
+
+# -- a C64 icon becomes a DOS one (#320) --------------------------------------
+#
+# `IconParts.dos_icon_from_c64` is the write side's own source for
+# `icon_head`/`icon_body`/`icon_colours` (`goldbox.dos.write`'s `icon`
+# argument) -- `recognise` plus a lookup in `tools/iconreverse.yaml`,
+# read here through `c64_icon_tables`.
+
+def _composed(parts, size, weapon, head, colours=None):
+    """One whole 36-byte icon, the way `tools/iconpoke.py` composes one."""
+    shape = parts.compose(size, weapon, head)
+    per_class = colours or DEFAULT_PART_COLOURS
+    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
+    return shape + parts.colours_for(shape, per_class, seed)
+
+
+def test_the_default_icon_becomes_dos_head_5_body_0(parts, reverse_tables):
+    """Weapon 0 and head 1 are both forced rows -- `0: {dos: 0}` and
+    `1: {dos: 5}` in `tools/iconreverse.yaml` -- so this is the one answer
+    a correct reader can give, not a preference among several."""
+    icon = parts.default_icon()
+    result = parts.dos_icon_from_c64(icon, reverse_tables)
+    assert (result.head, result.body) == (5, 0)
+    assert result.choice.exact and not result.choice.alternatives
+
+
+def test_six_different_c64_icons_become_six_different_dos_figures(
+        parts, reverse_tables):
+    """The issue's own Testing section: six icons that differ on the C64
+    read back into six different `(icon_head, icon_body)` pairs."""
+    figures = [("large", 0, 0), ("large", 7, 4), ("large", 11, 9),
+              ("small", 3, 2), ("small", 16, 7), ("large", 21, 12)]
+    pairs = [(r.head, r.body) for r in
+            (parts.dos_icon_from_c64(_composed(parts, s, w, h), reverse_tables)
+             for s, w, h in figures)]
+    assert len(set(pairs)) == 6, pairs
+
+
+def test_a_forced_row_recomposes_to_the_c64_icon_it_came_from(parts,
+                                                               reverse_tables):
+    """Weapon 11 (large) and head 9 (large) are both forced, so the round
+    trip through `dos_icon_from_c64` and back through `dos_icon` has to
+    reach the same eighteen screen codes -- the property
+    `test_a_c64_figure_survives_a_round_trip_through_dos` pins for the
+    table's own rows, checked here through the actual reader and writer.
+    """
+    original = _composed(parts, "large", 11, 9)
+    result = parts.dos_icon_from_c64(original, reverse_tables)
+    forward = dos_icon_tables(size="large")
+    back = parts.dos_icon(result.head, result.body, "large", result.colours,
+                          forward)
+    assert back[:18] == original[:18]
+
+
+def test_a_judgement_row_gives_the_nearest_figure_not_an_error(parts,
+                                                                reverse_tables):
+    """Weapon 0 with head 0 is not a forced pair -- large head 0 is a
+    "judgement" row, Donald's nearest figure rather than a round-tripping
+    one (`tools/iconreverse.py --coverage`) -- so this only has to compose
+    without raising and land on the row the table actually names, not on
+    whether it comes home byte for byte."""
+    original = _composed(parts, "large", 0, 0)
+    choice = parts.recognise(original[:18])
+    result = parts.dos_icon_from_c64(original, reverse_tables)
+    assert result.body == reverse_tables.weapons[(choice.weapon_size,
+                                                   choice.weapon)]
+    assert result.head == reverse_tables.heads[(choice.head_size,
+                                                choice.head)]
+
+
+def test_an_icon_with_no_weapon_is_refused(parts, reverse_tables):
+    """The same refusal `recognise` makes on its own, reached through the
+    higher-level method rather than worked around."""
+    with pytest.raises(ValueError):
+        parts.dos_icon_from_c64(bytes(range(36)), reverse_tables)
+
+
+def test_the_colours_of_a_part_the_icon_draws_nothing_of_are_not_invented(
+        parts, reverse_tables):
+    """Weapon 0 is empty hands: no weapon-class cell is drawn, so there is
+    no colour to read for it, and the DOS weapon colour byte falls back to
+    :data:`DEFAULT_BACKGROUND`'s own row rather than a class this icon
+    never used. Invisible either way -- nothing draws there -- and pinned
+    so a future change cannot make it silently answer something else.
+    """
+    icon = parts.default_icon()
+    result = parts.dos_icon_from_c64(icon, reverse_tables)
+    low, high = reverse_tables.colours[DEFAULT_BACKGROUND]
+    weapon_pos = 5  # DOS_PAIR_CLASSES = (body, arm, leg, hair, shield, weapon)
+    assert result.colours[weapon_pos] == (high << 4) | low
 
 
 # -- the table ---------------------------------------------------------------

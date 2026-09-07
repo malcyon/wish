@@ -19,7 +19,7 @@ The other half of `tests/test_dosconvert.py`.  That module proves the DOS
 
 
 import pytest
-from gamedata import have_specimen, needs_specimens, specimen
+from gamedata import game_file, have_specimen, needs_specimens, specimen
 from test_dossave import (
     CLEAN_PARTY,
     CLEAN_ROLLS,
@@ -31,10 +31,20 @@ from test_dossave import (
 from test_dossave import _records as _archive_records
 from test_neutral import _filled
 
-from goldbox import c64_codec, dos, dos_layout, neutral, neutral_save
+from goldbox import c64_codec, c64_save, dos, dos_layout, neutral, neutral_save
 from goldbox import dos_savegame as sg
 from goldbox import levels as level_tables
+from goldbox.iconparts import (
+    DEFAULT_BACKGROUND,
+    DEFAULT_PART_COLOURS,
+    MULTICOLOUR,
+    DosIcon,
+    IconChoice,
+    IconParts,
+    dos_icon_tables,
+)
 from goldbox.layout import Confidence
+from goldbox.savegame import HEADER_SIZE, SLOT_STRIDE
 
 # --- the tables, which need no save -----------------------------------------
 
@@ -822,6 +832,176 @@ def test_the_written_icon_colours_are_not_zero():
         assert rec[f.offset:f.end] != bytes(f.size), char.name
 
 
+# --- a C64 source's own combat icon (#320) -----------------------------------
+#
+# `#320 (A C64 party converted to DOS arrives with no combat figure at all,
+# because the table only runs one way)`'s own Testing section: convert a C64
+# party whose six icons differ, read the six DOS records back, and assert
+# `icon_head`/`icon_body` differ across them and recompose to the C64 icons
+# they came from.
+
+#: A `DosIcon` this suite made up, not one `IconParts` produced -- `write`'s
+#: own tests do not need a real disk to prove the wiring takes it.
+_MADE_UP_ICON = DosIcon(
+    head=5, body=9, colours=bytes.fromhex("11223344e6f7"),
+    choice=IconChoice(weapon_size="large", weapon=9, head_size="large",
+                      head=1))
+
+
+def test_write_with_no_icon_still_zeroes_head_and_body():
+    """The state every caller that does not yet supply an `icon` is still
+    in -- `write_c64_save`'s own callers among them, until they do."""
+    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
+    rec, _, _, rep = dos.write(_filled())
+    assert rec[f_head.offset] == 0
+    assert rec[f_body.offset] == 0
+    assert any("icon_head" in line for line in rep.sources.values())
+
+
+def test_write_takes_the_given_icon_over_the_default():
+    """`icon_head`, `icon_body` and `icon_colours` all come from the
+    `DosIcon`, and the two lists this would otherwise have drawn from --
+    `WRITE_UNSOURCED`'s zero and `WRITE_DEFAULTS`'s colour set -- are not
+    written over it."""
+    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
+    f_colours = dos_layout.FIELDS_BY_NAME["icon_colours"]
+    rec, _, _, rep = dos.write(_filled(), icon=_MADE_UP_ICON)
+    assert rec[f_head.offset] == _MADE_UP_ICON.head
+    assert rec[f_body.offset] == _MADE_UP_ICON.body
+    assert rec[f_colours.offset:f_colours.end] == _MADE_UP_ICON.colours
+    # The report names this character's own C64 choice, not a generic zero.
+    assert any("weapon large 9" in line for line in rep.sources.values())
+    assert any("head large 1" in line for line in rep.sources.values())
+
+
+def test_the_icon_from_a_c64_party_reaches_the_written_record(tmp_path):
+    """`write_dos_save`'s own `icon_parts` argument, end to end: without it
+    nothing changes, and with it a character whose C64 icon is not the
+    default gets a non-default DOS figure.
+    """
+    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
+    save0, save1 = _fixture_payloads()
+
+    without = dos.write_dos_save(save0, save1, _save_dir(), tmp_path / "a",
+                                 "A")
+    party = dos.read_party(tmp_path / "a", "A")
+    assert party[0].get("icon_head") == 0
+    assert party[0].get("icon_body") == 0
+    assert any("figure is not set" in d for d in without.dropped), \
+        without.dropped
+
+    # BRUTUS's own icon table entry, poked to something the default never is.
+    container = c64_save.container_for(None)
+    shape = parts.compose("large", 7, 4)
+    seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
+    icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+    at = container.icon(0)
+    poked = bytearray(save0)
+    poked[at:at + container.icon_size] = icon
+
+    with_icon = dos.write_dos_save(bytes(poked), save1, _save_dir(),
+                                   tmp_path / "b", "A",
+                                   icon_parts=parts)
+    party = dos.read_party(tmp_path / "b", "A")
+    assert (party[0].get("icon_head"), party[0].get("icon_body")) != (0, 0)
+    # The drop line is no longer true, so it comes off (#355).
+    assert not any("figure is not set" in d for d in with_icon.dropped), \
+        with_icon.dropped
+
+
+def test_a_hand_authored_icon_does_not_fail_the_whole_party(tmp_path):
+    """`recognise` refuses a shape the game's own ICON menu never composed
+    (SHARA THE GRAY's, #130); `c64_party` catches that for one character
+    rather than losing every character's figure to it.
+
+    The character with the unreadable icon keeps zero and the drop line;
+    it also gets a warning naming why, so the loss is not silent.
+    """
+    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
+    save0, save1 = _fixture_payloads()
+    container = c64_save.container_for(None)
+    garbage = bytes(range(18)) + bytes(range(18))
+    poked = bytearray(save0)
+    poked[container.icon(0):container.icon(0) + container.icon_size] = garbage
+
+    report = dos.write_dos_save(bytes(poked), save1, _save_dir(), tmp_path,
+                                "A", icon_parts=parts)
+    party = dos.read_party(tmp_path, "A")
+    assert (party[0].get("icon_head"), party[0].get("icon_body")) == (0, 0)
+    assert any("figure is not set" in d for d in report.dropped), \
+        report.dropped
+    assert any("combat icon" in w for w in report.warnings), report.warnings
+
+
+def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(
+        tmp_path):
+    """The issue's own Testing section, built on the one committed C64
+    fixture: BRUTUS's own 256-byte slot, cloned into all eight, given six
+    different names and six different combat icons composed the way
+    `tools/iconpoke.py` composes them -- nothing here is the game's own
+    saved bytes, only its documented format applied six times.
+    """
+    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
+    save0, save1 = _fixture_payloads()
+    container = c64_save.container_for(None)
+
+    figures = [("large", 0, 0), ("large", 7, 4), ("large", 11, 9),
+              ("small", 3, 2), ("small", 16, 7), ("large", 21, 12)]
+    names = (b"ONE", b"TWO", b"THREE", b"FOUR", b"FIVE", b"SIX")
+    base = bytearray(save0)
+    slot0 = bytes(base[HEADER_SIZE:HEADER_SIZE + SLOT_STRIDE])
+    for i, (size, weapon, head) in enumerate(figures):
+        off = HEADER_SIZE + i * SLOT_STRIDE
+        base[off:off + SLOT_STRIDE] = slot0
+        base[off:off + len(names[i])] = names[i]
+        base[off + len(names[i]):off + 20] = bytes(20 - len(names[i]))
+        shape = parts.compose(size, weapon, head)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
+        icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+        at = container.icon(i)
+        base[at:at + container.icon_size] = icon
+
+    report = dos.write_dos_save(bytes(base), save1, _save_dir(), tmp_path,
+                                "A", icon_parts=parts)
+    # No game directory was given, so the sheet portrait is reported
+    # separately (`test_a_conversion_with_no_game_directory_says_the_faces_
+    # went`); nothing here is about the combat icon.
+    assert not any("combat icon" in w for w in report.warnings), \
+        report.warnings
+    party = dos.read_party(tmp_path, "A")
+    assert len(party) == 6
+
+    pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
+    assert len(set(pairs)) == 6, pairs
+
+    # Recompose each DOS figure and check it against the C64 icon that
+    # character's own slot named -- using that icon's *own* size, the way
+    # `IconParts.recognise` read it, not the DOS record's unrelated
+    # `size_small` (a dwarf's untouched default icon is drawn large
+    # independently of his own race, #57, so the two are not the same
+    # signal).
+    forward_tables = {"small": None, "large": None}
+    for size in forward_tables:
+        forward_tables[size] = dos_icon_tables(size=size)
+    forced_matches = 0
+    # `c64_party` hands characters back in DOS file order, which is the
+    # *reverse* of slot order (#101) -- `party[0]` is slot 5's figure.
+    for c, (size, weapon, head) in zip(party, reversed(figures)):
+        original = parts.compose(size, weapon, head)
+        choice = parts.recognise(original)
+        back = parts.dos_icon(c.get("icon_head"), c.get("icon_body"),
+                              choice.weapon_size, bytes(c.get("icon_colours")),
+                              forward_tables[choice.weapon_size])
+        if back[:18] == original[:18]:
+            forced_matches += 1
+    # At least the forced rows this party's figures hit come home exactly;
+    # `tests/test_iconreverse.py` is where every row's own forced-ness is
+    # pinned, this only has to see it is not zero of six.
+    assert forced_matches >= 2, forced_matches
+
+
 def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant():
     """#235 (Two unattributed DOS byte ranges in the combat tail are dropped
     converting to C64, and nobody knows what they hold): the census found the
@@ -1606,7 +1786,7 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert before, "the first conversion must have written something"
 
-    def boom(char, portraits=None):
+    def boom(char, portraits=None, icon=None):
         raise dos.DosRecordError("this character will not encode")
 
     monkeypatch.setattr(dos, "write", boom)

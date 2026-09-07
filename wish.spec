@@ -61,6 +61,10 @@ DATAS = [
     # (`goldbox/iconparts.py`, `#315`); a build with no copy of it cannot
     # convert a figure.
     ("tools/iconproposal.yaml", "tools"),
+    # The other direction's table -- which DOS combat figure a C64 one
+    # becomes (`goldbox/iconparts.py`'s `c64_icon_tables`, #320); the same
+    # reason and the same fix as the row above.
+    ("tools/iconreverse.yaml", "tools"),
 ]
 
 window = Analysis(

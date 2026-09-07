@@ -177,6 +177,14 @@ DEFAULT_BACKGROUND = 6
 #: needs lives outside the package)` was waiting on.
 PROPOSAL_PATH = asset_path("tools", "iconproposal.yaml")
 
+#: Donald's table for the other direction, `tools/iconreverse.yaml` -- which
+#: DOS option each C64 one becomes, drafted by `tools/iconreverse.py` and
+#: corrected by hand the way `PROPOSAL_PATH` was (#320, "Draft it, you
+#: correct it").  Reached the same way and for the same reason: a frozen
+#: build has no `tools/` checkout, so `goldbox.assets.asset_path` plus
+#: `wish.spec`'s `DATAS` is what `#315`'s resolver was for.
+REVERSE_PATH = asset_path("tools", "iconreverse.yaml")
+
 #: Record bytes `0x0C1`-`0x0C6` in order, and which C64 part class each one
 #: paints.  `GAME.OVR:0x1E55C` builds its recolour lookup from the table at
 #: `ds:0x3CF5` -- `0A 01 02 03 04 06 07` -- so `0x0C1` is the body, `0x0C2`
@@ -284,6 +292,56 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
 
 
 @dataclass(frozen=True)
+class C64IconTables:
+    """Which DOS option a C64 one becomes, and which DOS colour pair a C64
+    colour becomes -- the reverse of :class:`DosIconTables` (#320)."""
+
+    #: `(size, C64 weapon option) -> DOS icon_body`.  Keyed by size because a
+    #: C64 option number means a different drawing at each size -- large
+    #: weapon 3 and small weapon 3 are different pictures out of different
+    #: tables -- so `tools/iconreverse.yaml` gives the two sizes complete,
+    #: separate lists rather than one table with exceptions.
+    weapons: dict[tuple[str, int], int]
+    #: `(size, C64 head option) -> DOS icon_head`, the same shape.
+    heads: dict[tuple[str, int], int]
+    #: C64 icon colour 0-7 -> the `(low, high)` EGA pair a DOS `icon_colours`
+    #: byte holds for it.
+    colours: dict[int, tuple[int, int]]
+
+
+def c64_icon_tables(path: "pathlib.Path | str | None" = None) -> C64IconTables:
+    """Read the reverse table out of :data:`REVERSE_PATH`.
+
+    Independent of `tools/iconreverse.py`'s own reader, the way
+    :func:`dos_icon_tables` is independent of `tools/iconproposal.py`'s: that
+    module's `load_tables` also draws the sheets Donald corrects, and a
+    second copy of the parsing here would go out of step with a YAML
+    structure change nobody remembered to mirror.
+
+    The base section (`weapons:`/`heads:` at the top level) is the **large**
+    lists in full, and `small:` is the **small** lists in full -- not a base
+    plus exceptions, because a C64 option number is a different drawing at
+    each size and there is no size-free answer to fall back to.
+    """
+    source = pathlib.Path(path or REVERSE_PATH)
+    try:
+        data = yaml.safe_load(source.read_text())
+    except OSError as exc:
+        raise FileNotFoundError(
+            f"the C64-to-DOS combat-figure table is not at {source}; "
+            f"without it a C64 icon has no DOS figure to become") from exc
+    weapons: dict[tuple[str, int], int] = {}
+    heads: dict[tuple[str, int], int] = {}
+    for size, section in (("large", data), ("small", data.get("small") or {})):
+        for kind, target in (("weapons", weapons), ("heads", heads)):
+            for k, row in (section.get(kind) or {}).items():
+                target[(size, int(k))] = row["dos"]
+    colours = {int(k): tuple(row["dos"])
+              for k, row in (data.get("colours") or {}).items()}
+    return C64IconTables(weapons=weapons, heads=heads, colours=colours)
+
+
+@dataclass(frozen=True)
 class IconChoice:
     """What :meth:`IconParts.recognise` read back out of an icon's cells."""
 
@@ -297,6 +355,19 @@ class IconChoice:
     alternatives: tuple[tuple[str, int], ...] = ()
     #: Whether composing `weapon` then `head` reproduces the icon exactly.
     exact: bool = True
+
+
+@dataclass(frozen=True)
+class DosIcon:
+    """What :meth:`IconParts.dos_icon_from_c64` read a C64 icon into (#320)."""
+
+    head: int                        # DOS icon_head
+    body: int                        # DOS icon_body
+    colours: bytes                   # the six DOS icon_colours bytes
+    #: The menu choices the C64 icon itself decoded to, so a caller can say
+    #: which C64 weapon and head this DOS figure came from and whether the
+    #: head was ambiguous.
+    choice: IconChoice
 
 
 @dataclass(frozen=True)
@@ -625,6 +696,74 @@ class IconParts:
                           head_size=head_size, head=head,
                           alternatives=tuple(chosen[1:]),
                           exact=bool(exact))
+
+    # -- a C64 character's own figure, the other direction (#320) --------
+
+    def dos_icon_from_c64(self, icon: bytes,
+                          tables: "C64IconTables | None" = None,
+                          prefer: str = "large") -> "DosIcon":
+        """The DOS `icon_head`, `icon_body` and six `icon_colours` bytes a
+        C64 character's own combat icon becomes.
+
+        `icon` is the 36 bytes a C64 record's icon table holds -- eighteen
+        screen codes then eighteen colours, the shape :meth:`dos_icon` and
+        :meth:`default_icon` both return.  It is read back into the menu
+        choices that drew it (:meth:`recognise`) and each is looked up in
+        `tools/iconreverse.yaml` through `tables`, Donald's own judgement
+        (#320) the way `tools/iconproposal.yaml` is his for the DOS-to-C64
+        direction.
+
+        **Where the head is ambiguous**, `recognise` already resolved it:
+        `IconChoice.head` is the first of the candidates that compose back
+        into this icon's own bytes exactly, which is what the two
+        candidates share -- they draw the *same picture* here, so either
+        answers the question "what does this icon look like" the same way.
+        A caller that wants to know it was ambiguous reads `choice.
+        alternatives` off the result; this method does not guess among
+        pictures that differ, only among numbers that do not.
+
+        Raises `ValueError` when `icon` was not composed by the game's own
+        ICON menu (see :meth:`recognise`), or when `tables` has no row for
+        the weapon or head `recognise` named -- which none of the shipped
+        table's 100 rows should, since `tests/test_iconreverse.py` pins one
+        for every option the game offers; a `KeyError` here means `tables`
+        came from somewhere else.
+
+        The colour half takes :meth:`part_colours` per class and looks each
+        up in `tables.colours`; a part this icon draws nothing of -- an
+        empty-handed weapon, no cap, no shield -- has no colour to read, and
+        gets :data:`DEFAULT_BACKGROUND`'s own row, which is invisible either
+        way because nothing of that part is drawn.
+        """
+        if len(icon) != CELLS_PER_POSE * 4:
+            raise ValueError(f"a combat icon is {CELLS_PER_POSE * 4} bytes "
+                             f"(shape and colours), not {len(icon)}")
+        shape, colours = icon[:CELLS_PER_POSE * 2], icon[CELLS_PER_POSE * 2:]
+        tables = tables or c64_icon_tables()
+        choice = self.recognise(shape, prefer=prefer)
+        try:
+            body = tables.weapons[(choice.weapon_size, choice.weapon)]
+        except KeyError:
+            raise ValueError(
+                f"no row in tools/iconreverse.yaml for the C64 "
+                f"{choice.weapon_size} weapon {choice.weapon}") from None
+        try:
+            head = tables.heads[(choice.head_size, choice.head)]
+        except KeyError:
+            raise ValueError(
+                f"no row in tools/iconreverse.yaml for the C64 "
+                f"{choice.head_size} head {choice.head}") from None
+        per_class = self.part_colours(colours, shape)
+        dos_colours = bytearray(6)
+        for i, part in enumerate(DOS_PAIR_CLASSES):
+            c64_colour = per_class.get(PART_CLASSES.index(part),
+                                       DEFAULT_BACKGROUND)
+            low, high = tables.colours.get(c64_colour,
+                                           (c64_colour & 7,
+                                            (c64_colour & 7) | 8))
+            dos_colours[i] = (high << 4) | low
+        return DosIcon(head=head, body=body, colours=bytes(dos_colours),
+                      choice=choice)
 
     # -- the legal set ---------------------------------------------------
 

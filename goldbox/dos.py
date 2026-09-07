@@ -86,7 +86,14 @@ from .dos_layout import (
     DosShapeError,
     shape_for,
 )
-from .iconparts import DosIconTables, IconParts, dos_icon_tables, dos_size
+from .iconparts import (
+    DosIcon,
+    DosIconTables,
+    IconParts,
+    c64_icon_tables,
+    dos_icon_tables,
+    dos_size,
+)
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
 from .portraits import (
@@ -2170,7 +2177,11 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
     ("portrait_body", "see portrait_head; the body half of the same pair"),
     ("icon_head", "the **combat** icon's head -- a different art set and a "
                   "different pair from the two above, and a different "
-                  "ticket (#130). Zero"),
+                  "ticket (#320, the mirror of #130).  Zero **only when the "
+                  "caller gave `write` no `icon`**, which is every source "
+                  "but a C64 one whose caller recognised the record's own "
+                  "eighteen screen codes -- `icon_written` in `write` skips "
+                  "this row when it did"),
     ("icon_body", "see icon_head"),
     ("item_chain", "live heap pointer block; the items themselves are in "
                    "the .ITM file. **Zero is what the engine itself writes "
@@ -2220,14 +2231,17 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "precisely the played parties (#57). Six pairs of 4-bit indices, one "
      "per part: body, arm, leg, hair and skin, shield, weapon; the low "
      "nibble is the main colour and the high one the highlight, which is "
-     "what the game's own icon editor writes as COLOR-1 and COLOR-2",
+     "what the game's own icon editor writes as COLOR-1 and COLOR-2. This "
+     "row fires **only when `write` was given no `icon`**: a C64 source "
+     "whose caller recognised the record's own combat icon converts its "
+     "seven colour parts to these six instead, through "
+     "`tools/iconreverse.yaml`'s colour table (#320) -- the C64's one "
+     "3-bit colour a part becomes both nibbles of the pair, the shape "
+     "every freshly-made DOS record's own default set already has",
      "zero is not neutral here: all six parts become EGA 8, dark grey, "
      "which is the combat floor's own colour, so the character is about 64 "
      "black outline pixels on its own shade and reads as not being there "
-     "(#112, three fights). The C64's own icon colours are not converted "
-     "across -- it has seven colour parts to DOS's six and one 3-bit "
-     "colour per part against DOS's two 4-bit ones, so a correspondence "
-     "would be a choice rather than a conversion"),
+     "(#112, three fights)"),
     ("field_10c_10f", b"\x00\x01\x00\x00",
      "okay, not shown red, not the enemy's side and not quick-fought -- "
      "the state a newly made DOS character is in. 0x10C is the status (0 "
@@ -2580,7 +2594,8 @@ def write_shape(char: NeutralCharacter,
 
 def write(char: NeutralCharacter,
           portraits: PortraitTables | None = None,
-          shape: "int | str | DosShape | None" = None
+          shape: "int | str | DosShape | None" = None,
+          icon: "DosIcon | None" = None
           ) -> tuple[bytes, bytes, bytes, WriteReport]:
     """Build a DOS record and its item and effect payloads from a neutral
     character.
@@ -2598,6 +2613,21 @@ def write(char: NeutralCharacter,
     none of them is a constant here: that is what `#113 (Play DOS Curse far
     enough to save a party with items)` closed and what a second writer would
     have reopened.  :func:`write_shape` says how the title is chosen.
+
+    `icon` is this character's own combat figure -- `icon_head`, `icon_body`
+    and the six `icon_colours` bytes -- when the source is a C64 record and
+    the caller has already recognised it: `goldbox.iconparts.IconParts.
+    dos_icon_from_c64`, over the raw eighteen screen codes `c64_party` reads
+    off the record before `c64_codec.read` drops them (#320, the mirror of
+    `#130 (A converted DOS party arrives with six identical combat figures,
+    not its own)`).  A neutral record carries no such field -- the C64
+    stores drawn cells, not an index, so there is nowhere in the vocabulary
+    to put it, the same reason `write_c64_save`'s own `icon` argument reads
+    the *DOS* side's `icon_head`/`icon_body` directly rather than through a
+    neutral field.  With none given, `icon_head` and `icon_body` are written
+    zero and `icon_colours` the game's own freshly-made default, exactly as
+    before #320 -- which is every source but a C64 one whose caller passed
+    `icon`, since nothing else has a combat icon to convert from.
 
     `portraits` is the creation menu's two tables, from
     :func:`portrait_tables`.  With them the sheet portrait crosses -- the C64
@@ -2918,6 +2948,33 @@ def write(char: NeutralCharacter,
                  "the creation menu's own tables were not available to turn "
                  "it into the position the DOS record stores"))
 
+    # -- the combat icon: a C64 source's own figure, already recognised ------
+    # `icon` is computed by the caller, not here: it takes an `IconParts`
+    # loaded off the player's own disk and this function has no such thing
+    # in hand.  See the parameter's own docstring for why it bypasses the
+    # neutral vocabulary the way `write_c64_save`'s `icon` does (#320).
+    icon_written: set[str] = set()
+    if icon is not None:
+        for iname, value in (("icon_head", icon.head),
+                             ("icon_body", icon.body)):
+            f = table[iname]
+            _encode(f, rec, value)
+            rep.note(f.offset, f.size,
+                     f"{iname}: {value} -- the C64 source record's own "
+                     f"combat icon, recognised off its eighteen screen "
+                     f"codes and looked up through tools/iconreverse.yaml "
+                     f"(#320, weapon {icon.choice.weapon_size} "
+                     f"{icon.choice.weapon}, head {icon.choice.head_size} "
+                     f"{icon.choice.head})")
+            icon_written.add(iname)
+        f = table["icon_colours"]
+        _encode(f, rec, icon.colours)
+        rep.note(f.offset, f.size,
+                 f"icon_colours: {icon.colours.hex()} -- the C64 source "
+                 f"record's own combat icon colours, converted through the "
+                 f"same table's colour rows (#320)")
+        icon_written.add("icon_colours")
+
     # -- the inventory becomes the item file ---------------------------------
     # `.ITM` in Pool of Radiance, **`.SWG`** in Curse and **`.STF`** in
     # Silver Blades, whose records are 67 bytes rather than 63 (#113).  The
@@ -3041,6 +3098,8 @@ def write(char: NeutralCharacter,
     # is a sentence for Donald to approve rather than one to model on the
     # sibling lines already there (`.claude/rules/gui-text.md`).
     for dname, data, why, lost in WRITE_DEFAULTS:
+        if dname in icon_written:
+            continue
         f = table[dname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size,
@@ -3093,7 +3152,7 @@ def write(char: NeutralCharacter,
     # no game directory still writes, and a note here would overwrite the
     # provenance of a portrait that *was* converted.
     for uname, why in WRITE_UNSOURCED + WRITE_UNSOURCED_LATER:
-        if uname in portraits_written or uname not in table:
+        if uname in portraits_written or uname in icon_written or uname not in table:
             continue
         f = table[uname]
         rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
@@ -5359,10 +5418,11 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
             f"corresponds to it")
 
 
-def c64_party(save0: bytes, save1: bytes | None, game=None
-             ) -> "list[NeutralCharacter]":
+def c64_party(save0: bytes, save1: bytes | None, game=None,
+             icon_parts: "IconParts | None" = None
+             ) -> "tuple[list[NeutralCharacter], list[DosIcon | None]]":
     """The C64 party, read through `c64_codec.read` and given back in DOS
-    file order.
+    file order, with each character's own combat icon beside it (#320).
 
     **The two ports list a party from opposite ends** (#101).  The C64
     displays the highest occupied slot first -- its own `ENCAMP > ALTER >
@@ -5377,6 +5437,33 @@ def c64_party(save0: bytes, save1: bytes | None, game=None
     `game` is the C64 title, `c64_save.container_for`'s own shape.  A
     payload over six characters is refused, the refusal `write_dos_save`
     has always made.
+
+    **`icon_parts` is the character-creation disk's own option tables**,
+    `goldbox.iconparts.IconParts.load` -- read once here rather than once a
+    character, the way `write_c64_save` reads `dos_icon_tables` once for the
+    whole party.  With it, each slot's own eighteen screen codes are read
+    back through `IconParts.recognise` and looked up in
+    `tools/iconreverse.yaml` (`IconParts.dos_icon_from_c64`) before
+    `c64_codec.read` drops them -- see `write`'s own `icon` parameter for
+    why that has to happen here rather than through the neutral vocabulary.
+    The second list this returns is each character's own `DosIcon`, `None`
+    where there is none, in the same order as the first; `write_dos_save`
+    hands the two lists to `write_dos_save_from` together.  With
+    `icon_parts` left out, the second list is all `None` and nothing here
+    changes from before #320.
+
+    **A record `recognise` cannot read is not a reason to fail the whole
+    party.**  Every icon on the player's own disks reads back
+    (`tests/test_iconreverse.py`), but a hand-authored one -- SHARA THE
+    GRAY's, #130 -- would not, and a converted party missing one
+    character's figure is still five characters better off than one with
+    none.  That character keeps its `None` and the drop line
+    `goldbox.c64_codec.READ_DROPPED_PLAYER_TEXT` already gives `region_220`,
+    plus a warning naming what `recognise` said.  A character whose icon
+    **was** read loses that drop line here -- it is no longer true, and
+    `#355 (A C64 party converted to DOS is shown nine developer notes, with
+    memory addresses, overlay names and issue numbers in them)`'s own rule is
+    that a converted field is not reported as dropped.
     """
     from .items import items_for_slot
     from .savegame import SaveGame0, SaveGame1
@@ -5396,15 +5483,43 @@ def c64_party(save0: bytes, save1: bytes | None, game=None
     if len(party) > 6:
         raise DosRecordError(
             f"a DOS save holds six characters; this save has {len(party)}")
+    reverse_tables = c64_icon_tables() if icon_parts is not None else None
+    stale_icon_note = c64_codec.READ_DROPPED_PLAYER_TEXT.get("region_220")
     out: "list[NeutralCharacter]" = []
+    icons: "list[DosIcon | None]" = []
     for char_slot in party:
         block = sg1.roster(char_slot.index) if sg1 is not None else None
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
-        out.append(c64_codec.read(char_slot.record, roster=block,
-                                  inventory=inv, game=c64,
-                                  source=f"C64 slot {char_slot.index}"))
+        character = c64_codec.read(char_slot.record, roster=block,
+                                   inventory=inv, game=c64,
+                                   source=f"C64 slot {char_slot.index}")
+        icon = None
+        if icon_parts is not None:
+            # Not `char_slot.record.get_raw("region_220")`: `Slot.record`
+            # zero-pads a character past its own 256-byte window, and the
+            # combat icon is not stored per-slot there at all -- it is
+            # `container.icon_table`, a separate eight-entry table at save0
+            # offset 0x2E0 (`goldbox/c64_save.py`), which `write_c64_save`
+            # reads and writes at exactly this same offset the other way.
+            at = container.icon(char_slot.index)
+            raw = bytes(save0[at:at + container.icon_size])
+            try:
+                icon = icon_parts.dos_icon_from_c64(raw, reverse_tables)
+            except ValueError as exc:
+                character.warnings.append(f"combat icon: {exc}")
+            else:
+                # The drop line is unconditional in `c64_codec.read`, which
+                # has no way to know the icon would be recognised here --
+                # so it is taken back out where it turned out not to be
+                # true, rather than edited at its own source (#355).
+                if (stale_icon_note is not None
+                        and stale_icon_note in character.dropped):
+                    character.dropped.remove(stale_icon_note)
+        out.append(character)
+        icons.append(icon)
     out.reverse()
-    return out
+    icons.reverse()
+    return out, icons
 
 
 def write_dos_save_from(state: "neutral_save.NeutralSave",
@@ -5412,7 +5527,8 @@ def write_dos_save_from(state: "neutral_save.NeutralSave",
                         template: str | pathlib.Path | None,
                         out: str | pathlib.Path,
                         slot: str = "A",
-                        game: str | pathlib.Path | None = None
+                        game: str | pathlib.Path | None = None,
+                        icons: "Sequence[DosIcon | None] | None" = None
                         ) -> "SaveReport":
     """The engine `write_dos_save` and `new_dos_save_from` share.
 
@@ -5427,6 +5543,12 @@ def write_dos_save_from(state: "neutral_save.NeutralSave",
     already resolved which of Curse and Silver Blades it is -- the same
     size on the C64 and two different DOS files -- so there is no size left
     to disambiguate here the way `c64_title` had to.
+
+    `icons` is each character's own `DosIcon`, `c64_party`'s second list,
+    at the same positions as `characters` -- `write`'s own `icon` argument,
+    passed through position by position.  Left out, every character's
+    `icon` is `None` and `write` falls back to its default figure, which is
+    the only thing an Amiga source has today (#320).
 
     See `write_dos_save` for what is written and why: this is the same
     behaviour, one level below the C64 payload it used to read out of.
@@ -5502,7 +5624,8 @@ def write_dos_save_from(state: "neutral_save.NeutralSave",
     # position and needs no second pass to renumber it after the fact.
     built = []
     for position, char in enumerate(characters):
-        rec, itm, spc, one = write(char, portraits=faces)
+        icon = icons[position] if icons is not None and position < len(icons) else None
+        rec, itm, spc, one = write(char, portraits=faces, icon=icon)
         record = bytearray(rec)
         record[order] = position
         built.append((char, bytes(record), itm, spc, one))
@@ -5593,7 +5716,8 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                    out: str | pathlib.Path,
                    slot: str = "A",
                    game: str | pathlib.Path | None = None,
-                   title=None) -> "SaveReport":
+                   title=None,
+                   icon_parts: "IconParts | None" = None) -> "SaveReport":
     """Write a C64 save into a DOS save directory.
 
     `save0` and `save1` are the C64 `SAVEDGAME0`/`SAVEDGAME1` payloads; `out`
@@ -5663,11 +5787,21 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     C64-payload entry point because that is what every existing caller --
     the export dialog, `tools/`, the whole of `tests/test_doswriter.py` --
     already gives it.
+
+    **`icon_parts` is what turns each character's own combat icon into a
+    figure DOS combat draws, rather than the same short-haired unarmed man
+    six times** (#320).  It is the character-creation disk's own option
+    tables -- `goldbox.iconparts.IconParts.load` off a `POOL3`-like disk,
+    read once and handed to :func:`c64_party`.  Left out, `icon_head` and
+    `icon_body` are written zero and `icon_colours` the game's own default
+    set, exactly as before this ticket -- the state every caller that does
+    not yet supply one is still in.
     """
     c64 = c64_title(save0, title)
     state = neutral_save.from_c64(save0, game=c64)
-    characters = c64_party(save0, save1, c64)
-    return write_dos_save_from(state, characters, template, out, slot, game)
+    characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
+    return write_dos_save_from(state, characters, template, out, slot, game,
+                               icons=icons)
 
 
 def _clear_slot(out: pathlib.Path, slot: str,
@@ -5692,10 +5826,12 @@ def _clear_slot(out: pathlib.Path, slot: str,
 def new_dos_save_from(state: "neutral_save.NeutralSave",
                       characters: "Sequence[NeutralCharacter]",
                       out: str | pathlib.Path, slot: str,
-                      game: str | pathlib.Path) -> "SaveReport":
+                      game: str | pathlib.Path,
+                      icons: "Sequence[DosIcon | None] | None" = None
+                      ) -> "SaveReport":
     """A whole DOS save from a place and a party, owing nothing to another
     save (#26).  The engine `new_dos_save` and #354's Amiga reader share;
-    see :func:`write_dos_save_from` for `state` and `characters`.
+    see :func:`write_dos_save_from` for `state`, `characters` and `icons`.
 
     Returns the report, whose `unwritten` is empty.  A byte here with no
     source is a byte written zero by accident instead of by measurement, and
@@ -5716,7 +5852,7 @@ def new_dos_save_from(state: "neutral_save.NeutralSave",
     staging = pathlib.Path(tempfile.mkdtemp(prefix=f".wish-{slot}-", dir=out))
     try:
         report = write_dos_save_from(state, characters, None, staging, slot,
-                                     game)
+                                     game, icons=icons)
         if report.unwritten:
             raise DosRecordError(
                 f"{len(report.unwritten)} bytes of the saved game have no "
@@ -5746,7 +5882,8 @@ def new_dos_save_from(state: "neutral_save.NeutralSave",
 
 def new_dos_save(save0: bytes, save1: bytes | None,
                  out: str | pathlib.Path, slot: str,
-                 game: str | pathlib.Path, title=None) -> "SaveReport":
+                 game: str | pathlib.Path, title=None,
+                 icon_parts: "IconParts | None" = None) -> "SaveReport":
     """A whole DOS save from a C64 one, owing nothing to another save (#26).
 
     The mirror of :func:`new_save`, and the same refusal: `game` is the DOS
@@ -5760,7 +5897,10 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     5469 without (#299).
 
     Reads the party and the place off `save0`/`save1`, and hands both to
-    :func:`new_dos_save_from`.
+    :func:`new_dos_save_from`.  `icon_parts` is `write_dos_save`'s own
+    argument, the character-creation disk's option tables that turn each
+    character's own combat icon into a DOS figure (#320); left out, every
+    figure is the game's own default, as before this ticket.
 
     Returns the report, whose `unwritten` is empty.  A byte here with no
     source is a byte written zero by accident instead of by measurement, and
@@ -5768,8 +5908,8 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     """
     c64 = c64_title(save0, title)
     state = neutral_save.from_c64(save0, game=c64)
-    characters = c64_party(save0, save1, c64)
-    return new_dos_save_from(state, characters, out, slot, game)
+    characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
+    return new_dos_save_from(state, characters, out, slot, game, icons=icons)
 
 
 def _read_ecl_dax(template: "pathlib.Path | None",
