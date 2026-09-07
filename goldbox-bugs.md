@@ -37,6 +37,7 @@ a port fixed one, that is said.
 | 10 | Reload a save on the road and undiscovered places appear on the map | Pool of Radiance | engine | CONFIRMED, in game |
 | 11 | Every weapon in Tilverton's shop costs the same three platinum | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 12 | Lose a fight and the game stops: the message stays on screen and nothing answers the keyboard | Pool of Radiance | port | CONFIRMED, in game |
+| 13 | You can camp in the Slums for as long as you like and nothing ever finds you -- unless you have murdered the fortune teller | Pool of Radiance | script | CONFIRMED, in game |
 
 ---
 
@@ -585,3 +586,71 @@ nobody can yet say whether this is the C64 port's or the engine's.
 
 `#128 (Nothing has ever read what the game prints when the party loses a
 fight)` has the measurement; `docs/110-combat-log.md` has the addresses.
+
+---
+
+## 13. Camping in the slums is completely safe, until you commit a murder
+
+**What a player sees.** Pitch camp anywhere in the slums -- the area the game
+introduces with `YOU HAVE ENTERED THE MONSTER-CRAWLING SLUMS OF PHLAN` -- and
+rest. Rest two hours, rest a day, rest a week. Nothing ever finds you. Walking
+those same streets brings wandering monsters as often as anywhere in the game,
+but sleeping in them cannot be interrupted at all.
+
+Then murder the old fortune teller on `(3, 5)`, and camping in the slums
+becomes dangerous: from that moment the game checks every two hours of rest,
+one time in four, and sooner or later prints `YOUR REST IS RUDELY
+INTERRUPTED!`.
+
+**What the game does.** Each area's script decides whether a rest there can be
+interrupted, by writing two numbers on the way into camp: how many five-minute
+passes between checks, and the percentage chance of each one. `DUNGEON $10A1`
+zeroes both and then runs the script; `CAMP $1E0F` reads the first of them and,
+when it is zero, skips the whole check for the rest of the camp. No instruction
+anywhere in the game writes anything but zero there, so the script's word is
+final.
+
+The slums script's camping block has three tests in it and **only the first one
+decides anything**:
+
+```
+$9A0E  COMPARE [$4A0B], 255 / IF= / GOTO [$9A3C]     the murder penalty
+$9A19  COMPARE [$4ABB], 254 / IF>= / GOTO [$9A2F]
+$9A24  COMPARE [$6E82], 0   / IF<> / GOTO [$9A2F]    this square's attribute
+$9A2F  never check                                   <- both jumps, and both
+$9A3C  check every two hours, one time in four          fall-throughs
+```
+
+The second and third tests jump to `$9A2F`, and falling through them arrives at
+`$9A2F` as well, because it is the next statement. They are conditionals whose
+two arms are the same instruction, and that is true whichever way round the
+`IF` opcodes are read. So the only live route to a checked rest is the murder
+penalty at `$4A0B`, which is 255 only after the party has killed the fortune
+teller.
+
+**And that is not how these scripts are written.** Walking both arms of every
+conditional in every area's camping block, over all thirty of them, finds
+exactly two whose arms arrive at the same single statement -- and both are
+these two.
+
+**What it should do.** What the DOS build does. The DOS copy of the same script
+differs in exactly ten bytes over 7677, and two of them are here: `$9A2A` is
+`IF=` rather than `IF<>`, and the jump after it goes to `$9A3C` rather than
+`$9A2F`. With those two the third test becomes live -- an ordinary square is
+checked, a scripted one is not -- and the second becomes an endgame guard. The
+first test still stands in front of both, so on DOS the murder makes camping
+dangerous *everywhere in the slums* rather than making it dangerous at all.
+
+**The evidence.** Both halves. The bytecode is on the player's own disks and
+the two arms are the same statement by inspection. In the running game, under
+VICE from a save one step inside the slums: **37 rests of two hours with the
+flag clear, 74 hours of game time, and the game did not roll the die once** --
+counted by a checkpoint on the instruction that rolls it, with the game's own
+clock read either side of every rest as a second witness. With the same party
+in the same square and the flag at 255, the die was rolled on every rest, 13 of
+13 in the tighter of the two runs, and the rest was interrupted in both runs.
+
+**Version.** Pool of Radiance, Commodore 64. The Amiga's `ecl.dax` unpacks to
+the same scripts as the C64's, so it is very likely there too and nobody has
+looked. `docs/207-c64-rest-interruption.md` has the addresses, the census of
+which of the thirty areas can interrupt a rest at all, and the measurement.
