@@ -2737,6 +2737,33 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
         assert out.get("npc") is False, shape.key
         assert "npc_control_byte" not in out.fields, shape.key
 
+        # Bit 7 set with every morale bit clear -- a naive truthiness test
+        # (`if control:`) reads 0x80 as "not a companion", the exact hole
+        # `286c731` filled on the DOS side; the implementation here already
+        # tests the bit (`bool(control & 0x80)`), so this pins that rather
+        # than finding a live bug.
+        edge = _control_byte_record(shape, 0x80)
+        out = amiga.to_neutral_later(edge)
+        assert out.get("npc") is True, shape.key
+        assert out.get("npc_control_byte") == 0x80, shape.key
+
+        full = _control_byte_record(shape, 0xFF)
+        out = amiga.to_neutral_later(full)
+        assert out.get("npc") is True, shape.key
+        assert out.get("npc_control_byte") == 0xFF, shape.key
+
+        # The player-facing `field_83_87` line used to say the whole run
+        # "makes no difference to the character sheet", which stopped being
+        # true the moment the control byte above started reaching `npc` --
+        # `editor/window.py` and `editor/roster.py` draw a companion
+        # differently.  It still fires, for the one byte that remains
+        # genuinely unconverted (the treasure share), and must not claim the
+        # control byte is among the bytes that make no difference.
+        f83_lines = [d for d in out.dropped if d.startswith("Treasure share")]
+        assert f83_lines, (shape.key, out.dropped)
+        assert "make no difference" not in f83_lines[0]
+        assert "control" not in f83_lines[0].lower()
+
 
 def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
     """21 of 21, against the records on the disks: every ability score
@@ -2767,9 +2794,9 @@ def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
     `to_neutral_later`'s `DIRECT` loop and reads back as raw bytes -- the
     shape every one of the seven abilities had before the fix -- raises
     rather than handing a byte pair to a neutral field the writer expects to
-    be a number.  Simulated by adding a field `goldbox.dos.DIRECT` does not
-    carry today, because no other field of either later title is shaped this
-    way to test it against for real -- which is the coupling `#292 (An Amiga
+    be a number.  Simulated by adding a field `goldbox.dos.DIRECT` has no
+    entry for today, because no other field of either later title is shaped
+    this way to test it against for real -- which is the coupling `#292 (An Amiga
     Curse or Silver Blades character arrives on the C64 with no class at
     all, since class_bits dropped out of dos.DIRECT)` named as the hole
     nothing else closes.
@@ -2802,6 +2829,27 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
         for line in out.dropped + out.warnings:
             assert not hex_offset.search(line), (char.name, line)
             assert not bare_issue.search(line), (char.name, line)
+        seen += 1
+    assert seen == 21, seen
+
+
+def test_no_drop_line_of_a_later_read_says_a_field_was_carried():
+    """`AGENTS.md`'s "Words to avoid" table bans "carried", however phrased,
+    for anything a conversion does not convert -- #319 (The Amiga export's
+    drop line still says a conversion "does not carry" a combat icon) and
+    #270 (A conversion's drop text still tells the player a field was "not
+    carried", the word AGENTS.md banned tonight).  Checks the same two
+    things `test_no_drop_line_of_a_later_read_carries_developer_detail` does
+    for developer detail: the table itself, and the lines a real read
+    composes from it.
+    """
+    for name, text in amiga.LATER_DROPPED_PLAYER_TEXT.items():
+        assert "carr" not in text.lower(), (name, text)
+    seen = 0
+    for char in _later_parties():
+        out = amiga.to_neutral(char)
+        for line in out.dropped:
+            assert "carr" not in line.lower(), (char.name, line)
         seen += 1
     assert seen == 21, seen
 

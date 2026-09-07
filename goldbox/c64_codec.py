@@ -996,9 +996,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     else:
         rep.note(0x220, 36, f"combat icon: zero. {port} has no C64 charset "
                             f"icon; goldbox/iconparts.py can compose a legal one")
-        rep.dropped.append("the combat icon: C64 icons are 18 CHARPIC00 "
-                           "screen codes plus 18 colours and "
-                           f"{port} has no equivalent")
+        rep.dropped.append("Combat icon: Wish cannot yet turn "
+                           f"{port}'s own combat art into a C64 combat "
+                           "icon, so none is set for this character. "
+                           "(NOT APPROVED)")
 
     # -- the NPC control byte: bit 7 says the engine drives this character --
     # DOS keeps the same byte in the same encoding at field_83_87's control
@@ -1338,10 +1339,9 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
 READ_DROPPED_SILENT: tuple[str, ...] = ("abilities_second",)
 
 READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "region_220": "Combat figure: DOS draws its own combat art from its own "
-                  "table, and Wish does not yet translate the Commodore "
-                  "64's into it, so your character's figure is not set. "
-                  "(NOT APPROVED)",
+    "region_220": "Combat figure: Wish cannot yet turn the C64's own combat "
+                  "icon into this game's own art, so your character's "
+                  "figure is not set. (NOT APPROVED)",
 }
 
 #: C64 fields the reader leaves behind because the value is recomputed

@@ -1464,7 +1464,7 @@ def to_dos_character(char: AmigaPorCharacter):
     `goldbox.dos.write_c64_save` takes a `list[DosCharacter]` rather than a
     list of neutral records, because the combat figure crosses through
     `icon_head`, `icon_body`, `icon_colours` and `size`, which a neutral
-    record does not carry; so this, and not :func:`to_neutral`, is what
+    record has no field for; so this, and not :func:`to_neutral`, is what
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` hands it.
     """
@@ -1484,7 +1484,7 @@ def to_neutral(char) -> NeutralCharacter:
 
     The Amiga third of `goldbox/neutral.py`'s reader set, beside
     `goldbox.c64_codec.read` and `goldbox.dos.to_neutral`.  It reports what it could
-    not carry rather than filling it in: an item file the record's own count
+    not convert rather than filling it in: an item file the record's own count
     disagrees with, a name that fills all sixteen bytes, and the unplaced
     window.
 
@@ -4097,22 +4097,27 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
                   "next time the character fights",
     "unnamed_0ab": "One byte in the character record nobody has identified "
                    "yet",
-    "icon_colours": "Combat icon colours: this conversion does not carry the "
-                    "combat icon",
-    "icon_head": "Combat icon (head): this conversion does not carry the "
-                 "combat icon",
-    "icon_body": "Combat icon (body): this conversion does not carry the "
-                 "combat icon",
-    "icon_dimension": "Combat icon size: this conversion does not carry the "
-                      "combat icon",
+    "icon_colours": "Combat icon colours: this game's own combat-icon art "
+                    "has not been read yet, so the colours cannot be "
+                    "matched (NOT APPROVED)",
+    "icon_head": "Combat icon (head): this game's own combat-icon art has "
+                 "not been read yet, so the head cannot be matched "
+                 "(NOT APPROVED)",
+    "icon_body": "Combat icon (body): this game's own combat-icon art has "
+                 "not been read yet, so the body cannot be matched "
+                 "(NOT APPROVED)",
+    "icon_dimension": "Combat icon size: this game's own combat-icon art "
+                      "has not been read yet, so the size cannot be "
+                      "matched (NOT APPROVED)",
     "portrait_head": "Character portrait (head): the character-creation art "
                      "this game chooses portraits from has not been read, so "
                      "the portrait cannot be matched",
     "portrait_body": "Character portrait (body): the character-creation art "
                      "this game chooses portraits from has not been read, so "
                      "the portrait cannot be matched",
-    "field_83_87": "Five bytes that make no difference to the character "
-                   "sheet, whatever they hold",
+    "field_83_87": "Treasure share: how this character's cut of the "
+                   "party's loot is set has not been converted yet, so it "
+                   "resets to the game's own default (NOT APPROVED)",
     "spells_castable_unattributed": "A fourth list of spell slots that no "
                                     "character of this game uses and no "
                                     "class has been shown to own",
