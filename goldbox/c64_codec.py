@@ -1343,6 +1343,19 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
      "the routine read end to end -- #202 (Name record offset 0x0EC, which "
      "is what moves a THAC0 when darts are readied), closed -- and no DOS "
      "layout field stores an equivalent for `write` to have sourced"),
+    ("roster_spell_counts", "the roster block's +0x03-+0x0B: how many "
+                            "spells the character has memorised at each "
+                            "spell level. `COM.PREP $15ED` clears all nine "
+                            "and rebuilds them from the character's own "
+                            "memorised-spell list at record 0x020 at the "
+                            "start of every fight, and nothing else in the "
+                            "game ever writes them",
+     "the routine read end to end at #365 (Three roster bytes have no "
+     "established meaning, and a C64 party converted to DOS is told so "
+     "with no way to check it), a driven fight whose sampled roster shows "
+     "the counters going from 0 to the recomputed value the instant it "
+     "begins, and a 174-block census in which no stored counter ever "
+     "exceeds its own recompute"),
 )
 
 #: What :func:`read` does with every named field of the C64 layout -- the
@@ -1462,20 +1475,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "the C64 roster block's +0x10-+0x18: the armour bonus and "
                 "the eight running attack-form bytes",
                 grade("roster_tail"))
-        # The roster block's own +0x03-0x05 -- `goldbox.savegame.
-        # ROSTER_UNKNOWN_03` -- have no established meaning: an early
-        # reading as a per-level spell count was RETRACTED (`goldbox/
-        # layout.py`, the note on `spells_memorised`), and nothing has
-        # replaced it.  Undecoded rather than derived, so this stays a
-        # genuine drop rather than moving to `READ_DERIVED`
-        # (conversions.md's third reason: "we do not understand the bytes
-        # well enough to write them ... a bug that has not been filed
-        # yet"); filed as
-        # #365 (Three roster bytes have no established meaning, and a C64
+        # The roster block's own +0x03-+0x0B -- `goldbox.savegame.
+        # ROSTER_SPELL_COUNTS` -- are the number of spells memorised at each
+        # of the title's spell levels, a cache `COM.PREP`'s combat-prep
+        # routine clears and rebuilds from the character's own memorised
+        # list at record 0x020 at the start of every fight.  Nothing else
+        # in the game ever writes them, so a converted character gets
+        # zeroes here and the next fight fills them in -- derived, not
+        # lost.  See `READ_DERIVED`'s entry for the demonstration
+        # (#365, Three roster bytes have no established meaning, and a C64
         # party converted to DOS is told so with no way to check it).
-        out.drop("Three bytes in your character's roster entry have no "
-                 "established meaning yet, so Wish leaves them behind. "
-                 "(NOT APPROVED)")
 
     copy("infravision", "infravision")
     copy("turn_power", "turn_power")

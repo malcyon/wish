@@ -551,6 +551,38 @@ def test_the_portrait_is_transformed_and_not_dropped_in_any_title():
     assert "portrait_head" in dict(dos.TRANSFORMED)
 
 
+def test_a_character_with_no_portrait_is_not_reported_as_having_lost_one():
+    """Position 0 is not a menu entry -- it is how the record says "no face
+    chosen" -- and every character this project converts from the C64, or
+    back off an Amiga disk that came from one, carries it.  Reporting that as
+    a portrait that "could not be converted" tells a player something false
+    about their own save (#377, A converted character with no portrait at
+    all is shown a message saying its portrait could not be converted).
+
+    A synthetic all-zero Pool of Radiance record needs no game disk: it is a
+    fact about `goldbox.portraits.PortraitTables._art`'s own `1 <= n <=
+    len(table)` gate, not a measurement of the game.
+    """
+    from goldbox.portraits import PortraitTables
+
+    tables = PortraitTables(heads=tuple(range(1, 15)),
+                            bodies=tuple(range(1, 13)),
+                            source="synthetic, for this test")
+    blank = dos.DosCharacter(bytes(dos.POOL_OF_RADIANCE.record_size))
+    neutral = dos.to_neutral(blank, portraits=tables)
+    assert not [d for d in neutral.dropped if "portrait" in d.lower()], \
+        neutral.dropped
+
+    # A position the menu genuinely cannot answer for -- not zero -- still
+    # gets the line: only "no face chosen" is silent.
+    raw = bytearray(bytes(dos.POOL_OF_RADIANCE.record_size))
+    raw[dos_layout.FIELDS_BY_NAME["portrait_body"].offset] = 13  # outside
+    odd = dos.DosCharacter(bytes(raw))                            # the menu
+    neutral = dos.to_neutral(odd, portraits=tables)
+    assert [d for d in neutral.dropped if "portrait (body)" in d.lower()], \
+        neutral.dropped
+
+
 def test_every_derived_field_carries_the_run_that_demonstrated_it():
     """#324 (The import pane tells a player nine fields could not be
     converted that the C64 recomputes for itself): `DERIVED`'s third field

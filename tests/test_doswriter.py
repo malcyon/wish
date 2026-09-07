@@ -67,8 +67,12 @@ def test_read_targets_tile_the_c64_layout():
     known = {f.name for f in layout.LAYOUT if f.is_known}
     assert known - set(c64_codec.READ_TARGETS) == set()
     # region_220 is the combat icon, graded UNKNOWN in the layout for its
-    # bytes but named by the reader as a deliberate drop.
-    assert set(c64_codec.READ_TARGETS) - known == {"region_220"}
+    # bytes but named by the reader as a deliberate drop.  roster_spell_counts
+    # is the roster block's own +0x03-+0x0B (#365), which `layout.LAYOUT`
+    # never names because it belongs to the roster block rather than to the
+    # 256-byte record.
+    assert (set(c64_codec.READ_TARGETS) - known
+            == {"region_220", "roster_spell_counts"})
 
 
 def test_read_dropped_and_read_derived_are_disjoint():
@@ -1375,6 +1379,30 @@ def test_the_roster_path_speaks_the_stored_encoding():
     rec, _, _, _ = dos.write(char)
     assert rec[dos_layout.FIELDS_BY_NAME["armour_class"].offset] == \
         COMBAT_BIAS - block.armour_class
+
+
+def test_the_roster_spell_counts_are_derived_not_dropped():
+    """Roster `+0x03`-`+0x0B` is a cache `COM.PREP` rebuilds from the
+    character's own memorised-spell list at the start of every fight, not a
+    loss -- `#365 (Three roster bytes have no established meaning, and a C64
+    party converted to DOS is told so with no way to check it)`.  A
+    converted character used to be told three of its own bytes had no
+    established meaning; that sentence must not reach a player any more."""
+    import pathlib
+
+    from goldbox.savegame import SaveGame0, SaveGame1
+    here = pathlib.Path(__file__).resolve().parent / "fixtures"
+    sg = SaveGame0.from_prg((here / "savedgame0.bin").read_bytes())
+    sg1 = SaveGame1.from_prg((here / "savedgame1.bin").read_bytes())
+    slot = sg.characters[0]
+    block = sg1.roster(slot.index)
+    char = c64_codec.read(slot.record, roster=block)
+    assert not [d for d in char.dropped if "roster" in d.lower()], \
+        char.dropped
+    assert not [d for d in char.dropped
+               if "established meaning" in d.lower()], char.dropped
+    assert "roster_spell_counts" in dict(
+        (name, why) for name, why, _run in c64_codec.READ_DERIVED)
 
 
 # --- the whole save, C64 payloads to DOS files -------------------------------

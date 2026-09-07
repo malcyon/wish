@@ -1682,6 +1682,16 @@ def to_neutral(dos: DosCharacter,
         position = dos.get(name)
         art = getattr(portraits, art_of)(position)
         if art is None:
+            # Position 0 is not a menu entry -- it is how this record says
+            # "no face chosen" -- and that is a fact about the menu's shape
+            # (`PortraitTables._art`'s own `1 <= n <= len(table)` gate)
+            # rather than a loss this character's own save suffered.  Only a
+            # position the menu *could* have answered for, and did not, is
+            # reported (#377, A converted character with no portrait at all
+            # is shown a message saying its portrait could not be
+            # converted).
+            if position == 0:
+                continue
             label = "head" if name == "portrait_head" else "body"
             if draws_portrait:
                 out.drop(f"Character portrait ({label}): position {position} "
