@@ -106,11 +106,17 @@ UNSUPPORTED = "ERROR: Action unsupported on {title}."
 #: $2034 is not NEWECL`; `the PC is $10C2, outside DUNGEON's key-wait loop
 #: ($10B0-$10C1) and the key fetcher it calls ($10D4-$10DF): the game is
 #: busy`) with nothing left once the addresses and overlay names come out --
-#: `.claude/rules/gui-text.md` bans both.  **PROPOSED, not yet approved**:
-#: `_log.debug` right beside each call keeps the addresses for whoever is
-#: debugging.
-FASTTRAVEL_BUSY = ("Fast travel cannot act right now: the game is busy with "
-                   "something else. (NOT APPROVED)")
+#: `.claude/rules/gui-text.md` bans both.  `_log.debug` right beside each call
+#: keeps the addresses for whoever is debugging.
+#:
+#: **Approved by Donald on 2026-09-07**, and he cut it shorter than it was
+#: proposed: the offer was `Fast travel cannot act right now: the game is busy
+#: with something else`, and the ruling was *"Fast travel cannot act right
+#: now. is fine."*  So the clause after the colon is gone.  He was also
+#: offered two sentences, one per situation -- "you are somewhere Fast Travel
+#: does not work" against "wait a moment" -- and chose one for both.  **Do
+#: not split it again without asking him.**
+FASTTRAVEL_BUSY = "Fast travel cannot act right now."
 
 
 def mode(target, game: games.Game | None = None) -> int | None:

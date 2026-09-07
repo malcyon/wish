@@ -435,7 +435,13 @@ def test_a_fasttravel_is_refused_from_anywhere_but_the_key_wait_loop():
     flight. It is also the check that `PC_REGISTER` is the register we think."""
     target = machine(pc=0x2011)
     verdict = actions.FastTravel().legality(target, area(20))
-    assert not verdict and "busy" in verdict.reason
+    assert not verdict
+    # Donald approved this exact sentence on 2026-09-07, cutting the
+    # proposed "the game is busy with something else" off the end, so
+    # the word this used to look for is gone. Pinned whole rather than
+    # by a keyword: it is a string he ruled on and a paraphrase of it
+    # should fail here (`actions.FASTTRAVEL_BUSY`).
+    assert verdict.reason == actions.FASTTRAVEL_BUSY
     assert "$" not in verdict.reason
     assert target.jumps == []
 
@@ -573,7 +579,7 @@ def _window(app):
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    return AutomapBinding(root, Automapper(MemoryTarget({}), {}), drive=False)
+    return AutomapBinding(root, Automapper(MemoryTarget({}), {}))
 
 
 def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
@@ -858,7 +864,7 @@ def window(app, tmp_path, monkeypatch, target=None):
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    return AutomapBinding(root, Automapper(target, {}), drive=False)
+    return AutomapBinding(root, Automapper(target, {}))
 
 
 def test_the_flag_no_longer_decides_whether_the_row_is_built(app, tmp_path,
@@ -899,10 +905,11 @@ def wish_window(app, tmp_path, monkeypatch):
 
 def test_the_hosted_window_has_the_fast_travel_row_too(app, tmp_path,
                                                        monkeypatch):
-    """Both entry points: `wish-automap` builds `AutomapBinding` itself, the
-    `wish` window hosts one. The row used to want `WISH_DEBUG` on the command
-    line here, because the map is built before the remembered settings are
-    applied; with no flag to read there is nothing left to be applied late."""
+    """The row already showed up in the bare `AutomapBinding` above; this
+    confirms it survives being hosted inside the `wish` window too. It used
+    to want `WISH_DEBUG` on the command line here, because the map is built
+    before the remembered settings are applied; with no flag to read there
+    is nothing left to be applied late."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
     win = wish_window(app, tmp_path, monkeypatch)
     assert win.map.fasttravel_bar is not None
@@ -1103,13 +1110,13 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
 
-    pool = AutomapBinding(root, Automapper(MemoryTarget({}), {}), drive=False)
+    pool = AutomapBinding(root, Automapper(MemoryTarget({}), {}))
     assert pool.roster.levelling
     assert pool.fasttravel_bar.has_areas
 
     curse = AutomapBinding(root,
         Automapper(MemoryTarget({}), {},
-                   title="Curse of the Azure Bonds"), drive=False)
+                   title="Curse of the Azure Bonds"))
     assert not curse.roster.levelling
     # Fast Travel and Level Up are refused on separate grounds -- Curse got
     # its own area table under `#192 (Convert a Curse of the Azure Bonds DOS
