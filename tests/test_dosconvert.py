@@ -27,7 +27,17 @@ import yaml
 from gamedata import needs_disks
 from test_dossave import _game_dirs, _save_dir, needs_dos_saves
 
-from goldbox import areas, c64_codec, dos, dos_layout, levels, neutral, savegame, spells
+from goldbox import (
+    areas,
+    c64_codec,
+    dos,
+    dos_layout,
+    levels,
+    neutral,
+    neutral_save,
+    savegame,
+    spells,
+)
 from goldbox import dos_savegame as sg
 from goldbox.layout import RECORD_SIZE as C64_RECORD_SIZE
 
@@ -719,10 +729,11 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     """Steps 5 and 6 against a blank `SAVEDGAME0` window: the flags go to
     `$4A20` and the square to `$49C0`, both as offsets from `$4900`."""
     save = _savgam("A")
+    state = neutral_save.from_dos(save)
     payload = bytearray(0x1C00)
-    changed = dos.apply_quest_flags(payload, save)
+    changed = dos.apply_quest_flags(payload, state)
     assert changed == sum(1 for b in dos.quest_flags(save) if b)
-    dos.apply_position(payload, save)
+    dos.apply_position(payload, state)
     x, y, facing = sg.position(save)
     assert payload[0x49C0 - 0x4900] == x
     assert payload[0x49C1 - 0x4900] == y
@@ -730,9 +741,9 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     # The area is not written here: `$4BC2` is slot 2 of the loaded-files
     # cache, so it belongs to `apply_file_cache` with the other twenty-four.
     payload[0x4BC2 - 0x4900] = 0xFF
-    dos.apply_position(payload, save)
+    dos.apply_position(payload, state)
     assert payload[0x4BC2 - 0x4900] == 0xFF
-    dos.apply_file_cache(payload, save)
+    dos.apply_file_cache(payload, state)
     assert payload[0x4BC2 - 0x4900] == sg.geo_block(save)   # slot 2, the map
     # Nothing outside the two regions was touched.
     assert payload[:0x49C0 - 0x4900] == bytes(0xC0)
@@ -885,7 +896,8 @@ def test_an_area_that_names_no_map_takes_the_one_the_save_names():
         # leaves `$49C5` at New Phlan's 0.
         sg.put_word(savgam, sg.SCRIPT, id)
         assert sg.current_area(bytes(savgam)) == id
-        dos.apply_file_cache(save0, bytes(savgam))
+        state = neutral_save.from_dos(bytes(savgam))
+        dos.apply_file_cache(save0, state)
         assert save0[at + dos.CACHE_ECL] == id
         assert save0[at + dos.CACHE_GEO] == sg.geo_block(bytes(savgam)) == 0
         assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
@@ -901,8 +913,10 @@ def test_a_resident_map_no_area_loads_is_refused():
     """
     savgam = bytearray(_savgam("A"))
     sg.put_word(savgam, sg.AREA, 0x0C)
+    # The check now runs while `state` is built, before `apply_file_cache`
+    # is ever reached (`neutral_save.from_dos`'s own `_resident_geo` read).
     with pytest.raises(dos.DosRecordError, match="GEO0C"):
-        dos.apply_file_cache(bytearray(0x1C00), bytes(savgam))
+        neutral_save.from_dos(bytes(savgam))
 
 
 @needs_dos_saves
@@ -917,7 +931,7 @@ def test_a_resident_map_that_contradicts_the_area_is_refused():
     sg.put_word(savgam, sg.SCRIPT, 20)
     sg.put_word(savgam, sg.AREA, 21)
     with pytest.raises(dos.DosRecordError, match="GEO15"):
-        dos.apply_file_cache(bytearray(0x1C00), bytes(savgam))
+        neutral_save.from_dos(bytes(savgam))
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-party-trained-c2"),
@@ -941,7 +955,8 @@ def test_a_training_hall_save_converts_into_the_hall_on_new_phlans_map():
     assert (sg.current_area(savgam), sg.geo_block(savgam)) == (11, 0)
 
     save0 = bytearray(0x1C00)
-    dos.apply_file_cache(save0, savgam)
+    state = neutral_save.from_dos(savgam)
+    dos.apply_file_cache(save0, state)
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     assert save0[at + dos.CACHE_ECL] == 11          # the hall's script
     assert save0[at + dos.CACHE_GEO] == 0           # on New Phlan's map
@@ -982,8 +997,9 @@ def test_an_overland_save_writes_the_outdoor_cache_recipe(script, sqrdata, disk)
     not only 26 -- #99 named this the coverage gap between "measured" and
     "unit-tested"."""
     savgam = _outdoor_savgam(script)
+    state = neutral_save.from_dos(savgam)
     save0 = bytearray(0x1C00)
-    line = dos.apply_file_cache(save0, savgam)
+    line = dos.apply_file_cache(save0, state)
     assert f"SQRDATA0{sqrdata}" in line
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     assert save0[at + dos.CACHE_SQRDATA] == sqrdata
@@ -1008,9 +1024,10 @@ def test_an_overland_save_places_the_party_on_the_travel_pair(script):
     left the template's -- the DOS file's own 12801/12802 are the stale
     square the party left the grid on, not where it stands."""
     savgam = _outdoor_savgam(script)
+    state = neutral_save.from_dos(savgam)
     save0 = bytearray(0x1C00)
     save0[0x49C0 - 0x4900:0x49C3 - 0x4900] = b"\x11\x22\x33"
-    notes = dos.apply_position(save0, savgam)
+    notes = dos.apply_position(save0, state)
     assert save0[0x49C3 - 0x4900] == 7
     assert save0[0x49C4 - 0x4900] == 29
     assert bytes(save0[0x49C0 - 0x4900:0x49C3 - 0x4900]) == b"\x11\x22\x33"
@@ -1050,13 +1067,17 @@ def _mismatched_savgam(indoors_word: int, area: int, script: int) -> bytes:
 
 
 def test_an_outdoor_bit_with_an_indoor_script_id_is_refused():
-    """`$49E6` = 0 (outdoors) but the script id names an indoor area."""
+    """`$49E6` = 0 (outdoors) but the script id names an indoor area.
+
+    The compare used to run inside `apply_file_cache` itself; it is
+    `neutral_save.from_dos`'s own `_resolve_dos_place` now, raised while
+    `state` is built rather than when it is used, so this checks the build.
+    """
     savgam = _mismatched_savgam(indoors_word=0, area=0, script=1)
     assert sg.outdoors(savgam) is True
     assert areas.area(sg.current_area(savgam)).outdoors is False
-    save0 = bytearray(0x1C00)
     with pytest.raises(dos.DosRecordError):
-        dos.apply_file_cache(save0, savgam)
+        neutral_save.from_dos(savgam)
 
 
 def test_an_indoor_bit_with_an_outdoor_script_id_is_refused():
@@ -1066,9 +1087,8 @@ def test_an_indoor_bit_with_an_outdoor_script_id_is_refused():
     savgam = _mismatched_savgam(indoors_word=1, area=0, script=26)
     assert sg.outdoors(savgam) is False
     assert areas.area(sg.current_area(savgam)).outdoors is True
-    save0 = bytearray(0x1C00)
     with pytest.raises(dos.DosRecordError):
-        dos.apply_file_cache(save0, savgam)
+        neutral_save.from_dos(savgam)
 
 
 @needs_dos_saves
@@ -1119,8 +1139,9 @@ def test_a_clock_digit_too_large_for_its_field_is_reported():
     clock, so it is a warning rather than a silent narrowing."""
     savgam = bytearray(_savgam("A"))
     sg.put_word(savgam, sg.CLOCK + 3, 300)      # the hour digit, limit 24
+    state = neutral_save.from_dos(bytes(savgam))
     save0 = bytearray(0x1C00)
-    note, complaints = dos.apply_clock(save0, bytes(savgam))
+    note, complaints = dos.apply_clock(save0, state)
     assert "the clock" in note
     assert len(complaints) == 1 and "clock digit 3" in complaints[0]
     assert save0[sg.CLOCK + 3 - dos.SAVE0_BASE] == 300 & 0xFF
@@ -1999,8 +2020,9 @@ def test_a_pool_of_radiance_party_that_has_not_set_out_converts_to_new_phlan():
     the row rather than compared against the initialiser."""
     savgam = _never_adventured_savgam()
     assert sg.outdoors(savgam), "the initialiser's $49E6 reads as outdoors"
+    state = neutral_save.from_dos(savgam)
     save0 = bytearray(0x1C00)
-    line = dos.apply_file_cache(save0, savgam)
+    line = dos.apply_file_cache(save0, state)
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     assert save0[at + dos.CACHE_ECL] == 0
     assert save0[at + dos.CACHE_GEO] == 0
@@ -2009,7 +2031,7 @@ def test_a_pool_of_radiance_party_that_has_not_set_out_converts_to_new_phlan():
     assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
     assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == areas.area(0).disk == 3
     assert "had not set out" in line
-    dos.apply_position(save0, savgam)
+    dos.apply_position(save0, state)
     assert tuple(save0[0xC0:0xC3]) == (15, 1, 3)
 
 
@@ -2020,15 +2042,16 @@ def test_a_party_standing_in_new_phlan_is_left_exactly_where_it_is():
     reset their clocks.  A party at `3,9` facing south at 16:58 stays there
     and is told nothing (#326)."""
     savgam = _new_phlan_savgam()
+    state = neutral_save.from_dos(savgam)
     save0 = bytearray(0x1C00)
-    line = dos.apply_file_cache(save0, savgam)
+    line = dos.apply_file_cache(save0, state)
     assert "had not set out" not in line
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     assert save0[at + dos.CACHE_ECL] == 0 and save0[at + dos.CACHE_GEO] == 0
     assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
-    dos.apply_position(save0, savgam)
+    dos.apply_position(save0, state)
     assert tuple(save0[0xC0:0xC3]) == (3, 9, 2)
-    note, _ = dos.apply_clock(save0, savgam)
+    note, _ = dos.apply_clock(save0, state)
     assert "16:58" in note
 
 

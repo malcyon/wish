@@ -38,7 +38,7 @@ import gamedata
 import pytest
 from test_neutral import _filled
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame
+from goldbox import c64_codec, c64_save, dos, dos_layout, games, neutral_save, savegame
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 
@@ -682,17 +682,18 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     sg.put_word(savgam, sg.INDOORS, 1, shape)
     sg.put_position(savgam, 7, 13, 0, shape)
     assert dos.never_adventured(bytes(savgam))
-    cont = c64_save.container_for(SSB_GAME)
+    # The refusal used to be `apply_file_cache`'s and `apply_position`'s own,
+    # each independently calling `never_adventured`; both checks are
+    # `neutral_save.from_dos`'s `_resolve_dos_place` now, so building `state`
+    # is where it fires -- once, rather than twice.
     with pytest.raises(dos.NotSetOutError) as raised:
-        dos.apply_file_cache(bytearray(cont.payload_size), bytes(savgam), cont)
+        neutral_save.from_dos(bytes(savgam), shape)
     assert raised.value.player_message == (
         "This save has never been played yet. Wish does not yet support "
         "converting these saves.")
     assert raised.value.player_message == dos.NOT_SET_OUT_UNPLACED
     assert "NOT APPROVED" not in raised.value.player_message
     assert "$" not in raised.value.player_message
-    with pytest.raises(dos.NotSetOutError):
-        dos.apply_position(bytearray(cont.payload_size), bytes(savgam), shape)
 
     # The same container one keypress later -- `$4FE1` written, a real area
     # -- is a party in the world and is placed where it stands.
@@ -700,8 +701,10 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
     sg.put_word(savgam, sg.AREA, 0x10, shape)
     assert not dos.never_adventured(bytes(savgam))
+    state = neutral_save.from_dos(bytes(savgam), shape)
+    cont = c64_save.container_for(SSB_GAME)
     save0 = bytearray(cont.payload_size)
-    dos.apply_file_cache(save0, bytes(savgam), cont)
+    dos.apply_file_cache(save0, state, cont)
     assert save0[cont.current_script] == 0x10
     assert save0[cont.disk_hint] == 1
 
@@ -723,6 +726,5 @@ def test_the_archives_shipped_silver_blades_party_is_one_that_has_not_set_out():
     savgam = _shipped_silver_blades_save().read_bytes()
     assert sg.current_area(savgam) == 0
     assert dos.never_adventured(savgam)
-    cont = c64_save.container_for(SSB_GAME)
     with pytest.raises(dos.NotSetOutError):
-        dos.apply_file_cache(bytearray(cont.payload_size), savgam, cont)
+        neutral_save.from_dos(savgam)

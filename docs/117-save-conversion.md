@@ -1898,6 +1898,7 @@ graph LR
   dos -.->|deferred| items
   dos --> layout
   dos --> neutral
+  dos --> neutral_save
   dos --> portraits
   dos --> record
   dos -.->|deferred| savegame

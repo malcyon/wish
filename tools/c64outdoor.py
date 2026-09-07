@@ -60,7 +60,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import areas, dos  # noqa: E402
+from goldbox import areas, dos, neutral_save  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
@@ -75,22 +75,32 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 TRAVEL_HEADING = 0x033D
 
 
-def outdoor_request(area: int, x: int, y: int) -> bytes:
-    """A DOS saved game saying only "outdoors, in `area`, at (x,y)".
+def outdoor_request(area: int, x: int, y: int) -> "neutral_save.NeutralSave":
+    """A place saying only "outdoors, in `area`, at (x,y)".
 
-    Not a specimen and not evidence.  The two functions that know how to
-    point a C64 save at an area -- `dos.apply_file_cache` and
-    `dos.apply_position` -- read *where to go* out of a DOS save, and between
-    them they read three words of it.  This is the shortest way to ask them
-    for the travel grid without a DOS save to hand, which matters because the
-    only outdoor DOS saves on this machine live under `work/` and have been
-    lost once already.
+    Not a specimen and not evidence.  `dos.apply_file_cache` and
+    `dos.apply_position` take a `NeutralSave` now (`#352 (Lift PorSaveState
+    into one NeutralSave that every port's saved-game reader fills and both
+    container writers take)`); this builds the shortest DOS buffer that
+    reads as one -- three words set, the rest zero -- and hands it through
+    `neutral_save.from_dos` rather than assembling a `NeutralSave` by hand,
+    so a caller here is reading the same three words those two functions
+    always read.  This matters because the only outdoor DOS saves on this
+    machine live under `work/` and have been lost once already.
+
+    **Known stale**: this buffer's own script-staging bytes are zero, which
+    is `dos.never_adventured`'s "never set out" signature (#301, #326), so
+    `from_dos` substitutes Pool of Radiance's indoor start square rather
+    than reading the three words back out --
+    `#369 (tools/c64outdoor.py seeds New Phlan indoors instead of the
+    requested travel window, because its synthetic buffer reads as
+    never-adventured)` is the open issue.
     """
     req = bytearray(sg.SAVGAM_SIZE)
     sg.put_word(req, sg.SCRIPT, area)
     sg.put_word(req, sg.INDOORS, 0)
     sg.put_travel_square(req, x, y)
-    return bytes(req)
+    return neutral_save.from_dos(bytes(req))
 
 
 def seed_disk(source: pathlib.Path, out: pathlib.Path, *, area: int,
@@ -104,9 +114,9 @@ def seed_disk(source: pathlib.Path, out: pathlib.Path, *, area: int,
     where = areas.area(area)
     if where is None or not where.outdoors:
         raise SystemExit(f"area {area} is not one of the travel windows")
-    request = outdoor_request(area, x, y)
-    line = dos.apply_file_cache(save0, request)
-    dos.apply_position(save0, request)
+    state = outdoor_request(area, x, y)
+    line = dos.apply_file_cache(save0, state)
+    dos.apply_position(save0, state)
     out.write_bytes(dos.save_disk(bytes(save0), bytes(save1)).data)
     return {"from": str(source), "cache": line,
             "area": area, "square": [x, y]}
