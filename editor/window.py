@@ -145,12 +145,18 @@ def _char_class_shown(raw, record, game):
     try:
         repairable = c64_codec.record_shape(game).class_code_repairable
     except KeyError:
+        # A title whose overlays nobody has measured. Logged rather than
+        # swallowed, because every other handler in this file logs and a
+        # silent fallback here draws the stale byte with no trail saying why.
+        _log.debug("no record shape for %s; class code not repairable",
+                   getattr(game, "key", game))
         repairable = False
     if not repairable or not isinstance(raw, int):
         return raw
     try:
         bits = int(record.get("class_bits") or 0)
     except Exception:
+        _log.exception("class_bits unreadable; showing the stored class code")
         return raw
     want = classcode.repair(raw, bits, game=game)
     return raw if want is None else want

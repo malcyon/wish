@@ -22,8 +22,12 @@ from goldbox.geo import GRID, Geo
 #: Every map on the disks, once, with the area that loads it.
 MAPS = sorted({g for a in areas.AREAS for g in a.geos})
 
-#: The fourteen with no harvested arrival square. Ten have a map; four do not
-#: and get no square at all, which is what the game itself has to cope with.
+#: The fourteen with no harvested arrival square. Eleven have a map; three do
+#: not and get no square at all, which is what the game itself has to cope
+#: with. **This said ten and four until 2026-09-07**, when area 30 turned out
+#: to load `GEO12` after all -- the same stale count the test two lines below
+#: carried, in the same file, missed by the change that fixed the test
+#: (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
 NO_ARRIVAL = tuple(a.id for a in areas.AREAS if a.arrival is None)
 
 #: Maps where the corner the retired rule picked is walled off from the bulk of
