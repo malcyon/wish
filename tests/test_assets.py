@@ -124,6 +124,15 @@ def test_the_readers_resolve_through_it(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     import wish.about
     from ui import appicon
+    # Snapshot and write back, rather than reloading a second time to undo the
+    # first: a second reload builds *new* objects, so anything another module
+    # bound at import time keeps pointing at the ones from before. Neither
+    # module defines a class today, which is the only reason the old idiom was
+    # harmless here -- it broke an unrelated test a worker later in
+    # `#374 (The Silver Blades figure test fails only inside a full parallel
+    # suite run, so the same commit can be green locally and red in CI)`.
+    icon_was = dict(vars(appicon))
+    about_was = dict(vars(wish.about))
     try:
         appicon = importlib.reload(appicon)
         about = importlib.reload(wish.about)
@@ -134,8 +143,10 @@ def test_the_readers_resolve_through_it(monkeypatch, tmp_path):
             tmp_path / "assets" / "logo" / "combo-mark-color-500.png")
     finally:
         monkeypatch.undo()
-        importlib.reload(appicon)
-        importlib.reload(wish.about)
+        vars(appicon).clear()
+        vars(appicon).update(icon_was)
+        vars(wish.about).clear()
+        vars(wish.about).update(about_was)
 
 
 # --- the package ------------------------------------------------------------
