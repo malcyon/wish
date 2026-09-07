@@ -124,7 +124,7 @@ identical strength bytes and only the percentile crossed between them, and the
   byte in the engine's own `ENCAMP ▸ SAVE` after the load and a two-square
   walk; the only bytes that moved in any record were `0x199`, `0x1A2` and
   `0x1A5`. The recompute is not on the load path or the walk path -- the same
-  shape `#367` found on the C64, whose training hall does not resynchronise the
+  shape `#367 (What is the second ability array at 0x065 for, and which of the two does the engine treat as current?)` found on the C64, whose training hall does not resynchronise the
   arrays either -- so a DOS character whose pair disagrees keeps it
   disagreeing. Making the engine *use* the permanent byte in play needs a
   girdle readied or a `Strength` cast, and nobody has done that yet.
@@ -171,7 +171,7 @@ evidence.
   this project's own converter, so it is evidence about what the engine does
   with the pair and not about what a shipped record holds.
 * `~/wish-specimens/coab-c64/WISH-SPEC-curse-367-crossed-abilities-resave.D64`
-  is the C64 counterpart, from `#367`.
+  is the C64 counterpart, from `#367 (What is the second ability array at 0x065 for, and which of the two does the engine treat as current?)`.
 
 ## The tools
 

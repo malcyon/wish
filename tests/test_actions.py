@@ -849,7 +849,16 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
     fighting.memory[0x6E11] = bytes([WORLD])      # PoR's byte says "no fight"
     verdict = next(a for a in actions.actions(game=CURSE)
                    if a.name == "identify").legality(fighting)
-    assert not verdict and "$7F11 is 2" in verdict.reason
+    # **The refusal used to name the address** and this asserted on it.
+    # `#306 (The Fast Travel button's own disabled tooltip carries a memory
+    # address)` took every address out of what a player reads, so the reason
+    # is the situation now and the number went to the log.  What this test is
+    # about is unchanged and is asserted above: Curse's own mode flag is the
+    # one read, and Pool of Radiance's byte saying "no fight" does not stop
+    # the refusal.
+    assert not verdict
+    assert verdict.reason == "Identify is refused during a fight"
+    assert "$" not in verdict.reason
 
 
 # --- the row under the map, and the fast-travel dropdown ---------------------

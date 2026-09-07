@@ -234,10 +234,16 @@ def test_experience_is_four_bytes_in_the_later_titles():
 
 # --- the fields only the later titles have ------------------------------------
 
-def test_each_ability_is_written_as_a_current_and_base_pair():
-    """From Curse on, every ability is two bytes.  `abilities_second` fills
-    the second; a source with none writes the one value into both, which is
-    what every record measured holds."""
+def test_each_ability_is_written_as_a_base_and_current_pair():
+    """From Curse on, every ability is two bytes.  The neutral ability is the
+    score in force and `abilities_second` is the permanent score behind it;
+    a source with neither writes the one value into both, which is what
+    every record measured holds.
+
+    `#401 (Which byte of a DOS ability pair is the current score, now that
+    the C64's two arrays are named)` settled which byte is which: the DOS
+    record's lower byte is the permanent score and the higher one is what is
+    in force -- `docs/204-the-dos-ability-pair.md`."""
     for shape in LATER:
         table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
         rec, _, _, _ = dos.write(_neutral(shape.key, strength=15))
@@ -247,7 +253,7 @@ def test_each_ability_is_written_as_a_current_and_base_pair():
 
         rec, _, _, _ = dos.write(_neutral(
             shape.key, strength=12, abilities_second={"strength": 18}))
-        assert rec[f.offset:f.end] == bytes((12, 18))
+        assert rec[f.offset:f.end] == bytes((18, 12))
 
 
 def test_a_second_ability_copy_is_reported_where_the_title_keeps_one():

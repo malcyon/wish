@@ -87,18 +87,20 @@ def test_both_copies_of_every_ability_reach_the_c64_record():
 def test_the_two_bytes_of_a_pair_stay_apart():
     """The pair is equal in every record on this machine and the conversion
     does not rely on that: given two different bytes it carries both, the
-    first to `0x014` and the second to `0x065`.
+    score in force to `0x014` and the permanent score to `0x065`.
 
-    Which of the two the engine treats as current is UNKNOWN -- no specimen
-    can say, since none has them different -- so this pins that neither is
-    thrown away, not which way round they go.
+    `#401 (Which byte of a DOS ability pair is the current score, now that
+    the C64's two arrays are named)` settled which byte is which: for
+    strength through charisma the DOS record's lower byte (`0x010`) is the
+    permanent score and the higher one (`0x011`) is what is in force --
+    `docs/204-the-dos-ability-pair.md`.
     """
     n = neutral_curse(strength=b"\x0c\x12")
-    assert n.get("strength") == 0x0C
-    assert n.get("abilities_second")["strength"] == 0x12
+    assert n.get("strength") == 0x12
+    assert n.get("abilities_second")["strength"] == 0x0C
     raw = c64_codec.write(n)[0].to_bytes()
-    assert raw[0x014] == 0x0C
-    assert raw[0x065] == 0x12
+    assert raw[0x014] == 0x12
+    assert raw[0x065] == 0x0C
 
 
 def test_a_pool_of_radiance_character_still_writes_the_ability_copy_as_zero():

@@ -1338,9 +1338,9 @@ LATER_TITLE_CONSTANTS: tuple[tuple[str, str], ...] = (
 )
 
 #: How the ability pairs are reported for a title that keeps two copies.
-_PAIRED_ABILITY = ("the first of the title's two copies; the second goes to "
-                   "the neutral abilities_second, and neither codec claims to "
-                   "know which the engine treats as current")
+_PAIRED_ABILITY = ("the score in force; the permanent score goes to the "
+                   "neutral abilities_second (#401, docs/204-the-dos-ability-"
+                   "pair.md)")
 
 
 def field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
@@ -1437,24 +1437,53 @@ ABILITY_ORDER = neutral.ABILITIES
 CLASS_BY_SLOT: dict[int, str] = {n: name for n, name, _ in CLASS_LEVEL_SLOTS}
 
 
+#: Ability names whose DOS pair runs `(permanent, in force)` -- byte 0 is the
+#: rolled score and byte 1 is what play has left it at.  Every ability in
+#: :data:`ABILITY_ORDER` is one of these **except** `exceptional_strength`,
+#: whose percentile pair runs the other way round: `0x01C` is the percentile
+#: in force and `0x01D` is the permanent copy.  Read out of five shipped DOS
+#: engines and confirmed in the running game, six crossings, each crossed
+#: both ways -- `#401 (Which byte of a DOS ability pair is the current score,
+#: now that the C64's two arrays are named)`,
+#: `docs/204-the-dos-ability-pair.md`.
+_PERMANENT_FIRST: frozenset[str] = frozenset(
+    n for n in neutral.ABILITIES if n != "exceptional_strength")
+
+
 def _ability_pair(dos: "DosCharacter", name: str) -> tuple[int, int]:
-    """One ability as `(first, second)`, whichever shape the title stores.
+    """One ability as `(in_force, permanent)`, whichever shape the title stores.
 
     Pool of Radiance keeps one byte and every later title keeps two, so the
     single byte answers for both halves rather than the reader having to
     branch: a title with one copy has the same value in both places by
     definition.
 
-    **The two are equal in every record this project can reach** -- 0 of 406
-    pairs differ, over 58 distinct Curse records, and the six C64 Curse
-    records in `work/issue32/specimens/` hold `0x014`-`0x01F` and
-    `0x065`-`0x070` byte for byte identical.  So no specimen says which is
-    which, and none is likely to: the settling experiment is to cast
-    `Strength` on a fighter in DOS Curse, save, and see which byte of the
-    pair moves.
+    **The two halves are equal in every record this project can reach** -- 0
+    of 406 pairs differ, over 58 distinct Curse records -- so which byte is
+    which had to come from the engine rather than a specimen.  `#401` read it
+    out of the shipped overlay and confirmed it in the running game: for the
+    six ability scores byte 0 is the permanent score and byte 1 is what is in
+    force; for the exceptional-strength percentile it is the other way round,
+    byte 0 (`0x01C`) in force and byte 1 (`0x01D`) permanent.
+    :data:`_PERMANENT_FIRST` carries the exception.
     """
     raw = dos.raw(name)
+    if name in _PERMANENT_FIRST:
+        return raw[-1], raw[0]
     return raw[0], raw[-1]
+
+
+def _pair_bytes(name: str, in_force: int, permanent: int) -> tuple[int, int]:
+    """The DOS `(byte 0, byte 1)` for one ability, the write-side mirror of
+    :func:`_ability_pair`.
+
+    Takes the same two values `_ability_pair` returns and puts them back at
+    the byte offsets they came from: `(permanent, in_force)` for the six
+    ability scores, `(in_force, permanent)` for exceptional strength.
+    """
+    if name in _PERMANENT_FIRST:
+        return permanent, in_force
+    return in_force, permanent
 
 
 def to_neutral(dos: DosCharacter,
@@ -1514,23 +1543,25 @@ def to_neutral(dos: DosCharacter,
             f"one bit between them",
             f.confidence, Provenance.RESHAPED)
 
-    # -- the abilities, which are a (first, second) pair after Pool of --------
-    # Radiance.  Both halves cross; the first goes to the neutral ability and
-    # the second to `abilities_second`, and neither codec claims to know
-    # which the engine treats as current -- see `_ability_pair`.
+    # -- the abilities, which are a pair after Pool of Radiance --------------
+    # The neutral ability is the score in force, and `abilities_second` is
+    # the permanent score behind it -- byte 0 and byte 1 for the six scores,
+    # and the other way round for exceptional strength's percentile.
+    # `_ability_pair` carries the asymmetry (#401, docs/204-the-dos-ability-
+    # pair.md).
     second: dict[str, int] = {}
     for dos_name in ABILITY_ORDER:
         f = dos.fields[dos_name]
-        first, last = _ability_pair(dos, dos_name)
-        out.set(dos_name, first,
+        in_force, permanent = _ability_pair(dos, dos_name)
+        out.set(dos_name, in_force,
                 f"DOS {dos_name} @{f.offset:#05x} ({f.confidence})"
-                + (", the first of its two bytes" if f.size > 1 else ""),
+                + (", the score in force" if f.size > 1 else ""),
                 f.confidence)
-        second[dos_name] = last
+        second[dos_name] = permanent
     if any(dos.fields[n].size > 1 for n in ABILITY_ORDER):
         out.set("abilities_second", second,
                 f"DOS {dos.shape.title} keeps every ability twice; these are "
-                f"the second byte of each pair",
+                f"the permanent score behind it",
                 Confidence.CONFIRMED, Provenance.RESHAPED)
 
     # -- the spellbook: one byte per spell ------------------------------------
@@ -2511,11 +2542,13 @@ WRITES: tuple[DosShape, ...] = CONVERTS
 #: entries in :data:`WRITE_DROPPED`; `write_field_disposition` swaps them per
 #: title, exactly as the reader's `field_disposition` does.
 WRITE_TRANSFORMED_LATER: tuple[tuple[str, str], ...] = (
-    ("abilities_second", "written into the second byte of the title's own "
-                         "(current, base) pair; a source with no second copy "
-                         "gets the first written into both, which is what "
-                         "every record measured holds -- 0 of 406 DOS pairs "
-                         "and 0 of 6 C64 Curse records differ"),
+    ("abilities_second", "written into the DOS byte that holds the "
+                         "permanent score -- byte 0 of each ability's pair, "
+                         "except exceptional strength's percentile, whose "
+                         "permanent copy is byte 1; a source with no second "
+                         "copy gets the same value written into both, which "
+                         "is what every record measured holds -- 0 of 406 "
+                         "DOS pairs and 0 of 6 C64 Curse records differ"),
     ("former_levels", "permuted onto the title's former-class level array "
                       "the same way the current levels are, and the level "
                       "itself written again into the single byte after "
@@ -2787,7 +2820,8 @@ def write(char: NeutralCharacter,
 
     **Which record is the character's own title's**, not this function's
     (#299).  Pool of Radiance is 285 bytes with one copy of each ability,
-    Curse of the Azure Bonds 422 with a (current, base) pair per ability, a
+    Curse of the Azure Bonds 422 with a `(permanent, in force)` pair per
+    ability score (exceptional strength's percentile the other way round), a
     100-spell book and a former-class array, and Secret of the Silver Blades
     439 with a 117-spell book, seven spell-slot levels and **67-byte items**.
     Every width comes off `goldbox/dos_layout.py`'s table for the title and
@@ -2870,18 +2904,19 @@ def write(char: NeutralCharacter,
              ", length-prefixed into one count byte and fifteen ASCII")
 
     # -- everything the two ports encode the same way ------------------------
-    # The abilities are a **(current, base) pair** from Curse of the Azure
-    # Bonds on, and one byte in Pool of Radiance, so the width decides the
-    # shape of the write rather than the title doing so.  `abilities_second`
-    # is the neutral record's second copy; a source that has none writes the
-    # one value into both halves, which is what every record measured holds
-    # -- 0 of 406 DOS pairs differ, and 0 of the 6 C64 Curse records.
+    # The abilities are a pair from Curse of the Azure Bonds on, and one byte
+    # in Pool of Radiance, so the width decides the shape of the write rather
+    # than the title doing so.  The neutral ability is the score in force and
+    # `abilities_second` is the permanent score behind it; a source that has
+    # none writes the one value into both halves, which is what every record
+    # measured holds -- 0 of 406 DOS pairs differ, and 0 of the 6 C64 Curse
+    # records.
     #
-    # **coab, the decompilation of the DOS Curse overlays, says which half is
-    # which**: `StatValue.Write` puts `cur` at +0 and `full` at +1, so the
-    # first byte is the score as play has left it and the second the score
-    # the character rolled.  That is the pairing `_ability_pair` and this
-    # both use, and no specimen could have told them apart.
+    # `_pair_bytes` puts the two back at the byte offsets `_ability_pair`
+    # read them from: `(permanent, in_force)` for the six scores, the other
+    # way round for exceptional strength's percentile -- read out of five
+    # shipped DOS engines and confirmed in the running game, six crossings
+    # each crossed both ways (#401, docs/204-the-dos-ability-pair.md).
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
     for neutral_name, dos_name in WRITE_DIRECT:
@@ -2902,11 +2937,12 @@ def write(char: NeutralCharacter,
             continue
         f = table[dos_name]
         if dos_name in ABILITY_ORDER and f.size == 2:
-            base = int(seconds.get(dos_name, v.value))
+            permanent = int(seconds.get(dos_name, v.value))
+            byte0, byte1 = _pair_bytes(dos_name, int(v.value), permanent)
             put(v, dos_name,
-                f", the first of the title's (current, base) pair; the "
-                f"second is {base}",
-                value=bytes((int(v.value) & 0xFF, base & 0xFF)))
+                f", the score in force; the permanent score behind it is "
+                f"{permanent}",
+                value=bytes((byte0 & 0xFF, byte1 & 0xFF)))
         else:
             put(v, dos_name)
     if second is not None and not any(table[n].size == 2
