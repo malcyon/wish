@@ -262,11 +262,32 @@ def test_a_party_on_the_travel_grid_is_refused_rather_than_guessed_at():
     same byte 1 = 3D and 2 = overland, and there is no Amiga overland save
     anywhere to say which is right here.  Writing one would be inventing a
     value, which is what #316 exists to stop.
+
+    Built rather than read off `WISH-SPEC-por-party-l1`, which this test used
+    until `#352 (Lift PorSaveState into one NeutralSave that every port's
+    saved-game reader fills and both container writers take)`: that specimen
+    is a save from the party-formation menu (`provenance.toml`: "written by
+    the game's own SAVE CURRENT GAME to slot C" before `BEGIN ADVENTURING`),
+    and its `$49E6` = 0 is the initialiser's, the same byte a party genuinely
+    on the travel grid also holds zero -- the ambiguity `#326 (A Pool of
+    Radiance save made before the party began adventuring is refused, because
+    the initialiser left $49E6 at 0 and New Phlan is indoors)` fixed for the
+    DOS -> C64 direction.  `neutral_save.from_dos` now resolves that specimen
+    correctly, to New Phlan's arrival square rather than a refusal, so this
+    test needs a save that is genuinely outdoors and has genuinely set out:
+    an area whose script is staged, in one of the three measured overland
+    windows (`#59`, area 26).
     """
     from goldbox import dos_savegame
 
-    folder = _dos_specimen("por-party-l1")
-    savgam = (folder / "SAVGAMC.DAT").read_bytes()
+    savgam = bytearray(dos_savegame.SAVGAM_SIZE)
+    dos_savegame.put_word(savgam, dos_savegame.INDOORS, 0)
+    dos_savegame.put_word(savgam, dos_savegame.AREA, 0)
+    dos_savegame.put_word(savgam, dos_savegame.SCRIPT, 26)
+    dos_savegame.put_travel_square(savgam, 7, 29)
+    start, _ = dos_savegame.SAVE_POOL_OF_RADIANCE.script_buffer
+    savgam[start] = 0x01
+    savgam = bytes(savgam)
     assert dos_savegame.outdoors(savgam)
     with pytest.raises(AmigaRecordError) as e:
         amiga.por_state_from_dos(savgam)
@@ -277,9 +298,12 @@ def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):
     """`ecl.dax` holds 29 blocks and the C64 has 30; area 30 is the missing
     one, so a party standing there has no script to stage."""
     assert 30 not in amiga_dax.block_ids(ecl_dax)
-    state = amiga.PorSaveState(area=30, geo=30, x=1, y=1, facing=0,
+    state = amiga.PorSaveState(title="Pool of Radiance", area=30, geo=30,
+                               x=1, y=1, facing=0,
                                clock=(0,) * 6, wallset=(0xFFFF,) * 3,
-                               flags=(0,) * 217, scratch={})
+                               flags=(0,) * 217, scratch={},
+                               outdoors=False, travel=(0, 0), set_out=True,
+                               header={})
     with pytest.raises(AmigaRecordError):
         amiga.new_por_savegame(state, "B", 6, ecl_dax)
 

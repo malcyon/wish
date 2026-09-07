@@ -39,7 +39,7 @@ import struct
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from . import areas, dos_layout, dos_savegame, games, neutral
+from . import areas, dos_layout, dos_savegame, games, neutral, neutral_save
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
@@ -2337,101 +2337,44 @@ def por_put_word(save: bytearray, address: int, value: int) -> None:
     save[at:at + 2] = (value & 0xFFFF).to_bytes(2, "big")
 
 
-@dataclass(frozen=True)
-class PorSaveState:
-    """Where a Pool of Radiance party is standing, and when.
-
-    The part of a saved game that belongs to the **party** rather than to the
-    disk it was found on, in the ECL address space all three ports share --
-    which is why one shape serves a C64 source and a DOS one.  Everything
-    here is read out of the save being converted; nothing is a default.
-
-    `facing` is the C64's 0-3.  Both DOS and the Amiga store it doubled and
-    both writers do the doubling, so a caller never sees the doubled form.
-    """
-
-    #: `$49F2`, the area the party is in.
-    area: int
-    #: `$49C5`, the resident `GEO` -- **not** the area.  The two part company
-    #: for an area whose script loads no map of its own, such as the training
-    #: hall, and writing the area id into both there names a map no script
-    #: loads (#276).
-    geo: int
-    x: int
-    y: int
-    facing: int
-    #: The six clock digits at `$49C6`-`$49CB`: sub-minute, minute units,
-    #: minute tens, hour, day, month.
-    clock: tuple[int, ...]
-    #: `$4AFA`-`$4AFC`, the `WALLDEF`/`8X8D` block ids, `$FFFF` for an empty
-    #: slot.
-    wallset: tuple[int, int, int]
-    #: `$4A20`-`$4AF8`, the quest flags, one value per address in order.
-    flags: tuple[int, ...]
-    #: `$49EB` and `$4A00`-`$4A1F`, the per-script scratch, by address.
-    scratch: "dict[int, int]"
-    #: Where this was read from, for the report.
-    source: str = ""
+#: `PorSaveState` is now `NeutralSave` under its old name (`#352 (Lift
+#: PorSaveState into one NeutralSave that every port's saved-game reader
+#: fills and both container writers take)`): `por_savegame_writes` below only
+#: ever reads the ten fields Pool of Radiance needed, and a `NeutralSave` is
+#: a strict superset of those, so nothing here has to convert one into the
+#: other.  The three `por_state_from_*` readers are one-line wrappers of
+#: `goldbox.neutral_save`'s three general ones, each keeping the one thing
+#: that was Amiga-specific about it: refusing a party the Amiga writer still
+#: cannot place, because writing an outdoor Amiga save stays unmeasured
+#: (`#316 (Write the Amiga Pool of Radiance saved game from the source
+#: save, so a converted party arrives where it was standing)`, `#321 (An
+#: Amiga Pool of Radiance conversion refuses a party standing on the travel
+#: grid, because no outdoor Amiga saved game has ever been read)`).
+PorSaveState = neutral_save.NeutralSave
 
 
 def por_state_from_c64(save0: bytes, source: str = "") -> PorSaveState:
     """A C64 Pool of Radiance `SAVEDGAME0` payload, as a place and a clock.
 
-    `SAVEDGAME0` is a memory image based at `$4900`, so every ECL address in
-    :class:`PorSaveState` is one subtraction away.  The wallset triple is the
-    exception and comes out of the C64's own loaded-files cache, slots 15-17,
-    which carry the same three numbers the DOS and Amiga words do.
-
     **Outdoors is refused here rather than written wrong.**  See
     :func:`por_conversion_reason`.
     """
-    from . import dos as _dos
-
-    base = _dos.SAVE0_BASE
-    area = save0[_dos.CURRENT_SCRIPT - base]
-    where = areas.area(area)
-    if where is not None and where.outdoors:
+    state = neutral_save.from_c64(save0, source=source)
+    if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
-    return PorSaveState(
-        area=area,
-        geo=save0[_dos.CURRENT_GEO - base],
-        x=save0[_dos.PARTY_X - base],
-        y=save0[_dos.PARTY_Y - base],
-        facing=save0[_dos.PARTY_FACING - base],
-        clock=tuple(save0[dos_savegame.CLOCK + i - base]
-                    for i in range(dos_savegame.CLOCK_DIGITS)),
-        wallset=_dos.c64_wall_triple(save0),
-        flags=tuple(save0[a - base] for a in
-                    range(dos_savegame.FLAGS_FIRST,
-                          dos_savegame.FLAGS_LAST + 1)),
-        scratch={a: save0[a - base] for a in _dos.SHARED_SCRATCH},
-        source=source)
+    return state
 
 
 def por_state_from_dos(savgam: bytes, source: str = "") -> PorSaveState:
     """A DOS `SAVGAM<slot>.DAT`, as a place and a clock.
 
-    The DOS container is the same array of the same words in the other
-    endianness, so this is a straight read through `goldbox.dos_savegame`.
+    **Outdoors is refused here rather than written wrong.**  See
+    :func:`por_conversion_reason`.
     """
-    from . import dos as _dos
-
-    if dos_savegame.outdoors(savgam):
+    state = neutral_save.from_dos(savgam, source=source)
+    if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
-    x, y, facing = dos_savegame.position(savgam)
-    return PorSaveState(
-        area=dos_savegame.current_area(savgam),
-        geo=dos_savegame.geo_block(savgam),
-        x=x, y=y, facing=facing,
-        clock=tuple(dos_savegame.word(savgam, dos_savegame.CLOCK + i)
-                    for i in range(dos_savegame.CLOCK_DIGITS)),
-        wallset=dos_savegame.wall_triple(savgam),
-        flags=tuple(dos_savegame.word(savgam, a) for a in
-                    range(dos_savegame.FLAGS_FIRST,
-                          dos_savegame.FLAGS_LAST + 1)),
-        scratch={a: dos_savegame.word(savgam, a)
-                 for a in _dos.SHARED_SCRATCH},
-        source=source)
+    return state
 
 
 def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
@@ -2448,23 +2391,10 @@ def por_state_from_amiga(savgam: bytes, source: str = "") -> PorSaveState:
         raise AmigaRecordError(
             f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
             f"bytes, got {len(savgam)}")
-    from . import dos as _dos
-
-    if not por_word(savgam, dos_savegame.INDOORS):
+    state = neutral_save.from_amiga(savgam, source=source)
+    if state.outdoors:
         raise AmigaRecordError(POR_OUTDOORS_UNMEASURED)
-    return PorSaveState(
-        area=por_word(savgam, dos_savegame.SCRIPT),
-        geo=por_word(savgam, dos_savegame.AREA),
-        x=savgam[POR_POS_X], y=savgam[POR_POS_Y],
-        facing=savgam[POR_POS_FACING] // dos_savegame.FACING_SCALE,
-        clock=tuple(por_word(savgam, dos_savegame.CLOCK + i)
-                    for i in range(dos_savegame.CLOCK_DIGITS)),
-        wallset=tuple(por_word(savgam, POR_WALLSET + i) for i in range(3)),
-        flags=tuple(por_word(savgam, a) for a in
-                    range(dos_savegame.FLAGS_FIRST,
-                          dos_savegame.FLAGS_LAST + 1)),
-        scratch={a: por_word(savgam, a) for a in _dos.SHARED_SCRATCH},
-        source=source)
+    return state
 
 
 #: Why a party standing on the travel grid is refused rather than written.

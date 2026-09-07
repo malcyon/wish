@@ -1866,6 +1866,7 @@ graph LR
   amiga --> games
   amiga --> layout
   amiga --> neutral
+  amiga --> neutral_save
   amiga -.->|deferred| savegame
   amiga -.->|deferred| traits
   areas -.->|deferred| geo
@@ -1919,6 +1920,12 @@ graph LR
   levelup --> spells
   memory --> layout
   neutral --> layout
+  neutral_save -.->|deferred| amiga
+  neutral_save --> areas
+  neutral_save --> c64_save
+  neutral_save -.->|deferred| dos
+  neutral_save --> dos_savegame
+  neutral_save -.->|deferred| games
   portraits -.->|deferred| d64
   portraits --> dos_savegame
   portraits -.->|deferred| games
