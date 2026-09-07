@@ -359,15 +359,34 @@ class IconChoice:
 
 @dataclass(frozen=True)
 class DosIcon:
-    """What :meth:`IconParts.dos_icon_from_c64` read a C64 icon into (#320)."""
+    """A combat figure ready to write into a DOS record, and where it came
+    from -- built by :meth:`IconParts.dos_icon_from_c64` for a C64 source
+    (#320) and by `editor.convert.amiga_combat_icon` for an Amiga one, whose
+    record already stores these bytes and has no C64 icon behind it (#379).
+
+    `figure_source` and `colours_source` are what `goldbox.dos.write`'s
+    report quotes next to `icon_head`/`icon_body` and `icon_colours`
+    respectively -- one sentence fragment each, following "`icon_head: 10 --
+    `". `write` no longer builds that sentence itself, and no longer assumes
+    every `DosIcon` came off a C64 record's eighteen screen codes: the
+    provenance belongs to whoever built the icon, since only the builder
+    knows which port it is describing (#379, "The DOS writer's byte
+    accounting says an Amiga party's combat figure was recognised off C64
+    screen codes").
+    """
 
     head: int                        # DOS icon_head
     body: int                        # DOS icon_body
     colours: bytes                   # the six DOS icon_colours bytes
+    figure_source: str               # quoted beside icon_head and icon_body
+    colours_source: str              # quoted beside icon_colours
     #: The menu choices the C64 icon itself decoded to, so a caller can say
     #: which C64 weapon and head this DOS figure came from and whether the
-    #: head was ambiguous.
-    choice: IconChoice
+    #: head was ambiguous.  `None` for a source with no C64 menu behind it --
+    #: an Amiga record's `icon_head`/`icon_body` are DOS numbers already, not
+    #: a weapon or head option `recognise` chose, so there is no real
+    #: `IconChoice` to put here (#379).
+    choice: "IconChoice | None" = None
 
 
 @dataclass(frozen=True)
@@ -762,8 +781,17 @@ class IconParts:
                                            (c64_colour & 7,
                                             (c64_colour & 7) | 8))
             dos_colours[i] = (high << 4) | low
+        figure_source = (
+            "the C64 source record's own combat icon, recognised off its "
+            "eighteen screen codes and looked up through "
+            f"tools/iconreverse.yaml (#320, weapon {choice.weapon_size} "
+            f"{choice.weapon}, head {choice.head_size} {choice.head})")
+        colours_source = (
+            "the C64 source record's own combat icon colours, converted "
+            "through the same table's colour rows (#320)")
         return DosIcon(head=head, body=body, colours=bytes(dos_colours),
-                      choice=choice)
+                      figure_source=figure_source,
+                      colours_source=colours_source, choice=choice)
 
     # -- the legal set ---------------------------------------------------
 

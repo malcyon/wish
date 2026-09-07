@@ -865,6 +865,8 @@ def test_the_written_icon_colours_are_not_zero():
 #: own tests do not need a real disk to prove the wiring takes it.
 _MADE_UP_ICON = DosIcon(
     head=5, body=9, colours=bytes.fromhex("11223344e6f7"),
+    figure_source="a made-up figure, weapon large 9, head large 1",
+    colours_source="made-up colours",
     choice=IconChoice(weapon_size="large", weapon=9, head_size="large",
                       head=1))
 

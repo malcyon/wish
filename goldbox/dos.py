@@ -3168,31 +3168,32 @@ def write(char: NeutralCharacter,
                  "the creation menu's own tables were not available to turn "
                  "it into the position the DOS record stores"))
 
-    # -- the combat icon: a C64 source's own figure, already recognised ------
+    # -- the combat icon: provenance is the icon's own, not this function's --
     # `icon` is computed by the caller, not here: it takes an `IconParts`
     # loaded off the player's own disk and this function has no such thing
     # in hand.  See the parameter's own docstring for why it bypasses the
     # neutral vocabulary the way `write_c64_save`'s `icon` does (#320).
+    #
+    # The two sentences below are `icon.figure_source` and
+    # `icon.colours_source`, not built here: a C64 source really did
+    # recognise its figure off eighteen screen codes and an Amiga source's
+    # was already these DOS numbers, and only whoever built `icon` knows
+    # which is true (#379, "The DOS writer's byte accounting says an Amiga
+    # party's combat figure was recognised off C64 screen codes").
     icon_written: set[str] = set()
     if icon is not None:
         for iname, value in (("icon_head", icon.head),
                              ("icon_body", icon.body)):
             f = table[iname]
             _encode(f, rec, value)
-            rep.note(f.offset, f.size,
-                     f"{iname}: {value} -- the C64 source record's own "
-                     f"combat icon, recognised off its eighteen screen "
-                     f"codes and looked up through tools/iconreverse.yaml "
-                     f"(#320, weapon {icon.choice.weapon_size} "
-                     f"{icon.choice.weapon}, head {icon.choice.head_size} "
-                     f"{icon.choice.head})")
+            rep.note(f.offset, f.size, f"{iname}: {value} -- "
+                     f"{icon.figure_source}")
             icon_written.add(iname)
         f = table["icon_colours"]
         _encode(f, rec, icon.colours)
         rep.note(f.offset, f.size,
-                 f"icon_colours: {icon.colours.hex()} -- the C64 source "
-                 f"record's own combat icon colours, converted through the "
-                 f"same table's colour rows (#320)")
+                 f"icon_colours: {icon.colours.hex()} -- "
+                 f"{icon.colours_source}")
         icon_written.add("icon_colours")
 
     # -- the inventory becomes the item file ---------------------------------

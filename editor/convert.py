@@ -572,26 +572,35 @@ def amiga_combat_icon(char: Any) -> Any:
     what stops it: `goldbox.dos.write`'s own `icon` argument, which bypasses
     the neutral vocabulary for exactly this reason.
 
-    **The `choice` is filled from the record's own two numbers**, which is
-    the one thing here that is not what that field was made for: it is
-    `goldbox.iconparts.IconParts.recognise`'s answer for a C64 icon, and an
-    Amiga source has no C64 icon behind it.  The numbers in it are true --
-    the head and the weapon are the record's own, and the size is its own
-    `size` byte -- but the sentence `goldbox.dos.write` builds around them
-    says the figure was read off eighteen C64 screen codes, which for an
-    Amiga source it was not.  That sentence is byte-accounting rather than
-    anything a player reads, and rewording it is
-    `#379 (The DOS writer's byte accounting says an Amiga party's combat
-    figure was recognised off C64 screen codes)`.
-    """
-    from goldbox.iconparts import DosIcon, IconChoice
+    **`figure_source` and `colours_source` say so**, rather than the sentence
+    `goldbox.dos.write` used to build unconditionally around any `DosIcon`,
+    which claimed every figure was recognised off eighteen C64 screen codes
+    -- true for `IconParts.dos_icon_from_c64`'s own `DosIcon` and false for
+    this one. `#379 (The DOS writer's byte accounting says an Amiga party's
+    combat figure was recognised off C64 screen codes)` moved that sentence
+    here, to the builder that knows which port it is describing.
 
-    size = dos.dos_size(char.get("size"))
+    **`choice` is left `None`.** It answers `IconParts.recognise`'s question
+    -- which C64 weapon and head option drew this icon -- and an Amiga
+    source has no C64 icon behind it to have recognised one from; `body` and
+    `head` are DOS numbers already, not menu positions in either of the
+    C64's two option lists, so there is no real `IconChoice` to construct.
+    """
+    from goldbox.iconparts import DosIcon
+
     head, body = char.get("icon_head"), char.get("icon_body")
+    figure_source = (
+        "the Amiga source record's own combat icon, already stored as "
+        "these DOS icon_head/icon_body numbers and copied across unchanged "
+        "(#354, goldbox.amiga.to_dos_record)")
+    colours_source = (
+        "the Amiga source record's own combat icon colours, already "
+        "stored as these DOS icon_colours pairs and copied across "
+        "unchanged (#354, goldbox.amiga.to_dos_record)")
     return DosIcon(head=head, body=body,
                    colours=bytes(char.raw("icon_colours")),
-                   choice=IconChoice(weapon_size=size, weapon=body,
-                                     head_size=size, head=head))
+                   figure_source=figure_source,
+                   colours_source=colours_source)
 
 
 @dataclasses.dataclass
