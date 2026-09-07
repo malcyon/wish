@@ -199,10 +199,19 @@ class WishWindow(QMainWindow):
         # item nobody can explain.
         #
         # Built only when `WISH_EXPERIMENTAL_CONVERT` says so -- see
-        # `editor/convert.py`, where every placeholder string still ends in
-        # ` (NOT APPROVED)`. Replaces the Import submenu below, built for
-        # everyone since `#131`, and `WISH_EXPERIMENTAL_EXPORT`'s, which stay
-        # until `#52`'s step 5 removes the two submenus.
+        # `editor/convert.py`, whose flag block names the five conditions
+        # that remove it. The words are no longer one of them: Donald read
+        # all ten unapproved strings in place on 2026-09-05 and approved
+        # them, so nothing here ends in ` (NOT APPROVED)` any more. What is
+        # left is the drop lists of the three C64 → DOS directions
+        # (`#355 (A C64 party converted to DOS is shown nine developer
+        # notes, with memory addresses, overlay names and issue numbers in
+        # them)`) and four of the six directions still to be walked in their
+        # own engine. Replaces the Import submenu below, built for everyone
+        # since `#131`, and `WISH_EXPERIMENTAL_EXPORT`'s; Donald ruled on
+        # 2026-09-07 that both submenus are deleted, and they stay until
+        # `#52`'s step 5 does it -- after this flag comes off, never before,
+        # since Import is the only route a player has until then.
         from editor import convert
         self.convert_action = None
         if convert.enabled():

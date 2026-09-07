@@ -471,13 +471,36 @@ def fresh_folder(destination: str | pathlib.Path,
 #: **Comes off when:** (1) no string below carries the `(NOT APPROVED)`
 #: marker -- **met 2026-09-05**, when Donald read all ten in place and
 #: approved them; `test_no_string_the_player_reads_is_unapproved` keeps it
-#: met, including for a string added later; (2) a Pool of Radiance, a Curse and a Silver Blades DOS save
-#: each list the Commodore 64, and a Pools of Darkness save never does
-#: (`#131`); (3) every registered direction's drop list is empty --
-#: `.claude/rules/conversions.md`'s list, tracked on `#131`; (4) the
-#: README says how the source picker works; (5) each registered direction
-#: has been loaded and walked in its emulator from a save this dialog's own
-#: code path wrote.
+#: met, including for a string added later; (2) a Pool of Radiance, a Curse
+#: and a Silver Blades DOS save each list the Commodore 64, and a Pools of
+#: Darkness save never does -- **met 2026-09-07**, pinned by
+#: `test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot`,
+#: `test_a_curse_or_silver_blades_savgam_file_lists_c64`,
+#: `test_a_curse_or_silver_blades_d64_lists_dos` and
+#: `test_a_pools_of_darkness_folder_lists_nothing`, which drive the
+#: destination combo itself rather than the registry behind it; (3) every
+#: registered direction's drop list is empty -- `.claude/rules/
+#: conversions.md`'s list. **Not met, and it is the condition that decides
+#: this flag's date.** The three DOS → C64 rows show a player nothing; the
+#: three C64 → DOS rows show nine to eleven lines each, and
+#: `#355 (A C64 party converted to DOS is shown nine developer notes, with
+#: memory addresses, overlay names and issue numbers in them)` is what has
+#: to close for them to go. `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
+#: needs the import working for all three C64 titles)` used to track this
+#: and closed on 2026-09-06, having emptied the DOS → C64 side only;
+#: (4) the README says how the source picker works -- Donald's own file and
+#: his to write, not a condition an agent can meet; (5) each registered
+#: direction has been loaded and walked in its emulator from a save this
+#: dialog's own code path wrote. **Three of the six are done**: Pool of
+#: Radiance both ways on 2026-09-05, and Secret of the Silver Blades
+#: DOS → C64 on 2026-09-07 -- six characters read against the DOS source
+#: field for field, the party standing on the square the DOS save held, two
+#: steps walked, and the engine's own resave differing from ours in nothing
+#: but those steps. Curse DOS → C64 is PROBABLE: the loader took a disk
+#: this dialog wrote and nothing read a panel, a sheet or a step. Both
+#: C64 → DOS later titles wait on
+#: `#310 (A trained C64 Curse character arrives in DOS with the wrong class
+#: on his sheet)`.
 ENV = "WISH_EXPERIMENTAL_CONVERT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
@@ -561,7 +584,11 @@ NO_FOLDER = "Choose where to write."
 #: `Source.detect` failing, and for anything `rehearse` raises that is not a
 #: `dos.DosRecordError` with its own `player_message`.
 CANNOT_CONVERT = dos.CANNOT_CONVERT
-#: `editor/dosimport.py`'s `NO_DISKS`/`NO_DISKS_TITLE`, approved 2026-08-27.
+#: `editor/dosimport.py`'s `NO_DISKS`/`NO_DISKS_TITLE`. The title is Donald's
+#: of 2026-08-27; the line is his of 2026-09-05, rewritten when
+#: `#342 (A Curse or Silver Blades save cannot be converted unless its C64
+#: sides sit in the Pool of Radiance disk folder)` gave each title its own
+#: folder and the old wording named `File ▸ Import` and one shared folder.
 NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with

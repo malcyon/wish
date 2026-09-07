@@ -680,6 +680,22 @@ def _por_c64_disk(tmp_path, name="PORSAVEA.D64"):
     return path
 
 
+def _later_c64_disk(tmp_path, game):
+    """A readable Curse or Silver Blades C64 save disk, zero-filled.
+
+    Both later titles keep one payload where Pool of Radiance keeps two, so
+    `goldbox.dos.save_disk` is handed the `Game` and writes whichever files
+    that title's disk holds. Zeroes are enough: nothing here converts the
+    party, only names the title off the disk's own directory, and a slice of
+    a real save would be the copy `AGENTS.md` bans as a fixture.
+    """
+    disk = dos.save_disk(bytes(game.save_size), bytes(game.roster_size),
+                         game=game)
+    path = tmp_path / f"{game.key}.d64"
+    path.write_bytes(disk.to_bytes())
+    return path
+
+
 def _no_disks(_game):
     return None
 
@@ -694,6 +710,39 @@ def test_a_pool_of_radiance_d64_lists_dos(tmp_path):
         labels = [dialog.ui.convert_destination.itemData(i)
                  for i in range(dialog.ui.convert_destination.count())]
         assert labels == ["dos"]
+    finally:
+        dialog.close()
+
+
+@pytest.mark.parametrize("game", [games.CURSE_OF_THE_AZURE_BONDS,
+                                  games.SECRET_OF_THE_SILVER_BLADES],
+                         ids=lambda g: g.key)
+def test_a_curse_or_silver_blades_d64_lists_dos(tmp_path, game):
+    """The other half of the flag's second condition, which nothing drove
+    at the dialog until now.
+
+    `test_a_curse_or_silver_blades_savgam_file_lists_c64` proves a DOS save
+    of either later title offers the Commodore 64.  This is the reverse, and
+    it became true only when `#299 (goldbox.dos.write builds only Pool of
+    Radiance's record, so nothing can be converted to DOS for the later
+    titles)` closed and `goldbox.dos.WRITES` grew from one title to three --
+    `editor.convert.DIRECTIONS` went from four rows to six with no edit.
+    `test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction`
+    checks the registry; this checks the combo a player reads, which is one
+    layer up and is where the condition is actually about.
+    """
+    path = _later_c64_disk(tmp_path, game)
+
+    dialog = convert.ConvertDialog(str(path), None, _no_disks)
+    try:
+        assert dialog.source is not None
+        assert dialog.source.port == "c64"
+        assert dialog.source.key == game.key
+        labels = [dialog.ui.convert_destination.itemData(i)
+                 for i in range(dialog.ui.convert_destination.count())]
+        assert labels == ["dos"]
+        assert dialog.ui.convert_destination.currentText() == \
+            convert.DESTINATION_LABELS["dos"]
     finally:
         dialog.close()
 
