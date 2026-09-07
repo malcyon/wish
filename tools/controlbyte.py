@@ -161,9 +161,12 @@ def census_dos(want_built: bool) -> int:
     roots = [r for r in (dostailcensus.archives(),
                          pathlib.Path(__file__).resolve().parent.parent / "work")
              if r is not None]
-    specs = dostailcensus.collect(roots, want_built)
+    specs, skipped = dostailcensus.collect(roots, want_built)
     print(f"\nDOS: {len(specs)} distinct records under "
           + ", ".join(str(r) for r in roots))
+    for other, n in sorted(skipped.items()):
+        print(f"  skipped {n} record(s) under {other}: the same record "
+              f"size as a title read here, and not the same id space")
     by_title = collections.defaultdict(list)
     for spec in specs:
         by_title[spec.shape.title].append(spec)

@@ -17,7 +17,11 @@ What it does, and it reads only:
    whose size is one of the four `goldbox/dos_layout.py` knows -- 285 Pool of
    Radiance, 422 Curse, 439 Silver Blades, 510 Pools of Darkness -- and whose
    suffix is a record suffix (`.SAV`, `.CHA`, `.GUY`).  Anything else,
-   including the 288-byte Amiga records under `work/`, is skipped.
+   including the 288-byte Amiga records under `work/`, is skipped.  A record
+   under a `FOREIGN_TITLES` directory -- Gateway to the Savage Frontier's
+   `.GUY` is 422 bytes, Treasures of the Savage Frontier's record is 510 --
+   is the same size as a title read here and is skipped and counted rather
+   than read through that title's table; `--foreign` includes it, marked.
 2. **Grades each file's provenance.**  `engine` is a file the game wrote:
    everything in the archives, and everything under `work/` that does not carry
    one of the `BUILT-`/`SEED-`/`C64-` prefixes this project's own writers use.
@@ -85,6 +89,28 @@ BUILT_DIRS = ("issue191/built",)
 #: nothing is lost by skipping the tree.
 SCRATCH_DIRS = ("work/dosbox/inst/", "work/dosbox/x/inst/")
 
+#: Directory names of Gold Box titles on the same engine whose record this
+#: module has **no layout for**, and whose records are the same size as one
+#: it does.  Gateway to the Savage Frontier's `.GUY` exports are 422 bytes,
+#: which is Curse of the Azure Bonds' size, and Treasures of the Savage
+#: Frontier's record is 510, which is Pools of Darkness' -- so a finder that
+#: trusts size alone reads one title's characters through another's table and
+#: counts them as its own.  `#400 (The DOS record census counts Gateway and
+#: Treasures characters as Curse and Pools of Darkness ones, because it
+#: identifies a title by record size)` is that bug, caught when a Gateway
+#: pregen's `.GUY` was about to be quoted as Curse evidence for `#395`.  They
+#: are skipped and counted here, never silently folded in -- moved from
+#: `tools/innateids.py`, which had already worked this out for its own finder.
+FOREIGN_TITLES = ("gateway to the savage frontier",
+                  "treasures of the savage frontier",
+                  "unlimited adventures")
+
+
+def foreign_title(path: pathlib.Path) -> str | None:
+    """The name of a title with no layout here, if `path` is inside one."""
+    text = path.as_posix().lower()
+    return next((t for t in FOREIGN_TITLES if f"/{t}/" in text), None)
+
 
 def archives() -> pathlib.Path | None:
     """The player's unpacked Forgotten Realms archives, or None.
@@ -145,9 +171,17 @@ def _safe(char, name):
         return None
 
 
-def collect(roots, want_built: bool) -> list[Specimen]:
-    """Every distinct DOS record under `roots`, deduplicated on its bytes."""
+def collect(roots, want_built: bool,
+            want_foreign: bool = False
+            ) -> tuple[list[Specimen], collections.Counter]:
+    """Every distinct DOS record under `roots`, deduplicated on its bytes.
+
+    Returns the specimens and a count of records skipped for belonging to a
+    title this module has no layout for -- see `FOREIGN_TITLES`.  A caller
+    that has not been updated for the second value can take `collect(...)[0]`.
+    """
     seen: dict[str, Specimen] = {}
+    skipped: collections.Counter = collections.Counter()
     for root in roots:
         if not root.exists():
             continue
@@ -163,6 +197,10 @@ def collect(roots, want_built: bool) -> list[Specimen]:
                 continue
             if size not in dl.SHAPES_BY_SIZE:
                 continue
+            other = foreign_title(path)
+            if other and not want_foreign:
+                skipped[other] += 1
+                continue
             data = path.read_bytes()
             try:
                 spec = Specimen(path, data)
@@ -176,7 +214,7 @@ def collect(roots, want_built: bool) -> list[Specimen]:
                 seen[key].paths.append(path)
             else:
                 seen[key] = spec
-    return list(seen.values())
+    return list(seen.values()), skipped
 
 
 def window(spec: Specimen, field: str) -> bytes | None:
@@ -240,6 +278,10 @@ def main(argv=None) -> int:
                          "Radiance offsets; repeatable")
     ap.add_argument("--built", action="store_true",
                     help="include records this project wrote, marked *")
+    ap.add_argument("--foreign", action="store_true",
+                    help="include titles this module has no layout for, "
+                         "whose records are read through a same-sized "
+                         "title's table")
     ap.add_argument("--per-title", action="store_true",
                     help="break the partition down by title")
     ap.add_argument("--examples", type=int, default=6,
@@ -256,7 +298,7 @@ def main(argv=None) -> int:
         roots.append(REPO / "work")
     fields = args.field or ["field_83_87", "field_10c_10f"]
 
-    specs = collect(roots, args.built)
+    specs, skipped = collect(roots, args.built, args.foreign)
     by_title = collections.Counter(s.shape.key for s in specs)
     built = sum(1 for s in specs if s.built)
     print(f"{len(specs)} distinct records "
@@ -265,6 +307,9 @@ def main(argv=None) -> int:
         print(f"  {r}")
     for key, n in sorted(by_title.items()):
         print(f"  {dl.SHAPES_BY_KEY[key].title:32s} {n}")
+    for other, n in sorted(skipped.items()):
+        print(f"  skipped {n} record(s) under {other}: the same record "
+              f"size as a title read here, and not the same id space")
 
     if args.list:
         for s in sorted(specs, key=lambda s: (s.shape.key, s.name)):

@@ -39,6 +39,7 @@ sys.path.insert(0, str(REPO))
 from goldbox import c64_codec, dos, dos_layout, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
+from tools import dostailcensus  # noqa: E402
 
 #: Curse of the Azure Bonds' own class table, `GEN $1951`, indexed by the
 #: class code and holding the class bitmask.  Index 10 is `0x82`
@@ -113,10 +114,22 @@ def dos_records(root: pathlib.Path):
     `goldbox.dos.neutral_class_bits` folds back.  Reading the stored byte
     against the C64's table made every DOS ranger in the corpus look like a
     disagreement, which was this tool's fault and not the game's.
+
+    A record under a `dostailcensus.FOREIGN_TITLES` directory is the same
+    size as a title read here and is skipped rather than read through that
+    title's table -- `#400 (The DOS record census counts Gateway and
+    Treasures characters as Curse and Pools of Darkness ones, because it
+    identifies a title by record size)`, which this walk had independently of
+    `dostailcensus.py`'s own finder.
     """
     paths = sorted(root.rglob("*")) if root.is_dir() else [root]
     for path in paths:
         if not path.is_file() or path.stat().st_size not in dos_layout.SHAPES_BY_SIZE:
+            continue
+        other = dostailcensus.foreign_title(path)
+        if other:
+            print(f"  skipped {path.parent.name}/{path.name}: under "
+                  f"{other}, the same record size and not the same id space")
             continue
         try:
             char = dos.read_character(path)

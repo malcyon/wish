@@ -116,10 +116,13 @@ def main(argv=None) -> int:
         if archives:
             roots.append(archives)
         roots.append(ROOT / "work")
-    specs = [s for s in dostailcensus.collect(roots, args.built)
-             if s.shape.key == args.title]
+    all_specs, skipped = dostailcensus.collect(roots, args.built)
+    specs = [s for s in all_specs if s.shape.key == args.title]
     if not specs:
         raise SystemExit(f"No {args.title} records under {roots}.")
+    for other, n in sorted(skipped.items()):
+        print(f"skipped {n} record(s) under {other}: the same record size "
+              f"as {args.title}, and not the same id space")
 
     print(f"{args.title}: {len(specs)} distinct records")
     print("  Provenance: none of these was watched being written. "

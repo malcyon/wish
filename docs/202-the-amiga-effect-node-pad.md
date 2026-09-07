@@ -142,7 +142,7 @@ Three things the census does not cover, chased by hand:
 For completeness: the whole 312KB `/Secret` code hunk contains **81**
 candidate accesses at a positive displacement of 1 on `a0`-`a4` or `a6`,
 decoded at every word alignment, and none of them is on a
-register that ever held a node. That grep is what the first pass at `#387`
+register that ever held a node. That grep is what the first pass at `#387 (The Amiga Silver Blades effect node keeps a byte DOS has not got, and a converted character loses it)`
 ran, and finding nothing in it proves nothing on its own; what settles the
 question is that there is no writer.
 
@@ -221,7 +221,7 @@ agent:
 ## 8. Negative results
 
 * **It is not a copy of anything in the character's record.** Recorded on
-  `#387` before this work and re-checked: `0x2E` appears at no offset of Guy
+  `#387 (The Amiga Silver Blades effect node keeps a byte DOS has not got, and a converted character loses it)` before this work and re-checked: `0x2E` appears at no offset of Guy
   de Valois' 340 bytes, `0x6D` at none of PAINE's, `0x64` at none of
   MALACHITE's.
 * **It is not an item field.** All three characters carry no items at all in
@@ -231,7 +231,7 @@ agent:
   across a walk or a camp: the party-add routine and the loader copy all ten
   bytes without looking at any.
 * **Grepping the binary for `$1(aN)` answers nothing either way.** 81 sites
-  in `/Secret`, 0 of them a node — a null result the first pass at `#387`
+  in `/Secret`, 0 of them a node — a null result the first pass at `#387 (The Amiga Silver Blades effect node keeps a byte DOS has not got, and a converted character loses it)`
   already had, and which is not evidence on its own.
 
 ## 9. Re-running it

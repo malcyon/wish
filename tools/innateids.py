@@ -182,24 +182,14 @@ class Record:
 
 
 #: Directory names of Gold Box titles on the same engine whose record this
-#: module has **no layout for**, and whose records are the same size as one it
-#: does.  Gateway to the Savage Frontier's `.GUY` exports are 422 bytes, which
-#: is Curse of the Azure Bonds' size, so `dos_layout.shape_for` reads them
-#: through Curse's table and a census that trusts the size counts another
-#: title's characters as Curse's.  That is what
-#: `.claude/rules/conversions.md` forbids -- an id must never be read through
-#: another title's table -- so they are skipped and counted, never silently
-#: folded in.  `--foreign` includes them, marked, for a reader who wants to
-#: see how much of the id space the engine's later titles share.
-FOREIGN_TITLES = ("gateway to the savage frontier",
-                  "treasures of the savage frontier",
-                  "unlimited adventures")
-
-
-def foreign_title(path: pathlib.Path) -> str | None:
-    """The name of a title with no layout here, if `path` is inside one."""
-    text = path.as_posix().lower()
-    return next((t for t in FOREIGN_TITLES if f"/{t}/" in text), None)
+#: module has **no layout for**, and `foreign_title()`, which names the one a
+#: path is inside.  Moved to `tools/dostailcensus.py` by
+#: `#400 (The DOS record census counts Gateway and Treasures characters as
+#: Curse and Pools of Darkness ones, because it identifies a title by record
+#: size)`, so every caller of its finder gets the same exclusion this module
+#: worked out first -- kept as names here so nothing importing them breaks.
+FOREIGN_TITLES = dostailcensus.FOREIGN_TITLES
+foreign_title = dostailcensus.foreign_title
 
 
 def collect(roots, want_ours: bool, title: str | None,
