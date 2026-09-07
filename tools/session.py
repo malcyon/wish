@@ -129,6 +129,14 @@ OUTDOOR_PROMPT = "1-8"
 #: Both words, because `TAKE` alone is on other bars.
 BOAT_BAR = ("TAKE", "STAY")
 
+#: How many times `outdoor_key` will answer the boat before giving up.  Each
+#: answer gives the method its whole timeout again, because the landing draws
+#: the boat off the disk and that took most of twenty seconds on pool slot 1
+#: -- so without a cap a `select_bar` that never presses anything renews the
+#: deadline on every look and the driver waits for the boat for ever, holding
+#: a pooled emulator slot while it does.  Two is one answer plus one retry.
+BOAT_ANSWERS = 2
+
 #: The travel grid's directions, **clockwise from north**, and they are not
 #: the numpad: measured on 2026-09-02 by writing `$49C3`/`$49C4`, pressing one
 #: digit and reading the square back -- `3` took (11,26) to (12,26), east, and
@@ -1439,6 +1447,7 @@ class Session:
         # genuinely stale bar, which is what the old code's single retry was
         # for.
         took_move = 0.0
+        answered = 0
         while time.time() < deadline:
             s = self.screen()
             row = "" if s is None else s.row(24)
@@ -1446,19 +1455,35 @@ class Session:
                 self.kbd.key(key, hold, gap)
                 return True
             if all(word in row for word in BOAT_BAR):
-                if self.outdoor_boat:
+                if self.outdoor_boat and answered < BOAT_ANSWERS:
                     self.log(f"  a boat landing: |{row.strip()}| -- answering "
                              f"{self.outdoor_boat}")
-                    self.select_bar(self.outdoor_boat, timeout=10)
+                    if not self.select_bar(self.outdoor_boat, timeout=10):
+                        self.walk_refused = (
+                            f"the driver pressed nothing: this square is a "
+                            f"boat landing and {self.outdoor_boat} could not "
+                            f"be found on the bar to answer it with. That is "
+                            f"a driver error and not a wall")
+                        self.log(f"  a boat landing: |{row.strip()}|; "
+                                 f"{self.outdoor_boat} was not on the bar")
+                        return False
+                    answered += 1
                     time.sleep(1.0)
                     # The whole budget again, because answering a question is
-                    # not waiting for one.  The landing draws the boat off the
-                    # disk, which took most of twenty seconds on pool slot 1
-                    # -- so a run that spent its patience getting *to* the
-                    # question had none left for the prompt behind it and
-                    # reported the step blocked anyway.
+                    # not waiting for one.  Capped at `BOAT_ANSWERS`, because
+                    # a renewal on every look is a wait with no end to it.
                     deadline = max(deadline, time.time() + timeout)
                     continue
+                if self.outdoor_boat:
+                    self.walk_refused = (
+                        f"the driver pressed nothing: it answered the boat "
+                        f"{self.outdoor_boat} {answered} times and the "
+                        f"question was still on screen, so it never reached a "
+                        f"direction prompt. That is a driver error and not a "
+                        f"wall")
+                    self.log(f"  a boat landing: |{row.strip()}|; still up "
+                             f"after {answered} answers")
+                    return False
                 self.walk_refused = (
                     "the driver pressed nothing: this square is a boat "
                     "landing and the game is asking whether to take the boat, "
@@ -1474,6 +1499,18 @@ class Session:
                     continue
             self.handle_prompt(s)
             time.sleep(0.5)
+        # `False` here is the one a caller must not read as a wall either.
+        # Row 24 was none of the three bars this knows -- a disk prompt over
+        # the top of it, a screen read that kept failing, a bar nobody has
+        # named yet -- and no digit was sent, so a step recorded as blocked
+        # would be the same invented map fact `#382 (An outdoor Pool of
+        # Radiance party's compass step is refused, and the retry cannot find
+        # the movement prompt afterwards)` was.
+        self.walk_refused = (
+            f"the driver pressed nothing: row 24 showed neither the direction "
+            f"prompt, nor MOVE, nor the boat question within {timeout:.0f}s, "
+            f"so there was nowhere to press a digit. That is a driver error "
+            f"and not a wall")
         self.log(f"  Neither a 1-8 prompt nor MOVE on row 24 within "
                  f"{timeout:.0f}s")
         return False

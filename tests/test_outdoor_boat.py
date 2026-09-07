@@ -136,3 +136,62 @@ def test_answering_the_boat_does_not_spend_the_budget_for_the_prompt_behind_it()
     sess.outdoor_boat = "STAY"
     assert sess.outdoor_key("1", 0.0, 0.0, timeout=1.0) is True
     assert sess.kbd.sent == ["1"]
+
+
+class DeafBoatSession(BoatSession):
+    """A `select_bar` that answers nothing, which is the case with no end.
+
+    Every reset of the deadline in `outdoor_key` comes after an answer, so a
+    `select_bar` that presses nothing and reports it renews the wait on every
+    look: the boat is still on row 24, the branch fires again, and the driver
+    holds a pooled emulator slot until somebody notices.  Found by review of
+    `d33c7b4`, 2026-09-07, before it ever ran overnight.
+    """
+
+    def select_bar(self, label, row=24, timeout=30.0):
+        if label == "MOVE":
+            return super().select_bar(label, row, timeout)
+        self.bars.append(label)
+        return False
+
+
+def test_a_boat_answer_that_presses_nothing_stops_rather_than_waiting_for_ever():
+    """`select_bar` reporting failure is the driver's own error, not a wall."""
+    sess = DeafBoatSession([WORLD_ROW, BOAT_ROW], answers=[BOAT_ROW])
+    sess.outdoor_boat = "STAY"
+    assert sess.outdoor_key("1", 0.0, 0.0, timeout=1.0) is False
+    assert sess.kbd.sent == []
+    assert sess.bars == ["MOVE", "STAY"]
+    assert "not a wall" in (sess.walk_refused or "")
+    assert "STAY could not be found" in (sess.walk_refused or "")
+
+
+def test_a_boat_that_will_not_go_away_is_answered_a_fixed_number_of_times():
+    """`select_bar` says it pressed the answer and the question stays up, so
+    nothing reports a failure and the deadline is renewed on every answer.
+    `BOAT_ANSWERS` is what ends it."""
+    sess = BoatSession([WORLD_ROW, BOAT_ROW], answers=[BOAT_ROW, BOAT_ROW,
+                                                       BOAT_ROW, BOAT_ROW])
+    sess.outdoor_boat = "TAKE"
+    assert sess.outdoor_key("1", 0.0, 0.0, timeout=1.0) is False
+    assert sess.bars == ["MOVE"] + ["TAKE"] * S.BOAT_ANSWERS
+    assert sess.kbd.sent == []
+    assert f"{S.BOAT_ANSWERS} times" in (sess.walk_refused or "")
+    assert "not a wall" in (sess.walk_refused or "")
+
+
+def test_an_unrecognised_row_24_is_a_driver_error_and_not_a_wall():
+    """The third `False` this method can return, and the one that said
+    nothing.  Row 24 is a bar nobody has named -- a disk prompt over the top
+    of it, a screen glitch -- so no digit was sent and the step is not
+    evidence of a wall.  A caller could not tell it from a party that walked
+    into rock, which is the ambiguity `#360 (The session driver will not walk
+    a Curse or Silver Blades party in a dungeon, because it reads Pool of
+    Radiance's indoors flag)` was filed to remove.
+    """
+    sess = BoatSession(["SOMETHING NOBODY HAS SEEN" + " " * 15])
+    assert sess.outdoor_key("4", 0.0, 0.0, timeout=1.0) is False
+    assert sess.kbd.sent == []
+    assert sess.bars == []
+    assert "pressed nothing" in (sess.walk_refused or "")
+    assert "not a wall" in (sess.walk_refused or "")
