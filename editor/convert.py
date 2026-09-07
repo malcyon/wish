@@ -790,23 +790,29 @@ def fresh_folder(destination: str | pathlib.Path,
 #: (4) the README says how the source picker works -- Donald's own file and
 #: his to write, not a condition an agent can meet; (5) each registered
 #: direction has been loaded and walked in its emulator from a save this
-#: dialog's own code path wrote. **Five of the eight are done**: Pool of
-#: Radiance both ways on 2026-09-05; Secret of the Silver Blades
-#: DOS → C64 on 2026-09-07 -- six characters read against the DOS source
-#: field for field, the party standing on the square the DOS save held, two
-#: steps walked, and the engine's own resave differing from ours in nothing
-#: but those steps; and both Amiga rows on 2026-09-07, Amiga → C64 in VICE
-#: under `#353 (Convert an Amiga Pool of Radiance save to the C64, so a
-#: party standing in the Slums on the Amiga arrives there in VICE)` and
+#: dialog's own code path wrote. **Met 2026-09-07, eight of eight**: Pool of
+#: Radiance both ways on 2026-09-05; the four remaining C64 ↔ DOS rows
+#: through 2026-09-07, each CONFIRMED on `#52`'s own comments rather than
+#: inferred -- Secret of the Silver Blades DOS → C64 read six characters
+#: against the DOS source field for field, stood the party on the square the
+#: DOS save held, walked two steps, and the engine's own resave differed in
+#: nothing but those steps; and both Amiga rows on 2026-09-07, Amiga → C64
+#: in VICE under `#353 (Convert an Amiga Pool of Radiance save to the C64, so
+#: a party standing in the Slums on the Amiga arrives there in VICE)` and
 #: Amiga → DOS under
 #: `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing
 #: in the Slums on the Amiga arrives there under DOSBox)`, which loaded two
 #: Amiga parties in DOSBox, read all twelve sheets and walked one of them
-#: out of New Phlan into the Slums. Curse DOS → C64 is PROBABLE: the loader
-#: took a disk this dialog wrote and nothing read a panel, a sheet or a
-#: step. Both C64 → DOS later titles wait on
+#: out of New Phlan into the Slums.
+#:
+#: **This paragraph said "five of the eight" until 2026-09-07 and named
 #: `#310 (A trained C64 Curse character arrives in DOS with the wrong class
-#: on his sheet)`.
+#: on his sheet)` as blocking the two later C64 → DOS titles.** `#310`
+#: closed, those two rows were confirmed, and Curse DOS → C64 stopped being
+#: PROBABLE -- all on `#52`, none of it written back here, so this file said
+#: the flag was three rows further off than it was. `#358 (Finish the C64 ↔
+#: DOS conversion matrix: six directions registered, two defects and a
+#: question left)` closed on the strength of those runs.
 ENV = "WISH_EXPERIMENTAL_CONVERT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
