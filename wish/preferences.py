@@ -23,8 +23,10 @@ Three things about the shape of it:
   path, not a window, so what the dialog claims can be tested without opening
   one.
 * **Three tabs, and every width in it is measured.** General holds the form;
-  Game disks holds the shared folder and each title's own (#22); Fast travel
-  holds the 29-row area table, which stretches to fill it. In one column none
+  Game disks holds each title's own folder (#22; the shared one was removed
+  by `#357 (The automapper reads the shared Game disks folder, so setting a
+  title's own folder does not make it map that title)`); Fast travel holds
+  the 29-row area table, which stretches to fill it. In one column none
   of the three could have the height it wanted, and a dialog compressed below
   its layout's minimum squeezes the controls that can be squeezed rather than
   refusing -- which is what "a lot of fields are squished" was. No width here
@@ -51,7 +53,7 @@ import os
 import pathlib
 import re
 
-from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -90,14 +92,17 @@ from .ui_preferences import Ui_PreferencesDialog
 #: produce. Measured in this venv.
 SHORTCUT = "Ctrl+,"
 
-#: How long after the last keystroke the folder is re-read. Typing a path a
-#: character at a time would otherwise open eight D64s per letter.
-SETTLE_MS = 400
-
 #: What the backup box says while it is empty, which is the state a fresh
 #: config is in. It is also what sets that box's width -- `room_for` measures
 #: it -- so it says the rule in as few words as carry it.
 BACKUPS_PLACEHOLDER = "Where to store backup saves"
+
+#: What every per-title folder box says while it is empty. Was the shared
+#: `Folder` box's placeholder before `#357 (The automapper reads the shared
+#: Game disks folder, so setting a title's own folder does not make it map
+#: that title)` removed that box; the words carried over unchanged, since
+#: they said the same thing for every title's own row already.
+FOLDER_PLACEHOLDER = "Location of your game disks"
 
 PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 
@@ -378,11 +383,6 @@ class PreferencesDialog(QDialog):
         # worse than one that remembers nothing, so nothing is remembered.
         self.tabs.setCurrentIndex(0)
 
-        # One timer for both: re-reading a folder opens every D64 in it, and
-        # applying it reloads 29 maps. Neither belongs on a keystroke.
-        self._settle = QTimer(self)
-        self._settle.setSingleShot(True)
-        self._settle.timeout.connect(self._folder_settled)
         self.refresh()
         self.fit()
 
@@ -476,15 +476,22 @@ class PreferencesDialog(QDialog):
     # -- the game disks --------------------------------------------------
 
     def _disks_tab(self) -> QWidget:
-        """The shared folder and every title's own (#22), on its own tab.
+        """Every title's own folder (#22), on its own tab.
 
         Moved off General once a row per title joined the one shared folder
-        already there: three more rows of a folder, a Browse… and a Clear
-        pushed General's natural height 77 px past what `fit` can give it on
-        Donald's own 1280x675 desktop (§12, §14) -- the same squeeze that put
-        Fast travel on a tab of its own. A tab this short needs no scroll
-        area of its own; General's stays because it is still the fullest
-        page.
+        that used to be here: three more rows of a folder, a Browse… and a
+        Clear pushed General's natural height 77 px past what `fit` can give
+        it on Donald's own 1280x675 desktop (§12, §14) -- the same squeeze
+        that put Fast travel on a tab of its own. A tab this short needs no
+        scroll area of its own; General's stays because it is still the
+        fullest page.
+
+        **The shared folder itself is gone**
+        (`#357 (The automapper reads the shared Game disks folder, so
+        setting a title's own folder does not make it map that title)`): it
+        answered for whichever title was first in `games.GAMES`, whatever
+        was actually being played, and a title's own row is the only setting
+        left.
         """
         box = QWidget()
         outer = QVBoxLayout(box)
@@ -497,26 +504,6 @@ class PreferencesDialog(QDialog):
         # and the tab already says so -- the box stayed only for the border.
         box = QGroupBox("")
         outer = QVBoxLayout(box)
-        row = QHBoxLayout()
-        self.folder = QLineEdit(getattr(self.win.settings, "disks", "") or "")
-        self.folder.setPlaceholderText("Location of your game disks")
-        # Wide enough to read what it says. This is what sets the width of the
-        # whole dialog, and it is measured off the placeholder rather than
-        # chosen, so a longer sentence or a wider font widens the dialog with
-        # it instead of losing the end of the line.
-        self.folder.setMinimumWidth(room_for(self.folder,
-                                             self.folder.placeholderText()))
-        self.folder.textEdited.connect(lambda _t: self._settle.start(SETTLE_MS))
-        self.folder.editingFinished.connect(self._folder_settled)
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self.browse)
-        clear = QPushButton("Clear")
-        clear.clicked.connect(lambda: self.set_folder(""))
-        row.addWidget(QLabel("Folder"))
-        row.addWidget(self.folder, 1)
-        row.addWidget(browse)
-        row.addWidget(clear)
-        outer.addLayout(row)
 
         self.report_rows: dict[str, QLabel] = {}
         form = QFormLayout()
@@ -532,10 +519,10 @@ class PreferencesDialog(QDialog):
         outer.addLayout(form)
 
         # One row per title (#22), each optional and each reporting what it
-        # found the same way the shared folder above does. A title's own
-        # folder wins over the shared one in `paths.resolve_disks`; the
-        # shared folder above is what a player who keeps everything in one
-        # place still uses, and is untouched by any of these.
+        # found. A title's own folder is the whole of `paths.resolve_disks`'s
+        # setting now (`#357 (The automapper reads the shared Game disks
+        # folder, so setting a title's own folder does not make it map that
+        # title)`) -- there is no shared folder underneath it any more.
         self.game_folder_edits: dict[str, QLineEdit] = {}
         self.game_folder_reports: dict[str, QLabel] = {}
         for game in GAME_FOLDER_TITLES:
@@ -548,7 +535,7 @@ class PreferencesDialog(QDialog):
         row = QHBoxLayout()
         stored = dict(getattr(self.win.settings, "game_folders", None) or {})
         edit = QLineEdit(stored.get(game.key, ""))
-        edit.setPlaceholderText(self.folder.placeholderText())
+        edit.setPlaceholderText(FOLDER_PLACEHOLDER)
         edit.setMinimumWidth(room_for(edit, edit.placeholderText()))
         edit.editingFinished.connect(
             lambda g=game: self._game_folder_settled(g))
@@ -758,24 +745,6 @@ class PreferencesDialog(QDialog):
 
     def _backups_edited(self) -> None:
         self.win.set_backup_folder(self.backups.text().strip())
-        self.refresh()
-
-    def browse(self) -> None:
-        """The folder picker. A method so a test can replace it."""
-        chosen = QFileDialog.getExistingDirectory(
-            self, "Where the game disks are", self.folder.text() or str(
-                pathlib.Path.home()))
-        if chosen:
-            self.set_folder(chosen)
-
-    def set_folder(self, folder: str) -> None:
-        """Type this in and apply it, as Browse and Clear do."""
-        self.folder.setText(folder)
-        self._folder_settled()
-
-    def _folder_settled(self) -> None:
-        self._settle.stop()
-        self.win.set_disks(self.folder.text().strip())
         self.refresh()
 
     # -- the live backend ------------------------------------------------

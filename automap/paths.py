@@ -132,9 +132,11 @@ def find_disks(game: games.Game | None = None) -> pathlib.Path | None:
 # -- one precedence, in one place --------------------------------------------
 #
 # There used to be three orders: the editor's, the map's, and the roster's.
-# `resolve_disks` is all of them. The rule, in one sentence: **the Game
-# directory setting is the answer; a command-line option beats it for one run;
-# nothing else does.**
+# `resolve_disks` is all of them. The rule, in one sentence, since
+# `#357 (The automapper reads the shared Game disks folder, so setting a
+# title's own folder does not make it map that title)` took the shared folder
+# out of it: **a title's own folder in Preferences is the answer; a
+# command-line option beats it for one run; nothing else does.**
 #
 # `$POR_DISKS` keeps working -- the test suite and `tools/` find the player's
 # disks with it -- but it sits below the setting and is out of the user-facing
@@ -142,7 +144,6 @@ def find_disks(game: games.Game | None = None) -> pathlib.Path | None:
 
 FLAG = "--disks"
 GAME_PREFERENCE = "preferences (this title)"
-PREFERENCE = "preferences"
 ENVIRONMENT = "$POR_DISKS"
 BESIDE = "beside the save"
 SEARCHED = "searched"
@@ -156,21 +157,25 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
     The second half of the answer is still read by people, just not in the
     Preferences dialog any more: `wish/__main__.py` prints it beside the folder
     on stderr, and `wish/window.py` writes it to the debug log a user attaches
-    to a bug report. Tests use it too, to assert the precedence rules -- `#22
-    (A disk folder setting per game, not one shared by all six)`'s per-title
-    preference beating the shared one, for instance. A folder named by the flag
-    or by the setting is returned whether or not it holds any disks --
-    reporting an empty folder as empty is more use than silently searching
-    somewhere else.
+    to a bug report. Tests use it too, to assert the precedence rules. A folder
+    named by the flag or by the setting is returned whether or not it holds any
+    disks -- reporting an empty folder as empty is more use than silently
+    searching somewhere else.
 
     `beside` is the open save, as a file or its directory, and is only taken
     when disks are actually there. `settings` lets a window pass the copy it
     holds; without one the file is read, which is a few hundred bytes.
 
-    A title's own folder in `settings.game_folders` (#22) wins over the shared
-    `disks` folder, but only when `game` says which title is wanted -- with no
-    game there is nothing to look up, and the shared folder and the search are
-    what they always were.
+    **A title's own folder in `settings.game_folders` (#22) is the whole of
+    the setting now** -- there is no shared folder underneath it any more
+    (`#357 (The automapper reads the shared Game disks folder, so setting a
+    title's own folder does not make it map that title)`). With `game`
+    given, only that title's own row answers. With no
+    game -- nothing has said which title is wanted, which is the state the
+    window opens in with no save chosen -- the first title in `games.GAMES`
+    order that has a row answers; that is `wish/window.py`'s job to correct
+    once the machine says which title is actually running, this function only
+    ever answers from what is configured.
     """
     # Imported here, not at module scope: `config` imports this module, and the
     # reverse at the top of the file is a cycle. `live.py` does the same.
@@ -179,14 +184,12 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
         return pathlib.Path(flag), FLAG
     if settings is None:
         settings = Settings.load()
-    if game is not None:
-        per_game = getattr(settings, "game_folders", None) or {}
-        own = (per_game.get(game.key, "") or "").strip()
+    per_game = getattr(settings, "game_folders", None) or {}
+    wanted = [game] if game is not None else list(games.GAMES)
+    for want in wanted:
+        own = (per_game.get(want.key, "") or "").strip()
         if own:
             return pathlib.Path(own), GAME_PREFERENCE
-    chosen = (getattr(settings, "disks", "") or "").strip()
-    if chosen:
-        return pathlib.Path(chosen), PREFERENCE
     env = os.environ.get("POR_DISKS")
     if env:
         return pathlib.Path(env), ENVIRONMENT

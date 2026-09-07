@@ -53,20 +53,29 @@ def game_key(game=None) -> str:
     return key if isinstance(key, str) and key else POOL_OF_RADIANCE
 
 
-def migrate_game_folder(folder: str) -> dict[str, str]:
-    """What `Settings.disks` becomes once there is a folder per title (#22).
+def fold_shared_folder(folder: str, table: dict[str, str]) -> dict[str, str]:
+    """Every title `folder` turns out to hold, folded into `table`.
 
-    `titles_in` names every title actually found in `folder`, in the same
-    order `locate_disks` searches it -- Pool of Radiance first -- so the first
-    one is the title this single shared folder was always answering for. A
+    `#357 (The automapper reads the shared Game disks folder, so setting a
+    title's own folder does not make it map that title)`: the shared `disks`
+    folder is gone from `paths.resolve_disks`'s precedence, so what used to be
+    a one-shot migration into `game_folders` (`#22 (A disk folder setting per
+    game, not one shared by all six)`) now runs on every load instead, and for
+    every title the folder holds rather than only the first.
+
+    `table` is mutated in place with `dict.setdefault`, so a row the player
+    has already set is never overwritten by a fresh guess -- this can run
+    every time `disks` is non-empty without disturbing a deliberate choice.
+    The return value is what was actually found in `folder`: empty for a
     folder that no longer exists, is empty, or holds nothing this project
-    recognises migrates to nothing: there is no title to key it under, and
-    `disks` stays exactly as it was, still tried as the fallback.
+    recognises, which is how `Settings.load` knows not to blank `disks` --
+    a folder on a drive that is not plugged in today is retried on the next
+    load that can read it, rather than dropped.
     """
-    if not folder:
-        return {}
-    found = titles_in(pathlib.Path(folder))
-    return {found[0].key: folder} if found else {}
+    found = {g.key: folder for g in titles_in(pathlib.Path(folder))} if folder else {}
+    for key in found:
+        table.setdefault(key, folder)
+    return found
 
 
 #: Keys an older build wrote, and the field each is now called. Read, never
@@ -128,9 +137,14 @@ class Settings:
     window_width: int = 940
     window_height: int = 820
     sight: int = 4
-    # Where the game disks are. The answer, unless a command-line option
-    # overrides it for one run -- see `paths.resolve_disks`, which is the only
-    # thing that reads this.
+    # The pre-`#357 (The automapper reads the shared Game disks folder, so
+    # setting a title's own folder does not make it map that title)` shared
+    # folder. `paths.resolve_disks` no longer reads it: `load` folds it into
+    # `game_folders`, for every title it holds, and blanks it once that has
+    # happened. Kept as a field, rather than deleted, so a folder on a drive
+    # that is not plugged in today is not lost -- `load` tries again on the
+    # next run that can read it, since it only blanks this once something was
+    # actually found.
     disks: str = ""
     # The folder `File > Open` last opened a save from, so the daily
     # navigation through several subdirectories is only ever done once (#66).
@@ -145,14 +159,17 @@ class Settings:
     # search beside the open save. Empty means nobody has set one, and
     # `editor.files.open_start_dir` falls back to the automatic behaviour.
     saves_folder: str = ""
-    # Per-title disk folders, keyed by `Game.key` (#22): the shared `disks`
-    # folder above answers "Pool of Radiance" for a machine that holds several
-    # titles, whatever is actually being played, because that title is first
-    # in `games.GAMES`. Optional per title -- `paths.resolve_disks` tries a
-    # title's own entry first, then `disks`, then the search, so a player who
-    # keeps every title in one folder is no worse off. `None` is a file from
-    # before this existed; `load` migrates `disks` into it once, for whichever
-    # title's disks that folder turns out to hold.
+    # Per-title disk folders, keyed by `Game.key` (#22). This is the whole of
+    # what `paths.resolve_disks` reads for a title now -- `disks` above is no
+    # longer a fallback (`#357 (The automapper reads the shared Game disks
+    # folder, so setting a title's own folder does not make it map that
+    # title)`), because a shared folder answering for whichever title is
+    # first in `games.GAMES` is exactly the bug it was.
+    # Optional per title, and `load` fills a row in here from `disks` for
+    # every title that folder holds, on every load -- see
+    # `fold_shared_folder`. `None` is a file from before this existed, or one
+    # `load` has never had a shared folder to fold; `getattr(..., None) or
+    # {}` is how every reader treats the two the same.
     game_folders: dict[str, str] | None = None
     # The Commodore 64 Ultimate's host, or `host:port`. Empty means "no device
     # named", which is what keeps a network with no Ultimate on it from being
@@ -302,12 +319,23 @@ class Settings:
         if isinstance(values.get("fast_travel_targets"), list):
             values["fast_travel_targets"] = {
                 POOL_OF_RADIANCE: values["fast_travel_targets"]}
-        # A file from before `game_folders` existed has no key for it at all,
-        # which `values.get` reads as `None` -- distinct from `{}`, a player
-        # who has used the per-title folders and cleared every one of them.
-        # Only the former migrates.
-        if values.get("game_folders") is None and values.get("disks"):
-            values["game_folders"] = migrate_game_folder(values["disks"])
+        # `#357 (The automapper reads the shared Game disks folder, so
+        # setting a title's own folder does not make it map that title)`:
+        # fold the shared `disks` folder into `game_folders` on every
+        # load, not once -- a file may carry both keys (a shared folder set
+        # before #22, and a per-title row set after it), and the old one-shot
+        # rule (only when `game_folders` was still absent) would skip that
+        # file and its shared folder would never be reachable by title again.
+        # `disks` is blanked only once something was actually found in it;
+        # a folder that cannot be read today is left for the next load that
+        # can, rather than dropped.
+        shared = values.get("disks", "") or ""
+        if shared:
+            table = dict(values.get("game_folders") or {})
+            found = fold_shared_folder(shared, table)
+            values["game_folders"] = table
+            if found:
+                values["disks"] = ""
         return cls(**values)
 
     def save(self) -> None:

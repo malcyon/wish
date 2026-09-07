@@ -61,6 +61,16 @@ from .ui_window import Ui_WishWindow
 # occasional visit. Index order is tab order, so the map is first.
 MAP_TAB, EDITOR_TAB = 0, 1
 
+#: Said in the Messages panel when `#357 (The automapper reads the shared
+#: Game disks folder, so setting a title's own folder does not make it map
+#: that title)` step 4 switches the window to a title the machine turned out
+#: to be running, rather than refusing. Donald's ruling of 2026-09-07 asked
+#: for this shape and for it to be said; **the sentence itself is not
+#: approved** -- he was shown the shape, not the words -- so it carries the
+#: literal suffix `editor/convert.py` uses for the same reason, until he
+#: rules on it (`.claude/rules/gui-text.md`).
+SWITCHED_TITLE = "{title} is running, so its game disks are in use. (NOT APPROVED)"
+
 #: No preference: `backends.find` takes whichever answers first. The ordinary
 #: case, and what an empty `Settings.backend` means.
 ANY_BACKEND = ""
@@ -138,6 +148,15 @@ class WishWindow(QMainWindow):
             None, maps if maps is not None else load_maps(self.disks_text()),
             area=area, title=title or self._open_title())
         self.map = AutomapBinding(self, self.mapper, settings=self.settings, drive=False, disks=self.disks_text())
+        #: `(Game.key, folder)` -> maps, so `_other_title_maps` reads a
+        #: configured title's disks once rather than on every tick the
+        #: machine is running something unexpected
+        #: (`#357 (The automapper reads the shared Game disks folder, so
+        #: setting a title's own folder does not make it map that title)`
+        #: step 4).
+        self._other_maps_cache: dict[tuple[str, str], dict] = {}
+        self.map.other_maps = self._other_title_maps
+        self.map.titleObserved.connect(self.observe_title)
 
 
         # One status bar for the window. The pages keep their own -- they are
@@ -404,21 +423,6 @@ class WishWindow(QMainWindow):
         """
         return game_named(getattr(self.map.state, "title", None))
 
-    def set_disks(self, folder: str) -> None:
-        """The Game directory changed: remember it, and act on it now.
-
-        Both tabs are fed from the one answer -- the editor's item names and
-        icons, and the map's GEOs and roster names -- so a folder typed here
-        works without a restart. That is the acceptance test for the whole
-        dialog: set one folder, get names and a map.
-        """
-        folder = (folder or "").strip()
-        if folder == (getattr(self.settings, "disks", "") or ""):
-            return
-        self.settings.disks = folder
-        self.settings.save()
-        self.reload_disks()
-
     def reload_disks(self) -> None:
         """Re-resolve where the disks are and hand the answer to both tabs."""
         self.disks, self.disks_source = paths.resolve_disks(
@@ -434,6 +438,64 @@ class WishWindow(QMainWindow):
         self.statusBar().showMessage(
             f"game disks: {where} - {len(maps)} maps" if where
             else "no game disks found")
+
+    def _other_title_maps(self) -> dict[str, dict]:
+        """Every *other* configured title's own maps, for step 4 of
+        `#357 (The automapper reads the shared Game disks folder, so
+        setting a title's own folder does not make it map that title)`.
+
+        Empty with a save open: the open save is what decides the title, and
+        the machine overriding that choice is exactly the failure
+        `#21 (The running game is guessed from a preference, so both title
+        safeguards can fail open)` guarded against -- believing the machine
+        over a title the player chose by opening a save. Empty too when no
+        other title has a folder set, which is the ordinary case and costs
+        nothing: `Automapper.identify_elsewhere` has nothing to try.
+
+        Read off disk once per `(title, folder)` and cached on the window --
+        `_check_the_game` may call this every tick while the refusal would
+        otherwise fire, and re-reading a folder's `GEO` files on every one of
+        those would be the periodic resident check's own cost repeated for
+        nothing.
+        """
+        if self.editor.party is not None:
+            return {}
+        folders = getattr(self.settings, "game_folders", None) or {}
+        current = self.map.state.title
+        out: dict[str, dict] = {}
+        for g in games.GAMES:
+            if g.title == current:
+                continue
+            folder = (folders.get(g.key, "") or "").strip()
+            if not folder:
+                continue
+            key = (g.key, folder)
+            if key not in self._other_maps_cache:
+                self._other_maps_cache[key] = load_maps_titled(folder, g)[0]
+            found = self._other_maps_cache[key]
+            if found:
+                out[g.title] = found
+        return out
+
+    def observe_title(self, title: str) -> None:
+        """The machine is drawing a *different* configured title's map.
+
+        `#357 (The automapper reads the shared Game disks folder, so setting
+        a title's own folder does not make it map that title)` step 4,
+        Donald's ruling of 2026-09-07: switch to it rather than refuse, and
+        say so. Setting `self._title` before `reload_disks` is the whole of
+        the mechanism -- `game()` reads it, `resolve_disks` asks
+        `game_folders` for that title's own row, and `AutomapBinding.set_maps`
+        (called from `reload_disks`) takes `title_check` back to `UNKNOWN` and
+        re-applies the per-title controls for the new title.
+        """
+        was = self._title
+        self._title = title
+        debuglog.note(
+            "game title: believed %s, the machine is drawing %s -- switching",
+            was or "(none)", title)
+        self.reload_disks()
+        self.map.messages.say(SWITCHED_TITLE.format(title=title))
 
     def follow_save(self) -> None:
         """A save was opened: point the automatic backup folder at it, and

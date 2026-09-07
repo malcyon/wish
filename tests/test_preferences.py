@@ -86,18 +86,26 @@ def window(app, save=None, **kw):
 
 def test_the_flag_beats_the_preference_which_beats_the_environment(
         tmp_path, monkeypatch):
-    """One sentence, made observable: the setting is the answer, and a
-    command-line option beats it for one run."""
+    """One sentence, made observable: a title's own folder is the answer, and
+    a command-line option beats it for one run.
+
+    `#357 (The automapper reads the shared Game disks folder, so setting a
+    title's own folder does not make it map that title)` took the shared
+    `disks` setting out of this precedence, so the preference under test is
+    now `game_folders`, asked for its own title."""
     nowhere(tmp_path, monkeypatch)
     flag = disks(tmp_path / "flag", "POOL1.D64")
     saved = disks(tmp_path / "saved", "POOL1.D64")
     env = disks(tmp_path / "env", "POOL1.D64")
-    settings = Settings(disks=str(saved))
+    settings = Settings(
+        game_folders={games.POOL_OF_RADIANCE.key: str(saved)})
     monkeypatch.setenv("POR_DISKS", str(env))
 
-    assert paths.resolve_disks(flag=str(flag), settings=settings) == (
-        flag, paths.FLAG)
-    assert paths.resolve_disks(settings=settings) == (saved, paths.PREFERENCE)
+    assert paths.resolve_disks(flag=str(flag), settings=settings,
+                               game=games.POOL_OF_RADIANCE) == (flag, paths.FLAG)
+    assert paths.resolve_disks(settings=settings,
+                               game=games.POOL_OF_RADIANCE) == (
+        saved, paths.GAME_PREFERENCE)
     assert paths.resolve_disks(settings=Settings()) == (env, paths.ENVIRONMENT)
 
 
@@ -125,12 +133,16 @@ def test_with_nothing_anywhere_the_answer_is_nothing_found(tmp_path,
 def test_a_folder_that_holds_no_disks_is_still_the_answer(tmp_path,
                                                           monkeypatch):
     """Reporting an empty folder as empty beats silently searching elsewhere:
-    "it is ignoring what I typed" is the complaint this avoids."""
+    "it is ignoring what I typed" is the complaint this avoids -- now for a
+    title's own row, the shared folder having gone with #357."""
     nowhere(tmp_path, monkeypatch)
     empty = tmp_path / "typo"
     empty.mkdir()
-    where, source = paths.resolve_disks(settings=Settings(disks=str(empty)))
-    assert (where, source) == (empty, paths.PREFERENCE)
+    settings = Settings(
+        game_folders={games.POOL_OF_RADIANCE.key: str(empty)})
+    where, source = paths.resolve_disks(settings=settings,
+                                        game=games.POOL_OF_RADIANCE)
+    assert (where, source) == (empty, paths.GAME_PREFERENCE)
 
 
 # --- a folder per title (#22, steps 1 and 3) ---------------------------------
@@ -139,56 +151,63 @@ def test_a_folder_that_holds_no_disks_is_still_the_answer(tmp_path,
 # "a folder per title (#22, step 2)".
 
 def test_a_titles_own_folder_wins_over_the_shared_one(tmp_path, monkeypatch):
+    """Named for the precedence `#22 (A disk folder setting per game, not one
+    shared by all six)` established. `#357 (The automapper reads the shared
+    Game disks folder, so setting a title's own folder does not make it map
+    that title)` removed the shared folder from `resolve_disks` altogether --
+    there is nothing left to win against, so what remains to pin is that a
+    title's own row is what a game gets."""
     nowhere(tmp_path, monkeypatch)
-    shared = disks(tmp_path / "shared", "POOL1.D64")
     curses_own = disks(tmp_path / "curse-only", "CURSE1.D64")
-    settings = Settings(disks=str(shared),
-                        game_folders={CURSE.key: str(curses_own)})
+    settings = Settings(game_folders={CURSE.key: str(curses_own)})
     assert paths.resolve_disks(settings=settings, game=CURSE) == (
         curses_own, paths.GAME_PREFERENCE)
-    # A title with no entry of its own still gets the shared folder.
-    assert paths.resolve_disks(settings=settings, game=games.POOL_OF_RADIANCE) == (
-        shared, paths.PREFERENCE)
 
 
 def test_with_no_game_named_the_per_title_folders_are_not_consulted(
         tmp_path, monkeypatch):
-    """`resolve_disks` cannot look a title up in `game_folders` when nothing
-    says which title is wanted (#21 is that problem, not this one)."""
+    """Reversed by #357. This used to prove `game_folders` was never
+    consulted with no game named, because the shared `disks` folder answered
+    first and #21's own validation was what caught a wrong title. The shared
+    folder is gone now, so with no game named the first configured title's
+    own row is the answer -- `wish/window.py`'s machine-driven correction
+    (#357 step 4) is what takes it the rest of the way to the title actually
+    running."""
     nowhere(tmp_path, monkeypatch)
-    shared = disks(tmp_path / "shared", "POOL1.D64")
     curses_own = disks(tmp_path / "curse-only", "CURSE1.D64")
-    settings = Settings(disks=str(shared),
-                        game_folders={CURSE.key: str(curses_own)})
-    assert paths.resolve_disks(settings=settings) == (shared, paths.PREFERENCE)
+    settings = Settings(game_folders={CURSE.key: str(curses_own)})
+    assert paths.resolve_disks(settings=settings) == (
+        curses_own, paths.GAME_PREFERENCE)
 
 
 def test_a_titles_own_preference_beats_the_shared_one_in_the_report(
         tmp_path, monkeypatch):
     """`#22 (A disk folder setting per game, not one shared by all six)`: the
-    report's "In use" row is the title's own folder. Which preference won and
-    what it beat is `paths.resolve_disks`'s own source constant, checked
-    directly in `test_a_titles_own_folder_wins_over_the_shared_one` -- `report`
-    no longer prints that reason in words."""
+    report's "In use" row is the title's own folder -- the only place `#357`
+    left for it to come from."""
     nowhere(tmp_path, monkeypatch)
-    shared = disks(tmp_path / "shared", "CURSE1.D64")
     own = disks(tmp_path / "curse-only", "CURSE1.D64")
-    settings = Settings(disks=str(shared), game_folders={CURSE.key: str(own)})
+    settings = Settings(game_folders={CURSE.key: str(own)})
     rows = dict(report(settings, game=CURSE))
     assert rows["In use"] == str(own)
 
 
 def test_an_old_settings_file_migrates_its_one_folder_to_the_title_in_it(
         tmp_path, monkeypatch):
-    """The one-step migration must not lose anybody's existing setting: the
-    shared folder is kept exactly as it was, and gains an entry for whichever
-    title turns out to be in it."""
+    """The migration must not lose anybody's existing setting: the shared
+    folder gains an entry for whichever title turns out to be in it.
+
+    Reversed by #357: the shared folder used to be kept as the fallback
+    `resolve_disks` still tried, so `again.disks` stayed set. There is no
+    fallback to keep it for any more -- `resolve_disks` reads only
+    `game_folders` -- so `load` blanks it once the fold has actually found
+    something, which is the case here."""
     nowhere(tmp_path, monkeypatch)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     only = disks(tmp_path / "my-curse-disks", "CURSE1.D64", "CURSE2.D64")
     Settings(disks=str(only)).save()
     again = Settings.load()
-    assert again.disks == str(only)
+    assert again.disks == ""
     assert again.game_folders == {CURSE.key: str(only)}
 
 
@@ -209,14 +228,21 @@ def test_a_folder_recognising_nothing_migrates_to_no_title(tmp_path,
 
 def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
                                                                  monkeypatch):
-    """`game_folders` present -- even empty, a player who cleared every entry
-    -- is a file this build already wrote, and migration must not overwrite a
-    deliberate choice with a fresh guess."""
+    """Reversed by #357. This used to prove `game_folders` present -- even
+    empty, a player who cleared every entry -- was a file this build already
+    wrote, and migration must not overwrite a deliberate choice with a fresh
+    guess. Folding now runs on every load rather than once, because a file
+    carrying both keys (Donald's own) would otherwise never have its shared
+    folder reach `game_folders` at all -- so an empty `game_folders` is no
+    longer special, and a title `disks` actually holds still gets a row,
+    without disturbing any row the player had already set (see
+    `test_a_row_the_player_set_is_not_overwritten_by_the_shared_folder` in
+    `tests/test_gamefolders.py`, which is the case that matters)."""
     nowhere(tmp_path, monkeypatch)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     shelf = disks(tmp_path / "shelf", "CURSE1.D64")
     Settings(disks=str(shelf), game_folders={}).save()
-    assert Settings.load().game_folders == {}
+    assert Settings.load().game_folders == {CURSE.key: str(shelf)}
 
 
 # --- a folder per title (#22, step 2) -----------------------------------------
@@ -345,7 +371,9 @@ def test_the_report_names_the_folder_and_the_titles(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     shelf = disks(tmp_path / "Desktop" / "porgame",
                   "POOL1.D64", "POOL2.D64", "POOL3.D64", "CURSE1.D64")
-    rows = dict(report(Settings(disks=str(shelf))))
+    settings = Settings(
+        game_folders={games.POOL_OF_RADIANCE.key: str(shelf)})
+    rows = dict(report(settings))
     assert rows["In use"] == str(shelf)
     assert "Pool of Radiance (3 disks)" in rows["Titles"]
     assert "Curse of the Azure Bonds (1 disk)" in rows["Titles"]
@@ -356,7 +384,9 @@ def test_the_report_states_each_failure_in_its_own_slot(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     empty = tmp_path / "nothing here"
     empty.mkdir()
-    rows = dict(report(Settings(disks=str(empty))))
+    settings = Settings(
+        game_folders={games.POOL_OF_RADIANCE.key: str(empty)})
+    rows = dict(report(settings))
     assert "POOL*.D64" in rows["Titles"] and rows["Titles"].startswith("none")
     assert rows["In use"] == str(empty)
 
@@ -368,7 +398,9 @@ def test_the_report_prints_two_lines_and_not_six(tmp_path, monkeypatch):
     documentation, and the folder and the titles are the two facts left."""
     nowhere(tmp_path, monkeypatch)
     shelf = disks(tmp_path / "porgame", "POOL1.D64")
-    for settings in (Settings(disks=str(shelf)), Settings()):
+    configured = Settings(
+        game_folders={games.POOL_OF_RADIANCE.key: str(shelf)})
+    for settings in (configured, Settings()):
         assert [name for name, _ in report(settings)] == ["In use", "Titles"]
 
 
@@ -382,7 +414,9 @@ def test_a_flag_beats_the_preference_in_the_report(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     saved = disks(tmp_path / "saved", "POOL1.D64")
     flag = disks(tmp_path / "third place", "POOL1.D64")
-    rows = dict(report(Settings(disks=str(saved)), flag=str(flag)))
+    settings = Settings(
+        game_folders={games.POOL_OF_RADIANCE.key: str(saved)})
+    rows = dict(report(settings, flag=str(flag)))
     assert rows["In use"] == str(flag)
 
 
@@ -399,7 +433,8 @@ def test_a_directory_holding_two_titles_reports_the_open_one_s_maps(
     title and somewhere else in the other."""
     nowhere(tmp_path, monkeypatch)
     shelf = disks(tmp_path / "both", "POOL1.D64", "CURSE1.D64", "CURSE2.D64")
-    rows = dict(report(Settings(disks=str(shelf)), game=CURSE))
+    settings = Settings(game_folders={CURSE.key: str(shelf)})
+    rows = dict(report(settings, game=CURSE))
     assert "Curse of the Azure Bonds (2 disks)" in rows["Titles"]
     assert "Pool of Radiance (1 disk)" in rows["Titles"]
 
@@ -745,14 +780,18 @@ def test_the_folder_box_is_wide_enough_to_read_its_own_placeholder(
 
     It was 137 px wide with 203 px of placeholder in it. The width is measured
     off the text, so this asserts the rule and not the number -- a longer
-    sentence or a wider font moves both sides of it.
+    sentence or a wider font moves both sides of it. Pinned on a title's own
+    row now that `#357 (The automapper reads the shared Game disks folder, so
+    setting a title's own folder does not make it map that title)` removed
+    the shared one -- every row shares the same placeholder text, so any one
+    of them proves the rule.
     """
     from wish.preferences import room_for
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
-        box = dialog.folder
+        box = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
         placeholder = box.placeholderText()
         assert box.minimumWidth() >= box.fontMetrics().horizontalAdvance(
             placeholder)
@@ -804,11 +843,12 @@ def test_changing_the_folder_updates_the_report_with_no_ok_pressed(
     assert dict(rows(dialog))["In use"] == "nothing found"
 
     shelf = disks(tmp_path / "Desktop" / "porgame", "POOL1.D64", "POOL2.D64")
-    dialog.set_folder(str(shelf))
+    dialog.set_game_folder(games.POOL_OF_RADIANCE, str(shelf))
     printed = dict(rows(dialog))
     assert printed["In use"] == str(shelf)
     assert "Pool of Radiance (2 disks)" in printed["Titles"]
-    assert Settings.load().disks == str(shelf)
+    assert Settings.load().game_folders == {
+        games.POOL_OF_RADIANCE.key: str(shelf)}
 
 
 def rows(dialog) -> list[tuple[str, str]]:
@@ -820,9 +860,9 @@ def test_clearing_the_folder_goes_back_to_searching(app, tmp_path, monkeypatch):
     shelf = disks(tmp_path / "porgame", "POOL1.D64")
     win = window(app)
     dialog = PreferencesDialog(win)
-    dialog.set_folder(str(shelf))
-    dialog.set_folder("")
-    assert Settings.load().disks == ""
+    dialog.set_game_folder(games.POOL_OF_RADIANCE, str(shelf))
+    dialog.set_game_folder(games.POOL_OF_RADIANCE, "")
+    assert Settings.load().game_folders == {}
     assert dict(rows(dialog))["In use"] == "nothing found"
 
 
@@ -1158,13 +1198,14 @@ def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
     from wish.preferences import room_for
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
+    folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
     needed = {
-        "folder": room_for(dialog.folder, dialog.folder.placeholderText()),
+        "folder": room_for(folder, folder.placeholderText()),
         "host": room_for(dialog.host, dialog.host.placeholderText()),
         "interval": dialog.interval.minimumSizeHint().width(),
         "areas": dialog.travel_table.sizeHintForColumn(0),
     }
-    assert dialog.folder.minimumWidth() >= needed["folder"]
+    assert folder.minimumWidth() >= needed["folder"]
     assert dialog.host.minimumWidth() >= needed["host"]
     assert dialog.travel_table.minimumWidth() >= needed["areas"]
     assert dialog.sizeHint().width() >= max(needed.values())
@@ -1181,17 +1222,21 @@ def test_three_tabs_and_it_opens_on_general_every_time(app, tmp_path,
     folder three more rows, one per title -- stacked on General they pushed
     its natural height 77 px past what `fit` can give it on Donald's own
     1280x675 desktop (§12, §14), the same squeeze that put Fast travel on its
-    own tab in the first place."""
+    own tab in the first place. The shared folder itself is gone
+    (`#357 (The automapper reads the shared Game disks folder, so setting a
+    title's own folder does not make it map that title)`); what the tab holds
+    now is a row per title."""
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
     assert [dialog.tabs.tabText(i) for i in range(dialog.tabs.count())] == [
         "General", "Game disks", "Fast travel"]
     assert dialog.tabs.currentIndex() == 0
-    # The disks tab holds the folder box; General no longer does.
+    # The disks tab holds the folder boxes; General no longer does.
+    folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
     disks_tab = dialog.tabs.widget(1)
-    assert disks_tab.isAncestorOf(dialog.folder)
-    assert not dialog.tabs.widget(0).isAncestorOf(dialog.folder)
+    assert disks_tab.isAncestorOf(folder)
+    assert not dialog.tabs.widget(0).isAncestorOf(folder)
     # The warning belongs beside the thing it warns about.
     travel = dialog.tabs.widget(2)
     assert travel.isAncestorOf(dialog.travel_table)
@@ -1218,7 +1263,8 @@ def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
     try:
         assert dialog.host.height() >= dialog.host.sizeHint().height()
         assert dialog.interval.height() >= dialog.interval.sizeHint().height()
-        assert dialog.folder.height() >= dialog.folder.sizeHint().height()
+        folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
+        assert folder.height() >= folder.sizeHint().height()
         # Given the height it asks for, General does not scroll. Asserted this
         # way round because the dialog caps itself to the screen: CI's offscreen
         # screen is smaller than Donald's, so a bare `maximum() == 0` failed
@@ -1434,7 +1480,7 @@ def test_one_folder_gets_item_names_and_a_map_without_a_restart(
         assert win.map.no_maps is True
 
         dialog = PreferencesDialog(win)
-        dialog.set_folder(str(shelf))
+        dialog.set_game_folder(games.POOL_OF_RADIANCE, str(shelf))
 
         printed = dict(rows(dialog))
         assert "Pool of Radiance" in printed["Titles"]

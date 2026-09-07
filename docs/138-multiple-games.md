@@ -38,9 +38,13 @@ address and disk glob. Nothing in it touches areas.
   unknown title rather than lying.
 
 The title reaches that table already: `AutomapState.title` is set from the open
-save's `Game`, failing that from whichever title's disks are in the disks
-folder (`automap.__main__.titles_in`), failing that `games.DEFAULT` — so the
-map's labels are per-title today and the fast-travel dropdown is not.
+save's `Game`, failing that from whichever title has a folder set in
+Preferences and is first in `games.GAMES` order (`automap.maps.titles_in`),
+failing that `games.DEFAULT` — and with no save open, the machine can correct
+that guess among the titles with a folder set, rather than only refuse
+(`#357 (The automapper reads the shared Game disks folder, so setting a
+title's own folder does not make it map that title)`) — so the map's labels
+are per-title today and the fast-travel dropdown is not.
 
 **P10 "one area table, keyed by title" is retired**, and reading it as "the
 areas are per-title" is the trap. What it delivered was the names table.
@@ -74,9 +78,14 @@ same way with the same tool and nobody has tabled them.
 ## 3. Where the title comes from, and what happens with no game running
 
 **There is always a title.** `WishWindow.map.state.title` is never None: it
-falls back through the open save, the disks folder, and `games.DEFAULT`. It is
-also sticky — pointing the disks preference at a folder with no recognisable
-images leaves the last title in place rather than clearing it.
+falls back through the open save, else the first title in `games.GAMES` order
+that has a folder set in Preferences, else `games.DEFAULT`. It is also sticky
+— pointing a title's own folder at a directory with no recognisable images
+leaves the last title in place rather than clearing it. **And with no save
+open, it is corrected from the machine** among the titles that have a folder
+set (`#357 (The automapper reads the shared Game disks folder, so setting a
+title's own folder does not make it map that title)`) — see the next
+paragraph for why that still fails closed on a title with no folder.
 
 So the answer to "what does the dialog do with no game running" is: **the same
 thing the map already does**, which is show the title the automapper is
@@ -103,6 +112,17 @@ Two consequences worth writing down:
   most of them. Asking whether it is ours needs only the disks we already have
   and fails **closed**. GRADE: CONFIRMED, and it needed no new address —
   `$0400` was already trusted and already read every tenth poll.
+
+  **Step 4 of `#357 (The automapper reads the shared Game disks folder, so
+  setting a title's own folder does not make it map that title)` asks the
+  identifying question after all, and it still fails closed.** The difference is the candidate list: it is never "every
+  title", only the titles that have a folder set in Preferences today. A
+  title with no folder has no maps to match, so a stranger's game still lands
+  `NOT_OURS` and the ordinary refusal still fires -- the objection above is
+  about a title whose disks are nowhere, and a title with no folder set is
+  exactly that title. Only among titles the player has actually configured
+  does the machine get to correct the guess, and only with no save open to
+  have already decided it.
 * The dropdown must use the **automapper's** title, never a selector's. If the
   Preferences selector lets a player look at Curse's list while the automapper
   is on Pool of Radiance, the dropdown still offers Pool of Radiance. Anything

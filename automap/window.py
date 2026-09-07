@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from functools import partial
+from typing import Callable
 
 from PyQt6.QtCore import (
     QEvent,
@@ -543,6 +544,13 @@ class AutomapBinding(QObject):
     """
 
     statusChanged = pyqtSignal(str)     # for a host window's status bar
+    #: Emitted with a title's name when `_check_the_game` finds the machine
+    #: running a *different* configured title than the one this window is set
+    #: up for -- `#357 (The automapper reads the shared Game disks folder, so
+    #: setting a title's own folder does not make it map that title)` step 4.
+    #: The host, not this class, owns switching to that title's own folder:
+    #: it is the one holding `Settings.game_folders`.
+    titleObserved = pyqtSignal(str)
 
     #: How many map ticks per read of the live party. See `poll_live`.
     LIVE_EVERY = 5
@@ -582,6 +590,14 @@ class AutomapBinding(QObject):
         self.settings = settings or Settings()
         self.state.reveal = self.settings.reveal
         self.state.exploration.sight = self.settings.sight
+        #: Set by the host to a zero-argument callable returning every other
+        #: configured title's own maps, `{title: {area: Geo}}` -- `None` (the
+        #: default) means "no correction available", which is what a hosted
+        #: binding with no window behind it gets, and `_check_the_game` then
+        #: behaves exactly as it did before step 4 of
+        #: `#357 (The automapper reads the shared Game disks folder, so
+        #: setting a title's own folder does not make it map that title)`.
+        self.other_maps: Callable[[], dict[str, dict]] | None = None
 
         self.canvas = MapCanvas(self.state, parent=self.root, host=self)
         self.battle_canvas = CombatCanvas(parent=self.root, host=self)
@@ -763,10 +779,28 @@ class AutomapBinding(QObject):
         map that *is* ours -- a player who loads the right game into the
         emulator they already had open has fixed the problem, and only a
         positive identification lifts this. "Cannot tell" never does.
+
+        **The refusal is not the only way out any more.** `#357 (The
+        automapper reads the shared Game disks folder, so setting a title's
+        own folder does not make it map that title)` step 4: the moment this
+        would otherwise refuse, and only then -- not on every tick the
+        refusal stands -- `self.other_maps` (set by the host) is asked which
+        *other* configured title's maps the block at `$0400` actually
+        matches. A hit is not said here at all: `titleObserved` is emitted
+        and the host switches the window's own title and folder to it, which
+        is what takes `title_check` back to `UNKNOWN` and lets the next
+        resident check land `OURS`. A miss -- nothing configured matches, or
+        `other_maps` was never set (a hosted binding with no window behind
+        it) -- falls through to the refusal exactly as before.
         """
         wrong = self.mapper.title_check is NOT_OURS
         if wrong == self._said_wrong_game:
             return
+        if wrong and self.other_maps is not None:
+            title = self.mapper.identify_elsewhere(self.other_maps())
+            if title is not None:
+                self.titleObserved.emit(title)
+                return
         self._said_wrong_game = wrong
         if wrong:
             self.roster.set_levelling(False)

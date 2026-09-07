@@ -14,10 +14,16 @@ backend … The backend option should move into the preferences dialog."*
   where backups go, which live backend to use, and the debug log.** Fog of
   war and the map's own knobs stay on the map, where you change them
   mid-play.
-* **One directory setting, not two.** The editor's game disk and the
-  automapper's map disks are the same box of `.D64`s in practice, and the
-  editor already expands a named disk into its whole directory. One folder,
-  one row in the dialog, both searches fed from it.
+* **One directory setting per title, not two per title.** The editor's game
+  disk and the automapper's map disks are the same box of `.D64`s in
+  practice, and the editor already expands a named disk into its whole
+  directory. One folder, one row per title in the dialog, both searches fed
+  from it. There used to be one *shared* folder as well as the per-title
+  rows -- `#357 (The automapper reads the shared Game disks folder, so
+  setting a title's own folder does not make it map that title)` removed it,
+  because a player with a title's own row set could still have the shared
+  folder answer for a different title with no save open to say which was
+  wanted.
 * **Precedence, in one sentence: the Game directory setting is the answer**, and
   a command-line option beats it for one run. The environment variables stay
   for the tests and the tools and leave the user documentation.
@@ -128,7 +134,7 @@ the source honestly instead of guessing.
 | rank | source constant | who uses it |
 |---|---|---|
 | 1 | `FLAG` — `--disks` / `--game-disk` | scripts, and anyone testing two sets of disks without changing a setting. A person using the window never types it |
-| 2 | `PREFERENCE` — **the Game directory setting** | everyone. This is the one that matters |
+| 2 | `GAME_PREFERENCE` — **a title's own folder in `Settings.game_folders`** | everyone. This is the one that matters. There is no shared-folder rung any more (`#357 (The automapper reads the shared Game disks folder, so setting a title's own folder does not make it map that title)`); with no title named, the first title in `games.GAMES` order that has a row answers |
 | 3 | `ENVIRONMENT` — `$POR_DISKS` | the test suite and `tools/`; undocumented for users |
 | 4 | `BESIDE` — beside the open save | automatic, and usually right |
 | 5 | `SEARCHED` — the candidate-directory search | automatic, `disk_candidates`, unchanged |
@@ -141,7 +147,8 @@ somewhere else, which is the "it is ignoring what I typed" complaint.
 `$POR_DISKS` and `$POR_GAME_DISK` keep working, for the tests and the tools,
 and are out of the user-facing documentation. `$POR_DISKS` used to
 short-circuit the entire search; it keeps that power over the two automatic
-searches and loses it to the setting only. **This does not disturb the suite**:
+searches and loses it to `game_folders` only -- the per-title table, not the
+shared folder that used to sit above it. **This does not disturb the suite**:
 `tests/conftest.py::_isolate_config` points all four config variables at a
 `tmp_path`, so no test ever sees a saved preference.
 
@@ -155,28 +162,34 @@ reverse import at module level is a cycle. `automap/live.py` does the same.
 
 ### 5a. The dialog reports before it asks
 
+**Stale in two layers, and both predate this edit.** Donald had "Set by" out
+of the report entirely in 2026-08 -- *"a GUI is not the place for
+documentation"* -- so the row never carried the reason a preference was
+overridden; the mockup below still showed it until now. Then
+`#357 (The automapper reads the shared Game disks folder, so setting a
+title's own folder does not make it map that title)` removed the shared
+`Folder` box the mockup drew, one row per title being the only folder
+control left on the tab. The shape below is current as of this fix:
+
 ```
 Preferences                                                   [x]
 
 ┌─ Game disks ─────────────────────────────────────────────────┐
-│  Folder  [ /home/donald/c64/Pool of Radiance Disks   ] [Browse…] [Clear] │
-│                                                              │
 │  In use   /home/donald/c64/Pool of Radiance Disks            │
-│  Set by   this preference                                    │
 │  Titles   Pool of Radiance (8 disks) · Curse of the          │
 │           Azure Bonds (6 disks)                              │
 │                                                              │
-│  Leave it empty to search: beside the open save disk first,  │
-│  then the usual folders.                                     │
+│  Pool of Radiance          [ ...disks... ] [Browse…] [Clear] │
+│  Curse of the Azure Bonds  [                ] [Browse…] [Clear] │
+│  Secret of the Silver Blades [              ] [Browse…] [Clear] │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Three report lines, each answering a question somebody has actually had:
+Two report lines, each answering a question somebody has actually had:
 
 | line | answers | source |
 |---|---|---|
-| **In use** | "is it even looking where I put them?" | `resolve_disks(...)[0]` |
-| **Set by** | "why is it ignoring what I typed?" | `resolve_disks(...)[1]`, plus a note when `$POR_DISKS` or a saved preference was overridden |
+| **In use** | "is it even looking where I put them?" | `resolve_disks(...)[0]`, for whichever title `PreferencesDialog.refresh` asks the window for |
 | **Titles** | "are these the right disks?" | `paths.titles_in` + a count per `disk_globs` |
 
 It printed three more — **Maps**, **Names** and **Icons**, counting the GEOs
@@ -193,8 +206,10 @@ missing row.
 
 `report(settings, flag, beside, game)` is a **plain function returning
 `(label, value)` pairs**, so what the dialog claims is tested without opening
-one. The folder scan is `lru_cache`d on the folder, and typing is debounced by
-`SETTLE_MS` (400 ms); Browse and Clear apply at once. No OK button — see §8.
+one. Each title's own row below it reports separately, in its own words --
+`title_folder_report` -- and applies at once on `editingFinished`; there is
+no debounce timer any more, since the shared box's re-scan on every keystroke
+(`SETTLE_MS`) was the only thing that needed one. No OK button — see §8.
 
 ### 5b. Two changes outside the dialog, which are the actual fix
 
@@ -515,12 +530,12 @@ has never opened a terminal.** Rows 1–4 are the acceptance test, covered by
 | # | do | expect |
 |---|---|---|
 | 1 | `unset POR_DISKS POR_GAME_DISK`; put the disks in `~/Desktop/porgame/`; launch `wish` from the desktop; open a save | items read `word 8`; map tab empty — **and both say "File > Preferences…"** |
-| 2 | File > Preferences, Browse to `~/Desktop/porgame` | report fills in: *Set by — this preference*, *Titles — Pool of Radiance (8 disks)* |
+| 2 | File > Preferences, Browse **Pool of Radiance's own row** to `~/Desktop/porgame` | report fills in: *In use — `~/Desktop/porgame`*, *Titles — Pool of Radiance (8 disks)*; the row's own note says *8 disks* too |
 | 3 | Close | items are named **without a restart**; the map tab draws |
 | 4 | quit, relaunch from the desktop | still works. Nothing was typed in a terminal at any point |
-| 5 | `export POR_DISKS=/somewhere/else`, relaunch | the preference still wins; *Set by — this preference ($POR_DISKS is set and overridden)* |
-| 6 | clear the preference, relaunch | *Set by — `$POR_DISKS`*. Donald's own machine, unchanged |
-| 7 | `wish --disks /third/place` with a preference set | *Set by — --disks, this run only*; the saved preference is shown and marked unused |
+| 5 | `export POR_DISKS=/somewhere/else`, relaunch | the title's own row still wins over `$POR_DISKS` -- *In use* still names `~/Desktop/porgame` |
+| 6 | clear the row, relaunch with `$POR_DISKS` still set | *In use* names `$POR_DISKS`'s folder. Donald's own machine, unchanged |
+| 7 | `wish --disks /third/place` with a row set | *In use — `/third/place`*; the row itself is untouched, since `--disks` overrides for this run only and is never written back |
 | 8 | point the folder at an empty directory | *Titles — none; no `POOL*.D64` or `CURSE*.D64` here.* No crash, no exception dialog |
 | 9 | point it at a directory holding both titles' disks, with a Curse save open | *Titles* lists both; the maps and item names loaded come from **Curse** — the `game` argument is threaded through, not defaulted |
 | 10 | `chmod a-w` the config directory, change a preference | dialog works, the change applies for this run, nothing raises (`Settings.save` swallows `OSError`) |
@@ -742,8 +757,12 @@ minimum does not refuse** — it takes the shortfall out of whatever can be
 squeezed, which is exactly the line edits, the spin box and the table.
 
 * **`General`, `Game disks` and `Fast travel`.** General holds the backups
-  line, the backend and the debug log; Game disks holds the shared folder and
-  each title's own (`#22 (A disk folder setting per game, not one shared by all six)`); Fast travel holds the area table and the amber
+  line, the backend and the debug log; Game disks holds each title's own
+  folder (`#22 (A disk folder setting per game, not one shared by all six)`
+  -- the shared folder that used to sit above the per-title rows was removed
+  by `#357 (The automapper reads the shared Game disks folder, so setting a
+  title's own folder does not make it map that title)`, so the tab is one
+  row shorter than the measurements below describe); Fast travel holds the area table and the amber
   warning, which belongs beside the thing it warns about. Split, none of the
   three has to fight the others for height: General needs 458 lines and gets
   them now that Game disks is its own tab (578 with the disks group still in
@@ -785,6 +804,14 @@ squeezed, which is exactly the line edits, the spin box and the table.
   stop. At the size `fit` opens there is nothing to scroll, and the test
   asserts the scrollbar's maximum is 0.
 
+**The pixel figures above -- 784×544, 667×648, the 209 px folder box -- were
+measured before `#357 (The automapper reads the shared Game disks folder, so
+setting a title's own folder does not make it map that title)` removed the
+shared `Folder` row.** The Game disks tab is one row shorter now and nobody
+has re-measured it; the *shape* of the argument (a squeezed tab takes the
+shortfall out of what can be squeezed, and the width is measured off a
+placeholder rather than chosen) is still how it works.
+
 ---
 
 ## Open
@@ -799,12 +826,18 @@ squeezed, which is exactly the line edits, the spin box and the table.
   General because three more rows pushed its natural height past what `fit`
   can give it on Donald's 1280x675 desktop (§12, §14), the same squeeze that
   put Fast travel on its own tab. `Settings.game_folders: dict[str, str]`,
-  keyed by `Game.key`, with the migration `Settings.fast_travel_targets`
-  already set the pattern for: a file with no `game_folders` key migrates
-  today's shared `disks` folder into whichever title's disks it turns out to
-  hold, once. `paths.resolve_disks` tries a title's own entry first, then the
-  shared folder, then the search, so a player with everything in one place is
-  no worse off. **Pools of Darkness has no row.** Donald settled on four
+  keyed by `Game.key`, is now the whole of the setting: `#22 (A disk folder
+  setting per game, not one shared by all six)`'s own shared `disks` folder,
+  kept beside the per-title rows for two years, turned out to make the wrong
+  title's folder answer with no save open to say which title was wanted
+  (`#357 (The automapper reads the shared Game disks folder, so setting a
+  title's own folder does not make it map that title)`), so
+  `paths.resolve_disks` reads `game_folders` alone now. `disks` survives only
+  as the field the shared folder is folded out of, per the same issue: **on
+  every load**, not once, and for every title the folder holds rather than only
+  the first -- a file carrying both a shared folder and a per-title row
+  (Donald's own) would otherwise never have the shared one reach
+  `game_folders` at all. **Pools of Darkness has no row.** Donald settled on four
   (2026-09-04): Pool of Radiance, Curse, Silver Blades and Pools of Darkness.
   The fourth is not built -- it has no entry in `goldbox.games.GAMES` at all,
   and it never shipped on the Commodore 64 this whole module searches for (DOS

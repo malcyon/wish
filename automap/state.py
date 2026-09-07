@@ -696,6 +696,38 @@ class Automapper:
         elapsed = (fix.clock - before.clock) % (24 * 60)
         return elapsed == self.STEP_MINUTES
 
+    def identify_elsewhere(self, elsewhere: dict[str, dict[str, Geo]]
+                           ) -> str | None:
+        """Which of these other titles' maps is at `$0400`, byte for byte.
+
+        `#357 (The automapper reads the shared Game disks folder, so setting
+        a title's own folder does not make it map that title)` step 4: with
+        no save open, nothing has said which of several *configured* titles
+        is actually running, so `_check_the_game` asks the machine directly
+        before refusing. `elsewhere` is every other configured title's own
+        maps, title -> `{area: Geo}` -- built by the window from
+        `Settings.game_folders`, never a search, so a title with no folder
+        set is never a candidate and the refusal still fires for it exactly
+        as before.
+
+        **Exact match only, never `ResidentGeo.verdict`'s `NEAR_ENOUGH`
+        tolerance.** A switch changes what the per-title controls write to,
+        so it needs the certainty a byte-for-byte hit gives; the tolerance
+        exists for a game writing into the block it is already drawing, which
+        says nothing about which title that block belongs to.
+
+        `None` with nothing to check against -- `self.resident` is `None`
+        exactly when this mapper was built with no maps of its own, and there
+        is no live target to read a stranger's block from either.
+        """
+        if self.resident is None:
+            return None
+        reader = ResidentGeo(self.target)
+        for title, maps in elsewhere.items():
+            if reader.identify(maps) is not None:
+                return title
+        return None
+
     def _check_resident(self) -> bool:
         """Name the area from the map block the game itself has loaded.
 

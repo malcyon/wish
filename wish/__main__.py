@@ -132,10 +132,10 @@ def main(argv: list[str] | None = None) -> int:
         return forget(args.forget)
 
     game = game_of(args.save)
-    # One precedence, resolved once: `--disks` for this run, else the Game
-    # directory setting, else beside the save, else the usual folders. The
-    # window resolves the same way from the same three inputs, so the maps it
-    # is handed and the folder it reports cannot disagree.
+    # One precedence, resolved once: `--disks` for this run, else the title's
+    # own folder in Preferences, else beside the save, else the usual
+    # folders. The window resolves the same way from the same three inputs,
+    # so the maps it is handed and the folder it reports cannot disagree.
     from automap.paths import resolve_disks
     where, source = resolve_disks(flag=args.disks, beside=args.save, game=game)
     maps, game = load_maps_titled(str(where) if where else None, game)
