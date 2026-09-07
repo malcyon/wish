@@ -21,8 +21,17 @@ import struct
 
 import pytest
 
-from goldbox import dos_layout as dl
-from tools import innateids
+# **The skip has to come before the import, not beside it.** `tools/innateids.py`
+# imports `capstone` at module level, so `from tools import innateids` raises
+# `ModuleNotFoundError` on a machine without it -- and every CI runner is one.
+# A skip written after this line never runs: the module fails to import first
+# and pytest reports an error rather than a skip. That is the mistake that
+# turned `main` red on all four jobs this morning in `tests/test_amigaglobal.py`
+# and again here.
+pytest.importorskip("capstone")
+
+from goldbox import dos_layout as dl  # noqa: E402
+from tools import innateids  # noqa: E402
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
