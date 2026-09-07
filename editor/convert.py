@@ -787,8 +787,12 @@ def fresh_folder(destination: str | pathlib.Path,
 #: and two portrait lines for a party whose sheet portrait position is 0 --
 #: `#377 (The conversion pane says a portrait could not be converted for a
 #: character who never had one)`;
-#: (4) the README says how the source picker works -- Donald's own file and
-#: his to write, not a condition an agent can meet; (5) each registered
+#: (4) the README says how the source picker works -- **waived by Donald on
+#: 2026-09-07**, so this no longer gates the flag: *"I will update the
+#: README, but don't wait on that to remove WISH_EXPERIMENTAL_CONVERT and
+#: close the related tickets. It is a simple interface, and people will
+#: figure it out."* He still means to write it; it is his file and his
+#: sentence, and it is not a condition; (5) each registered
 #: direction has been loaded and walked in its emulator from a save this
 #: dialog's own code path wrote. **Met 2026-09-07, eight of eight**: Pool of
 #: Radiance both ways on 2026-09-05; the four remaining C64 ↔ DOS rows
