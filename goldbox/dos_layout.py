@@ -224,7 +224,26 @@ _DECLARED: Sequence[Field] = (
        "WIS DEX CON CHA -- and every specimen is 3-18. **Pool of Radiance "
        "stores each ability once.** From Curse onwards the DOS record stores "
        "a (base, current) pair per ability and everything after shifts by "
-       "0x46, so this offset is per title and does not transfer"),
+       "0x46, so this offset is per title and does not transfer.\n"
+       "**Which byte is which is CONFIRMED (#401), and it is not the same "
+       "answer for the seventh pair** -- see `exceptional_strength`. For "
+       "these six the *lower* address of each pair is the permanent score "
+       "and the higher one is what is in force, so `0x010`-`0x01A` even "
+       "answer to C64 `0x065`-`0x06A` and `0x011`-`0x01B` odd to C64 "
+       "`0x014`-`0x019`. Curse's `GAME.OVR:0x368FB` is the recompute -- it "
+       "seeds `al` from `es:[di+0x10 + 2i]`, walks the item chain and the "
+       "spell affects, and stores the result to `es:[di+0x11 + 2i]`; the "
+       "loop that ends character creation copies `[0x11 + 2i]` onto "
+       "`[0x10 + 2i]` at `0x2241B`; the Pool of Radiance import writes the "
+       "single copy to `[0x10 + 2i]` and clamps *that* byte to the race and "
+       "sex limits; and the strength drain at `0x10F45` decrements `0x011` "
+       "beside a 60-tick affect. Four characters staged with a pair apart "
+       "and loaded in DOSBox drew the higher byte on the sheet, four of "
+       "four, and SHARA's `DAMAGE 1D2+1` is the engine's own bonus for the "
+       "17 in her higher byte rather than the 9 in her lower one. The same "
+       "signatures are in Silver Blades, Pools of Darkness and both Savage "
+       "Frontier games, and in none of Pool of Radiance, which has no pairs. "
+       "`tools/dosabilitypair.py sites` finds them"),
     _f(0x011, 1, _U8, "intelligence", "INT", _OK),
     _f(0x012, 1, _U8, "wisdom", "WIS", _OK),
     _f(0x013, 1, _U8, "dexterity", "DEX", _OK),
@@ -232,7 +251,21 @@ _DECLARED: Sequence[Field] = (
     _f(0x015, 1, _U8, "charisma", "CHA", _OK),
     _f(0x016, 1, _U8, "exceptional_strength", "STR %", _OK,
        "nonzero only where strength is 18. Values seen: 17, 65, 68, 90, 100 "
-       "-- the Gold Box '18/00 = 100' encoding the C64 uses at 0x01A"),
+       "-- the Gold Box '18/00 = 100' encoding the C64 uses at 0x01A.\n"
+       "**In the later titles this pair is stored the other way round from "
+       "the six above, which is measured rather than assumed (#401).** At "
+       "Curse's own offsets `0x01C` is the percentile in force and `0x01D` "
+       "is the permanent copy: the recompute at `GAME.OVR:0x368FB` seeds "
+       "from `es:[di+0x1D]` and stores to `es:[di+0x1C]`, the creation copy "
+       "at `0x22437` runs `0x01C` onto `0x01D` where the six run the other "
+       "way, and the routine at `0x3674A` that asks whether an item's "
+       "strength beats the character's own compares against the pair "
+       "`(0x10, 0x1D)` -- one lower byte and one higher one, in the same "
+       "four instructions. Two characters staged at 18/18 with only the "
+       "percentile crossed drew `STR 18` for `0x01C = 0` and `STR 18(00)` "
+       "for `0x01C = 100`, with `DAMAGE 1D2+2` against `1D2+6`. So `0x01C` "
+       "answers to C64 `0x01A` and `0x01D` to C64 `0x06B`, and a conversion "
+       "that swaps the six must leave this one alone"),
     _f(0x01C, 16, _RAW, "spells_memorised", "Spells memorised", _MAYBE,
        "spell ids in the shared 1-56 numbering, **filled from the end of the "
        "region backwards**: ROLAND (cleric 3) holds 0x027-0x02B = 3 3 3 3 23, "
