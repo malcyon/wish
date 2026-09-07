@@ -1184,10 +1184,21 @@ def read_amiga_por(path) -> AmigaPorCharacter:
     import pathlib
 
     path = pathlib.Path(path)
-    data = path.read_bytes()
-    char = AmigaPorCharacter.from_bytes(data, source=str(path))
-    itm = _sibling_bytes(path, ".itm")
-    spc = _sibling_bytes(path, ".spc")
+    return por_character(path.read_bytes(), _sibling_bytes(path, ".itm"),
+                         _sibling_bytes(path, ".spc"), source=str(path))
+
+
+def por_character(record: bytes, itm: bytes = b"", spc: bytes = b"",
+                  source: str = "") -> AmigaPorCharacter:
+    """One Amiga Pool of Radiance character, from the three files' bytes.
+
+    What :func:`read_amiga_por` does once it has read the files, and the way
+    in for a caller whose files are not on the host filesystem at all --
+    :func:`read_por_slot` reads them straight out of an `.adf`.  The record's
+    own `item_count` is what says how much of the `.itm` belongs here, and
+    the shorter of the two wins, exactly as the path-based reader has it.
+    """
+    char = AmigaPorCharacter.from_bytes(record, source=source)
     count = min(char.get("item_count"), len(itm) // AMIGA_POR_ITEM_SIZE)
     items = [AmigaPorItem.from_bytes(
         itm[i * AMIGA_POR_ITEM_SIZE:(i + 1) * AMIGA_POR_ITEM_SIZE])
@@ -1195,7 +1206,7 @@ def read_amiga_por(path) -> AmigaPorCharacter:
     effects = [spc[i:i + AMIGA_POR_EFFECT_SIZE]
                for i in range(0, len(spc), AMIGA_POR_EFFECT_SIZE)
                if len(spc[i:i + AMIGA_POR_EFFECT_SIZE]) == AMIGA_POR_EFFECT_SIZE]
-    return AmigaPorCharacter.from_bytes(data, str(path), items, effects)
+    return AmigaPorCharacter.from_bytes(record, source, items, effects)
 
 
 def _sibling_bytes(path, suffix: str) -> bytes:
@@ -1437,6 +1448,34 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     return bytes(out)
 
 
+def to_dos_character(char: AmigaPorCharacter):
+    """The whole Amiga character as the `goldbox.dos.DosCharacter` the C64
+    and DOS container writers take -- record, items and effects together.
+
+    :func:`to_dos_record` re-cuts the 288 bytes; this is that plus the two
+    sibling files, `AmigaPorItem.to_dos_bytes` and
+    :func:`amiga_por_effect_to_dos` being the same re-cut for a 65-byte item
+    node and a 10-byte effect node.  It is not a conversion between games --
+    the same character in the other port's shape.
+
+    `goldbox.dos.write_c64_save` takes a `list[DosCharacter]` rather than a
+    list of neutral records, because the combat figure crosses through
+    `icon_head`, `icon_body`, `icon_colours` and `size`, which a neutral
+    record does not carry; so this, and not :func:`to_neutral`, is what
+    `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+    standing in the Slums on the Amiga arrives there in VICE)` hands it.
+    """
+    # Deferred: `goldbox.dos` is the heavier module, and this and
+    # :func:`to_neutral` are its only callers here.
+    from . import dos as _dos
+
+    return _dos.DosCharacter(
+        to_dos_record(char),
+        [_dos.DosItem(it.to_dos_bytes()) for it in char.items],
+        [amiga_por_effect_to_dos(e) for e in char.effects],
+        source=char.source)
+
+
 def to_neutral(char) -> NeutralCharacter:
     """One Amiga character in the neutral record, whichever title wrote it.
 
@@ -1456,11 +1495,7 @@ def to_neutral(char) -> NeutralCharacter:
     # Deferred: `goldbox.dos` is the heavier module and this is its only caller.
     from . import dos as _dos
 
-    record = to_dos_record(char)
-    items = [_dos.DosItem(it.to_dos_bytes()) for it in char.items]
-    effects = [amiga_por_effect_to_dos(e) for e in char.effects]
-    out = _dos.to_neutral(
-        _dos.DosCharacter(record, items, effects, source=char.source))
+    out = _dos.to_neutral(to_dos_character(char))
     out.port = "Amiga"
     out.source = char.source
     out.warnings.append(
@@ -2067,6 +2102,194 @@ def slot_list_bytes(slots: Sequence[str]) -> bytes:
         letter = _por_slot_letter(slot)
         out[POR_SLOT_LETTERS.index(letter)] = ord(letter)
     return bytes(out)
+
+
+def por_save_drawer(disk) -> str:
+    """Which of the two shapes of Pool of Radiance save disk this one is (#36).
+
+    The game builds every save name by sticking a filename on the end of
+    whatever the player answered at `PATH FOR SAVE`, and there are two
+    answers.  On the game's own disk 1 the saves sit in a `save` drawer, so
+    `/save` is a **drawer** holding the slot-list file `/save/save`; on a
+    `POOLSAVE` save disk they sit at the root, so `/save` is the slot-list
+    **file** itself.  That one difference is the whole test, and it is read
+    off the disk rather than passed in by a caller who would have to know.
+
+    Returns the drawer name :func:`por_save_path` takes -- `"save"` or the
+    empty string.  A disk with no `/save` at all has never had a game saved
+    to it and is refused, because every other answer here would be a guess
+    about a disk that holds no saves either way.
+    """
+    try:
+        entry = disk.lookup(f"/{POR_SAVE_DRAWER}")
+    except AmigaDiskError:
+        raise AmigaRecordError(
+            f"{disk.volume_name!r} has no {POR_SLOT_LIST_NAME!r}, so it is "
+            f"neither a Pool of Radiance game disk with a save drawer nor a "
+            f"POOLSAVE save disk") from None
+    return POR_SAVE_DRAWER if entry.is_dir else ""
+
+
+def por_slots_present(disk, drawer: str | None = None) -> list[str]:
+    """The slot letters this disk actually holds files for, A first.
+
+    **Not `read_slot_list`, and the two answer different questions.** That
+    one reads `save/save`, the ten-byte array the picker draws its menu
+    from; this one asks which slots have a `savgam<letter>.dat` and a first
+    character file to read.  A slot the picker offers and the disk has lost
+    the files for would be listed by the first and not by the second, and it
+    is the second a reader wants.
+    """
+    drawer = por_save_drawer(disk) if drawer is None else drawer
+    out = []
+    for letter in POR_SLOT_LETTERS:
+        try:
+            disk.lookup(por_save_path(por_savegame_filename(letter), drawer))
+            disk.lookup(por_save_path(por_filename(letter, 1), drawer))
+        except AmigaDiskError:
+            continue
+        out.append(letter)
+    return out
+
+
+#: Why an Amiga party standing on the travel grid is refused as the *source*
+#: of a conversion, which is a different question from
+#: :data:`POR_OUTDOORS_UNMEASURED` and has the same answer.
+#:
+#: That one is about the Amiga saved game this project **writes**: two bytes
+#: of an outdoor one have never been seen, so writing either would be
+#: inventing a value.  This one is about the Amiga saved game it **reads**.
+#: The travel square is read at `goldbox.dos_savegame.TRAVEL_X` and
+#: `TRAVEL_Y`, which is where the DOS container keeps it, and
+#: `docs/196-the-amiga-saved-game-built.md` §2 has the Amiga container
+#: agreeing with the DOS one address for address -- on **indoor** saves,
+#: which is every Amiga saved game anybody has read.  So the two travel
+#: bytes a converted C64 or DOS save would stand the party on rest on the
+#: map holding outdoors as well, and nothing has shown that.
+#:
+#: The experiment that settles both is the same one, and it is one WinUAE
+#: run: walk a party out of New Phlan onto the travel grid, save, and read
+#: the file the engine wrote.  `#321 (An Amiga Pool of Radiance conversion
+#: refuses a party standing on the travel grid, because no outdoor Amiga
+#: saved game has ever been read)` is that experiment.
+#:
+#: It was unrunnable until 2026-09-07, when
+#: `#361 (An Amiga party cannot be made to walk, because the WinUAE driver
+#: sends only keystrokes)` closed: `tools/amigadrive.py` presses the numeric
+#: keypad now, which is what moves a party in Amiga Curse and Amiga Silver
+#: Blades.  **Whether Pool of Radiance walks on those same keys is not
+#: measured** -- that title was not one of the two the keys were read on --
+#: so the first step of the experiment is still to find out, rather than to
+#: assume the other titles' keys.
+#:
+#: Unapproved wording -- a player never sees this string, because
+#: `editor/convert.py` shows its own approved sentence for anything that is
+#: not a `goldbox.dos.DosRecordError`.
+POR_OUTDOORS_UNREAD = (
+    "this party is on the travel grid, and no Amiga saved game made outdoors "
+    "has ever been read, so the travel square this would convert has never "
+    "been seen where the reader looks for it")
+
+
+def read_por_state(savgam: bytes, source: str = "") -> "neutral_save.NeutralSave":
+    """An Amiga slot's saved game, as the place and clock a writer takes.
+
+    The guarded reader for every conversion whose **source** is an Amiga
+    Pool of Radiance slot -- `#353 (Convert an Amiga Pool of Radiance save
+    to the C64, so a party standing in the Slums on the Amiga arrives there
+    in VICE)` and `#354 (Convert an Amiga Pool of Radiance save to DOS, so a
+    party standing in the Slums on the Amiga arrives there under DOSBox)`
+    both call it, so the one refusal below is stated once rather than in
+    each direction.
+
+    `goldbox.neutral_save.from_amiga` does the reading and refuses nothing;
+    :func:`por_state_from_amiga` is the same reader guarded for the other
+    direction, where the Amiga file is the one being written.
+    """
+    if len(savgam) != POR_SAVEGAME_SIZE:
+        raise AmigaRecordError(
+            f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
+            f"bytes, got {len(savgam)}")
+    state = neutral_save.from_amiga(savgam, source=source)
+    if state.outdoors:
+        raise AmigaRecordError(POR_OUTDOORS_UNREAD)
+    return state
+
+
+def _por_slot_file(disk, letter: str, index: int, suffix: str,
+                   drawer: str) -> "bytes | None":
+    """One character's `.sav`, `.itm` or `.spc`, or `None` when it is absent.
+
+    Absence is the ordinary case for all three: a party of four leaves
+    `CHRDAT<slot>5.sav` off the disk entirely, and a character carrying
+    nothing has no `.itm`.  `read_amiga_por` answers the same question with
+    `_sibling_bytes` on the host filesystem.
+    """
+    try:
+        return disk.read_file(
+            por_save_path(por_filename(letter, index, suffix), drawer))
+    except AmigaDiskError:
+        return None
+
+
+def read_por_slot(disk, slot: str, drawer: str | None = None):
+    """One Amiga save slot: its party, and the saved game around it.
+
+    `(list[goldbox.dos.DosCharacter], savgam_bytes)` -- the pair
+    `goldbox.dos.write_c64_save` and `goldbox.dos.new_dos_save_from` take,
+    once `goldbox.neutral_save.from_amiga` has turned the second into a
+    place and a clock.  This is the Amiga end of
+    `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+    standing in the Slums on the Amiga arrives there in VICE)` and
+    `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
+    standing in the Slums on the Amiga arrives there under DOSBox)`.
+
+    `tools/porslot.py`'s `read_slot` does the same reading through a
+    temporary directory, because `read_amiga_por` wanted a path.  This one
+    reads the blocks straight off the `AmigaDisk` -- the `.sav`, the `.itm`
+    and the `.spc` of each character, and then the slot's own
+    `savgam<letter>.dat` -- so nothing is written to the host filesystem to
+    convert a save.
+
+    **The party stops at the first missing `.sav`.**  The engine fills the
+    saved game's character table only as far as the party goes
+    (:func:`retarget_savegame`), and a one-character slot is a real case:
+    `work/issue105`'s `savgamE.dat` is one the Amiga game itself wrote.
+
+    Raises `AmigaRecordError` for a slot with no characters and for one with
+    characters and no saved game -- the second being a half-written disk
+    rather than an absent slot, which is why it is a different sentence.
+    """
+    letter = _por_slot_letter(slot)
+    drawer = por_save_drawer(disk) if drawer is None else drawer
+    party = []
+    for index in range(1, POR_PARTY_MAX + 1):
+        here = [_por_slot_file(disk, letter, index, suffix, drawer)
+                for suffix in (".sav", ".itm", ".spc")]
+        if here[0] is None:
+            break
+        party.append(to_dos_character(por_character(
+            here[0], here[1] or b"", here[2] or b"",
+            source=f"{disk.volume_name}:"
+                   f"{por_save_path(por_filename(letter, index), drawer)}")))
+    if not party:
+        raise AmigaRecordError(
+            f"slot {letter} has no {por_filename(letter, 1)} on "
+            f"{disk.volume_name!r}")
+    try:
+        savegame = disk.read_file(
+            por_save_path(por_savegame_filename(letter), drawer))
+    except AmigaDiskError:
+        raise AmigaRecordError(
+            f"slot {letter} has {len(party)} character file(s) on "
+            f"{disk.volume_name!r} but no "
+            f"{por_savegame_filename(letter)}, so there is nothing to say "
+            f"where the party is standing") from None
+    if len(savegame) != POR_SAVEGAME_SIZE:
+        raise AmigaRecordError(
+            f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
+            f"bytes, got {len(savegame)}")
+    return party, savegame
 
 
 def retarget_savegame(save: bytes, slot: str) -> bytes:
@@ -3094,6 +3317,50 @@ SILVER_BLADES_SHAPE = AmigaShape(
 #: nameless file can say which title it belongs to.
 AMIGA_SHAPES = (CURSE_SHAPE, SILVER_BLADES_SHAPE)
 AMIGA_SHAPES_BY_SIZE = {s.record_size: s for s in AMIGA_SHAPES}
+
+
+def amiga_shape_for(size: int) -> "dos_layout.DosShape":
+    """Which title an Amiga character record of this length belongs to.
+
+    The Amiga three are 288, 428 and 340 bytes and no two are the same, so a
+    record names its own title the way the DOS four do
+    (`goldbox.dos_layout.shape_for`) -- which is what lets a reader handed an
+    `.adf` with no other clue say what is on it.  Pool of Radiance is not in
+    :data:`AMIGA_SHAPES` because it has no `AmigaShape` of its own: it is
+    read straight through the DOS field table (:func:`to_dos_record`).
+
+    Answers with the **DOS** shape rather than the Amiga one, because that
+    is the shape carrying the `key` a conversion is registered against
+    (`editor/convert.py`'s `Direction.source_key`) and the one both Amiga
+    readers already re-cut into.
+    """
+    if size == AMIGA_POR_RECORD_SIZE:
+        return dos_layout.POOL_OF_RADIANCE
+    shape = AMIGA_SHAPES_BY_SIZE.get(size)
+    if shape is None:
+        known = ", ".join(str(n) for n in
+                          sorted([AMIGA_POR_RECORD_SIZE]
+                                 + list(AMIGA_SHAPES_BY_SIZE)))
+        raise AmigaRecordError(
+            f"no Amiga Gold Box character record is {size} bytes; the three "
+            f"this reads are {known}")
+    return shape.dos
+
+
+#: The titles an Amiga save slot can be **converted from** today, as the DOS
+#: shapes whose `key` `editor/convert.py` registers a direction against.
+#:
+#: Pool of Radiance alone, and the two that are missing are missing for one
+#: reason each rather than for want of a row here.  Curse of the Azure Bonds
+#: and Secret of the Silver Blades have their records read
+#: (:data:`AMIGA_SHAPES`) and their save disks read
+#: (`goldbox/amiga_later.py`), and what neither has is a saved-game reader:
+#: `goldbox.neutral_save.from_amiga` is Pool of Radiance's own container, and
+#: `#55`'s work stopped at the records.  Converting a party without the game
+#: around it is the thing `#353 (Convert an Amiga Pool of Radiance save to
+#: the C64, so a party standing in the Slums on the Amiga arrives there in
+#: VICE)` exists to stop.
+CONVERTS: "tuple[dos_layout.DosShape, ...]" = (dos_layout.POOL_OF_RADIANCE,)
 
 #: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**
 #: within each byte, where DOS spends one byte per spell for ids 1..117.

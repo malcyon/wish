@@ -251,16 +251,26 @@ def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
     assert directions[0].destination_game is shape
 
 
-def test_directions_holds_six_rows_three_titles_both_ways():
+def test_directions_holds_seven_rows_derived_from_three_library_tuples():
     """Three titles read DOS → C64 (`goldbox.dos.CONVERTS`) and the same
-    three write C64 → DOS (`goldbox.dos.WRITES`, as of `#299`), so the
-    registry holds six rows in total -- up from four before `#299`'s
-    container writer let the later titles' C64 → DOS row be registered."""
-    assert len(convert.DIRECTIONS) == 6
+    three write C64 → DOS (`goldbox.dos.WRITES`, as of `#299`); Pool of
+    Radiance alone reads Amiga → C64 (`goldbox.amiga.CONVERTS`, as of
+    `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+    standing in the Slums on the Amiga arrives there in VICE)`), so the
+    registry holds seven rows -- up from four before `#299`'s container
+    writer and six before `#353`'s Amiga reader.
+
+    Counted by exact type rather than `isinstance`, because `AmigaToC64`
+    derives from `DosToC64` for its `__init__` and its `write`: an
+    `isinstance` count would read the Amiga row as a DOS one and pass while
+    the Amiga row was missing entirely."""
+    assert len(convert.DIRECTIONS) == 7
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.DosToC64) == 3
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.C64ToDos) == 3
+    assert sum(1 for d in convert.DIRECTIONS
+              if type(d) is convert.AmigaToC64) == 1
 
 
 def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
@@ -1313,3 +1323,114 @@ def test_a_conversion_that_drops_nothing_opens_with_what_it_writes(
     assert with_lines.startswith("Something was dropped\n\n"), repr(
         with_lines[:60])
     assert convert.WRITES_HEADING in with_lines
+
+
+# ---------------------------------------------------------------------------
+# Amiga -> C64: the registry's third source port (#353)
+# ---------------------------------------------------------------------------
+
+def _amiga_por_disk():
+    """The player's own Amiga Pool of Radiance disk 1, or a skip.
+
+    `tests/test_amigatoc64.py` owns the search and the reason it matches on
+    the record's own size rather than on the file names; this is the same
+    disk, reached the same way, so the two cannot pick different ones.
+    """
+    from test_amigatoc64 import _pool_of_radiance_disk_1
+
+    return _pool_of_radiance_disk_1()
+
+
+@pytest.fixture
+def amiga_adf(tmp_path):
+    """The player's Amiga disk 1, copied into `tmp_path` as an `.adf`.
+
+    A copy, because `Source.detect` takes a **path** and the player's own
+    images are read-only to every test here -- and because the suffix is
+    what the detection turns on, and the image on the media server lives
+    inside a `.zip`.
+    """
+    disk = _amiga_por_disk()
+    path = tmp_path / "por1.adf"
+    path.write_bytes(disk.to_bytes())
+    return path
+
+
+def test_an_adf_is_detected_as_an_amiga_source_at_its_first_slot(amiga_adf):
+    """The `.adf` branch of `Source.detect`: port `amiga`, the title off the
+    first character record's own length, and the first slot the disk holds
+    files for -- the way a DOS folder takes the first slot it holds
+    (`#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+    standing in the Slums on the Amiga arrives there in VICE)`)."""
+    source = convert.Source.detect(amiga_adf)
+    assert source.port == "amiga"
+    assert source.key == dos_layout.POOL_OF_RADIANCE.key
+    assert source.slot == "A"
+    # A disk, not a folder and not a C64 save: nothing was read into memory.
+    assert source.save0 is None and source.disk is None
+
+
+def test_an_adf_source_is_offered_the_commodore_64_and_nothing_else(
+        amiga_adf):
+    """One destination, and it is the same title on the other port --
+    `.claude/rules/conversions.md`: a conversion is between two ports of one
+    title and never between titles."""
+    source = convert.Source.detect(amiga_adf)
+    directions = convert.destinations_for(source)
+    assert [type(d) for d in directions] == [convert.AmigaToC64]
+    assert directions[0].destination_game is games.POOL_OF_RADIANCE
+    assert directions[0].destination_port == "c64"
+    assert convert.DESTINATION_LABELS["c64"] == "Commodore 64"
+
+
+def test_a_file_that_is_not_an_adf_still_goes_to_the_c64_reader(tmp_path):
+    """The new branch is reached by suffix, so it must not swallow the C64
+    one: a `.d64` that cannot be read still refuses as a C64 disk."""
+    path = tmp_path / "notadisk.d64"
+    path.write_bytes(b"\x00" * 64)
+    with pytest.raises(convert.ConvertError):
+        convert.Source.detect(path)
+
+
+def test_an_adf_that_holds_no_saved_game_is_refused_and_not_guessed_at(
+        tmp_path):
+    """A blank Amiga floppy is refused with a sentence rather than being
+    read as an empty Pool of Radiance disk."""
+    from goldbox.amiga_adf import AmigaDisk
+
+    path = tmp_path / "blank.adf"
+    path.write_bytes(AmigaDisk.blank("EMPTY").to_bytes())
+    with pytest.raises(convert.ConvertError):
+        convert.Source.detect(path)
+
+
+def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
+    """The bytes the dialog's Amiga row writes equal what
+    `tools/fromamigapor.py` writes, calling `goldbox.amiga.read_por_slot`,
+    `goldbox.dos.new_save_from` and `goldbox.dos.save_disk` directly for the
+    same slot -- so `#353`'s VICE proof stands for this path too, which is
+    the same argument `test_dos_to_c64_direction_is_the_transfer_test`
+    makes for the DOS row.
+
+    `icon`/`animate` are zero-filled: this is a round trip of our own code
+    for one input, not a claim about what the player's C64 disks hold."""
+    from goldbox import amiga
+
+    icon, animate = bytes(36), bytes(852)
+    files = dosimport.GameFiles(icon=icon, animate=animate)
+    source = convert.Source.detect(amiga_adf)
+    direction = convert.destinations_for(source)[0]
+
+    rehearsal = direction.rehearse(source, source.slot, files)
+    destination = tmp_path / "out"
+    written = direction.write(rehearsal, destination)
+    assert [p.name for p in written] == [f"PORSAVE{source.slot}.D64"]
+
+    disk = amiga.AmigaDisk.open(str(amiga_adf))
+    party, savgam = amiga.read_por_slot(disk, source.slot)
+    state = amiga.read_por_state(savgam, str(amiga_adf))
+    ref0, ref1, report = dos.new_save_from(state, party, icon, animate)
+    reference = dos.save_disk(bytes(ref0), bytes(ref1))
+    assert (destination / f"PORSAVE{source.slot}.D64").read_bytes() == \
+        reference.to_bytes()
+    assert report.unwritten == []

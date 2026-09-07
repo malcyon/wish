@@ -24,12 +24,18 @@ rule against a template. Today that is:
   can be converted to DOS for the later titles)`, whose container writer this
   registry was waiting on, and `#234 (A dual-classed Curse or Silver Blades
   character converted to DOS loses the class he trained out of)`, whose own
-  dual-classed Curse character loaded from a save this direction writes).
+  dual-classed Curse character loaded from a save this direction writes);
+* Amiga `.adf` → C64, one row per entry of `goldbox.amiga.CONVERTS` -- Pool
+  of Radiance alone (`goldbox.amiga.read_por_slot` then
+  `goldbox.dos.new_save_from`, proven in VICE by
+  `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+  standing in the Slums on the Amiga arrives there in VICE)`).
 
-**This registry derives both directions' rows from `goldbox.dos` rather than
-listing them, which is the point:** DOS → C64 from `CONVERTS`, C64 → DOS from
-`WRITES`; a title joins either tuple when its writer exists, and it appears
-here with no edit to this module. `DOS_TO_C64_NAMES` below is the one thing
+**This registry derives every row from a library tuple rather than listing
+them, which is the point:** DOS → C64 from `goldbox.dos.CONVERTS`, C64 → DOS
+from `goldbox.dos.WRITES`, Amiga → C64 from `goldbox.amiga.CONVERTS`; a
+title joins one of those tuples when its writer exists, and it appears here
+with no edit to this module. `DOS_TO_C64_NAMES` below is the one thing
 `CONVERTS` does not carry -- the `.D64` file name each title's DOS → C64
 conversion writes -- and a `CONVERTS` entry missing a row there fails loudly
 when `DIRECTIONS` is built, at import time, rather than answering `[]` for a
@@ -40,8 +46,9 @@ DOS conversion always writes the same file names (`SAVGAM<slot>.DAT`,
 the check that direction needs.
 
 **The source is a path, not the open window.** `Source.detect` reads a
-`.D64`, a `SAVGAM<slot>.DAT`/`.PTY` file, or a DOS save folder directly, the
-way `tools/dosdisk.py` and `tools/dosnewsave.py` already do. When the path is
+`.D64`, an Amiga `.adf`, a `SAVGAM<slot>.DAT`/`.PTY` file, or a DOS save
+folder directly, the way `tools/dosdisk.py` and `tools/dosnewsave.py`
+already do. When the path is
 the save the editor already has open, the caller passes `party` and this
 reads its in-memory bytes instead, so unsaved edits cross -- the same rule
 `exports.Source.from_party` followed. `exports.Source` retires into this one
@@ -73,7 +80,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import dos, dos_layout, games
+from goldbox import amiga, dos, dos_layout, games
 
 from . import dosimport
 
@@ -102,16 +109,17 @@ class Source:
     """One save, read off a path -- never off what a window happens to hold.
 
     `title` is a `goldbox.games.Game` for a C64 source or a
-    `goldbox.dos_layout.DosShape` for a DOS one; both carry `.key`, which is
-    what `Direction.source_key` matches against. `save0`/`save1`/`disk` are
-    set only for a C64 source -- a DOS source is a folder, read fresh by
-    whichever `Direction` converts it. `slot` is the DOS save slot a DOS
-    source was detected at -- the letter in `SAVGAM<slot>.DAT`/`.PTY` -- so
-    the dialog needs no separate slot row; it stays `None` for a C64 source,
-    which has none.
+    `goldbox.dos_layout.DosShape` for a DOS or an Amiga one; both carry
+    `.key`, which is what `Direction.source_key` matches against.
+    `save0`/`save1`/`disk` are set only for a C64 source -- a DOS source is a
+    folder and an Amiga source is an `.adf`, each read fresh by whichever
+    `Direction` converts it. `slot` is the save slot the source was detected
+    at -- the letter in `SAVGAM<slot>.DAT`/`.PTY`, or the Amiga slot letter
+    in `savgam<slot>.dat` -- so the dialog needs no separate slot row; it
+    stays `None` for a C64 source, which has none.
     """
 
-    port: str                      # "c64" or "dos"
+    port: str                      # "c64", "dos" or "amiga"
     title: Any
     path: pathlib.Path
     save0: bytes | None = None
@@ -125,7 +133,8 @@ class Source:
 
     @classmethod
     def detect(cls, path: str | pathlib.Path, party: Any = None) -> "Source":
-        """A `.D64`, a DOS save folder, or the party already open at `path`.
+        """A `.D64`, an Amiga `.adf`, a DOS save folder, or the party
+        already open at `path`.
 
         `party` is a duck-typed `editor.roster.Party` -- `.path`, `.game`,
         `.save0`, `.save1`, `.disk` -- and is used only when its own path is
@@ -152,6 +161,8 @@ class Source:
             match = _SAVGAM_FILE_RE.match(path.name)
             if match:
                 return cls._detect_dos_file(path.parent, match.group(1).upper())
+            if path.suffix.lower() == AMIGA_SUFFIX:
+                return cls._detect_amiga_disk(path)
             return cls._detect_c64_disk(path)
         raise ConvertError(
             f"{path} is neither a save disk nor a DOS save folder")
@@ -187,6 +198,47 @@ class Source:
         return cls(port="dos", title=shape, path=folder, slot=slot)
 
     @classmethod
+    def _detect_amiga_disk(cls, path: pathlib.Path) -> "Source":
+        """The Amiga disk at `path`, at the first slot it holds files for.
+
+        **Detected by its suffix rather than by trying both readers**, and
+        the reason is what the other branch would say: an `.adf` handed to
+        `goldbox.d64.D64.open` fails on its size, and the player would read
+        a sentence about a C64 disk over a floppy that is plainly an Amiga
+        one.
+
+        The first slot, the way `_detect_dos_folder` takes the first slot a
+        DOS folder holds -- and for the same reason, that the dialog has one
+        source row and no slot row. `goldbox.amiga.por_slots_present` asks
+        which slots have files rather than which the game's own picker
+        offers, since a slot the picker lists and the disk has lost the
+        files for is not one this can convert.
+
+        The title comes off the first character record's own length
+        (`goldbox.amiga.amiga_shape_for`), never assumed -- so an Amiga
+        Curse or Silver Blades disk is detected as itself and simply has no
+        registered destination yet, rather than being read as a Pool of
+        Radiance save it never was.
+        """
+        from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+
+        try:
+            disk = AmigaDisk.open(str(path))
+            slots = amiga.por_slots_present(disk)
+        except (AmigaDiskError, amiga.AmigaRecordError, OSError) as exc:
+            raise ConvertError(str(exc)) from exc
+        if not slots:
+            raise ConvertError(f"{path} holds no Amiga saved game")
+        slot = slots[0]
+        try:
+            record = disk.read_file(amiga.por_save_path(
+                amiga.por_filename(slot, 1), amiga.por_save_drawer(disk)))
+            shape = amiga.amiga_shape_for(len(record))
+        except (AmigaDiskError, amiga.AmigaRecordError) as exc:
+            raise ConvertError(str(exc)) from exc
+        return cls(port="amiga", title=shape, path=path, slot=slot)
+
+    @classmethod
     def _detect_c64_disk(cls, path: pathlib.Path) -> "Source":
         from goldbox.d64 import D64, InvalidImageError
         from goldbox.savegame import SaveGameError, load_save
@@ -207,6 +259,11 @@ class Source:
 #: (`#52`'s dialog, decision 2). Case-insensitive: the game itself always
 #: writes upper case, but a picker should not refuse a renamed copy.
 _SAVGAM_FILE_RE = re.compile(r"^SAVGAM([A-Za-z])\.(DAT|PTY)$", re.IGNORECASE)
+
+#: What an Amiga disk image is called. Lower case, and `Source.detect`
+#: lower-cases what it compares, so a `.ADF` off a case-preserving volume is
+#: the same disk.
+AMIGA_SUFFIX = ".adf"
 
 
 def _dos_slots(folder: pathlib.Path) -> list[str]:
@@ -338,6 +395,48 @@ class DosToC64(Direction):
         return written
 
 
+class AmigaToC64(DosToC64):
+    """An Amiga `.adf` becomes a C64 `.d64`, for any title in
+    `goldbox.amiga.CONVERTS` (#353).
+
+    You save on the Amiga standing in the Slums at 21:22 with half the
+    quests done, and the party arrives in the Slums at 21:22 with the same
+    quests done. The six characters have crossed since 2026-08-26
+    (`goldbox.amiga.to_neutral` then `goldbox.c64_codec.write`, 90 of 90
+    sheet fields); what this adds is the game around them.
+
+    **Everything but `rehearse` is `DosToC64`'s**, and deliberately: the
+    destination is the same `.d64` written by the same engine
+    (`goldbox.dos.write_c64_save`) to the same file name, so `__init__`'s
+    `DOS_TO_C64_NAMES` lookup and `write`'s put-the-bytes-down are one
+    implementation rather than two that have to be kept saying the same
+    thing. What differs is where the party and the place are read from, and
+    that is this method.
+
+    `options` is the same `dosimport.GameFiles` the DOS → C64 row takes --
+    the combat icon tables and `ANIMATE00` off the player's own C64 disks,
+    which no save of any port carries and which the destination needs.
+    """
+
+    source_port = "amiga"
+
+    def rehearse(self, source: Source, slot: str,
+                options: "dosimport.GameFiles") -> Rehearsal:
+        from goldbox.amiga_adf import AmigaDisk
+
+        disk = AmigaDisk.open(str(source.path))
+        party, savgam = amiga.read_por_slot(disk, slot)
+        state = amiga.read_por_state(
+            savgam, source=f"{source.path} slot {slot}")
+        save0, save1, report = dos.new_save_from(
+            state, party, options.icon, options.animate,
+            portraits=options.portraits, game=self.destination_game)
+        image = dos.save_disk(bytes(save0), bytes(save1),
+                              self.destination_game)
+        name = self._name.format(slot=slot)
+        return Rehearsal(report, {name: image.to_bytes()})
+
+
 @dataclasses.dataclass
 class DosWriteRehearsal(Rehearsal):
     """What `C64ToDos.write` needs to run the conversion again.
@@ -406,10 +505,12 @@ class C64ToDos(Direction):
         return sorted(folder / name for name in rehearsal.files)
 
 
-#: One DOS → C64 row per entry of `goldbox.dos.CONVERTS` and one C64 → DOS
-#: row per entry of `goldbox.dos.WRITES` -- today Pool of Radiance, Curse of
-#: the Azure Bonds and Secret of the Silver Blades, both ways. See the
-#: module docstring for what would extend this and the issues it waits on.
+#: One DOS → C64 row per entry of `goldbox.dos.CONVERTS`, one C64 → DOS row
+#: per entry of `goldbox.dos.WRITES` -- today Pool of Radiance, Curse of the
+#: Azure Bonds and Secret of the Silver Blades, both ways -- and one
+#: Amiga → C64 row per entry of `goldbox.amiga.CONVERTS`, today Pool of
+#: Radiance alone. See the module docstring for what would extend this and
+#: the issues it waits on.
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
 #: names a title `DOS_TO_C64_NAMES` does not; `games.UnknownGameError` does
 #: the same for `WRITES` and a title with no C64 game at all.
@@ -417,15 +518,17 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
     DosToC64(shape) for shape in dos.CONVERTS
 ) + tuple(
     C64ToDos(shape) for shape in dos.WRITES
+) + tuple(
+    AmigaToC64(shape) for shape in amiga.CONVERTS
 )
 
 
 def destinations_for(source: Source) -> list[Direction]:
     """Every registered direction this source can be converted to.
 
-    Empty for anything not in `DIRECTIONS` -- Secret of the Silver Blades,
-    every Amiga direction -- which is the whole point: an unready direction is
-    never offered and never refused.
+    Empty for anything not in `DIRECTIONS` -- an Amiga Curse or Silver
+    Blades disk, a C64 save with no Amiga writer registered -- which is the
+    whole point: an unready direction is never offered and never refused.
     """
     return [d for d in DIRECTIONS
            if d.source_port == source.port and d.source_key == source.key]
@@ -558,6 +661,18 @@ FOLDER_TITLE = "Choose where to write"
 #: only the descriptive label is new; `;;All files (*)` is
 #: `editor/window.py`'s `DISK_FILTER` boilerplate, reused rather than
 #: reworded.  Approved 2026-09-05.
+#:
+#: **`*.adf` is not in it, and the Amiga → C64 row of `DIRECTIONS` works
+#: anyway**: an Amiga disk is picked through the `All files (*)` entry that
+#: is already there.  The one-line change this wants is
+#: `(*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY)`, and it is Donald's
+#: to approve rather than an agent's to ship -- what a player reads in a
+#: picker is his (`.claude/rules/gui-text.md`).  Marking it
+#: ` (NOT APPROVED)` the way an unshipped sentence is marked would put those
+#: two words in the picker's own dropdown, so it is left out and asked for
+#: instead, which is that rule's own "when in doubt, leave it out and say so"
+#: (`#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
+#: standing in the Slums on the Amiga arrives there in VICE)`, 2026-09-07).
 SOURCE_FILTER = ("Saved games "
                  "(*.d64 *.D64 SAVGAM?.DAT SAVGAM?.PTY);;All files (*)")
 
@@ -859,10 +974,15 @@ class ConvertDialog(QDialog):
         self._rebuilding_combo = False
 
     def _settle_game_row(self) -> None:
-        """The game-files row is shown only for a DOS destination -- the
-        C64 disks are a Preferences setting already, and there is no Amiga
-        direction yet to need its own picker (`#52`'s plan, "three C64
-        titles means the disks are chosen by the destination title")."""
+        """The game-files row is shown only for a DOS destination -- the C64
+        disks are a Preferences setting already, whichever port the source
+        is, so the Amiga → C64 row needs no picker of its own either
+        (`#52`'s plan, "three C64 titles means the disks are chosen by the
+        destination title"). A row for an Amiga *destination* would need
+        one, since that conversion reads `ecl.dax` off the player's own disk
+        2 -- `#316 (Write the Amiga Pool of Radiance saved game from the
+        source save, so a converted party arrives where it was standing)`,
+        which has no row here yet."""
         show = self.direction is not None and self.direction.destination_port == "dos"
         self.ui.form.setRowVisible(self.ui.game_row, show)
         if show:
