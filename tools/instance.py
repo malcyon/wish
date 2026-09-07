@@ -938,12 +938,57 @@ def main(argv: list[str] | None = None) -> int:
             print("# the lease is released as this process exits; use "
                   "`claim -- <command>` to hold it", file=sys.stderr)
             return 0
-        env = launch_env(slot.env())
-        proc = subprocess.Popen(args.exec, env=env, start_new_session=True)
-        slot.record(pgid=os.getpgid(proc.pid), cmd=args.exec)
+        proc: subprocess.Popen | None = None
+
+        def _terminate(signum: int, frame: object) -> None:
+            """Make `SIGTERM` end this `finally` the way `SIGINT` already
+            does, instead of the process dying with none of it run.
+
+            `#381 (A shell timeout wrapped around tools/instance.py claim
+            exits without stopping the VICE run it wraps)`: Python's own
+            default action for `SIGTERM` is immediate termination with no
+            Python-level cleanup at all -- no `finally`, no context manager
+            `__exit__` -- so a `timeout` wrapped around `claim` killed only
+            this process and left `proc`'s own process group, VICE included,
+            running under a pgid nothing outside this slot's lease file could
+            still reach. `SIGINT` never had this problem: Python's default
+            handler for it already raises `KeyboardInterrupt`, an ordinary
+            exception the `finally` below already catches. This makes
+            `SIGTERM` raise one too, so the same `finally` tears down the
+            process *group* -- never a kill by name -- before the wrapper
+            itself is allowed to exit.
+            """
+            raise SystemExit(128 + signum)
+
+        # Installed *before* `Popen`, not after: a handler added once the
+        # child already exists still leaves the window between launching it
+        # and installing the handler open, and an external `SIGTERM` landing
+        # in that window would revert to Python's default action -- the
+        # exact bug this exists to close, just narrowed instead of shut.
+        old_handler = signal.signal(signal.SIGTERM, _terminate)
         try:
+            env = launch_env(slot.env())
+            proc = subprocess.Popen(args.exec, env=env, start_new_session=True)
+            slot.record(pgid=os.getpgid(proc.pid), cmd=args.exec)
             return proc.wait()
         finally:
+            signal.signal(signal.SIGTERM, old_handler)
+            # `proc` is *our own* direct child, and the `proc.wait()` above
+            # is what would ordinarily reap it -- so a `SIGTERM` that cuts
+            # that wait short leaves it a zombie until something reaps it.
+            # `slot.teardown()`'s own liveness probe is `killpg(pgid, 0)`,
+            # which answers exactly the same for a zombie as for a process
+            # still running, so left unreaped it cannot see the group is
+            # already gone and waits out the whole teardown timeout for
+            # nothing. Killing the group and reaping `proc` here first is
+            # what lets that probe see the truth immediately;
+            # `slot.teardown()` still runs after, to catch anything in the
+            # group that was not `proc` itself and needed longer to die.
+            if proc is not None and proc.poll() is None:
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                with contextlib.suppress(Exception):
+                    proc.wait(timeout=8)
             slot.teardown()
 
 

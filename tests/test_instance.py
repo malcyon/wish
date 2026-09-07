@@ -12,8 +12,10 @@ unimportable module fails at collection time.
 """
 
 
+import contextlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import textwrap
@@ -335,6 +337,83 @@ def test_reap_kills_the_recorded_pgid_and_nothing_else(pool):
 def test_killpg_refuses_our_own_group(pool):
     with pytest.raises(ValueError):
         instance._killpg(os.getpgid(0))
+
+
+# -- a shell `timeout` wrapped around `claim` --------------------------------
+#
+# `#381 (A shell timeout wrapped around tools/instance.py claim exits without
+# stopping the VICE run it wraps)`: `timeout` execs its command directly and
+# sends it `SIGTERM`. Python's *default* action for `SIGTERM` is immediate
+# process death with no `finally` and no context-manager `__exit__` at all --
+# unlike `SIGINT`, whose default handler already raises `KeyboardInterrupt`,
+# an ordinary exception the existing `finally: slot.teardown()` already
+# caught. So the wrapper died and the process group it had just launched,
+# started with its own session the way `tools/session.py`'s `Session.launch`
+# does, kept running with nothing left holding its lease.
+#
+# The stand-in is `time.sleep(120)` in its own session -- the same shape a
+# VICE launch takes (`start_new_session=True`, a pgid recorded in the lease),
+# with no emulator, no monitor port and no window, so this reproduces the
+# process-management defect without any of what `.claude/rules/emulator.md`
+# forbids launching outside the pool. `Popen.send_signal` stands in for
+# `timeout` itself sending `SIGTERM` to the process it exec'd directly --
+# real `timeout` binary, real shell, or this call all reach the wrapper the
+# same way, so nothing about using this instead makes the test looser.
+
+#: A fresh process, so `DISPLAY_BASE` is set inline the way `HOLDER` is --
+#: 970, past every band this file and its siblings already use (900-915,
+#: 930, 935, 960).
+CLAIM_WRAPPER = textwrap.dedent("""
+    import sys
+    sys.path.insert(0, {tools!r})
+    import instance
+    instance.DISPLAY_BASE = 970
+    sys.exit(instance.main(["claim", "--", {python!r}, "-c",
+                            "import time; time.sleep(120)"]))
+""")
+
+
+@posix
+def test_a_shell_timeout_killing_the_claim_wrapper_still_tears_the_group_down(pool):
+    """Send `SIGTERM` to the wrapper the way `timeout` would, and prove the
+    process group it launched -- the VICE run, in the real case -- does not
+    outlive it."""
+    claimer = subprocess.Popen(
+        [sys.executable, "-c",
+         CLAIM_WRAPPER.format(tools=str(TOOLS), python=sys.executable)],
+        env=dict(os.environ, POR_INST=str(os.environ["POR_INST"])),
+    )
+    lease = Path(os.environ["POR_INST"]) / "0" / "lease"
+    pgid = None
+    try:
+        for _ in range(100):                    # claim + launch is fast
+            if lease.is_file():
+                info = json.loads(lease.read_text() or "{}")
+                if info.get("pgid"):
+                    pgid = info["pgid"]
+                    break
+            time.sleep(0.05)
+        assert pgid is not None, "the claim never recorded a pgid"
+
+        claimer.send_signal(signal.SIGTERM)      # what `timeout` itself sends
+        assert claimer.wait(15) is not None, "the wrapper never exited"
+
+        for _ in range(50):
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail(f"process group {pgid} is still running; the SIGTERM "
+                        "to the wrapper did not tear it down (#381)")
+    finally:
+        if claimer.poll() is None:
+            claimer.kill()
+            claimer.wait()
+        if pgid is not None:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(pgid, signal.SIGKILL)
 
 
 @posix

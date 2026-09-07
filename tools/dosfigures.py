@@ -41,7 +41,12 @@ sys.path.insert(0, str(TOOLS))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import dos  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from goldbox.iconparts import IconParts, dos_icon_tables, dos_size  # noqa: E402
+from goldbox.iconparts import (  # noqa: E402
+    DosIconTables,
+    IconParts,
+    dos_icon_tables,
+    dos_size,
+)
 from goldbox.icons import ICON_SIZE, ICON_TABLE_BASE  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from goldbox.savegame import SAVE0_LOAD_ADDRESS  # noqa: E402
@@ -191,6 +196,41 @@ def png(rows: list[dict], disks: pathlib.Path,
     print(f"{path}  {image.width}x{image.height}")
 
 
+def mixed_rows(parts: IconParts, tables: DosIconTables) -> list[dict]:
+    """The nine large-list-only rows a small figure can be given, and the
+    size `IconParts.size_for` -- not a second copy of its rule -- gives each
+    part.
+
+    Split out of `mixed_png` so a test can check this decision against
+    `goldbox.iconparts.IconParts.size_for` directly, without drawing
+    anything.  `#328 (A third copy of the large-list promotion rule sits in
+    tools/dosfigures.py, which is the defect #325 was)`: this used to
+    recompute `option >= parts.count("small", kind)` inline, the same third
+    copy `#325`'s fix removed from `tools/iconproposal.py`.
+    """
+    rows = []
+    for kind, option in ([("head", h) for h in (0, 3, 5, 13)]
+                         + sorted({("head", tables.heads[h])
+                                   for h in tables.heads
+                                   if parts.size_for("small", "head",
+                                                     tables.heads[h]) != "small"})
+                         + sorted({("weapon", tables.weapons[b])
+                                   for b in tables.weapons
+                                   if parts.size_for("small", "weapon",
+                                                     tables.weapons[b]) != "small"})):
+        weapon_option = option if kind == "weapon" else 8
+        head_option = option if kind == "head" else 0
+        weapon_size = parts.size_for("small", "weapon", weapon_option)
+        head_size = parts.size_for("small", "head", head_option)
+        rows.append({
+            "kind": kind, "option": option,
+            "weapon_option": weapon_option, "weapon_size": weapon_size,
+            "head_option": head_option, "head_size": head_size,
+            "big": weapon_size != "small" or head_size != "small",
+        })
+    return rows
+
+
 def mixed_png(disks: pathlib.Path, path: pathlib.Path, scale: int = 6) -> None:
     """The nine rows where a small character has to wear a large option.
 
@@ -216,28 +256,19 @@ def mixed_png(disks: pathlib.Path, path: pathlib.Path, scale: int = 6) -> None:
     charset = charset_from(disks)
     tables = dos_icon_tables()
     per_class = dos_part_colours(bytes.fromhex("91a2b3c4e6f7"), tables)
-    small_heads = parts.count("small", "head")
-    small_weapons = parts.count("small", "weapon")
     rows = []
-    for kind, option in ([("head", h) for h in (0, 3, 5, 13)]
-                         + sorted({("head", tables.heads[h])
-                                   for h in tables.heads
-                                   if tables.heads[h] >= small_heads})
-                         + sorted({("weapon", tables.weapons[b])
-                                   for b in tables.weapons
-                                   if tables.weapons[b] >= small_weapons})):
-        big = (option >= (small_heads if kind == "head" else small_weapons))
+    for row in mixed_rows(parts, tables):
         shape = bytes([SPACE] * 18)
-        shape = parts.apply(shape, "large" if big and kind == "weapon"
-                            else "small", "weapon",
-                            option if kind == "weapon" else 8)
-        shape = parts.apply(shape, "large" if big and kind == "head"
-                            else "small", "head",
-                            option if kind == "head" else 0)
+        shape = parts.apply(shape, row["weapon_size"], "weapon",
+                            row["weapon_option"])
+        shape = parts.apply(shape, row["head_size"], "head",
+                            row["head_option"])
         seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * 18)
         icon = icons.Icon(shape + parts.colours_for(shape, per_class, seed))
-        rows.append((f"small figure, {'large-only ' if big else 'small '}"
-                     f"{kind} {option}", icons.icon_pixels(icon, charset)))
+        rows.append((f"small figure, "
+                     f"{'large-only ' if row['big'] else 'small '}"
+                     f"{row['kind']} {row['option']}",
+                     icons.icon_pixels(icon, charset)))
     cell, pad, label = 24 * scale, 8, 12
     image = Image.new("RGB", (pad + 2 * (cell + pad),
                               pad + len(rows) * (cell + pad + label)),
