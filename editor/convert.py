@@ -662,19 +662,18 @@ FOLDER_TITLE = "Choose where to write"
 #: `editor/window.py`'s `DISK_FILTER` boilerplate, reused rather than
 #: reworded.  Approved 2026-09-05.
 #:
-#: **`*.adf` is not in it, and the Amiga → C64 row of `DIRECTIONS` works
-#: anyway**: an Amiga disk is picked through the `All files (*)` entry that
-#: is already there.  The one-line change this wants is
-#: `(*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY)`, and it is Donald's
-#: to approve rather than an agent's to ship -- what a player reads in a
-#: picker is his (`.claude/rules/gui-text.md`).  Marking it
-#: ` (NOT APPROVED)` the way an unshipped sentence is marked would put those
-#: two words in the picker's own dropdown, so it is left out and asked for
-#: instead, which is that rule's own "when in doubt, leave it out and say so"
-#: (`#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
-#: standing in the Slums on the Amiga arrives there in VICE)`, 2026-09-07).
+#: **`*.adf` is in it**, approved by Donald on 2026-09-07 -- *"Yes, the file
+#: picker should allow .adf files."*  Before that an Amiga disk was reachable
+#: only through the `All files (*)` entry, which works and gives a player no
+#: reason to think an Amiga save is something Wish takes.  It was left out
+#: rather than shipped unapproved because marking a glob ` (NOT APPROVED)`
+#: the way an unshipped sentence is marked would have put those two words in
+#: the picker's own dropdown (`.claude/rules/gui-text.md`, and `#353 (Convert
+#: an Amiga Pool of Radiance save to the C64, so a party standing in the
+#: Slums on the Amiga arrives there in VICE)`).
 SOURCE_FILTER = ("Saved games "
-                 "(*.d64 *.D64 SAVGAM?.DAT SAVGAM?.PTY);;All files (*)")
+                 "(*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
+                 "All files (*)")
 
 #: The destination combo's items, by port -- never by title, since
 #: `destinations_for` never offers two directions of the same port for one

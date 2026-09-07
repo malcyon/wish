@@ -1156,7 +1156,25 @@ def test_the_approved_strings_are_the_ones_donald_worded():
     assert convert.CONVERTED_DOS == "Converted to DOS slot {slot} in {folder}"
     assert convert.DESTINATION_LABELS == {"c64": "Commodore 64", "dos": "DOS"}
     assert convert.SOURCE_FILTER == (
-        "Saved games (*.d64 *.D64 SAVGAM?.DAT SAVGAM?.PTY);;All files (*)")
+        "Saved games (*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
+        "All files (*)")
+
+
+def test_the_picker_offers_an_amiga_disk():
+    """An Amiga save is something Wish takes, and the picker has to say so.
+
+    Donald approved `*.adf` on 2026-09-07 -- *"Yes, the file picker should
+    allow .adf files."*  Without it the Amiga to C64 row still works, through
+    the `All files (*)` entry, and a player has no way to know it is there:
+    a file type absent from the dropdown reads as a file type the program
+    does not take.  Pinned separately from the spot check above because it
+    is a decision of his rather than a transcription.
+    """
+    saved = convert.SOURCE_FILTER.split(";;")[0]
+    assert "*.adf" in saved and "*.ADF" in saved, convert.SOURCE_FILTER
+    # Qt reads a trailing marker as part of the glob, so nothing may follow
+    # the last pattern inside the brackets.
+    assert saved.endswith(")"), convert.SOURCE_FILTER
 
 
 # ---------------------------------------------------------------------------
