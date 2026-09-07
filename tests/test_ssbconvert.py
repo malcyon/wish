@@ -24,10 +24,13 @@ game on VICE pool slots 0 and 1 on 2026-09-05 before it was fixed:
 
 **Where the specimens come from.**  The synthetic records are built from
 `goldbox/dos_layout.py`'s own table, so they belong to us and run anywhere.
-The tests that read a save the *game* wrote are marked and skip without it:
-`work/curse/SSB-*` holds the DOS sessions of `#113` and `#222`, and
-`work/193/run1/` the C64 saves this ticket's own VICE session produced.
-`work/` is gitignored, so CI runs the synthetic half only.
+The tests that read a save the *game* wrote take it from `$WISH_SPECIMENS`
+(`~/wish-specimens/` by default) through `gamedata.specimen`, which verifies
+the manifest and skips when the tree is not on the machine -- so CI runs the
+synthetic half only.  They used to read `work/curse/SSB-D-paine-memorised`
+and `work/193/run1/`; `work/` is gitignored and has now lost a DOS session
+twice (`#337`, Four DOS Silver Blades conversion tests skip because their
+specimen lived under work/, which has been lost twice).
 """
 
 from __future__ import annotations
@@ -46,8 +49,6 @@ SSB = dos_layout.SECRET_OF_THE_SILVER_BLADES
 SSB_GAME = games.SECRET_OF_THE_SILVER_BLADES
 CURSE_GAME = games.CURSE_OF_THE_AZURE_BONDS
 WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
-DOS_SESSION = WORK / "curse" / "SSB-D-paine-memorised"
-DOS_SLOT = "D"
 
 #: DOS level-array slots, `goldbox.dos.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
 PALADIN, RANGER = 3, 4
@@ -397,26 +398,40 @@ def test_the_shipped_save_is_what_the_marching_order_reading_rests_on():
 
 
 # --- the whole save, off a DOS session this project drove --------------------
-needs_dos_session = pytest.mark.skipif(
-    not (DOS_SESSION / f"SAVGAM{DOS_SLOT}.DAT").is_file(),
-    reason="no driven DOS Silver Blades session under work/curse/")
+#: `WISH-SPEC-ssb-slote-zeroed140` slot E: the whole eleven-file save the DOS
+#: engine itself wrote on SAVE CURRENT GAME under DOSBox-X on 2026-09-04, the
+#: same six-character party at 3,3 in area 16 that these four tests were
+#: written against when they read `work/curse/SSB-D-paine-memorised` -- which
+#: is gone, and is why they skipped (`#337`).  Guy de Valois' 804-byte
+#: `CHRDATE1.STF` is the twelve items at Silver Blades' 67-byte stride.
+#:
+#: What it is *not*: a party rolled here.  The stat values descend from the
+#: shipped `SAVEDBASH` party as driven on `#113`, so this specimen is
+#: evidence about the **container and the converter** -- which files the
+#: engine writes, where it puts a square and a name table -- and never about
+#: what the game computes for a character.  `.claude/rules/testing.md`,
+#: "A specimen is only evidence if we know who wrote it".
+_DOS_SLOT = "E"
 
 
-@needs_dos_session
+def _dos_save():
+    return gamedata.specimen("ssb-slote-zeroed140")
+
+
 def test_a_whole_save_is_written_with_nothing_left_to_the_payload(converts_ssb):
-    save0, save1, report = dos.new_save(DOS_SESSION, DOS_SLOT, bytes(36),
+    save0, save1, report = dos.new_save(_dos_save(), _DOS_SLOT, bytes(36),
                                         animate=None, game=SSB_GAME)
     assert report.unwritten == []
     assert len(save0) == 0x1D00
     assert save1 == bytearray()
 
 
-@needs_dos_session
 def test_the_payload_reads_back_as_the_dos_party(converts_ssb):
-    save0, _save1, _r = dos.new_save(DOS_SESSION, DOS_SLOT, bytes(36),
+    folder = _dos_save()
+    save0, _save1, _r = dos.new_save(folder, _DOS_SLOT, bytes(36),
                                      animate=None, game=SSB_GAME)
     payload = bytes(save0)
-    savgam = (DOS_SESSION / f"SAVGAM{DOS_SLOT}.DAT").read_bytes()
+    savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
     shape = sg.save_shape_for(SSB_GAME.key)
     x, y, facing = sg.position(savgam, shape)
     assert (payload[0xC0], payload[0xC1], payload[0xC2]) == (x, y, facing)
@@ -429,9 +444,8 @@ def test_the_payload_reads_back_as_the_dos_party(converts_ssb):
                      "GUY DE VALOIS"]
 
 
-@needs_dos_session
 def test_the_name_table_reads_in_marching_order(converts_ssb):
-    save0, _s1, _r = dos.new_save(DOS_SESSION, DOS_SLOT, bytes(36),
+    save0, _s1, _r = dos.new_save(_dos_save(), _DOS_SLOT, bytes(36),
                                   animate=None, game=SSB_GAME)
     table = [bytes(save0[0xC00 + i * 16:0xC00 + i * 16 + 16]).split(b"\0")[0]
              for i in range(6)]
@@ -439,11 +453,12 @@ def test_the_name_table_reads_in_marching_order(converts_ssb):
     assert table[5] == b"MORGAINE"
 
 
-@needs_dos_session
 def test_the_twelve_items_land_on_the_head_of_the_party(converts_ssb):
     """The head of the party is slot 5, and he is the only one carrying
-    anything.  Read off the running game as twelve named lines."""
-    save0, _s1, _r = dos.new_save(DOS_SESSION, DOS_SLOT, bytes(36),
+    anything.  Read off the running game as twelve named lines, and the
+    804-byte `CHRDATE1.STF` the engine wrote is twelve of this title's
+    67-byte items."""
+    save0, _s1, _r = dos.new_save(_dos_save(), _DOS_SLOT, bytes(36),
                                   animate=None, game=SSB_GAME)
     page = bytes(save0[0x1000 + 5 * 0x100:0x1000 + 6 * 0x100])
     filled = sum(1 for n in range(16) if any(page[n * 16:(n + 1) * 16]))
