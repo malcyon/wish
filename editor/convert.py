@@ -458,6 +458,11 @@ class DosWriteRehearsal(Rehearsal):
     save1: bytes | None
     slot: str
     game_dir: pathlib.Path
+    #: The source C64 title's own `IconParts` (`goldbox.iconparts`), so the
+    #: second run in `write` recognises the same combat icons the rehearsal
+    #: did -- `None` when the dialog could not read the source disk, in
+    #: which case this direction writes exactly what it wrote before #383.
+    icon_parts: "Any | None" = None
 
 
 class C64ToDos(Direction):
@@ -474,6 +479,16 @@ class C64ToDos(Direction):
     since a Curse party's own area script has to be staged or the game
     exits to DOS on load; Silver Blades stages none and Pool of Radiance's
     own area machinery is unchanged.
+
+    `icon_parts` is `goldbox.dos.new_dos_save`'s own argument -- the source
+    title's own `SPELLE64`/`SPELLN64`, read into a `goldbox.iconparts.
+    IconParts` -- which turns each character's own combat icon into a DOS
+    figure (`#320 (A C64 party converted to DOS arrives with no combat
+    figure at all, because the table only runs one way)`). `ConvertDialog`
+    supplies it, off the *source*'s own title rather than the destination's
+    (`#383 (The live Convert dialog never wires a C64 party's own combat
+    icon into DOS, so region_220 stays on the drop list)`); left out, every
+    figure is the game's own default, as before that ticket.
     """
 
     source_port = "c64"
@@ -491,23 +506,26 @@ class C64ToDos(Direction):
         self.title = games.by_key(shape.key)
 
     def rehearse(self, source: Source, slot: str,
-                options: "str | pathlib.Path") -> DosWriteRehearsal:
+                options: "str | pathlib.Path",
+                icon_parts: "Any | None" = None) -> DosWriteRehearsal:
         game_dir = pathlib.Path(options)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
             report = dos.new_dos_save(source.save0, source.save1,
                                       scratch_path, slot, game_dir,
-                                      title=self.title)
+                                      title=self.title,
+                                      icon_parts=icon_parts)
             files = {p.name: p.read_bytes()
                     for p in sorted(scratch_path.iterdir())}
         return DosWriteRehearsal(report, files, source.save0, source.save1,
-                                 slot, game_dir)
+                                 slot, game_dir, icon_parts)
 
     def write(self, rehearsal: DosWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
         folder = pathlib.Path(folder)
         dos.new_dos_save(rehearsal.save0, rehearsal.save1, folder,
-                         rehearsal.slot, rehearsal.game_dir, title=self.title)
+                         rehearsal.slot, rehearsal.game_dir, title=self.title,
+                         icon_parts=rehearsal.icon_parts)
         return sorted(folder / name for name in rehearsal.files)
 
 
@@ -723,10 +741,14 @@ def fresh_folder(destination: str | pathlib.Path,
 #: registered direction's drop list is empty -- `.claude/rules/
 #: conversions.md`'s list. **Not met, and it is the condition that decides
 #: this flag's date.** The three DOS → C64 rows show a player nothing; the
-#: three C64 → DOS rows show nine to eleven lines each, and
+#: three C64 → DOS rows no longer carry the combat-figure line once the
+#: source title's own `SPELLE64`/`SPELLN64` can be read --
+#: `#383 (The live Convert dialog never wires a C64 party's own combat icon
+#: into DOS, so region_220 stays on the drop list)`, closed 2026-09-07 -- but
+#: still show a handful of others (`infravision`, `npc`), and
 #: `#355 (A C64 party converted to DOS is shown nine developer notes, with
 #: memory addresses, overlay names and issue numbers in them)` is what has
-#: to close for them to go. `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
+#: to close for the rest to go. `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
 #: needs the import working for all three C64 titles)` used to track this
 #: and closed on 2026-09-06, having emptied the DOS → C64 side only. The
 #: two Amiga rows show nothing at all for the shipped Amiga disk 1 party,
@@ -1079,7 +1101,21 @@ class ConvertDialog(QDialog):
             options = pathlib.Path(self._game_path)
 
         try:
-            self.rehearsal = direction.rehearse(self.source, slot, options)
+            if direction.source_port == "c64" and direction.destination_port == "dos":
+                # The source title's own `SPELLE64`/`SPELLN64` -- the same
+                # lookup `game_files_for` already does for a C64
+                # *destination*'s icon table, keyed here by the *source*'s
+                # title instead (`direction.title`, `C64ToDos.__init__`).
+                # `None` when the player's disks do not carry it: the
+                # conversion still runs, exactly as before #383, and every
+                # figure comes out the game's own default.
+                source_files: Any = self._game_files(direction.title)
+                icon_parts = (source_files.icon
+                             if source_files is not None else None)
+                self.rehearsal = direction.rehearse(
+                    self.source, slot, options, icon_parts=icon_parts)
+            else:
+                self.rehearsal = direction.rehearse(self.source, slot, options)
             self.slot = slot
         except dos.DosRecordError as exc:
             _log.exception("could not rehearse %s", self._source_path)

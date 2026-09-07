@@ -35,7 +35,7 @@ import pathlib
 from types import SimpleNamespace
 
 import pytest
-from gamedata import disk_dir
+from gamedata import disk_dir, game_file
 from PyQt6.QtWidgets import QApplication, QDialog
 from test_dossave import _save_dir, needs_dos_saves
 
@@ -575,6 +575,146 @@ def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
     for name in written_names:
         assert (destination / name).read_bytes() == \
             (reference / name).read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# C64 -> DOS: the source's own combat icon (#383, wiring `#320 (A C64 party
+# converted to DOS arrives with no combat figure at all, because the table
+# only runs one way)` into the live registry and dialog).
+# ---------------------------------------------------------------------------
+
+def _six_icon_party() -> "tuple[bytes, bytes, object]":
+    """BRUTUS's own committed fixture, cloned into all six slots with six
+    different names and six different combat icons.
+
+    The same shape `tests/test_doswriter.py`'s own
+    `test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures`
+    builds at `goldbox.dos`'s own layer -- nothing here is the game's own
+    saved bytes, only its documented icon format applied six times to one
+    committed fixture. Returns `(save0, save1, IconParts)` so a caller needs
+    to read `SPELLE64`/`SPELLN64` only once.
+    """
+    from goldbox import c64_save
+    from goldbox.iconparts import (
+        DEFAULT_BACKGROUND,
+        DEFAULT_PART_COLOURS,
+        MULTICOLOUR,
+        IconParts,
+    )
+    from goldbox.savegame import HEADER_SIZE, SLOT_STRIDE
+
+    parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
+    save0, save1 = _fixture_payloads()
+    container = c64_save.container_for(None)
+
+    figures = [("large", 0, 0), ("large", 7, 4), ("large", 11, 9),
+              ("small", 3, 2), ("small", 16, 7), ("large", 21, 12)]
+    names = (b"ONE", b"TWO", b"THREE", b"FOUR", b"FIVE", b"SIX")
+    base = bytearray(save0)
+    slot0 = bytes(base[HEADER_SIZE:HEADER_SIZE + SLOT_STRIDE])
+    for i, (size, weapon, head) in enumerate(figures):
+        off = HEADER_SIZE + i * SLOT_STRIDE
+        base[off:off + SLOT_STRIDE] = slot0
+        base[off:off + len(names[i])] = names[i]
+        base[off + len(names[i]):off + 20] = bytes(20 - len(names[i]))
+        shape = parts.compose(size, weapon, head)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
+        icon = shape + parts.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+        at = container.icon(i)
+        base[at:at + container.icon_size] = icon
+    return bytes(base), save1, parts
+
+
+@needs_dos_saves
+def test_c64_to_dos_direction_recognises_the_sources_own_combat_icon(
+        tmp_path):
+    """`C64ToDos.rehearse`/`write` take the `icon_parts` `goldbox.dos.
+    new_dos_save` always could, and the two runs stay in step -- `write`'s
+    second run recognises what `rehearse`'s did, not the game's own default.
+    """
+    save0, save1, parts = _six_icon_party()
+    game_dir = _game_dir()
+    slot = "Z"
+    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+                            path=pathlib.Path("."), save0=save0, save1=save1)
+
+    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
+    rehearsal = direction.rehearse(source, slot, game_dir, icon_parts=parts)
+    assert not any("figure is not set" in d for d in rehearsal.report.dropped), \
+        rehearsal.report.dropped
+
+    destination = tmp_path / "out"
+    direction.write(rehearsal, destination)
+
+    party = dos.read_party(destination, slot)
+    assert len(party) == 6
+    pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
+    assert len(set(pairs)) == 6, pairs
+
+
+@needs_dos_saves
+@needs_disks
+def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
+        tmp_path):
+    """`#383 (The live Convert dialog never wires a C64 party's own combat
+    icon into DOS, so region_220 stays on the drop list)`: the byte-level
+    mechanism `#320 (A C64 party converted to DOS arrives with no combat
+    figure at all, because the table only runs one way)` proved was never
+    called from `ConvertDialog`. Watched failing before the fix: the pane
+    kept the `region_220` note and every character's `(icon_head, icon_body)`
+    read back `(0, 0)`.
+
+    The fake `game_files` lookup below stands in for
+    `editor.window.EditorBinding.game_files_for`, asked here for the
+    *source*'s own title (Pool of Radiance) rather than the destination's --
+    the same disks `game_files_for` would find, read the same way.
+    """
+    from goldbox.d64 import load_payload
+    from goldbox.iconparts import IconParts
+
+    where = disk_dir()
+
+    def game_files_for(game):
+        if game.key != games.POOL_OF_RADIANCE.key:
+            return None
+        icon = animate = None
+        for disk in sorted(where.glob("POOL*.[dD]64")):
+            if icon is None:
+                try:
+                    icon = IconParts.load(str(disk))
+                except Exception:
+                    pass
+            if animate is None:
+                try:
+                    animate = load_payload(str(disk), dos.ANIMATE_FILE)
+                except Exception:
+                    pass
+        if icon is None or animate is None:
+            return None
+        return dosimport.GameFiles(icon=icon, animate=animate)
+
+    save0, save1, _ = _six_icon_party()
+    disk_path = tmp_path / "SIX.D64"
+    disk_path.write_bytes(dos.save_disk(save0, save1).to_bytes())
+
+    destination = tmp_path / "out"
+    dialog = convert.ConvertDialog(str(disk_path), None, game_files_for,
+                                   game=str(_game_dir()),
+                                   folder=str(destination))
+    try:
+        assert dialog.rehearsal is not None
+        text = dialog.ui.convert_report.toPlainText()
+        assert "figure is not set" not in text, text
+        final = tmp_path / "final"
+        dialog.direction.write(dialog.rehearsal, final)
+        slot = dialog.slot
+    finally:
+        dialog.close()
+
+    party = dos.read_party(final, slot)
+    assert len(party) == 6
+    pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
+    assert len(set(pairs)) == 6, pairs
 
 
 # ---------------------------------------------------------------------------
