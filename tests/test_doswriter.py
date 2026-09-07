@@ -2193,20 +2193,26 @@ def test_the_writer_silencing_list_cannot_grow_without_a_measurement():
     assert "docs/" in why
 
 
-def test_only_turn_power_is_silenced_today():
+def test_which_write_dropped_lines_are_silenced_today():
     """The measured state of the list, so a future entry is a deliberate
     change rather than a drift.
 
     Counted over the 24 DOS records on the player's own disks in
     `tests/test_dosconvert.py`'s corpus: `turn_power` is the only
     `WRITE_DROPPED` line the C64-to-DOS direction reaches for any of them.
+    A **C64** source reaches `infravision` as well, and that is the second
+    entry, added 2026-09-07 -- the C64 byte is written once from a race table
+    in the game's own character generator and DOS keeps nothing for it, so a
+    converted character arrives in the state a DOS-rolled one of his race is
+    in (#52, `tests/test_infravision.py`).
     `spells_castable` -- named by #307 (The DOS writer's drop list has no way
     to silence a field the DOS engine puts back on load) as the second entry
     -- never reaches this report at all: the writer `use`s it on every path,
     so the closing sweep never sees it, and a source with none writes zeroes
     in silence.
     """
-    assert dos.WRITE_UNREPORTED_DROPS == frozenset({"turn_power"})
+    assert dos.WRITE_UNREPORTED_DROPS == frozenset({"turn_power",
+                                                    "infravision"})
     char = _filled()
     del char.fields["spells_castable"]
     assert not [d for d in _writer_drops(char) if "spells_castable" in d]

@@ -2094,8 +2094,9 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: `Writer.finish` for any character that carries one, unless
 #: :data:`WRITE_UNREPORTED_DROPS` names it.
 WRITE_DROPPED: tuple[tuple[str, str], ...] = (
-    ("infravision", "DOS does not store it; the DOS engine derives what it "
-                    "needs from the race byte"),
+    ("infravision", "DOS stores no infravision for any character, and the "
+                    "C64's own is worked out from the character's race, "
+                    "which is converted"),
     # The defensive half of this used to be in the `why` itself -- "this is
     # not a byte we have failed to find" -- which is a developer arguing with
     # a reviewer rather than an account of the field, and it reached a
@@ -2150,6 +2151,26 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #:   (`docs/178-turning-undead.md`).  The reader's counterpart,
 #:   `turn_class`, is shown on the import side since 2026-09-06, through
 #:   :data:`DROPPED_PLAYER_TEXT`.
+#: * `infravision` -- the C64 byte is a **pure function of race**, written
+#:   once when the character is created and by nothing else: `POOL3.D64:GEN`
+#:   `$094F` is `LDY #$D5 / TAX / LDA $0E5C,X / STA $6B00,Y`, the table at
+#:   `$0E5C` holding 6, 6, 6, 6, 3, 6, 0 for races 1-7, and Curse of the
+#:   Azure Bonds ships the same seven at `CURSE_A.D64:GEN $0C4B`.  Secret of
+#:   the Silver Blades writes none at all -- its `GEN $2278` zeroes the byte.
+#:   DOS keeps nothing for it: no field of the 285-byte record separates a
+#:   human from the demi-humans across the eight characters #84 rolled in the
+#:   DOS game's own creation screens (six races, and every unattributed byte
+#:   zero in all eight), no id in the innate-effect namespace names it, and
+#:   the DOS engine's own resave of a converted party -- two humans, an elf,
+#:   a half-elf, a halfling and a dwarf, loaded, walked and written back --
+#:   puts back exactly one byte that splits by race, the pointer to the
+#:   effect list.  So there is nothing to write and nothing is lost: a
+#:   converted character arrives in the state a DOS-rolled character of his
+#:   race is in, and a round trip returns the game's own number, which was
+#:   measured on a party staged with every character's byte contradicting his
+#:   race -- 6 for the humans, 0 for the dwarf, elf and half-elf -- coming
+#:   back 0, 0, 0, 6, 6, 6, six of six (#52, `tools/infravision.py`,
+#:   `tests/test_infravision.py`).
 #:
 #: **`spells_castable` is not here and that is not an oversight.**  #307 named
 #: it as the second entry, and this writer composes no line for it: it is
@@ -2158,13 +2179,16 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #: Silver Blades source produces, `RecordShape.spell_slots` being `False` for
 #: both -- writes zeroes and reports nothing.  Measured over the 24 records
 #: on the player's own disks: `turn_power` is the only `WRITE_DROPPED` line
-#: any of them reaches.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the
+#: any of them reaches.  Those are DOS records; a **C64** source reaches
+#: `infravision` as well, and reached nothing else on 2026-09-07 --
+#: `tools/convertrun.py --no-play` on a six-character Pool of Radiance party
+#: put one line in the pane.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the
 #: `spells_castable` line on the DOS-to-C64 direction, went the same way for
 #: the same reason (#324): #192 step 3 and #193 step 3 both watched the
 #: memorise screen enforce a ceiling nothing in the converted save wrote, so
 #: it is a note over the six bytes it leaves zero rather than a line in
 #: `report.dropped`.
-WRITE_UNREPORTED_DROPS = frozenset({"turn_power"})
+WRITE_UNREPORTED_DROPS = frozenset({"turn_power", "infravision"})
 
 
 class SilencingWriter(neutral.Writer):
