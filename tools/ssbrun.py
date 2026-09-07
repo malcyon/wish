@@ -43,12 +43,12 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
 
-import gamedisks  # noqa: E402
-
+from tools import (  # noqa: E402
+    gamedisks,
+    ssbwarp,
+)
 from tools import session as por  # noqa: E402
-from tools import ssbwarp  # noqa: E402
 
 
 def run(argv: list[str]) -> None:

@@ -73,10 +73,6 @@ import sys
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import dosicontitles as dit  # noqa: E402
-import iconcorrespond as ic  # noqa: E402
 
 from goldbox import games, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
@@ -89,7 +85,9 @@ from goldbox.iconparts import (  # noqa: E402
     dos_icon_tables,
     dos_part_colours,
 )
+from tools import dosicontitles as dit  # noqa: E402
 from tools import gamedisks  # noqa: E402
+from tools import iconcorrespond as ic  # noqa: E402
 
 # -- the proposal -------------------------------------------------------------
 #

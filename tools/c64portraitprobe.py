@@ -44,15 +44,13 @@ import shutil
 import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-
-import session as S  # noqa: E402
 
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import MonitorError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos import SAVE0_BASE, SLOT_AREA, SLOT_STRIDE  # noqa: E402
+from tools import session as S  # noqa: E402
 
 #: The loaded-files cache while the game runs, and the two slots that hold a
 #: portrait.  `docs/140-loaded-files-cache.md`: twenty-five slots, one per file

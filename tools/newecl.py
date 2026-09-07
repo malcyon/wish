@@ -52,14 +52,11 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import d6502  # noqa: E402
-import gamedisks  # noqa: E402
 
 from automap.paths import disk_globs  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
+from tools import d6502, gamedisks  # noqa: E402
 
 #: Where `LINKER` puts every overlay it dispatches to.
 LINKER_BASE = 0x0800

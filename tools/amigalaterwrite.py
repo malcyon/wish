@@ -52,10 +52,7 @@ from goldbox import amiga, c64_codec, dos, items, neutral  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import amigasavegame  # noqa: E402
+from tools import amigasavegame  # noqa: E402
 
 #: The drawer both later titles keep their saved games in, and the two names
 #: they use -- `tools/amigalaterslot.py`'s constants, not a second guess.

@@ -42,13 +42,11 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import gamedisks  # noqa: E402
 
 from goldbox import dos, dos_layout, games  # noqa: E402
 from goldbox import items as c64items  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 #: Item record byte `+15`, bit 7: "readying this dispatches a power handler".
 #: `CAMP $10B5` is `LDA $6D8B / BPL`, so an item without it is refused with

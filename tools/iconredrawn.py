@@ -44,15 +44,13 @@ import tempfile
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import dosicontitles as dit  # noqa: E402
-import iconcorrespond as ic  # noqa: E402
-import iconproposal as ip  # noqa: E402
 
 from goldbox import icons  # noqa: E402
 from goldbox.iconparts import PART_CLASSES, IconParts  # noqa: E402
+from tools import dosicontitles as dit  # noqa: E402
 from tools import gamedisks  # noqa: E402
+from tools import iconcorrespond as ic  # noqa: E402
+from tools import iconproposal as ip  # noqa: E402
 
 #: The title whose art every row of the table was chosen by looking at, and
 #: the title whose art this page compares against it.

@@ -33,11 +33,9 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import iconcorrespond as ic  # noqa: E402
 
 from goldbox.iconparts import DOS_PAIR_CLASSES, dos_icon_tables  # noqa: E402
+from tools import iconcorrespond as ic  # noqa: E402
 
 #: The pixel value each part's main colour is drawn in; the highlight is that
 #: value plus eight.  `goldbox/iconparts.py` has where this comes from.

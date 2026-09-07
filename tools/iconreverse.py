@@ -46,14 +46,12 @@ import sys
 import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import iconproposal as ip  # noqa: E402
 
 from goldbox import games, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts, dos_icon_tables  # noqa: E402
 from tools import gamedisks  # noqa: E402
+from tools import iconproposal as ip  # noqa: E402
 
 #: `tools/iconreverse.yaml`, the single source. It stays in `tools/` for the
 #: same reason `tools/iconproposal.yaml` does -- Donald edits it where he has

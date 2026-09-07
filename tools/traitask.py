@@ -67,7 +67,6 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
 
 from goldbox import items as I  # noqa: E402
 from goldbox import traits  # noqa: E402

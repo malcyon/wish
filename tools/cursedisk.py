@@ -40,13 +40,11 @@ from types import MappingProxyType
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import gamedisks  # noqa: E402
 
 from goldbox import areas, dos, dos_layout, games  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
 U = areas.Confidence.UNKNOWN

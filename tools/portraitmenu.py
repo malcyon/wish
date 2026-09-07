@@ -35,7 +35,6 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
 
 from goldbox import portraits  # noqa: E402
 from tools import gamedisks  # noqa: E402

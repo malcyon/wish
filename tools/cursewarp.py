@@ -55,15 +55,12 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import curserun  # noqa: E402
-import newecl  # noqa: E402
-import session as por  # noqa: E402
 
 from automap.actions import pc_register  # noqa: E402
 from goldbox import games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
+from tools import curserun, newecl  # noqa: E402
+from tools import session as por  # noqa: E402
 
 #: Where Curse's live party square is.  **Not relocated**: `DUNGEON`'s own
 #: position flush reads `$C04B,X` in Curse exactly as it does in Pool of

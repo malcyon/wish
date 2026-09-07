@@ -42,13 +42,11 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import gamedisks  # noqa: E402
 
 from goldbox import areas, dos, dos_layout, games  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 SSB = games.SECRET_OF_THE_SILVER_BLADES
 

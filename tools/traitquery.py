@@ -64,13 +64,10 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(TOOLS))
-
-import d6502  # noqa: E402
-import gamedisks  # noqa: E402
-from absrefsweep import files, is_art  # noqa: E402
 
 from goldbox import games, traits  # noqa: E402
+from tools import d6502, gamedisks  # noqa: E402
+from tools.absrefsweep import files, is_art  # noqa: E402
 
 #: Where `LINKER` puts an overlay it dispatches to, used only to print a call
 #: site's address in the same coordinates `tools/absrefsweep.py` prints.

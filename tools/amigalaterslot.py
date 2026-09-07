@@ -47,10 +47,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import amiga  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-
-import amigasavegame  # noqa: E402
+from tools import amigasavegame  # noqa: E402
 
 #: The drawer both later titles keep their saved games in, and the two names
 #: they use.  Curse writes `savgam<letter>.dat` and Silver Blades

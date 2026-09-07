@@ -232,3 +232,66 @@ def test_the_tool_that_was_caught_doing_it_no_longer_can():
         "print('OK')\n")
     assert result.returncode == 0 and "OK" in result.stdout, (
         f"tools/dosraces.py left tools/ on sys.path:\n{result.stderr}")
+
+
+#: `#262 (Thirty-three tools still leave tools/ on sys.path, so one run
+#: directly can lose the wish package)` fixed the mechanical leak in every
+#: tool but these five, each mid-edit under a different agent when that
+#: session ran: `amigabladesjournal`, `abilitypair` and `amigalaterproof`
+#: still leave `tools/` on `sys.path`; `cursethac0` and `innateids` were
+#: reserved the same way but, measured at the time, already did not. Named
+#: here rather than left out of `TOOLS` below, so the check stays honest
+#: about who is exempt and why instead of passing on all five by omission.
+#: `#262`'s own comment thread is where the follow-up on the first three
+#: belongs.
+RESERVED_WHILE_262_LANDED = (
+    "amigabladesjournal",
+    "abilitypair",
+    "amigalaterproof",
+    "cursethac0",
+    "innateids",
+)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [pytest.param(n, marks=pytest.mark.xfail(
+        reason="reserved to another agent while #262's mechanical fix "
+               "landed; not touched here", strict=False))
+     if n in RESERVED_WHILE_262_LANDED else n
+     for n in TOOLS])
+def test_no_tool_leaves_tools_on_sys_path_after_import(name):
+    """The general form `#262 (Thirty-three tools still leave tools/ on
+    sys.path, so one run directly can lose the wish package)` asked for:
+    `test_the_tool_that_was_caught_doing_it_no_longer_can` above, over every
+    script in `tools/` rather than the one that was measured, computed by
+    walking the directory so the next tool anybody adds is covered without
+    anybody remembering to list it. `tools/pathleak.py` is the same
+    assertion, run as a one-off census rather than as part of the suite.
+
+    Five names carry an `xfail` instead of being left out of `TOOLS`; see
+    `RESERVED_WHILE_262_LANDED` above for which and why. Two of the five do
+    not currently leak and so report `XPASS`, which is allowed
+    (`strict=False`) rather than treated as a second bug to fix here -- they
+    were reserved on the same footing as the three that do leak, not
+    because they were known to.
+    """
+    result = _in_a_fresh_process(
+        "try:\n"
+        f"    from tools import {name}\n"
+        "except ModuleNotFoundError as exc:\n"
+        "    if exc.name in ('tools', 'wish'):\n"
+        "        raise\n"
+        # A tool needing something CI does not install -- `capstone` for the
+        # disassemblers -- cannot be imported there at all, and that is not
+        # this test's subject.
+        "    print('SKIP', exc.name)\n"
+        "    raise SystemExit(0)\n"
+        f"left = [p for p in sys.path if p == {str(REPO / 'tools')!r}]\n"
+        "assert not left, f'tools/ left on sys.path: {left}'\n"
+        "print('OK')\n")
+    if result.stdout.startswith("SKIP"):
+        pytest.skip(f"{name} needs {result.stdout.split()[1]}, "
+                    f"which is not installed here")
+    assert result.returncode == 0 and "OK" in result.stdout, (
+        f"tools/{name}.py left tools/ on sys.path:\n{result.stderr}")

@@ -39,7 +39,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from dosfieldrefs import references  # noqa: E402
+from tools.dosfieldrefs import references  # noqa: E402
 
 #: Opcodes carrying an immediate after the ModRM displacement, and its width.
 #: `0x83` is a byte immediate sign-extended to a word, which is why it is 1

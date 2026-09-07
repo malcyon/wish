@@ -27,15 +27,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-sys.path.insert(0, str(TOOLS))
-
-import gamedisks  # noqa: E402
-
 from goldbox import c64_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.games import classes_to_names, race_table  # noqa: E402
 from goldbox.items import items_for_slot, load_item_names  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 #: Which registry entry holds each title's sides, for the item-name table.
 #: The names live on the game disks rather than in the save, so a run with
