@@ -132,7 +132,11 @@ def _read_slot(image: pathlib.Path, letter: str) -> list:
 
 def test_a_c64_party_reaches_an_amiga_slot_with_its_names_and_hit_points(
         tmp_path):
-    """Six of six, and the six the Amiga's party panel drew on 2026-09-05.
+    """Six of six, in the marching order the C64's own `ORDER` screen shows
+    for this party -- BRUTUS first (`#385 (A C64 party converted to an Amiga
+    disk marches in the reverse of its C64 order)`) -- and the hit points the
+    Amiga's party panel drew on 2026-09-05, which this reorders around
+    without touching.
 
     The hit points are the assertion that matters: they are the C64 record's
     own and nothing derives them, so a wrong offset anywhere in the
@@ -149,8 +153,8 @@ def test_a_c64_party_reaches_an_amiga_slot_with_its_names_and_hit_points(
 
     drawn = [(str(c.get("name")), c.get("hp_current"))
              for c in _read_slot(out, "B")]
-    assert drawn == [("MALCYON", 4), ("TWIN", 4), ("ROLAND", 7),
-                     ("LADY KATHERINE", 5), ("MAGNUS", 9), ("BRUTUS", 11)]
+    assert drawn == [("BRUTUS", 11), ("MAGNUS", 9), ("LADY KATHERINE", 5),
+                     ("ROLAND", 7), ("TWIN", 4), ("MALCYON", 4)]
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-item-granted"),
@@ -201,6 +205,11 @@ def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
     repair is to strip the space on our side so the two agree.  That would
     lose it immediately instead of on the first save, and this fails if
     anybody does it.
+
+    She is `CHRDATB3`, not `CHRDATB4`: the party is written in the C64's own
+    marching order, BRUTUS first
+    (`#385 (A C64 party converted to an Amiga disk marches in the reverse of
+    its C64 order)`), and she is third in it.
     """
     from tools import toamigapor
 
@@ -212,7 +221,7 @@ def test_a_space_in_a_name_is_written_through_to_the_amiga_record(tmp_path):
                      "--c64", str(party)])
 
     from goldbox.amiga_adf import AmigaDisk
-    record = AmigaDisk.open(out).read_file("/save/CHRDATB4.sav")
+    record = AmigaDisk.open(out).read_file("/save/CHRDATB3.sav")
     assert bytes(record[:16]) == b"LADY KATHERINE\x00\x00"
 
 

@@ -66,8 +66,16 @@ from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 
 def read_c64_party(path: str) -> list:
-    """Every character of a C64 save disk, as neutral records."""
-    from goldbox import c64_codec
+    """Every character of a C64 save disk, as neutral records, in the file
+    order the Amiga (and DOS) want them in.
+
+    Read through `goldbox.dos.c64_party`, the same call `write_dos_save`
+    makes for the DOS direction (`#106`) -- the C64 lists the highest
+    occupied slot first, and both DOS and the Amiga list `CHRDAT<L>1` first,
+    so the party has to come back reversed or the front-rank fighter arrives
+    at the back (`#385`).
+    """
+    from goldbox import dos
     from goldbox.d64 import D64
     from goldbox.savegame import load_save
 
@@ -77,13 +85,9 @@ def read_c64_party(path: str) -> list:
         raise SystemExit(
             f"{path} is {game.title}, and an Amiga Pool of Radiance slot "
             f"takes a Pool of Radiance party")
-    out = []
-    for slot in sg0.characters:
-        out.append(c64_codec.read(
-            slot.record,
-            roster=sg1.roster(slot.index) if sg1 is not None else None,
-            game=game, source=str(path)))
-    return out
+    save1 = sg1.to_bytes() if sg1 is not None else None
+    characters, _icons = dos.c64_party(sg0.to_bytes(), save1, game)
+    return characters
 
 
 def read_dos_party(folder: str, slot: str) -> list:
