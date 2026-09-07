@@ -563,30 +563,6 @@ menu's existence.
 
 ---
 
-## U2. Curse subtracts the prime-requisite bonus from the racial level cap
-
-**What the game does.** Curse's training routine checks two ceilings: a per-class
-cap read as `LDA $7CC9,X / CMP $15A1,X`, and a racial cap indexed
-`(race - 1) * 8`. Reading the racial check, the routine looks up the
-prime-requisite bonus (+1 at 17, +2 at 18, from the second ability array at
-`0x065`) and **subtracts** it from the limit rather than adding it. Written out,
-a strong fighter would be capped *lower* than a weak one.
-
-**What it should do.** Add it. AD&D 1st edition raises a demihuman's class limit
-for a high prime requisite; it never lowers it.
-
-**The evidence, and its weakness.** The racial table itself is CONFIRMED —
-half-orc `0/4/8/10` and half-elf `8/5/99/8` are the AD&D rows exactly, and they
-are the two no other reading of the table would produce. The sign is a reading
-of the accumulation into `$B0` and nothing more. Either it is a bug or the
-accumulation works some way this reading misses. Nobody has trained a strong
-demihuman in the emulator to watch it refuse.
-
-**Version.** Curse of the Azure Bonds, Commodore 64. **GUESS**, and it is on the
-list precisely because it is the weakest claim here.
-
----
-
 ## U3. A Curse character export gets a directory block count of zero
 
 **What the game does.** `\x02BRUTUS` on the player's own `CURSESAVE2.D64`, a
@@ -700,6 +676,7 @@ damning than the evidence supports, and because the failure modes repeat.
 | Roster bytes `+0x03`–`+0x05` are **not** memorised-spell counts, because a rest-and-save left them at `0/0/0` | Ours, and this row used to say the opposite. They *are* the counts: `COM.PREP $15ED` rebuilds nine of them from the memorised list at the start of every fight and **nothing else ever writes them**, so a save taken after a rest and before the next fight holds the previous fight's numbers. The controlled test was right about the bytes and wrong about what writes them, and a retraction is a claim that needs its own evidence. `docs/30-savegame-layout.md`, `#365 (Three roster bytes have no established meaning, and a C64 party converted to DOS is told so with no way to check it)` |
 | The combat log picks up garbage because something else is rewriting the file | Ours, twice, both in `automap/combatlog.py`, and both only visible against a running fight |
 | Driving the game wedges at the training hall, four runs running | Ours. Four runs of one wrong assumption is not four pieces of evidence; the training schools are not on that square and not in that area at all |
+| Curse's trainer subtracts the prime-requisite bonus from the racial level cap, so a strong fighter is capped lower than a weak one (formerly **U2** here) | Ours. `GEN $1562` accumulates a **penalty for a low score** into `$B0` — nothing at 18, one point at 17, two below that — and the table at `$15A9` holds each race's limit **for an 18**, so the subtraction brings a weaker character down to it. Its fighter column (9, 7, 6, 8, 6, 10, 99) is AD&D 1st edition's maximum-level-with-18-strength row exactly. `#367 (What is the second ability array at 0x065 for, and which of the two does the engine treat as current?)`, `docs/116-second-game.md` §9.2 |
 
 The pattern to carry away is in three of those rows: **a hypothesis that sparse
 data agrees with has not been tested.** The `$400` slot stride survived because

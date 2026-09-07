@@ -1112,16 +1112,28 @@ _DECLARED: Sequence[Field] = (
            "6, two worse than each armour's real class and meaning nothing. "
            "docs/127-community-formats.md"),
     # --- Declared from the later games, zero throughout this one -----------
-    _field(0x065, 7, _RAW, "abilities_second", "Abilities (second copy)", _OK,
-           "a second copy of the seven ability scores -- STR, INT, WIS, DEX, "
-           "CON, CHA, exceptional STR -- mirroring 0x014-0x01A. CONFIRMED in "
-           "Curse: all six of SSI's pre-generated characters carry it and the "
-           "import routine writes it (docs/116 sec 2.2). Death Knights moved "
-           "its editor's ability fields here rather than to 0x014. Seven zeroes "
-           "in every Pool of Radiance specimen. **Which of the two arrays the "
-           "game treats as current is not established** -- they are equal in "
-           "every specimen, and MacGyver's Curse trainer writes both because he "
-           "did not know either"),
+    _field(0x065, 7, _RAW, "abilities_second", "Abilities (permanent score)", _OK,
+           "the seven ability scores as rolled -- STR, INT, WIS, DEX, CON, "
+           "CHA, exceptional STR -- alongside the pair at 0x014-0x01A. "
+           "CONFIRMED in Curse: all six of SSI's pre-generated characters "
+           "carry it and the import routine writes it (docs/116 sec 2.2). "
+           "Seven zeroes in every Pool of Radiance specimen. **This is the "
+           "permanent score and 0x014 is the score in force**: character "
+           "generation rolls into 0x065 (GEN $0CCF), the racial minimum and "
+           "maximum tables clamp it (GEN $1E56-$1E9B), and the training "
+           "hall's racial level cap reads it (GEN $1562) so that a temporary "
+           "drain cannot lower a permanent limit. 0x014 is rebuilt from "
+           "0x065 on every recompute -- current := base, then the drains, "
+           "then item and spell effects (ECL65 $913B) -- and is what the "
+           "sheet, carrying allowance, combat and spells all read. "
+           "CONFIRMED from the bytecode and from a running game with the "
+           "two arrays crossed six ways: the sheet and the engine's own "
+           "recomputed carrying allowance always followed 0x014. "
+           "Death Knights' editor writes its ability fields here rather "
+           "than to 0x014, which was suggestive before the running-game "
+           "confirmation. #367 (What is the second ability array at 0x065 "
+           "for, and which of the two does the engine treat as current?), "
+           "docs/201-the-two-ability-arrays.md"),
     _field(0x098, 1, _U8, "attack_level", "Fighting level", _OK,
            "the level the attack tables are indexed by, which is not always "
            "the character level: 5 for Curse's level-5 paladin and ranger, 4 "

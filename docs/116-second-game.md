@@ -84,8 +84,12 @@ anything.
 
 The DOS record keeps the seven abilities as *(original, current)* byte pairs.
 The C64 keeps them as two parallel seven-byte arrays instead, one at `0x014`
-and one at `0x065`. Which of the two the game treats as "current" is not
-established: in every specimen held they are equal.
+and one at `0x065`. **`0x065` is the permanent score and `0x014` is the one in
+force**, which the engine rebuilds from `0x065` on every drain, item and spell
+effect — CONFIRMED from the bytecode and from a running game with the two
+arrays crossed. `#367 (What is the second ability array at 0x065 for, and
+which of the two does the engine treat as current?)`,
+[`201-the-two-ability-arrays.md`](201-the-two-ability-arrays.md).
 
 ### 2.3 Classes
 
@@ -239,10 +243,8 @@ C64 build does the same is NOT FOUND.
 | How wide the spellbook bitmask at `0x078` is | NOT FOUND in Curse — `0x078`–`0x07D` observed, 13 bytes predicted. **At least 8 bytes** on the later engine: Silver Blades and Death Knights casters set `0x07D`–`0x07F`, four of them holding `0x07F = 0x04`. The 13 is `⌈100/8⌉` from the DOS per-title spell counts (Pool of Radiance 56, Curse 100, Silver Blades 117, Pools of Darkness 126), so it is a prediction that assumes the C64 cut no spells — reading one Curse caster's spellbook against `COMBAT2`'s name table settles it. See `docs/127` §4 |
 | Where `paladinCuresLeft` and the dual-class array live | NOT FOUND. **HUMAN CHANGE CLASS is on the C64 party menu**, so the dual-class array is reachable by experiment; the one character tried was refused |
 | Where the azure-bond state lives | NOT FOUND. It is not in the character record on DOS either |
-| Which of `0x014` and `0x065` is "current" and which "original" | NOT FOUND — equal in every specimen |
 | How many combat slots Curse keeps, and where | NOT FOUND — `$5800`–`$5AFF` zero in both saves |
 | Which class and level each new spell id 57–100 belongs to | PROBABLE from AD&D — §10 — but no code assigns them here |
-| Why the racial limit subtracts the prime-requisite bonus rather than adding it | NOT UNDERSTOOD — §9 |
 
 ## 7. Corrections to the original plan (`work/reports/coab-plan.md`, lost)
 
@@ -348,12 +350,16 @@ of the same rule. PROBABLE that the effect in play is "cannot advance as a
 cleric" — the byte is 0 and the comparison is `level >= limit`, but no dwarf
 cleric has been trained in the emulator to watch it refuse.
 
-One thing is **not understood**: the routine looks up the prime-requisite
-bonus (+1 at 17, +2 at 18, read from the *second* ability array at `0x065`,
-which is the one Curse fills) and then **subtracts** it from the racial limit
-rather than adding it. Written out, a strong fighter would be capped lower.
-Either the sign is a bug, or `$B0` is being accumulated in a way this reading
-misses.
+**Correction, 2026-09-07: this section used to say the sign was unexplained,
+and record it as a possible bug in `docs/125-bug-notes.md` (former entry
+`U2`). It is not a bug.** `GEN $1562` accumulates a **penalty for a low
+score** into `$B0` — nothing at 18, one point at 17, two below that — and
+`$15A9` holds each race's limit **for a prime requisite of 18**; the
+subtraction brings a weaker character down to that limit rather than raising a
+stronger one above it. The routine reads the prime requisite from `0x065`
+because that is the *permanent* score — a temporary drain must not lower a
+permanent level cap. `#367 (What is the second ability array at 0x065 for,
+and which of the two does the engine treat as current?)`.
 
 ### 9.3 Experience — CONFIRMED
 
