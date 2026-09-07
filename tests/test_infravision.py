@@ -116,11 +116,11 @@ def test_the_c64_writer_gives_every_race_the_number_the_generator_writes():
     """`goldbox.c64_codec` computes the byte for a converted character, and
     the numbers it computes have to be the game's own.
 
-    The halfling is the one disagreement: the writer's table says 6 where
-    two titles' generators write 3, which is `#392 (A converted halfling gets
-    sixty feet of infravision, where the C64's own generator gives him
-    thirty)`.  This asserts that it is the *only* one, so the row moving
-    fails here rather than in a conversion.
+    `#392 (A converted halfling gets sixty feet of infravision, where the
+    C64's own generator gives him thirty)` found the halfling wrong -- the
+    writer's table said 6 where two titles' generators write 3 -- and this
+    asserted that disagreement while it stood.  Fixed, every race the two
+    tables share now agrees, and this fails the moment any row moves again.
     """
     try:
         table = infravision.race_table("pool-of-radiance")
@@ -132,9 +132,15 @@ def test_the_c64_writer_gives_every_race_the_number_the_generator_writes():
              for code in range(1, 8)
              if code in names
              and c64_codec.INFRAVISION.get(names[code]) != table[code - 1]}
-    assert wrong == {"halfling": (6, 3)}, (
-        "the writer's table has moved away from the generator's in a way "
-        "#392 does not describe: " + repr(wrong))
+    assert wrong == {}, (
+        "the writer's table disagrees with the generator's: " + repr(wrong))
+
+
+def test_a_converted_halfling_gets_the_generators_thirty_feet():
+    """`#392`: a halfling's stored `0x0D5` after conversion has to be the
+    game's own 3 (30 feet), not the AD&D-inferred 6 (60 feet) the table used
+    to carry."""
+    assert c64_codec.INFRAVISION["halfling"] == 3
 
 
 # --- DOS: no such byte ------------------------------------------------------

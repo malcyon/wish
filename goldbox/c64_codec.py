@@ -414,12 +414,27 @@ _LEVEL_ORDER = ("level_magic_user", "level_cleric", "level_thief",
                 "level_fighter", "level_knight", "level_paladin",
                 "level_ranger")
 
-#: Race name -> infravision range in feet.  The C64 stores this at `0x0D5`
-#: and it is a property of the race, not of any save: DOS does not store it,
-#: the Amiga derives what it needs, so the C64 writer computes it.  6 for
-#: every dwarf, elf and half-elf and 0 for every human across the twelve C64
-#: specimens that carry it; gnome, halfling and half-orc are PROBABLE, on
-#: AD&D 1st edition giving all three the same 60 feet.
+#: Race name -> the stored `0x0D5` byte (tens of feet).  The C64 stores this
+#: at `0x0D5` and it is a property of the race, not of any save: DOS does not
+#: store it, the Amiga derives what it needs, so the C64 writer computes it.
+#:
+#: Read off the character generator's own race table, races 1-7, in both
+#: `POOL3.D64:GEN` (`$0E5C`, read by `LDY #$D5 / TAX / LDA $0E5C,X / STA
+#: $6B00,Y` at `$094F`) and `CURSE_A.D64:GEN` (`$0C4B`, read at `$0C11`,
+#: written to `$7CD5` at `$0C14`) -- both titles ship the same seven values:
+#: dwarf 6, elf 6, gnome 6, half-elf 6, **halfling 3**, half-orc 6, human 0.
+#: `tools/infravision.py table` reads and disassembles both off the player's
+#: own disks; `#392 (A converted halfling gets sixty feet of infravision,
+#: where the C64's own generator gives him thirty)` is where the halfling's
+#: was found wrong -- it had been 6 on the AD&D 1st-edition argument that
+#: gnome, halfling and half-orc all get the same 60 feet, and the game does
+#: not agree for the halfling.
+#:
+#: Secret of the Silver Blades' `GEN` writes 0 into this byte at `$2278`, the
+#: only write to it anywhere in that overlay -- but as one `STA` inside a loop
+#: that zeroes a wider range of the record (`$7CD3`-`$7CD5`) from an `A` set
+#: to 0 well before it, not a race-indexed table read.  A separate fact, not
+#: folded into this table, and not yet acted on beyond being noted here.
 #:
 #: **Keyed by name, not by the record's race number** (#287, A converted
 #: Silver Blades human sees in the dark, because the infravision table is
@@ -431,7 +446,7 @@ _LEVEL_ORDER = ("level_magic_user", "level_cleric", "level_thief",
 #: `goldbox.games.race_table` for the record's own title before this table is
 #: asked, so the name and not the number is what travels between titles.
 INFRAVISION = {
-    "dwarf": 6, "elf": 6, "half-elf": 6, "gnome": 6, "halfling": 6,
+    "dwarf": 6, "elf": 6, "half-elf": 6, "gnome": 6, "halfling": 3,
     "half-orc": 6, "human": 0, "monster": 0,
 }
 
