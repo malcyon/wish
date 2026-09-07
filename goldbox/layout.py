@@ -390,7 +390,8 @@ _DECLARED: Sequence[Field] = (
            "of 30 characters carry a code that disagrees with the class "
            "they hold levels in; the same records read clean one action "
            "earlier. `docs/187-the-class-code-byte.md` has the reading "
-           "(#310)"),
+           "(#310 (A trained C64 Curse character arrives in DOS with the "
+           "wrong class on his sheet))"),
     _field(0x074, 2, _U16, "age", "Age", _OK,
            "16-bit LE; 21 for two humans, 176 for an elf -- long-lived, as expected"),
     _field(0x076, 2, _U16, "hp_max", "HP max", _OK,
