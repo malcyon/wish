@@ -379,7 +379,18 @@ _DECLARED: Sequence[Field] = (
            "Two caveats: the editor lists 3, 4 and 5 all as MAGIC-USER, which "
            "is its author's gap rather than the game's, and listing both 10 "
            "and 11 as cleric/magic-user looks like a slip in his table. "
-           "class_bits stays the field to prefer"),
+           "class_bits stays the field to prefer. **Curse of the Azure Bonds' "
+           "own `GEN` stops maintaining this byte once a character has ever "
+           "trained**: its class-code routine at `$1939` means to `STX` the "
+           "class code it just found by walking its own table at `$1951`, "
+           "but stores `STA` instead -- one bit apart -- so what lands is "
+           "the `EOR` residue (zero, on the matching path) or the dual-class "
+           "level, never the code itself. Measured on the two Curse disks "
+           "written after a training-hall visit or a class change, where 8 "
+           "of 30 characters carry a code that disagrees with the class "
+           "they hold levels in; the same records read clean one action "
+           "earlier. `docs/187-the-class-code-byte.md` has the reading "
+           "(#310)"),
     _field(0x074, 2, _U16, "age", "Age", _OK,
            "16-bit LE; 21 for two humans, 176 for an elf -- long-lived, as expected"),
     _field(0x076, 2, _U16, "hp_max", "HP max", _OK,
