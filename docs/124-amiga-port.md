@@ -1795,11 +1795,16 @@ rewrite the ADF, eject and re-insert DF0 so the Amiga re-reads it, `ADD
 CHARACTER` → `POOLS` → `ADD`, `VIEW CHARACTER`, screenshot, `REMOVE CHARACTER`.
 Notes for whoever runs the next one:
 
-* **PoD is driven by first letters and Return**, not by arrows — `a`, `p`, `v`,
-  `r`, `y`, `e`. FS-UAE's arrow keys reach its own menu and not the Amiga, so
-  the picker's cursor cannot be moved: **the payload goes in the file the picker
-  lists first**, which on this disk is `Save/TROND.pc`. The `*` in that list is
-  the cursor, and the red name in the party roster is the cursor there.
+* **PoD is driven by first letters and Return** — `a`, `p`, `v`, `r`, `y`, `e`.
+  FS-UAE's arrow keys reach its own menu and not the Amiga, so under FS-UAE the
+  picker's cursor cannot be moved and **the payload goes in the file the picker
+  lists first**, which on this disk is `Save/TROND.pc`. **Under WinUAE the
+  cursor keys do move it**, sent with `KEYEVENTF_EXTENDEDKEY` — one `DOWN` went
+  from `TROND` to `PAINE` on 2026-09-07, so any row can be reached now and a
+  payload no longer has to go in the first file
+  (`docs/206-three-amiga-questions.md` §3). The `*` in that list marks a name
+  matching a party member, and the red name in the party roster is the cursor
+  there.
 * **Never press Up at the top of an FS-UAE menu list.** The cursor leaves the
   list and lands on the window's `X`, and Return there quits the emulator. That
   is what killed one session; it looked like a crash and was not.
@@ -1812,12 +1817,16 @@ Notes for whoever runs the next one:
   character the cursor is on, and a failed `ADD` leaves the cursor on the
   previous one.
 * **`e` on the party menu is `EXIT FROM GAME`**, not the picker's `EXIT`.
-* **PoD writes the character back to the save disk when it is added** — a
-  `THIEFTEST.pc` appeared in the picker one probe after `THIEFTEST` joined. It
-  is written to FS-UAE's in-memory copy only: **FS-UAE never writes the ADF back
-  to the host**, checked by reading the host file afterwards. So PoD's own
-  emitted `.pc` cannot be harvested this way, and rewriting the host file
-  between probes is safe.
+* **`ADD` itself writes nothing to the save disk**, corrected 2026-09-07. This
+  line used to say PoD writes the character back when it is added, from a
+  `THIEFTEST.pc` that appeared in the picker one probe after `THIEFTEST`
+  joined. It did not reproduce under WinUAE, which *does* hand the ADF back to
+  the host: a disk taken through `ADD CHARACTER` → `POOLS` → `ADD` came off the
+  guest byte for byte identical to the one that went in
+  (`docs/206-three-amiga-questions.md` §3). So whatever wrote that file was
+  something later in that FS-UAE session rather than `ADD`, and the practical
+  advice stands for a different reason: PoD's own emitted `.pc` cannot be
+  harvested this way, and rewriting the host file between probes is safe.
 * FS-UAE 3.1.66 died once with `*** buffer overflow detected ***`. Restarting it
   into the same Xephyr and rebooting the game is the recovery.
 
