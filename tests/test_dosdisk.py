@@ -259,6 +259,17 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
             if place < len(party):
                 assert drawn == icon, (slot, place)
                 assert any(drawn), f"{slot} slot {place} draws as black hooks"
+            elif place in dos.NPC_ICON_SLOTS:
+                # The two slots a DOS party can never fill, but the C64
+                # player can -- he recruits an NPC into one. The engine
+                # seeds them at creation and this conversion now does the
+                # same (`#363 (A DOS-to-C64 conversion writes zero into the
+                # two NPC-only combat-icon slots instead of the engine's own
+                # seeded default)`), which is what the docstring above argues
+                # for: zeros here would be the black hooks, not an empty
+                # slot.
+                assert drawn == icon, (slot, place)
+                assert any(drawn), f"{slot} slot {place} draws as black hooks"
             else:
                 assert drawn == bytes(len(icon)), (slot, place)
 
