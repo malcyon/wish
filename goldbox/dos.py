@@ -406,7 +406,77 @@ def item_to_c64(record: bytes) -> bytes:
 #: rolled three in the game's own creation screens and the engine wrote 97,
 #: 18, 47 and 48 for every one -- so both are innate, both are racial, and
 #: neither is carried by any other race.  CONFIRMED.
+#:
+#: **This is Pool of Radiance's own set, and Pool of Radiance is the only
+#: title with no paladin or no ranger to lose anything by it** (#388, A
+#: converted paladin or ranger loses his innate effect on the way to DOS,
+#: because the writer filters through Pool of Radiance's id list).  Curse of
+#: the Azure Bonds and Secret of the Silver Blades both instantiate a
+#: paladin and a ranger and both carry an id neither this set nor
+#: `RACE_COMBAT_EFFECTS` has ever had: `INNATE_EFFECTS_CURSE` and
+#: `INNATE_EFFECTS_SILVER_BLADES` below are this set plus the two classes' own
+#: ids, and `_innate_effects` is what a caller asks for a title's own set
+#: rather than reading this one unconditionally.  A title not listed there
+#: gets this set, which is right for Pool of Radiance and has not been
+#: measured for any other -- there is no fourth DOS title this module writes.
 INNATE_EFFECTS = frozenset({18, 26, 47, 48, 90, 97, 107, 124})
+
+#: Curse of the Azure Bonds' paladin and ranger, added to `INNATE_EFFECTS`.
+#: **8, "Protection from Evil", is the paladin's, CONFIRMED over three
+#: engine-driven specimens**: DEMELTINA, MATHEW and MARK, human paladins level
+#: 5, every one carrying `.FX` record `08 00 00 FF 00` -- duration zero,
+#: `INNATE_PAYLOAD` in bytes 1-4 -- watched in DOS Curse under DOSBox-X
+#: (`WISH-SPEC-curse-234-before`, `WISH-SPEC-curse-131-four-items-readied`,
+#: `WISH-SPEC-curse-131-dualclassed-in-area-1`; none of these three specimens
+#: passed through this project's own writer).
+#:
+#: **134 is the ranger's and not 105, CONFIRMED over two.**  ARGORA and
+#: RWELLYN, human rangers level 5 in `WISH-SPEC-curse-234-party-dualclassed`
+#: ("Nothing in these bytes was written by us"), both carry `.FX` record
+#: `86 00 00 FF 00` -- id 0x86 = 134, duration zero, `INNATE_PAYLOAD`.  105 is
+#: Secret of the Silver Blades' own ranger id and not Curse's; the two titles
+#: do not share a class-trait namespace the way they share the racial one.
+#: `docs/121-silver-blades.md` already carried the ranger half of this split
+#: from the two titles' own seed tables (Curse `GEN $2515` hands 45, Silver
+#: Blades 105 -- ids for a *different*, C64-side combat trait computed live
+#: rather than stored, out of `#388`'s scope) and this is the `.SPC` file's
+#: own confirmation of the same split by a different route.
+INNATE_EFFECTS_CURSE = INNATE_EFFECTS | {8, 134}
+
+#: Secret of the Silver Blades' paladin and ranger, added to `INNATE_EFFECTS`.
+#: **8 is the paladin's here too, CONFIRMED over three specimens carrying Guy
+#: de Valois**: `WISH-SPEC-ssb-234-party-pair` (both slots C and D, "Nothing
+#: in these bytes was written by us") and `WISH-SPEC-ssb-slote-zeroed140`
+#: (the shipped SAVEDBASH party, watched on its own `SAVE CURRENT GAME`),
+#: every one `08 00 00 FF 00`.
+#:
+#: **105 is the ranger's, CONFIRMED over three specimens carrying PAINE**:
+#: `WISH-SPEC-ssb-234-before`, `WISH-SPEC-ssb-234-party-pair` (slot C, before
+#: her `HUMAN CHANGE CLASSES`) and `WISH-SPEC-ssb-slote-zeroed140`, every one
+#: `69 00 00 FF 00` -- the same nine bytes #388's own issue body already
+#: quoted from `CHRDATA2.SFX`.
+#:
+#: MALACHITE, a dwarf in the same three specimens, carries `2F 1A 61` (47, 26,
+#: 97) -- already in `INNATE_EFFECTS` and outside this issue's scope, but it
+#: is the first Silver Blades `.SPC` anybody has read carrying 97 for a dwarf,
+#: which bears on `RACE_COMBAT_EFFECTS_SILVER_BLADES`' own PROBABLE grade and
+#: is not acted on here.
+INNATE_EFFECTS_SILVER_BLADES = INNATE_EFFECTS | {8, 105}
+
+#: Title key -> its innate-effect set.  A title not listed gets
+#: `INNATE_EFFECTS`, which is Pool of Radiance's own and, until measured
+#: otherwise, everyone else's -- the same fallback shape
+#: `_RACE_COMBAT_EFFECTS_TABLES` uses below.
+_INNATE_EFFECTS_TABLES: dict[str, frozenset[int]] = {
+    CURSE_OF_THE_AZURE_BONDS.key: INNATE_EFFECTS_CURSE,
+    SECRET_OF_THE_SILVER_BLADES.key: INNATE_EFFECTS_SILVER_BLADES,
+}
+
+
+def _innate_effects(shape_key: str | None) -> frozenset[int]:
+    """This title's innate-effect ids, `INNATE_EFFECTS` for a title not
+    listed in `_INNATE_EFFECTS_TABLES` or for `None`."""
+    return _INNATE_EFFECTS_TABLES.get(shape_key, INNATE_EFFECTS)
 
 #: Bytes 1-4 of a `.SPC` record for an innate effect.  A record is nine bytes:
 #: the effect id, these four, and a four-byte far pointer to the next record.
@@ -1630,17 +1700,20 @@ def to_neutral(dos: DosCharacter,
     #
     # An **innate** effect that cannot be converted is the opposite and is
     # always reported -- a racial bonus a player paid for at character
-    # creation and would go looking for.  `INNATE_EFFECTS` is where the line
-    # is drawn in the bytes and it is the same line drawn here.
-    # `docs/133-active-effects.md` records what a running effect is; the
-    # active-effect arrays are zeroed by `EFFECT_ARRAYS` in `convert_save`.
+    # creation and would go looking for.  `_innate_effects` is where the line
+    # is drawn in the bytes and it is the same line drawn here -- **this
+    # title's own set** (#388, A converted paladin or ranger loses his innate
+    # effect on the way to DOS, because the writer filters through Pool of
+    # Radiance's id list), since a paladin's Protection from Evil and a
+    # ranger's own id are not in Pool of Radiance's.
+    innate_ids = _innate_effects(dos.shape.key)
     out.set("innate_effects",
-            [e for e in dos.effect_ids if e in INNATE_EFFECTS],
+            [e for e in dos.effect_ids if e in innate_ids],
             "the innate ids of the DOS .SPC file; the two ports share one "
             "effect-id namespace (goldbox/traits.py)",
             Confidence.PROBABLE)
 
-    # -- the .SPC records INNATE_EFFECTS turns away, converted whole ----------
+    # -- the .SPC records this title's own set turns away, converted whole ---
     # A ring, a girdle or a cloak grants an effect the same way a race does,
     # and the id alone cannot say what the ring is worth: the record's own
     # value byte and the flag the engine reads when the item comes off are
@@ -1668,7 +1741,7 @@ def to_neutral(dos: DosCharacter,
     # The next pointer is dropped rather than converted: it is a live heap
     # address the engine rebuilds on load (`EFFECT_NEXT_NULL`).
     granted = [bytes(e[:5]) + EFFECT_NEXT_NULL for e in dos.effects
-               if e[0] not in INNATE_EFFECTS
+               if e[0] not in innate_ids
                and int.from_bytes(e[1:3], "little") == 0]
     if granted:
         out.set("granted_effects", granted,
@@ -2052,8 +2125,9 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "it, and an empty inventory writes no .ITM file at all "
                   "rather than an empty one -- ITM_OMITTED_WHEN_EMPTY"),
     ("innate_effects", "one nine-byte .SPC record each, id + INNATE_PAYLOAD "
-                       "+ a NULL next pointer the engine rebuilds; only the "
-                       "INNATE_EFFECTS ids are written, the rest reported, "
+                       "+ a NULL next pointer the engine rebuilds; only "
+                       "this title's own innate ids are written, the rest "
+                       "reported, "
                        "and a character with none gets no .SPC file"),
     ("status", "the neutral name indexed back into the engine's own nine "
                "status words at 0x10C, which is the order neutral.STATUS_NAMES "
@@ -3160,7 +3234,8 @@ def write(char: NeutralCharacter,
     race = int(w.get("race", 0) or 0)
     derived = [e for e in _race_combat_effects(char.game, race)
                if e not in converted]
-    keep = derived + [e for e in converted if e in INNATE_EFFECTS]
+    innate_ids = _innate_effects(shape.key)
+    keep = derived + [e for e in converted if e in innate_ids]
 
     # An item's grant follows the innate records in the same file, each one
     # its own five bytes rather than `INNATE_PAYLOAD`: a girdle's record
@@ -3210,7 +3285,7 @@ def write(char: NeutralCharacter,
                  f"loader allocates a node per record and relinks them, and "
                  f"the count comes from the file's length")
     for e in converted:
-        if e not in INNATE_EFFECTS:
+        if e not in innate_ids:
             rep.dropped.append(
                 f"innate_effects {e} ({traits.describe(e)}): not one of the "
                 f"ids the game's own importer keeps, so it is an item power "
