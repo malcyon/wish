@@ -110,6 +110,25 @@ TRAVEL_XY = 0x49C3
 #: other bar in the game carries.
 OUTDOOR_PROMPT = "1-8"
 
+#: What a **boat landing** puts up instead, when `MOVE` is chosen on the
+#: square a party sails to: `TAKE BOAT STAY`, under *"THERE IS A BOAT HERE
+#: THAT WILL TAKE YOU BACK TO THE CIVILISED SECTION OF PHLAN.  WILL YOU TAKE
+#: IT?"* and a picture of the boat.
+#:
+#: The direction prompt never comes up there until the question is answered,
+#: so a driver that waits for `1-8` waits out its whole timeout in front of a
+#: game that is asking it something -- and then reports the step as blocked,
+#: which is a map fact nobody measured.  That is what
+#: `#382 (An outdoor Pool of Radiance party's compass step is refused, and the
+#: retry cannot find the movement prompt afterwards)` turned out to be: the
+#: converted Amiga party of `#376 (An Amiga party on the travel grid still
+#: cannot be converted to the C64 or DOS, because the reader refuses one)`
+#: stands on the west landing it sailed to, and eight directions in a row were
+#: recorded as refused without a digit ever reaching the game.
+#:
+#: Both words, because `TAKE` alone is on other bars.
+BOAT_BAR = ("TAKE", "STAY")
+
 #: The travel grid's directions, **clockwise from north**, and they are not
 #: the numpad: measured on 2026-09-02 by writing `$49C3`/`$49C4`, pressing one
 #: digit and reading the square back -- `3` took (11,26) to (12,26), east, and
@@ -524,6 +543,12 @@ class Session:
     #: See `__init__`; here as well so a `Session` built without it -- the
     #: fake ones in `tests/` -- still answers the attribute.
     walk_refused: str | None = None
+
+    #: What to answer a boat landing's `TAKE BOAT STAY` when a walk runs into
+    #: one -- `"STAY"`, `"TAKE"`, or None to stop and say so.  See
+    #: `outdoor_key`; None is the default because taking the boat moves the
+    #: party across the world, which is not a step.
+    outdoor_boat: str | None = None
 
     def __init__(self, disk: str | None = None, display: str | None = None,
                  slot=None, fastloader: str | None = None):
@@ -1356,6 +1381,13 @@ class Session:
             self.log("  Could not read the travel square")
             return False
         if not self.outdoor_key(move, hold, gap):
+            # `leave_outdoor_move` only presses when the direction prompt is
+            # actually up, so this is safe on the boat's own bar -- where a
+            # Return would answer whichever of TAKE and STAY the highlight
+            # happened to be sitting on.  Without it a run that reached the
+            # prompt just too late left it on the screen and everything after
+            # it read a bar nothing knows how to answer (`#382`).
+            self.leave_outdoor_move()
             return False
         deadline = time.time() + patience
         after = before
@@ -1379,19 +1411,67 @@ class Session:
         is how one run of this was read.  A warped arrival lands on the
         command bar and does need MOVE taking first.  So row 24 is read and
         whichever bar is there is answered.
+
+        **Taking `MOVE` is not the same as reaching the direction prompt**,
+        and this used to assume it was: it pressed the digit six tenths of a
+        second after the Return, whatever row 24 had become.  On a boat
+        landing what it becomes is `TAKE BOAT STAY` (`BOAT_BAR`), so the digit
+        went into the boat's own question, nothing moved, and the step was
+        recorded as blocked.  Now the prompt is waited for, and a bar that is
+        not the prompt is named rather than pressed at
+        (`#382 (An outdoor Pool of Radiance party's compass step is refused,
+        and the retry cannot find the movement prompt afterwards)`).
+
+        `outdoor_boat` is what a caller sets to answer the boat rather than
+        stop at it: `STAY` declines the passage and leaves the party on the
+        landing, which is what a run measuring an overland step wants, and
+        `TAKE` sails it back to New Phlan.  It is None by default because
+        which of the two a run wants is the run's decision rather than this
+        file's, and a driver that quietly took a boat would move a party
+        across the world and call it a step.
         """
         deadline = time.time() + timeout
+        # When `MOVE` was last taken.  The prompt takes about a second to
+        # draw, and the command bar is still on row 24 while it does -- so a
+        # loop that re-selects `MOVE` on every look would press Return on it
+        # twice, and the second one lands at the direction prompt.  Four
+        # seconds is long enough for the redraw and short enough to retry a
+        # genuinely stale bar, which is what the old code's single retry was
+        # for.
+        took_move = 0.0
         while time.time() < deadline:
             s = self.screen()
             row = "" if s is None else s.row(24)
             if OUTDOOR_PROMPT in row:
                 self.kbd.key(key, hold, gap)
                 return True
-            if word_column(row, "MOVE") >= 0:
+            if all(word in row for word in BOAT_BAR):
+                if self.outdoor_boat:
+                    self.log(f"  a boat landing: |{row.strip()}| -- answering "
+                             f"{self.outdoor_boat}")
+                    self.select_bar(self.outdoor_boat, timeout=10)
+                    time.sleep(1.0)
+                    # The whole budget again, because answering a question is
+                    # not waiting for one.  The landing draws the boat off the
+                    # disk, which took most of twenty seconds on pool slot 1
+                    # -- so a run that spent its patience getting *to* the
+                    # question had none left for the prompt behind it and
+                    # reported the step blocked anyway.
+                    deadline = max(deadline, time.time() + timeout)
+                    continue
+                self.walk_refused = (
+                    "the driver pressed nothing: this square is a boat "
+                    "landing and the game is asking whether to take the boat, "
+                    "so there is no direction prompt to press a digit at. "
+                    "That is a driver error and not a wall")
+                self.log(f"  a boat landing: |{row.strip()}|; no digit was "
+                         f"pressed")
+                return False
+            if word_column(row, "MOVE") >= 0 and time.time() - took_move > 4.0:
                 if self.select_bar("MOVE", timeout=10):
+                    took_move = time.time()
                     time.sleep(0.6)
-                    self.kbd.key(key, hold, gap)
-                    return True
+                    continue
             self.handle_prompt(s)
             time.sleep(0.5)
         self.log(f"  Neither a 1-8 prompt nor MOVE on row 24 within "

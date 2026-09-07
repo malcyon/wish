@@ -142,6 +142,19 @@ def answer_bars(sess, log: Log, answer: str = "NO", tries: int = 60,
         row = s.row(24)
         if "MOVE" in row and "ENCAMP" in row:
             return "world"
+        if all(word in row for word in S.BOAT_BAR):
+            # A boat landing's own question, and nothing here answers it: the
+            # two choices move the party to opposite ends of the world, so
+            # which one a run wants is the run's decision (`Session.
+            # outdoor_boat`, `--boat`).  Said rather than sat in front of --
+            # this used to spin out its whole budget and report `stuck`, which
+            # is how eight outdoor steps were recorded as refused without a
+            # digit ever reaching the game (`#382 (An outdoor Pool of Radiance
+            # party's compass step is refused, and the retry cannot find the
+            # movement prompt afterwards)`).
+            log.say(f"    the square is a boat landing: |{row.strip()}| -- "
+                    f"nothing here answers it; pass --boat")
+            return "boat"
         if "PRESS" in row:
             sess.kbd.key("Return")
         elif "YES" in row and "NO" in row:
@@ -730,6 +743,7 @@ def run(args, log: Log) -> int:
         boot = S.stage_disks(slot, pathlib.Path(args.disks))
         shutil.copy(args.disk, pathlib.Path(slot.dir) / "SIDE0.D64")
         sess = S.Session(boot, slot=slot)
+        sess.outdoor_boat = args.boat
         if not sess.boot():
             raise RuntimeError("boot failed")
 
@@ -1021,6 +1035,11 @@ def main(argv=None) -> int:
                    help="check the combat floor against the composed icon")
     p.add_argument("--answer", default="NO",
                    help="what to answer a YES NO bar a walked step puts up")
+    p.add_argument("--boat", default=None, choices=("STAY", "TAKE"),
+                   help="what to answer a boat landing's TAKE BOAT / STAY; "
+                        "STAY declines the passage and leaves the party on "
+                        "the landing, TAKE sails it back to New Phlan. Left "
+                        "unset the run stops at the question and says so")
     p.add_argument("--arrive", type=float, default=240.0,
                    help="seconds to wait for the world bar after BEGIN "
                         "ADVENTURING; an arrival that animates needs longer")
