@@ -915,6 +915,71 @@ def current_area(save: bytes) -> int:
 
 
 # --------------------------------------------------------------------------
+# Telling a walk from a wall from a driver that never pressed anything
+# (#341 (A DOS run reports a party that walked into another area as never
+# having walked))
+# --------------------------------------------------------------------------
+
+def judge_step(moved_ui: bool, changed: bool, *,
+               area_before: int | None = None,
+               area_after: int | None = None) -> tuple[str, str | None]:
+    """Classify one step from readings that need no monitor.
+
+    Returns `(kind, reason)`.  `kind` is one of:
+
+    * `"walked"` -- the party moved, in the area it started in or a new one;
+    * `"blocked"` -- the party tried and a wall (or a closed door, or a
+      refused command) stopped it, and `changed` is false because nothing on
+      screen moved;
+    * `"refused"` -- the driver sent no key at all, which is a driver error
+      and never a wall (`#360 (The session driver will not walk a Curse or
+      Silver Blades party in a dungeon, because it reads Pool of Radiance's
+      indoors flag)`'s `Session.walk_refused`, in this harness's own
+      vocabulary rather than a second one).
+
+    `area_before`/`area_after` take priority over `changed` when both are
+    known, because a step that crosses into another area redraws the command
+    bar before it redraws the status line -- `PoolOfRadiance.move` returns as
+    soon as the bar is back, so a digest read straight afterwards can still
+    be the departed square's, and `changed` would read false for a step that
+    in fact walked a very great distance.  Pass them whenever they come from
+    a save file rather than the screen; leave them `None` where only a
+    digest is available, as `PoolOfRadiance.status()` gives the per-step
+    loop, and the digest decides alone.
+    """
+    if not moved_ui:
+        return "refused", "the driver pressed nothing"
+    if area_before is not None and area_after is not None:
+        if area_before != area_after:
+            return "walked", None
+    if changed:
+        return "walked", None
+    return "blocked", None
+
+
+def run_walked(built: dict, resaved: dict) -> bool:
+    """Whether a run's own before/after readings prove the party moved.
+
+    `built` and `resaved` are `describe()`/`describe_dos()`-shaped dicts --
+    `tools/dosnewsave.py` and `tools/convertrun.py` both produce one before
+    the walk and one from the engine's own resave after it.  Both come
+    straight out of a save file's bytes, never the screen, so an area change
+    that redrew the status line late cannot be missed here the way it can be
+    in the per-step loop.
+
+    Facing is left out on purpose.  The loop above turns the party in place
+    to recover from a wall, which can leave the facing different with
+    nothing walked at all.
+    """
+    kind, _ = judge_step(
+        True,
+        tuple(built["square"][:2]) != tuple(resaved["square"][:2]),
+        area_before=built["area"], area_after=resaved["area"],
+    )
+    return kind == "walked"
+
+
+# --------------------------------------------------------------------------
 # The `.DAX` container, and the 63-byte item record inside `.ITM`
 # --------------------------------------------------------------------------
 
@@ -1041,7 +1106,18 @@ class PoolOfRadiance:
         return self.s.capture().glyphs(BAR)
 
     def status(self) -> str:
-        return self.s.capture().ink(STATUS)
+        """The status line, read only once the whole frame has gone quiet.
+
+        A step that crosses into another area redraws the command bar before
+        it redraws this line -- `move()` returns as soon as the bar is back,
+        so a digest sampled immediately afterwards can still be the departed
+        square's (#341 (A DOS run reports a party that walked into another
+        area as never having walked)).  `settle()` waits for consecutive
+        frames to agree everywhere, not just in `BAR`, so by the time this
+        reads the strip the redraw the bar already promised is actually
+        done.
+        """
+        return self.s.settle().ink(STATUS)
 
     # -- getting into the game -------------------------------------------
 

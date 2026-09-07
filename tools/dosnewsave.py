@@ -200,6 +200,14 @@ def make(*, c64: pathlib.Path, slot: str = "A", steps: int = 2,
             (out / f"RESAVE-SAVGAM{resave.upper()}.DAT").write_bytes(engine)
             report["resaved"] = describe(engine)
             report["engine_rewrote"] = word_diff(ours, engine)
+            # The per-step count above can undercount a step that crossed
+            # into another area (#341): the status digest it is built from
+            # can still be reading the departed square when it is sampled.
+            # The engine's own resave is read straight out of the save
+            # file, never the screen, so it is the one number a report can
+            # be believed on without opening the screenshots.
+            report["moved"] = dosbox.run_walked(report["built"],
+                                                 report["resaved"])
             for n in range(1, 7):
                 for p in sorted(s.save_dir.glob(f"CHRDAT{slot.upper()}{n}.*")):
                     shutil.copy(p, out / p.name)
@@ -232,7 +240,13 @@ def main(argv: list[str] | None = None) -> int:
     report = make(c64=find_c64_save(args.c64), slot=args.slot,
                   steps=args.steps, resave=args.resave, out=args.out)
     print(json.dumps(report, indent=2))
-    return 0 if report.get("walked") == report["steps_asked"] else 1
+    # `moved` is read out of the built and resaved files, not the per-step
+    # digest count above, so a step that crossed into another area cannot
+    # read as a failure here the way it could in `walked` (#341).  Asking
+    # for no steps at all is not a claim that any would be taken.
+    if report["steps_asked"] == 0:
+        return 0
+    return 0 if report.get("moved") else 1
 
 
 if __name__ == "__main__":

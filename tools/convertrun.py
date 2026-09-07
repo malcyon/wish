@@ -345,6 +345,14 @@ def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
             (out / f"RESAVE-SAVGAM{resave}.DAT").write_bytes(engine)
             report["resaved"] = describe_dos(engine)
             report["engine_rewrote"] = word_diff(ours, engine)
+            # The per-step count above can undercount a step that crossed
+            # into another area (#341): the status digest it is built from
+            # can still be reading the departed square when it is sampled.
+            # The engine's own resave is read straight out of the save
+            # file, never the screen, so it is the one number a report can
+            # be believed on without opening the screenshots.
+            report["moved"] = dosbox.run_walked(report["built"],
+                                                 report["resaved"])
             # Both slots' records, not just the container.  The slot dies with
             # the session (`.claude/rules/testing.md`: "A specimen dies with
             # the emulator slot that made it"), and a `SAVGAM<slot>.DAT` with
@@ -418,7 +426,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         report["play"] = play_dos(written, report["write"]["slot"] or "A",
                                   out, args.steps, args.resave or "D")
-        rc = 0 if report["play"].get("walked") == args.steps else 1
+        # `moved` is read out of the built and resaved files, not the
+        # per-step digest count, so a step that crossed into another area
+        # cannot read as a failure here the way it could in `walked` (#341
+        # (A DOS run reports a party that walked into another area as never
+        # having walked)).  Asking for no steps at all is not a claim that
+        # any would be taken.
+        rc = 0 if args.steps == 0 or report["play"].get("moved") else 1
 
     (out / "convertrun.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
