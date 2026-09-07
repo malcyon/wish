@@ -1957,6 +1957,7 @@ graph LR
   amiga --> dos_layout
   amiga --> dos_savegame
   amiga --> games
+  amiga --> iconparts
   amiga --> layout
   amiga --> neutral
   amiga -.->|deferred| savegame
