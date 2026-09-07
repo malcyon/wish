@@ -1,27 +1,42 @@
 #!/usr/bin/env python3
-"""Build a C64 save disk from an Amiga Pool of Radiance save slot.
+"""Build a C64 save disk or a DOS save folder from an Amiga Pool of Radiance
+save slot.
 
 The mirror of `tools/toamigapor.py`, and the command-line form of what
-`File ▸ Convert…`'s Amiga → Commodore 64 row does:
+`File ▸ Convert…`'s two Amiga rows do:
 `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party standing
-in the Slums on the Amiga arrives there in VICE)`.  You save on the Amiga
+in the Slums on the Amiga arrives there in VICE)` and
+`#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing in
+the Slums on the Amiga arrives there under DOSBox)`.  You save on the Amiga
 standing in the Slums at 21:22 with half the quests done, and the party
 arrives in the Slums at 21:22 with the same quests done -- not just the six
 characters, which have crossed since 2026-08-26, but the game around them.
 
     tools/fromamigapor.py work/issue316/poolsave-c64-after-C.adf \\
         --slot C --out work/353/PORSAVEC.D64 --report --sheet
+    tools/fromamigapor.py work/issue316/poolsave-c64-after-C.adf \\
+        --slot C --to dos --out work/354/save --report
 
-**Nothing is written from a template** (#118).  All 9216 bytes of
-`SAVEDGAME0` and `SAVEDGAME1` come from two zeroed buffers, and
-`goldbox.dos.new_save_from` raises rather than hand back a save with a byte
-in it nobody sourced -- `--report` prints that accounting.
+**Nothing is written from a template** (#118).  Whichever destination is
+asked for, every byte comes from a zeroed buffer, and `goldbox.dos.
+new_save_from` and `goldbox.dos.new_dos_save_from` each raise rather than
+hand back a save with a byte in it nobody sourced -- `--report` prints that
+accounting.
 
-Two of those bytes cannot come from the Amiga save and are read off the
-**player's own C64 game disks** at run time, which is Donald's ruling of
-2026-08-27 -- *"We should never attempt to write a save file if we don't have
-the game disks and we need them.  That would mean making up data, which we
-will not do."*:
+**A DOS destination reads the player's own DOS game folder** and no C64 disk
+at all: the party's area script is lifted out of `ECL<n>.DAX` there, and a
+conversion that could not read it would have to invent the area the party is
+standing in.  `--game` says where; with none, `tools.dosbox.find_game()`
+finds it the way every other DOS tool here does.  The combat figure needs no
+disk in this direction -- an Amiga record already stores `icon_head`,
+`icon_body` and `icon_colours` at the DOS offsets -- and the sheet portrait
+crosses off the stored creation menu.
+
+The two paragraphs below are the **C64** destination's own two exceptions,
+which are read off the player's own C64 game disks at run time.  That is
+Donald's ruling of 2026-08-27 -- *"We should never attempt to write a save
+file if we don't have the game disks and we need them.  That would mean
+making up data, which we will not do."*:
 
 * the combat icon each character's own record becomes, composed by
   `goldbox.iconparts.IconParts.dos_icon` off `SPELLE64`/`SPELLN64` (#130) --
@@ -65,13 +80,25 @@ from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
 
-def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
-    """Convert one Amiga slot and write `out`.  Nothing else is touched.
+def read_slot(disk, slot: str):
+    """One Amiga slot as the pair both destinations take.
 
     `goldbox.amiga.read_por_slot` reads the party straight off the `.adf`
-    blocks and `read_por_state` the place and the clock; from there this is
-    `goldbox.dos.new_save_from`, which is the same engine `File ▸ Import`
-    has used for a DOS folder since #118.
+    blocks and `read_por_state` the place and the clock.  Both destinations
+    below start here, which is the whole of what they share.
+    """
+    party, savgam = amiga.read_por_slot(disk, slot)
+    state = amiga.read_por_state(
+        savgam, source=f"{disk.volume_name} slot {slot.upper()}")
+    return party, state
+
+
+def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
+    """Convert one Amiga slot into a C64 `.d64` at `out`.  Nothing else is
+    touched.
+
+    From :func:`read_slot` this is `goldbox.dos.new_save_from`, which is the
+    same engine `File ▸ Import` has used for a DOS folder since #118.
 
     The creation menu's two tables (#57) come off the same `disks` directory
     the icon and `ANIMATE00` do.  Unlike those two a conversion does not
@@ -79,9 +106,7 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
     menu, so a Pool of Radiance party arrives with every face its own
     whether or not `GEN` was anywhere to be read.
     """
-    party, savgam = amiga.read_por_slot(disk, slot)
-    state = amiga.read_por_state(
-        savgam, source=f"{disk.volume_name} slot {slot.upper()}")
+    party, state = read_slot(disk, slot)
     icon, animate = dosdisk.game_files(disks)
     try:
         portraits = tables_from_disks(disks)
@@ -93,6 +118,46 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
     if out is not None:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(dos.save_disk(bytes(save0), bytes(save1)).data)
+    return party, state, report
+
+
+def build_dos(disk, slot: str, game: pathlib.Path,
+              out: pathlib.Path | None, dos_slot: str = "A"):
+    """Convert one Amiga slot into a DOS save folder at `out` (#354).
+
+    The library call behind `File ▸ Convert…`'s Amiga → DOS row, and the
+    same three steps that row takes: :func:`read_slot`, the party through
+    `goldbox.dos.to_neutral` -- the Amiga file order **is** the DOS file
+    order, so nothing is reversed here -- and
+    `goldbox.dos.new_dos_save_from`, which raises rather than write a save
+    with a byte in it nobody sourced.
+
+    `editor.convert.amiga_combat_icon` is what keeps each character's own
+    combat figure: the neutral record has nowhere to put `icon_head`,
+    `icon_body` and `icon_colours`, and an Amiga record holds all three at
+    the DOS offsets already.
+
+    `game` is the DOS game directory holding `ECL<n>.DAX`, read and never
+    written; there is no default here for the same reason `new_dos_save`
+    has none.  With `out` as `None` nothing is written and the conversion
+    still runs in a scratch directory, so `--no-write --report` says what
+    the save would account for.
+    """
+    from editor.convert import amiga_combat_icon
+
+    party, state = read_slot(disk, slot)
+    characters = [dos.to_neutral(c) for c in party]
+    icons = [amiga_combat_icon(c) for c in party]
+    if out is None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="fromamigapor-") as scratch:
+            report = dos.new_dos_save_from(state, characters,
+                                           pathlib.Path(scratch), dos_slot,
+                                           game, icons=icons)
+        return party, state, report
+    report = dos.new_dos_save_from(state, characters, out, dos_slot, game,
+                                   icons=icons)
     return party, state, report
 
 
@@ -262,9 +327,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--disks", default=str(DISKS),
                    help="where the player's C64 disks are; read, never "
                         "written")
+    p.add_argument("--to", default="c64", choices=("c64", "dos"),
+                   help="the destination port (default: c64)")
+    p.add_argument("--game", default=None,
+                   help="--to dos: the DOS game folder ECL<n>.DAX lives in; "
+                        "read, never written (default: "
+                        "tools.dosbox.find_game())")
+    p.add_argument("--dos-slot", default="A",
+                   help="--to dos: the DOS slot letter to write as "
+                        "(default: A)")
     p.add_argument("--out", default=None,
-                   help="the .d64 to write (default "
-                        "work/fromamigapor/PORSAVE<slot>.D64)")
+                   help="the .d64 to write, or the DOS save folder for "
+                        "--to dos (default work/fromamigapor/"
+                        "PORSAVE<slot>.D64, or work/fromamigapor/dos-<slot>)")
     p.add_argument("--report", action="store_true",
                    help="print the conversion's provenance summary")
     p.add_argument("--sheet", action="store_true",
@@ -287,14 +362,37 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"{args.adf} has no slot {slot}; it holds "
                          f"{', '.join(present)}")
 
-    out = None if args.no_write else pathlib.Path(
-        args.out or ROOT / "work" / "fromamigapor" / f"PORSAVE{slot}.D64")
-    party, state, report = build(disk, slot, pathlib.Path(args.disks), out)
+    if args.to == "dos":
+        # `tools.dosbox` is imported only here: it is the DOS harness, and a
+        # C64 conversion has no business loading it.
+        if args.game:
+            game = pathlib.Path(args.game)
+        else:
+            from tools.dosbox import find_game
+
+            game = pathlib.Path(find_game())
+        out = None if args.no_write else pathlib.Path(
+            args.out or ROOT / "work" / "fromamigapor" / f"dos-{slot}")
+        party, state, report = build_dos(disk, slot, game, out,
+                                         args.dos_slot.upper())
+    else:
+        out = None if args.no_write else pathlib.Path(
+            args.out or ROOT / "work" / "fromamigapor" / f"PORSAVE{slot}.D64")
+        party, state, report = build(disk, slot, pathlib.Path(args.disks), out)
 
     print(f"{args.adf} slot {slot}: {len(party)} character(s), "
           f"{', '.join(c.name for c in party)}")
-    for line in report.messages:
+    # The C64 writer's report calls them `messages` and the DOS writer's
+    # `converted`; both are the same thing -- what the conversion did.  An
+    # ordinary conversion's list is empty, so this has to check which
+    # attribute exists rather than which one is truthy (#376's own run hit
+    # `AttributeError: 'C64SaveReport' object has no attribute 'converted'`
+    # on a report with an empty `messages`).
+    for line in (report.messages if hasattr(report, "messages")
+                 else report.converted):
         print(f"  {line}")
+    for line in report.warnings:
+        print(f"  warning: {line}")
     for line in report.dropped:
         print(f"  not converted: {line}")
     print(f"  {len(report.sources)}/{report.total} bytes accounted for, "
@@ -306,6 +404,10 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(report.summary() if hasattr(report, "summary") else "")
     if args.against:
+        if args.to != "c64":
+            raise SystemExit("--against reads a tools/savecheck.py log, "
+                             "which is the C64 run's; a DOS run's sheets are "
+                             "tools/dossheetread.py's screenshots")
         import json
 
         events = []

@@ -254,23 +254,29 @@ def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
 def test_directions_holds_seven_rows_derived_from_three_library_tuples():
     """Three titles read DOS → C64 (`goldbox.dos.CONVERTS`) and the same
     three write C64 → DOS (`goldbox.dos.WRITES`, as of `#299`); Pool of
-    Radiance alone reads Amiga → C64 (`goldbox.amiga.CONVERTS`, as of
+    Radiance alone reads Amiga → C64 and Amiga → DOS
+    (`goldbox.amiga.CONVERTS`, as of
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
-    standing in the Slums on the Amiga arrives there in VICE)`), so the
-    registry holds seven rows -- up from four before `#299`'s container
+    standing in the Slums on the Amiga arrives there in VICE)` and
+    `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
+    standing in the Slums on the Amiga arrives there under DOSBox)`), so the
+    registry holds eight rows -- up from four before `#299`'s container
     writer and six before `#353`'s Amiga reader.
 
-    Counted by exact type rather than `isinstance`, because `AmigaToC64`
-    derives from `DosToC64` for its `__init__` and its `write`: an
-    `isinstance` count would read the Amiga row as a DOS one and pass while
-    the Amiga row was missing entirely."""
-    assert len(convert.DIRECTIONS) == 7
+    Counted by exact type rather than `isinstance`, because each Amiga row
+    derives from the DOS row that shares its destination -- `AmigaToC64`
+    from `DosToC64` and `AmigaToDos` from `C64ToDos` -- so an `isinstance`
+    count would read an Amiga row as a DOS one and pass while the Amiga row
+    was missing entirely."""
+    assert len(convert.DIRECTIONS) == 8
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.DosToC64) == 3
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.C64ToDos) == 3
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.AmigaToC64) == 1
+    assert sum(1 for d in convert.DIRECTIONS
+              if type(d) is convert.AmigaToDos) == 1
 
 
 def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
@@ -1388,17 +1394,27 @@ def test_an_adf_is_detected_as_an_amiga_source_at_its_first_slot(amiga_adf):
     assert source.save0 is None and source.disk is None
 
 
-def test_an_adf_source_is_offered_the_commodore_64_and_nothing_else(
-        amiga_adf):
-    """One destination, and it is the same title on the other port --
+def test_an_adf_source_is_offered_the_commodore_64_and_dos(amiga_adf):
+    """Two destinations, both the same title on another port --
     `.claude/rules/conversions.md`: a conversion is between two ports of one
-    title and never between titles."""
+    title and never between titles.
+
+    The C64 comes first because that is the order `DIRECTIONS` is built in,
+    and the dialog's combo takes `options[0]` when the caller named no
+    destination -- so a player who opens an `.adf` and presses Convert gets
+    what `#353 (Convert an Amiga Pool of Radiance save to the C64, so a
+    party standing in the Slums on the Amiga arrives there in VICE)` proved,
+    and DOS is a choice rather than a change of default."""
     source = convert.Source.detect(amiga_adf)
     directions = convert.destinations_for(source)
-    assert [type(d) for d in directions] == [convert.AmigaToC64]
+    assert [type(d) for d in directions] == [convert.AmigaToC64,
+                                             convert.AmigaToDos]
     assert directions[0].destination_game is games.POOL_OF_RADIANCE
     assert directions[0].destination_port == "c64"
+    assert directions[1].destination_game is dos_layout.POOL_OF_RADIANCE
+    assert directions[1].destination_port == "dos"
     assert convert.DESTINATION_LABELS["c64"] == "Commodore 64"
+    assert convert.DESTINATION_LABELS["dos"] == "DOS"
 
 
 def test_a_file_that_is_not_an_adf_still_goes_to_the_c64_reader(tmp_path):
