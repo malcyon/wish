@@ -186,8 +186,50 @@ most change what this project can do — a watchpoint on a real machine, against
 **The machine stays on WiFi, deliberately.** Donald, 2026-09-04: *"The C64U is
 connected via wifi. It is not connected via ethernet. I could figure that out
 if we really did need it, but I don't plan to right now."* The cost of the
-debug stream is one cable; it is worth asking for only when a disk-level
-question actually needs it, not by default.
+debug stream is one cable; ask for it when a disk-level question actually
+needs it, not by default.
+
+### How a stream works, if the cable is ever run
+
+Read off `1541u-documentation.readthedocs.io`, "Data Streams", 2026-09-07.
+Recorded here so nobody has to look it up twice; **nothing in this project
+uses it**, and `tools/c64u.py` refuses `streams` outright -- it needs the
+cable, and `listen video` opens a window on Donald's desktop.
+
+**A stream is a runtime action, not a setting.** The machine transmits nothing
+at power-on. Press **F5** for the action menu, pick start for the stream, and
+type a destination as `address[:port]`; or send `FF2n` over the TCP command
+interface the documentation calls socket 64, and `FF3n` to stop. Three streams:
+video is 0, audio 1, debug 2. **The IP address field in the configuration
+screen starts nothing** -- it is only where the last address typed is kept for
+reuse, which is the trap, because it is the one place that looks like the
+setting.
+
+**A video packet is 780 bytes**: a 12-byte header, then 768 bytes of picture.
+The header carries a sequence number, a frame number, a line number whose top
+bit marks the last packet of a frame, and three constants -- 384 pixels a line,
+4 lines a packet, 4 bits a pixel. So one nibble a pixel, straight VIC colour
+0-15. NTSC, which this machine is, gives a 384x240 frame in 68 packets.
+
+Two things follow that decide whether it could ever replace a memory read.
+**It carries pixels, not screen codes**: `automap.target.party_fix` reads forty
+character codes off row 14 today, and from a frame it would have to cut the
+picture into 8x8 cells and match each against the character set -- a lookup
+rather than recognition, since the shapes are fixed, but the bulk of the work.
+And 384x240 is the whole picture including the border, so the 320x200 text area
+has to be found inside it. **The bandwidth is about 25 Mbit/s**, continuously,
+whether or not a frame is wanted, which is very likely part of why the streams
+come out of the Ethernet MAC at all.
+
+**The debug stream is the more interesting one for `#375 (Wish has to work
+around the Ultimate freezing the C64 mid-load, which hangs the game while the
+automapper follows along)`**, and the two cannot both run: it occupies about
+32 Mbit/s and the port is 100 Mbit/s. It carries the 1541's own bus lines by
+name -- ATN, DATA, CLOCK, SYNC, BYTE_READY -- cycle by cycle, beside the 6510's
+address and data buses. Those are the same lines `automap/busguard.py` infers
+from three repeated reads of `$DD00`. With it, Wish would be told when the
+drive is mid-transfer rather than guessing, which is a complete answer to the
+hang rather than a rate reduction. Also blocked on the cable.
 
 ## The addresses hold on hardware
 
