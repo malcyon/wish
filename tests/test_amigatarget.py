@@ -636,3 +636,30 @@ def test_the_automap_command_refuses_a_disk_with_no_maps_on_it(tmp_path,
     with pytest.raises(SystemExit, match="GEO.GLB"):
         amigatarget.main(["--holder", "wish37", "automap", "--out",
                           str(tmp_path), "--maps", str(tmp_path), "--polls", "1"])
+
+
+def test_a_truncated_geo_index_is_an_error_and_not_an_empty_library():
+    """A damaged `GEO.GLB` must not read as a disk with no maps on it.
+
+    Slicing past the end of `bytes` gives `b""`, which reads as id 0 naming
+    block 0 -- the index itself -- and is dropped for being the wrong size, so
+    every pair of a short index vanished and the container came back empty.
+    That is what a disk with no library on it looks like, which is the case
+    the loader skips past, so a bad transfer was reported as the wrong thing
+    entirely (`#37 (Automap the Amiga version, not just the C64)`).
+    """
+    import struct
+
+    import pytest
+
+    from automap import amiga
+
+    index = struct.pack(">H", 4) + b"\x00\x01\x00\x01"   # 4 declared, 1 given
+    body = index + b"\x00" * amiga.GEO_SIZE
+    offsets = [0, len(index), len(body)]
+    head = (b"GLIB" + struct.pack(">I", len(body))
+            + struct.pack(">HH", 2, 0) + b"GEO ")
+    data = head + b"".join(struct.pack(">I", o + len(head) + 4 * len(offsets))
+                           for o in offsets) + body
+    with pytest.raises(ValueError, match="declares 4 maps"):
+        amiga.geo_library(data)

@@ -398,12 +398,25 @@ def geo_library(data: bytes) -> dict[int, bytes]:
     A pair naming a block that is not `GEO_SIZE` bytes is dropped rather than
     returned short: the index is the container's own claim about itself and a
     block of another shape is not a map, whatever the index says.
+
+    **An index too short for the count it declares is an error, not an empty
+    library.** Slicing past the end of `bytes` gives `b""`, which reads as id
+    0 naming block 0 -- the index itself -- and is then dropped for being the
+    wrong size, so a truncated file used to come back as a container with no
+    maps in it. That is indistinguishable from the disk that genuinely has
+    none, which is the ordinary case this reader skips past, and it sends
+    whoever hit it looking at disk selection rather than at a bad transfer.
+    `glib_blocks` above raises on a short offset table for the same reason.
     """
     blocks = glib_blocks(data)
     if not blocks:
         return {}
     index = blocks[0]
     count = int.from_bytes(index[:2], "big")
+    if len(index) < 2 + 4 * count:
+        raise ValueError(
+            f"the GEO.GLB index declares {count} maps, which needs "
+            f"{2 + 4 * count} bytes, and the block is {len(index)}")
     out: dict[int, bytes] = {}
     for i in range(count):
         at = 2 + 4 * i
