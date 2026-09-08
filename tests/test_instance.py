@@ -362,16 +362,39 @@ def test_killpg_refuses_our_own_group(pool):
 # same way, so nothing about using this instead makes the test looser.
 
 #: A fresh process, so `DISPLAY_BASE` is set inline the way `HOLDER` is --
-#: 970, past every band this file and its siblings already use (900-915,
-#: 930, 935, 960).
+#: past every band this file and its siblings already use (900-915, 930,
+#: 935, 960) -- but *not* a fixed number the way those are.  `#438 (The pool
+#: teardown test fails in a full-suite run under agent load and passes on its
+#: own)`: `/tmp/.wish-x11-*.lock` is a real path, global to the machine and
+#: never scoped by `POR_INST` the way the lease directory is, so a fixed 970
+#: here let a second, concurrent run of this exact test on the same box --
+#: another agent, another worktree -- race this one for the same sixteen
+#: displays. The loser's `claim()` raises `PoolFull` before it ever writes a
+#: `pgid`, which the poll below cannot tell apart from the claim just being
+#: slow. `_isolated_display_base()` gives each run its own band instead.
 CLAIM_WRAPPER = textwrap.dedent("""
     import sys
     sys.path.insert(0, {tools!r})
     import instance
-    instance.DISPLAY_BASE = 970
+    instance.DISPLAY_BASE = {base!r}
     sys.exit(instance.main(["claim", "--", {python!r}, "-c",
                             "import time; time.sleep(120)"]))
 """)
+
+
+def _isolated_display_base() -> int:
+    """A display band this run will not share with a concurrent copy of
+    itself -- see the note above `CLAIM_WRAPPER`.
+
+    `os.getpid()` is unique among processes actually alive on this machine at
+    once, which is exactly the set that could collide.  The `% 4000` keeps
+    the numbers small; the `* 64` spaces each pid's bucket well past
+    `instance.SLOTS` (16), so two pids started close together -- the common
+    case, since pids are handed out in order -- land in bands that cannot
+    overlap even when adjacent.  A collision needs two pids exactly 4000
+    apart, which is the case this cannot rule out, only make unlikely.
+    """
+    return 2000 + (os.getpid() % 4000) * 64
 
 
 @posix
@@ -381,7 +404,8 @@ def test_a_shell_timeout_killing_the_claim_wrapper_still_tears_the_group_down(po
     outlive it."""
     claimer = subprocess.Popen(
         [sys.executable, "-c",
-         CLAIM_WRAPPER.format(tools=str(TOOLS), python=sys.executable)],
+         CLAIM_WRAPPER.format(tools=str(TOOLS), python=sys.executable,
+                               base=_isolated_display_base())],
         env=dict(os.environ, POR_INST=str(os.environ["POR_INST"])),
     )
     lease = Path(os.environ["POR_INST"]) / "0" / "lease"
