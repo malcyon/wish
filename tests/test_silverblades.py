@@ -961,3 +961,105 @@ def test_a_shipped_casters_spellbook_is_read_whole():
     assert len(ids) == 29
     assert {82, 85, 88, 94} <= set(ids)
     assert len(spells_known(morgaine.to_bytes(), POOL_OF_RADIANCE)) == 24
+
+
+# --- `#89`'s five trainer inputs, read live and checked against what --------
+# `goldbox/levels.py` transcribed. `tools/ssbtrainerinputs.py` did the finding;
+# these tests do the checking, every run, against whatever is on the disk
+# today rather than what was on it when somebody last looked.
+
+def _ecl65() -> bytes:
+    """Silver Blades' `ECL65` payload, or skip."""
+    disk = _game_disk_with(b"ECL65")
+    return split_load_address(D64.open(str(disk)).read_file(b"ECL65"))[1]
+
+
+def test_the_five_trainer_inputs_match_what_levels_py_transcribed():
+    """`goldbox.levels.SECRET_OF_THE_SILVER_BLADES`'s `hp_bonus_by_score`,
+    `thief_skills`, `thief_skill_dexterity`, `thief_skill_race` and
+    `wisdom_bonus_level` against `tools/ssbtrainerinputs.py`'s own live
+    reading of `GEN` and `ECL65` -- the tool that measured them, run again
+    rather than trusted from its last report.
+    """
+    from goldbox import levels
+    from tests import gamedata
+    from tools import ssbtrainerinputs as inputs
+
+    ssb = levels.SECRET_OF_THE_SILVER_BLADES
+    gen = _gen()
+    ecl65 = _ecl65()
+    curse_gen = gamedata.curse_file("GEN")[2:]
+    curse_ecl65 = gamedata.curse_file("ECL65")[2:]
+    pool_gen = gamedata.game_file("GEN")
+
+    bad = inputs.signatures(gen, ecl65)
+    assert not bad, bad
+
+    con = inputs.constitution(gen, curse_gen)
+    assert ssb.hp_bonus_by_score == con["table"]
+    assert ssb.hp_bonus_score_cap == con["cap"]
+    assert ssb.hp_bonus_uncapped_from == con["uncapped_from"]
+
+    th = inputs.thief(gen, curse_gen, pool_gen)
+    assert ssb.thief_skills == th["levels"]
+    assert ssb.thief_skill_dexterity == th["dexterity"]
+    assert ssb.thief_skill_dexterity_from == inputs.THIEF_DEX_FROM
+    assert ssb.thief_skill_race == th["race_table"]
+    assert ssb.thief_skill_race_index_from == 0
+
+    wis = inputs.wisdom(ecl65, curse_ecl65)
+    assert ssb.wisdom_bonus_level == wis["table"]
+    assert ssb.wisdom_bonus_from == inputs.WISDOM_BONUS_FROM
+
+    # `thief_skill_row`'s composition of the three rows, not just the rows
+    # themselves -- for every race the routine can name, including the
+    # halfling reading into the dexterity table's own row 0. `skill_row`
+    # wraps a negative sum to the byte the game's own `ADC` leaves (`$FB` for
+    # -5); `thief_skill_row`'s own docstring says it leaves the sum as a
+    # signed Python int instead, so both are taken mod 256 before comparing.
+    for level in (1, 9, 17):
+        for race in range(1, 7):
+            for dexterity in (9, 17, 25):
+                want = inputs.skill_row(th, level, race, dexterity)
+                got = levels.thief_skills(level, race, game=ssb, dexterity=dexterity)
+                got = tuple(v & 0xFF for v in got)
+                assert got == want, (level, race, dexterity, got, want)
+
+
+def test_malachites_trained_thief_skills_reproduce_at_race_times_eight():
+    """`WISH-SPEC-ssb-malachite-trained`: the dwarf's stored thief skills at
+    thief 9 come out of `thief_skill_race`'s row **3** -- `race * 8` with no
+    decrement (`GEN $124D`) -- and not row 2, which is where `race - 1` would
+    read. MALACHITE is a dwarf (race 3); row 3 is labelled "the gnome's" on
+    disk, and that is the bug `goldbox-bugs.md` entry 13 records and Wish
+    reproduces.
+    """
+    from goldbox import levels
+    from tools import ssbtrainerinputs as inputs
+
+    party = inputs.specimen_party()
+    if not party:
+        pytest.skip("needs specimen WISH-SPEC-ssb-malachite-trained")
+    (malachite,) = [r for r in party if r.name.strip() == "MALACHITE"]
+    assert malachite.get("race") == 3
+    skills = ("pick pockets", "open locks", "find traps", "move silently",
+             "hide in shadows", "hear noise", "climb walls", "read languages")
+    stored = tuple(malachite.get(f"thief_{n.replace(' ', '_')}")
+                   for n in skills)
+
+    ssb = levels.SECRET_OF_THE_SILVER_BLADES
+    level = malachite.slice(0x0CB, 1)[0]
+    dexterity = malachite.get("dexterity")
+    assert stored == levels.thief_skills(level, 3, game=ssb, dexterity=dexterity)
+
+    # The differential: the row `race - 1` would read (the dwarf's own,
+    # labelled row 2) reproduces none of the columns that disagree with
+    # row 3's.
+    import dataclasses
+    wrong = dataclasses.replace(ssb, thief_skill_race_index_from=1)
+    disagree = [i for i in range(8)
+               if ssb.thief_skill_race[3][i] != ssb.thief_skill_race[2][i]]
+    assert disagree, "rows 2 and 3 do not disagree anywhere to discriminate"
+    got_wrong = wrong.thief_skill_row(level, 3, dexterity)
+    assert all(got_wrong[i] != stored[i] for i in disagree), (
+        got_wrong, stored, disagree)

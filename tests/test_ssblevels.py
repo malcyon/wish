@@ -182,3 +182,78 @@ def test_the_trainer_gave_the_bonus_to_the_dwarf_and_to_nobody_else():
     assert MALACHITE_PRESSES[0][1] != MALACHITE_PRESSES[1][1]
     assert levels.racial_save_bonus_measured(SSB)
     assert levels.racial_save_bonus_measured(games.SECRET_OF_THE_SILVER_BLADES)
+
+
+# --- `#89`'s trainer inputs -------------------------------------------------
+# The five fields `tests/test_silverblades.py` checks live against `GEN` and
+# `ECL65`; these check the shape of what landed here without needing a disk.
+
+CURSE = levels.CURSE_OF_THE_AZURE_BONDS
+
+
+def test_the_five_trainer_inputs_are_no_longer_empty():
+    """`goldbox/levelup.py:_tables_for` treats an empty tuple as "cannot
+    answer" (`goldbox/levels.py`'s own comment on `thief_skills`), so this is
+    the same gate `test_levelling_still_refuses_silver_blades_even_with_
+    thief_skills_filled` exercises the wrong side of -- these five now come
+    from `GEN` and `ECL65`, not from a stand-in.
+    """
+    assert SSB.hp_bonus_by_score
+    assert SSB.thief_skills and len(SSB.thief_skills) == 17
+    assert SSB.thief_skill_dexterity
+    assert SSB.thief_skill_race and len(SSB.thief_skill_race) == 6
+    assert SSB.thief_skill_race_index_from == 0
+    assert SSB.wisdom_bonus_level
+
+
+def test_the_thief_racial_row_is_read_with_no_decrement():
+    """`GEN $124D` has no `DEX`, so `thief_skill_row` reads `thief_skill_race`
+    at `race`, not `race - 1` -- `thief_skill_race_index_from=0` is what makes
+    that happen. A dwarf (race 3) gets the row labelled "gnome" on disk.
+    """
+    dwarf_gets = levels.thief_skills(1, 3, game=SSB, dexterity=9)
+    gnome_row = SSB.thief_skill_race[3]
+    dex9_row = SSB.thief_skill_dexterity[0]
+    level1_row = SSB.thief_skills[0]
+    want = tuple((a + b + c) & 0xFF
+                 for a, b, c in zip(level1_row, dex9_row, gnome_row))
+    assert tuple(v & 0xFF for v in dwarf_gets) == want
+
+    # And a human (race 6) gets nothing added, the way `$124D`'s
+    # `CMP #$06 / BCS` refuses to look one up at all.
+    human_gets = levels.thief_skills(1, 6, game=SSB, dexterity=9)
+    no_race_row = tuple((a + b) & 0xFF for a, b in zip(level1_row, dex9_row))
+    assert tuple(v & 0xFF for v in human_gets) == no_race_row
+
+
+def test_the_seven_trainer_shape_fields_are_curses_own():
+    """`#89`'s 2026-09-05 comment on the issue reads all seven off Silver
+    Blades' own `GEN` as instruction-for-instruction or byte-for-byte the
+    same routine as Curse's -- the hit die (`$1808` = Curse's `$15E1`), its
+    divide (`$0D96` = Curse's `$11AB`), one press raising every ready class
+    (`$156F`, Curse's `$14F8` shape), `attack_forms` written outright
+    (`$13EB`, Curse's `$1909` shape) and `spells_castable` never stored
+    (same absrefsweep result as Curse's). So Silver Blades takes Curse's
+    values on all seven, not Pool of Radiance's silent defaults.
+    """
+    assert SSB.hit_die_rolls == CURSE.hit_die_rolls == 2
+    assert SSB.hit_die_fighter_floor == CURSE.hit_die_fighter_floor is None
+    assert SSB.hit_die_divide_floor == CURSE.hit_die_divide_floor == 0
+    assert (SSB.hit_die_divide_round_up_on_tie
+           == CURSE.hit_die_divide_round_up_on_tie is False)
+    assert SSB.trains_all_ready_classes == CURSE.trains_all_ready_classes is True
+    assert SSB.attack_forms_overwritten == CURSE.attack_forms_overwritten is True
+    assert SSB.stores_spell_capacity == CURSE.stores_spell_capacity is False
+
+
+def test_silver_blades_is_still_not_in_trainer_measured():
+    """`#89`'s own 2026-09-08 comment: filling the table is not the last
+    blocker. `automap/window.py`'s spell-dialog gate (`#415`'s shape) has not
+    been re-verified for this title, and no Silver Blades training has been
+    driven through `levelup.plan`/`plan_all` and diffed against the engine
+    the way `#18` drove five Curse ones. So this stays False here -- flipping
+    it is the next agent's job, once one of those two is actually done, not
+    this one's.
+    """
+    assert not levels.trainer_measured(SSB)
+    assert SSB.key not in levels.TRAINER_MEASURED

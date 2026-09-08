@@ -21,10 +21,10 @@ carries, and where:
 | spell slots | `GEN` `$222C` cleric then `$224C` magic-user, 8 rows x 4 | `ECL65` `$888D` magic-user 11 rows then `$88C4` cleric 10, x 5 -- that overlay runs at `$8000`, so those are payload `0x88D` and `0x8C4` | not read (trainer input, #89) |
 | saving throws | `GEN` `$1FA2` level-1 row then two per-column bitmasks at `$1FB6` and `$1FCA` | `GEN` `$0F49` level-1 rows, `$0F5D` a four-byte two-bit-a-level improvement mask a column, `$0F01` the paladin's -2 (code) | `GEN` `$1148` level-1 rows, `$115C` a five-byte two-bit-a-level improvement mask a column, `$11C0` the paladin's -2 (code), `$11D8` the dwarf-only constitution bonus (code) |
 | racial save bonus | `GEN` `$2359`, `CON * 2 / 7` for the races flagged at `$2380` | `GEN` `$0F19`, same formula, races 1, 3 and 5 (`CMP #$06` then `AND #$01`), columns 0, 2 and 4 only (`DEX / DEX`) | `GEN` `$11D8`, same formula, dwarf (race 3) alone |
-| thief skills | `GEN` `$102E`, 9 rows of 8, plus a racial row at `$1076` | `GEN` `$1004`, 9 rows of 8, plus **a dexterity row at `$10A4`** (17 rows, `max(0, DEX - 9)`) and a racial row at `$1064` whose gnome, half-elf, halfling and half-orc rows are not Pool of Radiance's | `GEN` `$126D`, 17 rows of 8; the level clamps to 17 at `$1213`. Read, not attributed -- see `thief_skills` below |
+| thief skills | `GEN` `$102E`, 9 rows of 8, plus a racial row at `$1076` | `GEN` `$1004`, 9 rows of 8, plus **a dexterity row at `$10A4`** (17 rows, `max(0, DEX - 9)`) and a racial row at `$1064` whose gnome, half-elf, halfling and half-orc rows are not Pool of Radiance's | `GEN` `$126D`, 17 rows of 8, the level clamps to 17 at `$1213`; a dexterity row at `$131D`, Curse's own 136 bytes; a racial row at `$12F5` read at `race * 8` with **no decrement** (`$124D`), so every race reads the row laid out for the *next* one -- `goldbox-bugs.md` entry 13 |
 | hit die | `GEN` `$20A7`, 4 bytes in class-bit order | `GEN` `$161E` | `GEN` `$1845` |
-| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score, consulted from 15 | `GEN` `$11D7`, **one** row indexed by the score with no floor, signed; `$126D` caps a non-fighter's *score* at 16 instead of keeping a second row | `GEN` `$0E80`, indexed by the score; not read into this module (trainer input) |
-| wisdom bonus spells | `GEN` `$10AD`, indexed by the score | `ECL65` `$8906` (payload `0x906`), the spell level each point of wisdom from 13 up buys; the loop is `$88F6` | not read (#89) |
+| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score, consulted from 15 | `GEN` `$11D7`, **one** row indexed by the score with no floor, signed; `$126D` caps a non-fighter's *score* at 16 instead of keeping a second row | `GEN` `$0E80`, the same 26 bytes as Curse's `$11D7`; `$0E6F`/`$0E73` cap the score at 16 below class slot 3 the same way |
+| wisdom bonus spells | `GEN` `$10AD`, indexed by the score | `ECL65` `$8906` (payload `0x906`), the spell level each point of wisdom from 13 up buys; the loop is `$88F6` | `ECL65` `$89F0` (payload `0x9F0`), Curse's `$8906` seven bytes exactly; the loop is `$89E0` |
 | turning level | `GEN` `$2399`, indexed by cleric level | `GEN` `$113F`, arithmetic rather than a table: `max(cleric, paladin - 2)`, `+ 1` from 4 up, capped at 10 -- the same ten numbers | `GEN` `$13A5`, Curse's arithmetic with a tail: `+ 1` from 4 up, 10 from 10 to 14, and **12** from 15 -- which is Pool of Radiance's fourteen numbers exactly |
 
 `GEN` is resident at `$0800` in all three games whatever its PRG header
@@ -672,6 +672,55 @@ _TURN_POWER_CURSE = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10)
 #: `_TURN_POWER_POOL` because the two are read out of different code (#288).
 _TURN_POWER_SILVER = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10, 10, 10, 10, 12)
 
+#: The three trainer inputs `#89`'s 2026-09-08 measurement found, read off
+#: `SILVER*.D64`'s own `GEN` and `ECL65` with `tools/ssbtrainerinputs.py`.
+#: `--rows` reprints every number below from the disk at run time; these are a
+#: transcription of what it printed, not a decoding done here.
+
+#: `GEN $0E80`, twenty-six signed bytes, the same 26 as Curse's `$11D7` byte
+#: for byte -- so this is an alias rather than a second transcription, the way
+#: `_THIEF_SKILLS_CURSE = _THIEF_SKILLS_POOL` is above.
+_HP_BONUS_SSB = _HP_BONUS_CURSE
+
+#: `GEN $126D`, seventeen rows of eight, clamped at 17 (`$1213 CPX #$11 / LDX
+#: #$11`). Rows 1-9 are `_THIEF_SKILLS_POOL`'s own 72 bytes; rows 10-17 are
+#: Silver Blades' own, AD&D 1st edition verbatim -- the first title in the
+#: family to reach a thief level that high.
+_THIEF_SKILLS_SSB = _THIEF_SKILLS_POOL + (
+    (80, 67, 65, 78, 63, 30, 99, 50),
+    (90, 72, 70, 86, 70, 35, 99, 55),
+    (100, 77, 75, 94, 77, 35, 99, 60),
+    (105, 82, 80, 99, 85, 40, 99, 65),
+    (110, 87, 85, 99, 93, 40, 99, 70),
+    (115, 92, 90, 99, 99, 50, 99, 75),
+    (125, 97, 95, 99, 99, 50, 99, 80),
+    (125, 99, 99, 99, 99, 55, 99, 80),
+)
+
+#: `GEN $131D`, seventeen rows of eight from a dexterity of 9, the same 136
+#: bytes as Curse's `$10A4`.
+_THIEF_SKILL_DEX_SSB = _THIEF_SKILL_DEX_CURSE
+
+#: `GEN $12F5`, six rows of eight, **not** indexed `race - 1`: `$124D` reads
+#: it at `race * 8` with no decrement, so row 0 (laid out for the elf) is
+#: dead data and every race reads the row laid out for the *next* one --
+#: `thief_skill_race_index_from=0` on the title below reproduces that. The
+#: five rows that are read are Curse's `_THIEF_SKILL_RACE_CURSE` rows
+#: re-ordered into `games.RACES_SILVER_BLADES`; row 5 is not a racial row at
+#: all but the first row of `_THIEF_SKILL_DEX_SSB`, which is what the
+#: halfling (race 5) actually reads.
+_THIEF_SKILL_RACE_SSB = (
+    (5, -5, 0, 5, 10, 5, 0, 0),          # row 0, laid out for the elf -- dead
+    (10, 0, 0, 0, 5, 0, 0, 0),           # row 1, laid out for the half-elf
+    (0, 10, 15, 0, 0, 0, -10, -5),       # row 2, laid out for the dwarf
+    (0, 5, 10, 5, 5, 10, -15, 0),        # row 3, laid out for the gnome
+    (5, 5, 5, 10, 15, 5, -15, -5),       # row 4, laid out for the halfling
+    (-15, -10, -10, -20, -10, 0, 0, 0),  # row 5, the dexterity table's own
+)
+
+#: `ECL65 $89F0`, wisdom 13 to 19, the same seven bytes as Curse's `$8906`.
+_WISDOM_BONUS_SSB = _WISDOM_BONUS_CURSE
+
 
 def hit_die(class_name: str, game=None) -> int | None:
     """How many sides the class rolls a level, or None for no such class."""
@@ -787,6 +836,15 @@ class LevelTables:
     #: "cannot answer" rather than as a zero.
     thief_skills: tuple[tuple[int, ...], ...] = ()
     thief_skill_race: tuple[tuple[int, ...], ...] = ()
+    #: The race code row 0 of `thief_skill_race` answers for. 1 for Pool of
+    #: Radiance (`$2005 LDY race / DEY`) and Curse (`$0FE6 LDX race / DEX`),
+    #: whose racial tables are laid out `race - 1`. Silver Blades' `GEN
+    #: $124D` is `LDA race / CMP #$06 / BCS / ASL / ASL / ASL` with **no**
+    #: decrement, so its table is read at `race * 8` and every thief gets
+    #: the *next* race's adjustments -- a bug in the shipped game, recorded
+    #: as `goldbox-bugs.md` entry 13, that Wish reproduces here (0) rather
+    #: than the row the table's own layout suggests.
+    thief_skill_race_index_from: int = 1
     turn_power: tuple[int, ...] = ()
     #: What the trainer clamps experience to at the class ceiling. The game's
     #: threshold arrays are nine wide a class and each class's tenth entry
@@ -992,7 +1050,7 @@ class LevelTables:
                             len(self.thief_skill_dexterity) - 1))
             row = tuple(a + b for a, b in
                         zip(row, self.thief_skill_dexterity[at]))
-        index = int(race or 0) - 1
+        index = int(race or 0) - self.thief_skill_race_index_from
         if 0 <= index < len(self.thief_skill_race):
             row = tuple(a + b for a, b in
                         zip(row, self.thief_skill_race[index]))
@@ -1244,8 +1302,36 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     ),
     constitution_save_columns=(0, 2, 4),
     sturdy_races=(3,),          # the dwarf alone, and 3 is the dwarf here
+    thief_skills=_THIEF_SKILLS_SSB,
+    thief_skill_race=_THIEF_SKILL_RACE_SSB,
+    thief_skill_race_index_from=0,   # `$124D` has no decrement -- see the field
+    thief_skill_dexterity=_THIEF_SKILL_DEX_SSB,
+    thief_skill_dexterity_from=THIEF_SKILL_DEX_FROM_CURSE,
+    hp_bonus_by_score=_HP_BONUS_SSB,
+    hp_bonus_score_cap=HP_BONUS_SCORE_CAP_CURSE,
+    hp_bonus_uncapped_from=HP_BONUS_UNCAPPED_FROM_CURSE,
+    wisdom_bonus_level=_WISDOM_BONUS_SSB,
+    wisdom_bonus_from=WISDOM_BONUS_FROM_CURSE,
     turn_power=_TURN_POWER_SILVER,
     paladin_turn_offset=2,      # `$13A5 LDA level_paladin / SEC / SBC #$02`
+    #: The remaining seven, read off `SILVER*.D64`'s own `GEN` for `#89` on
+    #: 2026-09-05: `$1808` is Curse's `$15E1` instruction for instruction (the
+    #: hit die, two rolls kept the higher); `$0D96` is Curse's `$11AB` byte for
+    #: byte, sharing the remainder byte `$7F3F` (the divide, no floor, the
+    #: same round-up-at-random #18 grades PROBABLE in both titles); `$156F`
+    #: walks class slots 7 down to 0 in one press, Curse's `$14F8` shape;
+    #: `$13EB STY $7CD9` stores outright, Curse's `$1909` shape; and
+    #: `tools/absrefsweep.py secret-of-the-silver-blades 7CEE 7CF3` over 347
+    #: files finds no reference to `spells_castable`, Curse's own census result.
+    #: So Silver Blades takes Curse's values on all seven, not Pool of
+    #: Radiance's defaults.
+    hit_die_rolls=2,
+    hit_die_fighter_floor=None,
+    hit_die_divide_floor=0,
+    hit_die_divide_round_up_on_tie=False,
+    trains_all_ready_classes=True,
+    attack_forms_overwritten=True,
+    stores_spell_capacity=False,
 )
 
 TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
@@ -1326,15 +1412,34 @@ DEFAULT = POOL_OF_RADIANCE
 #: ticket's to write -- see `#418 (The level-up confirmation dialog previews
 #: one step of a Curse dual-training press, not the whole chain)`.
 #:
-#: Silver Blades is the same case one step earlier: its level tables are in
-#: this module now (#187), and its trainer's own inputs -- the constitution
-#: hit-point bonus, thief-skill racial adjustment, wisdom bonus spells -- are
-#: either unread or unattributed (`docs/121-silver-blades.md`). Its **turning
-#: table is read**, at `GEN $13A5` (#288), and it is CONFIRMED: the routine's
-#: own expansion agrees with the two shipped records that store the byte,
-#: DOMINIC a cleric 8 at 9 and GUY DE VALOIS a paladin 8 at 7. Reading the
-#: other three is what would move this title into the set; the turning table
-#: alone does not.
+#: Silver Blades is the same case one step earlier, and it is not in this set
+#: yet either -- **not because a table is missing any more.** All the trainer
+#: inputs `#89 (Silver Blades' trainer grants spells from a table, and
+#: goldbox/levelup.py offers them from a menu)` was still calling unread or
+#: unattributed are now in `SECRET_OF_THE_SILVER_BLADES`, CONFIRMED: the
+#: constitution hit-point bonus and the thief dexterity and wisdom rows are
+#: Curse's own bytes at different addresses; the thief level rows share their
+#: first 72 bytes with Curse and Pool of Radiance and add eight of Silver
+#: Blades' own; the thief racial row is read at `race * 8` with **no**
+#: decrement (`thief_skill_race_index_from=0`), a bug in the shipped game
+#: (`goldbox-bugs.md` entry 13) that MALACHITE's own trained record
+#: corroborates on all eight columns, twice; and the seven remaining fields
+#: (the hit die, its divide, whether one press raises every ready class,
+#: whether `attack_forms` and `spells_castable` are written outright) are all
+#: read byte-identical to Curse's own routines. Its **turning table is read**
+#: too, at `GEN $13A5` (#288), CONFIRMED against DOMINIC and GUY DE VALOIS.
+#:
+#: **Two things still hold this title out, and neither is here to fix.** The
+#: `automap/window.py` spell-dialog gate `#415 (automap/window.py picks the
+#: level-up spell dialog's class the same wrong way plan would have, blocking
+#: Curse's trainer)` closed for Curse has not been re-verified for Silver
+#: Blades, and no Silver Blades training has been driven through
+#: `levelup.plan`/`plan_all` and diffed against the engine the way `#18
+#: (Measure Curse's trainer so Level Up works there)` drove five Curse ones --
+#: `#89`'s own 2026-09-08 comment names both. Flipping this set on tables
+#: alone, with `plan()`'s assembly of them never watched against a real
+#: training, is the gap `testing.md`'s "a conversion is not proven until it
+#: runs" is about.
 #:
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a
