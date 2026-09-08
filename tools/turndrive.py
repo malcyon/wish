@@ -34,12 +34,10 @@ into the pool instance's own directory first.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import shutil
 import sys
-import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
@@ -49,6 +47,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.layout import FIELDS_BY_NAME  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
@@ -113,26 +112,21 @@ def parse_stage(text: str) -> dict[int, int]:
     return out
 
 
-class Log:
-    def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.mkdir(parents=True, exist_ok=True)
-        self.dir = out
-        self.file = open(out / "turn.jsonl", "w")
-        self.quiet = quiet
-        self.bars: list[dict] = []
+class Log(SC.Log):
+    """`SC.Log` -- `tools/savecheck.py`'s -- plus a run's own bar list.
 
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
+    Keeps a second run's log rather than truncating it, and a `say` a dead
+    console cannot take down with it (`#442`).
+    """
+
+    def __init__(self, out: pathlib.Path, quiet: bool = False):
+        self.quiet = quiet
+        super().__init__(out / "turn.jsonl")
+        self.bars: list[dict] = []
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+            super().say(*a)
 
 
 def main(argv=None) -> int:
@@ -157,6 +151,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=None, help="run directory")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    SC.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (

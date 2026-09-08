@@ -31,7 +31,6 @@ everybody in contact on turn 1.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import sys
@@ -42,6 +41,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where the player keeps the disks, unless `--disks` says otherwise.  Read
@@ -60,27 +60,23 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 claim_slot = S.claim_slot
 
 
-class Run:
-    """One booted session, and the log it writes."""
+class Run(SC.Log):
+    """One booted session, and the log it writes.
+
+    `SC.Log` is `tools/savecheck.py`'s -- it keeps a second run's log rather
+    than truncating it, and a `say` that a dead console cannot take down with
+    it (`#442`).  This class adds only what a fight run needs beyond that:
+    `quiet`, and the turn-by-turn record `tactic` and `report` read back.
+    """
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.parent.mkdir(parents=True, exist_ok=True)
-        self.file = open(out, "w")
         self.quiet = quiet
+        super().__init__(out)
         self.turns: list[dict] = []
-
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+            super().say(*a)
 
     # -- the tactic -------------------------------------------------------
     def tactic(self, sess, state):
@@ -177,6 +173,7 @@ def main(argv=None) -> int:
                    help="where the log goes (default work/fightrun/<save>.jsonl)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    SC.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (

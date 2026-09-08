@@ -50,12 +50,10 @@ dropped converting to C64, and nobody knows what they hold)`.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import shutil
 import sys
-import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
@@ -64,6 +62,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
@@ -105,23 +104,21 @@ def wound(sess, index: int, to: int = 1) -> None:
         m.write(at, bytes([to & 0xFF, to >> 8]))
 
 
-class Log:
-    def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.mkdir(parents=True, exist_ok=True)
-        self.dir = out
-        self.file = open(out / "roster.jsonl", "w")
-        self.quiet = quiet
-        self.samples: list[dict] = []
+class Log(SC.Log):
+    """`SC.Log` -- `tools/savecheck.py`'s -- plus a run's own sample list.
 
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
+    Keeps a second run's log rather than truncating it, and a `say` a dead
+    console cannot take down with it (`#442`).
+    """
+
+    def __init__(self, out: pathlib.Path, quiet: bool = False):
+        self.quiet = quiet
+        super().__init__(out / "roster.jsonl")
+        self.samples: list[dict] = []
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
+            super().say(*a)
 
     def sample(self, sess, when: str) -> list[int]:
         try:
@@ -136,9 +133,6 @@ class Log:
                  + " ".join(f"{v:02X}" for v in st)
                  + "  hp=" + " ".join(str(v) for v in hp))
         return st
-
-    def close(self) -> None:
-        self.file.close()
 
 
 def stage_status(path: pathlib.Path,
@@ -223,6 +217,7 @@ def main(argv=None) -> int:
                    help="run directory (default work/p235c64/<save>)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    SC.catch_signals()
 
     disks = pathlib.Path(args.disks)
     save = args.save

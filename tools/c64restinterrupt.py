@@ -48,7 +48,6 @@ staged into the slot.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import struct
@@ -61,6 +60,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import CMD_CHECKPOINT_GET  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
@@ -263,26 +263,21 @@ def script_matches(sess, name: str, root: str) -> dict:
     return {"entry2": target, "matches": bool(block) and block == want}
 
 
-class Log:
-    def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.mkdir(parents=True, exist_ok=True)
-        self.dir = out
-        self.file = open(out / "rest.jsonl", "w")
-        self.quiet = quiet
-        self.trials: list[dict] = []
+class Log(SC.Log):
+    """`SC.Log` -- `tools/savecheck.py`'s -- plus a run's own trial list.
 
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
+    Keeps a second run's log rather than truncating it, and a `say` a dead
+    console cannot take down with it (`#442`).
+    """
+
+    def __init__(self, out: pathlib.Path, quiet: bool = False):
+        self.quiet = quiet
+        super().__init__(out / "rest.jsonl")
+        self.trials: list[dict] = []
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+            super().say(*a)
 
 
 def open_camp(sess, log: Log) -> bool:
@@ -459,6 +454,7 @@ def phase(sess, log: Log, name: str, rests: int, hours: int,
 def drive(args) -> int:
     from tools import session as S
 
+    SC.catch_signals()
     out = pathlib.Path(args.out) if args.out else ROOT / "work" / "issue250" / "run"
     log = Log(out, args.quiet)
     slot = S.claim_slot(args.slot, f"c64restinterrupt/{args.save}")

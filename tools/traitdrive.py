@@ -38,13 +38,11 @@ does it.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import shutil
 import struct
 import sys
-import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
@@ -54,6 +52,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import games, traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import gamedisks  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.absrefsweep import files  # noqa: E402
 from tools.traitquery import TRAIT_SLOT, find_predicate, staging  # noqa: E402
@@ -161,31 +160,22 @@ def checkpoint_hits(mon, number: int) -> int:
     return struct.unpack("<I", body[13:17])[0]
 
 
-class Log:
-    """One JSON line per event, written as it happens.
+class Log(SC.Log):
+    """`SC.Log` -- `tools/savecheck.py`'s.
 
     A run that is killed on its budget never reaches its own summary, so
-    anything worth reporting is written at the moment it is measured.
+    anything worth reporting is written at the moment it is measured -- and
+    `SC.Log` is what keeps a second run's log rather than truncating it, and
+    a `say` a dead console cannot take down with it (`#442`).
     """
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.mkdir(parents=True, exist_ok=True)
-        self.dir = out
-        self.file = open(out / "traits.jsonl", "w")
         self.quiet = quiet
-
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
+        super().__init__(out / "traits.jsonl")
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+            super().say(*a)
 
 
 def main(argv=None) -> int:
@@ -206,6 +196,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=None, help="run directory")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    SC.catch_signals()
 
     disks = pathlib.Path(args.disks)
     tag = "staged" if args.stage else "control"

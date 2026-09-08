@@ -61,6 +61,7 @@ os.environ.pop("XDG_SESSION_TYPE", None)
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import gamedisks  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 
 #: `SAVEDGAME0` loads at `$4900`; the twelve character slots start at `$4D00`.
 #: `docs/30-savegame-layout.md`, and `tools/traitdrive.py` has the same three.
@@ -127,31 +128,25 @@ def body_diff(before: bytes, after: bytes) -> list[dict]:
     return out
 
 
-class Log:
-    """One JSON line per event, written as it happens.
+class Log(SC.Log):
+    """`SC.Log` -- `tools/savecheck.py`'s -- opened `append`.
 
     A run killed on its budget never reaches its own summary, so anything
-    measured is written at the moment it is measured.
+    measured is written at the moment it is measured.  `write` and `boot` are
+    two separate invocations that deliberately share one growing
+    `traitsave.jsonl` at the same default `--out`, so `append=True` -- rather
+    than `SC.Log`'s ordinary keep-the-old-one-and-start-fresh -- is what keeps
+    that.  What was still missing was a `say` a dead console cannot take down
+    with it (`#442`).
     """
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.mkdir(parents=True, exist_ok=True)
-        self.dir = out
-        self.file = open(out / "traitsave.jsonl", "a")
         self.quiet = quiet
-
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
+        super().__init__(out / "traitsave.jsonl", append=True)
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+            super().say(*a)
 
 
 # ===========================================================================
@@ -190,6 +185,7 @@ def _pick_in_picker(dialog, trait: str) -> int:
 
 def write(args) -> int:
     """Add a trait through the buttons and save through the File menu."""
+    SC.catch_signals()
     out = pathlib.Path(args.out)
     log = Log(out, args.quiet)
     disks = disks_dir(args.disks)
@@ -364,6 +360,7 @@ def boot(args) -> int:
     """Load the disk in the emulator and read the slots back."""
     from tools import session as S
 
+    SC.catch_signals()
     out = pathlib.Path(args.out)
     log = Log(out, args.quiet)
     disks = disks_dir(args.disks)

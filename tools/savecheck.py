@@ -341,14 +341,38 @@ def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
 
 
 class Log:
-    """Everything the run saw, to the terminal and to a `.jsonl` beside it."""
+    """Everything the run saw, to the terminal and to a `.jsonl` beside it.
 
-    def __init__(self, out: pathlib.Path):
+    Nine other driven-run tools -- `tools/fightrun.py`, `tools/outdoorstep.py`,
+    `tools/c64restinterrupt.py`, `tools/defeatdrive.py`, `tools/statusdrive.py`,
+    `tools/hallmenu.py`, `tools/turndrive.py`, `tools/traitsave.py` and
+    `tools/traitdrive.py` -- had their own copy of this class, none of them
+    hardened the way `#380 (The session driver sometimes fails BEGIN
+    ADVENTURING within 0.2s of the picker loading, well inside its own 30s
+    wait)` hardened this one. `#442 (Nine driven-run tools lose their log when
+    the console goes, and two truncate the previous run's)` moved them onto
+    this class -- either directly, or as the base of a small subclass that
+    adds a `quiet` flag or a `self.dir`-relative filename of its own -- rather
+    than leaving nine near-identical copies for a tenth tool to diverge from.
+    """
+
+    def __init__(self, out: pathlib.Path, append: bool = False):
         out.parent.mkdir(parents=True, exist_ok=True)
         self.dir = out.parent
         #: False once the terminal has gone, so nothing tries to talk to it
         #: again -- see `say`.
         self.talking = True
+        if append:
+            # `tools/traitsave.py` runs `write` and then `boot` as two
+            # separate invocations that deliberately share one growing
+            # `traitsave.jsonl`, and `tools/hallmenu.py` opens its log the
+            # same way. `keep_old_log` exists to stop a second run from
+            # *destroying* the first run's record -- it would be wrong here
+            # too, since it would rename the shared history away on every
+            # invocation instead of letting it grow.  There was never a "w"
+            # here for these two to truncate.
+            self.file = open(out, "a")
+            return
         kept = keep_old_log(out)
         self.file = open(out, "w")
         if kept is not None:

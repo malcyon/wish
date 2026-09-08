@@ -64,6 +64,7 @@ sys.path.insert(0, str(ROOT))
 from automap import actions as A  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
+from tools import savecheck as SC  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
@@ -109,27 +110,23 @@ def describe(value: int) -> str:
         " (down)" if value & 0x80 else "")
 
 
-class Log:
-    """One line of JSON per event, and a running transcript on stdout."""
+class Log(SC.Log):
+    """`SC.Log` -- `tools/savecheck.py`'s.
+
+    Keeps a second run's log rather than truncating it, and a `say` a dead
+    console cannot take down with it (`#442`).  `--out` defaults to
+    `work/issue128/<save-stem>`, which has no run tag in it, so two runs on
+    the same save at the default used to truncate each other -- exactly the
+    shape `d532ad6` fixed in `tools/savecheck.py` after `#380`.
+    """
 
     def __init__(self, out: pathlib.Path, quiet: bool = False):
-        out.mkdir(parents=True, exist_ok=True)
-        self.dir = out
-        self.file = open(out / "run.jsonl", "w")
         self.quiet = quiet
-
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
+        super().__init__(out / "run.jsonl")
 
     def say(self, *a) -> None:
         if not self.quiet:
-            print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+            super().say(*a)
 
 
 def roster_page(sess) -> bytes:
@@ -323,6 +320,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=None, help="run directory")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    SC.catch_signals()
 
     disks = pathlib.Path(args.disks)
     out = pathlib.Path(args.out) if args.out else (

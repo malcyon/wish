@@ -31,7 +31,6 @@ slot's own directory and the engine's resave is copied back out of it.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import shutil
@@ -57,23 +56,10 @@ CLOCK_AT = 0x49C6
 CLOCK_BYTES = 6
 
 
-class Log:
-    def __init__(self, out: pathlib.Path):
-        out.parent.mkdir(parents=True, exist_ok=True)
-        self.dir = out.parent
-        self.file = open(out, "w")
-
-    def emit(self, kind: str, **kw) -> None:
-        kw["kind"] = kind
-        kw["t"] = round(time.time(), 3)
-        self.file.write(json.dumps(kw, default=str) + "\n")
-        self.file.flush()
-
-    def say(self, *a) -> None:
-        print(*a, flush=True)
-
-    def close(self) -> None:
-        self.file.close()
+#: `SC.Log` -- it keeps a second run's log rather than truncating it, and a
+#: `say` a dead console cannot take down with it (`#442`).  Nothing here adds
+#: anything beyond that, so the class is just the name this file already uses.
+Log = SC.Log
 
 
 def reading(sess) -> dict:
@@ -198,6 +184,7 @@ def step(sess, log: Log, move: str, tag: str, patience: float = 20.0,
 
 
 def run(args, log: Log) -> int:
+    SC.catch_signals()
     slot = S.claim_slot(args.slot, f"outdoorstep/{pathlib.Path(args.disk).name}")
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None
