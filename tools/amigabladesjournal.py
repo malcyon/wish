@@ -45,12 +45,9 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
-import amigadrive  # noqa: E402
-
-from tools import gamedisks  # noqa: E402
+from tools import amigadrive, gamedisks  # noqa: E402
 
 #: Where the private repository is.  `tools/cursewheel.py` settled this name
 #: and this default for the DOS side; a second spelling of the same thing is a

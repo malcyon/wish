@@ -234,32 +234,7 @@ def test_the_tool_that_was_caught_doing_it_no_longer_can():
         f"tools/dosraces.py left tools/ on sys.path:\n{result.stderr}")
 
 
-#: `#262 (Thirty-three tools still leave tools/ on sys.path, so one run
-#: directly can lose the wish package)` fixed the mechanical leak in every
-#: tool but these five, each mid-edit under a different agent when that
-#: session ran: `amigabladesjournal`, `abilitypair` and `amigalaterproof`
-#: still leave `tools/` on `sys.path`; `cursethac0` and `innateids` were
-#: reserved the same way but, measured at the time, already did not. Named
-#: here rather than left out of `TOOLS` below, so the check stays honest
-#: about who is exempt and why instead of passing on all five by omission.
-#: `#262`'s own comment thread is where the follow-up on the first three
-#: belongs.
-RESERVED_WHILE_262_LANDED = (
-    "amigabladesjournal",
-    "abilitypair",
-    "amigalaterproof",
-    "cursethac0",
-    "innateids",
-)
-
-
-@pytest.mark.parametrize(
-    "name",
-    [pytest.param(n, marks=pytest.mark.xfail(
-        reason="reserved to another agent while #262's mechanical fix "
-               "landed; not touched here", strict=False))
-     if n in RESERVED_WHILE_262_LANDED else n
-     for n in TOOLS])
+@pytest.mark.parametrize("name", TOOLS)
 def test_no_tool_leaves_tools_on_sys_path_after_import(name):
     """The general form `#262 (Thirty-three tools still leave tools/ on
     sys.path, so one run directly can lose the wish package)` asked for:
@@ -269,12 +244,12 @@ def test_no_tool_leaves_tools_on_sys_path_after_import(name):
     anybody remembering to list it. `tools/pathleak.py` is the same
     assertion, run as a one-off census rather than as part of the suite.
 
-    Five names carry an `xfail` instead of being left out of `TOOLS`; see
-    `RESERVED_WHILE_262_LANDED` above for which and why. Two of the five do
-    not currently leak and so report `XPASS`, which is allowed
-    (`strict=False`) rather than treated as a second bug to fix here -- they
-    were reserved on the same footing as the three that do leak, not
-    because they were known to.
+    `amigabladesjournal`, `abilitypair` and `amigalaterproof` were the last
+    three still leaking, held back across two earlier passes because another
+    agent owned those files at the time; `#262`'s own comment thread has the
+    full census. All three now go through the same `tools/dosraces.py`
+    pattern as everything else, and `tools/pathleak.py` confirms 0 of 221
+    scripts leak.
     """
     result = _in_a_fresh_process(
         "try:\n"
