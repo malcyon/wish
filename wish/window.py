@@ -124,7 +124,16 @@ class WishWindow(QMainWindow):
         self.disks, self.disks_source = paths.resolve_disks(
             flag=disks, beside=save, game=game_named(title),
             settings=self.settings)
-        apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
+        # Behind the flag, like everything else the Ultimate touches. A stored
+        # host in a settings file predating the flag -- or hand-edited -- used
+        # to reach `$POR_ULTIMATE` on every window build regardless, which is
+        # inert only because `wish/backends.py` checks the flag before it looks
+        # at the variable. Two files agreeing to leave something alone is not a
+        # gate, and `wish/backends.py`'s own docstring promises the application
+        # behaves as though the device is not there at all (`#375`).
+        if backends.ultimate_enabled():
+            apply_ultimate_host(
+                getattr(self.settings, "ultimate_host", "") or "")
 
         self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder, saves_folder=self.settings.saves_folder, game_folders=self.settings.game_folders)
         # The divider between the roster and Character and the sheet below

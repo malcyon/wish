@@ -1650,3 +1650,30 @@ def test_the_dialog_still_opens_with_no_backend_rows_built_twice(
         second.close()
     finally:
         win.close()
+
+
+def test_a_stored_host_does_not_reach_the_environment_with_the_flag_off(
+        app, tmp_path, monkeypatch):
+    """The flag gates the environment too, not only the dialog and the list.
+
+    A settings file can carry an `ultimate_host` from before the flag existed,
+    or from a session with it on. `apply_ultimate_host` used to run on every
+    window build regardless, putting it in `$POR_ULTIMATE` -- inert only
+    because `wish/backends.py` checks the flag before it reads that variable.
+    Two files agreeing to leave something alone is not a gate, and the
+    promise is that the application behaves as though the device is not there
+    (`#375 (Wish has to work around the Ultimate freezing the C64 mid-load,
+    which hangs the game while the automapper follows along)`).
+    """
+    monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
+    monkeypatch.delenv("POR_ULTIMATE", raising=False)
+    nowhere(tmp_path, monkeypatch)
+    saved = Settings.load()
+    saved.ultimate_host = "ultimate64.local"
+
+    window(app, settings=saved)
+    assert "POR_ULTIMATE" not in os.environ
+
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
+    window(app, settings=saved)
+    assert os.environ.get("POR_ULTIMATE") == "ultimate64.local"
