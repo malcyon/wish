@@ -51,10 +51,14 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import pathlib
 import re
+import struct
 import subprocess
 import uuid
 from dataclasses import dataclass, field
+
+from goldbox.geo import GEO_SIZE, Geo
 
 from .target import Fix, NotConnected
 
@@ -149,7 +153,14 @@ LAYOUTS: dict[str, AmigaLayout] = {
         # The two bytes after the facing, which the step routine recomputes
         # from the map on every step: the wall type in the facing direction and
         # the square's own attribute byte (`docs/165-amiga-savegame.md`).
-        notes={"wall_ahead": 0x57A3, "square_attribute": 0x57A4},
+        #
+        # `array_pointer` and `array_offset` are where the saved game's own
+        # `$49xx` array is resident: the longword at that data-hunk offset,
+        # plus `array_offset`, is the array as `u16be` words, one per DOS byte.
+        # Nothing reads them -- see `AmigaTarget.fix` on why the clock is not
+        # fetched -- and they are PROBABLE on one boot (`#37`).
+        notes={"wall_ahead": 0x57A3, "square_attribute": 0x57A4,
+               "array_pointer": 0x5160, "array_offset": 0x508},
     ),
     "curse-of-the-azure-bonds": AmigaLayout(
         title="Curse of the Azure Bonds",
@@ -343,6 +354,121 @@ def find_anchor(memory: bytes, base: int, anchor: bytes,
     return out
 
 
+# -- the maps, off the player's own disk --------------------------------------
+#
+# The C64 keeps one `GEO<id>` file per area in the disk's own directory, so
+# `goldbox.geo.load_geo_files` walks the directory and is the whole of it. The
+# Amiga keeps all of them in one `GLIB` container, `GEO.GLB`, on the second
+# disk of each title -- `/DISK2/GEO.GLB` on Silver Blades and `/DISKB/GEO.GLB`
+# on Curse, which is why nothing here hard-codes the path.
+
+#: The container's name on both titles' disks, whatever directory it sits in.
+GEO_LIBRARY = "GEO.GLB"
+
+
+def glib_blocks(data: bytes) -> list[bytes]:
+    """Every block of a `GLIB` container, in order.
+
+    The magic, a `u32` total size, a `u16` block count, a `u16`, a four-byte
+    tag naming what the blocks are, then `count + 1` big-endian `u32` offsets,
+    block *i* being `[off[i], off[i + 1])`.
+
+    **The same six lines are in `tools/amigaenum.py`, deliberately.** Nothing
+    under `automap/` may import `tools/` -- that is a shipped package reaching
+    into a directory no wheel carries -- and a reader with no container parse
+    could not open the Amiga's maps at all. `tools/amigatarget.py` imports
+    *this* copy, so the two that answer this question in the automapper cannot
+    drift apart.
+    """
+    if data[:4] != b"GLIB":
+        raise ValueError(f"not a GLIB container: it opens {data[:4]!r}")
+    count = struct.unpack(">H", data[8:10])[0]
+    offsets = struct.unpack(f">{count + 1}I", data[16:16 + 4 * (count + 1)])
+    return [data[offsets[i]:offsets[i + 1]] for i in range(count)]
+
+
+def geo_library(data: bytes) -> dict[int, bytes]:
+    """`GEO.GLB` as `{id: 1024 bytes}`.
+
+    Block 0 is a 70-byte index -- a `u16be` count and then that many
+    `(id, block)` pairs -- and blocks 1 upwards are the maps. The **id** is
+    what a saved game holds at `$49C5` and what the engine hands its loader,
+    so it is the same number the C64 spells into a filename.
+
+    A pair naming a block that is not `GEO_SIZE` bytes is dropped rather than
+    returned short: the index is the container's own claim about itself and a
+    block of another shape is not a map, whatever the index says.
+    """
+    blocks = glib_blocks(data)
+    if not blocks:
+        return {}
+    index = blocks[0]
+    count = int.from_bytes(index[:2], "big")
+    out: dict[int, bytes] = {}
+    for i in range(count):
+        at = 2 + 4 * i
+        ident = int.from_bytes(index[at:at + 2], "big")
+        block = int.from_bytes(index[at + 2:at + 4], "big")
+        if block < len(blocks) and len(blocks[block]) == GEO_SIZE:
+            out[ident] = blocks[block]
+    return out
+
+
+def library_path(disk) -> str | None:
+    """Where `GEO.GLB` is on this disk image, or None if it is not there.
+
+    Searched rather than tabulated: the two titles keep it in differently
+    named directories and a third would keep it in a third.
+    """
+    for path, _entry in disk.walk():
+        if path.upper().endswith(GEO_LIBRARY):
+            return path
+    return None
+
+
+def load_maps(image) -> dict[str, Geo]:
+    """Every map on one Amiga disk image, keyed the way the C64 names them.
+
+    `{"GEO10": Geo, ...}` -- `GEO{id:02X}`, which is the C64's own filename
+    for the same area and what `goldbox.areas` and the automapper's notes
+    files are keyed by. So an Amiga party's map is drawn on the same sheet its
+    C64 counterpart would be, and `tools/geoports.py` has already measured
+    that the blocks themselves are the same bytes: all seventeen of Silver
+    Blades' and thirteen of Curse's sixteen are byte-identical across the two
+    ports.
+
+    Empty for a disk with no library on it, which is every title's disk A --
+    the caller reads both sides and takes whichever answers.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+    disk = AmigaDisk.open(str(image))
+    where = library_path(disk)
+    if where is None:
+        return {}
+    return {f"GEO{ident:02X}": Geo(block)
+            for ident, block in sorted(geo_library(disk.read_file(where)).items())}
+
+
+def load_maps_in(folder) -> tuple[dict[str, Geo], pathlib.Path | None]:
+    """The maps off the first disk image in this folder that carries any.
+
+    Returns them and the image they came from, so a run can say which disk it
+    read. `automap/maps.py`'s C64 loader merges every disk in the folder
+    because the C64 spreads its maps over six of them; one Amiga disk carries
+    the lot, so the first that answers is the answer.
+    """
+    folder = pathlib.Path(folder)
+    for image in sorted(folder.glob("*.adf")) + sorted(folder.glob("*.ADF")):
+        try:
+            maps = load_maps(image)
+        except Exception as exc:                # not a disk, or not readable
+            _log.debug("%s is not a disk this can read: %s", image, exc)
+            continue
+        if maps:
+            return maps, image
+    return {}, None
+
+
 class AmigaTarget:
     """A running Amiga Gold Box title, as the automapper's `Target`.
 
@@ -515,6 +641,17 @@ class AmigaTarget:
         which is what a party in a menu, in camp, or mid-load looks like, and
         is an ordinary state rather than an error. The map holds its last fix,
         exactly as it does on the C64.
+
+        **`Fix.clock` is None here, and deliberately.** The game clock is not
+        in the data hunk at all: 36,736 bytes of it dumped across a step that
+        moved the status line from `00:03` to `00:04` hold no byte that moved
+        with it. It is in the resident copy of the saved game's `$49xx` array,
+        which `layout.notes` names -- one round trip past a pointer, on top of
+        a poll that already costs fifteen seconds. And nothing would read it:
+        `Automapper._refused` is the one caller, and it requires *both* fixes
+        to come from the status line, which no fix from this backend ever
+        does. `#37 (Automap the Amiga version, not just the C64)` has the
+        measurement.
         """
         span = self.layout.width
         lo = min(self.layout.party_x, self.layout.party_y,

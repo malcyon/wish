@@ -960,6 +960,25 @@ for a joystick.** Eight of the twenty keys reached that layout and no further
 `I`, `J`, `K` are not movement in this title and did nothing for that reason.
 `joyport1=none` and the party walks -- §1.11b.
 
+**The attract loop runs on its own timer, and a screenshot is too slow to
+aim a key at it.** From the credits the title reaches a `PLAY DEMO QUIT` bar
+and, if nobody answers within a few seconds, starts the DEMO -- a scripted
+party in a fight, which looks enough like the game to be mistaken for one. A
+grab costs two to four seconds through `winvm shot` and a keystroke another two
+to three, so a key aimed at what the last grab showed lands after the bar has
+gone: six of one session's keystrokes went nowhere that way on 2026-09-08. What
+works from anywhere in the loop, as one `tools/amigadrive.py` call so the keys
+are about two seconds apart:
+
+    tools/amigadrive.py --holder <lane> --settle 0.2 keys ESC RET
+
+`ESC` leaves the demo for the bar and `RET` takes the bar's highlighted `PLAY`.
+Then `L`, the slot letter and `B`. **Run `tools/amigabladesjournal.py` under
+the system `python3`**, not the project's virtual environment: it reaches into
+the private code-wheel repository, which imports `numpy`, and the virtual
+environment has none -- the failure is a `ModuleNotFoundError` out of a file in
+the other repository, which reads like that repository being broken.
+
 **A saved game made from inside the world now exists**, which is the specimen
 `#28 (Decode an Amiga saved game, not just a character file)` could not reach: `~/wish-specimens/ssb-amiga/WISH-SPEC-ssb-amiga-adventuring/savgamB.sav`,
 written by `ENCAMP > SAVE > B` at square 3,3 facing South. It is **7233 bytes
@@ -1100,6 +1119,36 @@ load finishes, and a null-or-zeroes map has to be told from a real one.
 matched the live block to `GEO` id **16**, uniquely, among the 17 blocks of
 `/DISK2/GEO.GLB` -- the id both engine-written Silver Blades saves carry at
 `$49C5`. The block reciprocates 480 of 480.
+
+**The whole walk, through the shipped automapper.** On 2026-09-08 the same
+party walked `GEO10` while `automap.state.Automapper.poll()` watched: a turn
+(`NP2`, East to West), a step west to (5,9), and a step the map says is
+impossible -- `GEO10` walls (5,9) to the west, the game refused it, and the 3D
+view drew a wall dead ahead with the status line still reading `5,9 W 00:04`.
+The mapper named the area on every poll, moved its marker on the turn and the
+step and not on the refusal, and held its fix while the shop's own
+`DEPOSIT WITHDRAW TRADE EXIT` bar was up. A poll costs 10-22 s, or 31-50 s on
+the polls that re-read the map block.
+
+**The clock is not in the data hunk, and the saved game's array is resident.**
+PROBABLE, one boot. All 36,736 bytes of `/Secret`'s data hunk were dumped at
+four consecutive polls across a step that moved the status line from `00:03` to
+`00:04`, and no byte or `u16be` in it moved with the clock. Two whole-machine
+dumps of the A500's 512K of slow memory one step apart hold **exactly one** byte
+that goes 4 to 5, and it is the low half of a `u16be`: the saved game's own
+`$49C7`, in a resident copy of the `$49xx` array stored as **`u16be` words, one
+per DOS byte**, exactly as the file stores it. `$49C5` there reads 16 -- the
+`GEO` id `ResidentGeo` had just named independently -- `$49E6` reads 1 for
+indoors and `$49F2` reads 16 for the area. The array's base was `$00C60540` on
+that boot, and two data-hunk globals, `+0x5160` and `+0x8F30`, hold
+`$00C60038`, which is the base minus `$508`; read live back through the first
+of those the words agreed with the screen again. **What would confirm it is one
+more boot**: re-derive the hunk, dereference `+0x5160`, and check `$49C5`
+against the map the mapper names and `$49C7` against the status line. Nothing
+reads any of it -- `automap/amiga.py` records the two numbers in the layout's
+`notes` and leaves `Fix.clock` None, because the clock's only consumer,
+`Automapper._refused`, requires both fixes to come from a status line this
+backend never reads.
 
 **Pool of Radiance is not covered.** Its Amiga build is a many-hunk executable
 with absolute relocations rather than a small-data one, so there is no single

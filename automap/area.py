@@ -360,6 +360,9 @@ class ResidentGeo:
     the address is wrong for some title or version -- sweep memory for a block
     that decodes as a plausible GEO, and check it against the map we already
     believe we are on.
+
+    **The address is fixed only where the machine makes it so**, which is the
+    C64 and not the Amiga -- see `address_now`.
     """
 
     def __init__(self, target, address: int | None = RESIDENT_GEO):
@@ -452,13 +455,37 @@ class ResidentGeo:
                     return self.address
         return None
 
+    def address_now(self) -> int | None:
+        """Where this machine's block is, this poll.
+
+        `$0400` on the C64, where the loader leaves the `GEO` file it read and
+        never moves it -- so the address is a constant and this answers the one
+        it was built with.
+
+        **A backend may know better, and one does.** The Amiga's loader
+        allocates the buffer, so nothing is at a fixed address at all: the
+        engine's own map-indexing routines dereference a global holding its
+        address, and `automap/amiga.py`'s `resident_geo_address()` reads that
+        global. It is asked **every time** rather than once, because an area
+        change is exactly when the pointer is allowed to move -- and returns
+        None while no area is loaded, which is the same "no map right now" the
+        C64 reports by holding a page of something else.
+
+        The optional-capability shape `read_fix` and `screen_banks` already
+        use: found with `getattr`, and a backend without one keeps the
+        behaviour every backend had before this existed.
+        """
+        own = getattr(self.target, "resident_geo_address", None)
+        return self.address if own is None else own()
+
     def read(self) -> Geo | None:
-        if self.address is None:
-            return None
         try:
-            return Geo(self.target.read(self.address, GEO_SIZE))
+            address = self.address_now()
+            if address is None:
+                return None
+            return Geo(self.target.read(address, GEO_SIZE))
         except Exception as exc:
             # Read on every poll, and the map moves out from under us on every
             # area change, so one line and no traceback.
-            _log.debug("no map at $%04X any more: %s", self.address, exc)
+            _log.debug("no map at $%04X any more: %s", self.address or 0, exc)
             return None

@@ -14,6 +14,7 @@ That is a measurement on a running Amiga and no fake can stand in for it; see
 from __future__ import annotations
 
 import base64
+import json
 
 import pytest
 
@@ -381,3 +382,257 @@ def test_a_wrong_anchor_offset_is_what_verify_is_for(key):
                                      anchor_offset=layout.anchor_offset + 1),
                              _adf(key))
     assert bad and "not" in bad[0]
+
+
+# -- the map the running game is drawing --------------------------------------
+#
+# `automap/area.py`'s `ResidentGeo` reads the C64's block at a fixed `$0400`,
+# because the C64's loader leaves the file where it read it. The Amiga's
+# loader allocates the buffer, so the address is a pointer the engine holds --
+# and `ResidentGeo.address_now()` is the optional capability that asks a
+# backend where its own block is. These are the tests of that seam from the
+# Amiga side; the C64's own behaviour is pinned below as well, because the
+# same hunk is what could take it away.
+
+GEO_AT = 0xC30000
+
+
+def _map_block():
+    """A well-formed map built from the format, never a copy of one."""
+    from tests.gamedata import synthetic_geo
+    return synthetic_geo()
+
+
+def _resident(block=None, at=GEO_AT, layout=SSB, extra=None):
+    """An `AmigaTarget` with a map at `at` and the engine's pointer to it."""
+    block = _map_block() if block is None else block
+    memory = {BASE + layout.geo_pointer: at.to_bytes(4, "big"), at: block}
+    memory.update(extra or {})
+    return target(memory, layout=layout)
+
+
+def test_the_resident_reader_follows_this_backends_pointer():
+    """The whole of the shared change: `ResidentGeo` asks the target where the
+    block is, and the Amiga answers by dereferencing the engine's own global.
+    Against the C64's fixed `$0400` this machine holds the 68000's exception
+    vectors, which are not a map and never will be."""
+    from automap.area import ResidentGeo
+    from goldbox.geo import Geo
+    t, _ = _resident()
+    reader = ResidentGeo(t)
+    assert reader.address_now() == GEO_AT
+    assert reader.identify({"GEO10": Geo(_map_block())}) == "GEO10"
+
+
+def test_a_backend_that_cannot_say_keeps_the_c64s_fixed_address():
+    """The capability is absent on every other backend, and absence means the
+    behaviour they all had before it existed."""
+    from automap.area import RESIDENT_GEO, ResidentGeo
+    from automap.target import MemoryTarget
+    from goldbox.geo import Geo
+    reader = ResidentGeo(MemoryTarget({RESIDENT_GEO: _map_block()}))
+    assert reader.address_now() == RESIDENT_GEO == 0x0400
+    assert reader.identify({"GEO10": Geo(_map_block())}) == "GEO10"
+
+
+def test_the_pointer_is_read_every_time_because_an_area_change_moves_it():
+    """A cached address would name the old area's map for as long as the new
+    one is being walked. The map moves; the global is the only fixed thing."""
+    from automap.area import ResidentGeo
+    from goldbox.geo import Geo
+    other = bytearray(_map_block())
+    other[0x2FF] = 0x99                       # a different block, still a map
+    t, guest = _resident(extra={0xC40000: bytes(other)})
+    reader = ResidentGeo(t)
+    maps = {"GEO10": Geo(_map_block()), "GEO20": Geo(bytes(other))}
+    assert reader.identify(maps) == "GEO10"
+    guest.memory[BASE + SSB.geo_pointer] = (0xC40000).to_bytes(4, "big")
+    assert reader.identify(maps) == "GEO20"
+
+
+def test_no_map_is_resident_before_an_area_has_loaded():
+    """The buffer is allocated before anything is read into it, so the pointer
+    is null at the party menu -- measured on 2026-09-08, 1024 zero bytes at an
+    address the global already held."""
+    from automap.area import UNKNOWN, ResidentGeo
+    from goldbox.geo import Geo
+    t, _ = target({BASE + SSB.geo_pointer: bytes(4)})
+    reader = ResidentGeo(t)
+    assert reader.address_now() is None
+    assert reader.read() is None
+    assert reader.identify({"GEO10": Geo(_map_block())}) is None
+    assert reader.verdict({"GEO10": Geo(_map_block())}) == (UNKNOWN, None)
+
+
+# -- the shipped automapper, over this backend --------------------------------
+
+
+def _mapper(t, name="GEO10", block=None):
+    from automap.state import Automapper
+    from goldbox.geo import Geo
+    maps = {name: Geo(_map_block() if block is None else block)}
+    return Automapper(t, maps, title="Secret of the Silver Blades")
+
+
+def test_the_shipped_automapper_names_the_area_and_records_the_square():
+    """`Automapper.poll()` is the window's own code and nothing here replaces
+    any of it: the fix comes from the engine's globals, the area from the
+    block the `GEO` pointer leads to, and the explored squares from the map."""
+    from automap.area import OURS
+    t, _ = _resident(extra=square(6, 9, 2))
+    mapper = _mapper(t)
+    assert mapper.poll() is True
+    assert (mapper.state.area, mapper.state.x, mapper.state.y) == ("GEO10", 6, 9)
+    assert mapper.state.facing == 1 and mapper.state.source == "memory"
+    assert mapper.title_check is OURS
+    assert mapper.state.exploration.seen, "the party's own square is explored"
+
+
+def test_the_marker_follows_a_step_and_the_explored_set_grows():
+    """One square east, which is what one `NP8` did on the running machine."""
+    t, guest = _resident(extra=square(6, 9, 2))
+    mapper = _mapper(t)
+    mapper.poll()
+    before = len(mapper.state.exploration.seen)
+    guest.memory.update(square(7, 9, 2))
+    assert mapper.poll() is True
+    assert (mapper.state.x, mapper.state.y) == (7, 9)
+    assert len(mapper.state.exploration.seen) >= before
+
+
+def test_nothing_is_recorded_while_no_area_is_loaded():
+    """At the party menu the globals still hold a square -- the file's own --
+    and the `GEO` pointer holds no map. A mapper that believed the square
+    would draw it onto whatever map was last loaded, which is exactly what
+    `Automapper._running` refuses to do."""
+    t, _ = target({BASE + SSB.geo_pointer: bytes(4), **square(6, 9, 2)})
+    mapper = _mapper(t)
+    assert mapper.poll() is False
+    assert mapper.state.area is None
+    assert not mapper.state.exploration.seen
+
+
+def test_a_stranger_s_map_is_not_drawn_as_ours():
+    """The block is a Gold Box map and none of the ones we hold: the machine is
+    running another title, and `#21`'s refusal has to reach this backend too.
+
+    Two of the player's own maps rather than the synthetic one, because the
+    refusal is only reached for a block that `looks_like_a_map`, and a map
+    built from the format draws every wall from one side -- 0 edges walled
+    from both, where the check wants 20."""
+    from automap.area import NOT_OURS, looks_like_a_map
+    ours, theirs = list(amiga.load_maps(
+        _map_disk("secret-of-the-silver-blades")).values())[:2]
+    assert looks_like_a_map(theirs) and ours.to_bytes() != theirs.to_bytes()
+    t, _ = _resident(block=theirs.to_bytes(), extra=square(6, 9, 2))
+    mapper = _mapper(t, block=ours.to_bytes())
+    for _ in range(mapper.CONTRADICTIONS_BEFORE_REFUSING):
+        mapper._check_resident()                              # noqa: SLF001
+    assert mapper.title_check is NOT_OURS
+
+
+# -- the maps, off the player's own Amiga disk --------------------------------
+
+
+def _map_disk(key: str):
+    """The first Amiga image of this title carrying `GEO.GLB`, or a skip."""
+    from tools import gamedisks
+    want = DISK[key]
+    for root in gamedisks.candidates("amiga"):
+        if not root.is_dir():
+            continue
+        for image in sorted(root.rglob("*.adf")):
+            if want not in image.name.lower().replace("_", ""):
+                continue
+            try:
+                if amiga.load_maps(image):
+                    return image
+            except Exception:
+                continue
+    pytest.skip(f"no Amiga disk here carries {key}'s GEO.GLB")
+
+
+@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+def test_the_library_is_keyed_the_way_the_c64_names_the_same_areas(key):
+    """`GEO{id:02X}` -- the C64's own filename for the same area, so an Amiga
+    party's map is drawn on the same sheet and reads the same notes. Silver
+    Blades ships 17 and Curse 16, which is what each port's disks hold."""
+    maps = amiga.load_maps(_map_disk(key))
+    assert maps, "the library decoded to no maps at all"
+    assert all(name.startswith("GEO") and len(name) == 5 for name in maps)
+    assert len(maps) == {"secret-of-the-silver-blades": 17,
+                         "curse-of-the-azure-bonds": 16}[key]
+
+
+@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+def test_every_block_in_the_library_reads_as_a_map(key):
+    """The check `ResidentGeo.verdict` puts a live block through, run over the
+    disk copies it would be matched against. All of them, or the live reading
+    would be refused for a map the game itself is drawing."""
+    from automap.area import looks_like_a_map
+    maps = amiga.load_maps(_map_disk(key))
+    bad = [name for name, geo in maps.items() if not looks_like_a_map(geo)]
+    assert bad == [], f"{len(bad)} of {len(maps)} blocks do not read as maps"
+
+
+def test_a_disk_with_no_library_on_it_is_not_an_error():
+    """Every title's disk A. The caller reads both sides and takes whichever
+    answers, which is what `load_maps_in` does."""
+    image = _map_disk("secret-of-the-silver-blades")
+    other = [p for p in sorted(image.parent.glob("*.adf")) if p != image]
+    if not other:
+        pytest.skip("only one image of this title here")
+    assert amiga.load_maps(other[0]) == {}
+
+
+def test_the_glib_parse_refuses_a_container_it_is_not():
+    with pytest.raises(ValueError, match="GLIB"):
+        amiga.glib_blocks(b"NOPE" + bytes(60))
+
+
+# -- the tool that drove the live run -----------------------------------------
+
+
+def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
+                                                                    monkeypatch):
+    """`tools/amigatarget.py automap` end to end against a fake guest.
+
+    What it must not do is re-derive anything: the square comes from the
+    backend, the area from `ResidentGeo`, the picture from
+    `automap.render.to_svg`. This is the path the live run of 2026-09-08 took,
+    so a change that breaks the wiring fails here rather than after a
+    twenty-minute boot.
+    """
+    from automap import state as mapstate
+    from tools import amigatarget
+    image = _map_disk("secret-of-the-silver-blades")
+    t, guest = _resident(block=amiga.load_maps(image)["GEO10"].to_bytes(),
+                         extra=square(6, 9, 2))
+    # `draw` rebinds this so a run never writes into the player's own notes.
+    # Recording it with monkeypatch is what puts it back for the rest of the
+    # worker -- `#428` is the incident where a tool's rebinding leaked.
+    monkeypatch.setattr(mapstate, "_data_dir", mapstate._data_dir)  # noqa: SLF001
+    monkeypatch.setattr(amigatarget, "connect", lambda *a, **k: t)
+    rc = amigatarget.main(["--holder", "wish37", "automap",
+                           "--out", str(tmp_path), "--maps", str(image),
+                           "--polls", "2"])
+    assert rc == 0
+    log = [json.loads(line) for line
+           in (tmp_path / "automap.jsonl").read_text().splitlines()]
+    polls = [row for row in log if row["event"] == "poll"]
+    assert [(row["area"], row["x"], row["y"]) for row in polls] \
+        == [("GEO10", 6, 9), ("GEO10", 6, 9)]
+    assert polls[0]["title"] == "ours" and polls[0]["seen"] > 0
+    assert (tmp_path / "poll00.svg").read_text().startswith("<svg")
+    assert guest.calls, "nothing was read from the machine at all"
+
+
+def test_the_automap_command_refuses_a_disk_with_no_maps_on_it(tmp_path,
+                                                               monkeypatch):
+    """Rather than drawing an empty map for a party it cannot place."""
+    from tools import amigatarget
+    t, _ = _resident(extra=square(6, 9, 2))
+    monkeypatch.setattr(amigatarget, "connect", lambda *a, **k: t)
+    with pytest.raises(SystemExit, match="GEO.GLB"):
+        amigatarget.main(["--holder", "wish37", "automap", "--out",
+                          str(tmp_path), "--maps", str(tmp_path), "--polls", "1"])

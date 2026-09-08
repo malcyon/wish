@@ -74,6 +74,11 @@ Deliberately not supporting other emulators or bare hardware. Most emulators
 have no usable interface, and a real C64 would need a resident stub or a DMA
 cartridge — a lot of fragility for very few users.
 
+**There is a third now, for a different machine**: an Amiga under WinUAE, in
+`automap/amiga.py`. It is not offered by the window — see
+"[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
+does, what it cost to make the shared code take it, and what is left.
+
 *(If a third is ever wanted, the cheapest by far is **watching the save file**:
 poll its mtime and re-read on change. It needs no protocol, works on real
 hardware with an SD2IEC, and fits the same interface with `writable=False`. It
@@ -388,6 +393,96 @@ and the Quest Log keep up, because `poll_live` reads its own blocks. Drawing
 the world itself -- terrain, the world coordinate, which window the party is
 on -- is [113-world-map.md](113-world-map.md), researched and unbuilt, and
 stays `#11 (Draw the wilderness on the automapper)`'s.
+
+## A third machine: the Amiga
+
+The same six Gold Box titles shipped on the Amiga, and the automapper draws
+one of them now: `automap/amiga.py` is a `Target` over WinUAE's own debugger,
+driven from Linux through the Windows VM. `docs/143-winuae-debugger.md` is the
+transport and `#37 (Automap the Amiga version, not just the C64)` is the
+ticket.
+
+**What was measured on a running machine**, Amiga Silver Blades, 2026-09-08:
+the shipped `Automapper.poll()` named the area from the block the game itself
+had loaded, followed a party through a turn and a step, refused to move on a
+step the map says is impassable and the game refused too, and held its fix
+while a shop menu was up. `automap/target.py`, `automap/live.py`,
+`automap/state.py`, `automap/render.py` and `goldbox/geo.py` were untouched by
+any of it.
+
+### What the shared code had to learn, and it is one method
+
+`ResidentGeo` read the C64's map block at a fixed `$0400`, because the C64's
+loader leaves the `GEO` file where it read it and never moves it. The Amiga's
+loader **allocates** the buffer, so there is no fixed address: the engine's own
+map-indexing routines dereference a small-data global holding it. So
+`ResidentGeo.address_now()` asks the backend where its own block is, with
+`getattr`, the way `read_fix` and `screen_banks` already ask for `fix` and
+`banks` — and a backend that cannot say keeps the fixed address every backend
+had before. It is asked every poll rather than cached, because an area change
+is exactly when the pointer may move.
+
+### What is the C64's, in a program that mostly is not
+
+| what | where | why it is the C64's |
+|---|---|---|
+| the status line | `target.party_fix` | a 40x25 PETSCII screen at a VIC-derived address. The Amiga answers `fix` itself from the engine's globals and never reaches it |
+| the banking capability | `target.screen_banks`, `automap/vice.py` | a 68000 has one memory, so the capability is absent and `screen_banks` hands back the one reader |
+| `RESIDENT_GEO`, `SEARCH_RANGES` | `automap/area.py` | `$0400`, and a sweep of `$0400`-`$CFFF`. `ResidentGeo.search()` cannot run on an Amiga: wrong ranges, and each region is a round trip |
+| `_refused` | `automap/state.py` | requires **both** fixes to come from the status line, so it never fires on a backend whose every fix is `"memory"` |
+| `_running`'s cheap proof | `automap/state.py` | a status line proves a Gold Box game for free on the C64; on the Amiga only the resident map block can, which costs two round trips |
+| `RESIDENT_EVERY`, `PROVEN_FOR`, the 200 ms timer | `automap/state.py`, `automap/window.py` | tuned to a poll costing 14 ms of emulated time |
+| the live party tab | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses |
+| combat, the combat log, the roll reader | `combat.py`, `combatlog.py`, `rolls.py`, `screen.py` | all read the C64 text screen |
+| the map loader | `automap/maps.py` | walks a D64 directory for `GEO*` files |
+
+Everything else transferred unchanged: `Fingerprint`, `render`, `notes`,
+`Exploration`, `AutomapState`, `goldbox.geo`, and `ResidentGeo` itself.
+
+### The maps are in one container, not one file each
+
+The Amiga keeps every map of a title in `GEO.GLB`, a `GLIB` container on the
+second disk — `/DISK2/GEO.GLB` on Silver Blades and `/DISKB/GEO.GLB` on Curse,
+so `automap.amiga.load_maps` searches the image rather than tabulating a path.
+Block 0 is an index of `(id, block)` pairs and the rest are 1024 bytes each.
+They come back keyed `GEO{id:02X}`, which is the C64's own filename for the
+same area, so an Amiga party's map is drawn on the same sheet and reads the
+same notes: 17 maps for Silver Blades and 16 for Curse, all 33 plausible by
+`automap.area.looks_like_a_map`.
+
+### A poll costs seconds, not milliseconds
+
+There is no socket. A read is: press F11 through a scheduled task in the
+guest's session 1, type `S <file> <addr> <n>` and `g` into the emulator's
+console, and read the dump back as base64 — all of it inside one `ssh` round
+trip, which is the design `automap/amiga.py` is built around.
+
+| what | measured |
+|---|---|
+| one poll, position only | 10-22 s |
+| a poll that also re-reads the resident map | 31-50 s |
+| 512K of memory, searched on this side | 13-22 s |
+
+So `read_blocks` matters here for a reason that has nothing to do with VICE's:
+several ranges in one round trip is one `ssh` rather than several, not a few
+percent of a resume.
+
+### What is not built
+
+**The window cannot attach to it.** `wish/backends.py` declares a backend as a
+`probe`, a `connect` and a poll interval, so an Amiga row is the shape of the
+work — but three things in it are decisions rather than measurements: how a
+user says which WinUAE lane and which title, whether a probe costing an `ssh`
+round trip may sit on the window's retry timer, and the flag and the wording.
+
+**Pool of Radiance's Amiga build has no row in `LAYOUTS`.** It is not a
+small-data binary, so the anchor search finds the wrong hunk; what it needs is
+hunk 32's own load address (`docs/165-amiga-savegame.md`).
+
+**No area transition has been watched.** The party stayed in one area, so
+nothing here says whether the `GEO` pointer moves on an area change or the
+buffer is refilled in place. The automapper is right either way, because it
+re-reads the pointer, but the fact is unmeasured.
 
 ## Still open
 
