@@ -44,6 +44,7 @@ from goldbox.spells import capacity, load_spell_names
 from goldbox.spells import for_game as spell_table
 
 from . import changes, files, inventory
+from . import effects as trait_effects
 from .binding import COMBAT_FIELDS, bindings, field_name, value_range, widest_text
 from .enums import caster_bits, tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
@@ -603,6 +604,7 @@ class EditorBinding(QObject):
         self._toolbar_icons()
 
         self._widgets = self._find_field_widgets()
+        self._build_trait_buttons()
         self._fill_combos()
         self._size_fields()
         self._compact()
@@ -640,6 +642,79 @@ class EditorBinding(QObject):
         button = self._child(name)
         if button is not None:
             button.clicked.connect(lambda _checked=False: slot())
+
+    # -- the traits box's two buttons -------------------------------------
+
+    def _build_trait_buttons(self) -> None:
+        """Add and Remove, **built only when `WISH_EXPERIMENTAL_TRAITS` says
+        so** -- and taken off the form altogether when it does not.
+
+        Not greyed out: a greyed button invites the question of how to un-grey
+        it, and the answer would be a sentence in the interface
+        (`.claude/rules/feature-flags.md`; `wish/window.py` builds the Export
+        submenu inside the same kind of `if`). Designer keeps the container so
+        the box can be rearranged, and this is where it stops existing.
+        """
+        box = self._child("traits_buttons")
+        view = self._widgets.get("item_effects")
+        if box is None:
+            return
+        if not trait_effects.enabled() or not hasattr(view, "add"):
+            parent = box.parentWidget()
+            layout = parent.layout() if parent is not None else None
+            if layout is not None:
+                layout.removeWidget(box)
+            box.setParent(None)
+            box.deleteLater()
+            return
+        for name, text, slot in (
+                ("button_trait_add", trait_effects.BUTTON_ADD, self.add_trait),
+                ("button_trait_remove", trait_effects.BUTTON_REMOVE,
+                 self.remove_trait)):
+            button = self._child(name)
+            if button is not None:
+                button.setText(text)
+            self._connect(name, slot)
+        model = view.selectionModel()
+        if model is not None:
+            model.selectionChanged.connect(lambda *_: self._show_trait_buttons())
+        view.changed.connect(self._show_trait_buttons)
+        self._show_trait_buttons()
+
+    def _show_trait_buttons(self) -> None:
+        """Add is off when the ten slots are full -- nine, if a fill byte holds
+        the tenth -- and Remove is off until a slot with something in it is
+        picked. A button that would do nothing is a button that says nothing.
+        """
+        view = self._widgets.get("item_effects")
+        if view is None or not hasattr(view, "room"):
+            return
+        add, remove = (self._child("button_trait_add"),
+                       self._child("button_trait_remove"))
+        if add is not None:
+            add.setEnabled(self.party is not None and bool(view.room()))
+        if remove is not None:
+            remove.setEnabled(self.party is not None and view.can_remove())
+
+    def add_trait(self) -> None:
+        """Pick a code and put it in the first free slot."""
+        view = self._widgets.get("item_effects")
+        if view is None or self.party is None or not view.room():
+            return
+        from .traitpicker import TraitPicker
+        dialog = TraitPicker(self._game(), tuple(view.codes()), self.root)
+        try:
+            if dialog.exec() and dialog.chosen:
+                view.add(dialog.chosen)
+        finally:
+            dialog.deleteLater()
+
+    def remove_trait(self) -> None:
+        """Clear the selected slot and close the gap behind it."""
+        view = self._widgets.get("item_effects")
+        if view is None or self.party is None:
+            return
+        view.remove(view.selected_row())
 
     # -- binding ----------------------------------------------------------
 
@@ -812,6 +887,10 @@ class EditorBinding(QObject):
             elif isinstance(w, QComboBox):
                 w.currentIndexChanged.connect(self._edited)
             elif isinstance(w, SpellEditor):
+                w.changed.connect(self._edited)
+            elif isinstance(w, trait_effects.EffectsView):
+                # Only Add and Remove emit this, so a run with the flag off
+                # can never mark the sheet dirty from the traits box.
                 w.changed.connect(self._edited)
             elif hasattr(w, "iconChanged"):
                 w.iconChanged.connect(self._edited)
@@ -1531,6 +1610,15 @@ class EditorBinding(QObject):
                 elif isinstance(w, SpellEditor):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
+                elif isinstance(w, trait_effects.EffectsView):
+                    # **Only when it differs.** `to_bytes` hands back the
+                    # bytes it was given until Add or Remove has replaced
+                    # them, so an untouched block -- and every block in a run
+                    # with `WISH_EXPERIMENTAL_TRAITS` unset -- compares equal
+                    # and never reaches `set_raw`. That is what keeps opening
+                    # and saving a save with the flag on byte-identical.
+                    if record.get_raw(name) != w.to_bytes():
+                        record.set_raw(name, w.to_bytes())
             except Exception:
                 _log.exception("could not flush %s", name)
                 failures.append(self._field_label(name))
@@ -1640,6 +1728,7 @@ class EditorBinding(QObject):
             size = "large" if (member.record.get("size_small") or 0) & 1 else "small"
             icon_widget.set_parts(getattr(self, "icon_parts", None), size)
             icon_widget.setMaximumWidth(ICON_MAX_WIDTH)
+        self._show_trait_buttons()
         self._loading = False
 
     def _show_boxes(self, record) -> None:

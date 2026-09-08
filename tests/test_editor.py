@@ -22,6 +22,7 @@ from gamedata import disk_dir, disk_path, synthetic_save
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QWidget
 
 from editor.binding import (
@@ -2480,6 +2481,348 @@ def test_a_code_nobody_has_named_is_shown_as_a_number():
     # No code column: the sheet names the effect, and the number survives only
     # where nobody has named it.
     assert "Code" not in m.HEADERS
+
+
+# --- editing the trait block, behind WISH_EXPERIMENTAL_TRAITS ----------------
+#
+# `#13 (Edit traits and active effects, in two separate panels)` step S3. The
+# tests below are in two halves and the second is the one that matters: the
+# gate is only worth having if it can fail, and the round trip is what stops
+# the feature rewriting a player's save just by being switched on.
+
+
+@pytest.fixture
+def traits_on(monkeypatch):
+    """A run with the flag set, the way a player would set it."""
+    monkeypatch.setenv("WISH_EXPERIMENTAL_TRAITS", "1")
+
+
+def _trait_view(window):
+    return window._widgets["item_effects"]
+
+
+def test_a_full_block_has_no_room_for_another_trait():
+    """XAVIER's tenth slot is why the list is ten rows and not the used ones.
+
+    A block with all ten occupied has nowhere to put an eleventh, so Add is
+    off -- a button that would silently drop what was picked is worse than no
+    button.
+    """
+    from editor.effects import EffectsView
+
+    view = EffectsView()
+    view.set_bytes(bytes(range(1, 11)))
+    assert view.room() == 0
+    view.add(20)
+    assert view.codes() == list(range(1, 11)), "an eleventh got in"
+
+
+def test_a_fill_byte_keeps_the_tenth_slot_and_costs_a_place():
+    """255 in slot 9 is a fill byte, measured on 38 of 108 monster records and
+    slot 9 every time, with no real code ever after one. So the block holds
+    nine, the fill stays where it is, and compaction never shuffles it up.
+    """
+    from editor.effects import EffectsView
+
+    view = EffectsView()
+    view.set_bytes(bytes([1, 0, 5, 0, 0, 0, 0, 0, 0, 255]))
+    assert view.room() == 7
+    view.add(20)
+    assert view.codes() == [1, 5, 20, 0, 0, 0, 0, 0, 0, 255]
+    view.set_bytes(bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 255]))
+    assert view.room() == 0
+
+
+def test_removing_a_trait_closes_the_gap_behind_it():
+    """The game seeds from slot 0 upward and `SPELLE04` scans for the first
+    free slot, so a hole in the middle is a shape no record the game wrote
+    has. Removing the first of three leaves two, packed."""
+    from editor.effects import EffectsView
+
+    view = EffectsView()
+    view.set_bytes(bytes([107, 20, 61, 0, 0, 0, 0, 0, 0, 0]))
+    view.remove(0)
+    assert view.codes() == [20, 61, 0, 0, 0, 0, 0, 0, 0, 0]
+    view.set_bytes(bytes([107, 20, 61, 0, 0, 0, 0, 0, 0, 255]))
+    view.remove(1)
+    assert view.codes() == [107, 61, 0, 0, 0, 0, 0, 0, 0, 255]
+
+
+def test_an_untouched_block_is_handed_back_exactly_as_it_arrived():
+    """The whole reason `to_bytes` is not a normalised ten bytes.
+
+    A block that arrives short, or with a hole in it, is a block the game
+    wrote, and tidying it on the way past would be an edit the player never
+    made. Only Add and Remove replace it.
+    """
+    from editor.effects import EffectsView
+
+    view = EffectsView()
+    for raw in (b"", bytes([0, 0, 107]), bytes([107, 0, 61, 0, 0, 0, 0, 0, 0, 0])):
+        view.set_bytes(raw)
+        assert view.to_bytes() == raw
+
+
+@game_disks
+def test_a_no_op_save_writes_nothing_with_the_trait_flag_on(app, save, traits_on):
+    """**The bar this whole step has to clear.**
+
+    Switching a feature on must not, by itself, change a byte of somebody's
+    save. Opening the disk, visiting every character with the buttons built,
+    and saving writes nothing -- the same guarantee
+    `test_a_no_op_save_writes_nothing_at_all` holds with the flag unset, which
+    stays exactly as it was.
+    """
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    assert w._child("button_trait_add") is not None, "the flag did not take"
+    for row in range(6):
+        w.roster.selectRow(row)
+    assert w.save(interactive=False) == "no changes"
+    assert save.read_bytes() == before
+    assert not (save.parent / "backups").exists()
+
+
+def test_the_one_shape_on_the_disks_that_a_tidying_writer_would_move(
+        app, tmp_path, traits_on):
+    """The round trip above is a weak guard on `PORSAVE11.D64` and this is the
+    disk where it is not.
+
+    **Every one of PORSAVE11's six blocks is already packed from slot 0**, so
+    a `to_bytes` that compacted on the way past would write those six back
+    unchanged and the no-op test would stay green. Across the 150 records on
+    the player's save disks five are not: SILAS carries `45, 5` in slots 8 and
+    9 with eight zeroes in front of them, on `PORSAVEA.D64`, `PORSAVEB.D64`
+    and three of the DOS-import test disks. Opening that disk with the flag on
+    and saving must not move those two bytes down to slots 0 and 1.
+    """
+    from editor.window import EditorBinding
+    src = disk_path("PORSAVEA")
+    if src is None:
+        pytest.skip("needs PORSAVEA.D64")
+    out = tmp_path / "PORSAVEA.D64"
+    out.write_bytes(src.read_bytes())
+    before = out.read_bytes()
+    w = EditorBinding(make_root(), str(out))
+    blocks = []
+    for row in range(len(w.party)):
+        w.roster.selectRow(row)
+        blocks.append(_trait_view(w).codes())
+    assert [0, 0, 0, 0, 0, 0, 0, 0, 45, 5] in blocks, (
+        "PORSAVEA no longer holds the block this test is about")
+    assert w.save(interactive=False) == "no changes"
+    assert out.read_bytes() == before
+
+
+@game_disks
+def test_a_trait_added_in_the_editor_reaches_the_disk(app, save, traits_on):
+    """MALCYON the elf is born with 107 and nothing else. Adding 20 Resist
+    Fire puts it in slot 1 and it is still there when the file is reopened.
+
+    What this does **not** show is the game applying it -- that is M3,
+    `#414 (Prove the game applies a trait Wish wrote, so
+    WISH_EXPERIMENTAL_TRAITS can come off)`, and it is why the flag is on.
+    """
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(5)                          # MALCYON -- row 5, #160
+    view = _trait_view(w)
+    assert view.codes()[:2] == [107, 0]
+    view.add(20)
+    assert "wrote" in w.save(interactive=False)
+
+    again = EditorBinding(make_root(), str(save))
+    again.roster.selectRow(5)
+    assert _trait_view(again).codes()[:2] == [107, 20]
+
+
+@game_disks
+def test_the_preview_names_a_changed_trait_rather_than_printing_hex(
+        app, save, traits_on):
+    """`6b00...` and `6b14...` are the same line to a reader. The preview is
+    read by a person in Preview changes and by `wish --dry-run`."""
+    from editor import changes
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(5)
+    _trait_view(w).add(20)
+    w._flush()
+    line = next(ln for ln in changes.changes(w.party) if "item_effects" in ln)
+    assert "Resist Fire" in line
+    assert "elf: 90% resistance to sleep and charm" in line
+    assert "6b" not in line
+
+
+def test_the_picker_offers_the_whole_table_in_two_provenance_sections(app):
+    """Donald's D4, 2026-09-07: all of it, in two sections that say where the
+    name came from, rather than the cut at id 64 that hides the codes somebody
+    would most want to try.
+
+    255 is the one code not offered, and it is not a trait: it is a fill byte
+    in the last slot, 38 of 108 monster records and slot 9 every time.
+    """
+    from editor.traitpicker import CODE_ROLE, TraitPicker
+    from goldbox.traits import NAMES
+
+    picker = TraitPicker()
+    try:
+        seen = picker.sections[True].childCount()
+        table = picker.sections[False].childCount()
+        assert seen + table == len(NAMES) - 1 == 128
+        assert 255 not in {picker.sections[s].child(n).data(0, CODE_ROLE)
+                           for s in (True, False)
+                           for n in range(picker.sections[s].childCount())}
+        # Provenance, not a grade: PROBABLE is exactly "the guide names it and
+        # nothing on the C64 exercises it", which is the DOS table's half.
+        assert table == sum(1 for v in NAMES.values() if v[1] == "PROBABLE")
+    finally:
+        picker.deleteLater()
+
+
+def test_a_monster_attack_form_on_a_character_is_coloured_and_says_why(
+        app, traits_on):
+    """83 is a basilisk's petrifying gaze and a character has none of the
+    parts its handler reads. The editor writes it anyway -- the spellbook
+    precedent -- and says what it is not refusing.
+
+    The four cases are `docs/133-active-effects.md`'s "What a nonsense
+    combination could do" table, in the order a reader wants them: the code's
+    own trouble first, and "you already have this" only when there is nothing
+    worse to say.
+    """
+    from editor import effects
+
+    assert effects.warning(83) == effects.REASON_MONSTER
+    assert effects.warning(63) == effects.REASON_NO_HANDLER
+    assert effects.warning(92) == effects.REASON_UNNAMED
+    assert effects.warning(1, (1,)) == effects.REASON_DUPLICATE
+    # Above the cut and written by the game itself, so no warning: the elf's
+    # own 107, the half-elf's 124, 89 off a CLOAK OF DISPLACEMENT, and the two
+    # constitution bonuses race alone writes at creation.
+    for code in (107, 124, 89, 90, 97):
+        assert effects.warning(code) == "", code
+    model = effects.EffectsModel(bytes([83]))
+    assert model.warning_at(0) == effects.REASON_MONSTER
+    assert effects.REASON_MONSTER in model.data(
+        model.index(0, 1), Qt.ItemDataRole.ToolTipRole)
+    assert model.data(model.index(0, 1),
+                      Qt.ItemDataRole.ForegroundRole).color() == effects.WARN
+
+
+def test_the_sheet_says_nothing_about_a_doubtful_code_with_the_flag_unset(
+        app, monkeypatch):
+    """A character who happens to carry a monster's code would otherwise be
+    handed an unapproved sentence in a tooltip with no flag set -- and there
+    is nothing to explain when there is no Add button to explain."""
+    from editor import effects
+    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
+    model = effects.EffectsModel(bytes([83]))
+    assert model.warning_at(0) == ""
+    tip = model.data(model.index(0, 1), Qt.ItemDataRole.ToolTipRole)
+    assert tip == "petrifying gaze (CONFIRMED)"
+
+
+# --- the gate, and it can fail ----------------------------------------------
+#
+# `.claude/rules/feature-flags.md` asks for three and asks that the first two
+# be seen red with the gate forced on. Both were: with `enabled()` made to
+# return True, `test_the_traits_box_has_no_buttons_by_default` and
+# `test_a_forgotten_variable_does_not_build_the_buttons` fail on the two
+# `assert ... is None` lines, and the third passes either way, which is what a
+# gate test for the "on" direction is meant to do.
+
+
+@game_disks
+def test_the_traits_box_has_no_buttons_by_default(app, save, monkeypatch):
+    """The shipped state. Not greyed out -- absent, so nobody has to be told
+    in the interface how to un-grey them."""
+    from editor.window import EditorBinding
+    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
+    w = EditorBinding(make_root(), str(save))
+    assert w._child("traits_buttons") is None
+    assert w._child("button_trait_add") is None
+    assert w._child("button_trait_remove") is None
+    # And the table is still the read-only list it has always been.
+    from PyQt6.QtWidgets import QTableView
+    assert _trait_view(w).editTriggers() == QTableView.EditTrigger.NoEditTriggers
+
+
+@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "2", "yes please"])
+@game_disks
+def test_a_forgotten_variable_does_not_build_the_buttons(app, save, monkeypatch,
+                                                         value):
+    """A variable somebody exported once and forgot must not put an unapproved
+    button in front of them.
+
+    The tuple is `wish/debugmode.py`'s, copied rather than reinvented so the
+    flags in this project cannot disagree about what "on" means.
+    """
+    from editor import effects
+    from editor.window import EditorBinding
+    assert effects.TRUE == ("1", "true", "yes", "on")
+    monkeypatch.setenv("WISH_EXPERIMENTAL_TRAITS", value)
+    assert not effects.enabled()
+    w = EditorBinding(make_root(), str(save))
+    assert w._child("traits_buttons") is None
+    assert w._child("button_trait_add") is None
+
+
+@game_disks
+def test_the_buttons_appear_when_the_flag_asks_for_them(app, save, traits_on):
+    """The third direction: set it, and the two buttons are there with the
+    placeholder text that keeps them off a player's screen until Donald has
+    worded them."""
+    from editor import effects
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    assert w._child("button_trait_add").text() == effects.BUTTON_ADD
+    assert w._child("button_trait_remove").text() == effects.BUTTON_REMOVE
+
+
+def test_every_new_string_announces_that_nobody_has_approved_it():
+    """`.claude/rules/gui-text.md`: every word a user reads is Donald's, and
+    none of these has been ruled on. The count comes down as he rules and the
+    day it reaches zero the flag's second condition is met.
+
+    `BOX_TITLE` is deliberately unmarked and deliberately in the module: the
+    box has read `Character Traits` since 2026-08-22 with no flag in front of
+    it, so appending the marker would put those two words on every user's
+    screen tonight. It is on the list he rules on all the same.
+    """
+    from editor import effects
+
+    marked = {name for name, text in vars(effects).items()
+              if name.isupper() and isinstance(text, str)
+              and "NOT APPROVED" in text}
+    assert marked == {"BUTTON_ADD", "BUTTON_REMOVE", "PICKER_TITLE",
+                      "PICKER_FILTER", "SECTION_SEEN", "SECTION_TABLE",
+                      "REASON_MONSTER", "REASON_NO_HANDLER", "REASON_UNNAMED",
+                      "REASON_DUPLICATE"}
+    assert "NOT APPROVED" not in effects.BOX_TITLE
+    assert effects.BOX_TITLE == "Character Traits"
+
+
+@game_disks
+def test_no_unapproved_word_is_on_screen_with_the_flag_unset(app, save,
+                                                             monkeypatch):
+    """The flag's whole job. With it unset, nothing on the sheet carries the
+    marker -- not a button, not a tooltip, not the box title."""
+    from PyQt6.QtWidgets import QAbstractButton, QGroupBox, QLabel
+
+    from editor.window import EditorBinding
+    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(5)
+    for kind in (QAbstractButton, QLabel, QGroupBox):
+        for widget in w.root.findChildren(kind):
+            for text in (widget.text() if hasattr(widget, "text")
+                         else widget.title(), widget.toolTip()):
+                assert "NOT APPROVED" not in text, widget.objectName()
+    model = _trait_view(w).model_
+    for row in range(model.rowCount()):
+        tip = model.data(model.index(row, 1), Qt.ItemDataRole.ToolTipRole)
+        assert "NOT APPROVED" not in (tip or "")
 
 
 # --- the layout does not move ------------------------------------------------

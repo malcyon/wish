@@ -15,13 +15,28 @@ from __future__ import annotations
 
 from goldbox.layout import LAYOUT, Kind
 from goldbox.record import CharacterRecord
+from goldbox.traits import EMPTY, SLOTS, describe
 
 from .inventory import describe as describe_item
 
 SLOT_BYTES = 0x100
 
+#: The one raw field a person can now change on purpose, so the one raw field
+#: whose preview says what changed rather than showing ten bytes of hex. A
+#: reader of `wish --dry-run` cannot tell `6b00...` from `6b0c...`, and both
+#: halves of the line are supposed to be readable at a glance (#13).
+TRAIT_FIELD = "item_effects"
 
-def _shown(field, value) -> str:
+
+def _traits(value, game=None) -> str:
+    """A trait block by its names, in slot order, empty slots as dashes."""
+    codes = bytes(value)[:SLOTS]
+    return ", ".join(describe(c, game) if c else EMPTY for c in codes) or EMPTY
+
+
+def _shown(field, value, game=None) -> str:
+    if field.name == TRAIT_FIELD:
+        return _traits(value, game)
     if field.kind is Kind.RAW:
         return bytes(value).hex()
     return repr(value)
@@ -42,8 +57,8 @@ def record_changes(member, *, in_save: bool) -> list[str]:
             continue        # a save slot holds 256 bytes; the rest is dropped
         old, new = was.get(field.name), now.get(field.name)
         if old != new:
-            out.append(f"{field.name} {_shown(field, old)} -> "
-                       f"{_shown(field, new)}")
+            out.append(f"{field.name} {_shown(field, old, member.game)} -> "
+                       f"{_shown(field, new, member.game)}")
     return out
 
 
