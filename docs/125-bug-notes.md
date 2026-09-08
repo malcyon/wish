@@ -663,6 +663,57 @@ principle notice going wrong, since open locks is rolled at every locked
 door, and it reaches every conversion between the two ports in all three
 titles rather than only Pool of Radiance.
 
+## N23. Curse's DOS engine adds an uninitialised byte to every thief skill
+
+**What the game does.** DOS Curse works out a thief's eight percentages in one
+routine, `GAME.OVR` at `0x03B74A`, which for each column in turn adds the level
+row, the racial row, the dexterity row for the first five columns, and a
+one-byte stack local carrying the bonus for one particular readied item. **The
+local is never assigned before the loop.** Its only four assignments sit inside
+the loop body behind the test for that item, so a thief who is not carrying one
+is scored with whatever the stack happened to hold, added to all eight columns.
+Silver Blades' copy of the same routine opens by zeroing it.
+
+**Why no player sees it.** No screen in either port draws a thief skill: the
+seven words a sheet would need -- `POCKET`, `NOISE`, `SHADOW`, `SILENT`,
+`CLIMB`, `LOCKS`, `LANGUAGE` -- appear in **0 of the 560 files** on the six C64
+Curse disks, searched in PETSCII, lower case and screen codes, while `ENCAMP`
+appears in 6 files, `EXPERIENCE` in 6 and `MOVE` in 30, so the method works.
+(The one `SHADOW` hit is `TELEPORTED TO SHADOWDALE` in `FINAL`.) What it
+changes is dice: every DOS Curse thief is seven points better at all eight
+skills than the game's own tables give, at every locked door and every attempt
+to move silently, and neither he nor the player can see the number.
+
+**The evidence, and it is arithmetic rather than an argument.** Columns 6, 7
+and 8 take no dexterity term, so a record's residual there is that stack byte
+and nothing else. Across **14 DOS Curse thief records on this machine, 12 read
++7 on all eight columns and 2 read 0** -- and the 2 are this project's own
+writer's output, which is the control. The pair that proves the engine wrote
+it is `WISH-SPEC-curse-299-built-from-nothing` and
+`WISH-SPEC-curse-299-whole-engine-resave`: the same TRAVIS, one `LOAD SAVED
+GAME` and `SAVE CURRENT GAME` apart, going in at `60 67 60 52 42 20 82 25` and
+coming back at `67 74 67 59 49 27 89 32`. `WISH-SPEC-curse-234-converted-party`
+and `-engine-resave` are a second pair of the same shape. CONFIRMED.
+
+**Not the neighbouring engines, and not the C64.** Pool of Radiance's routine
+(`GAME.OVR 0x02ADB0`) has no such term at all; Silver Blades' (`0x03C911`)
+opens `mov byte ptr [bp-2], 0`, and 12 of 12 DOS Silver Blades records
+reproduce cleanly. Curse on the C64 computes the same three rows in `GEN
+$0FAD` and again in the trainer, in `ECL65` at file offset `0x12C7`, and neither has
+a fourth term: TRAVIS goes into `WISH-SPEC-curse-train-input` at thief 5 carrying the
+DOS engine's inflated row and comes out of the C64 trainer in
+`WISH-SPEC-curse-trained-party` at thief 6 holding exactly what the C64's own
+tables give. So the offset is DOS Curse's alone, and a C64 record carrying it
+got it from a DOS record and kept it -- the C64 engine rewrites these bytes
+only when the trainer runs. `tools/cursethiefskills.py` re-runs all of it.
+
+**What is not established.** Whether the byte is always 7. It is a stack
+leftover, so it is whatever the call path before it left at that address; 7 is
+what all 12 show, across records the engine wrote in separate runs on separate
+days, and nothing here says a different entry point could not leave something
+else. Reading `[bp-2]` in DOSBox-X at `0x03B877` on a save made by character
+creation, by the trainer and by a load would settle it.
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of
