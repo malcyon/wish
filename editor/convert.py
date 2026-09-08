@@ -998,8 +998,13 @@ def fresh_folder(destination: str | pathlib.Path,
 #: property of the code -- directions registered, drop panes clear, no
 #: unapproved string reachable. None asked whether a person could actually
 #: reach the dialog. Donald: *"When I pick File->Convert, it still
-#: immediately opens a file picker dialog."* Two more conditions join the
-#: five for that reason, and this flag stays on until both are met.
+#: immediately opens a file picker dialog."* Two more conditions joined the
+#: five for that reason.
+#:
+#: **All seven now stand, as of 2026-09-08. Lifting it again is Donald's
+#: call, once he has used the dialog himself** -- he reversed the first lift
+#: the same night every condition looked met, so a second green checklist is
+#: not read here as permission to repeat that.
 #:
 #: **Comes off when, all seven:** (1) no string below carries the
 #: `(NOT APPROVED)` marker -- met 2026-09-05, kept met by
@@ -1011,24 +1016,41 @@ def fresh_folder(destination: str | pathlib.Path,
 #: `test_a_curse_or_silver_blades_d64_lists_dos` and
 #: `test_a_pools_of_darkness_folder_lists_nothing`; (3) every registered
 #: direction's drop list is empty or accounts for a named, tracked line
-#: rather than a silent one -- met 2026-09-07,
-#: `#355 (A C64 party converted to DOS is shown nine developer notes, with
-#: memory addresses, overlay names and issue numbers in them)` and
-#: `#388 (A converted paladin or ranger loses his innate effect on the way to
-#: DOS, because the writer filters through Pool of Radiance's id list)` both
-#: closed; (4) the README says how the source picker works -- waived by
-#: Donald, 2026-09-07: *"I will update the README, but don't wait on that to
-#: remove WISH_EXPERIMENTAL_CONVERT and close the related tickets. It is a
-#: simple interface, and people will figure it out."*; (5) each registered
+#: rather than a silent one -- met 2026-09-07 for the eight directions then
+#: registered, `#355 (A C64 party converted to DOS is shown nine developer
+#: notes, with memory addresses, overlay names and issue numbers in them)`
+#: and `#388 (A converted paladin or ranger loses his innate effect on the
+#: way to DOS, because the writer filters through Pool of Radiance's id
+#: list)` both closed. `DIRECTIONS` grew to ten on 2026-09-07 (`18eb498`),
+#: registering the two Amiga write rows `#36 (Write an Amiga disk image, not
+#: just the character files)` asked for; the one gap they opened -- both
+#: arrived with no combat figure at all -- is closed too,
+#: `#422 (A C64 party converted to an Amiga save disk arrives with no combat
+#: figure at all, because C64ToAmiga never recognises it)` and
+#: `#424 (A DOS party converted to an Amiga save disk arrives with no combat
+#: figure either, though #422 says that route needs no fix)`, so the count
+#: this condition watches did not move; the sweep test's own `WAITING`
+#: table (`tests/test_convert.py`) is unchanged by the Amiga rows; (4) the
+#: README says how the source picker works -- waived by Donald, 2026-09-07:
+#: *"I will update the README, but don't wait on that to remove
+#: WISH_EXPERIMENTAL_CONVERT and close the related tickets. It is a simple
+#: interface, and people will figure it out."*; (5) each registered
 #: direction has been loaded and walked in its emulator from a save this
-#: dialog's own code path wrote -- met 2026-09-07, eight of eight, `#52`'s
-#: own comments; (6) `File ▸ Convert…` opens the Convert window directly,
-#: with no file picker in front of it -- met 2026-09-07 by this same change,
+#: dialog's own code path wrote -- **ten of ten**, met 2026-09-08: the eight
+#: non-Amiga-write directions by `#52`'s own 2026-09-07 comments, and the
+#: two Amiga write rows by two WinUAE runs on 2026-09-08, one from a C64
+#: source and one from a DOS source, each loading the dialog's own
+#: `POOLSAVE.ADF` with the right square, clock and party order and
+#: re-saving cleanly -- `#36`'s own 2026-09-08 06:56 comment; (6) `File ▸
+#: Convert…` opens the Convert window directly, with no file picker in
+#: front of it -- met 2026-09-07 (`1616a53`),
 #: `#412 (File ▸ Convert demands a save in a file picker before it will show
 #: you the Convert window)`; (7) `File ▸ Import ▸ DOS save folder` is
 #: removed, since two menu items doing the same job is the state this dialog
-#: exists to end -- `#52`'s own step 5. **Not met.** Removing it needs
-#: `editor/dosimport.py`, which this change does not touch.
+#: exists to end -- `#52`'s own step 5. **Met 2026-09-07 (`375bf07`):**
+#: `DosImportDialog`, the menu entry, `editor/dosimport.ui` and
+#: `editor/ui_dosimport.py` are gone;
+#: `test_the_file_menu_no_longer_carries_the_dos_import_submenu` pins it.
 ENV = "WISH_EXPERIMENTAL_CONVERT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
