@@ -34,7 +34,7 @@ time, with nothing written between presses but her experience
 
 The stored code is 6 in the last two, which the table calls a thief; neither
 part of Wish shows it, because Curse's trainer stores the wrong CPU register
-and leaves it stale (`#310`, `docs/187-the-class-code-byte.md`).
+and leaves it stale (`#310 (A trained C64 Curse character arrives in DOS with the wrong class on his sheet)`, `docs/187-the-class-code-byte.md`).
 
 **Corpus, `tools/classcombocheck.py`, 0 disagreements everywhere:**
 

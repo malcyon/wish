@@ -130,6 +130,50 @@ patch that no longer applies; an issue carrying the *shape* of the fix stays
 true. Every enhancement ends with a `Documentation:` line linking the doc it
 rests on -- that link is what joins the work list to the knowledge base.
 
+## Work you discover while working
+
+**The default is a comment on the ticket you are already on.** Most of what a
+ticket turns out to need is the ticket -- a helper the fix wants, a specimen a
+test wants, a number that wants checking. Write it in a comment, do it, carry
+on. A new issue for it adds a dependency edge nobody needed and makes the
+backlog look busier than the work is.
+
+**The test is whether it outlives its parent: if this ticket closed tomorrow,
+would the discovered thing still matter to somebody?** If not, it is a step
+inside the work.
+
+**File a separate issue when one of these is true**, and say which:
+
+* **somebody else is blocked on it**, or it blocks something beyond this ticket;
+* **it outlives the parent** -- the parent could close and this would still be
+  true and still want doing;
+* **it is a defect in its own right that a player can hit**, whether or not
+  this ticket exists (see the next section, which requires filing that);
+* **it needs a different kind of work** -- a driven session, a disassembly
+  read, a decision only Donald can make -- and will be scheduled rather than
+  done now.
+
+**Watch for filing because it is convenient rather than because it is
+warranted.** A ticket is the unit a subagent gets briefed against, so there is
+a standing pull towards splitting whenever work is about to be handed off. That
+is a fact about how this project runs agents, not a fact about the work, and it
+is how a session files more than it needed to. If the only reason for a new
+issue is that it makes a tidy brief, put it in the parent's comment and brief
+the agent against that.
+
+**Never file a new issue restating an open one and close the original.**
+Donald, 2026-09-07, saying it as a standing instruction: *"Do not simply open
+new tickets for the same issue and close the original ticket. The issue must be
+resolved in the proper way."* That is renaming rather than splitting, and it
+makes a backlog look like it is moving when nothing has. A ticket closes
+because the thing it describes is done, or because it turned out not to be a
+thing -- never because its number changed.
+
+**And keep the count honestly.** A session that files twenty-three and closes
+twenty-eight is fine; one that files twenty-three and closes ten was choosing A
+too often, however good each individual ticket looked. Say both numbers when
+reporting a session's work rather than only the closes.
+
 ## Findings, and closing
 
 **A bug you find and decide not to fix gets an issue, in the same session you
