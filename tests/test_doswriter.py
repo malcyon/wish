@@ -477,17 +477,28 @@ def test_a_c64_halfling_thief_gets_doss_own_skills_not_the_c64_row():
     assert got == (35, 30, 25, 20, 25, 15, 70, 0)
 
 
-def test_a_curse_thief_still_gets_the_copied_row_on_the_dos_side():
-    """Curse ships the same racial table on both ports, and recomputing it
-    anyway is blocked by `#437 (A Curse thief's stored skills sit seven
-    points above the rows the engine's own tables give)` -- so a converted
-    Curse thief still keeps the plain copy on the DOS side too, the same as
-    `c64_codec.write` already does on the C64 side."""
+def test_a_curse_thief_gets_the_table_row_not_the_stored_c64_one():
+    """Curse ships the same racial table on both ports, so a copy is
+    already right *if* the C64 source holds its own table's row -- but
+    `#437 (A Curse thief's stored skills sit seven points above the rows
+    the engine's own tables give)` found DOS Curse's own engine storing a
+    number no table gives, and `#440 (A Curse thief converted between DOS
+    and the C64 arrives seven points off, because DOS stores a stack
+    leftover in all eight skill columns)` is the conversion fix for it:
+    recompute at the destination rather than trust the source, on both
+    sides, so a stale C64 record carried over from before the fix does not
+    keep the defect either. `35 30 25 20 25 15 70 -5` is level plus the
+    undisplaced halfling row plus the dexterity-12 block, unclamped -- the
+    same `goldbox.levels.thief_skills` row `c64_codec.write` puts on the
+    C64 side, not `dos_thief_skills`'s clamped-at-zero one, since Curse has
+    no override table of its own (both ports agree)."""
     stored = (35, 30, 30, 30, 15, -5, 80, -5)
     rec, _, _, _ = dos.write(_c64_thief_character(
         race=5, dexterity=12, stored=stored, game="curse-of-the-azure-bonds"))
     got = tuple(dos.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
-    assert got == stored
+    assert got != stored, "the C64's own bytes must not simply be copied"
+    assert got == level_tables.thief_skills(
+        1, 5, "curse-of-the-azure-bonds", dexterity=12)
 
 
 def test_a_converted_dwarf_carries_his_constitution_bonus_to_saves():

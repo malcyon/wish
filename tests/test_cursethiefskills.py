@@ -1,4 +1,5 @@
-"""Where a DOS Curse thief's seven extra skill points come from (`#437`).
+"""Where a DOS Curse thief's seven extra skill points come from (`#437`), and
+the conversion fix that stops them crossing a save (`#440`).
 
 Everything here reads the player's own files at run time -- each title's
 `GAME.OVR` out of the DOS archives, the specimen tree's Curse saves, the C64
@@ -11,6 +12,14 @@ columns, Curse never assigns it before the loop, and the byte it therefore
 reads is 7 in every DOS Curse record on this machine.  Silver Blades' copy
 opens by zeroing the same local and Pool of Radiance's has no such term, which
 is why neither title shows the offset.
+
+The fix: `goldbox.dos.write` and `goldbox.c64_codec.write` both recompute a
+Curse thief's eight skills from `goldbox.levels`' shared table rather than
+copy whatever the source held, so neither an inflated DOS byte nor a stale
+carried-over one reaches the destination.  The tests below build a neutral
+character directly rather than reading a specimen, so they exercise the
+writers' own logic and do not depend on which specimens happen to be on this
+machine.
 """
 
 import os
@@ -21,6 +30,10 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from test_neutral import _filled  # noqa: E402
+
+from goldbox import c64_codec, dos, dos_layout  # noqa: E402
+from goldbox import levels as level_tables  # noqa: E402
 from tools import cursethiefskills as cts  # noqa: E402
 from tools import thiefskillcensus as census  # noqa: E402
 
@@ -130,3 +143,76 @@ def test_the_c64_trainer_writes_the_row_its_own_tables_give():
     race, level, dexterity, stored = travis(after)
     want = census.expected(tables, level, race, dexterity, True)
     assert stored == want, "the C64 trainer did not write its own tables' row"
+
+
+# --- the conversion fix: recompute at the destination (#440) ----------------
+
+def _expected_row(char):
+    return level_tables.thief_skills(
+        char.get("levels")["thief"], char.get("race"), char.game,
+        dexterity=char.get("dexterity"))
+
+
+def test_a_dos_curse_thief_converted_to_the_c64_gets_the_table_row():
+    """A Curse thief's stored eight bytes are not trusted going to the C64,
+    whatever they hold -- the destination's own clean table wins.
+
+    `_filled` puts an arbitrary, distinct value in every neutral field
+    (`goldbox.c64_codec.DIRECT`'s own position), so the thief-skill columns
+    start out holding numbers the table does not give either -- standing in
+    for a stored DOS byte inflated by the stack leftover `#437` found. If
+    `c64_codec.write` ever went back to copying them, this is what would
+    reach the C64 record.
+    """
+    char = _filled(game=CURSE)
+    char.port = "DOS"
+    want = _expected_row(char)
+    stored = tuple(char.get(field) for field, _ in c64_codec._THIEF_SKILL_COLUMNS)
+    assert want != stored, "the test's made-up row already matches the table"
+
+    rec, _ = c64_codec.write(char)
+    got = tuple(rec.get(c64) for _, c64 in c64_codec._THIEF_SKILL_COLUMNS)
+    assert got == want
+
+
+def test_a_c64_curse_thief_converted_to_dos_gets_the_same_clean_sum():
+    """The same recompute, the other way -- a converted DOS record holds
+    the table row a copy of the C64's own stored bytes might not.
+
+    Costs nothing when the C64 source is already clean, since the two
+    ports' tables agree (#437); this proves the DOS writer does not merely
+    rely on that agreement holding by accident, the same way the C64 writer
+    above does not trust its own source either.
+    """
+    char = _filled(game=CURSE)
+    char.port = "C64"
+    want = _expected_row(char)
+    stored = tuple(char.get(field) for field, _ in c64_codec._THIEF_SKILL_COLUMNS)
+    assert want != stored, "the test's made-up row already matches the table"
+
+    rec, _, _, _ = dos.write(char)
+    table = dos_layout.FIELDS_BY_NAME_FOR[CURSE]
+    got = tuple(rec[table[dos_name].offset]
+                for _, dos_name in c64_codec._THIEF_SKILL_COLUMNS)
+    # The raw stored byte, unsigned -- a negative column (a race's
+    # read-languages penalty can outweigh the row, #437) is the same `ADC`
+    # wraparound either port's `LevelTables.thief_skill_row` leaves behind.
+    assert got == tuple(v & 0xFF for v in want)
+
+
+def test_pool_of_radiances_gate_is_unwidened():
+    """`#440`'s fix is a second gate beside `#431`'s, not a wider one:
+    Curse's two ports agree on their tables, so it must never appear on
+    `THIEF_SKILL_RACE_DIFFERS_BY_PORT`, and Pool of Radiance -- which has no
+    stack-leftover defect -- must never appear on the new one."""
+    assert level_tables.thief_skill_race_differs_by_port(POOL)
+    assert not level_tables.thief_skill_race_differs_by_port(CURSE)
+    assert not level_tables.thief_skill_dos_storage_inflated(POOL)
+
+
+def test_silver_blades_is_on_neither_gate():
+    """Its DOS routine zeroes the stack local (`test_silver_blades_zeroes_
+    the_same_local_before_its_loop` above) and its per-port table agreement
+    has never been measured, so it is not a case for either gate yet."""
+    assert not level_tables.thief_skill_race_differs_by_port(BLADES)
+    assert not level_tables.thief_skill_dos_storage_inflated(BLADES)

@@ -719,7 +719,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                      f"and applies the bonus when the die is rolled")
 
     # -- thief skills: overwrite DIRECT's plain-row copy for a title whose
-    # C64 table is confirmed to differ from the source's -----------------
+    # C64 table is confirmed to differ from the source's, or whose DOS
+    # engine is confirmed to store a number no table produces -------------
     # `DIRECT` copies the neutral record's eight stored percentages, which
     # is exactly right when both ports agree on the table and wrong when
     # they do not: Pool of Radiance's C64 racial row (`GEN $1076`) is the
@@ -729,22 +730,40 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # either, so a converted thief keeps a copied wrong number until the
     # C64's own trainer next runs.
     #
-    # **Only where the difference is confirmed.** Curse ships the same 56
-    # racial bytes on both ports, so a copy is already right there, and
-    # recomputing it anyway is blocked by #437 (A Curse thief's stored
-    # skills sit seven points above the rows the engine's own tables give):
-    # both Curse engines write +7 over what their own tables compute, so
-    # recomputing would move a converted thief away from what the C64's own
-    # trainer stores. Silver Blades' per-port agreement is unmeasured.
+    # **Curse is a second, different reason to recompute, not a case for
+    # widening the first gate.** Its two ports agree on their tables, so
+    # `thief_skill_race_differs_by_port` stays false for it -- but DOS
+    # Curse's `GAME.OVR 0x03B74A` adds an uninitialised stack byte to every
+    # column (#437, #440), so a copy carries that defect onto the C64,
+    # where the character never earns it back. Recomputing gives the row
+    # the C64's own trainer would write, which is the only correct answer
+    # here since this engine rewrites these bytes only when the trainer
+    # runs. Silver Blades' per-port table agreement is unmeasured, and its
+    # DOS engine zeroes the same stack local, so neither gate names it.
     # `w.get`, not `use`: the thief level, race and dexterity feeding this
     # were already taken by the `DIRECT` copy loop above.
     computed_thief_skills = None
+    thief_skill_reason = None
     thief_level = w.get("levels", {}).get("thief", 0)
     if thief_level and level_tables.thief_skill_race_differs_by_port(
             char.game):
         computed_thief_skills = level_tables.thief_skills(
             thief_level, w.get("race", 0), char.game,
             dexterity=w.get("dexterity", 0))
+        thief_skill_reason = (
+            f"the C64's own thief table for race and level, because this "
+            f"title's C64 table is confirmed to differ from {port}'s and a "
+            f"copy would silently keep a number the C64's own trainer "
+            f"would never write")
+    elif thief_level and level_tables.thief_skill_dos_storage_inflated(
+            char.game):
+        computed_thief_skills = level_tables.thief_skills(
+            thief_level, w.get("race", 0), char.game,
+            dexterity=w.get("dexterity", 0))
+        thief_skill_reason = (
+            f"the thief table both ports agree on, because {port}'s own "
+            f"DOS engine adds an uninitialised stack byte to the stored "
+            f"row and a copy would carry that defect onto the C64 (#440)")
     if computed_thief_skills is not None:
         for value, (_, c64_name) in zip(computed_thief_skills,
                                         _THIEF_SKILL_COLUMNS):
@@ -752,12 +771,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                 continue
             dst = _field(c64_name)
             rec.set(c64_name, value)
-            rep.note(dst.offset, dst.size,
-                     f"{c64_name}: the C64's own thief table for race and "
-                     f"level, because this title's C64 table is confirmed "
-                     f"to differ from {port}'s and a copy would silently "
-                     f"keep a number the C64's own trainer would never "
-                     f"write")
+            rep.note(dst.offset, dst.size, f"{c64_name}: {thief_skill_reason}")
 
     # -- memorised spells, into as many slots as this title has --------------
     # Written before the second ability array because in Pool of Radiance the

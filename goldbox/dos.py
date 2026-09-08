@@ -3228,7 +3228,9 @@ def write(char: NeutralCharacter,
                 "disagree at low level (#366)",
                 value=combat_byte(derived))
 
-    # -- thief skills: recomputed only for the one port measured to disagree -
+    # -- thief skills: recomputed for the port measured to disagree, and for
+    # a title whose own DOS engine is confirmed to store a number no table
+    # produces --------------------------------------------------------------
     # `WRITE_DIRECT`'s copy is skipped above for these eight, the same
     # shape as `thac0_base` just above: a straight copy hands back whatever
     # the source port's own table wrote, which is wrong for a title whose
@@ -3242,6 +3244,21 @@ def write(char: NeutralCharacter,
     # source keeps its own bytes, the same as a native DOS one, since
     # nobody has measured the Amiga's table.
     #
+    # **Curse is a second, different reason, checked when the first finds
+    # nothing to recompute.** `dos_thief_skills` returns `None` for Curse --
+    # it has no override table, because DOS Curse's own clean table already
+    # agrees with the C64's (#437, #440) -- so a copied C64 source is
+    # already right *if* it holds the table's own row. What is not
+    # guaranteed is that it does: a C64 record converted before this fix
+    # landed, or hand-edited, could still carry the DOS engine's stack
+    # leftover, and recomputing rather than trusting the source is the only
+    # way that defect does not reach DOS. **Gated to the same
+    # `_THIEF_SKILL_RECOMPUTE_FROM_PORTS` whitelist as the branch above, for
+    # the same reason**: an Amiga source keeps its own bytes here too, since
+    # nobody has measured whether Amiga Curse carries this defect or one of
+    # its own, and a blanket recompute would silently overwrite whichever it
+    # turns out to be with a guess.
+    #
     # `w.get`, not `use`: the thief level, race and dexterity feeding this
     # were already taken by the `WRITE_DIRECT` copy loop above.
     #
@@ -3250,24 +3267,36 @@ def write(char: NeutralCharacter,
     # A caller that ever passes a shape the source's own `game` disagrees
     # with would otherwise fall back to the default title, which is Pool of
     # Radiance -- the one title with a table -- and stamp its row into a
-    # Curse or Silver Blades record, where #437 says the numbers are wrong
-    # for a different reason again.
+    # Curse or Silver Blades record.
     computed_thief_skills = None
+    thief_skill_reason = None
     thief_level = w.get("levels", {}).get("thief", 0)
     if thief_level and port in _THIEF_SKILL_RECOMPUTE_FROM_PORTS:
         computed_thief_skills = level_tables.dos_thief_skills(
             thief_level, w.get("race", 0), shape.key,
             dexterity=w.get("dexterity", 0))
+        if computed_thief_skills is not None:
+            thief_skill_reason = (
+                ", recomputed from the thief level, race and dexterity "
+                "through DOS's own table: the C64's racial row is the DOS "
+                "one a byte short and its build never applies a dexterity "
+                "adjustment DOS does (#431)")
+        elif level_tables.thief_skill_dos_storage_inflated(shape.key):
+            computed_thief_skills = level_tables.thief_skills(
+                thief_level, w.get("race", 0), shape.key,
+                dexterity=w.get("dexterity", 0))
+            thief_skill_reason = (
+                ", recomputed from the thief level, race and dexterity "
+                "through the table both ports agree on: this title's own "
+                "DOS engine adds an uninitialised stack byte to the stored "
+                "row and a copy would carry that defect back into DOS "
+                "(#440)")
     for index, (neutral_name, dos_name) in enumerate(_THIEF_SKILL_COLUMNS):
         v = use(neutral_name)
         if v is None:
             continue
         if computed_thief_skills is not None and index < len(computed_thief_skills):
-            put(v, dos_name,
-                ", recomputed from the thief level, race and dexterity "
-                "through DOS's own table: the C64's racial row is the DOS "
-                "one a byte short and its build never applies a dexterity "
-                "adjustment DOS does (#431)",
+            put(v, dos_name, thief_skill_reason,
                 value=computed_thief_skills[index])
         else:
             put(v, dos_name)

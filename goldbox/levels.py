@@ -1634,11 +1634,13 @@ RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
 #: row one byte short from the gnome's hear-noise column on, CONFIRMED by
 #: `tools/thiefskillcensus.py rows`, and the C64 build never applies a
 #: dexterity adjustment DOS does. Curse ships the same 56 racial bytes on
-#: both ports -- a copy is already right there -- and recomputing it anyway
-#: is blocked by `#437 (A Curse thief's stored skills sit seven points above
-#: the rows the engine's own tables give)`, which found both Curse engines
-#: writing +7 over what their own tables give. Silver Blades' per-port
-#: agreement has not been measured.
+#: both ports -- a copy is already right for it, and its own reason to
+#: recompute is `THIEF_SKILL_DOS_STORAGE_INFLATED` below, a different defect
+#: `#437 (A Curse thief's stored skills sit seven points above the rows the
+#: engine's own tables give)` found: both Curse engines write +7 over what
+#: their own tables give, which is not a racial-row disagreement and so does
+#: not belong on this gate. Silver Blades' per-port agreement has not been
+#: measured.
 THIEF_SKILL_RACE_DIFFERS_BY_PORT: frozenset[str] = frozenset(
     {POOL_OF_RADIANCE.key})
 
@@ -1650,6 +1652,41 @@ def thief_skill_race_differs_by_port(game=None) -> bool:
     key = game.key if isinstance(game, LevelTables) else getattr(game, "key",
                                                                  game)
     return key in THIEF_SKILL_RACE_DIFFERS_BY_PORT
+
+
+#: Titles whose DOS engine stores a thief's eight skill percentages above
+#: what any table -- its own or the C64's -- produces, so a copied value
+#: carries the defect into whichever port it lands on next
+#: (`#440 (A Curse thief converted between DOS and the C64 arrives seven
+#: points off, because DOS stores a stack leftover in all eight skill
+#: columns)`).
+#:
+#: **Curse of the Azure Bonds alone.** `#437 (A Curse thief's stored skills
+#: sit seven points above the rows the engine's own tables give)` found DOS
+#: Curse's `GAME.OVR 0x03B74A` adding an uninitialised stack local,
+#: `[bp-2]`, to all eight columns after the level, racial and dexterity
+#: rows -- exactly the three terms `thief_skill_row` above computes. Pool of
+#: Radiance's DOS routine has no such term, and that title's reason to
+#: recompute is a different one, already covered by
+#: `THIEF_SKILL_RACE_DIFFERS_BY_PORT`: its C64 racial row genuinely differs
+#: from its DOS one. Silver Blades' copy of the routine zeroes the local
+#: before the loop, so it never reads it.
+#:
+#: **Not a case for widening the other gate.** Curse's two ports agree on
+#: their tables -- `THIEF_SKILL_RACE_DIFFERS_BY_PORT` would be a lie if it
+#: named Curse -- the byte a DOS Curse record stores is simply not what
+#: either table gives, on either port.
+THIEF_SKILL_DOS_STORAGE_INFLATED: frozenset[str] = frozenset(
+    {CURSE_OF_THE_AZURE_BONDS.key})
+
+
+def thief_skill_dos_storage_inflated(game=None) -> bool:
+    """Does this title's DOS engine store an inflated thief-skill row (#440)?"""
+    if game is None:
+        return DEFAULT.key in THIEF_SKILL_DOS_STORAGE_INFLATED
+    key = game.key if isinstance(game, LevelTables) else getattr(game, "key",
+                                                                 game)
+    return key in THIEF_SKILL_DOS_STORAGE_INFLATED
 
 
 def racial_save_bonus_measured(game=None) -> bool:
