@@ -385,48 +385,69 @@ def test_the_blockers_are_empty_because_every_field_is_confirmed():
 # --- one title has been measured and five have not ---------------------------
 
 def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
-    """#16. Curse is the dangerous one: its level tables are in
-    `goldbox/levels.py`, so selecting them looks like enough and is not. Every
-    derivation around them was read at Pool of Radiance's addresses out of Pool
-    of Radiance's `GEN`, so a Curse fighter would be written Pool of Radiance's
-    THAC0, saving throws, hit die and thresholds."""
+    """#16. Silver Blades is the dangerous one now: its level tables are in
+    `goldbox/levels.py` (#187), so selecting them looks like enough and is
+    not -- its constitution hit-point bonus, thief-skill racial adjustment and
+    wisdom bonus spells are still unread or unattributed
+    (`docs/121-silver-blades.md`). Every derivation not yet its own was read
+    at Pool of Radiance's addresses out of Pool of Radiance's `GEN`, so a
+    Silver Blades fighter would be written Pool of Radiance's THAC0, saving
+    throws and hit die.
+
+    **Curse used to be this test's example and is not any more.** Its own
+    trainer is now fully measured -- `goldbox/levelup.py` reproduces it and
+    `automap/actions.py`'s `LevelUp.run` calls `plan_all` for it (`#18
+    (Measure Curse's trainer so Level Up works there)`), and the one remaining
+    gap, `automap/window.py`'s own decision of when to open the spell dialog,
+    closed on `#415 (automap/window.py picks the level-up spell dialog's
+    class the same wrong way plan would have, blocking Curse's trainer)`. A
+    Curse fighter genuinely levels now; see
+    `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured`."""
     from goldbox import games
 
-    # A Curse-shaped machine, so the refusal is the trainer's and not an
-    # accident of reading Curse's addresses on Pool of Radiance's memory. Since
-    # #29 Curse *has* a combat flag, so `Action.legality` lets this through and
-    # the gate that stops it is `level_up_blockers`, which is the right one.
+    # A Silver Blades-shaped machine, so the refusal is the trainer's and not
+    # an accident of reading its addresses on Pool of Radiance's memory. Since
+    # #29 Silver Blades *has* a combat flag, so `Action.legality` lets this
+    # through and the gate that stops it is `level_up_blockers`, which is the
+    # right one.
     save0, roster = captured()
-    at = games.CURSE_OF_THE_AZURE_BONDS.slot_area_base - 0x4B00 + 0x0E8
+    at = games.SECRET_OF_THE_SILVER_BLADES.slot_area_base - 0x4B00 + 0x0E8
     save0[at:at + 3] = (2001).to_bytes(3, "little")
     target = MemoryTarget({
-        games.CURSE_OF_THE_AZURE_BONDS.save_load_address: bytes(save0 + roster),
-        games.CURSE_OF_THE_AZURE_BONDS.mode_flag: bytes([WORLD])})
+        games.SECRET_OF_THE_SILVER_BLADES.save_load_address:
+            bytes(save0 + roster),
+        games.SECRET_OF_THE_SILVER_BLADES.mode_flag: bytes([WORLD])})
     before = dict(target.memory)
-    outcome = actions.LevelUp(games.CURSE_OF_THE_AZURE_BONDS).apply(target,
-                                                                    slot=0)
+    outcome = actions.LevelUp(games.SECRET_OF_THE_SILVER_BLADES).apply(
+        target, slot=0)
     assert not outcome.ok and outcome.writes == ()
     assert target.memory == before
     said = " ".join((outcome.message,) + outcome.notes)
-    assert "Curse of the Azure Bonds" in said
+    assert "Secret of the Silver Blades" in said
 
 
-@pytest.mark.parametrize("game", ["curse-of-the-azure-bonds",
-                                  "secret-of-the-silver-blades",
+@pytest.mark.parametrize("game", ["secret-of-the-silver-blades",
                                   "champions-of-krynn",
                                   "death-knights-of-krynn",
                                   "gateway-to-the-savage-frontier"])
-def test_every_title_but_pool_of_radiance_is_refused_by_name(game):
-    """Curse and Silver Blades have level tables of their own now (#187); the
-    other three still have none at all, so `levels.for_game` falls back to
-    Pool of Radiance's. Either way `trainer_measured` refuses every one of
-    them, which is exactly the silent wrong answer the blocker is here to
-    stop."""
+def test_every_title_but_pool_of_radiance_and_curse_is_refused_by_name(game):
+    """Curse's trainer is fully measured now (`#18 (Measure Curse's trainer
+    so Level Up works there)`, `#415 (automap/window.py picks the level-up
+    spell dialog's class the same wrong way plan would have, blocking Curse's
+    trainer)`), so it joined Pool of Radiance in `TRAINER_MEASURED` -- see
+    `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured`.
+    Silver Blades has level tables of its own too (#187) but not a measured
+    trainer; the other three have no tables at all, so `levels.for_game`
+    falls back to Pool of Radiance's. Either way `trainer_measured` refuses
+    every one of them, which is exactly the silent wrong answer the blocker
+    is here to stop."""
     from goldbox import games
 
     blockers = actions.level_up_blockers(None, games.by_key(game))
     assert blockers and games.by_key(game).title in blockers[0]
     assert actions.level_up_blockers(None, games.POOL_OF_RADIANCE) == ()
+    assert actions.level_up_blockers(
+        None, games.CURSE_OF_THE_AZURE_BONDS) == ()
 
 
 def test_levelling_writes_what_the_trainer_writes():
@@ -535,6 +556,24 @@ def test_the_rule_reads_the_threshold_after_the_level_and_not_the_one_held():
     target = multi_class(42500, **{"magic-user": 4, "thief": 5})
     record = actions.read_party(target).by_slot(0).record
     assert levelup.best_class(record) == "thief"
+
+
+def test_offers_is_empty_when_a_ready_magic_user_is_not_the_class_chosen():
+    """`#415 (automap/window.py picks the level-up spell dialog's class the
+    same wrong way plan would have, blocking Curse's trainer)`. The same
+    magic-user 4 / thief 5 as the test above: both classes are ready, but
+    `best_class` -- what `class_for` answers, and what this press actually
+    trains -- picks the thief. `offers` used to answer only "does the
+    magic-user have an unlearned spell at its own next level", which said
+    yes here even though the magic-user is not the class this press raises,
+    and gating the spell dialog on that alone would have asked LADY
+    KATHERINE to pick a magic-user spell for a thief's level."""
+    target = multi_class(42500, **{"magic-user": 4, "thief": 5})
+    record = actions.read_party(target).by_slot(0).record
+    assert levelup.best_class(record) == "thief"
+    assert levelup.learnable(record, level=5), \
+        "the magic-user has an unlearned spell at its own next level"
+    assert actions.LevelUp.offers(record) == []
 
 
 def test_a_tie_breaks_in_class_bit_order():

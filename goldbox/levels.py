@@ -94,21 +94,25 @@ or only the code does:
 | one press raises every ready class, `$14F8` | CONFIRMED | watched: TRAVIS (thief/fighter) and LEDERA (magic-user/fighter) each raised both classes on one `TRAIN CHARACTER`, and `goldbox/levelup.py`'s `plan_all` reproduces the same order |
 
 **`goldbox/levelup.py` now consumes both of these, and `TRAINER_MEASURED`
-still has one entry.** Five Curse level-ups were driven and diffed on
-2026-09-05: 75 derived fields and 5 spellbooks come back out of this module
-and `goldbox/levelup.py` with no mismatches, the racial saving-throw bonus
-above moved from PROBABLE to CONFIRMED on the strength of it, and 40 further
+gains Curse.** Five Curse level-ups were driven and diffed on 2026-09-05: 75
+derived fields and 5 spellbooks come back out of this module and
+`goldbox/levelup.py` with no mismatches, the racial saving-throw bonus above
+moved from PROBABLE to CONFIRMED on the strength of it, and 40 further
 engine-written divides settled the hit-die/constitution round-up rule.
 `divide_between_classes` asks `divide_rounds_up` for the comparison instead of
 always applying Pool of Radiance's `<=`, and the new `plan_all` raises every
 ready class in `$14F8`'s own slot order rather than one at a time -- both
 proven against `WISH-SPEC-curse-train-input` and
 `WISH-SPEC-curse-trained-party`, the same pair that measured them
-(`tests/test_cursetrainer.py`). **`TRAINER_MEASURED` does not gain Curse yet
-because `plan_all` has no caller**: `automap/actions.py`'s `LevelUp` still
-calls `plan` with no class named, whose `best_next_class` picks the *opposite*
-order from `$14F8`'s for both TRAVIS and LEDERA -- see `TRAINER_MEASURED`'s
-own comment, below, for the measurement.
+(`tests/test_cursetrainer.py`). **`plan_all` now has a caller**:
+`automap/actions.py`'s `LevelUp.run` asks `trains_all_ready_classes` and calls
+`plan_all` instead of `plan` with no class named, whose `best_next_class`
+picked the *opposite* order from `$14F8`'s for both TRAVIS and LEDERA
+(`#18`). That reached the write; the last gap was one file further over, in
+`automap/window.py`'s own decision of *when* to ask for a spell, closed on
+`#415 (automap/window.py picks the level-up spell dialog's class the same
+wrong way plan would have, blocking Curse's trainer)` -- `TRAINER_MEASURED`'s
+own comment, below, has what it was and how it was fixed.
 
 **THAC0 is the game's, not a transcription**, and reading it caught an error
 that had been in this file since it was written: **a thief is THAC0 19 at
@@ -1272,26 +1276,55 @@ DEFAULT = POOL_OF_RADIANCE
 #: `WISH-SPEC-curse-trained-party`
 #: (`test_plan_all_raises_travis_and_ledera_in_the_engines_own_order`).
 #:
-#: **Curse is still not in this set, and the reason has moved rather than
-#: closed.** The GUI's own `LevelUp` action (`automap/actions.py`) does not
-#: call `plan_all` -- it calls `plan` with no class named, which falls to
-#: `best_next_class`, a rule built for Pool of Radiance's one-class-a-press
-#: design. Asked of TRAVIS (thief 5 / fighter 4) and LEDERA (magic-user 4 /
-#: fighter 4), the two characters the engine trained on 2026-09-05,
-#: `best_next_class` answers "thief" and "magic-user" -- the *opposite* of
-#: `$14F8`'s own fighter-first walk for both. `divide_between_classes`'s own
-#: docstring says why that is not cosmetic: training the lower-threshold class
-#: first can cost the other class a level it had already earned. So flipping
-#: this set today would move the "known-wrong multi-class training in front
-#: of a player" risk from `goldbox/levelup.py`, where it is now closed, into
-#: `automap/actions.py`, which is not this ticket's file -- see #18's own
-#: comments for what `LevelUp` needs before this set can gain Curse.
+#: **Curse gained this set on `#415` (automap/window.py picks the level-up
+#: spell dialog's class the same wrong way plan would have, blocking Curse's
+#: trainer), the third and last place the wrong-first answer reached.**
+#: `automap/actions.py`'s `LevelUp.run` asks `trains_all_ready_classes` and
+#: calls `plan_all` for a title that has it, rather than `plan` with no class
+#: named -- which fell to `best_next_class`, a rule built for Pool of
+#: Radiance's one-class-a-press design. Asked of TRAVIS (thief 5 / fighter 4)
+#: and LEDERA (magic-user 4 / fighter 4), the two characters the engine
+#: trained on 2026-09-05, `best_next_class` answers "thief" and "magic-user"
+#: -- the *opposite* of `$14F8`'s own fighter-first walk for both -- and
+#: `LevelUp.run` no longer asks it: `plan_all` walks `ready_classes` itself,
+#: in the engine's own order, proven against both specimens through the
+#: action rather than through `plan_all` directly
+#: (`tests/test_cursetrainer.py::test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`).
+#:
+#: **The remaining gap was one file further over, in `automap/window.py`.**
+#: `AutomapBinding._level_up` used to decide, *before* calling `run`, whether
+#: to open the spell-choice dialog by asking `LevelUp.class_for` -- `best_class`,
+#: the same wrong-first answer above -- for a single "primary" class. If that
+#: class was not the magic-user, and the magic-user was one of the classes
+#: `plan_all` would raise this visit, no dialog opened and `run` then reached
+#: `plan`'s own magic-user step with `learn=None`, found spells on offer, and
+#: refused with "picks one new spell", which nothing had shown a menu for --
+#: watched happening on a magic-user 1 / fighter 2 character carrying only
+#: 4,001 experience, where `best_class` names the fighter (its post-level
+#: threshold, 4,001, beats the magic-user's 2,501) while `$14F8` still trains
+#: both this visit
+#: (`tests/test_cursetrainer.py::test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_would_have_named_the_fighter`).
+#: **`_level_up` now gates on `LevelUp.offers`** -- which itself now asks
+#: `ready_classes` rather than `best_class` for a `trains_all_ready_classes`
+#: title, answering "is the magic-user one of the classes this visit trains"
+#: correctly for both shapes of trainer -- instead of `class_for`'s single
+#: answer.
 #:
 #: One of the readings behind Curse's tables is PROBABLE rather than
 #: CONFIRMED -- the double hit-die roll at `$15FC`, because a roll leaves no
 #: trace in a record and the bytecode is the whole of its evidence. The module
-#: docstring's grade table says why. It is not what is holding Curse out of
-#: this set; the `automap/actions.py` gap above is.
+#: docstring's grade table says why. It did not hold Curse out of this set;
+#: the `automap/window.py` gap above did.
+#:
+#: **Left open by `#415`, and not this set's concern**: the confirmation
+#: dialog `_level_up` shows before a press that would cost an already-earned
+#: level still previews one training step (`LevelUp.preview`, still `plan`
+#: rather than `plan_all`), not the whole chain a `trains_all_ready_classes`
+#: title's trainer runs in one visit. No specimen on hand shows it actually
+#: disagreeing with the chain, and the fix needs wording for a press that
+#: raises several classes at once, which is not this module's or that
+#: ticket's to write -- see `#418 (The level-up confirmation dialog previews
+#: one step of a Curse dual-training press, not the whole chain)`.
 #:
 #: Silver Blades is the same case one step earlier: its level tables are in
 #: this module now (#187), and its trainer's own inputs -- the constitution
@@ -1306,7 +1339,8 @@ DEFAULT = POOL_OF_RADIANCE
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a
 #: character record. A writer asks this instead.
-TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
+TRAINER_MEASURED: frozenset[str] = frozenset(
+    {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key})
 
 #: Titles whose **racial saving-throw bonus** is confirmed, which is a
 #: narrower question than :data:`TRAINER_MEASURED` and the only one
@@ -1319,9 +1353,10 @@ TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
 #: 2026-09-04**, and five driven Curse level-ups on 2026-09-05 agreed with
 #: the engine on 75 of 75 derived fields including the five saving throws
 #: (`#18 (Measure Curse's trainer so Level Up works there)`,
-#: `tools/cursetrain.py`). So Curse belongs here even though it is not yet
-#: in `TRAINER_MEASURED`, whose own condition covers more than this --
-#: `TRAINER_MEASURED`'s own comment says what is still open.
+#: `tools/cursetrain.py`). Curse now belongs in `TRAINER_MEASURED` too, once
+#: `#415 (automap/window.py picks the level-up spell dialog's class the same
+#: wrong way plan would have, blocking Curse's trainer)` closed the gap that
+#: held it out -- `TRAINER_MEASURED`'s own comment has the history.
 #:
 #: Silver Blades' `$11D8` was watched on 2026-09-06 (`#344 (A converted
 #: Silver Blades dwarf, gnome or halfling keeps DOS's saving throws, because

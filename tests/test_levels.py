@@ -318,16 +318,21 @@ def test_the_spell_slot_rows_are_the_games_own():
             assert not any(raw[len(row.spells):]), f"{name} {row.level}"
 
 
-def test_only_pool_of_radiances_trainer_has_been_measured():
+def test_pool_of_radiance_and_curses_trainers_are_measured():
     """Having a table is not having read the trainer, and #16 is the
     difference. Curse's level tables are in this module, and as of #18
     `goldbox/levelup.py` consumes every one of them -- `divide_between_classes`
     and `plan_all` are proven against real trainings
-    (`tests/test_cursetrainer.py`). `TRAINER_MEASURED` still holds Curse back
-    for a reason one file over: `automap/actions.py`'s `LevelUp` action does
-    not call `plan_all` yet, and calling `plan` with no class named would pick
-    the wrong one first for a multi-classed Curse character -- see
-    `goldbox.levels.TRAINER_MEASURED`'s own comment.
+    (`tests/test_cursetrainer.py`), and `automap/actions.py`'s `LevelUp`
+    action calls `plan_all` for it too
+    (`tests/test_cursetrainer.py::test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`).
+    `automap/window.py`'s own `_level_up` was the last file to ask the
+    question the same wrong way, and closing that on `#415
+    (automap/window.py picks the level-up spell dialog's class the same
+    wrong way plan would have, blocking Curse's trainer)` is what let Curse
+    join `TRAINER_MEASURED` --
+    `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured` has
+    the history.
 
     `for_game` falls back to Pool of Radiance for a title it has no tables for,
     which is right for a spell name and wrong for writing a record -- so a
@@ -338,12 +343,13 @@ def test_only_pool_of_radiances_trainer_has_been_measured():
     assert levels.trainer_measured() is True             # None is the default
     assert levels.trainer_measured(games.POOL_OF_RADIANCE)
     assert levels.trainer_measured(levels.POOL_OF_RADIANCE)
+    assert levels.trainer_measured(games.CURSE_OF_THE_AZURE_BONDS)
     for game in games.GAMES:
-        if game is games.POOL_OF_RADIANCE:
+        if game in (games.POOL_OF_RADIANCE, games.CURSE_OF_THE_AZURE_BONDS):
             continue
         assert not levels.trainer_measured(game), game.title
-    # Curse and Silver Blades both have tables now (#187) and are both still
-    # refused: having a table is not having read the trainer.
+    # Silver Blades has tables too (#187) and is still refused: having a
+    # table is not having read the trainer.
     assert levels.for_game(games.CURSE_OF_THE_AZURE_BONDS).key == \
         "curse-of-the-azure-bonds"
     assert levels.for_game(games.SECRET_OF_THE_SILVER_BLADES).key == \

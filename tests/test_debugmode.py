@@ -1068,6 +1068,10 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
             return "fighter"
 
         @staticmethod
+        def offers(record, game=None):
+            return []             # a fighter press offers no spell
+
+        @staticmethod
         def preview(record, class_name="", spell=None, game=None):
             return None
 
@@ -1100,8 +1104,15 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
 
 def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     """#16. A button that appears and then fails is worse than one that never
-    appears: `level_up_blockers` refuses every title but Pool of Radiance, so
-    the card does not offer the press."""
+    appears: `level_up_blockers` refuses every title whose trainer is not
+    measured, so the card does not offer the press.
+
+    Curse used to be this test's refused title and is not any more -- its
+    trainer is fully measured (`#18 (Measure Curse's trainer so Level Up
+    works there)`, `#415 (automap/window.py picks the level-up spell
+    dialog's class the same wrong way plan would have, blocking Curse's
+    trainer)`), so it is asserted offered below alongside Pool of Radiance,
+    and Silver Blades takes over as the still-refused example."""
     from PyQt6.QtWidgets import QMainWindow
 
     from automap.state import Automapper
@@ -1117,14 +1128,19 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     curse = AutomapBinding(root,
         Automapper(MemoryTarget({}), {},
                    title="Curse of the Azure Bonds"))
-    assert not curse.roster.levelling
-    # Fast Travel and Level Up are refused on separate grounds -- Curse got
-    # its own area table under `#192 (Convert a Curse of the Azure Bonds DOS
-    # save into a C64 one, which the importer refuses today)` step 0b, so it
-    # is offered here even though levelling still is not.
+    assert curse.roster.levelling
+    # Fast Travel and Level Up used to be refused on separate grounds -- Curse
+    # got its own area table under `#192 (Convert a Curse of the Azure Bonds
+    # DOS save into a C64 one, which the importer refuses today)` step 0b,
+    # before its trainer was measured -- and both are offered now.
     assert curse.fasttravel_bar.has_areas
+
+    silverblades = AutomapBinding(root,
+        Automapper(MemoryTarget({}), {},
+                   title="Secret of the Silver Blades"))
+    assert not silverblades.roster.levelling
     # Cards built after the fact are told too -- they are made on demand.
-    card = curse.roster.cards[0]
+    card = silverblades.roster.cards[0]
     assert not card.levelling
 
 
@@ -1161,6 +1177,10 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         @staticmethod
         def class_for(record, game=None):
             return "thief"
+
+        @staticmethod
+        def offers(record, game=None):
+            return []              # a thief press offers no spell
 
         @classmethod
         def preview(cls, record, class_name="", spell=None, game=None):

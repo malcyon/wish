@@ -1218,12 +1218,26 @@ class AutomapBinding(QObject):
     def _level_up(self, slot: int) -> None:
         """The roster card's button. The card knows which character it is.
 
-        **The class is not asked for.** `LevelUp.class_for` picks the one whose
-        threshold after the level is highest, which is the one the trainer's
-        experience clamp reads -- so the ceiling stays as high as it can and
-        the other class usually survives to be taken on the next press. The
-        order of the questions follows from that: the class first, because only
-        then is it known whether a spell has to be chosen at all.
+        **The class is not asked for.** For most titles `LevelUp.class_for`
+        picks the one whose threshold after the level is highest, which is
+        the one the trainer's experience clamp reads -- so the ceiling stays
+        as high as it can and the other class usually survives to be taken on
+        the next press. A title with
+        `goldbox.levels.LevelTables.trains_all_ready_classes` set raises
+        every ready class in one press instead, and `class_for`'s single
+        answer does not describe that.
+
+        **Whether a spell has to be chosen is not decided from `class_name`
+        either.** `LevelUp.offers` already answers "is the magic-user one of
+        the classes this visit trains", correctly for both shapes -- asking
+        `class_name == "magic-user"` first agreed with it for a title that
+        trains one class a press, and disagreed with it for one that trains
+        several: a Curse character with two classes ready, the magic-user one
+        of them but not the one `class_for` names, would open no dialog and
+        then refuse with "picks one new spell", asking for a choice the
+        button never let the player make
+        (`#415 (automap/window.py picks the level-up spell dialog's class the
+        same wrong way plan would have, blocking Curse's trainer)`).
         """
         game = game_named(self.state.title)
         action = actions.LevelUp(game)
@@ -1242,11 +1256,9 @@ class AutomapBinding(QObject):
                               "\n".join(blockers), alarm=True)
             return
         class_name = actions.LevelUp.class_for(member.record, game) or ""
-        spell = 0
-        if class_name == "magic-user":
-            spell = self._chosen_spell(member.record, member.name, game)
-            if spell is None:
-                return                      # the player closed the dialog
+        spell = self._chosen_spell(member.record, member.name, game)
+        if spell is None:
+            return                      # the player closed the dialog
         # No confirmation in the ordinary case: the button only appears on a
         # character who can level, and a save disk is a copy. The exception is
         # the clamp taking a class below a threshold it had already passed --

@@ -783,13 +783,23 @@ class LevelUp(Action):
     with anything left to learn, and the action refuses rather than choosing.
     `offers(record)` is that list.
 
-    **Which class is not a question the player is asked.** A multi-class
-    character with two classes ready gets the one whose threshold after the
-    level is largest -- `levelup.best_next_class`, and `class_for(record)` is
-    the answer for a caller that needs it before the write. That keeps the
-    experience clamp's ceiling as high as it goes, so the other class usually
-    survives; pressing the button again then takes it. An explicit
-    `class_name` still overrides.
+    **Which class is not a question the player is asked, and how many depends
+    on the title.** Pool of Radiance raises one class a press, the one whose
+    threshold after the level is largest -- `levelup.best_next_class`, and
+    `class_for(record)` is the answer for a caller that needs it before the
+    write. That keeps the experience clamp's ceiling as high as it goes, so
+    the other class usually survives; pressing the button again then takes it.
+    An explicit `class_name` still overrides.
+
+    **A title with `goldbox.levels.LevelTables.trains_all_ready_classes`
+    raises every ready class in one press instead**, `GEN $14F8`'s own walk,
+    and `class_name` is not consulted for one: `run` calls `levelup.plan_all`
+    rather than `levelup.plan`, chaining every step the way the engine does.
+    `best_next_class` answers the *wrong* class first for a Curse character
+    with two ready at once -- built for Pool of Radiance's one-a-press design
+    -- which is why it is not asked here; see
+    `test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`
+    (`tests/test_cursetrainer.py`).
 
     **Which title, though, is a question, and it is asked.** `game` is the
     `goldbox.games.Game` the session is, and every table and every derivation is
@@ -829,7 +839,33 @@ class LevelUp(Action):
 
     @staticmethod
     def offers(record, game=None) -> list[int]:
-        """The spell ids a magic-user would be offered at its next level."""
+        """The spell ids a magic-user would be offered at its next level, or
+        an empty list when the magic-user is not one of the classes this
+        training visit will actually raise.
+
+        **Which classes a visit raises differs by title.** A title with
+        `goldbox.levels.LevelTables.trains_all_ready_classes` set raises every
+        ready class in one press (`GEN $14F8`), so "ready" is the same
+        question as "training this visit" -- a Curse fighter/thief press such
+        as TRAVIS' offers nothing, because the magic-user is not one of the
+        ready classes at all. Any other title raises only the one class
+        `class_for` would name -- `levelup.best_class` -- so there the
+        question is whether *that* class is the magic-user, not merely
+        whether the magic-user happens to be ready alongside it: a magic-user
+        4 / thief 5 with 42,500 experience is ready in both classes but
+        `best_class` trains the thief first, and a magic-user with unlearned
+        spells at its own next level would otherwise make this list non-empty
+        for a press that never touches it.
+        """
+        tables = levels.for_game(game)
+        if tables.trains_all_ready_classes:
+            training_magic_user = (
+                "magic-user" in levelup.ready_classes(record, game))
+        else:
+            training_magic_user = (
+                levelup.best_class(record, game) == "magic-user")
+        if not training_magic_user:
+            return []
         return levelup.learnable(
             record, game,
             level=levelup.class_level(record, "magic-user") + 1)
@@ -881,49 +917,91 @@ class LevelUp(Action):
                            f"cannot derive, so it writes nothing", (), blockers)
 
         try:
-            plan = levelup.plan(record, class_name, game=self.game,
-                                learn=spell)
+            if levels.for_game(self.game).trains_all_ready_classes:
+                # `GEN $14F8` raises every ready class on one press, in its
+                # own slot order, and `plan_all` is that walk chained --
+                # `class_name` is not a question this title's trainer asks
+                # (`levelup.plan_all`'s own docstring), so it is not passed
+                # through. Before this, `run` always called `plan` with no
+                # class named, which falls back to `best_next_class` -- built
+                # for one class a press and answering the *wrong* one first
+                # for a Curse character with two ready at once
+                # (`test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`,
+                # `tests/test_cursetrainer.py`).
+                steps = levelup.plan_all(record, game=self.game, learn=spell)
+            else:
+                steps = [levelup.plan(record, class_name, game=self.game,
+                                      learn=spell)]
         except levelup.CannotLevel as why:
             return Outcome(False, f"{member.name} cannot level: {why}")
 
+        # `after` is every step applied in order, so a field two steps touch
+        # -- `level`, `thac0_base`, every save -- is written at its *final*
+        # value rather than once per intermediate one.
+        after = record
+        for step in steps:
+            after = levelup.apply_to(after, step)
+        field_names: set[str] = set()
+        for step in steps:
+            field_names.update(step.fields)
         writes = []
-        after = levelup.apply_to(record, plan)
-        for name in sorted(plan.fields):
+        for name in sorted(field_names):
             f = field_by_name(name)
             writes.append((member.field_address(name),
                            after.slice(f.offset, f.size)))
-        if plan.spellbook is not None:
+        # The last step's spellbook is the cumulative one: each step reads
+        # `spells_known` off the *current*, already-chained record, so a
+        # later step's known set already carries an earlier step's grant.
+        spellbook = next((step.spellbook for step in reversed(steps)
+                          if step.spellbook is not None), None)
+        if spellbook is not None:
             f = field_by_name("spells_known")
-            writes.append((member.field_address("spells_known"), plan.spellbook))
+            writes.append((member.field_address("spells_known"), spellbook))
 
         # The roster's cached THAC0 and current hit points. Both live past the
         # 256 bytes a live slot holds, so the roster block is the only copy a
         # save or a running game has -- record `0x119` exists in an export and
-        # nowhere else.
-        if plan.thac0_delta:
+        # nowhere else. THAC0's delta is summed because each step's own delta
+        # is against the *previous* step's `thac0_base`, so the sum is the
+        # same as one delta taken from first to last.
+        thac0_delta = sum(step.thac0_delta for step in steps)
+        if thac0_delta:
             writes.append((member.roster_base + ROSTER_THAC0,
                            bytes([(member.roster[ROSTER_THAC0]
-                                   + plan.thac0_delta) & 0xFF])))
+                                   + thac0_delta) & 0xFF])))
         # Healed to the *new* maximum, and after it rose: the trainer does the
-        # same, and healing first would heal to the old number.
-        healed = min(plan.hp_max, 0xFF)
+        # same, and healing first would heal to the old number. The last
+        # step's, because it is the one applied last.
+        healed = min(steps[-1].hp_max, 0xFF)
         writes.append((member.roster_base + ROSTER_HP_CURRENT, bytes([healed])))
 
         _write_all(target, writes)
-        notes = list(plan.notes)
-        notes.append(f"hit die: rolled {plan.hit_points_rolled} on a d"
-                     f"{levels.hit_die(plan.class_name, self.game)}")
-        if plan.learned_spell is not None:
-            notes.append(f"learned spell {plan.learned_spell}")
+        notes = []
+        for step in steps:
+            notes.extend(step.notes)
+            notes.append(f"hit die: rolled {step.hit_points_rolled} on a d"
+                         f"{levels.hit_die(step.class_name, self.game)}")
+            if step.learned_spell is not None:
+                notes.append(f"learned spell {step.learned_spell}")
         notes.append(f"healed to {healed} hit points, as the trainer does")
         notes.append("the trainer also charges 1000 gold and converts the rest "
                      "of the coin to platinum; that is what a school costs, "
                      "not what a level costs, so no money moved")
-        # The class is named because the player no longer picks it: the only
-        # place the choice is visible is here.
-        return Outcome(True,
-                       f"{member.name} is now a level {plan.to_level} {plan.class_name}!",
-                       tuple(writes), tuple(notes))
+        # The class (or classes) are named because the player no longer picks
+        # them: this line is the only place the choice is visible.
+        bits = [f"a level {step.to_level} {step.class_name}" for step in steps]
+        summary = bits[0] if len(bits) == 1 else (
+            ", ".join(bits[:-1]) + " and " + bits[-1])
+        message = f"{member.name} is now {summary}!"
+        if len(bits) > 1:
+            # UNAPPROVED WORDING: naming more than one class in one sentence
+            # is new. Pool of Radiance's trainer never raises two classes in
+            # a press, so nobody has seen this shape of the message; Curse's
+            # own trainer does (`GEN $14F8`), and a message naming only the
+            # last class raised would under-report what changed on the
+            # character's own sheet.
+            message += " (NOT APPROVED)"
+        return Outcome(True, message, tuple(writes), tuple(notes))
 
 
 # --- quickfight --------------------------------------------------------------

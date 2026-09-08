@@ -799,34 +799,186 @@ def test_plan_all_raises_travis_and_ledera_in_the_engines_own_order(
     assert trained.get("hp_max") > before.get("hp_max")
 
 
-def test_a_curse_level_up_is_still_refused_and_names_the_title():
+def _c64_disk_and_game(disk_name: str):
+    """`(game, sg0)` off one of the `#18` C64 specimens, parsed once."""
+    from goldbox.d64 import D64
+
+    disk = D64.open(str(_c64_specimen(disk_name)))
+    game, sg0, _sg1 = load_save(disk)
+    return game, sg0
+
+
+@pytest.mark.parametrize("character,learn,expected_bits", [
+    ("TRAVIS", None, ["a level 5 fighter", "a level 6 thief"]),
+    ("LEDERA", 9, ["a level 5 fighter", "a level 5 magic-user"]),
+])
+def test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all(
+        character, learn, expected_bits, trainer_measured_for_this_test):
+    """The same pair, through `automap.actions.LevelUp` -- the GUI's own
+    entry point -- rather than through `plan_all` directly, and written
+    through a `Target.write` the way a real button press would be.
+
+    Before this ticket's wiring, `LevelUp.run` always called `levelup.plan`
+    with no class named, whose fallback is `best_next_class` -- which answers
+    the wrong class first for both these characters
+    (`test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`)
+    and would have thrown away a level either had already earned. Reverting
+    `automap/actions.py`'s `run` to that state and rerunning this fails
+    both parameter sets, on the message rather than on a crash: TRAVIS comes
+    back "is now a level 6 thief!" alone, with no fighter raise at all, and
+    LEDERA "is now a level 5 magic-user!" alone.
+    """
+    from automap import actions
+    from automap.target import MemoryTarget
+
+    game, sg0 = _c64_disk_and_game("curse-train-input")
+    slot_index = None
+    for slot in sg0.slots:
+        if slot.record is not None \
+                and str(slot.record.name).strip().upper() == character:
+            slot_index = slot.index
+            break
+    if slot_index is None:
+        pytest.skip(f"{character} is not on WISH-SPEC-curse-train-input")
+
+    target = MemoryTarget({
+        game.save_load_address: sg0.to_bytes(),
+        game.mode_flag: bytes([1])})          # 1: not COMBAT
+
+    outcome = actions.LevelUp(game).apply(target, slot=slot_index, spell=learn)
+    assert outcome.ok, outcome.message
+    for bit in expected_bits:
+        assert bit in outcome.message
+    # Both these presses raise two classes, which is new wording -- see the
+    # marker's own comment in `automap/actions.py`.
+    assert outcome.message.endswith("(NOT APPROVED)")
+
+    trained = actions.read_party(target, game).by_slot(slot_index).record
+    real_after = _c64_slot("curse-trained-party", character)
+    mismatches = {name: (trained.get(name), real_after.get(name))
+                 for name in _ORDER_INDEPENDENT_FIELDS
+                 if trained.get(name) != real_after.get(name)}
+    assert not mismatches
+
+
+@pytest.fixture
+def app():
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_would_have_named_the_fighter(
+        app, trainer_measured_for_this_test):
+    """`#415 (automap/window.py picks the level-up spell dialog's class the
+    same wrong way plan would have, blocking Curse's trainer)`, driven through
+    `automap.window.AutomapBinding._level_up`, not through `plan_all` or
+    `LevelUp.offers` directly -- that is the layer this ticket is about, since
+    the one below it is already right.
+
+    LEDERA's slot, edited to magic-user 1 / fighter 2 with 4,001 experience
+    (`_fighter_and_magic_user_ready_but_fighter_named`): both classes are
+    ready, `$14F8` trains both this visit, and `class_for` -- `best_class` --
+    names the fighter. Before this ticket, `_level_up` opened the spell dialog
+    only when `class_for` named the magic-user, so it would open nothing here
+    and the write would refuse with "picks one new spell", never having shown
+    a menu to pick from. Reverting `automap/actions.py`'s `offers` and
+    `automap/window.py`'s `_level_up` to their state before this ticket and
+    rerunning this fails on exactly that message.
+    """
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap import actions
+    from automap.target import MemoryTarget
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+
+    game, sg0 = _c64_disk_and_game("curse-train-input")
+    slot_index = None
+    for slot in sg0.slots:
+        if slot.record is not None \
+                and str(slot.record.name).strip().upper() == "LEDERA":
+            slot_index = slot.index
+            break
+    if slot_index is None:
+        pytest.skip("LEDERA is not on WISH-SPEC-curse-train-input")
+
+    record = _fighter_and_magic_user_ready_but_fighter_named(
+        "curse-train-input", "LEDERA")
+    sg0.write_record(slot_index, record)
+    target = MemoryTarget({
+        game.save_load_address: sg0.to_bytes(),
+        game.mode_flag: bytes([1])})          # 1: not COMBAT
+
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = AutomapBinding.__new__(AutomapBinding)
+    window.state = type("S", (), {"title": game.title})()
+    window.mapper = type("M", (), {"target": target})()
+    seen = {}
+
+    class Messages:
+        def say(self, text, detail="", alarm=False):
+            seen["said"] = text
+
+    window.messages = Messages()
+    window.ask = lambda question: True
+    window._refresh_roster = lambda: seen.update(refreshed=True)
+    picked = {}
+
+    def fake_chosen_spell(record, name, game=None):
+        # Stands in for the real dialog -- the fix under test is *whether*
+        # this is asked, not what `QInputDialog` does with the answer.
+        offers = actions.LevelUp.offers(record, game)
+        picked["offers"] = offers
+        return offers[0] if offers else 0
+
+    window._chosen_spell = fake_chosen_spell
+
+    AutomapBinding._level_up(window, slot_index)
+    assert picked["offers"], \
+        "the magic-user is training this visit and should be asked"
+    assert "picks one new spell" not in seen.get("said", "")
+    assert "magic-user" in seen.get("said", "") and \
+        "fighter" in seen.get("said", "")
+
+
+def test_curse_is_now_in_trainer_measured():
     """Every table above is in `goldbox/levels.py` and `goldbox/levelup.py`
     now consumes all of it -- `divide_between_classes` asks
     `divide_rounds_up` and `plan_all` raises every ready class in the
     engine's own order, both proven above against
     `WISH-SPEC-curse-train-input`/`WISH-SPEC-curse-trained-party`.
 
-    **Curse is still refused, and the reason has moved rather than closed.**
-    `automap/actions.py`'s `LevelUp` action -- the GUI's own entry point --
-    does not call `plan_all`; it calls `plan` with no class named, and
-    `plan`'s fallback for that is `best_next_class`, built for Pool of
-    Radiance's one-class-a-press design. See
-    `test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`
-    below for what that would do to TRAVIS and LEDERA specifically.
-    `goldbox.levels.TRAINER_MEASURED`'s own comment has the rest.
+    **`automap/actions.py`'s `LevelUp` action was fixed first.** It calls
+    `plan_all` for a title with `trains_all_ready_classes` rather than `plan`
+    with no class named, which fell back to `best_next_class` and picked the
+    wrong class first for both TRAVIS and LEDERA
+    (`test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`).
+    `test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`
+    above drives that fix through the action, not through `plan_all` directly.
+
+    **The last gap was one file further over, in `automap/window.py`.**
+    `AutomapBinding._level_up` used to decide whether to open the spell-choice
+    dialog by asking `class_for` for a single "primary" class *before* calling
+    `run` -- and `class_for` is `best_class`, the same function the test above
+    shows answering the wrong class for TRAVIS and LEDERA. When the class it
+    named was not the magic-user, and the magic-user was one of the classes
+    `plan_all` would raise on this visit, the button wrote nothing and refused
+    with "picks one new spell", having never opened a menu to pick one from
+    (`test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_would_have_named_the_fighter`).
+    `_level_up` now gates the dialog on `actions.LevelUp.offers`, which itself
+    now asks `ready_classes` rather than `best_class` for a title with
+    `trains_all_ready_classes` set
+    (`#415 (automap/window.py picks the level-up spell dialog's class the same
+    wrong way plan would have, blocking Curse's trainer)`).
     """
-    assert CURSE.key not in levels.TRAINER_MEASURED
-    assert not levels.trainer_measured(CURSE)
-    for slot in _party():
-        with pytest.raises(levelup.CannotLevel) as caught:
-            levelup.plan(slot.record, game=CURSE)
-        assert "Curse of the Azure Bonds" in str(caught.value)
-        break
+    assert CURSE.key in levels.TRAINER_MEASURED
+    assert levels.trainer_measured(CURSE)
 
 
 def test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class():
-    """Why `TRAINER_MEASURED` cannot gain Curse until `automap/actions.py`
-    calls `plan_all` instead of `plan`.
+    """`best_next_class` itself is still wrong for this case -- it is simply
+    no longer *reached* for it.
 
     `$14F8` walks class slots 7 down to 0, so it raises fighter (slot 3)
     before thief (slot 2) and before magic-user (slot 0) -- watched for both
@@ -836,12 +988,17 @@ def test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class():
     walk -- a rule built for Pool of Radiance, where only one class is ever
     ready to weigh against another in the same visit.
 
-    This is not cosmetic: `divide_between_classes`'s own docstring and
-    `_experience`'s note that training the lower-threshold class first can
-    cost the other class a level it had already earned -- so a GUI `LevelUp`
-    press using `best_next_class` on a Curse dual-class character could
-    silently train a worse pair of levels than the one press the real
-    trainer would have given.
+    That used to be why `TRAINER_MEASURED` could not gain Curse: the real
+    entry point, `automap.actions.LevelUp.run`, called `plan` with no class
+    named on every title, so this wrong answer would have reached a Curse
+    dual-class player. `LevelUp.run` now asks `LevelTables.
+    trains_all_ready_classes` first and calls `plan_all` for a title that has
+    it, which does not consult `best_next_class` at all -- see
+    `test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all`
+    below. So this function's answer is unreached for Curse rather than
+    fixed, and stays wrong on its own terms: it would still mislead a caller
+    that asked it directly, and a title added to `trains_all_ready_classes`
+    later inherits the same escape, not a fix to the rule itself.
     """
     travis = _c64_slot("curse-train-input", "TRAVIS")
     ledera = _c64_slot("curse-train-input", "LEDERA")
@@ -849,6 +1006,69 @@ def test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class():
     assert levelup.best_class(travis, CURSE) == "thief"
     assert levelup.ready_classes(ledera, CURSE) == ["magic-user", "fighter"]
     assert levelup.best_class(ledera, CURSE) == "magic-user"
+
+
+def test_offers_is_empty_when_the_ready_classes_have_no_magic_user():
+    """`automap.actions.LevelUp.offers`. TRAVIS is thief/fighter, and a press
+    that raises both this visit (`$14F8`) has no spell menu to build -- the
+    magic-user is not one of the classes being trained."""
+    from automap import actions
+
+    travis = _c64_slot("curse-train-input", "TRAVIS")
+    assert "magic-user" not in levelup.ready_classes(travis, CURSE)
+    assert actions.LevelUp.offers(travis, CURSE) == []
+
+
+def test_offers_lists_spells_when_the_magic_user_is_one_of_the_ready_classes():
+    """LEDERA is magic-user/fighter, both ready together, and `#18`'s own
+    comment of 2026-09-05 08:32 records the trainer offering id 9 for her
+    magic-user 5. `offers` should say so without being told the magic-user is
+    the class about to be trained -- `LevelUp.run` does not name one either."""
+    from automap import actions
+
+    ledera = _c64_slot("curse-train-input", "LEDERA")
+    assert "magic-user" in levelup.ready_classes(ledera, CURSE)
+    offered = actions.LevelUp.offers(ledera, CURSE)
+    assert 9 in offered
+
+
+def _fighter_and_magic_user_ready_but_fighter_named(disk_name: str,
+                                                     character: str):
+    """One real character's slot, with class levels and experience edited so
+    the magic-user and the fighter are both ready but `best_class` -- what
+    `class_for` would have named -- picks the fighter, not the magic-user.
+
+    Magic-user 1 / fighter 2 with 4,001 experience: fighter needs 2,001 to
+    reach 2 and magic-user needs 2,501 to reach 2, both met, and the fighter's
+    own post-level threshold (`clamp_threshold(fighter, 3)`, 4,001) beats the
+    magic-user's (`clamp_threshold(magic-user, 2)`, 2,501) -- the same rule
+    `best_next_class`'s own docstring describes for Pool of Radiance, applied
+    here to show it disagreeing with `$14F8`'s own walk. Everything else about
+    the record -- items, race, the rest of the sheet -- is left as the disk
+    wrote it.
+    """
+    record = _c64_slot(disk_name, character)
+    record.set("class_bits", 1 | 8)               # magic-user, fighter
+    record.set("level_magic_user", 1)
+    record.set("level_fighter", 2)
+    record.set("level", 2)
+    record.set("experience", 4001)
+    return record
+
+
+def test_offers_asks_ready_classes_rather_than_best_class_for_curse():
+    """`#415 (automap/window.py picks the level-up spell dialog's class the
+    same wrong way plan would have, blocking Curse's trainer)`. `best_class`
+    -- `class_for`'s answer -- names the fighter here, but Curse trains every
+    ready class in one press (`$14F8`), and the magic-user is one of them, so
+    `offers` still has to answer for it."""
+    from automap import actions
+
+    record = _fighter_and_magic_user_ready_but_fighter_named(
+        "curse-train-input", "LEDERA")
+    assert levelup.ready_classes(record, CURSE) == ["magic-user", "fighter"]
+    assert levelup.best_class(record, CURSE) == "fighter"
+    assert actions.LevelUp.offers(record, CURSE) != []
 
 
 # --- the turning level -------------------------------------------------------
