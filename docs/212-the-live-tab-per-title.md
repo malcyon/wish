@@ -1,6 +1,6 @@
 # The live automapper tab, measured on all three titles
 
-`#3 (Replace the three class icons we drew with Font Awesome ones)`4 (Validate the live automapper tab per title)` asked for the automapper
+`#34 (Validate the live automapper tab per title)` asked for the automapper
 tab to be validated title by title, in the order its own body sets out: draw
 the map and walk it, cross an area boundary and read the area byte either
 side, the roster cards, the condition and quickfight badges, and each of the
@@ -103,7 +103,7 @@ a spell running, so a badge check over what is there reports "no badge drawn"
 -- which is also what a broken `badges()` reports. So one effect row is
 written into the four arrays the way the game writes one -- id at `+$000`,
 owner at `+$040`, duration at `+$080`, magnitude at `+$280`, all four measured
-in every title under `#3 (Replace the three class icons we drew with Font Awesome ones)`1` -- and the card is read back through
+in every title under `#31 (Cold-read Curse and Silver Blades for the fields the editor shows)` -- and the card is read back through
 `live.read_snapshot`. Effect 39 is hasted, and it is the one glyph in
 `live.CONDITION_BADGES` covering exactly one id, so a badge drawn from it can
 only have come from that row.
@@ -191,9 +191,9 @@ it had the answer within three seconds and nothing else did.
 where I is not a direction. That is a driver error and not a wall."*
 `tools/ssbwarp.py`'s `SSBSession` never sets `Session.game`, so `indoors()`
 reads Pool of Radiance's `$49E6` -- a byte of `LIBRARY` code in this title
-that happens to read zero. It is `#3 (Replace the three class icons we drew with Font Awesome ones)`60`'s defect surviving in the one driver
-`#3 (Replace the three class icons we drew with Font Awesome ones)`60` did not touch, and Curse, whose subclass does declare its title, walked
-in the same batch as the control. Filed as `#42 ("Castable per level" reads all zeros in the character editor)`6 (The session driver will not
+that happens to read zero. It is `#360 (The session driver will not walk a Curse or Silver Blades party in a dungeon, because it reads Pool of Radiance's indoors flag)`'s defect surviving in the one driver
+`#360 (The session driver will not walk a Curse or Silver Blades party in a dungeon, because it reads Pool of Radiance's indoors flag)` did not touch, and Curse, whose subclass does declare its title, walked
+in the same batch as the control. Filed as `#426 (The session driver will not
 walk a Silver Blades party, because SSBSession never says which title it is)`.
 
 **A walk starts fights, and every action is refused in one.** The first Pool
@@ -253,5 +253,5 @@ specimen tree, so the run does not depend on anything under `work/`:
 | title | save disk | why that one |
 |---|---|---|
 | Pool of Radiance | `WISH-SPEC-por-amiga-newphlan-c64-resave.D64` | a town, so no wandering monsters, and seventeen items with sixteen readied |
-| Curse | `WISH-SPEC-curse-party-with-items.D64` | the only Curse save anybody has with an item area in it (`#3 (Replace the three class icons we drew with Font Awesome ones)`2`), added to the tree by this work |
+| Curse | `WISH-SPEC-curse-party-with-items.D64` | the only Curse save anybody has with an item area in it (`#32 (One Curse session, to get a party with items)`), added to the tree by this work |
 | Silver Blades | `WISH-SPEC-ssb-d-engine-resave-walked.D64` | an engine-written save of a converted party, standing in `GEO10` |

@@ -2,7 +2,7 @@
 
 Two runs of bytes `goldbox/dos_layout.py` called gaps, named from the six
 shipped DOS engines rather than from a saved game.
-`#25 (One neutral character record, with a codec per format)`4 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
+`#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
 gap_13c, and a pointer at the end of the Silver Blades item)` asked for both;
 the Amiga port gave each a shape and the DOS code settles them.
 `tools/dosxpaward.py` and `tools/dosscrollbundle.py` are the instruments, and
@@ -10,7 +10,7 @@ the Amiga port gave each a shape and the DOS code settles them.
 found.
 
 Neither needed the Curse shopping trip the issue named as its dependency:
-`#11 (Draw the wilderness on the automapper)`3 (Play DOS Curse far enough to save a party with items)` closed long ago,
+`#113 (Play DOS Curse far enough to save a party with items)` closed long ago,
 and a finding taken from the engine's own instructions cannot be poisoned by
 an edited save.
 
@@ -155,7 +155,7 @@ So a file holding a bundle has more 67-byte records than `item_count` says,
 and `goldbox.dos.read_character`, which takes the first `item_count` of them,
 would read the bundle's spell pages as items and lose that many real items off
 the end of the pack. That is
-`#43 (Reorganise the character editor onto tabs)`2 (A joined scroll in a DOS Silver Blades save shifts everything after it
+`#432 (A joined scroll in a DOS Silver Blades save shifts everything after it
 out of the character's pack)`; `tools/dosscrollbundle.py`'s `walk()` is the
 engine's loop and `slice_naively()` is the other one.
 
@@ -165,7 +165,7 @@ specimen tree and the archives: **0 scroll bundles**, 0 files whose record
 count disagrees with `item_count`, and 18 with an `item_count` of zero, which
 is an export beside a stale item file and is what `goldbox.dos` documents. The
 defect is reachable in the game and unexercised by the corpus, which is why
-`#43 (Reorganise the character editor onto tabs)`2` carries a recipe rather than a specimen.
+`#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)` carries a recipe rather than a specimen.
 
 ## What a following agent needs
 
@@ -179,7 +179,7 @@ defect is reachable in the game and unexercised by the corpus, which is why
 * **They convert as themselves, not as a drop.** Both ports hold both fields,
   so the conversion copies them; every record either side has zero in them,
   and a player is told nothing because there is nothing to tell.
-* **The Silver Blades item chain is `#43 (Reorganise the character editor onto tabs)`2`'s**, and its hard part is not the
+* **The Silver Blades item chain is `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)`'s**, and its hard part is not the
   reading — `walk()` is done — but the destination: the C64's sixteen 16-byte
   slots have three spell bytes per item and no chain, so a bundle of four
   scrolls is a thing that does not fit, and

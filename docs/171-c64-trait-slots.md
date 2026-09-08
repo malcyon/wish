@@ -1,6 +1,6 @@
 # What a C64 trait slot is, and what the engine does with an id in one
 
-`#25 (One neutral character record, with a codec per format)`2 (Does a C64 trait slot apply an item-granted effect id, or only the
+`#252 (Does a C64 trait slot apply an item-granted effect id, or only the
 ones its own READY routine wrote?)` asked whether an effect id written into
 one of the ten slots at record `0x0AD` by something other than the game --
 a converter, an editor -- does anything. Read out of Pool of Radiance's
@@ -262,7 +262,7 @@ has a flattened copy in `ITEMFILE17`).
 Everything above was measured on bytes `tools/traitdrive.py` and
 `tools/traitask.py` poked into a `.d64`. That proves the engine reads a slot
 and says nothing about **Wish's own write path**, which is what
-`WISH_EXPERIMENTAL_TRAITS` guards -- so `#41 (The window's minimum width is 1546px on Windows and 1071px on Linux)`7 (Prove the game applies a trait
+`WISH_EXPERIMENTAL_TRAITS` guards -- so `#417 (Prove the game applies a trait
 Wish wrote, so WISH_EXPERIMENTAL_TRAITS can come off)` took the same
 measurement again with the byte written by the editor: the real `WishWindow`,
 the real `button_trait_add`, the real `TraitPicker`, the real `File > Save`.
@@ -290,20 +290,20 @@ difference anywhere is the match: 1 in the edited run, 0 in the control, whose
 **Slot 0 rather than slot 9**, because `EffectsView.add` fills the first free
 slot while `SPELLE04 $ADD4` scans from the ninth down. `LIBRARY $402D` reads
 all ten with `LDX #$09` and counts down, so the position changes nothing --
-which this run is the measurement of, since `#25 (One neutral character record, with a codec per format)`2 (Does a C64 trait
+which this run is the measurement of, since `#252 (Does a C64 trait
 slot apply an item-granted effect id, or only the ones its own READY routine
 wrote?)`'s ids all sat in slot 9.
 
 ## What this means for a conversion
 
-For `#23 (A conversion window for DOS saves, under File ▸ Import)`2 (An item-granted effect is dropped on the way through the neutral
+For `#232 (An item-granted effect is dropped on the way through the neutral
 record, with no report)`, whose C64 writer drops `granted_effects` with a
 reason that is now wrong on both clauses:
 
 1. **Write the id into a free trait slot.** That is what READY writes, all of
    it, and the engine applies it wherever a list names it. Scan 9 down to 0
    for a zero the way `$ADD4` does; a full block means the array, which is
-   `$ADEF`'s own answer to `#23 (A conversion window for DOS saves, under File ▸ Import)`6 (A character converted to the C64 with more
+   `$ADEF`'s own answer to `#236 (A character converted to the C64 with more
    than ten innate effects loses the extra ones with no report)`.
 2. **Give the converted item the power bytes the C64 grants and revokes
    by.** DOS keys the grant on item byte `0x3D` with bit 7 of `0x3E`; the C64
@@ -342,10 +342,9 @@ reason that is now wrong on both clauses:
   of the three in the array, so what a player sees is UNKNOWN.
 * **`CAMP $12EA`**, the "if he has it, dispatch it" entry, is named by no
   file. Its neighbour `$12F8` is the live one.
-* **The character sheet does not list a trait**, so `#41 (The window's minimum width is 1546px on Windows and 1071px on Linux)`7 (Prove the game
-  applies a trait Wish wrote, so WISH_EXPERIMENTAL_TRAITS can come off)`'s
-  "boot, `VIEW`,
-  confirm the game lists it" cannot be done in Pool of Radiance: ROLAND's
+* **The character sheet does not list a trait**, so the "boot, `VIEW`, confirm
+  the game lists it" of `#417 (Prove the game applies a trait Wish wrote, so
+  WISH_EXPERIMENTAL_TRAITS can come off)` cannot be done in Pool of Radiance: ROLAND's
   sheet with 20 in his first slot is the same twenty-two rows as any other
   character's -- name, race, alignment, class, six abilities, money, level,
   experience, hit points, armour class, the two items in hand and `THACO`.
