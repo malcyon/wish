@@ -439,3 +439,73 @@ def test_specimen_files_can_select_by_record_size(fake_tree):
 
     nine = gamedata.specimen_files(["gnomf1"], (".SPC", ".CHA"), size=9)
     assert sorted(nine) == ["gnomf1/GNOMF1.SPC"]
+
+
+# --- the tree's own unloadable specimens, #298 --------------------------
+
+
+def _plant_c64(tree, name, source, title="Curse of the Azure Bonds"):
+    """Put a C64 specimen in the tree by hand, hashes and all.
+
+    `add` refuses an unclosed disk, which is the point of it -- so a test
+    about specimens already in the tree cannot use `add` to make one. This is
+    what the five real ones look like: they were added before the check
+    existed.
+    """
+    pdir = tree / (specimens.TITLE_SLUGS[title] + "-c64")
+    pdir.mkdir(parents=True, exist_ok=True)
+    dest = pdir / f"WISH-SPEC-{name}.D64"
+    dest.write_bytes(pathlib.Path(source).read_bytes())
+    prov = pdir / f"WISH-SPEC-{name}.provenance.toml"
+    specimens.write_provenance(prov, {
+        "name": name, "platform": "c64", "title": title,
+        "issue": "#298 (test)", "made_by": "a driven SAVE CURRENT GAME",
+        "what": "stands in for a specimen added before the check existed",
+        "created": "2026-09-05", "added": "2026-09-05",
+        "edited_afterwards": False,
+    }, {dest.name: specimens.sha256_file(dest)})
+    return dest
+
+
+def test_the_tree_reports_a_specimen_the_drive_left_open(tree, tmp_path):
+    """#298: five specimens in the real tree carry an entry the drive never
+    closed, and nothing said so until somebody tried to boot one. `add`'s
+    check guards the door; this is the census of what is already inside."""
+    _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    rows = specimens.unloadable_specimens(tree)
+    assert [r["name"] for r in rows] == ["curse-left-open"]
+    assert rows[0]["entries"] == [{"file": "SAVEAZURE", "type": 0x02,
+                                   "blocks": 0}]
+
+
+def test_a_specimen_the_drive_closed_is_not_reported(tree, tmp_path):
+    """The control, and the reason this cannot be a check that always fires:
+    a sound disk in the same tree is not named."""
+    disk = D64.blank(b"CURSE SAVE")
+    disk.write_file(b"SAVEAZURE", bytes(range(256)) * 29)
+    good = tmp_path / "GOOD.D64"
+    disk.save(good)
+    _plant_c64(tree, "curse-closed", good)
+    _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    assert [r["name"] for r in specimens.unloadable_specimens(tree)] == \
+        ["curse-left-open"]
+
+
+def test_an_unloadable_specimen_is_reported_without_failing_the_check(
+        tree, tmp_path, monkeypatch, capsys):
+    """It is a decision, not a defect.
+
+    The disk still hashes to what its provenance recorded and the payload is
+    intact, so `check` says so and exits 0. Turning the tree red would push a
+    decision that is Donald's -- repair, replace, re-drive or leave -- into
+    looking like something to be tidied away.
+    """
+    _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    monkeypatch.setenv("WISH_SPECIMENS", str(tree))
+    assert specimens.check_specimens(tree) == []
+    assert specimens.main(["check"]) == 0
+    out = capsys.readouterr().out
+    assert "all match their manifest" in out
+    assert "curse-left-open" in out
+    assert "SAVEAZURE type $02" in out
+    assert "#298 (A save disk copied out" in out

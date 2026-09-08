@@ -430,6 +430,40 @@ def check_specimens(root: pathlib.Path | None = None) -> list[str]:
     return problems
 
 
+def unloadable_specimens(root: pathlib.Path | None = None) -> list[dict]:
+    """Every C64 specimen in the tree the game itself would refuse to load.
+
+    The same test `add` applies at the door -- a directory entry whose top
+    type-byte bit the drive never set -- run over what is already here, since
+    `add`'s check guards a future add and says nothing about the tree it was
+    added to.  Five specimens predate that check and every one of them is
+    still in the tree; see `#298 (A save disk copied out of an emulator slot
+    before the drive closes the file cannot be loaded by the game)`.
+
+    **This is a report and not a problem**, which is why `check` prints it and
+    does not fail on it: the payload is intact, every reader in this project
+    gets it out by following the sector chain, and whether to repair a
+    specimen, add a repaired copy beside it or leave it is Donald's decision
+    rather than a defect to be tidied away.
+
+    One dict per affected specimen: `name`, `path`, and `entries`, each with
+    the file name, the type byte and the block count the drive recorded.
+    """
+    out = []
+    for entry in list_specimens(root or tree_root()):
+        if entry.get("_no_provenance") or entry.get("platform") != "c64":
+            continue
+        for path in entry.get("_files", []):
+            unclosed = _unclosed_c64_entries(path)
+            if unclosed:
+                out.append({
+                    "name": entry.get("name", "?"),
+                    "path": path,
+                    "entries": [{"file": e.display_name, "type": e.type_byte,
+                                 "blocks": e.block_count} for e in unclosed]})
+    return out
+
+
 def _format_row(entry: dict) -> str:
     if entry.get("_no_provenance"):
         return f"{entry['name']:<20} NO PROVENANCE -- not a specimen"
@@ -469,13 +503,30 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"no specimen tree at {root}")
         return 0
     problems = check_specimens(root)
-    if not problems:
+    if problems:
+        for p in problems:
+            print(p)
+    else:
         n = len(list_specimens(root))
         print(f"{n} specimen(s), all match their manifest")
-        return 0
-    for p in problems:
-        print(p)
-    return 1
+    # After the verdict, and never part of it.  A specimen the drive left open
+    # still hashes to what its provenance recorded, so this is a separate
+    # question from whether the tree has moved, and the answer to it is a
+    # decision rather than a repair -- see `unloadable_specimens`.
+    open_files = unloadable_specimens(root)
+    if open_files:
+        print(f"\n{len(open_files)} specimen(s) the game itself would refuse "
+              f"to load -- a directory entry the drive never closed, "
+              f"#298 (A save disk copied out of an emulator slot before the "
+              f"drive closes the file cannot be loaded by the game). The "
+              f"payload is intact and every reader here follows the sector "
+              f"chain, so only a boot is affected:")
+        for row in open_files:
+            entries = ", ".join(
+                f"{e['file']} type ${e['type']:02X}, {e['blocks']} block(s)"
+                for e in row["entries"])
+            print(f"  {row['name']}: {entries}")
+    return 1 if problems else 0
 
 
 def ensure_tree(root: pathlib.Path | None = None) -> pathlib.Path:
