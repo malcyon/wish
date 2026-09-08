@@ -82,10 +82,22 @@ def test_importing_the_tool_leaves_xdg_data_home_alone():
     assert os.environ.get("XDG_DATA_HOME") == before
 
 
-def test_a_runs_explored_squares_do_not_land_in_the_players_notes():
-    """A validation run walks a map; those squares are not the player's."""
+def test_a_runs_explored_squares_do_not_land_in_the_players_notes(monkeypatch):
+    """A validation run walks a map; those squares are not the player's.
+
+    **The redirect is applied here rather than at import**, and undone when
+    this test ends. It used to run at `tools/livecheck.py`'s module level, and
+    this file imports that module at *its* module level -- so under
+    `pytest -n auto`, where every worker collects every file, every worker got
+    the redirection before any test ran, and eight note tests in
+    `tests/test_automap.py` then shared one directory and read each other's
+    notes. `#428 (Ten automapper note tests fail under parallel load but pass
+    alone, so a green suite depends on how busy the machine is)`.
+    """
+    from automap import state as mapstate
     from automap.state import AutomapState
 
+    monkeypatch.setattr(mapstate, "_data_dir", lambda: livecheck.RUN_DATA)
     state = AutomapState(area="GEO01", title="Curse of the Azure Bonds")
     where = state.notes_path()
     assert livecheck.RUN_DATA in where.parents, where

@@ -84,7 +84,28 @@ from tools import session as por  # noqa: E402
 #: under test is replaced -- `save_notes`, `load_notes` and `migrate_flat_
 #: notes` are the shipped ones and still run.
 RUN_DATA = ROOT / "work" / "issue34" / "data"
-mapstate._data_dir = lambda: RUN_DATA           # noqa: SLF001
+
+
+def redirect_notes(root=RUN_DATA) -> None:
+    """Point the notes at `root` instead of the player's own data directory.
+
+    **Called from `main`, never at import.** It used to run at module level,
+    and `tests/test_livecheck.py` imports this module at *its* module level --
+    so under `pytest -n auto`, where every worker collects every file, the
+    rebinding landed in every worker before a single test ran. From then on
+    every note test in `tests/test_automap.py` read and wrote one shared
+    directory rather than its own `tmp_path`, and eight of them failed by
+    seeing each other's notes. `automap.paths.data_dir()` was never called,
+    which is why instrumenting it found nothing: the redirection is one layer
+    above it.
+
+    `#428 (Ten automapper note tests fail under parallel load but pass alone,
+    so a green suite depends on how busy the machine is)` has the whole
+    account. The rule it leaves behind: **a tool may not rebind a shipped
+    function at import time**, because a test that imports the tool imports
+    the rebinding with it.
+    """
+    mapstate._data_dir = lambda: root           # noqa: SLF001
 
 PASS, FAIL, UNREACHED = "pass", "fail", "unreached"
 
@@ -1210,7 +1231,11 @@ def main(argv=None) -> int:
                     help="hand the session over on the command port at the "
                          "end instead of tearing it down")
     ap.add_argument("--out", default="")
-    return run(ap.parse_args(argv))
+    args = ap.parse_args(argv)
+    # After `parse_args`, so `--help` and a mistyped argument reach neither
+    # this nor the emulator, and never at import -- see `redirect_notes`.
+    redirect_notes()
+    return run(args)
 
 
 if __name__ == "__main__":
