@@ -1,4 +1,4 @@
-# Drawing the wilderness — the order of work for #11
+# Drawing the wilderness — the order of work for `#11 (Draw the wilderness on the automapper)`
 
 The situation: the automapper draws every dungeon and every city block, and
 the moment the party takes the boat out of Phlan the map tab goes to a bare
@@ -46,7 +46,7 @@ work that was already finished, so §0 comes first.
 | Most attribute cells have bit 3 set, which on a C64 means a **multicolour** cell whose own colour is the nibble & 7: `$F` draws yellow, `$A` red, `$E` blue, `$D` green; `$5` and `$7` are hi-res green and yellow. Three of a multicolour cell's four colours come from `$D021`-`$D023`, shared by the whole screen | PROBABLE -- hardware rule plus the screenshots, where the plains are light green ground with yellow speckle and the forest a hi-res dark green | measurement A reproduces the screenshots or it does not |
 | So `docs/137`'s six "colour buckets" are real but misnamed: "light grey" is the yellow plains speckle on a light-green background, "light blue" is the sea, "green" is forest. What "light red" (`$A`) is -- coast, hills or mountains -- is not known | PROBABLE for the three, UNKNOWN for the fourth | measurement A |
 | The high nibble of an attribute byte takes fourteen distinct values. Colour RAM is four bits wide | UNKNOWN what it is | measurement B compares the live `$D800` against the table |
-| `SQRPACI00` (640 bytes, identical on POOL6/7/8) is 385 zero bytes, the identity tile remap `01`-`7F`, and then the `$0600` parameter block: `+2` = `$8C00` (`P_MAP`), `+4` = `$8B00`, `+7` = 20 (`P_STRIDE`, not the row stride), `+$12` = 17, `+$13` = 35 | CONFIRMED by matching the tail against `automap/combat.py`'s own offsets | corrects the "structured tail" in the 2026-09-04 comment on `#11` |
+| `SQRPACI00` (640 bytes, identical on POOL6/7/8) is 385 zero bytes, the identity tile remap `01`-`7F`, and then the `$0600` parameter block: `+2` = `$8C00` (`P_MAP`), `+4` = `$8B00`, `+7` = 20 (`P_STRIDE`, not the row stride), `+$12` = 17, `+$13` = 35 | CONFIRMED by matching the tail against `automap/combat.py`'s own offsets | corrects the "structured tail" in the 2026-09-04 comment on `#11 (Draw the wilderness on the automapper)` |
 | Travel is eight-way, the compass 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW; the heading is at `$033D`, outside the save image | CONFIRMED that it is eight-way and unsaved | `docs/113`, `docs/90` (W2 and W3), `tools/windowsquare.py`, `tools/c64outdoor.py` |
 | Which value of `$033D` is which direction | UNKNOWN | measurement B |
 | The game's travel view is a window of squares around the party whose top-left is `CAMERA` `$037E`; the combat view is 7 across | PROBABLE for combat, UNKNOWN for travel -- the screenshots look narrower than seven tiles | measurement B reads `$037E` and the screen |
@@ -54,7 +54,7 @@ work that was already finished, so §0 comes first.
 | The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets went with `work/` (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
 | `$4A9E` is 0 on the grid and 255 in a random cave, which is `GEO19`/`1A`/`1B` and draws with the existing code | CONFIRMED | `docs/113` |
 | Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/games.py` `travel_grid`, `docs/121-silver-blades.md` |
-| Two candidate looks, both Donald's, 2026-09-04: the game's own tiles read off the player's disk at run time, or game-icons.net icons (`mountain-cave`, `forest`, `grass`, Delapouite). An older ruling (`docs/137` §3) said not to reuse the game's graphics; the later comment reopened it | a decision, not a fact | the 2026-09-04 14:48 comment on `#11` |
+| Two candidate looks, both Donald's, 2026-09-04: the game's own tiles read off the player's disk at run time, or game-icons.net icons (`mountain-cave`, `forest`, `grass`, Delapouite). An older ruling (`docs/137` §3) said not to reuse the game's graphics; the later comment reopened it | a decision, not a fact | the 2026-09-04 14:48 comment on `#11 (Draw the wilderness on the automapper)` |
 
 ## 2. What has to be measured first
 
@@ -279,7 +279,7 @@ canvas is.
 For whoever next edits them; this document does not.
 
 * `docs/113` "What is unknown" 2: `$49FB` prints `OUTDOORS` -- settled in
-  `docs/90` and `#205`. 4: `$4BC0` reads `00` outdoors -- settled the same
+  `docs/90` and `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)`. 4: `$4BC0` reads `00` outdoors -- settled the same
   way. Step 4's save-side half is done in `goldbox/world_state.py`. Step 5,
   "take W1 and the two live captures", was done and the captures then lost
   with `work/p3/`; `work/p190/` is what replaces them.
@@ -290,7 +290,7 @@ For whoever next edits them; this document does not.
   and is wrong about what the colours are (§1 above); §5's first row is met
   by `work/issue178/` and its "not needed" row -- the `SECSET0n` glyph -- is
   now measurement A. §4's canvas and third page are piece 5.
-* The 2026-09-04 comment on `#11` calls `SQRPACI00`'s tail "a ~20-byte
+* The 2026-09-04 comment on `#11 (Draw the wilderness on the automapper)` calls `SQRPACI00`'s tail "a ~20-byte
   structured tail"; it is the `$0600` parameter block, and the "DOS names
   transfer" refutation stands.
 
