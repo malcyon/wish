@@ -177,6 +177,19 @@ class FakeGame(Session):
 
     # -- the parts of Session that would talk to hardware -------------------
 
+    def press_kernal(self, code: int) -> None:
+        """The bar's own cancel key, as the key interpreter answers it.
+
+        `S.BAR_CANCEL` is read wherever the highlight sits (`#444`), so from
+        a sheet it returns to whoever opened it -- which is the world panel,
+        with the highlight back on `VIEW`.  What it does in the item list was
+        never measured, and a driven run no longer goes in there, so this
+        stand-in leaves that alone rather than guessing.
+        """
+        if code == S.BAR_CANCEL and self.where == "sheet":
+            self.where = "world"
+            self.bar_at = [w for _, w in self.words()].index("VIEW")
+
     def handle_prompt(self, s=None) -> bool:
         return False
 
@@ -222,12 +235,14 @@ def test_the_highlight_is_walked_the_short_way_and_never_round_the_wrap():
     assert game.kbd.sent == ["Up"] * 4
 
 
-def test_a_sheet_is_left_by_exit_and_never_by_returning_on_items():
+def test_a_sheet_is_left_by_the_cancel_key_and_never_by_returning_on_items():
     """The sheet's highlight starts on `ITEMS`, and `ITEMS` is a one-way door.
 
     A driver that pressed Return where the highlight already was would open
     the item list and never come back, so the check is that the run ends at
-    the world bar with the item list never entered.
+    the world bar with the item list never entered.  The route out is the
+    bar's own cancel key rather than a walk to `EXIT` (`#444`), and this
+    passes either way: what it pins is where the run ends up.
     """
     game = FakeGame()
     game.character_sheet(2)
