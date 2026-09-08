@@ -304,14 +304,25 @@ Two contradictions in a row are needed before anything comes off, and only a
 positive match on one of our own maps lifts it. "Cannot tell" never lifts it
 and never causes it.
 
-**What makes 1024 bytes a map** is three measured clauses in
-`automap/area.py`: barrier reciprocity ≥ 0.93, at least 20 shared edges walled
-from both sides, and at least half of those agreeing about which wall it is.
-Measured against every 1024-byte page of every non-`GEO` file on the Pool of
-Radiance and Curse disks — 19130 blocks at 64-byte steps — it admits **none**,
-and it admits 32 of the 38 real maps. The six it turns away read as `UNKNOWN`,
-which refuses nothing. `tests/test_wronggame.py` re-measures both directions
-off the player's own disks.
+**What makes 1024 bytes a map** is four measured clauses in
+`automap/area.py`: barrier reciprocity ≥ 0.90, at least 20 shared edges walled
+from both sides, the two sides of a shared edge agreeing about the wall art
+≥ 0.57 over all 480 of them, and each distinct pair of wall-art numbers reused
+across ≥ 4.0 of the both-walled edges. Measured on 2026-09-08 against 65383
+blocks at 64-byte steps — every 1024-byte window of every non-`GEO` file on the
+Pool of Radiance, Curse and Silver Blades C64 disks and the Curse and Silver
+Blades Amiga disks — it admits **none**, and it admits **95 of the 95 real
+maps**. `tools/geoplausible.py` re-takes both corpora and
+`tests/test_wronggame.py` pins both directions off the player's own disks.
+
+It used to be three clauses, the third asking that half the walled edges agree
+about **which** wall-art number they are, and that is not something the format
+promises — a wall may be a different picture from each face. It threw away 31
+of the 95 maps, `GEO20` at 0.212 among them, and the two Silver Blades maps
+below 0.93 reciprocity went with them. Those maps read as `UNKNOWN`, which
+refuses nothing, so no player could reach it;
+`#436 (The map plausibility check throws out five of Pool of Radiance's own maps)`
+has the corpus and the margins.
 
 **And a map may drift from its disk copy by up to `NEAR_ENOUGH` = 128 bytes**
 and still be that map, because the running game is allowed to write into the
