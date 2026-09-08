@@ -102,6 +102,7 @@ from dataclasses import dataclass, replace
 
 from . import rolls
 from .screen import SCREEN_COLS, SCREEN_ROWS, band, is_bitmap, screen_address
+from .target import screen_banks
 
 # Which overlay is running. The same gate `combat.py` uses.
 MODE = 0x6E11
@@ -546,14 +547,19 @@ class CombatLog:
         if self._address is None:
             self._address = self._locate(target)
             return []
-        blocks = ((0xD011, 1), (0xD018, 1), (0xDD00, 1), (MODE, 1),
+        # The three registers are the chips and the message band is the RAM
+        # the VIC fetches, and on this machine those are two different
+        # memories at the same addresses (`#421`). A backend that cannot tell
+        # them apart ignores the names and reads as it always did.
+        blocks = ((0xD011, 1, "io"), (0xD018, 1, "io"), (0xDD00, 1, "io"),
+                  (MODE, 1),
                   (WINDOW, WINDOW_LEN), (CURSOR, CURSOR_LEN),
                   # Row 10 to the bottom of the screen, always: the window's
                   # own height is in the same burst and so is not known yet,
                   # and 200 spare bytes cost nothing when the price is the
                   # round trip.
                   (self._address + MESSAGE_TOP * SCREEN_COLS,
-                   (SCREEN_ROWS - MESSAGE_TOP) * SCREEN_COLS),
+                   (SCREEN_ROWS - MESSAGE_TOP) * SCREEN_COLS, "ram"),
                   # The dice, on the same burst. `docs/147-combat-rolls.md`:
                   # the cost of a read is the round trip and not the bytes, and
                   # the battle roster comes whole because the block wanted is
@@ -578,13 +584,23 @@ class CombatLog:
         return self.observe(band(codes, left, right)[:self._height], top, roll)
 
     def _locate(self, target) -> int | None:
-        """Where the screen is, as its own burst. Once, on the first poll."""
+        """Where the screen is, as its own burst.
+
+        Asked on the first poll, and again on every poll until it answers:
+        None leaves `_address` None, which is what brings `poll` back here.
+        After that `poll` re-derives the address from its own burst every
+        frame and adopts it when it has moved, so a first answer taken while
+        the game had the chips banked out costs frames rather than the fight.
+        """
         read = getattr(target, "read", None)
         if read is None:
             return None
-        if is_bitmap(read):
+        banks = screen_banks(target)
+        if banks is None:
+            return None                 # the screen cannot be located at all
+        if is_bitmap(banks):
             return None
-        return screen_address(read)
+        return screen_address(banks)
 
     # -- rounds ------------------------------------------------------------
 
@@ -603,8 +619,14 @@ class CombatLog:
 
 
 def _burst(target, blocks) -> list[bytes]:
-    """One burst where the backend can do that; see `live.read_blocks`."""
+    """One burst where the backend can do that; see `live.read_blocks`.
+
+    A block is `(addr, length)` or `(addr, length, "io"|"ram")`. A backend
+    with no `read_blocks` has one `read` and so has one memory to read it
+    from: the name is dropped here rather than pushed onto every target that
+    cannot honour it.
+    """
     take = getattr(target, "read_blocks", None)
     if take is not None:
         return list(take(blocks))
-    return [target.read(addr, length) for addr, length in blocks]
+    return [target.read(block[0], block[1]) for block in blocks]

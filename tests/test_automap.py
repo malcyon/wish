@@ -3421,7 +3421,15 @@ class HangUpMonitor:
     def resume(self):
         self.resumes += 1
 
-    def read(self, addr, length):
+    def command(self, cmd, body=b""):
+        # A monitor that has stopped answering has stopped answering
+        # `CMD_BANKS_AVAILABLE` too, which is the first thing `fix()` asks
+        # for now that it has to say which memory a register read means
+        # (`#421`). Without this the fake answers a command a dead emulator
+        # could not, and the give-up under test never happens.
+        raise self.failure
+
+    def read(self, addr, length, bank=0):
         raise self.failure
 
     def write(self, addr, data):

@@ -310,21 +310,146 @@ from .screen import (  # noqa: E402,F401
     COLOUR_RAM,
     SCREEN_COLS,
     SCREEN_ROWS,
+    Banks,
     Screen,
     codes_to_text,
 )
 
+#: `CMD_BANKS_AVAILABLE`'s answer, per monitor. The ids are a property of the
+#: VICE build rather than of the running machine, so this is asked once and
+#: kept: on the build here it is `default 0, cpu 0, ram 1, rom 2, io 3,
+#: cart 4`, and it is read rather than written down because another build may
+#: number them differently.
+_BANKS: dict[object, dict[str, int]] = {}
+
+#: `$01` bits 2-0 that leave the I/O chips visible to the processor. The other
+#: five values put RAM or the character ROM at `$D000`, which is what makes a
+#: default-bank register read a lie.
+IO_IN = (5, 6, 7)
+
+
+class ScreenUnreadable(MonitorError):
+    """The screen could not be *located*, as against found and blank.
+
+    A `MonitorError` so that a caller which already degrades on a failed read
+    degrades the same way here, and the distinction `#336` asked for survives:
+    "the game is showing nothing" is not "I do not know where the screen is",
+    which forty spaces never let anybody tell apart.
+
+    **Only the Monitor-shaped wrappers below raise it.** `ViceTarget` answers
+    None instead, because its `fix()` reads a `MonitorError` as the emulator
+    having gone away and would hang up on a connection that is perfectly well.
+    """
+
+
+def bank_ids(mon: Monitor) -> dict[str, int]:
+    """`{name: id}` for every bank this VICE offers, from the machine itself.
+
+    An empty dict when the command is unsupported, which is a state the
+    callers handle rather than one that raises here.
+
+    Kept per `(host, port)` rather than per `Monitor`, because a session drops
+    and remakes the connection and the answer is a property of the VICE build
+    at the other end. A monitor that cannot say where it is -- a stand-in in a
+    test -- gets an entry of its own instead, so two of them in one process
+    cannot inherit each other's answer.
+    """
+    key = (getattr(mon, "host", None), getattr(mon, "port", None))
+    if key == (None, None):
+        key = id(mon)
+    if key in _BANKS:
+        return _BANKS[key]
+    found: dict[str, int] = {}
+    try:
+        resp = mon.command(CMD_BANKS_AVAILABLE)
+        count = int.from_bytes(resp[:2], "little")
+        off = 2
+        for _ in range(count):
+            size = resp[off]
+            bank = int.from_bytes(resp[off + 1 : off + 3], "little")
+            name_len = resp[off + 3]
+            name = resp[off + 4 : off + 4 + name_len].decode("ascii", "replace")
+            found[name] = bank
+            off += size + 1
+    except OSError:
+        # The connection is in trouble rather than the build being old, and
+        # the caller is about to find that out for itself on its next read.
+        # **Not cached**: one bad moment at attach time would otherwise leave
+        # this session reading the processor's own view for as long as it
+        # lasts, which is the whole of `#421`.
+        return {}
+    except (MonitorError, IndexError):
+        # The monitor answered, with an error or with something this cannot
+        # parse. That is a property of the build, so it is kept.
+        found = {}
+    _BANKS[key] = found
+    return found
+
+
+def banked(mon: Monitor, read=None) -> Banks | None:
+    """The chips and the VIC's RAM over this monitor, or None where neither
+    the banks nor `$01` can be got at.
+
+    *read* is `read(addr, length, bank=0)` and defaults to the monitor's own,
+    so the caller can own the resume: `ViceTarget` hands in a raw read inside
+    a single burst for `fix()`, and one that resumes per call for anybody
+    holding the target itself.
+
+    None is the honest answer for a VICE with no `CMD_BANKS_AVAILABLE` and
+    `$01` with the chips banked out: there is nothing to read the registers
+    from, and an address computed from the RAM underneath them points at a
+    screen nothing is displaying.
+    """
+    read = mon.read if read is None else read
+    ids = bank_ids(mon)
+    io, ram = ids.get("io"), ids.get("ram")
+    if io is None or ram is None:
+        # No named banks to ask for. Fall back to what the processor can see,
+        # and refuse to answer when it cannot see the chips at all.
+        if read(0x01, 1)[0] & 0x07 not in IO_IN:
+            return None
+        def plain(addr: int, length: int) -> bytes:
+            return read(addr, length)
+
+        return Banks(plain, plain)
+
+    def io_read(addr: int, length: int) -> bytes:
+        return read(addr, length, io)
+
+    def ram_read(addr: int, length: int) -> bytes:
+        return read(addr, length, ram)
+
+    return Banks(io_read, ram_read)
+
+
+def _banks_or_raise(mon: Monitor) -> Banks:
+    pair = banked(mon)
+    if pair is None:
+        port = mon.read(0x01, 1)[0]
+        raise ScreenUnreadable(
+            f"this VICE offers no named banks and $01 is ${port:02X}, "
+            "so the VIC registers are not readable")
+    return pair
+
 
 def screen_address(mon: Monitor) -> int:
-    return _screen.screen_address(mon.read)
+    return _screen.screen_address(_banks_or_raise(mon))
 
 
 def is_bitmap(mon: Monitor) -> bool:
-    return _screen.is_bitmap(mon.read)
+    return _screen.is_bitmap(_banks_or_raise(mon))
 
 
 def read_screen(mon: Monitor) -> Screen:
-    return _screen.read_screen(mon.read)
+    return _screen.read_screen(_banks_or_raise(mon))
+
+
+def colour_ram(mon: Monitor, row: int | None = None) -> bytes:
+    """Colour RAM, whole screen or one row, out of the chips."""
+    whole = bytes(c & 0x0F for c in _banks_or_raise(mon).io(COLOUR_RAM, 1000))
+    if row is None:
+        return whole
+    return whole[row * SCREEN_COLS : (row + 1) * SCREEN_COLS]
 
 
 def grab_screen(**kw) -> Screen:

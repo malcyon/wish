@@ -10,10 +10,21 @@ test.
 backend that has to batch, resume or rate-limit around a burst of reads keeps
 that decision to itself: `ViceTarget` hands in its monitor's raw read and
 resumes once at the end, where its public `Target.read` resumes every time.
+
+**Three reads of this screen are not ordinary memory, and saying which is
+`Banks`.** `$D011`, `$D018`, `$DD00` and colour RAM at `$D800` are the chips,
+and the screen matrix is RAM the VIC fetches -- and on a C64 those are two
+different memories at the same addresses, chosen by `$01`. Pool of Radiance's
+loader spends part of every load at `$01 = $30`, RAM everywhere and no I/O at
+all, so a register read that goes through the processor's own view answers a
+byte of RAM and this file computes an address nothing is displaying (`#336`,
+`#421`). The arithmetic below was never the fault; which memory it was fed
+was.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable
 
 SCREEN_COLS, SCREEN_ROWS = 40, 25
@@ -23,26 +34,73 @@ COLOUR_RAM = 0xD800
 Read = Callable[[int, int], bytes]
 
 
+@dataclass(frozen=True)
+class Banks:
+    """Two readers: the chips, and the RAM the VIC fetches from.
+
+    `io` answers the VIC and CIA registers and colour RAM however the
+    processor is banked. `ram` answers the screen matrix, which the VIC always
+    fetches out of RAM -- in bitmap mode this game's matrix sits at `$DC00`,
+    where a read through the processor's view answers CIA 1 rather than the
+    screen.
+
+    A backend that has only one memory -- a dictionary of bytes in a test, a
+    machine read over a bus that cannot be told which memory to answer from --
+    passes the same reader in twice, which is what `of` does for it and is
+    exactly the behaviour every caller had before this existed.
+    """
+
+    io: Read
+    ram: Read
+
+    @classmethod
+    def of(cls, source) -> "Banks":
+        """A pair from a pair, or from one reader used for both.
+
+        **Deliberately not from a target.** A backend says it can tell the two
+        memories apart with an optional `banks()` method -- found with
+        `getattr`, the way `read_fix` finds `fix` and `_burst` finds
+        `read_blocks`, rather than by a wider `Target.read` that would make
+        every backend pretend. Asking it is `automap.target.screen_banks`,
+        which can also answer None for "I cannot locate the screen at all",
+        and that answer must not quietly become a pair pointed at the wrong
+        memory -- which is what this function would have to do with it.
+        """
+        if isinstance(source, cls):
+            return source
+        return cls(source, source)
+
+
 def _peek(read: Read, addr: int) -> int:
     return read(addr, 1)[0]
 
 
-def screen_address(read: Read) -> int:
+def screen_address(banks) -> int:
     """Where the VIC is fetching characters from, right now.
 
     It moves: $0400 at boot, $CC00 once the game is running. Computing it each
     time is the difference between reading the screen and reading whatever used
     to be the screen.
+
+    The two registers come out of `Banks.io`, because a read of them through
+    the processor's view is a byte of RAM whenever the game has the chips
+    banked out.
     """
-    d018 = _peek(read, 0xD018)
-    dd00 = _peek(read, 0xDD00)
+    banks = Banks.of(banks)
+    d018 = _peek(banks.io, 0xD018)
+    dd00 = _peek(banks.io, 0xDD00)
     bank = (~dd00 & 3) * 0x4000
     return bank + ((d018 >> 4) & 0xF) * 0x400
 
 
-def is_bitmap(read: Read) -> bool:
-    """Title and credit screens are bitmaps and cannot be read as text."""
-    return bool(_peek(read, 0xD011) & 0x20)
+def is_bitmap(banks) -> bool:
+    """Title and credit screens are bitmaps and cannot be read as text.
+
+    `$D011` is a chip register like the two above: read through the processor's
+    view with the chips out it was `$36` in every instance measured on `#336`,
+    bit 5 set, so a readable text screen was thrown away as a bitmap.
+    """
+    return bool(_peek(Banks.of(banks).io, 0xD011) & 0x20)
 
 
 _SCREEN_TO_ASCII = {}
@@ -128,13 +186,20 @@ class Screen:
         return [r for r in range(SCREEN_ROWS) if self.row_colour(r) == colour]
 
 
-def read_screen(read: Read) -> Screen:
-    addr = screen_address(read)
-    return Screen(read(addr, 1000), read(COLOUR_RAM, 1000), addr)
+def read_screen(banks) -> Screen:
+    """The whole screen: the matrix out of RAM, the colour out of the chips.
+
+    Colour is how every menu here finds its highlighted row, and `$D800` is
+    I/O like the registers are.
+    """
+    banks = Banks.of(banks)
+    addr = screen_address(banks)
+    return Screen(banks.ram(addr, 1000), banks.io(COLOUR_RAM, 1000), addr)
 
 
-def screen_row(read: Read, row: int) -> str:
+def screen_row(banks, row: int) -> str:
     """One row as text. Two reads instead of three, which matters on a
     backend where a round trip is a network hop."""
-    base = screen_address(read)
-    return codes_to_text(read(base + row * SCREEN_COLS, SCREEN_COLS))
+    banks = Banks.of(banks)
+    base = screen_address(banks)
+    return codes_to_text(banks.ram(base + row * SCREEN_COLS, SCREEN_COLS))

@@ -37,8 +37,8 @@ from typing import Protocol
 
 from goldbox import games
 
-from .screen import SCREEN_COLS, codes_to_text, is_bitmap, screen_address
-from .vice import Monitor, MonitorError, monitor_address
+from .screen import SCREEN_COLS, Banks, codes_to_text, is_bitmap, screen_address
+from .vice import Monitor, MonitorError, banked, monitor_address
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off.
@@ -94,7 +94,17 @@ WINDOW_W, WINDOW_H = 18, 36
 
 
 class Target(Protocol):
-    """The whole backend contract."""
+    """The whole backend contract.
+
+    Still two methods. **A third would have made every backend pretend**: the
+    screen's registers have to be read from the chips rather than from
+    whatever the processor can see, and the C64 Ultimate cannot do that at all
+    -- its `readmem` is a DMA read on the cartridge bus, decoded through the
+    `$01` the 6510 last wrote (`#375`). So telling the two memories apart is
+    an *optional* capability, `banks()`, found with `getattr` the way `fix`
+    and `read_blocks` already are; a backend without one is read through
+    `read` for both, which is what every caller did before `#421`.
+    """
 
     def read(self, addr: int, length: int) -> bytes: ...
     def write(self, addr: int, data: bytes) -> None: ...
@@ -142,7 +152,26 @@ def _plausible_outdoors(x: int, y: int) -> bool:
     return 0 <= x < WINDOW_W and 0 <= y < WINDOW_H
 
 
-def party_fix(read, game: games.Game | None = None) -> Fix | None:
+def screen_banks(target) -> Banks | None:
+    """Which memory this backend's screen reads should come out of.
+
+    `Banks(read, read)` -- one memory, today's behaviour -- for a backend with
+    no `banks()`, which is `MemoryTarget`, `ReplayTarget`, every tool-local
+    target over a `Session`, and the C64 Ultimate, whose DMA read follows the
+    processor's own banking and cannot be told otherwise (`#375`).
+
+    None when the backend has one and it says it cannot locate the screen at
+    all. That is not an error and is not "the screen is blank": the caller
+    gives up on this poll and keeps its last reading, which is the distinction
+    `#336` asked for and forty spaces never let anybody make.
+    """
+    own = getattr(target, "banks", None)
+    if own is not None:
+        return own()
+    return Banks(target.read, target.read)
+
+
+def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
     """Where the party is, read through any backend's `read(addr, length)`.
 
     Tries the game's own status line first -- indoors, then the travel grid's
@@ -177,12 +206,20 @@ def party_fix(read, game: games.Game | None = None) -> Fix | None:
     Nothing here is VICE-specific, which is the point: reading the status line
     is four reads of ordinary memory, so a second backend gets it for free and
     a test gets it against a dictionary of bytes.
+
+    **`banks` says which memory the *screen* comes out of, and `read` stays
+    what it always was for everything else.** The status row and the three VIC
+    registers are the only reads here that are not ordinary memory; the game's
+    own bytes -- `$C04B`, `$49C0`, the clock -- are RAM under every banking a
+    C64 has, so nothing about them changes. With no `banks` the whole thing
+    reads through `read`, which is what it did before `#421`.
     """
     game = game or games.DEFAULT
-    if is_bitmap(read):
+    banks = Banks.of(read if banks is None else banks)
+    if is_bitmap(banks):
         return None
-    base = screen_address(read)
-    row = read(base + STATUS_ROW * SCREEN_COLS, SCREEN_COLS)
+    base = screen_address(banks)
+    row = banks.ram(base + STATUS_ROW * SCREEN_COLS, SCREEN_COLS)
     text = codes_to_text(row)
     m = RE_STATUS.search(text)
     if m:
@@ -227,7 +264,10 @@ def read_fix(target, game: games.Game | None = None) -> Fix | None:
     own = getattr(target, "fix", None)
     if own is not None:
         return own(game)
-    return party_fix(target.read, game)
+    banks = screen_banks(target)
+    if banks is None:
+        return None                     # the screen could not be located
+    return party_fix(target.read, game, banks)
 
 
 class NotConnected(RuntimeError):
@@ -472,6 +512,40 @@ class ViceTarget:
         finally:
             self._resume_unless_lost()
 
+    def _read_bank(self, addr: int, length: int, bank: int = 0) -> bytes:
+        """`read`, of one named bank, resuming after it like `read` does."""
+        self._require_open()
+        try:
+            return self._mon.read(addr, length, bank)
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
+        finally:
+            self._resume_unless_lost()
+
+    def banks(self, raw: bool = False):
+        """The chips, and the RAM the VIC fetches -- or None if neither can be
+        got at.
+
+        The capability `screen_banks` looks for. VICE can answer it, which is
+        the whole of `#421`: `$D018` and `$DD00` read through the processor's
+        own view are bytes of RAM for as long as the game keeps `$01 = $30`,
+        and the address computed from them is a screen nothing is displaying.
+
+        **`raw` is the resume, not the memory.** The readers this hands back
+        resume after every call, like `Target.read`, because anybody holding a
+        target expects that and a read that never resumes leaves the machine
+        stopped. `fix()` and `screen()` ask for `raw=True` and own the single
+        resume themselves, which is why polling costs one resume and not four.
+        """
+        self._require_open()
+        try:
+            return banked(self._mon, self._mon.read if raw else self._read_bank)
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
+        finally:
+            if not raw:
+                self._resume_unless_lost()
+
     # -- what the automapper actually asks for ---------------------------
 
     def fix(self, game: games.Game | None = None) -> Fix | None:
@@ -496,7 +570,17 @@ class ViceTarget:
         """
         self._require_open()
         try:
-            return party_fix(self._mon.read, game)
+            pair = banked(self._mon, self._mon.read)
+            if pair is None:
+                # No named banks and the chips are out: the screen cannot be
+                # located, and an address computed from the RAM under the
+                # registers is a reading of somewhere nothing is displaying.
+                # The map holds its last fix, which is what it does for a
+                # bitmap screen and for a menu already.
+                _log.debug("the screen could not be located: no named banks "
+                           "and the I/O chips are banked out")
+                return None
+            return party_fix(self._mon.read, game, pair)
         except (OSError, MonitorError) as exc:
             raise self._lost(exc) from exc
         finally:
@@ -508,10 +592,28 @@ class ViceTarget:
         The live panel wants `$4900`-`$64FF` and the roster page every time it
         polls. Through `read` that would be two resumes and ~28.6 ms of extra
         emulated time; batched it is one resume, the same as a single `peek`.
+
+        **A block may name its memory**: `(addr, length)` is ordinary memory
+        as it always was, and `(addr, length, "io")` or `(addr, length,
+        "ram")` is the chips or the RAM the VIC fetches. The combat log's
+        burst reads three chip registers and the screen matrix in with the
+        game's own bytes, and splitting those out into a second burst would
+        double the resume the burst exists to avoid. A backend that cannot
+        tell the two apart ignores the name, which is what `_burst`'s fallback
+        does for it.
         """
         self._require_open()
         try:
-            return [self._mon.read(addr, length) for addr, length in blocks]
+            pair = banked(self._mon, self._mon.read)
+            out = []
+            for block in blocks:
+                addr, length = block[0], block[1]
+                want = block[2] if len(block) > 2 else None
+                if want is None or pair is None:
+                    out.append(self._mon.read(addr, length))
+                else:
+                    out.append(getattr(pair, want)(addr, length))
+            return out
         except (OSError, MonitorError) as exc:
             raise self._lost(exc) from exc
         finally:
@@ -522,7 +624,10 @@ class ViceTarget:
         from .screen import read_screen
         self._require_open()
         try:
-            return read_screen(self._mon.read)
+            pair = banked(self._mon, self._mon.read)
+            if pair is None:
+                return None
+            return read_screen(pair)
         except (OSError, MonitorError) as exc:
             raise self._lost(exc) from exc
         finally:
