@@ -114,22 +114,118 @@ def test_rows_closer_than_the_band_gap_are_one_line(tmp_path):
     assert [(band[0], band[1]) for band in bands] == [(20, 35), (80, 85)]
 
 
-def test_a_capture_is_rescaled_to_the_pitch_the_reader_asks_for(tmp_path):
+def test_a_capture_is_rescaled_near_the_pitch_the_reader_asks_for(tmp_path):
     # `winvm shot` of WinUAE's 720-wide window puts the game's 8x8 character
     # cell at 16 pixels of a 1920x1080 desktop; the private reader was written
     # against FS-UAE, where the same cell is 30.64. Handing it the capture
     # unchanged is what made it read nothing at all.
+    #
+    # It is handed 32 rather than 30.64 -- the nearest whole number of pixels
+    # per Amiga pixel, which is what `test_a_one_pixel_gap_is_the_same_width_
+    # wherever_it_lands` is about -- so the geometry it is told to use is the
+    # geometry that comes back here, and never its own.
     PIL_Image = pytest.importorskip("PIL.Image")
     source = _stripes(tmp_path / "src.png", [2, 4, 6])
     scaled = tmp_path / "out.png"
     x0, y0, pitch = journal.to_reader_scale(source, scaled, target_pitch=30.64)
-    assert pitch == pytest.approx(30.64)
+    assert pitch == 32.0
+    assert pitch % 8 == 0
+    assert abs(pitch - 30.64) < 8
     # The origin comes back in the cut-out's own coordinates, and the cut-out
     # starts one cell above and left of it.
-    assert x0 == pytest.approx(30.64, abs=1.0)
-    assert y0 == pytest.approx(30.64, abs=1.0)
+    assert (x0, y0) == (32.0, 32.0)
     # 42 cells wide and 27 tall, which is the 40x25 display plus the margin.
-    assert PIL_Image.open(scaled).size[0] == pytest.approx(42 * 30.64, abs=40)
+    assert PIL_Image.open(scaled).size == (42 * 32, 27 * 32)
+
+
+def test_the_reader_is_handed_a_whole_number_of_pixels_per_amiga_pixel():
+    # #371. The reader declares 30.64, which is 3.83 capture pixels for each
+    # of the 8 pixels in a character cell, so building its image at that pitch
+    # replicates some of the game's own pixels four times and others three.
+    assert journal.reader_pitch(30.64) == 32.0
+    for declared in (16.0, 24.0, 30.64, 31.9, 33.0, 40.0, 8.0, 3.0):
+        pitch = journal.reader_pitch(declared)
+        assert pitch % 8 == 0, declared
+        assert pitch >= 8, declared
+        # Never further from what the reader asked for than half a cell.
+        assert abs(pitch - declared) <= 4 or declared < 8, declared
+
+
+def test_a_one_pixel_gap_is_the_same_width_wherever_it_lands(tmp_path):
+    """#371, as a property rather than as the digit it was found on.
+
+    Every glyph in the game's font is drawn with one-pixel gaps, and the `6`
+    that prompted the issue differs from the `8` by one of them.  What the
+    reader has to be given is an image where every one of those gaps is the
+    same width, because it normalises a cell to 8x8 by the ink's own bounding
+    box: a gap that comes out three pixels wide beside one that comes out
+    four does not survive that, and a closed gap in that place is a different
+    digit.
+
+    So this draws a comb -- alternate Amiga pixels inked, right across a
+    character cell -- and measures the runs in what comes back.  A whole
+    number of pixels per Amiga pixel makes them all equal; the fractional
+    replication that shipped before makes them 3 and 4 mixed, which is
+    asserted below on the same canvas so the test says what it is testing.
+    """
+    Image = pytest.importorskip("PIL.Image")
+    x0, y0, pitch, row, col = 58.0, 59.0, 16, 6, journal.LEFT_MARGIN + 8
+    image = Image.new("RGB", (1920, 1080), (0, 0, 0))
+    pixels = image.load()
+    for line_row in (2, 4):                     # anchors, for `fit_grid`
+        top = int(y0 + line_row * pitch)
+        for y in range(top, top + pitch - 2):
+            for x in range(int(x0 + journal.LEFT_MARGIN * pitch),
+                           int(x0 + (journal.LEFT_MARGIN + 16) * pitch)):
+                pixels[x, y] = journal.GREEN
+    amiga_px = pitch // 8
+    top = int(y0 + row * pitch)
+    # The comb: every other Amiga pixel, across sixteen character cells. One
+    # cell is not enough -- a fractional replication repeats with a period far
+    # wider than a cell, so a single cell can land inside a stretch where the
+    # rounding happens to be even, and did while this test was being written.
+    for k in range(0, 16 * 8, 2):
+        left = int(x0 + col * pitch) + k * amiga_px
+        for y in range(top, top + pitch):
+            for x in range(left, left + amiga_px):
+                pixels[x, y] = journal.GREEN
+    source = tmp_path / "comb.png"
+    image.save(source)
+
+    scaled = tmp_path / "comb-out.png"
+    _, _, out_pitch = journal.to_reader_scale(source, scaled, target_pitch=30.64)
+    runs = _runs(Image.open(scaled), int(journal.MARGIN * out_pitch
+                                         + row * out_pitch + out_pitch / 2))
+    assert set(runs) == {out_pitch / 8}, runs
+
+    # The replication that shipped before: the same samples, scaled by the
+    # reader's own fractional pitch. Kept here rather than restored in the
+    # tool, so this stays a test after the fix is in place. The whole-number
+    # image above is recovered to one pixel per Amiga pixel first -- exactly,
+    # since every Amiga pixel in it is a uniform 4x4 block -- so both arms
+    # start from the same samples and differ only in how they are replicated.
+    canonical = Image.open(scaled).resize((42 * 8, 27 * 8), Image.NEAREST)
+    factor = 30.64 / 8
+    before = _runs(canonical.resize((round(42 * 8 * factor),
+                                     round(27 * 8 * factor)), Image.NEAREST),
+                   int(30.64 + row * 30.64 + 30.64 / 2))
+    assert len(set(before)) > 1, before
+
+
+def _runs(image, y):
+    """The lengths of the inked runs on row `y` of `image`."""
+    mask = journal._ink_mask(image)
+    row = [mask.getpixel((x, y)) for x in range(mask.size[0])]
+    out, run = [], 0
+    for value in row:
+        if value:
+            run += 1
+        elif run:
+            out.append(run)
+            run = 0
+    if run:
+        out.append(run)
+    return out
 
 
 def test_a_frame_with_no_grid_on_it_is_rescaled_into_nothing(tmp_path):

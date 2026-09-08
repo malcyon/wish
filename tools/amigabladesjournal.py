@@ -24,11 +24,13 @@ challenge-answer pairs is exactly what that rule keeps out of this repository.
 reader was written against FS-UAE, where the game's 8x8 character cell lands
 at 30.64 captured pixels; `winvm shot` grabs WinUAE's 720-wide window through
 libvirt, where the same cell is 16 pixels of a 1920x1080 desktop with the
-emulator somewhere in it.  So the grid is fitted on the capture, the game's
-screen is cut out of the desktop and rescaled to the pitch the reader
-declares, and the fitted origin is handed to the reader instead of its own.
-Nearest neighbour throughout: every pixel the reader samples is a pixel that
-was really on the screen.
+emulator somewhere in it.  So the grid is fitted on the capture, each of the
+game's own pixels is sampled once at its centre, and those samples are
+replicated to a pitch of 32 -- four pixels each way, a whole number, which
+`reader_pitch()` explains and `#371` was caused by not being.  The reader is
+then told that pitch and that origin instead of its own.  Nearest neighbour
+throughout: every pixel the reader samples is a pixel that was really on the
+screen.
 
 **This is Silver Blades' alone.**  Amiga Pool of Radiance's wheel screen takes
 a bare RETURN, and Amiga Curse asks a code wheel that
@@ -79,6 +81,29 @@ MIN_BANDS = 3
 #: measured from the fitted origin.  40x25 is the whole 320x200 display and the
 #: extra cell each way keeps a glyph that overhangs its own row.
 COLUMNS, LINES, MARGIN = 40, 25, 1
+
+
+def reader_pitch(target_pitch: float) -> float:
+    """The pitch to hand the reader: a **whole** number of pixels per Amiga
+    pixel, nearest the one the reader declares.
+
+    `#371 (The Silver Blades journal reader misreads a 6 as an 8, so a boot is
+    spent on a question the disk can answer)` is this number and nothing else.
+    The reader's own pitch is 30.64, which is 3.83 pixels per Amiga pixel, so
+    building its image replicates some of the game's pixels four times and
+    others three.  Every glyph in this font is drawn with one-pixel gaps, and
+    a gap that comes out three pixels wide beside one that comes out four does
+    not survive the reader's normalise-to-8x8 -- the gap on one row of the
+    game's `6` closes, and a closed gap there is an `8`.
+
+    A whole number replicates every Amiga pixel identically, so a gap is the
+    same width wherever it lands and the glyph reaching the reader is the
+    glyph the game drew, scaled.  The nearest whole number is 4, so the reader
+    is handed 32 rather than 30.64: its `cell()` trims a fixed three pixels off
+    each side of a cell before it normalises, and that trim only means what it
+    was measured to mean at a pitch near 30.
+    """
+    return max(1, round(target_pitch / 8.0)) * 8.0
 
 
 def wheel_repo() -> pathlib.Path:
@@ -177,32 +202,33 @@ def text_bands(image):
 
 def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
                     target_pitch: float | None = None):
-    """Cut the game's screen out of the desktop at the reader's own pitch.
+    """Cut the game's screen out of the desktop, at a pitch the reader can use.
 
-    Returns the `(X0, Y0, PITCH)` the reader should use on `out`, or `None`
-    when no character grid could be fitted.
-
-    `#371 (The Silver Blades journal reader misreads a 6 as an 8, so a boot
-    is spent on a question the disk can answer)`: rescaling the whole cut-out
-    with one nearest-neighbour resize duplicated some source columns twice
-    and others once, because the reader's pitch is never an integer multiple
-    of the capture's -- and where that duplication lands drifts across the
-    width of the cut, so it landed inside a glyph's own strokes rather than
-    between them, on the challenge that motivated the issue.
+    Two steps, and `#371 (The Silver Blades journal reader misreads a 6 as an
+    8, so a boot is spent on a question the disk can answer)` is the second.
 
     The game draws each of the 8 pixels in its character cell as a
     `pitch / 8`-pixel block of the capture -- an exact 2-pixel block at
     `winvm shot`'s pitch of 16 -- so every Amiga pixel has one true centre in
     the capture, and this samples that centre directly out of the untouched
-    screenshot, once per Amiga pixel, with no intermediate resize to drift
-    out of phase.  Only the *replication* of those samples up to
-    `target_pitch` is left to a resize, and that one duplicates or drops
-    output pixels inside one already-uniform Amiga pixel rather than across
-    the boundary between two of them, so it cannot blur one glyph into
-    another.
+    screenshot, once per Amiga pixel.  Cropping the desktop first and
+    rescaling the crop truncated the fitted origin to a whole pixel, which
+    put the resize's own duplicate-and-skip pattern out of phase with where
+    the Amiga pixel boundaries really fell.
 
-    `target_pitch` defaults to the pitch the private reader declares, and is
-    an argument so that the arithmetic can be exercised without it.
+    Those samples are then replicated up to `reader_pitch(target_pitch)`,
+    which is a whole number of pixels per Amiga pixel rather than the
+    reader's own fractional 30.64.  Replicating by a fraction is what made
+    this issue's `6` read as an `8`, measured on the capture that did it:
+    `work/361run/shots/07-chal.png` reads `8` at 30.64 and `6` at 16, 24,
+    32, 40, 48, 64, 80, 96 and 128, under this algorithm and under the
+    cropping one alike.  The pitch the reader is handed back is the one it
+    must use, so `answer()` sets `screen.PITCH` from this return value.
+
+    Returns the `(X0, Y0, PITCH)` for `out`, or `None` when no character grid
+    could be fitted.  `target_pitch` defaults to the pitch the private reader
+    declares, and is an argument so that the arithmetic can be exercised
+    without it.
     """
     from PIL import Image  # noqa: PLC0415
 
@@ -226,11 +252,11 @@ def to_reader_scale(shot: pathlib.Path, out: pathlib.Path,
         for ax in range(columns):
             sx = min(width - 1, max(0, round(ox + (ax + 0.5) * amiga_px)))
             canonical_px[ax, ay] = source[sx, sy]
-    factor = target_pitch / 8.0
-    scaled = canonical.resize((round(columns * factor), round(rows * factor)),
-                              Image.NEAREST)
+    out_pitch = reader_pitch(target_pitch)
+    factor = int(out_pitch // 8)
+    scaled = canonical.resize((columns * factor, rows * factor), Image.NEAREST)
     scaled.save(out)
-    return MARGIN * target_pitch, MARGIN * target_pitch, target_pitch
+    return MARGIN * out_pitch, MARGIN * out_pitch, out_pitch
 
 
 def find_disk(named: str | None = None) -> pathlib.Path:
