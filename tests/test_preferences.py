@@ -1509,3 +1509,62 @@ def test_the_editor_takes_the_folder_as_a_parameter_and_imports_nothing(
     assert editor.item_names
     assert editor.game_disk_found
     assert os.path.dirname(editor.game_disk_found) == str(disk_dir())
+
+
+# --- the layout comes from the .ui file (#410) --------------------------------
+#
+# Before this, `wish/preferences.ui` held General and Fast travel and the Game
+# disks tab -- and most of General -- was built by hand in `preferences.py`.
+# `Ui_PreferencesDialog` carried none of the `objectName`s below, so every
+# assertion here raised `AttributeError` rather than failing on its value.
+
+def test_every_control_is_a_widget_the_ui_file_built(app, tmp_path, monkeypatch):
+    """A person rearranges this dialog in Designer now, which only works if
+    the widgets the dialog drives are the ones `preferences.ui` declared --
+    not look-alikes `PreferencesDialog.__init__` built beside them."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert dialog.saves is dialog.ui.saves
+        assert dialog.backups is dialog.ui.backups
+        assert dialog.backups_note is dialog.ui.backups_note
+        assert dialog.host is dialog.ui.host
+        assert dialog.password is dialog.ui.password
+        assert dialog.interval is dialog.ui.interval
+        assert dialog.interval_default is dialog.ui.interval_default
+        assert dialog.watch_box is dialog.ui.watch_box
+        assert dialog.logging is dialog.ui.logging
+        assert dialog.clear_automap_button is dialog.ui.clear_automap_button
+        assert dialog.report_rows["In use"] is dialog.ui.report_in_use
+        assert dialog.report_rows["Titles"] is dialog.ui.report_titles
+        assert dialog.travel_table is dialog.ui.travel_table
+        assert dialog.travel_note is dialog.ui.travel_note
+        assert dialog.travel_warning is dialog.ui.travel_warning
+        for game in preferences.GAME_FOLDER_TITLES:
+            suffix = preferences._row_suffix(game)
+            assert dialog.game_folder_edits[game.key] is getattr(
+                dialog.ui, f"game_folder_edit_{suffix}")
+            assert dialog.game_folder_reports[game.key] is getattr(
+                dialog.ui, f"game_folder_note_{suffix}")
+    finally:
+        win.close()
+
+
+def test_the_dialog_still_opens_with_no_backend_rows_built_twice(
+        app, tmp_path, monkeypatch):
+    """The one part of the dialog still built row-by-row in code (#410): a
+    second `PreferencesDialog` on the same window must not pile a second
+    set of radio rows into the first dialog's `backend_layout` -- each
+    dialog gets its own `Ui_PreferencesDialog` and its own layout."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        first = PreferencesDialog(win)
+        second = PreferencesDialog(win)
+        assert first.ui.backend_layout.count() == second.ui.backend_layout.count()
+        # One row per backend, plus the form.
+        assert first.ui.backend_layout.count() == len(win.backend_actions) + 1
+        second.close()
+    finally:
+        win.close()

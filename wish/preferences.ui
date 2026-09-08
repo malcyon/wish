@@ -12,11 +12,323 @@
    <item>
     <widget class="QTabWidget" name="tabs">
      <property name="currentIndex"><number>0</number></property>
-     <widget class="QWidget" name="general_scroll_page">
+
+     <!-- ================= General ================= -->
+     <widget class="QScrollArea" name="general_scroll">
       <attribute name="title"><string>General</string></attribute>
+      <property name="widgetResizable"><bool>true</bool></property>
+      <property name="frameShape"><enum>QFrame::Shape::NoFrame</enum></property>
+      <property name="horizontalScrollBarPolicy">
+       <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+      </property>
+      <widget class="QWidget" name="general_page">
+       <layout class="QVBoxLayout" name="general_layout">
+        <property name="leftMargin"><number>0</number></property>
+        <property name="topMargin"><number>0</number></property>
+        <property name="rightMargin"><number>0</number></property>
+        <property name="bottomMargin"><number>0</number></property>
+        <item>
+         <layout class="QHBoxLayout" name="folders_row">
+          <item>
+           <widget class="QGroupBox" name="saves_group">
+            <property name="title"><string>Saves</string></property>
+            <layout class="QVBoxLayout" name="saves_layout">
+             <item>
+              <layout class="QHBoxLayout" name="saves_row" stretch="0,1,0,0">
+               <item>
+                <widget class="QLabel" name="saves_label">
+                 <property name="text"><string>Folder</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="saves"/>
+               </item>
+               <item>
+                <widget class="QPushButton" name="saves_browse">
+                 <property name="text"><string>Browse…</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="saves_clear">
+                 <property name="text"><string>Clear</string></property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="backups_group">
+            <property name="title"><string>Backups</string></property>
+            <layout class="QVBoxLayout" name="backups_layout">
+             <item>
+              <layout class="QHBoxLayout" name="backups_row" stretch="0,1,0,0">
+               <item>
+                <widget class="QLabel" name="backups_label">
+                 <property name="text"><string>Folder</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="backups"/>
+               </item>
+               <item>
+                <widget class="QPushButton" name="backups_browse">
+                 <property name="text"><string>Browse…</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="backups_clear">
+                 <property name="text"><string>Clear</string></property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLabel" name="backups_note">
+               <property name="wordWrap"><bool>true</bool></property>
+               <property name="visible"><bool>false</bool></property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="backend_group">
+          <property name="title"><string>Live backend</string></property>
+          <layout class="QVBoxLayout" name="backend_layout">
+           <item>
+            <layout class="QFormLayout" name="backend_form">
+             <item row="0" column="0">
+              <widget class="QLabel" name="backend_form_label_host">
+               <property name="text"><string>Ultimate host</string></property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLineEdit" name="host"/>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="backend_form_label_password">
+               <property name="text"><string>Password</string></property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLabel" name="password"/>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="backend_form_label_interval">
+               <property name="text"><string>Poll every</string></property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QSpinBox" name="interval"/>
+             </item>
+             <item row="3" column="0" colspan="2">
+              <widget class="QCheckBox" name="interval_default">
+               <property name="text"><string>Poll using backend default</string></property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="combat_group">
+          <property name="title"><string>Combat</string></property>
+          <layout class="QVBoxLayout" name="combat_layout">
+           <item>
+            <widget class="QCheckBox" name="watch_box">
+             <property name="text"><string>Clear quickfight after a fight</string></property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="bottom_row">
+          <item>
+           <widget class="QGroupBox" name="log_group">
+            <property name="title"><string>Diagnostics</string></property>
+            <layout class="QVBoxLayout" name="log_layout">
+             <item>
+              <widget class="QCheckBox" name="logging">
+               <property name="text"><string>Debug log</string></property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="automap_group">
+            <property name="title"><string>Automap</string></property>
+            <layout class="QVBoxLayout" name="automap_layout">
+             <item>
+              <widget class="QPushButton" name="clear_automap_button">
+               <property name="text"><string>Clear Automap Memory</string></property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <spacer name="general_stretch">
+          <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+          <property name="sizeHint" stdset="0">
+           <size><width>0</width><height>0</height></size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
      </widget>
+
+     <!-- ================= Game disks ================= -->
+     <widget class="QWidget" name="disks_page">
+      <attribute name="title"><string>Game disks</string></attribute>
+      <layout class="QVBoxLayout" name="disks_layout">
+       <item>
+        <widget class="QGroupBox" name="disks_group">
+         <property name="title"><string></string></property>
+         <layout class="QVBoxLayout" name="disks_group_layout">
+          <item>
+           <layout class="QFormLayout" name="report_form">
+            <item row="0" column="0">
+             <widget class="QLabel" name="report_label_in_use">
+              <property name="text"><string>In use</string></property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLabel" name="report_in_use"/>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="report_label_titles">
+              <property name="text"><string>Titles</string></property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QLabel" name="report_titles"/>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="game_folder_row_pool_of_radiance" stretch="0,1,0,0">
+            <item>
+             <widget class="QLabel" name="game_folder_label_pool_of_radiance">
+              <property name="text"><string>Pool of Radiance</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="game_folder_edit_pool_of_radiance"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="game_folder_browse_pool_of_radiance">
+              <property name="text"><string>Browse…</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="game_folder_clear_pool_of_radiance">
+              <property name="text"><string>Clear</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="game_folder_note_pool_of_radiance">
+            <property name="wordWrap"><bool>true</bool></property>
+            <property name="visible"><bool>false</bool></property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="game_folder_row_curse_of_the_azure_bonds" stretch="0,1,0,0">
+            <item>
+             <widget class="QLabel" name="game_folder_label_curse_of_the_azure_bonds">
+              <property name="text"><string>Curse of the Azure Bonds</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="game_folder_edit_curse_of_the_azure_bonds"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="game_folder_browse_curse_of_the_azure_bonds">
+              <property name="text"><string>Browse…</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="game_folder_clear_curse_of_the_azure_bonds">
+              <property name="text"><string>Clear</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="game_folder_note_curse_of_the_azure_bonds">
+            <property name="wordWrap"><bool>true</bool></property>
+            <property name="visible"><bool>false</bool></property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="game_folder_row_secret_of_the_silver_blades" stretch="0,1,0,0">
+            <item>
+             <widget class="QLabel" name="game_folder_label_secret_of_the_silver_blades">
+              <property name="text"><string>Secret of the Silver Blades</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="game_folder_edit_secret_of_the_silver_blades"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="game_folder_browse_secret_of_the_silver_blades">
+              <property name="text"><string>Browse…</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="game_folder_clear_secret_of_the_silver_blades">
+              <property name="text"><string>Clear</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="game_folder_note_secret_of_the_silver_blades">
+            <property name="wordWrap"><bool>true</bool></property>
+            <property name="visible"><bool>false</bool></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="disks_stretch">
+         <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+         <property name="sizeHint" stdset="0">
+          <size><width>0</width><height>0</height></size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- ================= Fast travel ================= -->
      <widget class="QWidget" name="travel_page">
       <attribute name="title"><string>Fast travel</string></attribute>
+      <layout class="QVBoxLayout" name="travel_layout">
+       <item>
+        <widget class="QLabel" name="travel_warning">
+         <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="travel_table"/>
+       </item>
+       <item>
+        <widget class="QLabel" name="travel_note"/>
+       </item>
+      </layout>
      </widget>
     </widget>
    </item>

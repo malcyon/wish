@@ -15,10 +15,11 @@ Three things about the shape of it:
 * **No OK, no Cancel -- one Close.** Every control here applies at once, as the
   backend menu it replaces already did. A Cancel would need an undo path back
   through `Session.prefer`, a map reload and the editor's item tables.
-* **Hand-written, not Designer.** `editor/character.ui` is the only `.ui` in
-  the tree and `tools/genui.py` hard-codes that one pair of paths. Every other
-  dialog here is code, and this one re-probes backends and re-runs a directory
-  search as you type, which is code either way.
+* **The layout comes from `wish/preferences.ui`** (#410); the Python side
+  finds widgets by `objectName` and wires them, and re-probes backends and
+  re-runs a directory search as you type. The live backend rows are the one
+  part still built in code, because their count is not fixed the way the
+  three titles' rows are.
 * **`report()` is a plain function over a folder.** It takes settings and a
   path, not a window, so what the dialog claims can be tested without opening
   one.
@@ -56,26 +57,16 @@ import re
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QDialog,
     QFileDialog,
-    QFormLayout,
-    QFrame,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QPushButton,
     QRadioButton,
-    QScrollArea,
-    QSpinBox,
     QStyle,
     QStyleOptionFrame,
-    QTableWidget,
     QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
 )
 
 from automap import paths
@@ -356,6 +347,40 @@ def apply_ultimate_host(host: str) -> None:
 MIN_INTERVAL_MS = 50
 
 
+def _invalidate_layout(layout) -> None:
+    """Clear `layout`'s cached `sizeHint()`, and every nested layout's under
+    it.
+
+    `QLayout.invalidate()` does not recurse into a layout's own children --
+    it only marks itself dirty and, if it is the layout a widget's `setLayout`
+    installed, tells that widget's *parent* to do the same. A layout only
+    ever reaches this one nested inside it (`saves_row` inside
+    `saves_layout`) by being walked to directly, which is what this does.
+    """
+    layout.invalidate()
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        if item.layout() is not None:
+            _invalidate_layout(item.layout())
+        elif item.widget() is not None and item.widget().layout() is not None:
+            # A `QGroupBox` (or any container) with a layout of its own is
+            # where `updateGeometry()` stops climbing on its way up from a
+            # widget inside it -- so it is also where a walk down from the
+            # top has to keep going, to reach a row nested inside *that*
+            # layout (`saves_row` inside `saves_layout`).
+            _invalidate_layout(item.widget().layout())
+
+
+def _row_suffix(game: games.Game) -> str:
+    """The part of a per-title widget's `objectName` that names `game`.
+
+    `game.key` itself has a hyphen in it (`pool-of-radiance`), and pyuic
+    writes `self.<objectName> = ...` as literal Python source, so the name in
+    `preferences.ui` has to already be a valid identifier.
+    """
+    return game.key.replace("-", "_")
+
+
 class PreferencesDialog(QDialog):
     """The window's settings, and what they found.
 
@@ -372,57 +397,41 @@ class PreferencesDialog(QDialog):
         self.ui.setupUi(self)
         self.tabs = self.ui.tabs
         self._buttons = self.ui.buttons
+        # The page under the scroll area, and the scroll area itself --
+        # `sizeHint` and `fit` measure both. Both tab pages are `preferences.
+        # ui`'s now (#410); everything below finds the widgets Designer built
+        # rather than building them.
+        self._general = self.ui.general_page
+        self._general_scroll = self.ui.general_scroll
 
-        # Replace the placeholder tab pages with the real ones.
-        self.tabs.removeTab(1)
-        self.tabs.removeTab(0)
-        self.tabs.addTab(self._general_tab(), "General")
-        self.tabs.addTab(self._disks_tab(), "Game disks")
-        self.tabs.addTab(self._travel_tab(), "Fast travel")
+        self._wire_saves()
+        self._wire_backups()
+        self._wire_backend()
+        self._wire_combat()
+        self._wire_log()
+        self._wire_automap()
+        self._wire_disks()
+        self._wire_travel()
+
         # General every time. A dialog that reopens on a tab nobody chose is
         # worse than one that remembers nothing, so nothing is remembered.
         self.tabs.setCurrentIndex(0)
 
         self.refresh()
+        # Every width set above, and every badge `refresh()` just made
+        # visible, lives inside a layout Designer nested inside another one
+        # -- `saves_row` inside `saves_layout`, `folders_row` inside
+        # `general_layout`, a backend's own row inside `backend_layout`.
+        # `QWidget.updateGeometry()` only reaches the layout installed
+        # directly on a widget's parent, never a layout nested inside that
+        # one, so a nested layout keeps whatever `sizeHint()` `setupUi`
+        # cached before any of this ran. Left alone, that is what opened
+        # this dialog 222 px too narrow, with the folder boxes and the
+        # Automap button clipped -- `docs/130-preferences.md` §12's
+        # "squished and unusable" by another route.
+        _invalidate_layout(self._general.layout())
+        _invalidate_layout(self.ui.disks_layout)
         self.fit()
-
-    def _general_tab(self) -> QWidget:
-        """Everything except the disks and fast travel: the backups, the
-        backend and the log.
-
-        **The scroll area is a floor, not a feature.** At the size `fit` opens
-        it there is nothing to scroll -- the bar is not drawn. It is here for
-        the display that cannot give this tab its lines, where the choice
-        is a scrollbar or the crushed line edits this dialog was rebuilt to
-        stop. Never sideways: the width is the width the content measured.
-        """
-        self._general = QWidget()
-        box = QVBoxLayout(self._general)
-        box.setContentsMargins(0, 0, 0, 0)
-        # Side by side, not stacked: both are a folder, a Browse… and a
-        # Clear, and stacking a third one of those pushed the tab's minimum
-        # height past what `fit` can give it on Donald's own 1280x675 desktop
-        # (§12) -- the same reason Diagnostics and Automap already share a
-        # row below.
-        folders_row = QHBoxLayout()
-        folders_row.addWidget(self._saves_group())
-        folders_row.addWidget(self._backups_group())
-        box.addLayout(folders_row)
-        box.addWidget(self._backend_group())
-        box.addWidget(self._combat_group())
-        bottom_row = QHBoxLayout()
-        bottom_row.addWidget(self._log_group())
-        bottom_row.addWidget(self._automap_group())
-        box.addLayout(bottom_row)
-        box.addStretch(1)
-
-        self._general_scroll = QScrollArea()
-        self._general_scroll.setWidget(self._general)
-        self._general_scroll.setWidgetResizable(True)
-        self._general_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._general_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        return self._general_scroll
 
     def sizeHint(self) -> QSize:
         """The size the tabs want, with General's real page asked for.
@@ -475,16 +484,9 @@ class PreferencesDialog(QDialog):
 
     # -- the game disks --------------------------------------------------
 
-    def _disks_tab(self) -> QWidget:
-        """Every title's own folder (#22), on its own tab.
-
-        Moved off General once a row per title joined the one shared folder
-        that used to be here: three more rows of a folder, a Browse… and a
-        Clear pushed General's natural height 77 px past what `fit` can give
-        it on Donald's own 1280x675 desktop (§12, §14) -- the same squeeze
-        that put Fast travel on a tab of its own. A tab this short needs no
-        scroll area of its own; General's stays because it is still the
-        fullest page.
+    def _wire_disks(self) -> None:
+        """Every title's own folder (#22): find the tab `preferences.ui`
+        built and wire it.
 
         **The shared folder itself is gone**
         (`#357 (The automapper reads the shared Game disks folder, so
@@ -493,30 +495,16 @@ class PreferencesDialog(QDialog):
         was actually being played, and a title's own row is the only setting
         left.
         """
-        box = QWidget()
-        outer = QVBoxLayout(box)
-        outer.addWidget(self._disks_group())
-        outer.addStretch(1)
-        return box
-
-    def _disks_group(self) -> QGroupBox:
-        # No title of its own: it is the whole of the "Game disks" tab now,
-        # and the tab already says so -- the box stayed only for the border.
-        box = QGroupBox("")
-        outer = QVBoxLayout(box)
-
-        self.report_rows: dict[str, QLabel] = {}
-        form = QFormLayout()
-        for name in ("In use", "Titles"):
-            value = QLabel("")
+        self.report_rows: dict[str, QLabel] = {
+            "In use": self.ui.report_in_use,
+            "Titles": self.ui.report_titles,
+        }
+        for value in self.report_rows.values():
             value.setWordWrap(True)
             # Selectable: the first thing anybody does with a path in a
             # report is paste it somewhere.
             value.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse)
-            self.report_rows[name] = value
-            form.addRow(name, value)
-        outer.addLayout(form)
 
         # One row per title (#22), each optional and each reporting what it
         # found. A title's own folder is the whole of `paths.resolve_disks`'s
@@ -525,39 +513,26 @@ class PreferencesDialog(QDialog):
         # title)`) -- there is no shared folder underneath it any more.
         self.game_folder_edits: dict[str, QLineEdit] = {}
         self.game_folder_reports: dict[str, QLabel] = {}
-        for game in GAME_FOLDER_TITLES:
-            outer.addLayout(self._game_folder_block(game))
-        return box
-
-    def _game_folder_block(self, game: games.Game) -> QVBoxLayout:
-        """One title's own folder: a row, and what it found under it."""
-        block = QVBoxLayout()
-        row = QHBoxLayout()
         stored = dict(getattr(self.win.settings, "game_folders", None) or {})
-        edit = QLineEdit(stored.get(game.key, ""))
-        edit.setPlaceholderText(FOLDER_PLACEHOLDER)
-        edit.setMinimumWidth(room_for(edit, edit.placeholderText()))
-        edit.editingFinished.connect(
-            lambda g=game: self._game_folder_settled(g))
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(lambda _c=False, g=game: self.browse_game_folder(g))
-        clear = QPushButton("Clear")
-        clear.clicked.connect(lambda _c=False, g=game: self.set_game_folder(g, ""))
-        row.addWidget(QLabel(game.title))
-        row.addWidget(edit, 1)
-        row.addWidget(browse)
-        row.addWidget(clear)
-        block.addLayout(row)
-
-        note = QLabel("")
-        note.setWordWrap(True)
-        note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        note.setVisible(False)
-        block.addWidget(note)
-
-        self.game_folder_edits[game.key] = edit
-        self.game_folder_reports[game.key] = note
-        return block
+        for game in GAME_FOLDER_TITLES:
+            suffix = _row_suffix(game)
+            edit = getattr(self.ui, f"game_folder_edit_{suffix}")
+            edit.setText(stored.get(game.key, ""))
+            edit.setPlaceholderText(FOLDER_PLACEHOLDER)
+            edit.setMinimumWidth(room_for(edit, edit.placeholderText()))
+            edit.editingFinished.connect(
+                lambda g=game: self._game_folder_settled(g))
+            browse = getattr(self.ui, f"game_folder_browse_{suffix}")
+            browse.clicked.connect(
+                lambda _c=False, g=game: self.browse_game_folder(g))
+            clear = getattr(self.ui, f"game_folder_clear_{suffix}")
+            clear.clicked.connect(
+                lambda _c=False, g=game: self.set_game_folder(g, ""))
+            note = getattr(self.ui, f"game_folder_note_{suffix}")
+            note.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse)
+            self.game_folder_edits[game.key] = edit
+            self.game_folder_reports[game.key] = note
 
     def game_folder_text(self, game: games.Game) -> str:
         return self.game_folder_edits[game.key].text().strip()
@@ -610,8 +585,9 @@ class PreferencesDialog(QDialog):
 
     # -- where `File > Open` starts ----------------------------------------
 
-    def _saves_group(self) -> QGroupBox:
-        """Where `File > Open` starts (#66 steps 2 and 3).
+    def _wire_saves(self) -> None:
+        """Where `File > Open` starts (#66 steps 2 and 3). Find the Saves
+        group `preferences.ui` built and wire it.
 
         Set, it wins over everything `editor.files.open_start_dir` tries
         automatically -- even the folder beside a save that is already
@@ -623,25 +599,15 @@ class PreferencesDialog(QDialog):
         changed under a user's cursor would be a worse fault than an unset
         one.
         """
-        box = QGroupBox("Saves")
-        outer = QVBoxLayout(box)
-        row = QHBoxLayout()
-        self.saves = QLineEdit(getattr(self.win.settings, "saves_folder", "")
-                               or "")
+        self.saves = self.ui.saves
+        self.saves.setText(getattr(self.win.settings, "saves_folder", "")
+                           or "")
         self.saves.setPlaceholderText("Default save folder")
         self.saves.setMinimumWidth(room_for(self.saves,
                                             self.saves.placeholderText()))
         self.saves.editingFinished.connect(self._saves_edited)
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self.browse_saves)
-        clear = QPushButton("Clear")
-        clear.clicked.connect(lambda: self.set_saves_folder(""))
-        row.addWidget(QLabel("Folder"))
-        row.addWidget(self.saves, 1)
-        row.addWidget(browse)
-        row.addWidget(clear)
-        outer.addLayout(row)
-        return box
+        self.ui.saves_browse.clicked.connect(self.browse_saves)
+        self.ui.saves_clear.clicked.connect(lambda: self.set_saves_folder(""))
 
     def browse_saves(self) -> None:
         """The folder picker. A method so a test can replace it."""
@@ -661,8 +627,9 @@ class PreferencesDialog(QDialog):
 
     # -- where the backups go ---------------------------------------------
 
-    def _backups_group(self) -> QGroupBox:
-        """Where a copy of the save goes before it is overwritten.
+    def _wire_backups(self) -> None:
+        """Where a copy of the save goes before it is overwritten. Find the
+        Backups group `preferences.ui` built and wire it.
 
         Donald asked where `~/.local/share/wish/backups` came from and said no
         user would ever think to look there. Nobody does now: there is one
@@ -675,30 +642,19 @@ class PreferencesDialog(QDialog):
         type or browse to one of your own and it stops following anything.
         Clear it to go back to following.
         """
-        box = QGroupBox("Backups")
-        outer = QVBoxLayout(box)
-        row = QHBoxLayout()
-        self.backups = QLineEdit("")
+        self.backups = self.ui.backups
+        self.backups.setText("")
         self.backups.setPlaceholderText(BACKUPS_PLACEHOLDER)
         # Measured off its own placeholder, like the folder box: what it says
         # is the only instruction there is for an empty field.
         self.backups.setMinimumWidth(room_for(self.backups,
                                               self.backups.placeholderText()))
         self.backups.editingFinished.connect(self._backups_edited)
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self.browse_backups)
-        clear = QPushButton("Clear")
-        clear.clicked.connect(lambda: self.set_backup_folder(""))
-        row.addWidget(QLabel("Folder"))
-        row.addWidget(self.backups, 1)
-        row.addWidget(browse)
-        row.addWidget(clear)
-        outer.addLayout(row)
-        self.backups_note = QLabel("")
+        self.ui.backups_browse.clicked.connect(self.browse_backups)
+        self.ui.backups_clear.clicked.connect(
+            lambda: self.set_backup_folder(""))
+        self.backups_note = self.ui.backups_note
         self.backups_note.hide()          # two of the three states say nothing
-        self.backups_note.setWordWrap(True)
-        outer.addWidget(self.backups_note)
-        return box
 
     def _say_backups(self) -> None:
         """The path and the note, re-read whenever it refreshes.
@@ -749,19 +705,25 @@ class PreferencesDialog(QDialog):
 
     # -- the live backend ------------------------------------------------
 
-    def _backend_group(self) -> QGroupBox:
+    def _wire_backend(self) -> None:
         """The View > Backend radio group, moved across whole.
 
         The actions are still the window's -- one model, so the preference,
         the session and this dialog cannot disagree -- and these buttons are a
         view of them.
+
+        **The row per backend is still built here**, into the layout
+        `preferences.ui`'s Live backend group holds -- unlike the three game
+        titles above, the number of backends is not a fixed, small count
+        Designer can lay out; it is whatever `backends.backends()` answers
+        (`wish/window.py::_make_backend_actions`). The static host, password
+        and interval form beneath the rows is `preferences.ui`'s.
         """
-        box = QGroupBox("Live backend")
-        outer = QVBoxLayout(box)
+        box_layout = self.ui.backend_layout
         self.radios: dict[str, QRadioButton] = {}
         self.badges: dict[str, QLabel] = {}
         self.unverified: dict[str, QLabel] = {}
-        for name, action in self.win.backend_actions.items():
+        for i, (name, action) in enumerate(self.win.backend_actions.items()):
             row = QHBoxLayout()
             button = QRadioButton(name or action.text())
             button.setToolTip(action.toolTip())
@@ -779,32 +741,33 @@ class PreferencesDialog(QDialog):
             flag.setVisible(False)
             row.addWidget(flag)
             row.addStretch(1)
-            outer.addLayout(row)
+            # Inserted above the form, which is the layout's only item until
+            # the first row arrives -- so it is pushed one place further back
+            # by each insert and ends up after all of them.
+            box_layout.insertLayout(i, row)
             self.radios[name] = button
             self.badges[name] = badge
             self.unverified[name] = flag
 
-        form = QFormLayout()
-        self.host = QLineEdit(getattr(self.win.settings, "ultimate_host", "")
-                              or "")
+        self.host = self.ui.host
+        self.host.setText(getattr(self.win.settings, "ultimate_host", "")
+                          or "")
         self.host.setPlaceholderText("ultimate64.local, or host:port")
         # Measured like the folder box, for the same reason: what it says is
         # the only instruction there is for the field.
         self.host.setMinimumWidth(room_for(self.host,
                                            self.host.placeholderText()))
         self.host.editingFinished.connect(self._host_changed)
-        form.addRow("Ultimate host", self.host)
-        self.password = QLabel("")
-        form.addRow("Password", self.password)
+        self.password = self.ui.password
 
         # 0 means "the backend decides" in the setting, and it used to mean that
         # on the face too -- a spin box whose lowest value printed a sentence
         # instead of a number, and turned into milliseconds the moment anybody
         # touched an arrow. Donald: confusing. So the state is a checkbox and
         # the spin box only ever shows a number.
-        self.interval_default = QCheckBox("Poll using backend default")
+        self.interval_default = self.ui.interval_default
         self.interval_default.toggled.connect(self._interval_default_toggled)
-        self.interval = QSpinBox()
+        self.interval = self.ui.interval
         self.interval.setRange(MIN_INTERVAL_MS, 60000)
         self.interval.setSingleStep(50)
         self.interval.setSuffix(" ms")
@@ -813,10 +776,6 @@ class PreferencesDialog(QDialog):
         self.interval.setEnabled(bool(saved))
         self.interval.setValue(saved or MIN_INTERVAL_MS)
         self.interval.valueChanged.connect(self._interval_changed)
-        form.addRow("Poll every", self.interval)
-        form.addRow(self.interval_default)
-        outer.addLayout(form)
-        return box
 
     def _prefer(self, name: str) -> None:
         self.win.backend_actions[name].setChecked(True)
@@ -842,8 +801,9 @@ class PreferencesDialog(QDialog):
 
     # -- fast travel -----------------------------------------------------
 
-    def _travel_tab(self) -> QWidget:
-        """Which areas the Fast Travel dropdown offers, and the warning.
+    def _wire_travel(self) -> None:
+        """Which areas the Fast Travel dropdown offers, and the warning. Find
+        the tab `preferences.ui` built and wire it.
 
         **A tab of its own, and the table takes all of it.** Twenty-nine rows
         beside the rest of the form meant a table capped at 160 px inside a
@@ -874,12 +834,9 @@ class PreferencesDialog(QDialog):
         `unverified` badge -- one visual language for "this is a thing to know
         before you press it", and a sentence nobody has to hover to find.
         """
-        box = QWidget()
-        outer = QVBoxLayout(box)
-        warning = QLabel(DANGER)
-        warning.setWordWrap(True)
-        warning.setStyleSheet(WARNING_BOX)
-        outer.addWidget(warning)
+        self.travel_warning = self.ui.travel_warning
+        self.travel_warning.setText(DANGER)
+        self.travel_warning.setStyleSheet(WARNING_BOX)
 
         #: The table's rows, in the dropdown's own order: by name. Every
         #: fasttravelable area has one, and area 30 -- the only nameless one -- is
@@ -890,7 +847,9 @@ class PreferencesDialog(QDialog):
                 getattr(self.travel_game, "title", None)) if a.fasttravelable),
             key=lambda a: a.name or "")
         chosen = set(self.win.settings.chosen_areas(self.travel_game))
-        self.travel_table = QTableWidget(len(self.travel_rows), 1)
+        self.travel_table = self.ui.travel_table
+        self.travel_table.setColumnCount(1)
+        self.travel_table.setRowCount(len(self.travel_rows))
         self.travel_table.setHorizontalHeaderLabels(["Area"])
         self.travel_table.verticalHeader().setVisible(False)
         self.travel_table.horizontalHeader().setSectionResizeMode(
@@ -928,13 +887,9 @@ class PreferencesDialog(QDialog):
             + self.travel_table.verticalScrollBar().sizeHint().width()
             + 2 * self.travel_table.frameWidth())
         self.travel_table.itemChanged.connect(lambda _item: self._travel_changed())
-        outer.addWidget(self.travel_table, 1)
 
-        self.travel_note = QLabel("")
-        self.travel_note.setWordWrap(True)
-        outer.addWidget(self.travel_note)
+        self.travel_note = self.ui.travel_note
         self._say_travel()
-        return box
 
     def travel_ticked(self) -> list[int]:
         """The area ids with a tick against them, in table order."""
@@ -969,28 +924,20 @@ class PreferencesDialog(QDialog):
 
     # -- the debug log ---------------------------------------------------
 
-    def _log_group(self) -> QGroupBox:
-        box = QGroupBox("Diagnostics")
-        outer = QVBoxLayout(box)
-        self.logging = QCheckBox("Debug log")
-        self.logging.setChecked(self.win.debug_action.isChecked())
-        self.logging.toggled.connect(self.win.debug_action.setChecked)
-        self.win.debug_action.toggled.connect(self.logging.setChecked)
-        outer.addWidget(self.logging)
+    def _wire_log(self) -> None:
         # No paragraph under it. A debug log does not need explaining, and the
         # two things that were worth saying are said where they matter: the
         # title bar and the status bar show [logging] while it is on, and the
         # status bar names the file the moment it opens.
-        return box
+        self.logging = self.ui.logging
+        self.logging.setChecked(self.win.debug_action.isChecked())
+        self.logging.toggled.connect(self.win.debug_action.setChecked)
+        self.win.debug_action.toggled.connect(self.logging.setChecked)
 
-    def _automap_group(self) -> QGroupBox:
-        box = QGroupBox("Automap")
-        outer = QVBoxLayout(box)
-        self.clear_automap_button = QPushButton("Clear Automap Memory")
+    def _wire_automap(self) -> None:
+        self.clear_automap_button = self.ui.clear_automap_button
         self.clear_automap_button.setToolTip("Forget which areas you have explored on the automap.")
         self.clear_automap_button.clicked.connect(self._clear_automap)
-        outer.addWidget(self.clear_automap_button)
-        return box
 
     def _clear_automap(self):
         import json
@@ -1019,16 +966,12 @@ class PreferencesDialog(QDialog):
         if self.win.map and hasattr(self.win.map, 'canvas'):
             self.win.map.canvas.update()
 
-    def _combat_group(self) -> QGroupBox:
-        box = QGroupBox("Combat")
-        outer = QVBoxLayout(box)
-        self.watch_box = QCheckBox("Clear quickfight after a fight")
+    def _wire_combat(self) -> None:
+        self.watch_box = self.ui.watch_box
         self.watch_box.setToolTip("When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for")
         saved = getattr(self.win.settings, "clear_quickfight", False)
         self.watch_box.setChecked(bool(saved))
         self.watch_box.toggled.connect(self._clear_quickfight_toggled)
-        outer.addWidget(self.watch_box)
-        return box
 
     def _clear_quickfight_toggled(self, on: bool) -> None:
         self.win.settings.clear_quickfight = on
