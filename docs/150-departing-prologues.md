@@ -238,13 +238,29 @@ The reasoning, the captures and what they do *not* show is
 [walking out of the Kobold Caves drops Princess
 Fatima](50-experiments.md#walking-out-of-the-kobold-caves-drops-princess-fatima-fast-travelling-out-keeps-her-180).
 
-**What Fast Travel is meant to do about it, and does not yet.** Donald ruled on
-2026-09-03 that a fast travel out of an area should run the exit's own handler
-before warping, so a party leaving the Kobold Caves would lose her the way the
-game intends. **Nothing implements that today** -- a fast travel still enters
-`NEWECL` at `$2034` and skips all four statements -- so the gap between the two
-is open work, tracked on `#180 (What the Kobold Caves exit does to an NPC in
-the party is not understood, and Fast Travel skips it)`.
+**What Fast Travel does about it now.** Donald ruled on 2026-09-03 that a fast
+travel out of an area should run the exit's own handler before warping, so a
+party leaving the Kobold Caves would lose her the way the game intends. Built
+on 2026-09-08 in `automap.actions.reenter()`: the party is placed on the exit
+square and `DUNGEON` is re-entered at one of its own post-step points --
+`$0957` after a landed step, `$0A4C` then `$0978` for the forward key off a
+map edge -- with the stack rebuilt from `$03BF` first. That address is what
+makes the re-entry legal rather than a hack: `NEWECL`'s own tail (`$2034`,
+`LDX $03BF / TXS / JMP $0809`) rebuilds the stack from the same place and
+jumps to the same main loop, so the engine does not trust the stack across an
+area transition either, and `reenter()` does at a different moment exactly
+what the engine's own transition does. **Grade CONFIRMED**, driven live
+three times out of three on `npc_party.d64` (2026-09-04/05) through the
+hand-rolled re-entry `tools/exitreentry.py`, and once more through the
+shipped `automap.actions.FastTravel().run()` itself, unmodified,
+through a real `automap.target.ViceTarget` (2026-09-08) -- production code,
+not the hand-rolled tool, dropped Princess Fatima the same way walking out
+does. `tools/fasttravelrun.py` is that run's driver. `#180 (What the Kobold
+Caves exit does to an NPC in the party is not understood, and Fast Travel
+skips it)` is closed; the mechanism is `#207 (Run an exit's own handler
+before Fast Travel warps out)`. **The shipped path has one live sample, by
+its author** -- an independent run through `tools/fasttravelrun.py` would
+make it more than that.
 
 The hard part is not this exit. **An area pair does not name a handler**:
 `ECL0D` has two `NEWECL 27` statements, `$9A20` with nothing in front of it and
