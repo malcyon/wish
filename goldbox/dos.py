@@ -3107,31 +3107,36 @@ def write(char: NeutralCharacter,
                       f"array rather than storing it (#408)")
         _levels_into(levels, "class_levels", extra)
 
-    # -- thac0_base: recomputed through DOS's own table where it is known ----
+    # -- thac0_base: recomputed through DOS's own table, but only when the --
+    # -- source is a different port -------------------------------------------
     # `WRITE_DIRECT`'s copy is skipped above: a straight copy would hand
     # back whatever the source port's own trainer had written.  The two
     # ports run the identical recompute over different tables -- `GEN
-    # $1EF3` on the C64, `GAME.OVR:0x1A659` on DOS -- and this title's
+    # $1EF3` on the C64, `GAME.OVR:0x1A659` on DOS -- and Pool of Radiance's
     # magic-user rows 1-5 and thief rows 1-4 hold one worse than the C64's,
     # so a value copied straight from a C64 source is the wrong port's
     # number (#366, A converted magic-user or thief arrives with the other
     # port's THAC0, because the two ports ship different tables and the
     # conversion copies the byte).
     #
-    # `goldbox.levels.dos_base_thac0` carries the DOS table for Pool of
-    # Radiance only.  Curse of the Azure Bonds and Secret of the Silver
-    # Blades lay theirs out the same way, but their own records disagree
-    # with it -- their mage rows keep 39 and 6 of 56 Curse records and 2 of
-    # 56 Silver Blades records store 40 anyway, with no clamp and no second
-    # table found -- so nothing here is confirmed to write for those two,
-    # and the source's own byte is copied unchanged rather than a guess.
-    # `#348 (The THAC0 test votes with two save disks Wish converted from
-    # DOS, whose magic-users carry the DOS build's own THAC0)` names the
-    # settling experiment: train a Curse magic-user from level 1 to 2 and
-    # read `thac0_base` at 0x073.
+    # `goldbox.levels.dos_base_thac0` now carries all three titles' DOS
+    # tables (#318).  But the DOS engine's own recompute only runs on a
+    # training visit or a class change, not on every load: 9 of 86 Curse
+    # and 2 of 74 Silver Blades records this project has measured store a
+    # value the table would not give their character's current level, and
+    # every one is a magic-user no rebuild has run over since (Pool of
+    # Radiance's own corpus has no such miss, 202 of 202). Recomputing
+    # unconditionally would "correct" a byte the DOS engine itself left
+    # stale -- which is not a conversion's job and broke
+    # `test_every_engine_written_record_of_a_later_title_round_trips` the
+    # one time it was tried (#318). So the table is only consulted when the
+    # source is a genuine cross-port conversion; a DOS source's own byte,
+    # stale or not, is copied through unchanged, the way the game itself
+    # leaves it until the character is next trained.
     base = use("thac0_base")
     if base is not None:
-        derived = level_tables.dos_base_thac0(w.get("levels"), shape.key)
+        derived = (None if port == "DOS" else
+                   level_tables.dos_base_thac0(w.get("levels"), shape.key))
         if derived is None:
             put(base, "thac0_base")
         else:
