@@ -78,7 +78,11 @@ class Container:
     #: Bonds' -- means entry *n* is the name of the character in slot *n*.
     #: True means entry *n* is the *n*th character of the marching order,
     #: which is the reverse, because the C64 fills slots from the top down.
-    #: See `SECRET_OF_THE_SILVER_BLADES` below for why the two titles differ.
+    #: **Nothing in either engine reads what we write here**: the table is a
+    #: scratch buffer `GEN` clears and refills from the save disk's directory
+    #: before every read (`docs/216-the-c64-name-table.md`).  The field stays
+    #: because a table written the other way round is still wrong on the
+    #: disk, and it is what `SECRET_OF_THE_SILVER_BLADES` below describes.
     names_in_marching_order: bool = False
     #: The item pages, one per slot, and how many the file carries.
     item_area: int = 0x1000
@@ -328,15 +332,18 @@ _SILVER_ZERO = ("zero: what the one Secret of the Silver Blades save on this "
 #:   conversion writes that rather than a zero nobody has measured.  Curse
 #:   zeroes `+$FD`/`+$FE` and its engine put 8 and 9 back unasked, which is
 #:   the same fact from the other side.
-#: * **the name table may be keyed the other way round.**  In both
-#:   engine-written Curse saves entry *n* is the name in slot *n*; in the
-#:   shipped `SAVEDBASH` entry 0 is GUY DE VALOIS and slot 0 is MORGAINE, so
-#:   the table runs in marching order and the slots run the other way.
-#:   Everything else in that file is slot-ordered -- roster block *n* carries
-#:   slot *n*'s armour class and hit points, six of six -- so it is the table
-#:   that is reversed and not the file.  **PROBABLE, on one file that SSI
-#:   shipped**; `#193` step 3 is what settles it, because a wrong order is a
-#:   party whose names do not match its sheets.
+#: * **the name table is a scratch buffer, and its order describes two disks
+#:   rather than the engine.**  `GEN` clears all 256 bytes and refills them
+#:   from the save disk's own directory before every one of its three reads,
+#:   so whatever the file holds never reaches a screen (`docs/216-the-c64-
+#:   name-table.md`, read out of the running machine on both titles for
+#:   `#435`).  The earlier reading here -- that entry *n* runs in marching
+#:   order where the slots run the other way, from the shipped `SAVEDBASH`
+#:   against two engine-written Curse saves -- is refuted: an engine
+#:   `SAVE CURRENT GAME` after a removal stored a **one**-entry table beside
+#:   a five-character party, which no ordering explains.  `#439` is the one
+#:   consequence a player can reach, and it runs through the directory rather
+#:   than through this block.  CONFIRMED.
 SECRET_OF_THE_SILVER_BLADES = Container(
     game=games.SECRET_OF_THE_SILVER_BLADES,
     party_slots=8,
