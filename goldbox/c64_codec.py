@@ -90,6 +90,12 @@ class Report(neutral.Report):
 #: is the C64's own identifier for the same combat-figure slot the neutral
 #: field calls `combat_figure` (#305) -- shared by coincidence rather than by
 #: wiring, and left as `party_order` on the C64 side.
+#:
+#: Three of these pairs never fire on the reading side, because a save slot
+#: stores 256 bytes and `thac0`, `roster_movement` and `party_order` all sit
+#: past that; `read` takes each from the roster block's own copy instead, and
+#: this table's copy is what a 580-byte `.chr` export goes through.  The
+#: writing side uses every pair.
 DIRECT: tuple[tuple[str, str], ...] = (
     ("strength", "strength"),
     ("intelligence", "intelligence"),
@@ -1775,6 +1781,26 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("quickfight", bool(raw & 0x80),
                 f"bit 7 of {combat_side_origin}, ${raw:02X}",
                 grade("combat_side"), Provenance.RESHAPED)
+
+    # -- which of the eight loaded combat pictures is this character's -------
+    # `party_order` is at 0x10D, past the 256 a slot stores, so `DIRECT`'s
+    # copy above fires only for a 580-byte export and never for a save -- the
+    # third field in a row with that shape, after `roster_in_use` and
+    # `combat_side` (#282, the sibling of #281).  The roster block keeps its
+    # own copy at +0x0D, which `goldbox.savegame.RosterBlock.slot_index`
+    # already reads, so a save delivers the value the game itself stored
+    # rather than nothing.
+    #
+    # The C64 keeps the combat icons in a table of eight indexed by roster
+    # slot (`goldbox.icons.icon_for_slot`), so the slot index *is* the C64's
+    # answer to which of the eight loaded pictures a character draws with --
+    # one number where DOS keeps a separate 0-7 at its own 0x0BF.  That is
+    # why `DIRECT` pairs them, and it is why every whole-save writer on both
+    # sides overwrites the byte from the slot the record lands in.
+    if roster is not None:
+        out.set("combat_figure", roster.slot_index,
+                "the C64 roster block's +0x0D, the slot index the combat "
+                "icon table is indexed by", grade("party_order"))
 
     # As wide as the *title's* mask, not as wide as Pool of Radiance's. Seven
     # bytes stop at id 55, which cost MORGAINE five of her twenty-nine spells

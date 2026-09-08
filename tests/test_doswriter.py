@@ -1599,6 +1599,100 @@ def test_the_roster_spell_counts_are_derived_not_dropped():
         (name, why) for name, why, _run in c64_codec.READ_DERIVED)
 
 
+# --- the combat figure, the third field a save slot stops short of ----------
+#
+# `party_order` is C64 record 0x10D, one past the 256 a save slot stores, so
+# `c64_codec.DIRECT`'s copy fired only for a 580-byte `.chr` export and never
+# for a save -- the same shape `roster_in_use` (0x100) and `combat_side`
+# (0x10C) had before #281.  The saves below are built from the format through
+# `SaveGame0.slot` and `SaveGame1.roster`, the way a real one reaches the
+# reader, rather than as a full-width `CharacterRecord` whose `is_stored` is
+# True for everything.
+
+def _slot_and_roster(slot_index: int | None):
+    """A synthetic one-character `SAVEDGAME0` slot, and a `SAVEDGAME1` roster
+    block whose +0x0D carries `slot_index` -- `None` for no roster at all."""
+    from goldbox.games import by_key
+    from goldbox.record import CharacterRecord
+    from goldbox.savegame import ROSTER_SLOT_INDEX, SaveGame0, SaveGame1
+
+    pool = by_key("pool-of-radiance")
+    sg0 = SaveGame0(bytes(pool.save_size), pool)
+    rec = CharacterRecord.blank()
+    rec.set("name", "TESTCHAR")
+    for ability in ("strength", "intelligence", "wisdom", "dexterity",
+                    "constitution", "charisma"):
+        rec.set(ability, 10)
+    sg0.write_record(0, rec)
+    if slot_index is None:
+        return sg0.slot(0).record, None
+    payload = bytearray(pool.roster_size)
+    payload[0x00] = 0x01                        # OK, so the slot reads used
+    payload[ROSTER_SLOT_INDEX] = slot_index
+    return sg0.slot(0).record, SaveGame1(bytes(payload), pool).roster(0)
+
+
+def test_a_slot_record_alone_never_delivers_a_combat_figure():
+    """The failure mode isolated: 0x10D ends at 0x10E and a slot record
+    carries 256 bytes, so with no roster block there is nothing to read and
+    the field is absent rather than wrong.
+
+    This one passes before #282's fix as well as after it, deliberately: it
+    pins the behaviour that did *not* change, so a later reader cannot start
+    inventing a zero for a save that has no `SAVEDGAME1` beside it.  The
+    three below are the ones that fail without the fix."""
+    record, _ = _slot_and_roster(None)
+    assert record.stored_size == 256
+    assert not record.is_stored("party_order")
+    assert "combat_figure" not in c64_codec.read(record)
+
+
+def test_the_combat_figure_comes_from_the_roster_blocks_own_slot_index():
+    """5 at the roster block's +0x0D, for a character in save slot 0: a value
+    neither the old zero nor the slot the character happens to sit in, so a
+    reader that ignored the block cannot pass this by accident.
+
+    The C64 keeps the eight combat icons in a table indexed by roster slot
+    (`goldbox.icons.icon_for_slot`), so the slot index is the C64's own
+    answer to which of the eight loaded pictures a character draws with --
+    the neutral `combat_figure` (#282, #305)."""
+    record, roster = _slot_and_roster(5)
+    out = c64_codec.read(record, roster=roster)
+    assert out.get("combat_figure") == 5
+
+
+def test_the_c64_combat_figure_reaches_the_dos_record_and_is_accounted_for():
+    """Through `dos.write`, which is the single-character crossing: the byte
+    lands at DOS 0x0BF and the write report can say where it came from.
+
+    Before #282 the DOS byte was left at the blank record's zero and 0x0BF
+    was the one offset in the whole 285-byte record with no provenance, for
+    every character converted off a C64 save."""
+    record, roster = _slot_and_roster(5)
+    rec, _itm, _spc, rep = dos.write(c64_codec.read(record, roster=roster))
+    at = dos_layout.FIELDS_BY_NAME["combat_figure"].offset
+    assert at == 0x0BF
+    assert rec[at] == 5
+    assert rep.unaccounted == []
+    assert "roster block" in rep.sources[at]
+
+
+def test_the_roster_block_beats_the_records_own_copy_of_the_combat_figure():
+    """A `.chr` export carries all 580 bytes, so `DIRECT` reads 0x10D
+    directly; a save carries both the record and the block.  The block wins,
+    for the reason it wins for `roster_in_use` and `combat_side` (#281): it
+    is the copy the running game keeps up to date."""
+    from goldbox.record import CharacterRecord
+
+    _slot, roster = _slot_and_roster(5)
+    export = CharacterRecord.blank()
+    export.set("name", "TESTCHAR")
+    export.set("party_order", 2)
+    assert export.is_stored("party_order")
+    assert c64_codec.read(export).get("combat_figure") == 2
+    assert c64_codec.read(export, roster=roster).get("combat_figure") == 5
+
+
 # --- the whole save, C64 payloads to DOS files -------------------------------
 
 def _fixture_payloads():
