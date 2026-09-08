@@ -261,7 +261,7 @@ def rows_mode(args) -> int:
     """Print the rows the Quest Log draws from a captured window, as JSON."""
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
-    from automap.questlog import QuestLogPanel, enabled
+    from automap.questlog import QuestLogPanel
     from wish.ui_window import Ui_WishWindow
 
     data = pathlib.Path(args.bin).read_bytes()
@@ -270,7 +270,7 @@ def rows_mode(args) -> int:
     Ui_WishWindow().setupUi(root)
     panel = QuestLogPanel(root)
     panel.update_from(data)
-    out = {"gate": enabled(), "groups": {}}
+    out = {"groups": {}}
     for name, group in panel.groups.items():
         out["groups"][name] = [
             {"name": r.what.text(), "state": r.state.text(),

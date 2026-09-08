@@ -86,15 +86,19 @@ def outdoor_request(area: int, x: int, y: int) -> "world_state.WorldState":
     always read.  This matters because the only outdoor DOS saves on this
     machine live under `work/` and have been lost once already.
 
-    **Known stale**: this buffer's own script-staging bytes are zero, which
-    is `dos.never_adventured`'s "never set out" signature (#301, #326), so
-    `from_dos` substitutes Pool of Radiance's indoor start square rather
-    than reading the three words back out --
-    `#369 (tools/c64outdoor.py seeds New Phlan indoors instead of the
+    A buffer this short also reads as `dos.never_adventured`'s "never set
+    out" signature (#301, #326) -- an all-zero script buffer -- so it is
+    staged the same way `tests/test_dosconvert.py`'s `_stage_a_script` does,
+    one non-zero byte in the staged area script plus `LATER_BEGUN_WORD` at
+    255, before the three words are set
+    (`#369 (tools/c64outdoor.py seeds New Phlan indoors instead of the
     requested travel window, because its synthetic buffer reads as
-    never-adventured)` is the open issue.
+    never-adventured)`).
     """
     req = bytearray(sg.SAVGAM_SIZE)
+    start, _ = sg.SAVE_POOL_OF_RADIANCE.script_buffer
+    req[start] = 0x01
+    sg.put_word(req, dos.LATER_BEGUN_WORD, 255)
     sg.put_word(req, sg.SCRIPT, area)
     sg.put_word(req, sg.INDOORS, 0)
     sg.put_travel_square(req, x, y)
