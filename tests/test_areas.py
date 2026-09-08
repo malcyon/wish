@@ -678,6 +678,25 @@ def test_a_silver_blades_label_names_its_own_disk_not_a_pool_one():
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
 
 
+def test_a_curse_label_names_its_lettered_disk_not_a_number():
+    """`CURSE_2` under a Curse of the Azure Bonds session would name a disk
+    the player does not own -- the six disks are lettered `CURSE_A.D64`
+    through `CURSE_F.D64`, and `disk` holds the number the loader prompts
+    for and a fast travel writes, not the letter on the label
+    (`#427 (Fast Travel's dropdown names Curse's disks CURSE_2 rather than
+    CURSE_B, which is not a disk the player has)`)."""
+    row = areas.area_in(0x01, areas.CURSE_OF_THE_AZURE_BONDS)
+    assert row.disk == 2
+    assert row.label == "ECL01 - GEO01, CURSE_B"
+    row = areas.area_in(0x40, areas.CURSE_OF_THE_AZURE_BONDS)
+    assert row.disk == 6
+    assert row.label == "ECL40 - GEO40, CURSE_F"
+    # The two titles this could regress stay right.
+    assert areas.area(0).label == "New Phlan - GEO00, POOL3"
+    silver = areas.area_in(0x22, areas.SECRET_OF_THE_SILVER_BLADES)
+    assert silver.label == "ECL22 - GEO22, SILVER-2"
+
+
 def test_fast_travel_is_offered_silver_blades_now_that_one_has_been_driven():
     """Two things had to be true and both are: `#15 (Fast Travel for more than
     one Gold Box title)` moved the addresses off Pool of Radiance's, and a
@@ -708,6 +727,80 @@ def test_curse_is_offered_too_now_that_its_table_exists():
     assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
     assert all(a.confidence is areas.Confidence.UNKNOWN
                for a in areas.AREAS_CURSE)
+
+
+#: The fourteen derived arrival squares landed for `#15 (Fast Travel for more
+#: than one Gold Box title)`, exactly as `tools/areatable.py
+#: curse-of-the-azure-bonds --python` printed them the night they were taken.
+#: Pinned here as literals, separately from `goldbox.areas.AREAS_CURSE`, so a
+#: change to either one is caught by a comparison rather than by both sides
+#: agreeing with themselves.
+_CURSE_ARRIVALS = {
+    0x01: (7, 13, 1),
+    0x02: (8, 0, 1),
+    0x10: (0, 8, 3),
+    0x11: (0, 0, 1),
+    0x12: (15, 14, 2),
+    0x15: (8, 12, 1),
+    0x20: (14, 1, 0),
+    0x21: (3, 8, 2),
+    0x22: (12, 7, 3),
+    0x31: (3, 0, 2),
+    0x32: (6, 15, None),
+    0x33: (7, 15, 3),
+    0x45: (6, 10, 1),
+    0x51: (0, 8, 3),
+}
+
+
+def test_fourteen_curse_arrivals_are_landed_and_probable():
+    """`#15 (Fast Travel for more than one Gold Box title)`: the derivation
+    was done on `#192`; this is landing it. Fourteen of the twenty-five rows
+    now carry the square their own script names, and the other eleven stay
+    `None` rather than getting a guess.
+
+    Pinned against the tool's own printed rows rather than re-derived here,
+    because re-deriving off the disks is `tests/test_areatable.py`'s job and
+    this file's is to prove what got typed into `goldbox/areas.py` is what
+    the tool said. `$32` is the one row with no facing -- its script saves
+    `x` and `y` and never writes a direction, the same shape as Pool of
+    Radiance's area 7.
+    """
+    table = {a.id: a for a in areas.AREAS_CURSE}
+    landed = {id: (a.arrival.x, a.arrival.y, a.arrival.facing)
+              for id, a in table.items() if a.arrival is not None}
+    assert landed == _CURSE_ARRIVALS
+    assert len(landed) == 14
+
+    absent = {id for id, a in table.items() if a.arrival is None}
+    assert absent == set(table) - set(_CURSE_ARRIVALS)
+    assert len(absent) == 11
+
+
+def test_a_curse_arrival_is_never_better_than_probable():
+    """The brief's own grade: a derived square is PROBABLE and never
+    CONFIRMED, because `AREAS_CURSE`'s rows have not been landed on by a
+    driven fast travel (`test_curse_is_offered_too_now_that_its_table_exists`
+    already pins `confidence` UNKNOWN for every row). `confidence` does not
+    grade `arrival` at all -- Silver Blades' table reads the same way -- so
+    this is asserted directly against the calibration in
+    `tests/test_areatable.py::
+    test_a_derived_arrival_square_is_right_ten_times_in_eleven`: ten of
+    eleven, never eleven of eleven, which is why nothing here is graded
+    CONFIRMED.
+    """
+    table = {a.id: a for a in areas.AREAS_CURSE}
+    for id in _CURSE_ARRIVALS:
+        assert table[id].confidence is areas.Confidence.UNKNOWN
+
+
+def test_silver_blades_and_pool_of_radiance_tables_are_untouched():
+    """`#15`'s Curse work must not move either sibling table."""
+    assert len(areas.AREAS_SILVER_BLADES) == 22
+    assert len(areas.AREAS) == 30
+    silver_arrivals = sum(1 for a in areas.AREAS_SILVER_BLADES
+                           if a.arrival is not None)
+    assert silver_arrivals == 12
 
 
 def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():

@@ -61,10 +61,11 @@ PROBABLE.
 
 `AREAS_CURSE` is the third, measured for `#192 (Convert a Curse of the Azure
 Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
-the same tool. It carries no name and no arrival square -- a conversion needs
-neither -- and every row is UNKNOWN, because unlike Silver Blades no Curse
-area has been entered by a driven fast travel yet, only walked by the
-bytecode.
+the same tool. It carries no name, and fourteen of its twenty-five rows carry
+a derived arrival square (`#15 (Fast Travel for more than one Gold Box
+title)`), PROBABLE and never better -- see the table's own comment. Every row
+is UNKNOWN on `confidence`, because unlike Silver Blades no Curse area has
+been entered by a driven fast travel yet, only walked by the bytecode.
 
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
@@ -241,6 +242,18 @@ class Area:
     #: dropdown that said `POOL3` under a Silver Blades session would be
     #: naming a disk the player does not own.
     side_name: str = "POOL{}"
+    #: True for the one title whose loader letters its sides instead of
+    #: numbering them. Curse's disks are `CURSE_A.D64`-`CURSE_F.D64`, checked
+    #: against the player's own disks, and its loader prompts `INSERT SIDE A`
+    #: through `INSERT SIDE F` -- `tools/areatable.py`'s `sides()` already
+    #: reads that letter back into the number `disk` holds
+    #: (`number = ord(letters.upper()) - ord("A") + 1`), so `label` reverses
+    #: the same arithmetic rather than inventing a second one. `disk` itself
+    #: never changes: it is still the number a fast travel writes to the
+    #: loader's disk byte, only what `label` shows is different
+    #: (`#427 (Fast Travel's dropdown names Curse's disks CURSE_2 rather than
+    #: CURSE_B, which is not a disk the player has)`).
+    lettered_side: bool = False
 
     @property
     def ecl(self) -> str:
@@ -273,8 +286,9 @@ class Area:
         maps = ", ".join(self.geos) or "no map"
         if self.sqrdata:
             maps = f"{maps}, {self.sqrdata}"
+        side = chr(ord("A") + self.disk - 1) if self.lettered_side else self.disk
         return (f"{self.name or self.ecl} - {maps}, "
-                f"{self.side_name.format(self.disk)}")
+                f"{self.side_name.format(side)}")
 
 
 def _a(id: int, name: str | None, disk: int, geos: tuple[str, ...],
@@ -550,12 +564,15 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
 )
 
 
-def _c(id: int, disk: int, geos: tuple[str, ...]) -> Area:
-    """One Curse row: id, disk side and the maps its script loads. No name,
-    no arrival square -- a conversion needs neither, and nobody has played
-    Curse far enough to name a place or watch a driven arrival."""
-    return Area(id=id, name=None, disk=disk, geos=geos, arrival=None,
-                confidence=Confidence.UNKNOWN, side_name="CURSE_{}")
+def _c(id: int, disk: int, geos: tuple[str, ...],
+       arrival: Arrival | None = None) -> Area:
+    """One Curse row: id, disk side and the maps its script loads. No name --
+    nobody has played Curse far enough to name a place. Fourteen of the
+    twenty-five carry an `arrival`; see the table's own comment for what
+    grade it carries."""
+    return Area(id=id, name=None, disk=disk, geos=geos, arrival=arrival,
+                confidence=Confidence.UNKNOWN, side_name="CURSE_{}",
+                lettered_side=True)
 
 
 #: Curse of the Azure Bonds: twenty-five scripts, on six sides
@@ -577,6 +594,23 @@ def _c(id: int, disk: int, geos: tuple[str, ...]) -> Area:
 #: `GEO32`, so it cannot be derived from the id the way a straight numbering
 #: could be.
 #:
+#: **Fourteen rows carry an `arrival`, read the same way and graded the same
+#: way as Silver Blades' twelve: PROBABLE, and never better, because
+#: `confidence` above does not grade this field.**  Each one is the
+#: departing or arriving script's own `SAVE <n>, [$C04B]`/`[$C04C]`/`[$C04D]`,
+#: walked by `tools/areatable.py curse-of-the-azure-bonds --python` and
+#: pasted in unchanged.  The calibration is Pool of Radiance's own table,
+#: the one table here with driven arrivals to check a derived square
+#: against: eleven rows carry both, and ten agree
+#: (`tests/test_areatable.py::test_a_derived_arrival_square_is_right_ten_
+#: times_in_eleven`).  The one miss there is understood rather than wrong --
+#: two `COMPARE [$49F2], n / IF= / EXIT` guards read the came-from area and
+#: place the party differently depending on it -- so a Curse square could
+#: read the same way and nothing here rules that out; no Curse row has been
+#: landed on to check.  `$32`'s arrival carries no facing, the same as Pool
+#: of Radiance's area 7: the script that names it saves `x` and `y` and never
+#: writes the direction.
+#:
 #: **There is no area 0, and the table is not missing it.**  A DOS Curse save
 #: whose area word is 0 is one the player made from the party-formation menu
 #: before pressing `BEGIN ADVENTURING`, and 0 is the initialiser's value
@@ -589,15 +623,31 @@ def _c(id: int, disk: int, geos: tuple[str, ...]) -> Area:
 #: import, because no row of the area table names area 0)` and
 #: `docs/185-a-party-that-has-not-set-out.md` have the measurements.
 AREAS_CURSE: tuple[Area, ...] = (
-    _c(0x01, 2, ("GEO01",)), _c(0x02, 2, ("GEO01",)), _c(0x03, 2, ("GEO03",)),
-    _c(0x04, 2, ("GEO04",)), _c(0x10, 3, ("GEO10",)), _c(0x11, 3, ("GEO11",)),
-    _c(0x12, 3, ()), _c(0x15, 3, ("GEO15",)), _c(0x1E, 1, ()),
-    _c(0x20, 4, ("GEO20",)), _c(0x21, 4, ()), _c(0x22, 4, ("GEO21",)),
-    _c(0x23, 4, ()), _c(0x25, 4, ("GEO25",)), _c(0x30, 5, ()),
-    _c(0x31, 5, ("GEO32",)), _c(0x32, 5, ("GEO32",)), _c(0x33, 5, ("GEO33",)),
-    _c(0x35, 5, ("GEO35",)), _c(0x40, 6, ("GEO40",)), _c(0x42, 6, ("GEO42",)),
-    _c(0x43, 6, ("GEO43",)), _c(0x45, 6, ("GEO45",)), _c(0x50, 1, ()),
-    _c(0x51, 1, ()),
+    _c(0x01, 2, ("GEO01",), Arrival(7, 13, 1)),
+    _c(0x02, 2, ("GEO01",), Arrival(8, 0, 1)),
+    _c(0x03, 2, ("GEO03",)),
+    _c(0x04, 2, ("GEO04",)),
+    _c(0x10, 3, ("GEO10",), Arrival(0, 8, 3)),
+    _c(0x11, 3, ("GEO11",), Arrival(0, 0, 1)),
+    _c(0x12, 3, (), Arrival(15, 14, 2)),
+    _c(0x15, 3, ("GEO15",), Arrival(8, 12, 1)),
+    _c(0x1E, 1, ()),
+    _c(0x20, 4, ("GEO20",), Arrival(14, 1, 0)),
+    _c(0x21, 4, (), Arrival(3, 8, 2)),
+    _c(0x22, 4, ("GEO21",), Arrival(12, 7, 3)),
+    _c(0x23, 4, ()),
+    _c(0x25, 4, ("GEO25",)),
+    _c(0x30, 5, ()),
+    _c(0x31, 5, ("GEO32",), Arrival(3, 0, 2)),
+    _c(0x32, 5, ("GEO32",), Arrival(6, 15)),
+    _c(0x33, 5, ("GEO33",), Arrival(7, 15, 3)),
+    _c(0x35, 5, ("GEO35",)),
+    _c(0x40, 6, ("GEO40",)),
+    _c(0x42, 6, ("GEO42",)),
+    _c(0x43, 6, ("GEO43",)),
+    _c(0x45, 6, ("GEO45",), Arrival(6, 10, 1)),
+    _c(0x50, 1, ()),
+    _c(0x51, 1, (), Arrival(0, 8, 3)),
 )
 
 #: Game title -> that title's areas.

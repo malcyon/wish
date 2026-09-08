@@ -107,9 +107,19 @@ def test_every_record_reproduces_except_the_ones_the_loop_never_ran_over(
         title):
     """Counts, because a sweep with no count proves nothing.
 
-    Both numbers matter: a table that stopped reproducing would show up as a
-    lower first number, and a **rise** in the second is a new record whose
-    stored byte nobody has accounted for.
+    **The claim is the miss count, not the corpus size.** The first number
+    was pinned as a literal until 2026-09-08, when it went 202 -> 214
+    overnight: a night of driven runs had added twelve Pool of Radiance
+    records, and a test that fails because the project measured more of the
+    game is a test that trains people to edit it without reading it. That is
+    the same shape `#362 (The two THAC0/damage-bonus population tests in
+    test_derive.py have outgrown their exception counts, and PORSAVEA/PORSAVEB
+    carry the same anomaly #348 found)` took out of `test_derive.py`.
+
+    So the corpus may only grow, and every record in it must still reproduce.
+    A table that stopped reproducing raises the miss count; a record whose
+    stored byte nobody has accounted for raises it too. Either turns this red,
+    which is what it is for.
     """
     _located(title)
     agree, total, lines = laterthac0.sweep(title)
@@ -117,7 +127,11 @@ def test_every_record_reproduces_except_the_ones_the_loop_never_ran_over(
         pytest.skip(f"no DOS {title} records on this machine")
     want_agree, want_miss = RECORDS[title]
 
-    assert (agree, total - agree) == (want_agree, want_miss), "\n".join(lines)
+    assert total - agree == want_miss, "\n".join(lines)
+    assert agree >= want_agree, (
+        f"{agree} records reproduce, down from {want_agree} when this was "
+        f"measured -- the corpus does not shrink, so something stopped being "
+        f"read\n" + "\n".join(lines))
 
 
 @pytest.mark.parametrize("title,constants",
