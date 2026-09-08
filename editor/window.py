@@ -1095,9 +1095,13 @@ class EditorBinding(QObject):
         `source`, `destination`, `folder` and `game` pre-fill the dialog's
         rows the way `import_dos_save(folder=...)` pre-fills its one row --
         given every argument, no picker ever opens, which is how a test
-        drives the whole path (`#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment step C). The write
-        itself happens here rather than inside `ConvertDialog`, the same
-        split `import_dos_save` keeps between rehearsing (the dialog) and
+        drives the whole path (`#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment step C). With no
+        `source`, the dialog opens with an empty `From` row rather than a
+        picker in front of it (`#412 (File ▸ Convert demands a save in a
+        file picker before it will show you the Convert window)`) -- the
+        row's own `Choose` button is the picker now. The write itself
+        happens here rather than inside `ConvertDialog`, the same split
+        `import_dos_save` keeps between rehearsing (the dialog) and
         committing (this method): `fresh_folder` names a folder and
         `mkdir()`s it immediately afterwards (the review of `a60e829`: it
         names a folder, it does not reserve one), then `Direction.write`
@@ -1107,18 +1111,8 @@ class EditorBinding(QObject):
         """
         from editor import convert as convert_mod
 
-        if source is None:
-            path, _ = QFileDialog.getOpenFileName(
-                self.root, convert_mod.SOURCE_TITLE,
-                files.open_start_dir(self.last_save_folder, self.path,
-                                     self.saves_folder),
-                convert_mod.SOURCE_FILTER)
-            if not path:
-                return "cancelled"
-            source = path
-
         dialog = convert_mod.ConvertDialog(
-            source, self.party, self.game_files_for,
+            source or "", self.party, self.game_files_for,
             destination=destination, game=game, folder=folder,
             parent=self.root,
             start_dir=files.open_start_dir(self.last_save_folder, self.path,

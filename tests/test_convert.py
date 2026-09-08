@@ -36,7 +36,7 @@ from types import SimpleNamespace
 
 import pytest
 from gamedata import disk_dir, game_file
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QFileDialog
 from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
@@ -1125,6 +1125,69 @@ def test_convert_writes_into_a_fresh_folder_and_a_second_the_same_day_gets_dash_
     assert not list((destination / f"wish-{today}").glob("*")) == []
 
 
+def test_convert_with_no_source_opens_the_dialog_instead_of_a_picker(
+        tmp_path, monkeypatch):
+    """`#412 (File ▸ Convert demands a save in a file picker before it will
+    show you the Convert window)`: choosing File ▸ Convert… with no source
+    goes straight to the Convert window -- the picker `getOpenFileName` used
+    to open first is never called at all."""
+    window = EditorBinding(_make_root())
+
+    def _refuse_a_picker(*args, **kwargs):
+        raise AssertionError("a file picker opened before the Convert window")
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", _refuse_a_picker)
+
+    opened = []
+    original_exec = convert.ConvertDialog.exec
+
+    def _record_and_reject(self):
+        opened.append(self)
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec", _record_and_reject)
+    try:
+        outcome = window.convert()
+    finally:
+        window.close()
+        monkeypatch.setattr(convert.ConvertDialog, "exec", original_exec)
+
+    assert outcome == "cancelled"
+    assert len(opened) == 1
+    assert opened[0].ui.convert_source.text() == ""
+
+
+def test_convert_is_not_pressable_with_an_empty_from_row():
+    """The `Convert` button stays disabled until a source is chosen --
+    `#412 (File ▸ Convert demands a save in a file picker before it will
+    show you the Convert window)`."""
+    dialog = convert.ConvertDialog("", None, _no_disks)
+    try:
+        button = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        assert not button.isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_choosing_a_source_through_the_row_populates_the_to_combo(tmp_path):
+    """The row's own `Choose` button does what the old picker in front of
+    the window used to do: naming a source populates the `To` combo --
+    `#412 (File ▸ Convert demands a save in a file picker before it will
+    show you the Convert window)`."""
+    path = _por_c64_disk(tmp_path)
+    dialog = convert.ConvertDialog("", None, _no_disks)
+    try:
+        assert dialog.ui.convert_destination.count() == 0
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                QFileDialog, "getOpenFileName",
+                lambda *args, **kwargs: (str(path), ""))
+            dialog._choose_source()
+        assert dialog.ui.convert_destination.count() > 0
+    finally:
+        dialog.close()
+
+
 @needs_dos_saves
 @needs_disks
 def test_the_open_saves_unsaved_edits_cross(tmp_path, monkeypatch):
@@ -1409,9 +1472,10 @@ def test_the_picker_offers_an_amiga_disk():
 
 
 # ---------------------------------------------------------------------------
-# The menu -- `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-07, `#52`'s own
-# comments recording each of its five conditions met. `_wish_window`/
-# `_file_menu` are `tests/test_dosimport.py:708-750`'s private helpers,
+# The flag -- `tests/test_dosimport.py:708-750`'s shape, ported: "the gate,
+# asserted from the outside" rather than a direct call to `enabled()`, so a
+# passing test also proves `wish/window.py`'s wiring and not only the
+# function. `_wish_window`/`_file_menu` are that file's private helpers,
 # copied rather than imported -- a subagent's files may not import another
 # test module's private helpers across `#52`'s lane
 # (`work/reports/52-plan.md`).
@@ -1434,11 +1498,32 @@ def _file_menu(window):
                if a.text() == "&File")
 
 
-def test_the_file_menu_carries_convert(app, tmp_path, monkeypatch):
-    """No gate left to ask about: `File ▸ Convert…` is built for everyone,
-    the way `File ▸ Import` has been since `#131 (Lift
-    WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
-    three C64 titles)`."""
+def test_convert_is_not_offered_unless_it_is_asked_for(app, tmp_path,
+                                                       monkeypatch):
+    """No menu entry, not a greyed one -- `convert.ENV` unset is the shipped
+    state."""
+    monkeypatch.delenv(convert.ENV, raising=False)
+    window = _wish_window(tmp_path, monkeypatch)
+    assert convert.MENU_CONVERT not in [a.text()
+                                        for a in _file_menu(window).actions()]
+    assert window.convert_action is None
+    window.close()
+
+
+def test_a_variable_somebody_forgot_does_not_turn_convert_on(app, tmp_path,
+                                                             monkeypatch):
+    """`0` and `off` are off, the same rule `wish/debugmode.py` follows."""
+    for value in ("", "0", "off", "no"):
+        monkeypatch.setenv(convert.ENV, value)
+        window = _wish_window(tmp_path, monkeypatch)
+        assert convert.MENU_CONVERT not in [
+            a.text() for a in _file_menu(window).actions()], value
+        window.close()
+
+
+def test_the_file_menu_carries_convert_when_asked_for(app, tmp_path,
+                                                      monkeypatch):
+    monkeypatch.setenv(convert.ENV, "1")
     window = _wish_window(tmp_path, monkeypatch)
     assert convert.MENU_CONVERT in [a.text()
                                     for a in _file_menu(window).actions()]

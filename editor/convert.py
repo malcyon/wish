@@ -763,6 +763,68 @@ def fresh_folder(destination: str | pathlib.Path,
 
 
 # ---------------------------------------------------------------------------
+# The flag
+# ---------------------------------------------------------------------------
+
+#: **Off unless `WISH_EXPERIMENTAL_CONVERT=1`.** Replaces
+#: `editor.dosimport.ENV` and `editor.exports.ENV`, whose submenus this
+#: dialog replaces -- `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs
+#: the import working for all three C64 titles)`'s bar transfers unchanged.
+#: Not built rather than greyed out: a greyed entry invites the question of
+#: how to un-grey it, and the answer would be a sentence in the interface
+#: (`.claude/rules/feature-flags.md`).
+#:
+#: **Lifted once, on 2026-09-07 (`e9e4bac`), and put back the same night.**
+#: The five conditions below were all met and every one of them was a
+#: property of the code -- directions registered, drop panes clear, no
+#: unapproved string reachable. None asked whether a person could actually
+#: reach the dialog. Donald: *"When I pick File->Convert, it still
+#: immediately opens a file picker dialog."* Two more conditions join the
+#: five for that reason, and this flag stays on until both are met.
+#:
+#: **Comes off when, all seven:** (1) no string below carries the
+#: `(NOT APPROVED)` marker -- met 2026-09-05, kept met by
+#: `test_no_string_the_player_reads_is_unapproved`; (2) a Pool of Radiance, a
+#: Curse and a Silver Blades DOS save each list the Commodore 64, and a Pools
+#: of Darkness save never does -- met 2026-09-07,
+#: `test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot`,
+#: `test_a_curse_or_silver_blades_savgam_file_lists_c64`,
+#: `test_a_curse_or_silver_blades_d64_lists_dos` and
+#: `test_a_pools_of_darkness_folder_lists_nothing`; (3) every registered
+#: direction's drop list is empty or accounts for a named, tracked line
+#: rather than a silent one -- met 2026-09-07,
+#: `#355 (A C64 party converted to DOS is shown nine developer notes, with
+#: memory addresses, overlay names and issue numbers in them)` and
+#: `#388 (A converted paladin or ranger loses his innate effect on the way to
+#: DOS, because the writer filters through Pool of Radiance's id list)` both
+#: closed; (4) the README says how the source picker works -- waived by
+#: Donald, 2026-09-07: *"I will update the README, but don't wait on that to
+#: remove WISH_EXPERIMENTAL_CONVERT and close the related tickets. It is a
+#: simple interface, and people will figure it out."*; (5) each registered
+#: direction has been loaded and walked in its emulator from a save this
+#: dialog's own code path wrote -- met 2026-09-07, eight of eight, `#52`'s
+#: own comments; (6) `File ▸ Convert…` opens the Convert window directly,
+#: with no file picker in front of it -- met 2026-09-07 by this same change,
+#: `#412 (File ▸ Convert demands a save in a file picker before it will show
+#: you the Convert window)`; (7) `File ▸ Import ▸ DOS save folder` is
+#: removed, since two menu items doing the same job is the state this dialog
+#: exists to end -- `#52`'s own step 5. **Not met.** Removing it needs
+#: `editor/dosimport.py`, which this change does not touch.
+ENV = "WISH_EXPERIMENTAL_CONVERT"
+
+#: Anything else -- an empty string, `0`, `off` -- is off, matching
+#: `wish/debugmode.py`. A variable somebody exported once and forgot must
+#: not put an unfinished dialog in front of them.
+TRUE = ("1", "true", "yes", "on")
+
+
+def enabled() -> bool:
+    """Is `File ▸ Convert…` offered in this run?"""
+    import os
+    return os.environ.get(ENV, "").strip().lower() in TRUE
+
+
+# ---------------------------------------------------------------------------
 # Strings.
 #
 # Reused ones carry the approval they already have, verbatim, and keep the
