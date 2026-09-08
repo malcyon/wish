@@ -772,6 +772,28 @@ def read(source, party_strength: int | None = None) -> Commissions:
                        appointments=appointments(f))
 
 
+#: `summary_lines()`'s own words for a side quest, #158 step E, the piece the
+#: flag's removal deferred. `state.quest.name` and the two state words below
+#: are exactly what `automap/questlog.py`'s panel already draws -- `IN_PROGRESS`
+#: is the same constant, and `"Finished"` is copied verbatim from
+#: `automap.questlog.SIDE_QUEST_FINISHED` -- and Donald already approved that
+#: wording from a screenshot on 2026-09-04 and 2026-09-05. But this is a
+#: different rendering, a terminal listing rather than a panel row, and he has
+#: not seen this one: "'It matches the wording already there' is not
+#: approval" (`.claude/rules/gui-text.md`). So every line built from these
+#: still carries the marker until he has looked at it in place.
+#:
+#: No word is proposed for `QUEST_ACCEPTED` -- Ohlo's own accept flag is not
+#: durable, so `durable_state` can never produce it today, the same gap
+#: `automap.questlog.SIDE_QUEST_WORDS` leaves open -- so that state, like
+#: `QUEST_UNSEEN`, draws no line rather than a guess.
+SIDE_QUEST_HEADING = "Side quests:"
+SIDE_QUEST_STATE_WORDS = {
+    QUEST_IN_HAND: IN_PROGRESS,
+    QUEST_FINISHED: "Finished",
+}
+
+
 def summary_lines(source) -> list[str]:
     """The panel as text, for a terminal. Same content, no Qt."""
     state = read(source)
@@ -788,4 +810,11 @@ def summary_lines(source) -> list[str]:
     if state.outstanding:
         lines.append("Summoned to:")
         lines += [f"  {a.name} ({a.state})" for a in state.outstanding]
+    sides = [s for s in side_quests(source) if s.durable_state != QUEST_UNSEEN]
+    words = [(s.quest.name, SIDE_QUEST_STATE_WORDS.get(s.durable_state))
+             for s in sides]
+    words = [(name, word) for name, word in words if word is not None]
+    if words:
+        lines.append(f"{SIDE_QUEST_HEADING} (NOT APPROVED)")
+        lines += [f"  {name} - {word} (NOT APPROVED)" for name, word in words]
     return lines

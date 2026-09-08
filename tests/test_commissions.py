@@ -639,3 +639,60 @@ def test_a_side_quest_state_with_no_approved_word_draws_no_row(caplog):
 
     assert rows == []
     assert "accepted" in caplog.text, caplog.text
+
+
+# --- summary_lines and side quests, #158 step E ------------------------------
+
+def test_summary_lines_says_nothing_about_a_side_quest_not_yet_seen():
+    """A party that has never met Ohlo gets no `Side quests:` section."""
+    lines = book.summary_lines(_flags_4a81(0))
+    assert not any("side quest" in line.lower() for line in lines)
+
+
+def test_summary_lines_lists_a_side_quest_once_the_potion_is_in_hand():
+    lines = book.summary_lines(_flags_4a81(250))
+    assert "Side quests: (NOT APPROVED)" in lines
+    assert "  Ohlo's potion - In progress (NOT APPROVED)" in lines
+
+
+def test_summary_lines_lists_the_side_quest_as_finished_once_dealt_with():
+    lines = book.summary_lines(_flags_4a81(255))
+    assert "Side quests: (NOT APPROVED)" in lines
+    assert "  Ohlo's potion - Finished (NOT APPROVED)" in lines
+
+
+def test_summary_lines_does_not_show_a_side_quest_from_the_accepted_flag_alone():
+    """The decision `durable_state` pins (2026-09-04): a save carrying only the
+    scratch-page accept flag reads as though Ohlo was never met, in the
+    terminal listing the same as on the panel."""
+    lines = book.summary_lines(_page_4a04(250))
+    assert not any("side quest" in line.lower() for line in lines)
+
+
+def test_every_side_quest_line_summary_lines_adds_is_marked_not_approved():
+    """`summary_lines` is a rendering Donald has not looked at (#158 step E is
+    the piece the flag's removal deferred), even though the words it reuses
+    are already approved for the panel -- `.claude/rules/gui-text.md`:
+    "'It matches the wording already there' is not approval." So every line
+    the side-quest section adds must still carry the marker.
+    """
+    before = book.summary_lines(_flags_4a81(0))
+    for value in (250, 255):
+        after = book.summary_lines(_flags_4a81(value))
+        added = [line for line in after if line not in before]
+        assert added, f"no side-quest line added at $4A81={value}"
+        for line in added:
+            assert "NOT APPROVED" in line, line
+
+
+def test_no_summary_line_for_a_side_quest_shows_a_memory_address():
+    import re
+
+    address = re.compile(r"\$[0-9A-F]{4}\b")
+    quest = book.SIDE_QUESTS[0]
+    for value in (0, 250, 255):
+        for line in book.summary_lines(_flags_4a81(value)):
+            assert not address.search(line), (
+                f"a memory address reaches a player: {line!r}")
+            for flag in (quest.accept, *quest.progress, quest.finish):
+                assert flag.where not in line
