@@ -10,15 +10,15 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 39, Silver Blades 37.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **The six purses beyond gold on either later title**, A8, and it is the only unverified cell left that anybody here can reach: C10 and C11 are ruled out by G7, D4 needs hardware nobody on this project has, and D1 needs a live machine. An inventory edit was the answer until 2026-09-08, when `tools/inventorycheck.py` took A13 to `V` on both later titles; the editor's write-back path on Silver Blades was the answer the day before that, and the live tab the day before that (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 40, Silver Blades 38.** §2 | CONFIRMED, cited per row |
+| Where is the promise thinnest? | **Nothing that anybody on this project can reach is unverified any more.** The four cells left on each later title are C10 and C11, ruled out by G7; D4, which needs hardware nobody here has; and D1, which needs a live machine. The six purses beyond gold, A8, were the answer until 2026-09-08, when `tools/pursecheck.py` drew all seven on both later titles' own sheets; an inventory edit was the answer earlier the same day, the editor's write-back path on Silver Blades the day before, and the live tab the day before that (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
 
 The honest one-line version: **the file path works on three titles, and so
 does the live tab -- reader, map, badges and all five action buttons, watched
-in the running game on each.** What is left is the six purses beyond gold, and
-the combat view and log, which are ruled out by G7. The editor writing a Silver
-Blades save back was on that list until 2026-09-08, and an inventory edit on
-either later title came off it the same day.
+in the running game on each.** What is left is the combat view and log, which
+are ruled out by G7, and two cells nobody here has the machine for. The editor
+writing a Silver Blades save back came off that list on 2026-09-07, and an
+inventory edit and the six purses beyond gold on 2026-09-08.
 
 ## 1. How far out of date `docs/120` and `docs/121` are
 
@@ -64,7 +64,7 @@ applicable.
 | A5 | race, class, alignment named in the sheet | V | V | V | `test_pertitle_ui.py::test_the_race_table_follows_the_title`, `…test_a_silver_blades_save_shows_its_own_races` |
 | A6 | saving throws satisfy the derived rule | V | V | V | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **Built (#187 (Silver Blades characters are shown Pool of Radiance's level progression))**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`. Reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` and `…test_silver_blades_saves_match_the_modules_own_table` — and the sheet now shows them, via `automap/live.py:_classes` |
 | A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | V | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **Built (#187 (Silver Blades characters are shown Pool of Radiance's level progression))**: experience `GEN $162D` (6 x 19 x 3, big-endian, reproducing Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855`, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES` — `test_coldread.py` and `test_ssblevels.py` |
-| A8 | the seven money fields | V | V (gold only) | V (gold only) | `docs/120` §5.2 — gold `0` → `777` read back off Curse's own sheet; SSB's gold `0` → `4321` read back off its sheet on 2026-09-08 for #33 (One Silver Blades session, for the whole editor path). The other six purses are untested on any title but PoR |
+| A8 | the seven money fields | V | V | V | **Closed on 2026-09-08 on both**, VICE pool slot 0, `tools/pursecheck.py`, six boots. All seven purses set through the form's own `field_copper`…`field_jewelry` spin boxes, so `EditorBinding._flush` is the writer, then read off the game's own `VIEW CHARACTER` sheet. Curse, `WISH-SPEC-curse-party-with-items`, `MALE ELF MAGE`: `JEWELRY 77`, `GEMS 66`, `PLATINUM 5555`, `GOLD 4444`, `ELECTRUM 3333`, `SILVER 2222`, `COPPER 1111`. Silver Blades, `WISH-SPEC-ssb-d-engine-resave`, `MORGAINE`: the same seven values in that title's boxed column. **`ENCUMBRANCE` is the check a screenshot cannot give** — the C64 record has no such field, so the engine recomputes `sum(purses) + sum(item weight × quantity)` while drawing the sheet, and it drew 16953 for Curse (16808 of coins plus 145 tenths of a pound of items) and 16808 for Silver Blades, both predicted before the boot. Three controls, all staged before their boot and read by the engine: the unedited disk through the same code (`PLATINUM 300` alone on Curse, an **empty** money box on Silver Blades), an untouched character on the edited disk (`PLATINUM 300`, `GOLD 4`), and the five other characters' purses unchanged on disk. `test_pursecheck.py`, 12 tests, including that exactly twelve bytes move and all of them inside that character's own money block at `+0x0BB`…`+0x0C8`. **The row's old blocker was a misreading of the sheet**: the money box draws all seven and skips any purse that is zero — `LIBRARY $3D3E` in Curse and `$31F2` in Silver Blades, `LDA $7CBB,Y / ORA $7CBC,Y / BEQ` — so every capture before this showed one line because every character had one purse, and no `TRADE` screen was needed |
 | A9 | spellbook width | V | V | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; **Curse is 13 and the game's own code says so** — `CAMP $2A25` walks spell ids to 100 and reads `LDA $7C78,X` with X at 12, `test_curse.py::test_camp_reads_curses_mask_as_far_as_spell_one_hundred`. No Curse specimen writes past `0x07C` and none has to (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) |
 | A10 | spell names resolve | V | V | V | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; **SSB's are resolved** — `goldbox/spells.py:SECRET_OF_THE_SILVER_BLADES`, `COMBAT2` at `$E000`, 194 entries, spells to 117, with `test_silverblades.py::test_silver_blades_keeps_its_spell_names_in_combat2_like_curse` and `…::test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm` |
 | A11 | item names resolve | V | V | V | `test_titletables.py::test_every_title_names_its_first_item_battle_axe` — all six titles |
@@ -127,13 +127,13 @@ applicable.
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
-| Curse of the Azure Bonds | 49 | **39** | 0 | 5 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **37** | 2 | 5 | 0 | 5 |
+| Curse of the Azure Bonds | 49 | **40** | 0 | 4 | 0 | 5 |
+| Secret of the Silver Blades | 49 | **38** | 2 | 4 | 0 | 5 |
 
 **These numbers are counted from the rows above and the previous ones were
-not.** Counting `V (gold only)` under A8 and the two `U, expected broken`
-cells under C10 and C11 as `U`, which is what they are, every row is in
-exactly one column and each title's five add to 49.
+not.** Counting the two `U, expected broken` cells under C10 and C11 as `U`,
+which is what they are, every row is in exactly one column and each title's
+five add to 49. A8's `V (gold only)` was the third such cell until 2026-09-08.
 
 **`#34 (Validate the live automapper tab per title)` moved ten cells for
 Curse and seven for Silver Blades** on 2026-09-08 -- C6, C7, C13, C14 and
@@ -146,12 +146,23 @@ and `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` and `#20 (Build an area table for Silver Blades)` closed
 C21 for both, with nobody returning to these rows.
 
-**What is left is five cells for Curse and five for Silver Blades**, and they
-are not the live tab: A8 (the six purses beyond gold), C10 and C11 (the combat
-view and log, ruled out by G7), D1 (Preferences against a live machine) and
-D4 (the Ultimate backend, which nobody can test).
+**What is left is four cells for Curse and four for Silver Blades**, and none
+of them is reachable from this machine: C10 and C11 (the combat view and log,
+ruled out by G7), D1 (Preferences against a live machine) and D4 (the Ultimate
+backend, which nobody can test).
 
-**A13 was the sixth until 2026-09-08**, when `tools/inventorycheck.py` staged a
+**A8 was the fifth until 2026-09-08**, when `tools/pursecheck.py` set all
+seven purses through the form's own spin boxes on one character of each later
+title and read all seven off the game's own `VIEW CHARACTER` sheet. Its stated
+blocker was a misreading of the screen rather than a gap in the program: the
+handover on #33 (One Silver Blades session, for the whole editor path) said
+the money box draws one line and that the other six purses would need `TRADE`
+or a shop. The box draws all seven and **skips any purse whose sixteen bits
+are zero** — `LIBRARY $3D3E` in Curse and `$31F2` in Silver Blades, the same
+loop in both — so every capture this project had taken showed one line because
+every character had exactly one purse. No `TRADE` screen was opened.
+
+**A13 was the sixth until earlier the same day**, when `tools/inventorycheck.py` staged a
 remove, an edit and an add on one character of each later title and read all
 three off the game's own `EQUIPPED ITEM` screen. Its stated blocker had been
 out of date for four days on Curse and had never been true on Silver Blades:
@@ -206,7 +217,7 @@ Read against the feature list in `README.md` itself:
 | "Combat view that shows the whole battlefield" | **not backed** — PoR overlay addresses (C10) | **not backed** |
 | "Party stats. HP, XP, AC, THAC0, readied items" | holds — six cards read off a running Curse and crossed against the same save read cold, 18 of 18 fields (C12) | holds, on the same reading |
 | "Quest log. Shows what commissions you have from the council" | **not applicable** — Phlan's council only (C15) | **not applicable** |
-| "Update your stats … Spells … Inventory … Combat Icon Editor" | mostly holds; inventory and the icon charset unverified (A13, A14) | holds for the sheet; **the write-back path itself is unverified** (A17, A18) |
+| "Update your stats … Spells … Inventory … Combat Icon Editor" | holds — the money box and the item list were the last two, read off the game's own sheet on 2026-09-08 (A8, A13), and the icon charset is Pool of Radiance's byte for byte (A14) | holds, and the write-back path with it (A8, A13, A17, A18) |
 
 **Four of the five automapper bullets hold on all three titles now.** The
 live actions under "Party stats" were the one that did not, and they were
@@ -214,6 +225,12 @@ watched on each title on 2026-09-08 (C16-C19,
 `docs/212-the-live-tab-per-title.md`). What is left in this table is the
 combat view, which G7 rules out, and the Quest Log, which is Phlan's council
 and does not exist in the other two.
+
+**The editor bullet came off this list on 2026-09-08 as well**, and the row
+above was two days out of date until then: A14 closed with `#31 (Cold-read
+Curse and Silver Blades for the fields the editor shows)`, A17 and A18 with
+`#33 (One Silver Blades session, for the whole editor path)`, and A13 and A8
+with `tools/inventorycheck.py` and `tools/pursecheck.py` on the same day.
 
 ## 3. How the unverified cells would be tested, grouped
 
@@ -291,14 +308,21 @@ of the twenty-nine maps Pool of Radiance ships, it never overwrites a file
 already there, and anything it cannot attribute is left exactly where it is
 under no title at all.
 
-### G4 — one Curse session: a played party with an inventory
+### G4 — one Curse session: a played party with an inventory · **done 2026-09-08**
 
-Closes A13 for Curse, and the Curse half of `docs/120`'s remaining blockers.
+Closed A13 for Curse, and the Curse half of `docs/120`'s remaining blockers —
+and A8 for Curse on the same specimen, since `WISH-SPEC-curse-party-with-items`
+is what makes an encumbrance of coins *and* item weight checkable.
 
 Play far enough to pick something up, save, then: open the save in the editor,
 read the item records, add one, remove one, write back, load it in the game and
 read the inventory off the game's own screen. One emulator sitting. This is the
 only thing that will ever produce a Curse item specimen.
+
+**The playing was done on 2026-09-04** by
+`#32 (One Curse session, to get a party with items)`, four days before anybody
+came back to this section. `tools/inventorycheck.py` is the item half and
+`tools/pursecheck.py` the money half; neither needed a new session.
 
 ### G5 — one Silver Blades session: the whole file path · **done 2026-09-08**
 
