@@ -3200,8 +3200,7 @@ def test_the_tooltip_names_every_class_a_curse_press_trains(app):
     card = CharacterCard(make_root(), 0)
     card.show_character(travis)
     assert card.training_classes(travis) == ["fighter", "thief"]
-    assert card.level_up.toolTip() == \
-        "level up as fighter and thief (NOT APPROVED)"
+    assert card.level_up.toolTip() == "level up as fighter and thief"
 
 
 def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):

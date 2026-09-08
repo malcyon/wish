@@ -618,17 +618,17 @@ class CharacterCard(QObject):
             if self.ready:
                 names = self.training_classes(who)
                 if len(names) > 1:
-                    # UNAPPROVED WORDING: naming more than one class in one
-                    # tooltip is new. Pool of Radiance's trainer never raises
-                    # two classes in a press; Curse's own trainer does
-                    # (`GEN $14F8`), and a tooltip naming only one would say
-                    # something that will not happen -- `#420 (The roster
-                    # card's Level Up tooltip names one class for a Curse
-                    # press that trains several, and reads them with Pool of
-                    # Radiance's own tables)`.
+                    # Donald's wording, approved 2026-09-08: `level up as
+                    # fighter and thief` for two, `level up as fighter, thief
+                    # and cleric` for three. Naming more than one class is
+                    # new because Pool of Radiance's trainer never raises two
+                    # in a press; Curse's own trainer does (`GEN $14F8`), so
+                    # a tooltip naming one would say something that will not
+                    # happen -- `#420 (The roster card's Level Up tooltip
+                    # names one class for a Curse press that trains several,
+                    # and reads them with Pool of Radiance's own tables)`.
                     joined = ", ".join(names[:-1]) + " and " + names[-1]
-                    self.level_up.setToolTip(
-                        f"level up as {joined} (NOT APPROVED)")
+                    self.level_up.setToolTip(f"level up as {joined}")
                 elif names:
                     self.level_up.setToolTip(f"level up as {names[0]}")
         conditions = who.conditions
