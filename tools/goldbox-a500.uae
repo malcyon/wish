@@ -21,6 +21,19 @@ win32.ctrl_F11_is_quit=false
 ; three steps in a row, every one drawn. #361 (An Amiga party cannot be made to
 ; walk, because the WinUAE driver sends only keystrokes).
 sound_output=interrupts
+
+; gfx_api=0 is DirectDraw, and it is what lets `-log` and the screen coexist.
+; This VM has no accelerated renderer, and WinUAE's default one cannot keep its
+; display buffer locked: it fills the console with `Denise queue without lock!
+; id=1` as fast as it can print. With `-log` -- which is the only way to get a
+; console for the debugger at all -- that flood starved the emulator. Measured
+; on Curse of the Azure Bonds, 2026-09-08, same command line either way:
+; default renderer, a white window for the whole run, FPS 47.1 falling to 14.6
+; with CPU at 342%, and tools/winvmsettle.py unable to settle a screen in 180 s;
+; gfx_api=0, the game drawn, FPS 49.9, CPU 0%, and seven settles in a row
+; between 7 s and 83 s with the debugger available throughout. #37 (Automap the
+; Amiga version, not just the C64).
+gfx_api=0
 gfx_display=0
 gfx_framerate=1
 gfx_width_windowed=720

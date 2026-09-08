@@ -184,16 +184,27 @@ executable and both check out against the AD&D 1e Players Handbook — the six
 racial rows are the published adjustments exactly (dwarf `open locks +10,
 find traps +15, climb walls −10, read languages −5`, and so on).
 
-Against the C64 the table is **half confirmed**. HOGARTH — a dwarf thief 1 on
-SSI's own shipped demo party, the cleanest specimen in the project — matches
-base plus the dwarf racial row in all eight columns, including the signed `−5`
-stored as `$FB`. LADY KATHERINE (half-elf), NYX (gnome) and DAX (halfling) do
-not, and no dexterity adjustment reconciles them — HOGARTH has dexterity 17 and
-takes no adjustment at all.
+Against the C64 the per-level table is the same 72 bytes. The racial one is
+**not**, and that was settled on 2026-09-08 by reading the C64's own copy:
+`GEN $1076`, eight rows of eight, indexed `race − 1` by `$2005 LDY $6B72 /
+DEY`. The two blocks are the same byte stream for 21 bytes and then the C64's
+is the DOS stream **one byte later** to the end, so the C64 build is a byte
+short in the gnome's row and the gnome, half-elf, halfling and half-orc each
+read a row displaced one column, taking the eighth from the next race's first
+byte. HOGARTH the dwarf matches because the dwarf's row is before the missing
+byte; LADY KATHERINE, NYX and DAX each match the C64's *displaced* row exactly.
 
-So: **the C64's thief-skill progression is the DOS one**, and how it applies
-racial modifiers is **UNKNOWN**. The C64's own copy of the table, wherever it
-lives on the disks, would settle it in one read.
+Two things that were guessed here and are wrong. The C64 takes **no dexterity
+adjustment at all** — HOGARTH's dexterity 17 proved nothing, since `$1FEC`
+never reads the field — where every DOS build adds an eleven-row block of five
+columns from a dexterity of 9 and clamps the result at zero. And the C64's
+progression being "the DOS one" is true only of the *level* rows.
+
+`tools/thiefskillcensus.py` reads both ports' tables off the player's own
+files and sweeps every record: 59 of 63 DOS records and 27 of 27
+engine-written C64 records reproduce. `#431 (A converted halfling thief keeps
+the other port's skill percentages, because the two ports ship different
+halfling rows)` is what a player loses.
 
 ---
 
@@ -484,7 +495,6 @@ project had left open for months.
 
 | question | what would settle it |
 |---|---|
-| how the C64 applies racial modifiers to thief skills | find the C64's own `ThiefSkillModifier*` tables on the POOL disks |
 | whether `spells_memorised` is 21 bytes | a cleric/magic-user with more than sixteen spells memorised |
 | the C64 spell counts for Curse, and hence the `spells_known` width | read a Curse caster's spellbook against `COMBAT2`'s name table |
 | whether `0x100` is a STATUS enum | one specimen reading other than 1 |

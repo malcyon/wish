@@ -1057,6 +1057,55 @@ only keystrokes)` named as unreadable without a step, and the code says what it
 is: the value the step routine computes from `(x, y, facing)` and stores in the
 byte after the facing.
 
+### 1.11c Reading a running Amiga, and drawing its map (#37 (Automap the Amiga version, not just the C64))
+
+**The automapper's two inputs are both live on the Amiga since 2026-09-08.**
+`automap/amiga.py` is the backend and `docs/143-winuae-debugger.md` §10 has the
+transport, the costs and how the base is measured. What belongs here is what
+the *game* holds.
+
+**Every address is an offset into the title's data hunk**, and the hunk's own
+load address is measured at run time because AmigaDOS relocates on every
+`LoadSeg`. Measured bases, both in slow memory: `/Curse` at `$00C4E270` and
+`/Secret` at `$00C55CE0`, each on its own boot.
+
+| | Silver Blades | Curse | width |
+|---|---|---|---|
+| x, y, facing | `g57a0`, `g57a1`, `g57a2` | `g3f5e`, `g3f60`, `g3f62` | 1 byte / `u16be` |
+| the wall type ahead, the square's attribute | `g57a3`, `g57a4` | `g3f63`, `g3f64` | |
+| **a pointer to the resident 1024-byte `GEO` block** | `g7bf8` | `g5eb6` | `u32` |
+
+The pointer is the new one. Both map-indexing routines -- Silver Blades
+`0x3b78c` and `0x3b8a6`, Curse `0x37a22` and `0x37b3c` -- do
+`movea.l d16(a4), a0` and then index `16*y + x`, `+$100` and `+$200` off it, so
+the map moves with whatever the loader allocated and the global is the only
+fixed thing. CONFIRMED from the code on both titles.
+
+**The step diff, live.** A six-character Silver Blades party at `6,9 E 00:02`
+took one `NP8` and read `7,9 E 00:03`. The eight bytes at `g57a0` went
+`06 09 02 00 80 00 00 2a` to `07 09 02 0c 86 00 00 2a`, and the 1024 bytes the
+pointer led to did not change at all. `geo[$200 + 16*9 + 7]` is **134** and the
+stored attribute became `$86`, which is 134 -- so the engine recomputed the
+byte from that block, which is what makes the two addresses check each other
+rather than merely both being plausible.
+
+**The buffer is allocated before an area is loaded into it.** At the party menu
+after `LOAD SAVED GAME` the pointer already held an address and the 1024 bytes
+there were all zero, while the party globals already held
+`06 09 02 00 80` -- the first five bytes of `savgamE`'s square block at file
+offset `0x1401`, byte for byte. So the file's square reaches the globals as the
+load finishes, and a null-or-zeroes map has to be told from a real one.
+
+**The map identifies itself against the disk.** `automap.area.ResidentGeo`
+matched the live block to `GEO` id **16**, uniquely, among the 17 blocks of
+`/DISK2/GEO.GLB` -- the id both engine-written Silver Blades saves carry at
+`$49C5`. The block reciprocates 480 of 480.
+
+**Pool of Radiance is not covered.** Its Amiga build is a many-hunk executable
+with absolute relocations rather than a small-data one, so there is no single
+base to find; §1.9 and `docs/165-amiga-savegame.md` put its party struct at
+`h32+0x176f`, and reaching it live needs hunk 32's load address.
+
 ### 1.12 Writing an Amiga Pool of Radiance character (#105 (Write an Amiga Pool of Radiance character, not just a Pools of Darkness one))
 
 The reader landed in §1.8 and §1.9; this is the other half, and it is the same

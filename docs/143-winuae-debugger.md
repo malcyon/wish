@@ -448,16 +448,34 @@ unattended boot possible at all. Curse runs straight from its title art to
 QUIT menu; an original disk would stop for a code-wheel question with nobody
 there to answer it.
 
-**`-log` is not free, and on Pool of Radiance it costs the run.** The console
-it opens fills with `Denise queue without lock! id=1` -- thousands of lines,
-the same flood §5's `use_debugger` paragraph describes, with no `use_debugger`
-anywhere. Measured on 2026-09-07: with `-log` the emulator was still a blank
-white window three and a half minutes in; the same command line without it
-reached the code wheel in 44 seconds. It also defeats `tools/winvmsettle.py`
-outright, because `winvm shot` grabs the whole desktop and a scrolling console
-means no two grabs are ever identical. **A menu drive needs no console at
-all** -- `key` alone carries a Gold Box title from the title screen to a saved
-game -- so pass `-log` only when `send` is going to read the debugger back.
+**`-log` used to cost the run, and the cause was the renderer rather than the
+log.** The console it opens filled with `Denise queue without lock! id=1` --
+thousands of lines, the same flood §5's `use_debugger` paragraph describes,
+with no `use_debugger` anywhere. Measured on 2026-09-07: with `-log` the
+emulator was still a blank white window three and a half minutes in; the same
+command line without it reached the code wheel in 44 seconds. It also defeated
+`tools/winvmsettle.py` outright, because `winvm shot` grabs the whole desktop
+and a scrolling console means no two grabs are ever identical. **That paragraph
+said to pass `-log` only when `send` was going to read the debugger back, and
+it is superseded**, because a run that wants both the debugger and the screen
+-- which is every driven measurement -- had no way to have them.
+
+**`gfx_api=0` is the fix, and `tools/goldbox-a500.uae` now carries it.** This VM
+has no accelerated renderer and WinUAE's default one cannot keep its display
+buffer locked, which is what the message is; DirectDraw can. Measured on Curse
+of the Azure Bonds, 2026-09-08, the same command line with `-log` either way:
+
+| | default renderer | `gfx_api=0` |
+|---|---|---|
+| the emulator window | white for the whole run | the game, drawn |
+| FPS / CPU | 14.6 / 342% | **49.9 / 0%** |
+| the console | `Denise queue without lock! id=1` as fast as it prints | the drive's own `nnn%` line |
+| `tools/winvmsettle.py` | never settled in 180 s | 62, 7, 12, 16, 50, 56, 83 s |
+
+With it, `#37 (Automap the Amiga version, not just the C64)`'s run drove Silver Blades from its title screen to a party
+standing in the world, photographing every screen, with the debugger reading
+memory throughout. A menu drive still needs no console, so `-log` off is still
+right for one that reads nothing.
 
 **`C:\Users\Public\Documents\Amiga Files\WinUAE\winuaebootlog.txt` is the
 first place to look when a run misbehaves.** It records which config loaded,
@@ -825,38 +843,71 @@ That is a better first move than disassembling, and it is how a C64 address in
 hunks. `goldbox/amiga.py` decodes the *save record*, which is a file format and
 title-independent; a live address is neither.
 
-## 10. Fitting it to `automap`
+## 10. Fitting it to `automap` — built, and measured
 
-`automap/target.py` fixes the contract at two methods, deliberately:
+`automap/amiga.py` is the backend, `tools/amigatarget.py` the command line, and
+`tests/test_amigatarget.py` the 35 tests. `automap/target.py` was **not**
+touched: the contract is still two methods, and everything else `AmigaTarget`
+supplies is an optional method the protocol already looks for with `getattr`.
 
-```python
-class Target(Protocol):
-    def read(self, addr: int, length: int) -> bytes: ...
-    def write(self, addr: int, data: bytes) -> None: ...
-```
+**One `ssh` call does a whole batch.** The three guest commands — write the
+batch file, press F11, inject it — are composed into a single PowerShell script
+and base64'd into `powershell -EncodedCommand`, and the dump files come back as
+base64 on stdout. §6 proposes `S` then a separate `scp`, and that would be a
+second round trip per block. `-EncodedCommand` also removes every quoting
+question between `winvm ssh`, whatever shell the guest hands it to, and
+PowerShell, which matters for a batch full of `C:\Amiga\dump\...`.
 
-A `WinuaeTarget` implements `read` as *issue `S`, read the file back* and
-`write` as `W`. Breakpoints and stepping stay out, exactly as they stayed out
-for the Commodore 64 Ultimate backend — a second backend should not have to
-pretend it has them.
+**Every dump file is named for a token the call generated**, the way
+`winuae.ps1` stamps its receipts, so the previous call's file can never be read
+as this one's.
 
-Two differences from `ViceTarget` that a design should account for:
+**What a poll costs, measured on 2026-09-08 with a Silver Blades party standing
+in the world:**
 
-* **The round trip is a file, not a socket.** `ViceTarget` measured ~14.3 ms of
-  extra emulated time per `resume()` and concluded *batch reads, keep resumes
-  rare*. Here the cost is a console write plus a file read plus an `scp`, which
-  is far worse. Batching is not an optimisation; it is the design. Read one
-  large block, not several small ones.
-* **The debugger stops the machine.** Entering it halts emulation until `g`.
-  `ViceTarget`'s polling model — read, resume, repeat — maps onto that, but the
-  distortion per poll will need measuring against the Amiga's own timers before
-  any claim is made about how fast the game runs while a map is open.
+| | |
+|---|---|
+| `read_fix(target)`, three consecutive polls | **14.5 s, 22.2 s, 22.2 s** |
+| 16 bytes | 15.2 s |
+| a 512K `locate()` dump | 14.4 s, 22.2 s |
+| two blocks in one round trip | 38.1 s |
 
-Nothing in `automap/screen.py`, `render.py` or `state.py` is VICE-specific, but
-`screen.py` *is* C64-specific: it reads a 40x25 text screen out of a fixed
-place. The Amiga has no such thing, and a status line will have to be found
-another way — likely OCR off `winvm shot`, or the position triple direct from
-memory once §9 has located it.
+So the round trip and not the bytes is the cost, as predicted — but the number
+is fifteen to twenty-two **seconds**, against `ViceTarget`'s 200 ms poll and
+14.3 ms of distortion. An automapper on this is fine for a map that redraws
+when the party moves and hopeless for anything watching a fight.
+
+**`automap/screen.py` is never asked.** It reads a 40x25 C64 text screen and
+the Amiga has no such thing; `AmigaTarget` implements `fix` itself, from the
+engine's own live x, y and facing, and `read_fix` prefers a target's own `fix`
+over the screen reader. No OCR was needed and none is wanted: §5.2 already
+found that the globals move with the party when the screen has not been
+redrawn at all, so they are the better instrument as well as the cheaper one.
+
+**`automap/area.py`, `render.py` and `goldbox/geo.py` needed no change.**
+`ResidentGeo(target, address)` already takes its address as an argument, and
+the Amiga's resident block is the same four 256-byte planes: it identified the
+live Silver Blades block as `GEO` id 16, uniquely, against the 17 blocks of
+`/DISK2/GEO.GLB`, and `to_svg` drew it.
+
+### 10.1 Where the addresses come from
+
+Relocatable hunks, so nothing can be written down. `locate()` dumps the
+machine's memory and searches **on this side** for a string the title's own
+data hunk carries, at an offset read out of the executable on the player's own
+disk. Searching here rather than with the debugger's `s` is three things at
+once: a second copy of the anchor is a fact about bytes rather than about a
+console format, `s` gives up after 64K whatever range it is given (§5.2), and
+the same dump answers the next question without another boot.
+
+Measured bases, both in slow memory as §5.2 predicted: `/Curse` at `$00C4E270`
+and `/Secret` at `$00C55CE0` on their own boots.
+
+`automap.amiga.LAYOUTS` holds the per-title offsets, and
+`tools/amigatarget.py verify` re-derives them off an ADF with no emulator at
+all. **Pool of Radiance has no row on purpose**: its Amiga build is not a
+small-data one, so the anchor finds the wrong hunk and it needs hunk 32's load
+address instead.
 
 ## 11. What was checked, and what was not
 

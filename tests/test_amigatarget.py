@@ -1,0 +1,383 @@
+"""`automap/amiga.py`: the WinUAE-backed `Target`, driven with no VM at all.
+
+Every test here replaces the one thing that touches the Windows guest -- the
+`runner` callable `WinuaeDebugger` is given -- with a fake that behaves the way
+the guest was measured behaving in `docs/143-winuae-debugger.md`: it prints the
+`<<name>>` markers, it answers a dump with base64, and it can be made to fail
+in each of the ways the real one has been seen to fail.
+
+What is deliberately **not** tested here is whether the addresses are right.
+That is a measurement on a running Amiga and no fake can stand in for it; see
+`#37 (Automap the Amiga version, not just the C64)`.
+"""
+
+from __future__ import annotations
+
+import base64
+
+import pytest
+
+from automap import amiga
+from automap.target import Fix, NotConnected, read_fix, screen_banks
+
+SSB = amiga.LAYOUTS["secret-of-the-silver-blades"]
+CURSE = amiga.LAYOUTS["curse-of-the-azure-bonds"]
+
+#: A believable data hunk base in the A500's slow memory.
+BASE = 0xC12340
+
+
+class Guest:
+    """A fake Windows guest, answering exactly the shape the real one does."""
+
+    def __init__(self, memory: dict[int, bytes] | None = None):
+        self.memory = dict(memory or {})
+        self.calls: list[str] = []
+        #: Set to make every `S` write nothing, which is what a debugger that
+        #: never opened looks like from here.
+        self.silent = False
+
+    def peek(self, addr: int, length: int) -> bytes:
+        out = bytearray(length)
+        for base, blob in self.memory.items():
+            for i in range(length):
+                if base <= addr + i < base + len(blob):
+                    out[i] = blob[addr + i - base]
+        return bytes(out)
+
+    def __call__(self, argv, timeout):
+        assert argv[0] == "winvm" and argv[1] == "ssh"
+        script = base64.b64decode(argv[2].split()[-1]).decode("utf-16-le")
+        self.calls.append(script)
+        batch = self._batch(script)
+        out = ["<<key>>", "ok", "<<send>>", "ok sent to pid 1234"]
+        dumps = {}
+        for line in batch.splitlines():
+            if line.startswith("S "):
+                _s, path, addr, length = line.split()
+                dumps[path] = self.peek(int(addr, 16), int(length, 16))
+        for name, path in self._fetched(script):
+            blob = dumps.get(path)
+            out.append(f"<<{name}>>")
+            out.append("MISSING" if blob is None or self.silent
+                       else base64.b64encode(blob).decode("ascii"))
+        out.append("<<end>>")
+        return "\r\n".join(out) + "\r\n"
+
+    @staticmethod
+    def _batch(script: str) -> str:
+        for line in script.splitlines():
+            if "wish-batch.txt" in line and "FromBase64String" in line:
+                b64 = line.split("FromBase64String('")[1].split("'")[0]
+                return base64.b64decode(b64).decode("ascii")
+        raise AssertionError("the script wrote no batch file")
+
+    @staticmethod
+    def _fetched(script: str) -> list[tuple[str, str]]:
+        out = []
+        for line in script.splitlines():
+            if line.startswith("Write-Output '<<") and "<<end>>" not in line:
+                name = line.split("<<")[1].split(">>")[0]
+                if name in ("key", "send"):
+                    continue
+                out.append(name)
+        paths = []
+        for line in script.splitlines():
+            if "Test-Path -LiteralPath '" in line:
+                paths.append(line.split("Test-Path -LiteralPath '")[1]
+                             .split("'")[0])
+        return list(zip(out, paths))
+
+
+def target(memory=None, layout=SSB, base=BASE, guest=None):
+    guest = guest or Guest(memory)
+    debugger = amiga.WinuaeDebugger("wish37", runner=guest)
+    return amiga.AmigaTarget(debugger, layout, base), guest
+
+
+# -- the transport ------------------------------------------------------------
+
+
+def test_a_debugger_refuses_to_exist_without_a_lane_claim():
+    """`winuae.ps1` refuses every call without one, so failing here says why
+    once instead of once per keystroke."""
+    with pytest.raises(ValueError, match="claim"):
+        amiga.WinuaeDebugger("")
+
+
+def test_the_batch_is_one_ssh_call_and_ends_by_resuming():
+    t, guest = target({0xC00000: b"\x01\x02\x03\x04"})
+    assert t.read(0xC00000, 4) == b"\x01\x02\x03\x04"
+    assert len(guest.calls) == 1, "a read must not cost two round trips"
+    assert Guest._batch(guest.calls[0]).splitlines()[-1] == "g"
+
+
+def test_several_blocks_cost_one_round_trip():
+    """The whole reason `read_blocks` exists on this backend: a round trip is
+    an ssh, a foreground keypress, a scheduled task and a typed console batch,
+    not 14 ms of emulated time."""
+    t, guest = target({0xC00000: bytes(range(32))})
+    blocks = t.read_blocks([(0xC00000, 4), (0xC00010, 4)])
+    assert blocks == [bytes(range(4)), bytes(range(16, 20))]
+    assert len(guest.calls) == 1
+
+
+def test_a_block_that_names_its_memory_is_read_anyway():
+    """The C64's callers pass `(addr, length, "io")`. A 68000 has one memory,
+    so the name is ignored rather than refused -- the documented behaviour for
+    a backend that cannot tell two memories apart."""
+    t, _ = target({0xC00000: b"\xaa\xbb"})
+    assert t.read_blocks([(0xC00000, 2, "io")]) == [b"\xaa\xbb"]
+
+
+def test_every_dump_is_named_for_this_call_and_not_the_last_one():
+    """A stale dump read as a fresh one is the failure that costs a night, and
+    `winuae.ps1` stamps its own receipts for the same reason."""
+    t, guest = target({0xC00000: b"\x01"})
+    t.read(0xC00000, 1)
+    t.read(0xC00000, 1)
+    first, second = (Guest._batch(c).splitlines()[0] for c in guest.calls)
+    assert first != second, "two reads used the same dump filename"
+
+
+def test_a_guest_that_never_finished_is_not_read_as_an_answer():
+    def runner(argv, timeout):
+        return "<<key>>\r\nok\r\n<<send>>\r\nfail winuae-send never started\r\n"
+    t = amiga.AmigaTarget(amiga.WinuaeDebugger("wish37", runner=runner), SSB,
+                          BASE)
+    with pytest.raises(NotConnected, match="did not finish"):
+        t.read(0xC00000, 4)
+
+
+def test_a_missing_dump_says_so_rather_than_returning_zeros():
+    t, guest = target({0xC00000: b"\x01\x02"})
+    guest.silent = True
+    with pytest.raises(NotConnected, match="no dump"):
+        t.read(0xC00000, 2)
+
+
+def test_a_short_dump_is_refused():
+    """Half a block read as a whole one is a plausible wrong answer, which is
+    the worst kind."""
+    def runner(argv, timeout):
+        return ("<<key>>\r\nok\r\n<<send>>\r\nok\r\n<<b0>>\r\n"
+                + base64.b64encode(b"\x01").decode() + "\r\n<<end>>\r\n")
+    t = amiga.AmigaTarget(amiga.WinuaeDebugger("wish37", runner=runner), SSB,
+                          BASE)
+    with pytest.raises(NotConnected, match="returned 1"):
+        t.read(0xC00000, 4)
+
+
+def test_a_write_goes_in_as_the_debuggers_own_W():
+    t, guest = target()
+    t.write(0xC00000, bytes(range(20)))
+    lines = Guest._batch(guest.calls[0]).splitlines()
+    assert lines[0].startswith("W c00000 00 01")
+    assert lines[1].startswith("W c00010 10 11 12 13")
+    assert lines[-1] == "g"
+
+
+def test_a_closed_target_refuses_to_read():
+    t, _ = target({0xC00000: b"\x01"})
+    t.close()
+    with pytest.raises(NotConnected, match="closed"):
+        t.read(0xC00000, 1)
+
+
+def test_the_encoded_command_survives_a_batch_full_of_windows_paths():
+    """The whole point of `-EncodedCommand`: nothing between `winvm ssh` and
+    PowerShell has to be quoted right."""
+    script = amiga.encode("Write-Output 'C:\\Amiga\\dump\\a.bin'")
+    assert base64.b64decode(script).decode("utf-16-le").endswith("a.bin'")
+
+
+# -- finding the base ---------------------------------------------------------
+
+
+def test_locate_measures_the_base_from_the_anchor_rather_than_assuming_it():
+    memory = {BASE + SSB.anchor_offset: SSB.anchor}
+    t, guest = target(memory, base=None)
+    assert t.locate() == BASE
+    assert len(guest.calls) == 1, "the first region searched holds the game"
+
+
+def test_locate_refuses_when_the_anchor_is_nowhere():
+    """A machine running some other title, or one that has not finished
+    loading. Refusing is the point: a base guessed here misreads every byte
+    after it."""
+    t, _ = target({}, base=None)
+    with pytest.raises(NotConnected, match="nowhere"):
+        t.locate()
+
+
+def test_locate_refuses_two_candidates_rather_than_taking_the_first():
+    memory = {BASE + SSB.anchor_offset: SSB.anchor,
+              BASE + 0x40000 + SSB.anchor_offset: SSB.anchor}
+    t, _ = target(memory, base=None)
+    with pytest.raises(NotConnected, match="more than one place"):
+        t.locate()
+
+
+def test_find_anchor_reports_every_hit():
+    blob = b"..xx..xx.."
+    assert amiga.find_anchor(blob, 0x1000, b"xx", 2) == [0x1000, 0x1004]
+
+
+def test_reading_before_the_base_is_measured_says_which_call_is_missing():
+    t, _ = target({}, base=None)
+    with pytest.raises(NotConnected, match="locate"):
+        t.fix()
+
+
+# -- what the automapper asks for ---------------------------------------------
+
+
+def square(x, y, doubled, layout=SSB):
+    """The three bytes the engine holds, laid out as that title stores them."""
+    w = layout.width
+    out = {}
+    for offset, value in ((layout.party_x, x), (layout.party_y, y),
+                          (layout.party_facing, doubled)):
+        out[BASE + offset] = value.to_bytes(w, "big")
+    return out
+
+
+@pytest.mark.parametrize("doubled,facing", [(0, 0), (2, 1), (4, 2), (6, 3)])
+def test_the_facing_is_halved_because_the_engine_stores_it_doubled(doubled,
+                                                                   facing):
+    t, _ = target(square(5, 9, doubled))
+    assert t.fix() == Fix(5, 9, facing, "memory")
+
+
+def test_curse_reads_the_same_fields_as_two_byte_words():
+    """Curse stores x, y and facing as `u16be` and Silver Blades as bytes, so
+    a width read from the wrong title's table gives a plausible wrong square
+    rather than an error."""
+    t, _ = target(square(5, 9, 6, layout=CURSE), layout=CURSE)
+    assert t.fix() == Fix(5, 9, 3, "memory")
+
+
+def test_a_square_off_the_grid_is_no_fix_at_all():
+    """In a menu, in camp, or mid-load. The map holds its last reading, which
+    is what it does on the C64 for a bitmap screen."""
+    t, _ = target(square(200, 9, 0))
+    assert t.fix() is None
+
+
+def test_a_facing_the_engine_never_writes_is_no_fix_at_all():
+    t, _ = target(square(5, 9, 3))
+    assert t.fix() is None
+
+
+def test_read_fix_prefers_this_backends_own_answer():
+    """`automap/target.py` finds `fix` with `getattr`, so the C64's 40x25
+    screen reader is never asked about a machine that has no such screen."""
+    t, guest = target(square(1, 2, 4))
+    assert read_fix(t) == Fix(1, 2, 2, "memory")
+    assert len(guest.calls) == 1
+
+
+def test_this_backend_claims_no_banks_capability():
+    """A 68000 has one memory. `#421 (The automapper reads the screen through the CPU's banking, so it reads the wrong memory while the game loads)`'s optional capability is absent, and
+    `screen_banks` hands back the one reader, which is right rather than a
+    compromise."""
+    assert getattr(t_for_banks(), "banks", None) is None
+    banks = screen_banks(t_for_banks())
+    assert banks is not None and banks.ram == banks.io
+
+
+def t_for_banks():
+    t, _ = target()
+    return t
+
+
+def test_the_resident_map_is_found_through_the_pointer_the_engine_uses():
+    memory = {BASE + SSB.geo_pointer: (0xC30000).to_bytes(4, "big"),
+              0xC30000: bytes(range(256)) * 4}
+    t, _ = target(memory)
+    assert t.resident_geo_address() == 0xC30000
+    assert t.geo() == bytes(range(256)) * 4
+
+
+def test_a_null_geo_pointer_is_no_map_rather_than_an_address():
+    t, _ = target({BASE + SSB.geo_pointer: bytes(4)})
+    assert t.resident_geo_address() is None
+    assert t.geo() is None
+
+
+def test_a_geo_pointer_outside_this_machines_memory_is_refused():
+    """Before an area has loaded the global holds whatever was there."""
+    t, _ = target({BASE + SSB.geo_pointer: (0x00DEAD00).to_bytes(4, "big")})
+    assert t.resident_geo_address() is None
+
+
+# -- the table ----------------------------------------------------------------
+
+
+def test_pool_of_radiance_has_no_row_and_that_is_deliberate():
+    """Its Amiga build is not a small-data one, so the anchor trick locates
+    the wrong hunk. A title with no row is refused, never given another
+    title's numbers -- the rule `goldbox.games.Game.live_position` follows."""
+    assert "pool-of-radiance" not in amiga.LAYOUTS
+
+
+@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+def test_every_layout_names_a_width_the_reader_can_use(key):
+    layout = amiga.LAYOUTS[key]
+    assert layout.width in (1, 2)
+    assert layout.party_y == layout.party_x + layout.width
+    assert layout.party_facing == layout.party_y + layout.width
+
+
+# -- the table against the player's own disks ---------------------------------
+#
+# The offsets above are a claim about a build, and this is what turns it back
+# into one: `tools/amigatarget.py verify` opens the executable off whichever
+# disk the player has and checks that the anchor is where the table says, that
+# it is there exactly once, and that the globals land in the part of the data
+# hunk the loader zero-fills.  It needs no emulator.
+
+#: How each title's disk image is spelt, once the underscores are taken out --
+#: the same match `tests/test_amiganodefields.py` makes.
+DISK = {"secret-of-the-silver-blades": "silver",
+        "curse-of-the-azure-bonds": "curse"}
+
+
+def _adf(key: str):
+    from tools import gamedisks
+    want = DISK[key]
+    exe = amiga.LAYOUTS[key].executable
+    for root in gamedisks.candidates("amiga"):
+        if not root.is_dir():
+            continue
+        for image in sorted(root.rglob("*.adf")):
+            if want not in image.name.lower().replace("_", ""):
+                continue
+            try:
+                from goldbox.amiga_adf import AmigaDisk
+                AmigaDisk.open(image).read_file(exe)
+            except Exception:
+                continue
+            return image
+    pytest.skip(f"no Amiga disk carrying {exe}; set $AMIGA_DISKS")
+
+
+@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+def test_the_layout_still_describes_the_build_on_the_players_disk(key):
+    """A different release with the anchor somewhere else is caught here,
+    rather than as a plausible wrong square on a live machine."""
+    from tools import amigatarget
+    assert amigatarget.verify(amiga.LAYOUTS[key], _adf(key)) == []
+
+
+@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+def test_a_wrong_anchor_offset_is_what_verify_is_for(key):
+    """Proves the check above can fail: move the offset by one and it must."""
+    from dataclasses import replace
+
+    from tools import amigatarget
+    layout = amiga.LAYOUTS[key]
+    bad = amigatarget.verify(replace(layout,
+                                     anchor_offset=layout.anchor_offset + 1),
+                             _adf(key))
+    assert bad and "not" in bad[0]
