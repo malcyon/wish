@@ -58,7 +58,7 @@ indexed. **558 files, five sites, and every one keeps the two in step:**
 
 | site | what it does |
 |---|---|
-| `GEN $0B40` | character creation: stores the class's mask, then **derives** the eight level slots from it bit by bit |
+| `GEN $0B40` | the tail of the class picker at `$0ABA`: stores the class's mask, then **derives** the eight level slots from it bit by bit. It was called character creation here until 2026-09-08, and it is not -- `$0ABA` has exactly one caller in the whole title, `GEN $23BA` inside `HUMAN CHANGE CLASSES`, and the two tables it reads (`$0B60`, `$0B71`) are named nowhere else on the six sides. What it does is unchanged, so nothing below moves; `docs/214-the-regained-dual-class-on-the-c64.md` has the rest of that routine |
 | `GEN $153B` | the trainer's `INC $7CC9,X`, on a class the eligibility check at `$1553` has already allowed -- one the character holds |
 | `GEN $18A4` | walks the array setting every **non-zero** slot to 1, so the set of classes it names does not move |
 | `GEN $20A3` | the regain: `LDA $7CBA / BEQ` then `CMP $7CA0 / BCS`, and under those two tests both `STA $7CC9,X` and `ORA $7CEB / STA $7CEB` -- no branch between them |
