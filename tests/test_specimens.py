@@ -509,3 +509,123 @@ def test_an_unloadable_specimen_is_reported_without_failing_the_check(
     assert "curse-left-open" in out
     assert "SAVEAZURE type $02" in out
     assert "#298 (A save disk copied out" in out
+
+
+# --- repair: the one thing here that writes to a specimen already in the tree
+
+
+def test_repair_closes_the_entry_and_changes_exactly_two_bytes(tree, tmp_path):
+    """#298, and Donald's decision of 2026-09-08 to repair the five in place.
+
+    The whole claim the repair rests on is that it moves the directory entry
+    and nothing else, so the assertion is a byte diff over the whole image
+    rather than a re-read of the entry it just wrote.
+    """
+    dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    before = dest.read_bytes()
+    report = specimens.repair_unloadable(
+        "curse-left-open", note="closed by hand, see #298", root=tree)
+    after = dest.read_bytes()
+
+    assert len(after) == len(before)
+    moved = [i for i in range(len(before)) if before[i] != after[i]]
+    assert len(moved) == 2, moved
+    entry = D64.from_bytes(before).entry(b"SAVEAZURE")
+    assert moved == [entry.offset, entry.offset + 28]
+    assert (before[entry.offset], after[entry.offset]) == (0x02, 0x82)
+    assert (before[entry.offset + 28], after[entry.offset + 28]) == (0, 30)
+    assert [(r["offset"], r["field"]) for r in report["diff"]] == [
+        (entry.offset, "type byte"), (entry.offset + 28, "block count low")]
+
+    # And the payload the game wrote is the same payload.
+    assert D64.from_bytes(after).read_file(b"SAVEAZURE") == \
+        D64.from_bytes(before).read_file(b"SAVEAZURE")
+    assert specimens.unloadable_specimens(tree) == []
+    assert specimens.check_specimens(tree) == []
+
+
+def test_repair_records_the_edit_in_the_provenance(tree, tmp_path):
+    """An honest `edited_afterwards`, the new hash, and a note saying where
+    the unrepaired bytes still are -- the cost Donald accepted, written down
+    where `tools/carryceiling.py` reads it."""
+    dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    note = "Repaired 2026-09-08; unrepaired bytes in wish-specimens-...tar.gz"
+    specimens.repair_unloadable("curse-left-open", note=note, root=tree)
+
+    prov = dest.parent / "WISH-SPEC-curse-left-open.provenance.toml"
+    fields = specimens.read_provenance(prov)
+    assert fields["edited_afterwards"] is True
+    assert fields["issue_note"] == note
+    assert fields["sha256"][dest.name] == specimens.sha256_file(dest)
+    assert fields["what"]                      # the original fields survive
+    # Both files go back to read-only, or the next editor gets in for free.
+    assert not dest.stat().st_mode & stat.S_IWUSR
+    assert not prov.stat().st_mode & stat.S_IWUSR
+
+
+def test_repair_refuses_a_specimen_that_no_longer_matches_its_manifest(
+        tree, tmp_path):
+    """Repairing over drift would hide the drift, which is the one thing this
+    tree exists to catch."""
+    dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    dest.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    raw = bytearray(dest.read_bytes())
+    raw[0x20000] ^= 0xFF                       # somebody was in here
+    dest.write_bytes(bytes(raw))
+    with pytest.raises(ValueError, match="no longer matches its manifest"):
+        specimens.repair_unloadable("curse-left-open", note="x", root=tree)
+    assert dest.read_bytes() == bytes(raw)     # and it wrote nothing
+
+
+def test_repair_refuses_a_specimen_whose_entries_are_all_closed(tree, tmp_path):
+    """The control: a sound disk is not quietly rewritten and re-hashed."""
+    disk = D64.blank(b"CURSE SAVE")
+    disk.write_file(b"SAVEAZURE", bytes(range(256)) * 29)
+    good = tmp_path / "GOOD.D64"
+    disk.save(good)
+    dest = _plant_c64(tree, "curse-closed", good)
+    before = dest.read_bytes()
+    with pytest.raises(ValueError, match="already closed"):
+        specimens.repair_unloadable("curse-closed", note="x", root=tree)
+    assert dest.read_bytes() == before
+
+
+def test_repair_dry_run_writes_nothing(tree, tmp_path):
+    """`--dry-run` proves the repair on a copy, which is how the five real
+    ones were measured before the tree was opened for writing."""
+    dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    before = dest.read_bytes()
+    report = specimens.repair_unloadable(
+        "curse-left-open", note="x", root=tree, dry_run=True)
+    assert len(report["diff"]) == 2
+    assert dest.read_bytes() == before
+    assert [r["name"] for r in specimens.unloadable_specimens(tree)] == \
+        ["curse-left-open"]
+
+
+def test_repair_refuses_a_change_outside_the_directory_entry(
+        tree, tmp_path, monkeypatch):
+    """The guard that has no natural way to fire, so it is driven by hand.
+
+    `close_splat()` only ever touches a directory entry, which is why the
+    five real repairs came out at two bytes each. The check is here for the
+    day somebody changes that: a repair that moves a byte of the payload is
+    refused rather than written and re-hashed under a new SHA-256.
+    """
+    from tools import curseload
+
+    dest = _plant_c64(tree, "curse-left-open", _unclosed_curse_disk(tmp_path))
+    before = dest.read_bytes()
+    real = curseload.close_splat
+
+    def scribble(path):
+        changed = real(path)
+        raw = bytearray(pathlib.Path(path).read_bytes())
+        raw[0x20000] ^= 0xFF                   # a byte of somebody's payload
+        pathlib.Path(path).write_bytes(bytes(raw))
+        return changed
+
+    monkeypatch.setattr(curseload, "close_splat", scribble)
+    with pytest.raises(ValueError, match="outside every directory entry"):
+        specimens.repair_unloadable("curse-left-open", note="x", root=tree)
+    assert dest.read_bytes() == before

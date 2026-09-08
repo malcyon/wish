@@ -71,11 +71,21 @@ specimens.py check, so eight files in the tree are never verified)`).
         --what "Rolled a gnome fighter in the game's own creation screens"
     tools/specimens.py check
     tools/specimens.py list
+    tools/specimens.py repair <name> --note "..."
 
 `add` only copies -- it never moves or deletes a source, and it never
 overwrites an existing specimen.  If a specimen needs correcting, that is a
 deliberate `chmod` and a new commit to `provenance.toml` by hand outside this
 tool, not a silent re-add.
+
+**`repair` is the one exception, and it is deliberately narrow.**  It closes a
+directory entry the emulated drive never closed -- `#298 (A save disk copied
+out of an emulator slot before the drive closes the file cannot be loaded by
+the game)`, two bytes, the type byte and the block count -- and refuses if
+anything else would move, if any file would fail to read back identically, or
+if the specimen no longer matches its own manifest.  It sets
+`edited_afterwards` and rewrites the hash, because the edit is real however
+small it is.  Nothing else in this tool writes to a specimen already here.
 """
 
 from __future__ import annotations
@@ -436,15 +446,17 @@ def unloadable_specimens(root: pathlib.Path | None = None) -> list[dict]:
     The same test `add` applies at the door -- a directory entry whose top
     type-byte bit the drive never set -- run over what is already here, since
     `add`'s check guards a future add and says nothing about the tree it was
-    added to.  Five specimens predate that check and every one of them is
-    still in the tree; see `#298 (A save disk copied out of an emulator slot
-    before the drive closes the file cannot be loaded by the game)`.
+    added to.  Five specimens predated that check; Donald decided on
+    2026-09-08 that they were repaired in place, `repair_unloadable` did it,
+    and the report has been empty since.  See `#298 (A save disk copied out of
+    an emulator slot before the drive closes the file cannot be loaded by the
+    game)`.
 
     **This is a report and not a problem**, which is why `check` prints it and
-    does not fail on it: the payload is intact, every reader in this project
-    gets it out by following the sector chain, and whether to repair a
-    specimen, add a repaired copy beside it or leave it is Donald's decision
-    rather than a defect to be tidied away.
+    does not fail on it: the payload is intact and every reader in this
+    project gets it out by following the sector chain, so what to do about one
+    -- repair it, add a repaired copy beside it, re-drive it or leave it -- is
+    Donald's decision rather than a defect to be tidied away.
 
     One dict per affected specimen: `name`, `path`, and `entries`, each with
     the file name, the type byte and the block count the drive recorded.
@@ -462,6 +474,140 @@ def unloadable_specimens(root: pathlib.Path | None = None) -> list[dict]:
                     "entries": [{"file": e.display_name, "type": e.type_byte,
                                  "blocks": e.block_count} for e in unclosed]})
     return out
+
+
+def repair_unloadable(name: str, *, note: str, root: pathlib.Path | None = None,
+                      dry_run: bool = False) -> dict:
+    """Close the directory entry the drive never closed, in the tree itself.
+
+    The counterpart of `unloadable_specimens`, and the only thing in this tool
+    that writes to a specimen that is already here.  Donald decided on
+    2026-09-08 that the five disks `#298 (A save disk copied out of an
+    emulator slot before the drive closes the file cannot be loaded by the
+    game)` names are repaired in place rather than left, having been told the
+    cost: the repair is an edit made after the game wrote the file, so
+    `edited_afterwards` becomes true and `tools/carryceiling.py` grades the
+    specimen `edited` rather than `engine`.
+
+    **Nothing is written until the repair has been proved on a copy.**  The
+    image is copied to a temporary file, `tools/curseload.py`'s `close_splat()`
+    is run on the copy, and three things are checked before the tree is
+    touched: that the only bytes differing are inside a directory entry's type
+    byte and block count, that every entry that was already closed is
+    untouched, and that every file on the disk reads back byte for byte
+    identical through `D64.read_file`.  A specimen whose bytes no longer match
+    its own manifest is refused outright, because repairing over drift would
+    hide the drift.
+
+    `note` goes into the provenance as `issue_note` and is the caller's to
+    write: it should say what was changed, why, that the payload is untouched,
+    and where the unrepaired bytes still exist.
+
+    Returns a report dict -- `changed` (one row per directory entry closed),
+    `diff` (one row per byte that moved), `files` (name and length of every
+    file re-read), `sha256_before`, `sha256_after`.
+    """
+    import tempfile  # noqa: PLC0415
+
+    from goldbox.d64 import D64  # noqa: PLC0415
+    from tools.curseload import close_splat  # noqa: PLC0415
+
+    root = root or tree_root()
+    entries = [e for e in list_specimens(root) if e.get("name") == name]
+    if not entries:
+        raise ValueError(f"no specimen named {name!r} under {root}")
+    entry = entries[0]
+    if entry.get("platform") != "c64":
+        raise ValueError(f"{name}: only a C64 disk image has a directory entry "
+                         f"to close, and this one is {entry.get('platform')!r}")
+    files = list(entry.get("_files", []))
+    if len(files) != 1:
+        raise ValueError(f"{name}: expected one disk image, found {len(files)}")
+    path = pathlib.Path(files[0])
+    prov_path = pathlib.Path(entry["_provenance"])
+
+    before = path.read_bytes()
+    recorded = entry.get("sha256", {}).get(path.name)
+    sha_before = hashlib.sha256(before).hexdigest()
+    if recorded and recorded != sha_before:
+        raise ValueError(
+            f"{name}: {path.name} no longer matches its manifest (recorded "
+            f"{recorded[:12]}, now {sha_before[:12]}) -- find out what moved "
+            f"it before repairing it")
+    if not _unclosed_c64_entries(path):
+        raise ValueError(f"{name}: every directory entry is already closed")
+
+    was = D64.from_bytes(before)
+    slots = {e.offset: e for e in was.iter_directory() if not e.is_empty}
+    read_before = {e.display_name: was.read_file(e.name) for e in slots.values()}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        trial = pathlib.Path(tmp) / path.name
+        trial.write_bytes(before)
+        changed = close_splat(str(trial))
+        after = trial.read_bytes()
+
+    if len(after) != len(before):
+        raise ValueError(f"{name}: the repair changed the image's length")
+    diff = [{"offset": i, "was": before[i], "now": after[i]}
+            for i in range(len(before)) if before[i] != after[i]]
+    open_offsets = {e.offset for e in slots.values() if not e.is_closed}
+    for row in diff:
+        home = [off for off in slots
+                if off <= row["offset"] < off + 30]
+        if not home:
+            raise ValueError(
+                f"{name}: the repair moved byte ${row['offset']:05X}, which is "
+                f"outside every directory entry")
+        off = home[0]
+        if off not in open_offsets:
+            raise ValueError(
+                f"{name}: the repair moved byte ${row['offset']:05X} inside "
+                f"{slots[off].display_name!r}, an entry the drive had already "
+                f"closed")
+        if row["offset"] - off not in (0, 28, 29):
+            raise ValueError(
+                f"{name}: the repair moved byte ${row['offset']:05X}, which is "
+                f"+{row['offset'] - off} into the entry -- only the type byte "
+                f"(+0) and the block count (+28, +29) may move")
+        row["entry"] = slots[off].display_name
+        row["field"] = {0: "type byte", 28: "block count low",
+                        29: "block count high"}[row["offset"] - off]
+
+    now = D64.from_bytes(after)
+    read_after = {e.display_name: now.read_file(e.name)
+                  for e in now.iter_directory() if not e.is_empty}
+    if set(read_after) != set(read_before):
+        raise ValueError(f"{name}: the repair changed which files are on the disk")
+    for fname, payload in read_before.items():
+        if read_after[fname] != payload:
+            raise ValueError(f"{name}: {fname} does not read back identically")
+
+    report = {
+        "name": name,
+        "path": path,
+        "changed": changed,
+        "diff": diff,
+        "files": [{"file": f, "bytes": len(p)} for f, p in sorted(read_before.items())],
+        "sha256_before": sha_before,
+        "sha256_after": hashlib.sha256(after).hexdigest(),
+        "note": note,
+    }
+    if dry_run:
+        return report
+
+    path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    path.write_bytes(after)
+    make_read_only(path)
+
+    fields = {k: v for k, v in entry.items() if not k.startswith("_")
+              and k != "sha256"}
+    fields["edited_afterwards"] = True
+    fields["issue_note"] = note
+    prov_path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    write_provenance(prov_path, fields, {path.name: report["sha256_after"]})
+    make_read_only(prov_path)
+    return report
 
 
 def _format_row(entry: dict) -> str:
@@ -485,6 +631,33 @@ def cmd_add(args: argparse.Namespace) -> int:
         return 1
     print(f"added {dest}")
     return 0
+
+
+def cmd_repair(args: argparse.Namespace) -> int:
+    rc = 0
+    for name in args.names:
+        try:
+            report = repair_unloadable(name, note=args.note,
+                                       dry_run=args.dry_run)
+        except ValueError as exc:
+            print(f"refused: {exc}")
+            rc = 1
+            continue
+        head = "would repair" if args.dry_run else "repaired"
+        print(f"{head} {report['name']}: {report['path']}")
+        for row in report["changed"]:
+            print(f"  {row['name']}: type {row['type_was']} -> {row['type_now']}, "
+                  f"blocks {row['blocks_was']} -> {row['blocks_now']}, "
+                  f"{row['bytes']} byte(s) of payload")
+        for row in report["diff"]:
+            print(f"  ${row['offset']:05X} {row['was']:02X} -> {row['now']:02X}"
+                  f"  {row['entry']} {row['field']}")
+        print(f"  {len(report['files'])} file(s) read back byte for byte "
+              f"identical: "
+              + ", ".join(f"{f['file']} ({f['bytes']})" for f in report["files"]))
+        print(f"  sha256 {report['sha256_before'][:12]} -> "
+              f"{report['sha256_after'][:12]}")
+    return rc
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -560,6 +733,16 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--edited", action="store_true",
                    help="has ever been opened in an editor afterwards")
     a.set_defaults(func=cmd_add)
+
+    r = sub.add_parser("repair", help="close a directory entry the drive "
+                                      "never closed, in the tree itself")
+    r.add_argument("names", nargs="+", help="specimen names, as `list` prints them")
+    r.add_argument("--note", required=True,
+                   help="what was changed and why, for the provenance's "
+                        "issue_note -- say where the unrepaired bytes still are")
+    r.add_argument("--dry-run", action="store_true", dest="dry_run",
+                   help="prove the repair on a copy and print it, write nothing")
+    r.set_defaults(func=cmd_repair)
 
     sub.add_parser("list", help="what is in the tree").set_defaults(func=cmd_list)
     sub.add_parser("check", help="verify every specimen's SHA-256"
