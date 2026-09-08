@@ -47,9 +47,11 @@ Output goes under `work/`, which is gitignored and has been lost twice.
 from __future__ import annotations
 
 import argparse
+import atexit
 import pathlib
 import re
 import shutil
+import signal
 import sys
 import time
 
@@ -61,7 +63,9 @@ from goldbox import dos  # noqa: E402
 from goldbox.dos_savegame import dax_block  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
 from tools import dosbox  # noqa: E402
-from tools.dostrain import Runner, collect, open_loaded, snapshot  # noqa: E402
+from tools.dosparty import wipe_roster  # noqa: E402
+from tools.dostrain import Runner, collect, move_to, snapshot  # noqa: E402
+from tools.dostrainprobe import install  # noqa: E402
 
 #: Where a `ECL` script is loaded on the C64, `docs/140-loaded-files-cache.md`
 #: slot 8.  The DOS block carries two bytes in front of the same code, so its
@@ -214,12 +218,64 @@ def stage_encumbrance(save_dir: pathlib.Path, letter: str, value: int) -> None:
     record coming back holding the right sum is the engine having recomputed
     it rather than the engine having left our staging alone -- which is what
     a run staged at the correct value could never tell apart.
+
+    **It has to run before `session.boot()`, or it proves nothing at all.**
+    `#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so
+    the engine never reads it)` was this call landing after `open_loaded` had
+    already booted DOSBox and pressed `LOAD SAVED GAME`: the engine had the
+    record in memory before the poke touched the file, so its own save wrote
+    the untouched value back and a run that came back "correct" had measured
+    nothing.  `open_loaded_spoiled` is the caller that gets the order right.
     """
     for path in sorted(save_dir.glob(f"CHRDAT{letter.upper()}?.SAV")):
         data = bytearray(path.read_bytes())
         data[ENCUMBRANCE_AT:ENCUMBRANCE_AT + 2] = \
             int(value).to_bytes(2, "little")
         path.write_bytes(bytes(data))
+
+
+def open_loaded_spoiled(party: pathlib.Path, out: pathlib.Path, letter: str,
+                        xp: int | None, gold: int | None, at: str | None,
+                        encumbrance: int | None
+                        ) -> tuple[dosbox.Session, dosbox.Slot]:
+    """Stage, install, spoil encumbrance, then boot and LOAD SAVED GAME it.
+
+    `tools.dostrain.open_loaded` with the one line `#429` found out of order:
+    the encumbrance poke happens here **before** `session.boot()`, the same
+    place `tools/dosencsave.open_spoiled` puts it, so the engine actually
+    reads what was staged instead of overwriting it on its own save.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    slot = dosbox.claim("issue249 shop, encumbrance staged before boot")
+    session = dosbox.Session(slot, dosbox.find_game())
+
+    def cleanup(*_: object) -> None:
+        session.close()
+        slot.release()
+
+    atexit.register(cleanup)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    session.stage(fresh=True)
+    shutil.rmtree(session.dir / "shots", ignore_errors=True)
+    (session.dir / "shots").mkdir(parents=True, exist_ok=True)
+    wipe_roster(session.save_dir)
+    install(party, session.save_dir, letter, None, xp, gold)
+    if at:
+        move_to(session.save_dir / f"SAVGAM{letter.upper()}.DAT", at)
+    if encumbrance is not None:
+        stage_encumbrance(session.save_dir, letter, encumbrance)
+        print(f"staged encumbrance {encumbrance} into every record "
+              f"BEFORE the boot (0x{ENCUMBRANCE_AT:03X})", flush=True)
+    session.boot(fresh=False)
+    dosbox.PoolOfRadiance(session).to_main_menu()
+    session.key("l")
+    time.sleep(1.0)
+    session.settle(quiet=0.5, timeout=15.0)
+    session.key(letter.lower())
+    time.sleep(4.0)
+    session.settle(quiet=0.8, timeout=60.0)
+    session.shot("000-loaded")
+    return session, slot
 
 
 def identity(folder: pathlib.Path) -> list[str]:
@@ -291,12 +347,9 @@ def drive(args: argparse.Namespace) -> int:
     print(f"shop {args.shop} is script id {script_id} at {target}; "
           f"starting at {at}", flush=True)
     out = args.out
-    session, slot = open_loaded(args.party, out, args.slot, None,
-                                args.xp, args.gold, at)
-    if args.encumbrance is not None:
-        stage_encumbrance(session.save_dir, args.slot, args.encumbrance)
-        print(f"staged encumbrance {args.encumbrance} into every record",
-              flush=True)
+    session, slot = open_loaded_spoiled(args.party, out, args.slot,
+                                        args.xp, args.gold, at,
+                                        args.encumbrance)
     runner = Runner(session, out)
     try:
         snapshot(session, out, "before")

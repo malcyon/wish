@@ -178,20 +178,35 @@ def test_every_record_in_the_shopped_save_balances():
 SPOILED = "por-shop-encumbrance-spoiled"
 CONTROL = "por-shop-encumbrance-control"
 
-#: What was written into every record's stored encumbrance before those two
-#: boots.  The engine's own arithmetic cannot produce it for any of these six
-#: characters, which is the whole point of choosing it.
+#: What was staged into every record's stored encumbrance for these two
+#: specimens.  The engine's own arithmetic cannot produce it for any of
+#: these six characters, which is why it was chosen -- but `#429
+#: (tools/dosshop.py stages its spoiled encumbrance after the load, so the
+#: engine never reads it)` found that in both of these the poke landed
+#: *after* the boot had already loaded the party, so it never reached the
+#: engine's resident copy of the record.  CONTROL's own "recompute" was
+#: that bug's artefact and is gone below; SPOILED's purchase number does
+#: not depend on it either way, which is also explained below.
 SPOIL = 999
 
 
 def test_a_purchase_writes_the_sum_from_before_the_money_was_taken():
     """`docs/125-bug-notes.md` N19, measured in Pool of Radiance.
 
-    WISHFTR went in holding 140 gold coins and a spoiled encumbrance of 999,
-    and bought one hand axe listed at 1 gp.  The engine wrote **190**, which
-    is his purse as it stood *before* it paid -- 140 coins -- plus the axe's
-    50.  The right sum is 81: paying 1 gp of 140 left 27 platinum and 4 gold,
-    which is thirty-one coins.
+    WISHFTR bought one hand axe listed at 1 gp with a purse of 140 gold
+    coins, and the engine wrote **190** into stored encumbrance -- his purse
+    as it stood *before* it paid, 140 coins, plus the axe's 50.  The right
+    sum is 81: paying 1 gp of 140 left 27 platinum and 4 gold, which is
+    thirty-one coins.
+
+    **This specimen's own 999 poke does not touch this finding.** `#429`
+    found it landed after the boot, so it never reached the engine's
+    resident copy of the record -- which settles what an earlier version of
+    this test tried to read from the same number: 140 + 50 is 190 whether
+    `shop_buy` rebuilt the whole sum or added the axe's weight to what was
+    already there, so the 190 cannot say which. What it does show, and what
+    the poke's timing does not touch, is that the coins were already spent
+    when the write happened and the field is one purchase behind.
     """
     who = _record(SPOILED, "CHRDATG1.SAV")
     assert who.name == "WISHFTR"
@@ -199,9 +214,6 @@ def test_a_purchase_writes_the_sum_from_before_the_money_was_taken():
     assert sum(who.money.values()) == 31
     assert who.expected_encumbrance() == 81
     assert who.get("encumbrance") == 190
-    assert who.get("encumbrance") != SPOIL, (
-        "the purchase overwrote the field rather than adding to it, which is "
-        "what staging an impossible number was for")
 
 
 def test_the_five_who_bought_nothing_came_out_of_the_shop_correct():
@@ -209,16 +221,26 @@ def test_the_five_who_bought_nothing_came_out_of_the_shop_correct():
     for slot in range(2, 7):
         who = _record(SPOILED, f"CHRDATG{slot}.SAV")
         assert who.get("encumbrance") == who.expected_encumbrance(), who.name
-        assert who.get("encumbrance") != SPOIL
 
 
-def test_an_ordinary_in_town_save_rewrites_stored_encumbrance():
-    """The same spoiled input, no shop and no trainer: all six come back
-    holding the sum, so a save does not preserve what the file held."""
+def test_an_ordinary_in_town_save_preserves_stored_encumbrance():
+    """`#429` corrected this: a plain save does not rewrite the field.
+
+    `CONTROL`'s own "all six come back correct" was staged the same way
+    `#429` found broken -- the 999 landed on disk after `open_loaded` had
+    already booted DOSBox and loaded the party, so the engine's resident
+    copy was never spoiled and its save simply wrote that untouched, already
+    -correct copy back. `WISH-SPEC-por-enc-spoiled-campsave` is the same
+    experiment with the poke moved before the boot, by `tools/dosencsave.py`
+    -- which is the order this tool now uses too. All six come back **still
+    holding 999**, so an ordinary camp save preserves whatever the engine
+    loaded and recomputes nothing. `tests/test_dosencsave.py` pins this
+    specimen and its two companions, `-menusave` and `-viewed`.
+    """
     for slot in range(1, 7):
-        who = _record(CONTROL, f"CHRDATH{slot}.SAV")
-        assert who.get("encumbrance") == who.expected_encumbrance(), who.name
-        assert who.get("encumbrance") != SPOIL
+        who = _record("por-enc-spoiled-campsave", f"CHRDATB{slot}.SAV")
+        assert who.get("encumbrance") == SPOIL, who.name
+        assert who.get("encumbrance") != who.expected_encumbrance(), who.name
 
 
 def test_the_training_ladder_kept_a_stale_value_through_the_same_engine():

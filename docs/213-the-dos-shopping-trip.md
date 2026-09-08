@@ -88,10 +88,14 @@ Radiance does the same**, measured in
 | staged before the boot | 140 gold | 0 | **999**, ours | 140 |
 | after buying one hand axe listed at 1 gp | 27 platinum + 4 gold = 31 | 50 | **190** | 81 |
 
-`190 = 140 + 50` -- his purse *before* it paid, plus the axe. The spoiled 999
-is what makes this a measurement rather than a coincidence: the field was
-overwritten wholesale rather than adjusted, so the engine computed 190 rather
-than adding 50 to something.
+`190 = 140 + 50` -- his purse *before* it paid, plus the axe. **The spoiled 999
+does not settle whether the field was rebuilt wholesale or added to**, because
+`#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so the
+engine never reads it)` found this specimen's own poke landed after the boot
+too, so 999 never reached the engine's resident copy of the record: 140 + 50
+is 190 either way. What the number does show, unaffected by the poke's
+timing, is the bug itself -- the write happens after the coins are already
+spent, so the field is one purchase behind.
 
 **The excess is 109 rather than the 1 gp price, and that is Pool of Radiance's
 purse arithmetic rather than a different bug.** Paying 1 gp out of 140 gold
@@ -106,33 +110,44 @@ stored 130 -- because that run opened `VIEW` in the shop before it left.
 N19 says the same of Curse. So **a record taken straight out of a shop with
 nobody looking at the sheet is the one that fails the identity.**
 
-### An in-town camp save rewrites the field
+### An in-town camp save does not rewrite the field, and the opposite reading was our own tool
 
-**CONFIRMED**, `WISH-SPEC-por-shop-encumbrance-control`: the same six records
-staged at 999, loaded, encamped on the map and saved, with no shop and no
-trainer. All six came back holding their own correct sum. So an ordinary save
-does not preserve what was in the file.
+`WISH-SPEC-por-shop-encumbrance-control` looked like the opposite: the same
+six records staged at 999, loaded, encamped on the map and saved, with no
+shop and no trainer, and all six came back holding their own correct sum.
+**That result was `tools/dosshop.py` measuring itself.**
+`#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so the
+engine never reads it)` found that `--encumbrance` wrote its 999 *after*
+`open_loaded` had already booted DOSBox and pressed `LOAD SAVED GAME`, so the
+engine had the record in memory before the poke touched the file, and its own
+save wrote that untouched, already-correct copy back. A run that came back
+"correct" had measured nothing.
 
-### And that contradicts the training ladder, which is not resolved
+**CONFIRMED the other way**, once the poke moves before the boot.
+`tools/dosencsave.py` stages the same 999 between `install` and `session.boot()`,
+and `WISH-SPEC-por-enc-spoiled-campsave` -- an ordinary camp save, no shop and
+no trainer -- comes back holding **999 in all six**. `WISH-SPEC-por-enc-
+spoiled-menusave`, a party-menu `SAVE CURRENT GAME` on the same boot, agrees.
+Only `WISH-SPEC-por-enc-spoiled-viewed`, the next save in the same boot after
+`VIEW` drew WISHFTR's sheet, comes back with WISHFTR's true sum -- the five
+sheets nobody drew are still at 999. **So a save does not recompute stored
+encumbrance; drawing a character's sheet does, and only for the character it
+drew.**
+
+### The training ladder was right all along
 
 The nine ladder rungs saved records whose stored encumbrance is 1000 per
 training above the purse, and nine load-and-save cycles never corrected them
--- `WISH-SPEC-por-party-ladder-rung1` holds 21,000 against 19,000 gold. So
-whatever rewrote the control's field did not happen on those boots.
+-- `WISH-SPEC-por-party-ladder-rung1` holds 21,000 against 19,000 gold. That
+agrees with the corrected reading above rather than contradicting it: nothing
+about training or an ordinary save recomputes the field. `docs/125-bug-notes.md`
+N19's *"every screen that draws encumbrance recomputes first"* is what does,
+proven now for the write-back as well as the display, in Pool of Radiance as
+well as Curse.
 
-**The two runs differ in the save path**: the ladder saved with
-`SAVE CURRENT GAME` from the *training hall's party menu*, and the control
-encamped from the map. They also differ in area, 11 against 0.
-
-**The experiment that would settle it**, and it is one boot: stage 999 into a
-save that loads back to the party menu -- any ladder rung does -- and take a
-party-menu save immediately, training nobody. If it comes back holding 999,
-the party-menu save preserves the field and camp rewrites it; if it comes back
-correct, the difference is somewhere else and the next candidate is the area.
-
-Until then, the honest form of the rule is narrow: **a stale stored
-encumbrance is evidence about what the party did since the field was last
-written, and not evidence that anybody edited the record.** That is what
+The honest form of the rule stays narrow: **a stale stored encumbrance is
+evidence about what the party did since the field was last written, and not
+evidence that anybody edited the record.** That is what
 `#323 (The encumbrance identity does not survive the training fee, so failing it is not evidence of an edited record)` needed and it is unaffected by which screen does the writing.
 
 ## What is in the specimen tree
@@ -140,8 +155,11 @@ written, and not evidence that anybody edited the record.** That is what
 | specimen | what it is |
 |---|---|
 | `WISH-SPEC-por-party-l1-shopped` | the six from creation, WISHFTR carrying two hand axes he bought with the 140 gp the engine rolled him. No character field was ever poked; the only byte this project wrote is the party's saved square |
-| `WISH-SPEC-por-shop-encumbrance-spoiled` | the same party with stored encumbrance staged to 999, one hand axe bought, the buyer holding 190 and the five who bought nothing holding the right sum |
-| `WISH-SPEC-por-shop-encumbrance-control` | the same spoiled input with no shop at all: all six correct |
+| `WISH-SPEC-por-shop-encumbrance-spoiled` | the same party with stored encumbrance staged to 999 *after* the boot (`tools/dosshop.py`'s old, unfixed order): the buyer's 190 stands as a measurement of the purchase bug, the five who bought nothing are correct because they were always correct, and the 999 itself never reached the engine |
+| `WISH-SPEC-por-shop-encumbrance-control` | the same after-the-boot 999 with no shop at all: all six come back correct because the poke never reached the engine, not because a save recomputed anything -- see `#429 (tools/dosshop.py stages its spoiled encumbrance after the load, so the engine never reads it)` |
+| `WISH-SPEC-por-enc-spoiled-campsave` | `tools/dosencsave.py`'s repeat with the poke *before* the boot: an ordinary camp save, all six still holding 999 |
+| `WISH-SPEC-por-enc-spoiled-menusave` | the same boot's party-menu `SAVE CURRENT GAME`, taken first: all six still 999 |
+| `WISH-SPEC-por-enc-spoiled-viewed` | the next save in that boot, after `VIEW` drew WISHFTR's sheet: WISHFTR holds his true sum, the other five are still 999 |
 
 ## Running it
 
@@ -152,8 +170,10 @@ written, and not evidence that anybody edited the record.** That is what
         --steps Up '~5' y '~4' b '~4' b '~4' '@e' '~3' '@e' '~4' \
                 '@e' '~4' '@s' '~3' g '~10' n '~4'
 
-`--encumbrance` spoils the stored field before the boot, which is what makes a
-right answer afterwards a recompute rather than our own staging surviving.
-Output goes under `work/`, which is gitignored and has been lost twice: copy a
-run you mean to keep into `$WISH_SPECIMENS` with `tools/specimens.py add` before
-the slot goes down.
+`--encumbrance` spoils the stored field before the boot -- `open_loaded_spoiled`,
+fixed by `#429 (tools/dosshop.py stages its spoiled encumbrance after the
+load, so the engine never reads it)` -- which is what makes a right answer
+afterwards a recompute rather than our own staging surviving. Output goes
+under `work/`, which is gitignored and has been lost twice: copy a run you
+mean to keep into `$WISH_SPECIMENS` with `tools/specimens.py add` before the
+slot goes down.
