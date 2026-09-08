@@ -2094,10 +2094,11 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     pre-filled, no picker -- so this proves the dialog's own
     `_rehearse_and_report` amiga branch reaches Convert, not only that
     `Direction.rehearse` works when called directly the way the transfer
-    tests below call it. `EditorBinding.convert` itself has no `disk=`
-    argument yet -- `editor/window.py` is outside this session's files --
-    so the write below repeats its own two lines (`fresh_folder`, then
-    `Direction.write`) rather than calling it.
+    tests below call it. Repeats `fresh_folder` then `Direction.write` by
+    hand, at the dialog level, rather than through `EditorBinding.convert` --
+    `test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter`
+    below is the twin that drives the whole path including `disk=` and the
+    `CONVERTED_AMIGA` status line.
     """
     from test_toamigapor import _c64_specimen
 
@@ -2125,6 +2126,92 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
         amiga.AmigaDisk.open(str(fresh / convert.POOLSAVE_FILENAME))
     finally:
         dialog.close()
+
+
+def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
+        tmp_path, monkeypatch):
+    """`EditorBinding.convert`'s `disk=` argument and its `CONVERTED_AMIGA`
+    status line, end to end -- the two pieces `#36 (Write an Amiga disk
+    image, not just the character files)`'s 2026-09-07 comment left for this
+    session, because `editor/window.py` was another agent's file that
+    night. Drives `File ▸ Convert…` exactly the way a player would with
+    every row already filled in (`disk=` is the twin of `game=`), so this
+    proves the wiring the dialog-level test above cannot: that
+    `EditorBinding.convert` itself knows to write into a fresh folder, name
+    it `POOLSAVE.ADF`, and report the approved sentence rather than falling
+    through to `CONVERTED_DOS` or trying to `self.load()` it as a C64
+    save."""
+    from test_toamigapor import _c64_specimen
+
+    from goldbox import amiga
+
+    disk2 = _por_amiga_disk_2(tmp_path)
+    c64_path = _c64_specimen("por-party-twin-pair")
+    window = EditorBinding(_make_root())
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    try:
+        note = window.convert(source=str(c64_path), destination="amiga",
+                              disk=str(disk2), folder=str(destination))
+    finally:
+        window.close()
+
+    today = datetime.date.today().isoformat()
+    fresh = destination / f"wish-{today}"
+    written = fresh / convert.POOLSAVE_FILENAME
+    assert list(fresh.iterdir()) == [written]
+    assert note == convert.CONVERTED_AMIGA.format(slot="A", folder=fresh)
+    # Opens clean and the slot is readable, or this raises.
+    disk = amiga.AmigaDisk.open(str(written))
+    assert disk.read_file("/save") is not None
+
+
+def test_window_convert_reports_the_amiga_status_line_with_no_real_disk(
+        tmp_path, monkeypatch):
+    """CI-safe twin of the test above, with no specimen or Amiga disk 2:
+    proves `EditorBinding.convert`'s own amiga branch -- the fresh folder,
+    the one `POOLSAVE.ADF`, and `CONVERTED_AMIGA` rather than `CONVERTED_DOS`
+    or the C64 `self.load()` branch -- on a hand-built
+    `_synthetic_amiga_rehearsal()`, the same rehearsal
+    `test_write_puts_one_adf_in_its_own_folder` proves `Direction.write` with."""
+    from goldbox import dos_layout
+
+    window = EditorBinding(_make_root())
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    rehearsal = _synthetic_amiga_rehearsal()
+    direction = convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE)
+
+    class _FakeDialog:
+        def __init__(self, *args, **kwargs):
+            self.direction = direction
+            self.rehearsal = rehearsal
+            self.slot = "A"
+            self.folder = str(destination)
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(convert, "ConvertDialog", _FakeDialog)
+    try:
+        note = window.convert(source="ignored", destination="amiga",
+                              disk="ignored", folder=str(destination))
+    finally:
+        window.close()
+
+    today = datetime.date.today().isoformat()
+    fresh = destination / f"wish-{today}"
+    written = fresh / convert.POOLSAVE_FILENAME
+    assert note == convert.CONVERTED_AMIGA.format(slot="A", folder=fresh)
+    assert written.read_bytes() == b"not a real disk"
+    assert list(fresh.iterdir()) == [written]
 
 
 def _synthetic_amiga_rehearsal():

@@ -1269,31 +1269,36 @@ class EditorBinding(QObject):
     # -- converting ---------------------------------------------------------
 
     def convert(self, source: str | None = None, destination: str | None = None,
-               folder: str | None = None, game: str | None = None) -> str:
+               folder: str | None = None, game: str | None = None,
+               disk: str | None = None) -> str:
         """File ▸ Convert… Returns what happened, for a test.
 
-        `source`, `destination`, `folder` and `game` pre-fill the dialog's
-        rows the way `import_dos_save(folder=...)` pre-fills its one row --
-        given every argument, no picker ever opens, which is how a test
-        drives the whole path (`#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment step C). With no
-        `source`, the dialog opens with an empty `From` row rather than a
-        picker in front of it (`#412 (File ▸ Convert demands a save in a
-        file picker before it will show you the Convert window)`) -- the
-        row's own `Choose` button is the picker now. The write itself
-        happens here rather than inside `ConvertDialog`, the same split
-        `import_dos_save` keeps between rehearsing (the dialog) and
-        committing (this method): `fresh_folder` names a folder and
-        `mkdir()`s it immediately afterwards (the review of `a60e829`: it
-        names a folder, it does not reserve one), then `Direction.write`
-        puts the files in it. A C64 destination is opened afterwards the
-        same way `File ▸ Open` opens anything; a DOS destination is not
-        something the editor can show, so it only gets a status line.
+        `source`, `destination`, `folder`, `game` and `disk` pre-fill the
+        dialog's rows the way `import_dos_save(folder=...)` pre-fills its
+        one row -- given every argument, no picker ever opens, which is how
+        a test drives the whole path (`#52 (File ▸ Import and File ▸ Export
+        for every direction the library supports)`'s plan comment step C).
+        `disk` is the player's own Amiga disk 2, the twin of `game` for an
+        Amiga destination (`#36 (Write an Amiga disk image, not just the
+        character files)`). With no `source`, the dialog opens with an
+        empty `From` row rather than a picker in front of it (`#412 (File ▸
+        Convert demands a save in a file picker before it will show you the
+        Convert window)`) -- the row's own `Choose` button is the picker
+        now. The write itself happens here rather than inside
+        `ConvertDialog`, the same split `import_dos_save` keeps between
+        rehearsing (the dialog) and committing (this method): `fresh_folder`
+        names a folder and `mkdir()`s it immediately afterwards (the review
+        of `a60e829`: it names a folder, it does not reserve one), then
+        `Direction.write` puts the files in it. A C64 destination is opened
+        afterwards the same way `File ▸ Open` opens anything; a DOS or
+        Amiga destination is not something the editor can show, so it only
+        gets a status line.
         """
         from editor import convert as convert_mod
 
         dialog = convert_mod.ConvertDialog(
             source or "", self.party, self.game_files_for,
-            destination=destination, game=game, folder=folder,
+            destination=destination, game=game, disk=disk, folder=folder,
             parent=self.root,
             start_dir=files.open_start_dir(self.last_save_folder, self.path,
                                            self.saves_folder))
@@ -1321,8 +1326,12 @@ class EditorBinding(QObject):
             if dialog.direction.destination_port == "c64":
                 self.load(str(written[0]))
                 return f"converted into {fresh}"
-            note = convert_mod.CONVERTED_DOS.format(
-                slot=dialog.slot or "", folder=fresh)
+            if dialog.direction.destination_port == "amiga":
+                note = convert_mod.CONVERTED_AMIGA.format(
+                    slot=dialog.slot or "", folder=fresh)
+            else:
+                note = convert_mod.CONVERTED_DOS.format(
+                    slot=dialog.slot or "", folder=fresh)
             self.status(note)
             return note
 
