@@ -30,13 +30,18 @@ from gamedata import specimen_root
 from test_amiga import amiga_por_records
 from test_doslatertitles import _c64_disk, _c64_party
 
-from goldbox import amiga, c64_codec
+from goldbox import amiga, c64_codec, dos, dos_layout
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 #: A whole word, so a name that happens to contain the letters does not
 #: false-positive; `re.IGNORECASE` catches a stray lower-case "dos".
 NAMES_DOS = re.compile(r"\bDOS\b", re.IGNORECASE)
+
+#: Same idea, for the third instance the issue's own comments traced:
+#: `goldbox.dos.to_neutral`'s portrait drop naming "C64" while reading a DOS
+#: record, before any writer -- C64 or Amiga -- has been chosen.
+NAMES_C64 = re.compile(r"\bC64\b", re.IGNORECASE)
 
 
 def test_region_220s_player_text_names_no_platform():
@@ -86,3 +91,31 @@ def test_a_c64_party_converted_to_the_amiga_names_no_platform():
             assert line[:1] == line[:1].upper(), (char.get("name"), line)
         checked += 1
     assert checked == 6
+
+
+def test_a_dos_portrait_the_menu_cannot_answer_for_names_no_platform():
+    """The third instance the issue's own comments traced:
+    `goldbox.dos.to_neutral`'s portrait block named "C64" unconditionally,
+    while reading the *source* DOS record -- before any writer, C64 or
+    Amiga, has been chosen -- so a DOS-to-Amiga conversion inherited a claim
+    about the C64 the same way the C64-to-Amiga direction inherited one
+    about DOS.
+
+    A synthetic all-zero Pool of Radiance record with `portrait_body` set to
+    13 -- outside a synthetic fourteen-head, twelve-body menu -- needs no
+    game disk: it is the same reproduction `test_dosconvert.py`'s portrait
+    tests use, `PortraitTables._art`'s own `1 <= n <= len(table)` gate.
+    """
+    from goldbox.portraits import PortraitTables
+
+    tables = PortraitTables(heads=tuple(range(1, 15)),
+                             bodies=tuple(range(1, 13)),
+                             source="synthetic, for this test")
+    raw = bytearray(bytes(dos.POOL_OF_RADIANCE.record_size))
+    raw[dos_layout.FIELDS_BY_NAME["portrait_body"].offset] = 13  # outside
+    odd = dos.DosCharacter(bytes(raw))                            # the menu
+    neutral = dos.to_neutral(odd, portraits=tables)
+    lines = [d for d in neutral.dropped if "portrait (body)" in d.lower()]
+    assert lines, neutral.dropped
+    for line in lines:
+        assert not NAMES_C64.search(line), line

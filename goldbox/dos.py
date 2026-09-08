@@ -1829,10 +1829,17 @@ def to_neutral(dos: DosCharacter,
                 continue
             label = "head" if name == "portrait_head" else "body"
             if draws_portrait:
+                # This reader does not yet know which port the character is
+                # going to (#389, A conversion to the Amiga tells the player
+                # what DOS does with their character): naming "C64" here
+                # named the wrong destination for a DOS-to-Amiga conversion,
+                # the same class of bug `goldbox.c64_codec.
+                # READ_DROPPED_PLAYER_TEXT["region_220"]` had and was fixed
+                # by dropping the destination name rather than guessing it.
                 out.drop(f"Character portrait ({label}): position {position} "
                          f"in this save is not one the character-creation "
-                         f"menu offers, so no matching C64 {stem}nn portrait "
-                         f"exists")
+                         f"menu offers, so no matching portrait exists. "
+                         "(NOT APPROVED)")
             continue
         out.set(name, art,
                 f"DOS {name} @{f.offset:#05x} = menu position {position}, "
