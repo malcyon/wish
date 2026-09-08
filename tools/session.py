@@ -193,6 +193,28 @@ MOVE_SUBBAR = "I,J,K,M"
 #: share, and nothing else on any other bar carries a colon.
 SHEET_BAR = "VIEW:"
 
+#: PETSCII `$5F`, the `<-` key at the top left of a C64 keyboard, and the one
+#: key every Gold Box command bar reads as "leave, wherever the highlight is".
+#:
+#: **It is not a guess and it is not per-title.**  One key interpreter drives
+#: every bar in all three C64 titles, byte for byte the same routine at three
+#: addresses -- Pool of Radiance `LIBRARY $306D`, Curse `$31F1`, Silver Blades
+#: `$46F1` -- and its `CMP #imm / BEQ` chain ends with two branches that name
+#: themselves out of their own code: `$0D` reaches
+#: `LDX <highlight> / LDA <ids>,X / SEC / RTS`, which returns whatever the
+#: highlight is on, and `$5F` reaches `LDA #$FF / SEC / RTS`, which returns a
+#: negative accumulator.  The character sheet's loop closes
+#: `BCC <poll> / BPL <carry on> / RTS`, so a negative answer is the sheet
+#: returning to whoever opened it.  `tools/sheetexit.py keys` prints all of
+#: that off the player's own disks; `#444` has the run that proves it.
+#:
+#: **Why it matters more than `EXIT` does.**  `EXIT` is one word on a bar the
+#: game builds per character -- Silver Blades draws `EXIT` *alone* for a
+#: character with nothing to trade, and Curse drops `ITEMS` for one carrying
+#: nothing -- so reaching it means walking a highlight whose start column
+#: moves with the party's inventory.  `$5F` needs no walk and no highlight.
+BAR_CANCEL = 0x5F
+
 
 class Status(NamedTuple):
     """The status line, read: where the party is and what time it is.
@@ -1119,16 +1141,49 @@ class Session:
         self.leave_sheet()
         return lines
 
-    def leave_sheet(self, tries: int = 3) -> bool:
-        """`EXIT` off a character sheet, by name.
+    def cancel_bar(self, timeout: float = 8.0, row: int = 24) -> bool:
+        """Send `BAR_CANCEL` and say whether the bar on `row` gave way.
 
-        Asked for by name and never by pressing Return at whatever happens to
-        be highlighted: the sheet's bar starts on `ITEMS`, and `ITEMS` opens
-        the item list that re-arms itself -- choosing its `EXIT` returns to
-        the bar and the next `Return` drops straight back in
+        The key goes through the KERNAL buffer rather than XTEST, because the
+        game's own key fetcher reads `$0277` with the count at `$C6` -- so
+        this reaches a screen whether or not VICE's keymap has the `<-` key
+        where a driver expects it.
+
+        **Answered by the bar changing, not by the key being sent.**  A
+        `select_bar` that presses Return has no way to tell a command that
+        took from one that was swallowed, which is how three `EXIT` presses
+        came back `True` with the sheet still up (`#444`).
+        """
+        s = self.screen()
+        was = None if s is None else s.row(row)
+        self.press_kernal(BAR_CANCEL)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is not None and s.row(row) != was:
+                return True
+            time.sleep(0.4)
+        return False
+
+    def leave_sheet(self, tries: int = 3) -> bool:
+        """Off a character sheet, by the bar's own cancel key.
+
+        `BAR_CANCEL` rather than `EXIT`, and the difference is the whole of
+        `#444`: `EXIT` has to be walked to, and where it sits depends on what
+        the character is carrying, while the cancel key is read wherever the
+        highlight is.  Both later titles used to cost a boot per sheet
+        because of it.
+
+        The old route is kept as the fallback, and it is still asked for by
+        name rather than by pressing Return at whatever happens to be
+        highlighted: the sheet's bar usually starts on `ITEMS`, and `ITEMS`
+        opens the item list that re-arms itself -- choosing its `EXIT` returns
+        to the bar and the next `Return` drops straight back in
         (`docs/70-driving-the-game.md`).
         """
         for _ in range(tries):
+            if self.cancel_bar():
+                return True
             if self.select_bar("EXIT", timeout=8):
                 time.sleep(1.0)
                 return True
