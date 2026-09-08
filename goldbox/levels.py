@@ -88,14 +88,23 @@ or only the code does:
 | thief skills, `$1004`/`$10A4`/`$1064` | CONFIRMED | 8 of 8 columns on the one shipped thief |
 | experience clamp, `$136E` entry 13 | CONFIRMED | the same table the 78 thresholds came from |
 | wisdom bonus spells, `ECL65 $8906` | CONFIRMED, and **no record can ever agree** | the table read, plus the *Players Handbook* row; the bonus lands in RAM at `$2BBB` and is never stored |
-| racial saving-throw bonus, `$0F19` | **PROBABLE** | the bytecode alone -- no dwarf, gnome or halfling Curse character exists to check it against |
+| racial saving-throw bonus, `$0F19` | **CONFIRMED** | TRAVIS, a dwarf, had the trainer rewrite his five saves to exactly the class rows less `constitution * 2 // 7` on columns 0, 2 and 4 (2026-09-05, `WISH-SPEC-curse-trained-party`) |
 | hit die rolled twice, `$15FC` | **PROBABLE** | the bytecode alone; a roll leaves no trace in a record |
+| hit-die/constitution divide round-up rule, `$11AB` | CONFIRMED | 40 engine-written divides on 2026-09-05: 0 round-ups in 14 at two classes remainder 1, 0 in 12 at three classes remainder 1, 5 in 14 at three classes remainder 2 -- the `<` reading, not the `<=` one this module still applies for both titles |
+| one press raises every ready class, `$14F8` | CONFIRMED | watched: TRAVIS (thief/fighter) and LEDERA (magic-user/fighter) each raised both classes on one `TRAIN CHARACTER` |
 
-**`TRAINER_MEASURED` still has one entry.** A table being right is not the same
-as a level-up being right: no Curse training has been driven and captured, and
-two of Curse's own steps -- the hit-die divide and the `hp_max` divide -- round
-up *at random* against the remainder (`$11AB`), so what they do can only be
-believed after being watched. That is `#18`'s step 3.
+**`TRAINER_MEASURED` still has one entry, and not for lack of a driven
+training any more.** Five Curse level-ups were driven and diffed on
+2026-09-05: 75 derived fields and 5 spellbooks come back out of this module
+and `goldbox/levelup.py` with no mismatches, the racial saving-throw bonus
+above moved from PROBABLE to CONFIRMED on the strength of it, and 40 further
+engine-written divides settled the hit-die/constitution round-up rule. What
+is left is `goldbox/levelup.py` consuming two of those findings rather than
+finding anything else: `divide_between_classes` still applies Pool of
+Radiance's `<=` comparison to both titles (`hit_die_divide_round_up_on_tie`
+and `divide_rounds_up` carry Curse's `<` rule but nothing calls them), and
+`plan` still raises one class at a time where Curse's own press raises every
+ready one (`trains_all_ready_classes`). Both are outside this module.
 
 **THAC0 is the game's, not a transcription**, and reading it caught an error
 that had been in this file since it was written: **a thief is THAC0 19 at
@@ -823,6 +832,33 @@ class LevelTables:
     #: #$01`; Curse's `$11CC` is a bare `LDA $4C / RTS`, so a Curse
     #: multi-class character can gain nothing from a die.
     hit_die_divide_floor: int = 1
+    #: Whether a roll **equal to** the remainder rounds a divided hit-die or
+    #: constitution total up, in `divide_between_classes`. Both titles roll
+    #: `1..class_count` out of the same `LIBRARY` routine (`$2F46` in Curse,
+    #: `$2DBC` in Pool of Radiance) and compare it with the remainder; Pool of
+    #: Radiance's `$208D` is `CMP $6E3F / BEQ inc / BCS out`, so a tied roll
+    #: takes the `BEQ` and rounds up -- "roll <= remainder". Curse's `$11AB`
+    #: is `CMP $7F3F / BCS out` with no `BEQ` in front of it, so a tie falls
+    #: through -- "roll < remainder", which is **never** for a two-class
+    #: character, whose remainder can only be 0 or 1. CONFIRMED from the
+    #: bytecode and from 40 engine-written divides on 2026-09-05: 0 round-ups
+    #: in 14 at two classes with remainder 1, 0 in 12 at three classes with
+    #: remainder 1, and 5 in 14 at three classes with remainder 2 (predicting
+    #: 1 in 3 once the tie is excluded, against the 2 in 3 a `<=` reading
+    #: gives). `goldbox/levelup.py`'s `divide_between_classes` does not yet
+    #: consult this field -- see its own docstring for what is left (#18).
+    hit_die_divide_round_up_on_tie: bool = True
+    #: Whether one training-hall press raises **every** class the character
+    #: is ready for, rather than the one the player picks. Pool of Radiance's
+    #: `$1B8C` raises a single class a visit; Curse's `$14F8` and Silver
+    #: Blades' `$156F` both walk class slots 7 down to 0 and raise every
+    #: qualifying one in the same press, each read directly off that title's
+    #: own `GEN` and watched: five Curse trainings on 2026-09-05 raised two
+    #: classes together for the two multi-class characters in the party
+    #: (`WISH-SPEC-curse-trained-party`). CONFIRMED for both. `goldbox/
+    #: levelup.py`'s `plan` does not yet loop over `ready_classes` to use this
+    #: -- see its own docstring for what is left (#18).
+    trains_all_ready_classes: bool = False
     #: Whether the recompute writes `attack_forms` outright or only raises it.
     #: Pool of Radiance's `$2342` refuses to lower (`LDX #$03 / CPX $6BD9 /
     #: BCC skip`) and never writes anything but 3; Curse's `$1909` stores what
@@ -839,6 +875,20 @@ class LevelTables:
     #: nobody has read this title's DOS copy, and every caller treats that as
     #: "cannot answer" rather than as agreement with the C64.
     dos_thac0: tuple[tuple[str, tuple[int, ...]], ...] = ()
+
+    def divide_rounds_up(self, remainder: int, roll: int) -> bool:
+        """Whether a divided hit-die or constitution total's leftover point
+        goes to the quotient, this title's way.
+
+        `roll` is `1..class_count`, the range `LIBRARY`'s own random routine
+        returns (read for #18); `remainder` is what `divmod` left over. See
+        `hit_die_divide_round_up_on_tie` for the comparison and its
+        provenance. Not yet called from `goldbox/levelup.py`.
+        """
+        if not remainder:
+            return False
+        return roll < remainder or (
+            roll == remainder and self.hit_die_divide_round_up_on_tie)
 
     def constitution_hp_bonus(self, constitution: int, *,
                               fighter: bool = False,
@@ -1149,6 +1199,8 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
     hit_die_rolls=2,
     hit_die_fighter_floor=None,
     hit_die_divide_floor=0,
+    hit_die_divide_round_up_on_tie=False,
+    trains_all_ready_classes=True,
     attack_forms_overwritten=True,
     stores_spell_capacity=False,
     #: `GEN $136E`, entry thirteen of each class's own row -- the same table
@@ -1207,19 +1259,21 @@ DEFAULT = POOL_OF_RADIANCE
 #: **Curse's own copies have now been located, read and written into this
 #: module** (#18, `tests/test_cursetrainer.py` and `tests/test_curselevels.py`),
 #: and `goldbox/levelup.py` has been taught every rule of Curse's that is not
-#: Pool of Radiance's. The key is still not here, for one reason: **no Curse
-#: training has been driven and captured.** Every number above was read off a
-#: file or reproduced on a character SSI shipped, and two of the trainer's own
-#: steps cannot be reproduced that way at all -- `$11AB` divides both the
-#: hit-die roll and the constitution total by the class count and rounds up
-#: *at random* against the remainder, so a multi-class Curse level-up has no
-#: single right answer to check. That is `#18`'s step 3, and it is what would
-#: put this key here.
+#: Pool of Radiance's. **Five Curse trainings were driven and diffed on
+#: 2026-09-05**, and 75 derived fields plus 5 spellbooks come back out of this
+#: module and `goldbox/levelup.py` with no mismatches -- so the key is not
+#: still out for lack of a watched training. What is left is two things
+#: `goldbox/levelup.py` reads from this module but does not yet act on:
+#: `hit_die_divide_round_up_on_tie`/`divide_rounds_up`, which carry the
+#: hit-die and constitution divide's round-up rule now that it is read from
+#: the bytecode rather than random, and `trains_all_ready_classes`, which
+#: says a Curse press raises every ready class rather than the one the player
+#: picks. `divide_between_classes` and `plan` do not consult either yet.
 #:
-#: Two of the readings behind it are PROBABLE rather than CONFIRMED -- the
-#: racial saving-throw bonus at `$0F19` and the double hit-die roll at `$15FC`
-#: -- because the bytecode is the whole of their evidence. The module
-#: docstring's grade table says which, and why each is where it is.
+#: One of the readings behind it is PROBABLE rather than CONFIRMED -- the
+#: double hit-die roll at `$15FC`, because a roll leaves no trace in a record
+#: and the bytecode is the whole of its evidence. The module docstring's
+#: grade table says why.
 #:
 #: Silver Blades is the same case: its level tables are in this module now
 #: (#187), and its trainer's own inputs -- the constitution hit-point bonus,

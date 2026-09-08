@@ -599,15 +599,67 @@ def test_curses_hit_die_rules_are_the_ones_levelup_now_rolls():
             assert levels.POOL_OF_RADIANCE.flat_hit_points(name, level) is None
 
 
+def test_the_hit_die_divide_rounds_up_on_a_tied_roll_only_in_pool_of_radiance():
+    """`hit_die_divide_round_up_on_tie` and `divide_rounds_up`, against the 40
+    engine-written divides driven on 2026-09-05.
+
+    Pool of Radiance's `$208D` is `CMP $6E3F / BEQ inc / BCS out`, so a roll
+    equal to the remainder rounds up; Curse's `$11AB` is `CMP $7F3F / BCS out`
+    with no `BEQ`, so a tie does not. The two-class case is the one this
+    changes for a player: its remainder is only ever 0 or 1, so a tie is the
+    *only* roll that could round it up, and Curse's own trainer never did --
+    0 round-ups in 14 tries at remainder 1, two classes; 0 in 12 at remainder
+    1, three classes; 5 in 14 at remainder 2, three classes, which is what a
+    1-in-3 chance (excluding the tie) predicts and a 2-in-3 chance (including
+    it) does not.
+
+    `goldbox/levelup.py`'s `divide_between_classes` does not call
+    `divide_rounds_up` yet -- see that function's own docstring.
+    """
+    assert CURSE.hit_die_divide_round_up_on_tie is False
+    assert levels.POOL_OF_RADIANCE.hit_die_divide_round_up_on_tie is True
+    # Two classes, remainder 1: rolls are 1 or 2. Curse never rounds up;
+    # Pool of Radiance rounds up on the tied roll of 1.
+    assert [CURSE.divide_rounds_up(1, roll) for roll in (1, 2)] == [False, False]
+    assert [levels.POOL_OF_RADIANCE.divide_rounds_up(1, roll)
+            for roll in (1, 2)] == [True, False]
+    # Three classes, remainder 2: rolls are 1, 2 or 3. Curse rounds up only on
+    # the roll below the remainder, 1 in 3; Pool of Radiance rounds up on that
+    # roll and the tied one, 2 in 3.
+    assert [CURSE.divide_rounds_up(2, roll) for roll in (1, 2, 3)] == \
+        [True, False, False]
+    assert [levels.POOL_OF_RADIANCE.divide_rounds_up(2, roll)
+            for roll in (1, 2, 3)] == [True, True, False]
+    # No remainder, no roll rounds anything up, whatever it came up.
+    assert not CURSE.divide_rounds_up(0, 1)
+    assert not levels.POOL_OF_RADIANCE.divide_rounds_up(0, 1)
+
+
+def test_curse_and_silver_blades_raise_every_ready_class_in_one_press():
+    """`trains_all_ready_classes`, watched on 2026-09-05: TRAVIS went in
+    thief 5 / fighter 4 and came out thief 6 / fighter 5 on **one**
+    `TRAIN CHARACTER`, and LEDERA the same for magic-user and fighter
+    (`WISH-SPEC-curse-trained-party`, `#18`'s comment of 2026-09-05 08:32).
+    Pool of Radiance's `$1B8C` raises a single class a visit.
+
+    `goldbox/levelup.py`'s `plan` does not loop over `ready_classes` to use
+    this yet -- see its own module docstring for what is left.
+    """
+    assert CURSE.trains_all_ready_classes is True
+    assert levels.POOL_OF_RADIANCE.trains_all_ready_classes is False
+
+
 def test_a_curse_level_up_is_still_refused_and_names_the_title():
     """Every table above is in `goldbox/levels.py` and Curse is **still not**
     in `TRAINER_MEASURED`, which is deliberate rather than an oversight.
 
-    Nothing here is a driven training: every number was read off a file or
-    reproduced on a character SSI shipped. Two of the trainer's own steps
-    cannot be reproduced that way at all -- `$11AB` divides both the hit-die
-    roll and the constitution total by the class count and rounds up at random
-    -- so `#18`'s step 3 is what would move the key, not another table.
+    Five driven Curse trainings on 2026-09-05 settled what was open here --
+    the hit-die divide's round-up rule is read from the bytecode rather than
+    random, and one press raises every ready class. What is still missing is
+    `goldbox/levelup.py` consuming either fact: `divide_between_classes`
+    still applies Pool of Radiance's comparison to both titles, and `plan`
+    still raises one class at a time. Both are #18's own "what is left",
+    outside this ticket's files.
     """
     assert CURSE.key not in levels.TRAINER_MEASURED
     assert not levels.trainer_measured(CURSE)
