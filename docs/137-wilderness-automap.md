@@ -122,9 +122,15 @@ made.** That is the first task and the drawing cannot start before it.
 
 ### The cheap handle, measured
 
-Each tile entry carries nine **colour attributes**, and the C64 palette is doing
-the same work a legend does. Taking the dominant colour of each tile and
-weighting by how many squares carry it:
+Each tile entry carries nine **colour attributes**. Most cells have bit 3 set,
+which on a C64 means a **multicolour** cell whose own colour is the nibble &
+7, not the nibble read as an ordinary hi-res colour -- so the six bucket
+names below, taken from the raw nibble, name the wrong colour for most of
+the map. `docs/217-drawing-the-wilderness.md` §1 works the hardware rule
+out; the counts are unaffected, only the names are corrected here.
+
+Taking the dominant nibble of each tile and weighting by how many squares
+carry it:
 
 | window | green | light grey | light red | light blue | yellow | brown/blue |
 |---|---|---|---|---|---|---|
@@ -132,18 +138,21 @@ weighting by how many squares carry it:
 | `SQRDATA05` | 206 | 168 | 140 | 128 | 5 | 1 |
 | `SQRDATA06` | 224 | 48 | 182 | 147 | 46 | 1 |
 
-**Six colours cover the whole world**, and the extremes read straight off: tile
-75 is nine cells of screen code `$FE` in light blue and is the most common tile
-in both eastern windows — that is the **sea**. Tiles 34 and 30 are all-green
-3 × 3 blocks; tiles 0 and 2 are all-light-grey. Tile 37 is light grey with two
-green cells, which is exactly what "hills with trees on them" looks like as an
-attribute pattern.
+**"light grey" (`$F`) is yellow** -- the plains speckle on a light-green
+ground, read against a screenshot -- **not** a grey terrain. **"light blue"
+(`$E`) is the sea**: tile 75 is nine cells of screen code `$FE` in that
+bucket and is the most common tile in both eastern windows. **"green" (`$D`
+or `$5`) is forest.** **"light red" (`$A`) is still unidentified** -- coast,
+hills or mountains -- and is the one bucket measurement A
+(`docs/217-drawing-the-wilderness.md` §2) exists to settle. PROBABLE for the
+first three, UNKNOWN for `$A`.
 
 This is a **PROBABLE** first cut, not a decode: colour narrows 120 pictures to
-six buckets and the screen codes separate variants within a bucket, but which
-bucket is hills and which is mountains needs one look at the real screen. It
-needs no emulator to compute and no game art to ship — the classification is a
-table of integers we write, and the pictures stay on the player's disk.
+six buckets and the screen codes separate variants within a bucket, and which
+tiles inside the unidentified `$A` bucket are hills and which are mountains
+still needs a look at the real screen. It needs no emulator to compute and no
+game art to ship — the classification is a table of integers we write, and
+the pictures stay on the player's disk.
 
 ### The symbols, and where they may come from
 
@@ -200,11 +209,11 @@ it.
 
 | unknown | the experiment |
 |---|---|
-| **which colour bucket is which terrain** | one screenshot of the travel screen, next to a rendering of the tile table's colours. Half an hour, no code. This is the blocker on everything downstream |
+| **which colour bucket is which terrain** | a screenshot of the travel screen, next to a rendering of the tile table's colours. The screenshot no longer has to be taken -- `work/issue178/` has three -- but a rendering to put beside them does not exist yet. This is still the blocker on everything downstream |
 | whether the buckets are even the right partition | render all 120 tiles of one window as coloured 3 × 3 blocks, offscreen, and look at them as a sheet. Same rig as `tools/iconsheet.py`. **The sheet is a working file and is not committed** — it is the game's art |
 | the eight-way facing encoding | `$033D` is page 3 and is not in the save; W2/W3 proved the travel facing is not saved at all. A live read while turning |
 | whether the impassable lists are per-window complete | `ECL19`/`1A`/`1B` each carry one; map `1B` reserves a stamp for a site that does not exist |
-| what a `SECSET0n` glyph looks like | **not needed.** Drawing the game's own art is what this plan exists to avoid |
+| what a `SECSET0n` glyph looks like | **needed after all**, if look 1 is chosen (the game's own tiles, reopened `docs/217-drawing-the-wilderness.md` §1) -- rendering it is measurement A there, not built yet |
 
 **Do not start drawing before the first row is answered.** A map that calls the
 hills mountains is worse than no map, because it looks right.

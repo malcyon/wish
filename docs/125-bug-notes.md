@@ -621,9 +621,13 @@ holds the displaced gnome row. 27 of 27 engine-written C64 records on this
 machine reproduce as level row plus racial row. CONFIRMED from the table's
 bytes and the routine that adds them; `tools/thiefskillcensus.py`.
 
-**Where it does cost something.** Converting a save between the two ports:
-`#431 (A converted halfling thief keeps the other port's skill percentages,
-because the two ports ship different halfling rows)`.
+**Where it would have cost something, and no longer does.** Converting a save
+between the two ports used to carry one port's stored percentages across to
+the other, wrong row and all. `#431 (A converted halfling thief keeps the
+other port's skill percentages, because the two ports ship different
+halfling rows)` closed it by computing a thief's eight percentages at the
+destination port, from level, race and dexterity through that port's own
+table, rather than copying the source's stored bytes.
 
 ## N22. Pool of Radiance's C64 thief skills ignore dexterity, and DOS's do not
 

@@ -158,10 +158,14 @@ Three things follow.
 
 `combat_figure` (renamed from `party_order` by `#305 (Two DOS record bytes have one name from Pool of Radiance and another from the Curse decompilation)`) is the one field this run adds to the derived list. The C64
 record has no marching order to convert -- `goldbox/layout.py`'s `0x10D` entry
-says the C64's order is the slot arrangement rather than a byte -- so the
-writer emits zero for everybody, and the engine numbered them 0 to 5 in the
-order the saved game's character table names them. The panel drew them in the
-right order before the save as well, so nothing was ever wrong on screen.
+says the C64's order is the slot arrangement rather than a byte -- so at the
+time of this run the writer emitted zero for everybody. `#282 (party_order
+(record 0x10D) is gated the same way as #281's four bytes, and never
+delivered from a real C64 save)` has since fixed the reader that fed it, so
+the writer now emits the source's own C64 roster slot index instead. Either
+way the engine numbered them 0 to 5 in the order the saved game's character
+table names them, and the panel drew them in the right order before the save
+as well, so nothing was ever wrong on screen.
 
 ## 5. A name loses its space
 

@@ -131,18 +131,30 @@ internal check is clean on all three engine-written files, `rebuild(parse(f))
 
 ### What is outside the lists, and none of it is a byte the writer got wrong
 
-**`party_order`, five characters of six on both titles.** We write 0 for
-everybody and the engine wrote 0, 1, 2, 3, 4, 5 — the first character's own 0 is
-why it is five and not six. This is the combat-icon slot rather than the
-marching order (`#305 (Two DOS record bytes have one name from Pool of Radiance
-and another from the Curse decompilation)`), `goldbox/dos_layout.py` reads the allocation loop out of
-the shipped overlays, and this run is the demonstration that the **Amiga** engine
-allocates it on load too. Nothing a player can see: the sheet, the panel and the
-figure all draw from the engine's own number. It is
+**`party_order`, five characters of six on both titles.** At the time of this
+run we wrote 0 for everybody and the engine wrote 0, 1, 2, 3, 4, 5 — the first
+character's own 0 is why it is five and not six. This is the combat-icon slot
+rather than the marching order (`#305 (Two DOS record bytes have one name from
+Pool of Radiance and another from the Curse decompilation)`),
+`goldbox/dos_layout.py` reads the allocation loop out of the shipped overlays,
+and this run is the demonstration that the **Amiga** engine allocates it on
+load too. Nothing a player can see: the sheet, the panel and the figure all
+draw from the engine's own number. This was
 `#282 (party_order (record 0x10D) is gated the same way as #281's four bytes,
-and never delivered from a real C64 save)`, whose open question was whether a
-caller that does not renumber shows the byte anywhere. On this destination it
-does not.
+and never delivered from a real C64 save)`'s open question -- whether a caller
+that does not renumber shows the byte anywhere -- and on this destination it
+did not.
+
+`#282 (party_order (record 0x10D) is gated the same way as #281's four bytes,
+and never delivered from a real C64 save)` has since closed: the writer no
+longer emits zero for a C64 source, it emits the source's own C64 roster slot
+index (`goldbox/layout.py`'s `0x10D`, read from the roster block's `+0x0D`).
+The byte equals the slot index in 90 of 90 occupied slots across the fifteen
+engine-written `PORSAVE*.D64`, CONFIRMED; that the slot index is what the
+field *means* stays PROBABLE, because every party on those disks is six
+characters in slots 0-5, where the slot index and the marching position are
+the same permutation. Either way the engine renumbers on load, so this run's
+conclusion is unchanged: nothing a player can see.
 
 **`thac0_current` and one byte of `roster_tail`, Curse only.** MATHEW went in
 with `thac0_current` 0x2F and came back 0x2A; PHILIPPE 0x29 and came back 0x28;

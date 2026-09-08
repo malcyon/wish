@@ -63,14 +63,22 @@ nothing is broken; for the overland map `$0607` is 20 against a true stride of
    `tests/test_p3.py`, which this doc's own "unknown" list had fallen behind).
    Kept numbered rather than removed: the saves table below still cross-refers
    to "unknown 1".
-2. **`$49FB`**, which is 0 on the grid and 255 in the cave and gates a display
-   item next to the clock. What it prints has not been seen.
+2. ~~`$49FB`, which is 0 on the grid and 255 in the cave and gates a display
+   item next to the clock. What it prints has not been seen.~~ **Settled,
+   CONFIRMED**: it gates the word `OUTDOORS` into the slot the facing letter
+   occupies indoors -- `OUTDOORS 21:32 5,2` (`docs/90-specimens.md` "The
+   wilderness set", the `W1` set) -- and `#205 (A party that walks out onto
+   the travel grid leaves the automapper's marker behind)` reads it live in
+   `automap/target.py`.
 3. **Where the travel facing is kept.** `$033D` is page 3 and is not in the
    save, and it is not `$49C2` either — see the row above. So a converted
    outdoor save cannot set the direction the party faces on the grid, and
    nobody has looked for the byte that would.
-4. **`$4BC0`.** GDRIVE00 carries the square code, GDRIVE01 does not, and all
-   fourteen saves read `01`. A travel-grid save should read `00`.
+4. ~~`$4BC0`. GDRIVE00 carries the square code, GDRIVE01 does not, and all
+   fourteen saves read `01`. A travel-grid save should read `00`.~~
+   **Settled, CONFIRMED**: it reads `00` on the travel grid against `01` in
+   all fourteen indoor saves (`docs/90-specimens.md` "The wilderness set"),
+   the cheap state test `docs/137-wilderness-automap.md` §2 uses.
 5. **What a travel step costs in game time.** `ECL19 $AEA3` writes
    `$6DD2`/`$6DD3` differently depending on `$49E6`; GUESS that this is the
    step cost.
@@ -114,9 +122,14 @@ so there is no new transport.
 
 ## The saves to take
 
-**This is the part to hand Donald.** He gets outdoors once; an afternoon of play
-in this order produces every specimen the work needs. Every one of them is a
-`SAVEDGAME0` on a fresh save disk, labelled.
+**This was the part to hand Donald; it no longer is.** `tools/c64outdoor.py`
+seeds an indoor save onto the travel grid and lets the engine write it back,
+so every specimen below that only needs the party standing somewhere on the
+grid is now made without him -- `work/p190/C64OUT1.D64` and `C64OUT2.D64` are
+two such saves. **W8** and **W12**, the cave and the wilderness encounter,
+are the two nobody has: the tool walks the party on the grid and does not
+put it in either. The table below is kept for what each specimen still
+proves, in the order Donald would have played them.
 
 Reaching the wilderness at all: from civilised Phlan, take the boat east
 (`ECL00` offers it once the harbour master has sold you one, `$4AC4`), or leave
@@ -195,12 +208,19 @@ answers unknown 2 on its own.
    `AutomapState.outdoors` is the mapper's own third mode. It carries no
    `SQRDATA` number and no world coordinate -- only the window-local square
    the game's own status line prints -- so it is *detecting* the state and
-   not yet *drawing* it. **The save-side half stays open**: `goldbox/savegame.py`
-   has no `.area`-style reader for `$4BC4`/`$4A9E` yet, which is why a window
-   opened while an outdoor party sits in camp keeps saying `identifying...` --
-   nothing proves a game is even running until the party leaves camp and the
-   status line, or a resident `GEO`, answers again.
-5. **Take W1 and the two live captures.** Stop here until they exist. Steps 6
+   not yet *drawing* it. **The save-side half is done too**, in
+   `goldbox/world_state.py` (`#352 (Handle world state for Amiga saves)`):
+   `WorldState.outdoors`, `.travel` and `.geo` read the `$4BC4`/`$4A9E`
+   equivalents for a C64, DOS or Amiga source alike, so a save-side reader
+   for an outdoor party no longer needs to wait on the status line or a
+   resident `GEO` to answer.
+5. ~~Take W1 and the two live captures.~~ **Done, then lost.** The `W1`-`W7`
+   set and the two live captures were taken and are recorded in
+   `docs/90-specimens.md` "The wilderness set" -- `$8C00` matched against
+   `SQRDATA0n`, `$4BC0`, `$49FB`, the travel facing -- but the disks
+   themselves lived in `work/p3/` and are gone. `work/p190/C64OUT1.D64`,
+   `C64OUT2.D64` and `tools/c64outdoor.py` replace them: an engine-written
+   outdoor C64 save can be made again without playing to reach one. Steps 6
    onward are drawing, and drawing the wrong map is worse than drawing none.
 6. **The canvas.** A third page in the automapper's `QStackedWidget`, since
    only one of area / combat / world is ever true. Reuse `Exploration` for the
