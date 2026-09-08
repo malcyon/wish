@@ -12,7 +12,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 class Ui_ConvertDialog(object):
     def setupUi(self, ConvertDialog):
         ConvertDialog.setObjectName("ConvertDialog")
-        ConvertDialog.resize(680, 480)
+        ConvertDialog.resize(680, 305)
         ConvertDialog.setWindowTitle("")
         self.outer_layout = QtWidgets.QVBoxLayout(ConvertDialog)
         self.outer_layout.setObjectName("outer_layout")
@@ -70,6 +70,12 @@ class Ui_ConvertDialog(object):
         self.folder_row.setStretch(0, 1)
         self.form.setLayout(4, QtWidgets.QFormLayout.ItemRole.FieldRole, self.folder_row)
         self.outer_layout.addLayout(self.form)
+        self.label_report = QtWidgets.QLabel(parent=ConvertDialog)
+        font = QtGui.QFont()
+        font.setBold(True)
+        self.label_report.setFont(font)
+        self.label_report.setObjectName("label_report")
+        self.outer_layout.addWidget(self.label_report)
         self.convert_report = QtWidgets.QPlainTextEdit(parent=ConvertDialog)
         self.convert_report.setReadOnly(True)
         self.convert_report.setObjectName("convert_report")
@@ -78,7 +84,7 @@ class Ui_ConvertDialog(object):
         self.buttons.setStandardButtons(QtWidgets.QDialogButtonBox.StandardButton.Cancel|QtWidgets.QDialogButtonBox.StandardButton.Ok)
         self.buttons.setObjectName("buttons")
         self.outer_layout.addWidget(self.buttons)
-        self.outer_layout.setStretch(1, 1)
+        self.outer_layout.setStretch(2, 1)
 
         self.retranslateUi(ConvertDialog)
         self.buttons.accepted.connect(ConvertDialog.accept) # type: ignore

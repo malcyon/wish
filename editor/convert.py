@@ -763,95 +763,6 @@ def fresh_folder(destination: str | pathlib.Path,
 
 
 # ---------------------------------------------------------------------------
-# The flag
-# ---------------------------------------------------------------------------
-
-#: **Off unless `WISH_EXPERIMENTAL_CONVERT=1`.** Replaces
-#: `editor.dosimport.ENV` and `editor.exports.ENV`, whose submenus this
-#: dialog replaces -- `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs
-#: the import working for all three C64 titles)`'s bar transfers unchanged.
-#: Not built rather than greyed out: a greyed entry invites the question of
-#: how to un-grey it, and the answer would be a sentence in the interface
-#: (`.claude/rules/feature-flags.md`).
-#:
-#: **Comes off when:** (1) no string below carries the `(NOT APPROVED)`
-#: marker -- **met 2026-09-05**, when Donald read all ten in place and
-#: approved them; `test_no_string_the_player_reads_is_unapproved` keeps it
-#: met, including for a string added later -- the slot row
-#: `#372 (An Amiga disk with more than one saved game converts its first
-#: slot, whichever one the player meant)` added tripped it on 2026-09-07 and
-#: Donald ruled the same day, choosing `Slot` and `Slot B` over two longer
-#: wordings because it is what the Amiga game calls them and what the DOS
-#: side already says; (2) a Pool of Radiance, a Curse
-#: and a Silver Blades DOS save each list the Commodore 64, and a Pools of
-#: Darkness save never does -- **met 2026-09-07**, pinned by
-#: `test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot`,
-#: `test_a_curse_or_silver_blades_savgam_file_lists_c64`,
-#: `test_a_curse_or_silver_blades_d64_lists_dos` and
-#: `test_a_pools_of_darkness_folder_lists_nothing`, which drive the
-#: destination combo itself rather than the registry behind it; (3) every
-#: registered direction's drop list is empty -- `.claude/rules/
-#: conversions.md`'s list. **Not met, and it is the condition that decides
-#: this flag's date.** The three DOS → C64 rows show a player nothing; the
-#: three C64 → DOS rows no longer carry the combat-figure line once the
-#: source title's own `SPELLE64`/`SPELLN64` can be read --
-#: `#383 (The live Convert dialog never wires a C64 party's own combat icon
-#: into DOS, so region_220 stays on the drop list)`, closed 2026-09-07 -- but
-#: still show a handful of others (`infravision`, `npc`), and
-#: `#355 (A C64 party converted to DOS is shown nine developer notes, with
-#: memory addresses, overlay names and issue numbers in them)` is what has
-#: to close for the rest to go. `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
-#: needs the import working for all three C64 titles)` used to track this
-#: and closed on 2026-09-06, having emptied the DOS → C64 side only. The
-#: two Amiga rows show nothing at all for the shipped Amiga disk 1 party,
-#: and two portrait lines for a party whose sheet portrait position is 0 --
-#: `#377 (The conversion pane says a portrait could not be converted for a
-#: character who never had one)`;
-#: (4) the README says how the source picker works -- **waived by Donald on
-#: 2026-09-07**, so this no longer gates the flag: *"I will update the
-#: README, but don't wait on that to remove WISH_EXPERIMENTAL_CONVERT and
-#: close the related tickets. It is a simple interface, and people will
-#: figure it out."* He still means to write it; it is his file and his
-#: sentence, and it is not a condition; (5) each registered
-#: direction has been loaded and walked in its emulator from a save this
-#: dialog's own code path wrote. **Met 2026-09-07, eight of eight**: Pool of
-#: Radiance both ways on 2026-09-05; the four remaining C64 ↔ DOS rows
-#: through 2026-09-07, each CONFIRMED on `#52`'s own comments rather than
-#: inferred -- Secret of the Silver Blades DOS → C64 read six characters
-#: against the DOS source field for field, stood the party on the square the
-#: DOS save held, walked two steps, and the engine's own resave differed in
-#: nothing but those steps; and both Amiga rows on 2026-09-07, Amiga → C64
-#: in VICE under `#353 (Convert an Amiga Pool of Radiance save to the C64, so
-#: a party standing in the Slums on the Amiga arrives there in VICE)` and
-#: Amiga → DOS under
-#: `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing
-#: in the Slums on the Amiga arrives there under DOSBox)`, which loaded two
-#: Amiga parties in DOSBox, read all twelve sheets and walked one of them
-#: out of New Phlan into the Slums.
-#:
-#: **This paragraph said "five of the eight" until 2026-09-07 and named
-#: `#310 (A trained C64 Curse character arrives in DOS with the wrong class
-#: on his sheet)` as blocking the two later C64 → DOS titles.** `#310`
-#: closed, those two rows were confirmed, and Curse DOS → C64 stopped being
-#: PROBABLE -- all on `#52`, none of it written back here, so this file said
-#: the flag was three rows further off than it was. `#358 (Finish the C64 ↔
-#: DOS conversion matrix: six directions registered, two defects and a
-#: question left)` closed on the strength of those runs.
-ENV = "WISH_EXPERIMENTAL_CONVERT"
-
-#: Anything else -- an empty string, `0`, `off` -- is off, matching
-#: `wish/debugmode.py`. A variable somebody exported once and forgot must
-#: not put an unfinished dialog in front of them.
-TRUE = ("1", "true", "yes", "on")
-
-
-def enabled() -> bool:
-    """Is `File ▸ Convert…` offered in this run?"""
-    import os
-    return os.environ.get(ENV, "").strip().lower() in TRUE
-
-
-# ---------------------------------------------------------------------------
 # Strings.
 #
 # Reused ones carry the approval they already have, verbatim, and keep the
@@ -882,6 +793,13 @@ LABEL_SOURCE = "From"
 LABEL_TO = "To"
 LABEL_GAME = "DOS game folder"
 LABEL_FOLDER = "Write to"
+
+#: The heading above the report pane. Donald's own words, 2026-09-07, from
+#: reviewing the Amiga-row mock-up for `#316 (Write the Amiga Pool of
+#: Radiance saved game from the source save, so a converted party arrives
+#: where it was standing)`: *"It gains a label above it reading `Convert
+#: Log`."* Not marked unapproved -- he supplied the text himself.
+LABEL_REPORT = "Convert Log"
 
 #: The slot row's label, shown only when the source names more than one
 #: saved game -- today an Amiga `.adf`, the source port that has no other
@@ -1004,6 +922,10 @@ class ConvertDialog(QDialog):
     never has to know how the player's C64 disks are found.
     """
 
+    #: How tall the report pane is, in lines of its own font. Donald,
+    #: 2026-09-07: "The report pane gets smaller."
+    REPORT_LINES = 6
+
     def __init__(self, source: str, party: Any,
                 game_files: "Any",
                 destination: str | None = None,
@@ -1062,6 +984,18 @@ class ConvertDialog(QDialog):
         self.ui.convert_folder.setText(self._folder_path or "")
         self.ui.convert_choose_folder.setText(BUTTON_CHOOSE)
         self.ui.convert_choose_folder.clicked.connect(self._choose_folder)
+
+        self.ui.label_report.setText(LABEL_REPORT)
+        #: Donald, 2026-09-07: "The report pane gets smaller." A fixed
+        #: number of the pane's own font's lines, the way
+        #: `editor.window.CharacterEditor.HEADER_LINES` sizes the character
+        #: header, rather than a pixel count that would only mean this
+        #: machine's font (`.claude/rules/testing.md`). Longer content still
+        #: scrolls; nothing it prints is lost.
+        metrics = self.ui.convert_report.fontMetrics()
+        self.ui.convert_report.setMaximumHeight(
+            self.REPORT_LINES * metrics.height()
+            + 2 * self.ui.convert_report.frameWidth())
 
         self.buttons = self.ui.buttons
         self.buttons.button(

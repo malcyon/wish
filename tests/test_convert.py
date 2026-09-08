@@ -1287,33 +1287,48 @@ def test_no_string_the_player_reads_is_unapproved():
 
 def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper():
     """The same guarantee as `test_no_string_the_player_reads_is_unapproved`,
-    for the three other modules that can put a string in front of a player
+    for the four other modules that can put a string in front of a player
     and mark it unapproved the same way.
 
     `#306 (The Fast Travel button's own disabled tooltip carries a memory
     address)`'s last comment found that the `(NOT APPROVED)` marker was
     checked only in `editor/convert.py`, so a marked string in
-    `goldbox/c64_codec.py`, `goldbox/amiga.py` or `automap/actions.py`
-    shipped to a player silently instead of failing here first. This walks
-    each module's own source, the way the test above does, rather than a
-    typed list of strings, so a new marked string added to any of the three
-    fails here too.
+    `goldbox/c64_codec.py`, `goldbox/amiga.py`, `goldbox/dos.py` or
+    `automap/actions.py` shipped to a player silently instead of failing
+    here first. This walks each module's own source, the way the test above
+    does, rather than a typed list of strings, so a new marked string added
+    to any of the four fails here too.
 
-    **Expected to fail today.** `#399 (A conversion that runs out of item or
-    trait slots tells the player nothing, because the pane never shows a
-    warning)` put six per-character sentences from `goldbox/c64_codec.py` in
-    front of a player for the first time, three of them written in developer
-    terms -- "spell id", "byte mask", "bit", "eight-slot array", "C64
-    record". All six are reworded here and marked `(NOT APPROVED)` rather
-    than shipped guessed at; two more marked strings in `c64_codec.py`
-    predate this ticket (the combat-icon lines, both directions), and one
-    each in `goldbox/amiga.py` and `automap/actions.py` predate it too. None
-    of the ten is this test's to approve.
+    `goldbox/dos.py` joined the sweep on `#52 (File ▸ Import and File ▸
+    Export for every direction the library supports)`: `#389 (A conversion
+    to the Amiga tells the player what DOS does with their character)`
+    (`d0c280f`) put a marked portrait-position line in `to_neutral`, the DOS
+    reader every registered direction with a DOS source calls, and this test
+    did not reach that module -- `dos.py`'s own docstring at its `rep.dropped`
+    field says it "is read by a person in the conversion pane", so it always
+    belonged in this sweep.
+
+    Passes today. `#399 (A conversion that runs out of item or trait slots
+    tells the player nothing, because the pane never shows a warning)` put
+    six per-character sentences from `goldbox/c64_codec.py` in front of a
+    player for the first time, three of them written in developer terms --
+    "spell id", "byte mask", "bit", "eight-slot array", "C64 record". All six
+    are reworded here and marked `(NOT APPROVED)` rather than shipped guessed
+    at; two more marked strings in `c64_codec.py` predate this ticket (the
+    combat-icon lines, both directions), and one each in `goldbox/amiga.py`,
+    `goldbox/dos.py` and `automap/actions.py` predate or follow it. None of
+    the twelve is this test's to approve -- Donald ruled on 2026-09-07 that
+    the two combat-icon lines (`c64_codec.py`'s and `amiga.py`'s) stay
+    unworded until the tickets that would delete them close, so the right
+    outcome here is a count held at today's number rather than a demand
+    that it reach zero. `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-08
+    with these still on the pane -- the flag's own condition was about the
+    dialog's own strings block, never about this wider sweep.
     """
     import inspect
 
     from automap import actions
-    from goldbox import amiga, c64_codec
+    from goldbox import amiga, c64_codec, dos
 
     #: How many marked strings each module carries today, waiting on Donald.
     #: **This is a count of what he has to rule on, not a licence.** A new
@@ -1321,18 +1336,22 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: the whole point; the number comes down as he rules, and the day one
     #: reaches zero this test says so rather than passing quietly.
     #:
-    #: The eleven, listed on `#399 (A conversion that runs out of item or
+    #: The twelve, listed on `#399 (A conversion that runs out of item or
     #: trait slots tells the player nothing, because the pane never shows a
-    #: warning)`: nine in `goldbox/c64_codec.py` -- the six per-character
-    #: ceiling sentences that ticket put in front of a player for the first
-    #: time, plus three combat-figure lines that predate it -- one in
-    #: `goldbox/amiga.py` and one in `automap/actions.py`, the Fast Travel
-    #: failure line `#306 (The Fast Travel button's own disabled tooltip
-    #: carries a memory address)` left behind.
-    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 1, "automap.actions": 1}
+    #: warning)` and `#52`: nine in `goldbox/c64_codec.py` -- the six
+    #: per-character ceiling sentences that ticket put in front of a player
+    #: for the first time, plus three combat-figure lines that predate it --
+    #: one in `goldbox/amiga.py`, one in `goldbox/dos.py`
+    #: (`#389 (A conversion to the Amiga tells the player what DOS does with
+    #: their character)`'s portrait-position line) and one in
+    #: `automap/actions.py`, the Fast Travel failure line
+    #: `#306 (The Fast Travel button's own disabled tooltip carries a memory
+    #: address)` left behind.
+    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 1, "goldbox.dos": 1,
+               "automap.actions": 1}
 
     found: dict[str, list[str]] = {}
-    for module in (c64_codec, amiga, actions):
+    for module in (c64_codec, amiga, dos, actions):
         source = inspect.getsource(module)
         found[module.__name__] = [
             f"{module.__name__}:{n}: {line.strip()}"
@@ -1390,10 +1409,9 @@ def test_the_picker_offers_an_amiga_disk():
 
 
 # ---------------------------------------------------------------------------
-# The flag -- `tests/test_dosimport.py:708-750`'s shape, ported: "the gate,
-# asserted from the outside" rather than a direct call to `enabled()`, so a
-# passing test also proves `wish/window.py`'s wiring and not only the
-# function. `_wish_window`/`_file_menu` are that file's private helpers,
+# The menu -- `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-08, `#52`'s own
+# comments recording each of its five conditions met. `_wish_window`/
+# `_file_menu` are `tests/test_dosimport.py:708-750`'s private helpers,
 # copied rather than imported -- a subagent's files may not import another
 # test module's private helpers across `#52`'s lane
 # (`work/reports/52-plan.md`).
@@ -1416,32 +1434,11 @@ def _file_menu(window):
                if a.text() == "&File")
 
 
-def test_convert_is_not_offered_unless_it_is_asked_for(app, tmp_path,
-                                                       monkeypatch):
-    """No menu entry, not a greyed one -- `convert.ENV` unset is the shipped
-    state."""
-    monkeypatch.delenv(convert.ENV, raising=False)
-    window = _wish_window(tmp_path, monkeypatch)
-    assert convert.MENU_CONVERT not in [a.text()
-                                        for a in _file_menu(window).actions()]
-    assert window.convert_action is None
-    window.close()
-
-
-def test_a_variable_somebody_forgot_does_not_turn_convert_on(app, tmp_path,
-                                                             monkeypatch):
-    """`0` and `off` are off, the same rule `wish/debugmode.py` follows."""
-    for value in ("", "0", "off", "no"):
-        monkeypatch.setenv(convert.ENV, value)
-        window = _wish_window(tmp_path, monkeypatch)
-        assert convert.MENU_CONVERT not in [
-            a.text() for a in _file_menu(window).actions()], value
-        window.close()
-
-
-def test_the_file_menu_carries_convert_when_asked_for(app, tmp_path,
-                                                      monkeypatch):
-    monkeypatch.setenv(convert.ENV, "1")
+def test_the_file_menu_carries_convert(app, tmp_path, monkeypatch):
+    """No gate left to ask about: `File ▸ Convert…` is built for everyone,
+    the way `File ▸ Import` has been since `#131 (Lift
+    WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
+    three C64 titles)`."""
     window = _wish_window(tmp_path, monkeypatch)
     assert convert.MENU_CONVERT in [a.text()
                                     for a in _file_menu(window).actions()]
@@ -1810,5 +1807,37 @@ def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
         party, _savgam = amiga.read_por_slot(disk, "C")
         assert [c.fields["name"].value for c in rehearsal.characters] == \
             [c.name for c in party]
+    finally:
+        dialog.close()
+
+
+def test_the_report_pane_is_labelled_and_bounded_at_six_lines():
+    """The two changes Donald asked for on 2026-09-07, reviewing the
+    Amiga-row mock-up for `#316 (Write the Amiga Pool of Radiance saved game
+    from the source save, so a converted party arrives where it was
+    standing)`: *"The report pane gets smaller"* and *"It gains a label
+    above it reading `Convert Log`."* -- his words, approved.
+
+    The height is asserted as a multiple of the pane's own font, never a
+    pixel count (`.claude/rules/testing.md`: "A number measured on this
+    machine is not a number"), so this holds at whatever font the machine
+    running it uses.
+    """
+    dialog = convert.ConvertDialog("", None, _no_disks)
+    try:
+        assert dialog.ui.label_report.text() == convert.LABEL_REPORT
+        assert dialog.ui.label_report.font().bold()
+
+        metrics = dialog.ui.convert_report.fontMetrics()
+        expected = (convert.ConvertDialog.REPORT_LINES * metrics.height()
+                   + 2 * dialog.ui.convert_report.frameWidth())
+        assert dialog.ui.convert_report.maximumHeight() == expected
+        #: Smaller than the pane's own natural, unbounded size for a report
+        #: with real content -- proven with the destination row filled in
+        #: elsewhere in this file; here it is enough that a cap exists at
+        #: all, since `QWIDGETSIZE_MAX` is what an unbounded `QPlainTextEdit`
+        #: carries otherwise.
+        from PyQt6.QtWidgets import QWIDGETSIZE_MAX
+        assert dialog.ui.convert_report.maximumHeight() < QWIDGETSIZE_MAX
     finally:
         dialog.close()

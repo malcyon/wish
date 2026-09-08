@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>680</width>
-    <height>480</height>
+    <height>305</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string></string>
   </property>
-  <layout class="QVBoxLayout" name="outer_layout" stretch="0,1,0">
+  <layout class="QVBoxLayout" name="outer_layout" stretch="0,0,1,0">
    <item>
     <layout class="QFormLayout" name="form">
      <item row="0" column="0">
@@ -68,6 +68,15 @@
       </layout>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="label_report">
+     <property name="font">
+      <font>
+       <bold>true</bold>
+      </font>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QPlainTextEdit" name="convert_report">

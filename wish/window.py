@@ -216,28 +216,33 @@ class WishWindow(QMainWindow):
         # convert to shows the approved refusal rather than a disabled menu
         # item nobody can explain.
         #
-        # Built only when `WISH_EXPERIMENTAL_CONVERT` says so -- see
-        # `editor/convert.py`, whose flag block names the five conditions
-        # that remove it. The words are no longer one of them: Donald read
-        # all ten unapproved strings in place on 2026-09-05 and approved
-        # them, so nothing here ends in ` (NOT APPROVED)` any more. What is
-        # left is the drop lists of the three C64 → DOS directions
+        # Built for everyone since 2026-09-08.  It sat behind
+        # `WISH_EXPERIMENTAL_CONVERT` from 2026-08-24 -- see the flag block
+        # `editor/convert.py` used to carry, which named the five conditions
+        # that removed it: no string in the dialog's own approved-strings
+        # block unapproved (met 2026-09-05), the destination list right for
+        # all three C64 titles and never for Pools of Darkness (met
+        # 2026-09-07), every registered direction's drop pane clear or
+        # accounting for a named, tracked line rather than a silent one
         # (`#355 (A C64 party converted to DOS is shown nine developer
         # notes, with memory addresses, overlay names and issue numbers in
-        # them)`) and four of the six directions still to be walked in their
-        # own engine. Replaces the Import submenu below, built for everyone
-        # since `#131`, and `WISH_EXPERIMENTAL_EXPORT`'s; Donald ruled on
-        # 2026-09-07 that both submenus are deleted, and they stay until
-        # `#52`'s step 5 does it -- after this flag comes off, never before,
-        # since Import is the only route a player has until then.
+        # them)`, `#388 (A converted paladin or ranger loses his innate
+        # effect on the way to DOS, because the writer filters through Pool
+        # of Radiance's id list)`, both closed 2026-09-07), the README
+        # (waived by Donald, 2026-09-07), and all six registered directions
+        # loaded and walked from a save this dialog's own code path wrote
+        # (met 2026-09-07, `#52`'s own comments). Replaces the Import
+        # submenu below, built for everyone since `#131`, and
+        # `WISH_EXPERIMENTAL_EXPORT`'s; Donald ruled on 2026-09-07 that both
+        # submenus are deleted, and they stay until `#52`'s step 5 does it --
+        # after this flag came off, never before, since Import was the only
+        # route a player had until then.
         from editor import convert
-        self.convert_action = None
-        if convert.enabled():
-            convert_action = QAction(convert.MENU_CONVERT, self)
-            convert_action.triggered.connect(
-                lambda _checked=False: self.editor.convert())
-            menu.addAction(convert_action)
-            self.convert_action = convert_action
+        convert_action = QAction(convert.MENU_CONVERT, self)
+        convert_action.triggered.connect(
+            lambda _checked=False: self.editor.convert())
+        menu.addAction(convert_action)
+        self.convert_action = convert_action
 
         # A submenu with one item in it, because the thing it imports is one
         # of several ports and the next one goes beside it rather than growing
