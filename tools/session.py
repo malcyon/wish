@@ -325,12 +325,28 @@ RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*=\s*(\d+)")
 # `tools/defeatdrive.py` -- where it appeared on row 10 with `$6DC7` = $80.
 # No exclamation mark, unlike the winning line (`#128`).
 #
-# `THE PARTY RUNS AWAY` is not classified here.  It needs every character to
-# have fled, which a driven fight has never produced, and `fight()` answering
-# `NO` to `CONTINUE BATTLE` is not it -- that leaves the party standing, which
-# the engine counts as a win.
+# **`RAN_TEXT` was read off a driven flight** -- `work/issue445/run2`,
+# `tools/fleedrive.py`, where ROLAND walked to the edge of the combat map and
+# stepped off it, the game answered `GOT AWAY` and wrote `$86 RUNNING` into
+# his record, and the orcs finished the other five.  Row 10 column 1 in a
+# cleared window with row 24 blank, `$6DC7` = $81, and nothing written by the
+# harness to make it happen (`#445`).
+#
+# **It does not need every character to have fled**, which is what this
+# comment used to say: `$0903` wants nobody standing *and* at least one `$86`,
+# so one character away and the rest down is enough.  `fight()` answering `NO`
+# to `CONTINUE BATTLE` is still not it -- that leaves the party standing,
+# which the engine counts as a win.
+#
+# **The line is up for under half a second** and there is no delay on that arm
+# of the branch: `$0938` calls `$1977` (`LDA $49FC`, the combat-speed delay)
+# and `$0929` goes straight on to `$0DF8`.  It took one reading of 240 at a
+# 0.12 s poll to catch, and a 1 s poll read the frame either side of it and
+# saw neither.  So a caller that wants this outcome must poll faster than
+# `fight`'s default, and `poll` is the argument for it.
 WON_TEXT = "THE PARTY HAS WON"
 LOST_TEXT = "THE PARTY HAS LOST"
+RAN_TEXT = "THE PARTY RUNS AWAY"
 
 # Lines worth keeping out of a fight: they are the evidence that a turn did
 # something.  A driver that only records the command bar cannot tell an attack
@@ -352,9 +368,18 @@ LOST_TEXT = "THE PARTY HAS LOST"
 # over in the defeat at `work/issue128` -- and `UNCONSCIOUS` is kept although
 # the game spells the status word `UNCONSIOUS`, because the sheet is where
 # that spelling appears and the message band has never used either.
+#
+# `GOT AWAY` is what a character who escapes gets, and it is **on row 24**
+# rather than in the message band -- `COMBAT`'s own message 5, from the table
+# at `$0BF6`/`$0C0B`, printed by `$0B07` after `$1719` has written `$86`.
+# Seen there in both flights at `work/issue445` (`#445`).  Its sibling,
+# message 6 `FAILED`, is deliberately not here: one word, no subject, and
+# common enough in ordinary English to match a line that has nothing to do
+# with a fight.
 RE_NOTABLE = re.compile(
     r"\b(HITS|MISSES|SLAIN|KILLED|IS DEAD|DYING|UNCONSCIOUS|GOES DOWN"
-    r"|HAS WON|HAS LOST|RUNS AWAY|EXPERIENCE|GUARDING)\b|POINTS OF DAMAGE")
+    r"|GOT AWAY|HAS WON|HAS LOST|RUNS AWAY|EXPERIENCE|GUARDING)\b"
+    r"|POINTS OF DAMAGE")
 
 # Of those, the ones only a blow can produce -- **by either side**.  This is
 # not who swung and cannot be made into it: the game prints the party's blows
@@ -363,8 +388,14 @@ RE_NOTABLE = re.compile(
 # answers, and `acted` deliberately does not use it (`#163`).
 RE_STRUCK = re.compile(r"\b(HITS|MISSES|SLAIN)\b|POINTS OF DAMAGE")
 
-WON, LOST, ENDED, BUDGET, NOT_FIGHTING = (
-    "won", "lost", "ended", "budget", "not fighting")
+WON, LOST, RAN, ENDED, BUDGET, NOT_FIGHTING = (
+    "won", "lost", "ran", "ended", "budget", "not fighting")
+
+# The three the game itself names, and the line each is read from.  A caller
+# that wants to know which of the engine's outcomes it got tests against
+# these; `ENDED` is still what an unrecognised end reports, and still claims
+# nothing.
+OUTCOME_LINES = ((WON, WON_TEXT), (LOST, LOST_TEXT), (RAN, RAN_TEXT))
 
 # What a tactic answers when the blow was struck.  `melee_turn` returns it
 # only after a step into an enemy's square and the move sub-bar then going
@@ -2337,10 +2368,9 @@ class Session:
             mode = self.mode()
             s = self.screen()
             text = s.text() if s is not None else ""
-            if outcome is None and WON_TEXT in text:
-                outcome = WON
-            elif outcome is None and LOST_TEXT in text:
-                outcome = LOST
+            if outcome is None:
+                outcome = next((name for name, line in OUTCOME_LINES
+                                if line in text), None)
             for row in text.splitlines():
                 row = row.strip()
                 if row and row not in seen and RE_NOTABLE.search(row.upper()):
@@ -2402,10 +2432,19 @@ class Session:
             elif state.kind == BAR_YESNO:
                 # `ATTACK ALLY: YES NO`, which the game puts up when a step
                 # would walk into a party member.  `NO` is the conservative
-                # answer to a yes/no bar this does not recognise, and this one
-                # is the only such bar seen: it stalled a whole fight for its
-                # 421-second budget because there was no branch for it at all
-                # (`work/p126/melee.log`).
+                # answer to a yes/no bar this does not recognise: that one
+                # stalled a whole fight for its 421-second budget because
+                # there was no branch for it at all (`work/p126/melee.log`).
+                #
+                # **The second such bar is `FLEE: YES NO`** -- `COMBAT $17A9`,
+                # put up by `$0E6E` when a step would leave the combat map --
+                # and `NO` is deliberate there rather than a gap.  The default
+                # tactic never steps off the map, so the prompt can only be up
+                # because a tactic put it there, and a tactic that means to
+                # flee answers it itself; `Flight` in `tools/fleedrive.py`
+                # does (`#445`).  Answering `YES` here would let any driver
+                # walk a converted party out of the fight it was meant to be
+                # proving something in.
                 self.combat_bar("NO", timeout=min(12.0, left()))
             elif state.kind == BAR_MOVE:
                 self.press_kernal(0x0D)      # back out of move mode

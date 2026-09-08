@@ -294,7 +294,7 @@ hold 18 distinct bars, and every one of them is one of these:
 | done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn, and so does `QUIT` when GUARD is not offered |
 | exit | a treasure bar | take `EXIT` |
 | leave | `GO BACK LEAVE TREASURE` | take `LEAVE TREASURE`; `GO BACK` only returns to the treasure bar |
-| yesno | `ATTACK ALLY: YES NO` | answer `NO` |
+| yesno | `ATTACK ALLY: YES NO`, and `FLEE: YES NO` when a step would leave the map | answer `NO` |
 | message | `GUARDING`, `YOUR TEAMMATE IS DYING` | wait |
 | blank | empty | a monster's turn; wait |
 | none | no readable screen at all | not the same as an empty bar |
@@ -325,6 +325,31 @@ now, so `combat_bar` and `select_bar` read the highlight the same way and
 experience share and any treasure all run afterwards under POST.COM. A driver
 that stops at the mode byte leaves the party at a `PRESS <RETURN>` for ever, so
 `fight()` runs until DUNGEON is back **and** the status line is on screen.
+
+### Driving a flight, and a line a one-second poll cannot see
+
+`tools/fleedrive.py` drives the third outcome, and two things about it
+generalise to any message on the way out of a fight.
+
+**A character flees by walking off the edge of the combat map**, which puts up
+`FLEE: YES NO`; there is no FLEE on the command bar. `Flight` walks each
+character to the nearest edge with a breadth-first search from every edge
+square at once — the mirror of `Session.step_towards`, which walks at a
+combatant — and steps outward from there. The combat map in the Slums ambush
+is **56 x 26** with the party at y 12-13, so the way out is twelve squares
+south: one round for a move-12 character and two for the rest. `GOT AWAY` and
+`FAILED` are the game's answers and they arrive **on row 24**, not in the
+message band.
+
+**`THE PARTY RUNS AWAY` is on the screen for under half a second**, because
+the arm that prints it calls no delay where the losing arm calls the game's
+own combat-speed one. At a 1 s poll a run read the frame before it and the
+frame after and saw neither; at 0.12 s it took **one reading of 240** to catch
+it. So `fight()`'s `poll` is a real parameter rather than a formality, and a
+driver that expects to see a message on the way out of a fight should turn it
+down and photograph inside the branch that sees it, rather than after the loop
+has returned. `docs/110-combat-log.md` has the branch and what a flight costs
+the party.
 
 **And it is still not over there: a won fight ends on the treasure screens.**
 Two boots of `PORSAVE13.D64` on the same route each won at about 150 seconds

@@ -194,9 +194,37 @@ pointer table (lo `$2A8D`, hi `$2AC5`, at overlay base `$0800` and not the
 **The winning line has an exclamation mark and the other two do not.**
 `THE PARTY HAS LOST` was read off two driven defeats
 (`#128 (Nothing has ever read what the game prints when the party loses a
-fight)`); the other two are CONFIRMED from the table. `DEFEATED`, which
-`tools/session.py` guessed at for months, is not a word the game uses
-anywhere.
+fight)`) and `THE PARTY RUNS AWAY` off a driven flight on 2026-09-08
+(`#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been
+seen on a screen)`, `work/issue445/run2`); the winning line is the oldest of
+the three. `DEFEATED`, which `tools/session.py` guessed at for months, is not
+a word the game uses anywhere.
+
+**All three C64 titles carry the same three lines at the same three table
+entries, and pick between them with the same compare.** The base is derived
+from each file's own table rather than taken from the PRG header, which is
+wrong on every one of them — `tools/fleedrive.py code` prints this off the
+player's disks:
+
+| title | header claims | derived base | table | entry 2 | the fleeing arm |
+|---|---|---|---|---|---|
+| Pool of Radiance | `$1000` | `$0800` | lo `$2A8D` hi `$2AC3` | `$2782` | `$0925  c9 81 d0 0f a2 02 a9 0a 20 65 0e` |
+| Curse of the Azure Bonds | `$3000` | `$0800` | lo `$2BFD` hi `$2C35` | `$28ED` | `$0911  c9 81 d0 0f a2 02 a9 0a 20 44 0e` |
+| Secret of the Silver Blades | `$1220` | `$0800` | lo `$2B8E` hi `$2BC6` | `$287E` | `$0922  c9 81 d0 12 a2 02 a9 0a 20 cf 0e` |
+
+Every one is `CMP #$81 / BNE <the losing arm> / LDX #$02 / LDA #$0A /
+JSR <print>`: the same string, the same index, the same row.
+`tests/test_fleedrive.py` re-derives it for each title that has disks.
+
+**The *encounter menu's* FLEE is a different message and does not come from
+here.** `COMBAT WAIT FLEE ADVANCE`/`PARLAY` is `DUNGEON`'s own menu at
+`$23A7`; `$2266` turns the choice into a bit — COMBAT `$80`, WAIT `$00`,
+FLEE `$40`, ADVANCE `$20`, PARLAY `$10` — ORs in the monsters' choice, and a
+party that gets away prints `DUNGEON`'s message 3 and returns to the world
+without entering combat at all. Pool of Radiance and Curse spell that
+`THE PARTY FLEES`; **Secret of the Silver Blades spells it `YOU FLEE`**. So
+the end-of-fight wording is shared across the three titles and the
+encounter-menu wording is not.
 
 `POST.COM $0896` is what decides, by walking every combatant's record and
 counting on the status byte at record `0x100`, indexed by the side in
@@ -275,6 +303,59 @@ fight was over before then.
 same SHA-256 as the player's `PORSAVE13.D64`, `f7e7f1a2…`, so a defeat costs
 whatever has happened since the last `ENCAMP > SAVE` and nothing more — and
 there is no specimen to keep, because the game authored no bytes.
+
+## What a flight costs, and how a character makes one
+
+**A character flees by walking off the edge of the combat map.** There is no
+FLEE on the combat command bar: `COMBAT $0E6E` is reached when the step leaves
+the map, and it puts up the game's own `FLEE: ` `YES` `NO` at `$17A9`. `YES`
+reaches `$16FA`, which decides in three clauses:
+
+* `LDA #$80 / JSR $184D` — nothing on the other side adjacent, and the
+  character is away with no roll at all;
+* otherwise its own movement (`$6C1B` through `$9B8F`) against the fastest
+  thing on the other side (`$2B69,X`, built by `$1768`): faster is away,
+  slower is refused;
+* level is a coin flip, `JSR $2D88`.
+
+Away is `$1719`: `$86 RUNNING` into the record, and `COMBAT`'s own message 5
+from the table at `$0BF6`/`$0C0B`. **The two words are `GOT AWAY` and
+`FAILED`, and they are drawn on row 24** rather than in the message band, so a
+reader that slices columns 23–38 misses both.
+
+**A party that runs away loses every character it leaves behind.**
+`POST.COM $0DF8` walks slots 7 down to 0 and `$0931` is its only caller in the
+file, so it runs on the fleeing arm and nowhere else:
+
+* a character who is `$86 RUNNING` or `$81` goes back to `$01 OK` and is kept;
+* a **charmed** character — effect 11, asked through LIBRARY's `$3FE1` — has
+  the effect cleared and is dropped;
+* anybody else is dropped: `$00` into the status byte, which is the
+  empty-slot value `DROP CHARACTER` writes, and `$6B00` cleared too;
+* unless `$6DE6` is nonzero, which spares the lot.
+
+Measured on 2026-09-08, six slots of six, in both driven flights: one
+character got away and the party came back to the world as **one name on the
+panel**, the other five reading `$00` (`#445 (The game's third fight outcome,
+THE PARTY RUNS AWAY, has never been seen on a screen)`). The save disk was not
+written, so they are lost from the party in memory and not from the disk: a
+player who reloads gets them back.
+
+**`$6DE6` is the same byte that decides whether a defeat reaches the `$0957`
+spin**, and it is written zero by `INIT $091A` and `POST.COM $14D2` and by
+nothing else on the side. `ECL00` is the only one of the thirty scripts
+carrying the bytes `E6 6D`. Whether a scripted fight sets it is still
+unmeasured, and it now has two consequences rather than one.
+
+**The fleeing arm does not lock the machine and does not delay.** `$0929`
+prints, calls `$0DF8`, and does `LDA #$01 / JMP $14AC`; the `JMP $0957` spin
+belongs to the losing arm alone — 0 of 38 program-counter samples were at
+`$0957` after a flight, and the game drew `ONWARD BOUND ...` and then the
+world. There is no message delay on the way, where the losing arm calls
+`$1977` (`LDA $49FC`, the combat-speed delay), so **the line is on the screen
+for under half a second**: it took one reading of the 240 distinct screens in
+the run, at a 0.12 s poll, and a 1 s poll read the frame either side of it and
+saw neither.
 
 ## Cost
 
