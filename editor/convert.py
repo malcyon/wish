@@ -936,7 +936,11 @@ NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with
 #: `editor/dosimport.py`'s and `editor/exports.py`'s `DROPPED_HEADING`, one
-#: conversion vocabulary whichever way it is going.
+#: conversion vocabulary whichever way it is going. **Not drawn by this
+#: dialog's own pane** since `#416` moved it onto `dosimport.pane_text`,
+#: which puts drop lines under `LABEL_REPORT` with no heading of their own
+#: -- the same shape `editor/dosimport.py`'s own dialog already draws. Kept
+#: defined for whichever caller still names it.
 DROPPED_HEADING = dosimport.DROPPED_HEADING
 #: `editor/exports.py`'s `WRITES_HEADING`, approved 2026-08-25.
 WRITES_HEADING = "This writes:"
@@ -1217,16 +1221,21 @@ class ConvertDialog(QDialog):
             return NO_FOLDER
 
         preview = fresh_folder(pathlib.Path(self._folder_path))
-        #: A conversion that drops nothing gets no heading and no gap above
-        #: what it writes.  `dropped_text` returns an empty string in that
-        #: case (`#338 (The conversion pane says fields could not be
-        #: converted and then lists none)`), and joining it unconditionally
-        #: would leave two blank lines where the heading used to be -- which
-        #: is the same defect one layer down, since a player reads the space
-        #: as something missing.
-        dropped = dosimport.dropped_text(self.rehearsal.report)
+        #: `dosimport.pane_text`, not `dropped_text` -- the same function
+        #: `editor/dosimport.py`'s own dialog draws, so the two cannot drift
+        #: on what a conversion tells the player (`#416 (The live Convert
+        #: dialog never shows a DOS→C64 conversion's own messages or
+        #: capacity-ceiling warnings)`).  It reads `report.messages` (what
+        #: Wish did to the player's own save) and `report.losses` (a genuine
+        #: platform ceiling a character's own data hit, #399) ahead of
+        #: `report.dropped`, and is empty when there is nothing to say
+        #: (`#338 (The conversion pane says fields could not be converted
+        #: and then lists none)`) -- joining it unconditionally would leave
+        #: two blank lines above what it writes, which a player reads as
+        #: something missing.
+        report_text = dosimport.pane_text(self.rehearsal.report)
         writes = _writes_text(self.rehearsal, preview)
-        return f"{dropped}\n\n{writes}" if dropped else writes
+        return f"{report_text}\n\n{writes}" if report_text else writes
 
     # -- what is shown, and when Convert is pressable -----------------
 

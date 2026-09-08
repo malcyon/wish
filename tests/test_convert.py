@@ -1310,10 +1310,18 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
                                    folder=str(destination))
     try:
         text = dialog.ui.convert_report.toPlainText()
+        dropped = dialog.rehearsal.report.dropped
     finally:
         dialog.close()
 
-    assert convert.DROPPED_HEADING in text, text
+    #: Proof this reached the drop-list state the test is about, without
+    #: depending on `DROPPED_HEADING` -- `#416 (The live Convert dialog
+    #: never shows a DOS→C64 conversion's own messages or capacity-ceiling
+    #: warnings)` moved the pane onto `dosimport.pane_text`, which draws no
+    #: heading over the drop lines, the same shape `editor/dosimport.py`'s
+    #: own dialog already used.
+    assert dropped, "expected this pane to have drop lines to check"
+    assert all(d in text for d in dropped), text
     assert not hexish.search(text), text
     assert not bare_issue.search(text), text
     assert not any(o in text for o in overlay_names), text
@@ -1610,12 +1618,18 @@ def test_a_conversion_that_drops_nothing_opens_with_what_it_writes(
     specimen drops depends on the disks and creation art the run can reach,
     so a test that waited for a clean one would skip on most machines and
     prove nothing on the rest.  Both branches are asserted here.
+
+    Patches `pane_text`, not `dropped_text` -- `#416 (The live Convert
+    dialog never shows a DOS→C64 conversion's own messages or
+    capacity-ceiling warnings)` moved `_rehearse_and_report` onto the
+    former, and this test is about the blank-line joining logic around it,
+    not about which function produces the text being joined.
     """
     source = str(_save_dir() / "SAVGAMA.DAT")
 
-    def pane(dropped_text):
-        monkeypatch.setattr(dosimport, "dropped_text",
-                            lambda report: dropped_text)
+    def pane(report_text):
+        monkeypatch.setattr(dosimport, "pane_text",
+                            lambda report: report_text)
         dialog = convert.ConvertDialog(
             source, None, lambda game: game_files,
             destination="c64", folder=str(tmp_path))
@@ -1635,6 +1649,51 @@ def test_a_conversion_that_drops_nothing_opens_with_what_it_writes(
     assert with_lines.startswith("Something was dropped\n\n"), repr(
         with_lines[:60])
     assert convert.WRITES_HEADING in with_lines
+
+
+def test_the_pane_shows_a_conversions_own_messages_and_capacity_losses(
+        tmp_path, monkeypatch):
+    """`#416 (The live Convert dialog never shows a DOS→C64 conversion's own
+    messages or capacity-ceiling warnings)`: `editor.dosimport.pane_text`
+    draws `report.messages` and `report.losses` ahead of `report.dropped`,
+    and `_rehearse_and_report` used to call `dropped_text`, which reads
+    only the third. `DosToC64.rehearse` is monkeypatched to return a report
+    carrying one of each, exactly the recipe the issue's own audit used.
+
+    Fails before the fix: reverting `_rehearse_and_report` to call
+    `dosimport.dropped_text` instead of `dosimport.pane_text` makes the
+    first two asserts below fail, with the pane showing only `This writes:`
+    and the file path -- seen red, then the fix put back.
+    """
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    report = SimpleNamespace(
+        messages=["Your party had not set out yet, so it starts at the "
+                  "beginning of the story."],
+        losses=["WISHFTR: 20 items and the C64 has sixteen slots; 4 "
+                "dropped from the end."],
+        dropped=["quickfight: the C64 has no matching option"])
+
+    def fake_rehearse(self, source, slot, options):
+        return convert.Rehearsal(report, {"PORSAVEA.D64": b"\x00" * 4})
+
+    monkeypatch.setattr(convert.DosToC64, "rehearse", fake_rehearse)
+
+    game_files = dosimport.GameFiles(icon=b"", animate=b"")
+    dialog = convert.ConvertDialog(
+        str(folder), None, lambda game: game_files,
+        destination="c64", folder=str(destination))
+    try:
+        text = dialog.ui.convert_report.toPlainText()
+    finally:
+        dialog.close()
+
+    assert report.messages[0] in text, text
+    assert report.losses[0] in text, text
+    assert report.dropped[0] in text, text
+    assert "NOT APPROVED" not in text, text
 
 
 # ---------------------------------------------------------------------------
