@@ -478,21 +478,63 @@ The recovered Curse overlays agree -- `simeonpilgrim/coab`'s
 `reclac_player_values`, and subtract the money on the next statement.
 CONFIRMED, seven purchases across two sessions.
 
-**The same staleness, in Pool of Radiance, from a weight change.** The two
-DOS Pool of Radiance characters who fail the identity are both carrying a
-readied stack of darts, and the shortfall is exactly the darts the quantity
-byte has and the cached display line does not: ASTRID stores 635 against 700,
-`37 Darts` over a quantity of 50, and 13 x 5 = 65; GILES stores 787 against
-807, `46 Darts` over 50, and 4 x 5 = 20. Exact on both, 2 of 2. The stored
-total sides with the cached line, so throwing a dart decrements the quantity
-and recomputes neither -- the same field going stale on a weight change rather
-than a money one. It also settles which of the two disagreeing numbers is the
-fresh one, which `goldbox/dos_layout.py`'s field note leaves open: the
-quantity byte.
+**Pool of Radiance buys in the same wrong order.** `#249 (Build a DOS party
+from creation and level it ourselves, so DOS measurements rest on records we
+watched being written)`'s party, rolled in the game's own creation screens,
+walked into a New Phlan shop and WISHFTR bought one hand axe listed at 1 gp
+with 140 gold coins in his purse. The engine wrote **190** where the sum is
+81, and `190 = 140 + 50` is his purse as it stood before it paid, plus the
+axe. The five characters who bought nothing on the same visit came back
+holding their own correct sums, so the wrong number is the buyer's alone --
+1 of 1 wrong, 5 of 5 right. CONFIRMED,
+`WISH-SPEC-por-shop-encumbrance-spoiled`.
+
+**The excess is 109 rather than the 1 gp price**, and that is this title's
+purse arithmetic rather than a second bug: paying 1 gp out of 140 gold coins
+leaves 27 platinum and 4 gold, because the engine consolidates the change into
+the largest denomination it can, so the coin *count* falls by 109 while the
+value falls by 1. Encumbrance counts coins, not what they are worth. Curse's
++3 is the same arithmetic at a scale where no denomination changes.
+
+**A thrown dart is not this bug, and an earlier reading of it here was
+wrong.** DARKSTAR appears twice in the archives' `Default files/Saves`, 16
+experience apart and with his money untouched: `CHRDATA5` has 11 darts by the
+quantity byte and stores 93, `CHRDATJ5` has 8 and stores 78. The total fell by
+exactly 3 x 5 and **both records balance the identity exactly**, while the
+cached display line reads `11 Darts` in both. So throwing a dart decrements
+the quantity *and* recomputes the total, and only the drawn line goes stale.
+The two played Pool of Radiance records that miss are the reverse arrangement:
+GILES stores 787 against 807 with a line reading `46 Darts`, ASTRID 635
+against 700 reading `37 Darts`, and in both the line and the stored total
+agree with each other while the quantity byte alone reads a round 50 --
+4 x 5 = 20 and 13 x 5 = 65, exact on both. Something raised the quantity
+without touching either field the engine keeps in step with it, which is what
+an editor does and not what DARKSTAR shows the engine doing: **PROBABLE that
+those two were edited**, and the untested alternative is picking items up,
+which nothing here has measured. This replaces an earlier entry that read the
+same three records as the engine leaving both fields stale and concluded the
+quantity byte was the fresher of the two; the pair the engine keeps together
+is the quantity byte and the stored total, and `goldbox/dos_layout.py`'s field
+note should be read that way round.
 
 **Why no player sees it.** Every screen that draws encumbrance recomputes
 first: `#113 (Play DOS Curse far enough to save a party with items)` watched
-the sheet draw 396 while the file held 399. The cost is entirely ours -- a save
+the sheet draw 396 while the file held 399.
+
+**And in Pool of Radiance that recompute is written back into the record**,
+which is measured rather than inferred. A party staged at 999 in every record
+*before* the boot came back holding 999 through a party-menu
+`SAVE CURRENT GAME` and through a camp save, so nothing else rewrites the
+field; then `VIEW` drew the first character's sheet, showing his true 19000
+over a file that said 999, and the next save wrote **19000** into his record
+alone while the five characters whose sheets were not drawn stayed at 999.
+`WISH-SPEC-por-enc-spoiled-campsave` and `-viewed` are the two saves, one
+action apart in one boot, and `#323 (The encumbrance identity does not survive
+the training fee, so failing it is not evidence of an edited record)` has the
+run. So a shopped record fails the identity only until somebody opens the
+sheet.
+
+The cost is entirely ours -- a save
 taken straight out of a shop is the only kind that fails the
 `money + Σ(weight × quantity)` identity this project checks records with, and
 it fails it by the coins of the last purchase, so a check on that identity has

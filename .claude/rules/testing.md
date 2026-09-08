@@ -149,11 +149,31 @@ a stranger's edited party. Both halves of that are gone:
   rather than a guarantee, and re-take it before resting anything on it.
 * **Failing it is the normal state of a record we watched being written.** Of
   the 97 records here that miss, **93 are ours, driven**: 90 by an exact
-  multiple of 1000 gp -- Pool of Radiance's training fee, on `#249`'s ladder,
-  where the stored total climbs to 11,000 above the purse over nine trainings
-  and the engine never recomputes it -- and 3 by the Curse shop bug in
-  `docs/125-bug-notes.md` N19. Nothing in the never-watched corpus misses at
-  all.
+  multiple of 1000 gp -- Pool of Radiance's training fee, on the ladder of
+  `#249 (Build a DOS party from creation and level it ourselves, so DOS
+  measurements rest on records we watched being written)` -- and 3 by the
+  Curse shop bug in `docs/125-bug-notes.md` N19. Nothing in the never-watched
+  corpus misses at all.
+
+  **The engine rewrites the field only when a screen draws it**, which is why
+  the drift survives a save: 270 of 270 records the ladder saved held the
+  number they were loaded with, 87 of them after the trainer had taken 1000 gp
+  in that same boot, and a record spoiled to 999 *before* a boot came back 999
+  through both a party-menu `SAVE CURRENT GAME` and a camp save. Only the one
+  character whose sheet `VIEW` drew came back holding the right sum, with five
+  untouched characters in the same save still at 999. **So one boot leaves one
+  fee of drift, and the ladder's climb to +11,000 is mostly our own
+  restaging** -- `tools/dostrainprobe.install` moves stored encumbrance with
+  the gold it pokes, which is right for an input and is not the engine
+  agreeing with us. `tools/dosencsave.py` is the tool, and `#323 (The
+  encumbrance identity does not survive the training fee, so failing it is not
+  evidence of an edited record)` has the runs.
+
+  **Poke a field before the boot, or the engine never sees it.** That same 999,
+  written after `LOAD SAVED GAME` had already put the party in memory, came
+  back as the correct sum from every save -- which reads exactly like a
+  recompute and is the engine writing its own untouched value over our poke. A
+  staging that lands after the load has measured nothing.
 
 So **a record failing the identity is not evidence that anybody edited it**,
 and neither is a record passing it evidence that nobody did. It checks our
