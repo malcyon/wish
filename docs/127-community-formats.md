@@ -277,7 +277,7 @@ the same offset. Nothing contradicts.**
 | `0x0B0` | class bitmask | `ITM_Allowed`, `ClassRestrictionArray` | same bits, better name — it is what the item table checks |
 | `0x0B1` | hit points rolled | `HP_Base` | confirm |
 | — | — | `SPL_Count_*` `0x0B2`–`0x0B7`, `XP_Award_*` `0x0B8`–`0x0BA`, portraits, icon colours | add |
-| `0x0BF` | party order | `Party_Position` | confirm |
+| `0x0BF` | combat icon slot | `Party_Position` | both wrong, see §5 |
 | `0x0C0` | size, 1 small 2 medium | `ICO_Size` | confirm |
 | `0x0C7` | item count | `ITM_Count` | confirm |
 | `0x0C1`–`0x0D7` "heap pointers" | — | `ADDR_Item` + 13 equipment pointers, `0x0C8`–`0x10B` | theirs; our range started seven bytes early |
@@ -439,6 +439,14 @@ Two places, both caught by our own data.
    six are table (dwarf, elf, gnome, half-elf, halfling, half-orc, all matching
    the Players Handbook exactly). The seventh reads as code. Human, whose
    adjustments are all zero, is presumably implicit.
+3. **`0x0BF` / `Party_Position`.** Both named it a marching or party order
+   because a party with no NPC and no reorder puts a 0-5 permutation there by
+   coincidence. `#305 (Two DOS record bytes have one name from Pool of
+   Radiance and another from the Curse decompilation)` reads the shipped
+   overlay's own allocation loop: it is which of eight loaded combat icons a
+   character draws, allocated as the lowest free slot.
+   `docs/195-three-dos-record-bytes-named-from-the-overlays.md` has the
+   evidence.
 
 One place where they disagree with us and the answer is "different ports":
 their DOS `0x0AA` is `STR_Bonus`, a boolean, and it reads 1 in all 66 DOS

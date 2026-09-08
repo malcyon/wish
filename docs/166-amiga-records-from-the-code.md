@@ -72,7 +72,7 @@ immediately, and none does.
 | `0x119`, `0x11A`, `0x11B` | `0x11A`, `0x11B`, `0x11C` | 1 each | +1 | **sex**, `gap_11a`, **alignment** |
 | `0x11C` | `0x11D` | 11 | +1 | attack forms, AC base, strength bonus |
 | `0x127` | `0x128` | 21 | +1 | experience (swapped), class bits, hit dice, **and the three slot arrays — see below** |
-| `0x13C` | `0x140` | 9 | +4 | `gap_13c`, whose first word is byte-swapped; portrait, icon, party order, size |
+| `0x13C` | `0x140` | 9 | +4 | `gap_13c`, whose first word is byte-swapped; portrait, icon, combat figure, size |
 | `0x145` | `0x149` | 8 | +4 | icon colours, `gap_14b`, item count at `0x150` |
 | — | `0x151` | 1 | | **pad** |
 | — | `0x152`-`0x189` | 56 | | the item pointer array and the heap pointers, rebuilt |

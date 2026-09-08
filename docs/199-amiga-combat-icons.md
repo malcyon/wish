@@ -30,8 +30,8 @@ off a pointer rather than a global `tools/amigaglobal.py` could find.
 | the importer that reads the previous title | `0x25776` (Pool of Radiance) | `0x26FBA` (Curse) |
 
 **The loader is DOS's, translated.** It builds `CBODY%c` and `CHEAD%c` from
-the size letter, asks for block `icon_body` into buffer `party_order` and
-block `icon_head` into buffer `party_order + 0x34`, and the block loader adds
+the size letter, asks for block `icon_body` into buffer `combat_figure` and
+block `icon_head` into buffer `combat_figure + 0x34`, and the block loader adds
 `0x40` when the name ends `T` and loads `index + 0x80` as the second pose into
 `buffer + 0x1A`. That is the rule
 [`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.md) read out
@@ -44,7 +44,7 @@ both titles, which is an independent confirmation of five fields of that map:
 |---|---|---|---|---|
 | `icon_head` | `0x141` | `0x145` | `0x153` | `0x0EF` |
 | `icon_body` | `0x142` | `0x146` | `0x154` | `0x0F0` |
-| `party_order` | `0x143` | `0x147` | `0x155` | `0x0F1` |
+| `combat_figure` | `0x143` | `0x147` | `0x155` | `0x0F1` |
 | `size` | `0x144` | `0x148` | `0x156` | `0x0F2` |
 | `icon_colours` | `0x145` | `0x149` | `0x157` | `0x0F3` |
 | `icon_dimension` | `0x0DE` | `0x0DE` | `0x0E7` | `0x081` |
@@ -151,7 +151,7 @@ ten bytes** -- `icon_head`, `icon_body`, `size`, `icon_dimension` and the six
 colour bytes. The engines say so themselves: the Amiga's own importer at
 Curse `0x25776` copies a Pool of Radiance record's `icon_head`, `icon_body`
 and `size` into Curse's, then `movmem`s the six colour bytes, skipping only
-`party_order`, which the loader reallocates; Silver Blades' at `0x26FBA`
+`combat_figure`, which the loader reallocates; Silver Blades' at `0x26FBA`
 does the same with a Curse record, byte by byte. A port that had renumbered
 its art could not do that -- the same argument
 [`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.md) makes for

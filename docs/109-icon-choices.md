@@ -337,7 +337,7 @@ the four buttons at `TOOLBAR_ICON = 16`.
 | toolbar | open, save, save as, preview | **done** — `editor/window.py::_toolbar_icons`, 16 px |
 | Fast Travel | the help affordance | **done** — `circle-info` on a `QToolButton`, `autoRaise` so it highlights on hover. It was a `QLabel` with a drawn circle and a `?`, which said nothing about being hoverable |
 | map | doors, locked, wizard-locked | **no** — `render.py` draws these better than a font can |
-| combat | party, enemy, active | **no** — coloured squares with hit points in them are unambiguous |
+| combat | party, enemy, active | **no** — coloured squares with a health bar along the bottom are unambiguous |
 | roster | poisoned, paralysed | **blocked** — the effect codes are not decoded |
 
 ## `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` — Font Awesome leaves the note icons, the toolbar and the app icon

@@ -147,7 +147,7 @@ no trouble.
 | `heap_104` | 15 |
 | `effect_chain` | 12 |
 | `name_text` | 10 |
-| `party_order` | 5 |
+| `combat_figure` | 5 |
 | `thac0_base` | 3 |
 | `attack_level`, `thac0_current` | 1 each |
 | LADY KATHERINE's five `thief_*` | 1 each |

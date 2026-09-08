@@ -66,7 +66,9 @@ roster carries what they are actually fighting at.
 ## What it draws
 
 * **Party green, enemies red**, filled squares on the graph-paper ground, with
-  **current hit points in the square**.
+  **a health bar along the bottom of each occupied square** in place of a
+  number or a letter (`#345 (Draw a letter in each combat-map square saying
+  what is standing there, instead of the index the backend counts with)`).
 * **Terrain** as wall or not wall, and nothing finer. The glyphs at `$91B0` say
   what each code looks like on the C64's own screen, and until they are checked
   against, a map that invented a diagonal would be worse than one that draws a

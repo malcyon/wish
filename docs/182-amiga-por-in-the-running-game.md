@@ -113,7 +113,7 @@ live-heap fields the list is short.
 | character | field | ours | the engine's |
 |---|---|---|---|
 | all six | `effect_chain` `0x081`-`0x083`, `heap_104` `0x107`-`0x109` | NULL | live Amiga heap |
-| five of six | `party_order` `0x0C1` | 0 | 1, 2, 3, 4, 5 by position |
+| five of six | `combat_figure` `0x0C1` | 0 | 1, 2, 3, 4, 5 by position |
 | MALCYON, TWIN, LADY KATHERINE | `thac0_base` `0x02D` | 39 | 40 |
 | MALCYON | `attack_level` `0x06B`, `thac0_current` `0x112` | 0, 39 | 1, 40 |
 | LADY KATHERINE | five `thief_*` at `0x077`-`0x07E` | 30, 25, 20, 10, 5 | 40, 20, 15, 15, 0 |
@@ -156,7 +156,7 @@ Three things follow.
   dwarf the Amiga made itself exists to compare with and Pool of Radiance's
   sheet does not print saving throws.
 
-`party_order` is the one field this run adds to the derived list. The C64
+`combat_figure` (renamed from `party_order` by `#305 (Two DOS record bytes have one name from Pool of Radiance and another from the Curse decompilation)`) is the one field this run adds to the derived list. The C64
 record has no marching order to convert -- `goldbox/layout.py`'s `0x10D` entry
 says the C64's order is the slot arrangement rather than a byte -- so the
 writer emits zero for everybody, and the engine numbered them 0 to 5 in the

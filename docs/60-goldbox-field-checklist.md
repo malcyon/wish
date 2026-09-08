@@ -241,7 +241,7 @@ an artefact of reading 580 contiguous bytes out of a `$100` slot and running off
 | Combat icon: shape, size, dimensions | DOS keeps `icon head`, `icon body`, `icon size`, `icon dimensions` as small enums. | ~4 B | Use `ALTER` in camp. | `DOS-DOC` |
 | Icon colours (body, arm, leg, hair/face, shield, weapon) | DOS packs two colour nibbles per byte, 6 bytes. On the **C64 this is raw screen+colour data**: the 36 bytes at the end of our exported specimen are C64 screen codes ($20 space, $A0 reversed space, $86–$8B) and colour-RAM values ($06 blue, $07 yellow, $08 orange, $0E light blue, $0F grey) — and the *identical* pattern appears in the `SAVEDGAME0` party header at `$4BE0`, followed by six 28-byte repeats of a default icon at `$4C04`, `$4C20`, `$4C3C`, … one per party slot. | ~36 B on C64 | Use `ALTER` in camp to change one icon colour. Should move one or two bytes in that block. | `INFERENCE` (strong — the byte values are unmistakably C64 screen/colour codes) |
 | Portrait head / body | Only PoR-DOS has these two. | 2 B | — | `DOS-DOC` |
-| Order number | The character's marching/party order. | 1 B | Use `ORDER` in camp to swap two characters. One byte each, two characters. Very clean. | `DOS-DOC` |
+| Order number | Not a stored field: `#305 (Two DOS record bytes have one name from Pool of Radiance and another from the Curse decompilation)` reads `ENCAMP > ALTER > ORDER` in the shipped overlays and finds it moves list nodes and writes no record byte. No byte of the DOS, Curse, Silver Blades or C64 record holds the marching order. | — | — | superseded, see `docs/195-three-dos-record-bytes-named-from-the-overlays.md` |
 
 ---
 

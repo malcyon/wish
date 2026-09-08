@@ -690,6 +690,45 @@ observation retracted a reading that was right, because nobody asked *what
 writes the field* before concluding the field was not what it looked like. A
 retraction needs its own evidence exactly as much as the claim it overturns.
 
+### Losing a fight locks the C64 up
+
+**What a player sees.** The last standing character goes down. The whole text
+window clears and one line appears at row 10, column 1:
+
+```
+THE PARTY HAS LOST
+```
+
+Row 24 is blank -- no `PRESS <RETURN> OR BUTTON TO CONTINUE`, no menu, no title
+screen, no reload prompt. Return and space change nothing. The only way on is
+to switch the machine off and reload the last save.
+
+**What the game does.** `POST.COM`'s losing branch ends `JMP $0957`, a jump to
+itself. Driven twice (`tools/defeatdrive.py`, `work/issue128/run2` and
+`run3`), the program counter was caught sitting there 96 of 97 samples across
+70 seconds of screen reads that never changed. All six characters are left
+`DYING` (`$84`) rather than `DEAD`, because the pass that would advance them to
+`UNCONSCIOUS` belongs to the winning path and never runs. The save disk is
+untouched -- `run3`'s has the same SHA-256 as the player's own -- so a defeat
+costs whatever happened since the last `ENCAMP > SAVE`, and nothing else.
+Checked against our own code first: `POST.COM` is byte-identical on all eight
+disk sides and nothing on any side stores to `$0957`-`$0959`, so the spin is
+not a patched dispatch slot.
+
+**Donald's ruling, 2026-09-07:** *"That doesn't sound like a bug. It sounds
+like the game was intentionally designed to do that."* `#128 (Nothing has
+ever read what the game prints when the party loses a fight)` has the two
+runs; `docs/110-combat-log.md` has the addresses.
+
+**Open note, not a claim against the ruling.** The spin is reached three ways;
+one of them is `$6DE6` reading zero, and `$6DE6` is written only by `INIT
+$091A` and `POST.COM $14D2`, both to zero -- so it reads like a "losing is
+survivable here" flag nothing on this disk ever sets to make it so. `ECL00`,
+New Phlan's script, is the only one of the thirty area scripts carrying the
+bytes `E6 6D`. Whether a scripted fight sets it, whether every defeat spins or
+only an unscripted one, and whether the DOS build's own overlay does the same,
+are all still unmeasured.
+
 ---
 
 ## Rumours from the community forums

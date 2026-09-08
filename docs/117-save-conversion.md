@@ -2306,14 +2306,12 @@ against gnolls and bugbears; 47 is named for gnomes as well as dwarves.
 #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen) separated none of them:
 it established that all four are a gnome's and innate, and no run has yet made
 one fire on its own.
-#247 (Nobody knows whether innate effect 97 is racial or the constitution bonus)
-is the same doubt over 97, since every race in this corpus that carries it also
-earns a constitution bonus. **A rolled gnome cannot settle
-#247 (Nobody knows whether innate effect 97 is racial or the constitution bonus)**:
-the bonus is `GEN $2359`'s `constitution * 2 // 7`, so it is zero only below
-constitution 4 and no rollable score reaches that -- the constitution-11 gnome
-of #84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen),
-the lowest anybody has, still earns 3 and still carries 97.
+97 is settled: `#247 (Nobody knows whether innate effect 97 is racial or the
+constitution bonus)` closed by reading the DOS creation switch and the two
+handlers out of `GAME.OVR` rather than by rolling a character, since no
+rollable constitution reaches the zero band. It is written by race and its
+handler reads constitution at save time -- both, never alternatives.
+`docs/189-effect-97-from-the-code.md` has the chain.
 
 **Confirmed in the running game.** `PORSAVE.D64` — MALCYON an elf, LADY
 KATHERINE a half-elf, MAGNUS a dwarf with empty trait slots — converted into a

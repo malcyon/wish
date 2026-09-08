@@ -218,7 +218,7 @@ rendering for the CLI, which still groups by state. `source` is the 224 flags,
 the `$4A00` page, a whole `SAVEDGAME0` payload or a `SaveGame0` — the lengths
 are distinct, so no flag is needed. No Qt.
 
-**`summary_lines()` gained the side-quest section #158 step E deferred.** It
+**`summary_lines()` gained the side-quest section `#158 (Track the quests the game itself forgets, starting with Ohlo's potion)` step E deferred.** It
 follows the same decision as the panel — a durable-only reading, one line per
 side quest whose `durable_state` is not `QUEST_UNSEEN`, reusing
 `goldbox.commissions.IN_PROGRESS` and the panel's `"Finished"` — but a
