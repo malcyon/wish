@@ -946,3 +946,174 @@ def test_the_fast_travel_dropdown_is_disabled_in_combat():
     assert "fight" in row.combo.toolTip()
     row.attach(MemoryTarget({0x6E11: bytes([WORLD])}))
     assert row.combo.isEnabled()
+
+
+# --- #207: running the exit's own handler instead of NEWECL's tail -----------
+#
+# `automap.actions.reenter` is `tools/exitreentry.py`'s `reenter()`, ported: it
+# rebuilds `DUNGEON`'s own stack from `$03BF` and lands wherever a step would
+# have, so the departing script's own dispatch runs the handler. The push
+# itself was proven live across three sessions (#207); what is tested here is
+# that the port pushes the same bytes in the same order, and that
+# `FastTravel.run` reaches for it only where `automap.fasttravel.EXIT_ROUTES`
+# names a direct exit.
+
+from automap import fasttravel  # noqa: E402
+
+
+class ReenterTarget(MemoryTarget):
+    """A `MemoryTarget` with the optional `reenter(pc, sp)` capability
+    `actions.reenter` looks for -- the same shape `Machine.set_pc` gives
+    `jump` in `tests/test_fasttravel.py`, kept local so this file does not
+    reach into a test module another change owns."""
+
+    def __init__(self, memory=None):
+        super().__init__(memory)
+        self.reenters: list[tuple[int, int]] = []
+        self.jumps: list[int] = []
+
+    def reenter(self, pc: int, sp: int) -> None:
+        self.reenters.append((pc, sp))
+
+    def set_pc(self, address: int) -> None:
+        self.jumps.append(address)
+
+
+def test_reenter_refuses_a_title_with_no_measured_reentry_addresses():
+    target = ReenterTarget({fasttravel.CURSE_OF_THE_AZURE_BONDS.saved_sp
+                            or 0x03BF: bytes([0xF0])})
+    assert not fasttravel.CURSE_OF_THE_AZURE_BONDS.has_exit_reentry
+    assert not actions.reenter(target, fasttravel.CURSE_OF_THE_AZURE_BONDS, 1)
+    assert target.reenters == []
+
+
+def test_reenter_pushes_only_the_main_loop_return_for_entry_1():
+    """Entry 1 (`after_step`) does its own redraw, so no chain -- the same
+    single push `tools/exitreentry.py`'s `phase_square` measured."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = ReenterTarget({addr.saved_sp: bytes([0xF0])})
+    assert actions.reenter(target, addr, 1)
+    assert target.reenters == [(addr.after_step, 0xF0 - 2)]
+    assert target.read(0x0100 + 0xF0, 1) == bytes([addr.main_loop_return >> 8])
+    assert target.read(0x0100 + 0xEF, 1) == bytes([addr.main_loop_return & 0xFF])
+
+
+def test_reenter_chains_the_redraw_in_front_of_the_forward_key_for_entry_0():
+    """Entry 0 (`forward_key`) is reached through the redraw, chained the way
+    `tools/exitreentry.py`'s `phase_edge` chained it live."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = ReenterTarget({addr.saved_sp: bytes([0xF0])})
+    assert actions.reenter(target, addr, 0)
+    assert target.reenters == [(addr.redraw, 0xF0 - 4)]
+    chain_ret = addr.forward_key - 1
+    assert target.read(0x0100 + 0xEE, 1) == bytes([chain_ret >> 8])
+    assert target.read(0x0100 + 0xED, 1) == bytes([chain_ret & 0xFF])
+
+
+def test_reenter_starts_from_the_saved_depth_not_a_guess():
+    """The rebuild starts at `$03BF`'s own recorded depth -- proven live in
+    `#207`'s `run5` from three different idle states."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = ReenterTarget({addr.saved_sp: bytes([0x42])})
+    assert actions.reenter(target, addr, 1)
+    assert target.reenters == [(addr.after_step, 0x42 - 2)]
+
+
+def kobold_caves_machine() -> ReenterTarget:
+    """The party in the Kobold Caves (area 13), idle in `DUNGEON`'s key-wait
+    loop, ready for a fast travel to area 27 -- `#207`'s own motivating case:
+    `ECL0D $9A9D` is what drops Princess Fatima on the way out, and it is
+    what this exit's route runs."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    return ReenterTarget({
+        games.MODE_FLAG_POOL: bytes([WORLD]),
+        addr.slot: bytes([13]),
+        addr.disk: bytes([3]),
+        addr.indoors: bytes([1]),
+        addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0]),
+    })
+
+
+def test_fasttravel_runs_the_kobold_caves_handler_instead_of_the_tail_jump():
+    """The case `#207`'s whole ticket is about: fast-travelling out of the
+    Kobold Caves used to enter `NEWECL` at its tail and skip `ECL0D $9A9D`,
+    so Princess Fatima stayed in the roster. `(13, 27)` is a direct route in
+    `automap.fasttravel.EXIT_ROUTES`, so `run` now stands the party on the
+    exit's own square and re-enters `DUNGEON`'s dispatch instead."""
+    target = kobold_caves_machine()
+    addr = fasttravel.POOL_OF_RADIANCE
+    route = fasttravel.EXIT_ROUTES[(13, 27)]
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(27))
+    assert outcome.ok, outcome.message
+    # The exit square, with the party's own facing carried over -- entry 1
+    # does not care which way the party faces.
+    assert target.read(addr.live_square, 3) == bytes([*route.square, 1])
+    assert target.reenters == [(addr.after_step, 0xF0 - 2)]
+    # Nothing `NEWECL` would write is written here: that is the departing
+    # script's own job now, made by its own `NEWECL` once it runs.
+    assert target.read(addr.slot, 1) == bytes([13])
+    assert target.read(addr.disk, 1) == bytes([3])
+
+
+def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
+    """A destination with no row in `EXIT_ROUTES` -- New Phlan (0) is not
+    reachable by one of area 13's own scripted exits -- still enters `NEWECL`
+    at its tail, today's behaviour, unchanged."""
+    target = kobold_caves_machine()
+    addr = fasttravel.POOL_OF_RADIANCE
+    assert (13, 0) not in fasttravel.EXIT_ROUTES
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(0))
+    assert outcome.ok, outcome.message
+    assert target.reenters == []
+    assert target.jumps == [addr.tail]
+    assert target.read(addr.slot, 1) == bytes([0x80])  # (0 & 0x7F) | 0x80
+
+
+def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter():
+    """A backend that offers `set_pc` but neither `reenter` nor `_mon` -- a
+    Commodore 64 Ultimate, whose REST API reads memory but not registers
+    (`#375`), or a test double with no more than `jump` already needed --
+    still gets a fast travel, the same way `#421`'s optional capabilities
+    fall back to what every caller did before them, rather than being told a
+    trip failed that was never attempted."""
+    addr = fasttravel.POOL_OF_RADIANCE
+
+    class NoReentryTarget(MemoryTarget):
+        def __init__(self, memory=None):
+            super().__init__(memory)
+            self.jumps: list[int] = []
+
+        def set_pc(self, address: int) -> None:
+            self.jumps.append(address)
+
+    target = NoReentryTarget({
+        games.MODE_FLAG_POOL: bytes([WORLD]),
+        addr.slot: bytes([13]),
+        addr.disk: bytes([3]),
+        addr.indoors: bytes([1]),
+        addr.live_square: bytes([5, 6, 1]),
+        addr.saved_sp: bytes([0xF0]),
+    })
+    assert not actions.can_reenter(target)
+    assert (13, 27) in fasttravel.EXIT_ROUTES        # a direct route exists
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(27))
+    assert outcome.ok, outcome.message
+    assert target.jumps == [addr.tail]
+    assert target.read(addr.saved_sp, 1) == bytes([0xF0]), (
+        "nothing should have been pushed to the stack page: the capability "
+        "check happens before any write, not after a failed one")
+
+
+def test_can_reenter_is_true_for_a_vice_backed_target():
+    """The other half of the gate: a target that does offer the capability
+    is not skipped past."""
+    class FakeMon:
+        pass
+
+    class ViceLikeTarget(MemoryTarget):
+        def __init__(self):
+            super().__init__()
+            self._mon = FakeMon()
+
+    assert actions.can_reenter(ViceLikeTarget())

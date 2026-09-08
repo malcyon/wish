@@ -1583,15 +1583,21 @@ PC_REGISTER = 3
 CMD_REGISTERS_AVAILABLE = 0x83
 
 
-def pc_register(mon, default: int = PC_REGISTER) -> int:
-    """Which register id this VICE calls `PC`, asked rather than assumed.
+#: VICE's `e_SP`, the same listing `PC_REGISTER`'s comment names -- id 4,
+#: beside `A`, `X`, `Y`, `PC` and `FL` at 0, 1, 2, 3 and 5. `#207 (Run an
+#: exit's own handler before Fast Travel warps out)`'s re-entry needs it to
+#: rebuild `DUNGEON`'s own stack before jumping, the same way
+#: `tools/exitreentry.py` proved live: `SP := [$03BF]`, then push.
+SP_REGISTER = 4
 
-    One round trip, and only ever one: the answer cannot change under a running
-    emulator, so it is cached on the monitor object. A build that does not
-    serve `0x83` -- which is what this code believed for months, wrongly --
-    falls back to `PC_REGISTER`.
+
+def _register_id(mon, name: bytes, default: int, cache_attr: str) -> int:
+    """Which register id this VICE build calls `name`, asked rather than
+    assumed and cached on the monitor object -- `pc_register` and
+    `sp_register` are this, once each, since the answer cannot change under a
+    running emulator.
     """
-    got = getattr(mon, "_pc_register", None)
+    got = getattr(mon, cache_attr, None)
     if got is not None:
         return got
     got = default
@@ -1601,21 +1607,37 @@ def pc_register(mon, default: int = PC_REGISTER) -> int:
         off = 2
         for _ in range(count):
             size, rid, _bits, length = resp[off:off + 4]
-            if resp[off + 4:off + 4 + length] == b"PC":
+            if resp[off + 4:off + 4 + length] == name:
                 got = rid
                 break
             off += size + 1
     except Exception as exc:                # pragma: no cover - build-specific
         _log.debug("this build does not list its registers (%s); "
-                   "the PC is assumed to be %d", exc, default)
+                   "%s is assumed to be %d", exc, name.decode(), default)
         got = default
     try:
-        mon._pc_register = got
+        setattr(mon, cache_attr, got)
     except Exception as exc:
         # A monitor that will not take the attribute costs a round trip on
         # every call and nothing else.
-        _log.debug("could not cache the PC register id: %s", exc)
+        _log.debug("could not cache the %s register id: %s", name.decode(), exc)
     return got
+
+
+def pc_register(mon, default: int = PC_REGISTER) -> int:
+    """Which register id this VICE calls `PC`, asked rather than assumed.
+
+    One round trip, and only ever one: the answer cannot change under a running
+    emulator, so it is cached on the monitor object. A build that does not
+    serve `0x83` -- which is what this code believed for months, wrongly --
+    falls back to `PC_REGISTER`.
+    """
+    return _register_id(mon, b"PC", default, "_pc_register")
+
+
+def sp_register(mon, default: int = SP_REGISTER) -> int:
+    """`pc_register`'s twin, for the stack pointer `#207`'s re-entry sets."""
+    return _register_id(mon, b"SP", default, "_sp_register")
 
 
 def program_counter(target):
@@ -1674,6 +1696,88 @@ def jump(target, address: int) -> bool:
             mon.resume()
         except Exception as exc:
             _log.debug("could not resume after setting the PC: %s", exc)
+    return True
+
+
+def _reentry_plan(addr: fasttravel.FastTravelAddresses,
+                  entry: int) -> tuple[int, tuple[int, ...]]:
+    """Where to land and what to chain behind it, for one of
+    `fasttravel.ExitRoute.entry`'s two values.
+
+    Entry 1 (`after_step`) does its own redraw before running the per-square
+    dispatch, so it needs no chain. Entry 0 (`forward_key`) is reached by
+    chaining the redraw in front of it, so `$C04E`/`$C04F` are fresh before
+    its own wall test -- `tools/exitreentry.py`'s `phase_edge`, measured live.
+    """
+    if entry == 1:
+        return addr.after_step, ()
+    return addr.redraw, (addr.forward_key - 1,)
+
+
+def can_reenter(target) -> bool:
+    """Can `reenter` actually set the stack pointer on this backend?
+
+    The same optional-capability shape `jump` already has: an explicit
+    `target.reenter`, or the VICE monitor a `ViceTarget` holds. Checked
+    *before* `FastTravel.run` writes anything, so a backend without either --
+    a test double, or a Commodore 64 Ultimate, whose REST API reads memory
+    but not registers (`#375`) -- falls back to entering `NEWECL` at its
+    tail, today's behaviour, rather than being told a trip failed that was
+    never attempted.
+    """
+    return (callable(getattr(target, "reenter", None))
+            or getattr(target, "_mon", None) is not None)
+
+
+def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
+    """Rebuild `DUNGEON`'s own stack from `addr.saved_sp` and land wherever a
+    step would have, so the departing script's own dispatch runs the exit's
+    handler -- `#207 (Run an exit's own handler before Fast Travel warps
+    out)`.
+
+    Ported from `tools/exitreentry.py`'s `reenter()`, proven across three
+    live sessions: the party lost the Kobold Caves' NPC every time the
+    handler was answered `YES`, and the same push/jump landed both the square
+    dispatch (`after_step`) and the edge dispatch (`redraw` chained in front
+    of `forward_key`).
+
+    False if this title's re-entry addresses are not known
+    (`addr.has_exit_reentry`) or this backend cannot set the stack pointer --
+    found the way `jump` finds a PC setter, an optional `target.reenter(pc,
+    sp)` or the VICE monitor a `ViceTarget` holds, so a backend that offers
+    neither is refused rather than made to pretend.
+    """
+    if not addr.has_exit_reentry:
+        return False
+    pc, chain = _reentry_plan(addr, entry)
+    base = target.read(addr.saved_sp, 1)
+    if not base:
+        return False
+    sp = base[0]
+    # The main loop's own return goes on first (deepest), then the chain,
+    # each two bytes shallower -- high byte then low, the order a 6502's own
+    # JSR leaves and RTS expects to pop.
+    for ret in (addr.main_loop_return, *chain):
+        target.write(0x0100 + sp, bytes([ret >> 8]))
+        target.write(0x0100 + sp - 1, bytes([ret & 0xFF]))
+        sp -= 2
+    own = getattr(target, "reenter", None)
+    if callable(own):
+        own(pc, sp)
+        return True
+    mon = getattr(target, "_mon", None)
+    if mon is None:
+        return False
+    try:
+        mon.set_registers({sp_register(mon): sp, pc_register(mon): pc})
+    except Exception:
+        _log.exception("could not rebuild the stack for $%04X", pc)
+        return False
+    finally:
+        try:
+            mon.resume()
+        except Exception as exc:
+            _log.debug("could not resume after rebuilding the stack: %s", exc)
     return True
 
 
@@ -1869,6 +1973,10 @@ class FastTravel(Action):
             return Outcome(False, UNSUPPORTED.format(title=self.game.title))
         here = self.current_area(target, addr)
         to = getattr(area, "id", area)
+        if addr.has_exit_reentry and here is not None and can_reenter(target):
+            route = fasttravel.EXIT_ROUTES.get((here, to))
+            if route is not None:
+                return self._run_via_exit(target, addr, area, here, to, route)
         arrival, overland = self._square_writes(area, arrival=arrival)
         notes = list(self.warnings(target, area, arrival, overland))
         # Read before writing: the first write is $6E12 and the second is
@@ -1908,6 +2016,45 @@ class FastTravel(Action):
         name = getattr(area, "name", None) or "this area"
         return Outcome(True, f"Traveling to {name}.",
                        writes, tuple(notes))
+
+    def _run_via_exit(self, target, addr, area, here: int, to: int,
+                      route: fasttravel.ExitRoute) -> Outcome:
+        """Stand the party on `route.square` and let `DUNGEON`'s own dispatch
+        run the departing handler, instead of entering `NEWECL` at its tail --
+        `#207 (Run an exit's own handler before Fast Travel warps out)`.
+
+        Only `route.square` is written: everything else `newecl_writes` would
+        set -- the disk byte, `came_from`, the scratch wipe -- is the
+        handler's own job now, made by its own `NEWECL` once the player has
+        answered whatever it asks, the same as a walked exit. This is why
+        there is no failure branch for "the handler said no": the party
+        simply stays in `here`, on the exit square, exactly as it would
+        walking there and declining -- `#207`'s `run5` phase G measured that
+        square is written back if the game itself is asked to redraw it, but
+        nothing here has to do that: the player is looking at the same
+        square the game would have put them on.
+        """
+        was = Waypoint(here, self.current_disk(target, addr),
+                       self.current_square(target, addr),
+                       self.current_overland(target, addr)
+                       if self.current_indoors(target, addr) == 0 else None)
+        x, y, *rest = route.square
+        facing = rest[0] if rest else (was.square[2] if was.square else 0)
+        target.write(addr.live_square,
+                     bytes((x & 0xFF, y & 0xFF, facing & 0xFF)))
+        if not reenter(target, addr, route.entry):
+            return Outcome(False,
+                           "the party has not moved. Wish stood it at the "
+                           "way out but could not send it through "
+                           "(NOT APPROVED)",
+                           ())
+        self.back = was
+        name = getattr(area, "name", None) or "this area"
+        return Outcome(True,
+                       f"Walking out towards {name}, the way the party "
+                       f"would on foot -- answer whatever the game asks "
+                       f"(NOT APPROVED)",
+                       ())
 
     @staticmethod
     def arrival_of(area):

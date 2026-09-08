@@ -1458,8 +1458,15 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: of multi-class sentence the outcome message above already carries
     #: (`#418 (The level-up confirmation dialog previews one step of a Curse
     #: dual-training press, not the whole chain)`).
+    #: And from three to five on 2026-09-08: `#207 (Run an exit's own
+    #: handler before Fast Travel warps out)` gave `FastTravel._run_via_exit`
+    #: two new lines -- what a player reads when the exit's own handler is
+    #: about to run ("answer whatever the game asks") and what they read if
+    #: the stack could not be rebuilt to reach it. Neither existed before:
+    #: a fast travel used to enter `NEWECL` at its own tail and never handed
+    #: control back to a live script the player could be asked anything by.
     WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 1, "goldbox.dos": 1,
-               "automap.actions": 3}
+               "automap.actions": 5}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga, dos, actions):
