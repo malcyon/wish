@@ -260,6 +260,59 @@ def test_the_thief_skill_tables_are_the_games_own():
         assert tuple(b - 256 if b > 127 else b for b in raw) == row, race
 
 
+def test_the_dos_thief_skill_tables_are_the_games_own():
+    """`START.EXE`'s own racial and dexterity blocks (#431).
+
+    Located by the C64's own 72 bytes of level table, the way
+    `tools/thiefskillcensus.py` does it, so this cannot agree with
+    `goldbox/levels.py` by construction.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    from tools import thiefskillcensus
+    try:
+        tables = thiefskillcensus.dos_tables("pool-of-radiance")
+    except (FileNotFoundError, SystemExit) as exc:
+        pytest.skip(f"needs the DOS Pool of Radiance archives: {exc}")
+    for race, row in enumerate(levels.POOL_OF_RADIANCE.dos_thief_skill_race,
+                               start=1):
+        assert tuple(tables["race"][race - 1]) == row, race
+    dex_from = levels.DOS_THIEF_SKILL_DEX_FROM_POOL
+    for i, row in enumerate(levels.POOL_OF_RADIANCE.dos_thief_skill_dexterity):
+        assert tuple(tables["dex"][i]) == row[:5], i + dex_from
+
+
+def test_dos_and_c64_pool_of_radiance_disagree_on_a_halfling_thief():
+    """The specimen `#431` names: WISHTHI, thief 1, halfling, dexterity 12.
+
+    DOS's `35 30 25 20 25 15 70 0` is what the engine-written record holds;
+    the C64's `35 30 30 30 15 -5 80 -5` is what its own trainer would give
+    the same character -- move silently, hide in shadows, hear noise and
+    climb walls all differ, and DOS clamps read languages to 0 where the
+    C64 stores the negative byte.
+    """
+    assert levels.thief_skills(1, 5, dexterity=12) == \
+        (35, 30, 30, 30, 15, -5, 80, -5)
+    assert levels.dos_thief_skills(1, 5, dexterity=12) == \
+        (35, 30, 25, 20, 25, 15, 70, 0)
+
+
+def test_dos_thief_skills_is_none_off_titles_with_no_measured_difference():
+    """Curse and Silver Blades: nobody has established a per-port row."""
+    assert levels.dos_thief_skills(
+        1, 5, game=levels.CURSE_OF_THE_AZURE_BONDS, dexterity=12) is None
+    assert levels.dos_thief_skills(
+        1, 5, game=levels.SECRET_OF_THE_SILVER_BLADES, dexterity=12) is None
+
+
+def test_thief_skill_race_differs_by_port_names_only_pool_of_radiance():
+    assert levels.thief_skill_race_differs_by_port(levels.POOL_OF_RADIANCE)
+    assert not levels.thief_skill_race_differs_by_port(
+        levels.CURSE_OF_THE_AZURE_BONDS)
+    assert not levels.thief_skill_race_differs_by_port(
+        levels.SECRET_OF_THE_SILVER_BLADES)
+
+
 def test_the_hit_dice_and_bonus_tables_are_the_games_own():
     """`GEN $20A7` the die, `$247B`/`$2486` the constitution bonus."""
     gen = _gen()

@@ -129,6 +129,66 @@ def test_a_human_still_gets_the_plain_row():
     assert got == (14, 15, 16, 17, 17)
 
 
+_THIEF_SKILL_FIELDS = (
+    "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+    "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
+    "thief_climb_walls", "thief_read_languages")
+
+
+def _thief_character(race: int, dexterity: int, stored: tuple[int, ...],
+                     thief_level: int = 1,
+                     game: str = "pool-of-radiance"
+                     ) -> neutral.NeutralCharacter:
+    """A DOS-read neutral thief, holding DOS's own eight stored percentages."""
+    char = neutral.NeutralCharacter("DOS", game=game)
+    char.set("race", race, "test fixture")
+    char.set("dexterity", dexterity, "test fixture")
+    char.set("levels", {"thief": thief_level}, "test fixture")
+    for name, value in zip(_THIEF_SKILL_FIELDS, stored):
+        char.set(name, value, "test fixture")
+    return char
+
+
+def test_a_converted_halfling_thief_gets_the_c64s_own_skills_not_dos():
+    """`#431 (A converted halfling thief keeps the other port's skill
+    percentages, because the two ports ship different halfling rows)`.
+
+    WISHTHI, thief 1, halfling, dexterity 12: DOS's own record holds
+    `35 30 25 20 25 15 70 0`.  A copy would leave the C64 record holding
+    those same eight bytes, which its own trainer would never write --
+    `35 30 30 30 15 -5 80 -5` is what `GEN $1FEC` gives the same character.
+    """
+    stored = (35, 30, 25, 20, 25, 15, 70, 0)
+    rec, _ = c64_codec.write(_thief_character(race=5, dexterity=12,
+                                              stored=stored))
+    got = tuple(rec.get(n) for n in _THIEF_SKILL_FIELDS)
+    assert got == (35, 30, 30, 30, 15, -5, 80, -5)
+
+
+def test_a_dwarf_thief_still_gets_a_c64_specific_number():
+    """The dwarf is the control `#431` names: 7 of 8 columns already agree,
+    and the eighth -- read languages -- is where DOS clamps a negative to
+    zero and the C64 stores the byte. A copy would carry DOS's clamped 0."""
+    stored = (30, 35, 35, 15, 10, 10, 75, 0)     # DOS: read languages clamped
+    rec, _ = c64_codec.write(_thief_character(race=1, dexterity=15,
+                                              stored=stored))
+    got = tuple(rec.get(n) for n in _THIEF_SKILL_FIELDS)
+    assert got == (30, 35, 35, 15, 10, 10, 75, -5)
+
+
+def test_a_curse_thief_still_gets_the_copied_row():
+    """Curse ships the same racial table on both ports, and recomputing it
+    anyway is blocked by `#437 (A Curse thief's stored skills sit seven
+    points above the rows the engine's own tables give)` -- so a converted
+    Curse thief still keeps `DIRECT`'s plain copy."""
+    stored = (35, 30, 25, 20, 25, 15, 70, 0)
+    rec, _ = c64_codec.write(_thief_character(
+        race=5, dexterity=12, stored=stored,
+        game="curse-of-the-azure-bonds"))
+    got = tuple(rec.get(n) for n in _THIEF_SKILL_FIELDS)
+    assert got == stored
+
+
 def test_the_class_level_permutation_covers_every_c64_slot():
     """DOS indexes its eight level slots by class *number*, the C64 by class
     *bit*. Druid and monk have no C64 slot; nothing else is lost."""

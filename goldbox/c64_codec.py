@@ -160,6 +160,14 @@ _SAVE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("save_spell", "save_spell"),
 )
 
+#: The eight thief-skill columns, neutral name to C64 name -- identical on
+#: both sides, and in `goldbox.levels.LevelTables.thief_skill_row`'s own
+#: column order. `DIRECT` above copies these like anything else; `write`
+#: then overwrites them for a title whose C64 table is confirmed to differ
+#: from the source port's (#431).
+_THIEF_SKILL_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    pair for pair in DIRECT if pair[0].startswith("thief_"))
+
 @dataclasses.dataclass(frozen=True)
 class RecordShape:
     """The parts of the 580-byte record the titles do not agree about.
@@ -709,6 +717,47 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                      f"bonus on the columns it reaches, the way the C64's "
                      f"own trainer stores it -- {port} keeps the plain row "
                      f"and applies the bonus when the die is rolled")
+
+    # -- thief skills: overwrite DIRECT's plain-row copy for a title whose
+    # C64 table is confirmed to differ from the source's -----------------
+    # `DIRECT` copies the neutral record's eight stored percentages, which
+    # is exactly right when both ports agree on the table and wrong when
+    # they do not: Pool of Radiance's C64 racial row (`GEN $1076`) is the
+    # DOS row one byte short from the gnome's hear-noise column on, and the
+    # C64 build never applies a dexterity adjustment DOS does (#431). The
+    # C64 engine does not recompute the eight bytes on load or on save
+    # either, so a converted thief keeps a copied wrong number until the
+    # C64's own trainer next runs.
+    #
+    # **Only where the difference is confirmed.** Curse ships the same 56
+    # racial bytes on both ports, so a copy is already right there, and
+    # recomputing it anyway is blocked by #437 (A Curse thief's stored
+    # skills sit seven points above the rows the engine's own tables give):
+    # both Curse engines write +7 over what their own tables compute, so
+    # recomputing would move a converted thief away from what the C64's own
+    # trainer stores. Silver Blades' per-port agreement is unmeasured.
+    # `w.get`, not `use`: the thief level, race and dexterity feeding this
+    # were already taken by the `DIRECT` copy loop above.
+    computed_thief_skills = None
+    thief_level = w.get("levels", {}).get("thief", 0)
+    if thief_level and level_tables.thief_skill_race_differs_by_port(
+            char.game):
+        computed_thief_skills = level_tables.thief_skills(
+            thief_level, w.get("race", 0), char.game,
+            dexterity=w.get("dexterity", 0))
+    if computed_thief_skills is not None:
+        for value, (_, c64_name) in zip(computed_thief_skills,
+                                        _THIEF_SKILL_COLUMNS):
+            if not rec.is_stored(c64_name):
+                continue
+            dst = _field(c64_name)
+            rec.set(c64_name, value)
+            rep.note(dst.offset, dst.size,
+                     f"{c64_name}: the C64's own thief table for race and "
+                     f"level, because this title's C64 table is confirmed "
+                     f"to differ from {port}'s and a copy would silently "
+                     f"keep a number the C64's own trainer would never "
+                     f"write")
 
     # -- memorised spells, into as many slots as this title has --------------
     # Written before the second ability array because in Pool of Radiance the

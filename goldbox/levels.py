@@ -562,6 +562,16 @@ _THIEF_SKILLS_POOL = (
 #: above. **Race is the whole of the adjustment**: `GEN $1FEC` writes the level
 #: row and then adds this one, and nothing reads dexterity. LADY KATHERINE's
 #: measured ladder (`docs/119-test-party.md`) is the half-elf row exactly.
+#:
+#: **This is the C64's own table, and DOS does not ship the same one**
+#: (`#431`, A converted halfling thief keeps the other port's skill
+#: percentages, because the two ports ship different halfling rows).
+#: `tools/thiefskillcensus.py tables` reads both off the player's own files:
+#: the two agree for 21 bytes and from there the C64's stream is the DOS
+#: stream one byte short, so the gnome's hear-noise and climb-walls columns
+#: collapse to a single `-5` and every race after the gnome reads the row
+#: laid out for the *next* one. CONFIRMED. `_DOS_THIEF_SKILL_RACE_POOL`
+#: below is DOS's own, undisplaced, copy.
 _THIEF_SKILL_RACE_POOL = (
     (0, 10, 15, 0, 0, 0, -10, -5),      # dwarf
     (5, -5, 0, 5, 10, 5, 0, 0),         # elf
@@ -572,6 +582,45 @@ _THIEF_SKILL_RACE_POOL = (
     (0, 0, 0, 0, 0, 0, 0, 0),           # human
     (0, 0, 0, 0, 0, 0, 0, 0),           # monster
 )
+
+#: DOS Pool of Radiance's own racial row, `START.EXE` at the offset
+#: `tools/thiefskillcensus.py tables --title pool-of-radiance` prints,
+#: located by the C64's own 72 bytes of level table so the read cannot agree
+#: with this module by construction. Seven rows -- DOS has no eighth
+#: (monster) row, and `thief_skill_row`'s bounds check leaves an index past
+#: the end unmodified, which is the same as a row of zeros. `#431`.
+_DOS_THIEF_SKILL_RACE_POOL = (
+    (0, 10, 15, 0, 0, 0, -10, -5),      # dwarf -- same as the C64
+    (5, -5, 0, 5, 10, 5, 0, 0),         # elf -- same as the C64
+    (0, 5, 10, 5, 5, 10, -15, 0),       # gnome
+    (10, 0, 0, 0, 5, 0, 0, 0),          # half-elf
+    (5, 5, 5, 10, 15, 5, -15, -5),      # halfling
+    (-5, 5, 5, 0, 0, 5, 5, -10),        # half-orc
+    (0, 0, 0, 0, 0, 0, 0, 0),           # human
+)
+
+#: DOS Pool of Radiance's dexterity block, same file, eleven rows of five
+#: columns from a dexterity of 9 -- pick pockets, open locks, find traps,
+#: move silently, hide in shadows. Padded to eight columns with three
+#: trailing zeros so it can share `thief_skill_row`'s zip-based sum the way
+#: `_THIEF_SKILL_DEX_CURSE` already does: the C64 build of this title never
+#: reads dexterity at all (`GEN $1FEC`), which is the bug `#431` is about.
+#: **DOS also clamps the final sum at zero on every column**, which this
+#: table alone does not capture -- `dos_thief_skill_row` applies it.
+_DOS_THIEF_SKILL_DEX_POOL = (
+    (-15, -10, -10, -20, -10, 0, 0, 0),     # dexterity 9 and below
+    (-19, -5, -10, -15, -5, 0, 0, 0),       # 10
+    (-5, 0, -5, -10, 0, 0, 0, 0),           # 11
+    (0, 0, 0, -5, 0, 0, 0, 0),              # 12
+    (0, 0, 0, 0, 0, 0, 0, 0),               # 13
+    (0, 0, 0, 0, 0, 0, 0, 0),               # 14
+    (0, 0, 0, 0, 0, 0, 0, 0),               # 15
+    (0, -5, 0, 0, 0, 0, 0, 0),              # 16
+    (5, 10, 0, 5, 5, 0, 0, 0),              # 17
+    (10, 15, 5, 10, 10, 0, 0, 0),           # 18
+    (15, 20, 10, 12, 12, 0, 0, 0),          # 19
+)
+DOS_THIEF_SKILL_DEX_FROM_POOL = 9
 
 #: `GEN $2399`, indexed by cleric level, written to `0x0A4`. Not the level: it
 #: is the row of the AD&D turning table the cleric reads, which is why it runs
@@ -889,6 +938,16 @@ class LevelTables:
     thief_skill_dexterity: tuple[tuple[int, ...], ...] = ()
     #: The score row 0 answers for; `$0FC6 SBC #$09`.
     thief_skill_dexterity_from: int = 0
+    #: **DOS's own racial row, where it differs from the C64's** (`#431`).
+    #: Empty means nobody has measured a per-port difference for this title
+    #: -- Curse ships the same 56 racial bytes on both ports, and Silver
+    #: Blades' agreement is unmeasured, so neither sets this. Consulted only
+    #: by :meth:`dos_thief_skill_row`, which nothing in this codebase calls
+    #: yet: the DOS write path that would (`goldbox/dos.py`) has not been
+    #: wired up.
+    dos_thief_skill_race: tuple[tuple[int, ...], ...] = ()
+    dos_thief_skill_dexterity: tuple[tuple[int, ...], ...] = ()
+    dos_thief_skill_dexterity_from: int = 0
     #: `GEN $11D7`: hit points a level from constitution, indexed by the raw
     #: score and **signed**. Empty means the title uses the two banded rows in
     #: `_HP_BONUS_FIGHTER` and `_HP_BONUS_OTHER` from `HP_BONUS_FROM` up, which
@@ -1077,6 +1136,34 @@ class LevelTables:
                         zip(row, self.thief_skill_race[index]))
         return tuple(row)
 
+    def dos_thief_skill_row(self, level: int, race: int,
+                            dexterity: int = 0) -> tuple[int, ...] | None:
+        """The eight percentages DOS stores, where that differs from the C64.
+
+        **Not the same rule as** :meth:`thief_skill_row`: DOS clamps every
+        column at zero, where the C64 stores the negative byte (`#431`,
+        `tools/thiefskillcensus.py --rule`). Returns `None` when this title
+        has no `dos_thief_skill_race` -- either because both ports agree, or
+        because nobody has measured that yet, and a caller must not read
+        `thief_skill_row`'s answer as DOS's in that case.
+        """
+        if not self.dos_thief_skill_race or not self.thief_skills:
+            return None
+        level = max(1, min(int(level or 1), len(self.thief_skills)))
+        row = self.thief_skills[level - 1]
+        if self.dos_thief_skill_dexterity:
+            if not dexterity:
+                return None
+            at = max(0, min(int(dexterity) - self.dos_thief_skill_dexterity_from,
+                            len(self.dos_thief_skill_dexterity) - 1))
+            row = tuple(a + b for a, b in
+                        zip(row, self.dos_thief_skill_dexterity[at]))
+        index = int(race or 0) - self.thief_skill_race_index_from
+        if 0 <= index < len(self.dos_thief_skill_race):
+            row = tuple(a + b for a, b in
+                        zip(row, self.dos_thief_skill_race[index]))
+        return tuple(max(0, v) for v in row)
+
     def dos_thac0_at(self, class_name: str, level: int) -> int | None:
         """What the **DOS** build's own table gives one class at one level.
 
@@ -1241,6 +1328,9 @@ POOL_OF_RADIANCE = LevelTables(
     constitution_save_columns=(0, 1, 2, 3, 4),
     thief_skills=_THIEF_SKILLS_POOL,
     thief_skill_race=_THIEF_SKILL_RACE_POOL,
+    dos_thief_skill_race=_DOS_THIEF_SKILL_RACE_POOL,
+    dos_thief_skill_dexterity=_DOS_THIEF_SKILL_DEX_POOL,
+    dos_thief_skill_dexterity_from=DOS_THIEF_SKILL_DEX_FROM_POOL,
     turn_power=_TURN_POWER_POOL,
     clamp_thresholds=(("magic-user", 60001), ("cleric", 55001),
                       ("thief", 160001), ("fighter", 250001)),
@@ -1533,6 +1623,35 @@ RACIAL_SAVE_BONUS_MEASURED: frozenset[str] = frozenset(
      SECRET_OF_THE_SILVER_BLADES.key})
 
 
+#: Titles whose C64 thief-skill racial table is confirmed to differ from the
+#: DOS one, and so the only ones `goldbox/c64_codec.py` recomputes a
+#: converted thief's eight skills for rather than copying the neutral
+#: record's stored percentages (`#431`, A converted halfling thief keeps the
+#: other port's skill percentages, because the two ports ship different
+#: halfling rows).
+#:
+#: **Pool of Radiance alone.** Its C64 racial row (`GEN $1076`) is the DOS
+#: row one byte short from the gnome's hear-noise column on, CONFIRMED by
+#: `tools/thiefskillcensus.py rows`, and the C64 build never applies a
+#: dexterity adjustment DOS does. Curse ships the same 56 racial bytes on
+#: both ports -- a copy is already right there -- and recomputing it anyway
+#: is blocked by `#437 (A Curse thief's stored skills sit seven points above
+#: the rows the engine's own tables give)`, which found both Curse engines
+#: writing +7 over what their own tables give. Silver Blades' per-port
+#: agreement has not been measured.
+THIEF_SKILL_RACE_DIFFERS_BY_PORT: frozenset[str] = frozenset(
+    {POOL_OF_RADIANCE.key})
+
+
+def thief_skill_race_differs_by_port(game=None) -> bool:
+    """Recompute this title's C64 thief skills rather than copy them (#431)?"""
+    if game is None:
+        return DEFAULT.key in THIEF_SKILL_RACE_DIFFERS_BY_PORT
+    key = game.key if isinstance(game, LevelTables) else getattr(game, "key",
+                                                                 game)
+    return key in THIEF_SKILL_RACE_DIFFERS_BY_PORT
+
+
 def racial_save_bonus_measured(game=None) -> bool:
     """Is this title's racial saving-throw bonus confirmed in the game?"""
     if game is None:
@@ -1602,6 +1721,12 @@ def saving_throws(class_levels, race: int = 0, constitution: int = 0,
 def thief_skills(level: int, race: int, game=None,
                  dexterity: int = 0) -> tuple[int, ...] | None:
     return for_game(game).thief_skill_row(level, race, dexterity)
+
+
+def dos_thief_skills(level: int, race: int, game=None,
+                     dexterity: int = 0) -> tuple[int, ...] | None:
+    """DOS's own eight percentages, where they differ from the C64 (#431)."""
+    return for_game(game).dos_thief_skill_row(level, race, dexterity)
 
 
 def turning_level(cleric_level: int, game=None,
