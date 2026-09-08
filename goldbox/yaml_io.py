@@ -48,7 +48,7 @@ from typing import Any
 
 import yaml
 
-from . import c64_codec, classcode, derive
+from . import c64_codec, classcode, derive, layout
 from .d64 import D64
 from .games import DEFAULT as DEFAULT_GAME
 from .games import Game, by_key, class_table, classes_to_names, race_table
@@ -213,6 +213,17 @@ FIELD_COMMENTS = {
     "levels": ("one level per class above. A dual-classed human keeps the old\n"
                "class frozen at its level while the new one advances, so these\n"
                "can differ. Adding a class here starts it at level 1."),
+    # PROPOSED, not approved (#256). `.claude/rules/gui-text.md` makes the
+    # exact words Donald's to choose; this is what was put to him alongside
+    # the shape of the field, not a shipped string.
+    "former_levels": (
+        "class name -> the level a dual-classed character left that class\n"
+        "at. Empty for a character who has never changed class; missing\n"
+        "entirely on a title with no such field (Pool of Radiance). The\n"
+        "game will not let a character change class a second time once this\n"
+        "is set, and it decides by reading exactly this pair -- Wish checks\n"
+        "what it can, but a wrong value here can still lock a character out\n"
+        "of dual-classing with nothing on the sheet explaining why."),
     "level": ("the character level the game keeps separately from the array\n"
               "above. Edit `levels` and this follows automatically; edit this\n"
               "and your value is kept."),
@@ -436,6 +447,14 @@ def entry_for(char, slot_index: int, items, icon, game: Game | None = None,
     levels = char.get("levels") or {}
     entry["levels"] = {name: levels[name] for bit, name in class_table(game)
                        if name in levels and class_bits & bit}
+    # The class and level a dual-classed human left behind -- absent when
+    # the title keeps no such bytes (Pool of Radiance), `{}` for a title
+    # that keeps them and a character who has never changed class.
+    former = char.get("former_levels")
+    if former is not None:
+        entry["former_levels"] = {name: former[name]
+                                  for _, name in class_table(game)
+                                  if name in former}
     entry["experience"] = char.get("experience")
     entry["items"] = []
     for it in items:
@@ -511,6 +530,11 @@ def _class_block(entry: dict[str, Any],
         out.append(f"    # {line}")
     pairs = ", ".join(f"{k}: {v}" for k, v in entry["levels"].items())
     out.append(f"    levels: {{{pairs}}}")
+    if "former_levels" in entry:
+        for line in comments.get("former_levels", "").split("\n"):
+            out.append(f"    # {line}")
+        fpairs = ", ".join(f"{k}: {v}" for k, v in entry["former_levels"].items())
+        out.append(f"    former_levels: {{{fpairs}}}")
     if "npc" in entry:
         for line in FIELD_COMMENTS["npc"].split("\n"):
             out.append(f"    # {line}")
@@ -928,7 +952,9 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # against that repaired number rather than the raw stored byte, or
         # an unedited export-then-import of a trained Curse party would
         # count as an instruction and rewrite the disk.
-        exported_code = c64_codec.read(rec, game=game).get("char_class")
+        exported_read = c64_codec.read(rec, game=game)
+        exported_code = exported_read.get("char_class")
+        exported_former = exported_read.get("former_levels") or {}
 
         # The name identifies the character in the file and is exported for
         # that reason, but it is not editable through this import: #145 is
@@ -1035,6 +1061,93 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 changes.append(f"slot {slot} {who}: {name} level "
                                f"{rec.get(field)} -> {want_level}")
                 rec.set(field, want_level)
+
+        # The class a dual-classed human left, and the level he left it at:
+        # goldbox/neutral.py's `former_levels`, one neutral value for the
+        # C64's own pair (`dual_class_slot` names the class,
+        # `dual_class_level` is the level -- `goldbox/c64_codec.py` writes
+        # the same pair from the same field on a conversion). Donald's
+        # decision (#256, 2026-09-07): a full editable field, and the
+        # importer refuses a value the game would read as an instruction it
+        # cannot take back rather than writing it -- the game decides
+        # whether a character may change class again by reading exactly
+        # these two bytes, and gives no message a player would ever see if
+        # they disagree with what actually happened. Refusals fire only
+        # when the value actually differs from what the record already
+        # holds, so importing an unedited export never touches the pair.
+        if "former_levels" in entry:
+            given_raw = entry["former_levels"] or {}
+            if not isinstance(given_raw, dict):
+                raise ValueError_(
+                    f"slot {slot} {who}: former_levels must be a mapping of "
+                    f"class name to level")
+            known_classes = {n for _, n in class_table(game)}
+            for cname in given_raw:
+                if cname not in known_classes:
+                    raise ValueError_(
+                        f"slot {slot} {who}: former_levels: {cname!r} is "
+                        f"not a class {game.title} has; use one of: "
+                        f"{', '.join(sorted(known_classes))}")
+            given = dict(given_raw)
+            if given != exported_former:
+                shape = c64_codec.record_shape(game)
+                if not shape.dual_class:
+                    raise ValueError_(
+                        f"slot {slot} {who}: {game.title} has no field for "
+                        f"a former class; former_levels must be left as "
+                        f"exported")
+                for cname, lvl in given.items():
+                    try:
+                        ilvl = int(lvl)
+                    except (TypeError, ValueError):
+                        ilvl = None
+                    if ilvl in (0, None):
+                        raise ValueError_(
+                            f"slot {slot} {who}: former_levels: {cname} has "
+                            f"no level -- the pair is half-written. Remove "
+                            f"the entry to say the character never left "
+                            f"{cname}, or give the level {cname} was left "
+                            f"at")
+                    if not 1 <= ilvl <= 255:
+                        raise ValueError_(
+                            f"slot {slot} {who}: former_levels: {cname} "
+                            f"level {lvl!r} is outside what a class can "
+                            f"reach (1-255)")
+                    given[cname] = ilvl
+                if len(given) > 1:
+                    raise ValueError_(
+                        f"slot {slot} {who}: former_levels names "
+                        f"{len(given)} classes "
+                        f"({', '.join(sorted(given))}), but the record can "
+                        f"hold only one -- no character has ever been seen "
+                        f"to change class twice")
+                current_names = classes_to_names(rec.class_bits, game)
+                if len(current_names) == 1 and current_names[0] in given:
+                    raise ValueError_(
+                        f"slot {slot} {who}: former_levels names "
+                        f"{current_names[0]}, which is also this "
+                        f"character's only current class -- a character "
+                        f"cannot have left the class it is currently, and "
+                        f"only, in")
+                if not classes_changed:
+                    raise ValueError_(
+                        f"slot {slot} {who}: former_levels changed with no "
+                        f"change to classes to justify it. The game only "
+                        f"sets this pair when a class change actually "
+                        f"happens; edit classes as well, or leave "
+                        f"former_levels as exported")
+                if given:
+                    name_, level_ = next(iter(given.items()))
+                    field = LEVEL_FIELD_BY_CLASS[name_]
+                    slot_num = (layout.field_by_name(field).offset
+                               - layout.field_by_name("level_magic_user").offset)
+                else:
+                    slot_num, level_ = 0, 0
+                changes.append(f"slot {slot} {who}: former_levels "
+                               f"{exported_former} -> {given}")
+                rec.set("dual_class_slot", slot_num)
+                rec.set("dual_class_level", level_)
+
         if not rec.npc_marker_is_consistent:
             changes.append(
                 f"slot {slot} {who}: WARNING the six NPC marker bytes disagree "
