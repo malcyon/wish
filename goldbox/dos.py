@@ -2905,7 +2905,8 @@ def write_shape(char: NeutralCharacter,
 def write(char: NeutralCharacter,
           portraits: PortraitTables | None = None,
           shape: "int | str | DosShape | None" = None,
-          icon: "DosIcon | None" = None
+          icon: "DosIcon | None" = None,
+          recompute_thief_skills: bool = True
           ) -> tuple[bytes, bytes, bytes, WriteReport]:
     """Build a DOS record and its item and effect payloads from a neutral
     character.
@@ -3259,6 +3260,15 @@ def write(char: NeutralCharacter,
     # its own, and a blanket recompute would silently overwrite whichever it
     # turns out to be with a guess.
     #
+    # **And `recompute_thief_skills=False` turns both branches off for a
+    # caller writing this record on the way to somewhere else.**
+    # `goldbox.amiga.write_later` builds an Amiga record by writing a DOS one
+    # and converting it, so a recompute here would put a number into an Amiga
+    # save on the strength of a DOS engine that record will never be read by.
+    # Nobody has read Amiga Curse's own thief routine, so the honest thing
+    # there is the source's own bytes (#440, and the proof in
+    # `tests/test_amigalaterproof.py` is what caught it).
+    #
     # `w.get`, not `use`: the thief level, race and dexterity feeding this
     # were already taken by the `WRITE_DIRECT` copy loop above.
     #
@@ -3271,7 +3281,8 @@ def write(char: NeutralCharacter,
     computed_thief_skills = None
     thief_skill_reason = None
     thief_level = w.get("levels", {}).get("thief", 0)
-    if thief_level and port in _THIEF_SKILL_RECOMPUTE_FROM_PORTS:
+    if (thief_level and recompute_thief_skills
+            and port in _THIEF_SKILL_RECOMPUTE_FROM_PORTS):
         computed_thief_skills = level_tables.dos_thief_skills(
             thief_level, w.get("race", 0), shape.key,
             dexterity=w.get("dexterity", 0))

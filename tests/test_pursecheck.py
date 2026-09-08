@@ -8,8 +8,9 @@ other six were untested on any title but Pool of Radiance. It was the last
 unverified cell in that table anybody on this project could reach.
 
 **The confirming half of that cannot be a test**, because it needs the running
-game. `tools/pursecheck.py` is the run and #33 and #32 carry what the game
-drew, on VICE pool slot 0, 2026-09-08, six boots:
+game. `tools/pursecheck.py` is the run, and `#33 (One Silver Blades session, for the
+whole editor path)` and `#32 (One Curse session, to get a party with items)`
+carry what the game drew, on VICE pool slot 0, 2026-09-08, six boots:
 
 | disk | character | the money box the game drew | `ENCUMBRANCE` |
 |---|---|---|---|
@@ -25,8 +26,9 @@ What is asserted here is the half a machine with no emulator can check: that
 read, that it puts them nowhere else, and that the encumbrance the engine drew
 is the one this file predicts from the same bytes.
 
-Four of the eight tests need the specimen tree, which CI has none of; the
-other four are the screen reader and the arithmetic and run everywhere.
+Eight of the twelve tests need the specimen tree, which CI has none of --
+four functions run once per title. The other four are the screen reader and
+the arithmetic, and they run everywhere.
 """
 
 import pathlib

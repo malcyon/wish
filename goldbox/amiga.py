@@ -4961,7 +4961,13 @@ def write_later(char: NeutralCharacter,
     from . import dos as _dos
 
     shape = later_write_shape(char, shape)
-    record, itm, spc, dosrep = _dos.write(char, shape=shape.dos, icon=icon)
+    # `recompute_thief_skills=False`: the DOS record here is a stepping
+    # stone to an Amiga one, and the two thief-skill recomputes in
+    # `goldbox.dos.write` rest on DOS's and the C64's own routines (#431,
+    # #440). Nobody has read Amiga Curse's, so this record keeps the source's
+    # bytes rather than carrying another port's answer into an Amiga save.
+    record, itm, spc, dosrep = _dos.write(char, shape=shape.dos, icon=icon,
+                                          recompute_thief_skills=False)
     out = from_dos_record_later(record, shape)
 
     stride = shape.dos.item_size

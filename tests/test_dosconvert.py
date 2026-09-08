@@ -176,17 +176,34 @@ def test_a_dwarf_thief_still_gets_a_c64_specific_number():
     assert got == (30, 35, 35, 15, 10, 10, 75, -5)
 
 
-def test_a_curse_thief_still_gets_the_copied_row():
-    """Curse ships the same racial table on both ports, and recomputing it
-    anyway is blocked by `#437 (A Curse thief's stored skills sit seven
-    points above the rows the engine's own tables give)` -- so a converted
-    Curse thief still keeps `DIRECT`'s plain copy."""
+def test_a_curse_thief_gets_the_table_row_rather_than_what_dos_stored():
+    """Curse ships the same racial table on both ports, so this is not
+    `#431 (A converted halfling thief keeps the other port's skill
+    percentages, because the two ports ship different halfling rows)`'s
+    reason -- it is `#440 (A Curse thief converted between DOS and the C64
+    arrives seven points off, because DOS stores a stack leftover in all
+    eight skill columns)`'s.
+
+    DOS Curse's own routine adds an uninitialised stack byte to all eight
+    columns (`#437 (A Curse thief's stored skills sit seven points above the
+    rows the engine's own tables give)`, `GAME.OVR 0x03B74A`), so what the
+    source record holds is not what any table produces. The C64 record gets
+    the clean row computed here, and the eighth column is where the two
+    ports visibly part: DOS clamps a negative read-languages to zero and the
+    C64 stores the byte.
+
+    This test asserted the copy until 2026-09-08, which is the behaviour
+    `#440` fixed.
+    """
     stored = (35, 30, 25, 20, 25, 15, 70, 0)
     rec, _ = c64_codec.write(_thief_character(
         race=5, dexterity=12, stored=stored,
         game="curse-of-the-azure-bonds"))
     got = tuple(rec.get(n) for n in _THIEF_SKILL_FIELDS)
-    assert got == stored
+    want = levels.thief_skills(1, 5, "curse-of-the-azure-bonds", dexterity=12)
+    assert got == tuple(want)
+    assert got != stored
+    assert got[7] == -5
 
 
 def test_the_class_level_permutation_covers_every_c64_slot():
