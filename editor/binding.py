@@ -162,6 +162,17 @@ def field_name(widget_name: str) -> str | None:
 NOT_ON_THE_SHEET = (
     "portrait_head", "portrait_body",
     "attack_forms",       # a monster's two attack forms; not a player field
+    # What a creature is worth to kill: a 16-bit base and a per-hit-point
+    # byte, which the end-of-combat routine sums as `base + hp_rolled x
+    # per_hp`. A creature's field, not a player's -- 2 of 474 player-record
+    # paths on this machine are non-zero and both are the same record.
+    # Named on 2026-09-08 (#254 (Two DOS gaps the Amiga port gives a shape
+    # to: a 16-bit field in gap_13c, and a pointer at the end of the Silver
+    # Blades item)); until then they were an unnamed gap, which is why this
+    # list did not have to mention them. Pools of Darkness and Treasures
+    # dropped the per-hit-point byte, so only the first exists there.
+    "experience_award",
+    "experience_per_hit_point",
     "turn_power",         # the caster's half of turning, zero in this game
     "attack_level",       # Curse's fighting level, zero in this game
     "level_knight",       # Krynn class slots of the per-class level array
