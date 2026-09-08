@@ -70,7 +70,6 @@ sys.path.insert(0, str(ROOT))
 from goldbox import c64_save, games  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
-from goldbox.savegame import load_save  # noqa: E402
 
 #: The item screen's own columns, from a Pool of Radiance capture kept in
 #: `work/issue252/probe4/screen.txt` and unchanged in Curse: a `YES`/`NO`
@@ -112,12 +111,6 @@ def describe_block(raws: list[bytes], names: dict[int, str] | None) -> list[dict
                     "quantity": raw[10], "readied": bool(raw[6] & READIED),
                     "raw": raw.hex()})
     return out
-
-
-def party_slots(path: str | pathlib.Path) -> dict[str, int]:
-    """Name to save slot, for every occupied record."""
-    _game, sg0, _sg1 = load_save(D64.open(str(path)))
-    return {s.record.name: s.index for s in sg0.marching_order}
 
 
 # --- staging: the edits, through the editor's own handlers -------------------

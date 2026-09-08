@@ -20,9 +20,14 @@ What is asserted here is the half a machine with no emulator can check: that
 `tools/inventorycheck.stage` puts those bytes in the item area the game then
 read, and that it puts them nowhere else.
 
-Every test skips without the specimen tree, which CI has none of, and the two
-that add an item skip without the player's own game disks -- adding one copies
-a record off them (`editor.inventory`).
+Six of the nine tests need the specimen tree, which CI has none of, **and the
+same six need the player's own game disks**: `_disks` is called at the top of
+each, before anything is staged, so a machine with a specimen tree and no
+disks skips all six rather than the two that add an item. Adding one copies a
+record off the player's disks (`editor.inventory`); the other four are held to
+the same requirement so a pair reports together instead of half of it running.
+The remaining three -- the lower-case glyph transform and the two item-list
+readers -- need neither and run everywhere.
 """
 
 import pathlib

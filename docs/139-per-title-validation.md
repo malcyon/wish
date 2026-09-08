@@ -127,8 +127,8 @@ applicable.
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
-| Curse of the Azure Bonds | 49 | **38** | 0 | 6 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **36** | 2 | 6 | 0 | 5 |
+| Curse of the Azure Bonds | 49 | **39** | 0 | 5 | 0 | 5 |
+| Secret of the Silver Blades | 49 | **37** | 2 | 5 | 0 | 5 |
 
 **These numbers are counted from the rows above and the previous ones were
 not.** Counting `V (gold only)` under A8 and the two `U, expected broken`
