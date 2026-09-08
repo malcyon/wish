@@ -39,6 +39,7 @@ import json
 import os
 import pathlib
 import shutil
+import signal
 import struct
 import sys
 import time
@@ -272,13 +273,72 @@ def where_drawn(x: int, y: int, camera: tuple[int, int]) -> tuple[int, int]:
             FLOOR_ORIGIN[1] + SQUARE_CELLS * (x - camera[0]))
 
 
+class Terminated(Exception):
+    """SIGTERM or SIGINT arrived -- an outer `timeout` wrapper, usually."""
+
+
+def _terminated(signum, frame):
+    raise Terminated(f"signal {signum}")
+
+
+def catch_signals() -> None:
+    """Make a signal unwind the run instead of killing it where it stands.
+
+    A `timeout 200 tools/savecheck.py ...` sends SIGTERM, Python has no
+    handler for it, and the process dies mid-statement: no `"failed"` entry,
+    no traceback, and -- worse -- no `finally`, so the emulator slot stays
+    leased and VICE keeps running.  Raising instead means the run stops
+    through its own `except`, writes what went wrong, and tears its slot
+    down.  `#380` is the ticket where a lost traceback cost a repeat run.
+
+    Best effort: `signal.signal` only works on the main thread, and a caller
+    that is not on one gets the old behaviour rather than an error.
+    """
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _terminated)
+        except (ValueError, OSError):        # not the main thread
+            pass
+
+
+def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
+    """Move an existing log out of the way, and say where it went.
+
+    **A second run on the same disk used to truncate the first one's log.**
+    `--out` defaults to `work/savecheck/<disk stem>.jsonl`, which does not
+    have `--tag` in it, so two runs of the same `.d64` share one path however
+    differently they are tagged.  On 2026-09-07 a failure worth diagnosing was
+    photographed, logged, and then erased by the immediate retry that was
+    trying to reproduce it -- the retry opens its log before it boots, so the
+    evidence went minutes before the second run reached the same point
+    (`#380`).  The old file is stamped with its own last-written time, so the
+    name says which run it was.
+    """
+    if not out.exists():
+        return None
+    when = time.strftime("%Y%m%d-%H%M%S", time.localtime(out.stat().st_mtime))
+    kept = out.with_name(f"{out.stem}-{when}{out.suffix}")
+    n = 1
+    while kept.exists():
+        kept = out.with_name(f"{out.stem}-{when}-{n}{out.suffix}")
+        n += 1
+    out.rename(kept)
+    return kept
+
+
 class Log:
     """Everything the run saw, to the terminal and to a `.jsonl` beside it."""
 
     def __init__(self, out: pathlib.Path):
         out.parent.mkdir(parents=True, exist_ok=True)
         self.dir = out.parent
+        #: False once the terminal has gone, so nothing tries to talk to it
+        #: again -- see `say`.
+        self.talking = True
+        kept = keep_old_log(out)
         self.file = open(out, "w")
+        if kept is not None:
+            self.say(f"the last log at this path was kept as {kept.name}")
 
     def emit(self, kind: str, **kw) -> None:
         kw["kind"] = kind
@@ -287,7 +347,23 @@ class Log:
         self.file.flush()
 
     def say(self, *a) -> None:
-        print(*a, flush=True)
+        """The terminal half, and it must never be able to stop the run.
+
+        A driven run is usually started as `... | head -40` or through a
+        harness that stops reading, and `print` to a pipe nobody is reading
+        any more raises `BrokenPipeError`.  Raised out of the failure handler
+        it takes the rest of the handler with it, which leaves behind exactly
+        what `#380` left behind: the screenshot, the `"failure_screen"` entry
+        that comes before the first `say`, and no `"failed"` entry at all.
+        The `.jsonl` is the record; the console is a convenience, and a
+        convenience that has gone away is not a reason to lose the record.
+        """
+        if self.talking:
+            try:
+                print(*a, flush=True)
+            except OSError:
+                self.talking = False
+                self.emit("console_closed")
 
     def close(self) -> None:
         self.file.close()
@@ -735,6 +811,7 @@ def watch_turns(seen: list, evidence=None) -> object:
 
 
 def run(args, log: Log) -> int:
+    catch_signals()
     slot = S.claim_slot(args.slot, f"savecheck/{pathlib.Path(args.disk).name}")
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None
@@ -751,7 +828,16 @@ def run(args, log: Log) -> int:
         # the game itself accepted the disk as a saved game, so its answer is
         # the one bytes cannot give.
         listed = sess.load_save()
-        log.emit("picker", listed=listed)
+        # The screen `select_row` is about to be pointed at, read at the
+        # moment `load_save` hands back.  `#380`'s first candidate is that
+        # this returns while the party-creation menu is still redrawing, and
+        # the only way to tell that from a menu that is sitting there ready
+        # is to have the rows from this instant rather than from the failure
+        # a fraction of a second later.
+        s = sess.screen()
+        log.emit("picker", listed=listed, bitmap=s is None,
+                 rows=[] if s is None else
+                 [line.rstrip() for line in s.rows() if line.strip()])
         log.say(f"the game's LOAD SAVED GAME accepted the disk: {listed}")
         if not listed:
             raise RuntimeError("the game did not load the save")
@@ -970,10 +1056,17 @@ def run(args, log: Log) -> int:
                 log.emit("no_fight", steps=steps)
     except Exception as exc:
         import traceback
-        # Photograph what the machine was showing.  A run that stops with
-        # `no world bar` and no picture cannot say whether the game was
-        # mid-animation, sitting on a prompt nobody answered, or wedged --
-        # and that is the whole question a conversion run is asking.
+        # **The traceback first, before the photograph.**  It used to go last,
+        # after a screenshot and a screen read that between them take a fifth
+        # of a second and reach out to two other processes, and a run killed
+        # in that window loses the one thing nothing else can reconstruct:
+        # what the exception was.  That is `#380`, where a failure was
+        # photographed and its `"failed"` line never seen.  The picture is
+        # still taken -- a run that stops with `no world bar` and no picture
+        # cannot say whether the game was mid-animation, sitting on a prompt
+        # nobody answered, or wedged -- it is only taken second.
+        log.emit("failed", error=repr(exc), traceback=traceback.format_exc())
+        traceback.print_exc()
         try:
             if sess is not None:
                 sess.kbd.screenshot(str(log.dir / f"{args.tag}-failure.png"))
@@ -987,8 +1080,6 @@ def run(args, log: Log) -> int:
                     log.say(f"    |{line}|")
         except Exception:
             log.say("could not photograph the failure")
-        log.emit("failed", error=repr(exc), traceback=traceback.format_exc())
-        traceback.print_exc()
         rc = 1
     finally:
         for what, step in (("session close", lambda: sess and sess.close()),

@@ -698,9 +698,30 @@ class Session:
             self.slot.record(pgid=None)
         return killed
 
+    #: False once the console has gone.  Class-wide because there is one
+    #: console per process however many sessions are driving it.
+    _talking = True
+
     @staticmethod
     def log(*a) -> None:
-        print(*a, flush=True)
+        """Say something, and never let the saying of it stop the drive.
+
+        A driven run is usually started as `... 2>&1 | head -40`, and once
+        `head` has its forty lines and exits, the next `print` raises
+        `BrokenPipeError`.  This is called from inside `select_row`,
+        `attach` and `handle_prompt`, none of which expects an exception from
+        a log line -- so a console that went away used to come back as a
+        driver failure on whatever menu the game happened to be showing,
+        which is `#380`.  The `.jsonl` its caller writes is the record; the
+        terminal is a convenience, and one that has gone is dropped rather
+        than raised.
+        """
+        if not Session._talking:
+            return
+        try:
+            print(*a, flush=True)
+        except OSError:
+            Session._talking = False
 
     # -- disk -------------------------------------------------------------
 
@@ -817,9 +838,21 @@ class Session:
         if want is None:
             return False
         self._last_prompt = time.time()
-        if os.path.abspath(want) != self.attached:
+        swapped = os.path.abspath(want) != self.attached
+        if swapped:
             self.log(f"  prompt -> {os.path.basename(want)}")
             self.attach(want)
+        # **Said out loud, because this keypress goes somewhere.**  A space
+        # sent at a disk prompt is buffered by the KERNAL, and if the game
+        # has moved on to a menu by the time it reads it, the space answers
+        # *that* instead -- which is one of the two candidates in `#380`.
+        # Only the re-attach used to be logged, so a run's console showed the
+        # prompts that changed disks and none of the keys, and a *second*
+        # space at a prompt already answered -- the one that can land on
+        # whatever replaced it -- showed nothing at all.
+        self.log("  answered the prompt with space" if swapped else
+                 f"  answered the prompt with space again, with "
+                 f"{os.path.basename(want)} already in the drive")
         self.kbd.key("space")
         return True
 
@@ -1159,15 +1192,35 @@ class Session:
         return self.pass_protection()
 
     def load_save(self) -> bool:
+        """Drive the party menu's `LOAD SAVED GAME` and say whether it took.
+
+        **Every step says which one gave up.**  All four failures used to be
+        a bare `return False`, and the caller turns any of them into one
+        sentence -- `the game did not load the save` -- so a run that got
+        four fifths of the way through is indistinguishable in the log from a
+        disk the picker would not list at all.  That cost `#380` a repeat
+        run: the failure screen showed the party *loaded*, which no reading
+        of "did not load the save" accounts for, and nothing said which wait
+        had actually run out.
+        """
         if self.wait_text("LOAD SAVED GAME", 240)[0] is None:
+            self.log("  the party menu never offered LOAD SAVED GAME")
             return False
         if not self.select_row("LOAD SAVED GAME"):
+            self.log("  the highlight would not go onto LOAD SAVED GAME")
             return False
         self.settle(4)
+        chose = time.time()
         if self.wait_text("LOAD SAVED GAME: YES", 60)[0] is None:
+            self.log("  no LOAD SAVED GAME: YES prompt in 60s -- either it "
+                     "never came up, or something answered it first")
             return False
+        self.log(f"  the confirm prompt came up {time.time() - chose:.1f}s "
+                 f"after the settle")
         self.kbd.key("Return")  # YES is already white
         hit, _ = self.wait_text("BEGIN ADVENTURING", 240)
+        if hit is None:
+            self.log("  the party menu never came back after the load")
         return hit is not None
 
     def begin_adventuring(self) -> bool:
