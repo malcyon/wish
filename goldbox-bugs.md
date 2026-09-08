@@ -37,6 +37,7 @@ a port fixed one, that is said.
 | 10 | Reload a save on the road and undiscovered places appear on the map | Pool of Radiance | engine | CONFIRMED, in game |
 | 11 | Every weapon in Tilverton's shop costs the same three platinum | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 12 | You can camp in the Slums for as long as you like and nothing ever finds you -- unless you have murdered the fortune teller | Pool of Radiance | script | CONFIRMED, in game |
+| 13 | Every thief gets another race's skill adjustments, and a halfling gets a penalty instead of a bonus | Secret of the Silver Blades | engine | CONFIRMED, in game |
 
 ---
 
@@ -608,3 +609,62 @@ in the same square and the flag at 255, the die was rolled on every rest, 13 of
 the same scripts as the C64's, so it is very likely there too and nobody has
 looked. `docs/207-c64-rest-interruption.md` has the addresses, the census of
 which of the thirty areas can interrupt a rest at all, and the measurement.
+
+---
+
+## 13. Every Silver Blades thief gets another race's skill adjustments
+
+**Read out of the game's own trainer, and then found in the eight numbers the
+game itself wrote after a training.**
+
+**What the game does.** A thief's eight skill percentages are three rows added
+together: one for the thief's level, one for its dexterity, and one for its
+race. The racial rows are laid out in the order the character-creation menu
+offers the races -- elf, half-elf, dwarf, gnome, halfling -- starting at the
+first row. The routine that adds them, `GEN $124D`, multiplies the race code by
+eight and indexes straight in, without first subtracting the one that would
+turn a race code of 1 into the first row. So every thief is given the *next*
+race's adjustments, and a halfling, the last of the five, is given the first
+row of the **dexterity** table that happens to sit immediately after the racial
+one.
+
+**What it should do.** Subtract one first. Its neighbour in the same overlay,
+the routine that decides which classes a race may take (`$17B1`), does exactly
+that; so do the same thief routines in the two earlier games, Pool of Radiance's
+`$2005` and Curse of the Azure Bonds' `$0FE6`. Silver Blades' is the only one of
+the three that omits it, and the row the elf should have been given is never
+read by anything.
+
+**The evidence.** MALACHITE, the dwarf thief/fighter SSI ships with the game.
+His eight stored percentages are the level and dexterity rows plus the
+**gnome's** row, on all eight columns, and they are not the dwarf's on any of
+the five columns where the two rows differ. He says it twice: once as the game
+ships him at thief 8, and again at thief 9 in a save the game's own training
+hall wrote on a Commodore 64 under emulation on 2026-09-06, where the trainer
+recomputed all eight and wrote the same wrong row.
+
+| MALACHITE, dwarf thief 9, dexterity 17 | open locks | find traps | move silently | hide in shadows | hear noise | climb walls | read languages |
+|---|---|---|---|---|---|---|---|
+| what the game stores | 77 | 70 | 80 | 66 | 40 | 83 | 45 |
+| what the dwarf's own row gives | 82 | 75 | 75 | 61 | 30 | 88 | 40 |
+
+**What the player sees.** Mostly a few points either way, and no reason to
+suspect anything: a dwarf thief who is five points worse at opening locks than
+the rulebook says and five points better at moving silently. **The halfling is
+the one that shows.** A halfling thief is meant to be the best sneak in the
+game -- +10 move silently, +15 hide in shadows -- and instead takes the
+penalties for a dexterity of 9: **-20 move silently and -10 hide in shadows.**
+A first-level halfling thief with a dexterity of 17 has a move silently of
+**0%** where the design gives it 30%, and can never once succeed at the thing
+its race exists to be good at.
+
+Two of the eight columns can be pushed below zero for a halfling with a low
+dexterity, because the penalty is then applied twice. Whether the game prints
+the wrap-around as a number in the two hundreds on the character sheet, or
+clamps it somewhere before display, has not been checked -- rolling a halfling
+thief with a dexterity of 9 or 10 and looking at `VIEW` would settle it.
+
+**Version.** Secret of the Silver Blades, Commodore 64. CONFIRMED -- read out
+of `GEN`, corroborated by the shipped party and by the game's own trainer
+writing the same row after five trainings. The other ports have not been
+looked at.
