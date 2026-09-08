@@ -1263,16 +1263,14 @@ class AutomapBinding(QObject):
         # character who can level, and a save disk is a copy. The exception is
         # the clamp taking a class below a threshold it had already passed --
         # that costs a level the character earned, so it is asked about.
-        plan = actions.LevelUp.preview(member.record, class_name,
-                                       spell or None, game)
-        if plan is not None and plan.classes_disqualified:
-            lost = ", ".join(plan.classes_disqualified)
-            if not self.ask(
-                    f"{member.name} as a {class_name} {plan.to_level} drops "
-                    f"{plan.experience_lost} experience, which takes {lost} "
-                    f"below the next threshold and costs a level already "
-                    f"earned. Go ahead?"):
-                return
+        # `confirmation` previews the whole visit `plan_all` would write, not
+        # one step -- see its own docstring and
+        # `#418 (The level-up confirmation dialog previews one step of a
+        # Curse dual-training press, not the whole chain)`.
+        question = actions.LevelUp.confirmation(member.record, member.name,
+                                                spell or None, game)
+        if question is not None and not self.ask(question):
+            return
         outcome = action.apply(target, slot=slot, class_name=class_name,
                                spell=spell or None)
         self.messages.say(f"level up: {outcome.message}",

@@ -3412,6 +3412,23 @@ def amiga_shape_for(size: int) -> "dos_layout.DosShape":
 #: VICE)` exists to stop.
 CONVERTS: "tuple[dos_layout.DosShape, ...]" = (dos_layout.POOL_OF_RADIANCE,)
 
+#: The titles a C64 or DOS save can be **converted to** an Amiga save disk
+#: today, as the DOS shapes whose `key` `editor/convert.py` registers a
+#: direction against -- the mirror of `dos.WRITES`, and named the same way
+#: for the same reason: what the *destination* can be written from nothing,
+#: not what the source happens to be.
+#:
+#: Pool of Radiance alone (`#316 (Write the Amiga Pool of Radiance saved
+#: game from the source save, so a converted party arrives where it was
+#: standing)`): `new_por_savegame` and `make_por_save_disk` build the whole
+#: 13,141-byte `savgam<letter>.dat` and the disk around it with no template,
+#: proven in two WinUAE runs, one from a C64 source and one from a DOS one.
+#: Curse of the Azure Bonds and Secret of the Silver Blades have no such
+#: writer -- `#359 (Bring the Amiga into every permutation: C64 ↔ Amiga and
+#: DOS ↔ Amiga)`'s step 6 -- so they stay off this tuple until one exists,
+#: the same way they are missing from `CONVERTS` above.
+WRITES: "tuple[dos_layout.DosShape, ...]" = (dos_layout.POOL_OF_RADIANCE,)
+
 #: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**
 #: within each byte, where DOS spends one byte per spell for ids 1..117.
 #:

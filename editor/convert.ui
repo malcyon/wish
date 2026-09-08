@@ -55,9 +55,22 @@
       </layout>
      </item>
      <item row="4" column="0">
-      <widget class="QLabel" name="label_folder"/>
+      <widget class="QLabel" name="label_disk"/>
      </item>
      <item row="4" column="1">
+      <layout class="QHBoxLayout" name="disk_row" stretch="1,0">
+       <item>
+        <widget class="QLabel" name="convert_disk"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="convert_choose_disk"/>
+       </item>
+      </layout>
+     </item>
+     <item row="5" column="0">
+      <widget class="QLabel" name="label_folder"/>
+     </item>
+     <item row="5" column="1">
       <layout class="QHBoxLayout" name="folder_row" stretch="1,0">
        <item>
         <widget class="QLabel" name="convert_folder"/>

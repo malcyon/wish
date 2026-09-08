@@ -35,7 +35,17 @@ rule against a template. Today that is:
   (`goldbox.amiga.read_por_slot` then `goldbox.dos.new_dos_save_from`,
   proven in DOSBox by
   `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing
-  in the Slums on the Amiga arrives there under DOSBox)`).
+  in the Slums on the Amiga arrives there under DOSBox)`);
+* C64 `.D64` → Amiga save disk, and DOS save folder → Amiga save disk, one
+  row each per entry of `goldbox.amiga.WRITES` -- Pool of Radiance alone
+  (`goldbox.amiga.new_por_savegame` and `goldbox.amiga.make_por_save_disk`,
+  which build the whole `POOLSAVE.ADF` from the source save with no
+  template, proven in two WinUAE runs by
+  `#316 (Write the Amiga Pool of Radiance saved game from the source save,
+  so a converted party arrives where it was standing)`). The disk this
+  writes carries the party; the area's own script comes off the player's own
+  Amiga disk 2 (`ecl.dax`, the `POOLDATA` volume), read and never written
+  to.
 
 **This registry derives every row from a library tuple rather than listing
 them, which is the point:** DOS → C64 from `goldbox.dos.CONVERTS`, C64 → DOS
@@ -86,7 +96,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import amiga, dos, dos_layout, games
+from goldbox import amiga, dos, dos_layout, games, neutral
 
 from . import dosimport
 
@@ -706,12 +716,189 @@ class AmigaToDos(C64ToDos):
         return sorted(folder / name for name in rehearsal.files)
 
 
+# ---------------------------------------------------------------------------
+# C64 and DOS -> an Amiga save disk (#36, #316)
+# ---------------------------------------------------------------------------
+#
+# `options` for either direction below is the path to the player's own Amiga
+# Pool of Radiance disk 2 -- never disk 1, and never a folder -- because the
+# one thing the writer cannot build from the source save is the area's own
+# 7680-byte ECL script, which the Amiga keeps in a single `/ecl.dax` on the
+# `POOLDATA` volume (`#316`). The disk named is read from and never written
+# to: what this writes is a fresh `POOLSAVE.ADF`, formatted from nothing,
+# inside the folder the player chose -- the save disk a player is actually
+# handed, settled on `#36 (Write an Amiga disk image, not just the character
+# files)`'s comment of 2026-09-07 over the other Amiga route (writing into a
+# copy of the game disk's own `save` drawer), which nobody has asked for.
+
+#: The one file either direction below writes. Uppercase, matching
+#: `CONVERTED_AMIGA`'s own wording below and the volume the game itself asks
+#: for at `LOAD SAVED GAME`'s `PATH FOR SAVE` prompt.
+POOLSAVE_FILENAME = "POOLSAVE.ADF"
+
+#: Where every Amiga Pool of Radiance area's own script lives -- one file,
+#: on disk 2, the `POOLDATA` volume. `tools/toamigapor.py`'s own `ECL_DAX`,
+#: repeated here because that module is a script this one must not import.
+_ECL_DAX_PATH = "/ecl.dax"
+
+
+@dataclasses.dataclass
+class AmigaWriteRehearsal(Rehearsal):
+    """What either Amiga-destination direction needs to write again.
+
+    Unlike `DosWriteRehearsal` and `AmigaDosRehearsal`, `write` does not run
+    the conversion a second time: `goldbox.amiga.make_por_save_disk` writes
+    into an in-memory `AmigaDisk` rather than onto a filesystem, so `files`
+    already holds the exact bytes a second run would produce and `write`
+    only has to put them down.
+    """
+
+    party: list
+    state: Any
+    slot: str
+    savegame: bytes
+
+
+def _rehearse_por_savegame(state: Any, slot: str, party: list,
+                           ecl_dax: bytes) -> AmigaWriteRehearsal:
+    """The tail both Amiga-destination directions share: build the saved
+    game and the disk around it, and a report neither `write_por` nor
+    `make_por_save_disk` return on their own.
+
+    `report.dropped` is the union of each character's own reader-side drops
+    -- a C64 record's combat-icon screen codes, a DOS record's field with no
+    Amiga home -- and `goldbox.amiga.write_por`'s own drops for the same
+    character, which is what `write_por`'s report already carries by way of
+    `goldbox.dos.write`'s `SilencingWriter.finish` (`goldbox/neutral.py`).
+    `report.warnings` gets the same, plus `PorSaveReport.converted` -- the
+    place, the clock and the quest-flag count `tools/toamigapor.py` already
+    prints -- so a player reading the pane sees where the party has arrived.
+    """
+    portraits = any(c.get("portrait_head") for c in party)
+    savegame, save_report = amiga.new_por_savegame(
+        state, slot, len(party), ecl_dax, portraits=portraits)
+    disk = amiga.make_por_save_disk(slot, party, savegame)
+    problems = disk.verify()
+    if problems:
+        raise amiga.AmigaRecordError(
+            "the disk this conversion built does not verify:\n  "
+            + "\n  ".join(problems))
+
+    report = neutral.Report()
+    for char in party:
+        _, _, _, char_report = amiga.write_por(char)
+        report.dropped.extend(char_report.dropped)
+        report.warnings.extend(char_report.warnings)
+    report.warnings.extend(save_report.converted)
+
+    return AmigaWriteRehearsal(
+        report, {POOLSAVE_FILENAME: disk.to_bytes()}, party, state, slot,
+        savegame)
+
+
+class C64ToAmiga(Direction):
+    """A C64 save becomes an Amiga save disk, for any title in
+    `goldbox.amiga.WRITES` (#316, #36).
+
+    One instance per entry of `WRITES` -- see `DIRECTIONS` below -- so a
+    title joining that tuple needs no edit to this class. `options` is the
+    path to the player's own Amiga disk 2, never disk 1.
+
+    A C64 source has no slot of its own, so the built saved game is always
+    slot `A` -- the same rule `C64ToDos.rehearse` follows for a fresh DOS
+    folder.
+    """
+
+    source_port = "c64"
+    destination_port = "amiga"
+
+    def __init__(self, shape: dos_layout.DosShape):
+        self.shape = shape
+        self.source_key = shape.key
+        self.destination_game = shape
+        # The C64 title `dos.c64_party` reads the source disk against --
+        # `games.by_key` raises loudly at import time if `WRITES` ever named
+        # a title with no C64 port, the same guard `C64ToDos.__init__` keeps.
+        self.title = games.by_key(shape.key)
+
+    def rehearse(self, source: Source, slot: str,
+                options: "str | pathlib.Path") -> AmigaWriteRehearsal:
+        from goldbox.amiga_adf import AmigaDisk
+
+        ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
+        party, _icons = dos.c64_party(source.save0, source.save1,
+                                      game=self.title)
+        state = amiga.por_state_from_c64(source.save0, str(source.path))
+        return _rehearse_por_savegame(state, "A", party, ecl_dax)
+
+    def write(self, rehearsal: AmigaWriteRehearsal,
+             folder: str | pathlib.Path) -> list[pathlib.Path]:
+        folder = pathlib.Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / POOLSAVE_FILENAME
+        path.write_bytes(rehearsal.files[POOLSAVE_FILENAME])
+        return [path]
+
+
+class DosToAmiga(Direction):
+    """A DOS save becomes an Amiga save disk, for any title in
+    `goldbox.amiga.WRITES` (#316, #36).
+
+    One instance per entry of `WRITES` -- see `DIRECTIONS` below. `options`
+    is the path to the player's own Amiga disk 2, exactly as `C64ToAmiga`
+    takes it.
+
+    **The built saved game keeps the source's own slot letter**, not the
+    fixed `A` a C64 source gets -- `#316`'s comment of 2026-09-07:
+    *"A for a C64 source, which has no slot; the source's own letter for a
+    DOS `SAVGAM<slot>.DAT`, the letter `CONVERTED_DOS` already reports."*
+    So the `slot` this class's own `rehearse` is handed (always `"A"`, the
+    dialog's fixed DOS-destination default -- there is no DOS destination
+    here, so nothing reads it) is not what is written; `source.slot` is.
+    """
+
+    source_port = "dos"
+    destination_port = "amiga"
+
+    def __init__(self, shape: dos_layout.DosShape):
+        self.shape = shape
+        self.source_key = shape.key
+        self.destination_game = shape
+
+    def rehearse(self, source: Source, slot: str,
+                options: "str | pathlib.Path") -> AmigaWriteRehearsal:
+        from goldbox.amiga_adf import AmigaDisk
+
+        if not source.slot:
+            # Unreachable through `Source.detect`, whose DOS branches always
+            # name a slot; only a caller building a `Source` by hand can get
+            # here, mirroring `AmigaToDos.rehearse`'s own guard.
+            raise ConvertError(f"{source.path} names no DOS save slot")
+        letter = source.slot
+        ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
+        party = [dos.to_neutral(c) for c in dos.read_party(source.path, letter)]
+        savgam_path = pathlib.Path(source.path) / f"SAVGAM{letter}.DAT"
+        state = amiga.por_state_from_dos(savgam_path.read_bytes(),
+                                         str(savgam_path))
+        return _rehearse_por_savegame(state, letter, party, ecl_dax)
+
+    def write(self, rehearsal: AmigaWriteRehearsal,
+             folder: str | pathlib.Path) -> list[pathlib.Path]:
+        folder = pathlib.Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / POOLSAVE_FILENAME
+        path.write_bytes(rehearsal.files[POOLSAVE_FILENAME])
+        return [path]
+
+
 #: One DOS → C64 row per entry of `goldbox.dos.CONVERTS`, one C64 → DOS row
 #: per entry of `goldbox.dos.WRITES` -- today Pool of Radiance, Curse of the
-#: Azure Bonds and Secret of the Silver Blades, both ways -- and one
-#: Amiga → C64 row per entry of `goldbox.amiga.CONVERTS`, today Pool of
-#: Radiance alone. See the module docstring for what would extend this and
-#: the issues it waits on.
+#: Azure Bonds and Secret of the Silver Blades, both ways -- one
+#: Amiga → C64 row and one Amiga → DOS row per entry of
+#: `goldbox.amiga.CONVERTS`, and one C64 → Amiga row and one DOS → Amiga row
+#: per entry of `goldbox.amiga.WRITES` -- Pool of Radiance alone for every
+#: Amiga tuple. See the module docstring for what would extend this and the
+#: issues it waits on.
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
 #: names a title `DOS_TO_C64_NAMES` does not; `games.UnknownGameError` does
 #: the same for `WRITES` and a title with no C64 game at all.
@@ -723,6 +910,10 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
     AmigaToC64(shape) for shape in amiga.CONVERTS
 ) + tuple(
     AmigaToDos(shape) for shape in amiga.CONVERTS
+) + tuple(
+    C64ToAmiga(shape) for shape in amiga.WRITES
+) + tuple(
+    DosToAmiga(shape) for shape in amiga.WRITES
 )
 
 
@@ -854,6 +1045,14 @@ DIALOG_TITLE = "Convert a save"
 LABEL_SOURCE = "From"
 LABEL_TO = "To"
 LABEL_GAME = "DOS game folder"
+#: The Amiga disk row's label, shown only for an Amiga destination. Ruled on
+#: `#316 (Write the Amiga Pool of Radiance saved game from the source save,
+#: so a converted party arrives where it was standing)` on 2026-09-07, over
+#: `Amiga disk 2` and `Amiga data disk`, because it is unambiguous the
+#: player is being asked for one of his own original game disks rather than
+#: anything Wish produced. Not `#36 (Write an Amiga disk image, not just the
+#: character files)`'s own -- `#316` settled it first and this one follows.
+LABEL_DISK = "Amiga game disk 2"
 LABEL_FOLDER = "Write to"
 
 #: The heading above the report pane. Donald's own words, 2026-09-07, from
@@ -883,6 +1082,9 @@ BUTTON_CONVERT = "Convert"
 #: `GAME_TITLE` and `DESTINATION_TITLE`, approved 2026-08-25.
 SOURCE_TITLE = "Choose a save"
 GAME_TITLE = "Choose the DOS game folder"
+#: The Amiga disk row's own picker title, ruled the same night as
+#: `LABEL_DISK` and following its own wording.
+DISK_TITLE = "Choose Amiga game disk 2"
 FOLDER_TITLE = "Choose where to write"
 
 #: The save picker's filter: a `.d64` or the DOS save container itself, so
@@ -904,20 +1106,28 @@ SOURCE_FILTER = ("Saved games "
                  "(*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
                  "All files (*)")
 
+#: The Amiga disk row's own picker filter. Approved 2026-09-07, unchanged
+#: from the proposal on `#36 (Write an Amiga disk image, not just the
+#: character files)`'s comment.
+DISK_FILTER = "Amiga disks (*.adf *.ADF);;All files (*)"
+
 #: The destination combo's items, by port -- never by title, since
 #: `destinations_for` never offers two directions of the same port for one
 #: source (`.claude/rules/conversions.md`: a conversion never crosses a
-#: title). PROPOSED. Amiga has no row yet (`#316 (Write the Amiga Pool of
-#: Radiance saved game from the source save, so a converted party arrives
-#: where it was standing)`), so it is not listed here until it can be
-#: exercised.  Approved 2026-09-05.
+#: title). Approved 2026-09-05; `"amiga"` approved 2026-09-07 on `#316`'s
+#: mock-up, once `goldbox.amiga.WRITES` gave it something to build
+#: (`#36`'s comment of 2026-09-07).
 DESTINATION_LABELS: dict[str, str] = {
     "c64": "Commodore 64",
     "dos": "DOS",
+    "amiga": "Amiga",
 }
 
 #: The pane while a required row is still empty.
 NO_GAME_FOLDER = "Choose the DOS game folder."
+#: The Amiga disk row's own empty-state line, ruled the same night as
+#: `LABEL_DISK` and following its own wording.
+NO_DISK = "Choose Amiga game disk 2."
 #: `editor/exports.py`'s `NO_DESTINATION`, approved 2026-08-25.
 NO_FOLDER = "Choose where to write."
 #: `goldbox.dos.CANNOT_CONVERT`, approved under `#195 (The import pane shows
@@ -949,6 +1159,18 @@ WRITES_HEADING = "This writes:"
 #: reports (a C64 write is opened in the editor and gets its own status the
 #: way `File ▸ Open` does). Approved 2026-09-05.
 CONVERTED_DOS = "Converted to DOS slot {slot} in {folder}"
+
+#: The status line after an Amiga write. Ruled on `#316 (Write the Amiga
+#: Pool of Radiance saved game from the source save, so a converted party
+#: arrives where it was standing)` on 2026-09-07, over the `CONVERTED_DOS`
+#: shape, because it names the two facts needed to actually play the
+#: result: the file to mount and the letter to type at the Amiga's own
+#: `LOAD WHICH GAME:` prompt. `{slot}` is a substitution -- a DOS-sourced
+#: conversion keeps its own source letter (`DosToAmiga`), and a C64-sourced
+#: one is always `A` (`C64ToAmiga`), the same rule `CONVERTED_DOS` follows.
+#: Not wired into `EditorBinding.convert` yet -- that is `editor/window.py`,
+#: which is another agent's file tonight; see `#36`'s comment.
+CONVERTED_AMIGA = "Wrote POOLSAVE.ADF to {folder}. Load game {slot}."
 
 
 def _writes_text(rehearsal: "Rehearsal", folder: pathlib.Path) -> str:
@@ -996,6 +1218,7 @@ class ConvertDialog(QDialog):
                 game_files: "Any",
                 destination: str | None = None,
                 game: str | None = None,
+                disk: str | None = None,
                 folder: str | None = None,
                 parent: QWidget | None = None,
                 start_dir: str = ""):
@@ -1014,6 +1237,11 @@ class ConvertDialog(QDialog):
         self._wanted_port = destination
         self._wanted_slot: str | None = None
         self._game_path = game
+        #: The player's own Amiga disk 2, for an Amiga destination
+        #: (`_settle_disk_row`) -- `disk=` here is what lets a test drive
+        #: the whole path with no picker, the way `game=` already does for
+        #: the DOS game folder row.
+        self._disk_path = disk
         self._folder_path = folder
         self._rebuilding_combo = False
         self._rebuilding_slot_combo = False
@@ -1046,6 +1274,10 @@ class ConvertDialog(QDialog):
         self.ui.convert_game.setText(self._game_path or "")
         self.ui.convert_choose_game.setText(BUTTON_CHOOSE)
         self.ui.convert_choose_game.clicked.connect(self._choose_game)
+
+        self.ui.convert_disk.setText(self._disk_path or "")
+        self.ui.convert_choose_disk.setText(BUTTON_CHOOSE)
+        self.ui.convert_choose_disk.clicked.connect(self._choose_disk)
 
         self.ui.convert_folder.setText(self._folder_path or "")
         self.ui.convert_choose_folder.setText(BUTTON_CHOOSE)
@@ -1102,6 +1334,14 @@ class ConvertDialog(QDialog):
             self.ui.convert_game.setText(path)
             self.replan()
 
+    def _choose_disk(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, DISK_TITLE, self._disk_path or self.start_dir, DISK_FILTER)
+        if path:
+            self._disk_path = path
+            self.ui.convert_disk.setText(path)
+            self.replan()
+
     def _choose_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(
             self, FOLDER_TITLE, self._folder_path or self.start_dir)
@@ -1138,6 +1378,7 @@ class ConvertDialog(QDialog):
             self._populate_slots(None)
             self.ui.convert_report.setPlainText("")
             self._settle_game_row()
+            self._settle_disk_row()
             self._settle_button()
             return
 
@@ -1151,6 +1392,7 @@ class ConvertDialog(QDialog):
             self._populate_slots(None)
             self.ui.convert_report.setPlainText(CANNOT_CONVERT)
             self._settle_game_row()
+            self._settle_disk_row()
             self._settle_button()
             return
 
@@ -1159,12 +1401,14 @@ class ConvertDialog(QDialog):
         if not options:
             self.ui.convert_report.setPlainText(CANNOT_CONVERT)
             self._settle_game_row()
+            self._settle_disk_row()
             self._settle_button()
             return
 
         self.direction = self._chosen_direction(options)
         self.ui.convert_report.setPlainText(self._rehearse_and_report())
         self._settle_game_row()
+        self._settle_disk_row()
         self._settle_button()
 
     def _chosen_direction(self, options: list["Direction"]) -> "Direction":
@@ -1187,6 +1431,17 @@ class ConvertDialog(QDialog):
             options: Any = self._game_files(direction.destination_game)
             if options is None:
                 return NO_DISKS
+        elif direction.destination_port == "amiga":
+            # A C64 source has no slot of its own (`C64ToAmiga` always
+            # writes `A`); a DOS source keeps its own letter
+            # (`DosToAmiga.rehearse` reads `source.slot` directly and
+            # ignores what is passed here) -- `self.slot` below is what a
+            # status line reports, so it has to agree with whichever one
+            # the direction actually wrote.
+            slot = self.source.slot or "A"
+            if not self._disk_path:
+                return NO_DISK
+            options = pathlib.Path(self._disk_path)
         else:
             slot = "A"
             if not self._game_path:
@@ -1289,15 +1544,27 @@ class ConvertDialog(QDialog):
         disks are a Preferences setting already, whichever port the source
         is, so the Amiga → C64 row needs no picker of its own either
         (`#52`'s plan, "three C64 titles means the disks are chosen by the
-        destination title"). A row for an Amiga *destination* would need
-        one, since that conversion reads `ecl.dax` off the player's own disk
-        2 -- `#316 (Write the Amiga Pool of Radiance saved game from the
-        source save, so a converted party arrives where it was standing)`,
-        which has no row here yet."""
+        destination title"). An Amiga destination has its own row instead,
+        `_settle_disk_row` below -- that conversion reads `ecl.dax` off the
+        player's own disk 2 rather than the Game Disk folder preference
+        (`#316 (Write the Amiga Pool of Radiance saved game from the source
+        save, so a converted party arrives where it was standing)`)."""
         show = self.direction is not None and self.direction.destination_port == "dos"
         self.ui.form.setRowVisible(self.ui.game_row, show)
         if show:
             self.ui.label_game.setText(LABEL_GAME)
+
+    def _settle_disk_row(self) -> None:
+        """The Amiga disk row is shown only for an Amiga destination -- the
+        twin of `_settle_game_row` above, for the one row that asks for
+        something no preference already answers: the player's own Amiga
+        disk 2, which carries the area's own `ecl.dax` script
+        (`#316 (Write the Amiga Pool of Radiance saved game from the source
+        save, so a converted party arrives where it was standing)`)."""
+        show = self.direction is not None and self.direction.destination_port == "amiga"
+        self.ui.form.setRowVisible(self.ui.disk_row, show)
+        if show:
+            self.ui.label_disk.setText(LABEL_DISK)
 
     def _settle_button(self) -> None:
         """Convert is pressable only once there is a rehearsal to write and

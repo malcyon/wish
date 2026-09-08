@@ -893,6 +893,71 @@ class LevelUp(Action):
         except levelup.CannotLevel:
             return None
 
+    @staticmethod
+    def confirmation(record, name: str, spell: int | None = None,
+                     game=None) -> str | None:
+        """The question to ask before writing this training, or `None` to ask
+        nothing.
+
+        **The whole visit, not one step.** `run` calls `levelup.plan_all` for
+        a `trains_all_ready_classes` title, chaining every ready class the
+        way `GEN $14F8` does; this asks the same function, so every step's
+        own `classes_disqualified` is counted rather than only the one class
+        `preview` looks at.
+
+        That distinction is not academic. A Curse fighter/thief character can
+        have `preview`'s single step -- `best_class`'s answer, chosen to keep
+        the experience ceiling as high as it can -- report nothing at risk,
+        while the engine's own fixed slot order trains a *different* class
+        first and clamps the other one's experience below its own next
+        threshold. A fighter 4 / thief 6 character carrying 45,000
+        experience is the case: `best_class` names the thief, whose own
+        single-step preview shows `classes_disqualified=()`, but `$14F8`
+        trains the fighter first, and that step alone -- `to_level=5`, real
+        `classes_disqualified=('thief',)` -- clamps experience to 42,500,
+        one short of the 42,501 the thief needed to keep the level it had
+        already earned, with no dialog ever asking the player about it
+        (`#418 (The level-up confirmation dialog previews one step of a
+        Curse dual-training press, not the whole chain)`).
+
+        A title without `trains_all_ready_classes` gets exactly what
+        `preview` would have asked, worded the same way -- `plan_all` wraps
+        a single `plan` call for one of those, so nothing changes for Pool
+        of Radiance.
+        """
+        try:
+            steps = levelup.plan_all(record, game=game, learn=spell)
+        except levelup.CannotLevel:
+            return None
+        disqualified: list[str] = []
+        for step in steps:
+            for lost_class in step.classes_disqualified:
+                if lost_class not in disqualified:
+                    disqualified.append(lost_class)
+        if not disqualified:
+            return None
+        lost = ", ".join(disqualified)
+        experience_lost = sum(step.experience_lost for step in steps)
+        if len(steps) == 1:
+            step = steps[0]
+            return (f"{name} as a {step.class_name} {step.to_level} drops "
+                    f"{experience_lost} experience, which takes {lost} "
+                    f"below the next threshold and costs a level already "
+                    f"earned. Go ahead?")
+        # UNAPPROVED WORDING: Curse's trainer raises every ready class in one
+        # press (`levelup.plan_all`, #18), so this warning now has to name
+        # more than one trained class in one sentence -- a shape nobody has
+        # seen, unlike the single-class wording above, which is already in
+        # front of players. See `test_no_marked_string_reaches_a_player_in_
+        # c64_conversion_or_the_automapper` (`tests/test_convert.py`), which
+        # this raises `automap.actions`'s count for.
+        bits = [f"a level {step.to_level} {step.class_name}" for step in steps]
+        trained = ", ".join(bits[:-1]) + " and " + bits[-1]
+        return (f"{name} training as {trained} drops {experience_lost} "
+                f"experience, which takes {lost} below the next threshold "
+                f"and costs a level already earned. Go ahead? "
+                f"(NOT APPROVED)")
+
     def run(self, target, slot: int = 0, class_name: str = "",
             spell: int | None = None, **kwargs) -> Outcome:
         party = read_party(target, self.descriptor)

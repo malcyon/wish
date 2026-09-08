@@ -1032,6 +1032,151 @@ def test_offers_lists_spells_when_the_magic_user_is_one_of_the_ready_classes():
     assert 9 in offered
 
 
+def _fighter_and_thief_where_the_engines_own_order_undercuts_thief(
+        disk_name: str, character: str):
+    """TRAVIS's slot (fighter 4 / thief 5 on `WISH-SPEC-curse-train-input`),
+    with the thief raised to 6 and experience set to 45,000 -- both classes
+    still ready, but now shaped so the single-step preview `#418 (The
+    level-up confirmation dialog previews one step of a Curse dual-training
+    press, not the whole chain)` is about disagrees with the whole visit.
+
+    `best_class` names the thief here: `clamp_threshold(thief, 7)`, 70,001,
+    beats `clamp_threshold(fighter, 5)`, 35,001 -- the same rule
+    `best_next_class`'s own docstring describes, choosing the class whose
+    post-level threshold keeps the experience ceiling highest. A single-step
+    preview of "train the thief" therefore reports nothing at risk for the
+    fighter, whose own current threshold (18,001) sits well under that
+    ceiling.
+
+    `$14F8` does not ask `best_class`, though -- it walks class slots 7 down
+    to 0 and trains the fighter first regardless. The fighter's own
+    post-level threshold, 35,001, is *less* than the thief's own current
+    threshold, 42,501, so that one step alone clamps experience to 42,500 --
+    one short of the 42,501 the thief needed to keep the level it had
+    already earned. Everything else about the record is left as the disk
+    wrote it.
+    """
+    record = _c64_slot(disk_name, character)
+    record.set("level_thief", 6)
+    record.set("experience", 45000)
+    return record
+
+
+def test_the_single_step_preview_misses_what_the_engines_own_order_costs():
+    """`#418`'s own open question, settled: yes, a single-step preview and
+    the real `plan_all` chain can disagree, on a character no less real than
+    TRAVIS with two fields edited (dexterity, race, items and the rest of
+    the sheet untouched).
+
+    `automap.actions.LevelUp.preview` -- what the confirmation dialog read
+    before this ticket -- looks at the one class `best_class` names, "thief",
+    and reports nothing at risk. `levelup.plan_all`, the walk `$14F8` itself
+    runs and `LevelUp.run` writes, trains the fighter first regardless of
+    what `best_class` would have named, and that real step alone costs the
+    thief the level it had already earned. A dialog built on `preview` alone
+    would ask nothing and the training would proceed silently.
+    """
+    from automap import actions
+
+    record = _fighter_and_thief_where_the_engines_own_order_undercuts_thief(
+        "curse-train-input", "TRAVIS")
+    assert levelup.ready_classes(record, CURSE) == ["thief", "fighter"]
+    best = levelup.best_class(record, CURSE)
+    assert best == "thief"
+
+    single = actions.LevelUp.preview(record, best, game=CURSE)
+    assert single is not None
+    assert single.classes_disqualified == (), \
+        "the single-step preview reports nothing at risk"
+
+    steps = levelup.plan_all(record, game=CURSE)
+    assert [step.class_name for step in steps] == ["fighter"]
+    assert steps[0].classes_disqualified == ("thief",), \
+        "the real chain costs the thief its already-earned level"
+
+
+def test_confirmation_asks_about_the_whole_chain_not_one_step():
+    """The fix: `automap.actions.LevelUp.confirmation` reads `levelup.plan_all`
+    rather than one step of `plan`, so it asks about exactly the loss the
+    test above shows the single-step `preview` missing."""
+    from automap import actions
+
+    record = _fighter_and_thief_where_the_engines_own_order_undercuts_thief(
+        "curse-train-input", "TRAVIS")
+    question = actions.LevelUp.confirmation(record, "TRAVIS", game=CURSE)
+    assert question is not None
+    assert "thief" in question
+    assert "already earned" in question
+
+
+def test_the_level_up_button_asks_about_the_whole_chain_through_the_window(
+        app, trainer_measured_for_this_test):
+    """The same fix, driven through `automap.window.AutomapBinding._level_up`
+    rather than `LevelUp.confirmation` directly -- the layer `#418` is about.
+
+    Reverting `automap/window.py`'s `_level_up` to call `LevelUp.preview`
+    with `class_for`'s single class, the way it did before this ticket, and
+    rerunning this fails: `window.ask` is never called at all, because that
+    single-step preview reports nothing at risk (the test above shows why),
+    so the training would silently cost TRAVIS his already-earned thief
+    level with no question asked.
+    """
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.target import MemoryTarget
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+
+    game, sg0 = _c64_disk_and_game("curse-train-input")
+    slot_index = None
+    for slot in sg0.slots:
+        if slot.record is not None \
+                and str(slot.record.name).strip().upper() == "TRAVIS":
+            slot_index = slot.index
+            break
+    if slot_index is None:
+        pytest.skip("TRAVIS is not on WISH-SPEC-curse-train-input")
+
+    record = _fighter_and_thief_where_the_engines_own_order_undercuts_thief(
+        "curse-train-input", "TRAVIS")
+    sg0.write_record(slot_index, record)
+    target = MemoryTarget({
+        game.save_load_address: sg0.to_bytes(),
+        game.mode_flag: bytes([1])})          # 1: not COMBAT
+
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = AutomapBinding.__new__(AutomapBinding)
+    window.state = type("S", (), {"title": game.title})()
+    window.mapper = type("M", (), {"target": target})()
+    seen = {}
+
+    class Messages:
+        def say(self, text, detail="", alarm=False):
+            seen["said"] = text
+
+    window.messages = Messages()
+    asked = {}
+
+    def fake_ask(question):
+        asked["question"] = question
+        return False                          # the player backs out
+
+    window.ask = fake_ask
+    window._refresh_roster = lambda: seen.update(refreshed=True)
+    window._chosen_spell = lambda record, name, game=None: 0
+
+    AutomapBinding._level_up(window, slot_index)
+
+    assert "question" in asked, \
+        "the window never asked, so the thief's level would be lost silently"
+    assert "thief" in asked["question"]
+    assert "already earned" in asked["question"]
+    # The player said no, so nothing should have been written or refreshed.
+    assert "said" not in seen
+    assert "refreshed" not in seen
+
+
 def _fighter_and_magic_user_ready_but_fighter_named(disk_name: str,
                                                      character: str):
     """One real character's slot, with class levels and experience edited so

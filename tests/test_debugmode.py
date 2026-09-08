@@ -1080,6 +1080,10 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
         def preview(record, class_name="", spell=None, game=None):
             return None
 
+        @staticmethod
+        def confirmation(record, name, spell=None, game=None):
+            return None
+
         def apply(self, target, **kwargs):
             seen["kwargs"] = kwargs
             return actions.Outcome(True, "SILAS is a fighter 6")
@@ -1153,14 +1157,20 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     """No dialog in the common case -- Donald had that removed once already.
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
-    that is worth a question. The refusal must write nothing."""
+    that is worth a question. The refusal must write nothing.
+
+    `actions.LevelUp.confirmation` builds the question now, not `_level_up`
+    itself (`#418 (The level-up confirmation dialog previews one step of a
+    Curse dual-training press, not the whole chain)`), so the stub answers
+    with the finished question rather than a `Plan` for the window to read
+    fields off.
+    """
     from PyQt6.QtWidgets import QMainWindow
 
     from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
-    from goldbox.levelup import Plan
     window = AutomapBinding.__new__(AutomapBinding)
     seen = {}
 
@@ -1168,13 +1178,13 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         def say(self, text, detail="", alarm=False):
             seen["said"] = text
 
-    costly = Plan(class_name="thief", from_level=1, to_level=2, fields={},
-                  hit_points_rolled=3, experience_lost=2502,
-                  classes_disqualified=("magic-user",))
+    costly_question = ("LADY KATHERINE as a thief 2 drops 2502 experience, "
+                       "which takes magic-user below the next threshold and "
+                       "costs a level already earned. Go ahead?")
 
     class Action:
         confirm = ""
-        plan = costly
+        question = costly_question
 
         def __init__(self, game=None):
             seen["action_game"] = game
@@ -1188,8 +1198,8 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
             return []              # a thief press offers no spell
 
         @classmethod
-        def preview(cls, record, class_name="", spell=None, game=None):
-            return cls.plan
+        def confirmation(cls, record, name, spell=None, game=None):
+            return cls.question
 
         def apply(self, target, **kwargs):
             seen["applied"] = kwargs
@@ -1213,14 +1223,13 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
 
         # Nothing lost, nothing asked.
         seen.clear()
-        Action.plan = Plan(class_name="thief", from_level=1, to_level=2,
-                           fields={}, hit_points_rolled=3)
+        Action.question = None
         AutomapBinding._level_up(window, 0)
         assert "asked" not in seen
         assert seen["applied"]["class_name"] == "thief"
     finally:
         actions.LevelUp, actions.read_party = monkey, was_read
-        Action.plan = costly
+        Action.question = costly_question
 
 
 def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
