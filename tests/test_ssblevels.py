@@ -16,7 +16,6 @@ import pytest
 
 from goldbox import games, levels, levelup
 from goldbox.record import CharacterRecord
-from tools import laterthac0
 
 POOL = levels.POOL_OF_RADIANCE
 SSB = levels.SECRET_OF_THE_SILVER_BLADES
@@ -136,32 +135,6 @@ def test_a_few_more_rows_off_the_top_of_each_table():
     assert levels.at_level("thief", 18, SSB).thac0 == 12
     assert levels.at_level("fighter", 15, SSB).attacks == 2
     assert levels.at_level("cleric", 15, SSB).spells == ()
-
-
-def test_silver_blades_dos_thac0_is_the_games_own_table():
-    """`goldbox.levels.SECRET_OF_THE_SILVER_BLADES.dos_thac0` against the
-    bytes at `DS:0x4C0C` in the DOS build's own `START.EXE` -- seven rows,
-    not eight, because this title drops the monk.
-
-    `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64
-    gives 21, and our table holds only the C64's)`: as with Curse, the
-    magic-user's low levels **agree** with the C64 here; what disagrees is
-    the thief's low levels, a level-2 fighter/paladin/ranger, and the
-    magic-user's third band, which runs longer in this title (11-15).
-    """
-    try:
-        found = laterthac0.locate("secret-of-the-silver-blades")
-    except (FileNotFoundError, SystemExit) as why:
-        pytest.skip(f"no DOS Silver Blades on this machine: {why}")
-    disk = found.table()
-    rows = dict(SSB.dos_thac0)
-    assert set(rows) == {"cleric", "fighter", "paladin", "ranger",
-                         "magic-user", "thief"}
-    for name, row in rows.items():
-        assert list(row) == disk[name], name
-    assert rows["thief"][:4] == (20, 20, 20, 20)             # C64: 21
-    assert rows["fighter"][1] == 20                           # C64: 19
-    assert rows["magic-user"][10:15] == (17, 17, 17, 17, 17)  # C64: 16
 
 
 def test_silver_blades_is_among_the_titles_a_race_with_no_bonus_covers():

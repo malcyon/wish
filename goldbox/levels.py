@@ -32,15 +32,13 @@ claims.
 
 **One of those tables is not the same on the DOS side.** Everything above is
 the C64's, and for every table but one the DOS build agrees. The exception is
-THAC0, and the three titles do not disagree with the C64 in the same way.
-Pool of Radiance's DOS build ships 40 -- THAC0 20 -- where the C64's `$1F1F`
-ships 39, in the magic-user's rows 1-5 and the thief's rows 1-4, so a
-low-level DOS caster or thief hits one point better than the same character
-on the C64. Curse and Silver Blades ship the C64's own 39 for a low-level
-magic-user and instead disagree on the thief's low levels, a level-2
-fighter/paladin/ranger and the magic-user's third band -- see
-`_DOS_THAC0_POOL` for both halves' provenance. `dos_thac0` carries all three
-titles' tables now.
+THAC0: Pool of Radiance's DOS build ships 40 -- THAC0 20 -- where the C64's
+`$1F1F` ships 39, in the magic-user's rows 1-5 and the thief's rows 1-4, so a
+low-level DOS caster or thief hits one point better than the same character on
+the C64. `dos_thac0` carries it and `_DOS_THAC0_POOL` carries the provenance.
+Curse's and Silver Blades' DOS tables are **not** in here: theirs keep 39 in
+the mage row and their records still store 40, so something else is at work in
+those two and nobody has found it -- see `_DOS_THAC0_POOL`.
 
 **Not one Pool of Radiance address survives into Curse**, which is the
 measurement `TRAINER_MEASURED` rests on. The two files were compared byte for
@@ -296,40 +294,21 @@ TABLES = {
 #: the play saves, and the archives. `tools/thac0census.py` is the sweep and
 #: `tests/test_levels.py` re-reads the rows out of the player's own `START.EXE`.
 #:
-#: **Curse and Silver Blades are filled in too, from the same read, in
-#: `_DOS_THAC0_CURSE` and `_DOS_THAC0_SSB` below.** Their DOS tables sit at
-#: `DS:0x3E3A` (Curse, 8 rows of 13) and `DS:0x4C0C` (Silver Blades, 7 rows of
-#: 19, dropping the monk) -- located by `tools/laterthac0.py` without
-#: anchoring on a THAC0 number at all, because their class-bit array is a
-#: different permutation from Pool of Radiance's and `tools/thac0census.py`
-#: cannot find either. `docs/210-the-later-titles-dos-thac0.md` has the whole
-#: of it.
-#:
-#: **A low-level magic-user is not where the later titles disagree with the
-#: C64.** Both DOS mage rows read 21 at levels 1-5, agreeing with their own
-#: C64 side -- Pool of Radiance is the odd title here, not the rule. What
-#: disagrees, in both later titles, CONFIRMED from the shipped bytes and the
-#: corpus below:
-#:
-#: * thief 1-4: DOS 20, C64 21;
-#: * the magic-user's third band: DOS 17, C64 16 (Curse 11-12, Silver Blades
-#:   11-15);
-#: * fighter, paladin and ranger at level 2: DOS 20, C64 19 -- the whole row
-#:   is `39 + level` at every other index. CONFIRMED in both titles' images;
-#:   the *consequence* is PROBABLE, because no record here holds a level-2
-#:   fighter, paladin or ranger in either title.
-#:
-#: **No clamp exists anywhere.** Every one of the three engines stores a flat
-#: 40 from a block of new-character defaults and none of them compares the
-#: field against a constant, so a record holding 40 where a table gives 39 is
-#: a creation, class-change or import value no rebuild has run over yet --
-#: `tools/laterthac0.py writers` has the four kinds of site that touch the
-#: byte.
-#:
-#: CONFIRMED: 77 of 86 Curse records and 72 of 74 Silver Blades records
-#: reproduce from these rows by best-of-classes; every miss is a magic-user no
-#: rebuild has run over (`docs/210-the-later-titles-dos-thac0.md`).
-#: `tools/laterthac0.py records` is the sweep.
+#: **Only Pool of Radiance's DOS table is here, and the reason is a
+#: contradiction nobody has resolved.** Curse and Silver Blades lay their DOS
+#: tables out the same way -- `mul 13` into `DS:0x3E3A` and `mul 19` -- and
+#: their *thief* rows are clamped to 40 like this one, but their *mage* rows
+#: keep 39, the C64 number. Their records store 40 anyway: 6 of 56 Curse
+#: records and 2 of 56 Silver Blades records disagree with their own title's
+#: table, and every one of the eight is a magic-user at a level the table calls
+#: 21. Nothing in either title's recompute loop clamps, and there is no second
+#: table -- all four Curse store sites read `DS:0x3E3A`. So the rows are read
+#: and the mechanism is not, and writing them in here would be writing a number
+#: the game demonstrably does not store. **The experiment that would settle
+#: it**: train a Curse magic-user from level 1 to 2 in the game and read
+#: `thac0_base` at `0x073`. 39 means the loop ran and the 40 those records
+#: carry is a creation-time value nothing had refreshed; 40 means something
+#: clamps and the clamp is what to go and find.
 _DOS_THAC0_POOL = (
     ("magic-user", (20, 20, 20, 20, 20, 19, 19, 19, 19, 19)),
     ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14)),
@@ -1247,19 +1226,6 @@ POOL_OF_RADIANCE = LevelTables(
     dos_thac0=_DOS_THAC0_POOL,
 )
 
-#: `DS:0x3E3A`, 8 rows of 13, transcribed from `tools/laterthac0.py table
-#: --title curse-of-the-azure-bonds`. THAC0, not the stored `60 - THAC0`,
-#: level 1 first. See `_DOS_THAC0_POOL`'s docstring for the grades and the
-#: sweep this reproduces (77 of 86).
-_DOS_THAC0_CURSE = (
-    ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14, 14, 14)),
-    ("fighter",    (20, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9)),
-    ("paladin",    (20, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9)),
-    ("ranger",     (20, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9)),
-    ("magic-user", (21, 21, 21, 21, 21, 19, 19, 19, 19, 19, 17, 17)),
-    ("thief",      (20, 20, 20, 20, 19, 19, 19, 19, 16, 16, 16, 16)),
-)
-
 #: Curse zeroes the cleric column for dwarf, elf and gnome where Pool of
 #: Radiance carried 8, 7 and 7 -- those three are the *Dungeon Master's Guide*
 #: NPC limits and the *Players Handbook* has no such player clerics, so Curse
@@ -1309,26 +1275,6 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
     clamp_thresholds=(("magic-user", 750001), ("cleric", 675001),
                       ("thief", 660001), ("fighter", 1250001),
                       ("paladin", 1400001), ("ranger", 975001)),
-    dos_thac0=_DOS_THAC0_CURSE,
-)
-
-#: `DS:0x4C0C`, 7 rows of 19 -- no monk -- transcribed from
-#: `tools/laterthac0.py table --title secret-of-the-silver-blades`. THAC0, not
-#: the stored `60 - THAC0`, level 1 first. See `_DOS_THAC0_POOL`'s docstring
-#: for the grades and the sweep this reproduces (72 of 74).
-_DOS_THAC0_SSB = (
-    ("cleric",     (20, 20, 20, 18, 18, 18, 16, 16, 16, 14, 14, 14, 12, 12,
-                    12, 10, 10, 10)),
-    ("fighter",    (20, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6,
-                    5, 4, 3)),
-    ("paladin",    (20, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6,
-                    5, 4, 3)),
-    ("ranger",     (20, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6,
-                    5, 4, 3)),
-    ("magic-user", (21, 21, 21, 21, 21, 19, 19, 19, 19, 19, 17, 17, 17, 17,
-                    17, 14, 14, 14)),
-    ("thief",      (20, 20, 20, 20, 19, 19, 19, 19, 16, 16, 16, 16, 14, 14,
-                    14, 14, 12, 12)),
 )
 
 #: Race 3 is the dwarf in this title (`games.RACES_SILVER_BLADES`), not the
@@ -1386,7 +1332,6 @@ SECRET_OF_THE_SILVER_BLADES = LevelTables(
     trains_all_ready_classes=True,
     attack_forms_overwritten=True,
     stores_spell_capacity=False,
-    dos_thac0=_DOS_THAC0_SSB,
 )
 
 TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
