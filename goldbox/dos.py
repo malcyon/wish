@@ -2570,6 +2570,30 @@ IDENTITY_HELD_PORTS = ("C64", "Amiga")
 #: way C64's was (#318).
 _THAC0_RECOMPUTE_FROM_PORTS = ("C64",)
 
+#: The eight thief-skill columns, neutral name to DOS name -- identical on
+#: both sides, and in `goldbox.levels.LevelTables.dos_thief_skill_row`'s own
+#: column order.  `WRITE_DIRECT` skips these eight in `write`'s main loop;
+#: the block below writes them instead, computed where the destination's own
+#: table is confirmed to differ from the source's.
+_THIEF_SKILL_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    pair for pair in WRITE_DIRECT if pair[0].startswith("thief_"))
+_THIEF_SKILL_NAMES: frozenset[str] = frozenset(n for n, _ in _THIEF_SKILL_COLUMNS)
+
+#: Ports `write` recomputes the eight thief-skill columns for, rather than
+#: copying the source's own bytes -- see the comment above the block in
+#: `write` itself.  `#431 (A converted halfling thief keeps the other port's
+#: skill percentages, because the two ports ship different halfling rows)`
+#: measured the C64's own Pool of Radiance table against DOS's and found the
+#: two disagree -- both the racial row (the C64's is the DOS one a byte
+#: short from the gnome's hear-noise column on) and the dexterity block DOS
+#: applies and the C64 build never reads.  Nobody has measured DOS's table
+#: against Amiga's, so an Amiga source keeps its own bytes here the same as
+#: a native DOS one does, the same reasoning `_THAC0_RECOMPUTE_FROM_PORTS`
+#: gives -- `goldbox.amiga.write_later` reuses this writer as its own
+#: stepping stone, so a broader gate would recompute an Amiga round trip
+#: too.  A port added to this set needs its own measurement first.
+_THIEF_SKILL_RECOMPUTE_FROM_PORTS = ("C64",)
+
 
 def identity_byte(record: bytes | bytearray,
                   shape: "int | str | DosShape | None" = None) -> int:
@@ -3004,6 +3028,12 @@ def write(char: NeutralCharacter,
         # the reader's `DIRECT` names it too, and the two tables are mirrors.
         if neutral_name == "thac0_base":
             continue
+        # Written below, recomputed through the destination's own table
+        # where that is confirmed to differ from the source's (#431).
+        # Stays in `WRITE_DIRECT` for the same reason: the reader's `DIRECT`
+        # names these eight too, and the two tables are mirrors.
+        if neutral_name in _THIEF_SKILL_NAMES:
+            continue
         v = use(neutral_name)
         if v is None:
             continue
@@ -3197,6 +3227,42 @@ def write(char: NeutralCharacter,
                 "own DOS table: the two ports' magic-user and thief rows "
                 "disagree at low level (#366)",
                 value=combat_byte(derived))
+
+    # -- thief skills: recomputed only for the one port measured to disagree -
+    # `WRITE_DIRECT`'s copy is skipped above for these eight, the same
+    # shape as `thac0_base` just above: a straight copy hands back whatever
+    # the source port's own table wrote, which is wrong for a title whose
+    # racial row the two ports do not share.  Pool of Radiance is the one
+    # measured (#431, A converted halfling thief keeps the other port's
+    # skill percentages, because the two ports ship different halfling
+    # rows): the C64's racial row is the DOS one a byte short from the
+    # gnome's hear-noise column on, and DOS applies a dexterity block the
+    # C64 build never reads (`GEN $1FEC`).  Gated to `_THIEF_SKILL_
+    # RECOMPUTE_FROM_PORTS` for the reason given beside it -- an Amiga
+    # source keeps its own bytes, the same as a native DOS one, since
+    # nobody has measured the Amiga's table.
+    #
+    # `w.get`, not `use`: the thief level, race and dexterity feeding this
+    # were already taken by the `WRITE_DIRECT` copy loop above.
+    computed_thief_skills = None
+    thief_level = w.get("levels", {}).get("thief", 0)
+    if thief_level and port in _THIEF_SKILL_RECOMPUTE_FROM_PORTS:
+        computed_thief_skills = level_tables.dos_thief_skills(
+            thief_level, w.get("race", 0), char.game,
+            dexterity=w.get("dexterity", 0))
+    for index, (neutral_name, dos_name) in enumerate(_THIEF_SKILL_COLUMNS):
+        v = use(neutral_name)
+        if v is None:
+            continue
+        if computed_thief_skills is not None and index < len(computed_thief_skills):
+            put(v, dos_name,
+                ", recomputed from the thief level, race and dexterity "
+                "through DOS's own table: the C64's racial row is the DOS "
+                "one a byte short and its build never applies a dexterity "
+                "adjustment DOS does (#431)",
+                value=computed_thief_skills[index])
+        else:
+            put(v, dos_name)
 
     # -- the class a dual-classed human left ---------------------------------
     # Curse of the Azure Bonds and Secret of the Silver Blades keep it twice:

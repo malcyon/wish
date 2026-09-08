@@ -354,6 +354,14 @@ def test_a_filled_character_lands_field_for_field():
     (`goldbox.dos._THAC0_RECOMPUTE_FROM_PORTS`, #318). `_filled`'s own port is
     a made-up one and would not trigger it, so the port is overridden here to
     exercise the real mechanism.
+
+    The eight thief-skill columns are the second exception, for the same
+    reason and the same port: `write` recomputes them from the thief level,
+    race and dexterity through DOS's own table rather than copying the
+    source's, for a source port `#431 (A converted halfling thief keeps the
+    other port's skill percentages, because the two ports ship different
+    halfling rows)` measured a disagreement for -- the C64 alone
+    (`goldbox.dos._THIEF_SKILL_RECOMPUTE_FROM_PORTS`).
     """
     char = _filled()
     char.port = "C64"
@@ -363,7 +371,7 @@ def test_a_filled_character_lands_field_for_field():
                                         for i in range(0, len(itm), 63)])
     assert back.name == "ROUNDTRIP"
     for neutral_name, dos_name in dos.WRITE_DIRECT:
-        if neutral_name == "thac0_base":
+        if neutral_name == "thac0_base" or neutral_name in dos._THIEF_SKILL_NAMES:
             continue
         assert back.get(dos_name) == char.get(neutral_name), dos_name
     expected_thac0 = level_tables.dos_base_thac0(char.get("levels"))
@@ -372,6 +380,24 @@ def test_a_filled_character_lands_field_for_field():
     # from `DIRECT`'s position), and the class levels (fighter 7, thief 3)
     # give 14 through DOS's own table.
     assert expected_thac0 != combat_value(char.get("thac0_base"))
+    # `_filled`'s race is 1 (elf) and its thief skills are made-up sequential
+    # values, none of which is DOS's own computed row -- so this is a
+    # positive check that the table ran, not a round trip.
+    expected_thief = level_tables.dos_thief_skills(
+        char.get("levels").get("thief"), char.get("race"), char.game,
+        dexterity=char.get("dexterity"))
+    assert expected_thief is not None
+    got_thief = tuple(back.get(n) for n in
+                      ("thief_pick_pockets", "thief_open_locks",
+                       "thief_find_traps", "thief_move_silently",
+                       "thief_hide_in_shadows", "thief_hear_noise",
+                       "thief_climb_walls", "thief_read_languages"))
+    assert got_thief == expected_thief
+    assert got_thief != tuple(char.get(n) for n in
+                              ("thief_pick_pockets", "thief_open_locks",
+                               "thief_find_traps", "thief_move_silently",
+                               "thief_hide_in_shadows", "thief_hear_noise",
+                               "thief_climb_walls", "thief_read_languages"))
     assert back.spells_known == [1, 5, 55]
     assert back.spells_memorised == [44, 21, 3]
     assert back.class_levels == {"fighter": 7, "thief": 3}
@@ -407,6 +433,61 @@ def _spc_ids(spc: bytes) -> list[int]:
     """The effect ids of a `.SPC` payload, one per nine-byte record."""
     assert len(spc) % dos.EFFECT_SIZE == 0
     return [spc[n] for n in range(0, len(spc), dos.EFFECT_SIZE)]
+
+
+# --- the DOS half of #431: recomputing a converted thief's eight skills -----
+
+_THIEF_SKILL_FIELDS = (
+    "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+    "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
+    "thief_climb_walls", "thief_read_languages")
+
+
+def _c64_thief_character(race: int, dexterity: int, stored: tuple[int, ...],
+                         thief_level: int = 1,
+                         game: str = "pool-of-radiance"
+                         ) -> neutral.NeutralCharacter:
+    """A C64-read neutral thief, holding the C64's own eight stored
+    percentages -- the shape a real C64 -> DOS conversion hands `dos.write`.
+    """
+    char = neutral.NeutralCharacter("C64", game=game)
+    char.set("race", race, "test fixture")
+    char.set("dexterity", dexterity, "test fixture")
+    char.set("levels", {"thief": thief_level}, "test fixture")
+    for name, value in zip(_THIEF_SKILL_FIELDS, stored):
+        char.set(name, value, "test fixture")
+    return char
+
+
+def test_a_c64_halfling_thief_gets_doss_own_skills_not_the_c64_row():
+    """`#431 (A converted halfling thief keeps the other port's skill
+    percentages, because the two ports ship different halfling rows)`.
+
+    WISHTHI, thief 1, halfling, dexterity 12: the C64's own record holds
+    `35 30 30 30 15 -5 80 -5` -- what its own trainer, `GEN $1FEC`, writes.
+    A copy would leave the DOS record holding those same eight bytes, which
+    its own trainer would never write -- `35 30 25 20 25 15 70 0` is level
+    plus the undisplaced halfling row plus the dexterity-12 block, clamped
+    at zero, which is what `goldbox.levels.dos_thief_skills` gives.
+    """
+    stored = (35, 30, 30, 30, 15, -5, 80, -5)
+    rec, _, _, _ = dos.write(_c64_thief_character(race=5, dexterity=12,
+                                                   stored=stored))
+    got = tuple(dos.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
+    assert got == (35, 30, 25, 20, 25, 15, 70, 0)
+
+
+def test_a_curse_thief_still_gets_the_copied_row_on_the_dos_side():
+    """Curse ships the same racial table on both ports, and recomputing it
+    anyway is blocked by `#437 (A Curse thief's stored skills sit seven
+    points above the rows the engine's own tables give)` -- so a converted
+    Curse thief still keeps the plain copy on the DOS side too, the same as
+    `c64_codec.write` already does on the C64 side."""
+    stored = (35, 30, 30, 30, 15, -5, 80, -5)
+    rec, _, _, _ = dos.write(_c64_thief_character(
+        race=5, dexterity=12, stored=stored, game="curse-of-the-azure-bonds"))
+    got = tuple(dos.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
+    assert got == stored
 
 
 def test_a_converted_dwarf_carries_his_constitution_bonus_to_saves():
