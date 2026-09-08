@@ -17,6 +17,7 @@ screen, status and bars are all fixed answers, so what is under test is which
 address the driver decides to ask and what it does with the answer.
 """
 
+import pytest
 from conftest import load_tools_module
 
 from goldbox import games as G
@@ -123,6 +124,30 @@ def test_curse_reads_its_own_live_square_and_not_pool_of_radiances():
     sess = FakeSession(memory={LIVE_XY: 3, LIVE_XY + 1: 12})
     assert sess.square_and_world() == (3, 12, True)
     assert sess.asked == [LIVE_XY]
+
+
+# -- every per-title driver names its own title (#426) -----------------------
+#
+# `CurseSession` got its `game` when `#360` was fixed; `SSBSession` did not,
+# so a Silver Blades party read as being on the travel grid and every walk
+# was thrown away without a key being pressed
+# (#426, "The session driver will not walk a Silver Blades party, because
+# SSBSession never says which title it is"). Loading the real driver classes
+# -- not a fake standing in for one -- is what would have caught the miss:
+# `SSBSession` inherits `Session.game`, which is Pool of Radiance, unless it
+# says otherwise.
+
+
+@pytest.mark.parametrize("module_name, class_name, expected_key", [
+    ("curserun", "CurseSession", "curse-of-the-azure-bonds"),
+    ("ssbwarp", "SSBSession", "secret-of-the-silver-blades"),
+])
+def test_every_per_title_driver_names_its_own_title(
+        module_name, class_name, expected_key):
+    module = load_tools_module(module_name)
+    cls = getattr(module, class_name)
+    assert cls.game.key == expected_key
+    assert cls.game.travel_grid is False
 
 
 def test_pool_of_radiance_still_reads_its_flag_and_still_refuses_a_letter():

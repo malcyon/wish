@@ -244,6 +244,17 @@ def stage(slot, disks: str, save: str = "") -> str:
 class SSBSession(por.Session):
     """Pool of Radiance's driver with this title's prompts and boot."""
 
+    #: What makes `Session.indoors()` and `Session.square_and_world()` answer
+    #: this title's question rather than Pool of Radiance's.  Silver Blades
+    #: has no travel grid, and `$49E6` in a running Silver Blades is
+    #: `LIBRARY` code that reads zero -- so the driver used to route every
+    #: walk to the compass keys and press nothing (`#360 (The session driver
+    #: will not walk a Curse or Silver Blades party in a dungeon, because it
+    #: reads Pool of Radiance's indoors flag)`, `#426 (The session driver will
+    #: not walk a Silver Blades party, because SSBSession never says which
+    #: title it is)`).
+    game = games.SECRET_OF_THE_SILVER_BLADES
+
     def handle_prompt(self, s=None) -> bool:
         if time.time() - self._last_prompt < 2.0:
             return False
