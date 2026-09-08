@@ -574,6 +574,95 @@ shows up as a counter that disagrees with the list, which is the ordinary state
 of that field anyway. `docs/30-savegame-layout.md`,
 `tools/rosterspellcount.py`.
 
+## N21. Pool of Radiance's C64 racial thief table is a byte short
+
+**What the game does.** A thief's eight percentages are a row for its level
+plus a row for its race. Pool of Radiance on the Commodore 64 holds the racial
+rows at `GEN $1076`, eight to a race, and indexes them `race - 1` (`$2005 LDY
+$6B72 / DEY`), which is right. **The rows themselves are not.** The same table
+in the DOS build of the same game is AD&D 1st edition's published adjustment,
+and the C64's is that table with one byte missing from the gnome's row: the
+two blocks are the same byte stream for 21 bytes and from byte 22 the C64's is
+the DOS stream one byte later, all the way to the end. So the gnome, half-elf,
+halfling and half-orc each read a row displaced one column to the left, and
+each takes its eighth column out of the next race's first byte. The halfling's
+read-languages `-5` is the half-orc's pick-pockets `-5`.
+
+Curse of the Azure Bonds ships the same racial table on both ports, 56 bytes
+for 56, so this is Pool of Radiance's C64 build alone.
+
+**Why no player sees it, except in one place.** Nothing in either game ever
+draws a thief skill: a search of all 2,116 files on the Pool of Radiance sides,
+all 1,120 on Curse's and all 1,142 on Silver Blades' finds no `POCKET`,
+`NOISE`, `CLIMB`, `SILENT`, `LOCKS` or `LANGUAGE` in plain, shifted or
+screen-code PETSCII, where the same search finds `ENCAMP` in 16 Pool of
+Radiance files and `SEARCH` in 8. The percentages are never labelled and never
+printed.
+
+And the C64 engine reads only two of the eight. `DUNGEON $100E` passes the
+address of **open locks** to the party skill check at `$1CB2` in `X`/`Y`, which
+is the `PICK LOCK` menu item; `DUNGEON $1D88 CMP $6BA8` rolls against **move
+silently** in the surprise check. Neither an absolute-mode census of all 589
+distinct Pool of Radiance files (`tools/recordsweep.py --game pool --offset
+A5..AC`), nor the same census `--indirect`, nor a search for the `LDX #lo /
+LDY #$6B` convention finds a reader for the other six. A pointer built some
+other way would not show up, so read that as "none found" rather than "none".
+
+On those two columns the displaced rows cost nothing and gain a little: open
+locks is identical for all seven races on both ports, and move silently is
+identical except for the halfling and the half-elf, who each get **five points
+more** on the C64 than the same character gets in DOS.
+
+**The evidence.** `GEN $1076` off the player's own disk against the DOS build's
+own block in the EXEPACK-expanded `START.EXE`, and the stored bytes of two
+races: DAX, a halfling thief 1, holds `35 30 30 30 15 -5 80 -5`, the displaced
+row exactly including both negatives stored as `$FB`, and NYX, a gnome thief 1,
+holds the displaced gnome row. 27 of 27 engine-written C64 records on this
+machine reproduce as level row plus racial row. CONFIRMED from the table's
+bytes and the routine that adds them; `tools/thiefskillcensus.py`.
+
+**Where it does cost something.** Converting a save between the two ports:
+`#431 (A converted halfling thief keeps the other port's skill percentages,
+because the two ports ship different halfling rows)`.
+
+## N22. Pool of Radiance's C64 thief skills ignore dexterity, and DOS's do not
+
+**What the game does.** Every DOS build in the family carries an eleven-row
+block of five columns immediately after the racial one, indexed
+`dexterity - 9`, and adds it to pick pockets, open locks, find traps, move
+silently and hide in shadows before clamping the result at zero. Pool of
+Radiance on the Commodore 64 has no such block: `GEN $1FEC` adds the level row,
+adds the racial row and returns, and the stored result is signed and unclamped.
+Curse and Silver Blades on the C64 both have a dexterity block, so Pool of
+Radiance is the odd one out on its own port as well as against DOS.
+
+**Why no player sees it.** The same two reasons as N21: the numbers are never
+drawn, and only open locks and move silently are read. A DOS thief with a
+dexterity of 17 opens locks ten points better than the same character on the
+C64, which is the largest difference either engine can act on.
+
+**The evidence.** `GEN $1FEC` through `$2020`, five instructions of which are
+the racial add and none of which touch `$6B17`; and the sweep, where 59 of 63
+DOS Pool of Radiance records reproduce as level plus race plus dexterity
+clamped at zero and 27 of 27 C64 records as level plus race. CONFIRMED.
+
+**A defect in the DOS block, and it is not our reading.** Two of its 55 bytes
+are not AD&D's: a dexterity of 10 takes **-19** on pick pockets where the
+rulebook says -10, and a dexterity of 16 takes **-5** on open locks where the
+rulebook gives +5. Both are the same in all three DOS builds, so they were
+transcribed once and carried forward -- and **the C64's own dexterity tables,
+in Curse and in Silver Blades, hold -10 and +5 in exactly those two places and
+agree with DOS on the other 53 bytes**. Two independent C64 transcriptions
+against three identical DOS ones is what makes this the DOS build's error
+rather than a misread block on our side.
+
+A DOS thief with a dexterity of 16 -- an ordinary score for the class -- is
+ten points worse at opening locks than the rules he was sold with, and the
+same character on the C64 is not. That is the one number a player could in
+principle notice going wrong, since open locks is rolled at every locked
+door, and it reaches every conversion between the two ports in all three
+titles rather than only Pool of Radiance.
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of

@@ -659,12 +659,22 @@ A first-level halfling thief with a dexterity of 17 has a move silently of
 its race exists to be good at.
 
 Two of the eight columns can be pushed below zero for a halfling with a low
-dexterity, because the penalty is then applied twice. Whether the game prints
-the wrap-around as a number in the two hundreds on the character sheet, or
-clamps it somewhere before display, has not been checked -- rolling a halfling
-thief with a dexterity of 9 or 10 and looking at `VIEW` would settle it.
+dexterity, because the penalty is then applied twice. **Nothing draws the
+number**, so there is no wrap-around for a player to see: a search of all 1,142
+files on the Silver Blades sides -- and of Pool of Radiance's 2,116 and Curse's
+1,120 -- finds no `POCKET`, `NOISE`, `CLIMB`, `SILENT`, `LOCKS` or `LANGUAGE`
+in plain, shifted or screen-code PETSCII, where the same search finds `ENCAMP`
+and `SEARCH` in every title. The percentages are rolled against and never
+printed, which is why this bug shows only as a halfling who never once sneaks
+past anything.
 
 **Version.** Secret of the Silver Blades, Commodore 64. CONFIRMED -- read out
 of `GEN`, corroborated by the shipped party and by the game's own trainer
-writing the same row after five trainings. The other ports have not been
-looked at.
+writing the same row after five trainings.
+
+The DOS build of the same game ships **the same five racial rows in the same
+order**, 40 bytes for 40, read out of its own `START.EXE` on 2026-09-08 with
+`tools/thiefskillcensus.py rows --title secret-of-the-silver-blades`. So the
+data is not what differs between the ports, and whether the DOS engine
+subtracts the one before indexing has not been read; a DOS thief record of a
+known race would settle it in one sweep.
