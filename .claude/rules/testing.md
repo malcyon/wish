@@ -134,10 +134,19 @@ a stranger's edited party. Both halves of that are gone:
 
 * **The six were never there.** `tools/enccensus.py` swept every DOS and Amiga
   record on this machine on 2026-09-07: **54 of 54 records the archives ship
-  balance exactly**, across four titles, and so do 34 of 34 Amiga records.
-  Those files have not been written since 2026-08-15, and the reader as it
-  stood at the commit that wrote the sentence gives the same 0 of 18, so it
-  was not a reader fix either.
+  balance exactly**, across four titles, and so do **34 of 34 readable Amiga
+  records**. Those files have not been written since 2026-08-15, and the reader
+  as it stood at the commit that wrote the sentence gives the same 0 of 18, so
+  it was not a reader fix either.
+
+  **The two figures do not come from the same place**, and an earlier version
+  of this passage read as though they did. `~/Downloads/fr-archives` holds no
+  `.adf` at all: the Amiga records come from the disk-image directories
+  `tools/gamedisks.py` lists as its `amiga` candidates. The DOS figure is
+  pinned by `tests/test_enccensus.py::test_every_record_the_archives_ship_
+  balances_exactly`, so a reader change that brings the six back turns it red.
+  **The Amiga figure has no test**, so treat it as a measurement taken once
+  rather than a guarantee, and re-take it before resting anything on it.
 * **Failing it is the normal state of a record we watched being written.** Of
   the 97 records here that miss, **93 are ours, driven**: 90 by an exact
   multiple of 1000 gp -- Pool of Radiance's training fee, on `#249`'s ladder,
