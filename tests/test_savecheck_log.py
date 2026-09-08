@@ -18,12 +18,21 @@ import json
 import os
 import pathlib
 import signal
+import sys
 import threading
 
 import pytest
 from conftest import load_tools_module
 
 savecheck = load_tools_module("savecheck")
+
+#: `os.kill(pid, SIGTERM)` on Windows is `TerminateProcess`: there is no
+#: handler to run, so a test that signals itself there does not exercise
+#: `catch_signals` -- it kills the pytest worker, and the run ends with
+#: `node down: Not properly terminated` and no report at all (#442, seen on
+#: both Windows jobs on 2026-09-08).
+posix_only = pytest.mark.skipif(sys.platform == "win32",
+                                reason="SIGTERM has no handler on Windows")
 
 
 def entries(path: pathlib.Path) -> list[dict]:
@@ -161,6 +170,7 @@ def test_a_photograph_that_throws_does_not_take_the_traceback_with_it(
     assert "failure_screen" not in kinds
 
 
+@posix_only
 def test_a_signal_stops_the_run_through_its_own_cleanup(tmp_path, monkeypatch):
     """`timeout 200 tools/savecheck.py ...` is how this tool is usually run,
     and an unhandled SIGTERM there kills it mid-statement: no traceback, no
@@ -180,6 +190,7 @@ def test_a_signal_stops_the_run_through_its_own_cleanup(tmp_path, monkeypatch):
     assert entries(out)[-1]["error"] == "RuntimeError('boot failed')"
 
 
+@posix_only
 def test_the_signal_handler_raises_rather_than_killing_the_process():
     if threading.current_thread() is not threading.main_thread():
         pytest.skip("signal handlers only install on the main thread")

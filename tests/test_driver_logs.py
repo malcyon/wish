@@ -22,9 +22,16 @@ import json
 import os
 import pathlib
 import signal
+import sys
 import threading
 
 import pytest
+
+#: `os.kill(pid, SIGTERM)` on Windows is `TerminateProcess`: no handler runs,
+#: so signalling ourselves there kills the pytest worker rather than testing
+#: `catch_signals` (#442).
+posix_only = pytest.mark.skipif(sys.platform == "win32",
+                                reason="SIGTERM has no handler on Windows")
 from conftest import load_tools_module
 
 fightrun = load_tools_module("fightrun")
@@ -240,6 +247,7 @@ def _skip_off_main_thread():
         pytest.skip("signal handlers only install on the main thread")
 
 
+@posix_only
 def test_fightrun_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     _skip_off_main_thread()
@@ -257,6 +265,7 @@ def test_fightrun_sigterm_mid_boot_tears_the_slot_down(
     assert "signal" in entries(out)[kinds.index("failed")]["error"]
 
 
+@posix_only
 def test_outdoorstep_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     _skip_off_main_thread()
@@ -275,6 +284,7 @@ def test_outdoorstep_sigterm_mid_boot_tears_the_slot_down(
     assert kinds[-1] == "failed", kinds
 
 
+@posix_only
 def test_c64restinterrupt_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, real_session_patched, restore_signals):
     _skip_off_main_thread()
@@ -290,6 +300,7 @@ def test_c64restinterrupt_sigterm_mid_boot_tears_the_slot_down(
     assert kinds[-1] == "failed", kinds
 
 
+@posix_only
 def test_defeatdrive_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     _skip_off_main_thread()
@@ -305,6 +316,7 @@ def test_defeatdrive_sigterm_mid_boot_tears_the_slot_down(
     assert kinds[-1] == "failed", kinds
 
 
+@posix_only
 def test_statusdrive_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     _skip_off_main_thread()
@@ -320,6 +332,7 @@ def test_statusdrive_sigterm_mid_boot_tears_the_slot_down(
     assert kinds[-1] == "failed", kinds
 
 
+@posix_only
 def test_hallmenu_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     """`hallmenu.py`'s `run` has no `except`, so `Terminated` reaches `main`
@@ -342,6 +355,7 @@ def test_hallmenu_sigterm_mid_boot_tears_the_slot_down(
     assert (out / "hallmenu.jsonl").exists()
 
 
+@posix_only
 def test_turndrive_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     _skip_off_main_thread()
@@ -357,6 +371,7 @@ def test_turndrive_sigterm_mid_boot_tears_the_slot_down(
     assert kinds[-1] == "failed", kinds
 
 
+@posix_only
 def test_traitsave_boot_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, real_session_patched, monkeypatch, restore_signals):
     _skip_off_main_thread()
@@ -374,6 +389,7 @@ def test_traitsave_boot_sigterm_mid_boot_tears_the_slot_down(
     assert kinds[-1] == "failed", kinds
 
 
+@posix_only
 def test_traitdrive_sigterm_mid_boot_tears_the_slot_down(
         tmp_path, monkeypatch, restore_signals):
     _skip_off_main_thread()
