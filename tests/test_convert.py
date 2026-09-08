@@ -1418,8 +1418,17 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: `automap/actions.py`, the Fast Travel failure line
     #: `#306 (The Fast Travel button's own disabled tooltip carries a memory
     #: address)` left behind.
+    #: `automap.actions` went from one to two on 2026-09-07: Curse's trainer
+    #: raises every ready class in one press (`GEN $14F8`), so the message
+    #: after a level-up can now name more than one class in a sentence --
+    #: a shape no player has seen, because Pool of Radiance's trainer never
+    #: raises two classes at once. `#415 (automap/window.py picks the
+    #: level-up spell dialog's class the same wrong way plan would have,
+    #: blocking Curse's trainer)`. Naming only the last class raised would
+    #: under-report what changed on the character's own sheet, so the
+    #: sentence is the right one and only the wording waits on Donald.
     WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 1, "goldbox.dos": 1,
-               "automap.actions": 1}
+               "automap.actions": 2}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga, dos, actions):

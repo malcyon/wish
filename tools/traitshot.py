@@ -14,6 +14,7 @@ run it the way the rule says:
 
 from __future__ import annotations
 
+import argparse
 import os
 import pathlib
 import shutil
@@ -86,5 +87,14 @@ def main(out: pathlib.Path) -> int:
 
 
 if __name__ == "__main__":
-    where = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "work/issue13")
-    raise SystemExit(main(where))
+    # `argparse` before anything imports Qt: `tests/test_toolhelp.py` requires
+    # it of every tool that constructs a `QApplication`, because `--help` or a
+    # mistyped argument reaching one would put a window on Donald's screen
+    # while he is working. `main` does the Qt import itself, so nothing here
+    # touches it until the arguments are known good.
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "out", nargs="?", default="work/issue13", type=pathlib.Path,
+        help="directory to write the pictures into (default: work/issue13)")
+    raise SystemExit(main(parser.parse_args().out))
