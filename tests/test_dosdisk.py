@@ -45,9 +45,28 @@ DISPLAY_BIAS = 60
 SHEET_FIELDS = (
     "strength", "intelligence", "wisdom", "dexterity", "constitution",
     "charisma", "age", "experience", "hp_current", "hp_max",
-    "armour_class", "thac0_current",
+    "armour_class",
     "copper", "silver", "electrum", "gold", "platinum", "gems", "jewelry",
 )
+
+#: **`thac0_current` is deliberately not in that list, since 2026-09-07.**
+#: It used to be, and it was the one field here the conversion does not carry
+#: across: Donald ruled on
+#: `#405 (A converted character's THAC0 on the C64 sheet is the source save's
+#: stored byte, and the engine only corrects it at his first fight)` that Wish
+#: computes it rather than copying it, because the C64 engine rebuilds it from
+#: the base value and the strength bonus the moment a fight starts
+#: (`LIBRARY $3918`, `docs/205-the-c64-thac0-rebuild.md`).  So the two ports
+#: disagree here **on purpose** -- a low-level magic-user or thief is 20 in DOS
+#: and 21 on the C64
+#: (`#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64
+#: gives 21, and our table holds only the C64's own)`) -- and a test demanding
+#: they match would be demanding the bug back.
+#:
+#: What replaces it is `tests/test_c64thac0.py`, which checks the number
+#: against the engine's own to-hit table read off the player's `LIBRARY`
+#: rather than against the DOS source.
+THAC0_IS_COMPUTED_NOT_CARRIED = "#405"
 
 
 def _game_files():
