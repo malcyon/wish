@@ -151,6 +151,54 @@ def test_c64_to_amiga_direction_with_no_icon_parts_still_converts(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# `DosToAmiga`: a DOS source's own icon_head/icon_body/icon_colours, already
+# a `DosIcon`-shaped number in the record (#424 (A DOS party converted to an
+# Amiga save disk arrives with no combat figure either, though #422 says
+# that route needs no fix))
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-item-granted"),
+                    reason="needs WISH-SPEC-por-item-granted")
+def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
+        tmp_path):
+    """`DosToAmiga.rehearse` used to hand `_rehearse_por_savegame` no
+    `icons` at all -- `dos.to_neutral` has nowhere to put a combat figure,
+    and the raw `DosCharacter` list `dos.read_party` returns was discarded
+    before `write_por` ever saw it. `amiga_combat_icon` reads the figure off
+    that raw record instead, the same shape `AmigaToDos.rehearse` already
+    uses for an Amiga source.
+
+    Watched failing before the fix: `(icon_head, icon_body) == (0, 0)`, read
+    back off the written disk, for a specimen that carries its own flail and
+    banded mail -- the measurement `#424`'s own issue body cites.
+    """
+    from goldbox.amiga import AmigaDisk, read_por_slot
+
+    disk2 = _por_disk_2(tmp_path)
+    folder = gamedata.specimen("por-item-granted")
+
+    source = convert.Source.detect(folder / "SAVGAMD.DAT")
+    assert source.port == "dos" and source.slot == "D"
+    direction = convert.DosToAmiga(dos_layout.POOL_OF_RADIANCE)
+
+    raw_party = dos.read_party(folder, "D")
+    expected = [(c.get("icon_head"), c.get("icon_body")) for c in raw_party]
+    assert expected != [(0, 0)] * len(expected), \
+        "the specimen itself carries no combat icon -- pick a different one"
+
+    rehearsal = direction.rehearse(source, "A", disk2)
+    assert not any(FIGURE_NOT_SET in d for d in rehearsal.report.dropped), \
+        rehearsal.report.dropped
+
+    out_dir = tmp_path / "out"
+    direction.write(rehearsal, out_dir)
+    out_disk = AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
+    party, _savgam = read_por_slot(out_disk, "D")
+    pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
+    assert pairs == expected, pairs
+
+
+# ---------------------------------------------------------------------------
 # The dialog: `ConvertDialog._rehearse_and_report`'s branch reaches "amiga"
 # ---------------------------------------------------------------------------
 

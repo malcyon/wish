@@ -896,11 +896,19 @@ class DosToAmiga(Direction):
             raise ConvertError(f"{source.path} names no DOS save slot")
         letter = source.slot
         ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
-        party = [dos.to_neutral(c) for c in dos.read_party(source.path, letter)]
+        raw_party = dos.read_party(source.path, letter)
+        party = [dos.to_neutral(c) for c in raw_party]
+        # `amiga_combat_icon` is duck-typed to `goldbox.dos.DosCharacter`
+        # too (its own docstring) and reads the icon straight off the raw
+        # record, before `dos.to_neutral` discards it -- the same shape
+        # `AmigaToDos.rehearse` already uses for an Amiga source (#424,
+        # mirroring #422's fix for a C64 source).
+        icons = [amiga_combat_icon(c) for c in raw_party]
         savgam_path = pathlib.Path(source.path) / f"SAVGAM{letter}.DAT"
         state = amiga.por_state_from_dos(savgam_path.read_bytes(),
                                          str(savgam_path))
-        return _rehearse_por_savegame(state, letter, party, ecl_dax)
+        return _rehearse_por_savegame(state, letter, party, ecl_dax,
+                                      icons=icons)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
