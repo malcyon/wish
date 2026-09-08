@@ -797,24 +797,24 @@ def class_bits_for(char: "DosCharacter") -> int:
     """The class bitmask a record's level arrays imply.
 
     The OR of `CLASS_BIT_FOR_SLOT` over every slot set in the current
-    per-class level array **and** in the former one, where the title has a
-    former one.  Equal to the stored `class_bits` in 54 of 54 shipped records
-    across all four titles, which is what makes it a check on the layout: a
-    shape one byte out moves one array or the other and the two stop agreeing.
+    per-class level array, plus every former-class slot that is nonzero
+    **and strictly less than `level`** where the title has a former array --
+    the same test `GAME.OVR:0x3B119` runs on every record recompute (#408,
+    `docs/209-the-regained-dual-class-on-dos.md`).
 
-    **Not the state at the moment a character dual-classes.** DEMELTINA and
+    A former slot that has not yet been passed does not count: DEMELTINA and
     PAINE, read one action after Curse's and Silver Blades' own training
-    halls dual-classed them, both hold `class_bits` for the *new* class only
-    -- the old bit returns once the new class's level passes the byte after
-    `level` (`#234`, PROBABLE on `0x3C031`), and this function's OR over both
-    arrays is that *regained* state rather than the general one. A record
-    read fresh off a dual-class, before that threshold, disagrees with what
-    this function returns.
+    halls dual-classed them, hold `class_bits` for the *new* class alone, and
+    the former slot is not yet below `level` for either -- so OR-ing every
+    nonzero former slot unconditionally, as an earlier version of this
+    function did, added a bit the engine had not added yet and disagreed
+    with the stored byte on 8 of 135 records swept for #408.
     """
     slots = {n for n, v in enumerate(char.raw("class_levels")) if v}
     if "former_class_levels" in char.fields:
+        level = char.get("level")
         slots |= {n for n, v in enumerate(char.raw("former_class_levels"))
-                  if v}
+                  if v and v < level}
     bits = 0
     for slot in slots:
         bits |= CLASS_BIT_FOR_SLOT.get(slot, 0)
@@ -898,9 +898,17 @@ class DosCharacter(_Fielded):
 
     @property
     def class_levels(self) -> dict[str, int]:
-        """Class name -> level, for the classes that carry one."""
+        """Class name -> level, for the classes that carry one.
+
+        Bounded by the array this record's own shape declares -- eight slots
+        in Pool of Radiance and Curse of the Azure Bonds, **seven** in
+        Secret of the Silver Blades and Pools of Darkness, which drop the
+        monk's (#423).  A slot past the end of a seven-wide array is simply
+        not this title's, the same as `to_neutral`'s own `_by_class`.
+        """
         raw = self.raw("class_levels")
-        return {name: raw[n] for n, name, _ in CLASS_LEVEL_SLOTS if raw[n]}
+        return {name: raw[n] for n, name, _ in CLASS_LEVEL_SLOTS
+                if n < len(raw) and raw[n]}
 
     #: The coin slots, richest last.  Pools of Darkness has only the last
     #: three; every earlier title has all seven.
@@ -2963,6 +2971,26 @@ def write(char: NeutralCharacter,
             f"abilities_second: {shape.title} keeps one copy of each ability "
             f"score, so the source's second copy has nowhere to go")
 
+    # A dual-classed character who has trained his new class past the level
+    # he left the old one at carries both classes in the source's `levels` --
+    # the C64's `GEN $20A3` restores the old slot once that threshold is
+    # crossed (`docs/208-the-class-combo-and-the-conversion.md`).  DOS never
+    # stores that: `GAME.OVR:0x3B119` derives `class_bits` from
+    # `class_levels` and `former_class_levels` on every recompute instead,
+    # and the trainer at `0x254B3` skips a zero `class_levels` slot, so the
+    # old slot has to *stay* zero -- in the level array this writer sends to
+    # DOS and in the class code it computes from -- or the record reads as
+    # multi-classed rather than dual-classed (#408).  Computed once, ahead of
+    # both the class code below and the level array further down, so the two
+    # cannot disagree about which class he currently holds.
+    _former_for_regain = w.get("former_levels") or {}
+    _dos_levels = dict(w.get("levels") or {})
+    regained_classes = sorted(
+        cname for cname, lv in _former_for_regain.items()
+        if lv and _dos_levels.get(cname))
+    for _cname in regained_classes:
+        _dos_levels[_cname] = 0
+
     # -- the class mask, folded back into DOS's own order --------------------
     bits = use("class_bits")
     if bits is not None:
@@ -2992,14 +3020,15 @@ def write(char: NeutralCharacter,
     # new class passes the level he left the old one at, so it names two
     # classes where the code names the one he *is* -- and the engine agrees:
     # `GEN $1939` branches away from the table walk entirely when
-    # `dual_class_level` is set.  The current level array holds exactly the
-    # class he is now, because the old class's slot is zeroed at the change.
+    # `dual_class_level` is set.  `_dos_levels` is what makes that true here:
+    # the old class's slot is zeroed at the change and stays zero going into
+    # DOS, whatever the source port's own array says (#408).
     code = use("char_class")
     if code is not None:
-        former = w.get("former_levels") or {}
+        former = _former_for_regain
         source = "levels" if any(former.values()) else "class_bits"
         want = classcode.repair(int(code.value), int(w.get("class_bits") or 0),
-                                w.get("levels"), former, shape.key)
+                                _dos_levels, former, shape.key)
         if want is None:
             put(code, "char_class")
         else:
@@ -3066,10 +3095,17 @@ def write(char: NeutralCharacter,
             raw[n] = min(int(lv), 0xFF)
         put(v, dos_name, extra, value=bytes(raw))
 
+    # `_dos_levels`, computed above, already has any regained class's old
+    # slot zeroed -- the same value the class code just used (#408).
     levels = use("levels")
     if levels is not None:
-        _levels_into(levels, "class_levels",
-                     ", permuted from class name to class number")
+        extra = ", permuted from class name to class number"
+        if regained_classes:
+            levels = dataclasses.replace(levels, value=_dos_levels)
+            extra += (f"; {', '.join(regained_classes)} zeroed here -- DOS "
+                      f"derives the regain from class_bits and the former "
+                      f"array rather than storing it (#408)")
+        _levels_into(levels, "class_levels", extra)
 
     # -- thac0_base: recomputed through DOS's own table where it is known ----
     # `WRITE_DIRECT`'s copy is skipped above: a straight copy would hand

@@ -1438,6 +1438,28 @@ def test_the_class_bitmask_is_what_the_level_arrays_imply(shape):
 
 
 @_all_titles()
+def test_the_class_level_array_reads_a_seven_or_eight_slot_title_alike(shape):
+    """`DosCharacter.class_levels` used to walk `CLASS_LEVEL_SLOTS`'
+    eight rows regardless of the record's own array width, raising
+    `IndexError` on every Secret of the Silver Blades and Pools of Darkness
+    record -- both seven slots wide, the monk's dropped (#423).
+
+    PAINE (`ranger 8`) and MALACHITE (`fighter 7, thief 8`), named in the
+    issue, are Silver Blades records in the shipped archives.
+    """
+    named = {"PAINE": {"ranger": 8}, "MALACHITE": {"fighter": 7, "thief": 8}}
+    seen = set()
+    for char in _title_records(shape):
+        assert char.class_levels  # does not raise, and every record has one
+        if shape.key == "secret-of-the-silver-blades" and char.name in named:
+            assert char.class_levels == named[char.name], (shape.key,
+                                                            char.name)
+            seen.add(char.name)
+    if shape.key == "secret-of-the-silver-blades":
+        assert seen == set(named), seen
+
+
+@_all_titles()
 def test_the_shipped_party_reads_as_characters(shape):
     """The cheap sanity of a record that decoded: abilities in range, a
     printable name, hit points inside their maximum, five saving throws that
