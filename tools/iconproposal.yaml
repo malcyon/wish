@@ -212,9 +212,9 @@ overrides:
                            # C64 head 9 from the base small section.
     small:
       weapons:
-        11: {c64: 1}       # PROPOSED BY AN AGENT, NOT YET DONALD'S: the
-                           # other half of the pair above, and his to
-                           # accept, change to 0 or 21, or delete (#335).
+        11: {c64: 1}       # Donald's, 2026-09-08: he took the proposed 1,
+                           # the other half of the head pair above, on the
+                           # reasoning below (#335).
                            #
                            # Silver Blades deletes the weapon from this
                            # figure. Pool of Radiance's small body 11 grips
