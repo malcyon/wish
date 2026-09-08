@@ -24,6 +24,10 @@ character set, so no OCR is needed -- but the screen address moves ($0400 at
 boot, $CC00 in game), so it is recomputed from the VIC registers on every
 read.  Menu highlighting is a *colour*: the selected row is white (1) against
 green (5), and colour RAM is at $D800 whatever the VIC bank.
+
+**And those registers are read out of the io bank, not the default one**, or
+the answer is a byte of RAM every time the game banks the chips out mid-load
+-- `#336`, and the block above `BankedRead` has the measurement.
 """
 from __future__ import annotations
 
@@ -35,6 +39,7 @@ import time
 # they are re-exported here so this file and its callers keep working.
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
+from automap import screen as _screen  # noqa: E402
 from automap.vice import (  # noqa: E402,F401
     CMD_BANKS_AVAILABLE,
     CMD_CHECKPOINT_DELETE,
@@ -61,14 +66,150 @@ from automap.vice import (  # noqa: E402,F401
     MonitorError,
     Screen,
     codes_to_text,
-    grab_screen,
-    is_bitmap,
-    read_screen,
-    screen_address,
 )
 
 MENU_HOLD, MENU_GAP = 0.10, 0.14
 TEXT_HOLD, TEXT_GAP = 0.15, 0.28
+
+
+# -- reading the screen when the game has banked the I/O chips out ----------
+#
+# `automap/screen.py` computes the screen address from `$D018` and `$DD00`
+# rather than assuming `$0400`, and that arithmetic is right.  What was wrong
+# is **which memory those two reads come out of**.  The binary monitor's
+# default bank is whatever the CPU can see at that instant, and the game
+# spends part of every load at `$01 = $30` -- RAM everywhere and no I/O at
+# all.  A `$D018` read in that state is a byte of RAM, and the address
+# computed from it is somewhere nothing is displaying.  The reader then
+# reports on it without a word, which is `#336`: forty spaces off row 24
+# while the display says `INSERT SIDE # 2, AND PRESS ANY KEY.`
+#
+# Measured on pool slot 0, 2026-09-07, over 1,035 polls of one driven boot.
+# Four polls found `$01 = $30`, and in all four the default bank answered
+# `$D018 = $0C` and `$DD00 = $70` -- the screen at `$C000` -- where the chips
+# held `$79` and `$C4`, which is `$DC00`.  `$D011` was a byte of RAM with
+# them, `$36` every time, and on the first of the four the chips held `$0B`:
+# text mode with the display blanked, read as a bitmap, so the reading was
+# thrown away rather than used.  The other 1,031 polls agreed exactly, which
+# is why this is intermittent rather than broken.
+#
+# So every read here says which memory it means:
+#
+#   * the VIC and CIA registers, and colour RAM, come out of the **io** bank,
+#     which is the chips whatever `$01` says;
+#   * the screen matrix comes out of the **ram** bank, because the VIC always
+#     fetches RAM -- in bitmap mode this game's matrix sits at `$DC00`, where
+#     a default-bank read answers CIA 1 rather than the screen.
+
+#: `MON_CMD_BANKS_AVAILABLE`'s answer, per monitor.  The ids are a property of
+#: the VICE build rather than of the running machine, so this is asked once and
+#: kept: on the build here it is
+#: `default 0, cpu 0, ram 1, rom 2, io 3, cart 4`, and it is read rather than
+#: written down because another build may number them differently.
+_BANKS: dict[tuple[str, int], dict[str, int]] = {}
+
+
+class ScreenUnreadable(MonitorError):
+    """The screen could not be *located*, as against found and blank.
+
+    A `MonitorError` so that every caller which already degrades on a failed
+    read degrades the same way here.  The distinction it carries is the one
+    `#336` is about: a caller can tell "the game is showing nothing" from "I
+    do not know where the screen is", which forty spaces never let it.
+    """
+
+
+def bank_ids(mon: Monitor) -> dict[str, int]:
+    """`{name: id}` for every bank this VICE offers, from the machine itself.
+
+    An empty dict when the command is unsupported, which is a state
+    `BankedRead` handles rather than one that raises here.
+    """
+    key = (mon.host, mon.port)
+    if key in _BANKS:
+        return _BANKS[key]
+    found: dict[str, int] = {}
+    try:
+        resp = mon.command(CMD_BANKS_AVAILABLE)
+        count = int.from_bytes(resp[:2], "little")
+        off = 2
+        for _ in range(count):
+            size = resp[off]
+            bank = int.from_bytes(resp[off + 1 : off + 3], "little")
+            name_len = resp[off + 3]
+            name = resp[off + 4 : off + 4 + name_len].decode("ascii", "replace")
+            found[name] = bank
+            off += size + 1
+    except (MonitorError, IndexError, OSError):
+        found = {}
+    _BANKS[key] = found
+    return found
+
+
+#: `$01` bits 2-0 that leave the I/O chips visible to the CPU.  The other five
+#: values put RAM or the character ROM at `$D000`, which is what makes a
+#: default-bank register read a lie.
+IO_IN = (5, 6, 7)
+
+
+class BankedRead:
+    """Two readers over one monitor: the chips, and the RAM the VIC sees."""
+
+    def __init__(self, mon: Monitor):
+        self.mon = mon
+        ids = bank_ids(mon)
+        self.io = ids.get("io")
+        self.ram = ids.get("ram")
+        if self.io is None or self.ram is None:
+            # No named banks to ask for.  Fall back to what the CPU can see,
+            # and refuse to answer when it cannot see the chips rather than
+            # computing an address from RAM.
+            port = mon.read(0x01, 1)[0]
+            if port & 0x07 not in IO_IN:
+                raise ScreenUnreadable(
+                    f"this VICE offers no named banks and $01 is ${port:02X}, "
+                    "so the VIC registers are not readable")
+            self.io = self.ram = 0
+
+    def io_read(self, addr: int, length: int) -> bytes:
+        return self.mon.read(addr, length, bank=self.io)
+
+    def ram_read(self, addr: int, length: int) -> bytes:
+        return self.mon.read(addr, length, bank=self.ram)
+
+
+def screen_address(mon: Monitor) -> int:
+    return _screen.screen_address(BankedRead(mon).io_read)
+
+
+def is_bitmap(mon: Monitor) -> bool:
+    return _screen.is_bitmap(BankedRead(mon).io_read)
+
+
+def read_screen(mon: Monitor) -> Screen:
+    banked = BankedRead(mon)
+    addr = _screen.screen_address(banked.io_read)
+    return Screen(banked.ram_read(addr, 1000),
+                  banked.io_read(COLOUR_RAM, 1000), addr)
+
+
+def colour_ram(mon: Monitor, row: int | None = None) -> bytes:
+    """Colour RAM, whole screen or one row, out of the chips.
+
+    `$D800` is I/O, so a default-bank read of it answers RAM whenever the game
+    has banked the chips out -- and colour is how every menu here finds the
+    highlighted row.
+    """
+    all_of_it = bytes(c & 0x0F for c in BankedRead(mon).io_read(COLOUR_RAM, 1000))
+    if row is None:
+        return all_of_it
+    return all_of_it[row * SCREEN_COLS : (row + 1) * SCREEN_COLS]
+
+
+def grab_screen(**kw) -> Screen:
+    """Open a connection, read the screen, close it again."""
+    with Monitor(**kw) as mon:
+        return read_screen(mon)
 
 
 class Keyboard:

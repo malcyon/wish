@@ -48,6 +48,8 @@ from tools.drive import (  # noqa: E402
     Keyboard,
     Monitor,
     MonitorError,
+    ScreenUnreadable,
+    colour_ram,
     is_bitmap,
     read_screen,
 )
@@ -256,6 +258,11 @@ BAR_LEAVE = "leave"        # GO BACK LEAVE TREASURE -- what EXIT on the
                            # treasure bar opens when treasure is still there
 BAR_DONE = "done"          # GUARD DELAY QUIT SPEED EXIT -- what DONE opens
 BAR_PRESS = "press"        # PRESS <RETURN> OR BUTTON TO CONTINUE
+BAR_DISK = "disk"          # INSERT SIDE # 3, AND PRESS ANY KEY.  -- a *disk*
+                           # prompt, and it carries the word PRESS, so
+                           # without a kind of its own it read as BAR_PRESS
+                           # and every caller answered it with a keystroke
+                           # and never put the disk in (`#336`)
 BAR_MESSAGE = "message"    # GUARDING, YOUR TEAMMATE IS DYING -- and a bar
                            # caught half-redrawn, which reads as `MOVE/AT`
 BAR_BLANK = "blank"        # a monster's turn: row 24 is empty
@@ -265,8 +272,14 @@ BAR_NONE = "none"          # no readable screen at all
 # on.  Deliberately not `BAR_MESSAGE` or `BAR_NONE`: a half-redrawn bar reads
 # as a message, and taking that for the end of a turn is the mistake
 # `combat_state` already refuses to make.
+#
+# `BAR_DISK` is in it because it used to be: a disk prompt was classified as
+# `BAR_PRESS` until `#336` gave it a kind of its own, so leaving it out here
+# would make a waiter that used to see the move sub-bar go sit out its whole
+# timeout instead.  The prompt still has to be *answered*, and the fight loop
+# is what does that.
 AFTER_MOVE = (BAR_COMMAND, BAR_DONE, BAR_PRESS, BAR_CONTINUE, BAR_YESNO,
-              BAR_EXIT, BAR_BLANK)
+              BAR_EXIT, BAR_BLANK, BAR_DISK)
 
 # `MOVE LEFT = 9` is the move sub-bar's own count of remaining squares, and it
 # is the one thing that tells that bar apart from the command bar, which also
@@ -726,11 +739,23 @@ class Session:
     # -- screen -----------------------------------------------------------
 
     def screen(self):
+        """The text screen, or None when there is not one to read.
+
+        None is three different things and only one of them is silent: a
+        bitmap, which is the title and the credits and is normal; a monitor
+        that would not answer; and a screen that could not be *located*, which
+        is said out loud because it is the failure `#336` is about -- forty
+        spaces read off the wrong memory look exactly like a game showing
+        nothing, and every caller here treats them as that.
+        """
         try:
             with self.mon(3) as m:
                 if is_bitmap(m):
                     return None
                 return read_screen(m)
+        except ScreenUnreadable as exc:
+            self.log(f"  the screen could not be located: {exc}")
+            return None
         except (OSError, MonitorError):
             return None
 
@@ -752,12 +777,14 @@ class Session:
         for one row since it was written and this took no argument at all, so
         the command raised `TypeError` at every caller -- which is why the
         items command bar's highlight colour was never read (`#125`).
+
+        **Out of the io bank**, because `$D800` is I/O: read from the default
+        bank it answers the RAM underneath whenever the game has the chips
+        banked out, and colour is how every menu here finds its highlighted
+        row (`#336`).
         """
         with self.mon(5) as m:
-            all_of_it = bytes(c & 0x0F for c in m.read(0xD800, 1000))
-        if row is None:
-            return all_of_it
-        return all_of_it[row * 40 : (row + 1) * 40]
+            return colour_ram(m, row)
 
     def highlight_span(self, row: int) -> tuple[int, int] | None:
         c = self.colours(row)
@@ -1181,11 +1208,22 @@ class Session:
             if s.contains("ENCAMP"):
                 return True
             state = self.combat_state(s)
+            # The disk prompt first, and it is answered by putting the disk in
+            # rather than by pressing a key: a Return at `INSERT SIDE # 3, AND
+            # PRESS ANY KEY.` sends the game back to a drive holding the wrong
+            # side, and it asks again (`#336`).
+            if state.kind == BAR_DISK:
+                self.handle_prompt(s)
+                time.sleep(interval)
+                continue
             if state.kind == BAR_PRESS:
                 self.press_kernal(0x0D)
                 self.await_change(state.text,
                                   timeout=max(1.0, min(6.0, deadline - time.time())))
                 continue
+            # Still here, for a prompt that is **not** on row 24: the game
+            # asks for a disk in three wordings on two rows, and
+            # `combat_state` only ever sees the bar.
             self.handle_prompt(s)
             time.sleep(interval)
         return False
@@ -1674,6 +1712,17 @@ class Session:
         # `work/p126/run1.log`, on the press that spent the last square.
         if word_column(up, "DONE") >= 0:
             return CombatBar(BAR_COMMAND, bar)
+        # **Before `PRESS`, because a disk prompt carries that word.**
+        # `INSERT SIDE # 3, AND PRESS ANY KEY.` classified as `BAR_PRESS`, so
+        # `wait_for_world` sent a Return, waited for the row to change, and
+        # went round again without ever reaching `handle_prompt` -- the disk
+        # the game asked for was never put in the drive and the whole
+        # 240-second budget went by with the prompt on the screen.  Driven on
+        # pool slot 0 on 2026-09-07: `work/screenblind/run3` reads the prompt
+        # on 38 of its last 40 polls and `begin_adventuring` still returned
+        # False (`#336`).
+        if RE_GAME_SIDE.search(up) or SAVE_PROMPT in up:
+            return CombatBar(BAR_DISK, bar)
         if word_column(up, "PRESS") >= 0:
             return CombatBar(BAR_PRESS, bar)
         # `DONE` does not end a turn; it opens this.  `GUARD` on it is what
@@ -2191,7 +2240,12 @@ class Session:
                 span = None if s is None else span_in(s, 24)
                 highlights.append("-" if span is None
                                   else s.row(24)[span[0]:span[1] + 1].strip())
-            if state.kind == BAR_CONTINUE:
+            if state.kind == BAR_DISK:
+                # A fight loads art and a fight can end in a load, so the game
+                # asks for a side in here too -- and the answer is a disk, not
+                # a keystroke (`#336`).
+                self.handle_prompt(s)
+            elif state.kind == BAR_CONTINUE:
                 # The game offering a withdrawal is how a driven fight ends.
                 self.combat_bar("NO", timeout=min(12.0, left()))
             elif state.kind == BAR_DONE:
