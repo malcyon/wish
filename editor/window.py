@@ -12,7 +12,7 @@ import pathlib
 import shutil
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QIcon
+from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QIcon
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -258,6 +258,14 @@ MAX_ROSTER_ROWS = 8
 #: own width -- Qt's `QWidgetItem::minimumSize()` prefers an explicit
 #: `minimumSize` over `minimumSizeHint()` once one is set at all.
 ACTIVE_EFFECTS_MIN_WIDTH = 260
+#: Cushion subtracted from the box's guaranteed width before its title is cut
+#: with an ellipsis, so a style that reserves a little more room around the
+#: title than this machine's does still never paints past the box.
+#: `QGroupBox`'s own title layout (`SC_GroupBoxLabel`) measured within 0-1px
+#: of the raw text width on this machine at three font sizes, so this margin
+#: is nearly all cushion rather than a reserved amount the style is known to
+#: need.
+ACTIVE_EFFECTS_TITLE_MARGIN = 8
 #: Fields whose widest possible value is not worth the width it costs. `name`
 #: is twenty bytes and so twenty capital Ws -- 318px at three points of extra
 #: UI font, and it sits in the header, which does not scroll and is therefore a
@@ -1479,6 +1487,32 @@ class EditorBinding(QObject):
         box = self._child("box_active_effects")
         if box is not None:
             box.setMinimumWidth(floor)
+            # The width fix above stopped the box widening the window, and
+            # left its title to be clipped by the box's own frame instead --
+            # `QGroupBox` does not cut its title with an ellipsis on its own,
+            # it draws past its edge and paints nothing to say a word is
+            # missing. `floor` is the box's *guaranteed* width -- it never
+            # gets any narrower once opened, whatever the window is resized
+            # to afterwards -- so cutting the title to fit `floor` now is
+            # never wrong later, only sometimes shorter than it had to be.
+            box.setTitle(self._active_effects_title(box, floor))
+
+    def _active_effects_title(self, box: QGroupBox, width: int) -> str:
+        """`activeeffects.BOX_TITLE`, cut with an ellipsis so it fits in
+        *width* pixels of *box*'s own font rather than reading past it.
+
+        `#13 (Edit traits and active effects, in two separate panels)`: the
+        box's own title is 51 characters and clips with no ellipsis at every
+        font size tried once the box is held to `ACTIVE_EFFECTS_MIN_WIDTH`.
+        `ACTIVE_EFFECTS_TITLE_MARGIN` is subtracted first as a cushion against
+        a style that reserves more room around the title than this machine's
+        does; a title cut a little shorter than it needed to be is a small
+        cost, and a title that still reads past the frame is the bug this
+        exists to close.
+        """
+        room = max(0, width - ACTIVE_EFFECTS_TITLE_MARGIN)
+        return QFontMetrics(box.font()).elidedText(
+            activeeffects.BOX_TITLE, Qt.TextElideMode.ElideRight, room)
 
     def _own_disk_folder(self, game: por_games.Game) -> str | None:
         """`game`'s own folder out of `self.game_folders` -- the constructor

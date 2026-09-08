@@ -3325,7 +3325,7 @@ def test_a_save_with_nothing_running_still_has_the_panel(app, party, effects_on)
     w = EditorBinding(make_root(), str(party))
     box = w._child("box_active_effects")
     assert box is not None and not box.isHidden()
-    assert box.title() == activeeffects.BOX_TITLE
+    assert_title_fits_and_is_not_silently_cut(box, activeeffects.BOX_TITLE)
     view = w._child("active_effects")
     assert view.model_.rowCount() == 0
     head = view.horizontalHeader().model()
@@ -3369,6 +3369,28 @@ def test_the_panel_is_in_the_header_and_on_none_of_the_tabs(app, party,
     assert row.indexOf(box) >= 0, "the panel is the third item of the top row"
     assert row.itemAt(row.count() - 1).spacerItem() is not None, (
         "and the spacer is still last, so the roster keeps taking the slack")
+
+
+def assert_title_fits_and_is_not_silently_cut(box, full_title: str) -> None:
+    """`box.title()` is either *full_title* whole, or *full_title* cut with an
+    ellipsis to fit -- never a mid-word truncation with nothing on screen to
+    say a word is missing.
+
+    `#13 (Edit traits and active effects, in two separate panels)`: giving the
+    box its own `setMinimumWidth` (`f7b4c9c`, closing the window-too-wide
+    regression) stopped it growing to fit its own title, and left the title to
+    be clipped by the box's own frame instead -- `QGroupBox` does not cut its
+    title with an ellipsis on its own; it paints past its edge and the extra
+    characters simply do not appear.
+    """
+    from PyQt6.QtGui import QFontMetrics
+    metrics = QFontMetrics(box.font())
+    wanted = metrics.horizontalAdvance(box.title())
+    assert wanted <= box.minimumWidth(), (
+        f"{box.title()!r} wants {wanted}px, the box holds only "
+        f"{box.minimumWidth()}px")
+    assert box.title() == full_title or box.title().endswith("…"), (
+        f"{box.title()!r} is neither the full title nor cut with an ellipsis")
 
 
 def _effects_floor(app, party, extra: int):
@@ -3458,6 +3480,38 @@ def test_the_effects_panel_is_not_a_floor_under_the_window(app, party,
         "capped to the roster, and scrolling past it")
 
 
+@pytest.mark.parametrize("extra", [0, 6, 10])
+def test_the_effects_box_title_is_never_clipped_without_an_ellipsis(
+        app, party, effects_on, extra):
+    """The regression `f7b4c9c` left behind: holding the box to
+    `ACTIVE_EFFECTS_MIN_WIDTH` (260px) stopped it widening the window, and
+    also made the box narrower than its own 51-character title needs --
+    294px at `+0`, about 490px at `+6`, about 612px at `+10`
+    (`.claude/rules/testing.md`'s font range) -- so `QGroupBox`, which cuts
+    its title with no ellipsis, silently dropped the tail of the sentence.
+
+    Checked at the same fonts `test_the_effects_panel_is_not_a_floor_under_
+    the_window` uses `+6` and `+10` for: `+6` measures here about like
+    Windows' own base UI font.
+    """
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorBinding
+
+    base = app.font()
+    bigger = QFont(base)
+    bigger.setPointSizeF(base.pointSizeF() + extra)
+    app.setFont(bigger)
+    try:
+        w = EditorBinding(make_root(), str(party))
+        box = w._child("box_active_effects")
+        from editor import activeeffects
+        assert_title_fits_and_is_not_silently_cut(box, activeeffects.BOX_TITLE)
+        w.root.close()
+    finally:
+        app.setFont(base)
+
+
 @game_disks
 def test_a_no_op_save_writes_nothing_with_the_effects_flag_on(app, save,
                                                               effects_on):
@@ -3530,7 +3584,8 @@ def test_the_panel_appears_when_the_flag_asks_for_them(app, party, effects_on):
     from editor import activeeffects
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(party))
-    assert w._child("box_active_effects").title() == activeeffects.BOX_TITLE
+    box = w._child("box_active_effects")
+    assert_title_fits_and_is_not_silently_cut(box, activeeffects.BOX_TITLE)
     assert w._child("active_effects") is not None
 
 
