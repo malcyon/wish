@@ -44,6 +44,7 @@ from test_neutral import _filled
 from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame, world_state
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
+from goldbox.iconparts import SPACE, dos_icon_tables
 
 SSB = dos_layout.SECRET_OF_THE_SILVER_BLADES
 SSB_GAME = games.SECRET_OF_THE_SILVER_BLADES
@@ -574,10 +575,15 @@ def test_the_engine_leaves_the_spell_slot_array_zero():
 # --- the combat figure, through Silver Blades' own option tables (#330) ------
 #
 # The twin of `tests/test_curseconvert.py`'s section, and it exists because
-# `IconParts.dos_icon` takes no title while the correspondence table it reads
-# was built from Pool of Radiance's art -- `#330 (A converted Curse or Silver
-# Blades figure is composed through Pool of Radiance's icon table, which
-# nobody has checked transfers)`.
+# the correspondence table `IconParts.dos_icon` reads was built from Pool of
+# Radiance's art -- `#330 (A converted Curse or Silver Blades figure is
+# composed through Pool of Radiance's icon table, which nobody has checked
+# transfers)`. `_ssb_figure` below still composes through the base table with
+# no title, which is fine for the 182 of 184 blocks Silver Blades ships
+# unchanged; `test_dos_head_ten_reaches_donalds_own_c64_head_through_the_
+# conversion`, further down, is the one that passes this title's own
+# `dos_icon_tables(title=..., size=...)` through, for the two rows that
+# differ (#335).
 #
 # Silver Blades numbers its art the same way: 182 of the 184 `CHEAD.DAX` and
 # `CBODY.DAX` blocks are byte-identical to Pool of Radiance's at the same
@@ -678,6 +684,46 @@ def test_every_figure_a_silver_blades_player_can_choose_composes(
             for body in range(32):
                 icon, _ = _ssb_figure(ssb_parts, head, body, size)
                 assert icon[:18] in ssb_reachable, (head, body, size)
+
+
+def test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion(
+        converts_ssb, ssb_parts):
+    """#335: DOS head 10 becomes C64 head 9 for a small character and C64
+    head 2 for a large one -- Donald's decision, given `tools/iconproposal.
+    yaml`'s `small:`/`large:` split under `overrides: secret-of-the-silver-
+    blades:`.
+
+    This drives the figure through `_icon_for` with the same `tables`
+    argument `write_c64_save` builds -- `dos_icon_tables(title=..., size=
+    ...)` -- rather than through `tools/iconproposal.py`'s own
+    `tables_for_title`, which is a different reader of the same file and
+    proves nothing about whether a converted character ever sees it.
+
+    The expected shape is composed independently, straight off `IconParts.
+    apply` with the literal C64 head option, so a passing test means the
+    figure itself shows that head rather than merely that a table says so.
+
+    Watched failing before `_icon_for` was given a `tables` argument at all
+    (`bb16ee3`): with no title or size, DOS head 10 read the base table's
+    answer, C64 head 15 -- bare hair, at both sizes -- for every title,
+    matching neither of Donald's two answers.
+    """
+    body = 24
+    for size, which, want_head in ((1, "small", 9), (2, "large", 2)):
+        tables = dos_icon_tables(
+            title="secret-of-the-silver-blades", size=which)
+        weapon = tables.weapons[body]
+        char = dos.DosCharacter(ssb_record(
+            icon_head=10, icon_body=body, size=size,
+            icon_colours=DEFAULT_ICON_COLOURS))
+        icon = dos._icon_for(char, ssb_parts, tables)
+        expected = ssb_parts.apply(
+            bytes([SPACE] * 18),
+            ssb_parts.size_for(which, "weapon", weapon), "weapon", weapon)
+        expected = ssb_parts.apply(
+            expected, ssb_parts.size_for(which, "head", want_head),
+            "head", want_head)
+        assert icon[:18] == expected, which
 
 
 # --- #301: a party that has not set out is refused, not guessed --------------

@@ -406,13 +406,14 @@ def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
 def test_dos_icon_tables_with_no_title_reads_the_base_table():
     """No `title` means no override, whatever the section holds.
 
-    The contract every existing caller relies on, and the reason Donald's
-    Silver Blades head does not reach a conversion yet: `goldbox.dos.
-    _icon_for` calls `IconParts.dos_icon` with no `tables`, which calls
-    `dos_icon_tables()` with no `title`, so a converted Silver Blades
-    character is still composed through the base row. Passing the title down
-    is the rest of `#335 (Two combat-figure rows describe Pool of Radiance's
-    art, and Silver Blades draws those two options differently)`.
+    The contract every caller with no title relies on. `goldbox.dos.
+    write_c64_save` builds `tables=dos_icon_tables(title=container.game.key,
+    size=which)` once per size and passes it through `_icon_for` to
+    `IconParts.dos_icon`, so a converted Silver Blades character now gets
+    Donald's own head 9/2 split (`#335 (Two combat-figure rows describe Pool
+    of Radiance's art, and Silver Blades draws those two options
+    differently)`, `tests/test_ssbconvert.py::
+    test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion`).
     """
     import sys
 
