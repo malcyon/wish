@@ -243,17 +243,16 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
     given, neither size section is applied, which keeps `dos_icon_tables()`
     with no arguments meaning exactly what it has always meant.
 
-    **No caller passes `title` or `size` yet.** `IconParts.dos_icon` knows
-    its own character's size -- it is a parameter of that method -- but
-    calls `dos_icon_tables()` with neither, so today's base weapons and
-    heads reach every conversion (moving them out of a per-title override
-    is what made that happen, #130) while the base table's own `small:`
-    section does not, any more than a title's `overrides:` section does.
-    Donald picked Silver Blades' head 10 on 2026-09-05 and it reaches a
-    document but not a conversion; giving `_icon_for` in `goldbox/dos.py`
-    the title and size it is composing for is the rest of
-    `#335 (Two combat-figure rows describe Pool of Radiance's art, and
-    Silver Blades draws those two options differently)`.
+    **The conversion passes both.** `goldbox.dos.write_c64_save` builds
+    `dos_icon_tables(title=container.game.key, size=which)` once per size
+    and threads it through `_icon_for` into :meth:`IconParts.dos_icon`, so
+    a converted character reaches the rows his own title and size name:
+    Silver Blades' head 10 to C64 head 9 small and 2 large, and its small
+    body 11 to an empty-handed C64 option where every other title keeps the
+    armed one (`#335 (Two combat-figure rows describe Pool of Radiance's
+    art, and Silver Blades draws those two options differently)`). A caller
+    that passes neither still gets exactly the base table, which is what
+    every reader of the numbering alone wants.
     """
     source = pathlib.Path(path or PROPOSAL_PATH)
     try:

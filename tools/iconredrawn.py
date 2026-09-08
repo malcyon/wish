@@ -191,9 +191,13 @@ Commodore 64 figure the table names.</p>
 
 <p>Every row of that table was chosen by looking at <em>Pool of Radiance's</em>
 drawing of the option. Silver Blades re-drew two of them, so for those two
-rows the Commodore 64 figure was matched to a picture no Silver Blades player
-ever saw. Every picture below shows the figure's two poses, the way the combat
-screen alternates them, in the colours a newly made character starts with.</p>
+rows the Commodore 64 figure was first matched to a picture no Silver Blades
+player ever saw. Each of the two now has a row of its own for this title and
+this size, and the third figure in each set below is what that row draws
+today &mdash; so the question is whether the answer is the right one, rather
+than whether there is one. Every picture shows the figure's two poses, the way
+the combat screen alternates them, in the colours a newly made character
+starts with.</p>
 """
 
 
@@ -210,8 +214,12 @@ def page(subject: pathlib.Path, reference: pathlib.Path, disk: pathlib.Path,
     rows = redrawn(reference, subject)
     for row in rows:
         kind, option, size = row["kind"], row["option"], row["size"]
-        table = ip.WEAPONS if kind == "weapon" else ip.HEADS
-        chosen = table[option]
+        #: The table **as this title reads it at this size**, not the base
+        #: table: both of these rows now have an `overrides:` entry of their
+        #: own, and a page that showed the base answer would put a figure in
+        #: front of Donald that no converted character ever gets (#335).
+        weapons, heads = ip.tables_for_title(SUBJECT, size=size)
+        chosen = (weapons if kind == "weapon" else heads)[option]
         noun = "head" if kind == "head" else "body"
         out.append(f"<h2>The {noun} numbered {option}, on the smaller figures"
                    if size == "small" else
@@ -298,14 +306,13 @@ ASK = """
 <h2>What to decide</h2>
 <p>For each figure above, one of:</p>
 <ul>
-<li><strong>Leave it.</strong> Every converted character keeps the figure the
-table gives it today, and a Silver Blades character who picked one of these
-arrives on the Commodore 64 as the figure you matched to Pool of Radiance's
-drawing rather than to the one he was looking at.</li>
+<li><strong>Leave it.</strong> The row stands, and a Silver Blades character
+who picked that figure keeps arriving on the Commodore 64 as the figure
+beside it.</li>
 <li><strong>Pick a different Commodore 64 figure, for Silver Blades only.</strong>
-Name a number from the gallery. The table has no way to say &ldquo;this row,
-but only for this game&rdquo; today, so choosing one is also a decision to give
-it one.</li>
+Name a number from the gallery. The table says &ldquo;this row, for this game,
+at this size&rdquo; in one line, and both rows above already have one, so a
+different number is a one-line change and nothing else.</li>
 </ul>
 <p>If a figure should change for one size and not the other, say so: Silver
 Blades re-drew each of these at only one of its two sizes, so the same option

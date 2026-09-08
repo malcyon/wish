@@ -131,11 +131,11 @@ on the issue.
 
 ## The same numbering in all three titles -- CONFIRMED
 
-`IconParts.dos_icon` takes no title, and the correspondence table it reads
-was built from Pool of Radiance's art, so `#330 (A converted Curse or Silver
-Blades figure is composed through Pool of Radiance's icon table, which nobody
-has checked transfers)` asked whether a Curse of the Azure Bonds or Secret of
-the Silver Blades record numbers its own art the same way. It does.
+The correspondence table `IconParts.dos_icon` reads was built from Pool of
+Radiance's art, so `#330 (A converted Curse or Silver Blades figure is
+composed through Pool of Radiance's icon table, which nobody has checked
+transfers)` asked whether a Curse of the Azure Bonds or Secret of the Silver
+Blades record numbers its own art the same way. It does.
 `tools/dosicontitles.py` is the measurement, run against the archives'
 `POOLRAD`, `CURSE` and `SECRET` game directories.
 
@@ -200,14 +200,41 @@ size of each is untouched -- Silver Blades' *small* head 10 and *large* body
 11 are Pool of Radiance's bytes exactly -- so within Silver Blades the two
 sizes of those options now draw different things.
 
-**What that costs a converted character.** `tools/iconproposal.yaml` has one
-row per DOS option, serving both sizes, and both rows were chosen against
-Pool of Radiance's drawing. So a Silver Blades character at `size` 2 with
-head 10 loses a hat the C64 head option does not have, and one at `size` 1
-with body 11 gains a weapon his DOS figure does not hold. Nothing else in
-either table is affected, and no record in the 54 shipped DOS saves across
-the four titles holds either combination -- though a player reaches both from
-the ICON menu, and those saves have no chain of custody.
+**What that cost a converted character, and what fixed it.** Every row of
+`tools/iconproposal.yaml` was chosen against Pool of Radiance's drawing, so a
+Silver Blades character at `size` 2 with head 10 lost a hat the C64 head
+option does not have, and one at `size` 1 with body 11 gained a weapon his
+DOS figure does not hold. Both are now rows of that file's
+`overrides: secret-of-the-silver-blades:` section, split by size because each
+redraw is at one size only, and `goldbox.dos.write_c64_save` builds
+`dos_icon_tables(title=..., size=...)` once per size so they reach a
+converted character rather than only a proposal document (`#335 (Two
+combat-figure rows describe Pool of Radiance's art, and Silver Blades draws
+those two options differently)`).
+
+| what a Silver Blades player picked | what arrives on the C64 |
+|---|---|
+| head 10, `size` 2 | C64 head 2, which wears something -- Donald's own choice of 2026-09-05 |
+| head 10, `size` 1 | C64 head 9, the base table's small answer, because this size's DOS art is Pool of Radiance's |
+| body 11, `size` 1 | an empty-handed C64 option -- proposed by an agent as C64 weapon 1, the one of the three empty-handed small options no other DOS body reaches, and not yet Donald's |
+| body 11, `size` 2 | C64 weapon 25, the base answer, because this size's DOS art is Pool of Radiance's |
+
+Nothing else in either table is affected, and no record in the 54 shipped DOS
+saves across the four titles holds either combination -- though a player
+reaches both from the ICON menu, and those saves have no chain of custody.
+`tools/iconrowproof.py` is how each of the four readings above was taken: it
+stages an `icon_head`/`icon_body` onto a copy of an engine-written DOS party,
+converts it through `goldbox.dos.convert_save`, and reads the arriving C64
+icon back into the menu choices that drew it, with a `--control` run that
+ignores the title's `overrides:` section.
+
+**What the pair costs in the other direction.** `tools/iconreverse.yaml` has
+no per-title section, so a C64 figure that two DOS options now reach can only
+come home as one of them: a Silver Blades character converted to the C64 and
+back returns with head 4 rather than head 10, and with body 0 rather than
+body 11. That is `#452 (A Silver Blades combat figure does not survive a
+round trip through the C64, because the reverse table has no per-title
+rows)`, and the head half of it is live in the shipped table.
 
 ## Silver Blades re-drew the C64 art too -- CONFIRMED, and it refutes a PROBABLE
 

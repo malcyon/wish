@@ -83,6 +83,13 @@ def test_the_page_names_the_option_the_table_names_now(folders):
         html = ir.page(folders[ir.SUBJECT], folders[ir.REFERENCE],
                        disks / "SILVER-1.D64", ip.DEFAULT_COLOURS, 3,
                        pathlib.Path(tmp))
-    assert f"Commodore 64 head {ip.HEADS[10]}," in html
-    assert f"Commodore 64 weapon {ip.WEAPONS[11]}," in html
+    #: The title's own reading of the table at each row's own size, which is
+    #: what a converted character gets -- the base table's answer for both of
+    #: these rows is a figure no Silver Blades character is ever composed
+    #: from (#335).
+    assert ip.tables_for_title(ir.SUBJECT, size="large")[1][10] != ip.HEADS[10]
+    assert (f"Commodore 64 head "
+            f"{ip.tables_for_title(ir.SUBJECT, size='large')[1][10]},") in html
+    assert (f"Commodore 64 weapon "
+            f"{ip.tables_for_title(ir.SUBJECT, size='small')[0][11]},") in html
     assert html.count("src='data:image/png;base64,") == html.count("<img ")

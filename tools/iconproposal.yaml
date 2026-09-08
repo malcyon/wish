@@ -210,3 +210,40 @@ overrides:
                            # picked the same picture a Pool of Radiance
                            # player picked, and takes the same answer --
                            # C64 head 9 from the base small section.
+    small:
+      weapons:
+        11: {c64: 1}       # PROPOSED BY AN AGENT, NOT YET DONALD'S: the
+                           # other half of the pair above, and his to
+                           # accept, change to 0 or 21, or delete (#335).
+                           #
+                           # Silver Blades deletes the weapon from this
+                           # figure. Pool of Radiance's small body 11 grips
+                           # a long haft with a head at the bottom of it;
+                           # Silver Blades' is the same man in the same
+                           # stance with the whole weapon gone -- 10 weapon
+                           # pixels and 15 haft-outline pixels turned
+                           # transparent in pose 1, and the arm redrawn in
+                           # pose 2. The base table's answer, C64 weapon
+                           # 25, draws four WEAPON cells, so a converted
+                           # dwarf, gnome or halfling arrives carrying a
+                           # weapon his own figure does not.
+                           #
+                           # Exactly three of the C64's 28 small weapon
+                           # options draw no WEAPON glyph at all: 0 ("hands
+                           # empty"), 1 ("a second empty-handed stance the
+                           # large list does not have") and 21 ("hands
+                           # empty, arms out wide") -- the descriptions are
+                           # this project's own, from tools/iconreverse.yaml.
+                           # The pixel score cannot choose between them.
+                           # 1 is proposed because it is the only one of the
+                           # three no other DOS body reaches at this size:
+                           # 0 is DOS body 0's answer and 21 is DOS body 5's,
+                           # so either of those would land two different
+                           # Silver Blades figures on one C64 figure.
+                           #
+                           # Small only, and that is measured rather than
+                           # chosen: Silver Blades' LARGE body 11 is byte
+                           # for byte Pool of Radiance's, weapon and all
+                           # (docs/168, the four redrawn blocks), so a
+                           # human, elf or half-elf keeps the base table's
+                           # C64 weapon 25.

@@ -2,6 +2,7 @@
 
 import pathlib
 
+import gamedata
 import pytest
 from gamedata import game_file
 
@@ -180,12 +181,13 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
 
 # --- the same tables on three titles (#330) ---------------------------------
 #
-# `IconParts.dos_icon` takes no title.  Its C64 half is title-specific and
-# safe -- `IconParts.load` fits the base from the disk it was handed -- but
-# its DOS half reads one correspondence table, `tools/iconproposal.yaml`,
-# built from Pool of Radiance's art.  These are what would fail if a title
-# numbered its own art differently, because a wrong-but-in-range row composes
-# a complete, plausible figure that is simply not the one the player made.
+# `IconParts.dos_icon`'s C64 half is title-specific and safe --
+# `IconParts.load` fits the base from the disk it was handed -- and its DOS
+# half reads one correspondence table, `tools/iconproposal.yaml`, built from
+# Pool of Radiance's art, with a per-title section for the rows a later title
+# redrew.  These are what would fail if a title numbered its own art
+# differently, because a wrong-but-in-range row composes a complete,
+# plausible figure that is simply not the one the player made.
 DOS_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
               "secret-of-the-silver-blades")
 
@@ -554,3 +556,206 @@ def test_iconproposal_and_iconparts_agree_on_every_title_and_size():
             weapons, heads = ip.tables_for_title(title, size=size)
             assert mine.weapons == weapons, (title, size)
             assert mine.heads == heads, (title, size)
+
+
+# -- what the figure shows, not what the table says (#335) -------------------
+#
+# Silver Blades redrew two of the 184 DOS combat-art blocks, and the pair of
+# rows describing them was chosen against Pool of Radiance's drawing.  These
+# check the composed C64 figure against what each title's own DOS art shows,
+# which is the thing a player sees: a dwarf who put nothing in his hands must
+# not arrive holding a weapon.
+#
+# The class of a glyph comes from `SPELLE64`'s first page, and that file is
+# the identical 1882 bytes in all three titles -- so the `parts` fixture,
+# read off the player's Pool of Radiance disk, answers "does this option draw
+# a weapon" for Silver Blades too.  What differs between the titles is
+# `CHARPIC00`, the glyph bitmaps, and no assertion here reads one.
+
+def _draws(parts, size, kind, option) -> set[str]:
+    """Which named part classes one C64 menu option puts on an empty figure."""
+    from goldbox.iconparts import PART_CLASSES
+
+    shape = parts.apply(bytes([SPACE] * 18),
+                        parts.size_for(size, kind, option), kind, option)
+    return {PART_CLASSES[parts.part_class(g)] for g in shape if g != SPACE}
+
+
+def test_only_three_small_c64_weapon_options_draw_no_weapon_at_all(parts):
+    """The shortlist any answer for Silver Blades' body 11 has to come from.
+
+    Measured off `SPELLE64`'s own class table rather than by eye, and it is
+    what makes the row a choice between three rather than an open question:
+    C64 small weapon 0, 1 and 21 are the whole of the empty-handed small
+    list.  `tools/iconredrawn.py` draws the same three as its gallery.
+    """
+    empty = [o for o in range(parts.count("small", "weapon"))
+             if "weapon" not in _draws(parts, "small", "weapon", o)]
+    assert empty == [0, 1, 21]
+
+
+def test_a_silver_blades_dwarf_with_body_eleven_arrives_holding_nothing(parts):
+    """`#335`'s opening defect, and the five readings that must not move.
+
+    Silver Blades deletes the weapon from small body 11 -- 10 weapon pixels
+    and 15 haft-outline pixels turned transparent in pose 1, the arm redrawn
+    in pose 2, pinned by `test_the_redrawn_silver_blades_body_holds_no_weapon`
+    above -- and leaves the same option armed at the large size, where its
+    blocks are byte for byte Pool of Radiance's.  So the C64 figure a
+    converted character gets has to hold nothing for a Silver Blades dwarf,
+    gnome or halfling, and has to keep the weapon in the other five cases.
+
+    Written against what the composed figure *shows* rather than against the
+    number in the table, so Donald changing the proposed row from C64 weapon
+    1 to 0 or 21 -- the other two empty-handed options -- keeps it green, and
+    any armed option turns it red.
+    """
+    from goldbox.iconparts import dos_icon_tables
+
+    for title in ("pool-of-radiance", "curse-of-the-azure-bonds",
+                  "secret-of-the-silver-blades"):
+        for size in ("small", "large"):
+            option = dos_icon_tables(title=title, size=size).weapons[11]
+            armed = "weapon" in _draws(parts, size, "weapon", option)
+            unarmed_here = (title == "secret-of-the-silver-blades"
+                            and size == "small")
+            assert armed is not unarmed_here, (title, size, option)
+
+
+def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
+    """Through `goldbox.dos._icon_for`, with the `tables` argument
+    `write_c64_save` builds -- `dos_icon_tables(title=..., size=...)` --
+    rather than through `tools/iconproposal.py`'s own reader, which is a
+    different reading of the same file and says nothing about what a
+    converted character gets.
+
+    The twin of `tests/test_ssbconvert.py::
+    test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion`
+    for the other half of the pair.  The expected shape is composed
+    independently from the literal C64 option, so a pass means the figure
+    itself holds nothing rather than that a table says it should.
+    """
+    from goldbox import dos, dos_layout
+    from goldbox.iconparts import dos_icon_tables
+
+    shape = dos_layout.SECRET_OF_THE_SILVER_BLADES
+    fields = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    for size_byte, which in ((1, "small"), (2, "large")):
+        record = bytearray(shape.record_size)
+        for name, value in (("icon_head", 0), ("icon_body", 11),
+                            ("size", size_byte)):
+            record[fields[name].span] = bytes([value] * fields[name].size)
+        record[fields["icon_colours"].span] = bytes.fromhex("616263646566")
+        tables = dos_icon_tables(title=shape.key, size=which)
+        icon = dos._icon_for(dos.DosCharacter(bytes(record)), parts, tables)
+
+        weapon, head = tables.weapons[11], tables.heads[0]
+        expected = parts.apply(bytes([SPACE] * 18),
+                               parts.size_for(which, "weapon", weapon),
+                               "weapon", weapon)
+        expected = parts.apply(expected,
+                               parts.size_for(which, "head", head),
+                               "head", head)
+        assert icon[:18] == expected, which
+        assert ("weapon" in _draws(parts, which, "weapon", weapon)) is (
+            which == "large"), which
+
+
+# -- and through the whole conversion, on a save the engine wrote (#335) ------
+
+@pytest.fixture(scope="module")
+def silver_blades_parts():
+    """Silver Blades' own `SPELLE64`/`SPELLN64`, off the title's own disk.
+
+    `SPELLE64` is the identical 1882 bytes in all three titles and this one
+    loads it `$1900` lower, so this is also the fit `IconParts` makes from
+    the overlay's pointers rather than from a constant.
+    """
+    gamedisks = pytest.importorskip("tools.gamedisks")
+    from goldbox.d64 import D64
+
+    where = gamedisks.find("secret-of-the-silver-blades")
+    if where is None or not pathlib.Path(where).is_dir():
+        pytest.skip("needs the Silver Blades disks; set $SSB_DISKS")
+    for path in sorted(pathlib.Path(where).glob("*.[dD]64")):
+        try:
+            disk = D64.open(str(path))
+        except Exception:
+            continue
+        if disk.find(b"SPELLE64") and disk.find(b"SPELLN64"):
+            return IconParts.load(disk)
+    pytest.skip("no Silver Blades side here carries SPELLE64 and SPELLN64")
+
+
+def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
+        silver_blades_parts, tmp_path):
+    """The whole path, on a party the game itself wrote.
+
+    `#335`'s two rows, staged onto a copy of an engine-written DOS Silver
+    Blades save and converted through `goldbox.dos.convert_save` -- the
+    entry point the import dialog uses -- then read back out of the C64
+    icon table by `IconParts.recognise`, which names the menu choices that
+    drew the eighteen screen codes.  Nothing here reads the table it is
+    testing: the assertion is which part classes the arriving figure draws.
+
+    Four corners, because each of the two options was redrawn at one size
+    only and the other size must not move:
+
+    | staged | Silver Blades' DOS art | what has to arrive |
+    |---|---|---|
+    | head 10, `size` 2 | wears a hat | a C64 head drawing `cap` |
+    | head 10, `size` 1 | Pool of Radiance's, bare | no `cap` |
+    | body 11, `size` 1 | no weapon | no `weapon` |
+    | body 11, `size` 2 | Pool of Radiance's, armed | `weapon` |
+
+    `tools/iconrowproof.py` is the same run with a `--control` that ignores
+    the title's `overrides:` section; against that control the small
+    character arrives as C64 small weapon 25 drawing a weapon, and every
+    large one keeps head 15 and no hat.
+    """
+    import shutil
+
+    from goldbox import c64_save, dos, dos_layout, games
+
+    specimen = gamedata.specimen("ssb-299-engine-resave")
+    fields = dos_layout.FIELDS_BY_NAME_FOR["secret-of-the-silver-blades"]
+    folder = tmp_path / "party"
+    folder.mkdir()
+    for path in specimen.iterdir():
+        if path.is_file() and path.name != "provenance.toml":
+            shutil.copy(path, folder / path.name)
+            (folder / path.name).chmod(0o644)
+    for n in range(1, 7):
+        record = folder / f"CHRDATD{n}.SAV"
+        if not record.is_file():
+            continue
+        raw = bytearray(record.read_bytes())
+        for name, value in (("icon_head", 10), ("icon_body", 11)):
+            raw[fields[name].span] = bytes([value] * fields[name].size)
+        record.write_bytes(bytes(raw))
+
+    game = games.SECRET_OF_THE_SILVER_BLADES
+    container = c64_save.container_for(game)
+    save0 = bytearray(container.payload_size)
+    save1 = (bytearray() if container.roster_in_payload
+             else bytearray(container.game.roster_size))
+    dos.convert_save(folder, "D", save0, save1 or None,
+                     icon=silver_blades_parts, game=game)
+
+    party = dos.read_party(folder, "D")
+    assert any(char.get("size") == 1 for char in party), (
+        "this specimen's one small character is what the row is about")
+    for index, char in enumerate(party):
+        at = container.icon(dos.marching_slot(index, len(party)))
+        drawn = _draws_shape(silver_blades_parts,
+                             bytes(save0[at:at + 18]))
+        small = char.get("size") == 1
+        assert ("weapon" in drawn) is not small, (char.name, drawn)
+        assert ("cap" in drawn) is not small, (char.name, drawn)
+
+
+def _draws_shape(parts, shape) -> set[str]:
+    """Which named part classes a composed icon's eighteen cells hold."""
+    from goldbox.iconparts import PART_CLASSES
+
+    return {PART_CLASSES[parts.part_class(g)] for g in shape if g != SPACE}
