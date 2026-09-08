@@ -26,7 +26,7 @@ The row is `goldbox/c64_save.py`'s `SECRET_OF_THE_SILVER_BLADES`.
 | `+$EA` | zeroed as unused | **zeroed, and named**: `DUNGEON $0B0E` stores a byte from its own table there and reads it back at `$0B1E`, so nothing in the save reaches that read | CONFIRMED |
 | `+$FD`-`+$FE` | zeroed; the arriving script refills them | **copied** from the DOS save | CONFIRMED as the addresses |
 | the flag page | `+$120`-`+$1F8` | **`+$120`-`+$1FF`** | CONFIRMED |
-| the name table | keyed by slot | **keyed by marching order** | PROBABLE |
+| the name table | not keyed at all | **not keyed at all** | CONFIRMED, and the difference the two disks showed is not a difference between the titles -- see below |
 
 **The cache and the disk hint are Curse's, read out of this title's own
 overlays.** `CAMP $0CA5` is `LDX #$18 / LDA $7F13,X / ORA #$80 / STA $4DC0,X`
@@ -69,26 +69,30 @@ converted Curse party loses those two bytes. Filed separately rather than
 changed under this ticket, because Curse's conversion was proven in the game
 with the narrow window and re-proving it is that ticket's work.
 
-## The name table may be keyed the other way round
+## The name table is not keyed by anything
 
 In both engine-written Curse saves, entry *n* of the table at `+$C00` is the
 name of the character in slot *n*. In the shipped `SAVEDBASH`, entry 0 is GUY
-DE VALOIS and slot 0 is MORGAINE -- the table runs in marching order and the
-slots run the other way, which is `goldbox.dos.marching_slot`'s top-down fill.
+DE VALOIS and slot 0 is MORGAINE. That looked like two titles keying the same
+table differently, and it is not: **the table is a buffer `GEN` refills from
+the save disk's directory before every read**, so the stored order is the
+order those character files stood in the directory at the last scan.
 
-Everything else in that file is slot-ordered: roster block *n* carries slot
-*n*'s armour class and hit points, six of six. So it is the table that is
-reversed and not the file.
+`#435 (A rename in Wish leaves the C64 name table holding the old name on
+Curse and Silver Blades, and nobody knows what reads it)` settled it on
+2026-09-08 in the running game, which is why the "may be keyed the other way
+round" reading that stood here is gone. An engine `SAVE CURRENT GAME` on a
+five-character party stored a table holding **one** entry, naming a character
+who had just been taken out of that party -- `docs/216-the-c64-name-table.md`
+has the three runs.
 
-**PROBABLE, and this is what would settle it.** The party this ticket
-converted has its own marching order, so writing the table in marching order
-and reading the six sheets against the six panel lines cannot separate the two
-readings -- both put GUY DE VALOIS first. A save whose marching order is *not*
-the reverse of its slot order would: reorder a DOS party so that the character
-in C64 slot 5 is not the head of the marching order, convert it, and read the
-panel. If the names still line up with the sheets, the table is in marching
-order; if they are shuffled, it is in slot order and `names_in_marching_order`
-comes off.
+So `Container.names_in_marching_order` describes two disks rather than an
+engine, and the experiment this section used to propose -- reorder a party,
+convert it and read the panel -- cannot settle it, because the panel is drawn
+from the records and the game never reads the stored order at all.
+`goldbox/dos.py` keeps writing the table for the reason the identity byte is
+written: the bytes are there and Wish's own roster list is a reader outside
+the game.
 
 ## The record: four things this title does that Pool of Radiance does not
 

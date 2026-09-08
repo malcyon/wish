@@ -164,8 +164,15 @@ area, and the file ends there. The block layout is unchanged: `+0x00` and
 readied count, `+0x17` damage bonus, `+0x19` current HP, `+0x1B` movement.
 `goldbox/savegame.py`'s `RosterBlock` reads it without a single field change.
 
-**There is a name table at `$5700`** — sixteen bytes per character, NUL-padded,
-in slot order. Pool of Radiance has nothing there; `$5700` is exactly where
+**There is a name table at `$5700`** — sixteen bytes per character,
+NUL-padded. It is **not** a second copy of the party and it is not in slot
+order: `GEN` clears all 256 bytes and refills them from the save disk's own
+directory before every read, so what a save carries there is the last
+directory scan and nothing else — `docs/216-the-c64-name-table.md`, which
+corrected this line on 2026-09-08 after
+`#435 (A rename in Wish leaves the C64 name table holding the old name on
+Curse and Silver Blades, and nobody knows what reads it)` watched the buffer
+being refilled in the running game. Pool of Radiance has nothing there; `$5700` is exactly where
 Curse's slot 8 would begin, so Curse's slot array cannot be twelve wide the way
 Pool of Radiance's is. How many combat slots Curse keeps, and where, is NOT
 FOUND: `$5800`–`$5AFF` was zero in both saves taken.
