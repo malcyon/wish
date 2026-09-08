@@ -1321,6 +1321,17 @@ class PoolOfRadiance:
     #: minute at a bar it does not know, with a screenshot named for the digest,
     #: so the day it happens the evidence to add the row is on disk -- which is
     #: how `claim_treasure` and the PARLAY variant were added.
+    #:
+    #: **`command`'s width is `MOVE VIEW AIM`, not `MOVE VIEW AIM USE`**, since
+    #: `#340 (A level-1 party's combat bar is not in the DOS harness's table, so
+    #: a driven fight stalls for sixty seconds and then fails)`: a level-1
+    #: character with no usable item and no memorised spell draws neither `USE`
+    #: nor `CAST`, so the bar is `MOVE VIEW AIM QUICK DONE` and the 136-pixel
+    #: prefix never matched.  113 pixels is the widest measured shared by both
+    #: -- `work/dosbox/p114/bar04_02d05064ee41da5f.png`,
+    #: `work/dosbox/p114/command-bar-with-cast.png` and the level-1 screenshot
+    #: at `work/issue52/crops/stuck.ppm` all agree up to column 113 and diverge
+    #: at 114.
     COMBAT_BARS: tuple[tuple[int, str, str], ...] = (
         # The bar row in one flat colour, caught mid-redraw.  The C64 side
         # called one of these the end of a turn and starved a fight of them.
@@ -1346,10 +1357,12 @@ class PoolOfRadiance:
         # BACK AND CLAIM YOUR TREASURE?`, asked because the driver leaves the
         # treasure where it lies.  work/dosbox/p114/claim-treasure.png
         (320, "c576b6838d2e460b", "claim_treasure"),
-        # `MOVE VIEW AIM USE` -- the first seventeen characters of every
-        # character's turn.  work/dosbox/p114/bar04_02d05064ee41da5f.png and
-        # work/dosbox/p114/command-bar-with-cast.png
-        (136, "32c20bb6efbb99ed", "command"),
+        # `MOVE VIEW AIM` -- shared by every character's turn, however much of
+        # `USE CAST TURN QUICK DONE` the acting character is offered (#340).
+        # work/dosbox/p114/bar04_02d05064ee41da5f.png,
+        # work/dosbox/p114/command-bar-with-cast.png and
+        # work/issue52/crops/stuck.ppm (a level-1 party, `USE` never drawn).
+        (113, "fc8f7441fc1419de", "command"),
         # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
         # work/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
         # work/dosbox/p114/encounter-with-parlay.png

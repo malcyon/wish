@@ -288,6 +288,70 @@ def test_bar_kind_reads_the_picture_panel_when_the_frame_is_not_halved_back(monk
     assert por.bar_kind(halved) == "test_bar"
 
 
+# --------------------------------------------------------------------------
+# A level-1 party's short combat bar (#340)
+# --------------------------------------------------------------------------
+#
+# A level-1 character out of creation has no usable item and no memorised
+# spell, so the engine draws neither `USE` nor `CAST` and the bar reads
+# `MOVE VIEW AIM QUICK DONE` rather than `MOVE VIEW AIM USE ...`.  The old
+# 136-pixel `command` prefix was wide enough to need `USE` and so never
+# matched it -- `bar_kind` answered `None`, and a driven fight waited out its
+# full 60-second patience and failed.
+
+
+def test_the_command_bar_prefix_is_no_wider_than_move_view_aim():
+    """#340: measured directly off the level-1 party's own screenshot from
+    that run (`work/issue52/crops/stuck.ppm`) against the two specimens the
+    `command` digest was measured from (`work/dosbox/p114/bar04_...png` and
+    `work/dosbox/p114/command-bar-with-cast.png`): all three agree, glyph for
+    glyph, up to column 113 and diverge at 114, so 113 is the widest a shared
+    prefix can be.
+    """
+    width, _digest, _label = next(
+        row for row in dosbox.PoolOfRadiance.COMBAT_BARS if row[2] == "command"
+    )
+    assert width <= 113, (
+        f"the command bar prefix is {width} pixels wide, wider than the 113 "
+        "MOVE VIEW AIM shares with a level-1 party's MOVE VIEW AIM QUICK"
+    )
+
+
+def test_bar_kind_recognises_a_shorter_bar_and_still_rejects_a_different_one(monkeypatch):
+    """Narrowing the prefix is only safe if it still tells the short bar
+    apart from a screen that is not a combat bar at all.
+
+    Reproduced with no emulator and no game pixels, the same way the frame-
+    doubling test above is: two synthetic bars, lit only up to where they
+    diverge, standing in for the long and short variants -- and a third that
+    diverges *inside* the shared prefix, which is the case a fuzzy matcher
+    would get wrong and an exact digest of a shorter prefix does not.
+    """
+    width, height = 320, 200
+    prefix_end = 113
+
+    def bar(lit_to):
+        px = bytearray(width * height * 3)  # all-black paper
+        for y in range(dosbox.BAR[1], dosbox.BAR[1] + dosbox.BAR[3]):
+            for x in range(0, lit_to, 5):
+                i = (y * width + x) * 3
+                px[i:i + 3] = b"\xff\xff\xff"
+        return dosbox.Screen(width, height, bytes(px))
+
+    long_bar = bar(136)              # `MOVE VIEW AIM USE ...`
+    short_bar = bar(prefix_end - 1)  # `MOVE VIEW AIM QUICK ...`, no `USE`
+    different = bar(prefix_end - 20)  # diverges before the shared prefix ends
+
+    digest = long_bar.glyphs((dosbox.BAR[0], dosbox.BAR[1], prefix_end, dosbox.BAR[3]))
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "COMBAT_BARS",
+                        ((prefix_end, digest, "command"),))
+    por = dosbox.PoolOfRadiance(None)
+
+    assert por.bar_kind(long_bar) == "command"
+    assert por.bar_kind(short_bar) == "command"
+    assert por.bar_kind(different) is None
+
+
 #: The lease is an `flock`, which Windows has no equivalent of. Everything
 #: else in this file -- the PPM decode, the digest, and the findings about a
 #: DOS save -- is platform-independent and runs everywhere.
