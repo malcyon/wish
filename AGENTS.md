@@ -1,7 +1,7 @@
 # Working notes for this repository
 
 The rules that bind every task, wherever in the tree it lands. The rest is
-twelve files under `.claude/rules/`, reachable as `.agents/rules/` as well --
+thirteen files under `.claude/rules/`, reachable as `.agents/rules/` as well --
 the same files, by symlink. `docs/160-why-these-rules.md` has the incidents
 behind all of it. **Read the one covering what you are about to do**, whether or
 not it is already in front of you.
@@ -13,6 +13,7 @@ not it is already in front of you.
 | Write a brief for a subagent | `delegating.md` |
 | End a turn, or end a session | `sessions.md` |
 | Put a major feature behind a flag | `feature-flags.md` |
+| Write a script, or leave a file in `work/` | `scratch.md` |
 
 Seven cover one area of the tree each: `testing.md`, `conversions.md`,
 `gui-text.md`, `qt-designer.md`, `documentation.md`, `art.md`, `emulator.md`.
@@ -58,6 +59,21 @@ terminal as much as anything in the window. **Never open a sentence with a
 quotation that starts lowercase**; put words in front of it. Anything a user
 reads *in the interface* is Donald's to approve and carries no memory address or
 offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
+
+## Caveman lite is the default, in every session
+
+Donald reads this project in **`/caveman lite`**. It is the standing setting
+rather than something he asks for each time: **set it at the start of a session
+and keep it until he says "stop caveman" or "normal mode".**
+
+Lite is the gentlest level. **No filler and no hedging; articles and full
+sentences stay.** It is not the telegraphic register -- do not drop articles,
+do not write fragments, and never add a word to sound terse. Everything under
+"Writing" above still binds, and where the two disagree, clarity wins.
+
+**It governs the terminal and nothing else.** Anything that leaves the session
+in normal prose: commit messages, issue bodies and comments, `docs/`, code and
+its comments, README rows, and a brief written for a subagent.
 
 ## Words to avoid
 
@@ -118,11 +134,6 @@ putting half-finished work on `main`. **Do not edit a file you have assigned to
 an agent** -- if you must, say so in a message to that agent, and prefer putting
 back the one hunk you changed to restoring the whole file you remember.
 
-To test whether a change matters, copy the file aside and copy it back, `diff`
-to confirm, **and then delete `__pycache__`** -- a file put back at the same size
-in the same second does not look changed to CPython's bytecode cache. Take that
-copy immediately before the change you are testing, never at the run's start.
-
 ## The machine
 
 Donald works at this desktop while agents run. **Nothing an agent runs may put a
@@ -152,18 +163,6 @@ started, so do not attach, probe or kill it. The pool allocates from 6520 up.
 **Never kill a process by name** -- not `pkill -x x64sc`, not `pkill -x Xephyr`.
 Kill only the process group your own slot launched. The one time this was broken,
 what died was his own window.
-
-## Scratch files
-
-`work/` is for a **run's output** -- logs, dumps, screenshots, disk images -- and
-is gitignored because most of it derives from the game's bytes. It is
-snapshotted hourly to OneDrive here, and **that is not a reason to leave
-anything valuable there**: it has been lost twice.
-
-**A tool goes in `tools/`, committed, with a row in `tools/README.md`.** A
-runner, a probe, a sweep, a one-off script that answered a question: every one is
-a tool, however throwaway it felt. The test is whether somebody would otherwise
-write it again. `ecl6.py` decoded all thirty ECL scripts and was lost.
 
 ## Delegating
 

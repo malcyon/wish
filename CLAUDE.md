@@ -8,7 +8,7 @@ The rules are in `AGENTS.md`, imported above, because Google's tools read that
 name and not this one. Everything there binds here. This file holds only what is
 true of Claude Code and of nothing else, so `AGENTS.md` stays honest for both.
 
-**Five of the twelve rule files load at launch and seven load when you read a
+**Six of the thirteen rule files load at launch and seven load when you read a
 file they cover**, so the routing table in `AGENTS.md` is mostly a formality
 here. It is not one for a reader that has no such mechanism.
 
