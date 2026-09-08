@@ -41,8 +41,38 @@ def test_no_disks_stops_before_a_slot_is_claimed(tmp_path, monkeypatch):
     assert claimed == []
 
 
-def test_the_docstring_says_which_question_is_still_open():
-    """The tool exists to answer two questions and has answered one. A reader
-    who cannot tell which is which will run it and believe the wrong half."""
-    assert "ANSWERED" in probe.__doc__
-    assert "OPEN" in probe.__doc__
+def test_the_docstring_carries_both_answers_and_their_date():
+    """The tool exists to answer two questions and has now answered both. A
+    reader who cannot tell what it established will run it again to find out,
+    which is fifteen minutes and an emulator slot."""
+    assert probe.__doc__.count("ANSWERED on 2026-09-08") == 2
+    assert "OPEN" not in probe.__doc__
+
+
+def test_a_name_with_a_slash_in_it_does_not_become_a_directory():
+    """A Curse party has an `F/T` in it, and the character being removed goes
+    into the screen dump's filename. A first run got as far as the game's
+    question and died on `04-asked-F/T.txt`."""
+    written = {}
+
+    class FakeScreen:
+        def row(self, _r):
+            return ""
+
+    class FakeKbd:
+        def screenshot(self, path):
+            written["png"] = path
+
+    class FakeSession:
+        kbd = FakeKbd()
+
+        def screen(self):
+            return FakeScreen()
+
+    import pathlib
+    import tempfile
+    with tempfile.TemporaryDirectory() as out:
+        probe.dump(FakeSession(), pathlib.Path(out), "asked-F/T", [3])
+        made = sorted(p.name for p in pathlib.Path(out).iterdir())
+    assert made == ["04-asked-F-T.txt"]
+    assert pathlib.Path(written["png"]).name == "04-asked-F-T.png"
