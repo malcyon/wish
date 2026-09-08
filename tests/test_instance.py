@@ -1276,6 +1276,7 @@ def test_por_monitor_defaults_to_the_human_s_port(monkeypatch):
 # -- a slot poisoned by a read-only leftover ---------------------------------
 
 
+@posix
 def test_stage_disks_recovers_a_read_only_leftover_save(pool):
     """#430: an earlier tenant's read-only `SIDE0.D64` must not poison the slot.
 
@@ -1300,6 +1301,7 @@ def test_stage_disks_recovers_a_read_only_leftover_save(pool):
         assert leftover.read_bytes() == b"the new save"
 
 
+@posix
 def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
     """An ordinary run, with no leftover in the slot at all."""
     disks = pool / "disks"
