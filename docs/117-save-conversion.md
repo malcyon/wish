@@ -2046,6 +2046,7 @@ graph LR
   yaml_io --> games
   yaml_io --> icons
   yaml_io --> items
+  yaml_io --> layout
   yaml_io --> record
   yaml_io --> savegame
   yaml_io --> spells
