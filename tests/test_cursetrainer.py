@@ -613,8 +613,10 @@ def test_the_hit_die_divide_rounds_up_on_a_tied_roll_only_in_pool_of_radiance():
     1-in-3 chance (excluding the tie) predicts and a 2-in-3 chance (including
     it) does not.
 
-    `goldbox/levelup.py`'s `divide_between_classes` does not call
-    `divide_rounds_up` yet -- see that function's own docstring.
+    `goldbox/levelup.py`'s `divide_between_classes` now calls
+    `divide_rounds_up` for this comparison --
+    `test_divide_between_classes_asks_curse_for_its_own_round_up_rule` below
+    is the proof it is actually wired rather than merely available.
     """
     assert CURSE.hit_die_divide_round_up_on_tie is False
     assert levels.POOL_OF_RADIANCE.hit_die_divide_round_up_on_tie is True
@@ -635,6 +637,51 @@ def test_the_hit_die_divide_rounds_up_on_a_tied_roll_only_in_pool_of_radiance():
     assert not levels.POOL_OF_RADIANCE.divide_rounds_up(0, 1)
 
 
+class _FixedRoll:
+    """A stand-in for `random` that always draws the same raw value, so a
+    call to `divide_between_classes` can be pinned to one roll of the die
+    `LIBRARY`'s own routine returns (`randrange(class_count) + 1`)."""
+
+    def __init__(self, value: int):
+        self.value = value
+
+    def randrange(self, n: int) -> int:
+        del n
+        return self.value
+
+
+def test_divide_between_classes_asks_curse_for_its_own_round_up_rule():
+    """`divide_between_classes` used to apply Pool of Radiance's `<=` to
+    every title; this proves it now asks `LevelTables.divide_rounds_up`
+    instead, by driving it through `goldbox/levelup.py`'s own function
+    rather than the `LevelTables` method directly.
+
+    Two classes, remainder 1 (5 split two ways is 2 and 3): Curse's own
+    trainer never rounded that up in 14 tries on 2026-09-05, and neither
+    raw roll `randrange(2)` can return does here. Pool of Radiance rounds up
+    on the roll that is a tie with the remainder.
+
+    Three classes, remainder 2 (8 split three ways is 2, 2 and 3): Curse
+    rounds up only on the roll below the remainder, 1 in 3 (raw roll 0);
+    Pool of Radiance rounds up on that roll and the tied one, 2 in 3.
+    """
+    curse_two = {levelup.divide_between_classes(5, 2, rng=_FixedRoll(r),
+                                                 game=CURSE)
+                for r in (0, 1)}
+    assert curse_two == {2}, curse_two
+    pool_two = {levelup.divide_between_classes(5, 2, rng=_FixedRoll(r),
+                                                game=levels.POOL_OF_RADIANCE)
+               for r in (0, 1)}
+    assert pool_two == {2, 3}, pool_two
+
+    assert levelup.divide_between_classes(
+        8, 3, rng=_FixedRoll(0), game=CURSE) == 3
+    assert levelup.divide_between_classes(
+        8, 3, rng=_FixedRoll(1), game=CURSE) == 2
+    assert levelup.divide_between_classes(
+        8, 3, rng=_FixedRoll(2), game=CURSE) == 2
+
+
 def test_curse_and_silver_blades_raise_every_ready_class_in_one_press():
     """`trains_all_ready_classes`, watched on 2026-09-05: TRAVIS went in
     thief 5 / fighter 4 and came out thief 6 / fighter 5 on **one**
@@ -642,24 +689,131 @@ def test_curse_and_silver_blades_raise_every_ready_class_in_one_press():
     (`WISH-SPEC-curse-trained-party`, `#18`'s comment of 2026-09-05 08:32).
     Pool of Radiance's `$1B8C` raises a single class a visit.
 
-    `goldbox/levelup.py`'s `plan` does not loop over `ready_classes` to use
-    this yet -- see its own module docstring for what is left.
+    `goldbox/levelup.py`'s `plan_all` loops over `ready_classes` to use this
+    now -- `test_plan_all_raises_travis_and_ledera_in_the_engines_own_order`
+    below drives the same two specimens through it.
     """
     assert CURSE.trains_all_ready_classes is True
     assert levels.POOL_OF_RADIANCE.trains_all_ready_classes is False
 
 
-def test_a_curse_level_up_is_still_refused_and_names_the_title():
-    """Every table above is in `goldbox/levels.py` and Curse is **still not**
-    in `TRAINER_MEASURED`, which is deliberate rather than an oversight.
+def _c64_specimen(name: str):
+    """One C64 specimen's path, checked against its own recorded hash --
+    the same check `tests/test_cursedualtrain.py` makes, duplicated rather
+    than imported since that file is not this ticket's to change."""
+    from tools import specimens
 
-    Five driven Curse trainings on 2026-09-05 settled what was open here --
-    the hit-die divide's round-up rule is read from the bytecode rather than
-    random, and one press raises every ready class. What is still missing is
-    `goldbox/levelup.py` consuming either fact: `divide_between_classes`
-    still applies Pool of Radiance's comparison to both titles, and `plan`
-    still raises one class at a time. Both are #18's own "what is left",
-    outside this ticket's files.
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    found = sorted((root / "por-c64").glob(f"WISH-SPEC-{name}.[dD]64"))
+    if not found:
+        pytest.skip(f"needs specimen WISH-SPEC-{name}")
+    path = found[0]
+    recorded = specimens.read_provenance(
+        path.with_suffix(".provenance.toml")).get("sha256", {})
+    actual = specimens.sha256_file(path)
+    if recorded.get(path.name) not in (None, actual):
+        pytest.fail(f"WISH-SPEC-{name}: {path.name} has changed since it was "
+                    f"recorded; run tools/specimens.py check")
+    return path
+
+
+def _c64_slot(disk_name: str, character: str):
+    """One named character's record off one of the `#18` C64 specimens."""
+    from goldbox.d64 import D64
+
+    disk = D64.open(str(_c64_specimen(disk_name)))
+    _game, saved, _roster = load_save(disk)
+    for slot in saved.slots:
+        if str(slot.record.name).strip().upper() == character:
+            return slot.record
+    pytest.skip(f"{character} is not on WISH-SPEC-{disk_name}")
+
+
+#: Every field row 1 of the sequence (`$14F8`) writes that is not the hit-die
+#: roll or anything it feeds -- `hp_rolled` and `hp_max` are excluded because
+#: a roll leaves no trace in a record (`docs/135-levelling.md`) and cannot be
+#: reproduced from a saved pair, only from watching the roll happen.
+_ORDER_INDEPENDENT_FIELDS = (
+    "thac0_base", "save_paralysis", "save_petrification", "save_wands",
+    "save_breath", "save_spell", "level", "attack_level", "attack_forms",
+    "turn_power", "experience",
+    "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+    "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
+    "thief_climb_walls", "thief_read_languages",
+    "level_magic_user", "level_cleric", "level_thief", "level_fighter",
+    "level_paladin", "level_ranger")
+
+
+@pytest.fixture
+def trainer_measured_for_this_test(monkeypatch):
+    """Reach past `TRAINER_MEASURED` for the length of one test, the way
+    `tests/test_cursedualtrain.py`'s own `measured` fixture does and
+    `tools/cursetrain.py diff` does outside the test suite: the question
+    below is whether `goldbox/levelup.py` *would* reproduce the trainer, and
+    that has to be answerable before the set gains Curse, not after -- see
+    `goldbox.levels.TRAINER_MEASURED`'s own comment for why it has not yet.
+    """
+    monkeypatch.setattr(levels, "TRAINER_MEASURED",
+                        frozenset(set(levels.TRAINER_MEASURED) | {CURSE.key}))
+
+
+@pytest.mark.parametrize("character,learn,expected_order", [
+    ("TRAVIS", None, ["fighter", "thief"]),
+    ("LEDERA", 9, ["fighter", "magic-user"]),
+])
+def test_plan_all_raises_travis_and_ledera_in_the_engines_own_order(
+        character, learn, expected_order, trainer_measured_for_this_test):
+    """`plan_all` against the pair `#18`'s comment of 2026-09-05 08:32
+    measured: `WISH-SPEC-curse-train-input` before, `WISH-SPEC-curse-trained-
+    party` after, five trainings, engine-written.
+
+    TRAVIS (thief 5 / fighter 4) and LEDERA (magic-user 4 / fighter 4) each
+    raised both their classes in one press. `$14F8` walks class slots 7 down
+    to 0, so a walk in that order visits fighter (slot 3) before thief
+    (slot 2) and before magic-user (slot 0) -- which is what both specimens
+    show and what `plan_all`'s loop over `reversed(tables.class_order)`
+    should reproduce, along with every field row 1 derives that is not the
+    die roll.
+
+    Before this ticket's wiring, `plan_all` did not exist and `plan` raised
+    every Curse character outright -- this fails with an `AttributeError`
+    against that state, not merely with a wrong order.
+    """
+    before = _c64_slot("curse-train-input", character)
+    after = _c64_slot("curse-trained-party", character)
+    kw = {"learn": learn} if learn is not None else {}
+    steps = levelup.plan_all(before, game=CURSE, **kw)
+    assert [step.class_name for step in steps] == expected_order
+
+    trained = before
+    for step in steps:
+        trained = levelup.apply_to(trained, step)
+    mismatches = {name: (trained.get(name), after.get(name))
+                 for name in _ORDER_INDEPENDENT_FIELDS
+                 if trained.get(name) != after.get(name)}
+    assert not mismatches
+    # The die is not reproduced -- see the field list's own comment -- but the
+    # class did gain hit points, in the direction the divide can only go.
+    assert trained.get("hp_max") > before.get("hp_max")
+
+
+def test_a_curse_level_up_is_still_refused_and_names_the_title():
+    """Every table above is in `goldbox/levels.py` and `goldbox/levelup.py`
+    now consumes all of it -- `divide_between_classes` asks
+    `divide_rounds_up` and `plan_all` raises every ready class in the
+    engine's own order, both proven above against
+    `WISH-SPEC-curse-train-input`/`WISH-SPEC-curse-trained-party`.
+
+    **Curse is still refused, and the reason has moved rather than closed.**
+    `automap/actions.py`'s `LevelUp` action -- the GUI's own entry point --
+    does not call `plan_all`; it calls `plan` with no class named, and
+    `plan`'s fallback for that is `best_next_class`, built for Pool of
+    Radiance's one-class-a-press design. See
+    `test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class`
+    below for what that would do to TRAVIS and LEDERA specifically.
+    `goldbox.levels.TRAINER_MEASURED`'s own comment has the rest.
     """
     assert CURSE.key not in levels.TRAINER_MEASURED
     assert not levels.trainer_measured(CURSE)
@@ -668,6 +822,33 @@ def test_a_curse_level_up_is_still_refused_and_names_the_title():
             levelup.plan(slot.record, game=CURSE)
         assert "Curse of the Azure Bonds" in str(caught.value)
         break
+
+
+def test_best_next_class_picks_the_wrong_class_first_for_a_curse_dual_class():
+    """Why `TRAINER_MEASURED` cannot gain Curse until `automap/actions.py`
+    calls `plan_all` instead of `plan`.
+
+    `$14F8` walks class slots 7 down to 0, so it raises fighter (slot 3)
+    before thief (slot 2) and before magic-user (slot 0) -- watched for both
+    TRAVIS and LEDERA on 2026-09-05. `best_next_class`, which `plan` falls
+    back to when no class is named, answers the *other* one for both, because
+    it maximises the post-level threshold rather than following the engine's
+    walk -- a rule built for Pool of Radiance, where only one class is ever
+    ready to weigh against another in the same visit.
+
+    This is not cosmetic: `divide_between_classes`'s own docstring and
+    `_experience`'s note that training the lower-threshold class first can
+    cost the other class a level it had already earned -- so a GUI `LevelUp`
+    press using `best_next_class` on a Curse dual-class character could
+    silently train a worse pair of levels than the one press the real
+    trainer would have given.
+    """
+    travis = _c64_slot("curse-train-input", "TRAVIS")
+    ledera = _c64_slot("curse-train-input", "LEDERA")
+    assert levelup.ready_classes(travis, CURSE) == ["thief", "fighter"]
+    assert levelup.best_class(travis, CURSE) == "thief"
+    assert levelup.ready_classes(ledera, CURSE) == ["magic-user", "fighter"]
+    assert levelup.best_class(ledera, CURSE) == "magic-user"
 
 
 # --- the turning level -------------------------------------------------------

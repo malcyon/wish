@@ -33,14 +33,15 @@ and by eight different rules**, all of them read off its own `GEN` and `ECL65`
 | thief skills | level and race (`$1FEC`) | level, **dexterity** and race (`$0FAD`) | `thief_skill_dexterity` |
 | `attack_forms` | raised to 3, never lowered (`$2342`) | written outright, 2 or 3 (`$1909`) | `attack_forms_overwritten` |
 | `spells_castable` | written (`$20BC`) | **never stored** | `stores_spell_capacity` |
+| a press raises | one class, the player's choice (`$1B8C`) | **every** ready class, `$14F8` walking slots 7 down to 0 | `trains_all_ready_classes`, `plan_all` |
 
-**Curse is still refused**, because `levels.TRAINER_MEASURED` has one entry --
-but no longer because nothing has been watched. Five Curse level-ups were
-driven and diffed on 2026-09-05 and 75 derived fields and 5 spellbooks come
-back out of this module and `goldbox.levels` with no mismatches, and a
-dual-classed character was trained eight more times the same night
-(`docs/192-curse-dual-class.md`). What stands between the measurement and the
-key is in that page's last section.
+Five Curse level-ups were driven and diffed on 2026-09-05 and 75 derived
+fields and 5 spellbooks come back out of this module and `goldbox.levels` with
+no mismatches, and a dual-classed character was trained eight more times the
+same night (`docs/192-curse-dual-class.md`). `divide_between_classes` now
+asks `LevelTables.divide_rounds_up` for the round-up rule and `plan_all` raises
+every ready class in one visit, both per this ticket's own comments -- see
+each function's docstring for the specimen that proves it.
 
 **One field is a die and cannot be anything else.** `hp_rolled` at `0x0ED`
 takes a fresh roll of the class's hit die at every training, so this module
@@ -54,8 +55,8 @@ titles round up on different comparisons.** `$208D` and `$11AB` both roll
 remainder; Pool of Radiance increments on `<=` and Curse on `<`. So Pool of
 Radiance rounds up with chance `remainder / class_count` and **Curse with
 `(remainder - 1) / class_count`, which is never for a two-class character**.
-`divide_between_classes` still implements Pool of Radiance's rule for both
-titles, and what that needs is written up there.
+`divide_between_classes` asks `LevelTables.divide_rounds_up` for the
+comparison, which is what carries this.
 
 **Money is not touched, and the trainer does touch it.** A training costs a
 flat 1000 gold at every level and the rest of the character's coin is converted
@@ -343,13 +344,12 @@ def divide_between_classes(value: int, class_count: int, rng=None,
     remainder 1, and 5 round-ups in 14 at three with remainder 2, against the
     1 in 3 this rule predicts and the 2 in 3 the code below gives.
 
-    **This function still implements Pool of Radiance's rule for both
-    titles.** Curse needs `LevelTables` to carry the comparison beside
-    `hit_die_divide_floor` -- Pool of Radiance rounds up when the roll is at or
-    below the remainder, Curse only when it is below -- and `goldbox/levels.py`
-    was another agent's file the night this was measured. Nothing reaches the
-    error today, because `_tables_for` refuses Curse outright
-    (`docs/192-curse-dual-class.md`).
+    **The comparison is now `LevelTables.divide_rounds_up`, per title.** Pool
+    of Radiance rounds up when the roll is at or below the remainder, Curse
+    only when it is below (`hit_die_divide_round_up_on_tie`), and this asks
+    that rather than always applying Pool of Radiance's `<=`. The roll drawn
+    here is `randrange(class_count) + 1`, which is `1..class_count` -- the
+    range the bytecode reads, above.
 
     Pool of Radiance then floors the result at 1 (`$20A2 BNE / LDA #$01`) and
     Curse does not (`$11CC` is a bare `LDA $4C / RTS`), so a Curse character
@@ -359,7 +359,8 @@ def divide_between_classes(value: int, class_count: int, rng=None,
     if class_count <= 1:
         return value
     quotient, remainder = divmod(value, class_count)
-    if remainder and (rng or random).randrange(class_count) < remainder:
+    roll = (rng or random).randrange(class_count) + 1
+    if tables.divide_rounds_up(remainder, roll):
         quotient += 1
     return max(quotient, tables.hit_die_divide_floor)
 
@@ -901,6 +902,61 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
                 spellbook=spellbook, learned_spell=learned,
                 experience_lost=max(0, before - after),
                 classes_disqualified=disqualified, notes=tuple(notes))
+
+
+def plan_all(record, game=None, *, rng=None, learn: int | None = None) \
+        -> list[Plan]:
+    """Every class one `TRAIN CHARACTER` press raises, chained.
+
+    `plan` raises the single class `$1B8C` raises in Pool of Radiance. Curse's
+    `$14F8` and Silver Blades' `$156F` do more: they walk class slots **7 down
+    to 0** and raise every slot that is ready, rolling a hit die for each one
+    they raise (`docs/135-levelling.md`'s sequence table, row 1) -- which is
+    `LevelTables.trains_all_ready_classes`. This is that walk: `plan`,
+    `apply_to`, `plan` again, for as many classes as are ready, in the same
+    7-down-to-0 order the bytecode uses.
+
+    **The order is not a guess.** TRAVIS (thief 5 / fighter 4) and LEDERA
+    (magic-user 4 / fighter 4) each raised both classes on one press on
+    2026-09-05 (`WISH-SPEC-curse-trained-party`, `#18`'s comment of
+    2026-09-05 08:32), and in both, the class-order-descending walk visits
+    fighter (slot 3) before thief (slot 2) and before magic-user (slot 0) --
+    exactly the order the engine raised them in, and every field the walk
+    derives that is not a die roll (`thac0_base`, the five saves, `level`,
+    `attack_level`, `attack_forms`, `turn_power`, the thief skills, the
+    experience clamp, the spellbook) reproduces theirs.
+    `tests/test_cursetrainer.py::test_plan_all_raises_travis_and_ledera_in_the_engines_own_order`
+    is the replay.
+
+    **A title without `trains_all_ready_classes` gets exactly what `plan`
+    gives**, wrapped in a one-item list, so a caller can use `plan_all`
+    everywhere without asking which rule the title follows. `class_name` is
+    never passed through -- `plan` always picks `best_class` for the first (and
+    on Pool of Radiance, only) class, the same as calling `plan` directly with
+    none named.
+
+    `ready_classes` is asked again after every raise rather than once up
+    front, because a class already raised past its own next threshold is not
+    ready for a second raise in the same visit, and `$14F8` checks each slot
+    in turn as it walks rather than all of them before it starts.
+
+    Nothing is raised, and this returns `[plan(record, ...)]` unchanged, when
+    no class is ready at all -- the same refusal a single `plan` call gives,
+    naming the title or the missing experience, rather than a silent empty
+    list a caller could mistake for "trained, nothing changed".
+    """
+    tables = _tables_for(game)
+    if not tables.trains_all_ready_classes or not ready_classes(record, game):
+        return [plan(record, game=game, rng=rng, learn=learn)]
+    current = record
+    out: list[Plan] = []
+    for name in (n for n in reversed(tables.class_order) if n):
+        if name not in ready_classes(current, game):
+            continue
+        step = plan(current, name, game=game, rng=rng, learn=learn)
+        out.append(step)
+        current = apply_to(current, step)
+    return out
 
 
 def apply_to(record, plan_: Plan):

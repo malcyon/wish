@@ -320,11 +320,14 @@ def test_the_spell_slot_rows_are_the_games_own():
 
 def test_only_pool_of_radiances_trainer_has_been_measured():
     """Having a table is not having read the trainer, and #16 is the
-    difference. Curse's level tables are in this module; the hit-die roll at
-    `GEN $2037`, the saving-throw masks at `$1F44`, the constitution tables at
-    `$247B`/`$2486` and the spell capacity at `$20BC` were all read at Pool of
-    Radiance's addresses out of Pool of Radiance's `GEN`, and nothing has
-    confirmed Curse's agrees.
+    difference. Curse's level tables are in this module, and as of #18
+    `goldbox/levelup.py` consumes every one of them -- `divide_between_classes`
+    and `plan_all` are proven against real trainings
+    (`tests/test_cursetrainer.py`). `TRAINER_MEASURED` still holds Curse back
+    for a reason one file over: `automap/actions.py`'s `LevelUp` action does
+    not call `plan_all` yet, and calling `plan` with no class named would pick
+    the wrong one first for a multi-classed Curse character -- see
+    `goldbox.levels.TRAINER_MEASURED`'s own comment.
 
     `for_game` falls back to Pool of Radiance for a title it has no tables for,
     which is right for a spell name and wrong for writing a record -- so a

@@ -90,21 +90,25 @@ or only the code does:
 | wisdom bonus spells, `ECL65 $8906` | CONFIRMED, and **no record can ever agree** | the table read, plus the *Players Handbook* row; the bonus lands in RAM at `$2BBB` and is never stored |
 | racial saving-throw bonus, `$0F19` | **CONFIRMED** | TRAVIS, a dwarf, had the trainer rewrite his five saves to exactly the class rows less `constitution * 2 // 7` on columns 0, 2 and 4 (2026-09-05, `WISH-SPEC-curse-trained-party`) |
 | hit die rolled twice, `$15FC` | **PROBABLE** | the bytecode alone; a roll leaves no trace in a record |
-| hit-die/constitution divide round-up rule, `$11AB` | CONFIRMED | 40 engine-written divides on 2026-09-05: 0 round-ups in 14 at two classes remainder 1, 0 in 12 at three classes remainder 1, 5 in 14 at three classes remainder 2 -- the `<` reading, not the `<=` one this module still applies for both titles |
-| one press raises every ready class, `$14F8` | CONFIRMED | watched: TRAVIS (thief/fighter) and LEDERA (magic-user/fighter) each raised both classes on one `TRAIN CHARACTER` |
+| hit-die/constitution divide round-up rule, `$11AB` | CONFIRMED | 40 engine-written divides on 2026-09-05: 0 round-ups in 14 at two classes remainder 1, 0 in 12 at three classes remainder 1, 5 in 14 at three classes remainder 2 -- the `<` reading, and `goldbox/levelup.py`'s `divide_between_classes` now applies it per title through `divide_rounds_up` |
+| one press raises every ready class, `$14F8` | CONFIRMED | watched: TRAVIS (thief/fighter) and LEDERA (magic-user/fighter) each raised both classes on one `TRAIN CHARACTER`, and `goldbox/levelup.py`'s `plan_all` reproduces the same order |
 
-**`TRAINER_MEASURED` still has one entry, and not for lack of a driven
-training any more.** Five Curse level-ups were driven and diffed on
+**`goldbox/levelup.py` now consumes both of these, and `TRAINER_MEASURED`
+still has one entry.** Five Curse level-ups were driven and diffed on
 2026-09-05: 75 derived fields and 5 spellbooks come back out of this module
 and `goldbox/levelup.py` with no mismatches, the racial saving-throw bonus
 above moved from PROBABLE to CONFIRMED on the strength of it, and 40 further
-engine-written divides settled the hit-die/constitution round-up rule. What
-is left is `goldbox/levelup.py` consuming two of those findings rather than
-finding anything else: `divide_between_classes` still applies Pool of
-Radiance's `<=` comparison to both titles (`hit_die_divide_round_up_on_tie`
-and `divide_rounds_up` carry Curse's `<` rule but nothing calls them), and
-`plan` still raises one class at a time where Curse's own press raises every
-ready one (`trains_all_ready_classes`). Both are outside this module.
+engine-written divides settled the hit-die/constitution round-up rule.
+`divide_between_classes` asks `divide_rounds_up` for the comparison instead of
+always applying Pool of Radiance's `<=`, and the new `plan_all` raises every
+ready class in `$14F8`'s own slot order rather than one at a time -- both
+proven against `WISH-SPEC-curse-train-input` and
+`WISH-SPEC-curse-trained-party`, the same pair that measured them
+(`tests/test_cursetrainer.py`). **`TRAINER_MEASURED` does not gain Curse yet
+because `plan_all` has no caller**: `automap/actions.py`'s `LevelUp` still
+calls `plan` with no class named, whose `best_next_class` picks the *opposite*
+order from `$14F8`'s for both TRAVIS and LEDERA -- see `TRAINER_MEASURED`'s
+own comment, below, for the measurement.
 
 **THAC0 is the game's, not a transcription**, and reading it caught an error
 that had been in this file since it was written: **a thief is THAC0 19 at
@@ -845,8 +849,8 @@ class LevelTables:
     #: in 14 at two classes with remainder 1, 0 in 12 at three classes with
     #: remainder 1, and 5 in 14 at three classes with remainder 2 (predicting
     #: 1 in 3 once the tie is excluded, against the 2 in 3 a `<=` reading
-    #: gives). `goldbox/levelup.py`'s `divide_between_classes` does not yet
-    #: consult this field -- see its own docstring for what is left (#18).
+    #: gives). `goldbox/levelup.py`'s `divide_between_classes` asks
+    #: `divide_rounds_up`, below, for this comparison (#18).
     hit_die_divide_round_up_on_tie: bool = True
     #: Whether one training-hall press raises **every** class the character
     #: is ready for, rather than the one the player picks. Pool of Radiance's
@@ -855,9 +859,9 @@ class LevelTables:
     #: qualifying one in the same press, each read directly off that title's
     #: own `GEN` and watched: five Curse trainings on 2026-09-05 raised two
     #: classes together for the two multi-class characters in the party
-    #: (`WISH-SPEC-curse-trained-party`). CONFIRMED for both. `goldbox/
-    #: levelup.py`'s `plan` does not yet loop over `ready_classes` to use this
-    #: -- see its own docstring for what is left (#18).
+    #: (`WISH-SPEC-curse-trained-party`). CONFIRMED for both.
+    #: `goldbox/levelup.py`'s `plan_all` loops over `ready_classes` in this
+    #: same slot order to use it (#18).
     trains_all_ready_classes: bool = False
     #: Whether the recompute writes `attack_forms` outright or only raises it.
     #: Pool of Radiance's `$2342` refuses to lower (`LDX #$03 / CPX $6BD9 /
@@ -883,7 +887,7 @@ class LevelTables:
         `roll` is `1..class_count`, the range `LIBRARY`'s own random routine
         returns (read for #18); `remainder` is what `divmod` left over. See
         `hit_die_divide_round_up_on_tie` for the comparison and its
-        provenance. Not yet called from `goldbox/levelup.py`.
+        provenance. Called from `goldbox/levelup.py`'s `divide_between_classes`.
         """
         if not remainder:
             return False
@@ -1249,40 +1253,55 @@ BY_KEY = {t.key: t for t in TITLES}
 DEFAULT = POOL_OF_RADIANCE
 
 #: The titles whose **trainer** has been read. A stricter claim than having a
-#: table, and the distinction is the whole of issue #16: Curse's level tables
-#: are in this module, and they are still not enough to level a Curse
-#: character. Everything around them was read at Pool of Radiance's addresses
-#: out of Pool of Radiance's `GEN` -- the hit-die roll at `$2037`, the
-#: saving-throw masks at `$1F44`, the constitution tables at `$247B`/`$2486`,
-#: the spell capacity at `$20BC`.
+#: table, and the distinction is the whole of issue #18: Curse's level tables
+#: went into this module before its trainer was proven, and the table alone
+#: was not enough to level a Curse character.
 #:
-#: **Curse's own copies have now been located, read and written into this
-#: module** (#18, `tests/test_cursetrainer.py` and `tests/test_curselevels.py`),
-#: and `goldbox/levelup.py` has been taught every rule of Curse's that is not
-#: Pool of Radiance's. **Five Curse trainings were driven and diffed on
-#: 2026-09-05**, and 75 derived fields plus 5 spellbooks come back out of this
-#: module and `goldbox/levelup.py` with no mismatches -- so the key is not
-#: still out for lack of a watched training. What is left is two things
-#: `goldbox/levelup.py` reads from this module but does not yet act on:
-#: `hit_die_divide_round_up_on_tie`/`divide_rounds_up`, which carry the
-#: hit-die and constitution divide's round-up rule now that it is read from
-#: the bytecode rather than random, and `trains_all_ready_classes`, which
-#: says a Curse press raises every ready class rather than the one the player
-#: picks. `divide_between_classes` and `plan` do not consult either yet.
+#: **Curse's own copies were located, read and written into this module**
+#: (`tests/test_cursetrainer.py` and `tests/test_curselevels.py`), and
+#: `goldbox/levelup.py` was taught every rule of Curse's that is not Pool of
+#: Radiance's. **Five Curse trainings were driven and diffed on 2026-09-05**,
+#: and 75 derived fields plus 5 spellbooks came back out of this module and
+#: `goldbox/levelup.py` with no mismatches. What was then still open --
+#: `goldbox/levelup.py` reading `hit_die_divide_round_up_on_tie`/
+#: `divide_rounds_up` and `trains_all_ready_classes` from this module without
+#: acting on either -- is closed inside that module: `divide_between_classes`
+#: asks `divide_rounds_up` for the round-up rule, and the new `plan_all` raises
+#: every ready class in the engine's own slot order, both proven against the
+#: same two specimens that measured them, `WISH-SPEC-curse-train-input` and
+#: `WISH-SPEC-curse-trained-party`
+#: (`test_plan_all_raises_travis_and_ledera_in_the_engines_own_order`).
 #:
-#: One of the readings behind it is PROBABLE rather than CONFIRMED -- the
-#: double hit-die roll at `$15FC`, because a roll leaves no trace in a record
-#: and the bytecode is the whole of its evidence. The module docstring's
-#: grade table says why.
+#: **Curse is still not in this set, and the reason has moved rather than
+#: closed.** The GUI's own `LevelUp` action (`automap/actions.py`) does not
+#: call `plan_all` -- it calls `plan` with no class named, which falls to
+#: `best_next_class`, a rule built for Pool of Radiance's one-class-a-press
+#: design. Asked of TRAVIS (thief 5 / fighter 4) and LEDERA (magic-user 4 /
+#: fighter 4), the two characters the engine trained on 2026-09-05,
+#: `best_next_class` answers "thief" and "magic-user" -- the *opposite* of
+#: `$14F8`'s own fighter-first walk for both. `divide_between_classes`'s own
+#: docstring says why that is not cosmetic: training the lower-threshold class
+#: first can cost the other class a level it had already earned. So flipping
+#: this set today would move the "known-wrong multi-class training in front
+#: of a player" risk from `goldbox/levelup.py`, where it is now closed, into
+#: `automap/actions.py`, which is not this ticket's file -- see #18's own
+#: comments for what `LevelUp` needs before this set can gain Curse.
 #:
-#: Silver Blades is the same case: its level tables are in this module now
-#: (#187), and its trainer's own inputs -- the constitution hit-point bonus,
-#: thief-skill racial adjustment, wisdom bonus spells -- are either unread or
-#: unattributed (`docs/121-silver-blades.md`). Its **turning table is read**,
-#: at `GEN $13A5` (#288), and it is CONFIRMED: the routine's own expansion
-#: agrees with the two shipped records that store the byte, DOMINIC a cleric 8
-#: at 9 and GUY DE VALOIS a paladin 8 at 7. Reading the other three is what
-#: would move this title into the set; the turning table alone does not.
+#: One of the readings behind Curse's tables is PROBABLE rather than
+#: CONFIRMED -- the double hit-die roll at `$15FC`, because a roll leaves no
+#: trace in a record and the bytecode is the whole of its evidence. The module
+#: docstring's grade table says why. It is not what is holding Curse out of
+#: this set; the `automap/actions.py` gap above is.
+#:
+#: Silver Blades is the same case one step earlier: its level tables are in
+#: this module now (#187), and its trainer's own inputs -- the constitution
+#: hit-point bonus, thief-skill racial adjustment, wisdom bonus spells -- are
+#: either unread or unattributed (`docs/121-silver-blades.md`). Its **turning
+#: table is read**, at `GEN $13A5` (#288), and it is CONFIRMED: the routine's
+#: own expansion agrees with the two shipped records that store the byte,
+#: DOMINIC a cleric 8 at 9 and GUY DE VALOIS a paladin 8 at 7. Reading the
+#: other three is what would move this title into the set; the turning table
+#: alone does not.
 #:
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a
@@ -1301,7 +1320,8 @@ TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
 #: the engine on 75 of 75 derived fields including the five saving throws
 #: (`#18 (Measure Curse's trainer so Level Up works there)`,
 #: `tools/cursetrain.py`). So Curse belongs here even though it is not yet
-#: in `TRAINER_MEASURED`, whose own condition covers more than this.
+#: in `TRAINER_MEASURED`, whose own condition covers more than this --
+#: `TRAINER_MEASURED`'s own comment says what is still open.
 #:
 #: Silver Blades' `$11D8` was watched on 2026-09-06 (`#344 (A converted
 #: Silver Blades dwarf, gnome or halfling keeps DOS's saving throws, because
