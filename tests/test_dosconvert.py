@@ -1454,7 +1454,7 @@ def test_the_shipped_party_reads_as_characters(shape):
                                        "save_spell")]
         assert all(1 <= v <= 20 for v in saves), (who, saves)
         assert char.get("size") in (1, 2), who
-        assert 0 <= char.get("party_order") <= 7, who
+        assert 0 <= char.get("combat_figure") <= 7, who
         assert char.get("movement") in (6, 9, 12), who
 
 

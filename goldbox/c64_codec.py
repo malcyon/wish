@@ -84,9 +84,12 @@ class Report(neutral.Report):
 
 
 #: Neutral field -> the C64 field it becomes, where the value crosses
-#: unchanged.  The names differ in only two places, and both times because
-#: the C64 name is a storage detail: `thac0` and `roster_movement` are what
-#: the roster block calls the current THAC0 and the current movement rate.
+#: unchanged.  The names differ in three places, each because the C64 name is
+#: a storage detail: `thac0` and `roster_movement` are what the roster block
+#: calls the current THAC0 and the current movement rate, and `party_order`
+#: is the C64's own identifier for the same combat-figure slot the neutral
+#: field calls `combat_figure` (#305) -- shared by coincidence rather than by
+#: wiring, and left as `party_order` on the C64 side.
 DIRECT: tuple[tuple[str, str], ...] = (
     ("strength", "strength"),
     ("intelligence", "intelligence"),
@@ -131,7 +134,7 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("experience", "experience"),
     ("class_bits", "class_bits"),
     ("hp_rolled", "hp_rolled"),
-    ("party_order", "party_order"),
+    ("combat_figure", "party_order"),
     ("hp_current", "hp_current"),
     ("thac0_current", "thac0"),
     ("armour_class", "armour_class"),

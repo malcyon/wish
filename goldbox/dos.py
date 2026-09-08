@@ -1073,13 +1073,11 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("armour_class_base", "armour_class_base"),
     ("experience", "experience"),
     ("hp_rolled", "hp_rolled"),
-    # **Not the marching order** -- the DOS byte at 0x0BF is the character's
-    # combat-icon slot, and the loader hands those out in file order, so a
-    # party nobody has reordered numbers 0-5 and the neutral marching
-    # position is what that number means (#305, `goldbox/dos_layout.py`).
-    # The name here is the *neutral* field's and stays until the rename can
-    # be made across `goldbox/amiga.py` and `goldbox/c64_codec.py` too.
-    ("party_order", "party_order"),
+    # The byte at 0x0BF is which of eight loaded combat pictures the
+    # character draws with -- the lowest free slot of eight, allocated by
+    # `GAME.OVR`'s own loader as it reads the party's files in order, not a
+    # marching position (#305).
+    ("combat_figure", "combat_figure"),
     ("hp_current", "hp_current"),
     ("thac0_current", "thac0"),
     ("armour_class", "armour_class"),
@@ -2122,11 +2120,10 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("experience", "experience"),
     ("hp_rolled", "hp_rolled"),
     # Written, and then thrown away: the DOS loader allocates a fresh combat
-    # icon slot for every character it reads, so this byte never survives a
-    # load (#305).  It is written because it costs nothing, because the round
-    # trip needs it, and because the number a party in file order gets is the
-    # marching position this neutral field holds.
-    ("party_order", "party_order"),
+    # figure slot for every character it reads, so this byte never survives a
+    # load (#305).  It is written because it costs nothing and the round trip
+    # needs it, not because the destination keeps it.
+    ("combat_figure", "combat_figure"),
     ("hp_current", "hp_current"),
     ("thac0_current", "thac0_current"),
     ("armour_class", "armour_class"),
@@ -4393,8 +4390,8 @@ def marching_slot(index: int, count: int) -> int:
     order, and so does `PORSAVE13`.
 
     DOS is the other way round: the file order is the marching order, and
-    `party_order` at `0x0BF` is 0 for the first-listed character because the
-    loader allocates combat-icon slots as it reads that list (#305).  So the
+    `combat_figure` at `0x0BF` is 0 for the first-listed character because the
+    loader allocates combat-figure slots as it reads that list (#305).  So the
     conversion reverses; writing DOS index *i* into slot *i* put the DOS
     party's front-rank fighter at the back of the C64 one.
 
@@ -5977,12 +5974,12 @@ def write_dos_save_from(state: "world_state.WorldState",
     record_shape = (write_shape(characters[0]) if characters
                     else shape_for(c64.key))
     suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
-    order = FIELDS_BY_NAME_FOR[record_shape.key]["party_order"].offset
+    order = FIELDS_BY_NAME_FOR[record_shape.key]["combat_figure"].offset
 
     # `characters` is already in DOS file order (`c64_party`'s own
-    # reversal), so `party_order` -- the character's combat-icon slot, 0-5
-    # in file order in every DOS specimen (#101, #305) -- is this loop's own
-    # position and needs no second pass to renumber it after the fact.
+    # reversal), so `combat_figure` -- the character's combat-figure slot,
+    # 0-5 in file order in every DOS specimen (#101, #305) -- is this loop's
+    # own position and needs no second pass to renumber it after the fact.
     built = []
     for position, char in enumerate(characters):
         icon = icons[position] if icons is not None and position < len(icons) else None

@@ -563,7 +563,7 @@ _DECLARED: Sequence[Field] = (
        "0-13 across the 18"),
     _f(0x0BE, 1, _U8, "icon_body", "Combat icon body", _MAYBE,
        "3-31 across the 18. Pools of Darkness reaches 31"),
-    _f(0x0BF, 1, _U8, "party_order", "Combat icon slot", _OK,
+    _f(0x0BF, 1, _U8, "combat_figure", "Combat icon slot", _OK,
        "**which of the eight loaded combat icons is this character's**, and "
        "not the marching order, which this was called until 2026-09-05 "
        "(#305). It sits inside the icon block for the same reason "
@@ -598,15 +598,17 @@ _DECLARED: Sequence[Field] = (
        "Curse's own Pool of Radiance importer copies 0x0BD, 0x0BE and 0x0C0 "
        "into its 0x141, 0x142 and 0x144 and **skips 0x0BF**, which is what "
        "a field the loader reallocates looks like.\n"
-       "**The identifier is still `party_order` and is a misnomer.** It is "
-       "the *neutral* record's field name, and `goldbox.dos.DIRECT` requires "
-       "the two to be spelled the same; renaming it means renaming the "
-       "neutral field, which `goldbox/amiga.py`, `goldbox/c64_codec.py`, "
-       "`goldbox/yaml_io.py` and the window's own `field_party_order` all "
-       "read. The value the conversion carries is right either way -- the "
-       "C64 keeps its own 0-7 slot index at `goldbox/layout.py` 0x10D and "
-       "both whole-save directions renumber by position -- so this is a "
-       "spelling to fix in one pass, not a defect a player can reach"),
+       "**Renamed from `party_order` to `combat_figure`** across this table, "
+       "the *neutral* record and `goldbox.dos.DIRECT`, which requires the "
+       "two to be spelled the same, and across `goldbox/amiga.py`, "
+       "`goldbox/c64_codec.py` and `goldbox/yaml_io.py`.  The window's "
+       "`field_party_order` spinbox is a different field -- the C64's own "
+       "0-7 slot index at `goldbox/layout.py` 0x10D, wired to that table "
+       "only and sharing the old name by coincidence rather than by wiring "
+       "-- and keeps its identifier.  The value the conversion carries was "
+       "right under either name; both whole-save directions renumber by "
+       "position, so this was a spelling fix rather than a defect a player "
+       "could reach"),
     _f(0x0C0, 1, _U8, "size", "Size", _OK,
        "1 small, 2 medium: 1 for the dwarf and the halfling, 2 for everyone "
        "else, in all 24. The C64 stores the same distinction one lower -- "

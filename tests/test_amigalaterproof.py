@@ -143,13 +143,13 @@ def test_silver_blades_has_no_derived_bytes_declared():
     assert amiga.LATER_WRITE_DERIVED[amiga.SILVER_BLADES_SHAPE.key] == ()
 
 
-def test_the_curse_engine_resave_leaves_only_party_order_outside_the_lists():
+def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
     """The live-game evidence `#402` rests on: Amiga Curse loaded a party
     `write_later` converted and wrote it back through `ENCAMP > SAVE`, and
     before this fix `thac0_current`, one `roster_tail` byte and
-    `party_order` were the only bytes outside the declared lists.
-    `party_order` is the writer's own known gap; the other two are now on
-    `LATER_WRITE_DERIVED`, so nothing but `party_order` should be left.
+    `combat_figure` were the only bytes outside the declared lists.
+    `combat_figure` is the writer's own known gap; the other two are now on
+    `LATER_WRITE_DERIVED`, so nothing but `combat_figure` should be left.
 
     `docs/203-a-converted-later-amiga-party-in-the-running-game.md`.
     """
@@ -182,7 +182,7 @@ def test_the_curse_engine_resave_leaves_only_party_order_outside_the_lists():
         for at in range(min(len(a), len(b))):
             if a[at] != b[at] and at not in mask:
                 loose.add(proof.field_at(mine.shape, at))
-    assert loose == {"party_order+0"}
+    assert loose == {"combat_figure+0"}
 
 
 # ---------------------------------------------------------------------------

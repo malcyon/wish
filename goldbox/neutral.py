@@ -127,7 +127,10 @@ FIELDS: dict[str, str] = {
     "class_bits": "one bit per class held, in the shared bit order",
     "alignment": "law * 3 + morality",
     "age": "age in years",
-    "party_order": "position in the marching order",
+    "combat_figure": "which of the eight loaded combat pictures the "
+                     "character draws with in battle, allocated as the "
+                     "lowest free slot of eight rather than a marching "
+                     "position (#305)",
     # -- abilities ----------------------------------------------------------
     "strength": "STR, 3-18 (25 for a monster)",
     "exceptional_strength": "the 18/xx percentile, 0 when there is none",

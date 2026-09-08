@@ -39,6 +39,43 @@ def test_every_field_the_c64_writer_takes_is_declared():
         assert c64 in C64_FIELDS, c64
 
 
+def test_the_dos_reader_and_the_neutral_vocabulary_agree_on_combat_figure():
+    """#305: `dos.to_neutral`'s `DIRECT` loop reads `dos.fields[dos_name]`
+    and then does `out.set(dos_name, ...)` with the very same string, so the
+    DOS field name and the neutral field it becomes cannot be two different
+    spellings -- renaming one without the other leaves the byte unset on one
+    side. `combat_figure` replaced the old `party_order` misnomer once #305
+    read the byte as an allocated combat-picture slot rather than a marching
+    position; this pins the two tables to the same name so the next rename
+    cannot half-land the way this one first did.
+
+    The C64's own field at `goldbox/layout.py` 0x10D keeps the name
+    `party_order` -- a different byte that shares the old name by
+    coincidence, `editor/binding.py` wiring it to `goldbox.layout.LAYOUT`
+    rather than to this neutral field -- so `c64_codec.DIRECT` still maps
+    the *neutral* `combat_figure` onto the *C64* `party_order`.
+    """
+    assert dict(dos.DIRECT)["combat_figure"] == "combat_figure"
+    assert "combat_figure" in neutral.FIELDS
+    assert "combat_figure" in dos_layout.FIELDS_BY_NAME
+    assert "party_order" not in neutral.FIELDS
+    assert "party_order" not in dos_layout.FIELDS_BY_NAME
+    assert dict(c64_codec.DIRECT)["combat_figure"] == "party_order"
+    assert "party_order" in C64_FIELDS
+
+
+def test_a_synthetic_dos_record_reads_its_combat_figure_byte_as_neutral():
+    """The round trip the table check above cannot see: a DOS record built
+    from zero bytes but for `combat_figure` (0x0BF, #305) comes back out of
+    `dos.to_neutral` under that name, not under the old `party_order`."""
+    raw = bytearray(dos_layout.RECORD_SIZE)
+    field = dos_layout.FIELDS_BY_NAME["combat_figure"]
+    raw[field.offset] = 4
+    char = dos.to_neutral(dos.DosCharacter(bytes(raw)))
+    assert char.get("combat_figure") == 4
+    assert char.get("party_order") is None    # not a neutral field any more
+
+
 def test_the_two_ports_share_one_report_shape():
     """Step 2 of #25: every direction reports what it dropped the same way."""
     assert issubclass(c64_codec.Report, neutral.Report)

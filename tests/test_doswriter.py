@@ -1579,7 +1579,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert slots == ["MALCYON", "LADY KATHERINE", "ROLAND", "SILAS",
                      "MAGNUS", "BRUTUS"]
     assert [c.name for c in party] == slots[::-1]
-    assert [c.get("party_order") for c in party] == [0, 1, 2, 3, 4, 5]
+    assert [c.get("combat_figure") for c in party] == [0, 1, 2, 3, 4, 5]
     assert (tmp_path / "SAVGAMB.DAT").exists()
     savgam = (tmp_path / "SAVGAMB.DAT").read_bytes()
     assert sg.character_files(savgam) == [f"CHRDATB{n}" for n in range(1, 7)]

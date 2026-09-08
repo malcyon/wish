@@ -710,7 +710,9 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("npc_control_byte", "a companion's morale, on the two ports that keep "
                          "it in this same byte -- see npc; PoD decides for "
                          "itself what it has just imported"),
-    ("party_order", "the marching order of a party the character is leaving"),
+    ("combat_figure", "which of eight loaded combat pictures the character "
+                      "drew with in the party it is leaving; PoD allocates "
+                      "its own on import"),
     ("encumbrance", "PoD recomputes it: a probe that set it to 1234 drew 233, "
                     "which is the character's own coins, gems and jewelry"),
     ("size_small", "no located home; PoD takes size from race"),

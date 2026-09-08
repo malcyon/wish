@@ -204,7 +204,7 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
     # first and DOS shows CHRDAT<slot>1 first, so the file order is the
     # reverse of the slot order -- the same reversal `write_dos_save` makes.
     party = list(reversed(party))
-    order = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["party_order"].offset
+    order = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["combat_figure"].offset
     for n, char in enumerate(party, start=1):
         rec, itm, spc, report = dos.write(char)
         rec = bytearray(rec)
@@ -241,12 +241,12 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
         original = dos.read_character(source)
         rec, _itm, _spc, _report = dos.write(char)
         differs = compare(shape, original.to_bytes(), rec)
-        # `party_order` -- the combat-icon slot, #305 -- is renumbered by the
-        # file position on the way out, which is the reversal above and not a
-        # loss; the DOS loader re-allocates it in file order anyway.
+        # `combat_figure` -- the combat-icon slot, #305 -- is renumbered by
+        # the file position on the way out, which is the reversal above and
+        # not a loss; the DOS loader re-allocates it in file order anyway.
         table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
         rec = bytearray(rec)
-        rec[table["party_order"].offset] = original.get("party_order")
+        rec[table["combat_figure"].offset] = original.get("combat_figure")
         differs = compare(shape, original.to_bytes(), bytes(rec))
         if differs:
             bad += 1
