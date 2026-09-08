@@ -3371,6 +3371,33 @@ def test_the_panel_is_in_the_header_and_on_none_of_the_tabs(app, party,
         "and the spacer is still last, so the roster keeps taking the slack")
 
 
+def _effects_floor(app, party, extra: int):
+    """`w.root.minimumSizeHint()` and the box's own width, with the header
+    built at `extra` extra points of UI font -- the same recipe
+    `tests/test_mapscale.py`'s `_floors` uses, local here because this test
+    also wants the box beneath the panel, which that module never opens."""
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorBinding
+    base = app.font()
+    bigger = QFont(base)
+    bigger.setPointSizeF(base.pointSizeF() + extra)
+    app.setFont(bigger)
+    try:
+        w = EditorBinding(make_root(), str(party))
+        w.root.show()
+        floor = w.root.minimumSizeHint()
+        box = w._child("box_active_effects")
+        panel, roster = w._child("active_effects"), w.roster
+        result = (floor, box.minimumWidth(), panel.minimumWidth(),
+                  panel.maximumWidth(), panel.maximumHeight(),
+                  roster.maximumHeight())
+        w.root.close()
+        return result
+    finally:
+        app.setFont(base)
+
+
 def test_the_effects_panel_is_not_a_floor_under_the_window(app, party,
                                                            effects_on):
     """The header does not scroll, so anything standing in it is a floor under
@@ -3383,25 +3410,52 @@ def test_the_effects_panel_is_not_a_floor_under_the_window(app, party,
     The party is the synthetic one, so this is the widest a save can hold: 20
     capital Ws in every name, which is the case that decides the header.
 
-    The outcome is what is asserted -- the window fits the screen -- rather
-    than a width measured here, which would be a claim about one machine.
+    **Checked across the same four fonts `test_mapscale.py` uses** (`+0`,
+    `+3`, `+6`, `+10` -- `+6` to `+10` is roughly Windows' own base UI font,
+    `.claude/rules/testing.md`), not only at this machine's own. A single-font
+    check is exactly what let this go red on Windows CI and green everywhere
+    a human on Linux ran it: the *panel*'s own clamp
+    (`ACTIVE_EFFECTS_MIN_WIDTH` on the table) never bounded the surrounding
+    `QGroupBox`, whose `minimumSizeHint()` grows to fit its own title text --
+    the same font the table's columns are measured in -- so it grew exactly
+    the way a font-dependent width always does, 198px past `SMALL_LAPTOP` at
+    Windows' font where this machine's own font left 12px of margin
+    (`editor/window.py`'s `ACTIVE_EFFECTS_MIN_WIDTH` comment has the numbers).
+    Held flat now by `_size_active_effects` giving the box its own explicit
+    `setMinimumWidth`, alongside the panel's -- Qt's layout code prefers an
+    explicit minimum size over `minimumSizeHint()` once one is set at all, so
+    the box's contribution to the row answers this constant rather than the
+    title's own width.
+
+    The outcome is what is asserted -- the window fits the screen, and does
+    not grow at all across the four fonts -- rather than a width measured
+    here, which would be a claim about one machine.
     """
-    from editor.window import ACTIVE_EFFECTS_MIN_WIDTH, EditorBinding
-    w = EditorBinding(make_root(), str(party))
-    w.root.show()
-    try:
-        floor = w.root.minimumSizeHint()
-        assert floor.width() <= SMALL_LAPTOP[0]
-        assert floor.height() <= SMALL_LAPTOP[1]
-        panel, roster = w._child("active_effects"), w.roster
-        assert panel.minimumWidth() <= ACTIVE_EFFECTS_MIN_WIDTH
-        assert panel.maximumWidth() >= panel.minimumWidth(), (
-            "it grows with the window, up to its own columns at their "
-            "contents")
-        assert panel.maximumHeight() == roster.maximumHeight(), (
-            "capped to the roster, and scrolling past it")
-    finally:
-        w.root.close()
+    from editor.window import ACTIVE_EFFECTS_MIN_WIDTH
+
+    fonts = (0, 3, 6, 10)
+    results = [_effects_floor(app, party, extra) for extra in fonts]
+
+    for extra, (floor, *_rest) in zip(fonts, results):
+        assert floor.width() <= SMALL_LAPTOP[0], f"+{extra}pt"
+        assert floor.height() <= SMALL_LAPTOP[1], f"+{extra}pt"
+
+    widths = [floor.width() for floor, *_rest in results]
+    assert widths == [widths[0]] * len(fonts), (
+        "the window's own floor grew with the font: "
+        f"{dict(zip(fonts, widths))}")
+
+    box_widths = [box_width for _floor, box_width, *_rest in results]
+    assert box_widths == [ACTIVE_EFFECTS_MIN_WIDTH] * len(fonts), (
+        "the box around the panel is not held to its own floor: "
+        f"{dict(zip(fonts, box_widths))}")
+
+    _, _, panel_min, panel_max, panel_max_height, roster_max_height = results[0]
+    assert panel_min <= ACTIVE_EFFECTS_MIN_WIDTH
+    assert panel_max >= panel_min, (
+        "it grows with the window, up to its own columns at their contents")
+    assert panel_max_height == roster_max_height, (
+        "capped to the roster, and scrolling past it")
 
 
 @game_disks

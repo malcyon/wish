@@ -242,6 +242,21 @@ MAX_ROSTER_ROWS = 8
 #: What moves it is a wider Character or a longer heading, and either shows up
 #: in `test_the_effects_panel_is_not_a_floor_under_the_window`, which asserts
 #: the outcome -- the window fits the screen -- rather than this number.
+#:
+#: This clamps the table (`_size_active_effects`), not the `QGroupBox` around
+#: it -- and the box has a floor of its own that the table's clamp cannot
+#: reach: `QGroupBox.minimumSizeHint()` grows to fit its own *title* text
+#: (`Effects running in this saved game...`), in the same font the table's
+#: two columns are measured in, so it grows exactly like they do and was
+#: never brought down by clamping the table. CI's Windows runners have a
+#: wider default UI font than this machine's, and that is what turned a
+#: 12px-over-budget title (`docstring` above, at this machine's font) into
+#: 198px over `SMALL_LAPTOP` there -- the panel was never the widest thing
+#: in the row, its own box's title was. `_size_active_effects` now gives the
+#: box the same explicit `setMinimumWidth`, which is what makes its
+#: contribution to the layout answer this constant rather than the title's
+#: own width -- Qt's `QWidgetItem::minimumSize()` prefers an explicit
+#: `minimumSize` over `minimumSizeHint()` once one is set at all.
 ACTIVE_EFFECTS_MIN_WIDTH = 260
 #: Fields whose widest possible value is not worth the width it costs. `name`
 #: is twenty bytes and so twenty capital Ws -- 318px at three points of extra
@@ -257,7 +272,11 @@ LIST_FLOOR = {"box_inventory": 240, "box_traits": 240}
 #: What Character may be squeezed to.
 HEADER_IDENTITY_MIN_WIDTH = 480
 #: Which header boxes are held to a constant, and to what. Keyed by
-#: objectName like everything else on the form.
+#: objectName like everything else on the form. `box_active_effects` is not
+#: here, though it wants the same treatment: `_size_active_effects` sets its
+#: floor beside the panel's own, from the one `natural`/`floor` pair both are
+#: measured from (see `ACTIVE_EFFECTS_MIN_WIDTH`), rather than duplicating
+#: that arithmetic here.
 HEADER_FLOOR = {"box_identity": HEADER_IDENTITY_MIN_WIDTH}
 #: And the row of buttons above the header, which does not scroll either.
 TOOLBAR_BUTTON_MIN_WIDTH = 80
@@ -1443,8 +1462,23 @@ class EditorBinding(QObject):
         columns = sum(max(panel.sizeHintForColumn(c), head.sectionSizeHint(c))
                       for c in range(panel.model().columnCount()))
         natural = columns + 2 * panel.frameWidth() + bar
-        panel.setMinimumWidth(min(natural, ACTIVE_EFFECTS_MIN_WIDTH))
+        floor = min(natural, ACTIVE_EFFECTS_MIN_WIDTH)
+        panel.setMinimumWidth(floor)
         panel.setMaximumWidth(max(natural, ACTIVE_EFFECTS_MIN_WIDTH))
+        # The box that holds it, not just the table: a `QGroupBox` reserves
+        # room for its own title whether or not anything in its layout asks
+        # for that much -- an unset minimum width lets `BOX_TITLE` alone set
+        # the floor, and that string is 51 characters read by a font this
+        # machine does not have. Measured here: an unconstrained box with
+        # this title wants 307px at this machine's own font and 505px six
+        # points larger, while an explicit `setMinimumWidth` holds the box's
+        # contribution to the layout at what was asked for, flat across every
+        # font tried. Matching `floor` and not `ACTIVE_EFFECTS_MIN_WIDTH`
+        # keeps a narrow panel (an empty save, before it has ever been sized)
+        # from being handed more room than its own columns want.
+        box = self._child("box_active_effects")
+        if box is not None:
+            box.setMinimumWidth(floor)
 
     def _own_disk_folder(self, game: por_games.Game) -> str | None:
         """`game`'s own folder out of `self.game_folders` -- the constructor
