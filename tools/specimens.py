@@ -197,6 +197,31 @@ def _slug_ok(name: str) -> bool:
     return bool(name) and all(c.isalnum() or c in "-_" for c in name) and name == name.lower()
 
 
+def _unclosed_c64_entries(path: pathlib.Path) -> list:
+    """Directory entries in a C64 disk image the drive never finished
+    closing -- `#298 (A save disk copied out of an emulator slot before the
+    drive closes the file cannot be loaded by the game)`.
+
+    A 1541 marks a file open for writing with the top bit of the directory
+    type byte clear (`$02` rather than `$82`, `*PRG` in a listing) and fills
+    the block count in only when the file is closed. A disk pulled out of an
+    emulator slot before the drive finished writing back looks exactly like
+    that, and the game refuses to load it -- `60, WRITE FILE OPEN`. See
+    `tools/curseload.py`'s `close_splat()`, which repairs a copy of one.
+
+    A path that does not parse as a recognised D64 size is not this check's
+    business and is left to whatever already validates it -- `add` has never
+    required a source to be a real disk image, and this should not become the
+    first place that starts.
+    """
+    from goldbox.d64 import D64, D64Error  # noqa: PLC0415
+    try:
+        image = D64.open(path)
+    except D64Error:
+        return []
+    return [e for e in image.iter_directory() if not e.is_closed]
+
+
 def add(platform: str, name: str, sources: list[pathlib.Path], *,
         title: str, issue: str, made_by: str, what: str,
         command: str | None = None, created: str | None = None,
@@ -221,6 +246,27 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
     for s in sources:
         if not s.is_file():
             raise ValueError(f"not a file: {s}")
+    if platform == "c64":
+        for s in sources:
+            unclosed = _unclosed_c64_entries(s)
+            if unclosed:
+                names = ", ".join(
+                    f"{e.display_name!r} (type ${e.type_byte:02X}, "
+                    f"{e.block_count} block(s) recorded)" for e in unclosed)
+                who = f"made by {made_by!r}" + (f", command {command!r}" if command else "")
+                raise ValueError(
+                    f"{s} has a directory entry the drive never closed -- "
+                    f"{names}. The 1541 still believes this file is open "
+                    f"for writing and the game will refuse to load it "
+                    f"(`60, WRITE FILE OPEN`); this is not a corrupt "
+                    f"payload, it is a save copied out of the emulator "
+                    f"slot before the drive finished writing back (#298), "
+                    f"{who}. Do not add this copy. Either go back to that "
+                    f"run and let the drive finish -- re-read the "
+                    f"directory until the entry closes -- before copying "
+                    f"the image out, or repair a *copy* of this file with "
+                    f"tools/curseload.py's close_splat() and add the "
+                    f"repaired copy instead.")
     root = root or tree_root()
     today = datetime.date.today().isoformat()
     fields = {

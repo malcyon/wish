@@ -20,6 +20,7 @@ import sys
 
 import pytest
 
+from goldbox.d64 import D64
 from tools import specimens
 
 
@@ -162,6 +163,48 @@ def test_a_c64_specimen_is_one_file_beside_its_own_provenance(tree, tmp_path):
                          made_by="the training hall", what="levelled up")
     assert dest == tree / "por-c64" / "WISH-SPEC-p18party.d64"
     assert (tree / "por-c64" / "WISH-SPEC-p18party.provenance.toml").is_file()
+
+
+def _unclosed_curse_disk(tmp_path, name="SIDE0.D64"):
+    """A disk with `SAVEAZURE` marked exactly the way a 1541 leaves it when
+    the emulator's slot is copied out before the write-back lands -- same
+    construction as `test_curseload.py`'s
+    `test_a_save_disk_the_drive_never_closed_is_repaired_in_place`."""
+    disk = D64.blank(b"CURSE SAVE")
+    payload = bytes(range(256)) * 29
+    disk.write_file(b"SAVEAZURE", payload)
+    entry = disk.entry(b"SAVEAZURE")
+    raw = bytearray(disk.to_bytes())
+    raw[entry.offset] &= 0x7F                 # what the drive leaves behind
+    raw[entry.offset + 28] = raw[entry.offset + 29] = 0
+    path = tmp_path / name
+    path.write_bytes(bytes(raw))
+    return path
+
+
+def test_add_refuses_a_c64_disk_with_an_unclosed_directory_entry(tree, tmp_path):
+    """#298: the specimen tree must not accept a disk the game itself
+    refuses to load with `60, WRITE FILE OPEN`."""
+    d64 = _unclosed_curse_disk(tmp_path)
+    with pytest.raises(ValueError, match=r"never closed.*SAVEAZURE.*\$02"):
+        specimens.add("c64", "curse-broken", [d64], root=tree,
+                      title="Curse of the Azure Bonds", issue="#298 (test)",
+                      made_by="a driven ENCAMP > SAVE", what="saved from the training hall")
+    assert not (tree / "coab-c64").exists()
+
+
+def test_add_accepts_a_c64_disk_the_drive_closed(tree, tmp_path):
+    """The check must not refuse a well-formed disk -- proof it is not
+    refusing everything."""
+    disk = D64.blank(b"CURSE SAVE")
+    payload = bytes(range(256)) * 29
+    disk.write_file(b"SAVEAZURE", payload)
+    d64 = tmp_path / "SIDE0.D64"
+    disk.save(d64)
+    dest = specimens.add("c64", "curse-good", [d64], root=tree,
+                         title="Curse of the Azure Bonds", issue="#298 (test)",
+                         made_by="a driven ENCAMP > SAVE", what="saved from the training hall")
+    assert dest == tree / "coab-c64" / "WISH-SPEC-curse-good.D64"
 
 
 # --- check: this is the part that has to actually work ------------------
