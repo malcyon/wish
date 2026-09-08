@@ -33,6 +33,7 @@ __all__ = [
     "INFRAVISION",
     "LEVEL_FIELDS",
     "strength_index",
+    "thac0_current_byte",
     "write",
     "read",
     "READ_TARGETS",
@@ -577,6 +578,22 @@ def strength_index(strength: int, percentile: int) -> int:
     return 23
 
 
+def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
+    """The byte `LIBRARY $3918` (`$3729` in Pool of Radiance) leaves in
+    `thac0_current` -- `thac0_base` plus the AD&D strength to-hit bonus, and
+    only when `strength_bonus_flag` is set (#277, #368).
+
+    `hit_bonus` is the signed to-hit adjustment -- positive for a strong
+    character, as `derive.strength_bonuses` returns it -- and is added to the
+    *byte*, not to the THAC0 it encodes: the byte is `60 - THAC0`, so a
+    better strength raises the byte and lowers the THAC0, exactly the
+    direction `LIBRARY`'s own `ADC` leaves it in.
+    """
+    if not bonus_flag:
+        return base_byte & 0xFF
+    return (base_byte + hit_bonus) & 0xFF
+
+
 def _clamp_nibble(n: int) -> int:
     return min(int(n), 0x0F)
 
@@ -634,10 +651,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
              ", re-padded to the C64's 20 NUL-padded bytes")
 
     for field, c64_name in DIRECT:
-        # Recomputed below rather than copied (#366): `DIRECT` still carries
-        # the pair because `read` shares this table and the raw stored byte
-        # is exactly what a reader should hand back.
-        if field == "thac0_base":
+        # Recomputed below rather than copied (#366, #405): `DIRECT` still
+        # carries both pairs because `read` shares this table and the raw
+        # stored byte is exactly what a reader should hand back.
+        if field in ("thac0_base", "thac0_current"):
             continue
         v = use(field)
         if v is None:
@@ -869,10 +886,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                 # old one at); the C64 stores the answer instead, in the old
                 # class's own level slot, once GEN $20A3 sees the new class
                 # overtake it -- which also ORs the old bit back into
-                # class_bits, already copied above. PROBABLE: no C64 save this
-                # project holds has ever passed that point (#256, M2) -- the
-                # one specimen that has the pair at all, PHILIPPE in
-                # WISH-SPEC-curse-dual-classed, is one level short of it.
+                # class_bits, already copied above. **CONFIRMED since
+                # 2026-09-07**: this read PROBABLE while no save here had
+                # passed that point, and `WISH-SPEC-curse-dualclass-trained`
+                # has -- PHILIPPE, a magic-user 6 who changed to fighter and
+                # was then trained by Curse's own hall to fighter 8, holds
+                # magic-user 6 in the old slot and a mask naming both
+                # (`docs/208-the-class-combo-and-the-conversion.md`,
+                # `#393 (A dual-classed Curse character may show one class in
+                # the editor and convert as another, and no specimen exists to
+                # tell)`).
                 current_level = w.get("level") or 0
                 regained = current_level > level
                 rec.set(field, level if regained else 0)
@@ -940,6 +963,33 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rep.note(0x0E3, 1, "strength_bonus_flag: 1, the value the C64's own "
                        "character creation writes -- without it the engine "
                        "gives no strength bonus to hit or to damage")
+
+    # -- thac0_current: recomputed the way LIBRARY $3918 rebuilds it, not
+    # copied (#405, A converted character's THAC0 on the C64 sheet is the
+    # source save's stored byte, and the engine only corrects it at his
+    # first fight). The C64 sheet draws this byte straight (`LIBRARY
+    # $3758`) and nothing recomputes it before the party's first fight, so a
+    # copied byte can show a number the C64's own tables would never
+    # produce -- a low-level magic-user or thief is THAC0 20 on DOS and 21
+    # on the C64 (#318) -- until the first fight silently overwrites it.
+    # Recomputed instead from this record's own `thac0_base` (set above)
+    # and the AD&D strength to-hit bonus, gated on `strength_bonus_flag`
+    # (set just above, always 1 here), the way `LIBRARY $3918` (`$3729` in
+    # Pool of Radiance) rebuilds it -- CONFIRMED in the running game,
+    # `docs/205-the-c64-thac0-rebuild.md` (#368).
+    current = use("thac0_current")
+    if current is not None:
+        dst = _field("thac0")
+        hit, _ = derive.strength_bonuses(w.get("strength", 0),
+                                         w.get("exceptional_strength", 0))
+        rec.set("thac0", thac0_current_byte(
+            rec.get("thac0_base"), hit, bool(rec.get("strength_bonus_flag"))))
+        rep.note(dst.offset, dst.size,
+                 f"thac0: recomputed from this record's own thac0_base plus "
+                 f"the AD&D strength to-hit bonus, the way LIBRARY $3918 "
+                 f"rebuilds it at the party's first fight -- {port} may "
+                 f"have written a stale byte through a different table "
+                 f"(#405)")
 
     # -- innate effects and item grants: ten shared trait slots --------------
     # `docs/171-c64-trait-slots.md` (#252): a trait slot is one byte meaning
@@ -1245,6 +1295,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                    "because a source's own port may have written the byte "
                    "through a different one -- DOS's magic-user and thief "
                    "rows disagree with the C64's at low level (#366)"),
+    ("thac0_current", "**recomputed, not copied**: this record's own "
+                      "`thac0_base` plus the AD&D strength to-hit bonus, "
+                      "the way `LIBRARY $3918` rebuilds it at the party's "
+                      "first fight -- a copied byte can show a number "
+                      "neither port's tables would produce until then "
+                      "(#405)"),
     ("turn_power", "**computed, not copied**: the C64's caster turning byte "
                    "at 0x0A4 is what this title's own GEN writes from the "
                    "cleric and paladin levels, because no port a conversion "

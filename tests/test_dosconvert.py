@@ -1187,11 +1187,17 @@ def test_an_indoor_bit_with_an_outdoor_script_id_is_refused():
 @needs_dos_saves
 def test_the_roster_tail_comes_from_the_dos_combat_tail():
     """DOS `0x110`-`0x11C` is the C64's roster block `0x10E`-`0x11B` at a
-    displacement of -2: THAC0, armour class, the armour bonus and the eight
-    running attack-form bytes, then hit points widening by one."""
+    displacement of -2: armour class, the armour bonus and the eight running
+    attack-form bytes, then hit points widening by one.
+
+    THAC0 is the one byte of the four the C64 does not copy (#405, A
+    converted character's THAC0 on the C64 sheet is the source save's stored
+    byte, and the engine only corrects it at his first fight): it is
+    recomputed from the C64's own `thac0_base` and strength bonus, which
+    `tests/test_c64thac0.py` covers directly.
+    """
     for char in _records():
         rec, _ = dos.to_c64_record(char)
-        assert rec.get("thac0") == char.get("thac0_current")
         assert rec.get("armour_class") == char.get("armour_class")
         assert rec.get_raw("roster_tail") == char.raw("roster_tail")
         assert rec.get("roster_movement") == char.get("movement_current")

@@ -1392,6 +1392,20 @@ def _save_throw_offsets() -> set[int]:
     return out
 
 
+#: `thac0_current` at DOS `0x110` is the other deliberate exception, since
+#: `#405 (A converted character's THAC0 on the C64 sheet is the source
+#: save's stored byte, and the engine only corrects it at his first fight)`:
+#: `goldbox.c64_codec.write` now recomputes it from `thac0_base` and the
+#: strength bonus rather than copying the neutral value, so a round trip
+#: through the C64 leg carries the C64's own recomputed number back into
+#: DOS rather than the original DOS byte.  Pinned below against the C64
+#: record's own recomputed byte, which `tests/test_c64thac0.py` covers on
+#: its own.
+_THAC0_CURRENT_OFFSETS = frozenset(
+    range(dos_layout.FIELDS_BY_NAME["thac0_current"].offset,
+          dos_layout.FIELDS_BY_NAME["thac0_current"].end))
+
+
 @needs_dos_saves
 def test_a_record_round_trips_through_the_c64_record():
     """The architecture's whole claim, measured: DOS -> neutral -> **C64
@@ -1399,18 +1413,20 @@ def test_a_record_round_trips_through_the_c64_record():
     record is a sufficient interchange for everything the DOS writer can
     source.
 
-    The five saving-throw bytes are the one deliberate exception (#311, see
-    `_save_throw_offsets`) and are pinned against `goldbox.levels.saving_throws`
-    instead of against DOS's own bytes."""
+    The five saving-throw bytes are one deliberate exception (#311, see
+    `_save_throw_offsets`), pinned against `goldbox.levels.saving_throws`
+    instead of against DOS's own bytes.  `thac0_current` is the other
+    (`_THAC0_CURRENT_OFFSETS`, #405), pinned against the C64 record's own
+    recomputed byte instead."""
     total = 0
-    save_mask = _save_throw_offsets()
+    mask = _save_throw_offsets() | _THAC0_CURRENT_OFFSETS
     for char in _records():
         neutral_char = dos.to_neutral(char)
         c64_rec, _ = c64_codec.write(neutral_char)
         back = c64_codec.read(c64_rec, source="round trip")
         rec, _, _, _ = dos.write(back)
         outside, _ = _diff_against(char, rec)
-        assert outside - save_mask == set(), \
+        assert outside - mask == set(), \
             (char.name, sorted(hex(i) for i in outside))
         assert level_tables.racial_save_bonus_measured(neutral_char.game)
         expected = level_tables.saving_throws(
@@ -1419,6 +1435,8 @@ def test_a_record_round_trips_through_the_c64_record():
         for value, name in zip(expected, _SAVE_THROW_NAMES):
             f = dos_layout.FIELDS_BY_NAME[name]
             assert rec[f.offset] == value, (char.name, name)
+        thac0 = dos_layout.FIELDS_BY_NAME["thac0_current"]
+        assert rec[thac0.offset] == c64_rec.get("thac0"), char.name
         total += 1
     assert total >= 24
 

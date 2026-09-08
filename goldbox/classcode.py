@@ -108,8 +108,15 @@ def code_for(bits: int, levels: "dict[str, int] | None" = None,
     the level array instead** (#310).  A dual-classed character's mask
     carries the old class's bit back once his new class passes the level he
     left the old one at, so the mask names two classes where the code names
-    the one he *is*; his level array holds exactly the class he is now,
-    because the old class's slot is zeroed at the change and stays zero.
+    the one he *is*.  **On DOS his level array holds exactly the class he is
+    now**, because the old class's slot is zeroed at the change and stays
+    zero.  **On the C64 it does not**: once he trains past the level he left
+    the old class at, the old slot fills again -- PHILIPPE, a magic-user 6 who
+    changed to fighter and trained to fighter 8, holds magic-user 6 *and*
+    fighter 8, with a mask naming both (`docs/208-the-class-combo-and-the-
+    conversion.md`, `#393 (A dual-classed Curse character may show one class
+    in the editor and convert as another, and no specimen exists to tell)`).
+    That is why the two must be read together rather than either alone.
     `GEN $1939` agrees -- it branches away from the mask walk entirely when
     `dual_class_level` is set.
 

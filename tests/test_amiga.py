@@ -2688,17 +2688,33 @@ def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
         c64_codec.write(out)          # raised ValueError before the fix
 
 
-def test_a_later_amiga_ability_pair_splits_first_and_second_byte():
+def test_a_later_amiga_ability_pair_splits_permanent_and_in_force_byte():
     """A synthetic pair with a different byte in each half pins which half
     the neutral ability takes and which goes to `abilities_second` -- the 21
     specimens on the disks cannot, because every one of them holds equal
     bytes in every pair.
+
+    Renamed from `..._splits_first_and_second_byte` and its assertions
+    reversed for `#406 (An Amiga Curse or Silver Blades character converted
+    from the Amiga keeps a temporary strength boost or drain for good, the
+    same crossed-pair bug as #404)`: reading `/Curse` and `/Secret`
+    themselves (`docs/204-the-dos-ability-pair.md`) showed the recompute
+    seeds from byte 0 and stores to byte 1, so byte 1 is the score in force
+    and byte 0 is `abilities_second`'s permanent copy -- the opposite of
+    what this test asserted before.  Exceptional strength keeps the old
+    order, because its percentile pair runs the other way on both ports.
     """
     for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
         char = _ability_record(shape, "dexterity", 0x0A, 0x0B)
         out = amiga.to_neutral_later(char)
-        assert out.get("dexterity") == 0x0A, shape.key
-        assert out.get("abilities_second")["dexterity"] == 0x0B, shape.key
+        assert out.get("dexterity") == 0x0B, shape.key
+        assert out.get("abilities_second")["dexterity"] == 0x0A, shape.key
+
+        pct = _ability_record(shape, "exceptional_strength", 0x64, 0x00)
+        out = amiga.to_neutral_later(pct)
+        assert out.get("exceptional_strength") == 0x64, shape.key
+        assert out.get("abilities_second")["exceptional_strength"] == 0x00, \
+            shape.key
 
 
 # --- the NPC control byte: field_83_87's one homed byte ---------------------

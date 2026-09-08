@@ -1861,6 +1861,18 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
         "the 285-byte DOS one built by goldbox.dos.write; the provenance lines "
         "name the DOS field each byte was transposed from, which is the "
         "field table both ports share")
+    # `#308 (Does Amiga Pool of Radiance drop the space out of a character's
+    # name when it saves?)`: the engine strips every space out of every name
+    # on its own first save, including a name typed into its own name-entry
+    # box thirty seconds earlier -- nothing on our side causes it and
+    # nothing on our side can prevent it, so the record keeps the player's
+    # name with its space and this warns him what the game will do to it.
+    # Silent for a name with no space, which the engine leaves alone.
+    name_value = str(char.get("name", ""))
+    if " " in name_value:
+        rep.warnings.append(
+            f"WARNING: Spaces in names are dropped on the Amiga. "
+            f"{name_value} will become {name_value.replace(' ', '')}.")
     rep.total = AMIGA_POR_RECORD_SIZE + len(amiga_itm) + len(amiga_spc)
 
     def converted(name: str) -> str:
@@ -2751,7 +2763,14 @@ POR_TABLE_SCRATCH = ("display scratch: the 33 bytes after each of the eight "
 #:
 #: `$49FF` gates the sheet portrait on the C64 (`LIBRARY $48A9`, bit 7) and on
 #: DOS, where zero left a converted party faceless whatever its records said
-#: (#57).  The Amiga's own code calls it `2 * g63d1 + g63d0`, split back into
+#: (#57).  **It gates nothing on the Amiga**: that port draws no portrait on
+#: a character sheet at all, and no box for one -- where the other two put a
+#: face it puts `GOLD`, `ENCUMBRANCE` and `MOVEMENT`, watched on seven sheets
+#: across two WinUAE sessions on 2026-09-07
+#: (`#322 (Nobody has looked at an Amiga Pool of Radiance character sheet to
+#: see whether it draws a portrait at all)`, `docs/206-three-amiga-questions.md`).
+#: Writing 3 stays right -- every engine-written Amiga saved game holds it --
+#: so nothing a player sees changes; what changed is the reason.  The Amiga's own code calls it `2 * g63d1 + g63d0`, split back into
 #: two engine bytes on load, and all ten Amiga saved games here hold 3 -- the
 #: same 3 all three engine-written DOS ones hold.  PROBABLE for the Amiga: the
 #: value is the engine's own on both ports that have been bisected, and no
@@ -4238,32 +4257,55 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f"({f.confidence}), read big-endian through the DOS table",
                 f.confidence)
 
-    # -- the abilities, a (base, current) pair here exactly as they are on ---
-    # DOS from Curse onwards: `goldbox.dos.DIRECT` hands every name in
-    # `ABILITY_ORDER` back as a two-byte `RAW` chunk rather than a number
-    # (`goldbox/dos_layout.py`'s `sizes` widen every one of the seven), so the
-    # loop above would otherwise pass the pair whole into a field the neutral
-    # record and `goldbox.c64_codec.write` both expect to be a score -- which
-    # is `#294`.  DOS's own reader steps around the same widening with a
+    # -- the abilities, a DOS-shaped pair carrying the same asymmetry --------
+    # `goldbox.dos.DIRECT` hands every name in `ABILITY_ORDER` back as a
+    # two-byte `RAW` chunk rather than a number (`goldbox/dos_layout.py`'s
+    # `sizes` widen every one of the seven), so the loop above would
+    # otherwise pass the pair whole into a field the neutral record and
+    # `goldbox.c64_codec.write` both expect to be a score -- which is
+    # `#294`.  DOS's own reader steps around the same widening with a
     # `continue` at the top of its `DIRECT` loop and a second pass that calls
     # `_ability_pair`; this is that second pass, written locally because
     # `_ability_pair` takes a `DosCharacter` and this reader has no DOS record
     # to hand it -- `char.get(name)` already returns the same two raw bytes
-    # `_ability_pair` reads with `dos.raw(name)`.  The first byte crosses as
-    # the neutral ability and the second into `abilities_second`; neither
-    # codec claims to know which the engine treats as current.
+    # `_ability_pair` reads with `dos.raw(name)`.
+    #
+    # Which byte is which is no longer an inference from the DOS engine: for
+    # `#406 (An Amiga Curse or Silver Blades character converted from the
+    # Amiga keeps a temporary strength boost or drain for good, the same
+    # crossed-pair bug as #404)` both `/Curse` and `/Secret` were read
+    # directly.  Each recomputes one ability from a character's items and
+    # running spells with the identical shape DOS's own recompute has
+    # (`docs/204-the-dos-ability-pair.md`): it seeds from `$10(a0, d0.l)`
+    # (byte 0, the permanent score) and `$1d(a0)` (the permanent percentile),
+    # walks the effects, and stores the result to `$11(a0)` (byte 1, the
+    # score in force) and `$1c(a0)` (the percentile in force) --
+    # `/Curse` file offset `0xf5ee` seeding and `0xf9ce`-`0xf9ec` storing,
+    # `/Secret` file offset `0x131f8`/`0x13202` seeding and
+    # `0x13608`-`0x13612` storing.  Byte 0 is written only once elsewhere in
+    # either binary (character creation's roll), the same shape `#401` found
+    # in five DOS engines.  So for the six ability scores byte 1 is the
+    # score in force and byte 0 is `abilities_second`'s permanent copy,
+    # exactly `goldbox.dos._PERMANENT_FIRST`'s asymmetry; exceptional
+    # strength runs the other way and keeps its existing order.
     second: dict[str, int] = {}
     for name in _dos.ABILITY_ORDER:
         f = table[name]
         pair = char.get(name)
-        out.set(name, pair[0],
+        if name == "exceptional_strength":
+            in_force, permanent, which = pair[0], pair[-1], "first"
+        else:
+            in_force, permanent, which = pair[-1], pair[0], "second"
+        out.set(name, in_force,
                 f"Amiga {shape.title} {name} @{shape.offset(f.offset):#05x} "
-                f"({f.confidence}), the first of its two bytes",
+                f"({f.confidence}), the {which} of its two bytes, the score "
+                f"in force (#406, docs/204-the-dos-ability-pair.md)",
                 f.confidence)
-        second[name] = pair[-1]
+        second[name] = permanent
     out.set("abilities_second", second,
             f"Amiga {shape.title} keeps every ability twice; these are the "
-            f"second byte of each pair",
+            f"permanent score for the six abilities and the permanent "
+            f"percentile for exceptional strength (#406)",
             Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
 
     # -- the class mask, which is not a copy on this port either -------------
