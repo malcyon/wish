@@ -345,6 +345,18 @@ class DosItem(_Fielded):
 #: quietly dropped (`.claude/rules/conversions.md`).
 ITEM_TAIL = (0x3F, 4)
 
+#: The item type Silver Blades' `ITEMS > JOIN` command writes on the scroll it
+#: makes.  Its sub-scrolls are written as extra 67-byte records straight after
+#: it in the `.STF` file, and `item_count` counts head items only (#432,
+#: `#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
+#: gap_13c, and a pointer at the end of the Silver Blades item)`).  A reader
+#: that takes the first `item_count` records reads a bundle's spell nodes as
+#: items and loses that many real ones off the end of the pack, so
+#: `read_character` refuses a file holding one by name instead.  Confirmed the
+#: only title that ever writes it: zero stores of `0x49` into an item in the
+#: other five titles' overlays (`tests/test_dosscrollbundle.py`).
+SCROLL_BUNDLE_TYPE = 0x49
+
 
 def item_to_c64(record: bytes) -> bytes:
     """Project one DOS item onto the C64's sixteen bytes.
@@ -1003,6 +1015,22 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
             f"is {len(itm) // stride} items, but {path.name}'s item_count "
             f"says {count}"
         )
+    # A joined scroll (#432) writes its sub-scrolls as extra records the
+    # count above does not know about, so the file holds *more* whole items
+    # than item_count -- the shape check above only catches *fewer*. Refuse
+    # by name rather than reading the sub-scrolls as items and losing that
+    # many real ones off the end of the pack; stride > 63 restricts this to
+    # Silver Blades, the only title with the field a bundle needs.
+    if item_file_present and stride > ITEM_SIZE:
+        type_at = ITEM_FIELDS_BY_NAME["type_index"].offset
+        for i in range(len(itm) // stride):
+            if itm[i * stride + type_at] == SCROLL_BUNDLE_TYPE:
+                raise DosRecordError(
+                    f"{item_path.name}: item {i} is a joined scroll bundle "
+                    f"(type {SCROLL_BUNDLE_TYPE:#04x}) -- its sub-scrolls are "
+                    f"extra {stride}-byte records item_count does not count, "
+                    f"and nothing here yet reads that chain (#432)"
+                )
     items = [DosItem(itm[i * stride:(i + 1) * stride], stride)
              for i in range(min(count, len(itm) // stride))]
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)

@@ -1076,6 +1076,55 @@ def test_silver_blades_items_are_67_bytes_in_a_stf_file(tmp_path):
     assert second.get("value") == 50
 
 
+# --- a joined scroll writes extra records item_count does not know about ------
+# `ITEMS > JOIN` hangs a bundle's sub-scrolls off a far pointer at item offset
+# 0x03F and writes them into the .STF inline; item_count counts head items
+# only (#432). Composed from the documented format -- no save on this machine
+# carries one, per `tools/dosscrollbundle.py census`.
+
+def _synthetic_joined_scroll_bundle() -> bytearray:
+    """A bundle of two, then a Plate Mail the naive slice would lose.
+
+    Four 67-byte records: the bundle head (type 0x49, quantity 2), its two
+    sub-scroll nodes, and a real item after them. `item_count` on the
+    character stays 2 -- the bundle and the plate mail -- the way the JOIN
+    routine leaves it, so a reader taking the first two records hands back
+    the bundle and one of its own spell nodes, and the plate mail is gone.
+    """
+    out = bytearray()
+    head = bytearray(SILVER_BLADES_ITEM_SIZE)
+    head[0x02E] = 0x49                                 # the JOIN routine's type
+    head[0x039] = 2                                   # quantity: two sub-scrolls
+    out += head
+    for spells in ((1, 2, 3), (4, 0, 0)):
+        sub = bytearray(SILVER_BLADES_ITEM_SIZE)
+        sub[0x02E] = 0x27                              # mage scroll
+        sub[0x03C:0x03F] = bytes(spells)
+        out += sub
+    line = b"Plate Mail +1 "
+    tail = bytearray(SILVER_BLADES_ITEM_SIZE)
+    tail[0] = len(line)
+    tail[1:1 + len(line)] = line
+    tail[0x02E] = 5
+    out += tail
+    return out
+
+
+def test_a_joined_scroll_bundle_is_refused_by_name(tmp_path):
+    """Reading the first `item_count` records would hand back the bundle's
+    own spell nodes as items and drop the plate mail off the end -- refused
+    instead, naming the file (#432)."""
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_silver_blades_character(2))
+    (tmp_path / "CHRDATC1.STF").write_bytes(_synthetic_joined_scroll_bundle())
+
+    with pytest.raises(dos.DosRecordError,
+                        match=r"CHRDATC1\.STF.*joined scroll bundle"):
+        dos.read_character(record)
+
+
 # --- an item file present and the wrong shape is a defect, not a gap (#221) ----
 # `min(count, len(itm) // stride)` used to paper over exactly this: a sibling
 # file that exists but does not reconcile with the record's own item count
