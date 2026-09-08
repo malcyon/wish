@@ -75,6 +75,7 @@ from automap.config import clamp_to_screen
 from goldbox import areas as area_table
 from goldbox import games
 
+from . import backends
 from .ui_preferences import Ui_PreferencesDialog
 
 #: Spelled out rather than `QKeySequence.StandardKey.Preferences`, which
@@ -716,8 +717,21 @@ class PreferencesDialog(QDialog):
         `preferences.ui`'s Live backend group holds -- unlike the three game
         titles above, the number of backends is not a fixed, small count
         Designer can lay out; it is whatever `backends.backends()` answers
-        (`wish/window.py::_make_backend_actions`). The static host, password
-        and interval form beneath the rows is `preferences.ui`'s.
+        (`wish/window.py::_make_backend_actions`). The interval form beneath
+        the rows is `preferences.ui`'s.
+
+        **The Ultimate host and password rows are built here too, and only
+        when `backends.ultimate_enabled()` says so** (`#375 (Wish has to work
+        around the Ultimate freezing the C64 mid-load, which hangs the game
+        while the automapper follows along)`). They used to be in
+        `preferences.ui` unconditionally, so a player with the flag unset
+        still saw a field asking for a host and typed into a box nothing
+        would ever read. `wish/window.py` builds its Export submenu the same
+        way -- inside the `if` -- and this is that pattern applied to a `.ui`
+        form rather than a menu: the rows are inserted into
+        `self.ui.backend_form` before the `Poll every` row that Designer
+        built, and `self.host`/`self.password` are `None` when the flag is
+        off.
         """
         box_layout = self.ui.backend_layout
         self.radios: dict[str, QRadioButton] = {}
@@ -749,16 +763,24 @@ class PreferencesDialog(QDialog):
             self.badges[name] = badge
             self.unverified[name] = flag
 
-        self.host = self.ui.host
-        self.host.setText(getattr(self.win.settings, "ultimate_host", "")
-                          or "")
-        self.host.setPlaceholderText("ultimate64.local, or host:port")
-        # Measured like the folder box, for the same reason: what it says is
-        # the only instruction there is for the field.
-        self.host.setMinimumWidth(room_for(self.host,
-                                           self.host.placeholderText()))
-        self.host.editingFinished.connect(self._host_changed)
-        self.password = self.ui.password
+        self.host = None
+        self.password = None
+        if backends.ultimate_enabled():
+            self.host = QLineEdit()
+            self.host.setText(getattr(self.win.settings, "ultimate_host", "")
+                              or "")
+            self.host.setPlaceholderText("ultimate64.local, or host:port")
+            # Measured like the folder box, for the same reason: what it says
+            # is the only instruction there is for the field.
+            self.host.setMinimumWidth(room_for(self.host,
+                                               self.host.placeholderText()))
+            self.host.editingFinished.connect(self._host_changed)
+            self.password = QLabel()
+            # Inserted before the `Poll every` row `preferences.ui` built, in
+            # reverse order so each lands above the one before it.
+            self.ui.backend_form.insertRow(0, QLabel("Password"), self.password)
+            self.ui.backend_form.insertRow(0, QLabel("Ultimate host"),
+                                           self.host)
 
         # 0 means "the backend decides" in the setting, and it used to mean that
         # on the face too -- a spin box whose lowest value printed a sentence
@@ -1004,9 +1026,10 @@ class PreferencesDialog(QDialog):
             badge.setStyleSheet(ANSWERING if state == "answering" else SILENT)
             badge.setVisible(bool(state))
             self.unverified[name].setVisible(not verified)
-        self.password.setText(
-            f"from ${PASSWORD_ENV} — "
-            + ("set" if os.environ.get(PASSWORD_ENV) else "not set"))
+        if self.password is not None:
+            self.password.setText(
+                f"from ${PASSWORD_ENV} — "
+                + ("set" if os.environ.get(PASSWORD_ENV) else "not set"))
 
     def showEvent(self, event):
         # `probe()` is a TCP connect: right when somebody opens this, wrong on

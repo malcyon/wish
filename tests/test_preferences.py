@@ -937,9 +937,58 @@ def test_the_view_menu_no_longer_carries_a_backend_submenu(app, tmp_path,
 
 # --- the Ultimate ------------------------------------------------------------
 
+def test_the_host_row_only_exists_behind_the_flag(app, tmp_path, monkeypatch):
+    """With `WISH_EXPERIMENTAL_C64_ULTIMATE` unset, the dialog must not offer
+    a host or password box for a backend that is not in the list at all
+    (`#375 (Wish has to work around the Ultimate freezing the C64 mid-load,
+    which hangs the game while the automapper follows along)`) -- a player
+    who has never set the flag typed a host into that box for nothing."""
+    monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    assert dialog.host is None
+    assert dialog.password is None
+    assert not hasattr(dialog.ui, "host")
+    assert not hasattr(dialog.ui, "password")
+    # Only the interval row and its checkbox remain in the form.
+    assert dialog.ui.backend_form.rowCount() == 2
+
+
+@pytest.mark.parametrize("value", ["0", "off", ""])
+def test_a_forgotten_off_value_does_not_bring_the_row_back(
+        app, tmp_path, monkeypatch, value):
+    """A variable somebody exported once and forgot must not put a backend
+    that hangs the game in front of them -- `.claude/rules/feature-flags.md`,
+    and `wish/backends.py`'s own `TRUE` tuple."""
+    monkeypatch.setenv(bk.ULTIMATE_ENV, value)
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    assert dialog.host is None
+    assert dialog.password is None
+
+
+def test_the_host_row_appears_when_the_flag_is_on(app, tmp_path, monkeypatch):
+    """The other half of the gate: forcing the flag on must bring the row
+    back, or the absence above would be a row that can never appear rather
+    than a gate."""
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    assert dialog.host is not None
+    assert dialog.password is not None
+    assert dialog.ui.backend_form.rowCount() == 4
+
+
 def test_the_ultimate_host_round_trips_and_reaches_the_backend(app, tmp_path,
                                                                monkeypatch):
+    """Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375): with the flag unset the
+    host row is never built at all, which is `test_the_host_row_only_exists_
+    behind_the_flag` below."""
     from wish import ultimate
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
@@ -957,8 +1006,12 @@ def test_the_ultimate_host_round_trips_and_reaches_the_backend(app, tmp_path,
 def test_no_password_is_ever_written_to_the_settings_file(app, tmp_path,
                                                           monkeypatch):
     """The settings file is documented as one you can read and hand-edit. A
-    secret does not belong in a file described that way."""
+    secret does not belong in a file described that way.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375) to build the password row
+    at all."""
     monkeypatch.setenv("POR_ULTIMATE_PASSWORD", "hunter2")
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
@@ -1208,8 +1261,11 @@ def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
 
     Each number is asked of the style and the font, never written down, and the
     dialog is at least the widest of them.
-    """
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375) for the host box to exist
+    at all."""
     from wish.preferences import room_for
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
     folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
@@ -1269,7 +1325,11 @@ def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
     height than its layout's minimum does not refuse -- it squeezes what can be
     squeezed, and the Ultimate host box and the poll spinner went to nine
     pixels tall. Neither tab scrolls at the size it opens; the area table
-    scrolls inside itself, which is what a table does."""
+    scrolls inside itself, which is what a table does.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375) for the host box to exist
+    at all."""
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
     assert dialog.width() <= 1280 and dialog.height() <= 675
@@ -1535,7 +1595,15 @@ def test_the_editor_takes_the_folder_as_a_parameter_and_imports_nothing(
 def test_every_control_is_a_widget_the_ui_file_built(app, tmp_path, monkeypatch):
     """A person rearranges this dialog in Designer now, which only works if
     the widgets the dialog drives are the ones `preferences.ui` declared --
-    not look-alikes `PreferencesDialog.__init__` built beside them."""
+    not look-alikes `PreferencesDialog.__init__` built beside them.
+
+    The Ultimate host and password rows are the one deliberate exception, the
+    same way the backend radio rows already were: `preferences.ui` no longer
+    declares them at all, so with `WISH_EXPERIMENTAL_C64_ULTIMATE` unset here
+    `dialog.ui` carries no `host` or `password` attribute to compare against
+    (`#375 (Wish has to work around the Ultimate freezing the C64 mid-load,
+    which hangs the game while the automapper follows along)`). Covered on
+    its own in `test_the_host_row_only_exists_behind_the_flag`."""
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
@@ -1543,8 +1611,8 @@ def test_every_control_is_a_widget_the_ui_file_built(app, tmp_path, monkeypatch)
         assert dialog.saves is dialog.ui.saves
         assert dialog.backups is dialog.ui.backups
         assert dialog.backups_note is dialog.ui.backups_note
-        assert dialog.host is dialog.ui.host
-        assert dialog.password is dialog.ui.password
+        assert not hasattr(dialog.ui, "host")
+        assert not hasattr(dialog.ui, "password")
         assert dialog.interval is dialog.ui.interval
         assert dialog.interval_default is dialog.ui.interval_default
         assert dialog.watch_box is dialog.ui.watch_box
