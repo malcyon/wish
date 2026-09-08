@@ -262,6 +262,66 @@ def test_check_on_an_empty_tree_finds_nothing_wrong(tree):
     assert specimens.check_specimens(tree) == []
 
 
+# --- a platform directory holding both shapes at once (#450) -------------
+
+
+def _both_shapes(tree, tmp_path):
+    """`por-c64` as it actually stands: flat `.d64` specimens beside one
+    directory of memory captures, which is what `#286` left there."""
+    d64 = tmp_path / "party.d64"
+    d64.write_bytes(b"not a real disk image, just bytes")
+    specimens.add("c64", "p18party", [d64], root=tree,
+                  title="Pool of Radiance", issue="#10 (test)",
+                  made_by="the training hall", what="levelled up")
+    # `add` only ever makes the flat shape for c64, so this one is built the
+    # way the real `WISH-SPEC-por-c64u-onward-bound-hang` was: by hand.
+    dumps = tree / "por-c64" / "WISH-SPEC-hang-captures"
+    dumps.mkdir()
+    zp = dumps / "hung-zp.bin"
+    zp.write_bytes(b"the zero page as it froze")
+    specimens.write_provenance(
+        dumps / specimens.PROVENANCE_NAME,
+        {"name": "hang-captures", "platform": "c64",
+         "title": "Pool of Radiance", "issue": "#286 (test)",
+         "made_by": "Donald, on his own C64 Ultimate",
+         "what": "captures of a hung machine", "created": "2026-09-04",
+         "added": "2026-09-05", "edited_afterwards": False},
+        {"hung-zp.bin": specimens.sha256_file(zp)})
+    return dumps
+
+
+def test_a_directory_specimen_beside_the_flat_ones_is_listed(tree, tmp_path):
+    """Both shapes at once. Until `#450` a non-empty flat list meant "stop
+    here", and the directory specimen was listed by nothing."""
+    _both_shapes(tree, tmp_path)
+    names = sorted(e["name"] for e in specimens.list_specimens(tree))
+    assert names == ["hang-captures", "p18party"]
+
+
+def test_check_catches_an_edit_to_a_directory_specimen_beside_flat_ones(
+        tree, tmp_path):
+    """The silent half: `check` reported the tree clean while a file in that
+    specimen could be rewritten by anything."""
+    dest = _both_shapes(tree, tmp_path)
+    victim = dest / "hung-zp.bin"
+    dest.chmod(stat.S_IRWXU)
+    victim.chmod(stat.S_IRWXU)
+    victim.write_bytes(b"somebody opened this and saved it")
+    problems = specimens.check_specimens(tree)
+    assert len(problems) == 1
+    assert "hang-captures: hung-zp.bin has changed" in problems[0]
+
+
+def test_check_flags_a_stray_file_in_a_directory_specimen_beside_flat_ones(
+        tree, tmp_path):
+    dest = _both_shapes(tree, tmp_path)
+    dest.chmod(stat.S_IRWXU)
+    (dest / "stray.bin").write_bytes(b"dropped here later")
+    problems = specimens.check_specimens(tree)
+    assert len(problems) == 1
+    assert "stray.bin: not recorded by any provenance.toml" in problems[0]
+
+
 # --- list ----------------------------------------------------------------
 
 

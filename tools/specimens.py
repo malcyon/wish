@@ -336,32 +336,40 @@ def _platform_title_dirs(root: pathlib.Path) -> list[pathlib.Path]:
 
 def _specimen_dirs(root: pathlib.Path) -> list[pathlib.Path]:
     """Every directory holding a `provenance.toml`, C64's platform-title
-    directory included -- its specimens are flat files there, not
-    subdirectories."""
+    directory included -- its disk-image specimens are flat files there.
+
+    **The two shapes add up rather than excluding each other.**  `por-c64`
+    holds twenty flat `.d64` specimens *and* one directory of memory captures
+    (`#286`), and while a non-empty flat list meant "this directory is the C64
+    shape, stop here" that whole specimen was listed by nothing and hashed by
+    nothing -- `#450 (A directory-shaped specimen under por-c64 is invisible
+    to specimens.py check, so eight files in the tree are never verified)`.
+    """
     out = []
     for pdir in _platform_title_dirs(root):
         if _c64_specimens(pdir):
             out.append(pdir)
-        else:
-            out += [d for d in sorted(pdir.iterdir()) if d.is_dir()]
+        out += [d for d in sorted(pdir.iterdir()) if d.is_dir()]
     return out
 
 
 def list_specimens(root: pathlib.Path | None = None) -> list[dict]:
     """One dict per specimen -- provenance fields plus `_files`, the paths
-    checked and hashed against it."""
+    checked and hashed against it.
+
+    A platform directory can hold both shapes at once, so the flat C64
+    specimens and any subdirectory carrying its own `provenance.toml` are both
+    listed; see `_specimen_dirs` and `#450`.
+    """
     root = root or tree_root()
     out = []
     for pdir in _platform_title_dirs(root):
-        c64_names = _c64_specimens(pdir)
-        if c64_names:
-            for name in c64_names:
-                prov_path = pdir / f"WISH-SPEC-{name}.{PROVENANCE_NAME}"
-                fields = read_provenance(prov_path)
-                fields["_files"] = [pdir / n for n in fields.get("sha256", {})]
-                fields["_provenance"] = prov_path
-                out.append(fields)
-            continue
+        for name in _c64_specimens(pdir):
+            prov_path = pdir / f"WISH-SPEC-{name}.{PROVENANCE_NAME}"
+            fields = read_provenance(prov_path)
+            fields["_files"] = [pdir / n for n in fields.get("sha256", {})]
+            fields["_provenance"] = prov_path
+            out.append(fields)
         for specimen_dir in sorted(pdir.iterdir()):
             if not specimen_dir.is_dir():
                 continue
