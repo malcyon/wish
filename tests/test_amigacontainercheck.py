@@ -16,8 +16,10 @@ construction and can never fail.  That test turns the tidy-up red.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import pathlib
+import textwrap
 
 import pytest
 
@@ -121,13 +123,18 @@ def test_neither_reader_calls_the_library_it_is_checking():
               "por_state_from", "amiga.", "SaveGame0")
     for func in (check.c64_fields, check.container_fields):
         # The docstrings name the accessors they promise not to call, so the
-        # scan is of the code and the docstring is cut out first. Newlines are
-        # normalised before the cut because `inspect.getsource` hands back the
-        # file's own line endings while `__doc__` always holds `\n`, so on
-        # Windows the docstring did not match itself and stayed in, which
-        # turned this test red on CI and nowhere else.
-        source = inspect.getsource(func).replace("\r\n", "\n")
-        body = source.replace((func.__doc__ or "").replace("\r\n", "\n"), "")
+        # scan is of the code with the docstring cut out. It is cut by parsing
+        # rather than by string surgery on `__doc__`: Python 3.13 hands back a
+        # dedented `__doc__` that no longer matches the source it came from,
+        # so a `str.replace` left the docstring in and this test failed on
+        # every 3.13 job while passing on 3.12.
+        tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+        fn = tree.body[0]
+        if (fn.body and isinstance(fn.body[0], ast.Expr)
+                and isinstance(fn.body[0].value, ast.Constant)
+                and isinstance(fn.body[0].value.value, str)):
+            fn.body = fn.body[1:]
+        body = ast.unparse(tree)
         for name in banned:
             assert name not in body, f"{func.__name__} calls {name}"
 
