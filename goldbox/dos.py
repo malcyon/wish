@@ -399,8 +399,11 @@ def item_to_c64(record: bytes) -> bytes:
 #: importer reads a Pool of Radiance `.spc` file and keeps exactly 18, 26, 47,
 #: 48, 97, 107 and 124, every one a racial or constitutional bonus.  90 is
 #: added here because the DOS party carries it on the dwarf and on the
-#: halfling and `goldbox/traits.py` names it the same kind of thing -- a racial
-#: constitution bonus to poison and death saves.  PROBABLE.
+#: halfling: the same constitution band as 97, on the paralysis/poison/death
+#: column rather than 97's wands and spell columns.  CONFIRMED, read end to
+#: end from `GAME.OVR:0x11134` for #247 (Nobody knows whether innate effect
+#: 97 is racial or the constitution bonus); `docs/189-effect-97-from-the-code.md`
+#: has the chain.
 #:
 #: **18 and 48 are the gnome's, and a gnome is where they come from.**  #84
 #: rolled three in the game's own creation screens and the engine wrote 97,
@@ -572,15 +575,20 @@ EFFECT_NEXT_NULL = bytes(4)
 #: human no `.SPC` file at all -- so this is one measurement and not a new
 #: kind of one.  CONFIRMED over three gnomes and six engine-written files.
 #:
-#: **Writing 97 from this table is PROBABLE, not CONFIRMED, and #247 (Nobody
-#: knows whether innate effect 97 is racial or the constitution bonus) is
-#: why.**  Every race this corpus has ever seen carry 97 -- dwarf, halfling,
-#: now gnome -- also earns a constitution bonus, so nothing here separates
-#: "97 is racial" from "97 is the constitution bonus computed some other
-#: way."  If it turns out to be the latter, a converted character with a low
-#: constitution would be handed a bonus he did not roll.  18, 47 and 48 do
-#: not carry this doubt: #84 measured them as this race's own,
-#: unconditionally.
+#: **Writing 97 from this table is CONFIRMED, and #247 (Nobody knows whether
+#: innate effect 97 is racial or the constitution bonus) is why the doubt is
+#: settled rather than open.**  `GAME.OVR:0x1A127` writes 97 by race alone at
+#: character creation, unconditionally -- nothing between the race switch and
+#: the last `add_affect` call reads the constitution byte.  The handler 97
+#: dispatches to (`GAME.OVR:0x112E5`) reads the character's constitution only
+#: when a saving throw is actually rolled, and the band bonus it adds is
+#: never stored in the record.  So a converted character with a low
+#: constitution is handed 97 and a bonus of zero, exactly what a DOS-born one
+#: with that constitution gets: the bonus he did not roll cannot happen,
+#: because the magnitude is never written.  `docs/189-effect-97-from-the-code.md`
+#: has the chain end to end, from the creation switch through the dispatch
+#: table to the handler.  18, 47 and 48 carry no such doubt either: #84
+#: measured them as this race's own, unconditionally.
 RACE_COMBAT_EFFECTS: dict[str, tuple[int, ...]] = {
     "dwarf": (90, 97, 26, 47),
     "gnome": (97, 18, 47, 48),

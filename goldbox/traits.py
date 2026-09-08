@@ -8,18 +8,25 @@ creature that id's meaning demands. `docs/128-guide-and-scripting.md` is the
 write-up.
 
 **The names below are transcribed from a third-party document and then checked
-against the player's own disks.** 67 are CONFIRMED. Most were settled by the
-census: a `MON*` record or an item template carries the code on exactly the
-creature or item the meaning requires -- the anhkheg carries 121 "anhkheg acid
-squirt", the troll carries 100 and 101, the ghoul carries the paralysis that
-spares elves, the wight carries "silver or magic" and the wraith the "silver
-does half" variant, which is the *Monster Manual* distinction between them.
-**Seventeen more were settled by playing**: `P3-EFFECTS.D64` was saved with 26
-spells running, and each one named the code it had just written -- 1 Bless, 25
-invisible, 39 hasted and the rest, `docs/90-specimens.md`. **One more was
-settled by a live fight**: 53 sleeping, five Sleep-struck orcs in one slums
-ambush all naming it. 61 are PROBABLE: the guide names them, nothing on the C64
-exercises them, and a third-party document on its own is never CONFIRMED.
+against the player's own disks.** 67 are CONFIRMED that way. Most were settled
+by the census: a `MON*` record or an item template carries the code on exactly
+the creature or item the meaning requires -- the anhkheg carries 121 "anhkheg
+acid squirt", the troll carries 100 and 101, the ghoul carries the paralysis
+that spares elves, the wight carries "silver or magic" and the wraith the
+"silver does half" variant, which is the *Monster Manual* distinction between
+them. **Seventeen more were settled by playing**: `P3-EFFECTS.D64` was saved
+with 26 spells running, and each one named the code it had just written -- 1
+Bless, 25 invisible, 39 hasted and the rest, `docs/90-specimens.md`. **One more
+was settled by a live fight**: 53 sleeping, five Sleep-struck orcs in one slums
+ambush all naming it. **Two more, 90 and 97, were settled by reading
+`GAME.OVR` itself rather than by any census** -- reading the shipped overlay
+is stronger evidence than a census of saves, since it names the instruction
+that decides the question instead of a population that happens to agree with
+it; `#247 (Nobody knows whether innate effect 97 is racial or the constitution
+bonus)` and `docs/189-effect-97-from-the-code.md` have the chain. 59 are
+PROBABLE: the guide names them, nothing on the C64 exercises them and no
+overlay code has been read for them, and a third-party document on its own is
+never CONFIRMED.
 
 The census is 108 `MON*` records across the eight `POOL` disks and the 163
 item templates in the `ITEMFILE*` lists. **52 of the 129 codes are carried by
@@ -84,11 +91,13 @@ FIRST = 0x0AD
 
 # code -> (what it does, how sure we are).
 #
-# CONFIRMED means a record on the player's disks carries the code and the
-# carrier is what the name demands -- checked against the AD&D 1st edition
-# Monster Manual, which is the external rule this project promotes on. The
-# carriers are named in the trailing comments and come from a census of 116
-# `MON*` records across the eight POOL disks plus the save fixtures.
+# CONFIRMED means either a record on the player's disks carries the code and
+# the carrier is what the name demands -- checked against the AD&D 1st
+# edition Monster Manual, which is the external rule this project promotes
+# on, with the carriers named in the trailing comments and coming from a
+# census of 116 `MON*` records across the eight POOL disks plus the save
+# fixtures -- or the DOS overlay's own code was read and settles it without
+# any specimen, as for 90 and 97 (#247, docs/189-effect-97-from-the-code.md).
 #
 # PROBABLE means the guide names it and no C64 record exercises it. Every
 # spell effect (1-63, bar the four below) is in that state and will stay there
@@ -202,8 +211,12 @@ NAMES: dict[int, tuple[str, str]] = {
     # TYRANITHRAXUS carries it, and so does the player's own CLOAK OF
     # DISPLACEMENT as a passive item power.
     89: ("displaced", "CONFIRMED"),
-    90: ("dwarf/halfling constitution bonus to poison and death saves",
-         "PROBABLE"),
+    # DOS's own handler, GAME.OVR:0x11134, reads the character's constitution
+    # at the moment a paralysis/poison/death save is rolled and adds a band
+    # bonus never stored in the record; written by race alone at creation.
+    # CONFIRMED from the overlay, #247, docs/189-effect-97-from-the-code.md.
+    90: ("dwarf/halfling constitution bonus to paralysis, poison and death "
+         "saves", "CONFIRMED"),
     91: ("immune to electricity and Magic Missile", "CONFIRMED"),  # JUJU ZOMBIE
     # The guide has 92 unused. TYRANITHRAXUS carries it, so the C64 uses an id
     # DOS does not, or the guide missed a handler. Either way it is not named.
@@ -212,8 +225,14 @@ NAMES: dict[int, tuple[str, str]] = {
     94: ("half damage from blunt or piercing weapons", "CONFIRMED"),
     95: ("fights on from -6 to 0 hit points", "PROBABLE"),
     96: ("hit only by silver or magical weapons", "CONFIRMED"),    # WIGHT
-    97: ("dwarf/gnome/halfling constitution bonus to spell and wand saves",
-         "PROBABLE"),
+    # DOS's own handler, GAME.OVR:0x112E5, reads the character's constitution
+    # at the moment a wand or spell save is rolled and adds a band bonus
+    # never stored in the record; written by race alone at creation, so a
+    # low-constitution character gets the id and a bonus of zero rather than
+    # a bonus he did not earn. CONFIRMED from the overlay, #247,
+    # docs/189-effect-97-from-the-code.md.
+    97: ("dwarf/gnome/halfling constitution bonus to wand and spell saves",
+         "CONFIRMED"),
     98: ("regenerates 3 hit points a round", "CONFIRMED"),         # VAMPIRE
     99: ("keeps fighting once unconscious", "CONFIRMED"),          # WILD BOAR
     100: ("troll: vulnerable to fire and acid, else returns from death",
