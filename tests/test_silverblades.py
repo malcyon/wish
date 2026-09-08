@@ -875,7 +875,7 @@ def test_the_magic_user_grant_is_not_the_trainers():
     is what this ticket was opened on.
 
     Its only caller is `$0EF9`, the tail of `$0EF3`, and `$0EF3` is reached
-    from `$09FA` -- eleven bytes after `$09D8` zeroes the whole sixteen-byte
+    from `$09FA` -- 34 bytes after `$09D8` zeroes the whole sixteen-byte
     mask, which no trainer would do -- and from `$1FC3`, the dual-class
     routine that has just written `0x0B9`/`0x0BA`. The level-up sequence at
     `$14FA` calls neither. Curse's `$167F` is the same routine misread the

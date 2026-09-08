@@ -596,8 +596,8 @@ that is the whole reason this tool exists. Curse's `GEN $167F` and Silver
 Blades' `$0F7C` are grant loops of exactly the trainer's shape, indexed by
 `0x0C9`, the magic-user's level. Neither is called by a trainer. Both are the
 **starting spellbook**, reached only from character creation — Silver Blades
-zeroes the whole sixteen-byte mask at `$09D8` and grants the row eleven
-instructions later at `$09FA` — and from the dual-class routine, `$1FC3` and
+zeroes the whole sixteen-byte mask at `$09D8` and grants the row 34
+bytes later at `$09FA` — and from the dual-class routine, `$1FC3` and
 `$23DB`. Both were read as the trainer granting a row where Pool of Radiance
 offers a menu, Curse's in 2026-09-04 and Silver Blades' in 2026-09-08.
 

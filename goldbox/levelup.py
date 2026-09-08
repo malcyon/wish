@@ -468,7 +468,7 @@ def _permanent(record, index: int, in_force: str) -> int:
     """
     try:
         second = record.get_raw("abilities_second") or b""
-    except Exception:                     # a record shape without the field
+    except KeyError:                      # a record shape without the field
         second = b""
     if len(second) > index and any(second):
         return second[index]
@@ -525,7 +525,7 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
     Silver Blades' `GEN $0F7C` ORs a whole magic-user list in from a table,
     and this module read that as its trainer granting a row where Pool of
     Radiance offers a choice. It is the *starting* spellbook: its only caller
-    is the tail of `$0EF3`, reached from character creation -- eleven bytes
+    is the tail of `$0EF3`, reached from character creation -- 34 bytes
     after `$09D8` zeroes the whole sixteen-byte mask -- and from `$1FC3`, the
     dual-class routine. The trainer's own step is `$1896`, in the sequence at
     `$152A`, and it is a menu (#89). Curse had exactly the same routine read

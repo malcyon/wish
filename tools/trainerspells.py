@@ -15,7 +15,7 @@ That is the trap this tool exists to close. Silver Blades' `GEN $0F7C` ORs a
 whole magic-user spell list in from a table, and for a year that was read as
 its trainer granting a row where Pool of Radiance offers a menu. It is the
 *starting spellbook*: its only caller is `$0EF9`, the tail of `$0EF3`, which
-is reached from `$09FA` -- eleven bytes after `$09D8` zeroes the whole
+is reached from `$09FA` -- 34 bytes after `$09D8` zeroes the whole
 sixteen-byte mask, which no trainer would ever do -- and from `$1FC3`, the
 dual-class routine that has just written `0x0B9`/`0x0BA`. The same misreading
 had already been found and corrected in Curse, whose `$167F` is the same
