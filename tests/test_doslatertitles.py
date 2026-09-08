@@ -455,7 +455,19 @@ def test_the_item_and_effect_files_are_named_per_title():
 
 # --- the round trip, over every record on the machine ------------------------
 
-SPECIMENS = ("curse-234-before", "curse-234-dualclassed",
+#: Specimens the **DOS engine itself** wrote, and nothing else.
+#:
+#: `curse-234-converted-party`, `curse-299-built-from-nothing` and the two
+#: engine resaves taken over them are deliberately absent: their bytes are
+#: this writer's own, so a round trip against one measures the writer against
+#: itself.  `.claude/rules/testing.md` -- *records this project's own writers
+#: produced test the writer and are never evidence about the game.*  The
+#: engine's resave of our records is the same thing at one remove: DOS Curse
+#: kept the wrong `char_class` byte our pre-`#310` writer had put in
+#: `curse-234-converted-party`, so `curse-234-engine-resave` carries it too.
+SPECIMENS = ("curse-131-four-items-readied",
+             "curse-131-dualclassed-in-area-1",
+             "curse-234-before", "curse-234-dualclassed",
              "curse-234-party-dualclassed", "ssb-234-before",
              "ssb-234-dualclassed", "ssb-234-party-pair",
              "ssb-slote-zeroed140")
@@ -501,12 +513,13 @@ def _specimen_dirs():
 def test_every_engine_written_record_of_a_later_title_round_trips(shape):
     """DOS -> `to_neutral` -> `write`, against the original bytes.
 
-    **Curse: 8 of 8 identical outside the mask.  Silver Blades: 17 of 20**,
-    and the three that differ are the same character -- MALACHITE, whose
-    treasure-share byte inside `field_83_87` reads 0 where every other record
-    of the title reads 1 (`#304 (field_83_87 is written as a constant that the
-    characters we rolled ourselves do not hold)`).  Every record here was
-    written by the DOS engine under DOSBox for `#234` and `#256`.
+    **Curse: 20 of 20 identical outside the mask.  Silver Blades: 17 of
+    20**, and the three that differ are the same character -- MALACHITE,
+    whose treasure-share byte inside `field_83_87` reads 0 where every other
+    record of the title reads 1 (`#304 (field_83_87 is written as a constant
+    that the characters we rolled ourselves do not hold)`).  Every record
+    here was written by the DOS engine under DOSBox for `#131`, `#234` and
+    `#256`.
     """
     if specimen_root() is None:
         pytest.skip("needs the specimen tree; see tools/specimens.py")

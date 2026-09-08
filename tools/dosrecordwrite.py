@@ -52,6 +52,46 @@ from goldbox import c64_codec, dos, dos_layout, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
+#: Specimen directories holding **this project's own writer's output from
+#: before a fix**, and what the fix was.  A round trip against one of these
+#: measures the distance between two versions of our writer, not a fault in
+#: today's; `.claude/rules/testing.md` says a record our own writers produced
+#: is never evidence about the game, and a *dated* one is not evidence about
+#: the writer either.
+#:
+#: The worked example, and why the list exists: on 2026-09-07 the round trip
+#: reported `char_class` differing in 8 of 56 Curse records, which reads like
+#: a live defect and is not.  `curse-234-converted-party` was built on
+#: 2026-09-05 by the writer as it stood *before* `#310` taught it to check a
+#: class code against the class mask, so it holds 0 (cleric) for MATHEW the
+#: paladin 6, TRAVIS the fighter 5 / thief 6 and LEDERA the fighter 5 /
+#: magic-user 5 -- the very symptom `goldbox.dos`' `char_class` comment
+#: describes, "that drew CLERIC on a dwarf thief 6 / fighter 5 in the running
+#: game".  `curse-234-engine-resave` is DOS Curse's own `SAVE CURRENT GAME`
+#: over those records and holds the same wrong bytes, which is the separate
+#: finding that **the DOS engine does not recompute `char_class` on load**.
+#: The engine-written specimen of the same six characters,
+#: `curse-131-four-items-readied`, holds 3, 14, 13 -- and that is what today's
+#: writer produces.
+STALE_OUR_OUTPUT: dict[str, str] = {
+    "WISH-SPEC-curse-234-converted-party":
+        "our own writer, 2026-09-05, before #310's class-code repair: it "
+        "copied char_class @0x75 straight off a C64 record whose trainer had "
+        "stopped maintaining it, so three characters read 0 (cleric) and "
+        "dual-classed PHILIPPE reads 6, which is the level he left "
+        "magic-user at rather than any class code",
+    "WISH-SPEC-curse-234-engine-resave":
+        "DOS Curse's resave of the specimen above, which kept its char_class "
+        "byte -- the engine does not recompute it",
+}
+
+
+def stale_reason(path: pathlib.Path) -> str | None:
+    """Why a difference against `path` is our own older output, or None."""
+    parts = set(path.parts)
+    return next((why for name, why in STALE_OUR_OUTPUT.items()
+                 if name in parts), None)
+
 
 def masked(shape: dos_layout.DosShape) -> set[int]:
     """The offsets the writer itself says it does not take from the source.
@@ -65,6 +105,14 @@ def masked(shape: dos_layout.DosShape) -> set[int]:
     `field_10c_10f` is the one `WRITE_DEFAULTS` entry left unmasked: it is a
     default only for a source that carries none of status, the active flag,
     the combat side and quickfight, and every DOS record carries all four.
+
+    **`WRITE_CONSTANTS` is not masked either, and that is the point of it
+    being a list.**  A constant is a value we chose, so a record disagreeing
+    with one is something to look at rather than to hide: 108 of the 136 Pool
+    of Radiance records in `~/wish-specimens` and 3 of the 50 Silver Blades
+    ones differ here at `field_83_87`'s treasure-share byte alone, which is
+    the split `#304` measured and closed -- the share is 1 for a character
+    the player has taken through MODIFY and 0 for one he has not.
     """
     table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
     out: set[int] = set()
@@ -123,11 +171,20 @@ def _records_under(root: pathlib.Path):
 
 
 def roundtrip(root: pathlib.Path) -> int:
-    """Read every record under `root`, write it back, and say what moved."""
+    """Read every record under `root`, write it back, and say what moved.
+
+    Records under a `STALE_OUR_OUTPUT` specimen are read and compared like
+    any other, and reported in their own paragraph with the reason, rather
+    than counted as faults: a difference there is the distance between two
+    dates of our own writer.  They are still shown, because a list that
+    silently drops records is a mask taken from the diff.
+    """
     totals: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
     faults: dict[str, collections.Counter] = collections.defaultdict(
         collections.Counter)
     named: dict[str, list[str]] = collections.defaultdict(list)
+    stale: list[str] = []
+    stale_by_key: collections.Counter = collections.Counter()
     for path in _records_under(root):
         try:
             char = dos.read_character(path)
@@ -147,11 +204,17 @@ def roundtrip(root: pathlib.Path) -> int:
         differs = compare(char.shape, char.to_bytes(), rec)
         if not differs:
             totals[key][0] += 1
+        why = stale_reason(path)
         for field, offsets in differs.items():
+            where = " ".join(hex(i) for i in offsets)
+            if why is not None:
+                stale.append(f"{char.name} ({path.parent.name}/{path.name}): "
+                             f"{field} {where} -- {why}")
+                stale_by_key[key] += 1
+                continue
             faults[key][field] += 1
             named[key].append(
-                f"{char.name} ({path.name}): {field} "
-                f"{' '.join(hex(i) for i in offsets)}")
+                f"{char.name} ({path.name}): {field} {where}")
         want = len(char.items) * char.shape.item_size
         if len(itm) != want:
             faults[key]["item file length"] += 1
@@ -160,13 +223,23 @@ def roundtrip(root: pathlib.Path) -> int:
     bad = 0
     for key in sorted(totals):
         ok, seen = totals[key]
+        ours = stale_by_key[key]
         print(f"{key}: {ok}/{seen} records identical outside the writer's "
-              f"own mask")
+              f"own mask"
+              + (f", and {ours} of the {seen - ok} that differ are this "
+                 f"project's own older output, listed at the end"
+                 if ours else ""))
         for field, n in faults[key].most_common():
             print(f"    {field}: {n}")
             bad += n
         for line in named[key][:12]:
             print(f"      {line}")
+    if stale:
+        print(f"{len(stale)} record(s) differ only against output this "
+              f"project's own writer made before a fix, and are not counted "
+              f"above:")
+        for line in stale:
+            print(f"    {line}")
     return bad
 
 
@@ -188,11 +261,17 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
              force: bool = False) -> int:
     """Convert a C64 save disk into that title's DOS records and siblings.
 
-    **The records only.**  Nothing here writes `SAVGAM<slot>.DAT`, which is
-    what the DOS game loads a party *from*: for Pool of Radiance that is
-    `goldbox.dos.write_dos_save`'s job and for the later titles nobody has
-    written one at all.  So this produces a party the DOS engine cannot yet
-    be pointed at, which is exactly the state `#299` reports.
+    **The records only**, so that a fault in them can be seen without the
+    container in the way.  Nothing here writes `SAVGAM<slot>.DAT`, which is
+    what the DOS game loads a party *from*, so this mode leaves a directory
+    the DOS engine cannot be pointed at.
+
+    That is a property of this mode and no longer of the library:
+    `goldbox.dos.new_dos_save` builds the whole save from nothing for all
+    three titles `goldbox.dos.WRITES` names -- Pool of Radiance's 13137-byte
+    container, Curse's 13149 with its `ECL<n>.DAX` script staged, and Silver
+    Blades' 5469 without one -- and both later ones have been loaded and
+    played in DOSBox (`#299`).
     """
     game, party = _c64_party(disk)
     out.mkdir(parents=True, exist_ok=True)
@@ -219,8 +298,9 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
               f"{len(rec)} + {len(itm)} + {len(spc)} bytes, "
               f"{len(report.dropped)} reported")
     print(f"{shape.title}: {len(party)} records in {out}")
-    print("No SAVGAM was written -- the DOS engine loads a party from one, "
-          "and only Pool of Radiance's can be built today (#299)")
+    print("No SAVGAM was written, and the DOS engine loads a party from one: "
+          "this mode measures the records alone. goldbox.dos.new_dos_save "
+          "builds the whole save for every title this writer writes (#299)")
     return 0
 
 
