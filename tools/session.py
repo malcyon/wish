@@ -2341,6 +2341,36 @@ def claim_slot(want: int | None = None, note: str = ""):
     return slot
 
 
+def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
+    """Copy `src` over `dest`, whatever an earlier tenant left there (`#430`).
+
+    `shutil.copy` opens `dest` `'wb'` and also carries `src`'s own mode bits
+    onto it -- so a save staged from a read-only source leaves a read-only
+    `SIDE0.D64` in the slot, and every later `stage_disks` call for that slot
+    then dies on the open with a bare `PermissionError` naming neither the
+    file nor the reason.  `dest` is always one of this slot's own staged
+    copies -- `stage_disks` is the only thing that ever writes here -- so it
+    is unlinked first, unconditionally: every call starts from nothing there
+    rather than trusting what the call before it left behind, which is what
+    keeps the state from recurring at all rather than merely reporting it.
+
+    The `try` is only for what unlinking cannot fix -- the slot directory
+    itself refusing to be written -- so the error that does reach a caller
+    names the path and what to do about it, rather than the bare
+    `PermissionError` this replaces.
+    """
+    import shutil
+    try:
+        dest.unlink(missing_ok=True)
+        shutil.copy(src, dest)
+    except OSError as exc:
+        raise RuntimeError(
+            f"could not stage {dest} from {src}: {exc}. If this is a "
+            f"leftover from an earlier tenant of the slot, delete {dest} "
+            f"by hand and retry."
+        ) from exc
+
+
 def stage_disks(slot, disks, save: str = "") -> str:
     """Copy the eight sides and a save into the slot, and say what to boot.
 
@@ -2349,17 +2379,15 @@ def stage_disks(slot, disks, save: str = "") -> str:
     is ever shown is one of these copies: `SIDE1.D64` to `SIDE8.D64`, and the
     save as `SIDE0.D64`, which is what `Session.save_disk` points at.
     """
-    import shutil
-
     slot.seed_vicerc()
     here = pathlib.Path(slot.dir)
     disks = pathlib.Path(disks)
     for i in range(1, 9):
         src = disks / f"POOL{i}.D64"
         if src.exists():
-            shutil.copy(src, here / f"SIDE{i}.D64")
+            _restage(src, here / f"SIDE{i}.D64")
     if save:
-        shutil.copy(disks / save, here / "SIDE0.D64")
+        _restage(disks / save, here / "SIDE0.D64")
     return str(here / "SIDE1.D64")
 
 

@@ -1271,3 +1271,45 @@ def test_por_monitor_defaults_to_the_human_s_port(monkeypatch):
     assert vice.monitor_address("6523") == ("127.0.0.1", 6523)
     assert vice.monitor_address("host:6523") == ("host", 6523)
     assert vice.monitor_address("nonsense") == ("127.0.0.1", 6502)
+
+
+# -- a slot poisoned by a read-only leftover ---------------------------------
+
+
+def test_stage_disks_recovers_a_read_only_leftover_save(pool):
+    """#430: an earlier tenant's read-only `SIDE0.D64` must not poison the slot.
+
+    `stage_disks` used to copy the new save straight over whatever was
+    already in the slot with `shutil.copy`, which opens the destination
+    `'wb'` -- so a leftover `SIDE0.D64` with no owner-write bit (left behind
+    because `shutil.copy` also carries the *source*'s mode bits onto the
+    slot) made every later `stage_disks` call in that slot die with a bare
+    `PermissionError`, naming neither the file nor the reason.
+    """
+    disks = pool / "disks"
+    disks.mkdir()
+    (disks / "MYSAVE.D64").write_bytes(b"the new save")
+
+    with instance.claim() as slot:
+        leftover = Path(slot.dir) / "SIDE0.D64"
+        leftover.write_bytes(b"stale save, left read-only by an earlier tenant")
+        leftover.chmod(0o444)
+
+        session.stage_disks(slot, disks, save="MYSAVE.D64")
+
+        assert leftover.read_bytes() == b"the new save"
+
+
+def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
+    """An ordinary run, with no leftover in the slot at all."""
+    disks = pool / "disks"
+    disks.mkdir()
+    (disks / "POOL1.D64").write_bytes(b"side one")
+    (disks / "MYSAVE.D64").write_bytes(b"the save")
+
+    with instance.claim() as slot:
+        boot = session.stage_disks(slot, disks, save="MYSAVE.D64")
+
+        assert boot == str(Path(slot.dir) / "SIDE1.D64")
+        assert (Path(slot.dir) / "SIDE1.D64").read_bytes() == b"side one"
+        assert (Path(slot.dir) / "SIDE0.D64").read_bytes() == b"the save"
