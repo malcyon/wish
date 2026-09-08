@@ -34,6 +34,16 @@ party is converted as it stands.
 ignored, and prints both, so a row's effect is a difference rather than an
 assertion.
 
+`--home` reads each arriving C64 icon straight back into DOS through
+`IconParts.dos_icon_from_c64` -- the other direction, `tools/iconreverse.yaml`
+(`#320`) -- twice: once through `goldbox.iconparts.c64_icon_tables()` with no
+title, which is what `goldbox.dos.c64_party` still builds today, and once
+with the title this run staged for, which is what `#452 (A Silver Blades
+combat figure does not survive a round trip through the C64, because the
+reverse table has no per-title rows)` gives the reverse table.  Comparing the
+two against what was staged is the round trip itself, not a reading of either
+table.
+
 Nothing is written outside `--stage`, and that belongs under `work/`.  The
 C64 art is read off the title's own disk at run time and none of it is
 printed: the output is option numbers and part-class names.
@@ -55,6 +65,7 @@ from goldbox.iconparts import (  # noqa: E402
     PART_CLASSES,
     SPACE,
     IconParts,
+    c64_icon_tables,
     dos_icon_tables,
 )
 from tools import iconproposal as ip  # noqa: E402
@@ -130,8 +141,42 @@ def arrivals(folder: pathlib.Path, slot: str, title: str,
                    f"{choice.head_size} head {choice.head}",
             "draws": sorted({PART_CLASSES[parts.part_class(g)]
                              for g in icon[:18] if g != SPACE}),
+            "icon": icon,
         })
     return out
+
+
+def homecoming(rows: list[dict], title: str, parts: IconParts) -> list[dict]:
+    """Read each arriving C64 icon straight back into DOS (`#320`, `#452`).
+
+    Twice a row: once through `c64_icon_tables()` with no title -- what
+    `goldbox.dos.c64_party` still builds today -- and once with the title
+    this run staged for.  A character whose staged `head`/`body` differs
+    from the untitled reading is the round trip `#452` is about; one whose
+    staged pair differs from the *titled* reading too is a row that YAML
+    file does not yet have.
+    """
+    untitled = c64_icon_tables()
+    titled = c64_icon_tables(title=title)
+    out = []
+    for row in rows:
+        today = parts.dos_icon_from_c64(row["icon"], untitled)
+        fixed = parts.dos_icon_from_c64(row["icon"], titled)
+        out.append({**row,
+                    "today": (today.head, today.body),
+                    "fixed": (fixed.head, fixed.body)})
+    return out
+
+
+def report_home(rows: list[dict]) -> None:
+    print("the round trip home:")
+    for row in rows:
+        staged = (row["head"], row["body"])
+        print(f"    {row['name']:<14} {row['size']:<5} staged {staged}  "
+              f"today (no title) {str(row['today']):<10} "
+              f"{'matches' if row['today'] == staged else 'differs'}  "
+              f"with this title {str(row['fixed']):<10} "
+              f"{'matches' if row['fixed'] == staged else 'differs'}")
 
 
 def without_overrides(title: str, tmp: pathlib.Path) -> pathlib.Path:
@@ -190,6 +235,9 @@ def main(argv: list[str] | None = None) -> int:
                                    "and CHARPIC00")
     ap.add_argument("--control", action="store_true",
                     help="also convert with the title's overrides ignored")
+    ap.add_argument("--home", action="store_true",
+                    help="also read each arriving icon back into DOS, with "
+                         "and without a title on the reverse table (#452)")
     args = ap.parse_args(argv)
 
     into = pathlib.Path(args.stage).expanduser()
@@ -205,10 +253,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"no {games.by_key(args.title).title} C64 disk here; "
                          f"pass --disk")
     parts = IconParts.load(str(disk))
-    weapons = dos_icon_tables(title=args.title, size="small").weapons
     print(f"{into}  <-  {games.by_key(args.title).title}, {disk.name}")
-    report(arrivals(into, args.slot, args.title, parts),
-           "the table as it stands:")
+    arrived = arrivals(into, args.slot, args.title, parts)
+    report(arrived, "the table as it stands:")
+    if args.home:
+        report_home(homecoming(arrived, args.title, parts))
     if args.control:
         import goldbox.iconparts as iconparts
 
@@ -219,9 +268,21 @@ def main(argv: list[str] | None = None) -> int:
                    "the control, with this title's overrides ignored:")
         finally:
             iconparts.PROPOSAL_PATH = was
+    # `--size` picks which characters were staged; with none given, both were,
+    # so both rows are the ones the run actually touched.
+    sizes = (args.size,) if args.size else ("small", "large")
     if args.body is not None:
-        print(f"row: DOS body {args.body} -> C64 small weapon "
-              f"{weapons[args.body]} for {args.title}")
+        for size in sizes:
+            weapon = dos_icon_tables(title=args.title, size=size).weapons[
+                args.body]
+            print(f"row: DOS body {args.body} -> C64 {size} weapon "
+                  f"{weapon} for {args.title}")
+    if args.head is not None:
+        for size in sizes:
+            head = dos_icon_tables(title=args.title, size=size).heads[
+                args.head]
+            print(f"row: DOS head {args.head} -> C64 {size} head "
+                  f"{head} for {args.title}")
     return 0
 
 

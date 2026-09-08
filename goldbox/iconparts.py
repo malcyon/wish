@@ -308,7 +308,8 @@ class C64IconTables:
     colours: dict[int, tuple[int, int]]
 
 
-def c64_icon_tables(path: "pathlib.Path | str | None" = None) -> C64IconTables:
+def c64_icon_tables(path: "pathlib.Path | str | None" = None,
+                    title: str | None = None) -> C64IconTables:
     """Read the reverse table out of :data:`REVERSE_PATH`.
 
     Independent of `tools/iconreverse.py`'s own reader, the way
@@ -321,6 +322,27 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None) -> C64IconTables:
     lists in full, and `small:` is the **small** lists in full -- not a base
     plus exceptions, because a C64 option number is a different drawing at
     each size and there is no size-free answer to fall back to.
+
+    `title` is a `goldbox.games.Game.key`, the mirror of
+    :func:`dos_icon_tables`'s own argument (`#452 (A Silver Blades combat
+    figure does not survive a round trip through the C64, because the
+    reverse table has no per-title rows)`). `tools/iconproposal.yaml`'s
+    `overrides:` section is many-to-one *per title* -- Silver Blades' own
+    `heads: 10: {c64: 2}` (`#335`) lands on the same C64 large head 2 that
+    DOS heads 4 and 6 already reach in the base table -- so the base
+    reverse table, which serves every title alike, can only name one of
+    them. A title's own `overrides:` section here names the other: at the
+    top level for a row that applies at both sizes, or under `small:` for
+    one that applies at the small size only, the same two-level shape the
+    base table already has. **A size a title's section does not mention is
+    untouched** -- there is no size-free row to fall through to within an
+    override, because there never is one in the base table either.
+
+    With no `title`, this is exactly the base table every reader before
+    `#452` used. No caller passes `title` yet: `goldbox.dos.c64_party`
+    builds `c64_icon_tables()` with no argument, so a Silver Blades
+    character converted to the C64 and home again still comes back as
+    whichever DOS option the base table alone names, not its own.
     """
     source = pathlib.Path(path or REVERSE_PATH)
     try:
@@ -335,6 +357,13 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None) -> C64IconTables:
         for kind, target in (("weapons", weapons), ("heads", heads)):
             for k, row in (section.get(kind) or {}).items():
                 target[(size, int(k))] = row["dos"]
+    override = (data.get("overrides") or {}).get(title) if title else None
+    if override:
+        for size, section in (("large", override),
+                              ("small", override.get("small") or {})):
+            for kind, target in (("weapons", weapons), ("heads", heads)):
+                for k, row in (section.get(kind) or {}).items():
+                    target[(size, int(k))] = row["dos"]
     colours = {int(k): tuple(row["dos"])
               for k, row in (data.get("colours") or {}).items()}
     return C64IconTables(weapons=weapons, heads=heads, colours=colours)

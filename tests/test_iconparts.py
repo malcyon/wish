@@ -759,3 +759,169 @@ def _draws_shape(parts, shape) -> set[str]:
     from goldbox.iconparts import PART_CLASSES
 
     return {PART_CLASSES[parts.part_class(g)] for g in shape if g != SPACE}
+
+
+# -- the reverse table's own per-title overrides (#452) ----------------------
+#
+# `tools/iconproposal.yaml` grew an `overrides:` section for `#335 (Two
+# combat-figure rows describe Pool of Radiance's art, and Silver Blades
+# draws those two options differently)` and `dos_icon_tables` a `title`
+# argument to read it. `tools/iconreverse.yaml` and `c64_icon_tables` had
+# neither, so a Silver Blades character round-tripped through the C64 came
+# home as somebody else's figure: head 10 (`size` 2) returned as head 4, and
+# body 11 (`size` 1) as body 0 -- the two readings `#452 (A Silver Blades
+# combat figure does not survive a round trip through the C64, because the
+# reverse table has no per-title rows)` opens with. These pin the
+# mirror-image mechanism and the two rows that fix it.
+
+def _reverse_yaml(tmp_path, overrides: str = "") -> pathlib.Path:
+    """A minimal reverse table -- two weapons and two heads at each size,
+    all eight colours -- the shape `c64_icon_tables` reads."""
+    path = tmp_path / "reverse.yaml"
+    path.write_text(
+        "weapons:\n" + "".join(f"  {i}: {{dos: {i}}}\n" for i in range(2))
+        + "heads:\n" + "".join(f"  {i}: {{dos: {i}}}\n" for i in range(2))
+        + "small:\n"
+          "  weapons:\n"
+        + "".join(f"    {i}: {{dos: {i + 10}}}\n" for i in range(2))
+        + "  heads:\n"
+        + "".join(f"    {i}: {{dos: {i + 10}}}\n" for i in range(2))
+        + "colours:\n" + "".join(f"  {i}: {{dos: [0, 8]}}\n" for i in range(8))
+        + overrides)
+    return path
+
+
+def test_c64_icon_tables_with_no_title_ignores_any_overrides_section(tmp_path):
+    path = _reverse_yaml(tmp_path, "overrides:\n  some-title:\n"
+                                   "    heads:\n      0: {dos: 99}\n")
+    from goldbox.iconparts import c64_icon_tables
+    assert c64_icon_tables(path).heads[("large", 0)] == 0
+
+
+def test_a_title_with_no_c64_override_composes_exactly_what_it_composes_today(
+        tmp_path):
+    """The regression: `title` used to be an argument `c64_icon_tables` did
+    not accept at all, so this is also the test that the parameter exists."""
+    path = _reverse_yaml(tmp_path, "overrides: {}\n")
+    from goldbox.iconparts import c64_icon_tables
+    base = c64_icon_tables(path)
+    assert c64_icon_tables(path, title="curse-of-the-azure-bonds") == base
+    assert c64_icon_tables(path, title="secret-of-the-silver-blades") == base
+    assert c64_icon_tables(path, title=None) == base
+
+
+def test_a_title_with_a_c64_override_uses_it_for_that_row_alone(tmp_path):
+    path = _reverse_yaml(
+        tmp_path,
+        "overrides:\n  secret-of-the-silver-blades:\n"
+        "    heads:\n      1: {dos: 9}\n")
+    from goldbox.iconparts import c64_icon_tables
+    base = c64_icon_tables(path)
+    overridden = c64_icon_tables(path, title="secret-of-the-silver-blades")
+    assert base.heads[("large", 1)] == 1                # un-overridden reading
+    assert overridden.heads[("large", 1)] == 9           # the row it names
+    assert overridden.heads[("large", 0)] == base.heads[("large", 0)]
+    assert overridden.heads[("small", 1)] == base.heads[("small", 1)]
+    assert overridden.weapons == base.weapons            # the other table
+    # A different title's own key must never see another title's override.
+    assert c64_icon_tables(path, title="pool-of-radiance") == base
+    assert c64_icon_tables(path, title="curse-of-the-azure-bonds") == base
+
+
+def test_a_c64_titles_top_level_row_wins_at_large_only(tmp_path):
+    """Unlike `tools/iconproposal.yaml`'s own `overrides:` section, a
+    top-level row here answers for the **large** list alone -- there is no
+    size-free row within an override, because the base table has none
+    either: its own top level is the large lists in full and `small:` is a
+    separate, complete list."""
+    path = _reverse_yaml(
+        tmp_path,
+        "overrides:\n  secret-of-the-silver-blades:\n"
+        "    weapons:\n      1: {dos: 7}\n"
+        "    small:\n      weapons:\n        0: {dos: 8}\n")
+    from goldbox.iconparts import c64_icon_tables
+    base = c64_icon_tables(path)
+    mine = c64_icon_tables(path, title="secret-of-the-silver-blades")
+    assert mine.weapons[("large", 1)] == 7
+    assert mine.weapons[("small", 1)] == base.weapons[("small", 1)]  # untouched
+    assert mine.weapons[("small", 0)] == 8
+    assert mine.weapons[("large", 0)] == base.weapons[("large", 0)]  # untouched
+
+
+def test_the_shipped_reverse_table_gives_silver_blades_its_own_two_rows():
+    """Against the real `tools/iconreverse.yaml`: Silver Blades' C64 large
+    head 2 comes home as DOS head 10, its own row, rather than the base
+    table's DOS head 4; its C64 small weapon 1 comes home as DOS body 11,
+    the row that tracks `tools/iconproposal.yaml`'s own, Donald's since
+    2026-09-08 (`6e3b305`). Every other row, and every other title, reads
+    the base table."""
+    from goldbox.games import GAMES
+    from goldbox.iconparts import c64_icon_tables
+
+    base = c64_icon_tables()
+    assert base.heads[("large", 2)] == 4
+    assert base.weapons[("small", 1)] == 0
+
+    ssb = c64_icon_tables(title="secret-of-the-silver-blades")
+    assert ssb.heads[("large", 2)] == 10
+    assert ssb.weapons[("small", 1)] == 11
+    moved_heads = {k: v for k, v in ssb.heads.items() if base.heads[k] != v}
+    moved_weapons = {k: v for k, v in ssb.weapons.items()
+                     if base.weapons[k] != v}
+    assert moved_heads == {("large", 2): 10}
+    assert moved_weapons == {("small", 1): 11}
+    assert ssb.colours == base.colours
+
+    for game in GAMES:
+        if game.key == "secret-of-the-silver-blades":
+            continue
+        assert c64_icon_tables(title=game.key) == base, game.key
+
+
+def test_the_silver_blades_body_override_tracks_the_forward_row():
+    """`tools/iconproposal.yaml`'s small body 11 row for Silver Blades is
+    Donald's own (`6e3b305`, #335); the reverse row beside it still has to
+    answer for whichever C64 option that row names rather than for 1
+    specifically, so a future change to it moves the reverse row with it
+    instead of drifting the two apart with nobody told."""
+    from goldbox.iconparts import c64_icon_tables, dos_icon_tables
+
+    forward = dos_icon_tables(title="secret-of-the-silver-blades",
+                              size="small")
+    c64_weapon = forward.weapons[11]
+    reverse = c64_icon_tables(title="secret-of-the-silver-blades")
+    assert reverse.weapons[("small", c64_weapon)] == 11
+
+
+def test_a_silver_blades_figure_composed_with_the_title_survives_the_round_trip(
+        parts):
+    """The proof, on the option tables themselves rather than on a saved
+    file: compose DOS head 10 and body 11 through the tables a conversion
+    would build for Silver Blades, at each size, then decode the result
+    back through the title-aware reverse table, and get the same two
+    numbers home.
+
+    The regression this fixes is the second half of the assertion: the very
+    same C64 icon, decoded with the base, title-less reverse table -- what
+    `goldbox.dos.c64_party` still builds today, since nothing there passes
+    `title` to `c64_icon_tables` yet -- comes home as head 4 at `size` 2
+    (keeping its own body 11) and as body 0 at `size` 1 (keeping its own
+    head 10), the exact two readings `#452 (A Silver Blades combat figure
+    does not survive a round trip through the C64, because the reverse
+    table has no per-title rows)` opens with. `dos_icon_tables`'s own
+    `title` argument for the *forward* half is not this gap: `write_c64_save`
+    has passed it since `bb16ee3`, so the icon this test decodes is already
+    the one a real conversion composes.
+    """
+    from goldbox.iconparts import c64_icon_tables, dos_icon_tables
+
+    colours = bytes.fromhex("616263646566")
+    title = "secret-of-the-silver-blades"
+    for size, today_answer in (("large", (4, 11)), ("small", (10, 0))):
+        forward = dos_icon_tables(title=title, size=size)
+        icon = parts.dos_icon(10, 11, size, colours, tables=forward)
+        home = parts.dos_icon_from_c64(icon, c64_icon_tables(title=title))
+        assert (home.head, home.body) == (10, 11), size
+
+        today_home = parts.dos_icon_from_c64(icon)
+        assert (today_home.head, today_home.body) == today_answer, size

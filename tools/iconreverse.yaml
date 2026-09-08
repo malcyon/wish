@@ -302,3 +302,65 @@ colours:
   5: {dos: [2, 10]}    # green       -> EGA green / light green
   6: {dos: [1, 9]}     # blue        -> EGA blue / light blue
   7: {dos: [6, 14]}    # yellow      -> EGA brown / yellow
+
+# ---------------------------------------------------------------------------
+# Per-title overrides (#452), the mirror of `tools/iconproposal.yaml`'s own
+# `overrides:` section. The base table above serves every title, and it is
+# right for two of the three -- Curse ships Pool of Radiance's combat art
+# byte for byte and its own reverse rows already say so. Secret of the
+# Silver Blades redrew two options (#335), and the base table's own answer
+# for either is now wrong for that title alone: a Silver Blades character
+# who picked the redrawn option comes home from the C64 as somebody else's
+# figure.
+#
+# Shape, one section per title key, at the top level for a row that answers
+# at both sizes and under `small:` for one that answers at the small size
+# only -- the same two-level shape the base table itself uses, since there
+# is no size-free row within an override to fall back to either.
+overrides:
+  secret-of-the-silver-blades:
+    heads:
+      2: {dos: 10, alt: [4, 6]}
+                         # Silver Blades draws a hat on DOS head 10 that
+                         # Pool of Radiance's does not, so the forward table
+                         # sends it to C64 large head 2 for this title only
+                         # (#335, Donald, 2026-09-05: "The #10 DOS head
+                         # should be matched with the #2 C64 head"). Two DOS
+                         # heads already land on C64 head 2 in the base
+                         # table -- 4 and 6, the row above's own alt -- so
+                         # for Silver Blades this is a three-way collision
+                         # and the round trip can only return one head.
+                         # 10 is picked over 4 and 6 because it is the row
+                         # this title's own forward table names by hand; a
+                         # Silver Blades character who instead picked head 4
+                         # or head 6 comes home from the C64 as head 10
+                         # rather than his own choice. Large only: Silver
+                         # Blades' small head 10 is Pool of Radiance's art
+                         # unchanged (docs/168-dos-dax-and-combat-icons.md),
+                         # so a small character reads the base table's own
+                         # small answer, C64 head 9 -> DOS head 10, which is
+                         # already a clean, forced round trip and needs no
+                         # override here.
+    small:
+      weapons:
+        1: {dos: 11}     # Tracks `tools/iconproposal.yaml`'s own
+                         # `overrides: secret-of-the-silver-blades: small:
+                         # weapons: 11:`, Donald's own as of 2026-09-08
+                         # (`6e3b305`) rather than an agent's proposal. Still
+                         # written to track that row's C64 number rather
+                         # than to assume it stays 1, in case he ever
+                         # changes his mind: `tests/test_iconparts.py::
+                         # test_the_silver_blades_body_override_tracks_the_
+                         # forward_row` fails if the two drift apart.
+                         #
+                         # Nothing reaches C64 small weapon 1 in the base
+                         # table -- Donald's 2026-09-05 correction of DOS
+                         # body 7 to C64 weapon 2 for a small character was
+                         # the only row that ever pointed at it, and it no
+                         # longer does -- so this is a forced row rather
+                         # than a choice: DOS body 11 is the only Silver
+                         # Blades body that reaches this C64 option, and no
+                         # other DOS body collides with it here. Large is
+                         # untouched: Silver Blades' large body 11 is Pool
+                         # of Radiance's art unchanged, so it keeps the base
+                         # table's own large weapon 25 -> DOS body 11.
