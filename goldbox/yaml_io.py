@@ -213,9 +213,14 @@ FIELD_COMMENTS = {
     "levels": ("one level per class above. A dual-classed human keeps the old\n"
                "class frozen at its level while the new one advances, so these\n"
                "can differ. Adding a class here starts it at level 1."),
-    # PROPOSED, not approved (#256). `.claude/rules/gui-text.md` makes the
-    # exact words Donald's to choose; this is what was put to him alongside
-    # the shape of the field, not a shipped string.
+    # The key name is Donald's, 2026-09-08: he took `former_levels` over
+    # `former` and `was`, so the field pairs with `levels` above it and
+    # matches the neutral record's own name for it (#256).
+    #
+    # THE COMMENT BELOW IS STILL PROPOSED, not approved.
+    # `.claude/rules/gui-text.md` makes these words his to choose, and he has
+    # approved the key rather than the sentence. This is what was put to him
+    # alongside the shape of the field, not a shipped string.
     "former_levels": (
         "class name -> the level a dual-classed character left that class\n"
         "at. Empty for a character who has never changed class; missing\n"
