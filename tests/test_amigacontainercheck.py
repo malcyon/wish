@@ -121,8 +121,13 @@ def test_neither_reader_calls_the_library_it_is_checking():
               "por_state_from", "amiga.", "SaveGame0")
     for func in (check.c64_fields, check.container_fields):
         # The docstrings name the accessors they promise not to call, so the
-        # scan is of the code and the docstring is cut out first.
-        body = inspect.getsource(func).replace(func.__doc__ or "", "")
+        # scan is of the code and the docstring is cut out first. Newlines are
+        # normalised before the cut because `inspect.getsource` hands back the
+        # file's own line endings while `__doc__` always holds `\n`, so on
+        # Windows the docstring did not match itself and stayed in, which
+        # turned this test red on CI and nowhere else.
+        source = inspect.getsource(func).replace("\r\n", "\n")
+        body = source.replace((func.__doc__ or "").replace("\r\n", "\n"), "")
         for name in banned:
             assert name not in body, f"{func.__name__} calls {name}"
 
