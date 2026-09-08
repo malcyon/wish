@@ -187,7 +187,10 @@ def run(args) -> int:
             target = None
         print(f"run(): ok={outcome.ok} message={outcome.message}", flush=True)
         if not outcome.ok:
-            result = {"ok": False, "message": outcome.message}
+            # The console has already printed both of these, so the file a
+            # reader parses afterwards should carry them too.
+            result = {"ok": False, "message": outcome.message,
+                      "before": before, "area_before": area_before}
             return 1
 
         answer_and_wait(sess, args.to_area, deadline_s=args.answer_timeout)

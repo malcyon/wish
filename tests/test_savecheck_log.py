@@ -255,3 +255,48 @@ def test_the_traceback_survives_the_console_dying_at_any_point(
     failed = [e for e in entries(out) if e["kind"] == "failed"]
     assert len(failed) == 1, [e["kind"] for e in entries(out)]
     assert failed[0]["error"] == "RuntimeError('boot failed')"
+
+
+def test_a_log_that_cannot_be_kept_still_lets_the_new_run_write(
+        tmp_path, monkeypatch):
+    """Keeping the old log must never cost the new one.
+
+    The old file can vanish between the check and the stat, and its directory
+    can be unwritable, and either raised out of `Log.__init__` takes the whole
+    run down before a single entry is written -- no `.jsonl` at all, which is
+    worse than the truncation `keep_old_log` exists to prevent. So the
+    preservation is best effort: it gives up and the run opens the path in
+    place.
+    """
+    out = tmp_path / "PORSAVEB.jsonl"
+    out.write_text('{"kind": "the run nobody could keep"}\n')
+
+    def gone(self, target):
+        raise OSError(2, "No such file or directory")
+
+    monkeypatch.setattr(pathlib.Path, "rename", gone)
+    log = savecheck.Log(out)
+    log.emit("picker", listed=["BEGIN ADVENTURING"])
+    log.close()
+    assert [e["kind"] for e in entries(out)] == ["picker"]
+
+
+def test_the_record_going_does_not_raise_out_of_the_failure_handler(
+        tmp_path, monkeypatch):
+    """The console half is hardened; the file half must not be the new hole.
+
+    `say` catches a dead terminal and writes `console_closed` to the `.jsonl`
+    -- and if *that* write raises as well, because the disk is full or the
+    descriptor is closed, it comes straight back out of the failure handler,
+    which is the shape of the loss #380 is about.
+    """
+    out = tmp_path / "PORSAVEB.jsonl"
+    log = savecheck.Log(out)
+
+    def dead(*a, **kw):
+        raise OSError(32, "Broken pipe")
+
+    monkeypatch.setattr("builtins.print", dead)
+    log.emit = dead                        # the record has gone too
+    log.say("the line nobody hears")       # must not raise
+    assert log.talking is False

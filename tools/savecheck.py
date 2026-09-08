@@ -286,8 +286,11 @@ def catch_signals() -> None:
 
     A `timeout 200 tools/savecheck.py ...` sends SIGTERM, Python has no
     handler for it, and the process dies mid-statement: no `"failed"` entry,
-    no traceback, and -- worse -- no `finally`, so the emulator slot stays
-    leased and VICE keeps running.  Raising instead means the run stops
+    no traceback, and -- worse -- no `finally`, so VICE is left running on a
+    slot the kernel has already unleased, where the next run finds it.  (The
+    lease itself is an `fcntl.flock` and goes when the process does, however
+    it goes -- `tools/instance.py` says so; what outlives the process is the
+    emulator it started.)  Raising instead means the run stops
     through its own `except`, writes what went wrong, and tears its slot
     down.  `#380` is the ticket where a lost traceback cost a repeat run.
 
@@ -313,16 +316,27 @@ def keep_old_log(out: pathlib.Path) -> pathlib.Path | None:
     evidence went minutes before the second run reached the same point
     (`#380`).  The old file is stamped with its own last-written time, so the
     name says which run it was.
+
+    **Preserving the old log must never cost the new one.**  The file can
+    vanish between the check and the stat, and the directory can be
+    unwritable, and either raised from here takes the whole run down before a
+    single entry is written -- which is worse than the truncation this
+    exists to prevent.  So an `OSError` here gives up on keeping the old
+    file and lets the caller open the path in place.
     """
     if not out.exists():
         return None
-    when = time.strftime("%Y%m%d-%H%M%S", time.localtime(out.stat().st_mtime))
-    kept = out.with_name(f"{out.stem}-{when}{out.suffix}")
-    n = 1
-    while kept.exists():
-        kept = out.with_name(f"{out.stem}-{when}-{n}{out.suffix}")
-        n += 1
-    out.rename(kept)
+    try:
+        when = time.strftime("%Y%m%d-%H%M%S",
+                             time.localtime(out.stat().st_mtime))
+        kept = out.with_name(f"{out.stem}-{when}{out.suffix}")
+        n = 1
+        while kept.exists():
+            kept = out.with_name(f"{out.stem}-{when}-{n}{out.suffix}")
+            n += 1
+        out.rename(kept)
+    except OSError:
+        return None
     return kept
 
 
@@ -363,7 +377,14 @@ class Log:
                 print(*a, flush=True)
             except OSError:
                 self.talking = False
-                self.emit("console_closed")
+                try:
+                    self.emit("console_closed")
+                except OSError:
+                    # The record itself has gone -- a full disk, a closed
+                    # descriptor.  Nothing here can report that, and raising
+                    # it out of a failure handler is what lost the traceback
+                    # this whole change exists to keep.
+                    pass
 
     def close(self) -> None:
         self.file.close()
