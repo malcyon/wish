@@ -198,23 +198,40 @@ time this corpus has taught that lesson, after `readied` and
 
 ### Silver Blades' `0x42`: a scroll's extra spells
 
-An item whose type index is `0x49` is a scroll, and it carries three spell
-ids in the bytes the constructor calls `charges`, `effect` and `power`. A
-scroll with more than three chains further 70-byte nodes through `0x42`,
-`quantity` of them: `/Secret` `0xDE` walks the chain reading `node[0x3F]`
-through `node[0x41]` with the top bit as a "scribed" flag, and the vault
-writer at `0x3D6D2` writes each sub-node out after the item.
+An item whose type index is `0x49` carries a chain of further 70-byte nodes
+through `0x42`, `quantity` of them, each holding three spell ids in the bytes
+the constructor calls `charges`, `effect` and `power`: `/Secret` `0xDE` walks
+it reading `node[0x3F]` through `node[0x41]` with the top bit as a "scribed"
+flag, and the vault writer at `0x3D6D2` writes each sub-node out after the
+item.
+
+**`0x49` is the bundle the JOIN command makes, not a scroll**, which this
+section said until the DOS side was read for
+`#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
+gap_13c, and a pointer at the end of the Silver Blades item)`. A plain scroll
+is type `0x27` (mage) or `0x28` (cleric) and keeps its three ids in its own
+`charges`, `effect` and `power`; DOS Silver Blades stores type `0x49` in
+exactly one place, its JOIN routine, which zeroes the head's own three bytes
+and hangs the joined scroll off the pointer
+([`215-the-dos-experience-award-and-the-scroll-bundle.md`](215-the-dos-experience-award-and-the-scroll-bundle.md)).
+The Amiga keeps DOS's item numbering, so the same three types are PROBABLE
+here; reading what `/Secret` compares against before it walks `0x42` would
+settle it.
 
 **The main item chain is `0x2A` on both titles, not `0x42`.** `#28 (Decode an
 Amiga saved game, not just a character file)` recorded the vault writer
 stepping through `0x42`; that is the scroll sub-chain, and the writer's outer
 loop advances through `0x2A` (`/Secret` `0x3D768`). Corrected here.
 
-**PROBABLE, and it belongs to the DOS table:** DOS Silver Blades' item is 67
-bytes with four unexplained bytes at `0x3F`-`0x42` that are zero in 12 of 12.
-Four bytes is a DOS far pointer, and the Amiga's counterpart of exactly that
-region is a pointer. Settling it: a DOS Silver Blades save holding a scroll
-of more than three spells.
+**And the DOS counterpart is the same pointer, CONFIRMED.** DOS Silver
+Blades' item is 67 bytes and its four extra at `0x3F`-`0x42` are a far
+pointer to another 67-byte node: `SECRET GAME.OVR` loads it with `les` 41
+times, gates every walk on type `0x49`, and writes the sub-nodes into the
+`.STF` file inline after their head item. The reading, and the defect it
+opens in our own reader, are in
+[`215-the-dos-experience-award-and-the-scroll-bundle.md`](215-the-dos-experience-award-and-the-scroll-bundle.md)
+and `#432 (A joined scroll in a DOS Silver Blades save shifts everything
+after it out of the character's pack)`.
 
 ## Two hand-offs to the DOS field tables
 
@@ -222,8 +239,15 @@ of more than three spells.
   field.** Both unpackers byte-swap the word at its Amiga counterpart —
   Curse `0x140`, Silver Blades `0x0EA` — alongside age, the money block,
   experience and encumbrance, and they swap nothing that is not a `u16` or
-  `u32`. PROBABLE that the DOS field is a `u16le`; what it means is UNKNOWN
-  and it reads zero in every specimen of either title.
+  `u32`.
+
+  **Taken, and the field is named: it is the experience a creature is worth**,
+  a `u16le` base with a `u8` per hit point in the third byte of the gap. Four
+  routes in the DOS engines agree and the shipped creature files read the
+  published AD&D values —
+  [`215-the-dos-experience-award-and-the-scroll-bundle.md`](215-the-dos-experience-award-and-the-scroll-bundle.md).
+  CONFIRMED, where this said PROBABLE and UNKNOWN. It still reads zero in
+  every player record, which is why no specimen could place it.
 * **A second defect, PROBABLE.** `/Secret`'s Curse-import routine reads the
   incoming Curse spellbook at `record[0x79 + i]` for `i` = 1..100 and sets
   bit `i` of the Silver Blades mask. Curse's spellbook is 100 bytes at

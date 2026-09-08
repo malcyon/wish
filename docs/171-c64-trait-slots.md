@@ -1,6 +1,6 @@
 # What a C64 trait slot is, and what the engine does with an id in one
 
-`#252 (Does a C64 trait slot apply an item-granted effect id, or only the
+`#25 (One neutral character record, with a codec per format)`2 (Does a C64 trait slot apply an item-granted effect id, or only the
 ones its own READY routine wrote?)` asked whether an effect id written into
 one of the ten slots at record `0x0AD` by something other than the game --
 a converter, an editor -- does anything. Read out of Pool of Radiance's
@@ -257,16 +257,53 @@ POWER (38, `$83`, which goes to the array through `$AE2D`), TWO-HANDED SWORD
 rather than an id) and LONG SWORD +2 (240, `$84`, the same lock -- and it too
 has a flattened copy in `ITEMFILE17`).
 
+## A trait the editor wrote, from the Add button to the handler
+
+Everything above was measured on bytes `tools/traitdrive.py` and
+`tools/traitask.py` poked into a `.d64`. That proves the engine reads a slot
+and says nothing about **Wish's own write path**, which is what
+`WISH_EXPERIMENTAL_TRAITS` guards -- so `#41 (The window's minimum width is 1546px on Windows and 1071px on Linux)`7 (Prove the game applies a trait
+Wish wrote, so WISH_EXPERIMENTAL_TRAITS can come off)` took the same
+measurement again with the byte written by the editor: the real `WishWindow`,
+the real `button_trait_add`, the real `TraitPicker`, the real `File > Save`.
+`tools/traitsave.py` drives it and replaces only `TraitPicker.exec`, which is
+the modal wait for a person.
+
+**Resist Fire, id 20, added to ROLAND on `PORSAVE13.D64`.** CONFIRMED at every
+step:
+
+| step | what came back |
+|---|---|
+| `File > Save` | **one** differing byte in the 174,848-byte image -- `SAVEDGAME0` offset 1709, save slot 2, field `0x0AD`, `0` -> `20` |
+| loaded in the game | `$4D00 + 2 * $100 + $AD` reads `[20, 0, ...]` after `BEGIN ADVENTURING` |
+| a fire spell at him | `.C:3fe4 A:14 X:02` asked, `.C:402d` the array said no, `.C:403c A:14 X:00` **matched slot 0**, handler 20 dispatched |
+| the damage | 7 hit points before, 7 after, against 7 -> 6 in a control run one byte apart |
+| `ENCAMP > SAVE` | the disk the game wrote carries `2: [20, 0, ...]` |
+| that disk booted again | live block `[20, 0, ...]`, and `ENCAMP > REST` for eight game hours (21:00 to 05:00 the next day) left all three occupied blocks unchanged |
+
+The control is the same save without the edit, driven with identical arguments.
+Over more than 21,000 asks each, the two runs' per-id tables are identical on
+every id, including id 20's 12 asks and 1 that reached the trait scan. The only
+difference anywhere is the match: 1 in the edited run, 0 in the control, whose
+`trace.log` holds no `$403C` line at all.
+
+**Slot 0 rather than slot 9**, because `EffectsView.add` fills the first free
+slot while `SPELLE04 $ADD4` scans from the ninth down. `LIBRARY $402D` reads
+all ten with `LDX #$09` and counts down, so the position changes nothing --
+which this run is the measurement of, since `#25 (One neutral character record, with a codec per format)`2 (Does a C64 trait
+slot apply an item-granted effect id, or only the ones its own READY routine
+wrote?)`'s ids all sat in slot 9.
+
 ## What this means for a conversion
 
-For `#232 (An item-granted effect is dropped on the way through the neutral
+For `#23 (A conversion window for DOS saves, under File ▸ Import)`2 (An item-granted effect is dropped on the way through the neutral
 record, with no report)`, whose C64 writer drops `granted_effects` with a
 reason that is now wrong on both clauses:
 
 1. **Write the id into a free trait slot.** That is what READY writes, all of
    it, and the engine applies it wherever a list names it. Scan 9 down to 0
    for a zero the way `$ADD4` does; a full block means the array, which is
-   `$ADEF`'s own answer to `#236 (A character converted to the C64 with more
+   `$ADEF`'s own answer to `#23 (A conversion window for DOS saves, under File ▸ Import)`6 (A character converted to the C64 with more
    than ten innate effects loses the extra ones with no report)`.
 2. **Give the converted item the power bytes the C64 grants and revokes
    by.** DOS keys the grant on item byte `0x3D` with bit 7 of `0x3E`; the C64
@@ -305,6 +342,15 @@ reason that is now wrong on both clauses:
   of the three in the array, so what a player sees is UNKNOWN.
 * **`CAMP $12EA`**, the "if he has it, dispatch it" entry, is named by no
   file. Its neighbour `$12F8` is the live one.
+* **The character sheet does not list a trait**, so `#41 (The window's minimum width is 1546px on Windows and 1071px on Linux)`7 (Prove the game
+  applies a trait Wish wrote, so WISH_EXPERIMENTAL_TRAITS can come off)`'s
+  "boot, `VIEW`,
+  confirm the game lists it" cannot be done in Pool of Radiance: ROLAND's
+  sheet with 20 in his first slot is the same twenty-two rows as any other
+  character's -- name, race, alignment, class, six abilities, money, level,
+  experience, hit points, armour class, the two items in hand and `THACO`.
+  The live record read and the handler dispatch above are what replaced it,
+  and both say more than a listing would.
 
 ## The runs
 
@@ -318,3 +364,8 @@ on the keyboard or a numpad joystick selects a row from the world's VIEW
 (`probe1`, `probe4`), because the toggle refuses a magical item outside
 camp (`ask8`-`ask10`). Each holds `traits.jsonl`, `trace.log`,
 `asks.json`, and `tools/traitask.py --report` prints the table.
+
+`work/issue417/` holds the editor half: `write1/` (the copy, the disk File >
+Save wrote, and the one-byte diff), `cast-edited/` and `cast-control/` (the
+differential pair), `boot1/` and `reload/` (the engine's own save, the reload
+and the eight-hour rest, with ROLAND's sheet in `sheet.txt`).

@@ -182,5 +182,9 @@ block the engine dimensions as four classes, zeroed by the engine's own
 this title carries class 2. A converter writes zero with that as the tested
 reason. Two smaller corrections from the same read: `gap_14e`'s three bytes
 are what the Curse import carries over from Curse's `0x13C`-`0x13E`
-(`0x252D8`-`0x252FD`, `coab`'s `field_13C` and `field_13E`), and the
+(`0x252D8`-`0x252FD`, `coab`'s `field_13C` and `field_13E`) -- **and those
+three are now named: a `u16le` experience award at `0x14E` and a `u8` per hit
+point at `0x150`**, which is why the import copies a word and then a byte
+([`215-the-dos-experience-award-and-the-scroll-bundle.md`](215-the-dos-experience-award-and-the-scroll-bundle.md))
+-- and the
 `spells_castable_druid` note can say the engine fills three of its seven.
