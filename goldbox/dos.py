@@ -2518,6 +2518,17 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
 #: for the reason :data:`WRITE_DERIVED`'s note gives.
 IDENTITY_HELD_PORTS = ("C64", "Amiga")
 
+#: Ports `write` recomputes `thac0_base` for, rather than copying the
+#: source's own byte -- see the comment above the call in `write` itself.
+#: `#366 (A converted magic-user or thief arrives with the other port's
+#: THAC0, because the two ports ship different tables and the conversion
+#: copies the byte)` measured the C64's own THAC0 table against DOS's and
+#: found the two disagree; nobody has measured DOS's against Amiga's, so
+#: an Amiga source keeps its own byte here the same as a native DOS one
+#: does. A port added to this set needs its own measurement first, the
+#: way C64's was (#318).
+_THAC0_RECOMPUTE_FROM_PORTS = ("C64",)
+
 
 def identity_byte(record: bytes | bytearray,
                   shape: "int | str | DosShape | None" = None) -> int:
@@ -3107,36 +3118,36 @@ def write(char: NeutralCharacter,
                       f"array rather than storing it (#408)")
         _levels_into(levels, "class_levels", extra)
 
-    # -- thac0_base: recomputed through DOS's own table, but only when the --
-    # -- source is a different port -------------------------------------------
+    # -- thac0_base: recomputed only for the one port measured to disagree ---
     # `WRITE_DIRECT`'s copy is skipped above: a straight copy would hand
-    # back whatever the source port's own trainer had written.  The two
-    # ports run the identical recompute over different tables -- `GEN
-    # $1EF3` on the C64, `GAME.OVR:0x1A659` on DOS -- and Pool of Radiance's
-    # magic-user rows 1-5 and thief rows 1-4 hold one worse than the C64's,
-    # so a value copied straight from a C64 source is the wrong port's
-    # number (#366, A converted magic-user or thief arrives with the other
-    # port's THAC0, because the two ports ship different tables and the
-    # conversion copies the byte).
+    # back whatever the source port's own trainer had written, which is
+    # wrong for exactly one measured source -- see
+    # `_THAC0_RECOMPUTE_FROM_PORTS`'s own note for why it is a list of
+    # measured ports rather than "everything but DOS": that broader gate
+    # let an *Amiga* source through too, because `goldbox.amiga.write_later`
+    # reuses this writer as its own stepping stone and repacks the
+    # DOS-shaped bytes it gets back into an Amiga record, so a native Amiga
+    # round trip hit this recompute and broke
+    # `tests/test_amigalaterwrite.py::test_every_record_on_the_disks_
+    # round_trips` the same way a DOS round trip broke
+    # `test_every_engine_written_record_of_a_later_title_round_trips` the
+    # first time this was tried (#318).
     #
     # `goldbox.levels.dos_base_thac0` now carries all three titles' DOS
-    # tables (#318).  But the DOS engine's own recompute only runs on a
+    # tables (#318), and the DOS engine's own recompute only runs on a
     # training visit or a class change, not on every load: 9 of 86 Curse
     # and 2 of 74 Silver Blades records this project has measured store a
     # value the table would not give their character's current level, and
     # every one is a magic-user no rebuild has run over since (Pool of
-    # Radiance's own corpus has no such miss, 202 of 202). Recomputing
-    # unconditionally would "correct" a byte the DOS engine itself left
-    # stale -- which is not a conversion's job and broke
-    # `test_every_engine_written_record_of_a_later_title_round_trips` the
-    # one time it was tried (#318). So the table is only consulted when the
-    # source is a genuine cross-port conversion; a DOS source's own byte,
-    # stale or not, is copied through unchanged, the way the game itself
-    # leaves it until the character is next trained.
+    # Radiance's own corpus has no such miss, 202 of 202). Recomputing for
+    # a source the table was never measured against would "correct" a byte
+    # nobody has shown is wrong, so every port but the one `#366` measured
+    # keeps its own byte, stale or not, the way the game itself leaves it
+    # until the character is next trained.
     base = use("thac0_base")
     if base is not None:
-        derived = (None if port == "DOS" else
-                   level_tables.dos_base_thac0(w.get("levels"), shape.key))
+        derived = (level_tables.dos_base_thac0(w.get("levels"), shape.key)
+                   if port in _THAC0_RECOMPUTE_FROM_PORTS else None)
         if derived is None:
             put(base, "thac0_base")
         else:

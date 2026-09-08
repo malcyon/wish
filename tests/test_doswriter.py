@@ -347,12 +347,16 @@ def test_a_filled_character_lands_field_for_field():
 
     `thac0_base` is the deliberate exception: `write` recomputes it from the
     class levels through this title's own DOS table rather than copying the
-    neutral value across, because a source's own port may have written it
-    through a different one (`#366 (A converted magic-user or thief arrives
-    with the other port's THAC0, because the two ports ship different tables
-    and the conversion copies the byte)`).
+    neutral value across -- but only for a source port `#366 (A converted
+    magic-user or thief arrives with the other port's THAC0, because the two
+    ports ship different tables and the conversion copies the byte)` actually
+    measured a disagreement for, which today is the C64 alone
+    (`goldbox.dos._THAC0_RECOMPUTE_FROM_PORTS`, #318). `_filled`'s own port is
+    a made-up one and would not trigger it, so the port is overridden here to
+    exercise the real mechanism.
     """
     char = _filled()
+    char.port = "C64"
     rec, itm, _spc, rep = dos.write(char)
     assert len(rec) == dos_layout.RECORD_SIZE
     back = dos.DosCharacter(rec, items=[dos.DosItem(itm[i:i + 63])
