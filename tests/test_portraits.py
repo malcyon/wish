@@ -497,3 +497,208 @@ def test_the_extraction_tool_prints_the_stored_block_and_agrees_with_it(
         capture_output=True, text=True, timeout=120, cwd=str(root))
     assert done.returncode == 0, done.stdout + done.stderr
     assert "agrees with the stored menu" in done.stdout
+
+
+# ---------------------------------------------------------------------------
+# The Amiga, which offers a different eighth body (#194)
+# ---------------------------------------------------------------------------
+@functools.lru_cache(maxsize=1)
+def _amiga_files():
+    """`/program`, `/head.dax` and `/body.dax` off the player's Amiga disks.
+
+    The Amiga splits them across two disks and this machine keeps the images
+    inside zips, so the search is `tools/amigaportraitmenu.py`'s -- the same
+    walk of `$AMIGA_DISKS` and `gamedisks.toml` every other Amiga tool uses.
+    An empty answer skips rather than fails: the disks are Donald's.
+    """
+    from tools import amigaportraitmenu
+    try:
+        return amigaportraitmenu.amiga_files()
+    except Exception:                       # no Amiga list on this machine
+        return {}
+
+
+def _amiga_menu():
+    """The Amiga's tables read off its own disks, or skip."""
+    files = _amiga_files()
+    missing = [n for n in amiga_wanted() if n not in files]
+    if missing:
+        pytest.skip(f"needs the Amiga Pool of Radiance disks: no image here "
+                    f"carries {', '.join(missing)}; set AMIGA_DISKS")
+    return portraits.tables_from_amiga(
+        files[portraits.AMIGA_PROGRAM][1],
+        files[portraits.AMIGA_HEAD_DAX][1],
+        files[portraits.AMIGA_BODY_DAX][1],
+        files[portraits.AMIGA_PROGRAM][0])
+
+
+def amiga_wanted():
+    return (portraits.AMIGA_PROGRAM, portraits.AMIGA_HEAD_DAX,
+            portraits.AMIGA_BODY_DAX)
+
+
+def test_the_amiga_menu_is_found_by_its_shape_and_names_art_the_disk_holds():
+    """The reading itself: a run found in a 459,028-byte executable.
+
+    Nothing here names the offset the run was at -- the point of the finder
+    is that it does not have to -- but every id it returns has to be a block
+    the Amiga's own `head.dax` or `body.dax` carries, which is what makes a
+    run found a run read rather than a coincidence.
+    """
+    from goldbox import amiga_dax
+
+    tables = _amiga_menu()
+    files = _amiga_files()
+    heads = set(amiga_dax.block_ids(files[portraits.AMIGA_HEAD_DAX][1]))
+    bodies = set(amiga_dax.block_ids(files[portraits.AMIGA_BODY_DAX][1]))
+    assert len(tables.heads) == portraits.HEAD_COUNT
+    assert len(tables.bodies) == portraits.BODY_COUNT
+    assert set(tables.heads) <= heads
+    assert set(tables.bodies) <= bodies
+    assert len(set(tables.bodies)) == portraits.BODY_COUNT
+
+
+def test_the_amiga_offers_the_same_fourteen_heads_and_one_different_body():
+    """The finding, as the numbers rather than as a sentence.
+
+    Fourteen heads byte for byte the C64's and DOS's, in the same order, and
+    twelve bodies that differ in exactly one place: position 8 offers art
+    `0x05` where the other two ports offer `0x18`.  A second difference
+    appearing here is the thing this test exists to catch, because a
+    conversion that copies a menu position silently draws whatever the other
+    port's menu happens to hold there.
+    """
+    tables = _amiga_menu()
+    shared = portraits.POOL_OF_RADIANCE_MENU
+    assert tables.heads == shared.heads
+    assert not tables.agrees_with(shared)
+    assert tables.differences(shared) == (("body", 8, 0x05, 0x18),)
+
+
+def test_the_stored_amiga_menu_is_what_the_amiga_disk_carries():
+    """The stored block pinned to the disks, the way the other one is.
+
+    `AMIGA_POOL_OF_RADIANCE_MENU` is twenty-six numbers typed into the
+    source, so this is the check that stops it drifting from the game in
+    silence wherever the disks are on the machine.
+    """
+    tables = _amiga_menu()
+    stored = portraits.stored_tables(port=portraits.AMIGA_PORT)
+    assert tables.agrees_with(stored), (
+        f"{tables.source} says heads={tables.heads} bodies={tables.bodies}")
+
+
+def test_pools_of_darkness_carries_no_creation_menu_in_its_amiga_binary():
+    """Pools of Darkness has no sheet portrait, so it has no menu (#194).
+
+    The Amiga Pools of Darkness executable is searched with **Pool of
+    Radiance's** art ids, which is a combination no conversion ever makes:
+    the question is whether a run of fourteen and twelve exists in that
+    binary at all, and it is asked over the widest id set this project has.
+    The answer is that it does not -- the title ships no `head.dax` or
+    `body.dax` on any of its three disks, and its record has no portrait
+    pair either (`goldbox.dos_layout.POOLS_OF_DARKNESS`).
+    """
+    from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
+    from tools import amigasaves
+
+    files = _amiga_files()
+    if portraits.AMIGA_HEAD_DAX not in files:
+        pytest.skip("needs the Amiga Pool of Radiance art to search with")
+    program = None
+    for label, image in amigasaves.images():
+        try:
+            disk = AmigaDisk(image)
+            paths = [path for path, _entry in disk.walk()]
+        except (AmigaDiskError, ValueError):
+            continue
+        for path in paths:
+            if path.strip("/").lower() == "pools of darkness":
+                program = disk.read_file(path)
+                break
+        if program is not None:
+            break
+    if program is None:
+        pytest.skip("needs the Amiga Pools of Darkness disks; set AMIGA_DISKS")
+    with pytest.raises(portraits.PortraitError) as caught:
+        portraits.tables_from_amiga(program,
+                                    files[portraits.AMIGA_HEAD_DAX][1],
+                                    files[portraits.AMIGA_BODY_DAX][1],
+                                    "Pools of Darkness")
+    assert "no run of 14 head ids and 12 body ids" in str(caught.value)
+
+
+def test_a_folder_with_no_amiga_sides_says_which_files_it_wanted(tmp_path):
+    """The failure a player can cause: the wrong folder, or one disk of two.
+
+    The Amiga keeps the executable and the art on different disks, so "no
+    menu here" is not a useful answer -- which of the three files is missing
+    is what tells somebody which disk to go and find.
+    """
+    with pytest.raises(portraits.PortraitError) as caught:
+        portraits.tables_from_amiga_disks(tmp_path)
+    said = str(caught.value)
+    for name in amiga_wanted():
+        assert name in said
+
+
+def test_the_stored_menu_answers_per_port_and_refuses_an_unknown_one():
+    """`stored_tables` has to be asked which port, and defaults to the pair.
+
+    `None` is the C64's and DOS's shared menu, which is what every caller
+    written before the Amiga was read means by asking for none; a port name
+    nobody has read a menu for raises rather than answering with another
+    port's table, because the wrong table is a wrong picture rather than an
+    error somebody would notice.
+    """
+    shared = portraits.stored_tables()
+    assert shared is portraits.POOL_OF_RADIANCE_MENU
+    assert portraits.stored_tables(port=portraits.C64_PORT) is shared
+    assert portraits.stored_tables(port=portraits.DOS_PORT) is shared
+    amiga = portraits.stored_tables(port=portraits.AMIGA_PORT)
+    assert amiga is portraits.AMIGA_POOL_OF_RADIANCE_MENU
+    assert amiga.bodies[7] == 0x05 and shared.bodies[7] == 0x18
+    assert portraits.stored_tables("curse-of-the-azure-bonds",
+                                   port=portraits.AMIGA_PORT) is None
+    with pytest.raises(portraits.PortraitError):
+        portraits.stored_tables(port="atari")
+
+
+def test_two_menus_that_agree_have_no_differences():
+    """`differences` and `agrees_with` have to answer the same question."""
+    shared = portraits.POOL_OF_RADIANCE_MENU
+    assert shared.differences(shared) == ()
+    assert shared.agrees_with(shared)
+    shorter = portraits.PortraitTables(heads=shared.heads,
+                                       bodies=shared.bodies[:-1],
+                                       source="a menu one body short")
+    assert shorter.differences(shared) == (("body", 12, 0, 0x25),)
+
+
+def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
+    """`tools/amigaportraitmenu.py` is how the Amiga numbers are re-derived.
+
+    Run against the machine's own disks with `--check`, so a release whose
+    menu differs from the one read on 2026-09-08 turns this red rather than
+    converting somebody's character to a body he did not choose.
+    """
+    import pathlib
+    import subprocess
+    import sys
+
+    from tools import amigaportraitmenu
+
+    text = amigaportraitmenu.literal(portraits.AMIGA_POOL_OF_RADIANCE_MENU)
+    assert "0x12, 0x05, 0x1A" in text
+    assert text.count("0x") == portraits.HEAD_COUNT + portraits.BODY_COUNT
+
+    if any(n not in _amiga_files() for n in amiga_wanted()):
+        pytest.skip("needs the Amiga Pool of Radiance disks; set AMIGA_DISKS")
+    root = pathlib.Path(__file__).resolve().parents[1]
+    done = subprocess.run(
+        [sys.executable, str(root / "tools" / "amigaportraitmenu.py"),
+         "--check"],
+        capture_output=True, text=True, timeout=600, cwd=str(root))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "agrees with the stored Amiga menu" in done.stdout
+    assert "body position 8" in done.stdout
