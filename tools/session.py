@@ -1153,9 +1153,24 @@ class Session:
         `select_bar` that presses Return has no way to tell a command that
         took from one that was swallowed, which is how three `EXIT` presses
         came back `True` with the sheet still up (`#444`).
+
+        **An unreadable screen is not a change.**  `screen()` answers `None`
+        for a bitmap, for a monitor that would not read, and for a screen
+        whose base this session could not locate, so a `None` taken as the
+        before-image would make the next successful read of the *unchanged*
+        bar answer `True` -- the same false success this method exists to
+        stop.  The key is not sent without a before-image to compare against,
+        and the caller's fallback route runs instead.
         """
-        s = self.screen()
-        was = None if s is None else s.row(row)
+        was = None
+        for _ in range(3):
+            s = self.screen()
+            if s is not None:
+                was = s.row(row)
+                break
+            time.sleep(0.4)
+        if was is None:
+            return False
         self.press_kernal(BAR_CANCEL)
         deadline = time.time() + timeout
         while time.time() < deadline:

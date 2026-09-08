@@ -167,6 +167,13 @@ class FakeSession:
         Delegating rather than faking it keeps `leave_sheet` and `cancel_bar`
         under one test: a `leave_sheet` that stopped calling it would fail
         below rather than pass against a stand-in that agreed with it.
+
+        **The 1.0 second is deliberately not the real 8.0**, and it is what
+        keeps the fallback test near two seconds instead of near sixteen:
+        `leave_sheet` calls `self.cancel_bar()` with no timeout, so Python
+        resolves this stand-in's default.  Matching it to the base class
+        would slow that test by fourteen seconds with nothing failing to say
+        why.
         """
         return por.Session.cancel_bar(self, timeout=timeout, row=row)
 
@@ -231,3 +238,43 @@ def test_the_key_chain_stops_at_the_joystick():
             + bytes.fromhex("c90ff019"))           # the joystick's own tests
     chain = sheetexit.key_chain(body, 0x0800, 0x0806)
     assert [k for _at, k, _t in chain] == [0x0D, 0x5F]
+
+
+class BlindSession(FakeSession):
+    """A session whose first screen reads never answer.
+
+    `Session.screen()` gives `None` for a bitmap, for a monitor that would
+    not read, and for a screen whose base could not be located.
+    """
+
+    def __init__(self, rows: list[str], blind: int) -> None:
+        super().__init__(rows)
+        self.blind = blind
+        self.reads = 0
+
+    def screen(self):
+        self.reads += 1
+        if self.reads <= self.blind:
+            return None
+        return super().screen()
+
+
+def test_an_unreadable_screen_is_not_a_bar_giving_way():
+    """`cancel_bar` says no when it never read the bar it is watching.
+
+    Without the fix this passes for the wrong reason: the before-image is
+    `None`, the first row that does read back is not `None`, and an unchanged
+    bar answers `True` -- the false success `#444` was filed about, one layer
+    down.  The key is not sent either, because there is nothing to compare a
+    change against.
+    """
+    sess = BlindSession(["ITEMS TRADE DROP EXIT"], blind=99)
+    assert por.Session.cancel_bar(sess, timeout=1.0) is False
+    assert sess.kernal == []
+
+
+def test_a_screen_that_reads_on_the_second_try_still_answers():
+    """One unreadable probe is retried rather than taken as a before-image."""
+    sess = BlindSession(["ITEMS TRADE DROP EXIT", "VIEW WHICH CHARACTER?"], blind=1)
+    assert por.Session.cancel_bar(sess, timeout=4.0) is True
+    assert sess.kernal == [por.BAR_CANCEL]
