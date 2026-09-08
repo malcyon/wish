@@ -25,8 +25,27 @@ it as MONSTER, which is why PRINCESS FATIMA reads oddly.
 
 from __future__ import annotations
 
+from goldbox import classcode
 from goldbox.games import Game
 from goldbox.yaml_io import ALIGNMENTS, SEXES, class_table, race_table
+
+
+def _full_name_for_bits(bits: int, table) -> str | None:
+    """Join `table`'s names for every bit `bits` sets, or `None` if one of
+    them is not in `table` at all.
+
+    `None` rather than a partial join: a title whose own `class_table` does
+    not carry every class a code's bits imply (`game=None`, or a title with
+    no paladin or ranger) has nothing to say about that code, and a joined
+    name missing a class would be inventing one (#409).
+    """
+    matched = 0
+    parts = []
+    for bit, name in table:
+        if bits & bit:
+            matched |= bit
+            parts.append(name)
+    return "/".join(parts) if matched == bits else None
 
 
 def race_labels(game: Game | None = None) -> dict[int, str]:
@@ -76,20 +95,66 @@ def class_bit_names(game: Game | None = None) -> dict[int, str]:
     for bit, name in table:
         if bit >= 0x10:
             out[bit] = name
+    # A regained dual-classed paladin or ranger can hold a mask combining one
+    # of those with one of the classic four -- the two loops above never
+    # reach it. Curse's own class-code table (`GEN $1951`,
+    # `goldbox.classcode.CLASS_CODE_TABLE`) already commits to a class for
+    # some of those pairs -- $82, cleric + ranger, is its code 10 -- so naming
+    # them is not this function guessing; it is the game's own table. A pair
+    # that table has no code for is left unnamed here too, on purpose: which
+    # of them get a name of their own is `#409 (A regained dual-classed
+    # paladin or ranger has a class mask Curse's own table cannot name, so
+    # Wish shows him a class he is not)`'s open question, and not this
+    # function's to guess at.
+    for bits in classcode.table_for(game):
+        if bits not in out:
+            name = _full_name_for_bits(bits, table)
+            if name is not None:
+                out[bits] = name
     return out
 
 
 # 0x073, the single class code. The multi-class codes above 7 are the 1989
 # BASIC editor's table; 3, 4 and 5 rest on the Gold Box convention alone, and
 # DRUID, PALADIN, RANGER and MONK appear in no character anywhere.
+#
+# **Code 10 is not in this table any more** (#409). It used to read
+# "cleric/magic-user" for every title, copied from code 11 -- but Curse of
+# the Azure Bonds' own class-code table (`GEN $1951`) makes 10 mean $82,
+# cleric + ranger, and Pool of Radiance's 1989 BASIC editor table has no
+# code 10 at all. `char_class_names(game)` below adds the right one back in,
+# per title, rather than one title's table answering for every other's.
 CHAR_CLASS = {
     0: "CLERIC", 1: "DRUID", 2: "FIGHTER", 3: "PALADIN", 4: "RANGER",
     5: "MAGIC-USER", 6: "THIEF", 7: "MONK",
     8: "cleric/fighter", 9: "cleric/fighter/magic-user",
-    10: "cleric/magic-user", 11: "cleric/magic-user (again)",
+    11: "cleric/magic-user (again)",
     12: "cleric/thief", 13: "fighter/magic-user", 14: "fighter/thief",
     15: "fighter/magic-user/thief", 16: "magic-user/thief",
 }
+
+
+def char_class_names(game: Game | None = None) -> dict[int, str]:
+    """`CHAR_CLASS`, plus code 10 for the title that actually names it.
+
+    `goldbox.classcode.table_for(game)` is the game's own bitmask -> code
+    table; inverted, it says which bits (if any) this title's engine calls
+    10. Curse of the Azure Bonds' does -- $82, cleric + ranger -- and the
+    name comes from `class_table(game)` the same way `class_bit_names`
+    builds one, so the two cannot spell a class differently. A title whose
+    own table has no code 10, or whose `class_table` cannot name every bit
+    the code implies, gets none -- the raw number is the honest answer where
+    a name would be a guess.
+    """
+    names = dict(CHAR_CLASS)
+    bits_for_code = {code: bits for bits, code in classcode.table_for(game).items()}
+    bits = bits_for_code.get(10)
+    if bits is not None:
+        name = _full_name_for_bits(bits, class_table(game))
+        if name is not None:
+            names[10] = name
+    return names
+
 
 ALIGNMENT = {i: name.upper() for i, name in enumerate(ALIGNMENTS)}
 
@@ -146,7 +211,7 @@ def tables_for(game: Game | None = None) -> dict[str, dict[int, str]]:
     """
     return {
         "race": race_names(game),
-        "char_class": CHAR_CLASS,
+        "char_class": char_class_names(game),
         "class_bits": class_bit_names(game),
         "alignment": ALIGNMENT,
         "sex": SEX,

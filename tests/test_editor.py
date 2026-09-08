@@ -1245,6 +1245,121 @@ def test_an_untouched_partys_roster_is_byte_identical_with_the_former_class_code
         assert not m.class_name.endswith(")")
 
 
+def _curse_409_regained_paladin_specimen():
+    """`WISH-SPEC-curse-409-regained-paladin`, engine-written -- MATHEW and
+    MARK driven through `HUMAN CHANGE CLASSES` and trained back past the
+    level they left, so `class_bits` carries a pair Curse's own table has no
+    code for (`#409 (A regained dual-classed paladin or ranger has a class
+    mask Curse's own table cannot name, so Wish shows him a class he is
+    not)`)."""
+    import gamedata
+
+    from tools import specimens
+
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    found = sorted((root / "coab-c64").glob(
+        "WISH-SPEC-curse-409-regained-paladin.[dD]64"))
+    if not found:
+        pytest.skip("needs specimen WISH-SPEC-curse-409-regained-paladin")
+    path = found[0]
+    prov = path.with_suffix(".provenance.toml")
+    recorded = specimens.read_provenance(prov).get("sha256", {})
+    actual = specimens.sha256_file(path)
+    if recorded.get(path.name) not in (None, actual):
+        pytest.fail("WISH-SPEC-curse-409-regained-paladin: "
+                     f"{path.name} has changed since it was recorded; "
+                     "run tools/specimens.py check")
+    return path
+
+
+def test_the_roster_shows_a_number_not_an_invented_class_for_a_regained_paladin(app):
+    """#409. MATHEW (fighter 7 / paladin 6, `class_bits` 0x48) and MARK
+    (cleric 6 / paladin 5, 0x42) hold masks Curse's own class-code table
+    (`GEN $1951`) has no code for. `editor/roster.py`'s `class_name` already
+    falls back to the raw number when `class_bit_names` has no name for a
+    mask, so the roster shows `72`/`66` rather than inventing a class for
+    either of them -- unchanged by this session, and true both before and
+    after it (the fallback fires whenever `class_bits` itself has no name,
+    with or without #409's new rows).
+
+    What is still wrong, and needs a file outside this session's scope to
+    fix: the Class combo (`field_char_class`). `_char_class_shown` in
+    `editor/window.py` draws the record's own `char_class` byte when the
+    mask cannot be repaired, and that byte is really `dual_class_level` --
+    6 and 5 -- which happen to be THIEF's and MAGIC-USER's own codes. Their
+    combo goes on reading `6  THIEF` and `5  MAGIC-USER`.
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_409_regained_paladin_specimen()
+    editor = EditorBinding(make_root(), str(path))
+
+    mathew = editor.party.member(_row_named(editor.party, "MATHEW"))
+    mark = editor.party.member(_row_named(editor.party, "MARK"))
+    assert mathew.record.get("class_bits") == 0x48
+    assert mark.record.get("class_bits") == 0x42
+
+    assert mathew.class_name == "72 (was paladin 6)"
+    assert mark.class_name == "66 (was paladin 5)"
+    for name in (mathew.class_name, mark.class_name):
+        assert "thief" not in name.lower()
+        assert "magic-user" not in name.lower()
+
+
+def test_curses_class_code_10_names_cleric_ranger_not_pool_of_radiances_pair(app):
+    """#409's second, unambiguous defect: `editor/enums.py`'s `CHAR_CLASS`
+    used to answer code 10 with Pool of Radiance's "cleric/magic-user" for
+    every title, including Curse of the Azure Bonds, whose own table (`GEN
+    $1951`) makes 10 mean $82, cleric + ranger -- and Pool of Radiance's own
+    table has no code 10 at all. Driven through the real Class and Class
+    bits combos, on a record patched to hold exactly that pair; no C64
+    specimen carries it yet (`#409`'s own comments say so).
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_trained_party_specimen()
+    editor = EditorBinding(make_root(), str(path))
+    row = _row_named(editor.party, "MARK")
+    editor.roster.selectRow(row)
+
+    member = editor.party.member(row)
+    member.record.set("class_bits", 0x82)
+    member.record.set("char_class", 10)
+    editor._populate()
+
+    bits_shown = editor._widgets["class_bits"].currentText().lower()
+    assert "cleric" in bits_shown and "ranger" in bits_shown
+    assert "not in the game" not in bits_shown
+
+    class_shown = editor._widgets["char_class"].currentText().lower()
+    assert "cleric" in class_shown and "ranger" in class_shown
+    assert "magic-user" not in class_shown
+
+
+def test_an_ordinary_single_classed_character_is_unaffected_by_409(app):
+    """The control: SHARA on `WISH-SPEC-curse-409-regained-paladin` is an
+    untouched human cleric, `class_bits` 0x02, `char_class` 0. #409's fix
+    touches only code 10 and the masks Curse's own table pairs a paladin or
+    a ranger with, so an ordinary single class reads exactly as it did
+    before this session.
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_409_regained_paladin_specimen()
+    editor = EditorBinding(make_root(), str(path))
+    row = _row_named(editor.party, "SHARA")
+    shara = editor.party.member(row)
+    assert shara.record.get("class_bits") == 0x02
+    assert shara.record.get("char_class") == 0
+    assert shara.class_name == "cleric"
+
+    editor.roster.selectRow(row)
+    assert editor._widgets["class_bits"].currentText().lower() == "2  cleric"
+    assert editor._widgets["char_class"].currentText().lower() == "0  cleric"
+
+
 @game_disks
 def test_choosing_an_alignment_reaches_the_disk(editor, save):
     from editor.window import EditorBinding

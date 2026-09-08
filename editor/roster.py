@@ -94,7 +94,7 @@ class Member:
         along, `(was fighter 5)`-shaped (#256) -- Donald's decision of
         2026-09-05, wording NOT APPROVED (`.claude/rules/gui-text.md`).
         """
-        from .enums import CHAR_CLASS, class_bit_names
+        from .enums import char_class_names, class_bit_names
         try:
             bits = int(self.record.get("class_bits"))
         except Exception as exc:
@@ -105,7 +105,8 @@ class Member:
                 base = class_bit_names(self.game).get(bits, str(bits))
             else:
                 try:
-                    base = CHAR_CLASS.get(int(self.record.get("char_class")), "")
+                    base = char_class_names(self.game).get(
+                        int(self.record.get("char_class")), "")
                 except Exception as exc:
                     _log.debug("no char_class for %s: %s", self.name, exc)
                     base = ""

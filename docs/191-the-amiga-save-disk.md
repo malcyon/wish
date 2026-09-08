@@ -244,13 +244,33 @@ Four things cost time on the way.
   the lease.** `winuae.ps1 release -Holder <id>`, then `winvm release <tag>`;
   a lease left held is a lease nobody else can take.
 
-## 8. What is left
+## 8. The dialog, and which disk it asks for
 
-The library can now hand a player a save disk, and `tools/toamigapor.py` is
-the way to ask for one. Putting it behind `File ▸ Export` belongs to
-`#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)`. **The dialog has to ask for the player's Amiga disk 2**, not disk
-1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
+**A player can now convert to the Amiga from `File ▸ Convert…`**, and the
+result loads in the game. Driven twice on 2026-09-08, once from each source,
+through `EditorBinding.convert(source=…, destination="amiga", disk=…,
+folder=…)` -- the dialog's own path with every row filled in -- and then in
+WinUAE: the picker offered the written slot, the status line read the source's
+own square and clock, `VIEW` matched the source record value for value, and
+`ENCAMP ▸ SAVE` wrote a second slot the game read back. `AmigaDisk.verify()`
+returned `[]` on both images afterwards. `#36 (Write an Amiga disk image, not
+just the character files)`'s last comment has the two runs.
+
+The party panel read **BRUTUS first and MALCYON last** -- the C64's own order,
+and the first Amiga load to show it, which settles `#385 (A C64 party
+converted to an Amiga save disk marches in the reverse of its C64 order)` on
+this route.
+
+**What is not established from those runs:** no combat figure was seen in a
+fight. The harness built the editor with no disks folder, so the disks it made
+carried none; rebuilt with the player's own disks the same conversion reports
+no figure dropped, but nobody has watched one on screen. And BRUTUS's panel
+armour class reads 9 at load and 10 after `VIEW`, both values his own record
+holds -- **which of the two the C64 itself draws is unmeasured.**
+
+`tools/toamigapor.py` remains the way to ask for a disk without the window.
+
+**The dialog asks for the player's Amiga disk 2**, not disk 1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
 save, so a converted party arrives where it was standing)` the saved game is
 built from the save being converted, and the only thing read off an Amiga disk
 is the area's script out of `ecl.dax`.
