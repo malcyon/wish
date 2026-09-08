@@ -14,6 +14,7 @@ before `tmp_path` cleans up.
 
 from __future__ import annotations
 
+import argparse
 import pathlib
 import stat
 import tarfile
@@ -242,3 +243,53 @@ def test_audit_command_reports_the_counts(tmp_path, tree, capsys):
     assert "1 of them have a second copy" in out
     assert "3 exist nowhere but the tree itself" in out
     assert "party1" in out and "0 of   2 files" in out
+
+
+def test_archive_refuses_a_zstd_name_it_cannot_write(tmp_path, tree):
+    """A `.tar.zst` that is a plain tar is worse than no archive at all.
+
+    Nothing here writes zstd -- `_stream_tar` only reads it -- so a
+    destination ending `.zst` used to fall through to an uncompressed tar,
+    report success, and then fail `verify` with `unsupported format`.  The
+    name has to mean what it says, because the operator's next move is the
+    `verify` line this tool prints for them.
+    """
+    dest = tmp_path / "copy.tar.zst"
+    with pytest.raises(ValueError, match="zstd"):
+        specimenbackup.archive(dest, tree)
+    assert not dest.exists()
+
+
+def test_a_failed_archive_leaves_nothing_at_the_name_it_was_given(
+        tmp_path, tree, monkeypatch):
+    """A write that dies partway must not block every retry.
+
+    `archive` never overwrites, so a truncated tar left at `dest` would stand
+    in the way of the next attempt with nothing saying it was a wreck.  It is
+    written beside the destination and renamed only on success.
+    """
+    real_add = tarfile.TarFile.add
+    seen = {"n": 0}
+
+    def flaky(self, path, *a, **kw):
+        seen["n"] += 1
+        if seen["n"] == 2:
+            raise OSError(28, "No space left on device")
+        return real_add(self, path, *a, **kw)
+
+    monkeypatch.setattr(tarfile.TarFile, "add", flaky)
+    dest = tmp_path / "copy.tar.gz"
+    with pytest.raises(OSError):
+        specimenbackup.archive(dest, tree)
+    assert not dest.exists()
+    assert list(tmp_path.glob("*.part")) == []
+
+
+def test_a_missing_archive_is_a_message_rather_than_a_traceback(
+        tmp_path, tree, capsys):
+    """`verify` and `audit` answer an operator's mistake the way `archive`
+    does: one line on stderr and a non-zero exit."""
+    args = argparse.Namespace(archive=str(tmp_path / "nothing.tar.gz"),
+                              root=str(tree))
+    assert specimenbackup.cmd_verify(args) == 1
+    assert "nothing.tar.gz" in capsys.readouterr().err

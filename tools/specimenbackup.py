@@ -122,7 +122,15 @@ def _stream_tar(path: pathlib.Path):
             raise RuntimeError(f"{path} needs zstd on the path to read")
         proc = subprocess.Popen(["zstd", "-dc", str(path)],
                                 stdout=subprocess.PIPE)
-        return tarfile.open(fileobj=proc.stdout, mode="r|"), proc
+        try:
+            return tarfile.open(fileobj=proc.stdout, mode="r|"), proc
+        except BaseException:
+            # Nothing has the child yet, so `_close_tar` will never run and
+            # nobody would reap it.
+            if proc.stdout is not None:
+                proc.stdout.close()
+            proc.wait()
+            raise
     return tarfile.open(path, mode="r|*"), None
 
 
@@ -199,12 +207,31 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
         raise ValueError("the tree does not match its manifests, so an "
                          "archive of it would preserve the damage:\n  "
                          + "\n  ".join(problems))
+    if dest.suffix in ZSTD_SUFFIXES:
+        raise ValueError(
+            f"{dest} asks for zstd, which this writes nothing in: the tar "
+            "would be plain and the name would say otherwise, so `verify` "
+            "would fail on an archive that looked right. Name it .tar.gz "
+            "-- the whole tree is under two megabytes gzipped. Reading a "
+            "zstd archive still works, since the hourly snapshot is one")
     files = sorted(p for p in root.rglob("*") if p.is_file())
     dest.parent.mkdir(parents=True, exist_ok=True)
     mode = "w:gz" if dest.suffix in (".gz", ".tgz") else "w"
-    with tarfile.open(dest, mode) as tar:
-        for path in files:
-            tar.add(path, arcname=str(path.relative_to(root)))
+    # Written beside `dest` and renamed on success, so a run that dies partway
+    # leaves nothing at the name it was asked for.  A truncated tar that reads
+    # as a real one is worse than no archive: `archive` refuses to overwrite,
+    # so the wreck would stand in the way of every retry with nothing saying
+    # it was a wreck.
+    part = dest.with_name(dest.name + ".part")
+    part.unlink(missing_ok=True)
+    try:
+        with tarfile.open(part, mode) as tar:
+            for path in files:
+                tar.add(path, arcname=str(path.relative_to(root)))
+        part.replace(dest)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
     return {"dest": dest, "files": len(files),
             "specimens": len([e for e in specimens.list_specimens(root)
                               if not e.get("_no_provenance")]),
@@ -262,7 +289,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
     if not directories and not args.tar:
         directories = [REPO / "work"]
     archives = [pathlib.Path(a) for a in (args.tar or [])]
-    cov = audit(root, directories=directories, archives=archives)
+    try:
+        cov = audit(root, directories=directories, archives=archives)
+    except (OSError, RuntimeError, tarfile.TarError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
     where = ", ".join(str(d) for d in directories + archives)
     print(f"{len(cov.wanted)} distinct file contents recorded in {root}")
     print(f"{len(cov.found)} of them have a second copy in {where}")
@@ -282,7 +313,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
     root = pathlib.Path(args.root) if args.root else specimens.tree_root()
     try:
         result = archive(pathlib.Path(args.dest), root)
-    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+    except (OSError, ValueError, tarfile.TarError) as exc:
         print(exc, file=sys.stderr)
         return 1
     print(f"{result['specimens']} specimen(s), {result['files']} file(s), "
@@ -294,7 +325,11 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     root = pathlib.Path(args.root) if args.root else specimens.tree_root()
-    problems = verify(pathlib.Path(args.archive), root)
+    try:
+        problems = verify(pathlib.Path(args.archive), root)
+    except (OSError, RuntimeError, tarfile.TarError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
     if problems:
         for line in problems:
             print(line)

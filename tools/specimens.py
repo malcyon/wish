@@ -55,9 +55,14 @@ many specimens share one flat directory.  Every other platform's specimen is
 usually several files (DOS: `.CHA`, `.SPC`, `.SAV`, `.ITM`; Amiga: the `.sav`
 or `.dat` the game itself wrote, alongside the one it was made from), so it
 gets its own directory and `provenance.toml` sits inside it, unambiguous. The
-tree tells the two shapes apart structurally: a directory holding
-`WISH-SPEC-*.provenance.toml` files directly is the C64 shape; anything else
-is walked one level down for a `provenance.toml` per specimen.
+tree tells the two shapes apart structurally, and **the two add up rather than
+excluding each other**: a platform directory's own
+`WISH-SPEC-*.provenance.toml` files are specimens of the C64 shape, and every
+subdirectory holding a `provenance.toml` is one of the other shape, whether or
+not the flat ones are there too.  Reading the flat ones and stopping is what
+left a directory-shaped specimen under `por-c64` hashed by nothing
+(`#450 (A directory-shaped specimen under por-c64 is invisible to
+specimens.py check, so eight files in the tree are never verified)`).
 
     tools/specimens.py add dos gnomf1 \\
         work/issue84/run1/halfelf-GNOMF1.CHA work/issue84/run1/halfelf-GNOMF1.SPC \\
