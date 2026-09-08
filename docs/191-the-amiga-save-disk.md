@@ -254,3 +254,42 @@ supports)`. **The dialog has to ask for the player's Amiga disk 2**, not disk
 save, so a converted party arrives where it was standing)` the saved game is
 built from the save being converted, and the only thing read off an Amiga disk
 is the area's script out of `ecl.dax`.
+
+**And disk 2 is enough however far into the game the party has got.** Asked on
+2026-09-07 whether the disk 2 answer was an artefact of testing with an
+early-game party standing in the Slums, and measured against the disks rather
+than argued: **Amiga Pool of Radiance ships on two floppies**, `poolgame` and
+`POOLDATA`, and there is **exactly one `ecl.dax`** in the whole game, 138,312
+bytes in the root of `POOLDATA`. Disk 1 has no file with `ecl` in its name at
+all. That one container holds **29 blocks, ids 0-11 and 13-29** -- every area a
+party can stand in, the late ones included: Stojanow Gate (9), Valhingen
+Graveyard (10), Kovel Mansion (14), Yarash's Pyramid (22) and its lower level
+(23), the Temple of Bane (24), Kuto's Well (29) and all five Valjevo Castle
+floors (3-7), which is where the game ends. Every block N is the C64's own
+`ECL<N>`: 94.6-100% of bytes in common over all 29, eight of them identical
+byte for byte. So no area needs a disk the player has not already been asked
+for, and there is no third disk to ask for.
+
+**The two ids that are not there are not places.** Id 12 is not an area on any
+port -- the C64 has no `ECL0C` on any of its nine sides either -- and id 30,
+the C64's `ECL1E`, is the attract-mode demo, which nothing sends a party to
+(`goldbox/areas.py`, `#260 (Area 30 is recorded as having no map, and ECL1E
+loads GEO12)`). Nothing anywhere on `POOLDATA` is the Amiga's copy of `ECL1E`:
+all 843 blocks of all 23 containers were unpacked and compared, and the closest
+match is 23%, which is the background resemblance of one ECL script to another.
+`goldbox.amiga.por_area_script` refuses that area by name, so an area 30 source
+is an error rather than a party arriving somewhere else.
+
+**Which disks the dialog needs depends on what it writes.** A `POOLSAVE` save
+disk -- `tools/toamigapor.py --save-disk`, and what a player is handed -- reads
+disk 2 and nothing else. Writing into a copy of the game disk's own `save`
+drawer -- `--out` -- reads disk 1 as the disk being copied and still needs
+disk 2 for the script, which is what `--data-disk` is for.
+
+Pointing any of it at the wrong disk is caught rather than guessed at, and each
+failure names disk 2: Amiga disk 1 gives `'ecl.dax' is not in the root of
+'poolgame'`, a C64 `.d64` gives `a disk image is a whole number of 512-byte
+blocks; 174848 is not`, and **no other Gold Box Amiga disk on this machine
+carries a file at `/ecl.dax`** -- Curse's is `/DISKB/ECL.GLB`, Silver Blades'
+is `/DISK2/ECL.GLB` and Pools of Darkness' is `/Disk3/ECL.GLB` -- so another
+SSI title's data disk fails the lookup instead of being read as this one's.
