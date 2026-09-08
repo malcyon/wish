@@ -7105,18 +7105,25 @@ left are caches an edit left behind, which is what the check is for.
 
 ### What is not settled
 
-**Curse and Silver Blades.** Both lay their DOS tables out the same way --
-`mul 13` into `DS:0x3E3A`, `mul 19` into Silver Blades' -- and both clamp their
-*thief* rows to 40 like Pool of Radiance. Their *mage* rows keep 39. Their
-records store 40 anyway: 6 of 56 Curse records and 2 of 56 Silver Blades
-records disagree with their own title's table, every one of the eight a
-magic-user at a level the table calls 21, PHILIPPE and BRYTWYN at 5 and MATHEW
-and PAINE freshly dual-classed to 1. There is no second table -- all four Curse
-store sites read `DS:0x3E3A` -- and no clamp after the loop. So `dos_thac0` is
-filled in for Pool of Radiance only. **The experiment**: train a Curse
-magic-user from level 1 to 2 in the game and read `thac0_base` at `0x073`. 39
-means the loop ran and the 40 is a creation-time value nothing had refreshed;
-40 means something clamps and the clamp is what to go and find.
+**Curse and Silver Blades were open here and are now settled** --
+`docs/210-the-later-titles-dos-thac0.md` has both tables, their addresses and
+the whole mechanism, and `tools/laterthac0.py` reads them. The paragraph this
+replaces said their records contradicted their own tables and named a driven
+training as the experiment. The answer is the one that experiment would have
+given: **the 40 is a creation or an import value nothing has refreshed, and
+nothing clamps anything.** Every engine stores a flat 40 into `thac0_base`
+from a block of new-character defaults, and Curse's importer copies the byte
+straight out of a Pool of Radiance record's `0x02D` into `0x073`, exactly as
+our conversion does. `WISH-SPEC-curse-408-regained-paladin` is the proof from
+the other end: PHILIPPE, trained once in DOS Curse's own party menu, came out
+magic-user 6 holding the table's own row.
+
+**And a low-level magic-user is not where the later titles disagree with the
+C64.** Both of their DOS mage rows read 21 at levels 1-5, agreeing with their
+own C64 side; Pool of Radiance is the title whose DOS build says 20. What
+they disagree about instead is the thief at 1-4 (DOS 20, C64 21), the fighter
+group at level 2 (DOS 20, C64 19) and the magic-user's third band (DOS 17,
+C64 16).
 
 **Whether the DOS engine rebuilds `thac0_base` on load.** The C64 half is
 answered above by two engine-written specimens. No DOS specimen tests it,

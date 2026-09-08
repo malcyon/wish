@@ -71,14 +71,17 @@ specimens the trainer was watched writing one level at a time; every low-level
 magic-user or thief the C64 engine wrote holds 21. `tools/thac0census.py` is
 the sweep and `goldbox/levels.py`'s `dos_thac0` carries the rows.
 
-**Curse and Silver Blades are not settled.** Their DOS tables are the same
-shape at `DS:0x3E3A` (`mul 13`) and its Silver Blades equivalent (`mul 19`),
-and their *thief* rows are clamped to 40 the same way -- but their *mage* rows
-keep 39, and their records store 40 regardless: 6 of 56 Curse records and 2 of
-56 Silver Blades records disagree with their own title's table, every one of
-the eight a magic-user. There is no second table and no clamp in either
-recompute loop. What would settle it: train a Curse magic-user from level 1 to
-2 in the game and read `thac0_base` at `0x073`.
+**Curse and Silver Blades are settled**, and differently:
+`docs/210-the-later-titles-dos-thac0.md` has both tables, at `DS:0x3E3A`
+(`mul 13`, 8 rows) and `DS:0x4C0C` (`mul 19`, **7** rows, the monk gone).
+Their DOS mage rows read 21 at levels 1-5, agreeing with their own C64 side,
+so the disagreement above is Pool of Radiance's alone. What they disagree
+about is the thief at 1-4 (DOS 20, C64 21), the fighter group at level 2 (DOS
+20, C64 19) and the mage's third band (DOS 17, C64 16). A low-level mage
+storing 40 in either title is the flat 40 that character creation, a class
+change or the previous title's importer wrote, which no rebuild has run over
+-- not a clamp; nothing in any of the three engines compares the field against
+a constant.
 
 `#318 (DOS gives a low-level magic-user or thief THAC0 20 where the C64 gives
 21, and our table holds only the C64's)` is the question and `#366 (A converted
