@@ -615,6 +615,20 @@ class Session:
         extra = {"MONFLAGS": self.monflags, "POR_DISPLAY": self.display}
         if self.slot is not None:
             extra.update(self.slot.env())
+        else:
+            # No slot claimed: the legacy path, reachable by anyone -- agent
+            # or human -- who runs this file's own CLI without `--pool`, on
+            # the reserved display (`RESERVED_DISPLAY` in `tools/instance.py`).
+            # `porlaunch.sh`'s own default when `POR_HEADLESS` is entirely
+            # unset is the *visible* branch, which is what `#266 (An orphaned
+            # Xephyr, launched outside the pool, left a visible window on
+            # Donald's screen)` found: this path is reachable outside the
+            # pool, `display_rows()` never enumerates its display, and
+            # nothing here defaulted it headless. Donald ruled it goes
+            # headless by default, 2026-09-07 -- the same override rule
+            # `Slot.env()` already uses (#147), so an explicit
+            # `POR_HEADLESS=0` in the environment still wins.
+            extra["POR_HEADLESS"] = os.environ.get("POR_HEADLESS", "1")
         env = instance.launch_env(extra)
         os.makedirs(self.here, exist_ok=True)
         proc = subprocess.Popen(

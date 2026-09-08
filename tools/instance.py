@@ -37,6 +37,7 @@ import os
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -688,6 +689,113 @@ def display_rows() -> list[dict]:
 
 
 # --------------------------------------------------------------------------
+# A stray display -- reported, never reaped
+# --------------------------------------------------------------------------
+#
+# `#266 (An orphaned Xephyr, launched outside the pool, left a visible window
+# on Donald's screen)`: a window on the *reserved* display, `:7`, sat for nine
+# minutes because nothing was watching it -- `display_rows()` above
+# deliberately enumerates only the three pools' own bands, and this project
+# has never claimed the authority to reap anything on `:7` at all.  So this
+# sweeps the other direction: every X11 socket *outside* those bands, and
+# says whether the process holding it looks orphaned.  Read-only throughout,
+# the same discipline as `_lock_holder` above -- and unlike a pool slot, a
+# stray display carries no lease file to kill the pgid from, so there is no
+# mechanism here that *could* reap one even by mistake.
+
+
+def _socket_owner(path: Path, timeout: float = 1.0) -> int | None:
+    """The pid of whatever accepted a connection to the Unix socket at
+    *path*, or `None`.
+
+    `SO_PEERCRED` is the kernel's own record of who is on the other end of a
+    connected `AF_UNIX` socket -- for one that is listening, the process that
+    `accept()`ed this connection, which for an X11 socket is the X server
+    itself.  `None` for anything that does not exist, refuses the connection,
+    or is not a Unix socket at all -- including on a platform with no
+    `SO_PEERCRED`, which is everything but Linux.
+    """
+    if not hasattr(socket, "AF_UNIX") or not hasattr(socket, "SO_PEERCRED"):
+        return None
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(timeout)
+        sock.connect(str(path))
+        creds = sock.getsockopt(
+            socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
+        )
+        pid, _uid, _gid = struct.unpack("3i", creds)
+        return pid
+    except OSError:
+        return None
+    finally:
+        sock.close()
+
+
+def _parent_pid(pid: int) -> int | None:
+    """*pid*'s own parent, read from `/proc/<pid>/stat`. `None` if the pid is
+    gone or `/proc` does not exist -- the same default `_lock_holder` uses
+    for anything but Linux.
+
+    Split on the *last* `)` rather than parsed as whitespace-separated
+    fields throughout: the command-name field it brackets can itself hold
+    spaces or parentheses.
+    """
+    try:
+        text = Path(f"/proc/{pid}/stat").read_text()
+        return int(text.rsplit(")", 1)[1].split()[1])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
+    """Every X11 socket in *x11_dir* outside all three pools' bands, whose
+    owner has already been reparented to init.
+
+    That reparenting -- `ppid == 1` -- is the specific shape #266 found: the
+    launcher that started the display is gone, and the display is still
+    running with nobody watching it. A socket whose owner still has a live
+    parent is not reported here -- an ordinary launch still in progress, or
+    a human's own game running under a shell that has not exited, looks
+    exactly like this until its parent actually exits, and reporting it
+    early would be noise on every ordinary run.
+
+    **Reports and nothing else.** Nothing here kills what it finds --
+    `:7`, the display #266 was about, is the one number this project has
+    deliberately never claimed the authority to touch, and this must not
+    become a second way to reap it by another name.
+    """
+    from tools import dosbox, dosboxx  # local: instance.py stays importable alone
+
+    known: set[int] = set()
+    for base, slots in (
+        (DISPLAY_BASE, SLOTS),
+        (dosbox.DISPLAY_BASE, dosbox.SLOTS),
+        (dosboxx.DISPLAY_BASE, dosboxx.SLOTS),
+    ):
+        known.update(range(base, base + slots))
+
+    out = []
+    try:
+        entries = sorted(x11_dir.glob("X*"))
+    except OSError:
+        return out
+    for path in entries:
+        try:
+            n = int(path.name[1:])
+        except ValueError:
+            continue
+        if n in known:
+            continue
+        pid = _socket_owner(path)
+        if pid is None:
+            continue
+        if _parent_pid(pid) == 1:
+            out.append({"display": f":{n}", "pid": pid})
+    return out
+
+
+# --------------------------------------------------------------------------
 # The per-instance vicerc
 # --------------------------------------------------------------------------
 
@@ -890,13 +998,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "status" and args.displays:
         rows = display_rows()
+        strays = stray_displays()
         if args.json:
-            print(json.dumps(rows, indent=2))
+            print(json.dumps({"bands": rows, "strays": strays}, indent=2))
         else:
             print(f"{'display':>8} {'pool':<8} {'state':<7} pid")
             for r in rows:
                 state = "held" if r["held"] else ("free" if r["exists"] else "no file")
                 print(f"{r['display']:>8} {r['pool']:<8} {state:<7} {r['pid'] or '-'}")
+            for s in strays:
+                # Report only -- see `stray_displays()`. #266.
+                print(f"warning: display {s['display']} is outside every pool's "
+                      f"band and its owner (pid {s['pid']}) has no live parent -- "
+                      f"reported, never reaped", file=sys.stderr)
         return 0
 
     if args.cmd == "status":

@@ -28,6 +28,7 @@ from conftest import load_tools_module
 TOOLS = Path(__file__).resolve().parent.parent / "tools"
 
 instance = load_tools_module("instance")
+session = load_tools_module("session")
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 
@@ -841,6 +842,154 @@ def test_status_displays_prints_a_state_and_a_pid_column(monkeypatch):
     assert ":1220" in body[0] and "held" in body[0] and str(proc.pid) in body[0]
     assert ":1225" in body[1] and "no file" in body[1] and body[1].rstrip().endswith("-")
     assert ":1230" in body[2] and "no file" in body[2] and body[2].rstrip().endswith("-")
+
+
+# -- a stray display, reported and never reaped (#266) ----------------------
+#
+# `display_rows()` above enumerates only the three pools' own bands, and this
+# project has never claimed the authority to touch a display outside them --
+# `:7` most of all, the reserved number #266 was about.  `stray_displays()`
+# sweeps the other direction and only ever reports.
+
+
+def _listen_and_pid_file(sock_path: Path, pid_file: Path) -> str:
+    """A Python source string: bind *sock_path*, print `ready`, then write the
+    accepting process's own pid to *pid_file* right before blocking in
+    `accept()` -- so a caller can tell the socket is up before connecting."""
+    return (
+        "import socket, os, sys\n"
+        f"s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
+        f"s.bind({str(sock_path)!r})\n"
+        "s.listen(1)\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "print('ready', flush=True)\n"
+        "conn, _ = s.accept()\n"
+        "import time; time.sleep(30)\n"
+    )
+
+
+@posix
+def test_stray_displays_ignores_a_socket_whose_owner_still_has_a_live_parent(tmp_path):
+    """An ordinary launch in progress -- porlaunch.sh's own Xephyr while
+    `Session.launch()` is still its parent -- must not be reported.  Only
+    #266's actual shape, the launcher already gone, is."""
+    x11_dir = tmp_path / "X11-unix"
+    x11_dir.mkdir()
+    sock_path = x11_dir / "X1096"
+    pid_file = tmp_path / "pid1"
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _listen_and_pid_file(sock_path, pid_file)],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert proc.stdout.readline().strip() == "ready"
+        assert instance._parent_pid(proc.pid) not in (None, 1)  # still ours
+        assert instance.stray_displays(x11_dir) == []
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+@posix
+def test_stray_displays_reports_a_socket_whose_owner_has_been_reparented_to_init(tmp_path):
+    """#266's exact shape: the process that launched the display has already
+    exited, the display itself was reparented to init, and it is still
+    running with nobody watching it."""
+    _needs_proc_locks()  # both read /proc; skip together where neither exists
+    x11_dir = tmp_path / "X11-unix"
+    x11_dir.mkdir()
+    sock_path = x11_dir / "X1097"
+    pid_file = tmp_path / "pid2"
+
+    script = (
+        "import os, sys\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        + "\n".join("    " + ln for ln in
+                     _listen_and_pid_file(sock_path, pid_file).splitlines())
+        + "\nelse:\n    sys.exit(0)\n"
+    )
+    subprocess.run([sys.executable, "-c", script])
+    for _ in range(50):
+        if pid_file.exists():
+            break
+        time.sleep(0.1)
+    assert pid_file.exists(), "the forked child never reached accept()"
+    child_pid = int(pid_file.read_text())
+    try:
+        deadline = time.time() + 5
+        while instance._parent_pid(child_pid) != 1 and time.time() < deadline:
+            time.sleep(0.1)
+        assert instance._parent_pid(child_pid) == 1, "never reparented to init"
+        assert instance.stray_displays(x11_dir) == [
+            {"display": ":1097", "pid": child_pid}
+        ]
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(child_pid, signal.SIGKILL)
+
+
+@posix
+def test_stray_displays_ignores_everything_inside_a_pools_own_band(tmp_path, monkeypatch):
+    """A display number a pool already owns is `display_rows()`'s business,
+    not this one's -- even an orphaned process there is not reported here."""
+    from tools import dosbox, dosboxx
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 1090)
+    monkeypatch.setattr(instance, "SLOTS", 2)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 1095)
+    monkeypatch.setattr(dosbox, "SLOTS", 1)
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 1099)
+    monkeypatch.setattr(dosboxx, "SLOTS", 1)
+
+    x11_dir = tmp_path / "X11-unix"
+    x11_dir.mkdir()
+    (x11_dir / "X1091").write_bytes(b"")  # inside the vice band; no owner needed
+    assert instance.stray_displays(x11_dir) == []
+
+
+# -- the no-slot launch path defaults headless (#266) ------------------------
+
+
+def test_session_no_slot_launch_is_headless_by_default(monkeypatch, tmp_path):
+    """`tools/session.py`'s legacy path -- reachable by anyone who runs the
+    CLI without claiming a pool slot -- used to fall through to
+    `porlaunch.sh`'s own visible default whenever nothing set `POR_HEADLESS`.
+    Donald ruled, 2026-09-07, that it goes headless unless something asks
+    otherwise."""
+    monkeypatch.setattr(session, "HERE", str(tmp_path))
+    monkeypatch.delenv("POR_HEADLESS", raising=False)
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["env"] = kwargs["env"]
+        raise RuntimeError("stop before a real launch")
+
+    monkeypatch.setattr(session.subprocess, "Popen", fake_popen)
+    s = session.Session(disk=str(tmp_path / "SIDE1.D64"))
+    with pytest.raises(RuntimeError, match="stop before a real launch"):
+        s.launch()
+    assert captured["env"]["POR_HEADLESS"] == "1"
+
+
+def test_session_no_slot_launch_still_honours_an_explicit_por_headless(monkeypatch, tmp_path):
+    """The same rule `Slot.env()` already uses (#147): an explicit
+    `POR_HEADLESS=0` a human exported to watch a run still reaches
+    `porlaunch.sh` -- the change is only to the default when nothing is
+    set."""
+    monkeypatch.setattr(session, "HERE", str(tmp_path))
+    monkeypatch.setenv("POR_HEADLESS", "0")
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["env"] = kwargs["env"]
+        raise RuntimeError("stop before a real launch")
+
+    monkeypatch.setattr(session.subprocess, "Popen", fake_popen)
+    s = session.Session(disk=str(tmp_path / "SIDE1.D64"))
+    with pytest.raises(RuntimeError, match="stop before a real launch"):
+        s.launch()
+    assert captured["env"]["POR_HEADLESS"] == "0"
 
 
 # -- the seeded vicerc ------------------------------------------------------
