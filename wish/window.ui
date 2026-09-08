@@ -1732,6 +1732,18 @@
            </widget>
           </item>
           <item>
+           <widget class="QGroupBox" name="box_active_effects">
+            <property name="title">
+             <string/>
+            </property>
+            <layout class="QVBoxLayout" name="layout_active_effects">
+             <item>
+              <widget class="ActiveEffectsView" name="active_effects" />
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
            <spacer name="header_slack">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -2991,6 +3003,11 @@
    <class>EffectsView</class>
    <extends>QTableView</extends>
    <header>editor.effects</header>
+  </customwidget>
+  <customwidget>
+   <class>ActiveEffectsView</class>
+   <extends>QTableView</extends>
+   <header>editor.activeeffects</header>
   </customwidget>
  </customwidgets>
  <resources />

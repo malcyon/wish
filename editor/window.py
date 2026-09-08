@@ -43,7 +43,7 @@ from goldbox.savegame import store_save
 from goldbox.spells import capacity, load_spell_names
 from goldbox.spells import for_game as spell_table
 
-from . import changes, files, inventory
+from . import activeeffects, changes, files, inventory
 from . import effects as trait_effects
 from .binding import COMBAT_FIELDS, bindings, field_name, value_range, widest_text
 from .enums import caster_bits, tables_for
@@ -176,12 +176,24 @@ TABLE_ROW_HEIGHT = 20
 TOOLBAR_ICON = 16
 MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
-WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
+# `box_active_effects` is here for the same reason the other four are: it is a
+# table rather than a form of fields, so it can read a wider window, and
+# `_compact` would otherwise hold it to the width it hinted while it was empty
+# -- 307px, measured before a save was open, which cut the owner column off
+# the right of the panel entirely.
+WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells",
+              "box_active_effects")
 # Which item in a horizontal row is allowed to grow. `header_row` is the
-# roster and Character, and the roster is the one of the two that can use a
-# wider window: every field in Character is sized to the widest value its bytes
-# can hold, so a pixel more there is a pixel of nothing.
-ROW_STRETCH = {"header_row": (1, 0, 0), "form_identity": (0, 0)}
+# roster, Character and -- behind `WISH_EXPERIMENTAL_EFFECTS` -- the
+# active-effects panel, and the roster is the only one of the three that can
+# use a wider window: every field in Character is sized to the widest value
+# its bytes can hold, and the effects panel is two columns of text sized to
+# their own contents, so a pixel more in either is a pixel of nothing.
+#
+# Four entries and three items with the flag unset, which is the shipped
+# state: the loop below pads with 0, so the trailing spacer takes no stretch
+# whether or not the panel was built.
+ROW_STRETCH = {"header_row": (1, 0, 0, 0), "form_identity": (0, 0)}
 #: The Stats tab is a grid and not five independent columns, because a row of
 #: a grid has one top edge and five `QVBoxLayout`s have five. Donald asked for
 #: `Combat` and the combat icon to start on the same line with the icon in the
@@ -213,6 +225,24 @@ STRIP_TABLE_HEIGHT = 150
 # so a roster sized to this never scrolls and never leaves a fifth of the
 # window empty.
 MAX_ROSTER_ROWS = 8
+#: What the active-effects panel keeps when the window has nothing to spare,
+#: in pixels. Above this it grows with the window, up to its own two columns
+#: at their contents, and below it the owner line elides.
+#:
+#: A constant for the reason `ROSTER_MIN_WIDTH` is one: the header does not
+#: scroll, so anything standing in it is a floor under the whole window, and
+#: this panel's widest line is a *sentence* rather than a field -- it says who
+#: an effect is on, and "everybody in the party" is longer than any name. Sized
+#: from what it can cost rather than from what it would like: with the widest
+#: party a save can hold the editor's floor is 958px without the panel, and
+#: Donald's screen is 1366, so 260 leaves 148px of margin. Its two column
+#: headings alone want 430, which is what a panel sized to its own contents
+#: would have put in the way of a 1366 screen.
+#:
+#: What moves it is a wider Character or a longer heading, and either shows up
+#: in `test_the_effects_panel_is_not_a_floor_under_the_window`, which asserts
+#: the outcome -- the window fits the screen -- rather than this number.
+ACTIVE_EFFECTS_MIN_WIDTH = 260
 #: Fields whose widest possible value is not worth the width it costs. `name`
 #: is twenty bytes and so twenty capital Ws -- 318px at three points of extra
 #: UI font, and it sits in the header, which does not scroll and is therefore a
@@ -605,6 +635,7 @@ class EditorBinding(QObject):
 
         self._widgets = self._find_field_widgets()
         self._build_trait_buttons()
+        self._build_active_effects()
         self._fill_combos()
         self._size_fields()
         self._compact()
@@ -680,6 +711,59 @@ class EditorBinding(QObject):
             model.selectionChanged.connect(lambda *_: self._show_trait_buttons())
         view.changed.connect(self._show_trait_buttons)
         self._show_trait_buttons()
+
+    # -- the active-effects panel -----------------------------------------
+
+    def _build_active_effects(self) -> None:
+        """The read-only panel beside the roster, **built only when
+        `WISH_EXPERIMENTAL_EFFECTS` says so** -- and taken off the header
+        row altogether when it does not.
+
+        Not greyed out, for the reason the traits buttons are not
+        (`.claude/rules/feature-flags.md`): a greyed panel invites the
+        question of how to un-grey it and the answer would be a sentence in
+        the interface. Designer keeps the box so the row can be rearranged,
+        and this is where it stops existing.
+
+        The title is set from the module rather than left in `wish/window.ui`
+        because it is an unapproved string: a title in the form would be on
+        screen for everybody the moment the box is drawn, flag or no flag.
+        """
+        box = self._child("box_active_effects")
+        if box is None:
+            return
+        if not activeeffects.enabled():
+            layout = box.parentWidget().layout() if box.parentWidget() else None
+            if layout is not None:
+                layout.removeWidget(box)
+            box.setParent(None)
+            box.deleteLater()
+            return
+        box.setTitle(activeeffects.BOX_TITLE)
+
+    def _active_effects_view(self):
+        view = self._child("active_effects")
+        return view if hasattr(view, "set_party") else None
+
+    def _show_active_effects(self) -> None:
+        """Fill the panel from the open save, and hide the box when there is
+        no save to fill it from.
+
+        **Hidden and not disabled**, so a `.chr` export or a roster disk shows
+        no panel at all rather than an empty one somebody has to be told the
+        meaning of -- `party.save0 is None` is the case, and it is what
+        `docs/133-active-effects.md` asks for. Hidden and not destroyed
+        because the same window opens a save next, and a deleted box cannot
+        come back.
+        """
+        view = self._active_effects_view()
+        if view is None:
+            return
+        view.set_party(self.party)
+        box = self._child("box_active_effects")
+        if box is not None:
+            box.setVisible(self.party is not None
+                           and self.party.save0 is not None)
 
     def _show_trait_buttons(self) -> None:
         """Add is off when the ten slots are full -- nine, if a fill byte holds
@@ -855,6 +939,22 @@ class EditorBinding(QObject):
             for i in range(row.count()):
                 row.setStretch(i, stretch[i] if i < len(stretch) else 0)
 
+        # The active-effects panel takes the slack as well, when the flag has
+        # built it: it is a table of two sentences, and it and the roster are
+        # the only things in the header that can read a wider window. Its own
+        # maximum width -- its two columns at their contents -- is where it
+        # stops, and what neither can use still ends in the spacer.
+        #
+        # Set by widget and not by a position in `ROW_STRETCH`, because the
+        # panel is absent with the flag unset and every index after it moves:
+        # a positional 1 in the third slot would hand the slack to the spacer
+        # in the shipped configuration, which is the one nobody would notice.
+        panel = self._child("box_active_effects")
+        if panel is not None:
+            row = self.root.findChild(QLayout, "header_row")
+            if row is not None and row.indexOf(panel) >= 0:
+                row.setStretch(row.indexOf(panel), 1)
+
     def _size_fields(self) -> None:
         """Give every box the width of the widest value its bytes can hold."""
         for name, w in self._widgets.items():
@@ -977,6 +1077,7 @@ class EditorBinding(QObject):
         self.model.beginResetModel()
         self.model.party = party
         self.model.endResetModel()
+        self._show_active_effects()
         self._size_roster()
         self._pin_identity_columns()
         roster = self._child("roster")
@@ -1304,6 +1405,37 @@ class EditorBinding(QObject):
                   + 2 * view.frameWidth() + bar)
         view.setMinimumHeight(height + ROSTER_SLACK)
         view.setMaximumHeight(height + ROSTER_SLACK)
+        self._size_active_effects(view.maximumHeight())
+
+    def _size_active_effects(self, cap: int) -> None:
+        """Hold the effects panel to the roster's height and to a width a
+        1366-wide screen can spare, and let it scroll past both.
+
+        The roster is capped at the eight rows a save disk can hold, so it
+        never scrolls. This one has 64 slots to draw and cannot be sized to
+        them: the header does not scroll, so a table as tall as its contents
+        there would be a floor under the whole window that grew with the
+        number of spells the party happened to have running.
+        """
+        panel = self._active_effects_view()
+        if panel is None:
+            return
+        panel.setMaximumHeight(cap)
+        from PyQt6.QtWidgets import QStyle
+        bar = panel.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        # From what the columns want, not from `QHeaderView.length()`: the
+        # last section stretches to the viewport, so its length is a
+        # measurement of how wide the panel already is and reading it here
+        # would pin the panel to whatever width it happened to open at.
+        head = panel.horizontalHeader()
+        # The heading's own width where the column has no rows to measure:
+        # `sizeHintForColumn` answers -1 on an empty model, and the panel is
+        # sized once on load, when a save with nothing running has none.
+        columns = sum(max(panel.sizeHintForColumn(c), head.sectionSizeHint(c))
+                      for c in range(panel.model().columnCount()))
+        natural = columns + 2 * panel.frameWidth() + bar
+        panel.setMinimumWidth(min(natural, ACTIVE_EFFECTS_MIN_WIDTH))
+        panel.setMaximumWidth(max(natural, ACTIVE_EFFECTS_MIN_WIDTH))
 
     def _own_disk_folder(self, game: por_games.Game) -> str | None:
         """`game`'s own folder out of `self.game_folders` -- the constructor

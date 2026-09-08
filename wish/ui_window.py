@@ -940,6 +940,15 @@ class Ui_WishWindow(object):
         self.form_identity.addLayout(self.form_identity_right)
         self.layout_identity.addWidget(self.columns_identity)
         self.header_row.addWidget(self.box_identity)
+        self.box_active_effects = QtWidgets.QGroupBox(parent=self.editor_header)
+        self.box_active_effects.setTitle("")
+        self.box_active_effects.setObjectName("box_active_effects")
+        self.layout_active_effects = QtWidgets.QVBoxLayout(self.box_active_effects)
+        self.layout_active_effects.setObjectName("layout_active_effects")
+        self.active_effects = ActiveEffectsView(parent=self.box_active_effects)
+        self.active_effects.setObjectName("active_effects")
+        self.layout_active_effects.addWidget(self.active_effects)
+        self.header_row.addWidget(self.box_active_effects)
         spacerItem2 = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
         self.header_row.addItem(spacerItem2)
         self.sheet_tabs = QtWidgets.QTabWidget(parent=self.editor_split)
@@ -1651,6 +1660,7 @@ class Ui_WishWindow(object):
         self.sheet_tabs.setTabText(self.sheet_tabs.indexOf(self.tab_spells), _translate("WishWindow", "Spells"))
         self.tabs.setTabText(self.tabs.indexOf(self.tab_editor), _translate("WishWindow", "Character Editor"))
 from automap.panel import Bar, CardClassLabel, CardNameLabel, ElidingButton, ElidingComboBox, ElidingLabel, IconRow, ReadiedLabel
+from editor.activeeffects import ActiveEffectsView
 from editor.effects import EffectsView
 from editor.iconwidget import IconEditor
 from editor.rosterview import RosterView

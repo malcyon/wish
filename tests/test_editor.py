@@ -3118,3 +3118,326 @@ def test_a_casters_slots_are_not_a_fighters(app, save):
         assert shown["SILAS"] == "00 00 00 00 00 00"
     finally:
         window.close()
+
+
+# --- the active-effects panel, behind WISH_EXPERIMENTAL_EFFECTS -------------
+#
+# S4 of `#13 (Edit traits and active effects, in two separate panels)`. The
+# list belongs to the **save**, not to the character the roster has selected,
+# and every test below is ultimately about that: a spell on MALCYON is in the
+# panel while BRUTUS is on the sheet, which is why the panel sits in the top
+# row and why the owner column exists at all.
+
+
+@pytest.fixture
+def effects_on(monkeypatch):
+    """A run with the flag set, the way a player would set it."""
+    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", "1")
+
+
+def _payload_with_effects(*slots) -> bytes:
+    """A save payload carrying the given `(slot, id, owner, duration)` rows.
+
+    Written by hand from the four offsets rather than through
+    `goldbox.effects.write_effect`: that primitive exists for a write path
+    nobody has built yet, and a test that reached for it here would make the
+    panel look like it had one.
+    """
+    from goldbox.effects import (
+        EFFECT_DURATION_OFFSET,
+        EFFECT_ID_OFFSET,
+        EFFECT_MAGNITUDE_OFFSET,
+        EFFECT_OWNER_OFFSET,
+        EFFECT_SLOTS,
+    )
+    payload = bytearray(EFFECT_MAGNITUDE_OFFSET + EFFECT_SLOTS)
+    for slot, code, owner, duration in slots:
+        payload[EFFECT_ID_OFFSET + slot] = code
+        payload[EFFECT_OWNER_OFFSET + slot] = owner
+        payload[EFFECT_DURATION_OFFSET + slot] = duration
+    return bytes(payload)
+
+
+def test_the_panel_says_who_each_effect_is_on():
+    """The one thing the panel is for. Three effects in one save: one on a
+    character, one on the whole party, one on something that was in a fight.
+
+    A player reading this list has some *other* character on the sheet beside
+    it, so a row that did not name its owner would read as the selected
+    character's -- which is the confusion `#13` exists to end.
+    """
+    from editor import activeeffects
+    from goldbox.effects import active_effects
+
+    payload = _payload_with_effects((0, 1, 0, 0x06),        # on a character
+                                    (1, 35, 0xFF, 0x0A),    # on everybody
+                                    (2, 12, 9, 0x02))       # on a monster
+    model = activeeffects.ActiveEffectsModel(
+        active_effects(payload), {0: "MALCYON", 1: "BRUTUS"})
+    assert model.rowCount() == 3
+    owners = [model.data(model.index(r, 1)) for r in range(3)]
+    assert owners == [
+        "MALCYON",
+        activeeffects.OWNER_PARTY,
+        activeeffects.OWNER_MONSTER,
+    ]
+    # And the first column names the effect out of the same table the traits
+    # box reads, since the two lists share one code namespace.
+    assert [model.data(model.index(r, 0)) for r in range(3)] == [
+        "Bless", "under an allied Prayer", "Enlarge"]
+
+
+def test_an_effect_on_a_slot_nobody_fills_says_so_rather_than_naming_nobody():
+    """A character can leave the party with something still running on them:
+    `CAMP` renumbers the owner byte when a character changes slot, and nothing
+    clears an effect whose owner walked away. A blank second column would read
+    as "on the character you are looking at"."""
+    from editor import activeeffects
+    from goldbox.effects import active_effects
+
+    model = activeeffects.ActiveEffectsModel(
+        active_effects(_payload_with_effects((0, 12, 5, 0x06))),
+        {0: "MALCYON"})
+    assert model.data(model.index(0, 1)) == activeeffects.OWNER_ABSENT
+
+
+def test_an_effect_nobody_has_named_keeps_its_number():
+    """Two unnamed effects still have to be told apart, and the number is what
+    somebody takes away to look it up -- the choice `goldbox.traits.describe`
+    already makes for an unnamed trait code. What it must not say is `trait`:
+    this row is not a trait, and the difference between the two lists is the
+    whole of this issue."""
+    from editor import activeeffects
+    from goldbox.effects import active_effects
+
+    model = activeeffects.ActiveEffectsModel(
+        active_effects(_payload_with_effects((0, 253, 0, 0x06))))
+    shown = model.data(model.index(0, 0))
+    assert "253" in shown
+    assert "trait" not in shown.lower()
+
+
+def test_the_panel_shows_no_duration_anywhere():
+    """**D2**, and it is a decision rather than an omission. The duration byte
+    holds a count in bits 0-5 and a *unit* in bits 6-7, and which unit each
+    value selects has never been decoded, so a number over an unnamed unit
+    would tell a player something nobody can stand behind.
+    `docs/136-condition-badges.md` refused exactly this on the condition
+    badge.
+
+    `$8B` is 11 in a unit nobody can name. Neither number reaches the panel,
+    and there is no third column for one to reach.
+    """
+    from editor import activeeffects
+    from goldbox.effects import active_effects
+
+    effects = active_effects(_payload_with_effects((0, 12, 0, 0x8B)))
+    assert effects[0].remaining == 11 and effects[0].unit == 2
+    model = activeeffects.ActiveEffectsModel(effects, {0: "MALCYON"})
+    assert model.columnCount() == 2
+    for column in range(2):
+        for role in (Qt.ItemDataRole.DisplayRole,
+                     Qt.ItemDataRole.ToolTipRole):
+            shown = model.data(model.index(0, column), role) or ""
+            assert "11" not in shown and "$8B" not in shown, shown
+
+
+def test_a_save_with_nothing_running_still_has_the_panel(app, party, effects_on):
+    """The empty state is the two column headings over no rows, and no
+    sentence: a line explaining that an empty list is empty has to be worded
+    and approved, and is read by somebody who can already see it.
+
+    The synthetic save has nothing running, which is the ordinary case -- a
+    party that has just camped has an empty table here.
+    """
+    from editor import activeeffects
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(party))
+    box = w._child("box_active_effects")
+    assert box is not None and not box.isHidden()
+    assert box.title() == activeeffects.BOX_TITLE
+    view = w._child("active_effects")
+    assert view.model_.rowCount() == 0
+    head = view.horizontalHeader().model()
+    assert [head.headerData(c, Qt.Orientation.Horizontal) for c in range(2)] == [
+        activeeffects.HEADER_EFFECT, activeeffects.HEADER_OWNER]
+
+
+def test_a_roster_disk_has_no_effects_panel_at_all(app, tmp_path, effects_on):
+    """A `.chr` export or a roster disk has no `SAVEDGAME0`, so there are no
+    effect arrays to read and no list to show. Absent, not greyed and not
+    empty: an empty table would say the party has nothing running, which is a
+    claim this file cannot make."""
+    from editor.window import EditorBinding
+    disk = _standalone_disk(tmp_path)
+    w = EditorBinding(make_root(), str(disk))
+    assert w.party.save0 is None
+    assert w._child("box_active_effects").isHidden()
+    assert w._child("active_effects").model_.rowCount() == 0
+
+
+def test_the_panel_is_in_the_header_and_on_none_of_the_tabs(app, party,
+                                                            effects_on):
+    """Where D1 puts it, and the reason it is there: the top row is the
+    save-wide row -- the roster is in it -- and a fourth tab or a box on the
+    Stats tab would read as the selected character's.
+
+    `BOXES` and `TABS` above are deliberately not touched: every box in them
+    is on the form with no flag set, and this one is not.
+    """
+    from PyQt6.QtWidgets import QGroupBox, QTabWidget
+
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(party))
+    box = w._child("box_active_effects")
+    assert isinstance(box, QGroupBox)
+    tabs = w.root.findChild(QTabWidget, "sheet_tabs")
+    for i in range(tabs.count()):
+        assert not tabs.widget(i).isAncestorOf(box), tabs.tabText(i)
+    from PyQt6.QtWidgets import QLayout
+    row = w.root.findChild(QLayout, "header_row")
+    assert row.indexOf(box) >= 0, "the panel is the third item of the top row"
+    assert row.itemAt(row.count() - 1).spacerItem() is not None, (
+        "and the spacer is still last, so the roster keeps taking the slack")
+
+
+def test_the_effects_panel_is_not_a_floor_under_the_window(app, party,
+                                                           effects_on):
+    """The header does not scroll, so anything standing in it is a floor under
+    the whole window -- and this panel's widest line is a sentence rather than
+    a field, so it costs more than a field would. Its two column headings
+    alone want 430px, which on this machine put the editor's floor 12px past
+    Donald's screen; it keeps `ACTIVE_EFFECTS_MIN_WIDTH` and elides below
+    that, and grows with the window above it.
+
+    The party is the synthetic one, so this is the widest a save can hold: 20
+    capital Ws in every name, which is the case that decides the header.
+
+    The outcome is what is asserted -- the window fits the screen -- rather
+    than a width measured here, which would be a claim about one machine.
+    """
+    from editor.window import ACTIVE_EFFECTS_MIN_WIDTH, EditorBinding
+    w = EditorBinding(make_root(), str(party))
+    w.root.show()
+    try:
+        floor = w.root.minimumSizeHint()
+        assert floor.width() <= SMALL_LAPTOP[0]
+        assert floor.height() <= SMALL_LAPTOP[1]
+        panel, roster = w._child("active_effects"), w.roster
+        assert panel.minimumWidth() <= ACTIVE_EFFECTS_MIN_WIDTH
+        assert panel.maximumWidth() >= panel.minimumWidth(), (
+            "it grows with the window, up to its own columns at their "
+            "contents")
+        assert panel.maximumHeight() == roster.maximumHeight(), (
+            "capped to the roster, and scrolling past it")
+    finally:
+        w.root.close()
+
+
+@game_disks
+def test_a_no_op_save_writes_nothing_with_the_effects_flag_on(app, save,
+                                                              effects_on):
+    """**Read-only means read-only.** The panel has no write path at all --
+    `goldbox.effects.write_effect` and `clear_effect` have no caller outside
+    their own tests -- so switching the flag on and saving must not move a
+    byte.
+
+    An effect's magnitude is per-id *restore* data, which is why: clearing an
+    id here would skip the game's expiry handler and leave a character at
+    18/00 strength for ever, and nothing about that is visible until much
+    later. That is S5's problem and it waits on a measurement.
+    """
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    for row in range(len(w.party)):
+        w.roster.selectRow(row)
+    assert w.preview_text().endswith("no changes")
+    w.save()
+    assert save.read_bytes() == before
+
+
+# --- the gate, and it can fail ----------------------------------------------
+#
+# `.claude/rules/feature-flags.md` asks for three and asks that the first two
+# be seen red with the gate forced on. Both were: with `activeeffects.enabled`
+# made to return True, `test_there_is_no_effects_panel_by_default` and all
+# seven rows of `test_a_forgotten_variable_does_not_build_the_effects_panel`
+# fail on `assert ... is None`, and the third passes either way, which is what
+# a gate test for the "on" direction is meant to do.
+
+
+@game_disks
+def test_there_is_no_effects_panel_by_default(app, save, monkeypatch):
+    """The shipped state. Not greyed out and not empty -- absent, so nobody
+    has to be told in the interface how to un-grey it."""
+    from editor.window import EditorBinding
+    monkeypatch.delenv("WISH_EXPERIMENTAL_EFFECTS", raising=False)
+    w = EditorBinding(make_root(), str(save))
+    assert w._child("box_active_effects") is None
+    assert w._child("active_effects") is None
+
+
+@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "2", "yes please"])
+def test_a_forgotten_variable_does_not_build_the_effects_panel(app, party,
+                                                               monkeypatch,
+                                                               value):
+    """A variable somebody exported once and forgot must not put an unapproved
+    panel in front of them.
+
+    The tuple is `wish/debugmode.py`'s, copied rather than reinvented so the
+    flags in this project cannot disagree about what "on" means -- and it is
+    the same tuple `editor/effects.py` copied for the traits flag.
+    """
+    from editor import activeeffects
+    from editor.window import EditorBinding
+    assert activeeffects.TRUE == ("1", "true", "yes", "on")
+    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", value)
+    assert not activeeffects.enabled()
+    w = EditorBinding(make_root(), str(party))
+    assert w._child("box_active_effects") is None
+    assert w._child("active_effects") is None
+
+
+def test_the_panel_appears_when_the_flag_asks_for_them(app, party, effects_on):
+    """The third direction: set it, and the panel is there with the
+    placeholder title that keeps it off a player's screen until Donald has
+    worded it."""
+    from editor import activeeffects
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(party))
+    assert w._child("box_active_effects").title() == activeeffects.BOX_TITLE
+    assert w._child("active_effects") is not None
+
+
+def test_every_string_on_the_effects_panel_announces_that_nobody_approved_it():
+    """`.claude/rules/gui-text.md`: every word a user reads in the interface is
+    Donald's, and none of these has been ruled on. The count comes down as he
+    rules and the day it reaches zero the flag's only condition is met --
+    there is no measurement outstanding, because nothing here writes a byte.
+    """
+    from editor import activeeffects
+
+    marked = {name for name, text in vars(activeeffects).items()
+              if name.isupper() and isinstance(text, str)
+              and "NOT APPROVED" in text}
+    assert marked == {"BOX_TITLE", "HEADER_EFFECT", "HEADER_OWNER",
+                      "OWNER_PARTY", "OWNER_MONSTER", "OWNER_ABSENT",
+                      "UNNAMED_EFFECT"}
+
+
+def test_no_unapproved_word_is_on_screen_with_the_effects_flag_unset(
+        app, party, monkeypatch):
+    """The flag's whole job. With it unset, nothing in the window carries the
+    marker -- not a box title, not a column heading, not a row."""
+    from PyQt6.QtWidgets import QAbstractButton, QGroupBox, QLabel
+
+    from editor.window import EditorBinding
+    monkeypatch.delenv("WISH_EXPERIMENTAL_EFFECTS", raising=False)
+    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
+    w = EditorBinding(make_root(), str(party))
+    for kind in (QAbstractButton, QLabel, QGroupBox):
+        for widget in w.root.findChildren(kind):
+            for text in (widget.text() if hasattr(widget, "text")
+                         else widget.title(), widget.toolTip()):
+                assert "NOT APPROVED" not in text, widget.objectName()
