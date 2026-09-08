@@ -1797,6 +1797,18 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # one number where DOS keeps a separate 0-7 at its own 0x0BF.  That is
     # why `DIRECT` pairs them, and it is why every whole-save writer on both
     # sides overwrites the byte from the slot the record lands in.
+    #
+    # This one **overrides** rather than branching, which is where it differs
+    # from `roster_in_use` and `combat_side` above: those two ask
+    # `rec.is_stored` when there is no roster, and this cannot, because the
+    # `DIRECT` loop has already copied the record's own `0x10D` for the one
+    # case that has it -- a 580-byte export. So a roster, when there is one,
+    # wins over that copy, which is what
+    # `test_the_roster_block_beats_the_records_own_copy_of_the_combat_figure`
+    # pins. The grade stays PROBABLE: the byte equalling the slot index is
+    # CONFIRMED over 90 engine-written slots, and *that the slot index is
+    # what the field means* is not, because every party on every disk we have
+    # is six characters in slots 0-5, where the two are the same permutation.
     if roster is not None:
         out.set("combat_figure", roster.slot_index,
                 "the C64 roster block's +0x0D, the slot index the combat "

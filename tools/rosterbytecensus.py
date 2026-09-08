@@ -5,8 +5,19 @@
 names its offsets -- `ROSTER_IN_USE` at +0x00, `ROSTER_COMBAT_SIDE` at +0x0C,
 `ROSTER_SLOT_INDEX` at +0x0D, and several with no established meaning at all
 (`#365 (Three roster bytes have no established meaning, and a C64 party
-converted to DOS is told so with no way to check it)`).  A reading of one of
-them is worth what its sample size says it is, and this counts the sample.
+converted to DOS is told so with no way to check it)`).  What a reading of one
+of them proves depends on how many slots it was taken over, and this counts
+them.
+
+**The tool counts a population; it does not classify one.**  Which disks are
+engine-written and which this project wrote is decided entirely by what
+`--disks` is pointed at, and a save we made agreeing with our own writer proves
+nothing.  Run it twice, once per population, and say in the finding which
+directory each number came from -- `PORSAVE*.D64` off the player's own disks
+against `NEWSAVE*` and `TEST_DOS_IMPORT*`, which is how the 90 of 90 on
+`#282 (party_order (record 0x10D) is gated the same way as #281's four bytes,
+and never delivered from a real C64 save)` was separated from the 54 that came
+out of our own conversions.
 
     tools/rosterbytecensus.py 0x0D
     tools/rosterbytecensus.py 0x0D --equals-slot
