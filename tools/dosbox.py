@@ -1357,16 +1357,16 @@ class PoolOfRadiance:
         # BACK AND CLAIM YOUR TREASURE?`, asked because the driver leaves the
         # treasure where it lies.  work/dosbox/p114/claim-treasure.png
         (320, "c576b6838d2e460b", "claim_treasure"),
+        # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
+        # work/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
+        # work/dosbox/p114/encounter-with-parlay.png
+        (128, "dbac174b6033b5e9", "encounter"),
         # `MOVE VIEW AIM` -- shared by every character's turn, however much of
         # `USE CAST TURN QUICK DONE` the acting character is offered (#340).
         # work/dosbox/p114/bar04_02d05064ee41da5f.png,
         # work/dosbox/p114/command-bar-with-cast.png and
         # work/issue52/crops/stuck.ppm (a level-1 party, `USE` never drawn).
         (113, "fc8f7441fc1419de", "command"),
-        # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
-        # work/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
-        # work/dosbox/p114/encounter-with-parlay.png
-        (128, "dbac174b6033b5e9", "encounter"),
     )
 
     #: What to press at each label.  A label with no key here is a screen the

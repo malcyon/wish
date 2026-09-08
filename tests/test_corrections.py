@@ -189,15 +189,26 @@ def test_the_fill_byte_is_only_ever_the_last_slot(carriers):
     assert traits.confidence(traits.FILL) == "CONFIRMED"
 
 
-def test_the_census_is_the_only_thing_that_promotes_a_name():
+def test_a_name_is_promoted_by_a_carrier_or_by_the_engines_own_code():
     """44 of the 129 names had a carrier when the guide was transcribed; the
     P55 pass took it to 49, and P3's mid-effect save to 66 -- seventeen codes
     named by the spell that produced them, `docs/90-specimens.md`. A live Sleep
     cast on a slums orc ambush took it to 67, naming 53 on five sleeping orcs.
-    The rest cannot be promoted by more looking; nothing on the C64 exercises
-    them."""
+
+    **This test used to be called `test_the_census_is_the_only_thing_that_
+    promotes_a_name`, and that was wrong.** `#247 (Nobody knows whether innate
+    effect 97 is racial or the constitution bonus)` promoted 90 and 97 on
+    2026-09-07 without a carrier at all, by reading the shipped `GAME.OVR` end
+    to end -- the creation switch at `0x1A127` and the handlers at `0x11134`
+    and `0x112E5`, written up in `docs/189-effect-97-from-the-code.md`.
+
+    A code read is the **stronger** of the two routes, not a loophole in this
+    one: a census says a value was seen, while the engine's own code says what
+    the value is for, and no edited save can have poisoned it. So the count
+    below moves when either route lands, and what cannot move it is more
+    looking at records that never carry the code."""
     counts = collections.Counter(sure for _, sure in traits.NAMES.values())
-    assert counts["CONFIRMED"] == 67
+    assert counts["CONFIRMED"] == 69
     assert counts["UNKNOWN"] == 1                 # 92, which the guide has unused
     assert sum(counts.values()) == 129
 
