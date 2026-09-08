@@ -191,16 +191,26 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     fight)`). A field that quietly stopped round-tripping for a different
     reason must still fail the loop below, so all three are named and
     excluded rather than the loop being weakened.
+
+    The eight thief-skill columns are the fourth exception, and are checked
+    the same way below. `write` recomputes them from the thief level, race
+    and dexterity through the C64 title's own table, rather than copying the
+    source's, for a title whose racial thief row is confirmed to differ
+    between the two ports (`#431 (A converted halfling thief keeps the other
+    port's skill percentages, because the two ports ship different halfling
+    rows)`) -- `_filled()` defaults to Pool of Radiance, which is one.
     """
     from goldbox import spells
 
     char = _filled()
     rec, rep = c64_codec.write(char)
     save_columns = {field for field, _ in c64_codec._SAVE_COLUMNS}
+    thief_columns = {field for field, _ in c64_codec._THIEF_SKILL_COLUMNS}
 
     assert rec.name == "ROUNDTRIP"
     for field, c64 in c64_codec.DIRECT:
-        if field in save_columns or field in ("thac0_base", "thac0_current"):
+        if (field in save_columns or field in thief_columns
+                or field in ("thac0_base", "thac0_current")):
             continue
         assert rec.get(c64) == char.get(field), field
     expected_thac0 = level_tables.base_thac0(char.get("levels"), char.game)
@@ -227,6 +237,16 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
         assert rec.get(c64) == value, field
         # Not a round trip: the class row less the constitution bonus, not
         # the plain value this test put in.
+        assert value != char.get(field), field
+    assert level_tables.thief_skill_race_differs_by_port(char.game)
+    expected_skills = level_tables.thief_skills(
+        char.get("levels")["thief"], char.get("race"), char.game,
+        dexterity=char.get("dexterity"))
+    for value, (field, c64) in zip(expected_skills,
+                                   c64_codec._THIEF_SKILL_COLUMNS):
+        assert rec.get(c64) == value, field
+        # Not a round trip: the C64's own row for an elf thief of level 3,
+        # not the plain value this test put in.
         assert value != char.get(field), field
     assert spells.spells_known(rec.to_bytes()) == [1, 5, 55]
     assert [b for b in rec.get_raw("spells_memorised") if b] == [44, 21, 3]
