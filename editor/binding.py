@@ -82,8 +82,8 @@ def binding_for(field: Field, *, in_save: bool) -> Binding:
         return Binding(field, True, "not understood; preserved verbatim")
     if in_save and field.offset >= SLOT_BYTES:
         return Binding(field, True,
-                       f"offset {field.offset:#05x} is past the {SLOT_BYTES} "
-                       f"bytes a save slot holds; the write would be dropped")
+                       f"past the {SLOT_BYTES} bytes a save slot holds; the "
+                       f"write would be dropped")
     if field.name in DERIVED:
         return Binding(field, True,
                        "the game recomputes this from abilities and equipment")

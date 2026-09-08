@@ -1771,13 +1771,17 @@ class EditorBinding(QObject):
                 w.setEnabled(not rule.read_only and not passthrough)
             if passthrough and not rule.read_only:
                 if hasattr(w, "setToolTip"):
-                    w.setToolTip(f"{name} is preserved verbatim; the editor cannot "
-                                 f"write it")
+                    w.setToolTip("preserved verbatim; the editor cannot write it")
                 continue
             if hasattr(w, "setToolTip"):
-                w.setToolTip(rule.reason if rule.read_only
-                             else f"{rule.field.name} @ {rule.field.offset:#05x} "
-                                  f"({rule.field.confidence.value})")
+                # `rule.reason` is a sentence written for a person, e.g. "the
+                # game recomputes this from abilities and equipment". An
+                # editable field gets no tooltip at all -- the label beside it
+                # already names it, and the field's offset, internal name and
+                # confidence grade are a developer's note that used to leak
+                # here (#419). `goldbox/layout.py` stays the reference for
+                # anybody debugging the binding; nothing here duplicates it.
+                w.setToolTip(rule.reason if rule.read_only else "")
             label = self._child(f"label_{name}")
             if label is not None:
                 label.setEnabled(not rule.read_only)

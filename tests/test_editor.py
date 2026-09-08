@@ -241,6 +241,38 @@ def test_the_window_binds_every_field_widget(app, save):
     assert len(w._widgets) == len(expected_sheet_fields()) + 1
 
 
+def test_no_sheet_tooltip_shows_an_offset_a_field_name_or_a_grade(app, party):
+    """`#419 (Hovering a box on the character sheet shows its byte offset and
+    internal field name)`: hovering Strength used to read
+    `strength @ 0x014 (CONFIRMED)`, and 47 of the sheet's fields did the same.
+
+    Swept over every bound widget rather than the 47 named in that issue, so
+    the 48th field does not get to repeat it. The synthetic party (#70) needs
+    no game disk, so this runs everywhere."""
+    import re
+
+    from editor.window import EditorBinding
+
+    address = re.compile(r"@ 0x[0-9a-f]+", re.IGNORECASE)
+    grade = re.compile(r"\b(CONFIRMED|PROBABLE|GUESS|UNKNOWN)\b")
+    bare_field_name = re.compile(r"\b[a-z][a-z_]*_[a-z][a-z_]*\b")
+
+    w = EditorBinding(make_root(), str(party))
+    checked = 0
+    for name, widget in w._widgets.items():
+        if not hasattr(widget, "toolTip"):
+            continue
+        tip = widget.toolTip()
+        if not tip:
+            continue
+        checked += 1
+        assert not address.search(tip), f"{name}: offset in tooltip {tip!r}"
+        assert not grade.search(tip), f"{name}: confidence grade in tooltip {tip!r}"
+        assert not bare_field_name.search(tip), (
+            f"{name}: internal field name in tooltip {tip!r}")
+    assert checked > 0        # the sweep exercised something
+
+
 @game_disks
 def test_selecting_a_character_fills_the_sheet(app, save):
     """PORSAVE11 holds MALCYON, LADY KATHERINE, ROLAND, SILAS, MAGNUS, BRUTUS
