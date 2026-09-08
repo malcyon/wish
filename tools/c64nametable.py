@@ -158,12 +158,20 @@ def prefix(body: bytes) -> int | None:
     return None
 
 
-def sites(body: bytes) -> list[tuple[int, str, str]]:
+def sites(body: bytes,
+          dropped: list[tuple[int, str]] | None = None
+          ) -> list[tuple[int, str, str]]:
     """Every instruction in `GEN` whose absolute operand is `$5700`.
 
     A byte pair is not an instruction, so each hit is decoded and only the
-    four addressing shapes in `SITE_KINDS` are named; anything else is
-    reported as unrecognised rather than counted.
+    four addressing shapes in `SITE_KINDS` are named.
+
+    **Pass `dropped` a list to see what was thrown away**, as
+    `(address, text)` -- the whole finding on `#435` is "these six sites and
+    no others", and a seventh reader under an addressing mode `SITE_KINDS`
+    does not cover would be discarded here in silence. `report_sites` prints
+    them. Both titles have two today, and both decode out of embedded text
+    rather than out of code.
     """
     found = []
     for i in range(len(body) - 2):
@@ -172,12 +180,16 @@ def sites(body: bytes) -> list[tuple[int, str, str]]:
         line = d6502.lines(body, OVERLAY_BASE, OVERLAY_BASE + i, 1)[0]
         m = RE_LINE.match(line)
         if m is None:
+            if dropped is not None:
+                dropped.append((OVERLAY_BASE + i, body[i:i + 3].hex()))
             continue
         text = m.group(1)
         mnemonic = text.split()[0]
         index = text[-1] if text.endswith((",X", ",Y")) else ""
         kind = SITE_KINDS.get((mnemonic, index))
         if kind is None:
+            if dropped is not None:
+                dropped.append((OVERLAY_BASE + i, text))
             continue
         found.append((OVERLAY_BASE + i, text, kind))
     return found
@@ -361,10 +373,12 @@ def drive(save: str, out: str, pool: int | None, disks: str | None,
 
     run = Run(pathlib.Path(out))
     slot = por.claim_slot(pool, note="c64nametable/435")
-    run.log("slot", n=slot.n, monitor=slot.port, display=slot.display,
-            dir=str(slot.dir))
     sess = None
     try:
+        # Inside the `try`, so a slot claimed and then lost to a failing
+        # write is still torn down rather than held until the lease expires.
+        run.log("slot", n=slot.n, monitor=slot.port, display=slot.display,
+                dir=str(slot.dir))
         stage = curserun.stage if curse else ssbwarp.stage
         first = stage(slot, where, save)
         sess = (curserun.CurseSession if curse else ssbwarp.SSBSession)(
@@ -453,7 +467,7 @@ def show(paths: list[str]) -> int:
         if not entries:
             print("  no +$C00 table on this title")
         else:
-            print(f"  stored table $%04X  {[n for n in stored if n]}" % at)
+            print(f"  stored table ${at:04X}  {[n for n in stored if n]}")
         print(f"  character files      {files}")
         print(f"  party records        {names}")
         if entries:
@@ -475,8 +489,11 @@ def report_sites(title: str, disks: str | None) -> int:
         print(f"  filename prefix ${got:02X}, read off the S0: template")
     if declared is not None and got is not None and declared != got:
         print(f"  ** the table in this file says ${declared:02X} **")
-    for at, text, kind in sites(body):
+    dropped: list[tuple[int, str]] = []
+    for at, text, kind in sites(body, dropped):
         print(f"  ${at:04X}  {text:<14} {kind}")
+    for at, text in dropped:
+        print(f"  ${at:04X}  {text:<14} not an addressing shape this names")
     return 0
 
 
