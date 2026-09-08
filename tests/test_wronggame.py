@@ -36,10 +36,11 @@ import os
 import pathlib
 
 import pytest
-from gamedata import curse_dir, disk_dir, synthetic_geo
+from gamedata import curse_dir, disk_dir, game_file, synthetic_geo
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from automap import area
 from automap.area import (
     NEAR_ENOUGH,
     NOT_OURS,
@@ -454,67 +455,182 @@ def _pages_on(where, patterns):
                     yield name, at, body[at:at + GEO_SIZE]
 
 
+def silver_dir():
+    """Where Silver Blades' disks are, found the way `gamedata.disk_dir` finds
+    Pool of Radiance's -- `tools.gamedisks` is the suite's own registry."""
+    from tools import gamedisks
+    return gamedisks.find("secret-of-the-silver-blades")
+
+
+def _amiga_comspr(at: int = 5824) -> bytes | None:
+    """One 1024-byte window of `COMSPR.TLB` off whichever Amiga disk has it.
+
+    Both `CurseOfTheAzureBonds_A.adf` and `SecretOfTheSilverBlades_A.adf` carry
+    a byte-identical copy; either will do.
+    """
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import gamedisks
+    for root in gamedisks.candidates("amiga"):
+        if not root.is_dir():
+            continue
+        for image in sorted(root.rglob("*.adf")):
+            for where in ("/DISKA/COMSPR.TLB", "/DISK1/COMSPR.TLB"):
+                try:
+                    body = AmigaDisk.open(image).read_file(where)
+                except Exception:
+                    continue
+                if len(body) >= at + GEO_SIZE:
+                    return body[at:at + GEO_SIZE]
+    return None
+
+
 @pytest.mark.skipif(disk_dir() is None, reason="needs the game disks")
 def test_no_page_of_the_players_own_disks_reads_as_a_map():
     """`NOT_OURS` is only ever said of a block that `looks_like_a_map`, so what
     that predicate lets through is the whole false-alarm risk. Measured against
-    every 1024-byte page of every non-`GEO` file the game ships -- code,
-    graphics, tables, saves."""
-    wrong = [f"{name}+{at}" for name, at, page in
-             _pages_on(disk_dir(), ("POOL*.[dD]64",))
-             if looks_like_a_map(Geo(page))]
-    assert wrong == []
+    every 1024-byte page of every non-`GEO` file the three C64 titles ship --
+    code, graphics, tables, saves.
 
-
-@pytest.mark.skipif(disk_dir() is None, reason="needs the game disks")
-def test_most_of_the_games_own_maps_do_read_as_maps():
-    """And the other direction, which is allowed to be imperfect: a map this
-    turns away reads as `UNKNOWN`, which refuses nothing.
-
-    Five of Pool of Radiance's twenty-nine carry so much one-sided wall art
-    that their own two sides disagree. They are `GEO02`, `GEO11`, `GEO12`,
-    `GEO15` and `GEO20`, and the party walks off them.
+    The suite takes one page per 1024 bytes and the disks it has; the whole
+    sweep is 65383 windows at 64-byte steps across both platforms and belongs
+    in `tools/geoplausible.py`, which takes minutes.
     """
-    maps = _maps_on(disk_dir(), ("POOL*.[dD]64",))
-    assert maps
-    passing = [name for name, raw in maps.items() if looks_like_a_map(Geo(raw))]
-    assert len(passing) >= len(maps) - 5
+    corpora = [(disk_dir(), ("POOL*.[dD]64",))]
+    if curse_dir() is not None:
+        corpora.append((curse_dir(), ("CURSE*.[dD]64",)))
+    if silver_dir() is not None:
+        corpora.append((silver_dir(), ("SILVER*.[dD]64",)))
+    wrong = [f"{name}+{at}" for where, patterns in corpora
+             for name, at, page in _pages_on(where, patterns)
+             if looks_like_a_map(Geo(page))]
+    assert wrong == [], f"{len(corpora)} title(s) swept"
 
 
-@pytest.mark.skipif(disk_dir() is None or curse_dir() is None,
-                    reason="needs both titles' disks")
-def test_no_two_real_maps_are_within_the_tolerance():
-    """`NEAR_ENOUGH` exists so a game writing into the block it is drawing is
-    still recognised. It is only safe while it is far below the distance
-    between two genuinely different maps -- including two from different
-    titles, which is the case #21 is about."""
-    everything = list(_maps_on(disk_dir(), ("POOL*.[dD]64",)).items())
-    everything += list(_maps_on(curse_dir(), ("*.[dD]64",)).items())
-    closest = min(sum(a != b for a, b in zip(one, other))
-                  for i, (_, one) in enumerate(everything)
-                  for _, other in everything[i + 1:])
-    assert closest > 2 * NEAR_ENOUGH
+@pytest.mark.skipif(not _amiga_comspr(), reason="needs the Amiga disks")
+def test_the_amiga_block_that_sets_the_threshold_is_still_turned_away():
+    """`COMSPR.TLB+5824` is the closest anything on any of these disks comes to
+    passing, and it is what `MAP_WALL_ART_AGREEMENT` is set against.
 
-
-@pytest.mark.skipif(disk_dir() is None or curse_dir() is None,
-                    reason="needs both titles' disks")
-def test_a_real_curse_map_at_0400_is_not_pool_of_radiances():
-    """The generated maps prove the mechanism; this proves it on the bytes the
-    two games actually load."""
-    pool = {n: Geo(raw) for n, raw in _maps_on(disk_dir(),
-                                               ("POOL*.[dD]64",)).items()}
-    curse = _maps_on(curse_dir(), ("*.[dD]64",))
-    assert pool and curse
-    verdicts = [ResidentGeo(machine(raw)).verdict(pool)[0]
-                for raw in curse.values()]
-    assert NOT_OURS in verdicts
-    assert OURS not in verdicts
+    The whole sweep is the tool's job, but this one block is the margin: it
+    agrees about its wall art 0.535 of the time against a threshold of 0.57,
+    and it reuses its wall pairs 4.09 times against a threshold of 4.0 -- so
+    the art clause is the only thing turning it away, and a change that
+    loosened that clause by 7% would let it in.
+    """
+    block = _amiga_comspr()
+    evidence = area.map_evidence(Geo(block))
+    assert evidence.art_agreement == pytest.approx(0.535, abs=0.002)
+    assert evidence.pair_reuse == pytest.approx(4.09, abs=0.01)
+    assert evidence.pair_reuse > area.MAP_WALL_PAIR_REUSE
+    assert looks_like_a_map(Geo(block)) is False
 
 
 @pytest.mark.skipif(disk_dir() is None, reason="needs the game disks")
-def test_every_pool_of_radiance_map_at_0400_is_pool_of_radiances():
-    pool = {n: Geo(raw) for n, raw in _maps_on(disk_dir(),
-                                               ("POOL*.[dD]64",)).items()}
-    assert pool
-    for name, geo in pool.items():
-        assert ResidentGeo(machine(geo)).verdict(pool) == (OURS, name)
+def test_every_map_the_automapper_loads_reads_as_a_map():
+    """The other direction, and it used to be allowed to be imperfect.
+
+    `looks_like_a_map` threw out `GEO02`, `GEO11`, `GEO12`, `GEO15` and
+    `GEO20` -- five of the twenty-nine maps `automap.maps.load_maps` hands the
+    window -- because it asked the two sides of a walled edge to agree about
+    which wall-art number it is, and the format does not promise that: a wall
+    may be a different picture from each side. `GEO20` agreed on 33 of 156
+    (#436).
+
+    This reads the maps through `load_maps`, which is the call the window
+    itself makes, off whichever disks `tests/gamedata.disk_dir` finds.
+    """
+    from automap.maps import load_maps
+    maps = load_maps(str(disk_dir()))
+    assert len(maps) == 29, sorted(maps)
+    rejected = sorted(name for name, geo in maps.items()
+                      if not looks_like_a_map(geo))
+    assert rejected == [], f"{len(rejected)} of {len(maps)} rejected: {rejected}"
+
+
+@pytest.mark.skipif(curse_dir() is None, reason="needs the Curse disks")
+def test_every_curse_map_reads_as_a_map():
+    """Curse's `GEO33` was the sixth map the old threshold turned away."""
+    maps = _maps_on(curse_dir(), ("CURSE*.[dD]64",))
+    assert len(maps) == 16, sorted(maps)
+    rejected = sorted(n for n, raw in maps.items()
+                      if not looks_like_a_map(Geo(raw)))
+    assert rejected == [], f"{len(rejected)} of {len(maps)} rejected: {rejected}"
+
+
+@pytest.mark.skipif(silver_dir() is None, reason="needs the Silver Blades disks")
+def test_every_silver_blades_map_reads_as_a_map():
+    """Silver Blades is the title that showed `MAP_RECIPROCITY = 0.93` was
+    fitted to a corpus that did not contain it: `GEO40` reciprocates 0.9229 and
+    was turned away before the wall-art clause ever ran."""
+    maps = _maps_on(silver_dir(), ("SILVER*.[dD]64",))
+    assert len(maps) == 17, sorted(maps)
+    rejected = sorted(n for n, raw in maps.items()
+                      if not looks_like_a_map(Geo(raw)))
+    assert rejected == [], f"{len(rejected)} of {len(maps)} rejected: {rejected}"
+
+
+@pytest.mark.skipif(disk_dir() is None, reason="needs the game disks")
+def test_the_combat_block_the_game_puts_at_0400_is_not_a_map():
+    """`SQRPACI01` is what occupies `$0400` in a fight -- a tile remap, the
+    combat parameter block and code -- and it is 1026 bytes, a load address and
+    exactly one page. It must never read as a map, or a player in a fight loses
+    the controls.
+
+    Named rather than synthesised because the synthetic junk below is ours and
+    proves nothing about the game. The other seven `SQR*` and `COMBAT*` files
+    on these disks are different lengths and different load addresses;
+    `SQRPACI01` is the one `docs/50-experiments.md` measured at 137/480.
+    """
+    block = game_file("SQRPACI01")
+    # `game_file` hands back the payload past the two-byte PRG load address,
+    # and `SQRPACI01` is 1026 bytes on the disk -- exactly one page after it.
+    assert len(block) == GEO_SIZE, len(block)
+    geo = Geo(block)
+    assert geo.reciprocity() == (137, 480)
+    assert looks_like_a_map(geo) is False
+
+
+def test_the_check_can_still_fail_and_the_thresholds_are_what_makes_it():
+    """A check that cannot reject anything is not a check.
+
+    The two blocks that must always be turned away are turned away by named
+    thresholds and by nothing structural, and the way to know that is to weaken
+    each threshold and watch them walk through. Every assertion here fails if
+    somebody lowers a constant without measuring first.
+    """
+    zeroes = Geo(bytes(GEO_SIZE))
+    junk = Geo(bytes((i * 37 + (i >> 3)) & 0xFF for i in range(GEO_SIZE)))
+    assert looks_like_a_map(zeroes) is False
+    assert looks_like_a_map(junk) is False
+
+    # What each of them is rejected *by*. A page of zeroes reciprocates 1.000
+    # and agrees with itself perfectly about the wall art it has not got, so
+    # only the two clauses about drawn walls turn it away.
+    empty = area.map_evidence(zeroes)
+    assert (empty.reciprocity, empty.art_agreement) == (1.0, 1.0)
+    assert empty.walled_edges == 0 and empty.pair_reuse == 0.0
+
+    scribble = area.map_evidence(junk)
+    assert scribble.reciprocity < area.MAP_RECIPROCITY
+    assert scribble.art_agreement < area.MAP_WALL_ART_AGREEMENT
+
+    # And now weaken them. `MapEvidence.plausible` reads the module constants
+    # when it is called, so this is the same code the window runs.
+    for block, loosened in ((zeroes, {"MAP_WALLED_EDGES": 0,
+                                      "MAP_WALL_PAIR_REUSE": 0.0}),
+                            (junk, {"MAP_RECIPROCITY": 0.0,
+                                    "MAP_WALL_ART_AGREEMENT": 0.0,
+                                    "MAP_WALL_PAIR_REUSE": 0.0})):
+        saved = {name: getattr(area, name) for name in loosened}
+        try:
+            for name, value in loosened.items():
+                setattr(area, name, value)
+            assert looks_like_a_map(block) is True, (
+                "weakening the thresholds did not let this block in, so the "
+                "test above was not measuring the thresholds")
+        finally:
+            for name, value in saved.items():
+                setattr(area, name, value)
+
+    assert looks_like_a_map(zeroes) is False
+    assert looks_like_a_map(junk) is False

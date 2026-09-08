@@ -71,25 +71,87 @@ UNKNOWN = "unknown"
 NEAR_ENOUGH = 128
 
 # What makes 1024 bytes a Gold Box map rather than whatever else the page
-# happens to hold. Three clauses, and all three thresholds are MEASURED against
-# every 1024-byte window, at 64-byte steps, of every non-`GEO` file on the Pool
-# of Radiance and Curse of the Azure Bonds disks -- 19130 blocks of real code,
-# graphics, saves and tables:
+# happens to hold. Four clauses. All four thresholds are MEASURED, on
+# 2026-09-08, against two corpora read off the player's own disks:
 #
-# | | 38 real maps | 19130 other blocks |
+# * **95 maps** -- Pool of Radiance's 29 `GEO` files, Curse's 16 and Silver
+#   Blades' 17 on the C64, and the same two titles' `GEO.GLB` libraries on the
+#   Amiga. 65 of the 95 are distinct: every Silver Blades map is byte-identical
+#   across the two ports and 13 of Curse's 16 are.
+# * **65383 blocks that are not maps** -- every 1024-byte window, at 64-byte
+#   steps, of every non-`GEO` file on those five disk sets. Any window holding
+#   a verbatim copy of a known map is excluded, which matters: the Amiga's
+#   `/SAVE/spindisk` is a library of all sixteen Curse maps and a sweep that
+#   goes by filename reads slices of it as false alarms.
+#
+# `tools/geoplausible.py` re-takes both.
+#
+# 144 of the 65383 reach 0.90 reciprocity with 20 walled edges, which is as far
+# as anything that is not a map gets. Across the four quantities:
+#
+# | | the 95 maps | those 144 |
 # |---|---|---|
-# | barrier reciprocity | 0.940 - 1.000 | median 0.292, and 358 reach 0.93 |
-# | shared edges walled on both sides | 21 - 270 | the 358 above run 0 - 301 |
-# | of those, how many agree | **0.212 - 1.000** | **0.000 - 0.423** |
+# | barrier reciprocity | 0.923 - 1.000 | 0.900 - 1.000 |
+# | shared edges walled on both sides | 21 - 299 | 20 - 363 |
+# | wall-art agreement over all 480 shared edges | **0.600 - 1.000** | **0.054 - 0.815** |
+# | both-walled edges per distinct pair of art numbers | **4.20 - 122.50** | **1.11 - 10.05** |
 #
-# All three together admit **none** of the 19130 and 32 of the 38 maps. The six
-# it turns away -- Pool of Radiance's `GEO02`, `GEO11`, `GEO12`, `GEO15`,
-# `GEO20` and Curse's `GEO33` -- carry so much one-sided wall art that their
-# own two sides disagree, and they simply read as `UNKNOWN`: no verdict, no
-# refusal. That is the direction to be wrong in, and the party walks off them.
-MAP_RECIPROCITY = 0.93
+# All four together admit **95 of 95** maps and **none** of the 65383.
+#
+# `tools/geoplausible.py thresholds` prints, for each of the four, the worst
+# real map beside the best non-map that clears the *other* three -- which is
+# the number the threshold has to hold off on its own, and the only honest way
+# to state a margin.
+#
+# Nothing on either disk set clears the other three clauses with fewer than 20
+# walled edges, so `MAP_WALLED_EDGES` is doing no work against real game data.
+# It stays because a **page of zeroes** has no walled edges at all and agrees
+# with itself perfectly about the wall art it does not have, which is the case
+# it was put there for -- a booting machine, and the ordinary state at `$0400`
+# mid-load.
+
+#: How often the two sides of a shared edge hold the same raw barrier field.
+#:
+#: Was 0.93, which was fitted before Silver Blades was in the project and threw
+#: out its `GEO40` -- Amiga id 64 -- at 0.9229 (#436). MEASURED: the worst real
+#: map is that one at 0.923, and the best non-map clearing the other three
+#: clauses is `CURSE_A.D64:ITEMS+192` at 0.854.
+MAP_RECIPROCITY = 0.90
+
+#: How many shared edges must be walled from both sides.
 MAP_WALLED_EDGES = 20
-MAP_WALL_AGREEMENT = 0.5
+
+#: The quantity that separates a map from a page of something else, and the
+#: reason `MAP_WALL_AGREEMENT` had to go (#436).
+#:
+#: Of the 480 edges the 16x16 grid shares internally, the fraction where the
+#: two sides carry the **same** wall-art number -- an edge with no art on
+#: either side counting as agreement. `goldbox.geo` already documents this at
+#: 0.960 across Pool of Radiance's 29 files.
+#:
+#: MEASURED: the worst real map is Pool of Radiance's `GEO1E` at 0.600, a
+#: wilderness plan whose walls are mostly drawn from one side only. The best
+#: block that is not a map is `COMSPR.TLB+5824` on both Amiga disk As, at
+#: 0.535. The threshold sits between them with 5.3% of headroom above the map
+#: and 6.5% of margin below the block, and that margin is the whole of what
+#: this constant is worth -- moving it and `MAP_WALL_PAIR_REUSE` down together
+#: by 11% lets `COMSPR.TLB` in.
+MAP_WALL_ART_AGREEMENT = 0.57
+
+#: How many times a map reuses the same pair of wall pictures.
+#:
+#: Group the edges walled on both sides by the unordered pair of art numbers
+#: the two sides carry, and divide: edges / distinct pairs. A map draws from a
+#: small vocabulary and uses each entry over and over -- `GEO20` puts 116 of
+#: its 123 *disagreeing* edges into just two pairs, art 7 against art 1 and art
+#: 1 against art 6, which is a wall with a different picture on each face. A
+#: page of something else pairs nibbles arbitrarily.
+#:
+#: MEASURED: the worst real map is Pool of Radiance's `GEO07` at 4.20, with
+#: only 21 both-walled edges over 5 distinct pairs. The best block that clears
+#: the other three clauses is `/Secret+324672` on the Amiga at 2.71, so this
+#: one has a margin of 47% under it and 5% of headroom above `GEO07`.
+MAP_WALL_PAIR_REUSE = 4.0
 
 
 def _distance(a: bytes, b: bytes) -> int:
@@ -97,24 +159,33 @@ def _distance(a: bytes, b: bytes) -> int:
     return sum(x != y for x, y in zip(a, b))
 
 
-def looks_like_a_map(geo: Geo) -> bool:
-    """Are these 1024 bytes a Gold Box map at all?
+@dataclass(frozen=True)
+class MapEvidence:
+    """The four numbers `looks_like_a_map` decides on, so a tool can print them.
 
-    The question `verdict` needs answered before it may say a block is
-    *somebody else's* map: the page at `$0400` is a map only while one is
-    loaded, and in combat it holds `SQRPACI` instead -- a tile remap, the
-    combat parameter block and code, which scores 137/480 = 0.285 read as a map
-    (`docs/50-experiments.md`, "`$0400` is not the combat map").
-
-    Reciprocity alone is not enough, and the reason is worth keeping: a page of
-    zeroes reciprocates 1.000, because every square agrees with its neighbour
-    that there is nothing there. So a map must also actually draw walls, and
-    the two sides of a walled edge must mostly agree about which wall it is.
+    `tools/geoplausible.py` is the tool, and it imports this rather than
+    recomputing the quantities -- a measurement taken beside the code it
+    justifies is a measurement that can disagree with it.
     """
-    agree, walled = geo.reciprocity()
-    if not walled or agree / walled < MAP_RECIPROCITY:
-        return False
-    both = agreed = 0
+
+    reciprocity: float
+    walled_edges: int
+    art_agreement: float
+    pair_reuse: float
+
+    @property
+    def plausible(self) -> bool:
+        return (self.reciprocity >= MAP_RECIPROCITY
+                and self.walled_edges >= MAP_WALLED_EDGES
+                and self.art_agreement >= MAP_WALL_ART_AGREEMENT
+                and self.pair_reuse >= MAP_WALL_PAIR_REUSE)
+
+
+def map_evidence(geo: Geo) -> MapEvidence:
+    """Measure the four quantities over one block's 480 shared edges."""
+    agree, edges = geo.reciprocity()
+    both = art_agree = 0
+    pairs: set[tuple[int, int]] = set()
     for y in range(GRID):
         for x in range(GRID):
             for direction in (EAST, SOUTH):
@@ -124,10 +195,43 @@ def looks_like_a_map(geo: Geo) -> bool:
                     continue
                 here = geo.wall(x, y, direction)
                 there = geo.wall(nx, ny, OPPOSITE[direction])
+                art_agree += here == there
                 if here and there:
                     both += 1
-                    agreed += here == there
-    return both >= MAP_WALLED_EDGES and agreed / both >= MAP_WALL_AGREEMENT
+                    pairs.add((min(here, there), max(here, there)))
+    return MapEvidence(
+        reciprocity=agree / edges if edges else 0.0,
+        walled_edges=both,
+        art_agreement=art_agree / edges if edges else 0.0,
+        pair_reuse=both / len(pairs) if pairs else 0.0)
+
+
+def looks_like_a_map(geo: Geo) -> bool:
+    """Are these 1024 bytes a Gold Box map at all?
+
+    The question `verdict` needs answered before it may say a block is
+    *somebody else's* map: the page at `$0400` is a map only while one is
+    loaded, and in combat it holds `SQRPACI01` instead -- a tile remap, the
+    combat parameter block and code, which reciprocates 137/480 = 0.285 read as
+    a map (`docs/50-experiments.md`, "`$0400` is not the combat map").
+
+    **What separates a map from rubbish is `MAP_WALL_ART_AGREEMENT`**, and no
+    single quantity does it alone. Reciprocity is not enough, because a page of
+    zeroes reciprocates 1.000 -- every square agrees with its neighbour that
+    there is nothing there -- so a map must also actually draw walls. Walls are
+    not enough either, because the barrier plane of a sparse data block is all
+    zeros and reciprocates trivially too, and 144 of the 65383 blocks measured
+    get that far. Of those 144, none agrees about its wall art better than
+    0.815 *and* reuses its wall pairs more than 10.05 times; every real map
+    clears 0.600 and 4.20. The margin at the tightest point is **6.5%**, and
+    the block that sets it is `COMSPR.TLB+5824` on the Amiga.
+
+    This used to ask instead that the two sides of a walled edge agree about
+    **which wall art number** it is, at 0.5, and that is not something the
+    format promises: a wall may be a different picture from each side. It threw
+    out 31 of the 95 maps measured, `GEO20` among them at 0.212 (#436).
+    """
+    return map_evidence(geo).plausible
 
 
 @dataclass
