@@ -843,8 +843,15 @@ def test_the_ranger_grant_reaches_druid_2():
 
 
 def test_the_magic_user_grant_is_morgaines_spellbook():
-    """The magic-user table is a learn-list rather than a whole spell level,
-    and the shipped MORGAINE is its ninth row exactly, id for id."""
+    """The `0x0C9` table is a learn-list rather than a whole spell level, and
+    the shipped MORGAINE is its ninth row exactly, id for id.
+
+    **Which is what a *starting* spellbook does, and this test cannot tell
+    the two apart** -- MORGAINE was made by the routine that reads this table.
+    It is `test_the_magic_user_grant_is_not_the_trainers` below that settles
+    which routine that is: `$0F7C` is character creation's, and the trainer's
+    magic-user step is the menu at `$1896`.
+    """
     grants = _grant_table(_gen(), 0xC9, range(5, 10))     # 0x0C9, magic-user
     sg0, _ = _party()
     mages = [s.record for s in sg0.characters
@@ -856,24 +863,40 @@ def test_the_magic_user_grant_is_morgaines_spellbook():
         assert ids == grants[rec.get("level_magic_user")], rec.name
 
 
-# --- #89: goldbox/levelup.py's own copy of the same two grant tables -----------
-# The tables in `goldbox/spells.py` were transcribed from the same mechanical
-# extraction the tests above run against a real disk; these compare
-# `goldbox/levelup.py`'s reading of them, level by level, against `GEN` directly
-# -- the same "two independent readings of one fact" `test_the_cleric_grant_
-# is_curses_own_table...` already relies on in `tests/test_curselevels.py`.
+# --- #89: what the trainer does, against what character creation does -------
+# The three grant routines above are read out of `GEN` mechanically. Two of
+# them are the trainer's and one is not, and telling them apart is the whole
+# of what these check: `tools/trainerspells.py` refuses to call a routine a
+# trainer step unless the title's own level-up sequence `JSR`s it.
 
 
-def test_the_magic_user_grant_row_matches_gens_own_table():
-    from goldbox import levelup
+def test_the_magic_user_grant_is_not_the_trainers():
+    """`$0F7C` is the **starting** spellbook, and reading it as the trainer's
+    is what this ticket was opened on.
 
-    grants = _grant_table(_gen(), 0xC9, range(5, 10))
-    for level in range(5, 10):
-        row = levelup._magic_user_grant_row(level, SSB)
-        assert row is not None and set(row) == grants[level], level
+    Its only caller is `$0EF9`, the tail of `$0EF3`, and `$0EF3` is reached
+    from `$09FA` -- eleven bytes after `$09D8` zeroes the whole sixteen-byte
+    mask, which no trainer would do -- and from `$1FC3`, the dual-class
+    routine that has just written `0x0B9`/`0x0BA`. The level-up sequence at
+    `$14FA` calls neither. Curse's `$167F` is the same routine misread the
+    same way, corrected on this ticket in September 2026.
+    """
+    payload = _gen()
+    assert b"\x20\xFC\x0E\x20\x30\x0F\x4C\x7C\x0F" in payload, (
+        "$0EF3 no longer runs the three starting grants in a row")
+    # The sequence, `$1517 JSR $156F` to raise and then its recomputes: it
+    # calls the cleric's `$0F30` and the ranger's `$0EFC`, and never `$0F7C`.
+    sequence = payload[0x1527 - 0x0800:0x1542 - 0x0800]
+    assert b"\x20\x30\x0F" in sequence, "the cleric grant left the sequence"
+    assert b"\x20\xFC\x0E" in sequence, "the ranger grant left the sequence"
+    assert b"\x20\x7C\x0F" not in sequence, (
+        "the magic-user grant is in the sequence after all -- read it again")
 
 
 def test_the_ranger_grant_matches_gens_own_table():
+    """`goldbox/levelup.py` derives a ranger's ids from `SpellTable.groups`
+    and a pair of spell levels; this is `GEN`'s own table saying the same
+    thing at every level a Silver Blades ranger can reach."""
     from goldbox import levelup
 
     grants = _grant_table(_gen(), 0xD0, range(8, 16))
@@ -889,30 +912,61 @@ def test_the_ranger_grant_is_empty_below_the_gate():
     assert levelup._ranger_spell_ids(1, SSB) == []
 
 
-def test_learnable_offers_nothing_because_silver_blades_grants_a_row():
-    """#82's sibling claim for #89: the trainer does not build a menu here,
-    so there is nothing for `LevelUp.offers` to put in front of a player."""
+def test_the_cleric_grant_matches_gens_own_table():
+    """The same, for the cleric -- and both sides of the Wisdom gate, since
+    `$0F39` drops a cleric of 11 back to the level-10 row below 17."""
+    from goldbox import levelup
+
+    grants = _grant_table(_gen(), 0xCA, range(1, 11))
+    for level in range(1, 11):
+        assert set(levelup._cleric_spell_ids(level, SSB, 18)) == grants[level], \
+            level
+        assert set(levelup._cleric_spell_ids(level, SSB, 9)) == grants[level], \
+            level
+    high = _grant_table(_gen(), 0xCA, range(11, 12))[11]
+    assert set(levelup._cleric_spell_ids(11, SSB, 18)) == high
+    assert set(levelup._cleric_spell_ids(11, SSB, 16)) == grants[10]
+
+
+def test_learnable_offers_silver_blades_own_menu():
+    """The trainer's magic-user step is `$1896` and it is a menu, so
+    `LevelUp.offers` has something to put in front of a player after all.
+
+    The two rules the earlier titles do not have, both in this one test: a
+    level-11 magic-user is offered fifth-level spells where `(level + 1) // 2`
+    would say sixth, and sixth-level spells need an intelligence of 12.
+    """
     from goldbox import levelup
     from goldbox.record import CharacterRecord
 
-    rec = CharacterRecord.blank()
-    rec.set("class_bits", 0x01)
-    rec.set("level_magic_user", 9)
-    assert levelup.learnable(rec, SSB, level=9) == []
+    def caster(level, intelligence):
+        rec = CharacterRecord.blank()
+        rec.set("class_bits", 0x01)
+        rec.set("level_magic_user", level)
+        rec.set("intelligence", intelligence)
+        rec.set_raw("abilities_second", bytes((9, intelligence, 9, 9, 9, 9, 0)))
+        return rec
 
-    # The control: the same record, read as Pool of Radiance, still offers.
-    assert levelup.learnable(rec, games.POOL_OF_RADIANCE, level=9) != []
+    assert levelup.learnable(caster(9, 18), SSB, level=9)
+    assert 110 not in levelup.learnable(caster(11, 18), SSB, level=11)
+    assert 110 in levelup.learnable(caster(12, 18), SSB, level=12)
+    assert 110 not in levelup.learnable(caster(12, 11), SSB, level=12)
+    # 109 and 110 are both DEATH SPELL and the menu's own mask offers only
+    # the second, so a sixth-level list is five spells and not six.
+    assert 109 not in levelup.learnable(caster(12, 18), SSB, level=12)
 
 
-def test_a_title_with_no_grant_table_falls_back_to_the_menu():
-    """Curse's magic-user trainer is UNKNOWN (#89) -- nothing here should
-    guess at it, so it keeps `learnable`'s menu shape, same as Pool of
-    Radiance."""
+def test_the_menus_castable_level_is_the_titles_own():
+    """`(level + 1) // 2` in the two earlier titles and a table here, and the
+    two disagree at magic-user 11, 13 and 15."""
     from goldbox import levelup
 
-    assert levelup._magic_user_grant_row(9, games.POOL_OF_RADIANCE) is None
-    assert levelup._magic_user_grant_row(
-        9, games.CURSE_OF_THE_AZURE_BONDS) is None
+    for level in (11, 13, 15):
+        assert levelup.menu_spell_level(level, 18, SSB) != (level + 1) // 2
+        assert levelup.menu_spell_level(
+            level, 18, games.POOL_OF_RADIANCE) == (level + 1) // 2
+        assert levelup.menu_spell_level(
+            level, 18, games.CURSE_OF_THE_AZURE_BONDS) == (level + 1) // 2
 
 
 def test_the_spellbook_mask_is_sixteen_bytes_and_gen_says_so():

@@ -100,19 +100,43 @@ class SpellTable:
     #: one of them not a cleric spell at all -- see `CURSE_OF_THE_AZURE_BONDS`
     #: below. CONFIRMED.
     not_granted: tuple[int, ...] = ()
-    #: `(level, ids)` pairs: the whole magic-user spell list a character of
-    #: that level is granted, where the trainer hands out a row instead of
-    #: building a menu to choose from. Empty for a title whose magic-user
-    #: learns by picking one spell -- `goldbox.levelup.learnable` is what tells
-    #: the two apart. See `SECRET_OF_THE_SILVER_BLADES` below. CONFIRMED,
-    #: read mechanically out of `GEN` by `tests/test_silverblades.py::
-    #: _grant_table(_gen(), 0xC9, range(5, 10))` (#89).
-    magic_user_grant: tuple[tuple[int, tuple[int, ...]], ...] = ()
-    #: Same shape, for a ranger. Empty below the level the title's trainer
-    #: first grants one -- Silver Blades gates its routine at `CPX #$08`, so
-    #: nothing before level 8. CONFIRMED the same way, `_grant_table(_gen(),
-    #: 0xD0, range(8, 16))`.
-    ranger_grant: tuple[tuple[int, tuple[int, ...]], ...] = ()
+    #: `(class level, spell level)` pairs, lowest first, each naming the class
+    #: level at which the trainer's **magic-user menu** starts offering that
+    #: spell level. Empty where the title computes it arithmetically, which is
+    #: Pool of Radiance's `GEN $215A` and Curse's `$2200`: both are
+    #: `LSR A / ADC #$00`, `(level + 1) // 2`. Silver Blades' `$1896` reads a
+    #: table instead and the two disagree at levels 11, 13 and 15. CONFIRMED,
+    #: `tools/trainerspells.py --check` (#89).
+    menu_spell_level: tuple[tuple[int, int], ...] = ()
+    #: `(class level, minimum intelligence)` pairs for the same menu: a
+    #: magic-user short of the score drops to the highest level it does reach.
+    #: The score is the **permanent** one at `0x066`, not the score in force.
+    #: Empty where the title asks nothing of intelligence, which is both of
+    #: the earlier ones. CONFIRMED, `GEN $18AA LDA $7C66 / CMP $1917,X`.
+    menu_intelligence: tuple[tuple[int, int], ...] = ()
+    #: `(cleric level, spell level)` pairs for the cleric grant. Empty where
+    #: the title's spell-slot tables already say it -- Pool of Radiance and
+    #: Curse, where `goldbox.spells.capacity` answers and is checked against
+    #: the game's own grant rows. Silver Blades has no slot tables read yet
+    #: and its grant table is where the answer is.
+    cleric_grant_level: tuple[tuple[int, int], ...] = ()
+    #: `(cleric level, minimum wisdom)`: from that level the grant asks for
+    #: the score and drops one row short of it otherwise. Silver Blades'
+    #: `GEN $0F39 LDA $7C67 / CMP #$11` is the only one in the family, and the
+    #: score is again the permanent one, at `0x067`.
+    cleric_grant_wisdom: tuple[int, int] = ()
+    #: `(paladin level, cleric level)` pairs: a paladin jumps into the
+    #: cleric's own grant loop, and this is the cleric level it enters at.
+    #: Curse fixes it (`$22FF LDX #$01`), so a paladin of 11 is still on the
+    #: cleric's first row and one pair covers the title; Silver Blades enters
+    #: at `paladin level - 8` (`$1BF6 SBC #$08 / TAX`), so it climbs a cleric
+    #: level a level. Empty for a title with no paladin.
+    paladin_cleric_level: tuple[tuple[int, int], ...] = ()
+    #: `(ranger level, (druid spell level, magic-user spell level))` pairs.
+    #: AD&D 1st edition's ranger exactly: druid spells at 8, magic-user spells
+    #: at 9, and in Silver Blades the second of each at 12 and 13. Empty for a
+    #: title with no ranger. CONFIRMED in both, `GEN $2305` and `$0EFC`.
+    ranger_spell_level: tuple[tuple[int, tuple[int, int]], ...] = ()
 
     @property
     def text_end(self) -> int | None:
@@ -187,10 +211,19 @@ _NOT_A_SPELL_CURSE = (57, 59, 60, 61, 62, 63, 64, 65, 95, 96, 97, 98, 99)
 #: * the ranger's, entered on record `0x0D0` and gated at `CPX #$08`, gives
 #:   77-80 at level 8 and 9-21 at level 9. A ranger getting druid spells at 8
 #:   and magic-user spells at 9 is AD&D 1st edition verbatim, and the shipped
-#:   PAINE holds precisely those four druid bits and nothing else;
+#:   PAINE holds precisely those four druid bits and nothing else. **Curse
+#:   does the same thing without a table**, at `$2305`: `LDX #$07` for the
+#:   ranger's class slot, `CMP #$08`, then immediate `ORA` constants for the
+#:   same ids. `ranger_spell_level` below is the pair of spell levels both
+#:   titles reach, which is why neither one's bytes are copied here;
 #: * the magic-user's, entered on record `0x0C9`, is a learn-list rather than a
-#:   whole level, because magic-users learn by roll. Its level-9 row is the
-#:   shipped MORGAINE's spellbook exactly, id for id.
+#:   whole level. Its level-9 row is the shipped MORGAINE's spellbook exactly,
+#:   id for id -- **which is what a *starting* spellbook looks like, and this
+#:   is one.** `$0F7C`'s only caller is the tail of `$0EF3`, reached from
+#:   character creation and from the dual-class routine, and the level-up
+#:   sequence at `$14FA` never touches it. The trainer's own magic-user step
+#:   is the menu at `$1896`, and Curse's `$167F` is the same routine misread
+#:   the same way (#89).
 #:
 #: All three are read mechanically out of `GEN` by
 #: `tests/test_silverblades.py::_grant_table`, which is Curse's extraction with
@@ -244,35 +277,14 @@ _GROUPS_SILVER_BLADES = (
 _NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99, 100,
                               101, 102, 103, 104, 105, 106, 107, 108)
 
-#: The magic-user's whole known list at each level 5-9, read mechanically out
-#: of `GEN` by `tests/test_silverblades.py::_grant_table(_gen(), 0xC9,
-#: range(5, 10))`. Level 9's 29 ids are the shipped MORGAINE's spellbook
-#: exactly, id for id -- the corroboration `test_the_magic_user_grant_is_
-#: morgaines_spellbook` makes. **CONFIRMED**, and specific to this title: it
-#: is a grant, not the menu `GEN $215A` builds in Pool of Radiance (#89).
-_MAGIC_USER_GRANT_SILVER_BLADES = (
-    (5, (11, 18, 19, 21)),
-    (6, (11, 12, 15, 18, 19, 21, 30, 31, 34, 47, 51, 54)),
-    (7, (11, 12, 14, 15, 16, 18, 19, 21, 29, 30, 31, 34, 35, 45, 47, 48, 51,
-         54, 81)),
-    (8, (9, 10, 11, 12, 14, 15, 16, 18, 19, 21, 29, 30, 31, 32, 34, 35, 45,
-         47, 48, 51, 54, 55, 81, 85)),
-    (9, (9, 10, 11, 12, 14, 15, 16, 18, 19, 21, 29, 30, 31, 32, 34, 35, 45,
-         47, 48, 50, 51, 52, 54, 55, 81, 82, 85, 88, 94)),
-)
-
-#: The ranger's whole known list, same extraction, `_grant_table(_gen(),
-#: 0xD0, range(8, 16))`. Gated at `CPX #$08`, so nothing before level 8; the
-#: shipped PAINE at level 8 holds exactly the level-8 row and nothing else.
-#: **CONFIRMED** (#89).
-_RANGER_GRANT_SILVER_BLADES = (
-    (8, (77, 78, 79, 80)),
-    (9, (9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 77, 78, 79, 80)),
-    (12, (9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 77, 78, 79, 80,
-          90, 96, 98)),
-    (13, (9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 32,
-          33, 34, 35, 77, 78, 79, 80, 90, 96, 98)),
-)
+#: The one id inside a group that the trainer's menu never offers. 109 and 110
+#: are both `DEATH SPELL` -- a duplicate the way 105-108 are all `TRIP` -- and
+#: `GEN $1896` builds its candidate mask out of `$1936`/`$1942`, whose
+#: sixth-level row is byte 13 mask `$C0` and byte 14 mask `$07`: ids 110-114
+#: and not 109. So a Silver Blades magic-user reaching level 12 is offered
+#: five sixth-level spells rather than six. CONFIRMED,
+#: `tools/trainerspells.py --check` (#89).
+_NOT_GRANTED_SILVER_BLADES = (109,)
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
 #: in each game's own code, not carried across from another one.**
@@ -362,6 +374,16 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     # `tests/test_cursetrainer.py::test_the_trainers_own_spell_level_table_
     # agrees_with_goldbox_spells` (#18, #223).
     not_granted=(36, 90, 100),
+    # `GEN $22F4` and `$2305`, the fourth and fifth steps of Curse's level-up
+    # sequence at `$205E`. The paladin's jumps into the cleric's own grant
+    # loop with `LDX #$01`, so it never moves off the cleric's first row
+    # however high a paladin climbs; the ranger's is two blocks of immediate
+    # `ORA` constants, `$2329` for the four first-level druid spells at 8 and
+    # `$2318` for the thirteen first-level magic-user spells at 9. Curse's
+    # ceilings are 11 for both, so neither table has anywhere further to go.
+    # CONFIRMED, `tools/trainerspells.py --check` (#89).
+    paladin_cleric_level=((9, 1),),
+    ranger_spell_level=((8, (1, 0)), (9, (1, 1))),
 )
 
 SECRET_OF_THE_SILVER_BLADES = SpellTable(
@@ -378,8 +400,15 @@ SECRET_OF_THE_SILVER_BLADES = SpellTable(
     groups=_GROUPS_SILVER_BLADES,
     not_a_spell=_NOT_A_SPELL_SILVER_BLADES,
     spellbook_size=16,
-    magic_user_grant=_MAGIC_USER_GRANT_SILVER_BLADES,
-    ranger_grant=_RANGER_GRANT_SILVER_BLADES,
+    not_granted=_NOT_GRANTED_SILVER_BLADES,
+    menu_spell_level=((1, 1), (3, 2), (5, 3), (7, 4), (9, 5), (12, 6),
+                      (14, 7)),
+    menu_intelligence=((12, 12), (14, 14)),
+    cleric_grant_level=((1, 1), (3, 2), (5, 3), (7, 4), (9, 5), (11, 6)),
+    cleric_grant_wisdom=(11, 17),
+    paladin_cleric_level=((9, 1), (10, 2), (11, 3), (12, 4), (13, 5),
+                         (14, 6), (15, 7)),
+    ranger_spell_level=((8, (1, 0)), (9, (1, 1)), (12, (2, 1)), (13, (2, 2))),
 )
 
 TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,

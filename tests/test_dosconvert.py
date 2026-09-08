@@ -32,7 +32,9 @@ from goldbox import (
     c64_codec,
     dos,
     dos_layout,
+    games,
     levels,
+    levelup,
     neutral,
     savegame,
     spells,
@@ -1574,15 +1576,20 @@ def test_a_dual_classed_character_carries_the_class_it_was():
 
 def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
     """The strongest single check on a shape this project did not measure
-    itself: `goldbox/spells.py`'s ranger grant table was read mechanically out of
-    the **C64** `GEN` file, and DOS Silver Blades' three shipped rangers hold
-    its level-8 row -- 77, 78, 79, 80 -- and nothing else.
+    itself: the ranger's grant was read mechanically out of the **C64** `GEN`
+    file, and DOS Silver Blades' three shipped rangers hold its level-8 row --
+    77, 78, 79, 80 -- and nothing else.
 
     Three of three, on a 117-byte spellbook 0x071 bytes into a 439-byte
     record neither port's table knew about the other.
+
+    It used to read a transcribed id list, `spells._RANGER_GRANT_SILVER_
+    BLADES`. That list is gone: `goldbox/levelup.py` derives a ranger's ids
+    from `SpellTable.groups` and a pair of spell levels now, so this asks the
+    derivation rather than a copy of the answer (#89).
     """
     shape = dos_layout.SHAPES_BY_SIZE[439]
-    want = set(dict(spells._RANGER_GRANT_SILVER_BLADES)[8])
+    want = set(levelup._ranger_spell_ids(8, games.SECRET_OF_THE_SILVER_BLADES))
     rangers = [c for c in _title_records(shape) if c.get("char_class") == 4]
     assert len(rangers) == 3
     for char in rangers:

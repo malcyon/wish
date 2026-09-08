@@ -584,3 +584,85 @@ which means none — and `$15A9` holds the limit a character with 18 in it
 reaches. A score of exactly 17 loses one level and anything below 17 loses two.
 So `LevelTables.racial_limit` returns the best case for Curse: a dwarf fighter
 is capped at 9 with strength 18, 8 with 17 and 7 with anything less.
+
+## Spells at the trainer, all three titles
+
+`tools/trainerspells.py --rows` prints every one of these off the player's own
+disks, and `--check` diffs them against `goldbox/levelup.py`. There are no
+mismatches over the three titles as of 2026-09-08 -- `#89 (Silver Blades' trainer grants spells from a table, and goldbox/levelup.py offers them from a menu)`.
+
+**A step is a trainer step only when the title's own sequence calls it**, and
+that is the whole reason this tool exists. Curse's `GEN $167F` and Silver
+Blades' `$0F7C` are grant loops of exactly the trainer's shape, indexed by
+`0x0C9`, the magic-user's level. Neither is called by a trainer. Both are the
+**starting spellbook**, reached only from character creation — Silver Blades
+zeroes the whole sixteen-byte mask at `$09D8` and grants the row eleven
+instructions later at `$09FA` — and from the dual-class routine, `$1FC3` and
+`$23DB`. Both were read as the trainer granting a row where Pool of Radiance
+offers a menu, Curse's in 2026-09-04 and Silver Blades' in 2026-09-08.
+
+| class | Pool of Radiance | Curse | Silver Blades |
+|---|---|---|---|
+| cleric | a spell level ORed in, `$20CF` | a table, `$1649` | a table, `$0F30` |
+| magic-user | a **menu**, `$215A` | a menu, `$2200` | a menu, `$1896` |
+| paladin | no such class | `$22F4` | `$1BEB` |
+| ranger | no such class | `$2305` | `$0EFC` |
+| thief, fighter | nothing | nothing | nothing |
+
+### The magic-user is offered a menu in all three
+
+The candidate list is every magic-user spell of a level at or below what the
+character may cast, that the character does not already know. What differs is
+where that spell level comes from.
+
+* **Pool of Radiance `$2163` and Curse `$2207` are the same two instructions**,
+  `LSR A / ADC #$00` — `(level + 1) // 2`.
+* **Silver Blades reads a table**, `$1926` indexed by the magic-user's level,
+  and the two disagree at levels 11, 13 and 15: the table gives 5, 6 and 7
+  where the arithmetic gives 6, 7 and 8.
+* **Silver Blades also asks for an intelligence**, `$18AA LDA $7C66 /
+  CMP $1917,X / BCS / DEX / BPL`. The row drops until the score is enough for
+  it: 12 for sixth-level spells and 14 for seventh. The score is the
+  **permanent** one at `0x066` rather than the score in force at `0x015`, so a
+  drained magic-user is offered what its rolled score allows.
+* **Silver Blades never offers id 109.** Its menu builds its candidates out of
+  a bitmask whose sixth-level row is byte 13 mask `$C0` and byte 14 mask `$07`
+  — ids 110-114. 109 and 110 are both `DEATH SPELL`, a duplicate the way
+  105-108 are all `TRIP`, and the game offers the second. So a Silver Blades
+  magic-user reaching 12 is offered five sixth-level spells, not six.
+
+Pool of Radiance walks ids 1-55 and skips every id its `$226B` table marks;
+Curse walks 0-94 and uses `$273F`'s 9 to mean "never"; Silver Blades walks
+0-117 and needs neither, because its candidates come from the mask rather
+than from a per-id table.
+
+### The ranger is AD&D 1st edition in both later titles
+
+Druid spells at 8 and magic-user spells at 9. Curse writes them as immediate
+constants — `$2329` ORs `$E0` into `$7C81` and `$01` into `$7C82`, ids 77-80,
+and `$2318` ORs `$FE` into `$7C79` and `$3F` into `$7C7A`, ids 9-21 — and
+Silver Blades writes them from a table at `$0F16`/`$0F1F`/`$0F20` which
+carries the same two rows and then adds second-level druid spells at 12 and
+second-level magic-user spells at 13. Curse's ranger ceiling is 11, so it
+never reaches either.
+
+`SpellTable.ranger_spell_level` is a pair of spell levels per ranger level,
+and the ids come out of `SpellTable.groups` — so neither title's bytes are
+copied into the program, and the two titles' rows are the same fact read
+twice rather than two transcriptions.
+
+### The paladin borrows the cleric's grant, at a row of its own
+
+Both later titles gate at level 9 and jump into the cleric's own loop.
+**Curse fixes the row**, `$22FF LDX #$01`, so a paladin of 11 still knows only
+the eight first-level cleric spells. **Silver Blades enters at
+`paladin level - 8`**, `$1BF6 SBC #$08 / TAX`, so it climbs a cleric level per
+paladin level and reaches fourth-level cleric spells at 15.
+
+### Silver Blades' cleric asks for a Wisdom
+
+`$0F35 CPX #$0B / BCC / LDA $7C67 / CMP #$11 / BCS / LDX #$0A`: from cleric 11
+the row drops back to the level-10 one unless the permanent Wisdom at `0x067`
+is 17 or better. The two ids behind it are 36 `ANIMATE DEAD` and 56 `RAISE
+DEAD`. Neither Pool of Radiance nor Curse has an equivalent — Curse's cleric
+ceiling is 10 and its level table has exactly ten rows.

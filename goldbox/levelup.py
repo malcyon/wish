@@ -35,6 +35,27 @@ and by eight different rules**, all of them read off its own `GEN` and `ECL65`
 | `spells_castable` | written (`$20BC`) | **never stored** | `stores_spell_capacity` |
 | a press raises | one class, the player's choice (`$1B8C`) | **every** ready class, `$14F8` walking slots 7 down to 0 | `trains_all_ready_classes`, `plan_all` |
 
+**Spells are a step per class, and the class decides the shape rather than the
+title.** All three titles put the magic-user in front of a menu and grant every
+other caster a whole spell level; what changes between titles is how far the
+grant reaches and, in Silver Blades, whether an ability score is asked for.
+Silver Blades' sequence is `$1527`, and this is the whole of it (#89):
+
+| class | Pool of Radiance | Curse | Silver Blades |
+|---|---|---|---|
+| cleric | a spell level ORed in (`$20CF`) | a table (`$1649`) | a table, and Wisdom 17 for the sixth level (`$0F30`) |
+| magic-user | a **menu**, `(level + 1) // 2` (`$215A`) | a menu, same rule (`$2200`) | a menu, its own table and an Intelligence gate (`$1896`) |
+| paladin | no such class | cleric spells from 9, stuck on the cleric's first row (`$22F4`) | cleric spells from 9, a cleric level a level (`$1BEB`) |
+| ranger | no such class | druid at 8, magic-user at 9 (`$2305`) | the same, and the second of each at 12 and 13 (`$0EFC`) |
+
+**The routine that looks like a trainer step and is not** is each later
+title's *starting* spellbook -- Curse's `$167F`, Silver Blades' `$0F7C`. Both
+are grant loops of the same shape, both are called only from character
+creation and from dual-classing, and both were read here as the trainer
+granting a row. `tools/trainerspells.py` refuses to call a routine a trainer
+step unless the title's own sequence `JSR`s it, and `--check` diffs every
+level of every class against this module.
+
 Five Curse level-ups were driven and diffed on 2026-09-05 and 75 derived
 fields and 5 spellbooks come back out of this module and `goldbox.levels` with
 no mismatches, and a dual-classed character was trained eight more times the
@@ -429,6 +450,56 @@ def roll_hit_points(class_name: str, class_count: int = 1,
     return rolled
 
 
+def _permanent(record, index: int, in_force: str) -> int:
+    """An ability score as the later trainers read it: the **permanent** copy.
+
+    `abilities_second` at `0x065` is STR, INT, WIS, DEX, CON, CHA, exceptional
+    STR as rolled, and it is what Curse and Silver Blades reach for wherever a
+    rule turns on a score that a drain must not be able to lower -- Silver
+    Blades' magic-user menu reads `$7C66` and its cleric grant `$7C67`, both in
+    that array and not in the pair at `0x014`.
+
+    **Falls back to the score in force when the array is all zeroes**, which is
+    every Pool of Radiance record, where the field is declared and never
+    written. No Pool of Radiance rule reads a score here, so the fallback never
+    decides anything in that title; it is there so a record built by hand or
+    converted from a port that does not carry the second array still answers
+    with a score rather than with 0.
+    """
+    try:
+        second = record.get_raw("abilities_second") or b""
+    except Exception:                     # a record shape without the field
+        second = b""
+    if len(second) > index and any(second):
+        return second[index]
+    return record.get(in_force) or 0
+
+
+def menu_spell_level(level: int, intelligence: int, game=None) -> int:
+    """The highest magic-user spell level the trainer's menu offers.
+
+    `(level + 1) // 2` where the title computes it -- Pool of Radiance's
+    `GEN $2163 LSR A / ADC #$00` and Curse's `$2207`, the same two
+    instructions -- and `SpellTable.menu_spell_level` where it reads a table.
+
+    **The intelligence walk is Silver Blades' alone.** `$18AD CMP $1917,X /
+    BCS / DEX / BPL` drops the row until the score is enough for it, so a
+    magic-user of 14 with an intelligence of 12 is offered a level-13
+    magic-user's list. Every entry below level 12 asks for nothing, so the
+    walk cannot run off the bottom.
+    """
+    table = spells.for_game(game)
+    if not table.menu_spell_level:
+        return (level + 1) // 2
+    while level >= 1:
+        want = _row_at(table.menu_intelligence, level, floor=1)
+        if want is None or intelligence >= want:
+            break
+        level -= 1
+    row = _row_at(table.menu_spell_level, level, floor=1)
+    return row or 0
+
+
 def learnable(record, game=None, level: int | None = None) -> list[int]:
     """The magic-user spells the trainer would offer, in the order it offers.
 
@@ -450,20 +521,29 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
     offered second-level spells at that same training. Defaults to what the
     record already holds, for a caller asking what is on offer now.
 
-    **Not every title builds a menu at all.** Silver Blades' `0x0C9` routine
-    ORs a whole row into the mask instead of listing choices -- see
-    `_magic_user_grant_row`, which `plan` calls for the actual write -- so its
-    trainer offers nothing to pick and this returns empty rather than Pool of
-    Radiance's rule applied to the wrong list (#89). Curse is left alone: its
-    `GEN` carries no grant loop for `0x0C9` at all, so whether it menus or
-    grants is UNKNOWN, and this keeps treating it as a menu rather than guess.
+    **All three titles build a menu, and the third one nearly did not.**
+    Silver Blades' `GEN $0F7C` ORs a whole magic-user list in from a table,
+    and this module read that as its trainer granting a row where Pool of
+    Radiance offers a choice. It is the *starting* spellbook: its only caller
+    is the tail of `$0EF3`, reached from character creation -- eleven bytes
+    after `$09D8` zeroes the whole sixteen-byte mask -- and from `$1FC3`, the
+    dual-class routine. The trainer's own step is `$1896`, in the sequence at
+    `$152A`, and it is a menu (#89). Curse had exactly the same routine read
+    the same wrong way, at `$167F`, and its trainer is `$2200`.
+
+    **What differs between the three is how many spell levels are on offer**,
+    and Silver Blades is the odd one: `SpellTable.menu_spell_level` is its own
+    table rather than `(level + 1) // 2`, and the two disagree at magic-user
+    11, 13 and 15. It also asks for an intelligence of 12 to reach sixth-level
+    spells and 14 for seventh (`SpellTable.menu_intelligence`, `$18AA LDA
+    $7C66 / CMP $1917,X`), which is the **permanent** score at `0x066` rather
+    than the score in force.
     """
     if level is None:
         level = class_level(record, "magic-user")
-    if spells.for_game(game).magic_user_grant:
-        return []
-    castable = (level + 1) // 2
     table = spells.for_game(game)
+    castable = menu_spell_level(level, _permanent(record, 1, "intelligence"),
+                                game)
     known = set(spells.spells_known(bytes(record), game))
     out = []
     for spell_id in range(1, table.last_spellbook_spell + 1):
@@ -500,7 +580,8 @@ def _castable_levels(cleric_level: int, game=None) -> int:
     return castable
 
 
-def _cleric_spell_ids(cleric_level: int, game=None) -> list[int]:
+def _cleric_spell_ids(cleric_level: int, game=None,
+                      wisdom: int = 0) -> list[int]:
     """Every cleric spell a cleric of that level is granted.
 
     `GEN $20CF` ORs whole spell levels in, so on Pool of Radiance this is
@@ -511,58 +592,105 @@ def _cleric_spell_ids(cleric_level: int, game=None) -> list[int]:
     table id for id at every level it reaches. `SpellTable.not_granted` also
     carries the magic-user ANIMATE DEAD, id 90, which never reaches this
     function because it is not a cleric spell (#223).
+
+    **How far the grant reaches is the title's**, and two titles answer it two
+    ways. Pool of Radiance and Curse are read out of their spell-slot tables,
+    through `_castable_levels`. Silver Blades has none read, and its grant
+    table is the answer instead -- `SpellTable.cleric_grant_level`, `GEN
+    $0F30`. That title is also the one that asks for a score: from cleric 11
+    the row drops back to the level-10 one unless the **permanent** wisdom at
+    `0x067` is 17 or better (`$0F39 LDA $7C67 / CMP #$11`), which is what
+    puts 36 ANIMATE DEAD and 56 RAISE DEAD out of most clerics' reach (#89).
     """
     table = spells.for_game(game)
-    castable = _castable_levels(cleric_level, game)
-    out = []
+    if table.cleric_grant_level:
+        want = table.cleric_grant_wisdom
+        if want and cleric_level >= want[0] and wisdom < want[1]:
+            cleric_level = want[0] - 1
+        castable = _row_at(table.cleric_grant_level, cleric_level) or 0
+    else:
+        castable = _castable_levels(cleric_level, game)
+    return sorted(_by_class_and_level("cleric", castable, game))
+
+
+def _row_at(table, level: int, floor: int = 0):
+    """The row for the highest key at or below `level`, or None.
+
+    A per-title table only records the levels where the row actually changes,
+    so a level between two entries gets the lower one -- the trainer's own
+    routines do the same by indexing a monotonic array rather than by keeping
+    one row per level. None below `floor`, and None when the table starts
+    above `level`, which is the ordinary answer for a class that gets nothing
+    yet rather than an error.
+    """
+    if level < floor:
+        return None
+    keys = [k for k, _ in table if k <= level]
+    if not keys:
+        return None
+    return dict(table)[max(keys)]
+
+
+def _by_class_and_level(who: str, spell_level: int, game=None) -> set[int]:
+    """Every id of one class at or below one spell level, minus `not_granted`.
+
+    The grant routines all OR whole spell levels in, so what a title's tables
+    say a level contains is `SpellTable.groups` -- the same tables `learnable`
+    filters a menu through, and the reason this module holds no lists of spell
+    ids of its own.
+    """
+    table = spells.for_game(game)
+    if spell_level < 1:
+        return set()
+    out = set()
     for spell_id in range(1, table.last_spellbook_spell + 1):
         if spell_id in table.not_granted:
             continue
         group = spells.spell_group(spell_id, game)
-        if group and group[0] == "cleric" and group[1] <= castable:
-            out.append(spell_id)
+        if group and group[0] == who and group[1] <= spell_level:
+            out.add(spell_id)
     return out
 
 
-def _row_at(table: tuple[tuple[int, tuple[int, ...]], ...],
-           level: int, floor: int) -> tuple[int, ...] | None:
-    """The row for the highest key at or below `level`, or None below `floor`.
-
-    A grant table only records the levels where the row actually changes, so
-    a level between two entries gets the lower one -- the trainer's own
-    routine does the same by indexing a monotonic array rather than one row
-    per level.
-    """
-    if level < floor:
-        return None
-    rows = dict(table)
-    idx = max(k for k in rows if k <= level)
-    return rows[idx]
-
-
-def _magic_user_grant_row(level: int, game=None) -> tuple[int, ...] | None:
-    """The whole spell list Silver Blades' `0x0C9` routine ORs in at `level`,
-    or None for a title with no grant table of its own -- see
-    `SpellTable.magic_user_grant`.
-
-    `GEN` floors its own index at 5 and caps it at 9, so a level outside that
-    still reads the nearest end of it (#89).
-    """
-    table = spells.for_game(game).magic_user_grant
-    if not table:
-        return None
-    return _row_at(table, min(max(level, 5), 9), floor=5)
-
-
 def _ranger_spell_ids(level: int, game=None) -> list[int]:
-    """Every spell a ranger of `level` is granted by Silver Blades' `0x0D0`
-    routine. Empty for a title with no ranger grant table, and below the
-    level the gate `CPX #$08` first lets the routine run (#89)."""
-    table = spells.for_game(game).ranger_grant
-    if not table:
+    """Every spell a ranger of `level` has been granted, in both titles.
+
+    AD&D 1st edition's ranger, and each title reaches as far as its own
+    ceiling lets it: **druid spells at 8 and magic-user spells at 9** in Curse
+    (`GEN $2305`, in the level-up sequence at `$2067`) and in Silver Blades
+    (`$0EFC`, at `$1530`), then second-level druid spells at 12 and
+    second-level magic-user spells at 13, which only Silver Blades' ceiling of
+    15 can reach. Empty for Pool of Radiance, which has no ranger at all.
+
+    Curse's is two blocks of immediate constants and Silver Blades' is a
+    table, and they hand out the same ids; `SpellTable.ranger_spell_level` is
+    the pair of spell levels rather than either title's bytes (#89).
+    """
+    row = _row_at(spells.for_game(game).ranger_spell_level, level)
+    if row is None:
         return []
-    row = _row_at(table, min(level, max(k for k, _ in table)), floor=table[0][0])
-    return sorted(row or ())
+    druid, magic_user = row
+    return sorted(_by_class_and_level("druid", druid, game)
+                  | _by_class_and_level("magic-user", magic_user, game))
+
+
+def _paladin_spell_ids(level: int, game=None, wisdom: int = 0) -> list[int]:
+    """Every cleric spell a paladin of `level` has been granted.
+
+    Both later titles give a paladin the cleric's own grant from level 9, and
+    they differ in which row: **Curse fixes it at the cleric's first**
+    (`GEN $22FF LDX #$01`, so a paladin of 11 still knows only ids 1-8), and
+    **Silver Blades moves it up one row a level** (`$1BF6 SBC #$08 / TAX`, so
+    a paladin of 15 reaches fourth-level cleric spells). Empty for Pool of
+    Radiance, which has no paladin (#89).
+
+    `wisdom` is passed on to the cleric's own rule, because the row a paladin
+    borrows is reached through the same clamp.
+    """
+    row = _row_at(spells.for_game(game).paladin_cleric_level, level)
+    if row is None:
+        return []
+    return _cleric_spell_ids(row, game, wisdom)
 
 
 def _spells_castable(record, class_levels: dict[str, int],
@@ -872,30 +1000,36 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
         fields["spells_castable"] = bytes(
             _spells_castable(record, class_levels, game))
 
+    # **Every spellcasting class the character holds is granted at every
+    # press, and the classes are separate steps in the sequence.** Curse runs
+    # `$205E` cleric, `$2200` magic-user, `$22F4` paladin, `$2305` ranger;
+    # Silver Blades runs `$1527`, `$152A`, `$152D`, `$1BEB`'s paladin and
+    # `$1530`'s ranger. So a paladin who has just made 9 gets the cleric's
+    # first row at the same visit that raised his fighter side, and none of
+    # these is conditional on which class the player pressed for.
     known = set(spells.spells_known(bytes(record), game))
     learned = None
+    wisdom = _permanent(record, 2, "wisdom")
     if class_levels.get("cleric"):
-        known |= set(_cleric_spell_ids(class_levels["cleric"], game))
+        known |= set(_cleric_spell_ids(class_levels["cleric"], game, wisdom))
+    if class_levels.get("paladin"):
+        known |= set(_paladin_spell_ids(class_levels["paladin"], game, wisdom))
     if class_levels.get("ranger"):
         known |= set(_ranger_spell_ids(class_levels["ranger"], game))
     if class_name == "magic-user":
-        grant = _magic_user_grant_row(to_level, game)
-        if grant is not None:
-            known |= set(grant)      # a row, not a choice -- nothing to ask
+        offered = learnable(record, game, level=to_level)
+        if offered:
+            if learn is None:
+                raise CannotLevel(
+                    "a magic-user picks one new spell at the trainer and "
+                    "nothing derives which; pass learn=<spell id>")
+            if learn not in offered:
+                raise CannotLevel(f"spell {learn} is not one the trainer "
+                                  f"would offer")
+            known.add(learn)
+            learned = learn
         else:
-            offered = learnable(record, game, level=to_level)
-            if offered:
-                if learn is None:
-                    raise CannotLevel(
-                        "a magic-user picks one new spell at the trainer and "
-                        "nothing derives which; pass learn=<spell id>")
-                if learn not in offered:
-                    raise CannotLevel(f"spell {learn} is not one the trainer "
-                                      f"would offer")
-                known.add(learn)
-                learned = learn
-            else:
-                notes.append("no magic-user spell was left to learn")
+            notes.append("no magic-user spell was left to learn")
     # As wide as the title's mask: seven bytes on Pool of Radiance, thirteen on
     # Curse. Compared against the same span of the record, so a level-up that
     # changes nothing above id 55 still reports no change.

@@ -595,6 +595,12 @@ def test_levelling_a_title_with_an_unread_trainer_refuses():
     assert levels.SECRET_OF_THE_SILVER_BLADES.title in str(exc.value)
 
     # And the same rule read from the other end: nothing is claimed about how
-    # many spells a Silver Blades cleric may memorise either.
+    # many spells a Silver Blades cleric may **memorise**, because its
+    # spell-slot tables are still unread.
     assert spells.capacity(0x02, 9, 18, SSB_KEY) == {}
-    assert levelup._cleric_spell_ids(9, SSB_KEY) == []
+    # What it is *granted* is a different table and that one has been read --
+    # `GEN $0F30`, `SpellTable.cleric_grant_level` (#89). This used to assert
+    # an empty list, because the grant was derived from the slot tables that
+    # do not exist here.
+    assert levelup._cleric_spell_ids(9, SSB_KEY, 18)[:8] == [1, 2, 3, 4, 5,
+                                                             6, 7, 8]
