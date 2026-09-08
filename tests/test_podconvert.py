@@ -8,7 +8,7 @@ The title has no C64 port and never will, so this is not `#192`'s and
 needed first was a route between the 510-byte DOS record and the neutral
 record, which refused this title by name until 2026-09-08.
 
-Three kinds of test, in order of what they are worth.
+Three kinds of test, hardest evidence first.
 
 * **The round trip** over every Pools of Darkness record on this machine --
   read into the neutral record and written back, byte for byte outside the

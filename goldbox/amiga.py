@@ -703,12 +703,12 @@ DROPPED: tuple[tuple[str, str], ...] = (
     #
     # The rows stay, because `field_disposition` is the whole contract and a
     # neutral field this writer takes nothing from has to be named whether or
-    # not a Pools of Darkness source could ever carry it.  What changed is
-    # what they say.
+    # not a Pools of Darkness source could hold one.  What changed is what
+    # they say.
     ("portrait_head", "Pools of Darkness has no character-sheet portrait on "
                       "either of its ports -- neither ships the art and its "
                       "own DOS record has no such field -- so a source of "
-                      "this title never carries one"),
+                      "this title never holds one"),
     ("portrait_body", "see `portrait_head`: the title draws no sheet face"),
     ("inventory", "the appended item region past 484 bytes is undecoded, and "
                   "a Pool of Radiance item id and a Pools of Darkness one are "
@@ -1151,7 +1151,12 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         keep = [n for n in named
                 if str(n).strip().lower() not in left_behind]
         if keep:
-            for gone in left_behind:
+            # Only a class the mask actually offered. `neutral_class_bits_from`
+            # unions the former class in first, so on every record measured
+            # `left_behind` is a subset of `named` -- but an edited record
+            # whose `class_bits` has lost that bit would otherwise be told a
+            # class was left behind that was never on the sheet.
+            for gone in (c for c in left_behind if c in named):
                 rep.warnings.append(
                     f"Class {gone} was left behind at level {was[gone]}: "
                     f"Pools of Darkness' record on this port keeps the class "

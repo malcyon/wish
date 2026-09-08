@@ -9,7 +9,7 @@ anywhere in `goldbox/`, `editor/` or `tools/`, so the Amiga end of
 had one direction of two. `goldbox.amiga.pod_to_neutral` is the other, and
 this is its proof.
 
-What is tested, in order of what it is worth.
+What is tested, hardest evidence first.
 
 * **The two ports' tables are the same tables.** Race, class code, class-level
   slots and alignment all index identically on the Amiga `.pc` and the DOS

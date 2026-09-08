@@ -195,13 +195,23 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
     dest = dest.expanduser()
     if dest.exists():
         raise FileExistsError(f"{dest} exists; archives are never overwritten")
-    resolved = dest.resolve() if dest.is_absolute() else (
-        pathlib.Path.cwd() / dest).resolve()
-    if REPO == resolved or REPO in resolved.parents:
-        raise ValueError(
-            f"{dest} is inside {REPO}; a copy of the specimen tree does not "
-            "go in the repository, work/ included -- it holds the game's data "
-            "and its whole purpose is to outlive this working tree")
+    absolute = dest if dest.is_absolute() else pathlib.Path.cwd() / dest
+    # Both the path as given and the path with every symlink followed, against
+    # this checkout and against its own resolved self. A detached worktree
+    # symlinks `work/` back to the main tree (`.claude/rules/commits.md`), so
+    # resolving alone walks the destination out of the worktree and into the
+    # repository the check was meant to catch -- where it then wrote an
+    # archive of a temporary tree, found on 2026-09-08 by the whole-suite run
+    # this rule exists for.
+    homes = {REPO, REPO.resolve()}
+    for candidate in (absolute, absolute.resolve()):
+        if any(home == candidate or home in candidate.parents
+               for home in homes):
+            raise ValueError(
+                f"{dest} is inside {REPO}; a copy of the specimen tree does "
+                "not go in the repository, work/ included -- it holds the "
+                "game's data and its whole purpose is to outlive this "
+                "working tree")
     problems = specimens.check_specimens(root)
     if problems:
         raise ValueError("the tree does not match its manifests, so an "

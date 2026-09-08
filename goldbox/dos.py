@@ -2410,8 +2410,8 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #: statement rather than a claim they are safe: a conversion is between two
 #: ports of one title, the only other Pools of Darkness port is the Amiga,
 #: and `goldbox.amiga.PodCharacter` reads only platinum, gems and jewelry
-#: too.  A source that carried gold into this title would have to be a
-#: fourth port nobody has.
+#: too.  A source holding gold in this title would have to be a fourth port
+#: nobody has.
 _ABSENT_WHY: dict[str, str] = {
     "copper": "keeps only platinum, gems and jewelry -- the later engine "
               "dropped the four lighter coins, and the record has no bytes "

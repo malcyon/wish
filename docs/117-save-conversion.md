@@ -2017,6 +2017,8 @@ graph LR
   levelup --> spells
   memory --> layout
   neutral --> layout
+  portraits -.->|deferred| amiga_adf
+  portraits -.->|deferred| amiga_dax
   portraits -.->|deferred| d64
   portraits --> dos_savegame
   portraits -.->|deferred| games

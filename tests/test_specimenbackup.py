@@ -293,3 +293,25 @@ def test_a_missing_archive_is_a_message_rather_than_a_traceback(
                               root=str(tree))
     assert specimenbackup.cmd_verify(args) == 1
     assert "nothing.tar.gz" in capsys.readouterr().err
+
+
+def test_a_symlink_out_of_the_repository_is_still_the_repository(
+        tmp_path, tree, monkeypatch):
+    """A `work/` that is a symlink must not walk the check out of the tree.
+
+    `.claude/rules/commits.md` has the whole suite run in a detached worktree
+    with `work/` symlinked back to the main tree, because `work/` is
+    gitignored and a bare checkout has none. Resolving the destination then
+    lands it in the *other* checkout, so a check that compared only the
+    resolved path against this one did not fire -- and the run wrote an
+    archive of a temporary tree into the real `work/`, which is where this
+    was found on 2026-09-08.
+    """
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    monkeypatch.setattr(specimenbackup, "REPO", tmp_path / "checkout")
+    (tmp_path / "checkout" / "work").mkdir(parents=True)
+    link = tmp_path / "checkout" / "work" / "out"
+    link.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="inside"):
+        specimenbackup.archive(link / "copy.tar.gz", tree)
