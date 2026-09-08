@@ -129,6 +129,83 @@ def load_tools_module(name: str):
 # still one variable away.
 os.environ["QT_QPA_PLATFORM"] = os.environ.get("WISH_TEST_PLATFORM", "offscreen")
 
+# Captured here, at `conftest.py`'s own import -- which pytest always runs
+# before it imports a single test module in this directory, in every xdist
+# worker -- so this is the value from before any test file has had a chance
+# to import a tool that pokes it. `#428 (Ten automapper note tests fail under
+# parallel load but pass alone, so a green suite depends on how busy the
+# machine is)`: `tools/livecheck.py` used to rebind `automap.state._data_dir`
+# at *its own* import time, so `tests/test_livecheck.py` importing it at
+# module level poisoned the value before the first test in that worker had
+# even started -- a per-test "was it changed during this test" snapshot would
+# never have seen that, since the corruption was already there when the first
+# such snapshot was taken. Comparing every test's end state against this one
+# fixed point catches that shape too, not only a test that rebinds and
+# forgets to clean up after itself.
+from automap import state as _automap_state_for_guard  # noqa: E402
+
+_ORIGINAL_AUTOMAP_STATE_DATA_DIR = _automap_state_for_guard._data_dir
+del _automap_state_for_guard
+
+
+@pytest.fixture(autouse=True)
+def _guard_automap_state_data_dir():
+    """Fail the test after which `automap.state._data_dir` is not itself.
+
+    `tools/livecheck.py` used to rebind it at import time --
+    `mapstate._data_dir = lambda: RUN_DATA`, module level -- so
+    `tests/test_livecheck.py` importing that module at *its* module level
+    carried the rebinding into every `pytest -n auto` worker before a single
+    test ran. From then on every note test in that worker read and wrote one
+    shared directory instead of its own `tmp_path`, and several failed by
+    seeing each other's notes -- ten of them, some nights, depending on which
+    files a worker happened to collect. `#428 (Ten automapper note tests fail
+    under parallel load but pass alone, so a green suite depends on how busy
+    the machine is)` has the whole account; the fix there is `bf29c5f`. This
+    is the guard that makes the *class* of bug impossible rather than fixed
+    once: any future tool that rebinds this the same way gets caught the
+    first time a test run collects it, not three investigations later.
+
+    Checked against `_ORIGINAL_AUTOMAP_STATE_DATA_DIR`, captured once at this
+    file's own import, rather than against a snapshot taken at the start of
+    *this* test -- an import-time poison is already in place before the first
+    test's snapshot would be taken, so a before/after-this-test comparison
+    would never see it. Every test collected after the poisoning worker-wide
+    would then be flagged, which is the correct, loud outcome: it says the
+    contamination reaches every one of them, not just the first.
+
+    `monkeypatch.setattr` is not what this catches -- it restores itself, and
+    the one legitimate use (`tests/test_livecheck.py`) is written that way.
+    What this catches is a raw assignment or an import-time rebind that
+    outlives the test that (knowingly or not) caused it.
+
+    Defined here, before `_isolate_config` and every other autouse fixture in
+    this file, so its teardown -- the code after `yield` -- runs *last*:
+    fixture teardown unwinds in the reverse of setup order, so a fixture
+    requesting `monkeypatch` still tears down before this one does, and by
+    the time this checks, any `monkeypatch.setattr` a test made has already
+    been undone. What is left rebound at that point was never going through
+    `monkeypatch`.
+
+    Restoring the value protects every test collected after this one, in
+    this worker, whether or not this test's own failure is investigated
+    right away.
+    """
+    yield
+    from automap import state as mapstate
+
+    current = mapstate._data_dir
+    if current is not _ORIGINAL_AUTOMAP_STATE_DATA_DIR:
+        mapstate._data_dir = _ORIGINAL_AUTOMAP_STATE_DATA_DIR
+        pytest.fail(
+            "automap.state._data_dir is rebound to "
+            f"{current!r} instead of the original {_ORIGINAL_AUTOMAP_STATE_DATA_DIR!r} "
+            "-- restored here so later tests in this worker are not "
+            "contaminated. Something in this worker rebound it outside a "
+            "`monkeypatch.setattr` (which would already have restored it by "
+            "now), most likely a module imported at collection time. See "
+            "#428.")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _one_qapplication():
