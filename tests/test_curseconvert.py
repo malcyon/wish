@@ -33,7 +33,16 @@ import pathlib
 import gamedata
 import pytest
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame, world_state
+from goldbox import (
+    c64_codec,
+    c64_save,
+    dos,
+    dos_layout,
+    games,
+    neutral,
+    savegame,
+    world_state,
+)
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 
@@ -234,18 +243,22 @@ def test_the_conversion_no_longer_refuses_curse():
     in the running game and read the sheet, so step 4 puts Curse on
     `CONVERTS` for real.
 
-    **This used to end by asserting Silver Blades was still refused.** It was
-    proven the same way on 2026-09-05 -- `#193 (Convert a Secret of the
-    Silver Blades DOS save into a C64 one, which the importer refuses
-    today)` -- and joined `CONVERTS` with it, so the remaining title that
-    never converts is Pools of Darkness, which has no C64 port at all."""
+    **This used to end by asserting Silver Blades was still refused, and
+    then Pools of Darkness.** Silver Blades was proven the same way on
+    2026-09-05 (`#193 (Convert a Secret of the Silver Blades DOS save into a
+    C64 one, which the importer refuses today)`); Pools of Darkness joined
+    on 2026-09-08 for its Amiga pairing rather than for a C64 one it will
+    never have (`#194 (Import and export a Pools of Darkness save between
+    DOS and the Amiga)`). So **every DOS shape this project reads now
+    converts**, and what this asserts is that -- with a title the DOS reader
+    has no shape for at all standing in for the refusal."""
     assert CURSE in dos.CONVERTS
     dos.to_neutral(dos.DosCharacter(curse_record()))     # does not raise
-    pod = next(s for s in dos_layout.SHAPES
-               if s.key == "pools-of-darkness")
-    assert pod not in dos.CONVERTS
-    with pytest.raises(dos.WrongTitleError):
-        dos.to_neutral(dos.DosCharacter(bytes(pod.record_size)))
+    assert [s.key for s in dos.CONVERTS] == \
+        [s.key for s in dos_layout.SHAPES]
+    with pytest.raises(dos_layout.DosShapeError):
+        dos.write_shape(neutral.NeutralCharacter(
+            "test", source="made up", game="champions-of-krynn"))
 
 
 def test_a_curse_address_is_not_a_variable_address():

@@ -669,8 +669,11 @@ def _unsourced_offsets() -> set[int]:
     # quickfight, and every DOS record read here supplies all four -- so it
     # round-trips unmasked, and masking it would hide a real regression
     # (#235, docs/169-dos-combat-side.md).
+    #
+    # `unnamed_1e0` is Pools of Darkness' and no other title declares it, so
+    # it has no Pool of Radiance offset to mask (#194).
     for name, _, _, _ in dos.WRITE_DEFAULTS:
-        if name == "field_10c_10f":
+        if name == "field_10c_10f" or name not in dos_layout.FIELDS_BY_NAME:
             continue
         f = dos_layout.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))

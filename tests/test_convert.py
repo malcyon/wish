@@ -339,9 +339,15 @@ def test_every_converts_entry_has_a_dos_to_c64_name():
     registry must fail loudly on -- `#52`'s plan calls this out by name --
     and `DIRECTIONS` already proves it by having built without raising, but
     this pins the table directly against the source of truth."""
-    for shape in dos.CONVERTS:
+    for shape in convert.C64_PAIRED:
         assert shape.key in convert.DOS_TO_C64_NAMES, (
             f"{shape.title} converts but names no .D64 file")
+    # `dos.CONVERTS` and `C64_PAIRED` differ by exactly the titles with no
+    # C64 port, and there is one: Pools of Darkness reads and writes for its
+    # **Amiga** pairing (`#194 (Import and export a Pools of Darkness save
+    # between DOS and the Amiga)`) and has no `.D64` to name, ever.
+    assert [s.key for s in dos.CONVERTS if s not in convert.C64_PAIRED] == \
+        [dos_layout.POOLS_OF_DARKNESS.key]
 
 
 def test_a_converts_entry_missing_its_name_fails_at_construction():
@@ -1465,7 +1471,15 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: the stack could not be rebuilt to reach it. Neither existed before:
     #: a fast travel used to enter `NEWECL` at its own tail and never handed
     #: control back to a live script the player could be asked anything by.
-    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 1, "goldbox.dos": 1,
+    #: `goldbox.amiga` went from one to two on 2026-09-08: `pod_to_neutral`
+    #: is the first thing that reads an Amiga Pools of Darkness `.pc` into
+    #: the neutral record (`#194 (Import and export a Pools of Darkness save
+    #: between DOS and the Amiga)`), and 37 of the 75 neutral fields have no
+    #: located home in that record yet -- the spellbook, the item region, the
+    #: effect region and the combat tail among them. One sentence naming that
+    #: is what keeps the loss out of silence; thirty-seven written by an
+    #: agent would be the opposite of Donald wording what a player reads.
+    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 2, "goldbox.dos": 1,
                "automap.actions": 5}
 
     found: dict[str, list[str]] = {}

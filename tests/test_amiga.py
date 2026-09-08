@@ -198,11 +198,45 @@ def test_the_writer_refuses_an_index_no_table_has():
 # -- the player's own files, when they have them -------------------------
 
 def pc_files() -> list[pathlib.Path]:
-    """`gamedisks.toml`'s `pod-saves` entry (#212) -- no default candidates:
-    no exported Pools of Darkness `.pc` file exists on any machine yet."""
+    """`gamedisks.toml`'s `pod-saves` entry (#212), or the disks.
+
+    That entry has no default candidates and says no exported Pools of
+    Darkness `.pc` file exists on any machine.  **True of an exported one,
+    and it left the twelve the game itself ships unused**: they are in the
+    `Save` drawer of Amiga Pools of Darkness disk 3, and ten tests here
+    skipped on the machine that holds every byte of them -- the shape of
+    `#211`, and the same answer `amiga_por_records` already got below.
+
+    `$POD_SAVES` still wins, so a run that wants a hand-picked corpus can
+    say so.
+    """
     from tools import gamedisks
-    return sorted(p for root in gamedisks.candidates("pod-saves")
-                 for p in root.rglob("*.pc") if p.is_file())
+    found = sorted(p for root in gamedisks.candidates("pod-saves")
+                   for p in root.rglob("*.pc") if p.is_file())
+    return found or list(_extracted_pc_records())
+
+
+@functools.lru_cache(maxsize=1)
+def _extracted_pc_records() -> tuple[pathlib.Path, ...]:
+    """The `.pc` files inside the Amiga disk images, unpacked to a temporary
+    directory that lives as long as the test process.
+
+    `test_podamiga.pc_bytes` is the one reader of the disks, so the two
+    modules cannot disagree about which files count.
+    """
+    from test_podamiga import pc_bytes
+
+    found = pc_bytes()
+    if not found:
+        return ()
+    tmp = tempfile.TemporaryDirectory(prefix="pod-pc-")
+    _KEEP.append(tmp)                       # deleted when the process exits
+    out = []
+    for name, data in sorted(found.items()):
+        path = pathlib.Path(tmp.name) / name
+        path.write_bytes(data)
+        out.append(path)
+    return tuple(out)
 
 
 def real_records() -> list[pathlib.Path]:
@@ -1191,7 +1225,12 @@ def por_write_mask() -> set[int]:
         mask |= set(range(first, first + size))
 
     def field(name: str) -> set[int]:
-        f = dos_layout.FIELDS_BY_NAME[name]
+        # A name only a later title declares has no Pool of Radiance offset
+        # to mask -- `unnamed_1a4` and `unnamed_1e0` are Pools of Darkness'
+        # (#194) -- and this mask is over the 285-byte record.
+        f = dos_layout.FIELDS_BY_NAME.get(name)
+        if f is None:
+            return set()
         return {amiga_por_offset(o)
                 for o in range(f.offset, f.offset + f.size)
                 if o not in AMIGA_POR_UNPLACED}

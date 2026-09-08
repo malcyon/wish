@@ -80,6 +80,7 @@ from .dos_layout import (
     ITEM_SIZE,
     LAYOUTS,
     POOL_OF_RADIANCE,
+    POOLS_OF_DARKNESS,
     RECORD_SIZE,
     SECRET_OF_THE_SILVER_BLADES,
     SHAPES,
@@ -478,6 +479,27 @@ INNATE_EFFECTS_CURSE = INNATE_EFFECTS | {8, 134}
 #: is not acted on here.
 INNATE_EFFECTS_SILVER_BLADES = INNATE_EFFECTS | {8, 105}
 
+#: Pools of Darkness' own set, and the three ids its `.EFX` files carry.
+#: **Six of the twelve shipped records have an effect file at all, each one a
+#: single nine-byte record reading `<id> 00 00 FF 00` followed by a NULL next
+#: pointer**, which is :data:`INNATE_PAYLOAD` exactly:
+#:
+#:   * **8** -- Guy de Valois and DEMELTINA, the two paladins, the same id
+#:     `INNATE_EFFECTS_CURSE` and `INNATE_EFFECTS_SILVER_BLADES` already give
+#:     the paladin;
+#:   * **105** -- CLARISSA, ARGORA and RWELLYN, rangers 13, and PAINE, whose
+#:     own class mask says fighter and ranger. Silver Blades' ranger id;
+#:   * **95** -- ORATISI NOMOON, the party's one elf, which is the elf's seed
+#:     in `RACE_COMBAT_EFFECTS_SILVER_BLADES`.
+#:
+#: PROBABLE rather than CONFIRMED, and the sample is what limits it: twelve
+#: shipped records with no chain of custody, one elf and one half-elf between
+#: them, and no Pools of Darkness character this project watched being
+#: created.  The experiment that would settle it is `#84`'s, run against this
+#: title: roll one character of each race in Pools of Darkness' own creation
+#: screens under DOSBox and read the `.EFX` the engine writes.
+INNATE_EFFECTS_POOLS_OF_DARKNESS = INNATE_EFFECTS | {8, 95, 105}
+
 #: Title key -> its innate-effect set.  A title not listed gets
 #: `INNATE_EFFECTS`, which is Pool of Radiance's own and, until measured
 #: otherwise, everyone else's -- the same fallback shape
@@ -485,6 +507,7 @@ INNATE_EFFECTS_SILVER_BLADES = INNATE_EFFECTS | {8, 105}
 _INNATE_EFFECTS_TABLES: dict[str, frozenset[int]] = {
     CURSE_OF_THE_AZURE_BONDS.key: INNATE_EFFECTS_CURSE,
     SECRET_OF_THE_SILVER_BLADES.key: INNATE_EFFECTS_SILVER_BLADES,
+    POOLS_OF_DARKNESS.key: INNATE_EFFECTS_POOLS_OF_DARKNESS,
 }
 
 
@@ -622,27 +645,61 @@ RACE_COMBAT_EFFECTS_SILVER_BLADES: dict[str, tuple[int, ...]] = {
     "halfling": (92,),
 }
 
+#: **Pools of Darkness gets no derived racial record at all**, and the empty
+#: table is the finding rather than a placeholder.  Of the twelve shipped
+#: records, six have an `.EFX` file and every one of the six holds a single
+#: id that is a *class* ability or the elf's -- 8 for the two paladins, 105
+#: for the four rangers, 95 for the one elf -- and the six characters with no
+#: file at all include a half-elf, whom both earlier tables give an id.  So
+#: nothing here supports handing a converted character a racial record, and
+#: writing another title's would put a record in the file the engine does not
+#: (#194).
+#:
+#: The elf's 95 is the one racial id observed and one record is not a table.
+#: The experiment that would build one is `#84`'s: roll a character of each
+#: race in Pools of Darkness' own creation screens under DOSBox and read the
+#: `.EFX` the engine writes beside each.
+RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS: dict[str, tuple[int, ...]] = {}
+
 #: Title key -> its table.  A title not listed gets Pool of Radiance's and
 #: Curse of the Azure Bonds', which is what every caller written before this
 #: split existed means.
 _RACE_COMBAT_EFFECTS_TABLES: dict[str, dict[str, tuple[int, ...]]] = {
     games.SECRET_OF_THE_SILVER_BLADES.key: RACE_COMBAT_EFFECTS_SILVER_BLADES,
+    POOLS_OF_DARKNESS.key: RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS,
 }
 
 
-def _race_combat_effects(game: object, race: int) -> tuple[int, ...]:
+def _race_combat_effects(game: object, race: int,
+                         shape: "DosShape | None" = None) -> tuple[int, ...]:
     """This title's innate combat ids for a race code, empty for an unnamed one.
 
     `game` is whatever a caller has in hand for the title -- a
     `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
     three shapes `c64_codec._infravision` accepts, and for the same reason: a
     conversion carries a bare key rather than the descriptor.
+
+    **`shape` is what names the race, when the caller has one.**
+    `goldbox/games.py` knows five titles and Pools of Darkness is not one of
+    them, so `games.BY_KEY` hands back `None` for it and `games.race_table`
+    then answers with Pool of Radiance's numbering -- under which Pools of
+    Darkness' race 5, which is the human every one of its shipped pregens but
+    two is, reads as a halfling and collects the halfling's two records.
+    `goldbox.dos_layout.DosShape.race_numbers` is the measured per-title
+    numbering (#237) and is what the record's own byte means, so a caller
+    holding the shape passes it and the title's own table decides (#194).
+    This is the same defect `#293` fixed for Silver Blades, one title along.
     """
     resolved = (game if hasattr(game, "race_names")
                else games.BY_KEY.get(getattr(game, "key", game)))
-    name = games.race_table(resolved).get(race)
-    table = _RACE_COMBAT_EFFECTS_TABLES.get(
-        getattr(resolved, "key", resolved), RACE_COMBAT_EFFECTS)
+    if shape is not None:
+        names = shape.race_numbers
+        name = names[race] if 0 <= race < len(names) else None
+        key = shape.key
+    else:
+        name = games.race_table(resolved).get(race)
+        key = getattr(resolved, "key", resolved)
+    table = _RACE_COMBAT_EFFECTS_TABLES.get(key, RACE_COMBAT_EFFECTS)
     return table.get(name, ())
 
 
@@ -1300,7 +1357,17 @@ LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
      "CURE either way, so the byte does not gate the command there"),
     ("highest_class_levels",
      "Pools of Darkness' third level array, the level to restore a drained "
-     "character to; there is no C64 Pools of Darkness to convert to"),
+     "character to. It has no neutral home, so a conversion out of this "
+     "title cannot take it -- but nothing is lost by that yet: it is zero "
+     "in 24 of 24 of the title's records, which is every one this project "
+     "can reach. The reason this row used to give -- that there is no C64 "
+     "Pools of Darkness to convert to -- stopped being the whole reason on "
+     "2026-09-08, when `#194` made the Amiga this title's destination"),
+    ("unnamed_1e0",
+     "one byte only Pools of Darkness has, 0 in 20 of its 24 records and 2 "
+     "in the four that are ABAGAIL and BRYTWYN. UNKNOWN, so there is "
+     "nothing to convert it into; the writer puts back the 0 that twenty of "
+     "them hold"),
 )
 
 #: DOS fields the C64 recomputes or never needed in the first place, measured
@@ -1385,6 +1452,9 @@ LATER_TITLE_CONSTANTS: tuple[tuple[str, str], ...] = (
     ("spells_castable_unattributed",
      "Secret of the Silver Blades' fourth spell-slot array, which no shipped "
      "character sets a byte of and nobody has attributed to a class"),
+    ("unnamed_1a4",
+     "two bytes only Pools of Darkness has, `02 02` in 24 of 24 of its "
+     "records and never zero; the writer puts the same pair back"),
 )
 
 #: How the ability pairs are reported for a title that keeps two copies.
@@ -1472,9 +1542,30 @@ def portrait_tables(game: str | pathlib.Path | None
 #: a ranger arriving as a paladin.  It waited on #287, where every converted
 #: human saw in the dark.
 #:
-#: Pools of Darkness will never join it -- there is no C64 port to convert to.
+#: **Pools of Darkness joined on 2026-09-08, for the Amiga rather than for
+#: the C64** (#194).  It never shipped on the C64, so no C64 destination will
+#: ever exist for it; what it has is the Amiga, and that is a pair of ports
+#: like any other.  It is here on a narrower standard than the two above,
+#: which were each loaded in the running game first, and the difference is
+#: written down rather than glossed:
+#:
+#:   * **the round trip is measured** -- 12 of 12 shipped records read into
+#:     the neutral record and written back byte for byte outside the writer's
+#:     own declared mask, with one exception named in
+#:     `tests/test_dospod.py`: PAINE's spellbook byte for spell 118 holds 8
+#:     where every other set byte in 476 records holds 1, and the neutral
+#:     `spells_known` is a list of ids with nowhere to keep an 8;
+#:   * **nothing has been loaded in DOS Pools of Darkness itself.** Step 3 of
+#:     `#194`'s order of work is unrun for this title, and
+#:     `.claude/rules/conversions.md` is explicit that bytes matching is
+#:     necessary and not sufficient.
+#:
+#: Two of the shape's eight UNKNOWN runs turned out to carry something, and
+#: both are named in `goldbox/dos_layout.py` rather than left as gaps a
+#: writer would zero: `unnamed_1a4` and `unnamed_1e0`.
 CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
-                                  SECRET_OF_THE_SILVER_BLADES)
+                                  SECRET_OF_THE_SILVER_BLADES,
+                                  POOLS_OF_DARKNESS)
 
 #: The seven abilities in the order both ports store them, which is also the
 #: order Curse's pairs run in.  `goldbox/neutral.py`'s, because the C64 codec
@@ -1576,6 +1667,14 @@ def to_neutral(dos: DosCharacter,
     for dos_name, _ in DIRECT:
         if dos_name in ABILITY_ORDER:
             continue                      # a pair in three of the four titles
+        if dos_name not in dos.fields:
+            # A field this title does not declare at all, which is
+            # `goldbox/dos_layout.py`'s width of zero.  Pools of Darkness is
+            # the title that has any: it keeps three money slots instead of
+            # seven and drops `levels_drained`, `hp_lost_to_drain` and
+            # `experience_per_hit_point` outright, so there is no byte here
+            # to read and nothing for the neutral record to hold (#194).
+            continue
         f = dos.fields[dos_name]
         out.set(dos_name, dos.get(dos_name),
                 f"DOS {dos_name} @{f.offset:#05x} ({f.confidence})",
@@ -1861,7 +1960,13 @@ def to_neutral(dos: DosCharacter,
     draws_portrait = draws_sheet_portrait(dos.shape.key)
     for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
                                ("portrait_body", "body_art", "BODY")):
-        if portraits is None:
+        if portraits is None or name not in dos.fields:
+            # **Pools of Darkness has no sheet portrait at all** -- neither
+            # port ships head or body art, its 510-byte shape gives the pair
+            # a width of zero, and the fourteen-and-twelve creation menu is
+            # cut out of the Amiga engine's own copy of the data block that
+            # carries it (#194, #451).  So there is no byte here to read and
+            # nothing a player loses.
             continue
         f = FIELDS_BY_NAME[name]
         position = dos.get(name)
@@ -2289,6 +2394,54 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                       "change class"),
 )
 
+#: Why a neutral field is not written when the destination title's record has
+#: no such field **at all** -- `goldbox/dos_layout.py` gives it a width of
+#: zero rather than a place to hold something we could not fill.
+#:
+#: **Pools of Darkness is the only title of the four with any**, and all
+#: seven are the later engine dropping bookkeeping the first three keep: four
+#: of the seven coins, both halves of the drained-level pair, and the
+#: creature's experience-per-hit-point rate (#194).  This is the one
+#: legitimate reason `.claude/rules/conversions.md` allows -- the destination
+#: platform has nothing the field could be -- and it is established by
+#: reading the layout rather than assumed.
+#:
+#: **No conversion can reach these lines today**, and that is the honest
+#: statement rather than a claim they are safe: a conversion is between two
+#: ports of one title, the only other Pools of Darkness port is the Amiga,
+#: and `goldbox.amiga.PodCharacter` reads only platinum, gems and jewelry
+#: too.  A source that carried gold into this title would have to be a
+#: fourth port nobody has.
+_ABSENT_WHY: dict[str, str] = {
+    "copper": "keeps only platinum, gems and jewelry -- the later engine "
+              "dropped the four lighter coins, and the record has no bytes "
+              "for them",
+    "silver": "keeps only platinum, gems and jewelry -- see copper",
+    "electrum": "keeps only platinum, gems and jewelry -- see copper",
+    "gold": "keeps only platinum, gems and jewelry -- see copper",
+    "levels_drained": "keeps no drained-level pair; a character restored by "
+                      "its own trainer is restored to highest_class_levels "
+                      "instead",
+    "hp_lost_to_drain": "keeps no drained-level pair -- see levels_drained",
+    "experience_per_hit_point": "keeps the base experience award alone; the "
+                                "per-hit-point rate is a byte the later "
+                                "engine dropped",
+}
+
+
+def write_absent(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+                 ) -> tuple[tuple[str, str], ...]:
+    """Neutral fields this title's DOS record has no field for, and why.
+
+    Computed from the title's own table rather than listed, so a shape that
+    gains or loses a field cannot leave a stale row behind: a name in
+    :data:`WRITE_DIRECT` whose DOS field is not declared has nowhere to go.
+    """
+    table = FIELDS_BY_NAME_FOR[shape_for(shape).key]
+    title = shape_for(shape).title
+    return tuple((n, f"{title} {_ABSENT_WHY[n]}")
+                 for n, dos_name in WRITE_DIRECT if dos_name not in table)
+
 #: Writer drops the **player** is not shown.  It was the mirror of a reader
 #: list, `UNREPORTED_DROPS`, from #307 (The DOS writer's drop list has no
 #: way to silence a field the DOS engine puts back on load) until
@@ -2466,6 +2619,15 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "second byte -- the control byte -- is written over this constant "
      "afterwards, from the neutral npc and npc_control_byte fields (#303)"),
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
+    ("unnamed_1a4", b"\x02\x02",
+     "`02 02` in 24 of 24 Pools of Darkness records, which is every one on "
+     "this machine -- twelve characters found under both archive paths -- "
+     "and never zero. Only Pools of Darkness declares the field; "
+     "`write_constants` leaves the row out for a title that has no such "
+     "bytes. **What they are is UNKNOWN** and the value is measured rather "
+     "than reasoned: nothing in the record correlates with them, ABAGAIL's "
+     "small combat icon included, so writing the zero a gap would get is "
+     "the one answer no Pools of Darkness record supports (#194)"),
 )
 
 #: Fields written to a **measured default** rather than converted from the
@@ -2506,6 +2668,18 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "written only when the source supplies none of status, active, the "
      "combat side or quickfight -- each of the four converts on its own "
      "when the source has it"),
+    ("unnamed_1e0", b"\x00",
+     "0 in 20 of the 24 Pools of Darkness records on this machine. The four "
+     "that hold 2 are ABAGAIL and BRYTWYN, found twice each, and they are "
+     "also the only two of the twelve whose stored encumbrance is not the "
+     "960 the rest share -- one byte, two characters, no third value, so "
+     "there is nothing to convert it from. Pool of Radiance keeps a byte "
+     "here too and it is zero in all 238 of its records. Only Pools of "
+     "Darkness declares the field",
+     "the byte's meaning is UNKNOWN, so a source that holds 2 there loses "
+     "it. What would settle it: play DOS Pools of Darkness far enough to "
+     "make a character the byte changes for, and diff the save one action "
+     "apart (#194)"),
 )
 
 #: Fields written from a rule over the **record itself** rather than from a
@@ -2627,10 +2801,10 @@ def identity_byte(record: bytes | bytearray,
 #: :data:`CONVERTS` reads, because a conversion is between two ports of the
 #: same title and both directions have to exist for a title to be offered.
 #:
-#: **Pools of Darkness is not here and is not an oversight**: there is no C64
-#: port to convert from, `#194 (Import and export a Pools of Darkness save
-#: between DOS and the Amiga)` owns its Amiga pairing, and nothing has ever
-#: written one of its 510-byte records.  Its shape reads.
+#: **Pools of Darkness joined both lists on 2026-09-08** (`#194 (Import and
+#: export a Pools of Darkness save between DOS and the Amiga)`), which is
+#: what makes an Amiga `.pc` convertible into a DOS record and back.  See
+#: :data:`CONVERTS` for the standard it came in on and what has not been done.
 WRITES: tuple[DosShape, ...] = CONVERTS
 
 #: Neutral fields the writer takes by a rule in the **later titles only**.
@@ -2734,6 +2908,13 @@ WRITE_UNSOURCED_LATER: tuple[tuple[str, str], ...] = (
      "attributed it to a class: cleric, druid and magic-user account for the "
      "other three arrays and a paladin's spells go in the cleric's "
      "(#222). So zero is the measured value and not a shrug"),
+    ("highest_class_levels",
+     "Pools of Darkness' third level array -- the level to restore a drained "
+     "character to. **Zero in 24 of 24 of its records**, which is every one "
+     "on this machine, so zero is what the source holds rather than a value "
+     "thrown away. The neutral record has no field for it and none is added "
+     "here: `#194` is the ticket, and a source that ever holds a non-zero "
+     "array is the measurement that would earn one"),
 )
 
 #: Fields the later titles derive from the record rather than from a neutral
@@ -2767,8 +2948,12 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
 #: named nowhere here, so a new field cannot be skipped in silence.
 #:
 #: **Pool of Radiance's**, which is what it has always been; ask
-#: :func:`write_targets` for another title's.
-WRITE_TARGETS: dict[str, str] = (
+#: :func:`write_targets` for another title's.  The tables it is built from
+#: now carry rows for fields only a later title declares -- `unnamed_1a4` and
+#: `unnamed_1e0` are Pools of Darkness' -- so the whole is cut to Pool of
+#: Radiance's own field names at the end, the way :func:`write_targets` cuts
+#: it to whichever title it was asked about (#194).
+WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
     {dos_name: f"from neutral {n}" for n, dos_name in WRITE_DIRECT}
     | {"name_length": "from neutral name, the count byte",
        "name_text": "from neutral name, fifteen ASCII",
@@ -2794,22 +2979,30 @@ WRITE_TARGETS: dict[str, str] = (
     | {name: f"default: {why}" for name, _, why, _ in WRITE_DEFAULTS}
     | {name: f"zero: {why}" for name, why in WRITE_UNSOURCED}
     | {name: f"derived: {why}" for name, why in WRITE_DERIVED}
-)
+).items() if n in FIELDS_BY_NAME}
 
 
 def write_constants(shape: "int | str | DosShape" = POOL_OF_RADIANCE
                     ) -> tuple[tuple[str, bytes, str], ...]:
     """:data:`WRITE_CONSTANTS`, cut to the title's own field widths.
 
-    One field changes width between the three titles this writes --
+    One field changes width between the four titles this writes --
     `field_83_87`, five bytes in Pool of Radiance and Curse and four in
-    Silver Blades -- and :data:`FIELD_83_87` has the value for each and what
-    the bytes are.  A constant whose length does not match the field it goes
-    into is a `DosRecordError` from `_encode` rather than a silent misfit.
+    Silver Blades and Pools of Darkness -- and :data:`FIELD_83_87` has the
+    value for each and what the bytes are.  A constant whose length does not
+    match the field it goes into is a `DosRecordError` from `_encode` rather
+    than a silent misfit.
+
+    **A constant naming a field the title does not declare is left out**
+    rather than raising: Pools of Darkness has no `strength_bonus` byte at
+    all -- `goldbox/dos_layout.py` gives it a width of zero -- so there is
+    nothing for the constant to be written into (#194).
     """
     table = FIELDS_BY_NAME_FOR[shape_for(shape).key]
     out = []
     for name, data, why in WRITE_CONSTANTS:
+        if name not in table:
+            continue
         size = table[name].size
         if size != len(data):
             data = FIELD_83_87[size] if name == "field_83_87" else data
@@ -2833,6 +3026,10 @@ def write_targets(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     out = dict(WRITE_TARGETS)
     out |= {name: f"constant: {why}"
             for name, _, why in write_constants(shape)}
+    # The whole of `WRITE_DEFAULTS`, not the part Pool of Radiance declares:
+    # `WRITE_TARGETS` is cut to its own title's names and Pools of Darkness'
+    # `unnamed_1e0` is not one of them (#194).
+    out |= {name: f"default: {why}" for name, _, why, _ in WRITE_DEFAULTS}
     out |= {
         "former_level": "from neutral former_levels, the one level again in "
                         "the byte the engine keeps it in",
@@ -2969,6 +3166,7 @@ def write(char: NeutralCharacter,
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
     dropped = (WRITE_DROPPED if shape is POOL_OF_RADIANCE else
                tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
+    dropped += write_absent(shape)
     w = SilencingWriter(char, rep, into="DOS", dropped=dropped,
                         silent=WRITE_UNREPORTED_DROPS)
     use, emit = w.use, w.emit
@@ -3017,6 +3215,13 @@ def write(char: NeutralCharacter,
     second = use("abilities_second")
     seconds = dict(second.value) if second is not None else {}
     for neutral_name, dos_name in WRITE_DIRECT:
+        # A field this title's record does not have at all -- Pools of
+        # Darkness' four lighter coins, its drained-level pair and its
+        # missing experience rate (#194).  Left untaken on purpose, so
+        # `SilencingWriter.finish` reports it out of `absent` below rather
+        # than this loop reaching for a `table` entry that is not there.
+        if dos_name not in table:
+            continue
         # Written below, from the class mask when the source contradicts
         # itself, and copied otherwise (#310).  It stays in `WRITE_DIRECT`
         # because that is what it is in every record whose source kept it up
@@ -3488,7 +3693,7 @@ def write(char: NeutralCharacter,
     innate = use("innate_effects")
     converted = [int(e) for e in innate.value] if innate is not None else []
     race = int(w.get("race", 0) or 0)
-    derived = [e for e in _race_combat_effects(char.game, race)
+    derived = [e for e in _race_combat_effects(char.game, race, shape)
                if e not in converted]
     innate_ids = _innate_effects(shape.key)
     keep = derived + [e for e in converted if e in innate_ids]
@@ -3610,8 +3815,8 @@ def write(char: NeutralCharacter,
     # is a sentence for Donald to approve rather than one to model on the
     # sibling lines already there (`.claude/rules/gui-text.md`).
     for dname, data, why, lost in WRITE_DEFAULTS:
-        if dname in icon_written:
-            continue
+        if dname in icon_written or dname not in table:
+            continue          # a field only some titles declare (#194)
         f = table[dname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size,
@@ -3737,13 +3942,16 @@ def write_field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     would call a conversion a loss.
     """
     shape = shape_for(shape)
+    absent = write_absent(shape)
+    gone = {n for n, _ in absent}
+    direct = tuple((n, d) for n, d in WRITE_DIRECT if n not in gone)
     if shape is POOL_OF_RADIANCE:
-        return neutral.disposition(WRITE_DIRECT, WRITE_TRANSFORMED,
-                                   WRITE_DROPPED, "the DOS record's")
+        return neutral.disposition(direct, WRITE_TRANSFORMED,
+                                   WRITE_DROPPED + absent, "the DOS record's")
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
     return neutral.disposition(
-        WRITE_DIRECT, WRITE_TRANSFORMED + WRITE_TRANSFORMED_LATER,
-        tuple((n, w) for n, w in WRITE_DROPPED if n not in later),
+        direct, WRITE_TRANSFORMED + WRITE_TRANSFORMED_LATER,
+        tuple((n, w) for n, w in WRITE_DROPPED if n not in later) + absent,
         "the DOS record's")
 
 

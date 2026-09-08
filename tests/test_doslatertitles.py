@@ -119,12 +119,23 @@ def test_a_games_object_names_the_title_as_well_as_its_key():
     assert len(rec) == CURSE.record_size
 
 
-def test_pools_of_darkness_is_refused_rather_than_written():
-    """Its shape reads and nobody has written one; there is no C64 Pools of
-    Darkness to convert from, so a request for one is a caller's mistake."""
-    with pytest.raises(dos.WrongTitleError) as exc:
-        dos.write(_neutral(POD.key, name="X"))
-    assert POD.title in str(exc.value)
+def test_pools_of_darkness_is_written_now_that_it_has_a_second_port():
+    """This asserted a refusal until 2026-09-08, and the refusal's reason was
+    that no C64 Pools of Darkness exists to convert from.
+
+    That is still true and is no longer the whole question: the title's
+    second port is the **Amiga**, `#194 (Import and export a Pools of
+    Darkness save between DOS and the Amiga)` is the pair, and a pair needs
+    both directions -- so the shape joined `CONVERTS` and `WRITES` together.
+    A 510-byte record comes back for a Pools of Darkness character, and the
+    C64 remains a title it can never be converted to for the reason it always
+    was: `goldbox/games.py` has no Pools of Darkness at all, so
+    `editor/convert.py`'s `games.by_key(shape.key)` never offers a
+    destination.
+    """
+    rec, _itm, _spc, _rep = dos.write(_neutral(POD.key, name="X"))
+    assert len(rec) == POD.record_size
+    assert POD in dos.WRITES and POD in dos.CONVERTS
 
 
 def test_a_title_with_no_dos_record_says_so():

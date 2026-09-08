@@ -9,14 +9,15 @@ supports)` replaces the two flagged submenus -- `editor/dosimport.py`'s
 whole, owing nothing to another save -- `.claude/rules/conversions.md`'s
 rule against a template. Today that is:
 
-* DOS save folder → C64, one row per entry of `goldbox.dos.CONVERTS` --
+* DOS save folder → C64, one row per entry of `C64_PAIRED`, which is
+  `goldbox.dos.CONVERTS` cut to the titles with a C64 port to convert to --
   Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades
   (`goldbox.dos.new_save`; Pool of Radiance proven in VICE by
   `#119 (Play a converted DOS save in VICE, off a disk Wish built from
   nothing)`, Curse of the Azure Bonds by `#192 (Convert a Curse of the Azure
   Bonds DOS save into a C64 one, which the importer refuses today)`, Secret
   of the Silver Blades by `docs/175-silver-blades-save-conversion.md`);
-* C64 `.D64` → DOS save folder, one row per entry of `goldbox.dos.WRITES` --
+* C64 `.D64` → DOS save folder, one row per entry of the same `C64_PAIRED` --
   the same three titles (`goldbox.dos.new_dos_save`; Pool of Radiance proven
   in DOSBox by `tools/dosnewsave.py` under `#26 (Write a DOS save, not just
   read one)`, Curse of the Azure Bonds and Secret of the Silver Blades by
@@ -919,9 +920,9 @@ class DosToAmiga(Direction):
         return [path]
 
 
-#: One DOS → C64 row per entry of `goldbox.dos.CONVERTS`, one C64 → DOS row
-#: per entry of `goldbox.dos.WRITES` -- today Pool of Radiance, Curse of the
-#: Azure Bonds and Secret of the Silver Blades, both ways -- one
+#: One DOS → C64 row and one C64 → DOS row per entry of `C64_PAIRED` below
+#: -- today Pool of Radiance, Curse of the Azure Bonds and Secret of the
+#: Silver Blades, both ways -- one
 #: Amiga → C64 row and one Amiga → DOS row per entry of
 #: `goldbox.amiga.CONVERTS`, and one C64 → Amiga row and one DOS → Amiga row
 #: per entry of `goldbox.amiga.WRITES` -- Pool of Radiance alone for every
@@ -930,10 +931,28 @@ class DosToAmiga(Direction):
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
 #: names a title `DOS_TO_C64_NAMES` does not; `games.UnknownGameError` does
 #: the same for `WRITES` and a title with no C64 game at all.
+#: The DOS shapes with a C64 port on the other side.
+#:
+#: **`goldbox.dos.CONVERTS` stopped being that list on 2026-09-08**, when
+#: Pools of Darkness joined it (`#194 (Import and export a Pools of Darkness
+#: save between DOS and the Amiga)`).  That tuple says which DOS records
+#: `goldbox.dos.to_neutral` will read, and its newest entry is there for its
+#: **Amiga** pairing: the title never shipped on the C64, so a DOS-to-C64 row
+#: has no destination and a C64-to-DOS row has no source.
+#:
+#: `games.BY_KEY` is the test, and it is the same one `DosToC64.__init__`
+#: makes one line further down -- kept here so a title with no C64 game at
+#: all is *left out* rather than raising at import time.  The alarm the
+#: comment above describes is unchanged for every title that does have one:
+#: a shape `games` knows and `DOS_TO_C64_NAMES` does not still raises
+#: `UnnamedConversionError`.
+C64_PAIRED: tuple[dos_layout.DosShape, ...] = tuple(
+    shape for shape in dos.CONVERTS if shape.key in games.BY_KEY)
+
 DIRECTIONS: tuple[Direction, ...] = tuple(
-    DosToC64(shape) for shape in dos.CONVERTS
+    DosToC64(shape) for shape in C64_PAIRED
 ) + tuple(
-    C64ToDos(shape) for shape in dos.WRITES
+    C64ToDos(shape) for shape in C64_PAIRED
 ) + tuple(
     AmigaToC64(shape) for shape in amiga.CONVERTS
 ) + tuple(

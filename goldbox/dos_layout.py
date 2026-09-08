@@ -1001,6 +1001,48 @@ def _paladin_cures() -> Field:
               _PALADIN_CURES_NOTE, kind=Kind.U8)
 
 
+#: The two bytes between `icon_colours` and `item_count` in the 510-byte
+#: record.  **`02 02` in 24 of 24 Pools of Darkness records on this machine**
+#: -- twelve distinct characters, each found under both of the archives'
+#: paths -- and what they mean is UNKNOWN.  Named rather than left as a
+#: generated gap because a gap is written zero, and no Pools of Darkness
+#: record holds zero here (#194).
+#:
+#: **Not the icon's size**: ABAGAIL is the one character of the twelve whose
+#: `size` byte is 1 rather than 2 and she holds `02 02` like everybody else,
+#: and `icon_dimension` at `0x131` is 1 in all 24 as it is in all three
+#: earlier titles.  Curse's own inserted byte here and Silver Blades' three
+#: are zero in all 110 and all 74 of their records, so this is not the same
+#: run widening.
+#:
+#: The other 510-byte engine agrees: Treasures of the Savage Frontier holds
+#: `02 02` in 26 of its 28 records and `00 00` in two.
+_UNNAMED_1A4_NOTE = (
+    "two bytes between the combat icon's colours and the item count, `02 02` "
+    "in 24 of 24 Pools of Darkness records and never zero. UNKNOWN: no "
+    "reading has been proposed and nothing in the record correlates with "
+    "them, ABAGAIL's small icon included. The writer puts the measured pair "
+    "back rather than the zero a gap would get (#194)")
+
+#: The byte between `hands_used` and `encumbrance` -- Pool of Radiance's
+#: `gap_101`, which is zero in all 238 of its records and in all 110 Curse
+#: and 74 Silver Blades ones.
+#:
+#: **Pools of Darkness writes something in it**: 0 in 20 of 24 records and 2
+#: in the other four, which are two distinct characters found twice each --
+#: ABAGAIL and BRYTWYN, both magic-users, and both the only two of the twelve
+#: whose stored `encumbrance` is not the party's shared 960. Treasures of the
+#: Savage Frontier holds 4 in two of its 28. UNKNOWN, and there is no third
+#: value to reason from.
+_UNNAMED_1E0_NOTE = (
+    "one byte between hands_used and encumbrance. 0 in 20 of 24 Pools of "
+    "Darkness records and 2 in the four that are ABAGAIL and BRYTWYN, the "
+    "two characters whose encumbrance is not the 960 the other ten share. "
+    "UNKNOWN. Pool of Radiance keeps a byte here too and it is zero in all "
+    "238 of its records, so nothing in the earlier engines says what this "
+    "is (#194)")
+
+
 #: Pool of Radiance itself: the table above, unchanged.  Present so callers
 #: can treat all four alike.
 POOL_OF_RADIANCE = DosShape(
@@ -1097,6 +1139,13 @@ SECRET_OF_THE_SILVER_BLADES = DosShape(
 #: seven.  It gains a highest-level array and a highest-experience field
 #: beside the current ones, which is what a title with level drain that
 #: matters looks like.
+#:
+#: **It is also the one title of the four whose undecoded runs are not all
+#: zero** (#194).  Every generated `gap_` in Pool of Radiance (238 records),
+#: Curse (110) and Silver Blades (74) reads zero in every record on this
+#: machine; two of Pools of Darkness' do not, so they are named here rather
+#: than left as gaps a writer would silently zero: :data:`_UNNAMED_1A4_NOTE`
+#: at `0x1A4` and :data:`_UNNAMED_1E0_NOTE` at `0x1E0`.
 POOLS_OF_DARKNESS = DosShape(
     key="pools-of-darkness", title="Pools of Darkness", record_size=510,
     item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=125,
@@ -1107,7 +1156,7 @@ POOLS_OF_DARKNESS = DosShape(
            "levels_drained": 0, "hp_lost_to_drain": 0, "field_83_87": 4,
            "copper": 0, "silver": 0, "electrum": 0, "gold": 0,
            "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,
-           "experience": 4, "gap_0af": 0,
+           "experience": 4, "gap_0af": 0, "gap_101": 0,
            "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
            "experience_per_hit_point": 0, "portrait_head": 0,
            "portrait_body": 0},
@@ -1126,7 +1175,11 @@ POOLS_OF_DARKNESS = DosShape(
              "experience": 5, "spells_castable_cleric": (
                  _x(9, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),),
-             "icon_colours": 2, "heap_104": 2})
+             "icon_colours": (_x(2, "unnamed_1a4", "Unattributed @0x1A4",
+                                 _NOPE, _UNNAMED_1A4_NOTE),),
+             "hands_used": (_x(1, "unnamed_1e0", "Unattributed @0x1E0",
+                               _NOPE, _UNNAMED_1E0_NOTE, kind=Kind.U8),),
+             "heap_104": 2})
 
 SHAPES: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
                                 SECRET_OF_THE_SILVER_BLADES,

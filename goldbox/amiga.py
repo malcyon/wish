@@ -145,10 +145,15 @@ DERIVED = (0x056, 0x186, 0x187, 0x18B, 0x18D, 0x18F, 0x192)
 #: message -- `Invalid item (%d/%d)` lives in the `LBI` code beside
 #: `LBIBase: Invalid Library File` -- and `Disk3_CHEAD.TLB`, the portrait
 #: heads, holds exactly 29 items. So the two numbers are a library item index
-#: and the library's item count: PoD asked `CHEAD.TLB` for item -1. The
-#: region carries a portrait selector, not converted inventory, and **zero in
-#: it is accepted**: every payload here has zeros from 0x0B9 up and joins the
-#: party.
+#: and the library's item count: PoD asked `CHEAD.TLB` for item -1.
+#:
+#: **`CHEAD.TLB` is the combat icon's head, not a sheet portrait** -- this
+#: note called it "the portrait heads" until #451, and Pools of Darkness has
+#: no sheet portrait on either port (#194). So the region is the combat
+#: figure's selector rather than converted inventory, and **zero in it is
+#: accepted**: every payload here has zeros from 0x0B9 up and joins the
+#: party. Which byte of `0x0B6`-`0x0C7` is the icon's head and which its body
+#: is unmeasured; #451 has the shape of the experiment.
 ITEMS = 0x0B6
 
 #: Which of the fields below a probe has actually put on screen. A field is
@@ -684,10 +689,27 @@ DROPPED: tuple[tuple[str, str], ...] = (
                          "located home for -- see `levels_drained`"),
     ("levels_drained", "no located home; a drained character arrives at the "
                        "levels the record actually holds"),
-    ("portrait_head", "PoD's art is `CHEAD.TLB`, a different set with "
-                      "different numbering. A copied index is a wrong "
-                      "picture, silently"),
-    ("portrait_body", "PoD's art is `CBODY.TLB` -- see `portrait_head`"),
+    # #451 (The Amiga Pools of Darkness notes call the combat icon a sheet
+    # portrait, and describe a menu the title has not got).  These two rows
+    # used to say PoD's portrait art is `CHEAD.TLB` with a numbering of its
+    # own, and both halves were wrong: `CHEAD.TLB`/`CBODY.TLB` are the
+    # **combat icon** (`docs/199-amiga-combat-icons.md`), and the title has
+    # no sheet portrait at all.  CONFIRMED three ways (#194): neither port
+    # ships head or body art -- 52 DOS files and 55 Amiga ones with no
+    # `HEAD*`/`BODY*` among them; `goldbox.dos_layout.POOLS_OF_DARKNESS`
+    # gives the pair a width of zero; and the fourteen-and-twelve creation
+    # menu is cut out of the Amiga engine's own copy of the data block that
+    # carries it, in 60 bytes otherwise byte-identical across four binaries.
+    #
+    # The rows stay, because `field_disposition` is the whole contract and a
+    # neutral field this writer takes nothing from has to be named whether or
+    # not a Pools of Darkness source could ever carry it.  What changed is
+    # what they say.
+    ("portrait_head", "Pools of Darkness has no character-sheet portrait on "
+                      "either of its ports -- neither ships the art and its "
+                      "own DOS record has no such field -- so a source of "
+                      "this title never carries one"),
+    ("portrait_body", "see `portrait_head`: the title draws no sheet face"),
     ("inventory", "the appended item region past 484 bytes is undecoded, and "
                   "a Pool of Radiance item id and a Pools of Darkness one are "
                   "two different games' tables. The character arrives "
@@ -767,6 +789,230 @@ def field_disposition() -> dict[str, str]:
     shape is `goldbox/neutral.py`'s, so every direction reports the same way.
     """
     return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the Amiga's")
+
+
+# ---------------------------------------------------------------------------
+# The other direction: a `.pc` becomes a neutral character (#194)
+# ---------------------------------------------------------------------------
+#: Neutral fields :func:`pod_to_neutral` takes straight out of the `.pc`,
+#: with where each one is.  **The tables the two ports index are the same
+#: tables**, which is what makes a copy right rather than a guess:
+#:
+#: * `RACES` here is `('ELF', 'HALF-ELF', 'DWARF', 'GNOME', 'HALFLING',
+#:   'HUMAN')` and `goldbox.dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS` is the
+#:   same six names in the same order with `monster` after them, so race 5 is
+#:   the human on both ports;
+#: * `CLASSES` here is seventeen entries and DOS Pools of Darkness' class
+#:   codes land in it: its BINKY reads 14 with fighter and thief levels
+#:   (`FIGHTER/THIEF`) and this disk's TRIPEL TURBO reads 15 with fighter,
+#:   magic-user and thief levels (`FIGHTER/M-U/THIEF`);
+#: * `ALIGNMENTS` is `law * 3 + morality` on both, and every paladin on
+#:   either port reads 0.
+#:
+#: So this is a same-title conversion where the numbering is shared, and
+#: nothing here is a lookup between two tables.
+POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
+    ("race", "race, the .pc's own byte at 0x058"),
+    ("char_class", "char_class, the .pc's own byte at 0x059"),
+    ("sex", "sex, the .pc's own byte at 0x05C"),
+    ("alignment", "alignment, the .pc's own byte at 0x05D"),
+    ("age", "age, the .pc's big-endian word at 0x052"),
+    ("level", "level, the .pc's byte at 0x089"),
+    ("experience", "experience, the .pc's big-endian longword at 0x044"),
+    ("platinum", "platinum, the .pc's big-endian word at 0x04C"),
+    ("gems", "gems, the .pc's big-endian word at 0x04E"),
+    ("jewelry", "jewelry, the .pc's big-endian word at 0x050"),
+    ("movement", "movement, the .pc's byte at 0x088"),
+    ("hp_max", "hp_max, the .pc's byte at 0x081"),
+    ("hp_current", "hp_current, the .pc's big-endian word at 0x190"),
+    ("exceptional_strength",
+     "exceptional_strength, the current half of the pair at 0x07C"),
+    *((k, f"{k}, the current half of its pair at 0x070") for k in ABILITY_KEYS),
+    *((k, f"{k}, one of the five saving throws at 0x083") for k in SAVE_KEYS),
+    *((k, f"{k}, one of the eight thief skills at 0x08B") for k in THIEF_KEYS),
+    ("armour_class",
+     "armour_class, the .pc's byte at 0x0B3 in the family's stored "
+     "60 - value form"),
+    ("armour_class_base", "armour_class_base, the same byte -- see below"),
+)
+
+#: Neutral fields the reader builds by a rule rather than a copy.
+POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("name", "the fifteen bytes at 0x060, cut at the first NUL"),
+    ("class_bits", "the mask at 0x0B7 with bit 6 reread from the level "
+                   "array: this port stores DOS's own byte, where the "
+                   "paladin and the ranger share bit 6, and the neutral "
+                   "record gives the ranger bit 7"),
+    ("levels", "the seven-slot array at 0x09D, named by "
+               "`CLASS_LEVEL_SLOTS`, which is the same seven slots in the "
+               "same order as this title's DOS record"),
+)
+
+
+def pod_read_dropped() -> tuple[tuple[str, str], ...]:
+    """Neutral fields the `.pc` reader takes nothing from, and why.
+
+    Computed from :data:`DROPPED` rather than listed a second time.  The
+    writer's list is already the account of what has no located home in the
+    484-byte record, and a home nobody has found is missing in both
+    directions -- so a row copied by hand here would be a row that could
+    drift out of step with the one below it.
+
+    **Two names are on the writer's list and not on this one**, and the
+    asymmetry is the point: `armour_class` and `armour_class_base` are
+    *readable* -- the record holds the byte, and all twelve genuine records
+    on disk 3 hold the unarmoured 10 -- and *not writable*, because Pools of
+    Darkness recomputes armour class on load and ignores what the file says.
+    A reader that refused to read a byte the record holds would be inventing
+    a loss.
+    """
+    filled = ({n for n, _ in POD_READ_DIRECT}
+              | {n for n, _ in POD_READ_TRANSFORMED})
+    return tuple((n, why) for n, why in DROPPED if n not in filled)
+
+
+def pod_field_disposition() -> dict[str, str]:
+    """Every neutral field and what the `.pc` **reader** does with it.
+
+    The mirror of :func:`field_disposition`, which is the writer's, and the
+    test that keeps this half honest: a field `goldbox/neutral.py` declares
+    and this names nowhere would be one dropped in silence.
+
+    **It is a short account of a long record.** 38 of the 75 neutral fields
+    are filled and 37 are not, and the 37 are not a judgement -- they are the
+    part of the 484-byte record nobody has decoded: the spellbook, the
+    memorised list, the item region, the effect region, the combat tail and
+    the roster block. `docs/124-amiga-port.md` §1 is how the 38 were found
+    and is also the list of what was not.
+    """
+    return neutral.disposition(POD_READ_DIRECT, POD_READ_TRANSFORMED,
+                               pod_read_dropped(), "the neutral")
+
+
+def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
+    """One Amiga Pools of Darkness `.pc` in the neutral record.
+
+    The caller `PodCharacter` did not have until 2026-09-08: `goldbox.amiga
+    .write` has always turned a neutral character into a `.pc`, and nothing
+    turned a `.pc` back into one, so the Amiga end of
+    `#194 (Import and export a Pools of Darkness save between DOS and the
+    Amiga)` had one direction of two.
+
+    Every value is graded from :data:`CONFIDENCE`, which records **which
+    fields a probe actually put on a character sheet** rather than which ones
+    decode plausibly -- so a writer asking for a grade it will stand behind
+    gets the honest answer.  A field whose home in the record is undecoded is
+    named by :func:`pod_read_dropped` and never guessed.
+
+    `char` may be the record's bytes, for a caller that has just read a file
+    off an `.adf`.
+    """
+    # The heavier module, and this is its only caller here.
+    from . import dos as _dos
+
+    if not isinstance(char, PodCharacter):
+        char = PodCharacter.from_bytes(char)
+    out = NeutralCharacter("Amiga", source=getattr(char, "source", ""),
+                           game=dos_layout.POOLS_OF_DARKNESS.key)
+
+    def grade(name: str) -> Confidence:
+        return Confidence[CONFIDENCE.get(name, "PROBABLE")]
+
+    out.set("name", char.name, "the .pc's fifteen bytes at 0x060, cut at the "
+            "first NUL", grade("name"), neutral.Provenance.RESHAPED)
+
+    scalars = {
+        "race": (char.race, RACE, "race"),
+        "char_class": (char.character_class, CLASS, "character_class"),
+        "sex": (char.sex, SEX, "sex"),
+        "alignment": (char.alignment, ALIGNMENT, "alignment"),
+        "age": (char.age, AGE, "age"),
+        "level": (char.level, LEVEL, "level"),
+        "experience": (char.experience, EXPERIENCE, "experience"),
+        "platinum": (char.platinum, PLATINUM, "platinum"),
+        "gems": (char.gems, GEMS, "gems"),
+        "jewelry": (char.jewelry, JEWELRY, "jewelry"),
+        "movement": (char.movement, MOVEMENT, "movement"),
+        "hp_max": (char.hit_points_max, HP_MAX, "hit_points_max"),
+        "hp_current": (char.hit_points_current, HP_CURRENT,
+                       "hit_points_current"),
+        "exceptional_strength": (char.exceptional_strength,
+                                 EXCEPTIONAL_STRENGTH,
+                                 "exceptional_strength"),
+    }
+    for name, (value, offset, key) in scalars.items():
+        out.set(name, value, f"Amiga .pc {name} @{offset:#05x} "
+                             f"({CONFIDENCE.get(key, 'PROBABLE')})",
+                grade(key))
+
+    for key, value in zip(ABILITY_KEYS, char.abilities):
+        out.set(key, value,
+                f"Amiga .pc abilities @{ABILITIES:#05x}, the second byte of "
+                f"this ability's pair -- the one the sheet draws",
+                grade("abilities"))
+    for key, value in zip(SAVE_KEYS, char.saving_throws):
+        out.set(key, value, f"Amiga .pc saving throws @{SAVING_THROWS:#05x}",
+                grade("saving_throws"))
+    for key, value in zip(THIEF_KEYS, char.thief_skills):
+        out.set(key, value, f"Amiga .pc thief skills @{THIEF_SKILLS:#05x}",
+                grade("thief_skills"))
+
+    levels = {name.lower(): level
+              for name, level in zip(CLASS_LEVEL_SLOTS, char.class_levels)}
+    out.set("levels", levels,
+            f"Amiga .pc class levels @{CLASS_LEVELS:#05x}, named by the "
+            f"seven slots this title's DOS record keeps in the same order",
+            grade("class_levels"), neutral.Provenance.RESHAPED)
+
+    # The ranger and the paladin share bit 6 in this byte, exactly as they do
+    # in the DOS record -- the two ports store the same mask -- so the same
+    # disambiguation applies, out of the level array (#292 for the later
+    # titles, and `goldbox.dos.neutral_class_bits_from` is where it lives).
+    out.set("class_bits",
+            _dos.neutral_class_bits_from(char.class_bits, char.class_levels),
+            f"Amiga .pc class mask @{CLASS_BITS:#05x}, with bit 6 reread "
+            f"from the level array because this port gives the paladin and "
+            f"the ranger one bit between them",
+            grade("class_bits"), neutral.Provenance.RESHAPED)
+
+    # **The stored byte, not the number on the sheet.**  `PodCharacter
+    # .armour_class` subtracts the bias for a person to read; the neutral
+    # record keeps the family's stored `60 - value` form, which is what
+    # every other codec sets.
+    stored = char.raw[ARMOUR_CLASS]
+    for name in ("armour_class", "armour_class_base"):
+        out.set(name, stored,
+                f"Amiga .pc armour class @{ARMOUR_CLASS:#05x}, stored "
+                f"60 - value. Pools of Darkness recomputes armour class on "
+                f"load from what the character is wearing and ignores what "
+                f"the file holds, and all twelve genuine records on disk 3 "
+                f"store the unarmoured {COMBAT_BIAS - UNARMOURED_AC}",
+                grade("armour_class"))
+
+    # One sentence rather than thirty-seven, because a character read out of
+    # a `.pc` today arrives with no spells, no possessions and no running
+    # magic, and a conversion that says nothing about that is the silence
+    # `.claude/rules/conversions.md` forbids.  **The wording is not
+    # approved**: every sentence a player reads is Donald's
+    # (`.claude/rules/gui-text.md`), and this is a placeholder that names the
+    # loss rather than a line anybody has signed off.
+    out.warnings.append(
+        "This character was read from an Amiga Pools of Darkness file. The "
+        "parts of that file holding spells, possessions and running magic "
+        "have not been decoded yet, so the character arrives without them. "
+        "(NOT APPROVED)")
+
+    # **No `out.drop` line here, and that is deliberate rather than an
+    # omission.**  `goldbox.dos.to_neutral` and `goldbox.c64_codec.read` each
+    # keep a second table -- `DROPPED_PLAYER_TEXT`, `READ_DROPPED_PLAYER_TEXT`
+    # -- of the sentences a *person* reads, and a name with no sentence in it
+    # is shown nothing.  This reader has 37 names and no such table: every
+    # sentence a player reads is Donald's to approve
+    # (`.claude/rules/gui-text.md`), and thirty-seven at once written by an
+    # agent is the opposite of that.  The whole contract is stated by
+    # :func:`pod_field_disposition` and tested there, so nothing is lost in
+    # silence; what is missing is the pane, and #194 says so.
+    return out
 
 
 def pc_filename(name: str) -> str:
@@ -879,8 +1125,40 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             f"{', '.join(ALIGNMENT_NAMES)}")
 
     bits = w.use("class_bits")
-    classes, class_warnings = _classes_of(
-        games.classes_to_names(bits.value if bits else 0, char.game))
+    named = _class_names(char, bits.value if bits else 0)
+    # **A class the character only *was* is not one this record can hold.**
+    # The neutral mask carries a dual-classed character's old class as well
+    # as his current one -- `goldbox.dos.neutral_class_bits_from` unions the
+    # former level array in, because the C64 needs it -- and `former_levels`
+    # is on `DROPPED` here, so the `.pc` keeps the class he *is*.
+    #
+    # Measured on the two dual-classed characters in DOS Pools of Darkness'
+    # shipped party (#194): ABAGAIL is a magic-user 12 who was a cleric 11
+    # and PAINE a magic-user 13 who was a ranger 9. Before this, ABAGAIL was
+    # written as `CLERIC/MAGIC-USER`, a class she is not, and PAINE was
+    # refused outright -- Pools of Darkness has no magic-user/ranger code,
+    # and nor should it: no character can be both at once.
+    #
+    # A class he *regained* -- non-zero in both arrays -- stays, since he
+    # holds it now.
+    held = {str(k).strip().lower(): int(v)
+            for k, v in (char.get("levels") or {}).items()}
+    was = {str(k).strip().lower(): int(v)
+           for k, v in (char.get("former_levels") or {}).items()}
+    left_behind = sorted(c for c in was
+                         if was[c] and not held.get(str(c).strip().lower()))
+    if left_behind and len(named) > 1:
+        keep = [n for n in named
+                if str(n).strip().lower() not in left_behind]
+        if keep:
+            for gone in left_behind:
+                rep.warnings.append(
+                    f"Class {gone} was left behind at level {was[gone]}: "
+                    f"Pools of Darkness' record on this port keeps the class "
+                    f"the character is, so the class trained out of is not "
+                    f"converted")
+            named = keep
+    classes, class_warnings = _classes_of(named)
     rep.warnings.extend(class_warnings)
     w.use("char_class")
     combination = frozenset(classes)
@@ -965,9 +1243,79 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     return writer, rep
 
 
+#: Pools of Darkness' class bitmask, in the **neutral** bit order, for a
+#: title `goldbox/games.py` has no entry to answer for.
+#:
+#: It is Curse of the Azure Bonds' and Secret of the Silver Blades' table
+#: exactly, and that is measured on 24 records across both ports (#194):
+#: this disk's twelve `.pc` files hold `01` for each of three magic-users,
+#: `02` for two clerics, `04` for the thief, `08` for the fighter, `40` for
+#: two paladins and two rangers alike, and `0D` for TRIPEL TURBO, a
+#: fighter/magic-user/thief; the twelve DOS records hold `40` for both
+#: paladins and all the rangers, `0C` for BINKY, a fighter/thief, and `0D`
+#: for ORATISI NOMOON.  **`40` is the shared paladin-and-ranger bit both
+#: ports store**, and the ranger's `80` here is the neutral record's own
+#: spelling, which is what this table is asked about --
+#: `goldbox.dos.neutral_class_bits_from` is what separates them.
+#:
+#: **The right home for this is a Pools of Darkness entry in
+#: `goldbox/games.py`**, beside the other five titles', and it is here
+#: instead because that file belongs to the window as well as to the
+#: library: a title added there is a title the editor's own lists start
+#: offering, and nothing in the window can open a Pools of Darkness save yet.
+POD_CLASS_BITS: tuple[tuple[int, str], ...] = (
+    (0x01, "magic-user"), (0x02, "cleric"), (0x04, "thief"),
+    (0x08, "fighter"), (0x40, "paladin"), (0x80, "ranger"))
+
+
+def _class_names(char: NeutralCharacter, bits: int) -> list[str]:
+    """The classes a neutral mask holds, named for the source's own title.
+
+    `games.classes_to_names` wants a `goldbox.games.Game` and gets whatever
+    `NeutralCharacter.game` holds -- a descriptor, a bare key or `None` --
+    so a DOS source raised `AttributeError: 'str' object has no attribute
+    'class_bits'` here, which nothing reached until Pools of Darkness became
+    convertible (#194).
+
+    A title that file has never heard of falls back to
+    :data:`POD_CLASS_BITS` rather than to `games`' own default, which is
+    Pool of Radiance's **four** classes and names neither the paladin nor
+    the ranger -- so every Pools of Darkness paladin arrived as an
+    unnameable raw `64` and was refused.
+    """
+    key = getattr(char.game, "key", char.game)
+    resolved = char.game if hasattr(char.game, "class_bits") \
+        else games.BY_KEY.get(key)
+    if resolved is None and key in dos_layout.SHAPES_BY_KEY:
+        return [name for bit, name in POD_CLASS_BITS if bits & bit] or [bits]
+    return games.classes_to_names(bits, resolved)
+
+
 def _races(char: NeutralCharacter) -> dict[int, str]:
-    """The source title's race table, so an index can be named."""
-    return games.race_table(char.game)
+    """The source title's race table, so an index can be named.
+
+    **`NeutralCharacter.game` is a `goldbox.games.Game`, its key, or `None`,
+    and all three arrive here.**  `goldbox.dos.to_neutral` sets the bare key
+    and `goldbox.amiga.to_neutral_later` sets the descriptor, so asking
+    `games.race_table` directly raised `AttributeError: 'str' object has no
+    attribute 'race_names'` for any DOS source -- which nothing reached until
+    Pools of Darkness became convertible (#194).
+
+    **And `goldbox/games.py` has never heard of Pools of Darkness**, so even
+    resolved it answers `None` there and `games.race_table(None)` hands back
+    *Pool of Radiance's* numbering, under which this title's race 5 -- the
+    human -- reads as a halfling.  A title `games` does not know but
+    `goldbox/dos_layout.py` does is named from the shape's own
+    `race_numbers`, which is the measured per-title tuple (`#237`).
+    """
+    key = getattr(char.game, "key", char.game)
+    resolved = char.game if hasattr(char.game, "race_names") \
+        else games.BY_KEY.get(key)
+    if resolved is None and key in dos_layout.SHAPES_BY_KEY:
+        return {n: name for n, name
+                in enumerate(dos_layout.SHAPES_BY_KEY[key].race_numbers)}
+    return games.race_table(resolved) if resolved is not None \
+        else games.race_table(None)
 
 
 def to_pc(char: NeutralCharacter) -> tuple[bytes, Report]:
