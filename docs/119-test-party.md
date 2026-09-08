@@ -1,9 +1,29 @@
 # A high-level party for automated testing — plan
 
-**Status: the level-up specification is measured, and four of the six ceilings
-the game implements are reached.** Twenty-nine trainings driven through the game's own
-school, every one diffed across the 580-byte record: the tables, the rules and
-the corrections are summarised in §7 below. The party is on `work/drive/P18PARTY.D64`.
+**Status: the generator exists and makes all six characters.**
+`tools/testparty.py`, 2026-09-08. Twenty-nine trainings driven through the
+game's own school in 2026-08-22 gave the level-up specification, every one
+diffed across the 580-byte record — the tables, the rules and the corrections
+are in §7 — and the generator replays that specification rather than reading
+the tables again. **The disk that party was on, `work/drive/P18PARTY.D64`, is
+gone from this machine**, which is the argument for a generator made for us:
+`python3 tools/testparty.py --disk work/issue10/TESTPARTY.D64` rebuilds an
+equivalent one in about a second.
+
+**And the game agrees with it.** `tools/testpartyrun.py` booted the generated
+disk on 2026-09-08, loaded it, put the party in the world at (9, 13) indoors
+and drew all six `VIEW` sheets. Level, experience, hit points, armour class and
+THAC0 come back through the game's own sheet routine and its own charset, and
+six of six match what the generator printed -- BULWARK at LEVEL 8, EXP 130000,
+HITPOINTS 72, AC 8 and THACO 11, which is his base 13 with the 18/76 strength
+bonus on it. §6's third gate, the one that breaks the circle, is passed.
+
+**What the generator still cannot make** is in its own module docstring and is
+short: no items, so nobody is armed -- the sheet says `DAMAGE 0D0` -- and the
+sixteen-item ceiling is not exercised; no combat icon, which is `#130 (A
+converted DOS party arrives with six identical combat figures, not its own)`'s
+gap from the other side; and no trait ceiling, because Pool of Radiance's C64
+seeds a trait only to an elf and a half-elf.
 
 The training hall is **area 11**, which has
 no map of its own: it reuses `GEO00`, so the schools are New Phlan's own
@@ -21,9 +41,13 @@ the bits are `goldbox.games.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 th
 measured across twenty-nine of them — so a generated party needs money as well
 as experience.
 
-**The generator is still not written.** The deliverable is **a generator, not a
-disk** — `goldbox/testparty.py` plus a test-time disk builder. A disk is game data
-and cannot be committed; a party we can rebuild from code at any moment can.
+**The generator is `tools/testparty.py`.** The deliverable was always **a
+generator, not a disk**, and it builds both: the six records, and the
+test-time disk builder that copies a save disk and writes them into it. A disk
+is game data and cannot be committed; a party we can rebuild from code at any
+moment can. It went in `tools/` rather than the `goldbox/testparty.py` the
+rest of this page names, because it is a runner over the library rather than
+part of it.
 
 ## Why now: a correction the project cannot settle
 
@@ -66,7 +90,14 @@ is the source for levels and thresholds.
 | 3 | PILFER | halfling | M | thief | 9 | 115,000 | **the highest level anywhere in the game's tables.** Every one of the eight thief skills non-trivial and none at its level-1 value; read-languages was **−5** for a halfling at level 1, so this is the signed field crossing zero. Also the small size flag at `0x099` |
 | 4 | BULWARK | human | M | fighter | 8 | 130,000 | the class ceiling: THAC0 13, hp_max 112, and **3/2 attacks**, which is the only reason to care about `0x0D9`. Carried **wounded** (hp_current < hp_max) because a wounded *export* is still wanted and settles `0x119` |
 | 5 | GRIMSTONE | dwarf | M | fighter/thief | F7 / T8 | 150,000 | the specimen `docs/90-specimens.md` names as missing: **a multi-class character above level 1**, with two *different* non-zero entries in the per-class array at `0x0C9`–`0x0CC`. That is the only thing that can separate `0x0A0` ("character level") from "the single class's level". Plus `class_bits` 12, infravision 6, size small |
-| 6 | ASTRA | half-elf | F | cleric/fighter/magic-user | 6 / 6 / 6 | 135,000 | the widest class bitmask the game supports (`class_bits` 11) and **the only record in which both nibbles of `0x0EE` are non-zero at once** — cleric capacity and magic-user capacity in the same byte. Also the half-elf trait seed 124 at `0x0AD` |
+| 6 | ASTRA | half-elf | F | cleric/fighter/magic-user | **5** / 6 / 6 | 135,000 | the widest class bitmask the game supports (`class_bits` 11) and **the only record in which both nibbles of `0x0EE` are non-zero at once** — cleric capacity and magic-user capacity in the same byte. Also the half-elf trait seed 124 at `0x0AD` |
+
+**ASTRA's cleric was 6 here until 2026-09-08 and a half-elf cannot reach it.**
+`GEN $1E64`'s twenty-eight bytes — seven races of four classes, CONFIRMED in §5
+below — stop a half-elf cleric at **5**, so the game's own trainer would refuse
+the sixth level and `goldbox.levelup.plan` refuses it too. Cleric 5 still puts
+the high nibble of `0x0EE` above zero beside the magic-user's low nibble, which
+is the whole of what she is for, so nothing else in the row changes.
 
 ~~Multi-class experience divides between classes~~ — **it does not.** LADY
 KATHERINE, magic-user 1 / thief 7 with 70,100 points, was offered thief 8,
@@ -218,8 +249,8 @@ Instead, three pieces:
 
 | piece | where | why it is allowed |
 |---|---|---|
-| the six records | `goldbox/testparty.py`, built at run time from `goldbox/layout.py` and `goldbox/levels.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
-| the disk | `work/drive/`, built at test time | `work/` is `.gitignore`d and `AGENTS.md` already names it as where disk images belong |
+| the six records | `tools/testparty.py`, built at run time through `goldbox/c64_codec.py` and `goldbox/levelup.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
+| the disk | `work/`, built by `--disk` or at test time | `work/` is `.gitignore`d and `AGENTS.md` already names it as where disk images belong |
 | the base disk | **the player's own**, via `tests/gamedata.save_disk("PORSAVE")` | read-only, never written, skipped when absent |
 
 ### How a VICE run gets a disk to boot
@@ -350,9 +381,11 @@ the superseded text is how contradictions got in before.
    Once per class; fighter first, because it moves the most.
 3. **Write the level-up table from the diff**, and empty the entries of
    `LEVEL_UP_BLOCKERS` that the diff answers.
-4. `goldbox/testparty.py` — the six records, generated, no disk.
-5. The test-time disk builder, off `tests/gamedata.save_disk`, skipping without
-   disks.
+4. ~~`goldbox/testparty.py` — the six records, generated, no disk.~~ **Done**,
+   as `tools/testparty.py`.
+5. ~~The test-time disk builder~~ **Done**, as the same tool's `--disk`, and
+   `tests/test_testparty.py` drives it off `tests/gamedata.save_disk`,
+   skipping without disks.
 6. `debug-level-up` on the debug mode's action bar, `docs/118-debug-mode.md`.
 7. **The turning experiment.**
 8. Prune the docs the answer contradicts.
@@ -440,6 +473,20 @@ Six of the blockers in §3's table are now answerable, and one is not:
 
 ### Still not built
 
-A half-elf cleric/fighter/magic-user, a dwarf fighter/thief, a wounded fighter
-8 on disk, and `goldbox/testparty.py` itself. The specification for the last of
-those is the table above.
+**All four of these are built now** — `tools/testparty.py`, 2026-09-08 — and
+what is left is narrower than the list they replaced:
+
+| was missing | now |
+|---|---|
+| a half-elf cleric/fighter/magic-user | ASTRA, cleric 5 / fighter 6 / magic-user 6 |
+| a dwarf fighter/thief | GRIMSTONE, fighter 7 / thief 8 |
+| a wounded fighter 8 on disk | BULWARK, 72 of 112, wounded after the last training because the trainer heals |
+| the generator itself | `tools/testparty.py`, six records in about a second |
+
+**What is left, in order.** The generator's characters carry nothing, so
+nobody is armed, the roster's damage dice are zero and the sixteen-item
+ceiling is untouched — `Spec.inventory` is the hook and the item templates are
+on the player's own disks. Nothing generated has been **loaded in the game**:
+`docs/119-test-party.md` §6's third and fourth gates, the ones that break the
+circle, are the driven run this ticket still wants. And `0x0A4`'s value stays
+unexplained.
