@@ -1358,7 +1358,10 @@ def test_the_approved_strings_are_the_ones_donald_worded():
     """
     assert convert.MENU_CONVERT == "&Convert…"
     assert convert.DIALOG_TITLE == "Convert a save"
-    assert convert.LABEL_SOURCE == "Save"
+    # Donald changed this from `Save` on 2026-09-07, looking at the drawn
+    # form: `To` had no partner above it. Pinned whole, because it is a
+    # string he ruled on and a paraphrase should fail here.
+    assert convert.LABEL_SOURCE == "From"
     assert convert.LABEL_TO == "To"
     assert convert.SOURCE_TITLE == "Choose a save"
     assert convert.NO_GAME_FOLDER == "Choose the DOS game folder."

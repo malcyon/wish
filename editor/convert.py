@@ -872,7 +872,13 @@ DIALOG_TITLE = "Convert a save"
 #: `LABEL_FOLDER` is its `LABEL_DESTINATION`, approved the same day -- the
 #: row where the player says which folder the write goes inside, renamed
 #: here so it is not confused with `convert_destination`'s new combo.
-LABEL_SOURCE = "Save"
+#: **`From`, not `Save`, since 2026-09-07.** It read `Save` from the
+#: dialog's first day and Donald changed it on seeing the form drawn:
+#: `To` below it had no partner, so the row above read as a noun where
+#: a person expected the other half of a pair, and `Save` competes with
+#: `File > Save` for the same word. Approved by him on 2026-09-05 in its
+#: old form and re-ruled here, so it carries no marker.
+LABEL_SOURCE = "From"
 LABEL_TO = "To"
 LABEL_GAME = "DOS game folder"
 LABEL_FOLDER = "Write to"
