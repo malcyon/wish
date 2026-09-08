@@ -237,7 +237,13 @@ def archive(dest: pathlib.Path, root: pathlib.Path | None = None) -> dict:
     try:
         with tarfile.open(part, mode) as tar:
             for path in files:
-                tar.add(path, arcname=str(path.relative_to(root)))
+                # `as_posix`, not `str`: a tar's member names are separated
+                # by `/` on every platform, and `str` on Windows gives `\`.
+                # A backslashed member name is a different name -- `verify`
+                # then finds nothing it recorded, and the archive is one no
+                # other tool reads the way this one wrote it. Found by CI on
+                # Windows, 2026-09-08.
+                tar.add(path, arcname=path.relative_to(root).as_posix())
         part.replace(dest)
     except BaseException:
         part.unlink(missing_ok=True)
@@ -279,7 +285,7 @@ def verify(archive_path: pathlib.Path,
         name = entry.get("name", "?")
         base = entry["_provenance"].parent.relative_to(root)
         for fname, digest in entry.get("sha256", {}).items():
-            arcname = str(base / fname)
+            arcname = (base / fname).as_posix()
             if arcname not in inside:
                 problems.append(f"{name}: {arcname} is not in the archive")
             elif inside[arcname] != digest:

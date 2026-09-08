@@ -315,3 +315,19 @@ def test_a_symlink_out_of_the_repository_is_still_the_repository(
     link.symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match="inside"):
         specimenbackup.archive(link / "copy.tar.gz", tree)
+
+
+def test_a_member_name_is_separated_the_way_a_tar_is(tmp_path, tree):
+    """`/` on every platform, because that is what a tar member name is.
+
+    `str(PurePath)` gives `\\` on Windows, so the archive was written with
+    backslashed member names and `verify` -- building its lookup the same way
+    -- found none of them and reported every file missing. Four tests went red
+    on the Windows job and none on Linux, 2026-09-08.
+    """
+    dest = tmp_path / "copy.tar.gz"
+    specimenbackup.archive(dest, tree)
+    with tarfile.open(dest) as tar:
+        names = tar.getnames()
+    assert not any("\\" in n for n in names)
+    assert "por-dos/WISH-SPEC-party0/WISH0.CHA" in names
