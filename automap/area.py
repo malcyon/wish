@@ -109,6 +109,27 @@ NEAR_ENOUGH = 128
 # with itself perfectly about the wall art it does not have, which is the case
 # it was put there for -- a booting machine, and the ordinary state at `$0400`
 # mid-load.
+#
+# **Two limits, stated here because this is the file the check lives in.**
+#
+# * **There is no DOS negative corpus.** The sweep is C64 and Amiga only. DOS
+#   stores its maps differently, so there are no DOS positives to weigh
+#   against, but that also means nothing here has been measured against DOS
+#   bytes.
+# * **None of this is safe against data from outside this family of games.**
+#   Swept across `Bubble Bobble.adf`'s 6275 windows the old check admitted 9
+#   and this one admits 6 -- Atari ST tile graphics, repetitive enough to reuse
+#   wall-art pairs the way a map does. What the four clauses separate is a Gold
+#   Box map from the rest of a Gold Box disk, which is what `ResidentGeo` asks
+#   them, and not a map from anything whatever.
+#   `tools/geoplausible.py sweep --include-other-games` re-takes it.
+#
+# And one thing the sweep cannot exclude: a raw disk image holds
+# **sector-shifted fragments** of the maps on it, and a 64-byte run of a map is
+# mostly zeros and matches everywhere, so those cannot be filtered out by
+# content the way the `/SAVE/spindisk` copies above are. They are counted among
+# the 65383, which makes the negative corpus harder than it looks rather than
+# easier.
 
 #: How often the two sides of a shared edge hold the same raw barrier field.
 #:
