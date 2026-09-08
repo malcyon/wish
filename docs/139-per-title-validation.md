@@ -10,14 +10,15 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 38, Silver Blades 32.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **The editor's write-back path on Silver Blades**, which is A17-A20 and `docs/139` §3 G5: everything that title has comes from a shipped demo party rather than a save the game wrote, and no save has been edited and read back off its own screens. The live tab is no longer the answer to this question — every one of its cells was watched on all three titles on 2026-09-08 (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 38, Silver Blades 36.** §2 | CONFIRMED, cited per row |
+| Where is the promise thinnest? | **An inventory edit on either later title**, A13. The editor's write-back path on Silver Blades was the answer until 2026-09-08, when #33 (One Silver Blades session, for the whole editor path) took A17-A20 to `V` on a save the C64 engine wrote; the live tab stopped being the answer the same day, every one of its cells having been watched on all three titles (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
 
 The honest one-line version: **the file path works on three titles, and so
 does the live tab -- reader, map, badges and all five action buttons, watched
-in the running game on each.** What is left is the editor writing a Silver
-Blades save back, the six purses beyond gold, an inventory edit on either
-later title, and the combat view and log, which are ruled out by G7.
+in the running game on each.** What is left is the six purses beyond gold, an
+inventory edit on either later title, and the combat view and log, which are
+ruled out by G7. The editor writing a Silver Blades save back was on that list
+until 2026-09-08 and is not any more.
 
 ## 1. How far out of date `docs/120` and `docs/121` are
 
@@ -63,7 +64,7 @@ applicable.
 | A5 | race, class, alignment named in the sheet | V | V | V | `test_pertitle_ui.py::test_the_race_table_follows_the_title`, `…test_a_silver_blades_save_shows_its_own_races` |
 | A6 | saving throws satisfy the derived rule | V | V | V | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **Built (#187 (Silver Blades characters are shown Pool of Radiance's level progression))**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`. Reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` and `…test_silver_blades_saves_match_the_modules_own_table` — and the sheet now shows them, via `automap/live.py:_classes` |
 | A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | V | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **Built (#187 (Silver Blades characters are shown Pool of Radiance's level progression))**: experience `GEN $162D` (6 x 19 x 3, big-endian, reproducing Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855`, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES` — `test_coldread.py` and `test_ssblevels.py` |
-| A8 | the seven money fields | V | V (gold only) | **U** | `docs/120` §5.2 — gold `0` → `777` read back off the game's own sheet; the other six purses untested on any title but PoR |
+| A8 | the seven money fields | V | V (gold only) | V (gold only) | `docs/120` §5.2 — gold `0` → `777` read back off Curse's own sheet; SSB's gold `0` → `4321` read back off its sheet on 2026-09-08 for #33 (One Silver Blades session, for the whole editor path). The other six purses are untested on any title but PoR |
 | A9 | spellbook width | V | V | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; **Curse is 13 and the game's own code says so** — `CAMP $2A25` walks spell ids to 100 and reads `LDA $7C78,X` with X at 12, `test_curse.py::test_camp_reads_curses_mask_as_far_as_spell_one_hundred`. No Curse specimen writes past `0x07C` and none has to (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)) |
 | A10 | spell names resolve | V | V | V | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; **SSB's are resolved** — `goldbox/spells.py:SECRET_OF_THE_SILVER_BLADES`, `COMBAT2` at `$E000`, 194 entries, spells to 117, with `test_silverblades.py::test_silver_blades_keeps_its_spell_names_in_combat2_like_curse` and `…::test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm` |
 | A11 | item names resolve | V | V | V | `test_titletables.py::test_every_title_names_its_first_item_battle_axe` — all six titles |
@@ -72,10 +73,10 @@ applicable.
 | A14 | combat icon editor and its charset | V | V | V | `CHARPIC00` is on all twenty sides of the three titles, 2030 bytes every time. **Curse's is Pool of Radiance's byte for byte** (only the PRG load address moves, `$8000` → `$3000`) and **Silver Blades redraws three glyphs of 253** — 132, 133 and 207 — which its own eight-bytes-per-glyph reading takes unchanged. `test_curse.py::test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte`, `test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`. The editor reads the open title's own disks: `editor/window.py:_disk_candidates` globs on `game.disk_glob` |
 | A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | V | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds. **Closed by #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability)**: `goldbox/traits.py` is a table per title now, Curse pointing at Pool of Radiance's and Silver Blades carrying its own — six of its nine seeded codes named by pointing the existing wording at this title's number, and 7, 92 and 105 showing their number because nobody has read what they mean. `test_coldread.py`, six tests, corroborated on the shipped party; `test_pertitle_ui.py`, seven more, on a record built with an elf in it because the shipped party is all humans and dwarves |
 | A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
-| A17 | an unchanged save writes back byte-identically | V | V | **U** | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; no SSB equivalent |
-| A18 | YAML export → import → byte-identical disk | V | V | **U** | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; SSB has no save disk in the tests, only the shipped `SAVEDBASH` party |
-| A19 | a save of one title refuses to import into another | V | V | **U** | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; SSB in neither direction |
-| A20 | an edited field appears in the running game | V | V | **U** | `docs/120` §5.2 — name, gold and current hit points, all three read off Curse's own screens |
+| A17 | an unchanged save writes back byte-identically | V | V | V | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_the_editor_writes_a_silver_blades_save_back_unchanged`, on `WISH-SPEC-ssb-d-engine-resave`, the C64 engine's own `ENCAMP > SAVE` |
+| A18 | YAML export → import → byte-identical disk | V | V | V | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** — `test_ssbeditorpath.py::test_a_silver_blades_save_disk_survives_yaml_byte_for_byte`. The row's old reason, that SSB had no save disk in the tests, stopped being true on 2026-09-05 when `#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the importer refuses today)` left six engine-written Silver Blades disks in the specimen tree |
+| A19 | a save of one title refuses to import into another | V | V | V | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; **SSB closed by #33 (One Silver Blades session, for the whole editor path)** in both directions — `test_ssbeditorpath.py::test_a_silver_blades_party_will_not_import_into_a_pool_of_radiance_disk` and `…test_a_pool_of_radiance_party_will_not_import_into_a_silver_blades_disk`, each asserting the refusal names both titles |
+| A20 | an edited field appears in the running game | V | V | V | `docs/120` §5.2 — name, gold and current hit points, all three read off Curse's own screens. **SSB closed by #33 (One Silver Blades session, for the whole editor path)** on 2026-09-08, VICE pool slot 3: MORGAINE renamed to `BRIGHID`, gold 0 → 4321 and strength 17 → 12 through `EditorBinding`, and the game drew `BRIGHID` on the party-formation panel and in the `VIEW WHICH CHARACTER?` list, `STR 12` and `GOLD          4321` on the sheet. `tools/ssbedit.py` is the run |
 
 ### B. The DOS converter
 
@@ -127,7 +128,7 @@ applicable.
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
 | Curse of the Azure Bonds | 49 | **38** | 0 | 6 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **32** | 2 | 10 | 0 | 5 |
+| Secret of the Silver Blades | 49 | **36** | 2 | 6 | 0 | 5 |
 
 **These numbers are counted from the rows above and the previous ones were
 not.** Counting `V (gold only)` under A8 and the two `U, expected broken`
@@ -145,12 +146,19 @@ and `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` and `#20 (Build an area table for Silver Blades)` closed
 C21 for both, with nobody returning to these rows.
 
-**What is left is six cells for Curse and ten for Silver Blades**, and they
+**What is left is six cells for Curse and six for Silver Blades**, and they
 are not the live tab: A8 (the six purses beyond gold), A13 (inventory, which
-needs a Curse item edit and a Silver Blades one), A17-A20 for Silver Blades
-(the whole file write-back path, `docs/139` §3 G5), C10 and C11 (the combat
+needs a Curse item edit and a Silver Blades one), C10 and C11 (the combat
 view and log, ruled out by G7), D1 (Preferences against a live machine) and
 D4 (the Ultimate backend, which nobody can test).
+
+**A17-A20 were on that list until 2026-09-08**, when
+#33 (One Silver Blades session, for the whole editor path) took all four on
+`WISH-SPEC-ssb-d-engine-resave` — the C64 engine's own save — and §3 G5's
+premise went with them: the blocker it named, "a save the game itself wrote",
+had already been met on 2026-09-05 by
+#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the
+importer refuses today), and nobody had returned to the row.
 
 #31 (Cold-read Curse and Silver Blades for the fields the editor shows) moved eight of them, all by reading files this project already opens:
 A9 and A14 to `V` for Curse, A10, A12 and A14 to `V` for Silver Blades, A15 to
@@ -284,17 +292,45 @@ read the item records, add one, remove one, write back, load it in the game and
 read the inventory off the game's own screen. One emulator sitting. This is the
 only thing that will ever produce a Curse item specimen.
 
-### G5 — one Silver Blades session: the whole file path
+### G5 — one Silver Blades session: the whole file path · **done 2026-09-08**
 
-Closes A17, A18, A19, A20 for SSB — four of its nineteen `U`s, and the four
+Closed A17, A18, A19, A20 for SSB — four of its nineteen `U`s, and the four
 that matter most, because they are the ones the README's editor bullets rest on.
+`#33 (One Silver Blades session, for the whole editor path)` is the ticket and
+carries the runs.
 
-Everything SSB has today comes from `SAVEDBASH`, a *shipped demo party*, not a
-save the game wrote. So: save the game, export to YAML, re-import to a new disk
-byte-identically, edit one field of each kind (name, gold, current hit points —
-the same three `docs/120` §5.2 chose, and for the same reason), load it and read
-the answers off the game's screens. The session directory from the `p9` run
-already proved the disk-flush hazard; `docs/121` §5 has the list.
+**Its premise was already out of date when it was written here.** This section
+said everything SSB had came from `SAVEDBASH`, a shipped demo party, so the
+work had to start by playing far enough to save. It did not:
+`#193 (Convert a Secret of the Silver Blades DOS save into a C64 one, which the
+importer refuses today)` left `WISH-SPEC-ssb-d-engine-resave` in the specimen
+tree on 2026-09-05 — the C64 engine's own `ENCAMP > SAVE` — and `#344 (A
+converted Silver Blades dwarf, gnome or halfling keeps DOS's saving throws,
+because that title's racial bonus has never been watched in the game)` left a
+second on 2026-09-06. Six engine-written Silver Blades disks were there before
+anybody started.
+
+What was run, on that specimen:
+
+* **A17 and A18 with no emulator** — `EditorBinding.save` on an untouched save
+  says `no changes` and moves no byte, and a YAML export re-imported comes back
+  a byte-identical disk. `tests/test_ssbeditorpath.py`.
+* **A19 in both directions**, each refusal naming both titles.
+* **A20 in VICE, pool slot 3.** Three fields of different kinds edited through
+  the editor — name `MORGAINE` → `BRIGHID`, gold 0 → 4321, strength 17 → 12 —
+  and all three read off the game's own screens. `docs/120` §5.2's third field
+  was current hit points; Silver Blades keeps that in the roster block rather
+  than the 256-byte save slot, so an ability score took its place.
+  `tools/ssbedit.py` is the run.
+
+**One thing came out of it that is not a Silver Blades finding.** Curse and
+Silver Blades keep the party's names again at payload `+$C00`, and the editor's
+save path writes only the 256 bytes of each slot — so a rename leaves that
+table holding the old name. The party panel, the `VIEW WHICH CHARACTER?` list
+and the sheet all drew the new one, so nothing a player was shown was wrong;
+`#435 (A rename in Wish leaves the C64 name table holding the old name on Curse
+and Silver Blades, and nobody knows what reads it)` carries the four `GEN` code
+sites that do read it and the experiment that would say whether it ever shows.
 
 ### G6 — one Curse and one Silver Blades session for the live tab · needs G2
 
