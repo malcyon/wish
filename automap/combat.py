@@ -598,7 +598,8 @@ def battlefield(battle: Battle, box=None, cell: int | None = None,
             yield Rect(left - 1, top - 1, cell + 2, cell + 2, "ready")
         # The health bar is drawn in the paper colour on the green and the
         # red, which have the contrast for it. The helpless yellow does not --
-        # nothing that still reads as yellow does -- so its ink is inked.
+        # nothing that still reads as yellow does -- so its bar takes the
+        # darker ink instead, which is the only pair that stays legible.
         if who.dimmed:
             ink = "hp-dim"
         elif who.kind == "helpless":

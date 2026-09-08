@@ -79,7 +79,7 @@ from PyQt6.QtGui import (  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from automap import combat  # noqa: E402
-from automap.render import Label  # noqa: E402
+from automap.render import Bar  # noqa: E402
 from automap.target import MemoryTarget  # noqa: E402
 from automap.window import (  # noqa: E402
     COMBATANT_FILL,
@@ -383,8 +383,20 @@ def closeup(look: str, zoom: int = 4) -> QImage:
 # ---------------------------------------------------------------- the canvas
 
 class BarCanvas(CombatCanvas):
-    """The real canvas, drawing the letter over the bar wherever it would
-    have drawn the hit-point number. `labels` is index -> text."""
+    """The real canvas, drawing the letter over the bar wherever the canvas
+    draws the bar. `labels` is index -> text.
+
+    **The design this compares was not chosen.** Donald ruled on 2026-09-07,
+    on `#345`: *"Do not put a number or a letter in the square. Replace the
+    hit point number with a small health bar at the bottom of the square."*
+    The tool is kept because it is the picture the decision was made from,
+    and it is drawn against the shipped bar rather than the letter design.
+
+    It keys off `Bar` because that is what `combat.battlefield()` yields
+    now. It keyed off `Label` until the bar replaced the hit-point number,
+    and `battlefield()` stopped yielding `Label` at all -- so every square
+    fell through to the parent's plain painter and this tool quietly drew
+    the shipped look while claiming to draw the comparison."""
 
     def __init__(self, look: str, labels: dict[int, str], parent=None):
         super().__init__(parent)
@@ -393,7 +405,7 @@ class BarCanvas(CombatCanvas):
         self.sizes: dict[str, int] = {}
 
     def _draw(self, p: QPainter, prim) -> None:
-        if not isinstance(prim, Label):
+        if not isinstance(prim, Bar):
             super()._draw(p, prim)
             return
         cell = self.drawn_cell

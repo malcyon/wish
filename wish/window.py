@@ -216,7 +216,7 @@ class WishWindow(QMainWindow):
         # convert to shows the approved refusal rather than a disabled menu
         # item nobody can explain.
         #
-        # Built for everyone since 2026-09-08.  It sat behind
+        # Built for everyone since 2026-09-07.  It sat behind
         # `WISH_EXPERIMENTAL_CONVERT` from 2026-08-24 -- see the flag block
         # `editor/convert.py` used to carry, which named the five conditions
         # that removed it: no string in the dialog's own approved-strings

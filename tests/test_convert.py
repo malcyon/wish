@@ -1321,7 +1321,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     the two combat-icon lines (`c64_codec.py`'s and `amiga.py`'s) stay
     unworded until the tickets that would delete them close, so the right
     outcome here is a count held at today's number rather than a demand
-    that it reach zero. `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-08
+    that it reach zero. `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-07
     with these still on the pane -- the flag's own condition was about the
     dialog's own strings block, never about this wider sweep.
     """
@@ -1409,7 +1409,7 @@ def test_the_picker_offers_an_amiga_disk():
 
 
 # ---------------------------------------------------------------------------
-# The menu -- `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-08, `#52`'s own
+# The menu -- `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-07, `#52`'s own
 # comments recording each of its five conditions met. `_wish_window`/
 # `_file_menu` are `tests/test_dosimport.py:708-750`'s private helpers,
 # copied rather than imported -- a subagent's files may not import another
