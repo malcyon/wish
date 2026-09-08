@@ -135,9 +135,12 @@ def checks(body: bytes, base: int,
     add("NEWECL tail rebuilds the stack", True,
         f"${addr.tail:04X} restores SP from ${saved_sp:04X} and jumps to "
         f"${main_loop:04X}")
-    add("saved_sp", saved_sp == addr.saved_sp,
-        f"derived ${saved_sp:04X}, committed "
-        f"{'$%04X' % addr.saved_sp if addr.saved_sp is not None else 'None'}")
+    # A title with no re-entry addresses measured yet -- Curse and Silver
+    # Blades both carry a `tail` and leave these two `None` -- has nothing to
+    # check rather than something wrong, the same as `after_step` below.
+    if addr.saved_sp is not None:
+        add("saved_sp", saved_sp == addr.saved_sp,
+            f"derived ${saved_sp:04X}, committed ${addr.saved_sp:04X}")
 
     try:
         entry = at(body, base, main_loop, 4)
@@ -152,14 +155,14 @@ def checks(body: bytes, base: int,
             f"${main_loop:04X} is TSX / STX ${where:04X}" if saves
             else f"${main_loop:04X} is not TSX / STX: {entry.hex(' ')}")
 
-    try:
-        pushed = find_patched_jsr(body, base, main_loop)
-        add("main_loop_return", pushed == addr.main_loop_return,
-            f"derived ${pushed:04X} from the JSR at ${pushed - 2:04X}, "
-            "committed "
-            f"{'$%04X' % addr.main_loop_return if addr.main_loop_return is not None else 'None'}")
-    except (ValueError, IndexError) as exc:
-        add("main_loop_return", False, str(exc))
+    if addr.main_loop_return is not None:
+        try:
+            pushed = find_patched_jsr(body, base, main_loop)
+            add("main_loop_return", pushed == addr.main_loop_return,
+                f"derived ${pushed:04X} from the JSR at ${pushed - 2:04X}, "
+                f"committed ${addr.main_loop_return:04X}")
+        except (ValueError, IndexError) as exc:
+            add("main_loop_return", False, str(exc))
 
     if addr.after_step is not None and addr.redraw is not None:
         try:
@@ -224,7 +227,7 @@ def dungeon(where: pathlib.Path) -> bytes:
     for path in sorted(where.glob("POOL*.[dD]64")):
         try:
             image = D64.open(str(path))
-        except Exception:
+        except Exception:                  # not a disk image we can read
             continue
         for entry in image.iter_directory():
             if entry.name.decode("latin1").rstrip("\xa0 ") == "DUNGEON":
