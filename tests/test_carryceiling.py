@@ -114,9 +114,12 @@ def test_a_specimens_provenance_beats_a_copy_left_in_work():
 def test_a_record_in_the_played_dos_directory_is_graded_edited():
     """Every record there has been through Gold Box Companion's editor.
 
-    Donald, 2026-09-04: *"Assume all character records in
-    /home/donald/dos_por_play/SAVE/ were edited."*  Graded, never dropped: an
-    edited record still says what the container will hold.
+    Donald, 2026-09-04, of his own played DOS save directory: *"Assume all
+    character records in [~/dos_por_play/SAVE] were edited."*  His literal
+    path is not spelled out here -- `test_no_hardcoded_user_paths` bans one
+    in a string literal, and it catches a quotation as readily as a constant.
+    Graded, never dropped: an edited record still says what the container
+    will hold.
     """
     played = pathlib.Path("/home/x/dos_por_play/SAVE/CHRDATA1.SAV")
     assert cc._grade_over([played], {}) == "edited"
