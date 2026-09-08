@@ -3244,11 +3244,19 @@ def write(char: NeutralCharacter,
     #
     # `w.get`, not `use`: the thief level, race and dexterity feeding this
     # were already taken by the `WRITE_DIRECT` copy loop above.
+    #
+    # `shape.key` rather than `char.game`, the same as the THAC0 recompute
+    # above: the title being *written* is what decides which table applies.
+    # A caller that ever passes a shape the source's own `game` disagrees
+    # with would otherwise fall back to the default title, which is Pool of
+    # Radiance -- the one title with a table -- and stamp its row into a
+    # Curse or Silver Blades record, where #437 says the numbers are wrong
+    # for a different reason again.
     computed_thief_skills = None
     thief_level = w.get("levels", {}).get("thief", 0)
     if thief_level and port in _THIEF_SKILL_RECOMPUTE_FROM_PORTS:
         computed_thief_skills = level_tables.dos_thief_skills(
-            thief_level, w.get("race", 0), char.game,
+            thief_level, w.get("race", 0), shape.key,
             dexterity=w.get("dexterity", 0))
     for index, (neutral_name, dos_name) in enumerate(_THIEF_SKILL_COLUMNS):
         v = use(neutral_name)
