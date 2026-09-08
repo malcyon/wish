@@ -2026,7 +2026,8 @@ def test_every_curse_insertion_is_placed_to_the_byte():
 
     * `field_83_87` is `0x0F6`-`0x0FA` at shift 0 and the pad is at `0x0FB`;
     * each spell-slot array is six Amiga bytes to DOS's five, which puts the
-      **druid array at `0x134`** and DOS's `gap_13c` at `0x140`;
+      **druid array at `0x134`** and DOS's `experience_award` at `0x140`
+      (`#254`, named after this test was written -- it was `gap_13c` then);
     * `sex` and `alignment`, which no character sheet could place, are at
       `0x11A` and `0x11C`.
     """
@@ -2041,14 +2042,15 @@ def test_every_curse_insertion_is_placed_to_the_byte():
         0x12D: 0x12E,        # the cleric array
         0x132: 0x134,        # the druid array
         0x137: 0x13A,        # the magic-user array
-        0x13C: 0x140,        # gap_13c, whose first two bytes are a u16
+        0x13C: 0x140,        # experience_award, a u16 (named by #254)
         0x14C: 0x150,        # the item count
         0x14D: 0x152,        # the item chain, where the writer starts it
     }
     for dos_offset, want in placed.items():
         assert shape.offset(dos_offset) == want, hex(dos_offset)
     for char in curse_characters():
-        for name in ("field_83_87", "spells_castable_druid", "gap_13c"):
+        for name in ("field_83_87", "spells_castable_druid",
+                      "experience_award"):
             char.get(name)          # no longer raises
         assert list(char.get("spells_castable_druid")) == [0] * 5
 

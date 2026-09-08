@@ -934,6 +934,21 @@ _DECLARED: Sequence[Field] = (
            "0x0F1-0x0F3 are spell levels 4-6 and are zero in all 79 C64 "
            "records, which is what a game that stops at third-level spells "
            "should look like"),
+    _field(0x0F7, 2, _U16, "experience_award", "Experience award", _OK,
+           "what killing this creature is worth. **CONFIRMED from the "
+           "script property dispatcher in four DOS engines** (#254 (Two DOS "
+           "gaps the Amiga port gives a shape to: a 16-bit field in "
+           "gap_13c, and a pointer at the end of the Silver Blades item)): "
+           "the dispatcher's ids are C64 record offsets, and 17 of 17 arms whose "
+           "id names a C64 field land on the DOS field of the same name -- "
+           "this pair the only ids that fall in a C64 gap. Also "
+           "`docs/80-fields-wanted.md`, CONFIRMED there independently on "
+           "GOBLIN GUARD 10, HOBGOBLIN 20 and OGRE 90. A monster's field: "
+           "zero in every player export"),
+    _field(0x0F9, 1, _U8, "experience_per_hit_point",
+           "Experience per hit point", _OK,
+           "the multiplier `experience_award`'s note describes: GOBLIN GUARD "
+           "1, HOBGOBLIN 2, OGRE 5, the published AD&D 1st edition rate"),
     _field(0x0FE, 1, _U8, "portrait_head", "Portrait head", _OK,
            "index into the HEAD* files on the game disks, in hex: 0x2D is "
            "HEAD2D. All eleven values across our exports name a file that "

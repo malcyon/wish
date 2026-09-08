@@ -295,6 +295,20 @@ FIELDS: dict[str, str] = {
                    "the C64 pair at all, so a source from either has none "
                    "to give (#258, The C64 side of 0x0AB is unnamed, so "
                    "the conversion drops it with no issue behind it)",
+    # -- a creature's own bookkeeping, held rather than dropped --------------
+    # Both ports declare this pair and both hold zero in every player record
+    # anybody has read (#254): `base + hp_rolled * experience_per_hit_point`
+    # is what killing a creature is worth, not anything a player character
+    # has ever set.  Converted because there is a home for it on both sides,
+    # not because a player has ever noticed it.
+    "experience_award": "the base experience a creature is worth; zero for "
+                        "every player character measured (#254)",
+    "experience_per_hit_point": "the creature's per-rolled-hit-point "
+                                "experience rate, added to experience_award "
+                                "times hp_rolled; zero for every player "
+                                "character measured (#254). Pools of "
+                                "Darkness and Treasures of the Savage "
+                                "Frontier have no such byte",
 }
 
 

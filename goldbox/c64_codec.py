@@ -139,6 +139,13 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("thac0_current", "thac0"),
     ("armour_class", "armour_class"),
     ("movement_current", "roster_movement"),
+    # A creature's own field, CONFIRMED (#254): zero in every player export,
+    # and declared unconditionally at `0x0F7`/`0x0F9` in every C64 title's
+    # layout.  Copied straight across rather than dropped, for the same
+    # reason `goldbox.dos.DIRECT` copies its own pair -- both ports hold the
+    # field and a player who somehow carries a non-zero value keeps it.
+    ("experience_award", "experience_award"),
+    ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
 #: The five saving-throw columns, neutral name to C64 name, in the order

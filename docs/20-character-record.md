@@ -17,11 +17,11 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 
 | level | bytes | share |
 |---|---:|---:|
-| CONFIRMED | 457 | 78.8% |
+| CONFIRMED | 460 | 79.3% |
 | PROBABLE | 27 | 4.7% |
 | GUESS | 0 | 0.0% |
-| UNKNOWN | 96 | 16.6% |
-| **known** | **484** | **83.4%** |
+| UNKNOWN | 93 | 16.0% |
+| **known** | **487** | **84.0%** |
 
 ## Known fields
 
@@ -96,6 +96,8 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x0EC` | 1 | `missile_attack_adjustment` | I8 | CONFIRMED | what dexterity is worth to hit with a ranged weapon, signed: $FF is -1. **CONFIRMED from both sides of the byte.** COM.PREP $1633 writes it -- `LDX $6B17` (dexterity) / `LDA $1682,X` / `STA $6BEC` -- out of a sixteen-entry table that is the AD&D 1st edition missile attack adjustment exactly: -3 at DEX 3, -2 at 4, -1 at 5, nothing from 6 to 15, +1 at 16, +2 at 17, +3 at 18, and on past 18 to +5 at 25 for a magically raised score. LIBRARY $36A8 reads it -- `LDA $6BEC` / `ADC $6C0E` -- and adds it to the roster's THAC0 when the readied weapon's type +14 has bit 1, ranged; the block below it adds the strength bonus instead when bit 2 is set. COMBAT $0899 adds it again in the attack roll. *(rest under Field notes, below.)* |
 | `0x0ED` | 1 | `hp_rolled` | unsigned byte | CONFIRMED | the accumulated hit-die rolls, without the constitution bonus. hp_max at 0x076 is this plus level x the bonus, recomputed from here at every training -- so this is the stored half and hp_max the derived one, not the other way round. GEN $2037 adds one roll of the class hit die (GEN $20A7: d4, d8, d6, d10 in class-bit order) and GEN $2079 writes hp_max from it. Confirmed on twenty-nine trainings across four classes and three constitution scores; the roll itself is a die and derives from nothing |
 | `0x0EE` | 6 | `spells_castable` | raw bytes | CONFIRMED | how many spells of each level the character may memorise, one byte per spell level, **nibble-packed**: cleric in the high nibble, magic-user in the low. ROLAND, a level-1 cleric with wisdom 16, reads $30 -- three first-level spells, one base plus two for wisdom, which is exactly what his sheet allows. MALCYON and LADY KATHERINE, both level-1 magic-users, read $01. The three fighters read zero throughout. Found while surveying Curse of the Azure Bonds, which uses the same offsets; the docs had this down as not stored anywhere. *(rest under Field notes, below.)* |
+| `0x0F7` | 2 | `experience_award` | 16-bit little endian | CONFIRMED | what killing this creature is worth. **CONFIRMED from the script property dispatcher in four DOS engines** (#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in gap_13c, and a pointer at the end of the Silver Blades item)): the dispatcher's ids are C64 record offsets, and 17 of 17 arms whose id names a C64 field land on the DOS field of the same name -- this pair the only ids that fall in a C64 gap. Also `docs/80-fields-wanted.md`, CONFIRMED there independently on GOBLIN GUARD 10, HOBGOBLIN 20 and OGRE 90. A monster's field: zero in every player export |
+| `0x0F9` | 1 | `experience_per_hit_point` | unsigned byte | CONFIRMED | the multiplier `experience_award`'s note describes: GOBLIN GUARD 1, HOBGOBLIN 2, OGRE 5, the published AD&D 1st edition rate |
 | `0x0FE` | 1 | `portrait_head` | unsigned byte | CONFIRMED | index into the HEAD* files on the game disks, in hex: 0x2D is HEAD2D. All eleven values across our exports name a file that exists, and the odds of that happening by chance are negligible -- the ids used include $2D, $43, $44 and $67, not just small numbers. BRUTUS carries the same pair on two unrelated disks, and the two female half-elves share a portrait |
 | `0x0FF` | 1 | `portrait_body` | unsigned byte | CONFIRMED | index into the BODY* files, the same way. Head and body are adjacent and independent |
 | `0x100` | 1 | `roster_in_use` | unsigned byte | CONFIRMED | record 0x100-0x11F **is** the SAVEDGAME1 roster block. An exported .chr and the roster page agree in 31 of those 32 bytes for every character, differing only at 0x10D. Two agents reached that independently -- one from LIBRARY $3189/$319A, which copies $8300 + N*$20 in and out, the other from matching exports against saves by name. So a record is four blocks the game saves separately: 256 + 32 + 256 + 36 = 580. *(rest under Field notes, below.)* |

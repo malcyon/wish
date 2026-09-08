@@ -529,6 +529,27 @@ _DECLARED: Sequence[Field] = (
        "0x0EE -- so this is an unpack, not a copy"),
     _f(0x0B5, 3, _RAW, "spells_castable_magic_user", "Magic-user spell slots",
        _MAYBE),
+    _f(0x0B8, 2, _U16, "experience_award", "Experience award", _OK,
+       "what killing this creature is worth: `base + hp_rolled * "
+       "experience_per_hit_point` is the end-of-combat routine's own "
+       "arithmetic, `SECRET GAME.OVR 0x6B4A`-`0x6B7E`, `CURSE "
+       "0x5D7B`-`0x5DAF`, `POOLRAD 0x564E`-`0x5676`. **CONFIRMED from four "
+       "agreeing routes** (#254 (Two DOS gaps the Amiga port gives a shape "
+       "to: a 16-bit field in gap_13c, and a pointer at the end of the "
+       "Silver Blades item)): that arithmetic; the script property "
+       "dispatcher, whose ids are C64 record offsets, 17 of 17 landing on "
+       "the DOS field of the same name, with this pair the only ids in a "
+       "C64 gap; the engines' own record importers copying the word as a "
+       "word between titles; and the shipped creature files -- GOBLIN GUARD "
+       "10, HOBGOBLIN 20, OGRE 90. A monster's field: zero in every player "
+       "record the corpus holds"),
+    _f(0x0BA, 1, _U8, "experience_per_hit_point", "Experience per hit point",
+       _OK,
+       "the multiplier `experience_award`'s note describes. GOBLIN GUARD 1, "
+       "HOBGOBLIN 2, OGRE 5 -- the published AD&D 1st edition rate. Pools of "
+       "Darkness and Treasures of the Savage Frontier have no such byte: the "
+       "later engine adds the base alone and the money loop it sits beside "
+       "shrinks from seven slots to three"),
     _f(0x0BB, 1, _U8, "portrait_head", "Portrait head", _OK,
        "**a one-based position in the creation menu's fourteen heads, not a "
        "block number** (#57). The menu's own table of art ids is in the "
@@ -1088,7 +1109,8 @@ POOLS_OF_DARKNESS = DosShape(
            "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
-           "gap_0b8": 2, "portrait_head": 0, "portrait_body": 0},
+           "experience_per_hit_point": 0, "portrait_head": 0,
+           "portrait_body": 0},
     inserts={"char_class": (_paladin_cures(),),
              "level": (_x(1, "former_level", "Level left the old class at",
                           _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),

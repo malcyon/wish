@@ -1090,6 +1090,14 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("thac0_current", "thac0"),
     ("armour_class", "armour_class"),
     ("movement_current", "roster_movement"),
+    # A creature's own field, CONFIRMED from four agreeing routes (#254):
+    # zero in every player record the corpus holds (474 of 474, bar one
+    # Treasures of the Savage Frontier record found twice at two paths), and
+    # the C64's own copy at `gap_0f4` 0x0F7/0x0F9 is the same pair.  Copied
+    # straight across rather than dropped, because both ports hold the same
+    # field and a player who somehow carries a non-zero value keeps it.
+    ("experience_award", "experience_award"),
+    ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
 #: DOS fields deliberately left behind, and why.  **Every one of these is
@@ -2136,6 +2144,11 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("thac0_current", "thac0_current"),
     ("armour_class", "armour_class"),
     ("movement_current", "movement_current"),
+    # A creature's own field, zero in every player record the corpus holds
+    # (#254). The reader's `DIRECT` and this table are mirrors, so it is
+    # copied straight across here too rather than dropped.
+    ("experience_award", "experience_award"),
+    ("experience_per_hit_point", "experience_per_hit_point"),
 )
 
 #: Neutral fields the DOS writer takes by a rule rather than by a copy.

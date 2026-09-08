@@ -744,6 +744,18 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("unnamed_0ab", "the DOS and C64 identity draw, used to break a same-name "
                     "tie at creation; no home has been located for it in the "
                     "`.pc`, and Pools of Darkness has its own creation flow"),
+    # #254: a creature's own field, zero in every player record measured on
+    # any port.  `experience_award` has a home in DOS Pools of Darkness'
+    # own 510-byte record (0x198), so it is undecoded in the `.pc` rather
+    # than absent -- the same "no located home" as everything else on this
+    # list.  `experience_per_hit_point` is narrower: the later engine drops
+    # the byte outright, so DOS Pools of Darkness has nowhere for it either
+    # (`goldbox/dos_layout.py`'s 510-byte shape declares `experience_award`
+    # alone) and the `.pc` has nothing to decode.
+    ("experience_award", "no located home in the `.pc`"),
+    ("experience_per_hit_point", "Pools of Darkness' own engine keeps no "
+                                 "such byte in any of its records; the "
+                                 "later engine adds the base award alone"),
 )
 
 
@@ -3298,7 +3310,7 @@ AMIGA_SSB_SCROLL_CHAIN = 0x042
 #:     `0x0F6`-`0x0FA` at shift 0 and is readable;
 #:   * **each of the three spell-slot arrays is six bytes on the Amiga where
 #:     DOS spends five**, and that is the whole of the three-byte insertion
-#:     between `hp_rolled` and `gap_13c`.  Three routines index them as
+#:     between `hp_rolled` and `experience_award`.  Three routines index them as
 #:     `record[0x12E + 6 * class + (level - 1)]` -- `/Curse` `0x288`, `0x482`
 #:     and `0x9F4`, with `class` read from byte 0 of a 16-byte spell-table
 #:     entry (0 cleric, 1 druid, 2 magic-user) and `level` from byte 1.  So
@@ -3307,9 +3319,10 @@ AMIGA_SSB_SCROLL_CHAIN = 0x042
 #:     has no DOS counterpart.  `/Secret`'s Curse-import routine at `0x26F64`
 #:     reads the same three bases out of a Curse record, which is a second
 #:     binary agreeing;
-#:   * DOS's three-byte `gap_13c` is therefore at Amiga `0x140`-`0x142`, and
-#:     its first two bytes are a `u16`: the unpacker byte-swaps the word at
-#:     Amiga `0x140` the way it swaps age, the money block and experience;
+#:   * DOS's `experience_award`/`experience_per_hit_point` pair is therefore
+#:     at Amiga `0x140`-`0x142`, `experience_award` a `u16`: the unpacker
+#:     byte-swaps the word at Amiga `0x140` the way it swaps age, the money
+#:     block and experience;
 #:   * one at Amiga `0x151`, between `item_count` and the item pointer array.
 #:     The count is at `0x150` -- forced by `428 + 66 x count + 10 x effects`
 #:     matching the block length in 4 of 4 played characters -- and the
