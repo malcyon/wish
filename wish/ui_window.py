@@ -1589,7 +1589,7 @@ class Ui_WishWindow(object):
         self.label_jewelry.setText(_translate("WishWindow", "Jewelry"))
         self.box_roster.setTitle(_translate("WishWindow", "Roster"))
         self.label_roster_in_use.setText(_translate("WishWindow", "Roster in use"))
-        self.label_party_order.setText(_translate("WishWindow", "Party order"))
+        self.label_party_order.setText(_translate("WishWindow", "Combat figure"))
         self.label_roster_movement.setText(_translate("WishWindow", "Roster movement"))
         self.label_roster_tail.setText(_translate("WishWindow", "Roster tail"))
         self.label_turn_class.setText(_translate("WishWindow", "Turn class"))
