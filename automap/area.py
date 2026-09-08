@@ -112,10 +112,14 @@ NEAR_ENOUGH = 128
 #
 # **Two limits, stated here because this is the file the check lives in.**
 #
-# * **There is no DOS negative corpus.** The sweep is C64 and Amiga only. DOS
-#   stores its maps differently, so there are no DOS positives to weigh
-#   against, but that also means nothing here has been measured against DOS
-#   bytes.
+# * **There is no DOS negative corpus.** The sweep is C64 and Amiga only, so
+#   nothing here has been measured against the bytes a DOS disk holds around
+#   its maps. The DOS *positives* exist and pass: `#443 (Three of Curse's
+#   sixteen maps differ between the C64 and the Amiga, and nobody has looked
+#   at how)` read 62 DOS maps out of `GEO<n>.DAX` -- each block the same 1024
+#   bytes behind the C64 PRG's own `00 04` load address -- and all 62 are
+#   plausible by these four clauses. An earlier note here said DOS stored its
+#   maps differently and had no positives to weigh against; that was wrong.
 # * **None of this is safe against data from outside this family of games.**
 #   Swept across `Bubble Bobble.adf`'s 6275 windows the old check admitted 9
 #   and this one admits 6 -- Atari ST tile graphics, repetitive enough to reuse
