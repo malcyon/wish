@@ -1825,8 +1825,9 @@ def amiga_por_effect_from_dos(node: bytes) -> bytes:
     return bytes((node[0], 0, node[2], node[1], node[3], node[4])) + bytes(4)
 
 
-def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
-                                               PorWriteReport]:
+def write_por(char: NeutralCharacter,
+             icon: "DosIcon | None" = None) -> tuple[bytes, bytes, bytes,
+                                                      PorWriteReport]:
     """Build an Amiga Pool of Radiance record and its `.itm` and `.spc`.
 
     Returns `(record, itm, spc, report)`, the same shape `goldbox.dos.write`
@@ -1840,10 +1841,21 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
     not the same thing as no file: `goldbox.dos.ITM_OMITTED_WHEN_EMPTY` records
     what handing the DOS engine a zero-length one did (#62).  The caller sees
     `b""` and must not write a file for it.
+
+    `icon` is this character's own combat figure -- `icon_head`, `icon_body`
+    and the six `icon_colours` bytes -- passed straight through to
+    `goldbox.dos.write`'s own `icon` argument, the same bypass
+    `goldbox.amiga.write_later` takes for Curse and Silver Blades (#396,
+    #319, docs/199-amiga-combat-icons.md).  Build one with
+    `editor.convert.amiga_combat_icon` for an Amiga or DOS source, or with
+    `goldbox.iconparts.IconParts.dos_icon_from_c64` for a C64 source
+    (#422).  With none given, `icon_head` and `icon_body` are written zero
+    and `icon_colours` the game's own freshly-made default, exactly as
+    before this parameter existed.
     """
     from . import dos as _dos
 
-    record, itm, spc, dosrep = _dos.write(char)
+    record, itm, spc, dosrep = _dos.write(char, icon=icon)
     out = from_dos_record(record)
 
     items = [amiga_por_item_from_dos(
@@ -2328,7 +2340,8 @@ def retarget_savegame(save: bytes, slot: str) -> bytes:
 
 def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
                    savegame: bytes | None = None,
-                   drawer: str = POR_SAVE_DRAWER) -> list[str]:
+                   drawer: str = POR_SAVE_DRAWER,
+                   icons: "list | None" = None) -> list[str]:
     """Write a whole save slot onto an Amiga disk, slot list and all.
 
     Returns the paths written, in the order they were written.  `disk` is an
@@ -2353,7 +2366,15 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
     `drawer` is `save` for a copy of the game disk and `""` for the root of a
     `POOLSAVE` save disk -- see :func:`por_save_path`, which is the whole of
     the difference between the two.
+
+    `icons` is each character's own `goldbox.iconparts.DosIcon`, `None`
+    where there is none, in the same order as `characters` -- `write_por`'s
+    own `icon` argument, threaded through per character (#422). Left out,
+    every character's icon is `None` and every figure is written zero,
+    exactly as before this parameter existed.
     """
+    if icons is None:
+        icons = [None] * len(characters)
     letter = _por_slot_letter(slot)
     if not 1 <= len(characters) <= POR_PARTY_MAX:
         raise AmigaRecordError(
@@ -2377,8 +2398,8 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
                     f"slot the game can load") from None
 
         written: list[str] = []
-        for index, char in enumerate(characters, start=1):
-            record, itm, spc, rep = write_por(char)
+        for index, (char, icon) in enumerate(zip(characters, icons), start=1):
+            record, itm, spc, rep = write_por(char, icon=icon)
             if rep.unaccounted:
                 raise AmigaRecordError(
                     f"{len(rep.unaccounted)} bytes of character {index} have "
@@ -2431,7 +2452,8 @@ POR_CHARACTER_LIST_NAME = "charlist.txt"
 
 def make_por_save_disk(slot: str, characters: Sequence[NeutralCharacter],
                        savegame: bytes,
-                       volume: str = POR_SAVE_VOLUME) -> AmigaDisk:
+                       volume: str = POR_SAVE_VOLUME,
+                       icons: "list | None" = None) -> AmigaDisk:
     """A save disk with one slot on it, formatted from nothing (#36).
 
     This is what a player can actually be handed: an 880K OFS floppy named
@@ -2447,10 +2469,14 @@ def make_por_save_disk(slot: str, characters: Sequence[NeutralCharacter],
     arrives on its own square at its own clock rather than on SSI's.  The
     caller builds it, because only the caller knows which save is being
     converted and which Amiga disk 2 the area's script can be read from.
+
+    `icons` is :func:`write_por_slot`'s own argument, passed straight
+    through -- each character's own `goldbox.iconparts.DosIcon`, `None`
+    where there is none, in the same order as `characters` (#422).
     """
     disk = AmigaDisk.blank(volume)
     disk.write_file(por_save_path(POR_CHARACTER_LIST_NAME, ""), b"")
-    write_por_slot(disk, slot, characters, savegame, drawer="")
+    write_por_slot(disk, slot, characters, savegame, drawer="", icons=icons)
     return disk
 
 

@@ -760,7 +760,8 @@ class AmigaWriteRehearsal(Rehearsal):
 
 
 def _rehearse_por_savegame(state: Any, slot: str, party: list,
-                           ecl_dax: bytes) -> AmigaWriteRehearsal:
+                           ecl_dax: bytes,
+                           icons: "list | None" = None) -> AmigaWriteRehearsal:
     """The tail both Amiga-destination directions share: build the saved
     game and the disk around it, and a report neither `write_por` nor
     `make_por_save_disk` return on their own.
@@ -773,11 +774,19 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     `report.warnings` gets the same, plus `PorSaveReport.converted` -- the
     place, the clock and the quest-flag count `tools/toamigapor.py` already
     prints -- so a player reading the pane sees where the party has arrived.
+
+    `icons` is each character's own `goldbox.iconparts.DosIcon`, `None`
+    where there is none, in the same order as `party` -- `write_por`'s own
+    `icon` argument, threaded through per character (#422). Left out, every
+    character's icon is `None` and every figure is written zero, exactly as
+    before this parameter existed.
     """
+    if icons is None:
+        icons = [None] * len(party)
     portraits = any(c.get("portrait_head") for c in party)
     savegame, save_report = amiga.new_por_savegame(
         state, slot, len(party), ecl_dax, portraits=portraits)
-    disk = amiga.make_por_save_disk(slot, party, savegame)
+    disk = amiga.make_por_save_disk(slot, party, savegame, icons=icons)
     problems = disk.verify()
     if problems:
         raise amiga.AmigaRecordError(
@@ -785,8 +794,8 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
             + "\n  ".join(problems))
 
     report = neutral.Report()
-    for char in party:
-        _, _, _, char_report = amiga.write_por(char)
+    for char, icon in zip(party, icons):
+        _, _, _, char_report = amiga.write_por(char, icon=icon)
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
     report.warnings.extend(save_report.converted)
@@ -807,6 +816,16 @@ class C64ToAmiga(Direction):
     A C64 source has no slot of its own, so the built saved game is always
     slot `A` -- the same rule `C64ToDos.rehearse` follows for a fresh DOS
     folder.
+
+    `icon_parts` is `goldbox.dos.c64_party`'s own argument -- the source
+    title's own `SPELLE64`/`SPELLN64`, read into a `goldbox.iconparts.
+    IconParts` -- which turns each character's own C64 combat icon into an
+    Amiga figure, mirroring `C64ToDos`'s own parameter (#422 (A C64 party
+    converted to an Amiga save disk arrives with no combat figure at all,
+    because C64ToAmiga never recognises it), the same shape #383 gave the
+    DOS destination). `ConvertDialog` supplies it, off the *source*'s own
+    title; left out, every figure is the game's own default, as before that
+    ticket.
     """
 
     source_port = "c64"
@@ -822,14 +841,15 @@ class C64ToAmiga(Direction):
         self.title = games.by_key(shape.key)
 
     def rehearse(self, source: Source, slot: str,
-                options: "str | pathlib.Path") -> AmigaWriteRehearsal:
+                options: "str | pathlib.Path",
+                icon_parts: "Any | None" = None) -> AmigaWriteRehearsal:
         from goldbox.amiga_adf import AmigaDisk
 
         ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
-        party, _icons = dos.c64_party(source.save0, source.save1,
-                                      game=self.title)
+        party, icons = dos.c64_party(source.save0, source.save1,
+                                     game=self.title, icon_parts=icon_parts)
         state = amiga.por_state_from_c64(source.save0, str(source.path))
-        return _rehearse_por_savegame(state, "A", party, ecl_dax)
+        return _rehearse_por_savegame(state, "A", party, ecl_dax, icons=icons)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
@@ -1449,14 +1469,16 @@ class ConvertDialog(QDialog):
             options = pathlib.Path(self._game_path)
 
         try:
-            if direction.source_port == "c64" and direction.destination_port == "dos":
+            if (direction.source_port == "c64"
+                    and direction.destination_port in ("dos", "amiga")):
                 # The source title's own `SPELLE64`/`SPELLN64` -- the same
                 # lookup `game_files_for` already does for a C64
                 # *destination*'s icon table, keyed here by the *source*'s
-                # title instead (`direction.title`, `C64ToDos.__init__`).
-                # `None` when the player's disks do not carry it: the
-                # conversion still runs, exactly as before #383, and every
-                # figure comes out the game's own default.
+                # title instead (`direction.title`, `C64ToDos.__init__` and
+                # `C64ToAmiga.__init__` alike). `None` when the player's
+                # disks do not carry it: the conversion still runs, exactly
+                # as before #383 and #422, and every figure comes out the
+                # game's own default.
                 source_files: Any = self._game_files(direction.title)
                 icon_parts = (source_files.icon
                              if source_files is not None else None)
