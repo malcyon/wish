@@ -17,7 +17,7 @@ import pytest
 from gamedata import synthetic_arena
 
 from automap import combat
-from automap.render import Label
+from automap.render import Bar
 from automap.state import Automapper
 from automap.target import MemoryTarget
 
@@ -225,8 +225,10 @@ def test_the_battlefield_draws_ground_and_combatants(battle):
     assert kinds.count("party") == 1 and kinds.count("enemy") == 1
     assert kinds.count("camera") == 1
     assert "block" in kinds                       # the arena has walls in view
-    hp = [p for p in prims if isinstance(p, Label)]
-    assert sorted(p.text for p in hp) == ["11", "5"]
+    # BRUTUS and the orc are both at full health in this arena (#345).
+    bars = [p for p in prims if isinstance(p, Bar)]
+    assert len(bars) == 2
+    assert all(b.fraction == 1.0 for b in bars)
 
 
 def test_whoever_may_still_act_is_outlined(battle):
@@ -250,6 +252,77 @@ def test_a_click_lands_on_the_square_under_it(battle):
     assert combat.square_at(px, py, box, cell) == (25, 13)
     assert combat.square_at(-5, -5, box, cell) is None
     assert battle.at(25, 13).name == "BRUTUS"
+
+
+# --- the health bar (#345) ---------------------------------------------------
+
+def _combatant(**over) -> combat.Combatant:
+    """A minimal combatant, for the fields the health bar reads."""
+    fields = dict(index=0, x=0, y=0, slot=0, pose=0, on_map=True,
+                 initiative=0, hp=None, hp_max=None)
+    fields.update(over)
+    return combat.Combatant(**fields)
+
+
+def test_hp_fraction_is_current_over_max():
+    assert _combatant(hp=11, hp_max=11).hp_fraction == 1.0
+    assert _combatant(hp=0, hp_max=7).hp_fraction == 0.0
+    assert _combatant(hp=1, hp_max=100).hp_fraction == pytest.approx(0.01)
+
+
+def test_hp_fraction_is_none_where_either_half_is_unreadable():
+    """`?` was `hp_text`'s answer for this; a bar draws nothing instead of
+    guessing one, the same rule `lines()` follows for an undecoded field."""
+    assert _combatant(hp=None, hp_max=11).hp_fraction is None
+    assert _combatant(hp=5, hp_max=None).hp_fraction is None
+    assert _combatant(hp=5, hp_max=0).hp_fraction is None
+
+
+def test_hp_fraction_clamps_a_combatant_carrying_more_than_its_maximum():
+    """The game allows it; the bar fills and no more."""
+    assert _combatant(hp=20, hp_max=10).hp_fraction == 1.0
+
+
+@pytest.mark.parametrize("cell", [combat.CELL_MIN, combat.CELL_MAX, 66])
+def test_the_bar_sits_inside_the_squares_own_inset(cell):
+    """Same inset the occupant's own fill uses (`left + 1, top + 1,
+    cell - 2, cell - 2`), never touching the square's own border."""
+    left, top = 40, 60
+    bar = combat.bar_for(left, top, cell, 1.0, "hp")
+    assert left + 1 <= bar.x and bar.x + bar.w <= left + 1 + (cell - 2)
+    assert top + 1 <= bar.y and bar.y + bar.h <= top + 1 + (cell - 2)
+    assert bar.h >= 2       # legible at CELL_MIN, per the sheet at #345
+
+
+def test_a_bar_never_rounds_a_survivor_away_to_nothing():
+    """The finding the issue was reopened for: `round(w * fraction)` is 0
+    pixels for a small enough fraction, which looks exactly like dead."""
+    full = Bar(0, 0, 8, 2, 1.0)
+    half = Bar(0, 0, 8, 2, 0.5)
+    sliver = Bar(0, 0, 8, 2, 0.01)          # 1 hp of 100, at CELL_MIN's width
+    empty = Bar(0, 0, 8, 2, 0.0)
+    assert full.fill_width == 8
+    assert half.fill_width == 4
+    assert sliver.fill_width == 1            # would be 0 unrounded -- stays lit
+    assert empty.fill_width == 0             # true zero draws no fill at all
+
+
+def test_the_battlefield_draws_a_bar_for_a_wounded_combatant():
+    """A combatant below full health draws a `Bar` sized to match, against
+    the geometry `bar_for` itself computes -- not a number read off one run."""
+    shape = combat.Shape(map_base=0, stride=10, width=10, height=10,
+                        positions=0, count=1)
+    hurt = combat.Battle(
+        shape=shape, terrain=bytes(shape.length), camera=(0, 0),
+        combatants=(_combatant(index=0, x=2, y=2, hp=1, hp_max=4),))
+    box = (0, 0, 10, 10)
+    cell = 30
+    bars = [p for p in combat.battlefield(hurt, box, cell)
+           if isinstance(p, Bar)]
+    assert len(bars) == 1
+    expect = combat.bar_for(
+        combat.MARGIN + 2 * cell, combat.MARGIN + 2 * cell, cell, 0.25, "hp")
+    assert bars[0] == expect
 
 
 # --- the tab ----------------------------------------------------------------
@@ -420,9 +493,9 @@ def test_a_helpless_enemy_is_yellow_and_says_so():
     assert "Helpless" in orc.lines()
     kinds = [p.kind for p in combat.battlefield(battle)]
     assert kinds.count("helpless") == 1 and "enemy" not in kinds
-    # Paper-coloured digits vanish on the yellow, so they are inked instead.
+    # A paper-coloured bar vanishes on the yellow, so it is inked instead.
     assert [p.kind for p in combat.battlefield(battle)
-            if isinstance(p, Label)] == ["hp", "hp-ink"]
+            if isinstance(p, Bar)] == ["hp", "hp-ink"]
 
 
 def test_the_yellow_goes_the_moment_the_effect_does():

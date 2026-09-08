@@ -39,7 +39,7 @@ from goldbox.savegame import (
 from goldbox.traits import NAMES, traits
 
 from .live import active_effects
-from .render import Hatch, Label, Line, Rect, hatch_lines
+from .render import Bar, Hatch, Line, Rect, hatch_lines
 
 # Which overlay is running. LINKER's own dispatch byte.
 MODE = 0x6E11
@@ -123,6 +123,12 @@ LEAST = 12                # ...and never a view smaller than this
 # between one rock square and the next.
 FILL, HATCH, CROSS = "fill", "hatch", "cross"
 SHADING = HATCH
+
+# The health bar sits inside the same inset the occupant's own square keeps
+# (`left + 1, top + 1, cell - 2, cell - 2`), along its bottom edge, scaled off
+# that inset rather than off `cell` so it never touches the square's border.
+BAR_HEIGHT_FRACTION = 0.16
+BAR_MARGIN_FRACTION = 0.08
 
 
 @dataclass(frozen=True)
@@ -245,6 +251,18 @@ class Combatant:
     @property
     def hp_text(self) -> str:
         return "?" if self.hp is None else str(self.hp)
+
+    @property
+    def hp_fraction(self) -> float | None:
+        """Current hit points over max, clamped to 0..1.
+
+        `None` where either half is unknown, so the square draws no bar
+        rather than guessing one -- the same "nothing invented" rule
+        `lines()` follows for a field that was never read.
+        """
+        if self.hp is None or not self.hp_max:
+            return None
+        return max(0.0, min(1.0, self.hp / self.hp_max))
 
     def lines(self) -> list[str]:
         """The tooltip, as text. **Only what is decoded.**
@@ -533,6 +551,24 @@ def _rock(battle: Battle, box, cell: int, margin: int, shading: str):
             yield Line(right, top, right, bottom, "rock-edge")
 
 
+def bar_for(left: float, top: float, cell: int, fraction: float,
+            kind: str) -> Bar:
+    """The health bar for one occupied square, along its bottom edge.
+
+    `fraction` is not clamped or rounded here -- `Combatant.hp_fraction`
+    already did that, and how a fraction too small to round to a pixel is
+    shown is the painter's decision, not this geometry's.
+    """
+    inset_left, inset_top = left + 1, top + 1
+    inset = cell - 2
+    margin = max(1, round(inset * BAR_MARGIN_FRACTION))
+    height = max(2, round(inset * BAR_HEIGHT_FRACTION))
+    width = max(1, inset - 2 * margin)
+    x = inset_left + margin
+    y = inset_top + inset - height - margin
+    return Bar(x, y, width, height, fraction, kind)
+
+
 def battlefield(battle: Battle, box=None, cell: int | None = None,
                 margin: int = MARGIN, shading: str = SHADING):
     """Every primitive for one fight: ground, then combatants.
@@ -560,16 +596,18 @@ def battlefield(battle: Battle, box=None, cell: int | None = None,
             # Still has initiative to spend, so it may still act this round.
             # $A380 counts down and the round ends when all 64 are zero.
             yield Rect(left - 1, top - 1, cell + 2, cell + 2, "ready")
-        # Hit points are written in the paper colour on the green and the
+        # The health bar is drawn in the paper colour on the green and the
         # red, which have the contrast for it. The helpless yellow does not --
-        # nothing that still reads as yellow does -- so its digits are inked.
+        # nothing that still reads as yellow does -- so its ink is inked.
         if who.dimmed:
             ink = "hp-dim"
         elif who.kind == "helpless":
             ink = "hp-ink"
         else:
             ink = "hp"
-        yield Label(left + cell / 2, top + cell / 2, who.hp_text, ink)
+        frac = who.hp_fraction
+        if frac is not None:
+            yield bar_for(left, top, cell, frac, ink)
 
 
 def square_at(px: float, py: float, box, cell: int,

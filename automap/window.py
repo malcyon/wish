@@ -26,8 +26,6 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QAction,
     QColor,
-    QFont,
-    QFontMetricsF,
     QKeySequence,
     QPainter,
     QPen,
@@ -66,9 +64,9 @@ from .render import (
     CELL,
     CELL_MIN,
     MARGIN,
+    Bar,
     Glyph,
     Hatch,
-    Label,
     Line,
     Poly,
     Rect,
@@ -385,17 +383,13 @@ class CombatCanvas(QWidget):
 
     Same graph paper, same ink, same line art -- a player should not feel they
     have changed program because a fight started. What is new is the colour:
-    the party green, the enemy red and a helpless enemy gold, with current hit
-    points written in the square, because mid-fight that is the number you look
-    for.
+    the party green, the enemy red and a helpless enemy gold, with a small
+    health bar along the bottom of every occupied square (`#345`, superseding
+    the fitted hit-point number `#347` drew there).
 
     The geometry is `automap/combat.py`, which has no Qt in it; this paints what
     it yields and answers the tooltip.
     """
-
-    #: Below this pixel size nothing reads as a digit -- the floor
-    #: `tools/combatbarsheet.py`'s `fit_font` uses for the same reason.
-    MIN_LABEL_PIXELS = 4
 
     def __init__(self, parent=None, host=None):
         super().__init__(parent)
@@ -536,49 +530,23 @@ class CombatCanvas(QWidget):
         elif isinstance(prim, Line):
             p.setPen(QPen(INK, 2.5 if prim.kind == "rock-edge" else 1))
             p.drawLine(QPointF(prim.x1, prim.y1), QPointF(prim.x2, prim.y2))
-        elif isinstance(prim, Label):
-            p.setPen(QPen(HP_INK.get(prim.kind, PAPER)))
-            cell = self.drawn_cell
-            p.setFont(self._label_font(prim.text, cell))
-            p.drawText(QRectF(prim.x - cell / 2, prim.y - cell / 2,
-                              cell, cell),
-                       Qt.AlignmentFlag.AlignCenter, prim.text)
-
-    @staticmethod
-    def _label_font(text: str, cell: int) -> QFont:
-        """The largest bold sans that keeps `text` inside a `cell`-wide
-        square, measured rather than guessed at a fraction of the cell --
-        down to `MIN_LABEL_PIXELS`, below which there is no smaller legible
-        digit, so that size is drawn regardless of whether it measures
-        inside the square. On this project's own machine (DejaVu Sans) the
-        floor always fits; a "sans" that resolves to something wider on
-        another platform can overflow the square by a few pixels rather than
-        draw nothing.
-
-        Sized in pixels, not points, because `cell` is itself a pixel count
-        and the same cell has to draw the same digits on every machine --
-        `tools/combatbarsheet.py`'s `fit_font` sizes the letter over the
-        health bar the same way, and has the same unmeasured floor. A
-        one-digit hit-point total and a three-digit one are different widths
-        at the same cell, so this measures the text it is actually asked to
-        draw rather than a worst case that would leave `7` looking as
-        cramped as `118`.
-        """
-        pad = 2  # keeps the digits off the lattice line at any cell size
-        limit = max(1, cell - pad * 2)
-        size = max(CombatCanvas.MIN_LABEL_PIXELS, limit)
-        while True:
-            font = QFont("sans")
-            font.setPixelSize(size)
-            font.setWeight(QFont.Weight.Bold)
-            fm = QFontMetricsF(font)
-            if fm.capHeight() <= limit and fm.horizontalAdvance(text) <= limit:
-                return font
-            if size <= CombatCanvas.MIN_LABEL_PIXELS:
-                # Nothing fits, not even the floor -- measured above, same
-                # as every other candidate size -- so draw it anyway.
-                return font
-            size -= 1
+        elif isinstance(prim, Bar):
+            # The track is drawn first, at reduced alpha, so an empty bar is
+            # still visibly a bar rather than nothing -- the same thinning
+            # `_draw`'s own "-dim" fill uses just above, on the same ink the
+            # digits used to be papered or inked in.
+            ink = HP_INK.get(prim.kind, PAPER)
+            track = QColor(ink)
+            track.setAlpha(90)
+            p.setPen(QPen(track, 1))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRect(QRectF(prim.x + 0.5, prim.y + 0.5,
+                              prim.w - 1, prim.h - 1))
+            if prim.fill_width:
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(ink)
+                p.drawRect(QRectF(prim.x, prim.y, prim.fill_width, prim.h))
+                p.setBrush(Qt.BrushStyle.NoBrush)
 
 
 class AutomapBinding(QObject):

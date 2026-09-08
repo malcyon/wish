@@ -120,17 +120,50 @@ class Poly:
 
 @dataclass(frozen=True)
 class Label:
-    """A short piece of text at a point.
+    """A short piece of text at a point, where `(x, y)` is the centre.
 
-    The combat view puts hit points in a square with it, where `(x, y)` is the
-    centre. Nothing on the area map uses one: the note count that did was
-    removed with the second note per square it counted.
+    Nothing draws one today -- the combat view's hit-point number was the
+    only user and became a health bar (`#345`); the note count that used the
+    area map's was removed with the second note per square it counted. Left
+    in place as generic infrastructure a later primitive can reach for.
     """
 
     x: float
     y: float
     text: str
     kind: str = "hp"
+
+
+@dataclass(frozen=True)
+class Bar:
+    """A small proportional bar, filled from the left.
+
+    The combat view draws one along the bottom of every occupied square for
+    current hit points over max: `(x, y, w, h)` is the full track and
+    `fraction` (0 to 1) how much of it is filled. The painter decides how to
+    show a fraction too small to round to a whole pixel -- a combatant on its
+    last hit point should not look the same as an empty square.
+    """
+
+    x: float
+    y: float
+    w: float
+    h: float
+    fraction: float
+    kind: str = "hp"
+
+    @property
+    def fill_width(self) -> float:
+        """Pixels of `w` to fill, proportional to `fraction`.
+
+        Never rounded away to nothing once there is anything to show: a
+        combatant on one hit point out of a hundred is a `fraction` of 0.01,
+        and `round(w * 0.01)` is 0 pixels at every cell this map draws --
+        indistinguishable from dead. One pixel stays lit instead.
+        """
+        if self.fraction <= 0:
+            return 0.0
+        return max(1.0, round(self.w * self.fraction))
 
 
 @dataclass(frozen=True)
