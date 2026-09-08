@@ -10,15 +10,15 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 38, Silver Blades 36.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **An inventory edit on either later title**, A13. The editor's write-back path on Silver Blades was the answer until 2026-09-08, when #33 (One Silver Blades session, for the whole editor path) took A17-A20 to `V` on a save the C64 engine wrote; the live tab stopped being the answer the same day, every one of its cells having been watched on all three titles (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 39, Silver Blades 37.** §2 | CONFIRMED, cited per row |
+| Where is the promise thinnest? | **The six purses beyond gold on either later title**, A8, and it is the only unverified cell left that anybody here can reach: C10 and C11 are ruled out by G7, D4 needs hardware nobody on this project has, and D1 needs a live machine. An inventory edit was the answer until 2026-09-08, when `tools/inventorycheck.py` took A13 to `V` on both later titles; the editor's write-back path on Silver Blades was the answer the day before that, and the live tab the day before that (`docs/212-the-live-tab-per-title.md`) | CONFIRMED, cited per row |
 
 The honest one-line version: **the file path works on three titles, and so
 does the live tab -- reader, map, badges and all five action buttons, watched
-in the running game on each.** What is left is the six purses beyond gold, an
-inventory edit on either later title, and the combat view and log, which are
-ruled out by G7. The editor writing a Silver Blades save back was on that list
-until 2026-09-08 and is not any more.
+in the running game on each.** What is left is the six purses beyond gold, and
+the combat view and log, which are ruled out by G7. The editor writing a Silver
+Blades save back was on that list until 2026-09-08, and an inventory edit on
+either later title came off it the same day.
 
 ## 1. How far out of date `docs/120` and `docs/121` are
 
@@ -69,7 +69,7 @@ applicable.
 | A10 | spell names resolve | V | V | V | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; **SSB's are resolved** — `goldbox/spells.py:SECRET_OF_THE_SILVER_BLADES`, `COMBAT2` at `$E000`, 194 entries, spells to 117, with `test_silverblades.py::test_silver_blades_keeps_its_spell_names_in_combat2_like_curse` and `…::test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm` |
 | A11 | item names resolve | V | V | V | `test_titletables.py::test_every_title_names_its_first_item_battle_axe` — all six titles |
 | A12 | item **types** (`ITEMS`) decode to damage/AC/usage | V | V | V | `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added`; **SSB decodes to AD&D on 42 of 43 named items**, 30 weapons and 13 armour, through the unmodified decoder against its own `ITEM<nn>` lists — `test_coldread.py::test_a_titles_item_types_decode_to_the_rulebooks_numbers`. The exception is the hammer's damage against large opponents, which SSB stores as 1d4+1 where the other two store the rulebook's 1d4; both are sane dice out of the same three bytes, so it is a data difference and not a misread offset |
-| A13 | inventory edit, add, remove | V | **U** | **U** | `docs/120` blockers: "no Curse save from a *played* party with inventory … no Curse item record has ever been seen" |
+| A13 | inventory edit, add, remove | V | V | V | **Closed on 2026-09-08 on both**, VICE pool slot 7, `tools/inventorycheck.py`. All three verbs on one character, made through the editor's own handlers, then read off the game's own `EQUIPPED ITEM` screen with the unedited specimen run through the same code as the control. Curse, `WISH-SPEC-curse-party-with-items`: ten rows became seven, `SILVER MIRROR` went from seven copies to three with a `9` in front of one, `TWO-HANDED SWORD` appeared, and the readied `YES 1 FLASK OF OIL` stayed put. Silver Blades, `WISH-SPEC-ssb-d-engine-resave`: twelve rows became ten, `30 ARROW +1` became `9 ARROW +1`, `CANARY` appeared, and `LONG SWORD +1`, `SHIELD +2` and `PLATE MAIL +1` were gone. `test_inventorycheck.py`, nine tests, including that every byte an edit moves is inside that character's own item page and that a save with no edit writes the payload back byte for byte. **The row's old blocker was out of date twice over**: `#32 (One Curse session, to get a party with items)` made the Curse specimen on 2026-09-04, and `WISH-SPEC-ssb-d-engine-resave` has always carried twelve items on Guy de Valois |
 | A14 | combat icon editor and its charset | V | V | V | `CHARPIC00` is on all twenty sides of the three titles, 2030 bytes every time. **Curse's is Pool of Radiance's byte for byte** (only the PRG load address moves, `$8000` → `$3000`) and **Silver Blades redraws three glyphs of 253** — 132, 133 and 207 — which its own eight-bytes-per-glyph reading takes unchanged. `test_curse.py::test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte`, `test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`. The editor reads the open title's own disks: `editor/window.py:_disk_candidates` globs on `game.disk_glob` |
 | A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | V | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds. **Closed by #186 (The character sheet gives a Silver Blades elf a Pool of Radiance ability)**: `goldbox/traits.py` is a table per title now, Curse pointing at Pool of Radiance's and Silver Blades carrying its own — six of its nine seeded codes named by pointing the existing wording at this title's number, and 7, 92 and 105 showing their number because nobody has read what they mean. `test_coldread.py`, six tests, corroborated on the shipped party; `test_pertitle_ui.py`, seven more, on a record built with an elf in it because the shipped party is all humans and dwarves |
 | A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
@@ -146,11 +146,19 @@ and `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` and `#20 (Build an area table for Silver Blades)` closed
 C21 for both, with nobody returning to these rows.
 
-**What is left is six cells for Curse and six for Silver Blades**, and they
-are not the live tab: A8 (the six purses beyond gold), A13 (inventory, which
-needs a Curse item edit and a Silver Blades one), C10 and C11 (the combat
+**What is left is five cells for Curse and five for Silver Blades**, and they
+are not the live tab: A8 (the six purses beyond gold), C10 and C11 (the combat
 view and log, ruled out by G7), D1 (Preferences against a live machine) and
 D4 (the Ultimate backend, which nobody can test).
+
+**A13 was the sixth until 2026-09-08**, when `tools/inventorycheck.py` staged a
+remove, an edit and an add on one character of each later title and read all
+three off the game's own `EQUIPPED ITEM` screen. Its stated blocker had been
+out of date for four days on Curse and had never been true on Silver Blades:
+`WISH-SPEC-curse-party-with-items` was made on 2026-09-04 by
+#32 (One Curse session, to get a party with items), and Guy de Valois on
+`WISH-SPEC-ssb-d-engine-resave` has carried twelve items since that specimen
+was made on 2026-09-05.
 
 **A17-A20 were on that list until 2026-09-08**, when
 #33 (One Silver Blades session, for the whole editor path) took all four on
