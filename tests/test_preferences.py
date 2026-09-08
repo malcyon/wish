@@ -35,6 +35,7 @@ from gamedata import disk_dir, needs_disks, synthetic_save
 from automap import paths
 from automap.config import Settings, clamp_to_screen, restore_geometry
 from goldbox import games
+from wish import backends as bk
 from wish import preferences
 from wish.preferences import PreferencesDialog, report
 
@@ -869,7 +870,12 @@ def test_clearing_the_folder_goes_back_to_searching(app, tmp_path, monkeypatch):
 def test_the_backend_radios_are_the_menu_s_actions_and_still_act(
         app, tmp_path, monkeypatch):
     """The View > Backend group moved across whole. One model underneath, so
-    the preference, the session and the dialog cannot disagree."""
+    the preference, the session and the dialog cannot disagree.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375): with the flag unset the
+    Ultimate is not one of `win.backend_actions` at all, which is the gate's
+    own point and is covered on its own in `tests/test_wish.py`."""
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
@@ -885,12 +891,16 @@ def test_an_unverified_backend_still_says_so_in_the_dialog(app, tmp_path,
                                                            monkeypatch):
     """The Ultimate's reads are confirmed on hardware now (#240), so its own
     badge is gone -- this proves the badge still appears for whatever backend
-    genuinely is unverified, with a stand-in rather than the real Ultimate."""
+    genuinely is unverified, with a stand-in rather than the real Ultimate.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375) to put the Ultimate in
+    `win.backend_actions` at all."""
     import dataclasses
 
     from wish import ultimate
     monkeypatch.setattr(ultimate, "ULTIMATE",
                         dataclasses.replace(ultimate.ULTIMATE, verified=False))
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
@@ -906,7 +916,11 @@ def test_the_confirmed_ultimate_carries_no_unverified_badge(app, tmp_path,
                                                             monkeypatch):
     """The real state, as of #240: reads confirmed on Donald's own hardware,
     2026-09-04, so the badge that used to say "nobody has the hardware" must
-    not show for it any more."""
+    not show for it any more.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375) to put the Ultimate in
+    `win.backend_actions` at all."""
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)

@@ -932,10 +932,15 @@ def test_the_menu_says_which_are_answering_and_which_are_unverified(
     """The Ultimate's reads are confirmed on hardware now (#240), so it no
     longer carries the caveat -- but the menu must still raise it for whatever
     backend genuinely is unverified, which this proves with a stand-in rather
-    than the real Ultimate."""
+    than the real Ultimate.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375): without it the stand-in
+    never reaches `backends.backends()` and the loop below would check
+    nothing at all."""
     import dataclasses
 
     from wish import backends, ultimate
+    monkeypatch.setenv(backends.ULTIMATE_ENV, "1")
     monkeypatch.setattr(ultimate, "ULTIMATE",
                         dataclasses.replace(ultimate.ULTIMATE, verified=False))
     win = wish_window(app, tmp_path, monkeypatch)

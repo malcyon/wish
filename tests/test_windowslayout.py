@@ -514,11 +514,16 @@ def test_the_debug_log_has_no_paragraph_under_it_and_no_popup(app, tmp_path,
 def test_a_backend_status_is_a_badge_beside_the_label_not_part_of_it(app,
                                                                      tmp_path,
                                                                      monkeypatch):
-    """Donald: the statuses need to look different from the label."""
+    """Donald: the statuses need to look different from the label.
+
+    Needs `WISH_EXPERIMENTAL_C64_ULTIMATE` (#375) to put the Ultimate in the
+    dialog's own backend rows at all."""
+    from wish import backends as bk
     from wish.preferences import PreferencesDialog
     from wish.session import Session
     from wish.window import WishWindow
 
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     win = WishWindow(None, maps={}, session=Session(find=lambda pref=None: None))
     try:

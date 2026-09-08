@@ -203,6 +203,33 @@ def test_vice_is_a_backend_and_carries_its_own_hint():
     assert bk.VICE.default_interval_ms == 200
 
 
+# --- the Ultimate backend's flag, #375 ---------------------------------
+
+def test_the_ultimate_is_absent_by_default(monkeypatch):
+    """`WISH_EXPERIMENTAL_C64_ULTIMATE` unset is the shipped state: the
+    backend it hangs the game on is not in the list at all, not merely
+    unable to connect."""
+    monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
+    names = [b.name for b in bk.backends()]
+    assert names == ["VICE"]
+    assert bk.ultimate_enabled() is False
+
+
+@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
+def test_a_forgotten_setting_does_not_turn_the_ultimate_on(monkeypatch, value):
+    monkeypatch.setenv(bk.ULTIMATE_ENV, value)
+    assert bk.ultimate_enabled() is False
+    assert [b.name for b in bk.backends()] == ["VICE"]
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
+def test_the_ultimate_appears_when_the_flag_is_set(monkeypatch, value):
+    monkeypatch.setenv(bk.ULTIMATE_ENV, value)
+    assert bk.ultimate_enabled() is True
+    names = [b.name for b in bk.backends()]
+    assert names == ["VICE", "Ultimate"]
+
+
 def test_a_backend_that_is_not_there_is_not_offered(monkeypatch):
     monkeypatch.setattr(bk, "backends", lambda: [fake_backend(present=False)])
     assert bk.available() == [] and bk.find() is None
