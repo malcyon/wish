@@ -18,6 +18,7 @@ from goldbox import levels, levelup, spells
 from goldbox.record import CharacterRecord
 from tests import gamedata
 from tests.test_curse import _grant_table
+from tools import laterthac0
 
 GEN_BASE = 0x0800
 
@@ -288,6 +289,36 @@ def test_curse_computes_the_fighter_groups_thac0_instead():
     for name in ("fighter", "paladin", "ranger"):
         for row in CURSE.table(name):
             assert row.thac0 == 21 - row.level, (name, row.level)
+
+
+def test_curse_dos_thac0_is_the_games_own_table():
+    """`goldbox.levels.CURSE_OF_THE_AZURE_BONDS.dos_thac0` against the bytes
+    at `DS:0x3E3A` in the DOS build's own `START.EXE`.
+
+    `tools/laterthac0.py` locates the block without anchoring on a THAC0
+    number -- the class-bit array that follows it is a different permutation
+    from Pool of Radiance's, so `tools/thac0census.py` cannot find this table
+    at all (`#318 (DOS gives a low-level magic-user or thief THAC0 20 where
+    the C64 gives 21, and our table holds only the C64's)`).
+
+    Unlike Pool of Radiance, the surprise is that the magic-user's low levels
+    **agree** with the C64 here; what disagrees is the thief's low levels, a
+    level-2 fighter/paladin/ranger, and the magic-user's third band.
+    """
+    try:
+        found = laterthac0.locate("curse-of-the-azure-bonds")
+    except (FileNotFoundError, SystemExit) as why:
+        pytest.skip(f"no DOS Curse on this machine: {why}")
+    disk = found.table()
+    rows = dict(CURSE.dos_thac0)
+    assert set(rows) == {"cleric", "fighter", "paladin", "ranger",
+                         "magic-user", "thief"}
+    for name, row in rows.items():
+        assert list(row) == disk[name], name
+    # The two places the port disagrees with its own C64 table, spelled out.
+    assert rows["thief"][:4] == (20, 20, 20, 20)          # C64: 21
+    assert rows["fighter"][1] == 20                        # C64: 19
+    assert rows["magic-user"][10:12] == (17, 17)            # C64: 16
 
 
 def test_curse_experience_is_the_games_own_table():
