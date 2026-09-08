@@ -89,20 +89,75 @@ class Member:
 
         The bits are per title: Curse and Silver Blades add a paladin and a
         ranger above the classic four, and Krynn a Knight of Solamnia.
+
+        A dual-classed human's former class and the level he left it at ride
+        along, `(was fighter 5)`-shaped (#256) -- Donald's decision of
+        2026-09-05, wording NOT APPROVED (`.claude/rules/gui-text.md`).
         """
         from .enums import CHAR_CLASS, class_bit_names
         try:
             bits = int(self.record.get("class_bits"))
         except Exception as exc:
             _log.debug("no class_bits for %s: %s", self.name, exc)
-            return ""
-        if bits:
-            return class_bit_names(self.game).get(bits, str(bits))
+            base = ""
+        else:
+            if bits:
+                base = class_bit_names(self.game).get(bits, str(bits))
+            else:
+                try:
+                    base = CHAR_CLASS.get(int(self.record.get("char_class")), "")
+                except Exception as exc:
+                    _log.debug("no char_class for %s: %s", self.name, exc)
+                    base = ""
+        former = self._former_class_text
+        return f"{base} {former}" if base and former else base
+
+    @property
+    def _former_class_text(self) -> str:
+        """`(was <class> <level>)`, from the C64's own dual-class pair at
+        0x0B9/0x0BA (#256) -- absent when the title has no such pair
+        (`RecordShape.dual_class` False, e.g. Pool of Radiance) and when the
+        pair holds the engine's own "never changed class" sentinel, which is
+        `dual_class_level == 0` (`GEN $18EB`) rather than any particular slot.
+        """
+        from goldbox.c64_codec import LEVEL_FIELDS, record_shape
+        from goldbox.layout import FIELDS_BY_NAME
         try:
-            return CHAR_CLASS.get(int(self.record.get("char_class")), "")
-        except Exception as exc:
-            _log.debug("no char_class for %s: %s", self.name, exc)
+            shape = record_shape(self.game)
+        except KeyError as exc:
+            _log.debug("no record shape for %s; dual class not shown: %s",
+                       self.name, exc)
             return ""
+        if not shape.dual_class:
+            return ""
+        try:
+            level = int(self.record.get("dual_class_level") or 0)
+        except Exception as exc:
+            _log.debug("no dual_class_level for %s: %s", self.name, exc)
+            return ""
+        if not level:
+            return ""
+        try:
+            slot = int(self.record.get("dual_class_slot"))
+        except Exception as exc:
+            _log.debug("no dual_class_slot for %s: %s", self.name, exc)
+            return ""
+        # The inverse of `goldbox.c64_codec`'s own slot arithmetic --
+        # `_DUAL_CLASS_SLOT_NAMES` there, rebuilt here from the two public
+        # tables rather than reaching into that module's private one.
+        # Excludes knight: that slot names druid in these two titles and
+        # neither training hall offers a human druid (#234).
+        names = {
+            FIELDS_BY_NAME[field].offset - FIELDS_BY_NAME["level_magic_user"].offset:
+                name
+            for name, field in LEVEL_FIELDS.items() if name != "knight"
+        }
+        name = names.get(slot)
+        if name is None:
+            _log.debug("dual_class_slot %s for %s names no class", slot,
+                       self.name)
+            return ""
+        return f"(was {name} {level})"
 
     @property
     def wounded(self) -> bool:

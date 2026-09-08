@@ -186,8 +186,14 @@ def test_dos_to_c64_matches_the_library_for_every_title(
         assert dialog.direction in convert.DIRECTIONS
         assert dialog.source.key == game.key
         assert dialog.direction.destination_game.key == game.key
-        assert [type(d) for d in convert.destinations_for(dialog.source)] == \
-            [convert.DosToC64]
+        # First, not only: `#36 (Write an Amiga disk image, not just the
+        # character files)` registered the two Amiga rows on 2026-09-07, so a
+        # Pool of Radiance source now offers Amiga as well. What this line
+        # guards is the order -- a player who presses Convert without looking
+        # gets the destination `#26 (Write a DOS save, not just read one)`
+        # proved, not whichever row was registered last.
+        offered = [type(d) for d in convert.destinations_for(dialog.source)]
+        assert offered[0] is convert.DosToC64, offered
         assert dialog.rehearsal is not None, dialog.ui.convert_report.toPlainText()
         slot = dialog.source.slot
         written = dialog.direction.write(dialog.rehearsal,
@@ -273,8 +279,14 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         assert dialog.direction in convert.DIRECTIONS
         assert dialog.source.key == shape.key
         assert dialog.direction.destination_game.key == shape.key
-        assert [type(d) for d in convert.destinations_for(dialog.source)] == \
-            [convert.C64ToDos]
+        # First, not only: `#36 (Write an Amiga disk image, not just the
+        # character files)` registered the two Amiga rows on 2026-09-07, so a
+        # Pool of Radiance source now offers Amiga as well. What this line
+        # guards is the order -- a player who presses Convert without looking
+        # gets the destination `#26 (Write a DOS save, not just read one)`
+        # proved, not whichever row was registered last.
+        offered = [type(d) for d in convert.destinations_for(dialog.source)]
+        assert offered[0] is convert.C64ToDos, offered
         assert dialog.rehearsal is not None, dialog.ui.convert_report.toPlainText()
         assert dialog.slot == "A"
         written = dialog.direction.write(dialog.rehearsal,

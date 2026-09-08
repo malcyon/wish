@@ -173,7 +173,10 @@ NOT_ON_THE_SHEET = (
     # reference either byte, so they are zero in every character this editor
     # opens (#224). They are a pair with a sentinel -- a slot number means
     # nothing without a non-zero level beside it -- so a widget each would be
-    # two ways to make a character the game cannot read.
+    # two ways to make a character the game cannot read. Read-only, they
+    # still reach the player: `editor/roster.py`'s `class_name` reads the
+    # pair straight off the record to show the former class beside the
+    # current one on the roster (#256).
     "dual_class_slot",
     "dual_class_level",
     # Which side of a fight the character is on -- bit 0 the enemy's side,

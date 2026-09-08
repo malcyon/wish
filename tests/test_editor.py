@@ -1175,6 +1175,76 @@ def test_the_class_combo_shows_the_class_the_roster_shows(app, tmp_path):
     assert editor._widgets["char_class"].currentData() == 3
 
 
+def _curse_dual_classed_specimen():
+    """`WISH-SPEC-curse-dual-classed` -- `WISH-SPEC-curse-trained-party` with
+    one further action, PHILIPPE trained from magic-user 6 to fighter at
+    Curse's own hall, watched in the running game (#256's comment of
+    2026-09-05)."""
+    import gamedata
+
+    from tools import specimens
+
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    found = sorted((root / "por-c64").glob(
+        "WISH-SPEC-curse-dual-classed.[dD]64"))
+    if not found:
+        pytest.skip("needs specimen WISH-SPEC-curse-dual-classed")
+    path = found[0]
+    prov = path.with_suffix(".provenance.toml")
+    recorded = specimens.read_provenance(prov).get("sha256", {})
+    actual = specimens.sha256_file(path)
+    if recorded.get(path.name) not in (None, actual):
+        pytest.fail("WISH-SPEC-curse-dual-classed: "
+                     f"{path.name} has changed since it was recorded; "
+                     "run tools/specimens.py check")
+    return path
+
+
+def test_the_roster_names_the_class_a_dual_classed_character_trained_out_of(app):
+    """#256, Donald's decision of 2026-09-05: the class line reads the
+    current class with the former one beside it. PHILIPPE trained from
+    magic-user 6 to fighter, `dual_class_slot` 0 (magic-user's slot) and
+    `dual_class_level` 6 on the record -- `goldbox.c64_codec.record_shape`
+    confirms Curse keeps that pair (`RecordShape.dual_class`)."""
+    from editor.window import EditorBinding
+
+    path = _curse_dual_classed_specimen()
+    editor = EditorBinding(make_root(), str(path))
+    philippe = editor.party.member(_row_named(editor.party, "PHILIPPE"))
+    assert philippe.record.get("dual_class_slot") == 0
+    assert philippe.record.get("dual_class_level") == 6
+    assert philippe.class_name == "fighter (was magic-user 6)"
+
+
+def test_an_untouched_partys_roster_is_byte_identical_with_the_former_class_code(app):
+    """Nobody on `WISH-SPEC-curse-trained-party` has dual-classed --
+    `dual_class_level` is 0 for all six -- and #256's addition must draw
+    nothing extra for them: no empty bracket, no trailing "(was )", no
+    change in the roster's own width. Grabbed as a screenshot, the way
+    `#410`'s Preferences move was, and compared byte for byte rather than
+    only checking the text."""
+    import gamedata
+
+    from editor.window import EditorBinding
+
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    found = sorted((root / "por-c64").glob(
+        "WISH-SPEC-curse-trained-party.[dD]64"))
+    if not found:
+        pytest.skip("needs specimen WISH-SPEC-curse-trained-party")
+    path = found[0]
+
+    editor = EditorBinding(make_root(), str(path))
+    for m in editor.party.members:
+        assert m.record.get("dual_class_level") == 0
+        assert "(was" not in m.class_name
+        assert not m.class_name.endswith(")")
+
+
 @game_disks
 def test_choosing_an_alignment_reaches_the_disk(editor, save):
     from editor.window import EditorBinding
