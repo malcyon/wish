@@ -870,7 +870,13 @@ def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
     `$9A54` -- `GEO12`, Podol Plaza, which is what the attract-mode demo walks
     a party around. `#260 (Area 30 is recorded as having no map, and ECL1E
     loads GEO12)` gave area 30's `geos` `GEO12`, so it agrees with the script
-    now and drops out of this dict."""
+    now and drops out of this dict.
+
+    `Script.geos()` and `Script.sqrdatas()` are unioned back into one set of
+    file numbers, because a set of numbers is what this test compares. The
+    tool tells the two apart now -- it propagates `$49E6` to every load and
+    puts the outdoor ones in `sqrdatas()` -- and which load is which is
+    asserted in `tests/test_areatable.py` rather than here."""
     exceptions = {}
     for a in areas.AREAS:
         if a.dynamic_geo:
@@ -878,7 +884,8 @@ def test_every_pool_map_the_table_claims_is_one_its_script_loads(pool_table):
         claimed = {areas.geo_number(g) for g in a.geos}
         if a.sqrdata:
             claimed.add(int(a.sqrdata[-2:], 16))
-        loaded = set(pool_table[a.ecl].geos())
+        loaded = (set(pool_table[a.ecl].geos())
+                  | set(pool_table[a.ecl].sqrdatas()))
         if claimed != loaded:
             exceptions[a.ecl] = (sorted(claimed), sorted(loaded))
     assert exceptions == {"ECL07": ([7], [3, 7])}

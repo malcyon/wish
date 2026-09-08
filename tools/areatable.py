@@ -23,6 +23,7 @@ that structure transfers and addresses do not:
     areatable.py pool-of-radiance                 the control
     areatable.py secret-of-the-silver-blades --disks DIR
     areatable.py secret-of-the-silver-blades --python   rows for goldbox/areas.py
+    areatable.py curse-of-the-azure-bonds --check   against goldbox/areas.py
 
 **No string operand is ever printed as text.** These are the game's own words
 and this tool's output goes into a repository that must not carry them; a
@@ -73,6 +74,17 @@ COUNTED = {0x15: 3, 0x25: 2, 0x26: 2, 0x2B: 2}
 #: Radiance's correction to it would be inventing a fourth.
 HANDLER_OPERANDS = {
     "pool-of-radiance": {0x0C: 3, 0x29: 14, 0x36: 2},
+}
+
+#: The indoors flag, which is what `LOADFILES` dispatches on to fetch a `GEO`
+#: or a `SQRDATA`. These are `automap/fasttravel.py`'s `indoors` addresses,
+#: CONFIRMED from each title's own bytecode on `#15 (Fast Travel for more than
+#: one Gold Box title)`; copied rather than imported because a tool that reads
+#: the game's disks should not depend on the module that drives an emulator.
+INDOORS_FLAGS = {
+    "pool-of-radiance": 0x49E6,
+    "curse-of-the-azure-bonds": 0x4BE6,
+    "secret-of-the-silver-blades": 0x4BE6,
 }
 
 #: The live party square, and it does not relocate: page `$C0` is `GDRIVE00`,
@@ -202,6 +214,7 @@ class Machine:
         at = hi + self.count - self.base
         self.table_operands = list(body[at:at + self.count])
         self.corrections = HANDLER_OPERANDS.get(game.key, {})
+        self.indoors = INDOORS_FLAGS.get(game.key)
 
     def handler(self, op: int) -> int:
         return newecl.handler(self.body, self.base, self.lo_table,
@@ -410,34 +423,71 @@ class Script:
                 out.append((s.at, tuple(s.immediate(n) for n in range(3))))
         return out
 
+    def _outdoor_loads(self) -> set[int]:
+        """Offsets of the `LOADFILES` that fetch a `SQRDATA` and not a `GEO`.
+
+        `LOADFILES` dispatches on the indoors flag -- `$49E6` in Pool of
+        Radiance, `$4BE6` in the other two -- and its first operand names a
+        `SQRDATA` rather than a `GEO` when that flag is zero
+        (`docs/30-savegame-layout.md`, `docs/140-loaded-files-cache.md`). So a
+        load reached with the flag known to be zero is not a map, and calling
+        it one is how `ECL19` came to claim `GEO04`.
+
+        The flag is propagated the same way `exits` propagates the disk byte:
+        a value survives a merge only if every path agrees. Where no path
+        settles it the load counts as a map, which is the old behaviour and is
+        what happens at 68 of the 83 sites in the three titles read so far.
+        """
+        if self.machine.indoors is None:
+            return set()
+        state = self._propagate((self.machine.indoors,))
+        return {at for at, (flag,) in state.items()
+                if flag is not UNSET and flag == 0}
+
     def geos(self) -> list[int]:
         """The map ids this script statically loads, in order, once each.
 
         `$FF` is `LOADFILES`' "leave the map alone" -- `docs/118-debug-mode.md`
         -- and `$7F` is the same for the other two slots, so neither is a map.
+        A load on the outdoor branch is not a map either; see `_outdoor_loads`.
         """
+        outdoor = self._outdoor_loads()
         out: list[int] = []
-        for _, (geo, _, _) in self.loadfiles():
+        for at, (geo, _, _) in self.loadfiles():
             if geo is None or geo in (0xFF, 0x7F) or geo in out:
+                continue
+            if at in outdoor:
                 continue
             out.append(geo)
         return out
 
-    def exits(self, disk_byte: int) -> list["Exit"]:
-        """`NEWECL` by `NEWECL`, with what is certain about the block before it.
+    def sqrdatas(self) -> list[int]:
+        """The overland square-data ids this script loads, once each.
 
-        A departing script writes the destination's disk and, often, the
-        square the party is to stand on when it gets there, immediately before
-        the `NEWECL` -- `docs/118-debug-mode.md`, and it is where sixteen of
-        Pool of Radiance's arrival squares came from.
+        Pool of Radiance's three wilderness windows are the only scripts in
+        the three titles that have any: `ECL19` loads 4, `ECL1A` 5 and `ECL1B`
+        6, which is `SQRDATA04`, `SQRDATA05` and `SQRDATA06` -- the same three
+        `goldbox/areas.py` already carries for areas `$19`, `$1A` and `$1B`.
+        """
+        outdoor = self._outdoor_loads()
+        out: list[int] = []
+        for at, (id, _, _) in self.loadfiles():
+            if at not in outdoor or id is None or id in (0xFF, 0x7F) \
+                    or id in out:
+                continue
+            out.append(id)
+        return out
+
+    def _propagate(self, watched: tuple[int, ...]) -> dict[int, tuple]:
+        """For each statement, what every path reaching it leaves in `watched`.
 
         **Address order is not execution order**, so this is a forward
         propagation over the script's own control-flow graph rather than a
-        sweep: four values (the disk byte and the three bytes of the live
-        party square) are carried along every edge the walk found, an
-        immediate `SAVE` sets one, a computed `SAVE` clears it, and where two
-        paths meet a value survives only if both agree. A `NEWECL` then
-        reports what is true on **every** path that can reach it.
+        sweep: the watched addresses are carried along every edge the walk
+        found, an immediate `SAVE` sets one, a computed `SAVE` clears it to
+        `UNSET`, and where two paths meet a value survives only if both agree.
+        A statement then reads what is true on **every** path that can reach
+        it.
 
         Sweeping in address order instead both invents and loses: Silver
         Blades' `ECL30` hands its own entry-4 square to a `NEWECL` forty
@@ -445,8 +495,7 @@ class Script:
         each block boundary to stop that drops Pool of Radiance's `ECL1B`
         arrival square for area `$0D`, which is real.
         """
-        watched = (disk_byte, MAP_X, MAP_Y, MAP_DIR)
-        unknown = (UNSET,) * 4
+        unknown = (UNSET,) * len(watched)
         state: dict[int, tuple] = {}
         work = []
         for entry in self.entries:
@@ -473,6 +522,19 @@ class Script:
                 if merged != was:
                     state[successor] = merged
                     work.append(successor)
+        return state
+
+    def exits(self, disk_byte: int) -> list["Exit"]:
+        """`NEWECL` by `NEWECL`, with what is certain about the block before it.
+
+        A departing script writes the destination's disk and, often, the
+        square the party is to stand on when it gets there, immediately before
+        the `NEWECL` -- `docs/118-debug-mode.md`, and it is where sixteen of
+        Pool of Radiance's arrival squares came from. `_propagate` is what
+        makes "immediately before" mean on every path rather than in address
+        order.
+        """
+        state = self._propagate((disk_byte, MAP_X, MAP_Y, MAP_DIR))
         out = []
         for s in self.ordered():
             if s.op != NEWECL:
@@ -627,11 +689,91 @@ def load_scripts(root: str, game: games.Game, machine: Machine
                   for n, b in bodies.items()}
 
 
+#: How a square gets into a row's votes when the arriving script sets it
+#: itself, rather than a departing script setting it before the `NEWECL`.
+OWN_ENTRY_4 = "its own entry 4"
+
+
+class Row:
+    """One derived area row, and everything that voted for its square."""
+
+    __slots__ = ("script", "geos", "sqrdatas", "own", "exits", "votes")
+
+    def __init__(self, script: "Script", geos: list[int], sqrdatas: list[int],
+                 own: tuple, exits: list["Exit"]):
+        self.script, self.geos, self.own, self.exits = script, geos, own, exits
+        self.sqrdatas = sqrdatas
+        self.votes: dict[tuple, list[str]] = {}
+
+    @property
+    def id(self) -> int:
+        return self.script.id
+
+    @property
+    def side(self) -> int:
+        return self.script.side
+
+    @property
+    def maps(self) -> tuple[str, ...]:
+        return tuple(f"GEO{g:02X}" for g in self.geos)
+
+    @property
+    def sqrdata(self) -> str | None:
+        """`SQRDATA04`, for the one script in three titles that loads one.
+
+        None for none *and* for more than one: `goldbox.areas.Area.sqrdata`
+        holds a single name, so a script loading two would need saying rather
+        than silently taking the first.
+        """
+        return (f"SQRDATA{self.sqrdatas[0]:02X}"
+                if len(self.sqrdatas) == 1 else None)
+
+    @property
+    def square(self) -> tuple | None:
+        """The one square every path that names one agrees on, or None.
+
+        None both when nothing names a square and when two things name
+        different ones -- an area a table declines to place a party in is
+        better than an area it places one in wrongly.
+        """
+        return next(iter(self.votes)) if len(self.votes) == 1 else None
+
+    @property
+    def from_entry_4(self) -> bool:
+        """Whether the arriving script is what named the square."""
+        return any(OWN_ENTRY_4 in by for by in self.votes.values())
+
+
+def derive(root: str, game: games.Game):
+    """`(machine, base, scripts, rows)`: everything one run reads off the disks.
+
+    Split out of `report` so that `--python`, `--check` and the table all
+    come from one derivation rather than three that could drift.
+    """
+    machine = Machine(root, game)
+    base, scripts = load_scripts(root, game, machine)
+    disk_byte = DISK_BYTES.get(game.key)
+    rows = [Row(scripts[n], scripts[n].geos(), scripts[n].sqrdatas(),
+                scripts[n].arrival(),
+                scripts[n].exits(disk_byte) if disk_byte else [])
+            for n in sorted(scripts)]
+    placed: dict[int, dict[tuple, list[str]]] = {}
+    for row in rows:
+        for e in row.exits:
+            if e.places:
+                placed.setdefault(e.target, {}).setdefault(e.square, []).append(
+                    f"{row.script.name}+${e.at:04X}")
+    for row in rows:
+        row.votes = dict(placed.get(row.id, {}))
+        if row.own[0] is not None and row.own[1] is not None:
+            row.votes.setdefault(row.own, []).append(OWN_ENTRY_4)
+    return machine, base, scripts, rows
+
+
 def report(game: games.Game, root: str, control: games.Game | None,
            as_python: bool) -> int:
-    machine = Machine(root, game)
     catalogue_ = catalogue(root, game)
-    base, scripts = load_scripts(root, game, machine)
+    machine, base, scripts, derived = derive(root, game)
 
     if not as_python:
         print(f"{game.title}")
@@ -654,28 +796,13 @@ def report(game: games.Game, root: str, control: games.Game | None,
     geo_side = {name: min(on) for name, on in catalogue_.items()
                 if name.startswith("GEO")}
 
-    rows = []
-    for name in sorted(scripts):
-        s = scripts[name]
-        rows.append((s, s.geos(), s.arrival(),
-                     s.exits(disk_byte) if disk_byte else []))
-
-    # Where a departing script places the party, gathered per destination.
-    placed: dict[int, dict[tuple, list[str]]] = {}
-    for s, _, _, exits in rows:
-        for e in exits:
-            if e.places:
-                placed.setdefault(e.target, {}).setdefault(
-                    e.square, []).append(f"{s.name}+${e.at:04X}")
+    rows = [(r.script, r.geos, r.own, r.exits) for r in derived]
+    by_id = {r.id: r for r in derived}
 
     def settled(area_id, own):
-        """The one square everything agrees on for this area, or None."""
-        votes = dict(placed.get(area_id, {}))
-        if own[0] is not None and own[1] is not None:
-            votes.setdefault(own, []).append("its own entry 4")
-        if len(votes) == 1:
-            return next(iter(votes)), votes
-        return None, votes
+        """The one square everything agrees on for this area, and the votes."""
+        row = by_id[area_id]
+        return row.square, row.votes
 
     if as_python:
         for s, geos, own, _ in rows:
@@ -688,8 +815,10 @@ def report(game: games.Game, root: str, control: games.Game | None,
                 x, y, facing = square
                 arrival = (f"Arrival({x}, {y}, {facing})"
                            if facing is not None else f"Arrival({x}, {y})")
+            sqrdata = by_id[s.id].sqrdata
+            extra = f', sqrdata="{sqrdata}"' if sqrdata else ""
             print(f"    _a(0x{s.id:02X}, None, {s.side}, {names}, {arrival}, "
-                  f"U),   # {s.name}")
+                  f"U{extra}),   # {s.name}")
         return 0
 
     print()
@@ -697,6 +826,8 @@ def report(game: games.Game, root: str, control: games.Game | None,
           f"{'maps':16} {'arrival':12} exits")
     for s, geos, own, exits in rows:
         maps = ", ".join(f"GEO{g:02X}" for g in geos) or "-"
+        if by_id[s.id].sqrdata:
+            maps = f"{maps}, {by_id[s.id].sqrdata}"
         square, votes = settled(s.id, own)
         if square is None:
             arrival = "-" if not votes else f"{len(votes)} disagree"
@@ -760,6 +891,138 @@ def report(game: games.Game, root: str, control: games.Game | None,
     return 0
 
 
+def _square(sq: tuple | None) -> str:
+    """`7,13 E`, the way the rest of this tool prints a square."""
+    if sq is None:
+        return "-"
+    x, y, facing = sq
+    return f"{x},{y}" + (f" {'NESW'[facing]}"
+                         if facing is not None and facing < 4 else "")
+
+
+def check(game: games.Game, root: str) -> int:
+    """Diff a fresh derivation against the table `goldbox/areas.py` ships.
+
+    A copied table nothing re-derives is a table that quietly goes stale, and
+    three titles now carry one. `tools/cursedisk.py --check-areas` did this
+    for Curse alone and for the id, the side and the maps; this asks it of any
+    title and of the arrival square as well.
+
+    **The status is set by the ids, the sides and the maps, and not by the
+    arrival square.** Those three are what the table and this tool both claim
+    to read off the same bytes, so a disagreement is one of them being wrong.
+    An arrival square is different in both directions: Pool of Radiance's were
+    *measured in the running game* and outrank any static walk, and a table
+    that leaves one blank is declining to place a party rather than
+    contradicting anything. Both are reported, neither fails the run.
+
+    Measured on 2026-09-08 against Pool of Radiance's sixteen squares, which
+    were recorded from driven arrivals: the walk names one for eleven of them
+    and **ten** match. The eleventh is area `$16`, and the two are reading
+    different things -- `ECL16`'s entry 4 places a party at (15, 0, 2) behind
+    two `COMPARE [$49F2], n / IF= / EXIT` guards, so the placement is what a
+    party arriving from anywhere but areas 22 and 23 gets, while the table's
+    (15, 7, 1) is where one driven arrival actually ended up. A derived square
+    is PROBABLE and not better, whatever the agreement count says.
+    """
+    from goldbox import areas as areas_module
+
+    title = {"pool-of-radiance": areas_module.POOL_OF_RADIANCE,
+             "curse-of-the-azure-bonds": areas_module.CURSE_OF_THE_AZURE_BONDS,
+             "secret-of-the-silver-blades":
+                 areas_module.SECRET_OF_THE_SILVER_BLADES}.get(game.key)
+    table = {a.id: a for a in areas_module.areas_for(title)} if title else {}
+    if not table:
+        print(f"{game.title} has no table in goldbox/areas.py to check "
+              f"against.", file=sys.stderr)
+        return 2
+
+    _machine, _base, _scripts, rows = derive(root, game)
+    got = {r.id: r for r in rows}
+    print(f"{game.title}: {len(got)} scripts on the disks, "
+          f"{len(table)} rows in goldbox/areas.py")
+
+    bad = 0
+    only_disk = sorted(set(got) - set(table))
+    only_table = sorted(set(table) - set(got))
+    for id in only_disk:
+        print(f"  ${id:02X}: on the disks, not in the table")
+    for id in only_table:
+        print(f"  ${id:02X}: in the table, on no side")
+    bad += len(only_disk) + len(only_table)
+
+    sides = maps = squares = 0
+    for id in sorted(set(got) & set(table)):
+        row, area = got[id], table[id]
+        if row.side == area.disk:
+            sides += 1
+        else:
+            bad += 1
+            print(f"  ${id:02X}: side {row.side} on the disks, "
+                  f"{area.disk} in the table")
+        if row.maps == tuple(area.geos):
+            maps += 1
+        elif getattr(area, "dynamic_geo", False) and not row.maps:
+            # The row says so itself: its map is chosen at run time and its
+            # `geos` is an inference rather than a load. Pool of Radiance's
+            # areas 3 and 5 issue no static `LOADFILES` at all, and the
+            # inference in the table is documented there as wrong.
+            print(f"  ${id:02X}: no static load; the table's "
+                  f"{tuple(area.geos)} is its own dynamic_geo inference")
+        else:
+            bad += 1
+            print(f"  ${id:02X}: maps {row.maps or '()'} on the disks, "
+                  f"{tuple(area.geos) or '()'} in the table")
+        if row.sqrdata == area.sqrdata:
+            squares += 1
+        else:
+            bad += 1
+            print(f"  ${id:02X}: square data {row.sqrdata} on the disks, "
+                  f"{area.sqrdata} in the table")
+
+    shared = len(set(got) & set(table))
+    print(f"  ids     {shared} of {max(len(got), len(table))} in both")
+    print(f"  side    {sides} of {shared} agree")
+    print(f"  maps    {maps} of {shared} agree")
+    print(f"  sqrdata {squares} of {shared} agree")
+
+    agree = differ = blank = unsettled = 0
+    lines: list[str] = []
+    for id in sorted(set(got) & set(table)):
+        row, area = got[id], table[id]
+        want = None if area.arrival is None else (
+            area.arrival.x, area.arrival.y, area.arrival.facing)
+        square = row.square
+        if want is None and square is None:
+            continue
+        if want is None:
+            blank += 1
+            who = ", ".join(row.votes[square])
+            lines.append(f"    ${id:02X} the table is blank; the disks say "
+                         f"{_square(square)} <- {who}")
+        elif square is None:
+            unsettled += 1
+            lines.append(f"    ${id:02X} the table says {_square(want)}; "
+                         f"the disks settle nothing ({len(row.votes)} votes)")
+        elif square == want:
+            agree += 1
+        else:
+            differ += 1
+            who = ", ".join(row.votes[square])
+            lines.append(f"    ${id:02X} the table says {_square(want)}; "
+                         f"the disks say {_square(square)} <- {who}")
+    print(f"  square {agree} agree, {differ} disagree, {blank} the table "
+          f"leaves blank where a script names one, {unsettled} the table has "
+          f"and the disks cannot settle")
+    for line in lines:
+        print(line)
+    print("\n  The status below is the ids, the sides and the maps. An "
+          "arrival square\n  does not set it: see this function's docstring "
+          "for why.")
+    print(f"  {'DISAGREES' if bad else 'agrees'}: {bad} disagreement(s).")
+    return 1 if bad else 0
+
+
 #: What the loader reads to decide which side to ask for, per title. Both were
 #: read off `LINKER`'s own dispatch by `tools/newecl.py` and neither is a
 #: guess; a title not here still gets its table, without the cross-check.
@@ -799,6 +1062,8 @@ def main(argv: list[str]) -> int:
                     help="check the VM against this title's, opcode by opcode")
     ap.add_argument("--python", action="store_true",
                     help="print rows for goldbox/areas.py instead of a table")
+    ap.add_argument("--check", action="store_true",
+                    help="diff the derivation against goldbox/areas.py")
     args = ap.parse_args(argv[1:])
 
     game = next(g for g in games.GAMES if g.key == args.game)
@@ -807,6 +1072,8 @@ def main(argv: list[str]) -> int:
         print(f"No {game.title} disks. Set $POR_DISKS or pass --disks.",
               file=sys.stderr)
         return 2
+    if args.check:
+        return check(game, root)
     control = (next(g for g in games.GAMES if g.key == args.against)
                if args.against else None)
     return report(game, root, control, args.python)

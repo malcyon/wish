@@ -905,21 +905,28 @@ which is how the run got an engine-written saved game without adventuring.
 
 **`BEGIN ADVENTURING` asks a copy-protection question**, on a screen of its own
 with an `ENTER` field: it names a word number, a journal entry and a page of
-the printed Adventurer's Journal, and a bare RETURN is refused and draws a
-*different* one. ESC does the same. This **corrects an assumption taken from
-the C64**, whose release here never asks because its check is dead code: the
-two rips are different and one port does not predict another, which is the
-lesson `#108 (Amiga Curse asks its code wheel, so the title cannot be driven
-unattended)` taught on Curse.
+the printed Adventurer's Journal, and a bare RETURN is refused. **PROBABLE,
+one observation**: the same word, entry and page stay on screen afterwards
+rather than a new challenge being drawn, so a misread costs a retry rather
+than a reboot -- pressed once, at the prompt whose misread
+`#371 (The Silver Blades journal reader misreads a 6 as an 8, so a boot is
+spent on a question the disk can answer)` diagnoses, and not reproduced since.
+ESC has not been tested against this. This **corrects an assumption taken
+from the C64**, whose release here
+never asks because its check is dead code: the two rips are different and one
+port does not predict another, which is the lesson `#108 (Amiga Curse asks
+its code wheel, so the title cannot be driven unattended)` taught on Curse.
 
 **The prompt is answered and the title is drivable, as of 2026-09-06.**
 `tools/amigabladesjournal.py` reads the challenge off the guest's screen and
-types the word, and **the game accepted it three times out of three**, from
-three different challenges on three separate boots -- once from a cold start
-into the opening scene, and twice from a saved game straight back to the
-adventuring bar. **Run it with `/usr/bin/python3`**: it reaches into the
-private repository, which imports `numpy`, and this project's virtual
-environment has none.
+types the word. The screen reader samples each Amiga pixel's own centre out
+of the capture and hands the private repository's reader a whole number of
+pixels per Amiga pixel, rather than resampling to its declared fractional
+pitch -- `#371 (The Silver Blades journal reader misreads a 6 as an 8, so a
+boot is spent on a question the disk can answer)` has the fault that left and
+the measurements that settled it. **Run it with `/usr/bin/python3`**: it
+reaches into the private repository, which imports `numpy`, and this
+project's virtual environment has none.
 Neither the challenge nor the word is recorded anywhere here, per
 `#108 (Amiga Curse asks its code wheel, so the title cannot be driven
 unattended)`'s ruling; what the tool prints is `answered` or `no challenge on screen`.

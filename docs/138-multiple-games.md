@@ -11,7 +11,7 @@ They are. But the dialog is the last problem, not the first.
 | question | answer | grade |
 |---|---|---|
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
-| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, no names -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. Curse has decoded `GEO` files and the same reader waiting on it | CONFIRMED that the rows are what the scripts say; PROBABLE that the game does what they say, because no warp has landed |
+| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, no names -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, no names and no arrival squares, `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
 | What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/games.py` has six titles and PoD is not one of them | CONFIRMED |
 | Does the fasttravel mechanism transfer? | **Yes.** `NEWECL` is the same routine in Curse and in Silver Blades, and four driven warps landed a Curse party in four different areas. §6 | CONFIRMED for Curse, PROBABLE for Silver Blades |
 
@@ -339,10 +339,26 @@ version.
 
 Built for `#20 (Build an area table for Silver Blades)` by `tools/areatable.py`,
 which reads any title's `ECL` scripts through the opcode tables it takes out of
-that title's own `DUNGEON`. Pool of Radiance is the control: the same tool
-reproduces `AREAS`' map column, its disk column and fourteen of its sixteen
-arrival squares, and reaches the 98.04% of script bytes `tools/eclwalk.py`
-already reached.
+that title's own `DUNGEON`. Pool of Radiance is the control, and
+`tools/areatable.py pool-of-radiance --check` is what scores it against
+`AREAS`. Re-measured 2026-09-08, which corrected the two counts this paragraph
+used to carry ("reproduces `AREAS`' map column" and "fourteen of its sixteen
+arrival squares"):
+
+| | |
+|---|---|
+| ids | 30 of 30 |
+| disk side | 30 of 30 |
+| `SQRDATA` | 3 of 3 |
+| maps | 27 of 30. `$03` and `$05` are `dynamic_geo`, issue no static `LOADFILES` and have no map to find; `ECL07` loads `GEO03` as well as its own `GEO07` and the table gives `GEO03` to area `$03` |
+| arrival square | the table has 16; the walk names one for 11 and **10 match**. It declines to name one for `$00`, `$0A`, `$0D`, `$0E` and `$17`, where two or three departing scripts disagree or none writes a square at all, and disagrees on `$16` |
+
+It reaches the 98.04% of script bytes `tools/eclwalk.py` already reached.
+`$16` is the one disagreement, and the two are reading different things:
+`ECL16`'s entry 4 places a party at (15, 0, 2) behind two
+`COMPARE [$49F2], n / IF= / EXIT` guards, so that is where a party arriving
+from anywhere but areas 22 and 23 is put, while the table's (15, 7, 1) is where
+one driven arrival ended up.
 
 **Twenty-two areas on six sides**: `$04`, `$10`-`$11`, `$20`-`$22`,
 `$30`-`$34`, `$40`-`$42`, `$44`, `$50`-`$52`, `$60`-`$63`. `ECL64` and `ECL65`
