@@ -25,7 +25,7 @@ from goldbox.d64 import D64
 from goldbox.games import ICON_TABLE_OFFSET, Game
 from goldbox.icons import ICON_SIZE, Icon, icon_for_slot
 from goldbox.record import CharacterRecord
-from goldbox.savegame import SaveGame0, SaveGame1, load_save
+from goldbox.savegame import SaveGame0, SaveGame1, load_save, looks_occupied
 
 from .inventory import Inventory
 
@@ -237,12 +237,32 @@ class Party:
 
         Armour class and hit points stay blank -- there is no roster to read
         them from, and inventing them would be worse than a gap.
+
+        **A character's file does not load at the same address in every
+        title.** Pool of Radiance's roster files load at `$6B00`, which is
+        `record.LOAD_ADDRESS`; the file Curse of the Azure Bonds writes when
+        `REMOVE CHARACTER FROM PARTY` parks somebody loads at `$7C00`, and all
+        four on `WISH-SPEC-curse-party-with-items.D64` were refused by the
+        address check and logged as "not a character record" (#456). So the
+        address is one of two ways in, and the other is the content: a record
+        whose name and six ability scores read like a character's is one,
+        wherever the game meant to load it.
         """
         for i, entry in enumerate(self.disk.directory()):
             if not entry.is_prg or entry.is_empty:
                 continue
             try:
-                record = CharacterRecord.from_prg(self.disk.read_file(entry))
+                raw = self.disk.read_file(entry)
+                try:
+                    record = CharacterRecord.from_prg(raw)
+                except ValueError:
+                    # Only the load address disagreed, so ask the bytes
+                    # instead. `looks_occupied` is the same test the save's
+                    # own slots are read with, which is what keeps this from
+                    # turning any 582-byte PRG into a roster row.
+                    record = CharacterRecord.from_prg(raw, None)
+                    if not looks_occupied(record.to_bytes()):
+                        raise
             except Exception as exc:
                 # A roster disk carries PRGs that are not characters -- the
                 # loader among them -- so a file that will not parse is the

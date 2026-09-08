@@ -135,6 +135,61 @@ def test_a_roster_disk_has_no_savedgame_and_still_lists_characters():
     assert all(m.armour_class is None for m in party.members)
 
 
+#: Where Curse of the Azure Bonds loads a parked character's own file, read
+#: off the four the engine wrote on `WISH-SPEC-curse-party-with-items.D64`.
+#: Pool of Radiance's roster files load at `goldbox.record.LOAD_ADDRESS`,
+#: `$6B00`, and a reader that insists on that one drops all four (#456).
+CURSE_RECORD_LOAD_ADDRESS = 0x7C00
+
+
+def _parked_disk(tmp_path, *records) -> pathlib.Path:
+    """A disk of character files at Curse's own load address and no save
+    game -- what a Curse disk carrying characters looks like."""
+    from gamedata import _disk_with
+    out = tmp_path / "PARKED.D64"
+    out.write_bytes(_disk_with(
+        [(bytes([0x02]) + r.name.encode(),
+          r.to_prg(CURSE_RECORD_LOAD_ADDRESS)) for r in records]))
+    return out
+
+
+def test_a_curse_character_disk_lists_its_characters(tmp_path):
+    """The four files the engine parks on a Curse disk are whole records and
+    the game lists them by name; Wish said `roster disk, 0 character(s)` and
+    showed an empty table, with no sign in the interface that anything had
+    been skipped (#456)."""
+    from goldbox.record import CharacterRecord
+    made = []
+    for name in ("ARDEN", "BRISA", "KORDAN"):
+        r = CharacterRecord.blank()
+        r.set("name", name)
+        for field in ("strength", "intelligence", "wisdom",
+                      "dexterity", "constitution", "charisma"):
+            r.set(field, 12)
+        made.append(r)
+    party = Party(str(_parked_disk(tmp_path, *made)))
+    assert not party.is_save
+    assert [m.name for m in party.members] == ["ARDEN", "BRISA", "KORDAN"]
+    assert "3 character(s)" in party.describe()
+
+
+def test_a_prg_that_is_not_a_character_is_still_skipped(tmp_path):
+    """The narrowness the fix above must keep. A roster disk carries PRGs
+    that are not characters, and once the load address is no longer the only
+    test, the bytes have to be: a record whose ability scores are all zero is
+    not somebody's character however long the file is."""
+    from goldbox.record import CharacterRecord
+    real = CharacterRecord.blank()
+    real.set("name", "ARDEN")
+    for field in ("strength", "intelligence", "wisdom",
+                  "dexterity", "constitution", "charisma"):
+        real.set(field, 12)
+    junk = CharacterRecord.blank()          # no name, no ability scores
+    junk.set("name", "LOADER")
+    party = Party(str(_parked_disk(tmp_path, real, junk)))
+    assert [m.name for m in party.members] == ["ARDEN"]
+
+
 # --- backups ----------------------------------------------------------------
 
 class FakeDisk:
