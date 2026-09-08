@@ -107,18 +107,44 @@ def _size_combo(combo: QComboBox) -> None:
     combo.setMaximumWidth(width)
 
 
+class _NoClassCode(int):
+    """A `char_class` value the Class combo must not match to a real class,
+    even though it is a plain number like any other (#409).
+
+    A regained dual-classed paladin or ranger whose mask Curse's own table
+    cannot name stores `dual_class_level` at `0x073`, not a class code, and a
+    level such as 5 or 6 is also MAGIC-USER's or THIEF's own code in every
+    title's table -- `_select`'s `combo.findData(value)` would find that real
+    entry and show it as though it were the character's class, which it is
+    not. Subclassing `int` rather than returning something else keeps
+    `_char_class_shown` comparing equal to a plain `int` of the same value
+    for every caller that only asks what the code is (`tests/test_dualclasscombo.py`,
+    `tools/classcombocheck.py`); only `_populate`, which decides *how* to
+    show it, tells the two apart.
+    """
+
+
 def _select(combo: QComboBox, value) -> None:
     """Show `value` in a dropdown, even when the table has no name for it.
 
     A code outside the game's own table is real data -- monsters carry things
     player characters do not -- so it is added to the list rather than being
     rounded to the nearest thing we recognise.
+
+    A `_NoClassCode` (#409) is shown the same way, but keyed by that exact
+    "not in the game's table" text rather than by `combo.findData(value)` --
+    a coincidental match to a real entry is exactly what it exists to avoid.
     """
     if not isinstance(value, int):
         return
-    at = combo.findData(value)
+    if isinstance(value, _NoClassCode):
+        text = f"{int(value)}  — not in the game's table"
+        at = combo.findText(text)
+    else:
+        text = f"{value}  — not in the game's table"
+        at = combo.findData(value)
     if at < 0:
-        combo.addItem(f"{value}  — not in the game's table", value)
+        combo.addItem(text, int(value))
         at = combo.count() - 1
         _size_combo(combo)
     combo.setCurrentIndex(at)
@@ -135,6 +161,16 @@ def _char_class_shown(raw, record, game):
     actually is, so this draws from `class_bits` the same way the roster
     does, through `goldbox.classcode.repair` -- #310's own rule, not a
     second one.
+
+    **Returned as a `_NoClassCode` when Curse's own table has no code at
+    all for the record's classes** -- a regained dual-classed paladin or
+    ranger, whose mask combines a class Curse's seventeen-entry table never
+    paired with him (#409). `GEN $1939` stores `dual_class_level` there
+    instead of a code once that happens, and that level can equal a
+    different class's real code by coincidence: MATHEW, fighter 7/paladin 6,
+    stores 6, THIEF's code; MARK, cleric 6/paladin 5, stores 5, MAGIC-USER's.
+    `raw` is still the honest value of the byte -- `_select` shows it without
+    pretending the table names it.
 
     **Gated on `goldbox.c64_codec.record_shape(game).class_code_repairable`,
     Curse only** -- the same gate the neutral reader uses. Pool of Radiance's
@@ -160,7 +196,15 @@ def _char_class_shown(raw, record, game):
         _log.exception("class_bits unreadable; showing the stored class code")
         return raw
     want = classcode.repair(raw, bits, game=game)
-    return raw if want is None else want
+    if want is not None:
+        return want
+    # `want is None` here for one of two reasons: the code already agreed
+    # with the classes (`classcode.code_for` answers `raw`), or Curse's
+    # table has no code for this mask at all (`classcode.code_for` answers
+    # `None`). Only the second means the byte cannot be trusted.
+    if classcode.code_for(bits, game=game) is None:
+        return _NoClassCode(raw)
+    return raw
 
 
 WOUNDED = QColor("#b03a2e")

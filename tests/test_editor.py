@@ -1283,13 +1283,6 @@ def test_the_roster_shows_a_number_not_an_invented_class_for_a_regained_paladin(
     either of them -- unchanged by this session, and true both before and
     after it (the fallback fires whenever `class_bits` itself has no name,
     with or without #409's new rows).
-
-    What is still wrong, and needs a file outside this session's scope to
-    fix: the Class combo (`field_char_class`). `_char_class_shown` in
-    `editor/window.py` draws the record's own `char_class` byte when the
-    mask cannot be repaired, and that byte is really `dual_class_level` --
-    6 and 5 -- which happen to be THIEF's and MAGIC-USER's own codes. Their
-    combo goes on reading `6  THIEF` and `5  MAGIC-USER`.
     """
     from editor.window import EditorBinding
 
@@ -1306,6 +1299,55 @@ def test_the_roster_shows_a_number_not_an_invented_class_for_a_regained_paladin(
     for name in (mathew.class_name, mark.class_name):
         assert "thief" not in name.lower()
         assert "magic-user" not in name.lower()
+
+
+def test_the_class_combo_shows_a_number_not_an_invented_class_for_a_regained_paladin(app):
+    """#409's remaining defect, fixed here. MATHEW's `char_class` byte
+    (`0x073`) reads 6 and MARK's reads 5 -- `dual_class_level`, the level
+    each left his old class at, since Curse's trainer (`GEN $1939`) stores
+    that instead of a code whenever a character is dual-classed. 6 and 5 are
+    also THIEF's and MAGIC-USER's own codes in `editor/enums.py`'s
+    `CHAR_CLASS`, so the Class combo (`field_char_class`) used to show
+    `6  THIEF` and `5  MAGIC-USER` -- a class neither character has.
+
+    Driven through the real window: selecting each row populates the combo
+    through `editor.window._char_class_shown`, which returns a
+    `_NoClassCode` for this shape, and `_select`, which shows that as it
+    already shows any code outside the game's own table.
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_409_regained_paladin_specimen()
+    editor = EditorBinding(make_root(), str(path))
+
+    for who, raw in (("MATHEW", 6), ("MARK", 5)):
+        row = _row_named(editor.party, who)
+        editor.roster.selectRow(row)
+        shown = editor._widgets["char_class"].currentText().lower()
+        assert "thief" not in shown
+        assert "magic-user" not in shown
+        assert "not in the game" in shown
+        assert str(raw) in shown
+
+
+def test_the_class_combo_repairs_a_dual_classed_character_who_has_not_regained(app):
+    """The control for #409's fix: PHILIPPE on `WISH-SPEC-curse-dual-classed`
+    is trained from magic-user 6 to fighter and has not yet regained -- her
+    `class_bits` is 0x08, fighter alone, which Curse's own table (`GEN
+    $1951`) does name (code 2). #310's existing repair still applies here,
+    and #409's new "no code at all" case must not swallow it.
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_dual_classed_specimen()
+    editor = EditorBinding(make_root(), str(path))
+    row = _row_named(editor.party, "PHILIPPE")
+    philippe = editor.party.member(row)
+    assert philippe.record.get("class_bits") == 0x08
+
+    editor.roster.selectRow(row)
+    shown = editor._widgets["char_class"].currentText().lower()
+    assert shown == "2  fighter"
 
 
 def test_curses_class_code_10_names_cleric_ranger_not_pool_of_radiances_pair(app):
