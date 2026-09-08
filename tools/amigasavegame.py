@@ -472,6 +472,41 @@ def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
     return out
 
 
+def sweep(saves: Sequence[tuple[str, AmigaSavegame]]) -> str:
+    """Which variable words are ever non-zero, grouped by the place.
+
+    The writers zero every word no source save answers for, on the argument
+    that nothing here holds anything there -- and that argument is only as
+    wide as the places the parties in the corpus have stood.  This is what
+    measures the width.  Grouping by `$5012`, the container number, is what
+    makes it readable: the interesting column is what a corpus of one place
+    alone would have missed, which is the size of the risk in adding a
+    fourteenth area nobody has visited.
+
+    `docs/165-amiga-savegame.md`, "Still open".
+    """
+    if not saves:
+        return "nothing to sweep"
+    words = {}                       # container -> set of non-zero addresses
+    counts = {}
+    for _label, save in saves:
+        base = VM_BASE
+        here = words.setdefault(save.word(0x5012), set())
+        counts[save.word(0x5012)] = counts.get(save.word(0x5012), 0) + 1
+        for address in range(base, base + VM_BYTES // 2):
+            if save.word(address):
+                here.add(address)
+    everywhere = set().union(*words.values())
+    lines = [f"{len(saves)} saved games, {len(words)} places, "
+             f"{len(everywhere)} of {VM_BYTES // 2} words ever non-zero",
+             "  $5012  files  non-zero  this one alone would have missed"]
+    for container in sorted(words):
+        lines.append(f"  {container:5d}  {counts[container]:5d}  "
+                     f"{len(words[container]):8d}  "
+                     f"{len(everywhere - words[container])}")
+    return "\n".join(lines)
+
+
 def report(save: AmigaSavegame, label: str = "") -> str:
     s = save.shape
     lines = [f"{label or 'saved game'}: {s.title}, {len(save.data)} bytes"]
@@ -515,11 +550,20 @@ def report(save: AmigaSavegame, label: str = "") -> str:
 
 
 def savegames_on(disk: AmigaDisk):
-    """Every `save/savgam*` on a disk, as `(path, bytes)`."""
+    """Every saved game on a disk, as `(path, bytes)`.
+
+    A game disk keeps them in a `save` drawer; **a `POOLSAVE` save disk keeps
+    them in the root**, which is where `goldbox.amiga.make_por_save_disk`
+    writes them and where the Amiga game's own picker looks when the player
+    answers its `PATH FOR SAVE` prompt with RETURN.  Both are read: pointing
+    this at the disk a conversion just produced used to report that no image
+    had been named.
+    """
     for path, _entry in disk.walk():
         parts = path.strip("/").split("/")
-        if (len(parts) == 2 and parts[0].lower() == "save"
-                and parts[1].lower().startswith("savgam")):
+        if not parts[-1].lower().startswith("savgam"):
+            continue
+        if len(parts) == 1 or (len(parts) == 2 and parts[0].lower() == "save"):
             yield path, disk.read_file(path)
 
 
@@ -529,20 +573,33 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("files", nargs="*", help="saved games, as raw files")
     parser.add_argument("--adf", action="append", default=[],
-                        help="a disk image; every save/savgam* on it is read")
+                        help="a disk image; every savgam*, in the root or in "
+                             "a save drawer, is read")
+    parser.add_argument("--sweep", action="store_true",
+                        help="instead of a report each, one table of which "
+                             "variable words are ever non-zero, by place")
     args = parser.parse_args(argv)
     todo: list[tuple[str, bytes]] = []
     for f in args.files:
         todo.append((f, pathlib.Path(f).read_bytes()))
+    empty = []
     for image in args.adf:
         try:
             disk = AmigaDisk.open(image)
         except AmigaDiskError as ex:
             raise SystemExit(f"{image}: {ex}")
-        todo.extend((f"{image}!{p}", d) for p, d in savegames_on(disk))
+        on_it = list(savegames_on(disk))
+        if not on_it:
+            empty.append(f"{image} ({disk.volume_name})")
+        todo.extend((f"{image}!{p}", d) for p, d in on_it)
+    if not todo and empty:
+        raise SystemExit("no saved game on " + ", ".join(empty)
+                         + ": a savgam* file in the root or in a save drawer "
+                           "is what this reads")
     if not todo:
         parser.error("name a saved game or an --adf image")
     failed = 0
+    parsed = []
     for label, data in todo:
         try:
             save = parse(data, source=label)
@@ -550,8 +607,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{label}: {ex}")
             failed += 1
             continue
+        parsed.append((label, save))
+        if args.sweep:
+            continue
         print(report(save, label))
         failed += sum(1 for _, ok, _ in check(save) if not ok)
+    if args.sweep:
+        print(sweep(parsed))
     return 1 if failed else 0
 
 

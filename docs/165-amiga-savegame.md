@@ -121,6 +121,27 @@ so the two ports agree and the enumeration read off the code names a mode
 nothing here has reached. The five zeros at 12805-12809 are therefore not
 fields, and nothing reads them from the file for any purpose.
 
+**The thirteen bytes are re-derived from the files, on 19 saved games** --
+every distinct `savgam*.dat` in the specimen tree, twelve of them the Amiga
+engine's own, standing in three different areas and in both view modes. Each
+boundary was located by a property of the bytes rather than by this map, so
+the agreement is not by construction:
+
+| boundary | found by | result |
+|---|---|---|
+| the name table's first byte | searching for `CHRDAT` | **12813 in 19 of 19** |
+| the script buffer's first byte | matching 5120 onwards against every unpacked `ecl.dax` block from its byte 2 | **19 of 19** |
+| the variable array's base | reading `$4FE1`, `$506D` and `$50F6` at `2 * (addr - $4900)` | **(255, 16, 1) in 19 of 19** |
+| the count byte | `$503E` against byte 12812 | **equal in 19 of 19** |
+| the five pad bytes | 12805-12809 | **zero in 19 of 19** |
+
+A name table at 12813 makes the tail thirteen bytes where DOS's is eight, and
+the Amiga writes no container byte at the front: 5 − 1 = 4, which is the whole
+of the difference between DOS's 13,137 and the Amiga's 13,141
+([`196-the-amiga-saved-game-built.md`](196-the-amiga-saved-game-built.md) §1).
+CONFIRMED, `#316 (Write the Amiga Pool of Radiance saved game from the source
+save, so a converted party arrives where it was standing)`.
+
 The Pool of Radiance wallset table is copied into the VM array before the
 write, entry *i* to `$4AF9+i` and `$4AFC+i` for *i* = 1..3 -- which is
 [`141-dos-savegame.md`](141-dos-savegame.md)'s wallset triple and its (1, 2, 3)
@@ -172,6 +193,39 @@ Blades disk B is a `GLIB` of 18 blocks: block 0 is a 70-byte index holding a
 Block 1 is the only one of the seventeen matching both. And the engine
 **recomputed** the byte when it resaved a party we had moved -- handed 135 at
 square 5,9, it wrote 128 -- so a converted save need not get either byte right.
+
+#### DOS's third name for the attribute byte is not the Amiga's
+
+[`141-dos-savegame.md`](141-dos-savegame.md) grades `$5082` **CONFIRMED as a
+copy**: it equals `$5200`, and both equal the attribute byte in the tail, in
+21 of 21 engine-written DOS specimens, including a pair that moved together
+across the boat. **That is a fact about the DOS engine's code path and does
+not hold here.** Over the twelve engine-written Amiga Pool of Radiance saved
+games on this machine the three agree in five and disagree in seven, and the
+only agreement at a non-zero value is the shipped slot A's 25, 25, 25.
+
+| what the engine wrote | byte 12804 | `$5082` | `$5200` | files |
+|---|---|---|---|---|
+| the shipped slot A | 25 | 25 | 25 | 1 |
+| indoors, New Phlan at 9,13 | 150 | 0 | 0 | 5 |
+| outdoors, the travel grid | 1 | **0** | **1** | 2 |
+| indoors, all three zero | 0 | 0 | 0 | 4 |
+
+**The outdoor pair is what makes this CONFIRMED rather than an artefact of our
+own zeroes.** Most of these parties were loaded out of a container this
+project built with all three at zero, so the engine had nothing to copy -- but
+the outdoor pair's ancestor went in holding three *different* values (`$5082`
+25, `$5200` 0, byte 12804 0) and the engine rewrote all three when the party
+bought a passage and landed on the travel grid: 25 → 0, 0 → 1, 0 → 1. It
+touched them and still left `$5082` unequal to the other two.
+
+Nothing rests on this. `goldbox.amiga.POR_SAVGAM_UNSOURCED` and
+`goldbox.dos.SAVGAM_UNSOURCED` both name the two words engine-rebuilt and
+write zero, which both WinUAE runs of `#316 (Write the Amiga Pool of Radiance
+saved game from the source save, so a converted party arrives where it was
+standing)` showed the Amiga engine accepting. The reason to record it is that
+deriving either word from the tail byte, on the grounds that DOS does, would
+write a value the Amiga engine itself does not.
 
 ### The game mode, one enumeration on all three titles
 
@@ -359,6 +413,26 @@ picker)`. A fourth per-title difference.
   Every specimen here was saved indoors, from camp or from the party menu, and
   reaching either needs `#361 (An Amiga party cannot be made to walk, because
   the WinUAE driver sends only keystrokes)`.
+* **What the variable array holds in an area nobody has been to.** Pool of
+  Radiance's saved games here stand in three of the game's 29 areas -- The
+  Slums, New Phlan and one wilderness window -- and **108 of the 2560 words
+  are non-zero in at least one of the nineteen**. The rest are written zero by
+  `goldbox.amiga.new_por_savegame` on the strength of that sweep, and the
+  sweep is only as wide as the places the party has stood:
+
+  | `$5012` | files | words non-zero | a corpus of this one alone would have missed |
+  |---|---|---|---|
+  | 2, The Slums | 6 | 29 | 79 |
+  | 3, New Phlan | 9 | 95 | 13 |
+  | 7, the wilderness | 4 | 101 | 7 |
+  | all three | 19 | **108** | -- |
+
+  The ten saved games of the 2026-09-05 census, all in New Phlan, gave 92.
+  Two more areas found sixteen more live words, so **read "zero in every Amiga
+  saved game here" as "in three areas of 29"**. One engine-written saved game
+  from Valjevo Castle or the Temple of Bane, swept the same way, is what
+  narrows it: no new non-zero word makes the argument much stronger, and ten
+  new ones are ten words the writer is zeroing for no measured reason.
 
 **Amiga Silver Blades past its party menu is no longer open.**
 `tools/amigabladesjournal.py` answers the `BEGIN ADVENTURING` prompt and the
