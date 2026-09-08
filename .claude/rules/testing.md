@@ -126,22 +126,45 @@ of knowing."* The archives here are a download -- `~/Downloads/fr-archives`,
 custody either. It was listed as trustworthy in an earlier version of this
 rule and that was wrong.
 
-**A worked consequence, and the example itself turned out to be wrong, which
-makes the point better than it did.** This rule used to say six of the eighteen
-records in Pool of Radiance's `Default files/Saves` fail the encumbrance
-identity, against two of eighteen in the known-edited set, and reasoned from
-that towards a stranger's edited party. Re-run on 2026-09-05: **0 of 18 fail**,
-while the known-edited half still reproduces exactly at 2 of 18. So the six
-were never there and the inference built on them had nothing under it.
+**The encumbrance identity is not a provenance test, and this rule used to
+treat it as one.** It said six of the eighteen records in Pool of Radiance's
+`Default files/Saves` fail `money + Σ(weight × quantity)` against the stored
+total, two of eighteen in the known-edited set, and reasoned from that towards
+a stranger's edited party. Both halves of that are gone:
 
-What that leaves standing is the rule rather than the example: a save found on
-a disk has no chain of custody, and **staring at it does not say which**. The
-reason to distrust the archives is that nobody watched them being written, not
-a count somebody took once. `#323 (The encumbrance identity does not survive
-the training fee, so failing it is not evidence of an edited record)` is the
-related finding -- 42 of 42 trainings took 1000 gp and left encumbrance
-untouched, so failing that identity is not evidence of editing in the first
-place.
+* **The six were never there.** `tools/enccensus.py` swept every DOS and Amiga
+  record on this machine on 2026-09-07: **54 of 54 records the archives ship
+  balance exactly**, across four titles, and so do 34 of 34 Amiga records.
+  Those files have not been written since 2026-08-15, and the reader as it
+  stood at the commit that wrote the sentence gives the same 0 of 18, so it
+  was not a reader fix either.
+* **Failing it is the normal state of a record we watched being written.** Of
+  the 97 records here that miss, **93 are ours, driven**: 90 by an exact
+  multiple of 1000 gp -- Pool of Radiance's training fee, on `#249`'s ladder,
+  where the stored total climbs to 11,000 above the purse over nine trainings
+  and the engine never recomputes it -- and 3 by the Curse shop bug in
+  `docs/125-bug-notes.md` N19. Nothing in the never-watched corpus misses at
+  all.
+
+So **a record failing the identity is not evidence that anybody edited it**,
+and neither is a record passing it evidence that nobody did. It checks our
+reading of the money block, the item stride and the weight offset, which is
+what it was built for. `#323 (The encumbrance identity does not survive the
+training fee, so failing it is not evidence of an edited record)` has the
+counts and the two records that miss the other way.
+
+What is left is the rule rather than the example: a save found on a disk has no
+chain of custody, and **staring at it does not say which**. The reason to
+distrust the archives is that nobody watched them being written, not a count
+somebody took once.
+
+**And the archives' installed save directory is not an archive.**
+`games/POOLRAD/GAME/POOLRAD/SAVE` is byte-identical to `~/dos_por_play/SAVE`,
+and `SavesDir/76561197971030711/1882370/English` differs from it only by a
+`GBC` subdirectory -- Gold Box Companion's own. Only `Default files/Saves`
+holds what the download shipped. A sweep that walks the archives whole picks
+the edited party up under an innocent-looking path, so grade a record by
+**every** path its bytes were found at, not the first one walked.
 
 **Records this project's own writers produced** test the writer and are never
 evidence about the game, since they carry what we already believe. **Including
