@@ -2809,18 +2809,26 @@ POR_TABLE_SCRATCH = ("display scratch: the 33 bytes after each of the eight "
 #: across two WinUAE sessions on 2026-09-07
 #: (`#322 (Nobody has looked at an Amiga Pool of Radiance character sheet to
 #: see whether it draws a portrait at all)`, `docs/206-three-amiga-questions.md`).
-#: Writing 3 stays right -- every engine-written Amiga saved game holds it --
-#: so nothing a player sees changes; what changed is the reason.  The Amiga's own code calls it `2 * g63d1 + g63d0`, split back into
-#: two engine bytes on load, and all ten Amiga saved games here hold 3 -- the
-#: same 3 all three engine-written DOS ones hold.  PROBABLE for the Amiga: the
-#: value is the engine's own on both ports that have been bisected, and no
-#: Amiga run has bisected it.  Nobody has opened an Amiga character sheet at
-#: all: `#322 (Nobody has looked at an Amiga Pool of Radiance character sheet
-#: to see whether it draws a portrait at all)`.
+#: Writing 3 stays right -- it is what 17 of the 19 Amiga saved games here
+#: hold, the two exceptions being a container we built with no portrait
+#: crossed and the engine's resave of it, which inherited that zero rather
+#: than choosing it -- so nothing a player sees changes; what changed is the
+#: reason (`#441 (A converted Amiga save's provenance claims three words are
+#: zero in every saved game, and they are not)`).  The Amiga's own code
+#: calls it `2 * g63d1 + g63d0`, split back into two engine bytes on load,
+#: and it is the same 3 all three engine-written DOS ones hold.  PROBABLE
+#: for the Amiga: the value is the engine's own on both ports that have been
+#: bisected, and no Amiga run has bisected it.  Nobody has opened an Amiga
+#: character sheet at all: `#322 (Nobody has looked at an Amiga Pool of
+#: Radiance character sheet to see whether it draws a portrait at all)`.
 POR_SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
     (0x49FF, 3, "the word that gates the sheet portrait on the two ports "
-                "where it has been bisected, and 3 is what all ten Amiga "
-                "saved games and all three DOS ones hold (#57)"),
+                "where it has been bisected, and 3 is what it reads in "
+                "every Amiga and DOS saved game measured except our own "
+                "builds with no portrait crossed and their engine resaves, "
+                "which inherit that zero rather than choosing it -- re-run "
+                "`tools/amigasavegame.py --sweep` for a current count "
+                "(#57, #441)"),
 )
 
 
@@ -2935,6 +2943,15 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                        f"window-local, the source save's own. The Amiga "
                        f"keeps it where DOS does and the status line prints "
                        f"the world coordinate instead (#321)")
+    else:
+        _por_note_word(report, dos_savegame.TRAVEL_X, 2,
+                       "zeroed: this party is indoors, so this build "
+                       "writes no travel square here. That is not the same "
+                       "as reading zero in every Amiga saved game -- the "
+                       "sweep finds these two words non-zero in the saved "
+                       "games made on the travel grid; re-run "
+                       "`tools/amigasavegame.py --sweep` for a current "
+                       "count (#441)")
 
     save[POR_POS_X] = state.x
     save[POR_POS_Y] = state.y
@@ -3034,6 +3051,16 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
         _por_note_word(report, address, 1, f"a documented constant: {why}")
     for address, value, why in POR_SAVGAM_MEASURED:
         if address == 0x49FF and not portraits:
+            _por_note_word(report, address, 1,
+                           "zeroed: no portrait crossed for this party, "
+                           "so this build does not write the word that "
+                           "gates the sheet portrait on the other two "
+                           "ports. That is not the same as reading zero in "
+                           "every Amiga saved game -- the sweep finds it "
+                           "non-zero in most of the saved games examined, "
+                           "including the one SSI shipped; re-run "
+                           "`tools/amigasavegame.py --sweep` for a current "
+                           "count (#441)")
             continue
         por_put_word(save, address, value)
         _por_note_word(report, address, 1, f"measured: {why}")
@@ -3048,8 +3075,10 @@ def por_savegame_zeroes(save: bytearray, report: PorSaveReport) -> None:
             if i not in report.sources]
     for i in rest:
         report.sources[i] = (
-            "zeroed: this word reads zero in every Amiga saved game on this "
-            "machine, and nothing in a C64 or DOS save corresponds to it")
+            "zeroed: this word reads zero in every Amiga saved game swept "
+            "so far, and nothing in a C64 or DOS save corresponds to it -- "
+            "run `tools/amigasavegame.py --sweep` to re-take the "
+            "measurement (docs/165-amiga-savegame.md, \"Still open\")")
 
 
 def new_por_savegame(state: PorSaveState, slot: str, count: int,

@@ -241,6 +241,41 @@ def test_neither_of_the_two_words_is_written_from_anything(corpus, ecl_dax):
         assert built[offset] << 8 | built[offset + 1] == 0
 
 
+def test_a_build_that_declines_a_word_says_so_rather_than_claiming_it_is_zero_everywhere(
+        corpus, ecl_dax):
+    """`#441 (A converted Amiga save's provenance claims three words are
+    zero in every saved game, and they are not)`.
+
+    `por_savegame_zeroes`'s catch-all sentence used to fall on `$49FF` when
+    no portrait crossed and on `$49C3`/`$49C4` when the party is indoors --
+    both left zero correctly, and both told a reader the word "reads zero
+    in every Amiga saved game on this machine", which is false: `$49FF`
+    reads 3 in most of the corpus here, including the one SSI shipped, and
+    `$49C3`/`$49C4` are what the outdoor branch writes correctly on a party
+    standing on the travel grid.  A word this build merely declines to
+    write must say so, not claim to have measured it.
+    """
+    from goldbox import dos_savegame
+
+    state = amiga.por_state_from_amiga(corpus[0][1], corpus[0][0])
+    assert state.outdoors is False        # the indoor half of the gate
+
+    built, report = amiga.new_por_savegame(state, "B", 1, ecl_dax,
+                                           portraits=False)
+
+    portrait_offset = amiga.por_word_offset(0x49FF)
+    assert built[portrait_offset] << 8 | built[portrait_offset + 1] == 0
+    travel_offset = amiga.por_word_offset(dos_savegame.TRAVEL_X)
+    assert built[travel_offset:travel_offset + 4] == b"\x00\x00\x00\x00"
+
+    for offset in (portrait_offset, travel_offset):
+        why = report.sources[offset]
+        assert "this word reads zero in every Amiga saved game" not in why, why
+        assert "#441" in why, why
+    assert "does not write the word" in report.sources[portrait_offset]
+    assert "writes no travel square" in report.sources[travel_offset]
+
+
 # ---------------------------------------------------------------------------
 # The reader, pointed at the disk a conversion produces
 # ---------------------------------------------------------------------------
