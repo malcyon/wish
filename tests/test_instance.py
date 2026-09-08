@@ -372,11 +372,25 @@ def test_killpg_refuses_our_own_group(pool):
 #: displays. The loser's `claim()` raises `PoolFull` before it ever writes a
 #: `pgid`, which the poll below cannot tell apart from the claim just being
 #: slow. `_isolated_display_base()` gives each run its own band instead.
+#:
+#: The **ports** are the same hazard by a second route, and the one that
+#: reopened #438. `claim()` steps over a slot whose binary-monitor port
+#: answers -- correctly, since a bound port means something is already there
+#: -- and the `ports` fixture's stand-in for that probe is a `monkeypatch` on
+#: the module object *in the pytest process*. This wrapper is a new
+#: interpreter with an unpatched module, so it probes 127.0.0.1:6520 for
+#: real, and a pooled VICE an agent is running in slot 0 pushes it onto slot
+#: 1 while the poll below watches slot 0. Setting the three port bases here
+#: costs nothing: nothing in this test ever *binds* one of these ports, so
+#: two concurrent runs sharing a band is harmless.
 CLAIM_WRAPPER = textwrap.dedent("""
     import sys
     sys.path.insert(0, {tools!r})
     import instance
     instance.DISPLAY_BASE = {base!r}
+    instance.BIN_BASE = {ports!r}
+    instance.TEXT_BASE = {ports!r} + 20
+    instance.CMD_BASE = {ports!r} + 40
     sys.exit(instance.main(["claim", "--", {python!r}, "-c",
                             "import time; time.sleep(120)"]))
 """)
@@ -397,41 +411,127 @@ def _isolated_display_base() -> int:
     return 2000 + (os.getpid() % 4000) * 64
 
 
+def _isolated_port_base() -> int:
+    """A port band with no pooled emulator in it -- see the note above
+    `CLAIM_WRAPPER`.
+
+    Far above the pool's own 6520-6575, so a VICE an agent is running cannot
+    be mistaken for a slot already in use, and below
+    `/proc/sys/net/ipv4/ip_local_port_range`'s floor -- 32768 here, and 32768
+    on every Linux this project has run on -- so somebody else's outgoing
+    connection cannot land in it either.  The three bases the wrapper sets
+    span `base` to `base + 55`, and `* 64` is what keeps two pids' spans
+    apart.
+
+    A collision needs two pids exactly 180 apart, and unlike the display band
+    that is not a failure: `claim()` only *probes* these ports and this test
+    launches `time.sleep`, so nothing binds one.  The arithmetic is here to
+    keep the number away from whatever else the machine listens on, not to
+    arbitrate between two runs.
+    """
+    return 20000 + (os.getpid() % 180) * 64
+
+
+def _recorded_pgid(root: Path) -> int | None:
+    """The pgid the wrapper's claim recorded, out of whichever slot it took.
+
+    Not slot 0 by name.  `claim()` steps over a slot whose port answers, and
+    #438 is what that costs a test that assumed the first one -- so this asks
+    the question the test actually cares about, which is whether a claim has
+    recorded a group at all.  `POR_INST` is this test's own empty pool, so
+    the only claim that can write into it is the one under test.
+
+    `record()` truncates the lease and rewrites it, so a read can catch it
+    mid-write and see half a document; that is a `ValueError`, and the next
+    pass round the poll reads it whole.
+    """
+    for lease in sorted(root.glob("*/lease")):
+        with contextlib.suppress(OSError, ValueError):
+            info = json.loads(lease.read_text() or "{}")
+            if info.get("pgid"):
+                return int(info["pgid"])
+    return None
+
+
+def test_the_claim_wrapper_probes_no_port_the_pool_hands_out():
+    """The property #438 lost twice, said out loud.
+
+    The wrapper is a fresh interpreter, so the `ports` fixture cannot reach
+    it and its probe is real.  While its bands were the pool's own, an agent
+    driving the emulator in slot 0 made this file's teardown test go red -- a
+    whole-suite failure that could not be reproduced by re-running it,
+    because by then the agent's run had finished.
+
+    32768 is the ephemeral floor -- `sysctl net.ipv4.ip_local_port_range`
+    reads `32768 60999` here -- so a band under it is one nobody's outgoing
+    connection lands in either.
+    """
+    spans = [range(b, b + instance.SLOTS)
+             for b in (instance.BIN_BASE, instance.TEXT_BASE, instance.CMD_BASE)]
+    base = _isolated_port_base()
+    for offset in (0, 20, 40):
+        for port in range(base + offset, base + offset + instance.SLOTS):
+            assert not any(port in span for span in spans), port
+            assert port < 32768, port
+
+
 @posix
 def test_a_shell_timeout_killing_the_claim_wrapper_still_tears_the_group_down(pool):
     """Send `SIGTERM` to the wrapper the way `timeout` would, and prove the
     process group it launched -- the VICE run, in the real case -- does not
     outlive it."""
-    claimer = subprocess.Popen(
-        [sys.executable, "-c",
-         CLAIM_WRAPPER.format(tools=str(TOOLS), python=sys.executable,
-                               base=_isolated_display_base())],
-        env=dict(os.environ, POR_INST=str(os.environ["POR_INST"])),
-    )
-    lease = Path(os.environ["POR_INST"]) / "0" / "lease"
+    errors = pool / "claimer.stderr"
+    root = Path(os.environ["POR_INST"])
     pgid = None
+    with errors.open("wb") as fh:
+        claimer = subprocess.Popen(
+            [sys.executable, "-c",
+             CLAIM_WRAPPER.format(tools=str(TOOLS), python=sys.executable,
+                                  base=_isolated_display_base(),
+                                  ports=_isolated_port_base())],
+            env=dict(os.environ, POR_INST=str(os.environ["POR_INST"])),
+            stderr=fh,
+        )
     try:
-        for _ in range(100):                    # claim + launch is fast
-            if lease.is_file():
-                info = json.loads(lease.read_text() or "{}")
-                if info.get("pgid"):
-                    pgid = info["pgid"]
-                    break
+        # A deadline rather than a count of sleeps, and 60s rather than a
+        # number measured here: claim and launch take a fifth of a second on
+        # an idle machine, and how much slower than that a loaded one gets is
+        # not something this test should be asserting.  A file, not a pipe,
+        # because the wrapper is left running across the poll and a pipe
+        # nobody is draining is a deadlock waiting for a long traceback.
+        deadline = time.time() + 60
+        while True:
+            pgid = _recorded_pgid(root)          # read the lease first: the
+            if pgid:                             # wrapper could record and
+                break                            # then die in the same breath
+            if claimer.poll() is not None:
+                pytest.fail(
+                    f"the claim wrapper exited {claimer.returncode} without "
+                    f"recording a pgid, so there was never a process group to "
+                    f"tear down. Its stderr:\n{errors.read_text() or '(empty)'}")
+            if time.time() > deadline:
+                pytest.fail("the claim never recorded a pgid in 60s, and the "
+                            "wrapper is still running")
             time.sleep(0.05)
-        assert pgid is not None, "the claim never recorded a pgid"
 
         claimer.send_signal(signal.SIGTERM)      # what `timeout` itself sends
         assert claimer.wait(15) is not None, "the wrapper never exited"
 
-        for _ in range(50):
+        # The wrapper's own `finally` kills the group before it exits, so by
+        # the `wait` above this is already true and the deadline is slack for
+        # a loaded machine rather than a wait the test depends on.  20s
+        # cannot hide #381: unhandled, the `SIGTERM` leaves the stand-in
+        # sleeping its full 120.
+        deadline = time.time() + 20
+        while True:
             try:
                 os.killpg(pgid, 0)
             except ProcessLookupError:
                 break
+            if time.time() > deadline:
+                pytest.fail(f"process group {pgid} is still running; the "
+                            "SIGTERM to the wrapper did not tear it down (#381)")
             time.sleep(0.1)
-        else:
-            pytest.fail(f"process group {pgid} is still running; the SIGTERM "
-                        "to the wrapper did not tear it down (#381)")
     finally:
         if claimer.poll() is None:
             claimer.kill()
