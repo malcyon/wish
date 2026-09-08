@@ -42,7 +42,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox.levelup import best_next_class
+from goldbox.levelup import classes_trained
 from ui.iconpaint import draw_icon, icon_pixmap
 
 from .state import OUTDOORS_WHERE
@@ -500,11 +500,15 @@ class CharacterCard(QObject):
     """
 
     #: The slot, and nothing else. **The player is not asked which class.** A
-    #: multi-class character with two ready gets the one whose threshold after
-    #: the level is highest, which keeps the trainer's experience clamp as high
-    #: as it goes and so usually leaves the other class still qualified;
-    #: pressing again takes that one. `goldbox.levelup.best_next_class` is the rule
-    #: and `docs/135-levelling.md` is why.
+    #: title without `goldbox.levels.LevelTables.trains_all_ready_classes`
+    #: raises the one multi-class character's ready class whose threshold
+    #: after the level is highest, which keeps the trainer's experience clamp
+    #: as high as it goes and so usually leaves the other class still
+    #: qualified, taken by pressing again -- `goldbox.levelup.best_next_class`
+    #: is the rule and `docs/135-levelling.md` is why. A title with that flag
+    #: set raises every ready class in the one press, `goldbox.levelup.
+    #: plan_all`'s walk -- `#18 (Measure Curse's trainer so Level Up works
+    #: there)`.
     level_up_requested = pyqtSignal(int)
 
     def __init__(self, root: QWidget, index: int, parent: QObject | None = None):
@@ -573,11 +577,21 @@ class CharacterCard(QObject):
                      and c.experience >= c.next_threshold)
 
     @classmethod
-    def chosen_class(cls, who) -> str | None:
-        """Which class the button will raise. For the tooltip only -- the
-        window asks the record the same question before it writes."""
-        return best_next_class(cls.ready_to_level(who),
-                               {c.name: c.level for c in who.classes})
+    def training_classes(cls, who) -> list[str]:
+        """Which classes the button will raise, in the order it raises them.
+        For the tooltip only -- the window asks the record the same question
+        before it writes, through `automap.actions.LevelUp.run`.
+
+        `who.game` decides the tables, the same title `run` reads them from:
+        Pool of Radiance's rules were being read for every title until
+        `#420 (The roster card's Level Up tooltip names one class for a
+        Curse press that trains several, and reads them with Pool of
+        Radiance's own tables)`, when no title but Pool of Radiance had a
+        Level Up button to hover at all.
+        """
+        return classes_trained(cls.ready_to_level(who),
+                               {c.name: c.level for c in who.classes},
+                               who.game)
 
     def _level_up_clicked(self) -> None:
         self.level_up_requested.emit(self.slot)
@@ -602,7 +616,21 @@ class CharacterCard(QObject):
         if self.level_up is not None:
             self.level_up.setVisible(bool(self.ready) and self.levelling)
             if self.ready:
-                self.level_up.setToolTip(f"level up as {self.chosen_class(who)}")
+                names = self.training_classes(who)
+                if len(names) > 1:
+                    # UNAPPROVED WORDING: naming more than one class in one
+                    # tooltip is new. Pool of Radiance's trainer never raises
+                    # two classes in a press; Curse's own trainer does
+                    # (`GEN $14F8`), and a tooltip naming only one would say
+                    # something that will not happen -- `#420 (The roster
+                    # card's Level Up tooltip names one class for a Curse
+                    # press that trains several, and reads them with Pool of
+                    # Radiance's own tables)`.
+                    joined = ", ".join(names[:-1]) + " and " + names[-1]
+                    self.level_up.setToolTip(
+                        f"level up as {joined} (NOT APPROVED)")
+                elif names:
+                    self.level_up.setToolTip(f"level up as {names[0]}")
         conditions = who.conditions
         if self.conditions is not None:
             self.conditions.set_icons(icon for icon, _ in conditions)

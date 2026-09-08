@@ -3163,12 +3163,45 @@ def test_the_level_up_button_opens_no_menu_for_a_multi_class_character(app):
 def test_the_button_says_which_class_it_will_raise(app):
     """The magic-user, because its threshold after the level -- 5,001 -- is
     larger than the thief's 2,501, and that is the number the trainer's clamp
-    reads. Thief first would strand her at 2,500."""
+    reads. Thief first would strand her at 2,500.
+
+    Pool of Radiance -- `who.game` is None here, the same default `_character`
+    always took -- raises one class a press, so this is the case
+    `#420 (The roster card's Level Up tooltip names one class for a Curse
+    press that trains several, and reads them with Pool of Radiance's own
+    tables)` must leave alone."""
     from automap.panel import CharacterCard
     card = CharacterCard(make_root(), 0)
     card.show_character(_multi_class_character())
-    assert card.chosen_class(_multi_class_character()) == "magic-user"
+    assert card.training_classes(_multi_class_character()) == ["magic-user"]
     assert card.level_up.toolTip() == "level up as magic-user"
+
+
+def test_the_tooltip_names_every_class_a_curse_press_trains(app):
+    """TRAVIS, thief 5 / fighter 4 with 20,001 experience -- both classes
+    ready together (`thief`'s own next threshold is 20,001, `fighter`'s is
+    18,001, `tests/test_cursetrainer.py`'s `WISH-SPEC-curse-train-input`
+    specimen). `$14F8` walks class slots 7 down to 0 and raises fighter
+    (slot 3) before thief (slot 2), so that is the order named here too.
+
+    Before `#420 (The roster card's Level Up tooltip names one class for a
+    Curse press that trains several, and reads them with Pool of Radiance's
+    own tables)`, `CharacterCard.chosen_class` called `best_next_class` with
+    no `game` at all, so this read Pool of Radiance's tables and named one
+    class -- and Pool of Radiance's rule for who goes first (post-level
+    threshold: thief's 40,001 beats fighter's 22,501) picks the *other* one
+    from the engine's own walk."""
+    from automap.panel import CharacterCard
+
+    travis = _character(
+        slot=1, name="TRAVIS", level=5, game=CURSE,
+        classes=(live.ClassProgress("thief", 5, 20001, 1.0, 20001),
+                 live.ClassProgress("fighter", 4, 20001, 1.0, 18001)))
+    card = CharacterCard(make_root(), 0)
+    card.show_character(travis)
+    assert card.training_classes(travis) == ["fighter", "thief"]
+    assert card.level_up.toolTip() == \
+        "level up as fighter and thief (NOT APPROVED)"
 
 
 def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):

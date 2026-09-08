@@ -302,6 +302,30 @@ def best_next_class(ready, class_levels, game=None) -> str | None:
     return max(ready, key=rank) if ready else None
 
 
+def classes_trained(ready, class_levels, game=None) -> list[str]:
+    """Which classes one press raises, and in what order -- for a caller that
+    wants to say what pressing the button will do, before it is pressed.
+
+    **A `trains_all_ready_classes` title raises every one of `ready`**,
+    walking `GEN $14F8`'s own slot order high to low (`LevelTables.
+    class_order` reversed, the same order `plan_all` chains its steps in).
+    **Any other title raises the single class `best_next_class` names**,
+    `GEN $1B8C`'s one-a-press design -- so `automap.actions.LevelUp.offers`
+    reads the title the same two ways, to answer whether the magic-user is
+    among the classes a press actually trains.
+
+    Empty when `ready` is empty. No die is rolled and nothing is written --
+    `plan_all` is what actually trains a character; this only orders the
+    names.
+    """
+    tables = levels.for_game(game)
+    if tables.trains_all_ready_classes:
+        order = [name for name in reversed(tables.class_order) if name]
+        return [name for name in order if name in ready]
+    picked = best_next_class(ready, class_levels, game)
+    return [picked] if picked else []
+
+
 def best_class(record, game=None) -> str | None:
     """The class `plan` would raise if it were not told which. None if none is
     ready."""
