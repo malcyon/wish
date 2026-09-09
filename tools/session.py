@@ -2402,7 +2402,13 @@ class Session:
 
     def fight(self, budget: float = 300.0, tactic=None,
               poll: float = 1.0) -> FightResult:
-        """Drive a fight from `$6E11 == 2` back to `$6E11 == 1`.
+        """Drive a fight from mode 2 back to mode 1.
+
+        The mode flag is this title's own -- `$6E11` in Pool of Radiance and
+        `$7F11` in both later titles -- since `#334 (The session driver cannot
+        fight in Curse or Silver Blades, and says the party is not in a fight
+        while it is standing on the combat floor)`. The two values are the
+        same everywhere; only the address moves.
 
         The end of a fight is **not** the mode byte leaving 2: `THE PARTY HAS
         WON !`, the experience share and any treasure run under POST.COM, and
