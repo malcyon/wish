@@ -25,9 +25,16 @@ long as its longest-running subagent. Ask Donald to start the night that way.
 
 **A killed background command is not a finished one.** A backgrounded `pytest`
 has come back `killed` rather than with a result four times. A long run belongs
-in the foreground with an explicit timeout -- the suite takes about six minutes
-and the tool allows ten -- or it has to be checked for a real result rather
-than assumed to have passed.
+in the foreground with an explicit timeout -- the suite takes about four
+minutes and the tool allows ten -- or it has to be checked for a real result
+rather than assumed to have passed.
+
+**Sending the suite to `test-runner` is the better way to have both.** The run
+is in that agent's foreground with its own timeout, so it is a real result;
+this window is free meanwhile, and a working subagent is one of the three
+things that keeps the chain alive. What it is not is a way to background a
+`pytest` -- the rule above is about the run, not about where it is watched
+from.
 
 ## Ending a session, and starting the next one
 

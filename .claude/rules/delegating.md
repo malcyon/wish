@@ -24,6 +24,7 @@ writing the brief costs more than doing the work.
 | `docs-reviewer` | Sonnet | when documentation may have drifted from the code. Scope it to the files it owns |
 | `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**, including the banned-words sweep of titles, bodies and comments |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
+| `test-runner` | **Haiku** | the whole suite before a push, or a scoped run on named files. **The one agent that may run everything**, because it exists so that one run does not block the window Donald is asking questions in. It reports and fixes nothing |
 
 **Cost is not the filter on the two Fable agents; fit is.** Donald, 2026-09-04:
 *"consider deep-research and architect as available options to use when
@@ -77,13 +78,18 @@ one, say so in a message to the agent, and prefer a targeted edit -- putting
 back the one hunk you changed -- to restoring the whole file you remember.
 
 **Tell the agent to run its own test files, not the suite.** `pytest` on what
-it touched, plus `ruff` and `genui.py --check`. The whole suite is the main
-window's, once, before the push -- `.claude/rules/commits.md`. Six agents each
-running all 3,190 tests is six copies of Qt on one machine, and on 2026-09-04
-that cost a reviewer its run. Tell it to run in the **foreground with a
-timeout** as well: a backgrounded `pytest` here has come back `killed` rather
-than with a result, and five agents ended turns that day waiting on runs that
-never reported.
+it touched, plus `ruff` and `genui.py --check`. The whole suite runs once,
+before the push -- `.claude/rules/commits.md`. Six agents each running all
+3,190 tests is six copies of Qt on one machine, and on 2026-09-04 that cost a
+reviewer its run. Tell it to run in the **foreground with a timeout** as well:
+a backgrounded `pytest` here has come back `killed` rather than with a result,
+and five agents ended turns that day waiting on runs that never reported.
+
+**`test-runner` is the exception, and it is the only one.** That one run may go
+to it rather than being made in the main window, because a four-minute run in
+here is four minutes Donald cannot ask anything. It is the reason that agent
+exists. Everything above still binds it: foreground, explicit timeout, never
+backgrounded. **Never start two.**
 
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to the player's disk directory, never commit the game's code, art

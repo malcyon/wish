@@ -194,7 +194,10 @@ It is not what you set out to learn.
 2. `.venv/bin/ruff check .`
 3. `.venv/bin/python3 tools/genui.py --check`
 
-**The whole suite is the main window's job, once, in a detached worktree,
-before it pushes.** Six agents each running all 3,190 tests is six copies of Qt
-on one machine, and on 2026-09-04 that cost a reviewer its run. The message,
-the push, the CI check, and where to run it: `.claude/rules/commits.md`.
+**The whole suite runs once, in a detached worktree, before the push.** Six
+agents each running all 3,190 tests is six copies of Qt on one machine, and on
+2026-09-04 that cost a reviewer its run. **One run, not six -- that is the
+rule, and who starts it is not.** The main window either makes that run or
+sends it to `test-runner`, whose whole job it is; never both, and never two at
+once. The message, the push, the CI check, and where to run it:
+`.claude/rules/commits.md`.
