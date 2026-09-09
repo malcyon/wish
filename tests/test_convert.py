@@ -1515,7 +1515,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: `.claude/rules/gui-text.md`'s own ruling on that shortcut, "it matches
     #: the wording already there is not approval".
     WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 3, "goldbox.dos": 8,
-               "automap.actions": 5}
+               "automap.actions": 4}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga, dos, actions):

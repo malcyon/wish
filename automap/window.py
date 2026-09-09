@@ -1300,18 +1300,23 @@ class AutomapBinding(QObject):
         spell = self._chosen_spell(member.record, member.name, game)
         if spell is None:
             return                      # the player closed the dialog
-        # No confirmation in the ordinary case: the button only appears on a
-        # character who can level, and a save disk is a copy. The exception is
-        # the clamp taking a class below a threshold it had already passed --
-        # that costs a level the character earned, so it is asked about.
-        # `confirmation` previews the whole visit `plan_all` would write, not
-        # one step -- see its own docstring and
-        # `#418 (The level-up confirmation dialog previews one step of a
-        # Curse dual-training press, not the whole chain)`.
-        question = actions.LevelUp.confirmation(member.record, member.name,
-                                                spell or None, game)
-        if question is not None and not self.ask(question):
-            return
+        # **Nothing is asked.** The button only appears on a character who can
+        # level, and a save disk is a copy. The clamp taking a class below a
+        # threshold it had already passed was asked about until 2026-09-08,
+        # and Donald removed the question: by the time Wish can ask, the
+        # surplus experience is already earned and the loss is already
+        # inevitable -- and declining is strictly worse, since more
+        # adventuring means more above the threshold for the clamp to
+        # destroy. The dialog offered a choice whose branches were "lose it
+        # now" and "lose more later".
+        #
+        # Donald, 2026-09-08: *"We should only warn about that if there is
+        # some decision the player could make."* The thing that would have
+        # helped -- going back to the trainer sooner -- happened hours earlier
+        # in their session, and Wish cannot offer it at the moment of a press.
+        # `#454 (Does one Curse press that raises two classes cost the
+        # character experience, the way the wrong order does in Pool of
+        # Radiance?)` has the arithmetic.
         outcome = action.apply(target, slot=slot, class_name=class_name,
                                spell=spell or None)
         self.messages.say(f"level up: {outcome.message}",

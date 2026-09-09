@@ -1095,18 +1095,25 @@ def test_the_single_step_preview_misses_what_the_engines_own_order_costs():
         "the real chain costs the thief its already-earned level"
 
 
-def test_confirmation_asks_about_the_whole_chain_not_one_step():
-    """The fix: `automap.actions.LevelUp.confirmation` reads `levelup.plan_all`
-    rather than one step of `plan`, so it asks about exactly the loss the
-    test above shows the single-step `preview` missing."""
+def test_nothing_asks_the_player_about_a_loss_they_cannot_avoid():
+    """Donald removed the question on 2026-09-08: *"We should only warn about
+    that if there is some decision the player could make."*
+
+    There is none. By the time Wish could ask, the surplus experience is
+    already earned and the clamp will take it whenever the character next
+    trains; declining is strictly worse, since more adventuring means more
+    above the threshold to destroy. The measured sweep is on
+    `#454 (Does one Curse press that raises two classes cost the character
+    experience, the way the wrong order does in Pool of Radiance?)` -- the
+    same character loses 0 at 1,251 experience, 500 at 3,000 and 5,500 at
+    8,000, and what would have helped is going to the trainer sooner, hours
+    before the press.
+
+    So `LevelUp` has no `confirmation` at all, and this is what says so.
+    """
     from automap import actions
 
-    record = _fighter_and_thief_where_the_engines_own_order_undercuts_thief(
-        "curse-train-input", "TRAVIS")
-    question = actions.LevelUp.confirmation(record, "TRAVIS", game=CURSE)
-    assert question is not None
-    assert "thief" in question
-    assert "already earned" in question
+    assert not hasattr(actions.LevelUp, "confirmation")
 
 
 def test_the_level_up_button_asks_about_the_whole_chain_through_the_window(
@@ -1114,12 +1121,11 @@ def test_the_level_up_button_asks_about_the_whole_chain_through_the_window(
     """The same fix, driven through `automap.window.AutomapBinding._level_up`
     rather than `LevelUp.confirmation` directly -- the layer `#418` is about.
 
-    Reverting `automap/window.py`'s `_level_up` to call `LevelUp.preview`
-    with `class_for`'s single class, the way it did before this ticket, and
-    rerunning this fails: `window.ask` is never called at all, because that
-    single-step preview reports nothing at risk (the test above shows why),
-    so the training would silently cost TRAVIS his already-earned thief
-    level with no question asked.
+    The window used to ask before a press that costs an earned level, and
+    `#418` made that question cover the whole chain rather than one step.
+    Donald removed it on 2026-09-08 -- by then the loss is unavoidable and
+    declining only makes it larger -- so what this now pins is that the
+    press goes through without a dialog and the panel reports the outcome.
     """
     from PyQt6.QtWidgets import QMainWindow
 
@@ -1168,13 +1174,13 @@ def test_the_level_up_button_asks_about_the_whole_chain_through_the_window(
 
     AutomapBinding._level_up(window, slot_index)
 
-    assert "question" in asked, \
-        "the window never asked, so the thief's level would be lost silently"
-    assert "thief" in asked["question"]
-    assert "already earned" in asked["question"]
-    # The player said no, so nothing should have been written or refreshed.
-    assert "said" not in seen
-    assert "refreshed" not in seen
+    # Donald removed the question on 2026-09-08: there is no decision the
+    # player could make at this moment, so the press goes through and the
+    # Messages panel reports what happened.
+    assert "question" not in asked, \
+        "the window asked about a loss the player cannot avoid"
+    assert "said" in seen
+    assert "refreshed" in seen
 
 
 def _fighter_and_magic_user_ready_but_fighter_named(disk_name: str,
