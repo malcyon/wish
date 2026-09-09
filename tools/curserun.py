@@ -176,6 +176,15 @@ class CurseSession(por.Session):
     #: Return at it.  Long enough that a redraw finishes on its own.
     BLANK = 6.0
 
+    #: Curse reads Return out of the KERNAL buffer on screens where XTEST is
+    #: enough for Pool of Radiance, and the **combat** bar is one of them --
+    #: `combat_bar` walked its highlight, pressed an XTEST Return that nothing
+    #: read, and returned True having done nothing, once a turn for a whole
+    #: fight (`#334`).  `Session.confirm_bar` presses XTEST first and falls
+    #: back only when the bar has not moved, which is what `press_bar` below
+    #: used to do on its own.
+    BAR_RETURN_KERNAL = True
+
     def move_key(self, move: str, hold=0.15, gap=0.30) -> None:
         """Curse's move handler answers **only** the KERNAL buffer.
 
@@ -274,19 +283,14 @@ class CurseSession(por.Session):
         So the highlight is walked, the XTEST Return `select_bar` sends is
         given four seconds to change row 24, and only a row that has not
         moved gets the KERNAL one.
+
+        **That is `Session.confirm_bar` now**, gated on `BAR_RETURN_KERNAL`,
+        so a combat bar gets the same treatment as this one instead of the
+        bare XTEST Return `combat_bar` used to send (`#334`).  This method
+        stays because every caller in `tools/` names it, and because the
+        name says what it does where `select_bar` says only half of it.
         """
-        if not self.select_bar(label, row=row, timeout=timeout):
-            return False
-        s = self.screen()
-        was = "" if s is None else s.row(row)
-        deadline = time.time() + 4.0
-        while time.time() < deadline:
-            s = self.screen()
-            if s is not None and s.row(row) != was:
-                return True
-            time.sleep(0.5)
-        self.press_kernal(0x0D)
-        return True
+        return self.select_bar(label, row=row, timeout=timeout)
 
     def save_game(self, to: str | None = None) -> bool:
         """`ENCAMP ▸ SAVE`, in Curse's own words.

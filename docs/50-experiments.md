@@ -7159,3 +7159,76 @@ DOS and so went round carrying 40 already. It decides nothing about
 because the two ports ship different tables and the conversion copies the
 byte)`, which is about what Wish should write rather than about what survives; it would
 say whether a player who never trains ever sees the difference.
+
+---
+
+## Where Curse and Silver Blades keep a fight, and driving one (2026-09-08)
+
+`#334 (The session driver cannot fight in Curse or Silver Blades, and says the
+party is not in a fight while it is standing on the combat floor)`. The
+addresses and their derivation are in `docs/101-combat-view.md`, "The same
+fight in Curse and Silver Blades"; what belongs here is the method and the
+things that did not work.
+
+**The method was the binaries first and the machine second, and that order is
+what made the run cheap.** Six addresses were wanted. Two of them turned out
+not to move at all: `GDRIVE00`, the square engine that draws the arena, names
+the same twenty absolute addresses `$0600`-`$061B` and the same camera
+`$037E`/`$037F` in all three titles, in the same order and at the same
+relative code positions -- so the parameter block is a family constant rather
+than a per-title one, and only the block's *contents* differ. Three more came
+out of `COM.PREP`'s prologue, which is the same eleven instructions in all
+three with two constants changed: the roster base goes into `$03DF`/`$03E0`
+(`LDA #$83` in Pool of Radiance, `LDA #$67` in both later titles), the map is
+zeroed from `LDY #$8C` against `LDY #$6F`, and the position table is filled
+with `$FF` from `$8B00` against `$CB00`. The sixth, the initiative table, was
+found by opcode skeleton: Pool of Radiance's initiative loop matches once each
+in the later titles' `COMBAT2` -- **not** their `COMBAT` -- reading
+`LDA $92E8,Y` under an `LDY #$3F`.
+
+**Three internal checks, all of which held, and they are why this was
+CONFIRMED before any emulator ran.** The camera clamps in the block are
+`max - view + 1`: `$37 - $07 + 1 = $31`, `$19 - $07 + 1 = $13`. The map is
+56 x 26 = 1456 bytes from `$6F00`, which ends at `$74B0` -- the block's own
+glyph pointer, exactly as Pool of Radiance's map at `$8C00` ends at the
+`$91B0` `docs/101-combat-view.md` already recorded. And `$CB00` and `$6F00`
+each came out of two unrelated sites.
+
+**Then the machine agreed to the byte.** A driven Curse party punched
+Tilverton's barkeep and `$0600` read `b0 74 00 6f 00 cb 40 80 80 80 01 80 c0
+c0 c0 c0 31 13 37 19`, which is `COM.PREP $1436`-`$147E`'s immediate constants
+value for value. `Session.fight(melee_turn)` then drove 36 turns and counted
+32 blows struck by party members, and one BAR PATRON left the map.
+
+### The three things that were wrong in the shared driver
+
+Each of them fails silently, which is why none had been found.
+
+* **`Session.mode()` read `$6E11` on every title.** In a running Curse that
+  byte belongs to something else and reads `1`, so a party on the combat floor
+  was reported as not fighting -- and a driver told there is no fight looks
+  exactly like a save that failed to enter one.
+* **`RE_MOVE_LEFT` wanted `=`.** Pool of Radiance draws `MOVE LEFT = 9` and
+  Curse draws `MOVE LEFT : 12`, so Curse's move sub-bar classified as an
+  ordinary message and `melee_turn` concluded MOVE had not taken.
+* **`combat_bar` pressed Return over XTEST**, which a Curse bar does not read,
+  and returned True having done nothing at all.
+
+### What did not work, so nobody repeats it
+
+* **A pattern walker cannot find a fight in Silver Blades' `GEO10`.** Two runs
+  spent 90 and 400 steps standing on twelve and then sixteen distinct squares,
+  which measured the walker rather than the game: 255 of that area's 256
+  squares are reachable from where the specimen party stands. A third run
+  planned nine legs over the area's own passability, arrived at all nine,
+  covered 75 squares in 598 steps -- and still met nothing. So the area is the
+  variable, not the step count: `docs/121-silver-blades.md`'s encounter came
+  228 steps *out of* New Verdigris, and this party never left `GEO10`.
+* **`Session.acting` names nobody on the frame a combat floor finishes
+  drawing**, because the round has not begun and the panel carries no name. A
+  probe that asks who is acting at that moment presses nothing and logs
+  nothing.
+* **Row 24 is the wrong thing to detect a fight with on these two titles.** It
+  read blank on all seven readings across the half-minute between
+  `PUNCH BARKEEP` and the combat floor, and `screen()` was answering a bitmap
+  for most of them. The mode byte is `2` the moment `LINKER` dispatches.

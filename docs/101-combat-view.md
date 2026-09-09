@@ -26,6 +26,9 @@ started.
 
 ## Where everything is
 
+Pool of Radiance's, which is what the view itself reads. The other two C64
+titles are the next section.
+
 | what | where |
 |---|---|
 | mode | `$6E11` = 2 |
@@ -60,6 +63,58 @@ movement `0x09F`, attacks `0x0D9`–`0x0E0`, experience `0x0F7`–`0x0F9`, trait
 **AC, THAC0 and current hit points come from the roster block, not the record.**
 `0x0E1` is the unarmoured base — AC 10 for every player character — and the
 roster carries what they are actually fighting at.
+
+---
+
+## The same fight in Curse and Silver Blades
+
+Four addresses move, two do not, and **the two later titles agree on every one
+of them**. Each was derived from that title's own binary and then read off a
+running Curse on 2026-09-08, pool slot 2 -- `#334 (The session driver
+cannot fight in Curse or Silver Blades, and says the party is not in a
+fight while it is standing on the combat floor)`, `work/issue334/run5`;
+`tools/latercombat.py` is the table and `tools/session.py` reads a fight
+through it.
+
+| what | Pool of Radiance | Curse and Silver Blades |
+|---|---|---|
+| mode | `$6E11` | **`$7F11`** |
+| the parameter block | `$0600` | `$0600` — the same address |
+| camera origin | `$037E`/`$037F` | `$037E`/`$037F` — the same |
+| the map | `$8C00` | **`$6F00`** |
+| the glyph table after it | `$91B0` | **`$74B0`** |
+| where they stand | `$8B00 + i*4` | **`$CB00 + i*4`** |
+| who is fighting | `$8300 + i*32` | **`$6700 + i*32`** |
+| whose record | twelve slots at `$4D00` | **`$4F00`** |
+| initiative | `$A380 + i` | **`$92E8 + i`** |
+| how the fight ended | `$6DC7` | **`$7EC7`** |
+
+Everything else on this page — the stride, the 56 x 26 arena, `$FF $FF` for
+off the map, bit 7 of a square, one record shared by every monster of a type —
+holds unchanged. The two arenas are the same size.
+
+**The parameter block is not relocated, and that is a reading rather than a
+convenience.** `GDRIVE00`, the square engine that draws the arena, names the
+same twenty absolute addresses `$0600`-`$061B` and the same camera in the same
+order and at the same relative code positions in all three binaries. Its
+header claims `$3000` in Curse and `$4000` in Silver Blades and it runs at
+`$C000` in both, like Pool of Radiance's.
+
+**Where the block's contents come from is the one structural difference.**
+Pool of Radiance loads them off a `SQRPACI<nn>` file. Curse and Silver Blades
+ship no such file — `docs/120-curse-testing.md` records that — and their
+`COM.PREP` writes the whole block as immediate constants instead, Curse at
+`$1436`-`$147E` and Silver Blades at `$14AC`-`$14F4`, identical value for
+value. A running Curse read `b0 74 00 6f 00 cb 40 80 80 80 01 80 c0 c0 c0 c0
+31 13 37 19` at `$0600` on the combat floor, which is those constants exactly.
+Nothing about the *reading* changes, because the block is read at run time in
+both cases.
+
+**`$1100` is the offset between the two engines' work areas**, and every pair
+found so far obeys it: `$6E11` → `$7F11`, `$6DC7` → `$7EC7`, `$6D56` →
+`$7E56`, `$6DB1` → `$7EB1`. It is a pattern rather than a proof, so an address
+derived from it alone is a guess until the instruction naming it has been
+read.
 
 ---
 

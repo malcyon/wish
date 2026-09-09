@@ -267,6 +267,12 @@ def parse_status(text: str) -> Status | None:
 # LINKER's dispatch byte, and the two values a driver cares about: `1` DUNGEON,
 # `2` COMBAT.  `automap/combat.py` and `docs/101-combat-view.md` are where it
 # came from; before this it was a hand-rolled `peek` in three scratch scripts.
+#
+# **This is Pool of Radiance's address and `Session.mode()` no longer reads
+# it**: the byte is `$7F11` in Curse and Silver Blades, so the method asks
+# `self.game.mode_flag` (`#334`).  The constant stays because
+# `tools/defeatdrive.py` and `tools/fleedrive.py` import it, and both drive
+# Pool of Radiance and nothing else.
 MODE = 0x6E11
 DUNGEON = 1
 COMBAT = 2
@@ -306,7 +312,14 @@ AFTER_MOVE = (BAR_COMMAND, BAR_DONE, BAR_PRESS, BAR_CONTINUE, BAR_YESNO,
 # `MOVE LEFT = 9` is the move sub-bar's own count of remaining squares, and it
 # is the one thing that tells that bar apart from the command bar, which also
 # begins with MOVE.
-RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*=\s*(\d+)")
+#
+# **The separator is not the same in every title.**  Pool of Radiance draws
+# `MOVE/ATTACK, MOVE LEFT = 9` and Curse draws `MOVE/ATTACK, MOVE LEFT : 12`
+# (`#334`), so a pattern that wants `=` classifies Curse's move sub-bar as an
+# ordinary message -- and then `await_bar((BAR_MOVE,))` waits out its whole
+# timeout at a bar that is up on the screen, and `melee_turn` concludes MOVE
+# did not take.
+RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*[=:]\s*(\d+)")
 
 # What a fight prints when it is over.  `THE PARTY HAS WON !` was read off two
 # fights (`work/p118-step3/runF.log`, `runH.log`).
@@ -1024,7 +1037,7 @@ class Session:
                 time.sleep(0.3)
                 continue
             if span[0] == col:
-                self.kbd.key("Return")
+                self.confirm_bar(row, s.row(row))
                 return True
             self.kbd.key("Right" if span[0] < col else "Left")
         return False
@@ -1797,17 +1810,32 @@ class Session:
 
         `1` DUNGEON, `2` COMBAT.  `automap/combat.py` documents the rest.
 
-        **None is "the read failed", not a mode.**  `screen()` and `battle()`
-        degrade the same way, and this one has to as well because `fight()`
-        calls it once a second for up to `budget` seconds: a single wedged
-        monitor -- a stray client on the port, a text monitor left open --
-        would otherwise raise out of the whole fight and throw away every
-        turn, bar and line gathered up to that point, which is the evidence
-        the harness exists to collect.
+        **The byte is at a different address in each title and this used to
+        read Pool of Radiance's.**  `$6E11` in Curse and Silver Blades is a
+        byte of somebody else's code, so a party standing on the combat floor
+        answered `1` and every caller was told there was no fight -- which
+        looks exactly like a save that failed to enter combat, and is how a
+        working conversion gets written up as broken (`#334`).  `LINKER` opens
+        `LDA $7F11` in both later titles where Pool of Radiance's opens
+        `LDA $6E11`; `goldbox.games.Game.mode_flag` has carried both since
+        `#29`.
+
+        **None is "the read failed", not a mode**, and a title whose flag
+        nobody has measured answers None as well rather than falling back --
+        an unmeasured address reads as a plausible mode instead of an error.
+        `screen()` and `battle()` degrade the same way, and this one has to as
+        well because `fight()` calls it once a second for up to `budget`
+        seconds: a single wedged monitor -- a stray client on the port, a text
+        monitor left open -- would otherwise raise out of the whole fight and
+        throw away every turn, bar and line gathered up to that point, which
+        is the evidence the harness exists to collect.
         """
+        where = self.game.mode_flag
+        if where is None:
+            return None
         try:
             with self.mon(5) as m:
-                return m.read(MODE, 1)[0]
+                return m.read(where, 1)[0]
         except (OSError, MonitorError):
             return None
 
@@ -1816,13 +1844,21 @@ class Session:
         return self.mode() == COMBAT
 
     def battle(self):
-        """The fight as `automap.combat` reads it, or None.
+        """The fight as `automap.combat` reads it, at **this title's**
+        addresses, or None.
 
         One monitor connection for the whole read rather than one per range:
         a stop/resume pair costs the emulation ~14.3 ms of extra time whatever
         it carries, so the number that matters is how many, not how many bytes.
+
+        `tools/latercombat.py` holds the four addresses that move between the
+        titles and hands the reading itself straight back to `automap.combat`.
+        Pool of Radiance's row there is the same six numbers `automap.combat`
+        already used, so nothing about this title's answer changes; Curse and
+        Silver Blades used to be read at those numbers and answered None on a
+        combat floor (`#334`).
         """
-        from automap.combat import read_battle
+        from tools.latercombat import read_battle
 
         class _Target:
             def __init__(self, m):
@@ -1833,7 +1869,7 @@ class Session:
 
         try:
             with self.mon(8) as m:
-                return read_battle(_Target(m))
+                return read_battle(_Target(m), self.game)
         except (OSError, MonitorError):
             return None
 
@@ -1949,10 +1985,51 @@ class Session:
                 time.sleep(0.3)
                 continue
             if span[0] == col:
-                self.kbd.key("Return")
+                self.confirm_bar(row, s.row(row))
                 return True
             self.kbd.key("Right" if span[0] < col else "Left")
         return False
+
+    #: Does a bar on this title read Return from XTEST, or only out of the
+    #: KERNAL keyboard buffer?  False means XTEST is enough, which is Pool of
+    #: Radiance everywhere it has been driven.
+    #:
+    #: **Curse and Silver Blades set this, and a combat bar is where it shows
+    #: worst.**  `combat_bar` walks the highlight with XTEST arrows, which
+    #: both titles do read, and then pressed Return with XTEST, which they do
+    #: not -- so it returned True having done nothing at all, once per turn,
+    #: for a whole fight (`#334`, and `tools/curseload.py` records the same
+    #: thing for `LOAD SAVED GAME ? YES NO`).
+    BAR_RETURN_KERNAL = False
+
+    #: How long `confirm_bar` gives the XTEST Return to move the bar before
+    #: trying the KERNAL buffer.  Only read when `BAR_RETURN_KERNAL` is set.
+    BAR_RETURN_PATIENCE = 4.0
+
+    def confirm_bar(self, row: int = 24, was: str = "") -> None:
+        """Press Return at a bar whose highlight is already where it belongs.
+
+        **Sending both Returns every time is not the answer**, which is why
+        this watches instead: two queued keystrokes are what took the
+        `INSERT CURSE SAVE DISK` prompt before anybody could read it
+        (`docs/179-loading-a-curse-save.md`), and a spare Return after a won
+        fight lands on the treasure bar's `VIEW` (`#171`).
+
+        So the XTEST Return goes first, `was` -- the bar as the caller last
+        read it -- is given `BAR_RETURN_PATIENCE` seconds to change, and only
+        a row that has not moved gets the KERNAL one.  On a title that reads
+        XTEST the wait ends on the first look and nothing else is sent.
+        """
+        self.kbd.key("Return")
+        if not self.BAR_RETURN_KERNAL:
+            return
+        deadline = time.time() + self.BAR_RETURN_PATIENCE
+        while time.time() < deadline:
+            s = self.screen()
+            if s is not None and s.row(row) != was:
+                return
+            time.sleep(0.5)
+        self.press_kernal(0x0D)
 
     def idle(self, seconds: float) -> None:
         """Wait out somebody else's turn.
