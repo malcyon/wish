@@ -3825,11 +3825,11 @@ def test_every_string_on_the_effects_panel_announces_that_nobody_approved_it():
     marked = {name for name, text in vars(activeeffects).items()
               if name.isupper() and isinstance(text, str)
               and "NOT APPROVED" in text}
-    # Donald ruled on six of the seven on 2026-09-08, choosing brevity:
-    # `Party Effects`, `Effect`, `Target`, `Entire Party`, and `Unknown` for
-    # both a monster's effect and an unnamed code. `OWNER_ABSENT` is the one
-    # he was not asked about and is the whole of what is left.
-    assert marked == {"OWNER_ABSENT"}
+    # Donald ruled on all seven on 2026-09-08, choosing brevity: no box title
+    # at all, `Party Effect`, `Target`, `Entire Party`, and `Unknown` for a
+    # monster's effect, an unnamed code, and somebody no longer in the party.
+    # So the count is zero and the flag's only condition is met.
+    assert marked == set(), marked
 
 
 def test_no_unapproved_word_is_on_screen_with_the_effects_flag_unset(

@@ -68,6 +68,10 @@ from .effects import UNSURE
 #: **Comes off when Donald has ruled on every string in the block below** and
 #: each has lost its `(NOT APPROVED)` marker. That is the whole condition:
 #: there is no measurement outstanding, because nothing here writes a byte.
+#: **Met on 2026-09-08**: Donald ruled on all seven, choosing brevity -- no
+#: box title, `Party Effect`, `Target`, `Entire Party`, and `Unknown` for a
+#: monster's effect, an unnamed code and somebody no longer in the party. So
+#: this flag is due to be deleted, along with the `if` around the panel.
 #: Add and Remove on this panel are a different issue again, filed once M2
 #: reports which effect ids read their magnitude back on expiry.
 ENV = "WISH_EXPERIMENTAL_EFFECTS"
@@ -120,7 +124,7 @@ OWNER_MONSTER = "Unknown"
 
 #: An owner byte in the party's own range with nobody in that slot -- a
 #: character who left the party while something was still running on them.
-OWNER_ABSENT = "Nobody who is in the party now (NOT APPROVED)"
+OWNER_ABSENT = "Unknown"
 
 #: An effect id the trait census does not name. The number is kept because it
 #: is what somebody takes away to look it up, and because two unnamed effects
