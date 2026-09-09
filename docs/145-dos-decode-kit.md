@@ -120,6 +120,59 @@ is the same render-to-validate step the repository used.
 
 This belongs in `docs/88-map-files.md` and `goldbox/geo.py`. Flagged, not edited.
 
+### 4. The two bytes in front of a `GEO` block are nothing the engine reads — CONFIRMED
+
+Their lead that `Load3DMap` is a real routine findable by its error string is
+where this started; the routine has now been read in three engines, and it
+settles a question this project had been answering statistically.
+
+`Load3DMap` takes a block id, unpacks the block from `GEO<n>.DAX`, checks
+**only** that it came back `0x402` bytes long — "Unable to load geo in
+Load3DMap." otherwise — and then copies four 256-byte planes into the resident
+map buffer, source offset starting at **2** and stepping `0x100` a plane. Bytes
+0 and 1 are never loaded, compared or stored. In Pools of Darkness' `GAME.OVR`
+the compare is at file `0x3D7FE` and the source offset at `0x3D836`
+(`mov word ptr [bp-8], 2`); Treasures of the Savage Frontier has them at
+`0x48BEE` and `0x48C08`, Curse of the Azure Bonds at `0x3F333` and `0x3F368`.
+
+`tools/dosovrmap.py` re-reads it, and needs no expanded `START.EXE` because
+`dis` only uses the image for far-call resolution — pass the title's own
+`GAME.EXE` and a start **two bytes past** the prologue, since `cmd_dis` backs up
+with `rfind(PROLOGUE, 0, start + 1)` and a three-byte pattern at `start` falls
+outside that window:
+
+    tools/dosovrmap.py dis .../DARKNESS/GAME.OVR .../DARKNESS/GAME.EXE \
+        0x3D7C3 0x3D8D8
+
+**So the trim is the code's, not a preference.** Four of the six DOS titles in
+the archives do carry the C64 PRG's `00 04` there, because their maps came from
+the same source as a C64 release. Treasures opens `00 00` on all 41 blocks and
+Pools of Darkness opens `cc dd` on 26, `01 11` on 5 and `00 04` on one, and the
+engine draws every one of them. A leading word is the `.DAX` container's habit
+rather than this format's — `ECL1.DAX` blocks all open `88 13`, the ECL header
+word of §2 above; `CBODY.DAX` and `COMSPR.DAX` all open `18 03`; `PIC1.DAX`
+`58 00` — and a `GEO` block's is simply dead.
+
+Corroborated across ports, 32 of 32: every Pools of Darkness DOS block is
+byte-identical from byte 2 on to the same id in the Amiga `GEO.GLB` on that
+release's disk 3, and 249 to 834 bytes away under the other trim.
+
+`tools/geoports.py` reads a DOS block by the engine's test — 1026 bytes, drop
+two — and its `blocks` command is the census. It used to require the `00 04`
+as well, which made Treasures invisible and Pools of Darkness a corpus of one
+(`#466 (The DOS map reader keeps only blocks with a C64 load address, so two
+titles' maps are invisible)`).
+
+**Nine of the 165 blocks in the archives do not clear
+`automap.area.looks_like_a_map`, and eight of them are places a player stands
+in**: Gateway's six wilderness areas, which have no walls at all — the
+south/west wall plane is 0 on all 256 squares and 469 to 478 of the 480
+interior edges are passable — and Treasures' `GEO35` and `GEO37`, ordinary maps
+a little under `MAP_WALLED_EDGES` and `MAP_RECIPROCITY`. The ninth, Pools of
+Darkness `GEO12`, is an empty slot: three planes of zero and an attribute plane
+of `$80` on every square. That is why the reader's membership test is the
+engine's and not the plausibility check.
+
 ---
 
 ## Where it contradicts us
@@ -188,6 +241,20 @@ our script id 11.
 No experiment needed. Recorded because their reading is plausible enough to
 mislead someone reading it first.
 
+**And the engine may carry its own words for the four barrier codes.** Treasures
+of the Savage Frontier's `GAME.EXE` holds, at file `0xC9E5` and consecutive,
+length-prefixed: `GEO00`, `GEO00`, **`Blocked`**, **`Clear`**, **`Locked
+Door`**, **`Magic Lock`** — four strings in the order `goldbox/geo.py` numbers
+`SOLID`, `PASSABLE`, `LOCKED`, `WIZARD_LOCKED`, beside two copies of a map
+filename in a form that release does not ship (its only map library is
+`GEO1.DAX`). PROBABLE, and the order is the whole of the evidence: nothing has
+been found that indexes the four by a barrier value, and four bytes between the
+strings (`b2 00`, `b0`) may be code rather than a table. **What would settle
+it**: find the instruction that loads the address of `Blocked` — `mov di,
+<offset>` against the DGROUP base — and read whether the routine around it
+scales an index by the string stride or by a pointer table. If it does, our
+four names are the game's four names and can be shown to a player.
+
 ---
 
 ## What they have that we do not
@@ -199,7 +266,7 @@ Leads, at the confidence a third-party document earns.
 | **`GAME.OVR` is a Turbo Pascal `FBOV` overlay of 34 units**, with the INT 3Fh descriptor layout, 675 functions found by the `55 89 E5` prologue (**not** `8B EC` — why a naive scan finds none), 404 entry points, and a per-unit role table | the structural map anyone disassembling DOS Pool of Radiance would otherwise build from scratch. Bears on #59 (Map the DOS saved game, not just the character record) | PROBABLE |
 | **Far-call resolution**: `START.EXE` has zero relocations, so resident `seg:off` → file offset `0x200 + seg*16 + off`; `seg $AF8` is the Turbo Pascal SYSTEM runtime and its 1792 calls are language, not game | one rule that makes every `lcall` in the overlay legible, and separates runtime from game logic | PROBABLE |
 | **Named resident segments**: `$BA` video, `$B0` RNG, `$709` graphics/text, `$7C` ECL loader, `$802` `.DAX` open, `$3D0` combat spawn, `$3D5` encounter, `$2B` the ECL VM's operand helpers | a vocabulary for reading the overlay | PROBABLE |
-| **`LoadWallSet` and `Load3DMap` are in unit `0x3bd`** (strings at `0x2f6ac` / `0x2f995`) | `docs/141` knows both by their error strings only; this says where the code is | PROBABLE |
+| **`LoadWallSet` and `Load3DMap` are in unit `0x3bd`** (strings at `0x2f6ac` / `0x2f995`) | `docs/141` knows both by their error strings only; this says where the code is. **Paid off**: the same "find it by its error string" step located `Load3DMap` in three other engines' `GAME.OVR`, which is §4 above | CONFIRMED for the method, PROBABLE for the unit number, which was not re-derived |
 | **The DOS ECL VM's globals**: PC `[0x49ED]`, buffer far-pointer `[0x49DE]`, opcode latch `[0x6F7F]`, stop flags `[0x442E]`/`[0x49FF]`, the six-byte compare-flag bank `[0x6F78]`–`[0x6F7D]` | the DOS mirror of our `$6E45` flags and `$1590` loop | PROBABLE |
 | **The EGA image format**: `u8 width_px`, three header bytes, 4bpp, two pixels per byte, high nibble first, standard EGA 16 palette; `8X8D` sheets need an 8-byte header, not 4 | with it, every DOS art file is renderable. Bears on #57 (Convert the character portrait across ports) | PROBABLE |
 | **Which DAX holds which art**: `CHEAD` portraits, `CBODY` a 128-frame player combat animation of weapon poses, `BODY1-8`/`CPIC1-8` monster combat sprites, `COMSPR` tactical figures, `8X8D1-8` wall tile sets, `WALLDEF1-8` the face composition tables | #57 (Convert the character portrait across ports) needs to know what the DOS art set *is* before it can be numbered | PROBABLE |

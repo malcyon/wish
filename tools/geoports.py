@@ -11,13 +11,15 @@ changed in them. This does.
                                   decoded meaning of each differing byte
     tools/geoports.py closest     the distance measurements `NEAR_ENOUGH` in
                                   `automap/area.py` rests on
+    tools/geoports.py blocks      every DOS `GEO<n>.DAX` block in the archives,
+                                  its leading word and how it scores as a map
 
 **Three ports, not two.** The C64 keeps one `GEO<id>` PRG per area on its
 disks, the Amiga keeps them in `GEO.GLB` on disk B, and DOS keeps them in
-`GEO<n>.DAX` -- 1026 bytes a block, a `00 04` load address in front of the same
-1024. So a byte the C64 and the Amiga disagree about has a third opinion
-available, and two ports agreeing against one is the strongest thing a diff of
-shipped data can say about which is the odd one out.
+`GEO<n>.DAX` -- 1026 bytes a block, two bytes the engine never reads in front
+of the same 1024. So a byte the C64 and the Amiga disagree about has a third
+opinion available, and two ports agreeing against one is the strongest thing a
+diff of shipped data can say about which is the odd one out.
 
 **The three containers name the same area differently and this tool does not.**
 The C64's filename is `GEO15`, the Amiga library's id is 21 and the DOS block
@@ -44,6 +46,7 @@ from automap.area import (  # noqa: E402
     NEAR_ENOUGH,
     _distance,
     looks_like_a_map,
+    map_evidence,
 )
 from goldbox.geo import (  # noqa: E402
     ATTRIBUTES,
@@ -74,11 +77,25 @@ TITLES = (("Pool of Radiance", "POOLRAD"),
 PLANES = ((WALLS_NORTH_EAST, "walls N/E"), (WALLS_SOUTH_WEST, "walls S/W"),
           (ATTRIBUTES, "attributes"), (BARRIERS, "barriers"))
 
-#: The DOS block is the C64 PRG: a two-byte little-endian `$0400` load address
-#: in front of the 1024. CONFIRMED -- every one of the 62 blocks read here is
-#: 1026 bytes opening `00 04`, and 57 of them are byte-identical from byte 2 on
-#: to the C64 file of the same name.
-DOS_LOAD_ADDRESS = b"\x00\x04"
+#: What the DOS engine itself asks of a `GEO<n>.DAX` block: that it unpacks to
+#: **1026 bytes**, and nothing else. `Load3DMap` compares the byte count against
+#: `0x402`, prints "Unable to load geo in Load3DMap." if it misses, and then
+#: copies four 256-byte planes into the resident map buffer starting at
+#: **offset 2** -- Pools of Darkness `GAME.OVR` file `0x3D7FE` (the compare) and
+#: `0x3D836` (`mov word ptr [bp-8], 2`, the source offset), Treasures of the
+#: Savage Frontier `0x48BEE`/`0x48C08`, Curse of the Azure Bonds
+#: `0x3F333`/`0x3F368`. Bytes 0 and 1 are never loaded, compared or stored.
+#:
+#: So the trim is CONFIRMED and it is not the C64's load address that settles
+#: it. Four of the six DOS titles in the archives do carry `00 04` there,
+#: because their maps came from the same source as a C64 release; Treasures
+#: opens `00 00` on all 41 blocks and Pools of Darkness opens `cc dd` on 26,
+#: `01 11` on 5 and `00 04` on one, and the engine draws all of them.
+#: Corroborated across ports: all 32 Pools of Darkness blocks are byte-identical
+#: from byte 2 on to the Amiga `GEO.GLB` on its disk 3, and 249 to 834 bytes
+#: away under the other trim (#466).
+DOS_BLOCK_SIZE = GEO_SIZE + 2
+DOS_SKIP = 2
 
 
 # --- loading each port --------------------------------------------------------
@@ -98,20 +115,19 @@ def _amiga_named(maps: dict[str, bytes]) -> dict[str, bytes]:
     return {f"GEO{int(name[2:]):02X}": raw for name, raw in maps.items()}
 
 
-def dos_maps(all_titles: bool = False) -> dict[str, dict[str, bytes]]:
-    """Every DOS `GEO<n>.DAX` library in the Forgotten Realms archives.
+def dos_geo_blocks(all_titles: bool = False):
+    """Yield `(title, file name, block id, whole block)` for the archives.
 
-    Keyed by title, then `GEO{id:02X}`. A block that is not 1026 bytes opening
-    with the `$0400` load address is skipped and counted rather than trusted:
-    the DAX index says what it unpacks to and a block of another shape is not a
-    map, whatever file it came out of.
+    Every block of every `GEO<n>.DAX`, whatever shape it turns out to be, so a
+    caller can count what it rejected instead of discovering a title is missing
+    by its absence from a report. One walk, so `dos_maps` and the `blocks`
+    census cannot disagree about what is there.
     """
     from goldbox import dos_savegame as dos
     root = gamedisks.find("dos-archives")
     if root is None:
-        return {}
+        return
     folders = {folder: title for title, folder in TITLES}
-    found: dict[str, dict[str, bytes]] = {}
     for path in sorted(root.rglob("GEO*.DAX")):
         folder = path.parent.name.upper()
         title = folders.get(folder)
@@ -129,10 +145,36 @@ def dos_maps(all_titles: bool = False) -> dict[str, dict[str, bytes]]:
                 block = dos.dax_block(data, block_id, path.name)
             except Exception:
                 continue
-            if len(block) != GEO_SIZE + 2 or not block.startswith(
-                    DOS_LOAD_ADDRESS):
-                continue
-            found.setdefault(title, {})[f"GEO{block_id:02X}"] = block[2:]
+            yield title, path.name, block_id, block
+
+
+def dos_maps(all_titles: bool = False) -> dict[str, dict[str, bytes]]:
+    """Every DOS `GEO<n>.DAX` library in the Forgotten Realms archives.
+
+    Keyed by title, then `GEO{id:02X}`, and trimmed of the two bytes in front
+    the way the engine trims them.
+
+    **The membership test is the engine's own**: a block that unpacks to 1026
+    bytes is a map, and one that does not is not. `Load3DMap` asks nothing else
+    -- see `DOS_BLOCK_SIZE` for the three overlays that were read -- and asking
+    more here throws away maps the game draws. `automap.area.looks_like_a_map`
+    is the check that was tried instead and it rejects eight: the six wall-less
+    wilderness blocks of Gateway to the Savage Frontier, whose barrier plane is
+    passable everywhere inside a sealed border, and Treasures' `GEO35` and
+    `GEO37`, ordinary walled maps that miss on `MAP_WALLED_EDGES` and
+    `MAP_RECIPROCITY` by a little (#466). `blocks` prints the score for every
+    block so nothing is hidden by not filtering on it.
+
+    This used to require the C64 PRG's `00 04` in front as well, which cost 70
+    of the archives' 73 later-title maps: Treasures of the Savage Frontier opens
+    `00 00` and Pools of Darkness mostly `cc dd`, and neither has a C64 release
+    for a load address to have come from.
+    """
+    found: dict[str, dict[str, bytes]] = {}
+    for title, _name, block_id, block in dos_geo_blocks(all_titles):
+        if len(block) != DOS_BLOCK_SIZE:
+            continue
+        found.setdefault(title, {})[f"GEO{block_id:02X}"] = block[DOS_SKIP:]
     return found
 
 
@@ -208,6 +250,54 @@ def per_plane(left: bytes, right: bytes) -> dict[str, int]:
 
 
 # --- the reports --------------------------------------------------------------
+
+def report_blocks(out: io.TextIOBase, all_titles: bool = True) -> int:
+    """Every DOS `GEO<n>.DAX` block in the archives, and what it looks like.
+
+    The census that says whether the reader is dropping anything. One row a
+    block: which file it came out of, the two bytes in front that the engine
+    never reads, and the four quantities `automap.area.looks_like_a_map`
+    measures -- printed rather than filtered on, because eight blocks the game
+    itself draws do not clear them (#466).
+    """
+    rows: dict[str, list] = {}
+    for title, name, block_id, block in dos_geo_blocks(all_titles):
+        rows.setdefault(title, []).append((name, block_id, block))
+    if not rows:
+        print("no DOS archives found; set $FR_ARCHIVES", file=out)
+        return 1
+    for title, blocks in sorted(rows.items()):
+        wrong = [b for _n, _i, b in blocks if len(b) != DOS_BLOCK_SIZE]
+        heads: dict[bytes, int] = {}
+        for _n, _i, block in blocks:
+            heads[bytes(block[:DOS_SKIP])] = heads.get(
+                bytes(block[:DOS_SKIP]), 0) + 1
+        print(f"\n== {title}: {len(blocks)} blocks, "
+              f"{len(blocks) - len(wrong)} of them {DOS_BLOCK_SIZE} bytes",
+              file=out)
+        print("   leading word: " + ", ".join(
+            f"{head.hex(' ')} x{count}"
+            for head, count in sorted(heads.items(), key=lambda kv: -kv[1])),
+            file=out)
+        print(f"   {'map':8s} {'file':12s} {'head':6s} {'recip':>6s} "
+              f"{'walled':>7s} {'art':>6s} {'reuse':>7s}  plausible", file=out)
+        implausible = 0
+        for name, block_id, block in sorted(blocks, key=lambda r: r[1]):
+            if len(block) != DOS_BLOCK_SIZE:
+                print(f"   GEO{block_id:02X}    {name:12s} "
+                      f"{len(block)} bytes, not a map", file=out)
+                continue
+            ev = map_evidence(Geo(block[DOS_SKIP:]))
+            implausible += not ev.plausible
+            print(f"   GEO{block_id:02X}    {name:12s} "
+                  f"{block[:DOS_SKIP].hex():6s} {ev.reciprocity:6.3f} "
+                  f"{ev.walled_edges:7d} {ev.art_agreement:6.3f} "
+                  f"{ev.pair_reuse:7.2f}  {'yes' if ev.plausible else 'NO'}",
+                  file=out)
+        print(f"   {len(blocks) - len(wrong)} read as maps, "
+              f"{implausible} of them below looks_like_a_map", file=out)
+    return 0
+
 
 def report_diff(out: io.TextIOBase, all_titles: bool = False) -> int:
     corpora = every_port(all_titles)
@@ -302,6 +392,16 @@ def report_closest(out: io.TextIOBase, show: int = 10,
 
     Non-zero when either bound is violated, so the re-derivation is a command
     rather than a reading (#447).
+
+    **`--all-dos-titles` widens the corpus past what the automapper can hold,
+    and the exit code does not follow it there.** Gateway, Treasures and Pools
+    of Darkness have no entry in `goldbox.games`, so `load_maps` can never glob
+    one of their disks and `verdict` can never be handed their maps as a
+    candidate set: a pair inside one of them cannot make today's constant
+    ambiguous, however close it is. Those pairs are printed as `WATCH`, naming
+    the title and what the constant would have to become if it ever arrived --
+    Pools of Darkness' `GEO21`/`GEO31` at 18 would force it to 8. The bounds
+    that decide the exit code are measured over the titles this project maps.
     """
     corpora = every_port(all_titles)
     flat = [(f"{title}:{port}:{name}", title, name, raw)
@@ -354,7 +454,13 @@ def report_closest(out: io.TextIOBase, show: int = 10,
               f"{statistics.median(d for d, _a, _b in other_place):.0f}",
               file=out)
         worst_drift = max((d for d, _a, _b in same_place), default=0)
-        nearest_wrong = other_place[0][0]
+        ours = {title for title, _folder in TITLES}
+        held = [row for row in within if row[1].rsplit(" ", 1)[0] in ours]
+        watch = [row for row in within if row not in held]
+        touching = [row for row in other_place
+                    if any(label.rsplit(" (", 1)[0].rsplit(" ", 1)[0] in ours
+                           for label in row[1:])]
+        nearest_wrong = (touching or other_place)[0][0]
         print(f"\nNEAR_ENOUGH = {NEAR_ENOUGH}", file=out)
         print(f"  must reach      {worst_drift:5d}   the widest gap between "
               f"two ports' copies of one area", file=out)
@@ -362,8 +468,8 @@ def report_closest(out: io.TextIOBase, show: int = 10,
         if bad:
             print("  IT DOES NOT: one port's copy of an area is further from "
                   "the other's than the tolerance reaches", file=out)
-        if within:
-            gap, label, a, b = within[0]
+        if held:
+            gap, label, a, b = held[0]
             print(f"  must stay under {gap // 2:5d}   half the closest two "
                   f"maps in one candidate set, {label} {a}/{b} at {gap}",
                   file=out)
@@ -371,9 +477,14 @@ def report_closest(out: io.TextIOBase, show: int = 10,
                 print("  IT DOES NOT: one block could be inside the tolerance "
                       "of both of them at once", file=out)
                 bad = True
+        for gap, label, a, b in watch[:1]:
+            print(f"  WATCH           {gap // 2:5d}   what it would have to "
+                  f"become for {label} {a}/{b} at {gap}, a title "
+                  f"`goldbox.games` does not know", file=out)
         print(f"  and under       {nearest_wrong:5d}   the closest two "
-              f"different places anywhere, {other_place[0][1]} and "
-              f"{other_place[0][2]}", file=out)
+              f"different places, one of them ours: "
+              f"{(touching or other_place)[0][1]} and "
+              f"{(touching or other_place)[0][2]}", file=out)
         if nearest_wrong <= NEAR_ENOUGH:
             print("  IT DOES NOT: two different places are within the "
                   "tolerance of each other", file=out)
@@ -387,7 +498,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("diff", "closest"))
+    parser.add_argument("command", choices=("diff", "closest", "blocks"))
     parser.add_argument("--show", type=int, default=10,
                         help="how many pairs `closest` names")
     parser.add_argument("--all-dos-titles", action="store_true",
@@ -396,6 +507,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "diff":
         return report_diff(sys.stdout, args.all_dos_titles)
+    if args.command == "blocks":
+        return report_blocks(sys.stdout)
     return report_closest(sys.stdout, args.show, args.all_dos_titles)
 
 

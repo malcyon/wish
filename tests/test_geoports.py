@@ -18,12 +18,22 @@ agree, and the DOS release agrees with the Amiga.
 
 from __future__ import annotations
 
+import collections
 import functools
+import io
 
 import pytest
 
-from automap.area import NEAR_ENOUGH, OURS, ResidentGeo
-from goldbox.geo import ATTRIBUTES, BARRIERS, GEO_SIZE, WALLS_SOUTH_WEST, Geo
+from automap.area import NEAR_ENOUGH, OURS, ResidentGeo, looks_like_a_map
+from goldbox.geo import (
+    ATTRIBUTES,
+    BARRIERS,
+    GEO_SIZE,
+    GRID,
+    WALLS_NORTH_EAST,
+    WALLS_SOUTH_WEST,
+    Geo,
+)
 from tools import geoports
 
 #: The three Curse areas the C64 disks disagree with the other two ports about,
@@ -240,6 +250,146 @@ def test_a_map_is_never_nearer_a_different_area_than_its_own_other_port():
         for name in CURSE_DIFFERENCES for other in amiga if other != name)
     assert nearest_wrong == 746
     assert nearest_wrong > NEAR_ENOUGH
+
+
+# --- what the DOS reader keeps, and why ---------------------------------------
+
+#: Every `GEO<n>.DAX` library in the Forgotten Realms archives and how many
+#: blocks it holds. Measured 2026-09-09 over all six DOS titles installed
+#: there; the last three are titles `goldbox.games` does not know, and the
+#: reader takes them because `--all-dos-titles` asks it to.
+DOS_LIBRARIES = {"Pool of Radiance": 29, "Curse": 16, "Silver Blades": 17,
+                 "DOS GATEWAY": 30, "DOS TREASURE": 41, "DOS DARKNESS": 32}
+
+#: The two bytes each library puts in front of its 1024, which the engine never
+#: reads. Four libraries carry the C64 PRG's `$0400`; the two titles with no
+#: C64 release carry something else, and Pools of Darkness is not even
+#: consistent with itself.
+DOS_LEADING_WORDS = {
+    "Pool of Radiance": {b"\x00\x04": 29},
+    "Curse": {b"\x00\x04": 16},
+    "Silver Blades": {b"\x00\x04": 17},
+    "DOS GATEWAY": {b"\x00\x04": 30},
+    "DOS TREASURE": {b"\x00\x00": 41},
+    "DOS DARKNESS": {b"\xcc\xdd": 26, b"\x01\x11": 5, b"\x00\x04": 1},
+}
+
+#: The nine blocks the engine loads and draws that `looks_like_a_map` does not
+#: clear. Six are Gateway's wilderness areas, which have no walls at all; two
+#: are ordinary Treasures maps a little under `MAP_WALLED_EDGES` and
+#: `MAP_RECIPROCITY`; one is an empty slot. This is why the reader's membership
+#: test is the engine's own 1026 bytes and not the plausibility check (#466).
+DOS_IMPLAUSIBLE = {
+    "DOS GATEWAY": ["GEO15", "GEO16", "GEO17", "GEO18", "GEO19", "GEO1A"],
+    "DOS TREASURE": ["GEO35", "GEO37"],
+    "DOS DARKNESS": ["GEO12"],
+}
+
+
+def dos_blocks():
+    blocks = list(geoports.dos_geo_blocks(all_titles=True))
+    if not blocks:
+        pytest.skip("no DOS archives on this machine; set $FR_ARCHIVES")
+    return blocks
+
+
+def test_every_geo_block_in_the_archives_is_read_as_a_map():
+    """165 of 165, where the reader used to take 95.
+
+    Treasures of the Savage Frontier was absent from the corpus altogether and
+    Pools of Darkness was a corpus of one, because the reader asked for the
+    C64's `00 04` in front and neither title has a C64 release.
+    """
+    dos_blocks()
+    maps = geoports.dos_maps(all_titles=True)
+    assert {title: len(m) for title, m in maps.items()} == DOS_LIBRARIES
+    assert sum(len(m) for m in maps.values()) == 165
+
+
+def test_the_only_size_any_block_has_is_the_one_the_engine_checks():
+    """`Load3DMap` refuses anything but `0x402` bytes, and nothing is refused.
+
+    So the size test drops nothing here, which is the point: it is the
+    engine's own membership test rather than a filter fitted to the corpus.
+    """
+    sizes = collections.Counter(len(block) for _t, _n, _i, block
+                                in dos_blocks())
+    assert sizes == {geoports.DOS_BLOCK_SIZE: 165}
+    assert geoports.DOS_BLOCK_SIZE == GEO_SIZE + 2
+
+
+def test_two_of_the_six_libraries_do_not_open_with_a_c64_load_address():
+    heads: dict[str, dict[bytes, int]] = {}
+    for title, _name, _block_id, block in dos_blocks():
+        counts = heads.setdefault(title, {})
+        head = bytes(block[:geoports.DOS_SKIP])
+        counts[head] = counts.get(head, 0) + 1
+    assert heads == DOS_LEADING_WORDS
+
+
+def test_nine_blocks_the_engine_draws_do_not_clear_the_plausibility_check():
+    """The reason `looks_like_a_map` is reported and not used as the filter.
+
+    Failing it costs a map nothing in the game -- the engine copies the four
+    planes out and draws them -- so a reader that filtered on it would drop
+    eight areas a player can stand in, plus one empty slot.
+    """
+    dos_blocks()
+    failed: dict[str, list[str]] = {}
+    for title, maps in geoports.dos_maps(all_titles=True).items():
+        for name, raw in sorted(maps.items()):
+            if not looks_like_a_map(Geo(raw)):
+                failed.setdefault(title, []).append(name)
+    assert failed == DOS_IMPLAUSIBLE
+
+
+def test_gateways_six_wilderness_blocks_have_no_walls_at_all():
+    """What the six actually are, so "implausible" is not left as a shrug.
+
+    One wall plane is entirely empty and the party can cross all but a handful
+    of the 480 interior edges -- open country, not a dungeon and not rubbish.
+    """
+    dos_blocks()
+    maps = geoports.dos_maps(all_titles=True).get("DOS GATEWAY", {})
+    if not maps:
+        pytest.skip("no Gateway to the Savage Frontier in the archives")
+    for name in DOS_IMPLAUSIBLE["DOS GATEWAY"]:
+        raw = maps[name]
+        assert set(raw[WALLS_SOUTH_WEST:WALLS_SOUTH_WEST + 256]) == {0}, name
+        assert any(raw[WALLS_NORTH_EAST:WALLS_NORTH_EAST + 256]), name
+        geo = Geo(raw)
+        blocked = sum(not geo.is_passable(x, y, direction)
+                      for y in range(GRID) for x in range(GRID - 1)
+                      for direction in (1,))
+        assert blocked <= 11, (name, blocked)
+
+
+def test_the_empty_slot_in_pools_of_darkness_is_one_plane_of_a_single_byte():
+    """`GEO1.DAX` id 18, the block with no walled edges anywhere.
+
+    Named rather than counted: three of its four planes are all zero and the
+    fourth is `$80` on every one of the 256 squares -- the roofed bit set and
+    no script id. Nothing to walk on and nothing to draw.
+    """
+    dos_blocks()
+    maps = geoports.dos_maps(all_titles=True).get("DOS DARKNESS", {})
+    if not maps:
+        pytest.skip("no Pools of Darkness in the archives")
+    raw = maps["GEO12"]
+    assert set(raw[WALLS_NORTH_EAST:WALLS_NORTH_EAST + 256]) == {0}
+    assert set(raw[WALLS_SOUTH_WEST:WALLS_SOUTH_WEST + 256]) == {0}
+    assert set(raw[ATTRIBUTES:ATTRIBUTES + 256]) == {0x80}
+    assert set(raw[BARRIERS:BARRIERS + 256]) == {0}
+
+
+def test_the_blocks_census_reports_every_library_and_filters_none_of_it():
+    dos_blocks()
+    out = io.StringIO()
+    assert geoports.report_blocks(out) == 0
+    text = out.getvalue()
+    for title, count in DOS_LIBRARIES.items():
+        assert f"== {title}: {count} blocks, {count} of them 1026 bytes" in text
+    assert "GEO12    GEO1.DAX     ccdd" in text
 
 
 # --- the tool's own decoding, on bytes we made -------------------------------
