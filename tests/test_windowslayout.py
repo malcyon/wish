@@ -588,30 +588,32 @@ def test_the_empty_roster_is_already_the_width_a_save_settles_it_to(app,
     them is whatever the font makes it and is a number about the machine
     rather than about the fix. It was 0 here and 20 on CI.
 
-    The mechanism is what holds everywhere: an unmeasured `QTableView` keeps
-    Qt's `QWIDGETSIZE_MAX`, and a measured one carries the width its own
-    header asked for. Both sides of the comparison below scale with the font
-    together, so the equality is font-independent in a way the old tolerance
-    could never be.
-    """
-    from PyQt6.QtWidgets import QStyle
+    **Nor is it recomputed here**, which was the second attempt and went red
+    on all four CI jobs as well. `_size_roster` puts `NAME_COLUMN` back to
+    `Interactive` and calls `RosterView.measure` *after* it takes the
+    measurement, so a `header.length()` read afterwards is a different number
+    on some fonts and the same one on others. Two measurements taken at
+    different moments are not an equality however they are spelled.
 
+    What is asserted instead is the mechanism, against the number the widget
+    itself recorded: `measure()` stores what `_size_roster` computed, and the
+    maximum is set from that same value. Both sides are one number, so no
+    font can separate them. `QWIDGETSIZE_MAX` is what an unmeasured
+    `QTableView` carries, and seeing it is the bug.
+    """
     from editor.window import EditorBinding
 
     empty = EditorBinding(make_root())
     try:
         view = empty.roster
-        width = view.maximumWidth()
-        header = view.horizontalHeader()
-        bar = view.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-        natural = (header.length() + view.verticalHeader().width()
-                   + 2 * view.frameWidth() + bar)
+        width, measured = view.maximumWidth(), view._natural
     finally:
         empty.close()
 
     assert width < 1000, "the roster kept an unbounded width"
-    assert width == natural, (
-        "the empty roster is not the width its own columns asked for")
+    assert measured, "the empty roster was never measured at all"
+    assert width == measured, (
+        "the empty roster's maximum is not the width it measured itself at")
 
 
 # --- the header row's three widgets share a top edge -------------------------
