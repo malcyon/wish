@@ -1432,7 +1432,12 @@ def test_a_record_round_trips_through_the_neutral_middle():
     """DOS -> to_neutral -> write, against the original bytes.  Everything
     outside the writer's own unsourced list survives byte for byte, 24 of
     24; encumbrance is recomputed and matches wherever the original's own
-    identity balanced (22 of 24 -- the two stale dart stacks).
+    identity balanced (22 of 24 -- GILES and ASTRID, whose quantity byte
+    alone reads a round 50 while their drawn line and their stored total
+    agree, which is what an editor leaves.  `docs/125-bug-notes.md` N19 has
+    the census: the engine keeps the quantity byte and the stored total in
+    step and lets only the drawn line go stale, so a miss here is a claim
+    about the record rather than about our arithmetic).
 
     **The `.SPC` file is now every node the engine would not expire**, innate
     and granted alike, and only a node with rounds left is left behind: 2 of
