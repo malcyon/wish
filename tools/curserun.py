@@ -99,7 +99,14 @@ def stage(slot, disks: str, save: str = "") -> str:
     if len(sides) < 6:
         raise SystemExit(f"{disks} holds {len(sides)} Curse sides, not six")
     for i, want in enumerate(sides[:6], start=1):
-        writable(shutil.copy(want, here / f"SIDE{i}.D64"))
+        # Unlink each side for the same reason `SIDE0.D64` is unlinked below:
+        # a slot keeps its images after a teardown, and `shutil.copy` cannot
+        # open a read-only one for writing, so `writable()` afterwards is too
+        # late -- the copy has already raised.  A side left read-only by a run
+        # from before #455 and #469 is what gets here.
+        side = here / f"SIDE{i}.D64"
+        side.unlink(missing_ok=True)
+        writable(shutil.copy(want, side))
     # **Always replace `SIDE0.D64`.**  A pool slot is reused, and the image
     # left in it by the previous tenant is somebody else's game: this staged
     # over a Pool of Radiance save disk, whose `SAVEDGAME0`/`SAVEDGAME1` were

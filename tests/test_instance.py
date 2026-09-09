@@ -1500,3 +1500,33 @@ def test_ssbwarp_stage_recovers_a_read_only_leftover_save(pool):
 
         staged = Path(slot.dir) / "SIDE0.D64"
         assert staged.read_bytes() == b"a read-only specimen"
+
+
+@posix
+def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
+    """#455, #469: the six sides need the same unlink `SIDE0.D64` gets.
+
+    `writable()` runs *after* `shutil.copy`, so it cannot help a destination
+    the copy could not open in the first place. A slot keeps its images after
+    a teardown, so a side left read-only by a run from before that fix is
+    what gets here -- and the copy raises `PermissionError` on `SIDE1.D64`
+    before the save is ever reached.
+    """
+    ssbwarp = load_tools_module("ssbwarp")
+    disks = pool / "disks"
+    disks.mkdir()
+    for i in range(1, 7):
+        (disks / f"SILVER-{i}.D64").write_bytes(f"side {i}".encode())
+    save = pool / "SPECIMEN.D64"
+    save.write_bytes(b"a read-only specimen")
+    save.chmod(0o444)
+
+    with instance.claim() as slot:
+        stale = Path(slot.dir) / "SIDE3.D64"
+        stale.write_bytes(b"somebody else's side three")
+        stale.chmod(0o444)
+
+        ssbwarp.stage(slot, str(disks), save=str(save))
+
+        assert stale.read_bytes() == b"side 3"
+        assert stale.stat().st_mode & stat.S_IWUSR

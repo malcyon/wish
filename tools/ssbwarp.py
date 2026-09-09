@@ -227,7 +227,14 @@ def stage(slot, disks: str, save: str = "") -> str:
         raise SystemExit(f"{disks} holds {len(sides)} Silver Blades sides, "
                          f"not six")
     for i, want in enumerate(sides[:6], start=1):
-        writable(shutil.copy(want, here / f"SIDE{i}.D64"))
+        # Unlink each side for the same reason `SIDE0.D64` is unlinked below:
+        # a slot keeps its images after a teardown, and `shutil.copy` cannot
+        # open a read-only one for writing, so `writable()` afterwards is too
+        # late -- the copy has already raised.  A side left read-only by a run
+        # from before #455 and #469 is what gets here.
+        side = here / f"SIDE{i}.D64"
+        side.unlink(missing_ok=True)
+        writable(shutil.copy(want, side))
     target = here / "SIDE0.D64"
     # A slot keeps its images after a teardown, so the one to stage over may
     # be a read-only copy an earlier run left -- which `shutil.copy` cannot
