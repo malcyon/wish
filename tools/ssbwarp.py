@@ -60,6 +60,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import sys
 import time
 
@@ -226,10 +227,21 @@ def stage(slot, disks: str, save: str = "") -> str:
         raise SystemExit(f"{disks} holds {len(sides)} Silver Blades sides, "
                          f"not six")
     for i, want in enumerate(sides[:6], start=1):
-        shutil.copy(want, here / f"SIDE{i}.D64")
+        writable(shutil.copy(want, here / f"SIDE{i}.D64"))
     target = here / "SIDE0.D64"
+    # A slot keeps its images after a teardown, so the one to stage over may
+    # be a read-only copy an earlier run left -- which `shutil.copy` cannot
+    # open for writing.  Unlinking is what the directory's own permissions
+    # allow whatever the file's are.
+    target.unlink(missing_ok=True)
     if save:
-        shutil.copy(save, target)
+        # `shutil.copy` brings the source's mode with it, and a specimen out
+        # of `$WISH_SPECIMENS` is read-only by design (`tools/specimens.py`
+        # makes it so).  Staged unchanged, that gives the game a
+        # write-protected save disk, and nothing says so: the run boots, the
+        # party loads, and every write the game makes is silently refused
+        # (#455, #469).
+        writable(shutil.copy(save, target))
     else:
         # **The shipped party is `SAVEDBASH` on side 6**, and this title's
         # save file has that name, so a copy of side 6 is a save disk with a
@@ -237,8 +249,21 @@ def stage(slot, disks: str, save: str = "") -> str:
         # watched being written, and nothing here rests on what it *holds*:
         # it supplies six bodies to stand somewhere, and the evidence is the
         # map the running game loads.
-        shutil.copy(here / "SIDE6.D64", target)
+        writable(shutil.copy(here / "SIDE6.D64", target))
     return str(here / "SIDE1.D64")
+
+
+def writable(path) -> str:
+    """Give a staged copy the user's write bit back, and hand the path back.
+
+    Everything in a slot's directory is a throwaway copy the emulator owns;
+    the mode that came with it belongs to the file it was copied from.
+    Duplicated from `tools/curserun.py`'s function of the same name rather
+    than shared -- see #455, #469.
+    """
+    path = pathlib.Path(path)
+    path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    return str(path)
 
 
 class SSBSession(por.Session):

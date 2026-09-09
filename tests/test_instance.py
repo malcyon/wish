@@ -16,6 +16,7 @@ import contextlib
 import json
 import os
 import signal
+import stat
 import subprocess
 import sys
 import textwrap
@@ -1439,3 +1440,63 @@ def test_stage_disks_is_unaffected_when_nothing_was_left_behind(pool):
         assert boot == str(Path(slot.dir) / "SIDE1.D64")
         assert (Path(slot.dir) / "SIDE1.D64").read_bytes() == b"side one"
         assert (Path(slot.dir) / "SIDE0.D64").read_bytes() == b"the save"
+
+
+# -- ssbwarp.stage: the same read-only-specimen bug as #430, a third place ---
+#
+# `tools/ssbwarp.py`'s `stage()` never got the `_restage()` treatment #430
+# gave `session.stage_disks`: it copies every side and the save with a bare
+# `shutil.copy`, which carries the source's mode onto the slot.  A specimen
+# out of `$WISH_SPECIMENS` is read-only by design (`tools/specimens.py` makes
+# it so), so the game was handed a write-protected save disk (#455) and the
+# next run in the same slot died on `PermissionError` staging over it (#469).
+
+
+@posix
+def test_ssbwarp_stage_gives_the_game_a_writable_save_disk(pool):
+    """#455: a read-only specimen must not stage into a read-only `SIDE0.D64`.
+
+    Every write the game makes to a write-protected save disk is silently
+    refused -- a driven run boots, loads the party, and reports success while
+    nothing lands on the disk.
+    """
+    ssbwarp = load_tools_module("ssbwarp")
+    disks = pool / "disks"
+    disks.mkdir()
+    for i in range(1, 7):
+        (disks / f"SILVER-{i}.D64").write_bytes(f"side {i}".encode())
+    save = pool / "SPECIMEN.D64"
+    save.write_bytes(b"a read-only specimen")
+    save.chmod(0o444)
+
+    with instance.claim() as slot:
+        ssbwarp.stage(slot, str(disks), save=str(save))
+
+        staged = Path(slot.dir) / "SIDE0.D64"
+        assert staged.read_bytes() == b"a read-only specimen"
+        assert staged.stat().st_mode & stat.S_IWUSR
+
+
+@posix
+def test_ssbwarp_stage_recovers_a_read_only_leftover_save(pool):
+    """#469: a second run in the same slot must not die on the first run's leftover.
+
+    Staging from the same read-only specimen twice used to raise
+    `PermissionError` on the second call, because `shutil.copy` opens an
+    existing, now read-only, destination `'wb'`.
+    """
+    ssbwarp = load_tools_module("ssbwarp")
+    disks = pool / "disks"
+    disks.mkdir()
+    for i in range(1, 7):
+        (disks / f"SILVER-{i}.D64").write_bytes(f"side {i}".encode())
+    save = pool / "SPECIMEN.D64"
+    save.write_bytes(b"a read-only specimen")
+    save.chmod(0o444)
+
+    with instance.claim() as slot:
+        ssbwarp.stage(slot, str(disks), save=str(save))
+        ssbwarp.stage(slot, str(disks), save=str(save))
+
+        staged = Path(slot.dir) / "SIDE0.D64"
+        assert staged.read_bytes() == b"a read-only specimen"
