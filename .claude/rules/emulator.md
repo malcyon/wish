@@ -41,7 +41,33 @@ The music is `Vol UltiSid 1`/`2` in the same category and the drive noise is
 `Vol Drive 1`/`2`, if something quieter than silence is wanted.
 
 **Set `POR_HEADLESS=1`.** It keeps the window off Donald's desktop, and he works
-at that desktop while agents run.
+at that desktop while agents run. `tools/porlaunch.sh` adds `+sound` in that
+branch too, because he can hear a headless emulator through his speakers even
+when it draws no window.
+
+**Every emulator an agent starts is silent, and VICE is the only one this is
+already true of.** The headless branch handles VICE and nothing handles the
+others: on 2026-09-08 an agent booted FS-UAE offscreen on his own machine to
+answer `#464 (Can the automapper follow a live FS-UAE game on Linux, so Wish
+and the Amiga game run on one machine?)`, and two "Amiga Emulator" streams
+turned up in PulseAudio while he was working. He asked what was making disk
+noises, and it took a `pactl list sink-inputs` to say. He was mild about it --
+*"I can turn the speakers down, so this is not a huge impact. But make sure to
+silence it next time"* -- and mildness is not the point: a noise in his room is
+the same kind of mistake as a window on his screen, and the brief that sent
+that agent said "offscreen" and forgot to say "silent".
+
+* **FS-UAE**: `volume = 0` in the configuration, or `SDL_AUDIODRIVER=dummy` in
+  the environment.
+* **WinUAE**: it runs on the Windows VM, whose audio reaches the host, and
+  `sound_output=none` is **not** available -- it deadlocks Silver Blades on its
+  second turn (`#331 (Amiga Silver Blades asks a journal word before it will
+  adventure, so the title cannot be driven past its party menu)`), which is why
+  `tools/goldbox-a500.uae` sets `sound_output=interrupts`. Mute the VM's own
+  audio device rather than the emulator's.
+
+**Check rather than assume.** `pactl list sink-inputs` names what is playing,
+and a run that leaves nothing there is the only proof that a flag worked.
 
 **The pool owns the lifecycle.** Allocate, launch, tear down. Do not attach to
 an emulator you did not launch, and do not launch one outside the pool -- an
