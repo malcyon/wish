@@ -83,6 +83,24 @@ reading the record.
 So the one rule that protects the claim: **an entry leaves a drop list when the
 field converts, never when it stops being counted.**
 
+**A full byte-coverage audit of every save file on every platform was proposed
+on 2026-09-08 and Donald declined it.** The reasoning that led there is sound
+and is kept because it explains the shape of the problem: an unnamed byte only
+costs anything when a writer has to produce a container it did not receive,
+which is cross-platform writing alone -- editing a save in place carries opaque
+regions through untouched, and reading simply shows what can be named. What
+the audit would have added is a measurement nobody has: what fraction of each
+container we can name, per platform.
+
+He declined it on cost. It was estimated at ten to seventeen new tickets, most
+of them for the two containers nobody has counted, and it would have made the
+backlog larger before it made any conversion better. **That is a decision about
+a programme of work, not about the technique**: measuring the unnamed bytes of
+one region, when a ticket needs it, stays ordinary work -- `#446 (The Amiga
+saved game's zero argument rests on three of the game's twenty-nine areas)`
+took one such region from 4,072 bytes to 44 in a night. Do not propose the
+audit again without a reason he has not already heard.
+
 Reporting a dropped field internally is the
 minimum; it is not permission to drop it, and "the destination has no such
 field" is not an ending either. Donald, 2026-09-04: *"We should not be
