@@ -1356,33 +1356,42 @@ def test_the_roster_shows_a_number_not_an_invented_class_for_a_regained_paladin(
         assert "magic-user" not in name.lower()
 
 
-def test_the_class_combo_shows_a_number_not_an_invented_class_for_a_regained_paladin(app):
-    """#409's remaining defect, fixed here. MATHEW's `char_class` byte
-    (`0x073`) reads 6 and MARK's reads 5 -- `dual_class_level`, the level
-    each left his old class at, since Curse's trainer (`GEN $1939`) stores
-    that instead of a code whenever a character is dual-classed. 6 and 5 are
-    also THIEF's and MAGIC-USER's own codes in `editor/enums.py`'s
-    `CHAR_CLASS`, so the Class combo (`field_char_class`) used to show
-    `6  THIEF` and `5  MAGIC-USER` -- a class neither character has.
+def test_the_class_combo_shows_both_classes_for_a_regained_paladin(app):
+    """#409's final ruling: the save is correct and the byte is not, so the
+    fix is to read the mask, not to word the wrong byte more carefully.
+    MATHEW's `char_class` byte (`0x073`) reads 6 and MARK's reads 5 --
+    `dual_class_level`, the level each left his old class at, since Curse's
+    trainer (`GEN $1939`) stores that instead of a code whenever a character
+    is dual-classed. 6 and 5 are also THIEF's and MAGIC-USER's own codes in
+    `editor/enums.py`'s `CHAR_CLASS`, so the Class combo (`field_char_class`)
+    used to show `6  THIEF` and `5  MAGIC-USER` -- a class neither character
+    has. Curse's own table (`GEN $1951`) has no code at all for either mask
+    (`$48`, `$42`), so there is no code to fall back to either; the combo
+    now names both classes the mask holds, the same way the C64's own sheet
+    draws a regained dual-classed character (`FIGHTER/PALADIN`,
+    `CLERIC/PALADIN`) -- `goldbox.games.classes_to_names` off `class_bits`.
 
     Driven through the real window: selecting each row populates the combo
     through `editor.window._char_class_shown`, which returns a
-    `_NoClassCode` for this shape, and `_select`, which shows that as it
-    already shows any code outside the game's own table.
+    `_NoClassCode` carrying that pair as its label, and `_select`, which
+    shows it by that label rather than matching the stale byte to a code by
+    coincidence.
     """
     from editor.window import EditorBinding
 
     path = _curse_409_regained_paladin_specimen()
     editor = EditorBinding(make_root(), str(path))
 
-    for who, raw in (("MATHEW", 6), ("MARK", 5)):
+    for who, expect in (("MATHEW", ("fighter", "paladin")),
+                         ("MARK", ("cleric", "paladin"))):
         row = _row_named(editor.party, who)
         editor.roster.selectRow(row)
         shown = editor._widgets["char_class"].currentText().lower()
         assert "thief" not in shown
         assert "magic-user" not in shown
-        assert "not in the game" in shown
-        assert str(raw) in shown
+        assert "not in the game" not in shown
+        for name in expect:
+            assert name in shown
 
 
 def test_the_class_combo_repairs_a_dual_classed_character_who_has_not_regained(app):

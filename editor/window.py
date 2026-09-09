@@ -121,7 +121,17 @@ class _NoClassCode(int):
     for every caller that only asks what the code is (`tests/test_dualclasscombo.py`,
     `tools/classcombocheck.py`); only `_populate`, which decides *how* to
     show it, tells the two apart.
+
+    `label` carries what the record's own classes actually are, already
+    named from `class_bits` by `goldbox.games.classes_to_names` -- the save
+    is correct and holds two classes; the stored byte is merely not one of
+    them, so `_select` shows the classes rather than the byte.
     """
+
+    def __new__(cls, raw: int, label: str) -> "_NoClassCode":
+        self = super().__new__(cls, raw)
+        self.label = label
+        return self
 
 
 def _select(combo: QComboBox, value) -> None:
@@ -131,14 +141,15 @@ def _select(combo: QComboBox, value) -> None:
     player characters do not -- so it is added to the list rather than being
     rounded to the nearest thing we recognise.
 
-    A `_NoClassCode` (#409) is shown the same way, but keyed by that exact
-    "not in the game's table" text rather than by `combo.findData(value)` --
-    a coincidental match to a real entry is exactly what it exists to avoid.
+    A `_NoClassCode` (#409) is shown by its own `label` -- the classes the
+    mask actually names -- rather than by `combo.findData(value)`, since a
+    coincidental match to a real entry (the byte is `dual_class_level`, not a
+    class code) is exactly what it exists to avoid.
     """
     if not isinstance(value, int):
         return
     if isinstance(value, _NoClassCode):
-        text = f"{int(value)}  — not in the game's table"
+        text = value.label
         at = combo.findText(text)
     else:
         text = f"{value}  — not in the game's table"
@@ -169,8 +180,10 @@ def _char_class_shown(raw, record, game):
     instead of a code once that happens, and that level can equal a
     different class's real code by coincidence: MATHEW, fighter 7/paladin 6,
     stores 6, THIEF's code; MARK, cleric 6/paladin 5, stores 5, MAGIC-USER's.
-    `raw` is still the honest value of the byte -- `_select` shows it without
-    pretending the table names it.
+    The mask itself is never in doubt, so the `_NoClassCode` carries both
+    classes' names, read the same way the C64's own sheet draws them --
+    `goldbox.games.classes_to_names` off `class_bits`, joined "/" -- rather
+    than the byte, which was never a class code for this character.
 
     **Gated on `goldbox.c64_codec.record_shape(game).class_code_repairable`,
     Curse only** -- the same gate the neutral reader uses. Pool of Radiance's
@@ -203,7 +216,10 @@ def _char_class_shown(raw, record, game):
     # table has no code for this mask at all (`classcode.code_for` answers
     # `None`). Only the second means the byte cannot be trusted.
     if classcode.code_for(bits, game=game) is None:
-        return _NoClassCode(raw)
+        names = por_games.classes_to_names(bits, game)
+        label = "/".join(names) if names and all(
+            isinstance(n, str) for n in names) else str(bits)
+        return _NoClassCode(raw, label)
     return raw
 
 
