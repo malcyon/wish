@@ -39,12 +39,15 @@ def painted(rows, top: int = combatlog.MESSAGE_TOP) -> bytes:
 
 
 def machine(rows=(), top: int = combatlog.MESSAGE_TOP, mode: int = 2,
-            d011: int = 0x1B) -> MemoryTarget:
+            d011: int = 0x1B, delay: int = 2) -> MemoryTarget:
     return MemoryTarget({
         0xD011: bytes([d011]),
         0xD018: b"\x34",                       # screen page 3 of the bank...
         0xDD00: b"\x00",                       # ...and bank 3, so $CC00
         combatlog.MODE: bytes([mode]),
+        # `INIT $09AC`'s own starting value, so a synthetic machine is a
+        # machine nobody has touched the SPEED command on.
+        combatlog.DELAY: bytes([delay]),
         combatlog.WINDOW: bytes([LEFT, RIGHT, top, BOTTOM]),
         combatlog.CURSOR: bytes([LEFT, top]),
         SCREEN + combatlog.MESSAGE_TOP * SCREEN_COLS: painted(rows, top),
@@ -310,6 +313,105 @@ def test_a_fight_read_frame_by_frame_gives_the_lines_in_order():
         "ORC IS KILLED"]
 
 
+# --- the speed the player set -----------------------------------------------
+#
+# `#425 (The Messages window logs a quarter of a fight when the player turns
+# the game's combat speed up)`. `SPEED` in `ENCAMP`, and on the combat bar
+# itself, walks `$49FC` down to 0, where `COMBAT $28C3` skips the delay loop
+# outright: 6 messages kept in a driven fight against 37 at the next setting
+# up, and 3 of those 6 caught half-printed. Nothing here can reproduce that
+# race -- the suite has no emulator and no clock -- so what is pinned is the
+# reader noticing the setting and saying so once.
+
+def test_the_speed_is_read_on_the_same_burst_as_everything_else():
+    """One byte, not a round trip: the cost of a read here is the round trip."""
+    log = CombatLog()
+    target = machine(["MAGNUS", "ATTACKS"])
+    log.poll(target)                               # the first poll locates the
+    target.reads.clear()                           # screen and reads nothing
+    log.poll(target)
+    assert (combatlog.DELAY, 1) in target.reads
+
+
+def test_the_default_speed_says_nothing():
+    log = CombatLog()
+    target = machine(["MAGNUS", "ATTACKS"], delay=2)
+    log.poll(target)
+    log.poll(target)
+    assert log.delay == 2
+    assert log.keeping_up()
+    assert not log.take_speed_warning()
+
+
+def test_one_notch_down_from_the_default_still_says_nothing():
+    """Setting 1 is not halfway between 0 and 2, because the loop runs
+    `$49FC` + 1 times: it holds a block for about two thirds of a second,
+    against nothing at all at 0. 37 messages at 1, none truncated."""
+    log = CombatLog()
+    target = machine(["MAGNUS", "ATTACKS"], delay=1)
+    log.poll(target)
+    log.poll(target)
+    assert log.delay == 1
+    assert log.keeping_up()
+    assert not log.take_speed_warning()
+
+
+def test_the_fastest_speed_is_announced_once_and_not_on_every_tick():
+    log = CombatLog()
+    target = machine(["MAGNUS", "ATTACKS"], delay=0)
+    log.poll(target)
+    log.poll(target)
+    assert log.delay == 0
+    assert not log.keeping_up()
+    assert log.take_speed_warning()
+    assert not log.take_speed_warning()
+
+
+def test_slowing_the_game_back_down_arms_the_warning_again():
+    """`SPEED` is on the combat bar, so `SLOWER` is one press away in the
+    middle of a fight -- and the stretch of log after a second `FASTER` is
+    incomplete on its own account."""
+    log = CombatLog()
+    target = machine(["MAGNUS", "ATTACKS"], delay=0)
+    log.poll(target)
+    log.poll(target)
+    assert log.take_speed_warning()
+    target.memory[combatlog.DELAY] = b"\x02"
+    log.poll(target)
+    assert log.keeping_up() and not log.take_speed_warning()
+    target.memory[combatlog.DELAY] = b"\x00"
+    log.poll(target)
+    assert log.take_speed_warning()
+
+
+def test_nothing_is_announced_before_the_first_poll():
+    """A reader that has not looked has not found a problem, and a window
+    that announced one on its first tick of every fight would be crying
+    wolf."""
+    log = CombatLog()
+    assert log.delay is None
+    assert log.keeping_up()
+    assert not log.take_speed_warning()
+
+
+def test_the_speed_belongs_to_the_fight_and_not_to_the_session():
+    """`$49FC` is COMBAT's, so out of a fight the byte means nothing -- and a
+    second fight fought at the same speed is a second incomplete log."""
+    log = CombatLog()
+    target = machine(["MAGNUS", "ATTACKS"], delay=0)
+    log.poll(target)
+    log.poll(target)
+    assert log.take_speed_warning()
+    target.memory[combatlog.MODE] = b"\x01"
+    log.poll(target)
+    assert log.delay is None and log.keeping_up()
+    log.reset_fight()
+    target.memory[combatlog.MODE] = b"\x02"
+    log.poll(target)
+    log.poll(target)
+    assert log.take_speed_warning()
+
+
 # --- the panel --------------------------------------------------------------
 
 @pytest.fixture
@@ -318,11 +420,40 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def arena_with_screen(rows) -> MemoryTarget:
+def arena_with_screen(rows, delay: int = 2) -> MemoryTarget:
     from gamedata import synthetic_arena
     memory = dict(synthetic_arena())
-    memory.update(machine(rows).memory)
+    memory.update(machine(rows, delay=delay).memory)
     return MemoryTarget(memory)
+
+
+def fighting_window(target, tmp_path, monkeypatch):
+    """A real window with the arena's fight already running.
+
+    The three panel tests below each built this, and the two speed ones need
+    it too; a fourth copy is a fourth place to keep the setup in step.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = AutomapBinding(root, Automapper(target, {}))
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert window.battle is not None
+    return window
+
+
+def warnings_in(window) -> list[str]:
+    """The panel's lines that are the speed warning, timestamps and all."""
+    from automap.window import COMBAT_TOO_FAST
+    return [line for line in window.messages.lines()
+            if COMBAT_TOO_FAST in line]
 
 
 def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
@@ -356,6 +487,65 @@ def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
     # `MAGNUS` is not a combatant in the arena, so it is not a name the panel
     # knows -- and the line still reads, because the first letter goes back up.
     assert all(line.endswith("Magnus misses.") for line in said)
+
+
+def test_the_panel_says_the_log_is_incomplete_at_the_fastest_speed(
+        app, tmp_path, monkeypatch):
+    """What the player actually gets out of `#425 (The Messages window logs a
+    quarter of a fight when the player turns the game's combat speed up)`.
+
+    Everything else in this section tests the reader; this tests the window,
+    which is the only part a player sees. Without it the two lines in
+    `poll_combat_log` could be deleted and every other test here stays green.
+
+    Said **once**, not on every tick: the window polls five times a second and
+    a panel repeating this would bury the fight it is warning about.
+    """
+    target = arena_with_screen([], delay=0)
+    window = fighting_window(target, tmp_path, monkeypatch)
+    show(target, ["ORC", "ATTACKS"])
+    for _ in range(6):
+        window.tick()
+
+    assert len(warnings_in(window)) == 1
+    assert "(NOT APPROVED)" in warnings_in(window)[0]
+
+
+def test_the_panel_says_nothing_at_the_speed_the_game_starts_at(
+        app, tmp_path, monkeypatch):
+    """`INIT $09AC` starts the speed at 2, and a player who has never touched
+    the `SPEED` command must never see this line -- it is the whole difference
+    between a warning and a program apologising for itself."""
+    target = arena_with_screen([], delay=2)
+    window = fighting_window(target, tmp_path, monkeypatch)
+    show(target, ["ORC", "ATTACKS"])
+    for _ in range(6):
+        window.tick()
+
+    assert warnings_in(window) == []
+
+
+def test_slowing_the_game_down_mid_fight_stops_the_panel_saying_it_again(
+        app, tmp_path, monkeypatch):
+    """`SPEED` is on the combat bar, so a player who reads the line can press
+    `SLOWER` without leaving the fight -- and then a second `FASTER` is a
+    second stretch of incomplete log and earns the line again."""
+    target = arena_with_screen([], delay=0)
+    window = fighting_window(target, tmp_path, monkeypatch)
+    show(target, ["ORC", "ATTACKS"])
+    for _ in range(4):
+        window.tick()
+    assert len(warnings_in(window)) == 1
+
+    target.memory[combatlog.DELAY] = b"\x01"     # one press of SLOWER
+    for _ in range(4):
+        window.tick()
+    assert len(warnings_in(window)) == 1
+
+    target.memory[combatlog.DELAY] = b"\x00"     # ...and FASTER again
+    for _ in range(4):
+        window.tick()
+    assert len(warnings_in(window)) == 2
 
 
 def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):

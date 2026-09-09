@@ -139,6 +139,31 @@ OUTDOORS_STATUS = "Outdoors, no map"
 WRONG_GAME = ("ERROR: Wrong game disk loaded. Disabling functionality to "
               "protect from corruption.")
 
+#: NOT APPROVED (`#425 (The Messages window logs a quarter of a fight when the
+#: player turns the game's combat speed up)`). Said in the Messages panel when
+#: the player has turned the game's combat speed to its fastest, where the game
+#: clears each message with no pause at all and this window logs about a fifth
+#: of the fight, half of what it does catch cut off mid-word. Donald decided
+#: the shape on 2026-09-08 -- say the log is incomplete, on every machine, and
+#: do not try to win the race -- and the wording is his to write; this is a
+#: proposal standing in until he does.
+#:
+#: **Two sentences, because the panel wraps and does not truncate.** Looked at
+#: in the running window with `tools/messageshot.py`: the panel is 198px wide
+#: at the window's own minimum, so this takes four of its rows against a
+#: message's one or two, and every clause added is another row of the panel the
+#: fight is supposed to be in.
+#:
+#: Three things it deliberately does not say: that the panel is read off the
+#: screen on a timer, what the delay does in the game's code, and which of
+#: `ENCAMP` or the combat bar the `SPEED` command is on -- it is on both, and a
+#: player who has just pressed `FASTER` knows where they did it. What is left
+#: is what a player can act on, and one press of `SLOWER` is measured to be
+#: enough: `automap/combatlog.READABLE_DELAY` has the runs.
+COMBAT_TOO_FAST = (
+    "Messages are being missed at the game's fastest combat speed. Press "
+    "SLOWER once on its SPEED command to log the whole fight. (NOT APPROVED)")
+
 #: Everything else this window has to say. A child of the `wish` logger, so
 #: `wish/debuglog.py`'s handler takes it when the log is on and its level
 #: swallows it when the log is off.
@@ -901,14 +926,28 @@ class AutomapBinding(QObject):
         return True
 
     def poll_combat_log(self) -> None:
-        """Read the message panel and keep whatever it finished saying."""
+        """Read the message panel and keep whatever it finished saying.
+
+        **The warning goes in front of the messages it is about**, because
+        that is the order a reader scrolling back through a fight meets them
+        in: the sparse, half-printed lines follow the line explaining them.
+
+        It is said with `alarm`, which is the panel's own red, so that a line
+        about the log being unreliable does not read as one more thing that
+        happened in the fight. `tools/messageshot.py` is the picture that
+        settled that (`#425 (The Messages window logs a quarter of a fight
+        when the player turns the game's combat speed up)`).
+        """
         if not self.COMBAT_LOG or self.battle is None:
             return
         if self._live_ticks % self.COMBAT_LOG_EVERY:
             return
         self.combat_log.note_round([c.initiative
                                     for c in self.battle.combatants])
-        self.log_combat(self.combat_log.poll(self.mapper.target))
+        messages = self.combat_log.poll(self.mapper.target)
+        if self.combat_log.take_speed_warning():
+            self.messages.say(COMBAT_TOO_FAST, dedup=False, alarm=True)
+        self.log_combat(messages)
 
     def log_combat(self, messages, battle=None) -> None:
         """Combat lines into the Messages panel, each with its dice under it.

@@ -70,6 +70,15 @@ That is the whole risk: a message lives for about a second of *emulated* time
 and then is gone. At the default 200 ms poll that is five frames, which is
 plenty -- but it is the number to check first if messages start going missing.
 
+**And a player can turn it off.** `SPEED` in `ENCAMP`, and on the combat bar
+itself, steps `$49FC` down to 0, where `$28C3` skips the loop outright and no
+poll rate anybody would accept sees the block at all. `READABLE_DELAY` below
+has where that boundary is and how it was measured; `keeping_up` is what the
+window asks, so the panel can say the log is incomplete rather than showing a
+quarter of a fight and looking as though that was all of it
+(`#425 (The Messages window logs a quarter of a fight when the player turns
+the game's combat speed up)`).
+
 ## Deduplication
 
 **Only consecutive identical frames are dropped, never identical content.**
@@ -117,7 +126,39 @@ CURSOR = 0x03CC
 CURSOR_LEN = 2
 #: The delay between a message and the clear that follows it, in units of about
 #: a third of a second. `INIT $09AC` sets it to 2; `CAMP $0CA1`/`$0CA6` step it.
+#: It is the player's own setting, shown as a digit by the `SPEED` command in
+#: `ENCAMP` and on the combat bar, and `FASTER` walks it down to 0.
 DELAY = 0x49FC
+
+#: The smallest `DELAY` at which a block stays on the screen long enough for a
+#: poll to see it, and the whole of what this reader can promise.
+#:
+#: **Zero is not a short delay; it is no delay.** `COMBAT $28C3` is
+#: `LDA $49FC / BEQ $28D9`, and `$28D9` is the `RTS`, so at 0 the loop below is
+#: never entered and the block is printed and cleared inside about one video
+#: frame. One is not half of two either: `LIBRARY $2E1F` (base `$2C48`) is
+#: `STA $B1 / LDX #$FF / LDY #$FF / DEY / BNE / DEX / BNE / DEC $B1 / BPL`, one
+#: pass of 326,664 cycles -- 0.332 s on a PAL 6510 -- run `DELAY` + 1 times. So
+#: the panel holds a block for 0 s at 0, about 0.66 s at 1 and about 1.0 s at 2,
+#: and the step from 0 to 1 is the only one that matters to a reader polling
+#: every 200 to 500 ms.
+#:
+#: Measured as well as counted, `work/issue425/`, three driven slums fights on
+#: 2026-09-08, one at each setting: 6 messages over 29 party turns at 0 with
+#: **3 of them caught half-printed**, against 37 over 25 turns at 1 and 29 over
+#: 17 at 2, with none truncated at either.
+#:
+#: **Setting 1 has a control, which is why the boundary is here and not at 2.**
+#: The runs at 1 and 2 were the same save and the same driver and the fight
+#: resolved identically, so the run at 2 is ground truth for the run at 1 --
+#: and the speed-1 run's first 29 messages are equal, string for string and in
+#: order, to all 29 of the speed-2 run's, down to the damage numbers. Setting 1
+#: missed nothing the default caught.
+#:
+#: **The Ultimate has not been measured.** Its tick is 500 ms and every read
+#: halts the 6510, so 0.66 s of emulated time is not 0.66 s of its wall clock.
+#: If setting 1 turns out to lose messages there, this is the constant to move.
+READABLE_DELAY = 1
 
 #: `COMBAT $0970`, the block `$0969` hands to `LIBRARY $485A`.
 COMBAT_WINDOW = (23, 39, 1, 23)
@@ -411,6 +452,13 @@ class CombatLog:
         #: because a block is committed when the game paints over it, by which
         #: point `$2B10` may belong to the *next* attack.
         self._roll: rolls.Roll | None = None
+        #: `$49FC` as the last poll read it, and None before the first poll of
+        #: a fight and after the last. Only read while `COMBAT` is resident,
+        #: which is the only time the byte means anything.
+        self.delay: int | None = None
+        #: Whether the caller has already been told about this crossing. See
+        #: `take_speed_warning`.
+        self._warned = False
         self._watch = rolls.RollWatch()
         self._height = COMBAT_WINDOW[3] - MESSAGE_TOP
         self._width = WIDTH
@@ -465,6 +513,37 @@ class CombatLog:
                           else replace(roll, missed=self._watch.take()))
         return done
 
+    # -- whether the game is outrunning the reader --------------------------
+
+    def keeping_up(self) -> bool:
+        """Can a poll still see what the game prints, at its current speed?
+
+        False only where the answer is known and is no: with nothing read yet
+        this says True, because a reader that has not looked has not found a
+        problem, and a window that announced one on its first tick of every
+        fight would be crying wolf.
+        """
+        return self.delay is None or self.delay >= READABLE_DELAY
+
+    def take_speed_warning(self) -> bool:
+        """True once each time the game's speed crosses out of what a poll can
+        read, and False on every tick in between.
+
+        Consuming, the way `rolls.RollWatch.take` is, because the caller wants
+        to say something to the player once a crossing rather than five times a
+        second. The player can cross back -- `SPEED` is on the combat bar, so
+        `SLOWER` is one press away in the middle of a fight -- and crossing
+        again earns another warning, because the stretch of log between the two
+        is incomplete just as the first one was.
+        """
+        if self.keeping_up():
+            self._warned = False
+            return False
+        if self._warned:
+            return False
+        self._warned = True
+        return True
+
     def reset_fight(self) -> None:
         """Forget everything that belonged to the fight that just ended.
 
@@ -472,6 +551,11 @@ class CombatLog:
         round it happened in. `CombatLog` is built once a session and reused,
         so without this the round counter climbs across fights and reaches 50
         in an evening.
+
+        `delay` and `_warned` go here as well, so a second fight fought at a
+        speed the reader cannot follow is announced again rather than counted
+        as the same crossing: the second fight's log is incomplete on its own
+        account and its player has a whole new fight in front of him.
 
         What is reset here is what `flush` does not already clear: `_pending`,
         `_last`, `_last_top` and `_heads` are cleared there, and `_roll` goes
@@ -485,6 +569,8 @@ class CombatLog:
         """
         self.round = None
         self._round_over = True
+        self.delay = None
+        self._warned = False
         self._watch.reset()
 
     def flush(self) -> list[Message]:
@@ -553,6 +639,12 @@ class CombatLog:
         # them apart ignores the names and reads as it always did.
         blocks = ((0xD011, 1, "io"), (0xD018, 1, "io"), (0xDD00, 1, "io"),
                   (MODE, 1),
+                  # The player's own combat speed, on the same burst as
+                  # everything else, so knowing whether this reader can keep up
+                  # costs one byte rather than a round trip -- `#425 (The
+                  # Messages window logs a quarter of a fight when the player
+                  # turns the game's combat speed up)`.
+                  (DELAY, 1),
                   (WINDOW, WINDOW_LEN), (CURSOR, CURSOR_LEN),
                   # Row 10 to the bottom of the screen, always: the window's
                   # own height is in the same burst and so is not known yet,
@@ -566,10 +658,12 @@ class CombatLog:
                   # named by `$A4F4`, which arrives in this same burst.
                   (rolls.D20, 1), (rolls.ATTACK, rolls.ATTACK_LEN),
                   (rolls.ROSTER, rolls.ROSTER_LEN))
-        (d011, d018, dd00, mode, win, _cursor, codes,
+        (d011, d018, dd00, mode, delay, win, _cursor, codes,
          d20, attack, roster) = _burst(target, blocks)
         if not mode or mode[0] != COMBAT:
-            return self.flush()
+            self.delay = None      # `$49FC` belongs to COMBAT and to no other
+            return self.flush()    # overlay, so out of a fight it means nothing
+        self.delay = delay[0] if delay else None
         if d011 and d011[0] & 0x20:
             return []                   # a bitmap screen has no text to read
         here = ((~dd00[0] & 3) * 0x4000) + ((d018[0] >> 4) & 0xF) * 0x400
