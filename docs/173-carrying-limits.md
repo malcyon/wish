@@ -77,6 +77,23 @@ Three things about it:
   The recount is `START.EXE` image `0x178D`-`0x17CC` on DOS Pool of Radiance
   and `GAME.OVR` `0x0382FA`/`0x038339` in Curse -- `item_count` zeroed, then
   incremented once per node while `encumbrance` accumulates.
+
+  **It is one routine and it rebuilds far more than the count.** Its prologue
+  is at `START.EXE` image `0x1758` in Pool of Radiance, `GAME.OVR` `0x0382C5`
+  in Curse, `0x03A292` in Silver Blades and `0x034D5D` in Pools of Darkness,
+  and in one pass it zeroes `item_count`, `hands_used`, the thirteen ready-slot
+  pointers and `encumbrance`; walks the chain adding `weight × quantity`; adds
+  the seven purses; and rewrites armour class and movement from their bases.
+  So the encumbrance the compare uses is as fresh as the count. `#323 (The
+  encumbrance identity does not survive the training fee, so failing it is not
+  evidence of an edited record)` reads it end to end and
+  `tools/dosencrecompute.py routine` finds it by signature, without a table of
+  addresses to keep true.
+
+  **One term of it differs between titles**: Pool of Radiance takes 5000 off
+  the total for a readied bag of holding and Curse ships the same block
+  unreachable, so the same character is closer to `Overloaded` in Curse.
+  `docs/125-bug-notes.md` N24.
 * **The compare displacement is `item_count`'s offset for that title**:
   `0x0C7`, `0x14C`, `0x160`, `0x1A6` on DOS, exactly
   `goldbox/dos_layout.py`'s; `0x0C9`, `0x150`, `0x0FC`, `0x0C7` on the Amiga,

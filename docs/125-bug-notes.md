@@ -448,8 +448,19 @@ sum as it stood before the price was paid, and it stays that way until the
 next recompute.
 
 **What it should do.** Take the money first, or recompute after taking it.
-Everything else that moves money -- pooling it, taking it back out of the pool
--- keeps the total right.
+
+**Nothing else that moves money recomputes at all**, which is why no other
+money operation shows a `+3` of its own: pooling coins away and taking them
+back leaves whatever error was already there and adds none, and the trainer's
+1000 gp fee leaves the total 1000 high until something else rebuilds it.
+Read from the code in all three engines -- **no routine that writes a copper,
+silver, electrum, gold or platinum count calls the recompute**, 0 of 11 in
+Pool of Radiance's `GAME.OVR`, 0 of 12 in Curse's and 0 of 10 in Silver
+Blades'. The one money-moving screen that does call it is the gem and jewel
+appraise screen, which decrements the count (`0x0268F0` and `0x026B7D` in
+Pool of Radiance, `0x02D87F`/`0x02DB0F` in Curse, `0x035671`/`0x03591A` in
+Silver Blades) and rebuilds the total on its way out.
+`tools/dosencrecompute.py callers` re-takes all of it.
 
 **The evidence.** Four measurements in a driven DOS session, on MATHEW of the
 Curse party from `#113 (Play DOS Curse far enough to save a party with
@@ -520,6 +531,20 @@ note should be read that way round.
 **Why no player sees it.** Every screen that draws encumbrance recomputes
 first: `#113 (Play DOS Curse far enough to save a party with items)` watched
 the sheet draw 396 while the file held 399.
+
+**And that is now read off the code rather than inferred from a screen.** One
+routine rebuilds the field -- resident at `START.EXE` image `0x1758` in Pool of
+Radiance, `GAME.OVR 0x0382C5` in Curse, `0x03A292` in Silver Blades, `0x034D5D`
+in Pools of Darkness -- and it zeroes the total, adds each chain node's
+`weight × quantity`, then adds the seven purses in a seven-iteration loop over
+`0x088`-`0x095`. It is a whole-record derive rather than an encumbrance
+routine: the same call zeroes `item_count` and `hands_used`, clears the
+thirteen ready-slot pointers and rewrites armour class and movement, which is
+what `docs/173-carrying-limits.md`'s *"it recounts first"* is describing. Of
+the reads of the stored field in each `GAME.OVR`, exactly two per title sit in
+a routine that is not a small `encumbrance ±= arg` helper, and **both of those
+routines call the recompute first** -- the character sheet and the item-cap
+routine. So there is no screen anywhere that can show a stale number.
 
 **And in Pool of Radiance that recompute is written back into the record**,
 which is measured rather than inferred. A party staged at 999 in every record
@@ -717,6 +742,85 @@ what all 12 show, across records the engine wrote in separate runs on separate
 days, and nothing here says a different entry point could not leave something
 else. Reading `[bp-2]` in DOSBox-X at `0x03B877` on a save made by character
 creation, by the trainer and by a load would settle it.
+
+## N24. Curse ships the bag of holding's discount and can never reach it
+
+**What the game does.** Pool of Radiance's encumbrance routine ends with a
+discount: if the character has a **readied** item whose first name word is
+`HOLDING` -- index 186 in `ITEMNAMES`, read off `POOL1.D64` -- it takes 5000
+tenths of a pound, 500 lb, off the total, clamping at zero and never below the
+weight of the readied items themselves.
+
+```
+0018da  cmp byte es:[di+0x2f], 0xba      ; name word 1 == HOLDING
+0018e1  mov byte [bp-8], 1               ; inside the "is readied" branch only
+001ae3  cmp byte [bp-8], 0
+001ae7  je  +0x3b
+001aec  cmp word es:[di+0x102], 0x1388   ; 5000
+001af3  jae +0x0c
+001afa  mov word es:[di+0x102], 0        ; under 5000: clamp to zero
+001b04  sub word es:[di+0x102], 0x1388
+001b0e  mov ax, es:[di+0x102]
+001b13  cmp ax, [0x4846]                 ; the readied items' own weight
+001b1f  mov word es:[di+0x102], ax
+```
+
+**Curse of the Azure Bonds has the identical tail** at `GAME.OVR`
+`0x038643`-`0x038684`, testing the same stack byte `[bp-8]`, and **nothing in
+the routine ever sets it**. Between the routine's prologue at `0x0382C5` and
+its end, `[bp-8]` is written exactly once -- `mov byte [bp-8], 0` at
+`0x0382F3`, the initialisation -- and there is no `mov [bp-8], r8` and no
+`lea` taking its address, so no callee can set it either. The chain walk has
+no name-word compare at all: Pool of Radiance's `26 80 7d 2f ba` appears once
+in its resident image and **zero times** in any of the three `GAME.OVR` files.
+So in Curse a readied bag of holding reduces nothing. **Secret of the Silver
+Blades and Pools of Darkness have no such block at all** -- their money loops
+fall straight into the armour-class copies.
+
+**What it should do.** Set the flag when the walk passes a readied bag, the
+way Pool of Radiance does, or drop the block.
+
+**What the player sees.** A bag of holding that does not reduce what a Curse
+character is carrying, so the character is `Overloaded` at a weight Pool of
+Radiance would have let pass -- and there is no message saying why, because
+`docs/173-carrying-limits.md` shows the refusal is one flag carrying two
+tests.
+
+**Curse ships the words, so a player can reach it; Silver Blades does not,
+which is why its routine has no block.** Each title's own `ITEMNAMES`, read
+through `goldbox.items.load_item_names`:
+
+| title | disk | names | `BAG` | `HOLDING` |
+|---|---|---|---|---|
+| Pool of Radiance | `POOL1.D64` | 252 | 73 | **186** |
+| Curse of the Azure Bonds | `CURSE_A.D64` | 253 | 73 | **186** |
+| Secret of the Silver Blades | `SILVER-1.D64` | 249 | -- | **absent** |
+
+The same two indices in Curse as in Pool of Radiance, and neither word anywhere
+in Silver Blades' table. **So Silver Blades having no discount block is not a
+third defect -- it has no bag of holding to discount** -- and Curse having one
+it can never take is a defect a player can hit.
+
+**What is not established.** Whether Curse's treasure and shop tables actually
+hand one out, which the name table's entry allows but does not prove. **No DOS
+record on this machine carries one**: `tools/dosencrecompute.py bags` walked
+2965 record files and 6497 items, 3494 of them readied, and 186 is not among
+the 69 distinct name words in use. What would settle it: a sweep of Curse's
+`ITEM1`-`ITEM8` treasure files for a record whose name words include 186.
+
+**Version.** Pool of Radiance live, Curse of the Azure Bonds dead, Silver
+Blades and Pools of Darkness absent; DOS. CONFIRMED from the code in all four
+-- `tools/dosencrecompute.py routine` re-derives the three states, and
+`tests/test_dosencrecompute.py` pins each. `#323 (The encumbrance identity does
+not survive the training fee, so failing it is not evidence of an edited
+record)`.
+
+**And it matters to this project beyond the game.** A Pool of Radiance
+character with a readied bag of holding stores encumbrance **5000 below**
+`money + Σ(weight × quantity)`, so the identity `goldbox.dos.expected_
+encumbrance` checks fails on a record nobody edited. That is the engine's own
+counterexample to reading a "below" miss as evidence of an edit;
+`.claude/rules/testing.md` says how to read a miss now.
 
 ## Not yet confirmed
 

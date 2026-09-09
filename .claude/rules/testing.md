@@ -148,15 +148,19 @@ a stranger's edited party. Both halves of that are gone:
   **The Amiga figure has no test**, so treat it as a measurement taken once
   rather than a guarantee, and re-take it before resting anything on it.
 * **Failing it is the normal state of a record we watched being written.** Of
-  the 97 records here that miss, **93 are ours, driven**: 90 by an exact
-  multiple of 1000 gp -- Pool of Radiance's training fee, on the ladder of
-  `#249 (Build a DOS party from creation and level it ourselves, so DOS
-  measurements rest on records we watched being written)` -- and 3 by the
-  Curse shop bug in `docs/125-bug-notes.md` N19. Nothing in the never-watched
-  corpus misses at all.
+  the 114 records here that miss, on the 2026-09-08 sweep, **112 are ours**:
+  90 by an exact multiple of 1000 gp -- Pool of Radiance's training fee, on
+  the ladder of `#249 (Build a DOS party from creation and level it ourselves,
+  so DOS measurements rest on records we watched being written)` -- 3 by the
+  Curse shop bug in `docs/125-bug-notes.md` N19, one at +109 by the hand-axe
+  purchase in `docs/213-the-dos-shopping-trip.md`, four at +200 by one Curse
+  run's 200-coin payment, and twelve by a 999 this ticket staged itself.
+  **Nothing in the never-watched corpus misses at all**, 0 of 46. The two that
+  are left are GILES and ASTRID, found twice each.
 
-  **The engine rewrites the field only when a screen draws it**, which is why
-  the drift survives a save: 270 of 270 records the ladder saved held the
+  **The engine rewrites the field when it rebuilds a character's derived
+  fields, and no routine that moves coins does that**, which is why the drift
+  survives a save: 270 of 270 records the ladder saved held the
   number they were loaded with, 87 of them after the trainer had taken 1000 gp
   in that same boot, and a record spoiled to 999 *before* a boot came back 999
   through both a party-menu `SAVE CURRENT GAME` and a camp save. Only the one
@@ -177,10 +181,57 @@ a stranger's edited party. Both halves of that are gone:
 
 So **a record failing the identity is not evidence that anybody edited it**,
 and neither is a record passing it evidence that nobody did. It checks our
-reading of the money block, the item stride and the weight offset, which is
-what it was built for. `#323 (The encumbrance identity does not survive the
-training fee, so failing it is not evidence of an edited record)` has the
-counts and the two records that miss the other way.
+reading of the money block, the item stride, the weight offset and the byte
+order, in one sum, which is what it was built for and what it is good at.
+`#323 (The encumbrance identity does not survive the training fee, so failing
+it is not evidence of an edited record)` has the counts and the two records
+that miss the other way.
+
+**The identity is the engine's own arithmetic, and the engine's own code says
+when it stops being true.** Pool of Radiance rebuilds the field at
+`START.EXE` image `0x1758` -- zero it, add each item's `weight × quantity`,
+then add the seven purses -- and Curse and Silver Blades have the same routine
+in `GAME.OVR`. So the *formula* is settled and a mismatch is one of two things:
+the engine not having run that routine since something moved, or one of our
+offsets being wrong. Telling those apart is the whole of what follows.
+
+**No routine anywhere in the three engines writes a coin purse and calls that
+recompute** -- 0 of 11, 0 of 12 and 0 of 10 in the three `GAME.OVR` files. The
+trainer's fee and a shop's change are coin movements, so neither is repaired.
+The one money-moving screen that does recompute is **appraising a gem or a
+jewel**, which decrements the count and rebuilds the total on its way out.
+
+**Four things are known to leave a record failing it, and the first three are
+the engine's own work:**
+
+| what happened | what the record looks like |
+|---|---|
+| a training fee | stored **above** the sum by an exact multiple of 1000 |
+| a payment -- a purchase, an identify, a cure | stored above by the fall in the *coin count*, which after the engine consolidates change into a larger denomination can be far more than the price paid: 109 for a 1 gp axe |
+| a readied bag of holding, Pool of Radiance only | stored **5000 below** the sum, or at the readied items' own weight when the sum is under 5000. Read from the code; no record on this machine carries one, so nothing has confirmed it in a file |
+| a field we poked before a boot | whatever we poked |
+
+**So the check is not weakened, it is narrowed: name the operation, or the
+miss still means something.** A miss you can attribute to one of those four is
+explained and says nothing about who wrote the record. A miss you cannot is
+the signal the identity was built to be -- one of our offsets is wrong, or the
+record was edited -- and it has to be chased rather than waved past. The two
+records that fail it here for no named reason, GILES at −20 and ASTRID at −65,
+are PROBABLY edited, and the argument for that is the *direction of a
+disagreement* rather than the sign of the miss: the cached display line and the
+stored total agree with each other while the quantity byte alone reads a round
+50, where the engine keeps the quantity and the total in step and lets only the
+line go stale (`docs/125-bug-notes.md` N19).
+
+**A tolerance is not a reading.** `assert exact >= total - 2` says our sum may
+be two-in-twenty-four wrong; it hides which two and why. Name the records, or
+point the test at a corpus where the answer is exact.
+
+**And the C64 cannot be checked this way at all.** Its record has no such
+field: all three titles sum into a scratch word past the end of the record
+(`$6DF6` in Pool of Radiance, `$7EF6` in the other two) every time `LIBRARY`
+draws the sheet. `tests/test_enccensus.py::test_the_c64_record_has_no_
+encumbrance_to_check` goes red if one is ever located.
 
 What is left is the rule rather than the example: a save found on a disk has no
 chain of custody, and **staring at it does not say which**. The reason to
