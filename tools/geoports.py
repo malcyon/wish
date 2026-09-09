@@ -478,8 +478,15 @@ def report_closest(out: io.TextIOBase, show: int = 10,
                       "of both of them at once", file=out)
                 bad = True
         for gap, label, a, b in watch[:1]:
-            print(f"  WATCH           {gap // 2:5d}   what it would have to "
-                  f"become for {label} {a}/{b} at {gap}, a title "
+            # `(gap - 1) // 2`, not `gap // 2`. The line above states a strict
+            # bound -- "must stay under 40" is satisfied by 39 -- but this one
+            # names the value the constant would *become*, and the check it is
+            # answering is `2 * NEAR_ENOUGH >= gap`, which refuses equality. On
+            # an even gap `gap // 2` is the first value that fails: 2 x 9 is 18
+            # and Pools of Darkness' closest pair is 18 apart. Odd gaps hid it,
+            # because floor division already lands one under the half.
+            print(f"  WATCH           {(gap - 1) // 2:5d}   what it would have "
+                  f"to become for {label} {a}/{b} at {gap}, a title "
                   f"`goldbox.games` does not know", file=out)
         print(f"  and under       {nearest_wrong:5d}   the closest two "
               f"different places, one of them ours: "

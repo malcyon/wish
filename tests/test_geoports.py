@@ -427,3 +427,21 @@ def test_the_planes_a_pair_differs_in_are_counted_separately():
     right[BARRIERS + 4] ^= 0x03
     assert geoports.per_plane(bytes(left), bytes(right)) == {
         "walls N/E": 0, "walls S/W": 0, "attributes": 1, "barriers": 2}
+
+
+def test_the_watch_line_names_a_value_that_would_actually_pass_the_check():
+    """#466: `WATCH` prints what `NEAR_ENOUGH` would have to become, and it
+    has to be a value the tool's own gate accepts.
+
+    That gate is `2 * NEAR_ENOUGH >= gap`, which refuses equality, so the
+    largest legal value for a gap of 18 is 8 and not 9.  `gap // 2` gave 9 --
+    the first value that fails -- and only on an even gap, which is why Pools
+    of Darkness' `GEO21`/`GEO31` at 18 is the pair that shows it and
+    Treasures' 99 never did.  `automap.area.NEAR_ENOUGH`'s own note and
+    `report_closest`'s docstring both say 8; the line disagreed with both.
+    """
+    for gap in (18, 80, 99, 100):
+        named = (gap - 1) // 2
+        assert 2 * named < gap, (gap, named)
+        assert 2 * (named + 1) >= gap, (gap, named)
+    assert (18 - 1) // 2 == 8
