@@ -265,16 +265,28 @@ def test_the_encumbrance_identity_balances():
     The cheapest whole-record check there is: self-contained arithmetic across
     the money block, the item file and one derived field, so it confirms the
     money offsets, the 63-byte stride, the weight offset and the byte order
-    at once. Sixteen of the eighteen saved characters balance and all six
-    exports do; the two that miss carry a stack of darts whose cached name
-    disagrees with the quantity byte.
+    at once. Two records are known to miss it and are PROBABLY edited --
+    `CHRDATA4.SAV` (GILES) and `CHRDATA5.SAV` (ASTRID), whose cached line and
+    stored total agree with each other against a round quantity byte, where
+    the engine itself keeps the quantity byte and the stored total in step
+    and lets only the cached line go stale (`docs/125-bug-notes.md` N19). A
+    different saved slot for each of those same two characters,
+    `CHRDATB4.SAV` and `CHRDATB5.SAV`, balances exactly, so the exception is
+    the file rather than the name. Every other record here has to balance
+    exactly -- a miss anywhere else is a reader regression, not a known edit.
     """
-    exact = total = 0
-    for char in _records():
-        total += 1
-        exact += char.get("encumbrance") == char.expected_encumbrance()
-    assert total >= 24
-    assert exact >= total - 2, f"{exact} of {total} balanced"
+    known_misses = {"CHRDATA4.SAV", "CHRDATA5.SAV"}
+    where = _save_dir()
+    paths = [p for p in sorted(where.glob("*.SAV")) + sorted(where.glob("*.CHA"))
+             if p.stat().st_size == dos_layout.RECORD_SIZE]
+    assert len(paths) >= 24
+    unexplained = []
+    for path in paths:
+        char = dos.read_character(path)
+        if char.get("encumbrance") != char.expected_encumbrance() \
+                and path.name not in known_misses:
+            unexplained.append((path.name, char.name))
+    assert unexplained == [], f"unexplained miss: {unexplained}"
 
 
 @needs_dos_saves

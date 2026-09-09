@@ -994,14 +994,18 @@ class DosCharacter(_Fielded):
         return [e[0] for e in self.effects]
 
     def expected_encumbrance(self) -> int:
-        """`money + sum(item weight x quantity)`, the identity worth keeping.
+        """`money + sum(item weight x quantity)`.
 
         Self-contained arithmetic across three structures -- the money block,
         the item file and one derived field -- so it confirms the money
         offsets, the 63-byte item stride, the weight offset and the byte order
-        together.  It balances for 16 of the 18 saved characters and all six
-        exports; the two that miss carry a stack of darts whose cached name
-        disagrees with the quantity byte.
+        together.  It balances for 18 of the 18 shipped saved characters; the
+        two known misses, both in the played-and-edited directory, are GILES
+        and ASTRID, whose cached line and stored total agree with each other
+        against a round quantity byte -- the engine keeps the quantity byte
+        and the stored total in step and only the cached line goes stale, the
+        reverse of what an earlier reading of this had.  `docs/125-bug-notes.md`
+        N19 has the evidence.
         """
         total = sum(self.money.values())
         for it in self.items:

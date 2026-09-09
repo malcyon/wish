@@ -681,10 +681,13 @@ _DECLARED: Sequence[Field] = (
        "encumbrance = cp + sp + ep + gp + pp + gems + jewelry\n"
        "                + sum(item weight x quantity)\n"
        "```\n"
-       "It balances exactly for 16 of the 18 saved characters and for all "
-       "six exports, and the two that miss carry a stack of darts whose "
-       "rendered name disagrees with the quantity byte, so one of those two "
-       "is stale rather than the identity being wrong. That one sum "
+       "It balances exactly for the 18 shipped saved characters and for all "
+       "six exports; the two known misses, both in the played-and-edited "
+       "directory, are GILES and ASTRID, whose cached line and stored total "
+       "agree with each other against a round quantity byte -- the engine "
+       "keeps the quantity byte and the stored total in step and only the "
+       "cached line goes stale, PROBABLY an edit (`docs/125-bug-notes.md` "
+       "N19). That one sum "
        "confirms the money block, the 63-byte item stride, the weight "
        "offset and the byte order together. **Derived, not stored** -- "
        "Curse's `reclac_player_values` computes it the same way -- so the "
@@ -759,9 +762,14 @@ _ITEM_DECLARED: Sequence[Field] = (
        "the longest observed is 40, '* Magic User Scroll With 3 Spells'"),
     _f(0x001, 41, _RAW, "text", "Rendered inventory line (CACHE)", _OK,
        "the line the game last drew for this item -- readied marker, '*' for "
-       "magic, the name. **A cache and never a source.** It goes stale: one "
-       "specimen reads '11 Darts' over a quantity byte of 8, which is one of "
-       "the two characters whose encumbrance identity misses"),
+       "magic, the name. **A cache and never a source.** It goes stale on its "
+       "own: one specimen reads '11 Darts' over a quantity byte of 8, and the "
+       "identity still balances exactly, because the engine keeps the "
+       "quantity byte and the stored total in step and drops only this line. "
+       "The two Pool of Radiance records whose encumbrance identity does miss "
+       "go stale the other way round -- line and stored total agreeing "
+       "against a round quantity byte, which is what an edit leaves "
+       "(`docs/125-bug-notes.md` N19)"),
     _f(0x02A, 4, _RAW, "next", "Next item (LIVE)", _OK,
        "far pointer to the next item in the character's chain, NULL on the "
        "last. The C64 keeps sixteen fixed slots; drop the chain, keep the "

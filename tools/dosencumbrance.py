@@ -19,8 +19,11 @@ freshly out of the Tilverton shop.**  Two caveats on the rest of that
 distribution, because the sweep is deliberately unfiltered -- the large
 positives are our own `BUILT-`/`ENGINE-` seeds under `work/`, which have no
 item file for the sum to find, and the two Pool of Radiance characters at
-`-65` and `-20` are the stale dart stacks `goldbox/dos_layout.py` already
-names.
+`-65` and `-20`, GILES and ASTRID, are PROBABLY edited: their cached line and
+stored total agree with each other against a round quantity byte, which is
+what an edit leaves, where the engine itself keeps the quantity byte and the
+stored total in step and lets only the cached line go stale
+(`docs/125-bug-notes.md` N19).
 
 Written for `#225 (A shopped Curse character's stored encumbrance is three
 tenths above the sum)`, where the answer turned out to be that a purchase
