@@ -18,6 +18,22 @@ So the six directions of
 pairs of *ports*, each carrying whichever titles both ends can read -- not a
 grid of every title against every other.
 
+**The player still gets from one title to the next, and the game does it.**
+Donald, 2026-09-08, giving the path this rule exists to protect: *"A user plays
+Secrets of the Silver Blades on the C64. They beat the game. They then load
+their save into Wish and convert into an Amiga save. They now have an Amiga
+Secrets of the Silver Blades save. They then load that save into Amiga Pools of
+Darkness, and the game itself converts it into an Amiga Pools of Darkness save.
+This keeps us from running into a whole class of bugs that would come with
+converting saves from one game into another."*
+
+So the division of labour is settled: **Wish changes the port, the game changes
+the title.** Every Gold Box title reads the previous one's finished party, that
+transfer is the engine's own feature, and it knows what an item id and an area
+number mean on both sides -- which Wish would have to reinvent per pair, per
+port, for every combination. A tool that writes a party of one title into
+another title's save is doing the game's job with none of the game's knowledge.
+
 `editor/convert.py` already builds it that way -- a direction's destination is
 `games.by_key(shape.key)`, the same title on the other port -- so this rule is
 here to stop somebody adding the other thing rather than to describe a defect.
