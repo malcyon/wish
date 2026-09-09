@@ -70,8 +70,14 @@ _log = logging.getLogger("wish.editor.exports")
 #     "&Amiga characters…" in 2026-08: the menu names the destination, and
 #     what it writes there is the export dialog's business, not the menu's.
 #
-# The feature flag below stays until #52 closes. The words are settled; the
-# direction is not yet proven end to end for a user.
+# The feature flag below is never lifted: everything from here to the end of
+# this file is deleted when `#52 (File > Import and File > Export for every
+# direction the library supports)` closes, and `File > Convert...` is the one
+# window that converts a save. Donald decided that on 2026-09-09. The block
+# above `ENV` says what that means for anybody reading this file.
+#
+# This comment used to say the flag stayed until that issue closed and that
+# the words were settled. Both were true of a dialog meant to ship.
 # ===========================================================================
 
 #: The File menu entry and the two ports under it.
@@ -140,22 +146,67 @@ FAILED_TITLE = "Cannot export"
 #: greyed entry invites the question of how to un-grey it and the answer would
 #: be a sentence in the interface.
 #:
-#: What the flag is holding back is not the conversion. `goldbox.dos.write_dos_save`
-#: is proven in the emulator and `goldbox.amiga.export_party` is what
-#: `tools/toamiga.py` has been driving; what is unfinished is that **every
-#: word above is an agent's placeholder**. A user cannot be shown a window
-#: whose labels nobody has approved.
+#: What the flag was holding back was never the conversion.
+#: `goldbox.dos.write_dos_save` is proven in the emulator and
+#: `goldbox.amiga.export_party` is what `tools/toamiga.py` has been
+#: driving.
+#:
+#: **This paragraph used to say every word above was an agent's
+#: placeholder, and that contradicted the block that carries them**,
+#: which says they are Donald's and approved on 2026-08-25. The
+#: approved ones are the menu entries, titles, labels, buttons and
+#: refusals; the four report-pane headings below `DROPPED_HEADING`
+#: are still marked PROPOSED in their own comment, and they are what
+#: was never approved.
 #:
 #: An environment variable and no preference, the same shape as `WISH_DEBUG`,
 #: `WISH_NATIVE_LOG` and `WISH_EXPERIMENTAL_DOS_IMPORT`: a checkbox would need
 #: a label, and a label saying "experimental" would need a sentence saying
 #: what that meant for the folder being written into.
 #:
-#: **Half the condition is met: the strings are approved as of 2026-08-25.**
-#: What remains is #52 closing -- the export direction proven end to end by
-#: somebody using it, and #79's Amiga filename collision settled, since a
-#: character that leaves the window and does not arrive is the failure this
-#: dialog exists to prevent.
+#: **This flag never comes off, because the feature it gates is being
+#: deleted.** Donald, 2026-09-09, asked whether the export pane should follow
+#: the Convert pane in sending its drop list to the debug log: *"File Export is
+#: going away when Convert is done, so it doesn't matter."*
+#:
+#: So the condition that removes this flag is **`#52 (File > Import and
+#: File > Export for every direction the library supports)` closing**, and
+#: what happens then is that `File > Export`, both its dialogs and this
+#: module go with it --
+#: the same way `File > Import > DOS Save Folder...` and `editor/dosimport.py`'s
+#: dialog went when `File > Convert...` reached parity with them. One window
+#: converts a save, in every direction, and there is no second verb on the File
+#: menu that means almost the same thing.
+#:
+#: **What that decides for anybody reading this file.** Do not spend work here
+#: that only pays off if the dialog ships. In particular:
+#:
+#: * `Plan.text()` still draws `report.dropped` verbatim, where
+#:   `editor/dosimport.py`'s `pane_text` was changed on 2026-09-08 to log it
+#:   instead. That divergence is deliberate now rather than an oversight, and
+#:   the eight strings it keeps alive are the eight that die with the dialog --
+#:   `#477 (Twenty interface strings still carry a (NOT APPROVED) marker, and
+#:   nobody has sorted them by whether a player can reach them)` has the census.
+#: * Six of those eight put a neutral field's own name in front of a reader --
+#:   `encumbrance`, `abilities_second`, `former_levels`,
+#:   `spells_castable['druid']`, `portrait_head` -- which
+#:   `.claude/rules/gui-text.md` bans. They are behind this flag and reach
+#:   nobody, and they are not to be reworded; they are to be deleted with the
+#:   rest.
+#:
+#: The **conversion** underneath is not going anywhere.
+#: `goldbox.dos.write_dos_save` and `goldbox.amiga.export_party` are what
+#: `File > Convert...` already calls; it is this second front door that goes.
+#: `#79 (Two party members whose names share eight characters export as one
+#: Amiga .pc)` is therefore a bug in the writer rather than in this dialog, and
+#: does not close by deleting this file.
+#:
+#: An earlier version of this block said the condition was that issue closing,
+#: the export direction proven end to end, and the Amiga filename collision
+#: settled, with a note that the
+#: strings had been approved on 2026-08-25. That described a flag waiting to be
+#: lifted. This one is waiting to be removed, which is a different thing and
+#: has a different ending.
 ENV = "WISH_EXPERIMENTAL_EXPORT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
