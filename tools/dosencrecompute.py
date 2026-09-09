@@ -240,6 +240,14 @@ def _gate_before(data: bytes, site: int) -> tuple[int, list[int]] | None:
     `mov byte [bp-N], imm` or `mov [bp-N], r8`.  A callee cannot set it
     without the address being taken, so an absent `lea` on the same local is
     what makes "one write" conclusive rather than merely suggestive.
+
+    **All eight byte registers, not just `al`.**  This checked `88 46` alone
+    until 2026-09-08 -- `mov [bp+disp8], al`, which is the register Turbo
+    Pascal uses for a byte flag and so the one that happens to matter here.
+    But `docs/125-bug-notes.md` N24 quotes this scan to conclude that nothing
+    can set Curse's gate, and a conclusion that rests on seven unchecked
+    encodings is not the conclusion the prose claims.  The `lea` sweep is the
+    same shape and now covers all eight 16-bit registers.
     """
     window = data[max(0, site - 0x40):site]
     m = None
@@ -249,10 +257,14 @@ def _gate_before(data: bytes, site: int) -> tuple[int, list[int]] | None:
         return None
     local = m.group(1)
     lo, hi = max(0, site - 0x800), site + 0x400
-    writes = [i for pat in (b"\xc6\x46" + local, b"\x88\x46" + local)
+    #: `mov [bp+disp8], r8` for al, cl, dl, bl, ah, ch, dh, bh -- ModRM mod=01
+    #: rm=110, reg counting up in steps of 8 from 0x46.
+    byte_regs = (0x46, 0x4E, 0x56, 0x5E, 0x66, 0x6E, 0x76, 0x7E)
+    writes = [i for pat in [b"\xc6\x46" + local]
+              + [bytes([0x88, r]) + local for r in byte_regs]
               for i in _find(data, pat, lo, hi)]
     if any(_find(data, bytes([0x8D, r]) + local, lo, hi)
-           for r in (0x46, 0x56, 0x5E, 0x76, 0x7E)):
+           for r in byte_regs):
         writes.append(-1)                       # its address is taken somewhere
     return local[0] - 256, sorted(writes)
 

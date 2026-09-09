@@ -148,15 +148,18 @@ a stranger's edited party. Both halves of that are gone:
   **The Amiga figure has no test**, so treat it as a measurement taken once
   rather than a guarantee, and re-take it before resting anything on it.
 * **Failing it is the normal state of a record we watched being written.** Of
-  the 114 records here that miss, on the 2026-09-08 sweep, **112 are ours**:
+  the 114 records here that miss, on the 2026-09-08 sweep, **110 are ours**:
   90 by an exact multiple of 1000 gp -- Pool of Radiance's training fee, on
   the ladder of `#249 (Build a DOS party from creation and level it ourselves,
   so DOS measurements rest on records we watched being written)` -- 3 by the
   Curse shop bug in `docs/125-bug-notes.md` N19, one at +109 by the hand-axe
   purchase in `docs/213-the-dos-shopping-trip.md`, four at +200 by one Curse
   run's 200-coin payment, and twelve by a 999 this ticket staged itself.
-  **Nothing in the never-watched corpus misses at all**, 0 of 46. The two that
-  are left are GILES and ASTRID, found twice each.
+  **Nothing in the never-watched corpus misses at all**, 0 of 46. That leaves
+  **four records and two characters**: GILES at -20 and ASTRID at -65, each
+  found twice, once in the edited directory and once under `work/`. They are
+  the only two nobody can name an operation for, and 90 + 3 + 1 + 4 + 12 + 4
+  is the 114.
 
   **The engine rewrites the field when it rebuilds a character's derived
   fields, and no routine that moves coins does that**, which is why the drift

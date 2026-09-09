@@ -780,11 +780,17 @@ fall straight into the armour-class copies.
 **What it should do.** Set the flag when the walk passes a readied bag, the
 way Pool of Radiance does, or drop the block.
 
-**What the player sees.** A bag of holding that does not reduce what a Curse
-character is carrying, so the character is `Overloaded` at a weight Pool of
-Radiance would have let pass -- and there is no message saying why, because
+**What the player would see, if a player can reach it at all -- and nobody has
+shown that.** A bag of holding that does not reduce what a Curse character is
+carrying, so the character is `Overloaded` at a weight Pool of Radiance would
+have let pass, with no message saying why, because
 `docs/173-carrying-limits.md` shows the refusal is one flag carrying two
-tests.
+tests. **That sentence is the code read aloud rather than anything observed**:
+`tools/dosencrecompute.py bags` finds no such item in 6497 items across 2965
+record files, and nobody has checked whether Curse's own treasure tables ever
+hand one out. Until somebody does, this is a bug in the sense that the code
+cannot do what it was written to do, not in the sense that a player has met
+it.
 
 **Curse ships the words, so a player can reach it; Silver Blades does not,
 which is why its routine has no block.** Each title's own `ITEMNAMES`, read
