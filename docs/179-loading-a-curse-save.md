@@ -139,10 +139,10 @@ coming back `--SAVE ERROR--` until the image was detached and put back.
 
 ### 60, and a save disk the drive never finished writing
 
-Two of the five Curse specimens in `~/wish-specimens/por-c64/` hold
+Two of the five Curse specimens in `~/wish-specimens/por-c64/` held
 `SAVEAZURE` with directory type byte `$02` and a block count of zero — a file
-the drive still believes is open for writing, which a listing shows as
-`*PRG`. The 1541 will not open one for reading, and the engine reports
+the drive still believed was open for writing, which a listing shows as
+`*PRG`. The 1541 will not open one for reading, and the engine reported
 `60, WRITE FILE OPEN` as `UNABLE TO LOAD SAVED GAME.`
 
 | disk | type | blocks | payload |
@@ -150,21 +150,65 @@ the drive still believes is open for writing, which a listing shows as
 | `WISH-SPEC-curse-h-engine-resave.D64` | `$82` | 30 | 7426 |
 | `WISH-SPEC-curse-h-engine-resave-walked.D64` | `$82` | 30 | 7426 |
 | `WISH-SPEC-curse-train-input.D64` | `$82` | 30 | 7426 |
-| `WISH-SPEC-curse-dual-classed.D64` | **`$02`** | **0** | 7426 |
-| `WISH-SPEC-curse-trained-party.D64` | **`$02`** | **0** | 7426 |
+| `WISH-SPEC-curse-dual-classed.D64` | `$82` | 30 | 7426 |
+| `WISH-SPEC-curse-trained-party.D64` | `$82` | 30 | 7426 |
 
-The payload is intact in all five — the data blocks are written before the
-directory entry is finished — so the disks are recoverable rather than lost.
-`tools/curseload.py --repair` sets the bit and the block count in the staged
-copy inside the pool slot, never in the specimen, and the repaired
-`WISH-SPEC-curse-dual-classed.D64` loaded its party in the running game where
-the specimen itself had not.
+The two right-hand disks read `$02` and a block count of zero when this
+measurement was first taken, on 2026-09-05. The payload was intact even
+then — the data blocks are written before the directory entry is finished —
+so the disks were recoverable rather than lost: `tools/curseload.py --repair`
+closed the entry in a staged copy inside the pool slot, never in the
+specimen, and the repaired `WISH-SPEC-curse-dual-classed.D64` loaded its
+party in the running game where the specimen itself had not.
+
+Both disks were repaired **in the specimen tree itself** on 2026-09-08, by
+Donald's decision on `#298 (A save disk copied out of an emulator slot before
+the drive closes the file cannot be loaded by the game)`: the directory entry
+closed, and every file on each disk reads back byte for byte identical
+against a copy taken before the repair. **Both load directly now, with no
+`--repair` needed** — that flag is for a freshly copied image carrying the
+same fault, not for either specimen as it stands today.
 
 Both damaged disks were copied out of a pool slot after the engine's own
 `SAVE CURRENT GAME`, and both of the sound ones under `work/issue18/` were
 written by our tools before a boot; `work/issue192/run1/engine-resave.D64` is
-an engine save that came out closed. So it is a race between the copy and the
-drive rather than anything the engine does wrong, and it is ours.
+an engine save that came out closed. So it was a race between the copy and
+the drive rather than anything the engine does wrong, and it was ours.
+
+### The same fault in Pool of Radiance
+
+Not Curse-specific. `WISH-SPEC-por-party-twin-pair.d64`'s `SAVEDGAME0` entry
+carried the identical fault for the identical reason, and was closed by the
+same `#298 (A save disk copied out of an emulator slot before the drive
+closes the file cannot be loaded by the game)` repair on 2026-09-08
+(`$16642` `02`→`82`, `$1665E` `00`→`1D`). `tools/splatload.py` is Pool of
+Radiance's counterpart to `tools/curseload.py`, driving the front end that
+title actually uses.
+
+**The sentence on the screen is different, and does not name the fault.**
+Pool of Radiance's `LOAD SAVED GAME` answers a refusal with
+`SAVED GAME NOT FOUND!`, leaving `TRY AGAIN ABORT LOAD` on row 24, rather
+than Curse's `UNABLE TO LOAD SAVED GAME.` `SAVED GAME NOT FOUND!` reads as
+"there is no save on this disk", which sends a reader after the file name or
+the disk in the drive rather than after the drive's own error number. `$03F1`
+is what actually says which fault it was: 60, `WRITE FILE OPEN`, exactly as
+in Curse. `$7E9F` was 0 in both driven runs, so the number in `$03F1` is the
+drive's own error rather than the fastloader's `$3E` arm.
+
+Pool of Radiance also redraws its own front end on the refusal rather than
+leaving a working menu behind an error box: the refusal replaces the whole
+party menu with the `SAVED GAME NOT FOUND!` box, and that same party menu
+carries `BEGIN ADVENTURING` **before** a load as well as after one — so a
+driver that answers `TRY AGAIN ABORT LOAD` and then waits for that label has
+a success test a refused load can pass. `tools/splatload.py` reads `$03F1`
+instead of trusting the screen.
+
+Driven both ways in pool slot 2 on 2026-09-08, one flag apart: unrepaired
+gives `SAVED GAME NOT FOUND!` and `$03F1` = 60; the repaired copy gives the
+party menu with BRUTUS, MAGNUS, LADY KATHERINE, ROLAND, TWIN and MALCYON, and
+`$03F1` = 0. As with the Curse disks above, the specimen itself is repaired
+now, so this refusal is what a *newly* copied image with the same fault would
+show, not what booting this disk shows today.
 
 ## Getting a party in
 

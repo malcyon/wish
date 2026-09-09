@@ -138,7 +138,15 @@ was the same drive mis-steered, and its counts agree):
 Every count on the pair moves only when the count beside it moves, by the
 same amount, and the control moves alone when experience is drawn. The
 engine-written save with two members sharing a pair is specimen
-`por-party-twin-pair` under `$WISH_SPECIMENS`.
+`por-party-twin-pair` under `$WISH_SPECIMENS`. Its `provenance.toml` now reads
+`edited_afterwards = true`, because two bytes of the D64's **directory
+entry** -- not the party save itself -- were closed on 2026-09-08 by
+`#298 (A save disk copied out of an emulator slot before the drive closes the
+file cannot be loaded by the game)`: the disk had been copied out of its pool
+slot before the emulated drive finished writing it, and would not load until
+the repair. `SAVEDGAME0` and `SAVEDGAME1`, the engine's own save, are
+untouched -- every file on the disk reads back byte for byte identical either
+side of that repair.
 
 ## Two things found on the way
 

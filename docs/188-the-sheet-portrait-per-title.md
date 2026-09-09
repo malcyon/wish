@@ -22,10 +22,16 @@ panel there and puts the character's money in it.
 Radiance one was not.** It is `work/issue57/c64-slotA/sheet-1.png`, taken in
 an earlier session in a different pool slot, and it is there because three
 attempts to load `WISH-SPEC-por-party-twin-pair.d64` in this session answered
-`SAVED GAME NOT FOUND!` (`$03F1` = `$3C`) despite the disk carrying both
-`SAVEDGAME` files. That failure is undiagnosed and is listed below. So the
-composite is three sheets rather than one controlled comparison, and the
-Curse and Silver Blades halves are the two that were taken together.
+`SAVED GAME NOT FOUND!` (`$03F1` = `$3C`). `$3C` is 60 decimal, the 1541's
+`WRITE FILE OPEN`: the disk's `SAVEDGAME0` directory entry was still marked
+open for writing, because the image had been copied out of a pool slot before
+the emulated drive finished closing the file, as `#298 (A save disk copied
+out of an emulator slot before the drive closes the file cannot be loaded by
+the game)` diagnosed. The specimen was repaired in the tree on 2026-09-08 and
+loads without incident now; at the time this comparison was taken it did not,
+which is why the composite is three sheets from two sessions rather than one
+controlled comparison, with the Curse and Silver Blades halves the two that
+were taken together.
 
 **How the Silver Blades panel was read as money rather than as an empty
 frame**: two characters, one sheet apart. PAINE has no money and his panel
@@ -204,13 +210,6 @@ should close on.
   it maps the PRG header to $0800)` is the ticket.
 
 ## What is still unmeasured
-
-**A fresh Pool of Radiance control in this session's harness.**
-`WISH-SPEC-por-party-twin-pair.d64` answered `SAVED GAME NOT FOUND!` three
-times in pool slot 4, `$03F1` = `$3C`, with both `SAVEDGAME` files present on
-the disk. One specimen, one slot, undiagnosed -- so it may be the specimen,
-the slot or the harness, and the next reader should not assume the harness is
-broken. `WISH-SPEC-porunconscious1.d64` is the specimen to try instead.
 
 * **Whether DOS Curse and DOS Silver Blades draw a sheet portrait.** This
   page is about the C64 destination. All 12 shipped Curse `CHRDAT*.SAV`

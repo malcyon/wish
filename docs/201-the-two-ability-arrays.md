@@ -123,7 +123,15 @@ coincidence is excluded.
 
 `WISH-SPEC-curse-367-crossed-abilities-resave.D64` is that party saved back
 by the game itself -- the only Curse save anywhere whose two arrays differ and
-which the engine wrote. `tests/test_abilitypair.py` reads it.
+which the engine wrote. Its `provenance.toml` now reads `edited_afterwards =
+true`, because two bytes of the D64's **directory entry** -- not the record
+above -- were closed on 2026-09-08 by `#298 (A save disk copied out of an
+emulator slot before the drive closes the file cannot be loaded by the
+game)`: the disk had been copied out of its pool slot before the emulated
+drive finished writing it, and would not load until the repair. The record
+above is what the engine wrote and nothing in it moved -- every file on the
+disk reads back byte for byte identical either side of that repair.
+`tests/test_abilitypair.py` reads it.
 
 ### The formula, and the five numbers behind it
 
