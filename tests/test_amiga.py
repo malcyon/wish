@@ -114,11 +114,24 @@ def test_age_is_a_big_endian_word_at_0x052():
     assert PodCharacter.from_bytes(ramp()).age == 0x5253
 
 
-def test_current_hit_points_are_a_big_endian_word_at_0x190():
-    """A written record with 55 there and 77 at 0x081 drew `HIT POINTS 55/77`."""
-    pc = PodCharacter.from_bytes(PodWriter(
-        name="HP", hit_points_max=77, hit_points_current=55).to_bytes())
+def test_current_hit_points_are_the_single_byte_at_0x191():
+    """A written record with 55 there and 77 at 0x081 drew `HIT POINTS 55/77`.
+
+    **This said "a big-endian word at 0x190" until `#462`, and the probe
+    never told the two apart**: the writer put `00 37` at 0x190-0x191, so the
+    word reading and the byte reading both give 55. The engine's own Silver
+    Blades importer settles it -- it copies that title's thirteen-byte
+    derived tail one for one onto 0x186-0x192, and `hp_current` is one byte
+    in it -- so 0x190 is `roster_tail`'s last byte and 0x191 is the hit
+    points. Byte 0x190 is left alone here, which is what a word writer could
+    not do.
+    """
+    raw = PodWriter(name="HP", hit_points_max=77,
+                    hit_points_current=55).to_bytes()
+    pc = PodCharacter.from_bytes(raw)
     assert (pc.hit_points_current, pc.hit_points_max) == (55, 77)
+    assert raw[0x191] == 55
+    assert raw[0x190] == 0
 
 
 # -- the four enums, each of which a probe put on screen ------------------
@@ -177,7 +190,9 @@ def test_the_writer_leaves_the_heap_pointers_and_the_item_region_zero():
     """Both are don't-care on load, and zero is what the accepted payloads had."""
     raw = written().to_bytes()
     assert raw[0x00:0x44] == bytes(0x44)
-    assert raw[0x0B6:0x190] == bytes(0x190 - 0x0B6)
+    # Up to and including 0x190, which is `roster_tail`'s last byte: the hit
+    # points the writer does fill in are the byte after it (#462).
+    assert raw[0x0B6:0x191] == bytes(0x191 - 0x0B6)
 
 
 def test_every_non_zero_byte_the_writer_emits_is_credited_to_a_field():

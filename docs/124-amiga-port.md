@@ -1648,9 +1648,17 @@ pair is real AmigaDOS and not a private loader.
   `cmpi.w #$14,d0` after each item, `cmpi.w #$a,d0` after each effect. A short
   read sets the failure flag, the nodes already allocated are freed, and the
   routine returns 0.
-* **One signature byte, and it is on the items, not the character.**
-  `cmpi.b #$49,$2e(a2)` — the first byte of every 20-byte item record must be
-  `$49`, ASCII `'I'`. An item that is not `'I'` ends the list.
+* **~~One signature byte, and it is on the items, not the character.~~
+  `cmpi.b #$49,$2e(a2)` is the scroll test, and this reading of it was
+  wrong.** Node `+0x2E` is the item's `type_index`, not a signature: across
+  the 93 items in the nineteen `.pc` files on the Amiga disks it reads 5, 8,
+  15, 18, 22, 28, 29, 30, 36, 37, 40 and 50, and **never** `$49`. `$49` is the
+  scroll type — the same constant Silver Blades chains further nodes off — and
+  the compare belongs to the `+0x0C` read in row 3 of the table above. The
+  rest of the table is confirmed. Corrected on `#462 (Decode the rest of
+  the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it,
+  so a converted character loses his spells and possessions)`, from
+  `tools/podpcregions.py`.
 * **A capacity check.** Item count plus scroll count must stay within `$78`
   (120); over that, the remaining records are read into a scratch buffer and
   thrown away and the player is shown `SCROLLS DROPPED!`.
@@ -1693,6 +1701,165 @@ in 316 KB of code:
 
 The loader references none of them: `pcload` is handed a name the picker
 already built.
+
+### 1.17 The rest of the record, off the engine's own Silver Blades importer (#462 (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it, so a converted character loses his spells and possessions))
+
+**Every byte of the 404-byte record is named now, and the naming is the
+engine's own.** Amiga Pools of Darkness carries a routine that turns an Amiga
+*Secret of the Silver Blades* character record into one of its own — the
+player's finished Silver Blades party, arriving in the next title — and it is
+a straight field-by-field copy: 66 `move.b $src(a3), $dst(a2)` instructions
+and eleven block copies, at file offset `0x026000` to `0x0262DC`.
+`goldbox.amiga.SILVER_BLADES_SHAPE` already names every source offset, because
+§1.6a decoded that record for `#55 (Decode the Amiga Curse and Silver Blades
+records)`, so each instruction reads as *"Silver Blades' `hp_rolled` is Pools
+of Darkness' `0x0B8`"*.
+
+`tools/podimportmap.py` re-derives the whole map from the player's own disk
+and `--check` compares it with `goldbox/amiga.py`'s constants;
+`tests/test_podamiga.py::test_every_offset_matches_the_engines_own_silver_
+blades_importer` runs it. **51 of 51 constants match.** This is proof from the
+shipped code rather than from a probe, so it cannot be spoiled by an edited
+specimen — which matters here, because seven of the nineteen `.pc` files on
+this machine come off cracked rips and none of the nineteen has a chain of
+custody.
+
+**The record's own routines named three more fields the importer cannot**,
+because Silver Blades has nothing to copy into them. `0x015F6C` raises three
+high-water marks in one pass — each of the seven class levels at `0x096`, the
+experience longword at `0x048` and the maximum hit points at `0x0B6` — and
+`0x03315E` restores experience from `0x048`. That is what a title with level
+drain that matters keeps instead of the earlier titles' `levels_drained` and
+`hp_lost_to_drain`, and it names the same two runs in the **DOS** record:
+`goldbox.dos_layout.POOLS_OF_DARKNESS` puts `highest_class_levels` at `0x15F`
+already, and its five-byte `gap_176` is highest experience at `0x176`-`0x179`
+and highest hit points at `0x17A` (PROBABLE, from the Amiga's own three and
+from both being zero in 12 of 12 DOS records).
+
+#### The map
+
+Everything below is CONFIRMED unless the row says otherwise. "DOS" is the
+name `goldbox.dos_layout.POOLS_OF_DARKNESS` gives the field.
+
+| Amiga | width | DOS field | how it was found |
+|---|---|---|---|
+| `0x000` | 4 | `heap_104[0:4]` | importer |
+| `0x004` | 4 | `effect_chain` | importer; §1.16 row 4 |
+| `0x008` | 4 | item chain head, and **the item count in a file** | §1.16; the tail is exactly consumed in 19 of 19 |
+| `0x040` | 4 | `heap_104[4:8]` | importer |
+| `0x044` | 4 | `experience` | probe (§2.3) |
+| `0x048` | 4 | highest experience (DOS `gap_176[0:4]`) | `0x015FA4`, `0x03315E` |
+| `0x04C` | 6 | `platinum`, `gems`, `jewelry` | probe |
+| `0x052` | 2 | `age` | probe |
+| `0x054` | 2 | `experience_award` | importer |
+| `0x056` | 2 | `encumbrance` | importer; recomputed on load |
+| `0x058`, `0x059` | 1, 1 | `race`, `char_class` | probe |
+| `0x05A` | 1 | `turn_class` | importer |
+| `0x05B` | 1 | `field_83_87[2]` | importer |
+| `0x05C`, `0x05D` | 1, 1 | `sex`, `alignment` | probe |
+| `0x05E` | 1 | **`status`** | importer, **and the sheet's own string table** |
+| `0x05F` | 1 | **`hostile`**, the combat side | importer; compared between two records |
+| `0x060` | 16 | `name` | probe |
+| `0x070` | 12 | the six ability pairs | probe |
+| `0x07C` | 2 | `exceptional_strength` pair | importer |
+| `0x07E` | 1 | Silver Blades' `gap_069` | importer. UNKNOWN |
+| `0x07F` | 1 | `thac0_base` | importer; agrees with the DOS peer 12 of 12 |
+| `0x080` | 1 | `paladin_cures` | importer; 1 for both paladins, 0 for the other 17 |
+| `0x081` | 1 | `hp_max` | probe |
+| `0x082` | 1 | `icon_dimension` | importer; 1 in 19 of 19 |
+| `0x083` | 5 | the five saving throws | importer |
+| `0x088`, `0x089` | 1, 1 | `movement`, `level` | probe |
+| `0x08A` | 1 | `former_level` | importer, and the dual-class routine |
+| `0x08B` | 8 | the eight thief skills | importer |
+| `0x093` | 1 | `field_83_87[0]`, **the NPC control byte** | importer |
+| `0x094`, `0x095` | 1, 1 | `field_83_87[1]`, `[3]` | importer |
+| `0x096` | 7 | **highest class levels** | `0x015F6C` |
+| `0x09D` | 7 | `class_levels` | probe |
+| `0x0A4` | 7 | `former_class_levels` | importer, and the dual-class routine |
+| `0x0AB` | 8 | `attack_forms` | importer. `0x0AB` is attacks in halves and `0x0AD`/`0x0AF`/`0x0B1` the damage triple |
+| `0x0B3` | 1 | `armour_class_base` | importer; 50 in 19 of 19, as DOS in 12 of 12 |
+| `0x0B4`, `0x0B5` | 1, 1 | `strength_bonus`, `unnamed_0ab` | importer |
+| `0x0B6` | 1 | **highest hit points** (DOS `gap_176[4]`) | `0x015FB4` |
+| `0x0B7` | 1 | `class_bits` | importer |
+| `0x0B8` | 1 | **`hp_rolled`** | importer, and the constitution arithmetic below |
+| `0x0B9`, `0x0BA` | 1, 1 | `portrait_head`, `portrait_body` | importer; zero in 19 of 19, and this title draws no sheet face |
+| `0x0BB`, `0x0BC` | 1, 1 | `icon_head`, `icon_body` | importer |
+| `0x0BD` | 1 | `combat_figure` | importer; the code compares it at 7 and 8 |
+| `0x0BE` | 1 | `size` | importer; 1 for the corpus's one dwarf, 2 for the rest |
+| `0x0BF` | 6 | `icon_colours` | importer; `91 a2 b3 c4 e6 f7` in 15 of 19 |
+| `0x0C5` | 2 | `unnamed_1a4` | importer; `02 02` in 19 of 19, as DOS in 12 of 12 |
+| `0x0C7` | 1 | a **stale** cached item count | importer; 3 in 17 of 19 against four to six items |
+| `0x0C8` | 1 | `hands_used` | importer; 2 in 18 of 19 |
+| `0x0C9`, `0x0CA` | 1, 1 | Silver Blades' `gap_19a`, `gap_1a5` | importer |
+| `0x0CB` | 1 | a cached count, written after `SCROLLS DROPPED!` | eight write sites. UNKNOWN |
+| `0x0CC` | **141** | **`spells_memorised`** | the dual-class routine clears it |
+| `0x159` | **16** | **`spellbook`**, as a bitmask | importer, and nine of ten DOS peers id for id |
+| `0x169`, `0x172`, `0x17B` | 9 each | `spells_castable` cleric, druid, magic-user | importer's own loop, and 10 of 10 DOS peers |
+| `0x184` | 1 | **`active`** | importer; 1 in 19 of 19 and 63 `tst.b` sites |
+| `0x185` | 1 | **`quickfight`** | importer |
+| `0x186`, `0x187` | 1, 1 | `thac0_current`, `armour_class` | importer |
+| `0x188` | 9 | `roster_tail` | importer |
+| `0x191` | **1** | `hp_current` | importer |
+| `0x192` | 1 | `movement_current` | importer |
+
+**`attack_level` is the one field of the record still unlocated.** Silver
+Blades keeps it at Amiga `0x080` and the importer does not copy it; Pools of
+Darkness' `0x080` is `paladin_cures` and its `0x082` is `icon_dimension`, with
+`hp_max` between them, so the field is not merely displaced. DOS Pools of
+Darkness holds 0 in 12 of 12 of its own, so nothing observable is lost. The
+bytes nothing claims are `0x07E`, `0x0CB` and `0x193`.
+
+#### Three things the map corrected
+
+* **`hp_current` is the byte at `0x191`, not the big-endian word at `0x190`.**
+  The probe that found it wrote `00 37` and both readings gave 55, so it never
+  told them apart; the importer copies Silver Blades' thirteen-byte derived
+  tail one for one, and `hp_current` is one byte in it. `0x190` is
+  `roster_tail`'s last byte and is zero in 19 of 19.
+* **`0x0B8` is `hp_rolled`, not a portrait.** The corpus is the AD&D table
+  exactly: `hp_max - 0x0B8` is 22 for each magic-user 14 (eleven hit dice at
+  +2 for constitution 18), 18 for each cleric 14 (nine at +2), 40 for each
+  ranger 13 (ten at +4), 36 for the paladin 12 and the fighter 14 (nine at
+  +4), 20 for the thief 16 (ten at +2), and 15 for HOPE, a fighter 5 whose
+  constitution is 17 rather than 18 (five at +3).
+* **`armour_class` and `armour_class_base` are two bytes, not one.** The
+  reader gave both from `0x0B3`, which is the unarmoured 50 in every record,
+  so an Amiga character in plate mail converted as though he were unarmoured.
+
+#### The spellbook, and the one anomaly
+
+Bit `i` of byte `i >> 3` of the sixteen bytes at `0x159` is index `i` of the
+DOS record's 125-byte `spellbook` array, which is spell id `i + 1`. Ten of the
+nineteen `.pc` files have a DOS record of the same class and the same class
+levels, and **nine of the ten agree with it id for id**.
+
+The tenth is the three cleric 14s — CLERIC and FRODE on the shipped disk 3,
+and lady gwendolyne on an alternate rip. All three carry an identical mask,
+and it is the DOS cleric's spellbook **plus exactly seventeen ids**: 9-21,
+which is the magic-user's whole level-1 group, and 77-80, which is the
+druid's. That is a fact about those three characters rather than about the
+encoding — no other class in the corpus shows anything like it — and it is
+UNKNOWN. **The experiment**: read Pools of Darkness' own cleric grant table
+the way `tests/test_silverblades.py::_grant_table` reads Silver Blades', and
+see whether a cleric is handed those two groups. If he is, the game gives its
+clerics magic-user and druid spells and the three records are right; if he is
+not, somebody edited a shipped pregen and every `.pc` on these disks is a
+weaker specimen than it looks.
+
+#### What it leaves
+
+`goldbox.amiga.pod_to_neutral` fills **61 of the 75 neutral fields** where it
+filled 38. Of the fourteen it does not: nine are fields *this title* has on
+neither port (four coins, `levels_drained`, `hp_lost_to_drain`,
+`experience_per_hit_point`, `infravision`, `turn_power`), three are the item
+and effect regions the reader does not walk yet, one is `attack_level`, and
+one is `npc_control_byte`, which a player character does not have.
+
+**The writer is untouched and still emits zero for all 27**, which is
+`#475 (The Amiga Pools of Darkness writer leaves 27 decoded fields zero, and
+one of them may mark a converted character as out of the party)` — including
+`active`, where 19 of 19 records the game wrote hold 1 and this writer leaves
+the other two ports' out-of-the-party value.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

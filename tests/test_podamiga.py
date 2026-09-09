@@ -179,19 +179,21 @@ def test_every_neutral_field_has_a_reader_disposition():
                               amiga.pod_field_disposition()) == (set(), set())
 
 
-def test_the_reader_drops_what_the_writer_drops_but_for_two_names():
-    """`pod_read_dropped` is computed from the writer's `DROPPED` rather than
-    listed again, so the two lists cannot drift.
+def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
+    """The reader's list was computed from the writer's until `#462` and is
+    its own now, so this is what stops the two drifting apart the wrong way.
 
-    The two names that differ are the point of the docstring there:
-    `armour_class` and `armour_class_base` are readable -- the record holds
-    the byte -- and not writable, because the game recomputes armour class on
-    load and ignores what the file says.
+    **Reading a byte and writing one are not the same undertaking**, which is
+    why they may differ at all: `#462` decoded the record off the engine's own
+    Silver Blades importer, so the reader can take a field the writer must not
+    fill in until somebody has watched the loader accept it. What must never
+    happen is the reverse -- a name the reader drops and the writer does not
+    -- because that would be a field this module claims to convert in a
+    direction it cannot even read.
     """
     writer = {n for n, _ in amiga.DROPPED}
     reader = {n for n, _ in amiga.pod_read_dropped()}
     assert reader < writer
-    assert writer - reader == set(READ_ONLY)
     for name in READ_ONLY:
         assert amiga.pod_field_disposition()[name].startswith("copied")
 
@@ -278,7 +280,7 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "movement": (amiga.MOVEMENT, 1),
         "class_levels": (amiga.CLASS_LEVELS, amiga.CLASS_LEVEL_COUNT),
         "armour_class": (amiga.ARMOUR_CLASS, 1),
-        "hp_current": (amiga.HP_CURRENT, 2),
+        "hp_current": (amiga.HP_CURRENT, 1),
         "saving_throws": (amiga.SAVING_THROWS, amiga.SAVING_THROW_COUNT),
         "level": (amiga.LEVEL, 1),
         "thief_skills": (amiga.THIEF_SKILLS, amiga.THIEF_SKILL_COUNT),
@@ -379,36 +381,75 @@ def test_a_dual_classed_character_arrives_as_the_class_he_is():
 
 # --- the negative result, which is the state of the Amiga end ----------------
 
-def test_a_character_read_out_of_a_pc_reaches_dos_without_spells_or_items():
-    """**The Amiga-to-DOS direction is not finished, and this is what is
-    missing rather than a claim that it works.**
+def test_a_caster_read_out_of_a_pc_reaches_dos_with_his_spellbook():
+    """The loss this ticket was opened for, measured on both sides of it.
 
-    A `.pc` converts into a 510-byte DOS record today -- the writer takes it
-    without raising, and the sheet's name, race, class, level, hit points,
-    armour class, abilities, saving throws, thief skills, money, age,
-    alignment and movement all arrive. What does not is everything whose home
-    in the 484-byte record nobody has decoded: the spellbook, the memorised
-    list, the item region, the effect region and the combat block. A
-    magic-user 14 arriving with an empty spellbook is a loss a player sees on
-    the first screen.
+    **Before `#462` this test asserted the opposite** -- `assert not
+    any(back.raw("spellbook"))`, because nobody had found the spellbook and a
+    magic-user 14 arrived in DOS with an empty one and a THAC0 the sheet
+    printed as 60. The spellbook is the sixteen-byte mask at `0x159` and the
+    ids are the DOS array's own, so what arrives now is his own book.
 
-    So nothing offers this direction: `editor/convert.py` builds its list
-    from `goldbox.games`, which has no Pools of Darkness entry at all. This
-    test is here so that a reader who finds `pod_to_neutral` does not mistake
-    its existence for the work being done.
+    The four casters in the corpus with a DOS record of the same class and
+    the same levels are checked **against that record's spellbook**, which is
+    the strongest form the claim has: the ids that come out of the Amiga mask
+    are the ids the other port stores for the same character.
     """
-    seen = 0
+    seen = casters = 0
     for name, raw in pc_records():
         out = amiga.pod_to_neutral(raw)
         rec, itm, spc, _report = dos.write(out)
         assert len(rec) == POD.record_size, name
         assert itm == b"" and spc == b"", name
         back = dos.DosCharacter(rec)
-        assert not any(back.raw("spellbook")), name
-        assert back.get("thac0_base") == 0, name
+        assert back.spells_known == out.get("spells_known"), name
+        assert back.get("thac0_base") == out.get("thac0_base"), name
+        # Still true, and still the reason nothing offers this direction:
+        # the item region is decoded and this reader does not walk it.
         assert back.get("item_count") == 0, name
+        if back.spells_known:
+            casters += 1
         seen += 1
     assert seen >= 12
+    assert casters >= 4, casters
+
+
+def test_the_amiga_spellbook_is_the_dos_spellbook_for_the_same_character():
+    """The ids, against the other port's own record of the same class and
+    levels: nine of the ten pairs agree exactly, id for id.
+
+    The tenth is the cleric 14s, which carry seventeen ids their DOS
+    counterparts do not -- the magic-user's whole level-1 group and the
+    druid's -- and it is a fact about those three shipped characters rather
+    than about the encoding, so it is named and counted rather than rounded
+    away (`#462`).
+    """
+    peers: dict[tuple, set] = {}
+    for path in dos_records():
+        char = dos.read_character(path)
+        key = (char.get("char_class"), tuple(char.raw("class_levels")))
+        peers.setdefault(key, set()).add(frozenset(char.spells_known))
+    exact = extra = 0
+    for name, raw in pc_records():
+        pc = amiga.PodCharacter.from_bytes(raw)
+        key = (pc.character_class, tuple(pc.class_levels))
+        if key not in peers:
+            continue
+        mine = frozenset(pc.spells_known)
+        if mine in peers[key]:
+            exact += 1
+            continue
+        # Always the same seventeen ids more than the DOS peer, whichever
+        # peer: the magic-user's level-1 group and the druid's. What the DOS
+        # side has and this does not is DOMINIC's single id 118, which
+        # FLORENTZ, the other DOS cleric 14, has not got either.
+        for other in peers[key]:
+            assert sorted(mine - other) == list(range(9, 22)) + [77, 78, 79,
+                                                                 80], name
+            assert other - mine <= {118}, (name, sorted(other - mine))
+        extra += 1
+    assert exact >= 7, exact
+    assert extra == 3, extra
 
 
 def test_the_reader_says_out_loud_what_it_could_not_read():
@@ -418,25 +459,64 @@ def test_the_reader_says_out_loud_what_it_could_not_read():
     forbids.
     """
     dropped = amiga.pod_read_dropped()
-    assert len(dropped) == 37, len(dropped)
+    assert len(dropped) == 13, len(dropped)
     for name, raw in pc_records():
         out = amiga.pod_to_neutral(raw)
-        said = [w for w in out.warnings if "not been decoded" in w]
+        said = [w for w in out.warnings if "(NOT APPROVED)" in w]
         assert len(said) == 1, name
-        assert "(NOT APPROVED)" in said[0], name
+        assert "possessions" in said[0], name
         break
 
 
-def test_the_reader_fills_thirty_eight_of_the_neutral_records_fields():
+def test_the_reader_fills_sixty_one_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    38 filled and 37 not, of 75. `docs/124-amiga-port.md` §1 is how the 38
-    were found.
+    **38 until `#462` and 61 now**, of 75. Thirteen of the fourteen it does
+    not fill are named in `POD_READ_DROPPED` -- nine of them fields this
+    *title* has on neither port, three the item and effect regions this
+    reader does not walk yet, and one, `attack_level`, the only field in the
+    record still unlocated. The fourteenth is `npc_control_byte`, which is
+    set only for a companion and so is absent from a player character rather
+    than dropped, exactly as it is absent from a DOS one.
     """
     for _name, raw in pc_records():
         out = amiga.pod_to_neutral(raw)
-        assert len(out.fields) == 38, sorted(out.fields)
-        assert len(out.fields) + len(amiga.pod_read_dropped()) == \
-            len(neutral.FIELDS)
+        assert len(out.fields) == 61, sorted(out.fields)
+        named = set(out.fields) | {n for n, _ in amiga.pod_read_dropped()}
+        assert set(neutral.FIELDS) - named == {"npc_control_byte"}
         break
+
+
+# --- the engine's own account of its record, read off the player's disk ------
+
+def test_every_offset_matches_the_engines_own_silver_blades_importer():
+    """The decode `#462` rests on, re-derived rather than quoted.
+
+    Amiga Pools of Darkness carries a routine that turns an Amiga *Secret of
+    the Silver Blades* record into one of its own, at file offset `0x026000`
+    of `/Pools of Darkness` on disk 1. It is a field-by-field copy, and
+    `goldbox.amiga.SILVER_BLADES_SHAPE` names every source offset because
+    `#55` decoded that record -- so each instruction reads as "Silver Blades'
+    *name* is at Pools of Darkness' `0xY`".
+
+    `tools/podimportmap.py` decodes the routine and compares it with this
+    module's constants. It is what caught two of them being wrong:
+    `HP_CURRENT` was the word at 0x190 and is the byte at 0x191, and
+    `PORTRAIT_BODY` was 0x0B8, which is `hp_rolled`.
+
+    Needs `capstone` and the player's own Amiga disk images; skips without
+    either, which is what CI does.
+    """
+    capstone = pytest.importorskip("capstone")
+    assert capstone
+    from tools import gamedisks, podimportmap
+
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("no Amiga disk images; set $AMIGA_DISKS")
+    try:
+        found = podimportmap.read(quiet=True)
+    except SystemExit as why:
+        pytest.skip(str(why))
+    assert len(found) == 77, len(found)
+    assert podimportmap.check(found) == 0

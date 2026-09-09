@@ -61,32 +61,215 @@ COMBAT_BIAS = 60
 #: region that PoD never reads because both counts are zero.
 RECORD_LENGTH = 484
 
+#: The head of the running-effect chain, a longword. In memory it is a heap
+#: pointer -- BOHLO BART AB's file holds `0x24B946` here and its three ten-byte
+#: nodes hold `0x24B950`, `0x24B95A` and 0 at their own `next` -- and the
+#: loader only tests it, so a `.pc` may carry anything non-zero for "there are
+#: effects".
+EFFECT_CHAIN = 0x004
+#: The head of the item chain in memory, and **the item count in a file**:
+#: `404 + 20 * this + 10 * effects` accounts for every byte of every one of the
+#: nineteen `.pc` files on the Amiga disks, with no remainder. The stale cached
+#: count is :data:`ITEM_COUNT_CACHE`.
+ITEM_CHAIN = 0x008
 EXPERIENCE = 0x044           # u32
+#: Experience's own high-water mark, and the first of three fields Pools of
+#: Darkness has that no earlier title does. `0x015FA4` raises it whenever
+#: experience rises -- `move.l $48(a2), d0; cmp.l $44(a2), d0; bgt;
+#: move.l $44(a2), $48(a2)` -- and `0x03315E` puts it back into experience,
+#: which is the restoration a level drain needs. CONFIRMED from the code; the
+#: matching run in the DOS record is `gap_176`. Not a neutral field.
+EXPERIENCE_HIGHEST = 0x048   # u32
 PLATINUM = 0x04C             # u16 each, in this order
 GEMS = 0x04E
 JEWELRY = 0x050
 AGE = 0x052                  # u16
+#: The base experience a creature is worth, zero for every player character on
+#: every port (#254). A word, as DOS's is.
+EXPERIENCE_AWARD = 0x054     # u16
+ENCUMBRANCE = 0x056          # u16, and see DERIVED: the game recomputes it
 RACE = 0x058
 CLASS = 0x059
+#: The row of the turning matrix, which is a property of what is *being*
+#: turned rather than of the cleric. `goldbox.dos.to_neutral` deliberately
+#: reads nothing from DOS's own copy (#297) and neither does this module.
+TURN_CLASS = 0x05A
+#: `field_83_87`'s third byte. The first, at 0x093, is the NPC control byte.
+FIELD_83_87_THIRD = 0x05B
 SEX = 0x05C
 ALIGNMENT = 0x05D
+#: The combat block, and **Pools of Darkness splits it in two**, which is why
+#: no probe ever separated it from fill: DOS and the two earlier Amiga titles
+#: keep `status, active, side, quickfight` as four adjacent bytes, and this
+#: title puts two of them here and two at 0x184-0x185.
+#:
+#: CONFIRMED. The Silver Blades importer at `0x0261BA` copies that title's
+#: four bytes into exactly these four addresses, and `status` is corroborated
+#: twice over: `tools/amigaenum.py sites` finds `0x05E` indexed into a
+#: nine-entry string table at `0x019250` and `0x020A2E`, in the routine that
+#: turns 0x058 into a race name and 0x059 into a class name, and the table
+#: reads Okay, Animated, tempgone, Running, Unconscious, Dying, Dead,
+#: Petrified, Gone -- DOS's own nine, in DOS's own order. `HOSTILE` is
+#: compared *between two records* (`move.b $5f(a0), d0; cmp.b $5f(a2), d0`),
+#: which is a side test and nothing else.
+STATUS = 0x05E
+HOSTILE = 0x05F
 NAME = 0x060
 NAME_LENGTH = 15             # 15 characters, NUL terminator at 0x06F
 ABILITIES = 0x070            # six base/current pairs; the sheet draws the 2nd
 ABILITY_COUNT = 6
 EXCEPTIONAL_STRENGTH = 0x07C  # one more pair, same shape
+#: Silver Blades' `gap_069`, the byte before `thac0_base` in DOS's own order.
+#: The importer copies it and nothing else names it. UNKNOWN.
+UNNAMED_07E = 0x07E
+#: The class-and-level THAC0 before anything carried, stored `60 - value`,
+#: and the game recomputes it on load -- see :data:`DERIVED`. The twelve pairs
+#: of a `.pc` and a DOS record of the same class and level agree on it 12 of
+#: 12: 44 for a magic-user 14, 48 for a cleric 14, 50 for a paladin 12, 52 for
+#: a ranger 13.
+THAC0_BASE = 0x07F
+#: A paladin's remaining cure-disease uses. 1 for JORILD and TURBO K, the
+#: corpus's two paladins, and 0 for the other seventeen -- which is DOS, where
+#: `paladin_cures` is 1 for Guy de Valois and DEMELTINA and 0 for the rest.
+PALADIN_CURES = 0x080
 #: One byte, not a word: the ramp put 128 at 0x080 and 129 at 0x081 and the
-#: sheet said `129`, where a big-endian word would have said 32897. Two of the
-#: twelve real records have 0x080 set, so where a Pools of Darkness character
-#: above 255 hit points keeps them is still UNKNOWN.
+#: sheet said `129`, where a big-endian word would have said 32897.
+#: **0x080 is not the high half of it**: it is `paladin_cures`, which is what
+#: the two records with 0x080 set are -- both paladins.
 HP_MAX = 0x081
+#: 1 in 19 of 19 here and in 12 of 12 DOS records. Whether a combat icon is
+#: one cell or four.
+ICON_DIMENSION = 0x082
 MOVEMENT = 0x088
+#: The level a dual-classed human left his old class at. The dual-class
+#: routine writes `move.b $89(a2), $8a(a2)` at `0x03CD0A` -- former level
+#: takes the current one -- and then sets level to 1.
+FORMER_LEVEL = 0x08A
 CLASS_LEVELS = 0x09D         # seven bytes, one per class slot
 CLASS_LEVEL_COUNT = 7
+#: Bit 7 says the engine drives this character and the low seven bits are a
+#: companion's morale, stored halved (#303). `field_83_87`'s first byte, which
+#: is where Silver Blades and Pools of Darkness keep it. Zero in 19 of 19, so
+#: every specimen is a character a player made.
+NPC_CONTROL = 0x093
+FIELD_83_87_SECOND = 0x094
+FIELD_83_87_FOURTH = 0x095
+#: The class levels' own high-water marks, the second of the three fields
+#: this title has and no earlier one does. `0x015F6C` walks the seven slots
+#: and raises `0x096[i]` to `0x09D[i]` whenever the current level is higher.
+CLASS_LEVELS_HIGHEST = 0x096
+#: The class a dual-classed character trained out of, one byte a class slot.
+#: `0x03CD06` writes the old level into `0x0A4 + old class` on its way past.
+FORMER_CLASS_LEVELS = 0x0A4
+#: The eight attack-form bytes, which DOS keeps at its own `attack_forms`: two
+#: attack counts, two dice counts, two die sizes, two damage bonuses. The
+#: importer copies all eight, one `move.b` each. `ATTACKS_PER_ROUND_HALVES` is
+#: byte 0 of it and the damage triple is bytes 2, 4 and 6.
+ATTACK_FORMS = 0x0AB
+ATTACK_FORM_COUNT = 8
 DAMAGE_DICE = 0x0AD          # count, sides, bonus -- stride 2, see below
 DAMAGE_STRIDE = 2
 ARMOUR_CLASS = 0x0B3         # stored as 60 - AC
-HP_CURRENT = 0x190           # u16
+#: The strength bonus, and the identity draw used to tell two characters of
+#: the same name apart. Both zero in 19 of 19.
+STRENGTH_BONUS = 0x0B4
+UNNAMED_0AB = 0x0B5
+#: Hit points' high-water mark, the third of the level-drain trio: `0x015FB4`
+#: raises it to `HP_MAX` whenever the maximum rises.
+HP_MAX_HIGHEST = 0x0B6
+#: Hit points as rolled, before the constitution bonus. The arithmetic in the
+#: corpus is the AD&D table exactly: `hp_max - 0x0B8` is 22 for each
+#: magic-user 14 (eleven hit dice at +2), 18 for each cleric 14 (nine at +2),
+#: 40 for each ranger 13 (ten at +4), 36 for the paladin 12 and the fighter 14
+#: (nine at +4), 20 for the thief 16 (ten at +2) and 15 for HOPE, a fighter 5
+#: whose constitution is 17 rather than 18 (five at +3).
+HP_ROLLED = 0x0B8
+#: The sheet portrait, which this title draws on neither port -- zero in 19 of
+#: 19, and `goldbox.dos_layout.POOLS_OF_DARKNESS` gives the pair width zero
+#: (#451). The bytes are here because Silver Blades has them and the importer
+#: copies them; nothing reads them back.
+PORTRAIT_HEAD = 0x0B9
+#: The combat icon, which is a different thing: `CHEAD.TLB` and `CBODY.TLB`
+#: art, a figure slot and the character's size.
+ICON_HEAD = 0x0BB
+ICON_BODY = 0x0BC
+#: Which of eight loaded combat pictures the character draws with (#305). The
+#: code compares it against 7 and 8 and writes 0xFF for none.
+COMBAT_FIGURE = 0x0BD
+#: 1 small, 2 medium -- DOS's own encoding, one greater than the neutral
+#: `size_small`. 1 for BOHLO BART AB, the corpus's one dwarf, and 2 for the
+#: eighteen humans, elves and half-elves.
+SIZE = 0x0BE
+ICON_COLOURS = 0x0BF
+ICON_COLOUR_COUNT = 6
+#: `02 02` in 19 of 19, as DOS's `unnamed_1a4` is in 12 of 12.
+UNNAMED_1A4 = 0x0C5
+#: A cached item count the save leaves stale: 3 in 17 of 19 against an item
+#: region that holds four, five or six. **The count the loader uses is the
+#: longword at 0x008**, which `404 + 20 * count + 10 * effects` consumes
+#: exactly in 19 of 19.
+ITEM_COUNT_CACHE = 0x0C7
+#: How many hands the readied weapon takes. 2 in 18 of 19, as DOS's is in 12
+#: of 12; the one exception is `?T`, the corpus's thief.
+HANDS_USED = 0x0C8
+UNNAMED_0C9 = 0x0C9
+UNNAMED_0CA = 0x0CA
+#: Written from a routine's return value in eight places, one of them
+#: immediately after the engine prints `SCROLLS DROPPED!`, so it is a cached
+#: count of something rather than a level. UNKNOWN.
+UNNAMED_0CB = 0x0CB
+#: Memorised spell ids, 141 bytes -- the same width DOS Pools of Darkness
+#: gives `spells_memorised`, and the run ends exactly where the spellbook
+#: begins. CONFIRMED from the dual-class routine, which clears this region and
+#: the spell slots together: `move.w #$8d, -(a7); lea.l $cc(a2), a0` at
+#: `0x03CD56` and again at `0x03CE00`, either side of `memset($169, 0, 0x1B)`.
+#: Zero in 19 of 19 specimens, which is what nothing-memorised looks like and
+#: is why no specimen could have found it.
+SPELLS_MEMORISED = 0x0CC
+SPELLS_MEMORISED_LENGTH = 141
+#: The spellbook, as a bitmask rather than DOS's byte per spell: bit `i` of
+#: byte `i >> 3` is DOS array index `i`, which is spell id `i + 1`. Sixteen
+#: bytes for 125 ids, bounded above by the cleric's slot array at 0x169.
+#:
+#: CONFIRMED twice. The importer plants Silver Blades' fifteen packed bytes
+#: here (`lea.l $159(a2), a0` at `0x02622C`), and nine of the ten `.pc` files
+#: with a DOS record of the same class and levels agree with it id for id --
+#: 48 ids for a magic-user 14, 27 for a ranger 13, 15 for a paladin 12. The
+#: tenth is the three cleric 14s, which carry the same seventeen extra ids
+#: as each other (8-20 and 76-79, the magic-user's and the druid's level-1
+#: groups); that is a fact about those three characters and not about the
+#: encoding, and it is UNKNOWN.
+SPELLBOOK = 0x159
+SPELLBOOK_BYTES = 16
+#: Spell slots free per level: cleric, druid, magic-user, nine bytes each.
+#: The importer's own loop is the proof of the stride -- `muls.w #$9` against
+#: `addi.l #$169` for the destination and `muls.w #$7` against `addi.l #$ce`
+#: for Silver Blades' source, with `min(d2, 2)` mapping the source index --
+#: and Silver Blades' fourth array, the one no shipped character sets a byte
+#: of, is skipped by a `cmpi.w #$2, d2; beq`. The ten DOS peers agree on all
+#: 27 bytes.
+SPELLS_CASTABLE = 0x169
+SPELL_SLOT_LEVELS = 9
+SPELL_SLOT_CLASSES = ("cleric", "druid", "magic-user")
+#: The other half of the combat block -- see :data:`STATUS`. 1 and 0 in 19 of
+#: 19, which is DOS's `00 01 00 00` default rearranged, and `0x184` carries 63
+#: `tst.b` sites in the code, which is what an in-party flag looks like.
+ACTIVE = 0x184
+QUICKFIGHT = 0x185
+#: The derived combat tail, thirteen bytes the importer copies one for one off
+#: Silver Blades' own `thac0_current, armour_class, roster_tail(9),
+#: hp_current, movement_current`.
+THAC0_CURRENT = 0x186
+ARMOUR_CLASS_CURRENT = 0x187
+ROSTER_TAIL = 0x188
+ROSTER_TAIL_LENGTH = 9
+#: **One byte, not the big-endian word at 0x190.** The importer copies Silver
+#: Blades' one-byte `hp_current` here, and 0x190 is `roster_tail`'s last byte.
+#: The word reading gave the same answer on every record anybody had, because
+#: 0x190 is zero in 19 of 19 and in every payload a probe wrote; it is 0x191
+#: that equals `HP_MAX` in 19 of 19.
+HP_CURRENT = 0x191
+MOVEMENT_CURRENT = 0x192
 
 #: Damage and armour class sit on *odd* offsets two apart, which is the same
 #: base/current pair shape the abilities use at 0x070: the sheet draws the
@@ -130,30 +313,39 @@ SAVING_THROW_COUNT = 5
 LEVEL = 0x089
 THIEF_SKILLS = 0x08B
 THIEF_SKILL_COUNT = 8
-ATTACKS_PER_ROUND_HALVES = 0x0AB
+ATTACKS_PER_ROUND_HALVES = ATTACK_FORMS
 CLASS_BITS = 0x0B7
-PORTRAIT_BODY = 0x0B8
+#: **This said 0x0B8 until #462, and 0x0B8 is `hp_rolled`** -- see
+#: :data:`HP_ROLLED`. The portrait pair is 0x0B9-0x0BA, which the Silver
+#: Blades importer fills from that title's own `portrait_head` and
+#: `portrait_body` and which nothing in this title ever reads back.
+PORTRAIT_BODY = PORTRAIT_HEAD + 1
 
 #: The game recomputes these on load and ignores what the file holds, so the
 #: writer must not fill them in: 0x056 encumbrance (it is the coin count),
 #: 0x186 `60 - THAC0` (it is the best of the class levels), 0x187 armour
 #: class, 0x18B/0x18D/0x18F damage, 0x192 movement.
-DERIVED = (0x056, 0x186, 0x187, 0x18B, 0x18D, 0x18F, 0x192)
+DERIVED = (ENCUMBRANCE, THAC0_CURRENT, ARMOUR_CLASS_CURRENT,
+           0x18B, 0x18D, 0x18F, MOVEMENT_CURRENT)
 
 #: Ramping 0x0B6-0x0C7 makes the loader reject the file with
 #: `ERROR: INVALID ITEM (-1/29)`. That is the GLIB library reader's own
 #: message -- `Invalid item (%d/%d)` lives in the `LBI` code beside
-#: `LBIBase: Invalid Library File` -- and `Disk3_CHEAD.TLB`, the portrait
-#: heads, holds exactly 29 items. So the two numbers are a library item index
-#: and the library's item count: PoD asked `CHEAD.TLB` for item -1.
+#: `LBIBase: Invalid Library File` -- and `Disk3_CHEAD.TLB` holds exactly 29
+#: items. So the two numbers are a library item index and the library's item
+#: count: PoD asked `CHEAD.TLB` for item -1.
 #:
 #: **`CHEAD.TLB` is the combat icon's head, not a sheet portrait** -- this
 #: note called it "the portrait heads" until #451, and Pools of Darkness has
-#: no sheet portrait on either port (#194). So the region is the combat
-#: figure's selector rather than converted inventory, and **zero in it is
-#: accepted**: every payload here has zeros from 0x0B9 up and joins the
-#: party. Which byte of `0x0B6`-`0x0C7` is the icon's head and which its body
-#: is unmeasured; #451 has the shape of the experiment.
+#: no sheet portrait on either port (#194).
+#:
+#: **Which byte is which is measured now** (#462), off the engine's own Silver
+#: Blades importer: 0x0B6 highest hit points, 0x0B7 class bits, 0x0B8 hit
+#: points rolled, 0x0B9-0x0BA the sheet portrait this title never draws,
+#: 0x0BB the icon head, 0x0BC the icon body, 0x0BD the combat figure, 0x0BE
+#: the size, 0x0BF-0x0C4 the six icon colours, 0x0C5-0x0C6 DOS's own
+#: `unnamed_1a4` and 0x0C7 the stale item count. Zero in all of it is still
+#: accepted: every payload here has zeros from 0x0B9 up and joins the party.
 ITEMS = 0x0B6
 
 #: Which of the fields below a probe has actually put on screen. A field is
@@ -178,13 +370,34 @@ CONFIDENCE = {
     "character_class": "CONFIRMED",
     "sex": "CONFIRMED",
     "alignment": "CONFIRMED",
-    "status": "PROBABLE",        # every payload drew OKAY; nothing else tried
+    # **CONFIRMED because the engine's own Silver Blades importer writes it
+    # there** (#462), which is proof from the shipped code rather than from a
+    # probe: no payload has ever drawn a status other than OKAY, and the
+    # sheet's status line indexes a nine-entry table with this byte.
+    "status": "CONFIRMED",
     "level": "PROBABLE",
     "saving_throws": "PROBABLE",
     "thief_skills": "PROBABLE",
     "class_bits": "PROBABLE",
     "thac0": "DERIVED",
     "encumbrance": "DERIVED",
+    # The rest of what #462 decoded.  Every one of these is the engine's own
+    # importer naming the byte, so the *field* is CONFIRMED; whether the game
+    # keeps what a writer puts there is :data:`DERIVED`'s question and a
+    # different one.
+    "thac0_base": "CONFIRMED",
+    "thac0_current": "CONFIRMED",
+    "hp_rolled": "CONFIRMED",
+    "movement_current": "CONFIRMED",
+    "encumbrance_stored": "CONFIRMED",
+    "combat_figure": "CONFIRMED",
+    "hostile": "CONFIRMED",
+    "quickfight": "CONFIRMED",
+    "unnamed_0ab": "CONFIRMED",
+    "experience_award": "CONFIRMED",
+    "portrait": "CONFIRMED",
+    "attack_forms": "CONFIRMED",
+    "roster_tail": "CONFIRMED",
 }
 
 
@@ -236,7 +449,7 @@ class PodCharacter:
 
     @property
     def hit_points_current(self) -> int:
-        return u16(self.raw, HP_CURRENT)
+        return self.raw[HP_CURRENT]
 
     @property
     def movement(self) -> int:
@@ -325,6 +538,134 @@ class PodCharacter:
     def alignment_name(self) -> str:
         return _name(ALIGNMENTS, self.alignment)
 
+    # -- what #462 decoded, off the engine's own Silver Blades importer -----
+
+    @property
+    def abilities_permanent(self) -> list[int]:
+        """The first byte of each ability pair -- the permanent score.
+
+        `goldbox.dos._ability_pair` read the asymmetry out of the shipped
+        overlay for `#401`: byte 0 of an ability pair is the permanent score
+        and byte 1 is the one in force, and exceptional strength is the other
+        way round.  The importer copies both halves of both shapes across, so
+        the Amiga's pairs are DOS's pairs and the same rule applies.
+        """
+        return [self.raw[ABILITIES + 2 * i] for i in range(ABILITY_COUNT)]
+
+    @property
+    def exceptional_strength_permanent(self) -> int:
+        return self.raw[EXCEPTIONAL_STRENGTH + 1]
+
+    @property
+    def thac0_base(self) -> int:
+        """Stored `60 - value`, the family's encoding."""
+        return self.raw[THAC0_BASE]
+
+    @property
+    def thac0_current(self) -> int:
+        return self.raw[THAC0_CURRENT]
+
+    @property
+    def hit_points_rolled(self) -> int:
+        return self.raw[HP_ROLLED]
+
+    @property
+    def former_level(self) -> int:
+        return self.raw[FORMER_LEVEL]
+
+    @property
+    def former_class_levels(self) -> list[int]:
+        return list(self.raw[FORMER_CLASS_LEVELS:
+                             FORMER_CLASS_LEVELS + CLASS_LEVEL_COUNT])
+
+    @property
+    def attack_forms(self) -> bytes:
+        return self.raw[ATTACK_FORMS:ATTACK_FORMS + ATTACK_FORM_COUNT]
+
+    @property
+    def roster_tail(self) -> bytes:
+        return self.raw[ROSTER_TAIL:ROSTER_TAIL + ROSTER_TAIL_LENGTH]
+
+    @property
+    def status(self) -> int:
+        return self.raw[STATUS]
+
+    @property
+    def active(self) -> bool:
+        return bool(self.raw[ACTIVE])
+
+    @property
+    def hostile(self) -> bool:
+        return bool(self.raw[HOSTILE])
+
+    @property
+    def quickfight(self) -> bool:
+        return bool(self.raw[QUICKFIGHT])
+
+    @property
+    def npc_control_byte(self) -> int:
+        return self.raw[NPC_CONTROL]
+
+    @property
+    def combat_figure(self) -> int:
+        return self.raw[COMBAT_FIGURE]
+
+    @property
+    def size(self) -> int:
+        """1 small, 2 medium -- DOS's own encoding, not the neutral one."""
+        return self.raw[SIZE]
+
+    @property
+    def encumbrance(self) -> int:
+        return u16(self.raw, ENCUMBRANCE)
+
+    @property
+    def experience_award(self) -> int:
+        return u16(self.raw, EXPERIENCE_AWARD)
+
+    @property
+    def identity(self) -> int:
+        return self.raw[UNNAMED_0AB]
+
+    @property
+    def movement_current(self) -> int:
+        return self.raw[MOVEMENT_CURRENT]
+
+    @property
+    def spells_known(self) -> list[int]:
+        """Spell ids the sixteen-byte mask at 0x159 has set, ascending.
+
+        Bit `i` of byte `i >> 3` is DOS array index `i`, which is spell id
+        `i + 1` -- the same numbering `goldbox.dos.DosCharacter.spells_known`
+        hands back, so the two ports' lists compare directly.
+        """
+        mask = self.raw[SPELLBOOK:SPELLBOOK + SPELLBOOK_BYTES]
+        return [byte * 8 + bit + 1
+                for byte in range(len(mask)) for bit in range(8)
+                if mask[byte] >> bit & 1]
+
+    @property
+    def spells_memorised(self) -> list[int]:
+        """Memorised spell ids, highest first -- the neutral order.
+
+        Pools of Darkness fills the region from its end backwards, which is
+        what DOS does with its own 141 bytes, so reversing is the transpose
+        and the zeroes fall out.  **No specimen has a spell in it**: all
+        nineteen `.pc` files on the Amiga disks are zero here, so the *order*
+        is DOS's rather than something this port has been watched doing.
+        """
+        raw = self.raw[SPELLS_MEMORISED:
+                       SPELLS_MEMORISED + SPELLS_MEMORISED_LENGTH]
+        return [b for b in reversed(raw) if b]
+
+    @property
+    def spells_castable(self) -> dict[str, tuple[int, ...]]:
+        """Class name -> slots free per spell level, ascending."""
+        return {
+            name: tuple(self.raw[SPELLS_CASTABLE + SPELL_SLOT_LEVELS * i:
+                                 SPELLS_CASTABLE + SPELL_SLOT_LEVELS * (i + 1)])
+            for i, name in enumerate(SPELL_SLOT_CLASSES)}
+
 
 def _name(table: tuple[str, ...], index: int) -> str:
     return table[index] if 0 <= index < len(table) else f"?{index}"
@@ -408,7 +749,7 @@ class PodWriter:
             (ABILITIES, 2 * ABILITY_COUNT, "abilities"),
             (EXCEPTIONAL_STRENGTH, 2, "exceptional_strength"),
             (HP_MAX, 1, "hit_points_max"),
-            (HP_CURRENT, 2, "hit_points_current"),
+            (HP_CURRENT, 1, "hit_points_current"),
             (MOVEMENT, 1, "movement"),
             (CLASS_LEVELS, CLASS_LEVEL_COUNT, "class_levels"),
             (DAMAGE_DICE, 5, "damage"),
@@ -446,7 +787,7 @@ class PodWriter:
         out[HP_MAX] = min(self.hit_points_max, 0xFF)
         current = (self.hit_points_max if self.hit_points_current is None
                    else self.hit_points_current)
-        struct.pack_into(">H", out, HP_CURRENT, current)
+        out[HP_CURRENT] = min(current, 0xFF)
         out[MOVEMENT] = self.movement
         out[CLASS_LEVELS:CLASS_LEVELS + CLASS_LEVEL_COUNT] = bytes(
             self.class_levels)
@@ -653,7 +994,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                "single-class code"),
     ("hp_max", "a Gold Box maximum is 16 bits, the Amiga's one byte at 0x081; "
                "above 255 it is clamped and reported"),
-    ("hp_current", "copied to the u16 at 0x190, capped at the maximum the "
+    ("hp_current", "copied to the byte at 0x191, capped at the maximum the "
                    "Amiga byte could hold"),
     *((k, "one of the six abilities at 0x070, written to both halves of its "
           "base/current pair") for k in ABILITY_KEYS),
@@ -668,27 +1009,40 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: `neutral.Writer.finish` quotes these for whatever the character carries,
 #: and :func:`field_disposition` states the whole contract whether or not any
 #: one character happens to carry it.
+#:
+#: **Most of these said "no located home" until #462 and had one all along.**
+#: The record is decoded now -- `tools/podimportmap.py` reads the engine's own
+#: Silver Blades importer and every offset is named -- so what is left is a
+#: writer that has not been extended to fill them, which is a different and
+#: smaller thing than a decode that has not happened. Each row below says
+#: which it is, and #475 is the ticket for the writer.
 DROPPED: tuple[tuple[str, str], ...] = (
-    # Both arrived with #192's Curse container work and belong to the C64 and
-    # DOS records.  Pools of Darkness' `.pc` is the only Amiga record this
-    # writer produces and neither field has been located in it -- #55 placed
-    # every field of the *Curse* and *Silver Blades* records, not this one.
-    ("abilities_second", "the second ability array is a C64 and DOS field; "
-                         "no home for it has been located in the `.pc`"),
-    ("former_levels", "the class a dual-classed character trained out of; "
-                      "no home for it has been located in the `.pc`"),
-    ("copper", "only platinum, gems and jewelry have been located in the "
-               "`.pc`; the lighter coins have no known home"),
-    ("silver", "no located home -- see `copper`"),
-    ("electrum", "no located home -- see `copper`"),
-    ("gold", "no located home -- see `copper`"),
-    ("infravision", "no located home; PoD derives what it needs from race"),
-    ("hp_rolled", "the pre-constitution roll; the Amiga keeps only the "
-                  "maximum"),
-    ("hp_lost_to_drain", "level drain is bookkeeping the Amiga record has no "
-                         "located home for -- see `levels_drained`"),
-    ("levels_drained", "no located home; a drained character arrives at the "
-                       "levels the record actually holds"),
+    ("abilities_second", "the *first* byte of each ability pair at 0x070 "
+                         "(#462), which the reader takes; the writer puts the "
+                         "one score it is given in both halves of the pair, "
+                         "so nothing here differs from what it writes"),
+    ("former_levels", "the seven bytes at 0x0A4 (#462), which the writer does "
+                      "not fill yet. `to_pc` reports each class left behind "
+                      "by name instead"),
+    ("copper", "Pools of Darkness keeps platinum, gems and jewelry and no "
+               "other coin, on both of its ports, so a source of this title "
+               "has none to give"),
+    ("silver", "see `copper`: this title has three money slots"),
+    ("electrum", "see `copper`: this title has three money slots"),
+    ("gold", "see `copper`: this title has three money slots"),
+    ("infravision", "a C64 field; neither this title's `.pc` nor its DOS "
+                    "record has one, and PoD takes what it needs from race"),
+    ("hp_rolled", "the byte at 0x0B8 (#462), which the writer does not fill "
+                  "yet -- this row said the Amiga kept only the maximum, and "
+                  "the record keeps the pre-constitution roll as well"),
+    ("hp_lost_to_drain", "this title counts level drain the other way round, "
+                         "keeping the highest levels reached at 0x096, the "
+                         "highest experience at 0x048 and the highest hit "
+                         "points at 0x0B6 (#462). Its DOS record has no "
+                         "drained-level pair either, so a source of this "
+                         "title has nothing to give"),
+    ("levels_drained", "see `hp_lost_to_drain`: the high-water marks are what "
+                       "this title stores instead"),
     # #451 (The Amiga Pools of Darkness notes call the combat icon a sheet
     # portrait, and describe a menu the title has not got).  These two rows
     # used to say PoD's portrait art is `CHEAD.TLB` with a numbering of its
@@ -710,71 +1064,92 @@ DROPPED: tuple[tuple[str, str], ...] = (
                       "own DOS record has no such field -- so a source of "
                       "this title never holds one"),
     ("portrait_body", "see `portrait_head`: the title draws no sheet face"),
-    ("inventory", "the appended item region past 484 bytes is undecoded, and "
-                  "a Pool of Radiance item id and a Pools of Darkness one are "
-                  "two different games' tables. The character arrives "
-                  "carrying nothing"),
-    ("innate_effects", "racial abilities and item powers share one id "
-                       "namespace with the C64's, and PoD's is a third; "
-                       "nothing here can be crossed by number"),
-    ("granted_effects", "what a ring or a girdle granted, whole -- and the "
-                        "id inside it is in the earlier game's numbering, so "
-                        "it cannot be crossed either. See `innate_effects`"),
-    ("spells_memorised", "PoD runs cleric spells to level 7 and mage to 9, so "
-                         "its id space is larger than the C64's 1-56 and the "
-                         "mapping is not the identity. Re-memorise in game"),
-    ("spells_known", "the spellbook's home in the `.pc` is undecoded -- see "
-                     "`spells_memorised`"),
-    ("spells_castable", "slots free per level follow from class and level, "
-                        "which PoD recomputes on load"),
-    ("npc", "a roster flag of the source save; PoD decides for itself what it "
-            "has just imported"),
-    ("npc_control_byte", "a companion's morale, on the two ports that keep "
-                         "it in this same byte -- see npc; PoD decides for "
-                         "itself what it has just imported"),
-    ("combat_figure", "which of eight loaded combat pictures the character "
-                      "drew with in the party it is leaving; PoD allocates "
-                      "its own on import"),
-    ("encumbrance", "PoD recomputes it: a probe that set it to 1234 drew 233, "
-                    "which is the character's own coins, gems and jewelry"),
-    ("size_small", "no located home; PoD takes size from race"),
-    ("turn_power", "no located home for a cleric's turning strength"),
-    ("attack_level", "no located home; PoD reads its attack tables at the "
-                     "class level"),
-    ("attack_forms", "the running attack-form bytes are combat state, and the "
-                     "0x0AD damage triple is written unarmed instead"),
-    ("roster_tail", "the source roster's derived block: armour bonus and the "
+    ("inventory", "the item region past 404 bytes is decoded -- twenty bytes "
+                  "a record, the later Amiga titles' own item node (#462) -- "
+                  "and the writer does not build one yet. The character "
+                  "arrives carrying nothing"),
+    ("innate_effects", "the effect chain past the item region is decoded, ten "
+                       "bytes a node (#462), and the writer does not build "
+                       "one yet"),
+    ("granted_effects", "see `innate_effects`. Which node is innate and which "
+                        "a readied item granted cannot be told apart for this "
+                        "title, the same `LATER_EFFECT_SPLIT_UNKNOWN` that "
+                        "binds Curse and Silver Blades"),
+    ("spells_memorised", "the 141 bytes at 0x0CC (#462), which the writer does "
+                         "not fill yet. **The fill direction is not "
+                         "confirmed**: DOS fills its own region from the end "
+                         "backwards and nothing has watched this port do it, "
+                         "so writing one wrong way round would hand a "
+                         "character somebody else's spells"),
+    ("spells_known", "the sixteen-byte mask at 0x159 (#462), which the writer "
+                     "does not fill yet. The ids are the DOS record's own, so "
+                     "the conversion is a repack rather than a lookup"),
+    ("spells_castable", "the three nine-byte arrays at 0x169, 0x172 and 0x17B "
+                        "(#462), which the writer does not fill yet. Slots "
+                        "free per level follow from class and level, which "
+                        "PoD recomputes on load"),
+    ("npc", "bit 7 of the control byte at 0x093 (#462), which the writer does "
+            "not fill yet"),
+    ("npc_control_byte", "the whole byte at 0x093 -- see `npc`"),
+    ("combat_figure", "the byte at 0x0BD (#462), which the writer does not "
+                      "fill yet: PoD allocates its own slot of eight on "
+                      "import, and a source value out of that range is one "
+                      "the engine's own compares at 7 and 8 would not expect"),
+    ("encumbrance", "the word at 0x056, which PoD recomputes: a probe that "
+                    "set it to 1234 drew 233, which is the character's own "
+                    "coins, gems and jewelry"),
+    ("size_small", "the byte at 0x0BE (#462), which the writer does not fill "
+                   "yet; PoD takes size from race"),
+    ("turn_power", "a cleric's turning strength is worked out from the class "
+                   "levels when TURN is pressed, on both ports; the record's "
+                   "0x05A is DOS's `turn_class`, which is a property of what "
+                   "is being turned, and DOS's own reader takes nothing from "
+                   "it either (#297)"),
+    ("attack_level", "**the one field of the record still unlocated** (#462): "
+                     "Silver Blades keeps it at Amiga 0x080 and this title's "
+                     "importer does not copy it. PoD reads its attack tables "
+                     "at the class level, and DOS Pools of Darkness holds 0 "
+                     "in 12 of 12"),
+    ("attack_forms", "the eight bytes at 0x0AB (#462), which the writer does "
+                     "not fill yet; the 0x0AD damage triple inside it is "
+                     "written unarmed instead"),
+    ("roster_tail", "the nine bytes at 0x188 (#462): the armour bonus and the "
                     "running attack forms, all of which PoD recomputes"),
-    ("thac0_base", "PoD recomputes THAC0 on load from the class levels and "
-                   "ignores what the file holds"),
-    ("thac0_current", "recomputed on load -- see `thac0_base`"),
-    ("armour_class", "recomputed on load; the record gets the unarmoured "
-                     "constant instead"),
+    ("thac0_base", "the byte at 0x07F (#462). PoD recomputes THAC0 on load "
+                   "from the class levels and ignores what the file holds"),
+    ("thac0_current", "the byte at 0x186, recomputed on load -- see "
+                      "`thac0_base`"),
+    ("armour_class", "the byte at 0x187, recomputed on load; the record gets "
+                     "the unarmoured constant at 0x0B3 instead"),
     ("armour_class_base", "recomputed on load -- see `armour_class`"),
-    ("movement_current", "recomputed on load: a probe that set the derived "
-                         "movement to 99 drew the base's 12"),
-    ("status", "no located home in the `.pc`. The sheet has a STATUS line and "
-               "every payload a probe has put on screen drew OKAY, so the "
-               "byte behind it has never been separated from fill -- see "
-               "`CONFIDENCE['status']`. The character arrives well"),
-    ("active", "see `status`: whether PoD marks a character out of the party "
-               "the way DOS and the C64 do is not located either"),
-    ("hostile", "no located home; a player character is never on the enemy's "
-                "side and no Amiga specimen separates the byte from fill -- "
-                "see `docs/169-dos-combat-side.md`"),
-    ("quickfight", "no located home for the quickfight flag"),
-    ("unnamed_0ab", "the DOS and C64 identity draw, used to break a same-name "
-                    "tie at creation; no home has been located for it in the "
-                    "`.pc`, and Pools of Darkness has its own creation flow"),
+    ("movement_current", "the byte at 0x192, recomputed on load: a probe that "
+                         "set it to 99 drew the base's 12"),
+    ("status", "the byte at 0x05E (#462), which the writer does not fill yet, "
+               "so a converted character arrives Okay -- which is what the "
+               "zero there means. The sheet's STATUS line indexes a "
+               "nine-entry table with this byte and the table is DOS's own "
+               "nine in DOS's own order"),
+    ("active", "the byte at 0x184 (#462), which the writer does not fill "
+               "yet. **19 of 19 records the game wrote hold 1 there and this "
+               "writer leaves 0**, which is the flag's out-of-the-party "
+               "value on the other two ports"),
+    ("hostile", "the byte at 0x05F (#462), which the writer does not fill "
+                "yet. A player character is never on the enemy's side, so 0 "
+                "is the right value in any case -- see "
+                "`docs/169-dos-combat-side.md`"),
+    ("quickfight", "the byte at 0x185 (#462), which the writer does not fill "
+                   "yet"),
+    ("unnamed_0ab", "the identity draw, at 0x0B5 (#462), which the writer "
+                    "does not fill yet. Zero in 19 of 19 records the game "
+                    "wrote, where DOS holds 0, 47, 85, 138 and 249"),
     # #254: a creature's own field, zero in every player record measured on
-    # any port.  `experience_award` has a home in DOS Pools of Darkness'
-    # own 510-byte record (0x198), so it is undecoded in the `.pc` rather
-    # than absent -- the same "no located home" as everything else on this
-    # list.  `experience_per_hit_point` is narrower: the later engine drops
-    # the byte outright, so DOS Pools of Darkness has nowhere for it either
-    # (`goldbox/dos_layout.py`'s 510-byte shape declares `experience_award`
-    # alone) and the `.pc` has nothing to decode.
-    ("experience_award", "no located home in the `.pc`"),
+    # any port.  `experience_per_hit_point` is narrower: the later engine
+    # drops the byte outright, so DOS Pools of Darkness has nowhere for it
+    # either (`goldbox/dos_layout.py`'s 510-byte shape declares
+    # `experience_award` alone) and the `.pc` has nothing to hold.
+    ("experience_award", "the word at 0x054 (#462), which the writer does not "
+                         "fill yet; it is zero in every player record on "
+                         "either port"),
     ("experience_per_hit_point", "Pools of Darkness' own engine keeps no "
                                  "such byte in any of its records; the "
                                  "later engine adds the base award alone"),
@@ -824,16 +1199,40 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
     ("jewelry", "jewelry, the .pc's big-endian word at 0x050"),
     ("movement", "movement, the .pc's byte at 0x088"),
     ("hp_max", "hp_max, the .pc's byte at 0x081"),
-    ("hp_current", "hp_current, the .pc's big-endian word at 0x190"),
+    ("hp_current", "hp_current, the .pc's byte at 0x191"),
     ("exceptional_strength",
      "exceptional_strength, the current half of the pair at 0x07C"),
     *((k, f"{k}, the current half of its pair at 0x070") for k in ABILITY_KEYS),
     *((k, f"{k}, one of the five saving throws at 0x083") for k in SAVE_KEYS),
     *((k, f"{k}, one of the eight thief skills at 0x08B") for k in THIEF_KEYS),
+    # **These were one byte until #462 and are two.** Both used to be read
+    # from 0x0B3, because that was the only armour class anybody had located;
+    # the Silver Blades importer copies that title's `armour_class_base` to
+    # 0x0B3 and its `armour_class` to 0x187, so the pair is separated now and
+    # an Amiga character in plate mail no longer converts as unarmoured.
     ("armour_class",
-     "armour_class, the .pc's byte at 0x0B3 in the family's stored "
-     "60 - value form"),
-    ("armour_class_base", "armour_class_base, the same byte -- see below"),
+     "armour_class, the .pc's byte at 0x187 in the family's stored "
+     "60 - value form -- what the game last computed"),
+    ("armour_class_base",
+     "armour_class_base, the .pc's byte at 0x0B3, which is the unarmoured "
+     "60 - 10 = 50 in 19 of 19 records"),
+    ("thac0_base", "thac0_base, the .pc's byte at 0x07F, stored 60 - value"),
+    ("thac0_current", "thac0_current, the .pc's byte at 0x186"),
+    ("hp_rolled", "hp_rolled, the .pc's byte at 0x0B8"),
+    ("movement_current", "movement_current, the .pc's byte at 0x192"),
+    ("encumbrance", "encumbrance, the .pc's big-endian word at 0x056"),
+    ("attack_forms", "attack_forms, the eight bytes at 0x0AB"),
+    ("roster_tail", "roster_tail, the nine bytes at 0x188"),
+    ("combat_figure", "combat_figure, the .pc's byte at 0x0BD"),
+    ("hostile", "hostile, the .pc's byte at 0x05F"),
+    ("quickfight", "quickfight, the .pc's byte at 0x185"),
+    ("unnamed_0ab", "unnamed_0ab, the .pc's byte at 0x0B5"),
+    ("experience_award", "experience_award, the .pc's word at 0x054"),
+    ("portrait_head", "portrait_head, the .pc's byte at 0x0B9 -- zero in 19 "
+                      "of 19, since this title draws no sheet face"),
+    ("portrait_body", "portrait_body, the .pc's byte at 0x0BA"),
+    ("spells_castable", "spells_castable, the three nine-byte arrays at "
+                        "0x169, 0x172 and 0x17B"),
 )
 
 #: Neutral fields the reader builds by a rule rather than a copy.
@@ -846,29 +1245,100 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("levels", "the seven-slot array at 0x09D, named by "
                "`CLASS_LEVEL_SLOTS`, which is the same seven slots in the "
                "same order as this title's DOS record"),
+    ("former_levels", "the seven-slot array at 0x0A4, named the same way, "
+                      "non-zero entries only"),
+    ("abilities_second", "the *first* byte of each ability pair at 0x070, "
+                         "which is the permanent score behind the one in "
+                         "force -- and byte 1 of the exceptional-strength "
+                         "pair, which stores its two the other way round "
+                         "(#401)"),
+    ("spells_known", "the sixteen-byte mask at 0x159 unpacked to ids: bit i "
+                     "of byte i >> 3 is spell id i + 1, the same numbering "
+                     "the DOS record's byte-per-spell array has"),
+    ("spells_memorised", "the 141 bytes at 0x0CC reversed into the neutral "
+                         "highest-first order, zeroes dropped"),
+    ("status", "the byte at 0x05E turned into one of the game's own nine "
+               "status words, which are DOS's nine in DOS's order"),
+    ("active", "the byte at 0x184, which is 1 for a character in the party"),
+    ("npc", "bit 7 of the control byte at 0x093"),
+    ("npc_control_byte", "the whole control byte at 0x093, when bit 7 is set"),
+    ("size_small", "the byte at 0x0BE less one: this port stores DOS's 1 "
+                   "small / 2 medium and the neutral record keeps 0 small / "
+                   "1 large"),
+)
+
+
+#: Neutral fields the `.pc` reader takes nothing from, and why.
+#:
+#: **This was computed from the writer's :data:`DROPPED` until #462**, on the
+#: reasoning that a home nobody has found is missing in both directions.  That
+#: stopped being true the day the record was decoded: reading a byte is free
+#: and writing one into a field the loader acts on is a change that has to be
+#: watched in the running game first, so the two lists now say different
+#: things and each says its own.
+#:
+#: What is left is three kinds of row, and none of them is a decode that has
+#: not happened:
+#:
+#: * **this title has no such field, on either port.**  Pools of Darkness
+#:   keeps three money slots rather than seven, replaces `levels_drained` and
+#:   `hp_lost_to_drain` with high-water marks of the levels, the experience
+#:   and the hit points (0x096, 0x048, 0x0B6), and drops
+#:   `experience_per_hit_point` outright.  `infravision` is a C64 field and
+#:   `goldbox.dos_layout.POOLS_OF_DARKNESS` declares none either.  A
+#:   same-title conversion can never be handed one of these, so there is
+#:   nothing to lose;
+#: * **neither port stores it.**  `turn_power` is the cleric's own turning
+#:   strength, which both engines work out from the class levels when the
+#:   command is pressed; `goldbox.dos.to_neutral` deliberately reads nothing
+#:   from DOS's `turn_class` for the same reason (#297), and this record's own
+#:   copy is at 0x05A;
+#: * **one field is genuinely still unlocated**, and it is `attack_level`.
+POD_READ_DROPPED: tuple[tuple[str, str], ...] = (
+    ("copper", "Pools of Darkness keeps platinum, gems and jewelry and no "
+               "other coin, on both of its ports, so no character of this "
+               "title has any of the lighter coins to convert"),
+    ("silver", "see `copper`: this title has three money slots"),
+    ("electrum", "see `copper`: this title has three money slots"),
+    ("gold", "see `copper`: this title has three money slots"),
+    ("levels_drained", "this title counts level drain the other way round: "
+                       "it keeps the *highest* levels reached at 0x096, the "
+                       "highest experience at 0x048 and the highest hit "
+                       "points at 0x0B6, and restores from those. Its DOS "
+                       "record has no drained-level pair either"),
+    ("hp_lost_to_drain", "see `levels_drained`: the high-water marks are "
+                         "what this title stores instead"),
+    ("experience_per_hit_point", "the later engine keeps no such byte in any "
+                                 "of its records, on either port"),
+    ("infravision", "a C64 field; neither this title's `.pc` nor its DOS "
+                    "record has one, and the game takes what it needs from "
+                    "race"),
+    ("turn_power", "a cleric's turning strength is worked out from the class "
+                   "levels when TURN is pressed, on both ports. The record's "
+                   "0x05A is DOS's `turn_class`, which is a property of what "
+                   "is being turned, and DOS's own reader takes nothing from "
+                   "it either (#297)"),
+    ("attack_level", "**the one field still unlocated** (#462). Silver "
+                     "Blades keeps it at Amiga 0x080 and this title's "
+                     "importer does not copy it; 0x080 is `paladin_cures` "
+                     "here and 0x082 is `icon_dimension`, so it is not "
+                     "merely displaced. DOS Pools of Darkness holds 0 in 12 "
+                     "of 12, so nothing observable is lost"),
+    ("inventory", "the item region past 404 bytes is decoded and this reader "
+                  "does not read it yet -- `tools/podpcregions.py` does. A "
+                  "converted character still arrives carrying nothing"),
+    ("innate_effects", "the effect chain past the item region is decoded and "
+                       "this reader does not read it yet -- see `inventory`"),
+    ("granted_effects", "see `innate_effects`. Which node is innate and which "
+                        "was granted by a readied item cannot be told apart "
+                        "for this title, the same `LATER_EFFECT_SPLIT_UNKNOWN` "
+                        "that binds Curse and Silver Blades"),
 )
 
 
 def pod_read_dropped() -> tuple[tuple[str, str], ...]:
-    """Neutral fields the `.pc` reader takes nothing from, and why.
-
-    Computed from :data:`DROPPED` rather than listed a second time.  The
-    writer's list is already the account of what has no located home in the
-    484-byte record, and a home nobody has found is missing in both
-    directions -- so a row copied by hand here would be a row that could
-    drift out of step with the one below it.
-
-    **Two names are on the writer's list and not on this one**, and the
-    asymmetry is the point: `armour_class` and `armour_class_base` are
-    *readable* -- the record holds the byte, and all twelve genuine records
-    on disk 3 hold the unarmoured 10 -- and *not writable*, because Pools of
-    Darkness recomputes armour class on load and ignores what the file says.
-    A reader that refused to read a byte the record holds would be inventing
-    a loss.
-    """
-    filled = ({n for n, _ in POD_READ_DIRECT}
-              | {n for n, _ in POD_READ_TRANSFORMED})
-    return tuple((n, why) for n, why in DROPPED if n not in filled)
+    """:data:`POD_READ_DROPPED`, as a function so callers need not change."""
+    return POD_READ_DROPPED
 
 
 def pod_field_disposition() -> dict[str, str]:
@@ -878,12 +1348,14 @@ def pod_field_disposition() -> dict[str, str]:
     test that keeps this half honest: a field `goldbox/neutral.py` declares
     and this names nowhere would be one dropped in silence.
 
-    **It is a short account of a long record.** 38 of the 75 neutral fields
-    are filled and 37 are not, and the 37 are not a judgement -- they are the
-    part of the 484-byte record nobody has decoded: the spellbook, the
-    memorised list, the item region, the effect region, the combat tail and
-    the roster block. `docs/124-amiga-port.md` §1 is how the 38 were found
-    and is also the list of what was not.
+    **It was a short account of a long record and is not any more.** 38 of
+    the 75 neutral fields were filled when this reader was written and 37
+    were not; `#462` decoded the rest of the record off the engine's own
+    Silver Blades importer, and what is left is thirteen names of which nine
+    are fields this *title* has on neither port, three are the item and
+    effect regions this reader has not been taught to walk yet, and one --
+    `attack_level` -- is the only field in the record still unlocated.
+    `docs/124-amiga-port.md` §1 is the map.
     """
     return neutral.disposition(POD_READ_DIRECT, POD_READ_TRANSFORMED,
                                pod_read_dropped(), "the neutral")
@@ -939,6 +1411,26 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
         "exceptional_strength": (char.exceptional_strength,
                                  EXCEPTIONAL_STRENGTH,
                                  "exceptional_strength"),
+        # -- what #462 decoded, off the engine's own Silver Blades importer -
+        "thac0_base": (char.thac0_base, THAC0_BASE, "thac0_base"),
+        "thac0_current": (char.thac0_current, THAC0_CURRENT,
+                          "thac0_current"),
+        "hp_rolled": (char.hit_points_rolled, HP_ROLLED, "hp_rolled"),
+        "movement_current": (char.movement_current, MOVEMENT_CURRENT,
+                             "movement_current"),
+        "encumbrance": (char.encumbrance, ENCUMBRANCE,
+                        "encumbrance_stored"),
+        "combat_figure": (char.combat_figure, COMBAT_FIGURE, "combat_figure"),
+        "hostile": (char.hostile, HOSTILE, "hostile"),
+        "quickfight": (char.quickfight, QUICKFIGHT, "quickfight"),
+        "unnamed_0ab": (char.identity, UNNAMED_0AB, "unnamed_0ab"),
+        "experience_award": (char.experience_award, EXPERIENCE_AWARD,
+                             "experience_award"),
+        "portrait_head": (char.raw[PORTRAIT_HEAD], PORTRAIT_HEAD,
+                          "portrait"),
+        "portrait_body": (char.raw[PORTRAIT_BODY], PORTRAIT_BODY, "portrait"),
+        "attack_forms": (char.attack_forms, ATTACK_FORMS, "attack_forms"),
+        "roster_tail": (char.roster_tail, ROSTER_TAIL, "roster_tail"),
     }
     for name, (value, offset, key) in scalars.items():
         out.set(name, value, f"Amiga .pc {name} @{offset:#05x} "
@@ -979,27 +1471,108 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # .armour_class` subtracts the bias for a person to read; the neutral
     # record keeps the family's stored `60 - value` form, which is what
     # every other codec sets.
-    stored = char.raw[ARMOUR_CLASS]
-    for name in ("armour_class", "armour_class_base"):
-        out.set(name, stored,
-                f"Amiga .pc armour class @{ARMOUR_CLASS:#05x}, stored "
-                f"60 - value. Pools of Darkness recomputes armour class on "
-                f"load from what the character is wearing and ignores what "
-                f"the file holds, and all twelve genuine records on disk 3 "
-                f"store the unarmoured {COMBAT_BIAS - UNARMOURED_AC}",
-                grade("armour_class"))
+    #
+    # **Both of these came from 0x0B3 until #462**, so an Amiga character in
+    # plate mail converted as though he were unarmoured.  The Silver Blades
+    # importer separates them: that title's `armour_class_base` goes to 0x0B3
+    # and its `armour_class` to 0x187.
+    out.set("armour_class_base", char.raw[ARMOUR_CLASS],
+            f"Amiga .pc armour class base @{ARMOUR_CLASS:#05x}, stored "
+            f"60 - value, and the unarmoured "
+            f"{COMBAT_BIAS - UNARMOURED_AC} in 19 of 19 records",
+            grade("armour_class"))
+    out.set("armour_class", char.raw[ARMOUR_CLASS_CURRENT],
+            f"Amiga .pc armour class @{ARMOUR_CLASS_CURRENT:#05x}, stored "
+            f"60 - value -- what the game last computed from what the "
+            f"character is wearing. Pools of Darkness recomputes it on load",
+            grade("armour_class"))
 
-    # One sentence rather than thirty-seven, because a character read out of
-    # a `.pc` today arrives with no spells, no possessions and no running
-    # magic, and a conversion that says nothing about that is the silence
-    # `.claude/rules/conversions.md` forbids.  **The wording is not
-    # approved**: every sentence a player reads is Donald's
-    # (`.claude/rules/gui-text.md`), and this is a placeholder that names the
-    # loss rather than a line anybody has signed off.
+    # -- the second copy of each ability, which is the permanent score -------
+    second = dict(zip(ABILITY_KEYS, char.abilities_permanent))
+    second["exceptional_strength"] = char.exceptional_strength_permanent
+    out.set("abilities_second", second,
+            f"Amiga .pc ability pairs @{ABILITIES:#05x}, the *first* byte of "
+            f"each -- and byte 1 of the exceptional-strength pair at "
+            f"{EXCEPTIONAL_STRENGTH:#05x}, which stores its two the other "
+            f"way round (#401)",
+            Confidence.PROBABLE, neutral.Provenance.RESHAPED)
+
+    # -- the class a dual-classed human left, non-zero entries only ---------
+    former = {name.lower(): level
+              for name, level in zip(CLASS_LEVEL_SLOTS,
+                                     char.former_class_levels) if level}
+    out.set("former_levels", former,
+            f"Amiga .pc former class levels @{FORMER_CLASS_LEVELS:#05x}, "
+            f"named the same way as the current array. The dual-class "
+            f"routine writes the old level into this array and the old "
+            f"character level into {FORMER_LEVEL:#05x}",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+
+    # -- magic ---------------------------------------------------------------
+    out.set("spells_known", char.spells_known,
+            f"Amiga .pc spellbook mask @{SPELLBOOK:#05x}, "
+            f"{SPELLBOOK_BYTES} bytes unpacked to ids",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+    out.set("spells_memorised", char.spells_memorised,
+            f"Amiga .pc memorised list @{SPELLS_MEMORISED:#05x}, "
+            f"{SPELLS_MEMORISED_LENGTH} bytes reversed into the neutral "
+            f"highest-first order",
+            Confidence.PROBABLE, neutral.Provenance.RESHAPED)
+    out.set("spells_castable", char.spells_castable,
+            f"Amiga .pc spell slots @{SPELLS_CASTABLE:#05x}, three "
+            f"{SPELL_SLOT_LEVELS}-byte arrays: "
+            f"{', '.join(SPELL_SLOT_CLASSES)}",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+
+    # -- how the character is, and whether the game is still playing them ----
+    # A status past the end of the table is not a state the engine can draw,
+    # so it is reported rather than turned into the nearest name -- the same
+    # rule `goldbox.dos.to_neutral` follows.
+    if char.status < len(neutral.STATUS_NAMES):
+        out.set("status", neutral.STATUS_NAMES[char.status],
+                f"Amiga .pc status @{STATUS:#05x} = {char.status}, the "
+                f"game's own {len(neutral.STATUS_NAMES)} status words in "
+                f"order -- read out of the table the character sheet indexes",
+                Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+    else:
+        out.drop(f"The character's status: this file holds {char.status} "
+                 f"there and the game has only "
+                 f"{len(neutral.STATUS_NAMES)} states")
+    out.set("active", char.active,
+            f"Amiga .pc @{ACTIVE:#05x}: 1 for a character in the party, in "
+            f"19 of 19 records",
+            Confidence.CONFIRMED)
+
+    # -- the NPC control byte: bit 7 says the engine drives this character ---
+    control = char.npc_control_byte
+    out.set("npc", bool(control & 0x80),
+            f"bit 7 of the control byte at {NPC_CONTROL:#05x}, which is "
+            f"`field_83_87`'s first byte -- where this title and Silver "
+            f"Blades keep it (#303)",
+            Confidence.PROBABLE)
+    if control & 0x80:
+        out.set("npc_control_byte", control,
+                f"Amiga .pc @{NPC_CONTROL:#05x}, unchanged -- bit 7 plus the "
+                f"low seven bits of morale, stored halved",
+                Confidence.PROBABLE)
+
+    # -- size: the Amiga's 1 small / 2 medium, the neutral 0 small / 1 large -
+    out.set("size_small", max(0, char.size - 1),
+            f"Amiga .pc size @{SIZE:#05x} less one. 1 for the corpus's one "
+            f"dwarf and 2 for the eighteen humans, elves and half-elves",
+            Confidence.PROBABLE, neutral.Provenance.RESHAPED)
+
+    # One sentence rather than a dozen, because a character read out of a
+    # `.pc` today still arrives carrying nothing and with no running magic:
+    # `#462` decoded the item and effect regions and this reader has not been
+    # taught to walk them.  **The wording is not approved**: every sentence a
+    # player reads is Donald's (`.claude/rules/gui-text.md`), and this is a
+    # placeholder that names the loss rather than a line anybody has signed
+    # off.
     out.warnings.append(
         "This character was read from an Amiga Pools of Darkness file. The "
-        "parts of that file holding spells, possessions and running magic "
-        "have not been decoded yet, so the character arrives without them. "
+        "part of that file holding possessions and running magic has not "
+        "been read yet, so the character arrives without them. "
         "(NOT APPROVED)")
 
     # **No `out.drop` line here, and that is deliberate rather than an
