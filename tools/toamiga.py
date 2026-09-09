@@ -1,5 +1,27 @@
 """Write a C64 party into Amiga Pools of Darkness as `Save/NAME.pc` files.
 
+**A laboratory tool. What it makes is a save no player should have**, and
+Donald decided on 2026-09-08 to keep it on those terms rather than delete it.
+
+It converts a party of one title into a *different* title's save, which
+`.claude/rules/conversions.md` forbids: **Wish changes the port and the game
+changes the title.** A player who has finished Secret of the Silver Blades on
+the C64 converts it to an Amiga Silver Blades save in Wish, and then Amiga
+Pools of Darkness reads that party itself -- the engine's own feature, which
+knows what an item id and an area number mean on both sides. This tool does
+that job with none of that knowledge.
+
+It cannot be narrowed to obey the rule, either: Pools of Darkness never
+shipped on the C64, so "the same title's other port" does not exist for it.
+
+**So it is for exercising the Amiga writer and for nothing else**, which is
+what it was written for before there were real conversions to exercise it.
+`tools/toamigapor.py` is the honest same-title route for Pool of Radiance, and
+`goldbox.amiga.export_party` -- the conversion this file only wraps -- is
+tested in `tests/test_amiga.py` and `tests/test_exports.py` and used by
+`editor/exports.py`. Nothing imports this wrapper.
+
+
     tools/toamiga.py PORSAVE.D64 -o work/pod-save/SAVE
 
 One file per character, 484 bytes each, ready to be dropped into the `Save`
