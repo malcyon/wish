@@ -45,7 +45,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -331,11 +330,11 @@ def _stage_save(slot, save: str) -> str:
     A pool slot is reused, so whatever the last tenant left in `SIDE0` is
     another game's save disk -- which is how a Curse run once wrote four
     characters beside Pool of Radiance's (`tools/curserun.py`).
+    `por.stage_writable` unlinks it first and gives the copy the write bit
+    back, since a specimen out of `$WISH_SPECIMENS` is read-only by design
+    (`#472`).
     """
-    target = pathlib.Path(slot.dir) / "SIDE0.D64"
-    shutil.copy(save, target)
-    os.chmod(target, 0o644)
-    return str(target)
+    return por.stage_writable(save, pathlib.Path(slot.dir) / "SIDE0.D64")
 
 
 TITLES = {

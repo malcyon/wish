@@ -40,7 +40,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -124,8 +123,10 @@ def run(args) -> int:
     try:
         boot = S.stage_disks(slot, disks)
         save = pathlib.Path(slot.dir) / "SIDE0.D64"
-        shutil.copy(args.save, save)
-        os.chmod(save, 0o644)   # the specimen tree is read-only; the copy is ours
+        # the specimen tree is read-only; `stage_writable` unlinks whatever
+        # an earlier tenant of this slot left here and gives the copy back
+        # the write bit the game needs (#472)
+        S.stage_writable(args.save, save)
         if args.repair:
             # Before the boot.  Rewriting an image VICE has already attached
             # is a different kind of mistake, and this copy is not in the

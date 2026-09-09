@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import shutil
 import sys
 import time
 
@@ -196,8 +195,8 @@ def run(args) -> int:
     try:
         boot = S.stage_disks(slot, pathlib.Path(args.disks))
         if args.save:
-            shutil.copy(pathlib.Path(args.disks) / args.save,
-                        pathlib.Path(slot.dir) / "SIDE0.D64")
+            S.stage_writable(pathlib.Path(args.disks) / args.save,
+                              pathlib.Path(slot.dir) / "SIDE0.D64")
         sess = Watched(boot, slot=slot)
         sess.jlog = log
         sess.stage_prompt = args.stage

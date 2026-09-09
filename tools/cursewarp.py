@@ -48,7 +48,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -584,8 +583,12 @@ def run(args) -> int:
     try:
         save = args.save
         if save:
+            # A slot is reused, so a bare `shutil.copy` here would carry a
+            # read-only specimen's mode onto `SAVE_IN.D64` and then raise on
+            # the next run's attempt to stage over it (#472) -- the same
+            # fault `curserun.stage` below has for `SIDE0.D64`.
             staged = pathlib.Path(slot.dir) / "SAVE_IN.D64"
-            shutil.copy(save, staged)
+            por.stage_writable(save, staged)
             save = str(staged)
         # **`tools/session.py` is Pool of Radiance's, and one of its module
         # constants is an address.**  `Session.indoors` reads `$49E6`, which in

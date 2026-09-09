@@ -1414,7 +1414,9 @@ def test_stage_disks_recovers_a_read_only_leftover_save(pool):
     """
     disks = pool / "disks"
     disks.mkdir()
-    (disks / "MYSAVE.D64").write_bytes(b"the new save")
+    save = disks / "MYSAVE.D64"
+    save.write_bytes(b"the new save")
+    save.chmod(0o444)          # a specimen out of $WISH_SPECIMENS is read-only
 
     with instance.claim() as slot:
         leftover = Path(slot.dir) / "SIDE0.D64"
@@ -1424,6 +1426,11 @@ def test_stage_disks_recovers_a_read_only_leftover_save(pool):
         session.stage_disks(slot, disks, save="MYSAVE.D64")
 
         assert leftover.read_bytes() == b"the new save"
+        # #472: `_restage` used to stop at the unlink and hand the game a
+        # `shutil.copy` that carried the read-only specimen's own mode, so
+        # the slot no longer poisoned the *next* run but still poisoned the
+        # one it had just staged.
+        assert leftover.stat().st_mode & stat.S_IWUSR
 
 
 @posix
@@ -1530,3 +1537,93 @@ def test_ssbwarp_stage_replaces_a_read_only_side_left_in_the_slot(pool):
 
         assert stale.read_bytes() == b"side 3"
         assert stale.stat().st_mode & stat.S_IWUSR
+
+
+# -- tools.session.stage_writable: the shared helper (#472) ------------------
+#
+# `_restage` and `curserun.stage`/`ssbwarp.stage` each did their own version
+# of "unlink, copy, restore the write bit" by hand, and two more places --
+# `session._restage`'s own write-bit restore, and eight single-shot tools
+# staging `args.disk` straight over `SIDE0.D64` -- turned out to be missing
+# it. `stage_writable` is the one function everything now goes through.
+
+
+@posix
+def test_stage_writable_gives_the_game_a_writable_save_disk(pool):
+    """A specimen's read-only mode must not reach the staged copy."""
+    with instance.claim() as slot:
+        src = pool / "SPECIMEN.D64"
+        src.write_bytes(b"a read-only specimen")
+        src.chmod(0o444)
+        dest = Path(slot.dir) / "SIDE0.D64"
+
+        session.stage_writable(src, dest)
+
+        assert dest.read_bytes() == b"a read-only specimen"
+        assert dest.stat().st_mode & stat.S_IWUSR
+
+
+@posix
+def test_stage_writable_recovers_a_read_only_leftover(pool):
+    """Staging over a read-only leftover must not raise `PermissionError`."""
+    with instance.claim() as slot:
+        src = pool / "SPECIMEN.D64"
+        src.write_bytes(b"a read-only specimen")
+        src.chmod(0o444)
+        dest = Path(slot.dir) / "SIDE0.D64"
+        dest.write_bytes(b"an earlier tenant's leftover")
+        dest.chmod(0o444)
+
+        session.stage_writable(src, dest)  # must not raise
+
+        assert dest.read_bytes() == b"a read-only specimen"
+        assert dest.stat().st_mode & stat.S_IWUSR
+
+
+# -- curserun.stage, moved onto the shared helper (#472) ---------------------
+
+
+@posix
+def test_curserun_stage_gives_the_game_a_writable_save_disk(pool):
+    """`curserun.stage` used to carry its own `writable()`; now `stage_writable`.
+
+    Same shape as `test_ssbwarp_stage_gives_the_game_a_writable_save_disk`,
+    proving the move to the shared helper did not lose the behaviour.
+    """
+    curserun = load_tools_module("curserun")
+    disks = pool / "disks"
+    disks.mkdir()
+    for i in range(1, 7):
+        (disks / f"CURSE_{chr(ord('A') + i - 1)}.D64").write_bytes(
+            f"side {i}".encode())
+    save = pool / "SPECIMEN.D64"
+    save.write_bytes(b"a read-only specimen")
+    save.chmod(0o444)
+
+    with instance.claim() as slot:
+        curserun.stage(slot, str(disks), save=str(save))
+
+        staged = Path(slot.dir) / "SIDE0.D64"
+        assert staged.read_bytes() == b"a read-only specimen"
+        assert staged.stat().st_mode & stat.S_IWUSR
+
+
+@posix
+def test_curserun_stage_recovers_a_read_only_leftover_save(pool):
+    """The second-run half of the same fix, for `curserun.stage`."""
+    curserun = load_tools_module("curserun")
+    disks = pool / "disks"
+    disks.mkdir()
+    for i in range(1, 7):
+        (disks / f"CURSE_{chr(ord('A') + i - 1)}.D64").write_bytes(
+            f"side {i}".encode())
+    save = pool / "SPECIMEN.D64"
+    save.write_bytes(b"a read-only specimen")
+    save.chmod(0o444)
+
+    with instance.claim() as slot:
+        curserun.stage(slot, str(disks), save=str(save))
+        curserun.stage(slot, str(disks), save=str(save))  # must not raise
+
+        staged = Path(slot.dir) / "SIDE0.D64"
+        assert staged.read_bytes() == b"a read-only specimen"

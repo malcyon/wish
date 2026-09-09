@@ -59,8 +59,6 @@ import json
 import os
 import pathlib
 import re
-import shutil
-import stat
 import sys
 import time
 
@@ -227,28 +225,19 @@ def stage(slot, disks: str, save: str = "") -> str:
         raise SystemExit(f"{disks} holds {len(sides)} Silver Blades sides, "
                          f"not six")
     for i, want in enumerate(sides[:6], start=1):
-        # Unlink each side for the same reason `SIDE0.D64` is unlinked below:
-        # a slot keeps its images after a teardown, and `shutil.copy` cannot
-        # open a read-only one for writing, so `writable()` afterwards is too
-        # late -- the copy has already raised.  A side left read-only by a run
-        # from before #455 and #469 is what gets here.
-        side = here / f"SIDE{i}.D64"
-        side.unlink(missing_ok=True)
-        writable(shutil.copy(want, side))
+        # `por.stage_writable` unlinks the destination first and restores the
+        # write bit after: a slot keeps its images after a teardown, and a
+        # side left read-only by a run from before #455 and #469 cannot be
+        # opened for writing at all otherwise.
+        por.stage_writable(want, here / f"SIDE{i}.D64")
     target = here / "SIDE0.D64"
-    # A slot keeps its images after a teardown, so the one to stage over may
-    # be a read-only copy an earlier run left -- which `shutil.copy` cannot
-    # open for writing.  Unlinking is what the directory's own permissions
-    # allow whatever the file's are.
-    target.unlink(missing_ok=True)
     if save:
-        # `shutil.copy` brings the source's mode with it, and a specimen out
-        # of `$WISH_SPECIMENS` is read-only by design (`tools/specimens.py`
-        # makes it so).  Staged unchanged, that gives the game a
-        # write-protected save disk, and nothing says so: the run boots, the
-        # party loads, and every write the game makes is silently refused
-        # (#455, #469).
-        writable(shutil.copy(save, target))
+        # A specimen out of `$WISH_SPECIMENS` is read-only by design
+        # (`tools/specimens.py` makes it so).  Staged unchanged, that gives
+        # the game a write-protected save disk, and nothing says so: the run
+        # boots, the party loads, and every write the game makes is silently
+        # refused (#455, #469).
+        por.stage_writable(save, target)
     else:
         # **The shipped party is `SAVEDBASH` on side 6**, and this title's
         # save file has that name, so a copy of side 6 is a save disk with a
@@ -256,21 +245,8 @@ def stage(slot, disks: str, save: str = "") -> str:
         # watched being written, and nothing here rests on what it *holds*:
         # it supplies six bodies to stand somewhere, and the evidence is the
         # map the running game loads.
-        writable(shutil.copy(here / "SIDE6.D64", target))
+        por.stage_writable(here / "SIDE6.D64", target)
     return str(here / "SIDE1.D64")
-
-
-def writable(path) -> str:
-    """Give a staged copy the user's write bit back, and hand the path back.
-
-    Everything in a slot's directory is a throwaway copy the emulator owns;
-    the mode that came with it belongs to the file it was copied from.
-    Duplicated from `tools/curserun.py`'s function of the same name rather
-    than shared -- see #455, #469.
-    """
-    path = pathlib.Path(path)
-    path.chmod(path.stat().st_mode | stat.S_IWUSR)
-    return str(path)
 
 
 class SSBSession(por.Session):
@@ -976,8 +952,12 @@ def run(args) -> int:
     try:
         save = args.save
         if save:
+            # A slot is reused, so a bare `shutil.copy` here would carry a
+            # read-only specimen's mode onto `SAVE_IN.D64` and then raise on
+            # the next run's attempt to stage over it (#472) -- the same
+            # fault `stage()` below has for `SIDE0.D64`.
             staged = pathlib.Path(slot.dir) / "SAVE_IN.D64"
-            shutil.copy(save, staged)
+            por.stage_writable(save, staged)
             save = str(staged)
         # `tools/session.py` carries Pool of Radiance's `$49E6` as a module
         # constant and `walk_one` reads it to choose which keys to press. In a

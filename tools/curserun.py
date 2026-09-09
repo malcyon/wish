@@ -33,8 +33,6 @@ import argparse
 import os
 import pathlib
 import re
-import shutil
-import stat
 import sys
 import time
 
@@ -99,50 +97,33 @@ def stage(slot, disks: str, save: str = "") -> str:
     if len(sides) < 6:
         raise SystemExit(f"{disks} holds {len(sides)} Curse sides, not six")
     for i, want in enumerate(sides[:6], start=1):
-        # Unlink each side for the same reason `SIDE0.D64` is unlinked below:
-        # a slot keeps its images after a teardown, and `shutil.copy` cannot
-        # open a read-only one for writing, so `writable()` afterwards is too
-        # late -- the copy has already raised.  A side left read-only by a run
-        # from before #455 and #469 is what gets here.
-        side = here / f"SIDE{i}.D64"
-        side.unlink(missing_ok=True)
-        writable(shutil.copy(want, side))
+        # `por.stage_writable` unlinks the destination first and restores the
+        # write bit after: a slot keeps its images after a teardown, and a
+        # side left read-only by a run from before #455 and #469 cannot be
+        # opened for writing at all otherwise.
+        por.stage_writable(want, here / f"SIDE{i}.D64")
     # **Always replace `SIDE0.D64`.**  A pool slot is reused, and the image
     # left in it by the previous tenant is somebody else's game: this staged
     # over a Pool of Radiance save disk, whose `SAVEDGAME0`/`SAVEDGAME1` were
     # still there when Curse wrote four characters beside them, and
     # `ADD CHARACTER TO PARTY` then listed none of them.
     target = here / "SIDE0.D64"
-    # A slot keeps its images after a teardown, so the one to stage over may
-    # be a read-only copy an earlier run left -- which `shutil.copy` cannot
-    # open for writing.  Unlinking is what the directory's own permissions
-    # allow whatever the file's are.
-    target.unlink(missing_ok=True)
     if save:
-        # `shutil.copy` brings the source's mode with it, and a specimen out
-        # of `$WISH_SPECIMENS` is read-only by design (`tools/specimens.py`
-        # makes it so).  Staged unchanged, that gives the game a
-        # write-protected save disk, and nothing says so: the run boots, the
-        # party loads, and every write the game makes is silently refused.
-        # A driven `REMOVE CHARACTER FROM PARTY` went the whole way through
-        # its menus that way and left no file on the disk
+        # A specimen out of `$WISH_SPECIMENS` is read-only by design
+        # (`tools/specimens.py` makes it so).  Staged unchanged, that gives
+        # the game a write-protected save disk, and nothing says so: the run
+        # boots, the party loads, and every write the game makes is silently
+        # refused.  A driven `REMOVE CHARACTER FROM PARTY` went the whole way
+        # through its menus that way and left no file on the disk
         # (`work/issue439/readd1`, #439).  It also breaks the *next* run in
         # this slot, since a read-only `SIDE0.D64` cannot be staged over.
-        writable(shutil.copy(save, target))
+        por.stage_writable(save, target)
     else:
+        # `D64.blank(...).save()` opens `target` for writing directly, so a
+        # read-only leftover from an earlier tenant has to be cleared first.
+        target.unlink(missing_ok=True)
         D64.blank(b"CURSE SAVE").save(target)
     return str(here / "SIDE1.D64")
-
-
-def writable(path) -> str:
-    """Give a staged copy the user's write bit back, and hand the path back.
-
-    Everything in a slot's directory is a throwaway copy the emulator owns;
-    the mode that came with it belongs to the file it was copied from.
-    """
-    path = pathlib.Path(path)
-    path.chmod(path.stat().st_mode | stat.S_IWUSR)
-    return str(path)
 
 
 #: The two branches that make Curse's `INSERT SIDE # n` prompt unanswerable

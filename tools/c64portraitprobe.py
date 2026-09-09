@@ -40,7 +40,6 @@ import hashlib
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -299,7 +298,7 @@ def run(args) -> int:
     try:
         boot = S.stage_disks(slot, disks)
         staged = pathlib.Path(slot.dir) / "SIDE0.D64"
-        shutil.copy(save, staged)
+        S.stage_writable(save, staged)
         report["patched"] = patch_save(staged, words, portraits)
         for line in report["patched"]:
             print(f"  patched {line}")

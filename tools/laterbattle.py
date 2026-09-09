@@ -339,15 +339,12 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
     """
     from tools import ssbwarp  # noqa: PLC0415
 
-    # **Clear whatever the last run left in SIDE0 first.** `ssbwarp.stage`
-    # ends in a bare `shutil.copy`, which brings the source's mode with it, so
-    # a read-only specimen leaves a read-only `SIDE0.D64` that the *next* run
-    # in that slot cannot overwrite -- `PermissionError` before the emulator
-    # is even started, twice here (`#469 (A second Silver Blades run in the
-    # same pool slot cannot start, because the staged save disk is left
-    # read-only)`). `curserun.stage` unlinks first; this is the same guard
-    # from outside, and it comes out when that ticket closes.
-    pathlib.Path(run.slot.dir, "SIDE0.D64").unlink(missing_ok=True)
+    # The guard that used to live here -- clearing whatever the last run left
+    # in SIDE0 before `ssbwarp.stage` -- came out once `#469 (A second Silver
+    # Blades run in the same pool slot cannot start, because the staged save
+    # disk is left read-only)` closed: `ssbwarp.stage` now unlinks and
+    # restores the write bit itself (`tools.session.stage_writable`, `#472`),
+    # so a caller no longer has to.
     boot = ssbwarp.stage(run.slot, disks, args.save)
     sess = ssbwarp.SSBSession(boot, slot=run.slot)
     run.sess = sess

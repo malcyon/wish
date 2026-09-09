@@ -419,15 +419,13 @@ def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
 
 
 def run(args, log: Log) -> int:
-    import shutil
-
     out = pathlib.Path(args.out)
     slot = S.claim_slot(args.slot, f"mapmarker/{pathlib.Path(args.disk).name}")
     log.say(f"slot {slot.n} display {slot.display}")
     sess = None
     try:
         boot = S.stage_disks(slot, pathlib.Path(args.disks))
-        shutil.copy(args.disk, pathlib.Path(slot.dir) / "SIDE0.D64")
+        S.stage_writable(args.disk, pathlib.Path(slot.dir) / "SIDE0.D64")
         sess = S.Session(boot, slot=slot)
         if not sess.boot():
             raise RuntimeError("boot failed")

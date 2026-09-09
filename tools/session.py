@@ -27,7 +27,9 @@ import io
 import os
 import pathlib
 import re
+import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -2586,28 +2588,53 @@ def claim_slot(want: int | None = None, note: str = ""):
     return slot
 
 
-def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
-    """Copy `src` over `dest`, whatever an earlier tenant left there (`#430`).
+def writable(path) -> str:
+    """Give a staged copy the user's write bit back, and hand the path back.
+
+    Everything in a slot's directory is a throwaway copy the emulator owns;
+    the mode that came with it belongs to the file it was copied from.  A
+    specimen out of `$WISH_SPECIMENS` is read-only by design
+    (`tools/specimens.py` makes it so), and `shutil.copy` carries that mode
+    onto the staged copy unchanged -- which gives the game a write-protected
+    save disk with nothing to say so (`#455`, `#469`, `#472`).
+    """
+    path = pathlib.Path(path)
+    path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    return str(path)
+
+
+def stage_writable(src: pathlib.Path, dest: pathlib.Path) -> str:
+    """Copy `src` over `dest`, whatever an earlier tenant left there, and
+    give the copy the user's write bit back.
 
     `shutil.copy` opens `dest` `'wb'` and also carries `src`'s own mode bits
     onto it -- so a save staged from a read-only source leaves a read-only
-    `SIDE0.D64` in the slot, and every later `stage_disks` call for that slot
-    then dies on the open with a bare `PermissionError` naming neither the
-    file nor the reason.  `dest` is always one of this slot's own staged
-    copies -- `stage_disks` is the only thing that ever writes here -- so it
-    is unlinked first, unconditionally: every call starts from nothing there
-    rather than trusting what the call before it left behind, which is what
-    keeps the state from recurring at all rather than merely reporting it.
+    `SIDE0.D64` in the slot, and every later stage into that slot then dies
+    on the open with a bare `PermissionError` naming neither the file nor the
+    reason (`#430`).  `dest` is always one of a slot's own staged copies, so
+    it is unlinked first, unconditionally: every call starts from nothing
+    there rather than trusting what the call before it left behind, which is
+    what keeps the state from recurring at all rather than merely reporting
+    it.  The copy is then handed to `writable`, so what lands in the slot can
+    always be overwritten by the game, whatever mode it arrived with
+    (`#455`, `#469`, `#472`).
+    """
+    dest = pathlib.Path(dest)
+    dest.unlink(missing_ok=True)
+    shutil.copy(src, dest)
+    return writable(dest)
 
-    The `try` is only for what unlinking cannot fix -- the slot directory
-    itself refusing to be written -- so the error that does reach a caller
-    names the path and what to do about it, rather than the bare
+
+def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
+    """Copy `src` over `dest` and make the copy writable (`#430`, `#472`).
+
+    The `try` is only for what `stage_writable` cannot fix -- the slot
+    directory itself refusing to be written -- so the error that reaches a
+    caller names the path and what to do about it, rather than the bare
     `PermissionError` this replaces.
     """
-    import shutil
     try:
-        dest.unlink(missing_ok=True)
-        shutil.copy(src, dest)
+        stage_writable(src, dest)
     except OSError as exc:
         raise RuntimeError(
             f"could not stage {dest} from {src}: {exc}. If this is a "

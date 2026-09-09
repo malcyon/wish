@@ -38,7 +38,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import struct
 import sys
 import time
@@ -349,8 +348,8 @@ def run(args) -> int:
     sess = None
     try:
         boot = S.stage_disks(slot, DISKS)
-        shutil.copy(pathlib.Path(args.disks) / args.save,
-                    pathlib.Path(slot.dir) / "SIDE0.D64")
+        S.stage_writable(pathlib.Path(args.disks) / args.save,
+                          pathlib.Path(slot.dir) / "SIDE0.D64")
         for p in pathlib.Path(slot.dir).glob("*.D64"):
             os.chmod(p, 0o644)
         sess = S.Session(boot, slot=slot)

@@ -191,7 +191,7 @@ def run(args, log: Log) -> int:
     rc = 0
     try:
         boot = S.stage_disks(slot, pathlib.Path(args.disks))
-        shutil.copy(args.disk, pathlib.Path(slot.dir) / "SIDE0.D64")
+        S.stage_writable(args.disk, pathlib.Path(slot.dir) / "SIDE0.D64")
         sess = S.Session(boot, slot=slot)
         if not sess.boot():
             raise RuntimeError("boot failed")
