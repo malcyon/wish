@@ -26,6 +26,7 @@ The caption strip carries the same numbers as the report, because a picture
 pasted into an issue arrives without its terminal.
 
     .venv/bin/python tools/shotwindow.py                    # synthetic party
+    .venv/bin/python tools/shotwindow.py --empty             # nothing open
     .venv/bin/python tools/shotwindow.py --font +6
     .venv/bin/python tools/shotwindow.py --save work/PORSAVE11.D64 --tab map
 
@@ -168,10 +169,6 @@ def shoot(app, save: str | None, extra: float = 0.0, width: int | None = None,
         win = WishWindow(save, maps=None if tab == MAP_TAB else {}, tab=tab,
                          session=Session(find=lambda pref=None: None))
         try:
-            # `EditorWindow.showEvent` calls `_size_roster` once, *after* the
-            # window is shown -- so the roster's real column widths only exist
-            # on the far side of this, and anything measured before it is a
-            # different window's answer. The other #71 trap.
             win.show()
             app.processEvents()
 
@@ -287,6 +284,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--save", help="a saved game to open (default: the "
                                    "synthetic widest party, so this runs "
                                    "with no game disks)")
+    ap.add_argument("--empty", action="store_true",
+                    help="open nothing at all, the way the program starts "
+                         "(overrides --save). #471 was only visible this way "
+                         "-- the synthetic party sizes the roster same as "
+                         "any other save")
     ap.add_argument("--font", default="+0", type=_font_offset, metavar="+N",
                     help="points added to the UI font. +6 measures here about "
                          "like Windows' base font (default: +0)")
@@ -307,9 +309,9 @@ def main(argv: list[str]) -> int:
 
     app = QApplication.instance() or QApplication(["shotwindow"])
 
-    save = args.save
+    save = None if args.empty else args.save
     tmp = None
-    if save is None:
+    if save is None and not args.empty:
         from gamedata import synthetic_save
         tmp = tempfile.TemporaryDirectory(prefix="wish-shotwindow-save-")
         save = str(synthetic_save(tmp.name))
@@ -322,7 +324,8 @@ def main(argv: list[str]) -> int:
         if tmp is not None:
             tmp.cleanup()
 
-    what = pathlib.Path(args.save).name if args.save else "synthetic party"
+    what = ("nothing open" if args.empty else
+            pathlib.Path(args.save).name if args.save else "synthetic party")
     line = (f"{what}  |  {args.tab}  |  UI font +{args.font:g}pt  |  "
             f"floor {floor.width()}x{floor.height()}  |  "
             f"drawn {drawn[0]}x{drawn[1]}")

@@ -1563,10 +1563,10 @@
           <property name="topMargin"><number>0</number></property>
           <property name="rightMargin"><number>0</number></property>
           <property name="bottomMargin"><number>0</number></property>
-          <item>
+          <item alignment="Qt::AlignTop">
            <widget class="RosterView" name="roster" />
           </item>
-          <item>
+          <item alignment="Qt::AlignTop">
            <widget class="QGroupBox" name="box_identity">
             <property name="title">
              <string>Character</string>
@@ -1731,7 +1731,7 @@
             </layout>
            </widget>
           </item>
-          <item>
+          <item alignment="Qt::AlignTop">
            <widget class="QGroupBox" name="box_active_effects">
             <property name="title">
              <string/>

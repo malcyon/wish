@@ -718,6 +718,11 @@ class EditorBinding(QObject):
         self._fill_combos()
         self._size_fields()
         self._compact()
+        # `_compact` already measures `columns_identity` with no rows to
+        # show, through `_pin_identity_columns`; the roster wants the same
+        # pass, or it keeps the width Designer's layout gives it until a
+        # save arrives and `_size_roster` is called again from `_adopt`.
+        self._size_roster()
         self._weight_columns()
         self._wire_dirty()
 
@@ -1485,7 +1490,19 @@ class EditorBinding(QObject):
         header.setSectionResizeMode(NAME_COLUMN,
                                     header.ResizeMode.Interactive)
         view.measure(natural, header.sectionSize(NAME_COLUMN))
-        view.setMinimumWidth(min(natural, ROSTER_MIN_WIDTH))
+        # `ROSTER_MIN_WIDTH` is a floor under a *party*'s columns, and a party
+        # is always wider than it (`editor/rosterview.py`'s own comment: 356px
+        # of `Race`/`Class`/`AC`/`HP` at the base font, before `Name` gets a
+        # share). With no rows -- an empty window, or a roster disk with
+        # nothing on it -- `natural` is the five headings alone, genuinely
+        # narrower than the floor, and it is also font-derived: leaving the
+        # minimum at `min(natural, ROSTER_MIN_WIDTH)` here would set the
+        # window's floor to the headings' own width and bring back #41, which
+        # `test_the_windows_minimum_does_not_follow_the_ui_font` caught. The
+        # *maximum* still wants setting either way, or the table keeps
+        # spreading into whatever the layout has spare (#471).
+        if self.model.rowCount():
+            view.setMinimumWidth(min(natural, ROSTER_MIN_WIDTH))
         view.setMaximumWidth(natural)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()

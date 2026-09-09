@@ -511,6 +511,132 @@ def test_the_debug_log_has_no_paragraph_under_it_and_no_popup(app, tmp_path,
         win.close()
 
 
+# --- the roster before any save is opened ------------------------------------
+
+def _ordinary_party(tmp_path) -> str:
+    """Six characters at a size a player would actually see, not the widest
+    the format allows -- `gamedata.synthetic_party`'s widest-of-everything
+    shape is for a different question (`tests/test_mapscale.py`, `#71`) and
+    would make the Name and Class columns dwarf their own headings, which is
+    not the case this bug is about.
+    """
+    import gamedata
+
+    from goldbox import games
+    from goldbox.d64 import attach_load_address
+    from goldbox.encoding import COMBAT_BIAS
+    from goldbox.record import CharacterRecord
+    from goldbox.savegame import (
+        HEADER_SIZE,
+        ROSTER_ARMOUR_CLASS,
+        ROSTER_HP_CURRENT,
+        ROSTER_MOVEMENT,
+        ROSTER_SLOT_INDEX,
+        ROSTER_STRIDE,
+        ROSTER_THAC0,
+        SLOT_STRIDE,
+    )
+
+    game = games.POOL_OF_RADIANCE
+    record = CharacterRecord.blank()
+    record.set("name", "Grix")
+    for ability in ("strength", "intelligence", "wisdom", "dexterity",
+                    "constitution", "charisma"):
+        record.set(ability, 15)
+    record.set("race", 1)          # dwarf
+    record.set("class_bits", 8)    # fighter
+    record.set("hp_max", 8)
+    head = record.to_bytes()[:SLOT_STRIDE]
+
+    payload = bytearray(game.save_size)
+    roster = bytearray(game.roster_size)
+    for i in range(6):
+        payload[HEADER_SIZE + i * SLOT_STRIDE:
+                HEADER_SIZE + (i + 1) * SLOT_STRIDE] = head
+        at = i * ROSTER_STRIDE
+        roster[at + ROSTER_SLOT_INDEX] = i
+        roster[at + ROSTER_THAC0] = COMBAT_BIAS - 2
+        roster[at + ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - 8
+        roster[at + ROSTER_HP_CURRENT] = 8
+        roster[at + ROSTER_MOVEMENT] = 12
+    if game.roster_in_payload:
+        payload[game.roster_offset:game.roster_offset + game.roster_size] = roster
+        files = [(game.save_file,
+                  attach_load_address(game.save_load_address, bytes(payload)))]
+    else:
+        files = [(game.save_file,
+                  attach_load_address(game.save_load_address, bytes(payload))),
+                 (game.roster_file,
+                  attach_load_address(game.roster_load_address, bytes(roster)))]
+    disk = pathlib.Path(tmp_path) / "ORDINARY.D64"
+    disk.write_bytes(gamedata._disk_with(files))
+    return str(disk)
+
+
+def test_the_empty_roster_is_already_the_width_a_save_settles_it_to(app,
+                                                                     tmp_path):
+    """#471: nothing sized the roster until a save was opened, so it kept
+    whatever width `QHBoxLayout`'s stretch handed it -- unbounded, since
+    `_size_roster` had never called `setMaximumWidth`. A window with nothing
+    open has to settle at the same width `resizeColumnsToContents` gives the
+    headings once real rows arrive.
+    """
+    from editor.window import EditorBinding
+
+    empty = EditorBinding(make_root())
+    try:
+        empty_width = empty.roster.maximumWidth()
+    finally:
+        empty.close()
+
+    loaded = EditorBinding(make_root(), _ordinary_party(tmp_path))
+    try:
+        loaded_width = loaded.roster.maximumWidth()
+    finally:
+        loaded.close()
+
+    assert empty_width < 1000, "the roster kept an unbounded width"
+    assert abs(empty_width - loaded_width) <= 15
+
+
+# --- the header row's three widgets share a top edge -------------------------
+
+def test_the_roster_and_character_and_effects_boxes_share_a_top_edge(
+        app, tmp_path, monkeypatch):
+    """#471: `header_row` is a `QHBoxLayout`, which centres a shorter widget
+    against a taller one -- and the roster is shorter than the Active
+    effects box once it has something to draw, so it dropped below
+    `box_identity`'s top instead of lining up with it.
+
+    Needs `WISH_EXPERIMENTAL_EFFECTS` on, or `box_active_effects` is torn out
+    of the row entirely and there is nothing to be misaligned against.
+    """
+    from PyQt6.QtWidgets import QTabWidget
+
+    from editor.window import EditorBinding
+
+    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", "1")
+    w = EditorBinding(make_root(), _ordinary_party(tmp_path))
+    try:
+        root = w.root
+        root.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        root.show()
+        root.resize(1400, 900)
+        tabs = root.findChild(QTabWidget, "tabs")
+        tabs.setCurrentWidget(w._child("tab_editor"))
+        app.processEvents()
+
+        roster = w._child("roster")
+        identity = w._child("box_identity")
+        effects = w._child("box_active_effects")
+        assert effects.isVisible(), "the effects box never showed"
+        assert roster.height() != effects.height(), \
+            "nothing here would be centred differently from top-aligned"
+        assert roster.y() == identity.y() == effects.y()
+    finally:
+        w.close()
+
+
 def test_a_backend_status_is_a_badge_beside_the_label_not_part_of_it(app,
                                                                      tmp_path,
                                                                      monkeypatch):
