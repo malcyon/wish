@@ -167,13 +167,15 @@ def test_the_exact_match_is_the_one_that_misses():
 
 
 def test_the_drift_between_two_ports_copies_stays_well_inside_the_tolerance():
-    """Six bytes at the very worst, against a tolerance of 128.
+    """Six bytes at the very worst, and the tolerance has to reach them.
 
-    Stated as the measurement rather than as `<= NEAR_ENOUGH`: the constant is
-    under review in
+    This is the *lower* bound on `NEAR_ENOUGH`, and the only one anybody has
+    ever measured a real need for: a player running one port's game against
+    the other port's disks. Stated as the measurement first, because the
+    constant moved in
     #447 (The map tolerance is wider than the gap between two of Silver Blades'
-    own maps), and this has to keep saying what the game's data does when the
-    constant moves.
+    own maps) and has to keep saying what the game's data does whatever it is
+    set to next.
     """
     worst = 0
     for _title, ports in _ports().items():
@@ -186,7 +188,42 @@ def test_the_drift_between_two_ports_copies_stays_well_inside_the_tolerance():
     if worst == 0:
         pytest.skip("only one port's disks are on this machine")
     assert worst == 6                       # Pool of Radiance GEO1A, C64/DOS
-    assert worst * 10 < NEAR_ENOUGH
+    # A fourfold margin rather than the bare `worst < NEAR_ENOUGH`, so a
+    # tightening that leaves the shipped data with no room says so here
+    # instead of at the first player who mixes two ports.
+    assert worst * 4 <= NEAR_ENOUGH
+
+
+def test_the_tolerance_is_smaller_than_the_gap_between_two_distinct_maps():
+    """The *upper* bound, and half of it, which is what makes it a guarantee.
+
+    `ResidentGeo.verdict` is only ever handed one title's maps off one port
+    -- `Automapper._maps` comes from `automap.maps.load_maps`, which globs a
+    single title's disks -- so the gap that matters is the closest two maps
+    inside one such set. Two maps both within `NEAR_ENOUGH` of the same block
+    are within twice that of each other, so a tolerance under half the closest
+    gap makes it impossible for one block to be eligible for two maps at once.
+
+    Measured on the player's own disks, 2026-09-08: eight corpora, 157 maps,
+    1580 within-set pairs, and the closest two are Silver Blades' `GEO50` and
+    `GEO52` at 80 -- the same maze twice with different decoration, byte-
+    identical on all three ports. This is the assertion that was failing when
+    #447 was filed, at a tolerance of 128 against a gap of 80.
+
+    It fails for a *new* map pair as well, which is the point: a title whose
+    two closest maps come nearer than twice the tolerance turns this red
+    rather than quietly making the answer ambiguous. Pools of Darkness'
+    `GEO21` and `GEO31` are 18 bytes apart and would do exactly that, and are
+    not measured here because `goldbox.games` does not know the title, so the
+    automapper can never build that candidate set.
+    """
+    sets = geoports.closest_within_sets(_ports())
+    if not sets:
+        pytest.skip("no game disks on this machine; set $POR_DISKS, "
+                    "$COAB_DISKS, $SSB_DISKS, $AMIGA_DISKS or $FR_ARCHIVES")
+    gap, label, a, b = sets[0]
+    assert (gap, a, b) == (80, "GEO50", "GEO52"), label
+    assert 2 * NEAR_ENOUGH < gap
 
 
 def test_a_map_is_never_nearer_a_different_area_than_its_own_other_port():

@@ -61,14 +61,65 @@ UNKNOWN = "unknown"
 
 #: How many of the 1024 bytes may differ and the block still be that map.
 #:
-#: Not zero, because the running game is allowed to write into the block it is
-#: drawing and an exact test would then read a legitimate session as somebody
-#: else's game -- which disables the controls in front of a player who has done
-#: nothing wrong. MEASURED on the player's own disks: the two *closest*
-#: distinct maps anywhere in Pool of Radiance and Curse differ in **379** of
-#: 1024 bytes, and the median pair differs in about 790, so 128 leaves a
-#: factor of three before any tolerance could confuse one map with another.
-NEAR_ENOUGH = 128
+#: **The rule it is set by: under half the gap between the two closest maps in
+#: one candidate set.** That is a guarantee rather than a comfortable margin.
+#: Two maps both within `NEAR_ENOUGH` of the same block are within
+#: `2 * NEAR_ENOUGH` of each other, so a tolerance under half the closest gap
+#: makes it impossible for any block to be inside the tolerance of two maps at
+#: once -- whatever the running game has done to the page, at most one map is
+#: ever eligible and `verdict`'s answer cannot be ambiguous.
+#:
+#: **It must stay under 80.** MEASURED on the player's own disks, 2026-09-08,
+#: over the eight corpora on this machine -- Pool of Radiance's 29 maps on the
+#: C64 and in the DOS archives, Curse's 16 on the C64, the Amiga and DOS, and
+#: Silver Blades' 17 on all three, 157 maps and 1580 within-set pairs. The
+#: closest two *distinct* maps in one candidate set are Silver Blades' `GEO50`
+#: and `GEO52` at **80** of 1024 bytes, identical on all three ports: the same
+#: maze twice with different decoration, one attribute byte and 79 of wall art
+#: apart. Next is Pool of Radiance's `GEO19`/`GEO1B` at 379, and the median
+#: pair is about 780. `2 * 32 = 64 < 80`.
+#:
+#: **It must reach 6.** The widest gap between two ports' copies of one area,
+#: also measured over those eight corpora: Pool of Radiance `GEO1A`, C64
+#: against DOS. Curse's three C64/Amiga maps differ by 2. That case is real --
+#: a player running one port's game against the other port's disks -- and
+#: `tests/test_geoports.py` walks all sixteen Curse areas through it.
+#:
+#: **The case this constant was originally for has never once been observed.**
+#: The comment here used to say the running game is allowed to write into the
+#: block it is drawing. Two counting VICE checkpoints over `$0400`-`$07FF`,
+#: across three driven Pool of Radiance boots, say it does not: the loader
+#: writes the page exactly 1024 times when an area loads and nothing writes
+#: into it again, over 20 readings that were all byte-for-byte exact, with the
+#: load counter climbing past 900 as the engine drew from it. `#37 (Automap
+#: the Amiga version, not just the C64)`'s twelve Amiga readings were exact as
+#: well. `tools/georesident.py` re-takes it.
+#:
+#: **It is still not zero**, because an exact test would read a session
+#: running the other port's disks as somebody else's game -- and what that
+#: costs a player is not a wrong label: two such readings set
+#: `Automapper.title_check` to `NOT_OURS`, which stops recording, says the
+#: wrong-disk error and takes the target away from every control until one of
+#: our own maps turns up at `$0400` again.
+#:
+#: **Was 128**, fitted before Silver Blades was in the project and never
+#: re-derived, which put the tolerance 1.6 times *over* the gap it exists to
+#: stay inside -- `#447 (The map tolerance is wider than the gap between two
+#: of Silver Blades' own maps)`.
+#:
+#: **What would move it: a title whose two closest maps are nearer than 64.**
+#: The DOS archives hold one already. **Pools of Darkness' `GEO21` and `GEO31`
+#: differ in 18 bytes**, the closest pair of Gold Box maps anywhere on this
+#: machine, and adding that title to the automapper would force this constant
+#: to 8 -- barely over the 6 bytes of port drift it has to reach, with the two
+#: bounds nearly meeting. It cannot reach a candidate set today because
+#: `goldbox.games` does not know the title, so nothing here is wrong yet, and
+#: the collision wants solving before the title arrives rather than after.
+#: Treasures of the Savage Frontier is the next nearest at 99, which is
+#: outside 64 and would not move this at all.
+#: `tools/geoports.py closest` prints all three bounds and exits non-zero when
+#: any is violated.
+NEAR_ENOUGH = 32
 
 # What makes 1024 bytes a Gold Box map rather than whatever else the page
 # happens to hold. Four clauses. All four thresholds are MEASURED, on

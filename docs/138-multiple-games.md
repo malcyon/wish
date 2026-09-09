@@ -324,12 +324,27 @@ refuses nothing, so no player could reach it;
 `#436 (The map plausibility check throws out five of Pool of Radiance's own maps)`
 has the corpus and the margins.
 
-**And a map may drift from its disk copy by up to `NEAR_ENOUGH` = 128 bytes**
-and still be that map, because the running game is allowed to write into the
-block it is drawing and an exact test would then disable the controls in front
-of a player who has done nothing wrong. The two closest *distinct* maps in the
-two titles differ in 379 of 1024 bytes, so there is a factor of three between
-the tolerance and any chance of confusing one map with another.
+**And a map may drift from its disk copy by up to `NEAR_ENOUGH` = 32 bytes**
+and still be that map, because an exact test would read a player running one
+port's game against the other port's disks as somebody else's game and disable
+the controls in front of them. The rule the number comes from is **under half
+the gap between the two closest maps in one candidate set**: two maps both
+within the tolerance of one block are within twice it of each other, so at half
+the gap no block can ever be eligible for two maps at once. Measured on the
+player's own disks over eight corpora, the closest two are Silver Blades'
+`GEO50` and `GEO52` at 80 bytes, and the widest the tolerance has to *reach* is
+6 — Pool of Radiance `GEO1A` between the C64 and DOS.
+
+This said 128 and quoted a factor of three against Pool of Radiance's and
+Curse's closest pair at 379. That was fitted before Silver Blades was in the
+project and never re-derived, which left the tolerance 1.6 times wider than the
+gap it exists to stay inside;
+`#447 (The map tolerance is wider than the gap between two of Silver Blades'
+own maps)` has both bounds and the driven runs behind them. The premise the old
+sentence gave — the running game writing into the block it is drawing — has
+never been observed on either port: two counting checkpoints over `$0400`-`$07FF`
+across three driven Pool of Radiance boots caught the loader writing the page
+1024 times per area load and nothing else writing into it at all.
 
 **Tasks 1 and 2 are done** -- `#14 (Fast Travel offers Pool of Radiance's
 areas in a Curse session)`. `goldbox.areas.areas_for_title` is the refusal:

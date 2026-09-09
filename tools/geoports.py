@@ -255,17 +255,53 @@ def report_diff(out: io.TextIOBase, all_titles: bool = False) -> int:
     return 0
 
 
+def closest_within_sets(corpora: dict[str, dict[str, dict[str, bytes]]]
+                        ) -> list[tuple[int, str, str, str]]:
+    """`(distance, "Title Port", name, name)` for each candidate set, nearest
+    pair first.
+
+    A candidate set is one title on one port, because that is the only shape
+    `ResidentGeo.verdict` is ever handed: the automapper's maps come from
+    `automap.maps.load_maps`, which globs a single title's disks. Taking the
+    minimum over the whole corpus instead would mix in cross-title pairs the
+    tolerance can never be asked to tell apart.
+
+    A set with fewer than two maps contributes nothing rather than a zero.
+    """
+    out = []
+    for title, ports in sorted(corpora.items()):
+        for port, maps in sorted(ports.items()):
+            names = sorted(maps)
+            pairs = [(_distance(maps[a], maps[b]), f"{title} {port}", a, b)
+                     for a, b in itertools.combinations(names, 2)]
+            if pairs:
+                out.append(min(pairs))
+    return sorted(out)
+
+
 def report_closest(out: io.TextIOBase, show: int = 10,
                    all_titles: bool = False) -> int:
     """The distances `NEAR_ENOUGH` has to sit under, and the ones it need not.
 
-    Two questions, and they are not the same one:
+    Three questions, and they are not the same one:
 
     * **the same area on two ports** -- how far apart the tolerance has to
       reach for a block loaded by one port to be recognised from the other
       port's copy;
-    * **two different areas** -- how close the tolerance may come to naming the
-      wrong place, which is what the constant's own comment quotes.
+    * **two different areas inside one candidate set** -- one title on one
+      port, which is the only shape `ResidentGeo.verdict` is ever handed:
+      `Automapper._maps` comes from `automap.maps.load_maps`, which globs one
+      title's disks. This is the bound the constant is set from, and the rule
+      is **under half of it**, because two maps both within `NEAR_ENOUGH` of
+      one block are within twice that of each other;
+    * **two different areas anywhere in the corpus**, including across titles
+      -- looser, and what the constant's comment used to quote. It bounds the
+      other half of `verdict`: a block that is somebody *else's* Gold Box map
+      has to be further than the tolerance from every one of ours before
+      `NOT_OURS` can fire.
+
+    Non-zero when either bound is violated, so the re-derivation is a command
+    rather than a reading (#447).
     """
     corpora = every_port(all_titles)
     flat = [(f"{title}:{port}:{name}", title, name, raw)
@@ -302,7 +338,15 @@ def report_closest(out: io.TextIOBase, show: int = 10,
           f"({len(same_place)} pairings):", file=out)
     for d, la, lb in same_place[:show]:
         print(f"  {d:5d}  {la:34s} {lb}", file=out)
-    print(f"\nclosest {show} pairs that are different places:", file=out)
+
+    print("\nthe closest two maps inside each candidate set "
+          "(one title, one port):", file=out)
+    within = closest_within_sets(corpora)
+    for d, label, a, b in within:
+        print(f"  {d:5d}  {label:28s} {a}/{b}", file=out)
+
+    print(f"\nclosest {show} pairs that are different places, anywhere:",
+          file=out)
     for d, la, lb in other_place[:show]:
         print(f"  {d:5d}  {la:40s} {lb}", file=out)
     if other_place:
@@ -314,12 +358,27 @@ def report_closest(out: io.TextIOBase, show: int = 10,
         print(f"\nNEAR_ENOUGH = {NEAR_ENOUGH}", file=out)
         print(f"  must reach      {worst_drift:5d}   the widest gap between "
               f"two ports' copies of one area", file=out)
-        print(f"  must stay under {nearest_wrong:5d}   the closest two "
-              f"different places, {other_place[0][1]} and "
+        bad = worst_drift > NEAR_ENOUGH
+        if bad:
+            print("  IT DOES NOT: one port's copy of an area is further from "
+                  "the other's than the tolerance reaches", file=out)
+        if within:
+            gap, label, a, b = within[0]
+            print(f"  must stay under {gap // 2:5d}   half the closest two "
+                  f"maps in one candidate set, {label} {a}/{b} at {gap}",
+                  file=out)
+            if 2 * NEAR_ENOUGH >= gap:
+                print("  IT DOES NOT: one block could be inside the tolerance "
+                      "of both of them at once", file=out)
+                bad = True
+        print(f"  and under       {nearest_wrong:5d}   the closest two "
+              f"different places anywhere, {other_place[0][1]} and "
               f"{other_place[0][2]}", file=out)
         if nearest_wrong <= NEAR_ENOUGH:
             print("  IT DOES NOT: two different places are within the "
                   "tolerance of each other", file=out)
+            bad = True
+        if bad:
             return 1
     return 0
 
