@@ -577,26 +577,41 @@ def test_the_empty_roster_is_already_the_width_a_save_settles_it_to(app,
                                                                      tmp_path):
     """#471: nothing sized the roster until a save was opened, so it kept
     whatever width `QHBoxLayout`'s stretch handed it -- unbounded, since
-    `_size_roster` had never called `setMaximumWidth`. A window with nothing
-    open has to settle at the same width `resizeColumnsToContents` gives the
-    headings once real rows arrive.
+    `_size_roster` had never called `setMaximumWidth`.
+
+    **What is asserted is that the empty roster was measured at all**, not
+    that it lands within so many pixels of a loaded one. The first version of
+    this test compared the two and allowed 15px; CI answered 20 on all four
+    jobs and `main` went red. The two numbers are measurements of *different
+    text* -- the empty roster's width is the five headings rendered, the
+    loaded one's is a party's names and races rendered -- so the gap between
+    them is whatever the font makes it and is a number about the machine
+    rather than about the fix. It was 0 here and 20 on CI.
+
+    The mechanism is what holds everywhere: an unmeasured `QTableView` keeps
+    Qt's `QWIDGETSIZE_MAX`, and a measured one carries the width its own
+    header asked for. Both sides of the comparison below scale with the font
+    together, so the equality is font-independent in a way the old tolerance
+    could never be.
     """
+    from PyQt6.QtWidgets import QStyle
+
     from editor.window import EditorBinding
 
     empty = EditorBinding(make_root())
     try:
-        empty_width = empty.roster.maximumWidth()
+        view = empty.roster
+        width = view.maximumWidth()
+        header = view.horizontalHeader()
+        bar = view.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        natural = (header.length() + view.verticalHeader().width()
+                   + 2 * view.frameWidth() + bar)
     finally:
         empty.close()
 
-    loaded = EditorBinding(make_root(), _ordinary_party(tmp_path))
-    try:
-        loaded_width = loaded.roster.maximumWidth()
-    finally:
-        loaded.close()
-
-    assert empty_width < 1000, "the roster kept an unbounded width"
-    assert abs(empty_width - loaded_width) <= 15
+    assert width < 1000, "the roster kept an unbounded width"
+    assert width == natural, (
+        "the empty roster is not the width its own columns asked for")
 
 
 # --- the header row's three widgets share a top edge -------------------------
