@@ -1,22 +1,40 @@
 """A live Amiga, read through WinUAE's own debugger.
 
-`ViceTarget` talks to a socket. There is no socket here and there is not going
-to be one: `docs/143-winuae-debugger.md` §11 checked WinUAE master for a `gdb`
-server and there is none, `use_debugger=true` cannot start the debugger on
-Windows at all, and the only way in is the `SPC_ENTERDEBUGGER` input event
-bound to F11. So a read is: press F11, type `S <file> <addr> <n>` and `g` into
-the emulator's console, and take the bytes off the guest's filesystem.
+`ViceTarget` talks to a socket. WinUAE has no socket, but it has two doors on
+the same debugger and they are not the same to whoever is at the machine.
 
-**One `ssh` call does the whole of that**, which is the design decision this
+**`WinuaePipe` is the one to reach for.** Every WinUAE process creates
+`\\\\.\\pipe\\WinUAE` at startup, and a message beginning `DBG ` is handed to
+`debug_parser`, which points the debugger's console output at a buffer and hands
+the buffer back as the reply. So a read costs one frame, opens no window, takes
+no focus and does not stop the emulated machine -- measured on 2026-09-08 at a
+median of 2.3 ms a command with the emulator holding 49.9 FPS throughout, on
+`#37 (Automap the Amiga version, not just the C64)`.
+
+**`WinuaeDebugger` is the older route and the one every driven tool uses.** It
+presses F11 -- the `SPC_ENTERDEBUGGER` input event, which is the only way into
+the *interactive* debugger, since `use_debugger=true` cannot start it on Windows
+at all -- and types `S <file> <addr> <n>` and `g` into the emulator's console.
+That halts the machine for the length of the batch and puts a console in front
+of whoever is playing, so it belongs to a driven run and not to a player's
+session. It stays because its `W` and its single-stepping reach parts of the
+debugger the pipe deliberately refuses to send.
+
+**One `ssh` call does the whole of either**, which is the design decision this
 module is built around. `winuae.ps1` and `winuae-send.ps1` are three separate
 guest commands -- write the batch file, press F11, inject the batch -- and each
-run on its own would be an `ssh` round trip of about two seconds. They are
+run on its own would be an `ssh` round trip of about half a second. They are
 composed here into a single PowerShell script, base64'd into
 `powershell -EncodedCommand`, so a poll is one round trip whatever it reads.
 `-EncodedCommand` also removes every quoting question between `winvm ssh`,
 whatever shell the guest hands it to, and PowerShell; a batch full of
 backslashed Windows paths is not something to send through three quoting
 layers by hand.
+
+**The `ssh` is this project's test rig, not the shape of the product.** Wish and
+WinUAE on one Windows machine is a local pipe opened by a local process, which
+is `WinuaePipe(connection="local")`; the Linux-to-VM arrangement is the awkward
+case and it is where the round trip comes from.
 
 **The bytes come back base64 on stdout rather than over `scp`.** `docs/143` §6
 proposes `S` then `scp`, and that is a second round trip for every block. The
@@ -230,7 +248,17 @@ class WinuaeDebugger:
     `runner` is the thing that actually runs `winvm`, injected so the tests can
     drive every path with no VM at all. It takes the argument list and the
     timeout and gives back stdout.
+
+    **`WinuaePipe` is the other transport and the faster one.** This one is
+    what every driven tool uses and is kept working: it needs no pipe, and its
+    `W` and its single-stepping reach parts of the debugger the pipe refuses to
+    send. Use it when the machine is nobody's to disturb.
     """
+
+    #: The debugger this route enters holds the emulation thread at its `>`
+    #: prompt, so a batch must resume the machine itself and a caller has to
+    #: design around the pause. `WinuaePipe` sets this False.
+    halts_machine = True
 
     #: Long, because the batch waits 700 ms after every typed line, `winuae.ps1
     #: send` polls for its receipt, and a 512K dump has to be base64'd by
@@ -335,6 +363,370 @@ def _blob(out: str, name: str) -> bytes | None:
         except (ValueError, base64.binascii.Error):
             return None
     return None
+
+
+#: A debugger command that can reach `activate_debugger()`, and through it
+#: `open_console()` -- a console window in front of whoever is playing, which
+#: is the one thing this route exists to avoid. `m`, `S`, `W` and `T` stay
+#: inside `debug_parser` and are safe; the rest of the command set has not been
+#: read, so the refusal is a list of the ones known to be dangerous plus
+#: `IPC_QUIT`, which quits the emulator outright (`uaeipc.cpp:38`).
+UNSAFE_COMMANDS = frozenset("g t f b w z q x".split())
+
+
+class PipeError(GuestError):
+    """The pipe would not open, or the guest could not be reached.
+
+    Separate from a plain `GuestError` because the caller may want to fall back
+    to the console route -- `WinuaeDebugger` -- when the pipe is not reachable,
+    and that is a different decision from a debugger command failing.
+    """
+
+
+def _check_commands(commands: list[str]) -> None:
+    """Refuse anything that could put a console in front of the player.
+
+    Checked here rather than in the caller because every route into this
+    transport goes through one function, and a batch is composed from several
+    places. The test is the command's first word, which is how `debug_line`
+    reads it.
+    """
+    for cmd in commands:
+        head = cmd.strip().split(" ")[0]
+        if head.lower() == "ipc_quit":
+            raise ValueError("IPC_QUIT quits the emulator; it is never sent")
+        if head in UNSAFE_COMMANDS:
+            raise ValueError(
+                f"`{head}` can reach activate_debugger(), which opens a "
+                "console window in front of the player; this transport sends "
+                "reading commands only")
+
+
+class WinuaePipe:
+    """The transport that does not touch the console: WinUAE's own named pipe.
+
+    Every WinUAE process creates `\\\\.\\pipe\\WinUAE` at startup
+    (`od-win32/win32.cpp`, `createIPC` with no condition on it), and a message
+    beginning `DBG ` is handed to `debug_parser`, which points the debugger's
+    console output at a buffer and hands the buffer back as the reply
+    (`debug.cpp:8288`). The emulation thread services the pipe from
+    `handle_msgpump`, so a command runs between two emulated instructions and
+    the machine carries straight on: **no F11, no console, no focus change and
+    no halt.**
+
+    **The local case is the ordinary one.** Wish and WinUAE on one Windows
+    machine is a local pipe opened by a local process; `connection="ssh"` is
+    how this project drives its test VM from Linux and is the awkward case, not
+    the base one. The two differ only in where the PowerShell runs, so the
+    measured guest-side cost is the same number for both and the round trip is
+    what the `ssh` adds.
+
+    The framing is 8-bit text with no byte-order mark, and that is not a
+    preference: a UTF-16 request takes a reply path that `_tcscpy`s into a
+    16384-**byte** buffer while bounding at 16384 **characters**
+    (`uaeipc.cpp:339`), so a long reply overruns it.
+
+    A reply is capped near 16 KB whatever the framing, which is about 3 KB of
+    memory through `m`. Anything larger goes through `S <file> <addr> <n>` to a
+    file on the host, exactly as the console route already does.
+    """
+
+    #: The machine keeps running: the command is executed from
+    #: `handle_msgpump`, between two emulated instructions, and nothing sets
+    #: `debugger_active` or `SPCFLAG_BRK`. Measured on 2026-09-08 -- Exec's
+    #: `DispCount` rose monotonically across twelve commands sent over one open
+    #: handle, and the emulator's own status bar read 49.9 FPS throughout.
+    halts_machine = False
+
+    #: One client at a time: the pipe is created with `nMaxInstances` 1. Long
+    #: enough that another agent's poll can finish, short enough that a dead
+    #: emulator is reported rather than waited on.
+    CONNECT_MS = 5000
+
+    #: The guest waits this long for one reply before giving up. A read is
+    #: milliseconds; this is only there so a lost message cannot hang the ssh.
+    READ_MS = 10000
+
+    #: The whole round trip, `ssh` included.
+    TIMEOUT = 60.0
+
+    def __init__(self, runner=None, timeout: float | None = None,
+                 pipe: str = "WinUAE", connection: str = "ssh"):
+        self._run = runner or _run
+        self.timeout = self.TIMEOUT if timeout is None else timeout
+        self.pipe = pipe
+        if connection not in ("ssh", "local"):
+            raise ValueError(f"connection {connection!r} is neither 'ssh' nor "
+                             "'local'")
+        self.connection = connection
+        #: Every command this session sent, for a run log.
+        self.sent: list[str] = []
+
+    # -- the guest script ------------------------------------------------
+
+    def script(self, commands: list[str], repeat: int = 1,
+               fetch: list[tuple[str, str]] | None = None) -> str:
+        """The PowerShell that opens the pipe, sends, reads and times.
+
+        Each command is carried to the guest as base64, so nothing in it -- a
+        `S C:\\Amiga\\dump\\x.bin` with its backslashes, a quote -- has to
+        survive `ssh`, the guest's shell and PowerShell's own parser.
+
+        `repeat` sends the whole list that many times over **one** open handle,
+        which is how the local cost is measured with no connection setup and no
+        `ssh` in the number.
+
+        `fetch` is `(name, path)`, and each file is printed after the last
+        reply as `<<name>>` and then its base64 -- the same markers
+        `WinuaeDebugger` uses, so `_blob` reads either transport's output. A
+        file that is not there prints `MISSING` rather than throwing, because
+        one absent dump must not lose the replies that say why.
+        """
+        _check_commands(commands)
+        encoded = ",".join(
+            "'" + base64.b64encode(f"DBG {c}".encode("ascii")).decode("ascii")
+            + "'" for c in commands)
+        tail = []
+        for name, path in (fetch or []):
+            tail.append(f"Write-Output '<<{name}>>'")
+            tail.append(
+                f"if (Test-Path -LiteralPath '{path}') {{ "
+                f"Write-Output ([Convert]::ToBase64String("
+                f"[IO.File]::ReadAllBytes('{path}'))); "
+                f"Remove-Item -LiteralPath '{path}' -Force }} "
+                "else { Write-Output 'MISSING' }")
+        fetched = "\n".join(tail)
+        return f"""$ErrorActionPreference='Stop'
+$sw=[Diagnostics.Stopwatch]::StartNew()
+try {{
+  $p=New-Object IO.Pipes.NamedPipeClientStream '.','{self.pipe}','InOut'
+  $p.Connect({self.CONNECT_MS})
+  $p.ReadMode=[IO.Pipes.PipeTransmissionMode]::Message
+}} catch {{
+  $e=$_.Exception
+  Write-Output ('<<error>> ' + $e.GetType().FullName)
+  Write-Output ('<<message>> ' + $e.Message)
+  Write-Output ('<<hresult>> ' + ('0x{{0:X8}}' -f $e.HResult))
+  Write-Output ('<<win32>> ' + ($e.HResult -band 0xffff))
+  Write-Output '<<end>>'
+  exit 1
+}}
+Write-Output ('<<connect_ms>> ' + $sw.ElapsedMilliseconds)
+$cmds=@({encoded})
+$buf=New-Object byte[] 65536
+for ($r=0; $r -lt {repeat}; $r++) {{
+  foreach ($c in $cmds) {{
+    $b=[Convert]::FromBase64String($c)
+    $msg=New-Object byte[] ($b.Length+1)
+    [Array]::Copy($b,$msg,$b.Length)
+    $t0=$sw.Elapsed.TotalMilliseconds
+    $p.Write($msg,0,$msg.Length)
+    $p.Flush()
+    $ms=New-Object IO.MemoryStream
+    do {{
+      $task=$p.ReadAsync($buf,0,$buf.Length)
+      if (-not $task.Wait({self.READ_MS})) {{
+        Write-Output '<<timeout>>'
+        Write-Output '<<end>>'
+        exit 1
+      }}
+      $n=$task.Result
+      if ($n -gt 0) {{ $ms.Write($buf,0,$n) }}
+      if ($n -eq 0) {{ break }}
+    }} while (-not $p.IsMessageComplete)
+    $t1=$sw.Elapsed.TotalMilliseconds
+    Write-Output ('<<reply>> ' + [Math]::Round($t1-$t0,3) + ' ' +
+      [Convert]::ToBase64String($ms.ToArray()))
+  }}
+}}
+$p.Dispose()
+{fetched}
+Write-Output '<<end>>'
+"""
+
+    # -- sending ---------------------------------------------------------
+
+    def send(self, commands: list[str], repeat: int = 1,
+             with_timings: bool = False):
+        """Send debugger commands and give back `(command, reply)` pairs.
+
+        With `with_timings`, a second value comes back: the milliseconds the
+        **guest** spent on each write-and-read, measured on the guest's own
+        stopwatch, so an `ssh` round trip is not in the number.
+        """
+        self.sent += list(commands)
+        out = self._execute(self.script(commands, repeat=repeat))
+        replies, timings = self._replies(out, list(commands) * repeat)
+        return (replies, timings) if with_timings else replies
+
+    def batch(self, lines: list[str],
+              fetch: list[tuple[str, str]] | None = None
+              ) -> tuple[str, dict[str, bytes | None]]:
+        """`WinuaeDebugger.batch`'s shape, so `AmigaTarget` needs neither told.
+
+        The two transports answer the same call and differ in one thing a
+        caller can see: `halts_machine`. **Nothing here appends a `g`**, and a
+        caller must not send one -- there is no halt to resume, and `g` is one
+        of the commands that can reach `activate_debugger()`.
+        """
+        fetch = fetch or []
+        self.sent += list(lines)
+        out = self._execute(self.script(lines, fetch=fetch))
+        replies, _timings = self._replies(out, list(lines))
+        text = "\n".join(f"--- {cmd}\n{reply}" for cmd, reply in replies)
+        return text, {name: _blob(out, name) for name, _path in fetch}
+
+    def _execute(self, script: str) -> str:
+        """Run one script on the guest and check it got to the end."""
+        out = self._run(self._argv(script), self.timeout)
+        if "<<error>>" in out:
+            raise PipeError(self._error(out))
+        if "<<timeout>>" in out:
+            raise PipeError("the pipe accepted a command and never replied "
+                            f"in {self.READ_MS} ms")
+        if "<<end>>" not in out:
+            raise PipeError("the guest script did not finish; its output "
+                            f"ended: {out.strip()[-400:]}")
+        return out
+
+    @staticmethod
+    def _replies(out: str, wanted: list[str]):
+        """The guest's `<<reply>>` lines, paired back up with their commands.
+
+        The reply carries the debugger's own text with the trailing NUL that
+        `checkIPC` writes; `latin-1` rather than `ascii` because a memory dump's
+        character column is whatever bytes were there.
+        """
+        replies, timings = [], []
+        for line in out.splitlines():
+            line = line.strip()
+            if not line.startswith("<<reply>> "):
+                continue
+            _tag, ms, payload = line.split(" ", 2)
+            timings.append(float(ms))
+            text = base64.b64decode(payload).decode("latin-1").rstrip("\x00")
+            replies.append((wanted[len(replies)] if len(replies) < len(wanted)
+                            else "", text))
+        if len(replies) != len(wanted):
+            raise PipeError(f"sent {len(wanted)} commands and the guest "
+                            f"reported {len(replies)} replies")
+        return replies, timings
+
+    def _argv(self, script: str) -> list[str]:
+        """How the guest is reached, and `local` is the ordinary case.
+
+        `local` is Wish and WinUAE on one Windows machine, which is how a
+        player would run it: no network and no session boundary, just a local
+        pipe. `ssh` is this project's Linux test rig reaching the Windows VM,
+        and it is the arrangement that costs the round trip.
+        """
+        encoded = encode(script)
+        if self.connection == "local":
+            return ["powershell", "-NoProfile", "-EncodedCommand", encoded]
+        return ["winvm", "ssh", "powershell -NoProfile -EncodedCommand "
+                + encoded]
+
+    @staticmethod
+    def _error(out: str) -> str:
+        """The guest's exception, as one line a person can act on."""
+        bits = {}
+        for line in out.splitlines():
+            line = line.strip()
+            for tag in ("error", "message", "hresult", "win32"):
+                if line.startswith(f"<<{tag}>> "):
+                    bits[tag] = line.split(" ", 1)[1]
+        return (f"the pipe would not open: {bits.get('error', '?')}: "
+                f"{bits.get('message', '?')} "
+                f"(HRESULT {bits.get('hresult', '?')}, "
+                f"Win32 {bits.get('win32', '?')})")
+
+    # -- reading memory --------------------------------------------------
+
+    def memory(self, addr: int, length: int) -> bytes:
+        """Bytes, through `m`, parsed out of the debugger's own dump format.
+
+        `m` prints `<addr> <8 hex words> <16 characters>` a line, 16 bytes to
+        the line, so a read is `ceil(length / 16)` lines and the caller's start
+        is found by address rather than by counting: the debugger rounds the
+        address it was given down to an even one.
+
+        **The line count is hex**, like the address: `lines = readhex(&inptr)`
+        in `debug.cpp`'s `m`. Passing it in decimal asks for more lines than
+        were wanted, which is harmless to the bytes and wastes the budget
+        below.
+
+        Two limits, and the second is the one that surprises people:
+
+        * a reply is capped near 16 KB, which is about 3 KB of memory. Past
+          that this raises rather than coming back short.
+        * **`m` stops printing after `MAX_LINECOUNTER` lines and never starts
+          again**, for the life of the emulator process. `debug_out` counts to
+          1000 and then returns 0, and `debug_linecounter` is reset in exactly
+          one place -- `debug_1`, at the interactive `>` prompt, which this
+          route deliberately never reaches. Each dumped line costs two
+          `debug_out` calls, so the whole budget is about **500 lines, or 8 KB
+          of memory, per emulator process**. Measured on 2026-09-08: a fresh
+          process answered `m 0 40` with 64 lines, and after 548 more lines the
+          same `m 0 4` came back with one.
+
+        So **`S <file> <addr> <n>` is the read path for anything repeated**,
+        and it is what `AmigaTarget` uses: `S` prints its one receipt line
+        through `console_out_f` and a 512 KB dump still worked after 1200
+        commands. `m` is for a probe, and this raises rather than lying when
+        the budget has gone.
+        """
+        if length <= 0:
+            raise ValueError(f"a read of {length} bytes is not a read")
+        if length > 3072:
+            raise ValueError(
+                f"{length} bytes is more than one 16 KB reply can carry; use "
+                "`S <file> <addr> <n>` and read the file back")
+        start = addr & ~1
+        lines = (length + (addr - start) + 15) // 16
+        (_cmd, reply), = self.send([f"m {start:x} {lines:x}"])
+        got = parse_memory_dump(reply)
+        out = bytearray()
+        for i in range(addr, addr + length):
+            if i not in got:
+                raise PipeError(
+                    f"`m {start:x} {lines:x}` printed {len(got)} of the "
+                    f"{length} bytes asked for and stopped before {i:#x}. "
+                    "After about 500 dumped lines WinUAE's `m` prints one "
+                    "line and no more, for the life of the process, because "
+                    "`debug_linecounter` is only reset at the interactive "
+                    "prompt this route never opens. Read through `S <file> "
+                    "<addr> <n>` instead, or restart the emulator.")
+            out.append(got[i])
+        return bytes(out)
+
+
+#: One line of the debugger's `m` output: an eight-digit address, then the hex.
+RE_DUMP_LINE = re.compile(r"^([0-9A-Fa-f]{8})\s+((?:[0-9A-Fa-f]{2,4}\s+){1,8})")
+
+
+def parse_memory_dump(text: str) -> dict[int, int]:
+    """`{address: byte}` out of what the debugger's `m` command printed.
+
+    Written as a dictionary keyed by address rather than a flat block because
+    the debugger decides for itself where a line starts, and a reader that
+    assumed the first line began at the address it asked for would be off by
+    one byte whenever it asked for an odd one.
+
+    The ASCII column is not parsed and cannot be: it holds spaces, so it is not
+    separable from the hex by whitespace. The regex takes the address and the
+    hex groups that follow it and stops.
+    """
+    out: dict[int, int] = {}
+    for line in text.splitlines():
+        m = RE_DUMP_LINE.match(line.strip())
+        if not m:
+            continue
+        addr = int(m.group(1), 16)
+        for word in m.group(2).split():
+            for i in range(0, len(word), 2):
+                out[addr] = int(word[i:i + 2], 16)
+                addr += 1
+    return out
 
 
 def find_anchor(memory: bytes, base: int, anchor: bytes,
@@ -505,17 +897,23 @@ class AmigaTarget:
     across boots and must not be: AmigaDOS relocates on every `LoadSeg`.
     """
 
-    #: A poll is a whole `ssh` round trip and a typed console batch, so this is
-    #: not `ViceTarget`'s 200 ms. Measured on the first live run; see the
-    #: module's row in `tools/README.md` for how to re-take it.
+    #: **The transport decides this, not the target.** The console route holds
+    #: the emulation thread at the debugger's `>` prompt, so a read there stops
+    #: the machine; the pipe route runs a command between two emulated
+    #: instructions and stops nothing. The class attribute is the older, safer
+    #: answer, and `__init__` replaces it with the transport's own.
     halts_on_read = True
 
-    def __init__(self, debugger: WinuaeDebugger, layout: AmigaLayout,
+    def __init__(self, debugger, layout: AmigaLayout,
                  data_base: int | None = None):
         self.debugger = debugger
         self.layout = layout
         self.data_base = data_base
         self._open = True
+        # `getattr` rather than the attribute, because a test's fake transport
+        # predates it and "assume it halts" is the answer that costs nothing
+        # but time.
+        self.halts_on_read = getattr(debugger, "halts_machine", True)
 
     # -- Target ----------------------------------------------------------
 
@@ -536,7 +934,7 @@ class AmigaTarget:
             chunk = data[i:i + 16]
             lines.append(f"W {addr + i:x} "
                          + " ".join(f"{b:02x}" for b in chunk))
-        lines.append("g")
+        self._resume(lines)
         out, _ = self.debugger.batch(lines)
         if RE_UNKNOWN.search(out):
             raise GuestError("the debugger did not recognise a `W`; the "
@@ -566,7 +964,7 @@ class AmigaTarget:
             path = f"{GUEST_DUMP}\\wish-{token}-{i}.bin"
             lines.append(f"S {path} {addr:x} {length:x}")
             fetch.append((f"b{i}", path))
-        lines.append("g")
+        self._resume(lines)
         out, blobs = self.debugger.batch(lines, fetch)
         result = []
         for i, (addr, length) in enumerate(want):
@@ -581,6 +979,20 @@ class AmigaTarget:
                     f"returned {len(blob)}")
             result.append(blob)
         return result
+
+    def _resume(self, lines: list[str]) -> None:
+        """Add the `g` that starts the machine again, where there was a halt.
+
+        The console route enters the debugger by pressing F11, which stops the
+        emulation thread, so every batch has to end by resuming it -- a batch
+        that forgets leaves the emulator halted, which is the whole of
+        `#95 (A WinUAE debugger batch can stop half-way through and leave the
+        emulator halted)`. The pipe route never stopped anything, and `g` is
+        one of the commands that can reach `activate_debugger()` and put a
+        console in front of the player, so it must not be sent there.
+        """
+        if getattr(self.debugger, "halts_machine", True):
+            lines.append("g")
 
     def close(self) -> None:
         self._open = False

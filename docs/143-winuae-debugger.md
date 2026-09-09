@@ -4,8 +4,10 @@ The Amiga side needs what the C64 side has in VICE's binary monitor and the DOS
 side has in `docs/142-dosbox-x-debugger.md`: memory reads, watchpoints,
 breakpoints, registers and single-stepping on a running game, driven unattended.
 
-WinUAE has all of it. What it does **not** have is a socket, and that shapes
-everything below.
+WinUAE has all of it. What it does **not** have is a socket — but it does have a
+named pipe that reaches the same commands without opening a console or stopping
+the machine, and **§4.1 is the route to use**. The console route the rest of
+this document describes still works and is what every driven tool uses.
 
 **Read this before writing a WinUAE backend.** §11 says which claims were
 checked and how. The whole path — boot a title, halt it, read its memory, get
@@ -408,9 +410,84 @@ Checked against WinUAE master:
 * The debugger's input comes from `console_get(input, MAX_LINEWIDTH)`
   (`debug.cpp:7903`). A console read. No listener, no command file.
 
-So either build a patched WinUAE and get a socket, or drive the console. This
-document drives the console, because a patched emulator is a second thing to
-maintain and the console turns out to be enough.
+**This section said the choice was a patched WinUAE or the console, and that
+was wrong.** What it missed is that the *interactive* debugger is not the only
+entrance to the command set: `debug_parser` is a second, non-interactive one,
+and a named pipe reaches it. §4.1 is that route, and it is the one to use.
+
+### 4.1 The named pipe, which is the way in
+
+**Every WinUAE process creates `\\.\pipe\WinUAE` at startup**, unconditionally,
+with no configuration and no command-line switch (`od-win32/win32.cpp`,
+`globalipc = createIPC(_T("WinUAE"), 0)` inside `WinMain2`; a second WinUAE gets
+`WinUAE_1`). A message beginning `DBG ` is handed to `debug_parser`
+(`uaeipc.cpp`'s `parsemessage`), which points the debugger's console output at a
+buffer, runs one `debug_line`, and hands the buffer back as the pipe's reply
+(`debug.cpp:8288`). `console_put` writes into that buffer and never reaches
+`openconsole()`, so **no console is allocated and nothing is drawn**.
+
+It runs on the **emulation thread**, from `handle_msgpump`, which
+`inputdevice_read_msg` calls about three times a frame — so the command executes
+between two emulated instructions and the machine carries straight on.
+`debug_parser` never sets `debugger_active` and never sets `SPCFLAG_BRK`.
+
+**Measured on the VM, 2026-09-08, against WinUAE 6.0.3 running Curse of the
+Azure Bonds' attract-mode demo, with F11 never pressed and `g` never sent:**
+
+| | |
+|---|---|
+| a process in Windows **session 0** opening the pipe | works — `winvm ssh` read the Amiga's first sixteen bytes on the first attempt |
+| `m 0 1`, 20 per connection, on the guest's own stopwatch | median **15.8 ms** (n=60) |
+| `m 0 1`, 1200 back to back on one handle | median **2.3 ms** (n=1200) |
+| `S <file> c00000 80000` — 512 KB to a host file | median **30.1 ms** (n=150) |
+| opening the pipe from PowerShell | 71 ms |
+| `AmigaTarget.locate()`, the whole 512 KB sweep, from Linux | **1.14 s** |
+| the emulator's own status bar, during all of it | CPU 0%, FPS 49.9, unchanged |
+| Exec's `DispCount` across twelve commands on one handle | rose monotonically |
+| the desktop, the taskbar and the window's title bar | **0 pixels changed** |
+
+Against the console route's fifteen to twenty-two seconds in §10, on the same
+VM, reading the same bytes. The spread is the pipe being serviced about three
+times a frame: a command that just missed a service waits up to ~20 ms, and
+commands queued behind one another are handled in the same pass.
+
+**The framing is 8-bit text with no byte-order mark**, and that is not a
+preference. `checkIPC` reads a UTF-16 request (`0xFF 0xFE`) into a path that
+`_tcscpy`s the reply into a 16384-**byte** buffer while bounding the length at
+16384 **characters**; the 8-bit path goes through `ua_copy` with a size and is
+bounded. Send the command as ASCII with a trailing NUL, in message mode.
+
+Five things constrain what may go down it:
+
+* **A reply is capped near 16 KB**, which is about 3 KB of memory through `m`.
+  Anything bigger goes through `S <file> <addr> <n>` and is read back off the
+  host's filesystem, exactly as the console route already does.
+* **One client at a time**: the pipe is created with `nMaxInstances` 1. The lane
+  claim in §1.1 already serialises agents.
+* **Never send `IPC_QUIT`.** It quits the emulator (`uaeipc.cpp:38`).
+* **Send only reading commands.** `m`, `S`, `W` and `T` stay inside
+  `debug_parser`. `g`, `t`, `f`, `w`, `b` and the breakpoint commands can reach
+  `activate_debugger()`, which calls `open_console()` — the window in front of
+  the player that this whole route exists to avoid.
+* **Send no `g`.** There was no halt, so there is nothing to resume, and `g` is
+  on the list above.
+
+`CFG <line>` on the same pipe reaches `cfgfile_modify`, which is the host-side
+equivalent of the Amiga-side `uae-configuration` program; nothing here uses it.
+
+**`automap.amiga.WinuaePipe` is the transport and `tools/winuaepipe.py` the
+command line.** `AmigaTarget` takes either transport and asks it one question,
+`halts_machine`, which decides both `halts_on_read` and whether a batch ends
+with a `g`. The console route stays: it is what every driven tool uses, and its
+`W` and single-stepping reach parts of the debugger the pipe refuses to send.
+
+**Where it runs is the part not to lose.** Wish and WinUAE on one Windows
+machine is a local pipe opened by a local process — no network, no session
+boundary — and that is the ordinary case. The `ssh` from Linux is this project's
+test rig, and it is where the ~470 ms round trip and the ~170 ms of PowerShell
+startup come from. A local poll would be about 260 ms shelling out to
+PowerShell, and about 16 ms if the client opened the pipe itself; the second is
+PROBABLE and untested, because it needs a Windows host to run Python on.
 
 ## 5. Starting a game unattended
 
@@ -877,6 +954,11 @@ is fifteen to twenty-two **seconds**, against `ViceTarget`'s 200 ms poll and
 14.3 ms of distortion. An automapper on this is fine for a map that redraws
 when the party moves and hopeless for anything watching a fight.
 
+**Every number in that table is the console route's, and §4.1 replaces it.**
+Over the pipe the same `locate()` sweep took 1.14 s from Linux and the command
+itself 30 ms on the guest, with the machine never stopping. This section is left
+as measured because the console route is still what the driven tools use.
+
 **`automap/screen.py` is never asked.** It reads a 40x25 C64 text screen and
 the Amiga has no such thing; `AmigaTarget` implements `fix` itself, from the
 engine's own live x, y and facing, and `read_fix` prefers a target's own `fix`
@@ -1166,7 +1248,44 @@ made to walk, because the WinUAE driver sends only keystrokes)` -- §5.1 and
   idle File Systems and two idle trackdisk tasks is what said nothing was ever
   going to complete
 
+**Checked on the VM itself, 2026-09-08**, for `#37 (Automap the Amiga version,
+not just the C64)` -- §4.1. WinUAE 6.0.3 running Curse of the Azure Bonds'
+attract-mode demo, started **without `-log`** so no console existed at all, and
+**F11 was never pressed and `g` never sent** in the whole session:
+
+* **a process in Windows session 0 can open a pipe created in session 1.** The
+  probe returned the Amiga's first sixteen bytes -- `00000000 0000 0000 00C0
+  0276 00FC 0818 00FC 081A` -- with no elevation and no session-1 helper. Named
+  pipes have no session boundary, unlike the `AttachConsole` of §1
+* **the machine keeps running through a read.** Exec's `DispCount`, at
+  `ExecBase + 0x11C`, read twelve times over one open handle in about 190 ms:
+  `D6B0 D6B6 D6B8 D6BC D6BE D6BE D6C2 D6C2 D6C4 D6C6 D6C8 D6CA`, monotonic, on
+  a machine nothing had halted and nothing resumed
+* **nothing appears on screen.** `winvm shot` before and during a burst of 1200
+  reads, diffed by region: the desktop 0 pixels, the taskbar 0 pixels, the
+  window's title bar 0 pixels; only the Amiga display changed, and the clock in
+  the corner by a minute. The status bar read CPU 0% and FPS 49.9 in every grab,
+  including during 150 512-KB dumps
+* **`S` works through the pipe**: `Wrote 00C00000 - 00C7FFFF (524288 bytes)`, at
+  a median of 30.1 ms across 150 of them
+* **`AmigaTarget` runs over it unchanged**, and `locate()` measured `/Curse`'s
+  data hunk at `$00C4E270` -- the same address §10.1 records from a console-route
+  boot, which is two transports and two boots agreeing
+* **the timings are in §4.1**, with what each stage of the plumbing costs
+
 **Not checked, and needing a session at the machine:**
+
+* **a real `fix()` over the pipe, with a party standing in the world.** The
+  session above ran the attract-mode demo, where the party globals held
+  `x=7, y=13, facing=0x0200` -- a facing the engine never writes -- and the
+  resident `GEO` block was 1024 zero bytes, so `fix()` correctly returned None
+  and `geo()` returned an empty map. Both are the right answers for a machine
+  with no area loaded and neither exercises the reading. The experiment: drive
+  Curse or Silver Blades to a party in the world, poll over the pipe, and check
+  the x, y and facing against the status line
+* **opening `\\.\pipe\WinUAE` from Python rather than PowerShell**, which is
+  where the ~170 ms of PowerShell startup goes. It needs a Windows host to run
+  Python on and was not tried
 
 * the §9 trainer loop against a real Gold Box title — `C`, `D` and `Cl` have
   not been run
