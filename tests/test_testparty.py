@@ -305,3 +305,104 @@ def test_the_written_disk_reads_back_as_the_party_that_was_generated(
         assert derive.check(one.record, save1.roster(index), []) == []
     for index in range(len(built), savegame.ROSTER_COUNT):
         assert not save1.roster(index).occupied
+
+
+# --- the loadouts, and the sixteen-item ceiling ------------------------------
+
+@pytest.fixture(scope="module")
+def armed():
+    """The same party with its loadouts on, read off the player's own sides.
+
+    Module-scoped for the same reason `built` is: six characters' worth of
+    level-ups and three item tables per test is a minute nobody needs to
+    spend.
+    """
+    if gamedata.disk_dir() is None:
+        pytest.skip("needs the player's Pool of Radiance disks")
+    tables = testparty.item_tables(gamedata.game_disk("POOL1"))
+    return testparty.party(rolls="max", tables=tables), tables
+
+
+def test_bulwark_fills_all_sixteen_item_slots(armed):
+    """The ceiling `.claude/rules/conversions.md` names: sixteen items is
+    every slot a C64 record has, and until this loadout no record this project
+    generated held more than none."""
+    from goldbox.items import ITEMS_PER_CHARACTER
+
+    built, (names, _types, _templates) = armed
+    record = _by_name(built)["BULWARK"].record
+    block = record.get_raw("inventory")
+    from goldbox.items import ITEM_SIZE, Item
+
+    carried = [Item(block[n * ITEM_SIZE:(n + 1) * ITEM_SIZE], names)
+               for n in range(ITEMS_PER_CHARACTER)]
+    assert [i for i in carried if i.is_empty] == []
+    assert len(carried) == ITEMS_PER_CHARACTER == 16
+
+
+def test_every_carried_item_is_the_games_own_record(armed):
+    """A loadout copies whole sixteen-byte records off the `ITEMFILE*` lists
+    and writes over exactly two bytes: the readied flag at `+6` bit 7 and the
+    quantity at `+10`.
+
+    That is the check that the generator is not *building* items -- an item
+    built from a name and a type leaves the bytes nobody here understands at
+    zero, and `+13` to `+15` is where an item's granted effect lives.
+    """
+    from goldbox.items import ITEM_SIZE, Item
+
+    built, (names, _types, templates) = armed
+    upper = {k.upper(): v for k, v in templates.items()}
+    seen = 0
+    for one in built:
+        block = one.record.get_raw("inventory")
+        for n, want in enumerate(one.spec.equipment):
+            raw = block[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
+            base = upper[want.template.upper()]
+            differ = {i for i in range(ITEM_SIZE) if raw[i] != base[i]}
+            assert differ <= {6, 10}, (str(one.record.name), want.template,
+                                       sorted(differ))
+            assert Item(raw, names).readied is want.readied
+            seen += 1
+    assert seen == sum(len(one.spec.equipment) for one in built) == 42
+
+
+def test_the_armed_cache_agrees_with_what_the_rules_derive(armed):
+    """`goldbox.derive.check` again, this time with the readied items in hand.
+
+    Half of this is a consistency check -- `equip` writes the cache from
+    `derive` -- but the half that is not is the encoding: the roster reads
+    armour class and THAC0 back through the `60 - value` bias and the damage
+    bonus out of `+0x17`, so a wrong bias or a tail index off by one turns it
+    red where reading our own numbers back would not.
+    """
+    built, (names, types, _templates) = armed
+    roster = bytearray(GAME.roster_size)
+    for index, one in enumerate(built):
+        at = index * savegame.ROSTER_STRIDE
+        roster[at:at + savegame.ROSTER_STRIDE] = one.record.slice(0x100, 32)
+    save1 = savegame.SaveGame1(bytes(roster), GAME)
+    for index, one in enumerate(built):
+        readied = testparty._readied_pairs(
+            [one.record.get_raw("inventory")[n * 16:(n + 1) * 16]
+             for n in range(16)], names, types)
+        assert derive.check(one.record, save1.roster(index), readied) == [], \
+            str(one.record.name)
+
+
+def test_an_unarmed_tail_is_the_shape_the_three_exports_hold():
+    """`30 00 00 01 00 02 00 bb 00`, where `bb` is the strength damage bonus.
+
+    BRUTUS, MALCYON and LADY KATHERINE -- the three `.chr` exports in
+    `tests/fixtures/` -- all hold exactly that, and the value is what says the
+    roster tail is **not** a copy of the record's `attack_forms` at `0x0D9`:
+    the record's attack count is 2 where the roster's is 0, and the record's
+    damage bonus is 0 where BRUTUS's roster holds his 18/98 strength's 5.
+    """
+    for one in testparty.party(rolls="max"):
+        tail = one.record.get_raw("roster_tail")
+        bonus = derive.strength_bonuses(
+            one.record.get("strength"),
+            one.record.get("exceptional_strength") or 0)[1]
+        assert tail == bytes((48, 0, 0, 1, 0, 2, 0, bonus & 0xFF, 0)), \
+            str(one.record.name)

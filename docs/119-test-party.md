@@ -18,12 +18,37 @@ six of six match what the generator printed -- BULWARK at LEVEL 8, EXP 130000,
 HITPOINTS 72, AC 8 and THACO 11, which is his base 13 with the 18/76 strength
 bonus on it. §6's third gate, the one that breaks the circle, is passed.
 
-**What the generator still cannot make** is in its own module docstring and is
-short: no items, so nobody is armed -- the sheet says `DAMAGE 0D0` -- and the
-sixteen-item ceiling is not exercised; no combat icon, which is `#130 (A
+**The party is equipped as of 2026-09-08.** `Spec.equipment` names items and
+`tools/testparty.equip` copies the game's own sixteen-byte records out of the
+`ITEMFILE*` lists on the player's sides, so nothing is built from a name and a
+type and the bytes nobody here understands -- `+13` to `+15`, where an item's
+granted effect lives -- come along whole. BULWARK carries a **full sixteen**,
+which is the ceiling `.claude/rules/conversions.md` names and which no record
+this project generated had ever reached.
+
+**And that work found the reason the 2026-09-08 sheets all said `DAMAGE 0D0`.**
+It was read at the time as "the generator's no-items gap, seen from the
+player's side". It is not: the three `.chr` exports in `tests/fixtures/` show
+an *unarmed* character holds `30 00 00 01 00 02 00 bb 00` in the roster tail --
+armour bonus `48 + 0`, one blow, **`1d2`**, then the strength damage bonus --
+and the generator was writing nine zeros with the bonus dropped in. The game
+was printing our own bytes back. Fixed, and
+`test_an_unarmed_tail_is_the_shape_the_three_exports_hold` pins it.
+
+**What the generator still cannot make**: no combat icon, which is `#130 (A
 converted DOS party arrives with six identical combat figures, not its own)`'s
 gap from the other side; and no trait ceiling, because Pool of Radiance's C64
 seeds a trait only to an elf and a half-elf.
+
+**What no boot has confirmed**: the cache an armed character implies. The
+armour class at `0x10F`, the THAC0 at `0x10E` and the nine tail bytes are
+`goldbox.derive`'s arithmetic rather than the game's, and two of the nine are
+UNVERIFIED for an armed character -- `+0x10`'s armour bonus with *magical*
+armour on (PILFER's LEATHER ARMOR +4 is in the loadout to answer it) and
+`+0x11`'s attack count, which `goldbox/savegame.py` grades PROBABLE. One boot
+settles both: load the party, un-ready and re-ready a weapon, and read
+`$8300 + slot * 0x20` for thirty-two bytes before and after. The engine's own
+rebuild is `LIBRARY $36A0`.
 
 The training hall is **area 11**, which has
 no map of its own: it reuses `GEO00`, so the schools are New Phlan's own

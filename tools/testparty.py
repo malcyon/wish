@@ -12,12 +12,14 @@ What it does not do
 -------------------
 Three things, each with the reason:
 
-* **No items.**  Every generated character carries an empty inventory, so the
-  roster's damage bonus and damage dice are zero and nobody is armed.  The
-  item templates live on the player's own disks (`tools/gentemplates.py`), so
-  equipping is a disk read this tool does not yet do; `Spec.inventory` is the
-  hook, and filling it is the obvious next step.  It also means the sixteen-
-  item ceiling `.claude/rules/conversions.md` names is **not** exercised here.
+* **No combat art on an item.**  The party *is* equipped as of 2026-09-08 --
+  `Spec.equipment` names items and `equip` copies the game's own sixteen-byte
+  records out of the `ITEMFILE*` lists, which needs the player's disks and is
+  skipped by `--no-items`.  BULWARK carries a full sixteen, which is the
+  ceiling `.claude/rules/conversions.md` names.  **What no boot has confirmed
+  is the cache the loadout implies**: the armour class, the THAC0 and the nine
+  roster-tail bytes are `goldbox.derive`'s arithmetic, not the game's, and two
+  of the nine are UNVERIFIED for an armed character -- see `equip`.
 * **No combat icon.**  `goldbox.c64_codec.write` reports it, because a
   generated character has no combat art to turn into eighteen C64 screen
   codes -- `#130 (A converted DOS party arrives with six identical combat
@@ -102,6 +104,7 @@ from goldbox import (  # noqa: E402
     c64_codec,
     classcode,
     derive,
+    encoding,
     games,
     levels,
     levelup,
@@ -134,9 +137,17 @@ CREATION_MOVEMENT = 12
 #: party can exercise more than one of the ten trait slots.
 C64_RACE_TRAIT_SEED: dict[int, tuple[int, ...]] = {2: (107,), 4: (124,)}
 
+#: The die an empty hand rolls, in every unarmed export this project holds:
+#: `1d2`, at roster `+0x13`/`+0x15`.
+UNARMED_DIE = 2
+
 #: Races whose characters are stored small.  Neutral `size_small` is "0 small,
 #: 1 large", which is the opposite way round from the name.
 SMALL_RACES = frozenset({1, 3, 5})
+
+#: The class bit each of `goldbox.items.CLASS_USAGE_BITS` names, so a loadout
+#: can be checked against the character who is meant to carry it.
+CLASS_USAGE = {"magic-user": 1, "cleric": 2, "thief": 4, "fighter": 8}
 
 
 class FixedRolls(random.Random):
@@ -175,6 +186,27 @@ def rolls_for(mode: str, seed: int = 0):
 
 
 @dataclasses.dataclass(frozen=True)
+class Equip:
+    """One line of a loadout: an item off the game's own disks.
+
+    `template` is a name from `docs/87-item-templates.md`, which
+    `goldbox.items.load_item_templates` reads out of the `ITEMFILE*` lists on
+    the player's own sides.  Copying the game's whole sixteen-byte record is
+    the only way to get the bytes nobody here understands -- the effect ids at
+    `+13` to `+15` among them -- so a loadout names items rather than building
+    them.
+    """
+
+    template: str
+    #: Readied, which is bit 7 of the record's `+6`.  The game allows one
+    #: weapon, one shield and one body armour at a time; nothing here enforces
+    #: that, and `equip` says so when a loadout readies two of a kind.
+    readied: bool = False
+    #: `+10`.  0 leaves the template's own count, which is 10 for arrows.
+    quantity: int = 0
+
+
+@dataclasses.dataclass(frozen=True)
 class Spec:
     """One character to generate, in the terms a player would describe them.
 
@@ -199,7 +231,13 @@ class Spec:
     #: Hit points below the maximum, applied after the last training because
     #: the trainer heals.  0 means unwounded.
     wound: int = 0
-    #: Sixteen-byte item records.  Empty, for now -- see the module docstring.
+    #: What this character carries, as names off the game's own item lists.
+    #: `equip` turns these into the sixteen-byte records at `0x120` and
+    #: rebuilds the combat numbers the roster caches from them.
+    equipment: tuple[Equip, ...] = ()
+    #: Sixteen-byte item records, for a caller who has the bytes already.
+    #: `equipment` is the way in from a name; this is the way in from a
+    #: record, and the two are concatenated in that order.
     inventory: tuple[bytes, ...] = ()
     #: The hit points creation rolled, when they are already known -- which is
     #: what rebuilding a character the engine rolled needs, since **the rule
@@ -220,6 +258,14 @@ PARTY: tuple[Spec, ...] = (
          abilities=dict(strength=14, intelligence=11, wisdom=18, dexterity=12,
                         constitution=16, charisma=13, exceptional_strength=0),
          alignment=0, age=25, experience=30000, portrait=(1, 0), gold=5000,
+         equipment=(
+             Equip("MACE +1", readied=True),
+             Equip("PLATE MAIL", readied=True),
+             Equip("SHIELD", readied=True),
+             Equip("WOODEN HOLY SYMBOL OF TYR"),
+             Equip("CLERICAL SCROLL WITH 3 SPELLS"),
+             Equip("POTION OF HEALING"),
+         ),
          proves="cleric spell slots above the class table, because a WIS 18 "
                 "bonus lands in the high nibble of spells_castable; every "
                 "cleric spell id set in the spellbook"),
@@ -227,6 +273,12 @@ PARTY: tuple[Spec, ...] = (
          abilities=dict(strength=10, intelligence=17, wisdom=11, dexterity=15,
                         constitution=14, charisma=12, exceptional_strength=0),
          alignment=4, age=24, experience=42000, portrait=(4, 2), gold=5000,
+         equipment=(
+             Equip("DAGGER +1", readied=True),
+             Equip("DART", quantity=10),
+             Equip("MU SCROLL WITH 3 SPELLS"),
+             Equip("POTION OF HEALING"),
+         ),
          proves="the top spell level the game implements, the low nibble of "
                 "spells_castable, and a spellbook that is a subset rather "
                 "than every bit set"),
@@ -234,6 +286,13 @@ PARTY: tuple[Spec, ...] = (
          abilities=dict(strength=12, intelligence=13, wisdom=10, dexterity=18,
                         constitution=15, charisma=14, exceptional_strength=0),
          alignment=3, age=40, experience=115000, portrait=(7, 5), gold=5000,
+         equipment=(
+             Equip("SHORT SWORD +1", readied=True),
+             Equip("LEATHER ARMOR +4", readied=True),
+             Equip("SLING"),
+             Equip("SILVER DAGGER"),
+             Equip("POTION OF SPEED"),
+         ),
          proves="the highest level anywhere in the game's tables; all eight "
                 "thief skills off their level-1 values, with a halfling's "
                 "read-languages crossing zero from below"),
@@ -242,6 +301,28 @@ PARTY: tuple[Spec, ...] = (
                         constitution=18, charisma=12, exceptional_strength=76),
          alignment=1, age=22, experience=130000, portrait=(0, 1), gold=5000,
          wound=40,
+         equipment=(
+             # Sixteen, which is every slot the C64 record has: the ceiling
+             # `.claude/rules/conversions.md` names, and the reason this
+             # character rather than another carries a bow he cannot fire and
+             # a two-handed sword he is not holding.
+             Equip("LONG SWORD +2", readied=True),
+             Equip("PLATE MAIL +2", readied=True),
+             Equip("SHIELD +1", readied=True),
+             Equip("LONG BOW"),
+             Equip("ARROW(S)", quantity=20),
+             Equip("SILVER ARROW(S)", quantity=6),
+             Equip("TWO-HANDED SWORD +1 +3 VS UNDEAD"),
+             Equip("HAND AXE +1"),
+             Equip("DAGGER"),
+             Equip("FLASK OF OIL"),
+             Equip("VIAL OF HOLY WATER"),
+             Equip("POTION OF HEALING"),
+             Equip("POTION EXTRA HEALING"),
+             Equip("POTION OF GIANT STRENGTH"),
+             Equip("RING OF PROTECTION +1"),
+             Equip("GAUNTLETS OF OGRE POWER"),
+         ),
          proves="the fighter ceiling -- THAC0 13, hp_max 112 and 3/2 attacks "
                 "at 0x0D9 -- carried wounded, which the trainer cannot do"),
     Spec(name="GRIMSTONE", race=1, sex=0,
@@ -249,6 +330,14 @@ PARTY: tuple[Spec, ...] = (
          abilities=dict(strength=17, intelligence=10, wisdom=11, dexterity=17,
                         constitution=17, charisma=9, exceptional_strength=0),
          alignment=1, age=75, experience=150000, portrait=(2, 3), gold=5000,
+         equipment=(
+             Equip("BATTLE AXE", readied=True),
+             Equip("CHAIN MAIL", readied=True),
+             Equip("SHIELD", readied=True),
+             Equip("SHORT BOW"),
+             Equip("ARROW(S)", quantity=12),
+             Equip("POTION OF HEALING"),
+         ),
          proves="a multi-class character far above level 1: two different "
                 "non-zero entries in the per-class array at 0x0C9, which is "
                 "the only thing that separates level from the class's level"),
@@ -257,10 +346,190 @@ PARTY: tuple[Spec, ...] = (
          abilities=dict(strength=15, intelligence=16, wisdom=17, dexterity=16,
                         constitution=15, charisma=13, exceptional_strength=0),
          alignment=0, age=45, experience=135000, portrait=(9, 8), gold=5000,
+         equipment=(
+             Equip("LONG SWORD", readied=True),
+             Equip("CHAIN MAIL", readied=True),
+             Equip("SHIELD", readied=True),
+             Equip("MU SCROLL WITH 3 SPELLS"),
+             Equip("POTION OF HEALING"),
+         ),
          proves="the widest class mask the game supports, and the only record "
                 "in which both nibbles of spells_castable are non-zero at "
                 "once; the half-elf trait seed 124 in the first trait slot"),
 )
+
+
+def item_disk(where: "pathlib.Path | None" = None) -> pathlib.Path:
+    """A game side to read the item tables off, never written.
+
+    The same `$POR_DISKS`-then-`automap.paths` one-liner `base_save_disk`
+    uses.  `goldbox.items.load_item_templates` opens the siblings itself,
+    because the `ITEMFILE*` lists are spread across all eight sides.
+    """
+    import os
+
+    from automap import paths
+
+    root = where or pathlib.Path(
+        os.environ.get("POR_DISKS") or paths.find_disks() or "")
+    found = sorted(root.glob("POOL*.[dD]64"))
+    if not found:
+        raise SystemExit(f"no POOL disk in {root}; set $POR_DISKS")
+    return found[0]
+
+
+def item_tables(disk: "pathlib.Path | None" = None):
+    """`(names, types, templates)` off the player's own sides.
+
+    Nothing is generated here: every sixteen-byte record a loadout names is
+    the game's own, copied whole out of an `ITEMFILE*` list, which is the only
+    way to get the bytes this project cannot build -- the effect ids at `+13`
+    to `+15` among them.
+    """
+    from goldbox import items as _items
+
+    path = str(disk or item_disk())
+    names = _items.load_item_names(path)
+    return (names, _items.load_item_types(path),
+            _items.load_item_templates(path, names))
+
+
+def _readied_pairs(raws, names, types):
+    """The `(item, type)` pairs `goldbox.derive` wants, readied ones only."""
+    from goldbox.items import Item
+
+    out = []
+    for raw in raws:
+        item = Item(raw, names)
+        if item.readied and item.type_index in types:
+            out.append((item, types[item.type_index]))
+    return out
+
+
+def equip(one: Built, tables, game=None) -> None:
+    """Put the loadout on, and rebuild every number the roster caches from it.
+
+    **The items are the game's own bytes and the cache is ours.**  Each
+    sixteen-byte record is a template copied whole, with only `+6` bit 7 (the
+    readied flag) and `+10` (the quantity) written over it.  What is *derived*
+    is the block at `0x10E`-`0x118` -- the current THAC0, the current armour
+    class and the nine-byte tail -- and that is `goldbox.derive`, which is the
+    same code `wish` uses to tell a player their cache has gone stale.
+
+    Two of those nine bytes are **UNVERIFIED for an armed character** and are
+    written anyway, so that the game has something to disagree with:
+
+    * `+0x10`, the armour bonus, is `48 + (10 - the armour's class)` -- 48
+      bare, 50 leather, 54 banded on thirteen of Donald's save disks
+      (`goldbox/savegame.py`).  **No specimen carries magical armour**, so
+      whether the item's own `+4` moves this byte is a guess; the loadout
+      gives PILFER LEATHER ARMOR +4 precisely so one boot answers it.
+    * `+0x11`, the attack count, is the record's own `attack_forms[0]`.
+      `RosterBlock.attacks` calls the reading PROBABLE and names the
+      contradiction: a dart reads 3 and a two-handed weapon reads 0.
+
+    The experiment that settles both is one boot: load the party, un-ready and
+    re-ready a weapon, and read `$8300 + slot * 0x20` for thirty-two bytes
+    before and after.  The engine's own rebuild is at `LIBRARY $36A0`.
+    """
+    from goldbox import items as _items
+
+    names, types, templates = tables
+    upper = {k.upper(): v for k, v in templates.items()}
+    raws: list[bytes] = []
+    for want in one.spec.equipment:
+        base = upper.get(want.template.upper())
+        if base is None:
+            raise SystemExit(f"{one.spec.name}: no item called "
+                             f"{want.template!r} on the game disks; "
+                             f"docs/87-item-templates.md lists them")
+        raw = bytearray(base)
+        raw[6] = (raw[6] | 0x80) if want.readied else (raw[6] & ~0x80)
+        if want.quantity:
+            raw[10] = want.quantity & 0xFF
+        raws.append(bytes(raw))
+    raws.extend(one.spec.inventory)
+
+    slots = _items.ITEMS_PER_CHARACTER
+    if len(raws) > slots:
+        raise SystemExit(f"{one.spec.name}: {len(raws)} items and the C64 "
+                         f"record has {slots} slots")
+
+    # A loadout the game itself would refuse is a loadout that measures
+    # nothing, so both refusals it makes are checked here rather than found in
+    # the emulator: the class filter on every item, and one readied item per
+    # place on the body.
+    mine = {n for n in one.spec.levels}
+    worn: dict[int, str] = {}
+    for raw in raws:
+        item = _items.Item(raw, names)
+        kind = types.get(item.type_index)
+        if kind is None:
+            continue
+        allowed = set(kind.usable_by)
+        if allowed and not (allowed & mine):
+            one.notes.append(f"{item.name} is for {', '.join(sorted(allowed))} "
+                             f"and this character is not one")
+        if item.readied:
+            where = kind.raw[_items.TYPE_LOCATION]
+            if where in worn:
+                one.notes.append(f"{item.name} and {worn[where]} are both "
+                                 f"readied in place {where}, and the game "
+                                 f"allows one")
+            worn[where] = item.name
+
+    block = bytearray(slots * _items.ITEM_SIZE)
+    for n, raw in enumerate(raws):
+        block[n * _items.ITEM_SIZE:(n + 1) * _items.ITEM_SIZE] = raw
+    record = one.record
+    record.set_raw("inventory", bytes(block))
+
+    readied = _readied_pairs(raws, names, types)
+    record.set("armour_class",
+               encoding.combat_byte(derive.expected_armour_class(record,
+                                                                 readied)))
+    record.set("thac0",
+               encoding.combat_byte(derive.expected_thac0(record, readied)))
+
+    # The nine bytes, built from the three exports this project holds rather
+    # than from the record's own `attack_forms`: BRUTUS, MALCYON and LADY
+    # KATHERINE, all unarmed, hold `30 00 00 01 00 02 00 bb 00` where `bb` is
+    # the strength damage bonus -- so the roster's attack count is 0 where the
+    # record's is 2, and the roster's damage bonus is 5 where the record's is
+    # 0.  The two blocks are not copies of each other, whatever "running copy"
+    # suggests, and building the tail from the record would write 2 into a
+    # byte no export has ever held at 2.
+    armour = next(((i, k) for i, k in readied
+                   if k.armour_class is not None and not k.is_shield), None)
+    weapon = next(((i, k) for i, k in readied if k.is_weapon), None)
+    dice, die = 1, UNARMED_DIE
+    attacks = 0
+    if weapon is not None:
+        count, sides, _ = weapon[1].raw[
+            _items.TYPE_DAMAGE_MEDIUM:_items.TYPE_DAMAGE_MEDIUM + 3]
+        dice, die = count or dice, sides or die
+        # `rate_of_fire` is in halves: a dart's 6 is three throws a round,
+        # which is the 3 MALCYON's roster holds, and a melee weapon's 0 or 2
+        # is one blow.
+        attacks = max(1, weapon[1].rate_of_fire // 2)
+    tail = bytearray(9)
+    tail[0] = encoding.armour_bonus_byte(
+        0 if armour is None
+        else derive.UNARMOURED_AC - armour[1].armour_class
+        + (armour[0].bonus or 0))
+    tail[1] = attacks
+    tail[3] = dice
+    tail[5] = die
+    tail[7] = derive.expected_damage_bonus(record, readied) & 0xFF
+    record.set_raw("roster_tail", bytes(tail))
+
+    one.notes.append(
+        f"{len(raws)} items, "
+        f"{sum(1 for r in raws if r[6] & 0x80)} readied: AC "
+        f"{derive.expected_armour_class(record, readied)}, THAC0 "
+        f"{derive.expected_thac0(record, readied)}, damage "
+        f"{dice}d{die}+{derive.expected_damage_bonus(record, readied)}"
+        f", {sum(_items.Item(r, names).weight_tenths * max(1, r[10]) for r in raws) / 10:.1f} lb")
 
 
 def _seed_hit_points(spec: Spec, game, rng) -> int:
@@ -374,24 +643,26 @@ def level_one(spec: Spec, game, rng) -> tuple[CharacterRecord, object]:
     if turning is not None:
         put("turn_power", turning, "the cleric's turning level")
 
-    # `roster_tail` is the nine bytes at `0x110` -- the armour bonus, the two
-    # attack forms, the damage dice and the damage bonus. Only the damage
-    # bonus is a property of the character rather than of a readied weapon,
-    # and `goldbox.derive.check` is the thing that asks for it, so that byte
-    # is written and the other eight are left zero.
+    # `roster_tail` is the nine bytes at `0x110` -- the armour bonus at
+    # `+0x10`, then the current attack form: two attack counts, two dice
+    # counts, two die sizes, two damage bonuses.
     #
-    # UNVERIFIED: nothing here has watched the engine rebuild an *unarmed*
-    # character's tail, so whether those eight zeros are what a fight would
-    # leave behind is open. The experiment is one boot -- load a generated
-    # party, start a fight, and read `$8300 + slot * 0x20 + 0x10` for nine
-    # bytes before and after the first round.
-    tail = bytearray(9)
+    # **An unarmed character does not hold nine zeros and a damage bonus**,
+    # which is what this wrote until 2026-09-08. BRUTUS, MALCYON and LADY
+    # KATHERINE -- the three exports in `tests/fixtures/` -- all hold
+    # `30 00 00 01 00 02 00 bb 00`: the armour bonus is stored `48 + 0`
+    # rather than 0, and an empty hand rolls `1d2` rather than `0d0`. The
+    # party booted on 2026-09-08 carried the zeros, which is why the game's
+    # own sheet drew `DAMAGE 0D0` for all six -- the engine was printing our
+    # bytes back, not reporting that nobody was armed.
+    tail = bytearray((encoding.armour_bonus_byte(0), 0, 0, 1, 0, UNARMED_DIE,
+                      0, 0, 0))
     tail[0x17 - 0x10] = derive.strength_bonuses(
         spec.abilities["strength"],
         spec.abilities.get("exceptional_strength", 0))[1] & 0xFF
     put("roster_tail", bytes(tail),
-        "the strength damage bonus; the weapon's terms are zero because "
-        "nothing is readied")
+        "the strength damage bonus over the unarmed form the three .chr "
+        "exports hold: no armour, one blow, 1d2")
 
     put("status", "okay", "a created character is well")
     put("active", True, "a created character is in the party")
@@ -439,7 +710,8 @@ class Built:
     notes: list[str] = dataclasses.field(default_factory=list)
 
 
-def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0) -> Built:
+def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
+          tables=None) -> Built:
     """Generate one character, level 1 to the levels the spec asks for.
 
     Experience is granted before each training and the trainer's own clamp
@@ -496,6 +768,14 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0) -> Built:
             f"{60 - out.record.get('thac0_base')}, "
             f"{out.record.get('experience')} experience")
 
+    if spec.equipment or spec.inventory:
+        if tables is None:
+            out.gaps.append(
+                "Items: no game disk was read, so nobody is armed and the "
+                "sixteen-item ceiling is not exercised")
+        else:
+            equip(out, tables, game)
+
     if spec.wound:
         maximum = out.record.get("hp_max")
         out.record.set("hp_current", max(1, maximum - spec.wound))
@@ -507,13 +787,28 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0) -> Built:
 
 
 def party(game=None, rolls: str = "max", seed: int = 0,
-          specs: "tuple[Spec, ...]" = PARTY) -> list[Built]:
+          specs: "tuple[Spec, ...]" = PARTY, tables=None) -> list[Built]:
     """The whole party, in marching order."""
     game = game or games.by_key("pool-of-radiance")
-    built = [build(spec, game, rolls, seed) for spec in specs]
+    built = [build(spec, game, rolls, seed, tables) for spec in specs]
     for position, one in enumerate(built):
         one.record.set("party_order", position)
     return built
+
+
+def _carried(rec) -> list[bytes]:
+    """The sixteen item records, whether or not they hold anything."""
+    from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
+
+    block = rec.get_raw("inventory")
+    return [block[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
+            for n in range(ITEMS_PER_CHARACTER)]
+
+
+def _damage_text(rec) -> str:
+    """The primary attack the roster block caches, as `1d8+5`."""
+    tail = rec.get_raw("roster_tail")
+    return f"{tail[3]}d{tail[5]}" + (f"+{tail[7]}" if tail[7] else "")
 
 
 def summary(one: Built) -> dict:
@@ -535,6 +830,14 @@ def summary(one: Built) -> dict:
         "turn_power": rec.get("turn_power"),
         "spells_castable": rec.get_raw("spells_castable").hex(),
         "thief_skills": [rec.get(n) for n in levelup.THIEF_FIELDS],
+        "armour_class": 60 - rec.get("armour_class"),
+        "thac0_current": 60 - rec.get("thac0"),
+        "armour_bonus": rec.get_raw("roster_tail")[0] - 48,
+        "damage": _damage_text(rec),
+        "items": sum(1 for r in _carried(rec) if any(r)),
+        "readied": sum(1 for r in _carried(rec) if r[6] & 0x80),
+        "weight_lb": round(sum((r[8] | r[9] << 8) * max(1, r[10])
+                               for r in _carried(rec)) / 10, 1),
         "traits": [b for b in rec.get_raw("item_effects") if b],
         "steps": one.steps,
         "gaps": one.gaps,
@@ -669,6 +972,12 @@ def main(argv: "list[str] | None" = None) -> int:
                          "path; the original is never touched")
     ap.add_argument("--base", type=pathlib.Path,
                     help="the save disk to copy (default: the player's own)")
+    ap.add_argument("--no-items", action="store_true",
+                    help="leave every character empty-handed instead of "
+                         "reading the loadouts off the game's own item lists")
+    ap.add_argument("--items-from", type=pathlib.Path, default=None,
+                    help="the directory holding the game sides to copy item "
+                         "records out of (default: the player's own)")
     ap.add_argument("--keep-icons", action="store_true",
                     help="leave the base disk's combat icons alone instead of "
                          "clearing them; inherited art, and the only art on "
@@ -681,7 +990,9 @@ def main(argv: "list[str] | None" = None) -> int:
             print(f"{spec.name:<10s} {classes:<38s} {spec.proves}")
         return 0
 
-    built = party(rolls=args.rolls, seed=args.seed)
+    tables = None if args.no_items else item_tables(
+        item_disk(args.items_from) if args.items_from else None)
+    built = party(rolls=args.rolls, seed=args.seed, tables=tables)
     if args.json:
         print(json.dumps([summary(one) for one in built], indent=2))
     else:
@@ -691,6 +1002,9 @@ def main(argv: "list[str] | None" = None) -> int:
                   f"  {s['hp_current']}/{s['hp_max']} hp"
                   f"  {s['experience']:>7} xp"
                   f"  saves {s['saves']}")
+            print(f"{'':<10s} AC {s['armour_class']:>2}  THAC0 now "
+                  f"{s['thac0_current']:>2}  damage {s['damage']}"
+                  f"  {s['items']} items, {s['readied']} readied")
         gaps = sorted({g for one in built for g in one.gaps})
         for gap in gaps:
             print(f"  not generated: {gap}")
