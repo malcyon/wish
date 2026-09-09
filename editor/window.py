@@ -1490,17 +1490,24 @@ class EditorBinding(QObject):
         header.setSectionResizeMode(NAME_COLUMN,
                                     header.ResizeMode.Interactive)
         view.measure(natural, header.sectionSize(NAME_COLUMN))
-        # `ROSTER_MIN_WIDTH` is a floor under a *party*'s columns, and a party
-        # is always wider than it (`editor/rosterview.py`'s own comment: 356px
-        # of `Race`/`Class`/`AC`/`HP` at the base font, before `Name` gets a
-        # share). With no rows -- an empty window, or a roster disk with
-        # nothing on it -- `natural` is the five headings alone, genuinely
-        # narrower than the floor, and it is also font-derived: leaving the
-        # minimum at `min(natural, ROSTER_MIN_WIDTH)` here would set the
-        # window's floor to the headings' own width and bring back #41, which
+        # With no rows -- an empty window, or a roster disk with nothing on it
+        # -- `natural` is the five headings alone, and it is font-derived, so
+        # `min(natural, ROSTER_MIN_WIDTH)` would set the window's floor to the
+        # headings' own width and bring back #41, which
         # `test_the_windows_minimum_does_not_follow_the_ui_font` caught. The
         # *maximum* still wants setting either way, or the table keeps
         # spreading into whatever the layout has spare (#471).
+        #
+        # **This gate covers the empty case and nothing more, and the loaded
+        # case is not sound.** `ROSTER_MIN_WIDTH` is not a floor a party is
+        # always above: an ordinary six-character party measures `natural` at
+        # 219 against the constant's 440, so `min` picks the font-derived
+        # number here too and the whole window's floor runs 727, 784, 844, 916
+        # at +0, +3, +6 and +10 points of UI font. #474 has the measurement
+        # and the three ways out; `gamedata.synthetic_party`'s widest-of-
+        # everything shape is the one party that stays above 440, which is why
+        # `test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_
+        # open` reads a flat 948 and cannot see this.
         if self.model.rowCount():
             view.setMinimumWidth(min(natural, ROSTER_MIN_WIDTH))
         view.setMaximumWidth(natural)
