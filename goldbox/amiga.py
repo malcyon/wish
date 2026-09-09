@@ -84,8 +84,8 @@ PLATINUM = 0x04C             # u16 each, in this order
 GEMS = 0x04E
 JEWELRY = 0x050
 AGE = 0x052                  # u16
-#: The base experience a creature is worth, zero for every player character on
-#: every port (#254). A word, as DOS's is.
+#: The base experience a creature grants when it is killed, zero for every
+#: player character on every port (#254). A word, as DOS's is.
 EXPERIENCE_AWARD = 0x054     # u16
 ENCUMBRANCE = 0x056          # u16, and see DERIVED: the game recomputes it
 RACE = 0x058

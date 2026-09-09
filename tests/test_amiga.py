@@ -29,10 +29,14 @@ from goldbox.amiga import (
     AMIGA_POR_RECORD_SIZE,
     AMIGA_POR_UNPLACED,
     ARMOUR_CLASS,
+    ARMOUR_CLASS_CURRENT,
     CLASS_LEVEL_COUNT,
     CLASSES,
     COMBAT_BIAS,
+    HP_ROLLED,
     NAME,
+    PORTRAIT_BODY,
+    PORTRAIT_HEAD,
     RACES,
     RECORD_LENGTH,
     AmigaPorCharacter,
@@ -112,6 +116,41 @@ def test_the_three_money_fields_are_big_endian_words():
 def test_age_is_a_big_endian_word_at_0x052():
     """Same probe: `21075 YEARS`. Ramping 0x054-0x05F left it at 0."""
     assert PodCharacter.from_bytes(ramp()).age == 0x5253
+
+
+def test_the_two_constants_the_importer_moved_stay_where_it_put_them():
+    """#462 moved three offsets, and only `HP_CURRENT` had a test that runs
+    without the player's disks.
+
+    The other two were checked only by
+    `test_every_offset_matches_the_engines_own_silver_blades_importer` and by
+    the reader's field count, both of which `pytest.skip()` cleanly with no
+    `.adf` images and no `capstone` -- which is CI, and most machines. So an
+    edit putting either back where the old probe had it would have gone green
+    on all four jobs. `.claude/rules/testing.md`: a suite that is green
+    because forty tests skipped has told you nothing.
+
+    **`0x0B8` is `hp_rolled`, not the portrait body.** `hp_max` less the byte
+    there is the constitution bonus times the hit dice, exact for all
+    nineteen records, and the portrait pair is `0x0B9`-`0x0BA`.
+
+    **Armour class is two fields, not one.** `0x0B3` holds the unarmoured
+    base -- 50, as `COMBAT_BIAS - 10` -- in nineteen of nineteen, and
+    `0x187` is the current one the engine recomputes on load. Reading the
+    neutral `armour_class` off `0x0B3` gave a character in plate mail an
+    unarmoured sheet on the other port.
+    """
+    assert HP_ROLLED == 0x0B8
+    assert PORTRAIT_HEAD == 0x0B9 and PORTRAIT_BODY == 0x0BA
+    assert ARMOUR_CLASS == 0x0B3 and ARMOUR_CLASS_CURRENT == 0x187
+    assert HP_ROLLED not in (PORTRAIT_HEAD, PORTRAIT_BODY)
+    assert ARMOUR_CLASS != ARMOUR_CLASS_CURRENT
+
+    raw = PodWriter(name="AC", hit_points_max=30, armour_class=2).to_bytes()
+    # The writer stores the base, biased, and leaves the derived one alone --
+    # which is #475, and is why the two offsets cannot be conflated.
+    assert raw[ARMOUR_CLASS] == COMBAT_BIAS - 2
+    assert PodCharacter.from_bytes(raw).armour_class == 2
 
 
 def test_current_hit_points_are_the_single_byte_at_0x191():

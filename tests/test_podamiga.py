@@ -279,7 +279,14 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "hp_max": (amiga.HP_MAX, 1),
         "movement": (amiga.MOVEMENT, 1),
         "class_levels": (amiga.CLASS_LEVELS, amiga.CLASS_LEVEL_COUNT),
-        "armour_class": (amiga.ARMOUR_CLASS, 1),
+        # `0x0B3` is `armour_class_base` since #462, not `armour_class` --
+        # the neutral `armour_class` is read from `ARMOUR_CLASS_CURRENT`
+        # (`0x187`) now. The span passed under the old name only because
+        # `PodWriter` writes the unarmoured constant to `0x0B3` whatever the
+        # source holds, so both sides of the comparison were the same number
+        # and a wrong name could not show. There is no `armour_class_current`
+        # span to sit beside it until the writer fills `0x187` -- #475.
+        "armour_class_base": (amiga.ARMOUR_CLASS, 1),
         "hp_current": (amiga.HP_CURRENT, 1),
         "saving_throws": (amiga.SAVING_THROWS, amiga.SAVING_THROW_COUNT),
         "level": (amiga.LEVEL, 1),
