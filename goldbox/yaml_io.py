@@ -217,10 +217,11 @@ FIELD_COMMENTS = {
     # `former` and `was`, so the field pairs with `levels` above it and
     # matches the neutral record's own name for it (#256).
     #
-    # THE COMMENT BELOW IS STILL PROPOSED, not approved.
-    # `.claude/rules/gui-text.md` makes these words his to choose, and he has
-    # approved the key rather than the sentence. This is what was put to him
-    # alongside the shape of the field, not a shipped string.
+    # The comment below is Donald's too, approved 2026-09-08 from three
+    # lengths: as proposed, without the warning, or the warning alone. He
+    # took the whole of it, so the longest comment in this file is deliberate
+    # -- the last sentence is the one a reader cannot get from the field name
+    # or from the line above it.
     "former_levels": (
         "class name -> the level a dual-classed character left that class\n"
         "at. Empty for a character who has never changed class; missing\n"
