@@ -2379,19 +2379,31 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                    "itself, from his own class and level, at the moment the "
                    "player presses the command, so it keeps no byte for it "
                    "and there is nothing to write"),
+    # No "DOS" in the three reasons below (#389, A conversion to the Amiga
+    # tells the player what DOS does with their character): this table's
+    # text reaches an Amiga player unchanged, since `write_por` and
+    # `write_later` build their own record out of this one and copy its
+    # report verbatim.  `encumbrance` is the one of the three a real
+    # specimen reaches today -- an Amiga Curse or Silver Blades character
+    # carries the field on read, this writer always recomputes rather than
+    # copies it, and the sweep reported it in the DOS engine's name for
+    # every character on `WISH-SPEC-ssb-amiga-adventuring/savgamB.sav`
+    # before this fix.
     ("encumbrance", "recomputed from money and item weight -- the identity "
-                    "the DOS engine itself uses -- rather than copied"),
+                    "this game's own engine uses -- rather than copied. "
+                    "(NOT APPROVED)"),
     # The two below are the later titles' fields, and this writer builds a
     # Pool of Radiance record: it declares one copy of each ability and no
     # former-class array, so there is nowhere to put either.  A C64 source
     # supplies neither today in any case -- `goldbox.c64_codec.read` sets
     # neither, which is where the export direction has its own work to do
     # (#234 for the dual class; the ability copy is unread on that side too).
-    ("abilities_second", "a DOS Pool of Radiance record keeps one copy of "
-                         "each ability score, so a second has nowhere to go"),
-    ("former_levels", "a DOS Pool of Radiance record has no former-class "
+    ("abilities_second", "a Pool of Radiance record keeps one copy of "
+                         "each ability score, so a second has nowhere to "
+                         "go. (NOT APPROVED)"),
+    ("former_levels", "a Pool of Radiance record has no former-class "
                       "level array; that title does not let a character "
-                      "change class"),
+                      "change class. (NOT APPROVED)"),
 )
 
 #: Why a neutral field is not written when the destination title's record has
@@ -3103,10 +3115,21 @@ def write(char: NeutralCharacter,
           portraits: PortraitTables | None = None,
           shape: "int | str | DosShape | None" = None,
           icon: "DosIcon | None" = None,
-          recompute_thief_skills: bool = True
+          recompute_thief_skills: bool = True,
+          into: str = "DOS"
           ) -> tuple[bytes, bytes, bytes, WriteReport]:
     """Build a DOS record and its item and effect payloads from a neutral
     character.
+
+    `into` names the destination a drop line reports, for the one sentence
+    this function still composes itself -- `SilencingWriter.finish`'s "the
+    neutral record carries it and the {into} conversion takes nothing from
+    it".  Every other caller writes straight to a DOS save and leaves this at
+    its default; `goldbox.amiga.write_por` and `write_later` build an Amiga
+    record out of this one and pass `into="Amiga"`, so a field this function
+    cannot place is never blamed on DOS when the player never chose DOS
+    (#389, A conversion to the Amiga tells the player what DOS does with
+    their character).
 
     The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
     C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
@@ -3167,7 +3190,7 @@ def write(char: NeutralCharacter,
     dropped = (WRITE_DROPPED if shape is POOL_OF_RADIANCE else
                tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
     dropped += write_absent(shape)
-    w = SilencingWriter(char, rep, into="DOS", dropped=dropped,
+    w = SilencingWriter(char, rep, into=into, dropped=dropped,
                         silent=WRITE_UNREPORTED_DROPS)
     use, emit = w.use, w.emit
 
@@ -3539,9 +3562,15 @@ def write(char: NeutralCharacter,
             ", the level again in the byte the engine keeps it in",
             value=max(held) if held else 0)
     elif former is not None and any(former.value.values()):
+        # No "DOS" here even though this function only ever builds a DOS
+        # record: the sentence reaches an Amiga player through `write_por`
+        # and `write_later`, which build their own record out of this one,
+        # and the fact it states -- this title has no former-class array --
+        # is true of the title on any port (#389).
         rep.dropped.append(
-            f"former_levels: a DOS {shape.title} record has no former-class "
-            f"level array; that title does not let a character change class")
+            f"former_levels: a {shape.title} record has no former-class "
+            f"level array; that title does not let a character change "
+            f"class. (NOT APPROVED)")
 
     # -- spell slots, by class: two arrays on Pool of Radiance, three after --
     # Three levels of slots in Pool of Radiance, five in Curse and seven in
@@ -3554,9 +3583,13 @@ def write(char: NeutralCharacter,
                                  ("magic-user", "spells_castable_magic_user")):
             if dos_name not in table:
                 if any(castable.value.get(school, ())):
+                    # No "DOS" (#389): the same array is missing from the
+                    # title's record on any port, and this sentence reaches
+                    # an Amiga player through `write_por`/`write_later`.
                     rep.dropped.append(
-                        f"spells_castable[{school!r}]: a DOS {shape.title} "
-                        f"record has no {school} spell-slot array")
+                        f"spells_castable[{school!r}]: a {shape.title} "
+                        f"record has no {school} spell-slot array. "
+                        f"(NOT APPROVED)")
                 continue
             depth = table[dos_name].size
             run = tuple(castable.value.get(school, ()))
@@ -3620,13 +3653,18 @@ def write(char: NeutralCharacter,
                 f"menu ({portraits.source})", value=position)
             portraits_written.add(pname)
         elif v is not None and draws_portrait:
+            # `into` names the destination this record is actually reaching
+            # (#389): a straight DOS write says "the DOS record" truthfully,
+            # and `write_por`/`write_later` pass `into="Amiga"` so the same
+            # sentence does not blame DOS for an Amiga player's missing face.
             rep.dropped.append(
                 f"{pname}: {port} carries {stem}{int(v.value):02X} and " +
-                ("the creation menu does not offer it, so the DOS record "
-                 "has no position for it"
+                (f"the creation menu does not offer it, so the {into} "
+                 f"record has no position for it"
                  if portraits is not None else
-                 "the creation menu's own tables were not available to turn "
-                 "it into the position the DOS record stores"))
+                 f"the creation menu's own tables were not available to "
+                 f"turn it into the position the {into} record stores") +
+                " (NOT APPROVED)")
 
     # -- the combat icon: provenance is the icon's own, not this function's --
     # `icon` is computed by the caller, not here: it takes an `IconParts`
@@ -3844,9 +3882,13 @@ def write(char: NeutralCharacter,
             said.append(f"the status byte is {rec[f.offset]} "
                         f"({status.value}) <- {status.origin}")
         else:
+            # `into` (#389): a straight DOS write names DOS truthfully, and
+            # `write_por`/`write_later` pass `into="Amiga"` so an Amiga
+            # player is not told about a DOS limit that is not theirs.
             rep.dropped.append(
                 f"{status.value.capitalize()}: the character "
-                f"arrives well -- the DOS game has no such state")
+                f"arrives well -- the {into} game has no such state. "
+                f"(NOT APPROVED)")
     if active is not None:
         rec[f.offset + 1] = 1 if active.value else 0
         said.append(f"the active flag is {rec[f.offset + 1]} "

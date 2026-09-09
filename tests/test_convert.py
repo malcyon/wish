@@ -1479,7 +1479,23 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: effect region and the combat tail among them. One sentence naming that
     #: is what keeps the loss out of silence; thirty-seven written by an
     #: agent would be the opposite of Donald wording what a player reads.
-    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 2, "goldbox.dos": 1,
+    #: `goldbox.dos` went from one to eight and `goldbox.amiga` from two to
+    #: three on 2026-09-08, closing the write-side half of `#389 (A
+    #: conversion to the Amiga tells the player what DOS does with their
+    #: character)` its own last comment left open: `goldbox.dos.write` always
+    #: builds a DOS record, even when `goldbox.amiga.write_por` and
+    #: `write_later` re-cut it into an Amiga one, and five of its own canned
+    #: drop reasons named "DOS" regardless of which writer was asking --
+    #: `write` now takes an `into` parameter the two Amiga writers pass
+    #: `"Amiga"` through, so the composed sentences differ by wording rather
+    #: than by number, and each of the five needed its own marker. A sixth
+    #: line in `goldbox.dos.write` and one in `goldbox.amiga.to_neutral` had
+    #: the same defect in the same commit but only lost the word "DOS"
+    #: without otherwise changing, so they carry a marker too rather than
+    #: being judged already-approved by resemblance to the old wording --
+    #: `.claude/rules/gui-text.md`'s own ruling on that shortcut, "it matches
+    #: the wording already there is not approval".
+    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 3, "goldbox.dos": 8,
                "automap.actions": 5}
 
     found: dict[str, list[str]] = {}

@@ -1888,8 +1888,12 @@ def to_neutral(char) -> NeutralCharacter:
             f"read from the .itm file; the shorter of the two was used")
     out.drop("Amiga 0x083-0x087: the second insertion is not located, so "
              "those bytes were written zero rather than guessed")
-    out.drop("Amiga 0x11F: the trailing pad, which the DOS record has no "
-             "room for")
+    # No "DOS" (#389): this reader does not yet know which port the
+    # character is going to -- an Amiga Pool of Radiance save converts to
+    # the C64 as well as to DOS (`tests/test_amigatoc64.py`), and naming DOS
+    # here named the wrong destination for that direction.
+    out.drop("Amiga 0x11F: the trailing pad, which the neutral record has "
+             "no room for. (NOT APPROVED)")
     # There is no loop here reporting the effects the neutral record cannot
     # hold, and there should not be one.  `_dos.to_neutral`, called above,
     # now **converts** every non-innate node at duration zero in
@@ -2220,7 +2224,11 @@ def write_por(char: NeutralCharacter,
     """
     from . import dos as _dos
 
-    record, itm, spc, dosrep = _dos.write(char, icon=icon)
+    # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
+    # DOS does with their character): without it, a drop line this function
+    # cannot place is composed as though it were a straight DOS write and
+    # names DOS to a player who is not converting to DOS.
+    record, itm, spc, dosrep = _dos.write(char, icon=icon, into="Amiga")
     out = from_dos_record(record)
 
     items = [amiga_por_item_from_dos(
@@ -5348,8 +5356,12 @@ def write_later(char: NeutralCharacter,
     # `goldbox.dos.write` rest on DOS's and the C64's own routines (#431,
     # #440). Nobody has read Amiga Curse's, so this record keeps the source's
     # bytes rather than carrying another port's answer into an Amiga save.
+    # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
+    # DOS does with their character): otherwise a drop line this function
+    # cannot place names DOS to a player who is not converting to DOS.
     record, itm, spc, dosrep = _dos.write(char, shape=shape.dos, icon=icon,
-                                          recompute_thief_skills=False)
+                                          recompute_thief_skills=False,
+                                          into="Amiga")
     out = from_dos_record_later(record, shape)
 
     stride = shape.dos.item_size

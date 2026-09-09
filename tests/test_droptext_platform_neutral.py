@@ -21,6 +21,31 @@ Silver Blades party the C64 engine itself wrote
 `goldbox.amiga.write_later`.  The write-side one needs no specimen tree: any
 Amiga Pool of Radiance record converted to the C64 has no computed combat
 icon to pass in, so `write`'s `else` branch always fires.
+
+A fourth and fifth instance turned up in `goldbox.dos.write` itself, on the
+sweep the issue asked for once the three read-side ones above were closed:
+`write` always builds a DOS record, even when `goldbox.amiga.write_por` and
+`write_later` are re-cutting it into an Amiga one, and it named "DOS" in
+composed drop lines regardless of which writer was really asking. `write`
+now takes an `into` parameter, defaulting to `"DOS"` for a direct write and
+passed as `"Amiga"` by both Amiga writers, so the same sentence names the
+destination that is actually being written -- `test_a_c64_pool_of_radiance_
+party_converted_to_the_amiga_names_no_platform` is the portrait instance a
+live C64 specimen reaches, and `test_an_amiga_source_character_converted_to_
+the_amiga_names_no_platform` is the `encumbrance` instance an Amiga-sourced
+character reaches.  Three more of `write`'s canned drop reasons named "DOS"
+without being reachable by any specimen this project can build today
+(`former_levels` and `abilities_second` need a Pool of Radiance character
+carrying a dual-class field Pool of Radiance has no way to set; `turn_power`
+and `infravision` are silenced project-wide) and were reworded for
+consistency rather than left as a trap for the day one of them is.
+
+A sixth turned up in `goldbox.amiga.to_neutral` (the Amiga Pool of Radiance
+*reader*): its trailing-pad drop line named "the DOS record" while reading
+the source, before any writer was chosen, and `tests/test_amigatoc64.py`
+already proves an Amiga Pool of Radiance save converts to the C64 as well as
+to DOS -- the same read-before-you-know-the-destination shape `region_220`
+had.
 """
 
 import re
@@ -28,6 +53,7 @@ import re
 import pytest
 from gamedata import specimen_root
 from test_amiga import amiga_por_records
+from test_amigalaterwrite import engine_written_parties
 from test_doslatertitles import _c64_disk, _c64_party
 
 from goldbox import amiga, c64_codec, dos, dos_layout
@@ -93,6 +119,37 @@ def test_a_c64_party_converted_to_the_amiga_names_no_platform():
     assert checked == 6
 
 
+def test_an_amiga_pool_of_radiance_source_names_no_platform():
+    """The sixth instance: `goldbox.amiga.to_neutral` reads an Amiga Pool of
+    Radiance record through a DOS-shaped intermediate table
+    (`goldbox.amiga.to_dos_record`) and reported its own trailing pad byte as
+    something "the DOS record has no room for" -- unconditionally, while
+    reading the source, before `to_neutral` or `write_por` know whether the
+    destination is DOS, the C64 or another Amiga save.
+
+    Every Amiga Pool of Radiance record `tests/test_amiga.py`'s own
+    `amiga_por_records` can reach on this machine hits the branch, and
+    `tests/test_amigatoc64.py` is the proof that the C64 is a real
+    destination for this same source.
+    """
+    from test_amiga import amiga_por_records
+
+    paths = amiga_por_records()
+    if not paths:
+        pytest.skip("needs an Amiga Pool of Radiance disk; see "
+                    "tools/gamedisks.py")
+    checked = 0
+    for path in paths:
+        char = amiga.read_amiga_por(path)
+        neutral = amiga.to_neutral(char)
+        lines = [d for d in neutral.dropped if "0x11F" in d]
+        assert lines, (path, neutral.dropped)
+        for line in lines:
+            assert not NAMES_DOS.search(line), (path, line)
+        checked += 1
+    assert checked >= 1
+
+
 def test_a_dos_portrait_the_menu_cannot_answer_for_names_no_platform():
     """The third instance the issue's own comments traced:
     `goldbox.dos.to_neutral`'s portrait block named "C64" unconditionally,
@@ -119,3 +176,57 @@ def test_a_dos_portrait_the_menu_cannot_answer_for_names_no_platform():
     assert lines, neutral.dropped
     for line in lines:
         assert not NAMES_C64.search(line), line
+
+
+def test_a_c64_pool_of_radiance_party_converted_to_the_amiga_names_no_platform():
+    """The write side of the same bug, found after the three read-side
+    instances above were fixed: `goldbox.dos.write` builds a `portrait_head`/
+    `portrait_body` drop line naming "the DOS record" unconditionally, and
+    `goldbox.amiga.write_por` builds every Amiga Pool of Radiance record out
+    of `goldbox.dos.write`'s own -- so a C64 party with no creation-menu
+    tables at hand for the Amiga side inherited a claim about DOS the same
+    way `#389`'s Silver Blades combat-figure line inherited one.
+
+    `WISH-SPEC-por-c64-hall-resave` is a Pool of Radiance C64 save with a
+    head and body portrait set on every character, which is what makes the
+    branch fire.
+    """
+    path = _c64_disk("por-c64-hall-resave")
+    _game, party = _c64_party(path)
+    assert len(party) >= 1
+    checked = 0
+    for char in party:
+        _record, _itm, _spc, report = amiga.write_por(char)
+        portrait_lines = [d for d in report.dropped
+                          if d.startswith("portrait_")]
+        assert portrait_lines, (char.get("name"), report.dropped)
+        for line in portrait_lines:
+            assert not NAMES_DOS.search(line), (char.get("name"), line)
+        checked += 1
+    assert checked >= 1
+
+
+def test_an_amiga_source_character_converted_to_the_amiga_names_no_platform():
+    """A different field than `#389`'s own finding, in the same shape:
+    `goldbox.dos.WRITE_DROPPED`'s `encumbrance` reason said "the identity the
+    DOS engine itself uses", and `goldbox.amiga.write_later` copies
+    `goldbox.dos.write`'s report verbatim -- so an Amiga Curse or Silver
+    Blades character, which carries `encumbrance` on read
+    (`goldbox.amiga.to_neutral_later`), was told about a DOS engine on its
+    way to another Amiga save.
+
+    `engine_written_parties` is `tests/test_amigalaterwrite.py`'s corpus of
+    saved games the two later engines themselves wrote.
+    """
+    parties = engine_written_parties()
+    if not parties:
+        pytest.skip("needs the specimen tree; see tools/specimens.py")
+    checked = 0
+    for label, char in parties:
+        neutral_char = amiga.to_neutral_later(char)
+        assert "encumbrance" in neutral_char, (label, char.name)
+        _built, report = amiga.write_later(neutral_char)
+        for line in report.dropped:
+            assert not NAMES_DOS.search(line), (label, char.name, line)
+        checked += 1
+    assert checked >= 1
