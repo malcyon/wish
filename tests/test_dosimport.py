@@ -171,10 +171,16 @@ def test_nothing_in_the_converted_save_is_left_to_a_previous_owner(
 # --- the renderers: `pane_text` (the current window's) and `dropped_text`
 # (nobody's, kept because #52's step 5 is not the ticket that deletes it) ---
 
-def test_pane_text_is_the_messages_then_the_drops():
-    """The renderer alone: the messages one to a line, a blank line, then
-    the drop lines one to a line; either half alone with no blank line; a
-    plain `Report` -- which has no `messages` -- contributes its drops."""
+def test_pane_text_is_the_messages_and_never_the_drops():
+    """The renderer alone: the messages one to a line; `report.dropped`
+    never reaches the returned text -- Donald's ruling of 2026-09-08
+    (`.claude/rules/conversions.md`) took the drop list out of what a
+    player reads, and `test_pane_text_sends_the_drops_to_the_debug_log_
+    instead_of_the_pane` below is where it went instead.
+
+    Before that ruling this test was named
+    `test_pane_text_is_the_messages_then_the_drops` and asserted the
+    opposite -- that `report.dropped` was joined on after a blank line."""
     from editor.dosimport import pane_text
     from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
 
@@ -182,20 +188,19 @@ def test_pane_text_is_the_messages_then_the_drops():
     report.messages.extend([NOT_SET_OUT, "Second line."])
     assert pane_text(report) == f"{NOT_SET_OUT}\nSecond line."
     report.dropped.extend(["A drop line", "Another"])
-    assert pane_text(report) == \
-        f"{NOT_SET_OUT}\nSecond line.\n\nA drop line\nAnother"
+    assert pane_text(report) == f"{NOT_SET_OUT}\nSecond line."
     plain = Report()
     assert pane_text(plain) == ""
     plain.dropped.append("Only a drop")
-    assert pane_text(plain) == "Only a drop"
+    assert pane_text(plain) == ""
 
 
-def test_pane_text_puts_a_loss_between_the_messages_and_the_drops():
+def test_pane_text_puts_a_loss_after_the_messages_and_never_a_drop():
     """#399 (A conversion that runs out of item or trait slots tells the
     player nothing, because the pane never shows a warning): `losses` is a
-    third source `pane_text` reads, between `messages` and `dropped`, with
-    the same blank-line rule as the other two -- and a plain `Report`, which
-    has no `losses` either, still renders its drops alone."""
+    second source `pane_text` reads, after `messages`, with the same
+    blank-line rule -- and `report.dropped` joins neither, on the same
+    2026-09-08 ruling as the test above."""
     from editor.dosimport import pane_text
     from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
 
@@ -210,11 +215,38 @@ def test_pane_text_puts_a_loss_between_the_messages_and_the_drops():
     assert pane_text(report) == (
         f"{NOT_SET_OUT}\n\n"
         "WISHFTR: 20 items and the C64 has sixteen slots; "
-        "4 dropped from the end\n\n"
-        "A drop line")
+        "4 dropped from the end")
     plain = Report()
     plain.dropped.append("Only a drop")
-    assert pane_text(plain) == "Only a drop"
+    assert pane_text(plain) == ""
+
+
+def test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane():
+    """The accounting still exists -- it goes to `WISH_DEBUG`'s file
+    (`wish/debuglog.py`) rather than to the pane, so a bug report can still
+    say what a conversion left behind (`.claude/rules/conversions.md`,
+    Donald's ruling of 2026-09-08). Proven by turning the log on for real
+    and reading the file it wrote, not by mocking the logger."""
+    from editor.dosimport import pane_text
+    from goldbox.dos import Report
+    from wish import debuglog
+
+    debuglog.start()
+    try:
+        report = Report()
+        report.dropped.extend(["field_one: has nowhere to go",
+                               "field_two: not understood yet"])
+        text = pane_text(report)
+        log_text = debuglog.path().read_text(encoding="utf-8")
+    finally:
+        debuglog.stop()
+
+    assert "field_one" not in text and "field_two" not in text
+    assert "field_one" in log_text and "field_two" in log_text
+    # Every line a person reads opens with a capital letter
+    # (`.claude/rules/gui-text.md`), the debug log included -- the composed
+    # line, not the field names inside it, which stay lower case.
+    assert "Not converted:" in log_text
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-item-twenty"),

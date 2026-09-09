@@ -99,24 +99,24 @@ def enabled() -> bool:
 # ===========================================================================
 
 #: The group box's title.
-BOX_TITLE = "Effects running in this saved game (NOT APPROVED)"
+BOX_TITLE = ""
 
 #: The two column headings. No third column for the duration: see the module
 #: docstring, and `#13`'s D2.
-HEADER_EFFECT = "What is running (NOT APPROVED)"
-HEADER_OWNER = "Who it is on (NOT APPROVED)"
+HEADER_EFFECT = "Party Effect"
+HEADER_OWNER = "Target"
 
 #: An effect the owner byte puts on the whole party rather than on one
 #: character. The engine writes both shapes and neither can be dropped: Bless
 #: writes one row per character and Prayer writes a single row owned by
 #: everybody.
-OWNER_PARTY = "Everybody in the party (NOT APPROVED)"
+OWNER_PARTY = "Entire Party"
 
 #: An owner byte of 8 or more, which is a combatant in a fight rather than a
 #: character in the party. It cannot be named: the index means something only
 #: inside the fight that wrote it, and that fight is over by the time anybody
 #: reads a save.
-OWNER_MONSTER = "Something that was in a fight, not one of your characters (NOT APPROVED)"
+OWNER_MONSTER = "Unknown"
 
 #: An owner byte in the party's own range with nobody in that slot -- a
 #: character who left the party while something was still running on them.
@@ -126,7 +126,7 @@ OWNER_ABSENT = "Nobody who is in the party now (NOT APPROVED)"
 #: is what somebody takes away to look it up, and because two unnamed effects
 #: still have to be told apart -- `goldbox.traits.describe` makes the same
 #: choice for an unnamed trait code.
-UNNAMED_EFFECT = "Effect {code}, which nobody has named (NOT APPROVED)"
+UNNAMED_EFFECT = "Unknown"
 # ---------------------------------------------------------------------------
 
 

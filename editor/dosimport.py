@@ -16,21 +16,21 @@ Convert button, it does what the user expects. it converts."* The write
 itself is still the editor's own Save, so the backup guarantee in
 `editor/files.py` covers this the way it covers every other write.
 
-**The pane -- `editor/convert.py`'s now -- is headed `Conversion Info` and
-shows three things**: the
-conversion's own messages (`C64SaveReport.messages`), then a genuine platform
-ceiling a character's own data hit (`C64SaveReport.losses` -- twenty items
-arriving where the C64 holds sixteen slots is the worked example, #399), and
-then every field it did not convert that the C64 does not derive for itself.
-The last half was off for a night: Donald on 2026-09-05 -- *"I don't want the
-player to EVER see a message saying any field was dropped."* -- and then on
-2026-09-06, having seen the pane: *"do not show dropped fields if they are
-derived in the new game. Show others for now. I will refine them as we go."*
-So what is silent is exactly what `goldbox.dos.DERIVED` and
-`goldbox.dos.CONSTANTS` name, and every line still on `goldbox.dos.DROPPED`
-is drawn, in the words `DROPPED_PLAYER_TEXT` gives it, with no heading of
-its own.  Which of those lines stay is his call, line by line, and not a
-judgement to make here (`.claude/rules/conversions.md`).
+**The pane -- `editor/convert.py`'s now -- shows two things**: the
+conversion's own messages (`C64SaveReport.messages`) and then a genuine
+platform ceiling a character's own data hit (`C64SaveReport.losses` -- twenty
+items arriving where the C64 holds sixteen slots is the worked example,
+#399). What it does not show any more is `report.dropped` -- every field the
+conversion did not convert. Donald ruled on 2026-09-08 that a route which
+drops something is not offered to a player as though it had worked: *"I want
+perfect conversions. We should not have to tell the player that anything is
+dropped, because everything should just work."* So the drop list stays as
+this project's own accounting -- a test reads it, and every driven tool still
+prints it with `--report` -- and goes to the debug log (`wish/debuglog.py`)
+instead of the pane, which is empty for a conversion that drops nothing
+(`.claude/rules/conversions.md`). This supersedes the two rulings the
+paragraph used to describe here, from 2026-09-05 and 2026-09-06, about which
+of those lines a player should see.
 
 **`report.warnings` is not shown wholesale, and never has been** -- most of
 it is this project's own bookkeeping (a quest-flag byte count, a party's
@@ -66,6 +66,7 @@ conversion asks for a folder, never a file.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import pathlib
 from typing import Any
 
@@ -74,18 +75,23 @@ from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
 
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: whenever `WISH_DEBUG` is on -- the same pattern `editor/convert.py` and
+#: `editor/window.py` already use, rather than importing `wish.debuglog`
+#: directly.
+_log = logging.getLogger("wish.editor.dosimport")
+
 # Every string below is Donald's -- approved 2026-08-24, and the refusal
 # 2026-08-27. Changing one is his call, not a refactor.
 
 #: The heading over a list of what a converted character loses, Donald's
 #: wording of 2026-09-05 (`09027bb`).  **Nothing draws it any more**: the
-#: pane's drop lines sit under `Conversion Info` with no heading of their
-#: own (2026-09-06), and `editor/convert.py`'s pane stopped rendering it too
-#: once `#416 (The live Convert dialog never shows a DOS→C64 conversion's
-#: own messages or capacity-ceiling warnings)` moved it onto `pane_text`
-#: below.  It stays defined because `editor/convert.py` still imports the
-#: name at module load (`DROPPED_HEADING = dosimport.DROPPED_HEADING`);
-#: deleting it here would break that import.
+#: pane stopped carrying the drop list at all on 2026-09-08, when the
+#: accounting moved to the debug log (`pane_text` below), and before that it
+#: sat under `Conversion Info` with no heading of its own (2026-09-06). It
+#: stays defined because `editor/convert.py` still imports the name at
+#: module load (`DROPPED_HEADING = dosimport.DROPPED_HEADING`); deleting it
+#: here would break that import.
 DROPPED_HEADING = "Wish cannot currently convert these fields:"
 
 #: The refusal when the player's game disks cannot be found, which is the one
@@ -208,19 +214,17 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
 def pane_text(report: dos.Report) -> str:
     """What the pane shows: the messages, then a ceiling a character's own
-    data hit, then the fields not converted.
+    data hit. What did not convert goes to the debug log instead of here
+    (`.claude/rules/conversions.md`, Donald's ruling of 2026-09-08).
 
     `C64SaveReport.messages` is the sentences a player reads about what the
     conversion did to their own save -- Donald's *"Your party had not set
     out yet, so it starts at the beginning of the story."* is the first --
-    `C64SaveReport.losses` is a genuine platform limit a character's own data
-    ran into (#399, `.claude/rules/conversions.md`'s platform-limit
+    and `C64SaveReport.losses` is a genuine platform limit a character's own
+    data ran into (#399, `.claude/rules/conversions.md`'s platform-limit
     carve-out) -- twenty items and the C64 holding sixteen slots is the
-    worked example -- and `report.dropped` is every field the conversion did
-    not convert that the C64 does not derive for itself, in the words
-    `goldbox.dos.DROPPED_PLAYER_TEXT` gives each.  All three are
-    `goldbox/dos.py`'s own lines, so the pane and the terminal cannot drift
-    into two accounts of one conversion.
+    worked example.  Both are `goldbox/dos.py`'s own lines, so the pane and
+    the terminal cannot drift into two accounts of one conversion.
 
     **Not `report.warnings` wholesale.**  That list also carries this
     project's own bookkeeping -- how many quest-flag bytes changed, how many
@@ -229,16 +233,24 @@ def pane_text(report: dos.Report) -> str:
     fact about anything the player owns.  `losses` is the subset of
     `warnings` `write_c64_save` already knows is a character's own loss.
 
-    One blank line between whichever halves are non-empty, and no heading
-    over any of them: the pane's own `Conversion Info` label is the heading,
-    and Donald has asked to see the drop lines as they are so he can refine
-    them himself (2026-09-06).  Empty when there is nothing to say.  A plain
-    `Report` has no `messages` or `losses` -- `to_c64_record`'s per-character
-    one -- and contributes only its drops.
+    `report.dropped` -- every field the conversion did not convert, in the
+    words `goldbox.dos.DROPPED_PLAYER_TEXT` gives each -- is the accounting
+    a route is judged perfect or not by, and it stays that: a test reads it
+    and every driven tool still prints it with `--report`.  A player is
+    never shown it; `_log` carries it to `WISH_DEBUG`'s file instead, so a
+    bug report can still say what a conversion left behind.
+
+    One blank line between the messages and the losses when both are
+    non-empty, and no heading over either: `editor/convert.py`'s own
+    `Convert Log` label is the heading.  Empty when there is nothing to
+    say -- the standard now, for a conversion that drops nothing.  A plain
+    `Report` has no `messages` or `losses` -- `to_c64_record`'s
+    per-character one -- and contributes nothing here.
     """
+    if report.dropped:
+        _log.info("Not converted: %s", "; ".join(report.dropped))
     halves = [list(getattr(report, "messages", ())),
-              list(getattr(report, "losses", ())),
-              list(report.dropped)]
+              list(getattr(report, "losses", ()))]
     return "\n\n".join("\n".join(half) for half in halves if half)
 
 

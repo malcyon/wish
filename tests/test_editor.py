@@ -3492,19 +3492,23 @@ def test_an_effect_on_a_slot_nobody_fills_says_so_rather_than_naming_nobody():
     assert model.data(model.index(0, 1)) == activeeffects.OWNER_ABSENT
 
 
-def test_an_effect_nobody_has_named_keeps_its_number():
-    """Two unnamed effects still have to be told apart, and the number is what
-    somebody takes away to look it up -- the choice `goldbox.traits.describe`
-    already makes for an unnamed trait code. What it must not say is `trait`:
-    this row is not a trait, and the difference between the two lists is the
-    whole of this issue."""
+def test_an_effect_nobody_has_named_reads_unknown():
+    """Donald's wording, 2026-09-08: an unnamed code reads `Unknown`.
+
+    It used to read `Effect 253, which nobody has named`, on the argument that
+    the number is what somebody takes away to look it up. He chose brevity, so
+    two unnamed effects now read alike on screen -- the code is still in the
+    save and still in the debug log, and nothing on this row was ever a trait,
+    which is the distinction this ticket is about.
+    """
     from editor import activeeffects
     from goldbox.effects import active_effects
 
     model = activeeffects.ActiveEffectsModel(
         active_effects(_payload_with_effects((0, 253, 0, 0x06))))
     shown = model.data(model.index(0, 0))
-    assert "253" in shown
+    assert shown == "Unknown"
+    assert "trait" not in shown.lower()
     assert "trait" not in shown.lower()
 
 
@@ -3821,9 +3825,11 @@ def test_every_string_on_the_effects_panel_announces_that_nobody_approved_it():
     marked = {name for name, text in vars(activeeffects).items()
               if name.isupper() and isinstance(text, str)
               and "NOT APPROVED" in text}
-    assert marked == {"BOX_TITLE", "HEADER_EFFECT", "HEADER_OWNER",
-                      "OWNER_PARTY", "OWNER_MONSTER", "OWNER_ABSENT",
-                      "UNNAMED_EFFECT"}
+    # Donald ruled on six of the seven on 2026-09-08, choosing brevity:
+    # `Party Effects`, `Effect`, `Target`, `Entire Party`, and `Unknown` for
+    # both a monster's effect and an unnamed code. `OWNER_ABSENT` is the one
+    # he was not asked about and is the whole of what is left.
+    assert marked == {"OWNER_ABSENT"}
 
 
 def test_no_unapproved_word_is_on_screen_with_the_effects_flag_unset(

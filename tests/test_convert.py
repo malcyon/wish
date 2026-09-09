@@ -684,9 +684,14 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
     icon into DOS, so region_220 stays on the drop list)`: the byte-level
     mechanism `#320 (A C64 party converted to DOS arrives with no combat
     figure at all, because the table only runs one way)` proved was never
-    called from `ConvertDialog`. Watched failing before the fix: the pane
-    kept the `region_220` note and every character's `(icon_head, icon_body)`
-    read back `(0, 0)`.
+    called from `ConvertDialog`. Watched failing before the fix: `report.
+    dropped` kept the `region_220` note and every character's `(icon_head,
+    icon_body)` read back `(0, 0)`.
+
+    Checked against `report.dropped` directly, not the pane -- since
+    2026-09-08 (`.claude/rules/conversions.md`) the pane never carries the
+    drop list at all, so a check against its text would pass whether or not
+    the icon was actually wired.
 
     The fake `game_files` lookup below stands in for
     `editor.window.EditorBinding.game_files_for`, asked here for the
@@ -727,8 +732,9 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
                                    folder=str(destination))
     try:
         assert dialog.rehearsal is not None
-        text = dialog.ui.convert_report.toPlainText()
-        assert "figure is not set" not in text, text
+        assert not any("figure is not set" in d
+                       for d in dialog.rehearsal.report.dropped), \
+            dialog.rehearsal.report.dropped
         final = tmp_path / "final"
         dialog.direction.write(dialog.rehearsal, final)
         slot = dialog.slot
@@ -1318,15 +1324,24 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
     """The one pane state `test_no_string_reachable_in_the_pane_contains_a_
     hex_offset` could not reach with no real game disks: a C64 source with a
     DOS game folder and a destination folder both chosen, which is what
-    actually rehearses the write and puts the drop list on screen. Every
-    other state that module checks refuses before reaching a drop line at
-    all (#355, A C64 party converted to DOS is shown nine developer notes,
-    with memory addresses, overlay names and issue numbers in them).
+    actually rehearses the write and used to put the drop list on screen.
+    Every other state that module checks refuses before reaching a drop
+    line at all (#355, A C64 party converted to DOS is shown nine developer
+    notes, with memory addresses, overlay names and issue numbers in them).
 
-    Failed before the fix, on `0x0E3`, `$1633`, `CHARPIC00`, `LIBRARY`,
-    `GEN`, `#277`, `#268` and `#202`.
+    Failed before the original fix, on `0x0E3`, `$1633`, `CHARPIC00`,
+    `LIBRARY`, `GEN`, `#277`, `#268` and `#202` -- back when the drop lines
+    themselves reached the pane. Donald's ruling of 2026-09-08
+    (`.claude/rules/conversions.md`) took the whole drop list out of what a
+    player reads, so this now pins the stronger guarantee: the drop list is
+    real for this conversion, none of it is in the pane at all, and it
+    reaches the debug log instead -- `WISH_DEBUG` is exactly where a
+    developer note like these belongs (`.claude/rules/gui-text.md` exempts
+    that log from the same rule by name).
     """
     import re
+
+    from wish import debuglog
 
     hexish = re.compile(r"(?:0x[0-9A-Fa-f]+|\$[0-9A-Fa-f]{2,})")
     bare_issue = re.compile(r"#\d+")
@@ -1335,26 +1350,30 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
-    dialog = convert.ConvertDialog(str(path), None, _no_disks,
-                                   game=str(_game_dir()),
-                                   folder=str(destination))
+    debuglog.start()
     try:
-        text = dialog.ui.convert_report.toPlainText()
-        dropped = dialog.rehearsal.report.dropped
+        dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                       game=str(_game_dir()),
+                                       folder=str(destination))
+        try:
+            text = dialog.ui.convert_report.toPlainText()
+            dropped = dialog.rehearsal.report.dropped
+        finally:
+            dialog.close()
+        log_text = debuglog.path().read_text(encoding="utf-8")
     finally:
-        dialog.close()
+        debuglog.stop()
 
-    #: Proof this reached the drop-list state the test is about, without
-    #: depending on `DROPPED_HEADING` -- `#416 (The live Convert dialog
-    #: never shows a DOS→C64 conversion's own messages or capacity-ceiling
-    #: warnings)` moved the pane onto `dosimport.pane_text`, which draws no
-    #: heading over the drop lines, the same shape `editor/dosimport.py`'s
-    #: own dialog already used.
-    assert dropped, "expected this pane to have drop lines to check"
-    assert all(d in text for d in dropped), text
+    #: Proof this reached the drop-list state the test is about.
+    assert dropped, "expected this conversion to have drop lines to check"
+    #: Gone from the pane entirely, not merely cleaned up.
+    assert not any(d in text for d in dropped), text
     assert not hexish.search(text), text
     assert not bare_issue.search(text), text
     assert not any(o in text for o in overlay_names), text
+    #: And carried to the debug log instead, so a bug report can still say
+    #: what this conversion left behind.
+    assert all(d in log_text for d in dropped), log_text
 
 
 def test_no_string_the_player_reads_is_unapproved():
@@ -1743,12 +1762,18 @@ def test_the_pane_shows_a_conversions_own_messages_and_capacity_losses(
         tmp_path, monkeypatch):
     """`#416 (The live Convert dialog never shows a DOS→C64 conversion's own
     messages or capacity-ceiling warnings)`: `editor.dosimport.pane_text`
-    draws `report.messages` and `report.losses` ahead of `report.dropped`,
-    and `_rehearse_and_report` used to call `dropped_text`, which reads
-    only the third. `DosToC64.rehearse` is monkeypatched to return a report
-    carrying one of each, exactly the recipe the issue's own audit used.
+    draws `report.messages` and `report.losses`, and `_rehearse_and_report`
+    used to call `dropped_text`, which read neither. `DosToC64.rehearse` is
+    monkeypatched to return a report carrying one of each plus a drop line,
+    exactly the recipe the issue's own audit used.
 
-    Fails before the fix: reverting `_rehearse_and_report` to call
+    `report.dropped` is checked absent rather than present now -- Donald's
+    ruling of 2026-09-08 (`.claude/rules/conversions.md`) took it out of the
+    pane; `test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_
+    pane` in `tests/test_dosimport.py` is where that half of this test
+    moved.
+
+    Fails before the original fix: reverting `_rehearse_and_report` to call
     `dosimport.dropped_text` instead of `dosimport.pane_text` makes the
     first two asserts below fail, with the pane showing only `This writes:`
     and the file path -- seen red, then the fix put back.
@@ -1780,7 +1805,7 @@ def test_the_pane_shows_a_conversions_own_messages_and_capacity_losses(
 
     assert report.messages[0] in text, text
     assert report.losses[0] in text, text
-    assert report.dropped[0] in text, text
+    assert report.dropped[0] not in text, text
     assert "NOT APPROVED" not in text, text
 
 
