@@ -3103,27 +3103,27 @@ def test_the_buttons_appear_when_the_flag_asks_for_them(app, save, traits_on):
     assert w._child("button_trait_remove").text() == effects.BUTTON_REMOVE
 
 
-def test_every_new_string_announces_that_nobody_has_approved_it():
-    """`.claude/rules/gui-text.md`: every word a user reads is Donald's, and
-    none of these has been ruled on. The count comes down as he rules and the
-    day it reaches zero the flag's second condition is met.
+def test_no_trait_string_is_waiting_on_approval_any_more():
+    """`.claude/rules/gui-text.md`: every word a user reads is Donald's.
 
-    `BOX_TITLE` is deliberately unmarked and deliberately in the module: the
-    box has read `Character Traits` since 2026-08-22 with no flag in front of
-    it, so appending the marker would put those two words on every user's
-    screen tonight. It is on the list he rules on all the same.
+    He ruled on all of them on 2026-09-08, shown the box, the picker and a
+    warning as pictures, against three alternatives for the four warnings. So
+    the count is zero and the flag's second condition is met.
+
+    **This test is not decoration.** A string added to that module later is
+    unapproved again however the ones around it read, and this is what says
+    so: it goes red until the new one carries `(NOT APPROVED)` or he has
+    ruled on it and this list is updated deliberately.
     """
     from editor import effects
 
     marked = {name for name, text in vars(effects).items()
               if name.isupper() and isinstance(text, str)
               and "NOT APPROVED" in text}
-    assert marked == {"BUTTON_ADD", "BUTTON_REMOVE", "PICKER_TITLE",
-                      "PICKER_FILTER", "SECTION_SEEN", "SECTION_TABLE",
-                      "REASON_MONSTER", "REASON_NO_HANDLER", "REASON_UNNAMED",
-                      "REASON_DUPLICATE"}
-    assert "NOT APPROVED" not in effects.BOX_TITLE
+    assert marked == set(), marked
     assert effects.BOX_TITLE == "Character Traits"
+    assert effects.BUTTON_ADD == "Add…"
+    assert effects.PICKER_TITLE == "Choose a trait"
 
 
 @game_disks

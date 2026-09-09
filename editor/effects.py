@@ -69,14 +69,28 @@ WARN = QColor("#8b3a1a")
 #:    wrote, so WISH_EXPERIMENTAL_TRAITS can come off)` is the measurement:
 #:    write 20 Resist Fire into a free slot through File > Save, boot, VIEW
 #:    the character, confirm the game lists it, save and reload, confirm it
-#:    survives. **Not taken.** `#252 (Does a C64 trait slot apply an
+#:    survives. **Taken, 2026-09-08, and CONFIRMED on all three claims**: the
+#:    byte survives four cold boots and the game's own save; `LIBRARY $403C`
+#:    executes with the trait's id in the accumulator, once per edited run
+#:    and never in a control; and a fire spell does 1 damage where the
+#:    control takes 2, reproduced over two pairs of boots whose event streams
+#:    are identical for their first 681 events. One step of the plan is
+#:    refuted rather than met: `VIEW` never lists a trait, for any character,
+#:    because Pool of Radiance cannot do it. `#252 (Does a C64 trait slot apply an
 #:    item-granted effect id, or only the ones its own READY routine wrote?)`
 #:    already CONFIRMED the general claim for ids this project staged -- 98
 #:    regenerated a wounded character three a round and a fire spell asked
 #:    the slots about 61 and honoured the byte we put there -- so what is
 #:    left is narrow: the same thing through the editor's own write path.
 #: 2. **Every string in the block below loses its `(NOT APPROVED)` marker**,
-#:    because Donald has ruled on it (`.claude/rules/gui-text.md`).
+#:    because Donald has ruled on it (`.claude/rules/gui-text.md`). **Ruled
+#:    on, 2026-09-08**: he was shown the box, the picker and a warning, and
+#:    approved every string as it stood, against three alternatives for the
+#:    warnings -- one sentence for all four, a mark with the explanation in a
+#:    tooltip, or his own words.
+#:
+#: **So both are met and this flag is due to be deleted**, along with the
+#: `if` around the buttons -- which is the next commit rather than this one.
 #:
 #: An environment variable and no preference, the same shape as `WISH_DEBUG`
 #: and `editor/convert.py`: a checkbox would need a label, and a label saying
@@ -98,50 +112,54 @@ def enabled() -> bool:
 # ===========================================================================
 # Strings.
 #
-# Every one of these is Donald's to word (`.claude/rules/gui-text.md`) and
-# none has been ruled on, so every one ends in the literal ` (NOT APPROVED)`
-# and the flag above is what keeps them off a player's screen. Never invent a
-# sentence outside this block.
+# Every one of these is Donald's to word (`.claude/rules/gui-text.md`), and
+# **he ruled on all of them on 2026-09-08**, shown the box, the picker and a
+# warning as pictures. He took them as they stood, against three alternatives
+# for the four warnings: one sentence covering all four, a mark with the
+# explanation in a tooltip, or his own words. So the markers are off.
 #
-# `BOX_TITLE` is the exception and carries no marker: `wish/window.ui` has
-# read `Character Traits` since 2026-08-22 and it is on screen for every user
-# with no flag set, so appending the marker would put those two words in front
-# of everybody -- which is the trade `editor/convert.py`'s `SOURCE_FILTER`
-# comment describes from the other side. It is on the list Donald rules on all
-# the same; it is simply already shipping.
+# Never invent a sentence outside this block. A new string here is unapproved
+# again, whatever the ones around it say, and carries `(NOT APPROVED)` until
+# he has seen it.
+#
+# `BOX_TITLE` never carried a marker: `wish/window.ui` has read
+# `Character Traits` since 2026-08-22 and is on screen for every user with no
+# flag set, so appending one would have put those two words in front of
+# everybody -- the trade `editor/convert.py`'s `SOURCE_FILTER` comment
+# describes from the other side. It was on the list he ruled on all the same.
 # ===========================================================================
 
-#: The traits box's title, as `wish/window.ui` carries it. Approval unrecorded.
+#: The traits box's title, as `wish/window.ui` carries it. Approved
+#: 2026-09-08 with the rest of this block.
 BOX_TITLE = "Character Traits"
 
 #: The two buttons inside the box.
-BUTTON_ADD = "Add… (NOT APPROVED)"
-BUTTON_REMOVE = "Remove (NOT APPROVED)"
+BUTTON_ADD = "Add…"
+BUTTON_REMOVE = "Remove"
 
 #: The picker's title bar and its filter line.
-PICKER_TITLE = "Choose a trait (NOT APPROVED)"
-PICKER_FILTER = "Type to narrow the list (NOT APPROVED)"
+PICKER_TITLE = "Choose a trait"
+PICKER_FILTER = "Type to narrow the list"
 
 #: The picker's two sections. A **provenance** statement rather than a
 #: confidence grade: a player can act on where a name came from and cannot act
 #: on how sure somebody was. `SECTION_SEEN` holds the codes something on the
 #: player's own disks carries, or the game's own code was read for;
 #: `SECTION_TABLE` holds the ones only the DOS guide's table names.
-SECTION_SEEN = "Seen in this game (NOT APPROVED)"
-SECTION_TABLE = "From the DOS table (NOT APPROVED)"
+SECTION_SEEN = "Seen in this game"
+SECTION_TABLE = "From the DOS table"
 
 #: Why a code is coloured, on the picker row and on the sheet. The four cases
 #: `docs/133-active-effects.md` sets out under "What a nonsense combination
 #: could do". None of them refuses the write.
 REASON_MONSTER = ("A monster's way of attacking. A character has none of the "
-                  "parts it reads, so nobody knows what it would do. "
-                  "(NOT APPROVED)")
+                  "parts it reads, so nobody knows what it would do.")
 REASON_NO_HANDLER = ("The game has no answer for this one, so nothing is "
-                     "known about what asking it would do. (NOT APPROVED)")
+                     "known about what asking it would do.")
 REASON_UNNAMED = ("Nobody has named this one. One creature in the game "
-                  "carries it and what it does is unknown. (NOT APPROVED)")
+                  "carries it and what it does is unknown.")
 REASON_DUPLICATE = ("This character already has this in another slot. Whether "
-                    "it counts twice has never been tested. (NOT APPROVED)")
+                    "it counts twice has never been tested.")
 # ---------------------------------------------------------------------------
 
 
