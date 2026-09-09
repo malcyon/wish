@@ -339,10 +339,11 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
     override, because there never is one in the base table either.
 
     With no `title`, this is exactly the base table every reader before
-    `#452` used. No caller passes `title` yet: `goldbox.dos.c64_party`
-    builds `c64_icon_tables()` with no argument, so a Silver Blades
-    character converted to the C64 and home again still comes back as
-    whichever DOS option the base table alone names, not its own.
+    `#452` used. `goldbox.dos.c64_party` now passes `title=c64.key` -- the
+    C64 title being read, `c64_save.container_for(game).game.key`, the
+    mirror of `write_c64_save`'s own `container.game.key` -- so a Silver
+    Blades character converted to the C64 and home again comes back reading
+    its own title's rows.
     """
     source = pathlib.Path(path or REVERSE_PATH)
     try:

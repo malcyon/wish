@@ -6256,7 +6256,8 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     if len(party) > 6:
         raise DosRecordError(
             f"a DOS save holds six characters; this save has {len(party)}")
-    reverse_tables = c64_icon_tables() if icon_parts is not None else None
+    reverse_tables = (c64_icon_tables(title=c64.key)
+                      if icon_parts is not None else None)
     stale_icon_note = c64_codec.READ_DROPPED_PLAYER_TEXT.get("region_220")
     out: "list[NeutralCharacter]" = []
     icons: "list[DosIcon | None]" = []

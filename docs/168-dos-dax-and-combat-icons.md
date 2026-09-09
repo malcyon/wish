@@ -228,13 +228,23 @@ converts it through `goldbox.dos.convert_save`, and reads the arriving C64
 icon back into the menu choices that drew it, with a `--control` run that
 ignores the title's `overrides:` section.
 
-**What the pair costs in the other direction.** `tools/iconreverse.yaml` has
-no per-title section, so a C64 figure that two DOS options now reach can only
-come home as one of them: a Silver Blades character converted to the C64 and
-back returns with head 4 rather than head 10, and with body 0 rather than
-body 11. That is `#452 (A Silver Blades combat figure does not survive a
-round trip through the C64, because the reverse table has no per-title
-rows)`, and the head half of it is live in the shipped table.
+**What the pair cost in the other direction, and what fixed it.**
+`tools/iconreverse.yaml` gained its own `overrides:` section for Secret of the
+Silver Blades -- C64 large head 2 back to DOS head 10, C64 small weapon 1 back
+to DOS body 11 -- and `goldbox.iconparts.c64_icon_tables` and
+`goldbox.dos.c64_party` both take the title now, `c64_party` reading
+`c64_save.container_for(game).game.key`, the mirror of `write_c64_save`'s own
+`container.game.key`. A Silver Blades character converted to the C64 and back
+now returns with head 10 and body 11, not head 4 and body 0. That is
+`#452 (A Silver Blades combat figure does not survive a round trip through
+the C64, because the reverse table has no per-title rows)`.
+
+**The large head row is still lossy, by design rather than by gap.** C64
+large head 2 is claimed by three DOS heads -- the base table's 4 and 6, plus
+Silver Blades' own 10 -- so a Silver Blades player who picked head 4 or head 6
+now comes home as head 10, the same collision the base table already had
+between 4 and 6 before this fix. The small weapon row has no such collision:
+nothing else reaches C64 small weapon 1 for Silver Blades.
 
 ## Silver Blades re-drew the C64 art too -- CONFIRMED, and it refutes a PROBABLE
 

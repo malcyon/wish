@@ -37,12 +37,12 @@ assertion.
 `--home` reads each arriving C64 icon straight back into DOS through
 `IconParts.dos_icon_from_c64` -- the other direction, `tools/iconreverse.yaml`
 (`#320`) -- twice: once through `goldbox.iconparts.c64_icon_tables()` with no
-title, which is what `goldbox.dos.c64_party` still builds today, and once
-with the title this run staged for, which is what `#452 (A Silver Blades
-combat figure does not survive a round trip through the C64, because the
-reverse table has no per-title rows)` gives the reverse table.  Comparing the
-two against what was staged is the round trip itself, not a reading of either
-table.
+title, the base table, and once with the title this run staged for, which is
+what `goldbox.dos.c64_party` itself now passes
+(`#452 (A Silver Blades combat figure does not survive a round trip through
+the C64, because the reverse table has no per-title rows)`).  Comparing the
+two against what was staged shows the fix's effect, not a reading of either
+table in isolation.
 
 Nothing is written outside `--stage`, and that belongs under `work/`.  The
 C64 art is read off the title's own disk at run time and none of it is
@@ -118,8 +118,14 @@ def stage(source: pathlib.Path, into: pathlib.Path, slot: str, title: str,
 
 
 def arrivals(folder: pathlib.Path, slot: str, title: str,
-             parts: IconParts) -> list[dict]:
-    """Convert the party and read each C64 icon back into menu choices."""
+             parts: IconParts) -> tuple[list[dict], bytes, bytes | None]:
+    """Convert the party and read each C64 icon back into menu choices.
+
+    Returns the rows, and the `save0`/`save1` the conversion wrote --
+    a real converted save, so :func:`homecoming` can read it back through
+    `goldbox.dos.c64_party` itself rather than through a reimplementation of
+    what that function does.
+    """
     game = games.by_key(title)
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
@@ -143,28 +149,33 @@ def arrivals(folder: pathlib.Path, slot: str, title: str,
                              for g in icon[:18] if g != SPACE}),
             "icon": icon,
         })
-    return out
+    return out, bytes(save0), (bytes(save1) if save1 else None)
 
 
-def homecoming(rows: list[dict], title: str, parts: IconParts) -> list[dict]:
-    """Read each arriving C64 icon straight back into DOS (`#320`, `#452`).
+def homecoming(rows: list[dict], save0: bytes, save1: bytes | None,
+              title: str, parts: IconParts) -> list[dict]:
+    """Read the just-converted save back into DOS two ways (`#320`, `#452`).
 
-    Twice a row: once through `c64_icon_tables()` with no title -- what
-    `goldbox.dos.c64_party` still builds today -- and once with the title
-    this run staged for.  A character whose staged `head`/`body` differs
-    from the untitled reading is the round trip `#452` is about; one whose
-    staged pair differs from the *titled* reading too is a row that YAML
-    file does not yet have.
+    **`goldbox.dos.c64_party` itself**, the exact call a real C64-to-DOS
+    conversion makes, against the same title this run staged for -- what
+    this project calls "wired" below. And the base, title-less table read
+    directly through `IconParts.dos_icon_from_c64`, which is what
+    `c64_party` read for every title before #452 and is what a caller with
+    no title to give still gets. A character whose staged `head`/`body`
+    differs from the base reading is the round trip #452 was about; one
+    whose staged pair still differs from the *wired* reading is a row that
+    YAML file does not yet have.
     """
+    game = games.by_key(title)
+    _chars, wired_icons = dos.c64_party(save0, save1, game, icon_parts=parts)
     untitled = c64_icon_tables()
-    titled = c64_icon_tables(title=title)
     out = []
-    for row in rows:
-        today = parts.dos_icon_from_c64(row["icon"], untitled)
-        fixed = parts.dos_icon_from_c64(row["icon"], titled)
+    for row, wired in zip(rows, wired_icons):
+        base = parts.dos_icon_from_c64(row["icon"], untitled)
         out.append({**row,
-                    "today": (today.head, today.body),
-                    "fixed": (fixed.head, fixed.body)})
+                    "today": (base.head, base.body),
+                    "fixed": ((wired.head, wired.body)
+                             if wired is not None else None)})
     return out
 
 
@@ -173,9 +184,9 @@ def report_home(rows: list[dict]) -> None:
     for row in rows:
         staged = (row["head"], row["body"])
         print(f"    {row['name']:<14} {row['size']:<5} staged {staged}  "
-              f"today (no title) {str(row['today']):<10} "
+              f"base table (no title) {str(row['today']):<10} "
               f"{'matches' if row['today'] == staged else 'differs'}  "
-              f"with this title {str(row['fixed']):<10} "
+              f"through c64_party (wired) {str(row['fixed']):<10} "
               f"{'matches' if row['fixed'] == staged else 'differs'}")
 
 
@@ -254,17 +265,19 @@ def main(argv: list[str] | None = None) -> int:
                          f"pass --disk")
     parts = IconParts.load(str(disk))
     print(f"{into}  <-  {games.by_key(args.title).title}, {disk.name}")
-    arrived = arrivals(into, args.slot, args.title, parts)
+    arrived, save0, save1 = arrivals(into, args.slot, args.title, parts)
     report(arrived, "the table as it stands:")
     if args.home:
-        report_home(homecoming(arrived, args.title, parts))
+        report_home(homecoming(arrived, save0, save1, args.title, parts))
     if args.control:
         import goldbox.iconparts as iconparts
 
         was = iconparts.PROPOSAL_PATH
         try:
             iconparts.PROPOSAL_PATH = without_overrides(args.title, into)
-            report(arrivals(into, args.slot, args.title, parts),
+            control_rows, _save0, _save1 = arrivals(
+                into, args.slot, args.title, parts)
+            report(control_rows,
                    "the control, with this title's overrides ignored:")
         finally:
             iconparts.PROPOSAL_PATH = was

@@ -902,16 +902,21 @@ def test_a_silver_blades_figure_composed_with_the_title_survives_the_round_trip(
     numbers home.
 
     The regression this fixes is the second half of the assertion: the very
-    same C64 icon, decoded with the base, title-less reverse table -- what
-    `goldbox.dos.c64_party` still builds today, since nothing there passes
-    `title` to `c64_icon_tables` yet -- comes home as head 4 at `size` 2
-    (keeping its own body 11) and as body 0 at `size` 1 (keeping its own
-    head 10), the exact two readings `#452 (A Silver Blades combat figure
-    does not survive a round trip through the C64, because the reverse
-    table has no per-title rows)` opens with. `dos_icon_tables`'s own
+    same C64 icon, decoded with the base, title-less reverse table --
+    `goldbox.dos.c64_party`'s own reading before this fix, when nothing
+    there passed `title` to `c64_icon_tables` -- comes home as head 4 at
+    `size` 2 (keeping its own body 11) and as body 0 at `size` 1 (keeping its
+    own head 10), the exact two readings `#452 (A Silver Blades combat
+    figure does not survive a round trip through the C64, because the
+    reverse table has no per-title rows)` opens with. `dos_icon_tables`'s own
     `title` argument for the *forward* half is not this gap: `write_c64_save`
     has passed it since `bb16ee3`, so the icon this test decodes is already
-    the one a real conversion composes.
+    the one a real conversion composes. `c64_party` now passes `title` too,
+    reading `c64_save.container_for(game).game.key`; this test still reaches
+    `c64_icon_tables()` and `dos_icon_from_c64` directly, on the option
+    tables rather than through a saved file, so it is a check on the tables
+    that agrees with `c64_party`'s wiring rather than a test of the wiring
+    itself.
     """
     from goldbox.iconparts import c64_icon_tables, dos_icon_tables
 
@@ -925,3 +930,56 @@ def test_a_silver_blades_figure_composed_with_the_title_survives_the_round_trip(
 
         today_home = parts.dos_icon_from_c64(icon)
         assert (today_home.head, today_home.body) == today_answer, size
+
+
+def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
+        tmp_path):
+    """The wiring the table check above cannot see: `goldbox.dos.c64_party`
+    -- the function `editor/convert.py`'s C64-to-DOS direction actually
+    calls -- has to pass its own title to `c64_icon_tables` rather than a
+    caller passing one by hand.
+
+    Drives the real path end to end on `WISH-SPEC-ssb-299-engine-resave`
+    (`#299 (goldbox.dos.write builds only Pool of Radiance's record, so
+    nothing can be converted to DOS for the later titles)`): stage DOS head
+    10 and body 11 onto the specimen's six characters, convert them into a
+    C64 payload through `goldbox.dos.convert_save`, then read that payload
+    back through `goldbox.dos.c64_party` -- not through `c64_icon_tables`
+    directly -- and check what comes home. Before `#452 (A Silver Blades
+    combat figure does not survive a round trip through the C64, because the
+    reverse table has no per-title rows)`'s fix, `c64_party` built
+    `c64_icon_tables()` with no title and every large character came home
+    head 4 and the small one came home body 0; watched red in that shape
+    with `goldbox/dos.py` reverted to its pre-fix state, via
+    `tools/iconrowproof.py --home`.
+    """
+    pytest.importorskip("tools.gamedisks")
+    iconproposal = pytest.importorskip("tools.iconproposal")
+    specimens = pytest.importorskip("tools.specimens")
+    iconrowproof = pytest.importorskip("tools.iconrowproof")
+
+    disk = iconproposal.title_c64_disk("secret-of-the-silver-blades", None)
+    if disk is None:
+        pytest.skip("needs Secret of the Silver Blades' C64 disk; set "
+                    "$SSB_DISKS")
+    source = (specimens.tree_root() / "por-dos"
+             / "WISH-SPEC-ssb-299-engine-resave")
+    if not source.is_dir():
+        pytest.skip(f"needs the specimen at {source}")
+
+    into = tmp_path / "staged"
+    iconrowproof.stage(source, into, "D", "secret-of-the-silver-blades",
+                       body=11, head=10, size=None)
+    icon_parts = IconParts.load(str(disk))
+    rows, save0, save1 = iconrowproof.arrivals(
+        into, "D", "secret-of-the-silver-blades", icon_parts)
+    assert len(rows) == 6
+
+    from goldbox import dos
+
+    _characters, icons = dos.c64_party(
+        save0, save1, "secret-of-the-silver-blades", icon_parts=icon_parts)
+    assert len(icons) == 6
+    for icon in icons:
+        assert icon is not None
+        assert (icon.head, icon.body) == (10, 11)
