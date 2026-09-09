@@ -123,14 +123,20 @@ def run(args) -> int:
     slot = por.claim_slot(args.pool, note=os.environ.get("POR_AGENT", "i447"))
     note(event="slot", n=slot.n, monitor=slot.port, display=slot.display,
          dir=str(slot.dir))
-    boot = por.stage_disks(slot, disks, args.save)
-    save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
-    os.chmod(save_disk, 0o644)
-    sess = por.Session(boot, slot=slot)
-    sess.save_disk = save_disk
+    # Staging and `Session()` sit inside the guard, not before it. A `--save`
+    # the disks directory does not hold makes `stage_disks` raise, and a slot
+    # claimed outside the guard is then leased with nobody to release it --
+    # something the pool has to `reap` instead of a slot given back. Found in
+    # review, 2026-09-08.
     cps: dict[str, int] = {}
     drifted = 0
+    sess = None
     try:
+        boot = por.stage_disks(slot, disks, args.save)
+        save_disk = str(pathlib.Path(slot.dir) / "SIDE0.D64")
+        os.chmod(save_disk, 0o644)
+        sess = por.Session(boot, slot=slot)
+        sess.save_disk = save_disk
         if not sess.boot():
             note(event="boot-failed")
             return 1
@@ -207,16 +213,19 @@ def run(args) -> int:
              stores=got.get("stores"), loads=got.get("loads"))
         return 0
     finally:
-        try:
-            with sess.mon(5) as m:
-                for number in cps.values():
-                    try:
-                        m.checkpoint_delete(number)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        sess.close()
+        # `sess` is None when staging or `Session()` raised, which is the case
+        # the guard was widened for: the slot still has to go back.
+        if sess is not None:
+            try:
+                with sess.mon(5) as m:
+                    for number in cps.values():
+                        try:
+                            m.checkpoint_delete(number)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            sess.close()
         slot.release()
 
 
