@@ -1,7 +1,8 @@
-"""A live Amiga, read through WinUAE's own debugger.
+"""A live Amiga, read through the emulator's own debugger.
 
 `ViceTarget` talks to a socket. WinUAE has no socket, but it has two doors on
-the same debugger and they are not the same to whoever is at the machine.
+the same debugger and they are not the same to whoever is at the machine. A
+patched FS-UAE does have one, and it is the third transport here.
 
 **`WinuaePipe` is the one to reach for.** Every WinUAE process creates
 `\\\\.\\pipe\\WinUAE` at startup, and a message beginning `DBG ` is handed to
@@ -20,8 +21,18 @@ of whoever is playing, so it belongs to a driven run and not to a player's
 session. It stays because its `W` and its single-stepping reach parts of the
 debugger the pipe deliberately refuses to send.
 
-**One `ssh` call does the whole of either**, which is the design decision this
-module is built around. `winuae.ps1` and `winuae-send.ps1` are three separate
+**`FsuaeGdb` is the Linux route, and the only one a player on Linux can use.**
+The patched FS-UAE at `grahambates/fs-uae`, branch `remote_debugger_barto`,
+carries `src/barto_gdbserver.cpp`, a GDB-remote server that answers a memory
+read from the frame handler of a **running** machine: `vsync_pre()` ends
+`if(debugger_state == state::connected && data_available()) handle_packet();`,
+and the `m` branch reads through `get_mem_bank(adr)->bget(adr)` with no state
+check and no call to `activate_debugger()`. So there is no console, no
+keypress, no halt and no `ssh` -- a socket on loopback, like the C64's. What it
+costs, what it refuses and what it cannot do is on the class.
+
+**One `ssh` call does the whole of either WinUAE route**, which is the design
+decision this module is built around. `winuae.ps1` and `winuae-send.ps1` are three separate
 guest commands -- write the batch file, press F11, inject the batch -- and each
 run on its own would be an `ssh` round trip of about half a second. They are
 composed here into a single PowerShell script, base64'd into
@@ -71,8 +82,10 @@ import logging
 import os
 import pathlib
 import re
+import socket
 import struct
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass, field
 
@@ -770,6 +783,290 @@ def parse_memory_dump(text: str) -> dict[int, int]:
     return out
 
 
+#: The port `barto_gdbserver.cpp` listens on when `remote_debugger_port` is not
+#: given: `#define DEFAULT_PORT 2345`. The WinUAE sibling hard-codes the same
+#: number; on FS-UAE it is configurable, which is what lets two runs coexist.
+FSUAE_PORT = 2345
+
+#: Packets that would stop the machine or end the run, refused by name. Each is
+#: read off `barto_gdbserver.cpp`'s own dispatch rather than guessed:
+#:
+#: * `k` -- kill, and the emulator goes with it;
+#: * `D` -- detach, which drops the connection, and this server closes its
+#:   *listening* socket when a connection goes, so the door does not come back;
+#: * `s`, `S` and `vCont;s` -- single-step, which sets `state::debugging` and
+#:   leaves the machine stopped at a `>` that nothing here will ever type at;
+#: * `vCont;t` -- stop, the same;
+#: * `\\x03` -- the interrupt byte, which calls `activate_debugger()`.
+#:
+#: This transport reads a machine somebody is playing. Everything it needs is
+#: `qSupported`, `vCont;c` and `m`, so the refusal is on the packet's **first
+#: character**, which is what the server's own dispatch switches on.
+UNSAFE_PACKETS = frozenset("kDsS") | {"\x03"}
+
+#: The `vCont` actions that stop the machine. `vCont;c` is the only one sent.
+UNSAFE_ACTIONS = ("vCont;s", "vCont;S", "vCont;t")
+
+
+def _console_output(body: str) -> bool:
+    """Is this packet the guest printing, rather than an answer to us?
+
+    `barto_gdbserver.cpp` forwards the Amiga's own `KPutChar` output as
+    `$O<hex>`, unasked, so one can land between a request and its reply. The
+    test is the payload: hex-encoded text, an even number of digits. `OK`
+    fails it on both counts and is a reply.
+    """
+    payload = body[1:]
+    return (body[:1] == "O" and len(payload) > 0 and len(payload) % 2 == 0
+            and all(c in "0123456789abcdefABCDEF" for c in payload))
+
+
+class FsuaeError(NotConnected):
+    """The patched FS-UAE was not there, or would not answer.
+
+    A `NotConnected` for the same reason `GuestError` is one: an emulator that
+    has not been started yet is a state to wait out rather than a crash. It is
+    **not** a `GuestError`, because there is no guest -- nothing here shells
+    out, and a caller distinguishing "the VM is unreachable" from "the socket
+    is not open" is asking two different questions.
+    """
+
+
+class FsuaeGdb:
+    """The transport that speaks GDB-remote to a patched FS-UAE on this machine.
+
+    Not a `Target`. It knows about packets and checksums; `AmigaTarget` owns
+    the Amiga's memory map, exactly as it does for the two WinUAE routes.
+
+    **What makes it usable while somebody is playing**: `vsync_pre()` handles
+    one packet per frame once the client has said `vCont;c`, and the `m` branch
+    reads memory with no state check, so a read costs the wait for the next
+    frame and stops nothing. `halts_machine` is False and `AmigaTarget` picks
+    that up on its own.
+
+    **Read-only, and that is the build rather than a policy.** This server has
+    no `M` and no `X` handler -- `barto_gdbserver.cpp`'s dispatch runs `g`, `p`
+    and `m` and nothing that writes memory. `AmigaTarget.write` says so rather
+    than sending something the emulator would ignore. (`grahambates/fs-uae`
+    PR #6 adds writes and is unmerged.)
+
+    **Four limits a caller has to design around**, all of them the fork's:
+
+    * the emulator **starts halted and in warp** until a client connects and
+      continues it, so `__init__` sends `vCont;c` unless told not to. A player
+      cannot start the game and then decide to open Wish;
+    * **one connection per run.** `handle_packet` ends
+      `if(!is_connected()) { ... close(); ... }` and `close()` shuts the
+      *listening* socket, not just the connection -- so `close()` here ends the
+      debugging for the life of that emulator process;
+    * **loopback only** -- `listen()` has `constexpr auto name =
+      _T("127.0.0.1")`;
+    * the server `recv`s into a 512-byte buffer and parses **one** packet out
+      of it, so requests are never pipelined here: send one, read its reply.
+
+    `opener` is what actually makes the socket, injected so the tests can drive
+    every path with no emulator at all. It takes no arguments and gives back
+    something with `sendall`, `recv`, `settimeout` and `close`.
+    """
+
+    #: The machine keeps running: the read is served from `vsync_pre()`, which
+    #: is a frame handler of a machine that is executing. Measured -- `VHPOSR`
+    #: comes back at the *same* raster position on every poll, which is what a
+    #: frame handler looks like and is not what a halted debugger looks like.
+    halts_machine = False
+
+    #: One packet's round trip. Generous: a read is milliseconds, and this is
+    #: only here so a dead emulator is reported rather than waited on.
+    TIMEOUT = 20.0
+
+    #: Opening the socket. Short, because the emulator either has the door open
+    #: or has already given it away to somebody else.
+    CONNECT_TIMEOUT = 10.0
+
+    def __init__(self, host: str = "127.0.0.1", port: int | None = None,
+                 timeout: float | None = None, opener=None,
+                 resume: bool = True):
+        self.host = host
+        self.port = FSUAE_PORT if port is None else port
+        self.timeout = self.TIMEOUT if timeout is None else timeout
+        self._opener = opener or self._socket
+        self.sock = None
+        self._buf = b""
+        #: What the server advertised, kept for a run log: this build answers
+        #: `PacketSize=512;...;QStartNoAckMode+;vContSupported+;`.
+        self.greeting = ""
+        #: Every packet this session sent, the way `WinuaePipe.sent` is kept.
+        self.sent: list[str] = []
+        self.connect(resume=resume)
+
+    # -- the socket ------------------------------------------------------
+
+    def _socket(self):
+        return socket.create_connection((self.host, self.port),
+                                        timeout=self.CONNECT_TIMEOUT)
+
+    def connect(self, resume: bool = True) -> None:
+        """Open the socket, greet, and start the machine.
+
+        **The `vCont;c` is not optional in the ordinary case.** The emulator
+        sits at its first instruction in warp mode until a client sends one, so
+        a transport that connected and did not continue would leave the player
+        looking at a black screen. `resume=False` is for a caller that means to
+        read a stopped machine and knows it is stopped.
+        """
+        try:
+            self.sock = self._opener()
+        except OSError as exc:
+            raise FsuaeError(
+                f"nothing is listening on {self.host}:{self.port}: {exc}. "
+                "The patched FS-UAE opens that port once per run and closes "
+                "it for good when a client disconnects, so a second "
+                "connection needs the emulator started again") from exc
+        self.sock.settimeout(self.timeout)
+        self.greeting = self.ask("qSupported")
+        if resume:
+            self.resume()
+
+    def close(self) -> None:
+        """Drop the connection, which **ends the debugging for this run.**
+
+        Not a tidy-up: `handle_packet` reaches `close()` on the listening
+        socket when the connection goes, so the emulator carries on playing the
+        game and no client can ever attach to it again.
+        """
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            finally:
+                self.sock = None
+
+    # -- packets ---------------------------------------------------------
+
+    @staticmethod
+    def _frame(body: str) -> bytes:
+        """`$<body>#<checksum>`, the checksum being the low byte of the sum."""
+        return f"${body}#{sum(body.encode()) & 0xFF:02x}".encode()
+
+    def _write(self, body: str) -> None:
+        if self.sock is None:
+            raise FsuaeError("this transport is closed")
+        if body[:1] in UNSAFE_PACKETS or body.startswith(UNSAFE_ACTIONS):
+            raise ValueError(
+                f"`{body}` stops the machine or ends the run; this transport "
+                "reads a game somebody is playing")
+        self.sent.append(body)
+        try:
+            self.sock.sendall(self._frame(body))
+        except OSError as exc:
+            raise FsuaeError(f"the emulator would not take `{body}`: "
+                             f"{exc}") from exc
+
+    def _packet(self, timeout: float | None = None) -> str:
+        """The next `$...#xx` the emulator sends, without its framing.
+
+        Acks are stripped and none are sent back. That is what the server
+        expects: `useAck` governs only the acks it *writes*, and the one place
+        it reads ours is a loop at the head of `handle_packet` that discards
+        `+` and `-` before looking for a `$`.
+
+        `O`-packets -- the guest's own console output, which this server
+        forwards from `KPutChar` -- are skipped rather than returned: they
+        arrive unasked between a request and its reply. **`OK` is not one of
+        them**, and telling the two apart is the payload rather than the
+        letter: an output packet carries hex-encoded text, so an even number of
+        hex digits after the `O` is console output and anything else is a
+        reply that happens to start with the same letter.
+        """
+        if self.sock is None:
+            raise FsuaeError("this transport is closed")
+        limit = self.timeout if timeout is None else timeout
+        self.sock.settimeout(limit)
+        deadline = time.monotonic() + limit
+        while True:
+            while self._buf[:1] in (b"+", b"-"):
+                self._buf = self._buf[1:]
+            if self._buf.startswith(b"$"):
+                end = self._buf.find(b"#")
+                if end != -1 and len(self._buf) >= end + 3:
+                    body = self._buf[1:end].decode("latin-1")
+                    self._buf = self._buf[end + 3:]
+                    if _console_output(body):
+                        continue            # the guest printing, not our reply
+                    return body
+            if time.monotonic() > deadline:
+                raise FsuaeError(
+                    f"the emulator sent no reply in {limit:.0f}s; what did "
+                    f"arrive was {self._buf[:80]!r}")
+            try:
+                chunk = self.sock.recv(1 << 16)
+            except socket.timeout as exc:
+                raise FsuaeError(f"the emulator sent no reply in "
+                                 f"{limit:.0f}s") from exc
+            except OSError as exc:
+                raise FsuaeError(f"the connection failed: {exc}") from exc
+            if not chunk:
+                raise FsuaeError(
+                    "the emulator closed the connection; it will not listen "
+                    "again until it is restarted")
+            self._buf += chunk
+
+    def ask(self, body: str, timeout: float | None = None) -> str:
+        """Send one packet and give back the reply's body."""
+        self._write(body)
+        return self._packet(timeout)
+
+    def resume(self) -> None:
+        """`vCont;c` -- run the machine, and **expect no reply**.
+
+        The server answers a continue with an ack and returns; the next packet
+        it sends is whenever the machine next stops, which for a game nobody
+        is debugging is never. Waiting for one here would hang the poll.
+        """
+        self._write("vCont;c")
+
+    # -- reading memory --------------------------------------------------
+
+    def read_memory(self, addr: int, length: int) -> bytes:
+        """Bytes, out of a running machine, in one packet.
+
+        The optional capability `AmigaTarget.read_blocks` looks for: a
+        transport that has this needs no dump file and no `S`. Named
+        `read_memory` rather than `memory` on purpose -- `WinuaePipe.memory`
+        exists, reads through the debugger's `m` command, and is capped at
+        3 KB and at about 500 dumped lines for the life of the emulator, so a
+        capability check that matched it would quietly route every Amiga poll
+        through the one reader that runs out.
+
+        There is no cap here and none is imposed: `PacketSize=512` is what the
+        server advertises for GDB's benefit, and the reply is written back
+        whatever its length -- 512 KB has been read in one packet. The cost of
+        a big one is not this side's: the server copies the range a byte at a
+        time inside the frame handler, so a 512 KB read makes the emulated
+        machine miss a frame. Once per boot, for `locate()`, that is invisible;
+        it is not a thing to poll with.
+        """
+        if length <= 0:
+            raise ValueError(f"a read of {length} bytes is not a read")
+        reply = self.ask(f"m{addr:x},{length:x}")
+        if reply.startswith("E") and len(reply) <= 3:
+            # `E01` is every failure this server has: one unreadable byte
+            # anywhere in the range clears the whole reply.
+            raise FsuaeError(
+                f"the emulator refused to read {length:#x} bytes at "
+                f"{addr:#x} ({reply}); some address in that range is not "
+                "memory this machine has")
+        try:
+            data = bytes.fromhex(reply)
+        except ValueError as exc:
+            raise FsuaeError(
+                f"the reply to `m{addr:x},{length:x}` is not hex: "
+                f"{reply[:80]!r}") from exc
+        if len(data) != length:
+            raise FsuaeError(f"asked for {length} bytes at {addr:#x} and the "
+                             f"emulator sent {len(data)}")
+        return data
+
+
 def find_anchor(memory: bytes, base: int, anchor: bytes,
                 offset: int) -> list[int]:
     """Every data-hunk base this dump is consistent with.
@@ -968,8 +1265,18 @@ class AmigaTarget:
         The debugger's own `W` takes a list of byte values; `docs/143` §7 has
         the eight-byte proof. Split into lines of sixteen so a long write does
         not become a console line nothing can type.
+
+        **A GDB-remote transport cannot do this at all**, and it is refused
+        here rather than sent and ignored: the patched FS-UAE's server has no
+        `M` and no `X` in its dispatch, so a write would go out and the machine
+        would be unchanged. That is the one thing worse than not writing.
         """
         self._require_open()
+        if getattr(self.debugger, "batch", None) is None:
+            raise GuestError(
+                f"{type(self.debugger).__name__} reads a running Amiga and "
+                "cannot write to one: the patched FS-UAE's GDB server has no "
+                "memory-write packet in the build this project targets")
         lines = []
         for i in range(0, len(data), 16):
             chunk = data[i:i + 16]
@@ -994,14 +1301,28 @@ class AmigaTarget:
         C64 side's callers pass that shape. **The name is ignored**, which is
         the documented behaviour for a backend that cannot tell two memories
         apart, and here it is not a limitation: there is only one memory.
+
+        **A transport that answers memory in its reply skips all of that.**
+        GDB-remote has no dump-to-file command and needs none -- the bytes come
+        back in the `m` packet -- so a transport carrying a `read_memory` is
+        asked for each block directly and no file is ever named. It is one
+        packet per block rather than one round trip for the batch, which is the
+        honest shape: batching bought the WinUAE routes a keypress, a scheduled
+        task and a console batch typed at 700 ms a line, and here it would buy
+        one frame's wait. `FsuaeGdb.read_memory` says why the capability is not
+        simply "has a `memory` method".
         """
         self._require_open()
         want = [(b[0], b[1]) for b in blocks]
+        for addr, length in want:
+            if length <= 0:
+                raise ValueError(f"a read of {length} bytes is not a read")
+        direct = getattr(self.debugger, "read_memory", None)
+        if direct is not None:
+            return [direct(addr, length) for addr, length in want]
         token = uuid.uuid4().hex[:8]
         lines, fetch = [], []
         for i, (addr, length) in enumerate(want):
-            if length <= 0:
-                raise ValueError(f"a read of {length} bytes is not a read")
             path = f"{GUEST_DUMP}\\wish-{token}-{i}.bin"
             lines.append(f"S {path} {addr:x} {length:x}")
             fetch.append((f"b{i}", path))
@@ -1036,6 +1357,15 @@ class AmigaTarget:
             lines.append("g")
 
     def close(self) -> None:
+        """Refuse further reads. **The transport is left alone.**
+
+        Nothing to close on either WinUAE route -- each call is its own `ssh`
+        -- and on `FsuaeGdb` closing would be worse than a leak: the emulator
+        shuts its *listening* socket when a client goes, so a target that
+        closed the connection would take the game's only debugging door with
+        it, and a caller that closed one target and opened another would find
+        nothing listening. Whoever opened the transport closes it.
+        """
         self._open = False
 
     def _require_open(self) -> None:

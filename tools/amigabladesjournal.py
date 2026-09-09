@@ -304,8 +304,29 @@ def tables(adf: pathlib.Path):
 
 
 def answer(holder: str, settle: float, adf: pathlib.Path,
-           shot: pathlib.Path | None = None) -> bool:
-    """Read the prompt on screen and type its answer.  True when it did."""
+           shot: pathlib.Path | None = None, capture=None, press=None) -> bool:
+    """Read the prompt on screen and type its answer.  True when it did.
+
+    `capture` takes a path and puts the emulator's screen in it; `press` takes
+    one character and sends it.  Both default to WinUAE's -- `winvm shot` and
+    `tools/amigadrive.py` -- and both are arguments because the same challenge
+    is asked by the same game in FS-UAE, where the screen comes off an X
+    server and the keys go in through XTEST (`#464 (Can the automapper follow
+    a live FS-UAE game on Linux, so Wish and the Amiga game run on one
+    machine?)`).  Only the two ends differ; the reading between them is one
+    implementation, which is the point of passing them rather than writing a
+    second answerer.
+    """
+    if capture is None:
+        def capture(path):
+            subprocess.run(["winvm", "shot", str(path)], check=True,
+                           capture_output=True, text=True,
+                           env=dict(os.environ,
+                                    SSH_ASKPASS_REQUIRE="never"))
+    if press is None:
+        def press(key):
+            amigadrive.press(holder, key, settle)
+
     screen, amiga_tables = _blades_modules()
     table = tables(adf)
     tidy = shot is None
@@ -320,9 +341,7 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
         handle.close()
         shot = pathlib.Path(handle.name)
     try:
-        subprocess.run(["winvm", "shot", str(shot)], check=True,
-                       capture_output=True, text=True,
-                       env=dict(os.environ, SSH_ASKPASS_REQUIRE="never"))
+        capture(shot)
         handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         handle.close()
         scaled = pathlib.Path(handle.name)
@@ -350,8 +369,8 @@ def answer(holder: str, settle: float, adf: pathlib.Path,
         if tidy and shot.exists():
             shot.unlink()
     for letter in word:
-        amigadrive.press(holder, letter, settle)
-    amigadrive.press(holder, "RET", settle)
+        press(letter)
+    press("RET")
     print("answered")
     return True
 
