@@ -57,8 +57,11 @@ silence it next time"* -- and mildness is not the point: a noise in his room is
 the same kind of mistake as a window on his screen, and the brief that sent
 that agent said "offscreen" and forgot to say "silent".
 
-* **FS-UAE**: `volume = 0` in the configuration, or `SDL_AUDIODRIVER=dummy` in
-  the environment.
+* **FS-UAE**: **`--volume=0` does not silence it** -- all three runs Donald
+  heard on 2026-09-08 had it set, which is how this rule came to be measured
+  rather than guessed. Use `SDL_AUDIODRIVER=dummy` for a build that links SDL
+  audio, `flatpak run --nosocket=pulseaudio` for the stock Flatpak, and
+  `ALSOFT_DRIVERS=null` for a native 3.x build with OpenAL.
 * **WinUAE**: it runs on the Windows VM, whose audio reaches the host, and
   `sound_output=none` is **not** available -- it deadlocks Silver Blades on its
   second turn (`#331 (Amiga Silver Blades asks a journal word before it will
