@@ -244,7 +244,7 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$49C1` | y — rises going south |
 | `$49C2` | facing: 0 north, 1 east, 2 south, 3 west |
 | `$49F0`, `$49F1` | the square occupied before the last move |
-| `$49C6`–`$49CB` | **the clock, six digits**, limits `0A 0A 06 18 1E 0C` from `$A83C`. `$49C7`–`$49C9` are units of a minute, tens of a minute and the hour — `DUNGEON $09F7` prints `$49C9 : $49C8 $49C7` — and `$49CA`/`$49CB` are the day and the month. Rises by a minute per step and per turn in place |
+| `$49C6`–`$49CB` | **the clock, six digits**, limits `0A 0A 06 18 1E 0C`. `$49C6` is a sub-minute counter the game never shows; `$49C7`–`$49C9` are units of a minute, tens of a minute and the hour — `DUNGEON $09F7` prints `$49C9 : $49C8 $49C7` — and `$49CA`/`$49CB` are the day and the month. Rises by a minute per step and per turn in place. See [the clock is six digits and only three are shown](#the-clock-is-six-digits-and-only-three-of-them-are-shown) below |
 | `$49C3`, `$49C4` | the party's square on the **overland** map, a separate pair from `$49C0`/`$49C1` — which is why walking into a site and out again puts you back where you left |
 | `$49C0`–`$49C2` **outdoors** | stale, and **never read**. `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` ([`118-debug-mode.md`](118-debug-mode.md)), so the live square reaches the save only while the party is indoors, and what these three hold on the travel grid is whatever the party last arrived on. Measured in VICE with a non-stopping read checkpoint on four converted outdoor saves, two pairs differing only in these three bytes: **0 reads** across 4 loads, 4 arrivals, 8 travel-grid steps and 4 area changes, and 13 screenshot pairs identical to the pixel. Across 115 distinct save payloads on this machine, 30 of them outdoors, 6 read `0,0,0`; `work/p3/W4`–`W7` are four of them and the game itself wrote them |
 | `$49E6` | non-zero indoors, zero on the overland map; it picks which file `LOADFILES` asks for |
@@ -271,6 +271,63 @@ change and everything from `$4A20` to `$4AF8` survives. The write-up, `work/repo
 published since names 229 of them in English —
 see [`128-guide-and-scripting.md`](128-guide-and-scripting.md), where merging the
 two is named as a cheap job for whoever next touches `goldbox/commissions.py`.
+
+### The clock is six digits, and only three of them are shown
+
+**CONFIRMED, from the engine's own tick, in all three C64 titles.** The clock
+is six one-byte digits at payload offset `+$C6`, and the clock a player reads
+off the status line is the three at `+$C7`. Both numbers are true and they name
+different things, which is why `goldbox/c64_save.py`'s `Container.clock = 0xC6`
+and `goldbox/games.py`'s `CLOCK_OFFSET = 0xC7` disagree by a byte and neither is
+wrong — settled for
+[#470 (Give the project a neutral title beside its neutral character record, with one port per platform a title shipped on)](https://github.com/malcyon/wish/issues/470),
+which could not write a `clock_base` until somebody said which.
+
+| digit | offset | limit | what it is |
+|---|---|---|---|
+| 0 | `+$C6` | `$0A` | sub-minute ticks, **never printed** |
+| 1 | `+$C7` | `$0A` | units of a minute |
+| 2 | `+$C8` | `$06` | tens of a minute |
+| 3 | `+$C9` | `$18` | the hour |
+| 4 | `+$CA` | `$1E` | the day |
+| 5 | `+$CB` | `$0C` | the month |
+
+The tick is one loop, the same instruction for instruction in every title, with
+the operands moved to that title's save page:
+
+```
+INC $ppC6,X / LDA $ppC6,X / CMP <limits>,X / BCC out
+LDA #$00 / STA $ppC6,X / INX
+```
+
+`X` is the digit to advance, so a caller that wants a minute enters at `X = 1`,
+which is `+$C7`. The status line reads the same three: `LDA $ppC9`, a `#$3A`
+colon, `LDA $ppC8`, `LDA $ppC7`.
+
+`tools/c64clock.py` finds all of it from the signature. What it reports:
+
+| title | tick | limits | status line | page |
+|---|---|---|---|---|
+| Pool of Radiance | `DUNGEON $0DEC`, `CAMP $124A`, `COMBAT $224D` | `$0E4D`, `$127D`, `$2260` | `DUNGEON $09F7` | `$49C6` |
+| Curse of the Azure Bonds | `DUNGEON $0D4F`, `CAMP $13F9`, `COMBAT2 $22B0` | `$0DB0`, `$142C`, `$FAC3` | `DUNGEON $09ED` | `$4BC6` |
+| Secret of the Silver Blades | `LIBRARY $46B6` | `$46DE` | `DUNGEON $0A0C` | `$4BC6` |
+
+Two things the sweep turned up that were not the question:
+
+* **The limits table overlaps an `RTS` where the caller never passes `X = 0`.**
+  Pool of Radiance's `COMBAT` and Secret of the Silver Blades' `LIBRARY` both
+  have `RTS` at `table + 0` and the five limits `0A 06 18 1E 0C` after it, so
+  the loop's own `BCC` exit and index 0 of the table are the same byte. Those
+  two entries advance a minute or more and never the sub-minute digit. It is
+  deliberate and not a defect: reading the table as six from the `CMP` operand
+  is what makes it look like a limit of 96.
+* **The claim that the limits come from `$A83C` is unsupported and has been
+  removed from the row above.** Every copy `tools/c64clock.py` can point at is
+  inside the overlay that uses it — three in Pool of Radiance, two in Curse,
+  one in Silver Blades — and nothing on any side of any of the three titles
+  carries the six bytes at `$A83C`. Curse's `COMBAT2` is the one entry whose
+  `CMP` names an address outside its own file, `$FAC3`, so a resident copy does
+  exist somewhere; `$A83C` is not it, and neither is needed to read the clock.
 
 ### Other header bytes
 
