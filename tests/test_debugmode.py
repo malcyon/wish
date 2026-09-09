@@ -1153,7 +1153,7 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     assert not card.levelling
 
 
-def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
+def test_the_click_never_stops_to_ask_about_the_clamp(app):
     """No dialog in the common case -- Donald had that removed once already.
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
@@ -1178,13 +1178,8 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         def say(self, text, detail="", alarm=False):
             seen["said"] = text
 
-    costly_question = ("LADY KATHERINE as a thief 2 drops 2502 experience, "
-                       "which takes magic-user below the next threshold and "
-                       "costs a level already earned. Go ahead?")
-
     class Action:
         confirm = ""
-        question = costly_question
 
         def __init__(self, game=None):
             seen["action_game"] = game
@@ -1196,10 +1191,6 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         @staticmethod
         def offers(record, game=None):
             return []              # a thief press offers no spell
-
-        @classmethod
-        def confirmation(cls, record, name, spell=None, game=None):
-            return cls.question
 
         def apply(self, target, **kwargs):
             seen["applied"] = kwargs
@@ -1217,19 +1208,17 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     actions.LevelUp = Action
     actions.read_party = lambda target, game=None: party
     try:
-        AutomapBinding._level_up(window, 0)
-        assert "applied" not in seen, "the player said no"
-        assert "2502" in seen["asked"] and "magic-user" in seen["asked"]
-
-        # Nothing lost, nothing asked.
-        seen.clear()
-        Action.question = None
+        # Nothing is asked, ever. Donald removed the question on 2026-09-08:
+        # by the time Wish could ask, the clamp's loss is unavoidable and
+        # declining only leaves more experience for it to take
+        # (`#454 (Does one Curse press that raises two classes cost the
+        # character experience, the way the wrong order does in Pool of
+        # Radiance?)`). The press goes straight through.
         AutomapBinding._level_up(window, 0)
         assert "asked" not in seen
         assert seen["applied"]["class_name"] == "thief"
     finally:
         actions.LevelUp, actions.read_party = monkey, was_read
-        Action.question = costly_question
 
 
 def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
