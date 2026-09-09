@@ -65,11 +65,23 @@ set. `.claude/rules/gui-text.md` exempts that log from approval by name,
 which is the whole reason it is the right destination: *"it is read by whoever
 is debugging."* **A drop line is therefore never a string Donald words.**
 
-The danger this trades for, and it has to be said out loud: a conversion that
-drops nothing **because nobody looked** now reads the same as a perfect one.
-The accounting is what stops that, so it may not be weakened -- an entry
-removed from a drop list has to be a field that now converts, never one that
-stopped being counted.
+**Removing the pane gives nothing up.** It listed only fields already in the
+neutral vocabulary, and every writer must account for all of those: each has a
+`field_disposition()` naming every field as direct, transformed or dropped,
+and a test goes red the day a field exists in `goldbox/neutral.py` and a
+writer has never heard of it (`tests/test_amiga.py`, and
+`goldbox/c64_codec.py`'s own docstring: *"this catches a name the writer has
+never been taught, which is the failure that rots silently"*). That is what
+proves a conversion perfect, and the pane never contributed to it.
+
+**What the tables cannot see is a field nothing has named** -- something in a
+save that no reader was ever taught to read. It is in no vocabulary, no
+disposition table, and was in no pane either, so this is not a cost of dropping
+the pane; it is the standing reason decoding work continues. It shrinks only by
+reading the record.
+
+So the one rule that protects the claim: **an entry leaves a drop list when the
+field converts, never when it stops being counted.**
 
 Reporting a dropped field internally is the
 minimum; it is not permission to drop it, and "the destination has no such
