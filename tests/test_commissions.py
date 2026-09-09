@@ -651,14 +651,14 @@ def test_summary_lines_says_nothing_about_a_side_quest_not_yet_seen():
 
 def test_summary_lines_lists_a_side_quest_once_the_potion_is_in_hand():
     lines = book.summary_lines(_flags_4a81(250))
-    assert "Side quests: (NOT APPROVED)" in lines
-    assert "  Ohlo's potion - In progress (NOT APPROVED)" in lines
+    assert "Side quests:" in lines
+    assert "  Ohlo's potion - In progress" in lines
 
 
 def test_summary_lines_lists_the_side_quest_as_finished_once_dealt_with():
     lines = book.summary_lines(_flags_4a81(255))
-    assert "Side quests: (NOT APPROVED)" in lines
-    assert "  Ohlo's potion - Finished (NOT APPROVED)" in lines
+    assert "Side quests:" in lines
+    assert "  Ohlo's potion - Finished" in lines
 
 
 def test_summary_lines_does_not_show_a_side_quest_from_the_accepted_flag_alone():
@@ -669,20 +669,25 @@ def test_summary_lines_does_not_show_a_side_quest_from_the_accepted_flag_alone()
     assert not any("side quest" in line.lower() for line in lines)
 
 
-def test_every_side_quest_line_summary_lines_adds_is_marked_not_approved():
-    """`summary_lines` is a rendering Donald has not looked at (#158 step E is
-    the piece the flag's removal deferred), even though the words it reuses
-    are already approved for the panel -- `.claude/rules/gui-text.md`:
-    "'It matches the wording already there' is not approval." So every line
-    the side-quest section adds must still carry the marker.
+def test_every_side_quest_line_summary_lines_adds_is_the_approved_wording():
+    """Donald approved this rendering on 2026-09-08, so the marker is off --
+    and the lines are pinned rather than left free.
+
+    It was marked until then because `.claude/rules/gui-text.md` says "'it
+    matches the wording already there' is not approval": he had approved these
+    words for the panel on 2026-09-04, and a terminal listing is a rendering
+    of its own. He was shown three and took this one, so what the section adds
+    is now exactly the heading and `  <name> - <state>`, and nothing else.
     """
     before = book.summary_lines(_flags_4a81(0))
-    for value in (250, 255):
+    expected = {250: "  Ohlo's potion - In progress",
+                255: "  Ohlo's potion - Finished"}
+    for value, line in expected.items():
         after = book.summary_lines(_flags_4a81(value))
-        added = [line for line in after if line not in before]
+        added = [ln for ln in after if ln not in before]
         assert added, f"no side-quest line added at $4A81={value}"
-        for line in added:
-            assert "NOT APPROVED" in line, line
+        assert added == [book.SIDE_QUEST_HEADING, line], added
+        assert not any("NOT APPROVED" in ln for ln in added), added
 
 
 def test_no_summary_line_for_a_side_quest_shows_a_memory_address():

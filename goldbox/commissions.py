@@ -815,6 +815,11 @@ def summary_lines(source) -> list[str]:
              for s in sides]
     words = [(name, word) for name, word in words if word is not None]
     if words:
-        lines.append(f"{SIDE_QUEST_HEADING} (NOT APPROVED)")
-        lines += [f"  {name} - {word} (NOT APPROVED)" for name, word in words]
+        # Donald's, approved 2026-09-08, against the three renderings he was
+        # shown: the panel's own heading and state words, printed the way the
+        # commissions above are. He had approved these words for the panel on
+        # 2026-09-04, and a terminal listing is a rendering of its own, which
+        # is why it was put to him again rather than assumed.
+        lines.append(SIDE_QUEST_HEADING)
+        lines += [f"  {name} - {word}" for name, word in words]
     return lines
