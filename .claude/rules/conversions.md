@@ -43,7 +43,35 @@ destination title is not a case the conversion has to handle**, because that
 conversion is never offered. Pool of Radiance has no druids, and no Curse
 druid is ever asked to become one.
 
-**The standard is a perfect conversion.** Reporting a dropped field is the
+**The standard is a perfect conversion, and the player is never told about a
+drop, because a route that drops something is not offered.** Donald,
+2026-09-08, deciding it: *"I want perfect conversions. We should not have to
+tell the player that anything is dropped, because everything should just work.
+We should keep things behind feature flags until they are perfect."*
+
+So there are exactly two states a conversion may be in. **Perfect and
+offered**: its drop list is empty, and there is nothing to say. **Imperfect
+and behind a flag**: `.claude/rules/feature-flags.md` governs, and the flag
+comes off when the list empties. There is no third state where a route ships
+and apologises, and the Convert dialog carries no log of what did not survive
+-- that pane is gone, and it is what had been sending a wording decision to
+Donald every time a field turned out to have no home.
+
+**The drop list itself stays, as our accounting, and goes to the debug log.**
+It is what a test reads to prove a conversion is perfect rather than assumed,
+what the driven tools print, and what says on a player's own machine why a
+character came out wrong -- `wish/debuglog.py`, off unless `WISH_DEBUG` is
+set. `.claude/rules/gui-text.md` exempts that log from approval by name,
+which is the whole reason it is the right destination: *"it is read by whoever
+is debugging."* **A drop line is therefore never a string Donald words.**
+
+The danger this trades for, and it has to be said out loud: a conversion that
+drops nothing **because nobody looked** now reads the same as a perfect one.
+The accounting is what stops that, so it may not be weakened -- an entry
+removed from a drop list has to be a field that now converts, never one that
+stopped being counted.
+
+Reporting a dropped field internally is the
 minimum; it is not permission to drop it, and "the destination has no such
 field" is not an ending either. Donald, 2026-09-04: *"We should not be
 dropping anything when converting a save. Anything less is a bug, and the
