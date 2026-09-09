@@ -187,10 +187,14 @@ def _floor(tmp_path, monkeypatch, save=None):
     **Two Qt traps live here, and both make a working change look broken.**
     Each cost a prototype run during #71 before it was understood:
 
-    * `EditorBinding.showEvent` calls `_size_roster` once, *after* the window
-      is shown. Anything set on the roster before `show()` is overwritten, so
-      a change applied to the live widget does nothing at all and reads as the
-      idea being wrong rather than the timing.
+    * `_size_roster` runs again on the load path, so anything set on the live
+      roster before a save is opened is overwritten -- a change applied to the
+      widget does nothing at all, and reads as the idea being wrong rather
+      than the timing. `EditorBinding` calls it from `__init__` (#471) and
+      from `_adopt`, and from nowhere else. **It has no `showEvent`**, and
+      neither this docstring nor `_editor_window`'s below said so until #473;
+      both described an override that no longer exists and a class,
+      `EditorWindow`, that does not exist in the tree at all.
     * `QLayout.activate()` pins a top-level window's `minimumSize` from the
       layout and does not un-pin it. After shrinking a child's minimum,
       `minimumSizeHint()` keeps answering the old, larger number until the
@@ -800,9 +804,13 @@ def test_the_window_still_fits_the_laptop_with_the_columns_at_either_extreme(
 def _editor_window(app, tmp_path, monkeypatch, extra=0.0, settings=None):
     """A window on the Character Editor tab with the synthetic party in it.
 
-    Shown, because `EditorBinding.showEvent` is what measures the roster: a
-    window built and never shown has never seen a column width or a row
-    height, and #63 is the record of what measuring the wrong one costs.
+    Shown, because a window built and never shown has never laid its widgets
+    out, so a column width or a row height read off it is the number Designer
+    gave rather than the one a player sees -- and #63 is the record of what
+    measuring the wrong one costs. **Not because of a `showEvent`**, which
+    `EditorBinding` has not got: it measures the roster from `__init__` and
+    again from `_adopt`, and the claim that an override did it was stale
+    (#473).
     """
     from gamedata import synthetic_save
 

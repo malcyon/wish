@@ -1861,7 +1861,7 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
 
     w = EditorBinding(make_root(), str(party))
     w.root.show()
-    app.processEvents()          # `showEvent` sizes the roster; measure after
+    app.processEvents()          # let the layout settle before measuring
     view = w.roster
     header = view.horizontalHeader()
     natural = view.maximumWidth()
