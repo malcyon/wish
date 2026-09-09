@@ -30,17 +30,41 @@ TESTS_DIR = Path(__file__).resolve().parent
 def _run_throwaway_test(body: str) -> subprocess.CompletedProcess:
     """Write `body` as a test file beside this one, run it, then remove it.
 
+    The write and the collection that reads it back happen inside the *same*
+    process -- the subprocess below, fed `body` on its stdin -- rather than
+    this process writing the file and a separately spawned one opening it.
+    `#448 (The conftest guard's own probe test fails on Windows CI with the
+    probe file not found)` was exactly that handoff: this process wrote the
+    probe and closed it, a freshly spawned child immediately tried to collect
+    it, and on the Windows runners the two were not reliably ordered, so the
+    child's own collection saw `FileNotFoundError` for a file its parent had
+    already written -- intermittently, never on Linux, and never in the
+    subprocess's own separate `-n auto` workers (there were none: this file's
+    `-n0` already overrode the `-n auto` in `pyproject.toml`'s `addopts`,
+    confirmed locally before ruling that out). A single process's own write
+    is always visible to its own next read; only the cross-process boundary
+    was ever in question, and putting the write inside the same process that
+    collects removes that boundary rather than racing it.
+
     Living in `tests/` is what makes the real `tests/conftest.py` govern the
     run, the same way it governs every other file here.
     """
     name = f"test_zzz_conftest_guard_probe_{uuid.uuid4().hex}"
     probe = TESTS_DIR / f"{name}.py"
-    probe.write_text(textwrap.dedent(body))
+    runner = textwrap.dedent(f"""
+        import sys
+        from pathlib import Path
+
+        Path({str(probe)!r}).write_text(sys.stdin.read())
+        import pytest
+        raise SystemExit(pytest.main(
+            ["-q", "-p", "no:cacheprovider", "-n0", {str(probe)!r}]))
+    """)
     try:
         return subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-             "-n0", str(probe)],
-            cwd=TESTS_DIR, capture_output=True, text=True, timeout=90)
+            [sys.executable, "-c", runner],
+            cwd=TESTS_DIR, input=textwrap.dedent(body),
+            capture_output=True, text=True, timeout=90)
     finally:
         probe.unlink(missing_ok=True)
         for leftover in (TESTS_DIR / "__pycache__").glob(f"{name}*"):
