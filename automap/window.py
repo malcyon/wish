@@ -148,21 +148,23 @@ WRONG_GAME = ("ERROR: Wrong game disk loaded. Disabling functionality to "
 #: do not try to win the race -- and the wording is his to write; this is a
 #: proposal standing in until he does.
 #:
-#: **Two sentences, because the panel wraps and does not truncate.** Looked at
-#: in the running window with `tools/messageshot.py`: the panel is 198px wide
-#: at the window's own minimum, so this takes four of its rows against a
-#: message's one or two, and every clause added is another row of the panel the
-#: fight is supposed to be in.
+#: **Donald's wording, approved 2026-09-08**, chosen from three against a
+#: picture of the real panel (`tools/messageshot.py`, `work/issue425/`). Two
+#: sentences, because the panel wraps and does not truncate: it is 198px wide
+#: at the window's own minimum, so this takes two of its rows against a
+#: message's one, and every clause added is another row of the panel the fight
+#: is supposed to be in.
 #:
-#: Three things it deliberately does not say: that the panel is read off the
-#: screen on a timer, what the delay does in the game's code, and which of
+#: Four things it deliberately does not say: that the panel is read off the
+#: screen on a timer, what the delay does in the game's code, which of
 #: `ENCAMP` or the combat bar the `SPEED` command is on -- it is on both, and a
-#: player who has just pressed `FASTER` knows where they did it. What is left
-#: is what a player can act on, and one press of `SLOWER` is measured to be
-#: enough: `automap/combatlog.READABLE_DELAY` has the runs.
+#: player who has just pressed `FASTER` knows where they did it -- and that the
+#: limit is Wish's rather than the game's. What is left is what a player can
+#: act on, and one press of `SLOWER` is measured to be enough:
+#: `automap/combatlog.READABLE_DELAY` has the runs.
 COMBAT_TOO_FAST = (
-    "Messages are being missed at the game's fastest combat speed. Press "
-    "SLOWER once on its SPEED command to log the whole fight. (NOT APPROVED)")
+    "The log is missing messages at this combat speed. Press SLOWER once to "
+    "catch the whole fight.")
 
 #: Everything else this window has to say. A child of the `wish` logger, so
 #: `wish/debuglog.py`'s handler takes it when the log is on and its level

@@ -11,6 +11,7 @@ see the numbered list at the end of `docs/110-combat-log.md`.
 import pytest
 
 from automap import combatlog, rolls
+from automap import window as window_module
 from automap.combatlog import CombatLog, message, parse
 from automap.screen import SCREEN_COLS, band
 from automap.target import MemoryTarget
@@ -508,7 +509,7 @@ def test_the_panel_says_the_log_is_incomplete_at_the_fastest_speed(
         window.tick()
 
     assert len(warnings_in(window)) == 1
-    assert "(NOT APPROVED)" in warnings_in(window)[0]
+    assert warnings_in(window)[0].endswith(window_module.COMBAT_TOO_FAST)
 
 
 def test_the_panel_says_nothing_at_the_speed_the_game_starts_at(
