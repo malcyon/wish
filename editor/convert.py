@@ -1070,6 +1070,30 @@ def fresh_folder(destination: str | pathlib.Path,
 #: `DosImportDialog`, the menu entry, `editor/dosimport.ui` and
 #: `editor/ui_dosimport.py` are gone;
 #: `test_the_file_menu_no_longer_carries_the_dos_import_submenu` pins it.
+#:
+#: **(8) Every registered direction is perfect -- its drop list is empty.**
+#: Donald, 2026-09-08, adding this condition and choosing what it waits for:
+#: *"I want perfect conversions. We should not have to tell the player that
+#: anything is dropped, because everything should just work. We should keep
+#: things behind feature flags until they are perfect."* Asked whether the
+#: dialog should ship with the perfect directions alone, wait for all ten, or
+#: split the Amiga behind a second flag, he chose **all ten**: one release,
+#: nothing partial.
+#:
+#: So this flag now waits on decoding rather than on wiring, and the distance
+#: is not small. Today: `goldbox.c64_codec` drops **2** of its 75 fields and
+#: `goldbox.dos` drops **2** of 77, so DOS to C64 both ways is close --
+#: but `goldbox.amiga`'s Pool of Radiance writer drops **39 of 75** and its
+#: later-titles writer **14**, and those are fields with no established home
+#: in the Amiga record rather than fields somebody forgot to wire.
+#: `.claude/rules/conversions.md` has the standard and the reasoning; `#462
+#: (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral
+#: fields have no home in it, so a converted character loses his spells and
+#: possessions)` is the shape of the work that closes it.
+#:
+#: **The Convert log is gone from the dialog**, so nothing tells a player
+#: about a drop any more; the drop list is our accounting and goes to the
+#: debug log, which `.claude/rules/gui-text.md` exempts from approval.
 ENV = "WISH_EXPERIMENTAL_CONVERT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
@@ -1216,10 +1240,11 @@ NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with
 #: `editor/dosimport.py`'s and `editor/exports.py`'s `DROPPED_HEADING`, one
 #: conversion vocabulary whichever way it is going. **Not drawn by this
-#: dialog's own pane** since `#416` moved it onto `dosimport.pane_text`,
-#: which puts drop lines under `LABEL_REPORT` with no heading of their own
-#: -- the same shape `editor/dosimport.py`'s own dialog already draws. Kept
-#: defined for whichever caller still names it.
+#: dialog's own pane** -- `#416` first moved it onto `dosimport.pane_text`
+#: with no heading of its own, and 2026-09-08's ruling took the drop lines
+#: out of `pane_text` altogether (`.claude/rules/conversions.md`), so there
+#: is no longer a list here for a heading to sit over. Kept defined for
+#: whichever caller still names it.
 DROPPED_HEADING = dosimport.DROPPED_HEADING
 #: `editor/exports.py`'s `WRITES_HEADING`, approved 2026-08-25.
 WRITES_HEADING = "This writes:"
@@ -1553,12 +1578,15 @@ class ConvertDialog(QDialog):
         #: dialog never shows a DOS→C64 conversion's own messages or
         #: capacity-ceiling warnings)`).  It reads `report.messages` (what
         #: Wish did to the player's own save) and `report.losses` (a genuine
-        #: platform ceiling a character's own data hit, #399) ahead of
-        #: `report.dropped`, and is empty when there is nothing to say
-        #: (`#338 (The conversion pane says fields could not be converted
-        #: and then lists none)`) -- joining it unconditionally would leave
-        #: two blank lines above what it writes, which a player reads as
-        #: something missing.
+        #: platform ceiling a character's own data hit, #399), and is empty
+        #: when there is nothing to say (`#338 (The conversion pane says
+        #: fields could not be converted and then lists none)`) -- joining
+        #: it unconditionally would leave two blank lines above what it
+        #: writes, which a player reads as something missing.  What it does
+        #: not read any more is `report.dropped`: a route that drops
+        #: something is not offered as though it worked, so as of
+        #: 2026-09-08 that accounting goes to the debug log instead of this
+        #: pane (`.claude/rules/conversions.md`).
         report_text = dosimport.pane_text(self.rehearsal.report)
         writes = _writes_text(self.rehearsal, preview)
         return f"{report_text}\n\n{writes}" if report_text else writes
