@@ -1514,7 +1514,38 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: being judged already-approved by resemblance to the old wording --
     #: `.claude/rules/gui-text.md`'s own ruling on that shortcut, "it matches
     #: the wording already there is not approval".
-    WAITING = {"goldbox.c64_codec": 9, "goldbox.amiga": 3, "goldbox.dos": 8,
+    #: **Four came off on 2026-09-09, and none of them was approved: they
+    #: stopped being strings a player can reach.** Donald's ruling of
+    #: 2026-09-08 sent the drop list to `wish/debuglog.py`
+    #: (`.claude/rules/conversions.md`, *"a drop line is therefore never a
+    #: string Donald words"*), and `.claude/rules/gui-text.md` exempts that
+    #: log by name, so a line that only ever lands on `report.dropped` is
+    #: nobody's to word. `editor/dosimport.pane_text` is the whole of what
+    #: the Convert dialog draws and it reads `messages` and `losses` alone,
+    #: logging `dropped` instead. The four: `goldbox.c64_codec`'s
+    #: combat-icon line in `write` (9 to 8), `goldbox.dos.to_neutral`'s
+    #: portrait-position line (8 to 7), and `goldbox.amiga`'s `0x11F`
+    #: trailing-pad line and its `field_83_87` treasure-share entry in
+    #: `LATER_DROPPED_PLAYER_TEXT` (3 to 1).
+    #:
+    #: **The drop lines that kept their marker did so for one reason**:
+    #: `editor/exports.py`'s own pane still draws `report.dropped` through
+    #: `exports.losses`, and `File ▸ Export` is built whenever
+    #: `WISH_EXPERIMENTAL_EXPORT` is set. That pane reads a **C64** save, so
+    #: every drop line the C64 reader and the DOS and Amiga writers compose
+    #: can still reach a person -- which is `goldbox.c64_codec`'s
+    #: `READ_DROPPED_PLAYER_TEXT` entry and all seven of `goldbox.dos`'s.
+    #: The four above are on the other side of that split: a C64
+    #: *destination*, a DOS *reader* and an Amiga *reader* reach the Convert
+    #: dialog and nothing else.
+    #:
+    #: `goldbox.amiga`'s remaining one is `pod_to_neutral`'s, and it is a
+    #: **warning** rather than a drop: a reader's warnings reach the pane
+    #: through `losses` on any conversion to the C64. Nothing calls
+    #: `pod_to_neutral` outside the tests today, so it reaches no player yet;
+    #: the marker stays because wiring it up is what `#194 (Import and export
+    #: a Pools of Darkness save between DOS and the Amiga)` is for.
+    WAITING = {"goldbox.c64_codec": 8, "goldbox.amiga": 1, "goldbox.dos": 7,
                "automap.actions": 4}
 
     found: dict[str, list[str]] = {}

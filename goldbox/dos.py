@@ -1995,10 +1995,18 @@ def to_neutral(dos: DosCharacter,
                 # the same class of bug `goldbox.c64_codec.
                 # READ_DROPPED_PLAYER_TEXT["region_220"]` had and was fixed
                 # by dropping the destination name rather than guessing it.
+                #
+                # No marker any more: this is a drop line, and Donald's
+                # ruling of 2026-09-08 sends the drop list to
+                # `wish/debuglog.py` rather than to any pane
+                # (`.claude/rules/conversions.md`).  Every direction with a
+                # DOS source ends at `editor/dosimport.pane_text`, which logs
+                # `report.dropped` and draws only `messages` and `losses`;
+                # `editor/exports.py`'s own pane, which does still draw
+                # `dropped`, reads a C64 save and never this reader.
                 out.drop(f"Character portrait ({label}): position {position} "
                          f"in this save is not one the character-creation "
-                         f"menu offers, so no matching portrait exists. "
-                         "(NOT APPROVED)")
+                         f"menu offers, so no matching portrait exists.")
             continue
         out.set(name, art,
                 f"DOS {name} @{f.offset:#05x} = menu position {position}, "

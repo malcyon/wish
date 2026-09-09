@@ -2465,8 +2465,13 @@ def to_neutral(char) -> NeutralCharacter:
     # character is going to -- an Amiga Pool of Radiance save converts to
     # the C64 as well as to DOS (`tests/test_amigatoc64.py`), and naming DOS
     # here named the wrong destination for that direction.
+    # No marker: a drop line goes to `wish/debuglog.py` and to a `--report`
+    # printout, never to a pane, since Donald's ruling of 2026-09-08
+    # (`.claude/rules/conversions.md`).  `editor/exports.py`'s pane is the
+    # one that still draws `report.dropped`, and it reads a C64 save rather
+    # than an Amiga one, so no reader on this side reaches it.
     out.drop("Amiga 0x11F: the trailing pad, which the neutral record has "
-             "no room for. (NOT APPROVED)")
+             "no room for.")
     # There is no loop here reporting the effects the neutral record cannot
     # hold, and there should not be one.  `_dos.to_neutral`, called above,
     # now **converts** every non-innate node at duration zero in
@@ -5154,8 +5159,13 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                       "derives it from the class instead (#299)"),
 )
 
-#: The plain-English half of `LATER_DROPPED`, and the only one a person ever
-#: reads.  `.claude/rules/gui-text.md` keeps a memory address, a file offset
+#: The plain-English half of `LATER_DROPPED`, and the only one that reaches
+#: the report.  It is read in the debug log and in a `--report` printout
+#: rather than in a pane: Donald ruled on 2026-09-08 that a drop list is this
+#: project's own accounting and goes to `wish/debuglog.py`
+#: (`.claude/rules/conversions.md`), so no entry here carries a
+#: `(NOT APPROVED)` marker.  Written for a reader all the same, because a bug
+#: report quotes it: `.claude/rules/gui-text.md` keeps a memory address, a file offset
 #: and a bare issue number out of anything shown in the interface, and the
 #: entries above carry all three kinds of detail on purpose -- so the reader
 #: composes its report from this table and never from those.  A name with no
@@ -5187,9 +5197,13 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "portrait_body": "Character portrait (body): the character-creation art "
                      "this game chooses portraits from has not been read, so "
                      "the portrait cannot be matched",
+    # No marker on the line below: every entry in this table becomes a drop
+    # line, and a drop line goes to `wish/debuglog.py` rather than to a pane
+    # since Donald's ruling of 2026-09-08 (`.claude/rules/conversions.md`,
+    # *"a drop line is therefore never a string Donald words"*).
     "field_83_87": "Treasure share: how this character's cut of the "
                    "party's loot is set has not been converted yet, so it "
-                   "resets to the game's own default (NOT APPROVED)",
+                   "resets to the game's own default",
     "spells_castable_unattributed": "A fourth list of spell slots that no "
                                     "character of this game uses and no "
                                     "class has been shown to own",

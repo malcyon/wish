@@ -1168,10 +1168,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     else:
         rep.note(0x220, 36, f"combat icon: zero. {port} has no C64 charset "
                             f"icon; goldbox/iconparts.py can compose a legal one")
+        # No marker: this is a drop line, and Donald's ruling of 2026-09-08
+        # sends the drop list to `wish/debuglog.py` rather than to any pane
+        # (`.claude/rules/conversions.md`, *"a drop line is therefore never a
+        # string Donald words"*).  A C64 destination reaches only
+        # `editor/dosimport.pane_text`, which logs `report.dropped` and draws
+        # `messages` and `losses` -- so nothing this writer drops is read by
+        # anybody but whoever is debugging, and `.claude/rules/gui-text.md`
+        # exempts that log by name.
         rep.dropped.append("Combat icon: Wish cannot yet turn "
                            f"{port}'s own combat art into a C64 combat "
-                           "icon, so none is set for this character. "
-                           "(NOT APPROVED)")
+                           "icon, so none is set for this character.")
 
     # -- the NPC control byte: bit 7 says the engine drives this character --
     # DOS keeps the same byte in the same encoding at field_83_87's control
