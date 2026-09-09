@@ -153,11 +153,25 @@ def test_the_debugger_says_it_did_not_know_the_command():
 # -- what must never be sent --------------------------------------------------
 
 
-@pytest.mark.parametrize("command", ["g", "g c00000", "t", "b 1 c00000",
-                                     "w 1 c00000 4 W", "f c00000"])
+@pytest.mark.parametrize("command", [
+    "g", "g c00000", "t", "b 1 c00000", "w 1 c00000 4 W", "f c00000",
+    # `debug_line` splits on unquoted `;` and runs every piece in the same
+    # message, so a read with a go hidden behind a semicolon used to pass a
+    # guard that read only the first word of the string.
+    "m 0 1;g", "m 0 1 ; g c00000", "S dump 0 10;t", "m 0 1;;b 1 c00000",
+    # `ignore_ws` skips anything `_istspace`, so the separator need not be a
+    # space -- and `split(" ")` does not agree with that.
+    "g\tc00000", "g\nc00000", "m 0 1;g\tc00000",
+])
 def test_a_command_that_could_open_a_console_is_refused(command):
     """`activate_debugger()` calls `open_console()`, and that console is a
-    window in front of whoever is playing."""
+    window in front of whoever is playing.
+
+    **Tokenised the way `debug.cpp` tokenises.** The first six are the plain
+    forms; the rest are the two ways past a guard that read the first word of
+    the whole string, found in review on 2026-09-08 and both reachable through
+    the public `send()` and through `tools/winuaepipe.py send`.
+    """
     p, guest = pipe()
     with pytest.raises(ValueError, match="console"):
         p.send([command])
@@ -364,3 +378,12 @@ def test_the_pipe_name_is_settable_because_a_second_winuae_gets_another():
     p, guest = pipe({0: b"\x00" * 16}, pipe="WinUAE_1")
     p.send(["m 0 1"])
     assert "'.','WinUAE_1','InOut'" in guest.scripts[0]
+
+
+def test_a_semicolon_inside_quotes_is_not_a_second_command():
+    """`debug_line` tracks quotes, so a filename with a `;` in it is one
+    piece and must not be refused -- a guard that splits blindly would make
+    `S` unusable on such a path."""
+    p, guest = pipe()
+    p.send(['S "dump;1" 0 10'])
+    assert guest.scripts, "the command was refused and should not have been"

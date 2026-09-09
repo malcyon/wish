@@ -96,7 +96,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="also print what each command cost the guest")
 
     p_tick = sub.add_parser(
-        "ticker", help="read Exec's IdleCount and DispCount repeatedly")
+        "ticker",
+        help="read Exec's IdleCount and DispCount repeatedly (spends the "
+             "process's ~500-line `m` budget: about 250 iterations, and the "
+             "budget never resets, so a long run leaves that emulator "
+             "answering one line to every `m` until it is restarted)")
     p_tick.add_argument("--reads", type=int, default=4)
     p_tick.add_argument("--gap", type=float, default=1.0,
                         help="seconds between reads")

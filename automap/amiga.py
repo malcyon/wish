@@ -383,23 +383,64 @@ class PipeError(GuestError):
     """
 
 
+def _pieces(cmd: str) -> list[str]:
+    """One line as `debug_line` splits it: on unquoted `;`.
+
+    **The emulator runs every piece in the same message.** `debug.cpp`'s
+    `debug_line` walks the string tracking quotes and hands each `;`-separated
+    piece to `debug_line_2`, so `m 0 1;g` is a read *and* a go, and a guard
+    reading only the first word of the whole string sees `m` and lets it
+    through. That was true here until 2026-09-08.
+    """
+    out, piece, quoted = [], [], False
+    for ch in cmd:
+        if ch == '"':
+            quoted = not quoted
+        if ch == ";" and not quoted:
+            out.append("".join(piece))
+            piece = []
+            continue
+        piece.append(ch)
+    out.append("".join(piece))
+    return out
+
+
 def _check_commands(commands: list[str]) -> None:
     """Refuse anything that could put a console in front of the player.
 
     Checked here rather than in the caller because every route into this
     transport goes through one function, and a batch is composed from several
-    places. The test is the command's first word, which is how `debug_line`
-    reads it.
+    places.
+
+    **Tokenised the way the emulator tokenises, not the way a line looks.**
+    Two things defeated an earlier version of this guard, and both are how
+    `debug.cpp` actually reads a line rather than anything exotic:
+
+    * `debug_line` splits on unquoted `;` and runs every piece, so the head of
+      each piece is checked and not merely the head of the string;
+    * `ignore_ws` skips anything `_istspace`, so `g\tc00000` is a go with a
+      tab in it -- `split()` with no argument splits on any whitespace, which
+      `split(" ")` does not.
+
+    Case is deliberately not folded. `debug_line_2`'s `switch (cmd)` is
+    case-sensitive and has no `case 'G'`; `T` and `t` are two different
+    commands and both are already classified. `IPC_QUIT` is the one thing
+    compared case-insensitively, because `uaeipc.cpp` uses `_tcsicmp` for it.
     """
     for cmd in commands:
-        head = cmd.strip().split(" ")[0]
-        if head.lower() == "ipc_quit":
-            raise ValueError("IPC_QUIT quits the emulator; it is never sent")
-        if head in UNSAFE_COMMANDS:
-            raise ValueError(
-                f"`{head}` can reach activate_debugger(), which opens a "
-                "console window in front of the player; this transport sends "
-                "reading commands only")
+        for piece in _pieces(cmd):
+            words = piece.strip().split()
+            if not words:
+                continue
+            head = words[0]
+            if head.lower() == "ipc_quit":
+                raise ValueError(
+                    "IPC_QUIT quits the emulator; it is never sent")
+            if head in UNSAFE_COMMANDS:
+                raise ValueError(
+                    f"`{head}` can reach activate_debugger(), which opens a "
+                    "console window in front of the player; this transport "
+                    "sends reading commands only")
 
 
 class WinuaePipe:
