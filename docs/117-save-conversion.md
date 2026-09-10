@@ -1,6 +1,6 @@
 # Converting between the DOS and C64 versions — plan
 
-**Status: the converter is written.** `goldbox/dos_layout.py` is the DOS field
+**Status: the converter is written.** `goldbox/dos_port.py` is the DOS field
 table and `goldbox/dos.py` reads a DOS save, exports it as the editor's own YAML,
 and builds a C64 `SAVEDGAME0`/`SAVEDGAME1` pair from it. **Steps 1 to 6 of the
 order of work below are closed**, and so is step 7: `File > Import` is built
@@ -28,7 +28,7 @@ record, `goldbox.dos.new_dos_save` writes a whole C64 save into a DOS save
 directory owing nothing to another save, and DOS Pool of Radiance loads and
 plays the result under DOSBox — see "The reverse direction" below.
 
-The decode: `goldbox/dos_layout.py` is the character-record field table with
+The decode: `goldbox/dos_port.py` is the character-record field table with
 confidence per field. The write-ups behind it — `work/reports/dos-saves.md`
 for the character record and the saved game, `work/reports/dos-items.md` for
 the items — are lost. The
@@ -359,7 +359,7 @@ through Pools of Darkness and across into the Savage Frontier pair.
 The four records are **the same field sequence at four widths**. Nothing is
 reordered and nothing is inserted out of turn; what changes is how wide a
 field is, whether it is there at all, and how much undecoded space sits
-between two named ones. So `goldbox/dos_layout.py` carries one `DosShape` per
+between two named ones. So `goldbox/dos_port.py` carries one `DosDeltas` per
 title — a set of width overrides against Pool of Radiance's table — and
 `layout_for` accumulates the offsets. **A width that is wrong stops the record
 adding up to its own size**, and that raises at import rather than reading
@@ -383,7 +383,7 @@ Curse and Silver Blades id spaces, measured on the **C64** long before any DOS
 record was read, and they land exactly.
 
 **The memorised-spell row said 21 for Pool of Radiance and now says 16**, which
-is what `goldbox/dos_layout.py` has always carried: the field is `0x01C`+16, and
+is what `goldbox/dos_port.py` has always carried: the field is `0x01C`+16, and
 21 was that plus the five undecoded bytes of `gap_017` in front of it. The other
 three titles have no such gap, so the row was counting one thing in one column
 and another in the other three, and `#192 (Convert a Curse of the Azure Bonds
@@ -528,7 +528,7 @@ a `Value` carrying the number, the grade the source's own field table gave it,
 and the phrase saying where it came from. It also holds `Writer`, the
 take-refuse-report protocol every writer inherits rather than copies. Every
 port keeps its own declarative table with a confidence on every field —
-`goldbox/layout.py` for the C64, `goldbox/dos_layout.py` for DOS — and a codec reads
+`goldbox/layout.py` for the C64, `goldbox/dos_port.py` for DOS — and a codec reads
 only its own.
 
 The YAML export is not the interchange. It was, while there was one direction;
@@ -844,7 +844,7 @@ allows. Left as it stands rather than resolved.
 
 ### What the code does with it
 
-`goldbox/dos_layout.py`'s three later shapes name the byte after `level`
+`goldbox/dos_port.py`'s three later titles' deltas name the byte after `level`
 **`former_level`**, CONFIRMED, at the offsets this section measured. Reading
 it (`goldbox/dos.py` `to_neutral`, `goldbox/amiga.py` `to_neutral_later`):
 
@@ -927,7 +927,7 @@ from somewhere.** This is the whole list.
 
 | region | size | what it is | can we produce it from a DOS save? |
 |---|---|---|---|
-| `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_layout.py` |
+| `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_port.py` |
 | `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dosbox.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess. **Not scratch**: cache slot 11 tells the engine the file is resident, so nothing reloads it — `docs/140-loaded-files-cache.md` §"Slot 11 is not lazy, because the save is carrying the file", and #122 (A converted save says ANIMATE00 is resident and carries whatever the template had there) |
@@ -1190,7 +1190,7 @@ into the Slums, which loaded `GEO14` and ran `ECL14`'s arrival normally.
 
 The converter that made it is a throwaway — `work/p20/convert.py` and
 `build2.py`, which is gitignored along with the rest of `work/` — because the
-real one is `goldbox/dos_layout.py` and the order of work below. It exists only to
+real one is `goldbox/dos_port.py` and the order of work below. It exists only to
 answer this question, and it answered it.
 
 *What this does not yet prove.* The converted save is not a whole conversion:
@@ -1274,7 +1274,7 @@ game reading 21:15, and #103 (A DOS party converted to the C64 arrives at the te
 
 ## Order of work
 
-1. **`goldbox/dos_layout.py` — done.** Declarative, a confidence on every field,
+1. **`goldbox/dos_port.py` — done.** Declarative, a confidence on every field,
    the same `Field` and `Confidence` as `goldbox/layout.py` and the same rule that
    every byte of the record belongs to exactly one entry. It carries the
    285-byte character record and the 63-byte item record. 125 bytes CONFIRMED,
@@ -1592,7 +1592,7 @@ sequenceDiagram
   autonumber
   participant Caller as caller
   participant Reader as goldbox/dos.py<br/>to_neutral
-  participant Table as goldbox/dos_layout.py<br/>FIELDS_BY_NAME
+  participant Table as goldbox/dos_port.py<br/>FIELDS_BY_NAME
   participant Char as NeutralCharacter<br/>port is DOS
   participant Writer as goldbox/c64_codec.py<br/>write
   participant W as neutral.Writer<br/>use, emit, get, finish
@@ -1757,7 +1757,7 @@ classDiagram
     +Confidence confidence
   }
   class DosFieldTable {
-    <<goldbox/dos_layout.py>>
+    <<goldbox/dos_port.py>>
     +Field the 285-byte DOS record
   }
   class C64FieldTable {
@@ -1852,14 +1852,14 @@ graph LR
     yaml["goldbox/yaml_io.py<br/>entry_for — the YAML writer"]
   end
 
-  doslayout["goldbox/dos_layout.py<br/>the DOS field table"]
+  dosport["goldbox/dos_port.py<br/>the DOS field table"]
   layout["goldbox/layout.py<br/>the C64 field table, and Confidence"]
   record["goldbox/record.py<br/>CharacterRecord, 580 bytes"]
-  games["goldbox/games.py<br/>the per-title race and class tables"]
+  titles["goldbox/titles.py<br/>the per-title race and class tables"]
   yamlfile[("the YAML document")]:::file
 
   dosfile -->|"1 read_party"| dos
-  dos -->|"2 offsets and grades"| doslayout
+  dos -->|"2 offsets and grades"| dosport
   dos -->|"3 set / drop"| neutral
   c64 -->|"4 use(name) — floor GUESS"| neutral
   c64 -->|"5 emit: Value.line, Report.note"| neutral
@@ -1872,10 +1872,10 @@ graph LR
   c64r -->|"10 offsets and grades"| layout
   c64r -->|"11 set / drop"| neutral
   amiga -->|"12 use / emit / finish"| neutral
-  amiga -->|"13 name an index"| games
+  amiga -->|"13 name an index"| titles
   amiga -->|14| pcfile
   yaml -->|"15 char.get"| neutral
-  yaml -->|"16 name an index"| games
+  yaml -->|"16 name an index"| titles
   yaml -->|17| yamlfile
 
   itm["dos.item_to_c64<br/>63 DOS bytes onto the C64's 16"]:::around
@@ -1905,7 +1905,7 @@ end asked for.
 
 Now `goldbox/c64_codec.read` is the C64 reader, `goldbox/amiga.write` and
 `goldbox/yaml_io.entry_for` both take a `NeutralCharacter`, and both name a race
-or a class by asking `goldbox/games.py` — a table module, not another codec. A
+or a class by asking `goldbox/titles.py` — a table module, not another codec. A
 save slot holds only 256 of the record's 580 bytes, so the reader takes the
 roster block and the item page as separate arguments the way the C64 writer
 takes the combat icon: a C64 character is spread across three places and only
@@ -1920,18 +1920,21 @@ beside it. What it renders is what would land on the C64 disk.
 
 `goldbox/` holds one neutral record and a codec per format, and the invariant that
 keeps that arrangement honest is that **a format's own record table is reached
-only by that format's own codec**: `dos_layout` is imported by `dos` and by
-nothing else, and `c64_codec` never reaches for it.
+only by that format's own codec**: `dos_port` (`goldbox/dos_layout.py` until
+`#470 (Give the project a neutral title beside its neutral character record,
+with one port per platform a title shipped on)`'s stage 3 renamed it) is
+imported by `dos`, through that same shim, and `c64_codec` never reaches for
+it. `amiga` is the graph's one declared exception to the invariant rather than
+a breach of it: an Amiga record is DOS-shaped underneath, so the Amiga codec
+reads the DOS field table directly, the same exception "Who talks to whom"
+above draws for the C64's own item shape.
 
-The graph does not show that invariant cleanly, and the reason is
+The graph does not show the record-table invariant cleanly, and the reason is
 `goldbox/layout.py`. It is two things in one module — the C64's 580-byte field
 table *and* the project's shared vocabulary, `Confidence`, `Field` and `Kind`
-— so it has eight importers where `dos_layout` has one. Three of those eight
-want the C64 record itself (`c64_codec`, `record`, and `strength` for
-`NAME_SIZE`); the other five — `dos`, `dos_layout`, `neutral`, `memory`,
-`areas` — want `Confidence` and nothing more. The edge
-`neutral --> layout` reads as the neutral middle depending on the C64 port and
-is nothing of the kind.
+— so it has several importers wanting only the vocabulary, not the C64 record.
+The edge `neutral --> layout` reads as the neutral middle depending on the C64
+port and is nothing of the kind.
 
 The three edges into `c64_codec`, and `dos --> yaml_io`, are not breaches
 either: they are **drivers**. A codec module also holds the convenience that
@@ -2004,7 +2007,8 @@ graph LR
   dos --> traits
   dos --> world_state
   dos -.->|deferred| yaml_io
-  dos_layout --> layout
+  dos_layout --> dos_port
+  dos_port --> layout
   effects --> d64
   games --> titles
   geo --> d64
@@ -2038,7 +2042,7 @@ graph LR
   strength --> layout
   strength --> petscii
   strength --> savegame
-  titles --> dos_layout
+  titles --> dos_port
   world --> d64
   world_state -.->|deferred| amiga
   world_state --> areas
@@ -2174,7 +2178,7 @@ and accounts for every byte of both outputs in a `WriteReport`. Its three
 tables over the neutral vocabulary (`WRITE_DIRECT`, 49 copies;
 `WRITE_TRANSFORMED`, 9 rules; `WRITE_DROPPED`, 6 refusals) are checked
 complete against `FIELDS`, and a fourth, `WRITE_TARGETS`, accounts over the
-DOS layout's own names so a field added to `goldbox/dos_layout.py` and forgotten
+DOS layout's own names so a field added to `goldbox/dos_port.py` and forgotten
 here fails a test. Four kinds of byte have no neutral source:
 
 * **constants** — `icon_dimension` 1, `strength_bonus` 1, `field_83_87`

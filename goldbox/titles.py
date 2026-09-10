@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import dos_layout
+from . import dos_port
 
 # --- race codes -------------------------------------------------------------
 # The record's race byte at 0x072 (C64) / 0x02E (DOS) indexes a table of names
@@ -75,8 +75,8 @@ RACES_CURSE = ((1, "dwarf"), (2, "elf"), (3, "gnome"), (4, "half-elf"),
 #:
 #: **7 was added for #470.** It is not a difference between the two games:
 #: `LIBRARY $306A` folds race 7 and above to the MONSTER label, 50 of the
-#: title's 71 C64 `MON*` records read 7, and `DosShape.race_numbers` for this
-#: title says `monster` at 7 too -- so this table was simply missing the
+#: title's 71 C64 `MON*` records read 7, and `DosDeltas.race_numbers` for
+#: this title says `monster` at 7 too -- so this table was simply missing the
 #: entry, and a Silver Blades record at race 7 showed as a bare `7` instead of
 #: MONSTER. See `#470`'s comment of 2026-09-09, "Question 2 settled".
 RACES_SILVER_BLADES = ((1, "elf"), (2, "half-elf"), (3, "dwarf"),
@@ -91,12 +91,12 @@ RACES_KRYNN = ((0, "silvanesti elf"), (1, "qualinesti elf"), (2, "half-elf"),
                (6, "human"))
 
 #: Pools of Darkness has no C64 port, so this is not read off a C64 `LIBRARY`
-#: like the six above -- it is built from `dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS`,
+#: like the six above -- it is built from `dos_port.POOLS_OF_DARKNESS_RACE_NUMBERS`,
 #: the string table read out of the title's own `GAME.EXE`
 #: (`#237 (The DOS race table is one table for four titles, and it is wrong for two of them)`), as pairs:
 #: 0 = elf .. 6 = monster.
 RACES_POOLS_OF_DARKNESS = tuple(
-    enumerate(dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS))
+    enumerate(dos_port.POOLS_OF_DARKNESS_RACE_NUMBERS))
 
 # --- class bits -------------------------------------------------------------
 # 0x0EB, one bit per class. The low four are the whole story in Pool of

@@ -242,7 +242,7 @@ POD_MODE_WILDERNESS, POD_MODE_DUNGEON = 3, 4
 #: `tools/dossavgam.py` is what surveys them and `docs/141-dos-savegame.md`
 #: is the prose.
 @dataclasses.dataclass(frozen=True)
-class DosSaveShape:
+class DosContainer:
     """One title's `SAVGAM<slot>` file, as widths rather than offsets."""
 
     key: str
@@ -460,8 +460,16 @@ class DosSaveShape:
         return self.party_table - 1
 
 
+#: The pre-#470 name, kept as an alias (`#470 (Give the project a neutral
+#: title beside its neutral character record, with one port per platform a
+#: title shipped on)`'s stage 3 -- a rename of a class that already existed,
+#: not a new one; an earlier comment on that issue said this container was
+#: unnamed, which was wrong).
+DosSaveShape = DosContainer
+
+
 #: Pool of Radiance, 13137 bytes.  Every offset above is this row's.
-SAVE_POOL_OF_RADIANCE = DosSaveShape(
+SAVE_POOL_OF_RADIANCE = DosContainer(
     key="pool-of-radiance", title="Pool of Radiance", size=13137)
 
 #: Curse of the Azure Bonds, 13149.  **The same file as Pool of Radiance's
@@ -486,7 +494,7 @@ SAVE_POOL_OF_RADIANCE = DosSaveShape(
 #: 12820              1  the party size
 #: 12821            328  eight 41-byte character slots
 #: =============  =====  ===========================================
-SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
+SAVE_CURSE_OF_THE_AZURE_BONDS = DosContainer(
     key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
     size=13149, unnamed=12, var_base=0x4B00)
 
@@ -504,7 +512,7 @@ SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
 #: x, y and the doubled facing -- then `DS:0x67E8`, `DS:0x67E7`, the twelve
 #: bytes of `unnamed` from `DS:0x89D8`/`DS:0x89DA`, the party size at 5140
 #: and 328 bytes of character slots at 5141 (#253).
-SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
+SAVE_SECRET_OF_THE_SILVER_BLADES = DosContainer(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
     size=5469, script_bytes=0, unnamed=12, var_base=0x4B00)
 
@@ -530,19 +538,19 @@ SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
 #: previous and current interface modes), then two words `DS:0xA9F8` and
 #: `DS:0xA9FA` the dungeon loader passes to `LoadMap`, then the count of
 #: character files.
-SAVE_POOLS_OF_DARKNESS = DosSaveShape(
+SAVE_POOLS_OF_DARKNESS = DosContainer(
     key="pools-of-darkness", title="Pools of Darkness", size=1364,
     suffix=".PTY", var_bytes=POD_VAR_COUNT, dax_bytes=0, var_words=0,
     script_bytes=0, square_bytes=12)
 
-SAVE_SHAPES: "tuple[DosSaveShape, ...]" = (
+SAVE_SHAPES: "tuple[DosContainer, ...]" = (
     SAVE_POOL_OF_RADIANCE, SAVE_CURSE_OF_THE_AZURE_BONDS,
     SAVE_SECRET_OF_THE_SILVER_BLADES, SAVE_POOLS_OF_DARKNESS)
 SAVE_SHAPES_BY_KEY = {s.key: s for s in SAVE_SHAPES}
 SAVE_SHAPES_BY_SIZE = {s.size: s for s in SAVE_SHAPES}
 
 
-def save_shape_for(what: "int | str | DosSaveShape") -> DosSaveShape:
+def save_shape_for(what: "int | str | DosContainer") -> DosContainer:
     """The container shape for a size, a title key, or a shape.
 
     **The size names the shape, not the title.**  Treasures of the Savage
@@ -553,7 +561,7 @@ def save_shape_for(what: "int | str | DosSaveShape") -> DosSaveShape:
     file is answered with the Pools of Darkness row and a caller that needs
     to know *which game* has to look at where the file came from (#53).
     """
-    if isinstance(what, DosSaveShape):
+    if isinstance(what, DosContainer):
         return what
     if isinstance(what, int):
         try:
@@ -649,14 +657,14 @@ SAVGAM_CONSTANTS: tuple[tuple[int, int, str], ...] = (
 )
 
 
-def pool_address(address: int, shape: "DosSaveShape | None" = None) -> int:
+def pool_address(address: int, shape: "DosContainer | None" = None) -> int:
     """A title's own ECL address, as the Pool of Radiance address for the
     same word of the variable array.
 
     `$4C20` is a Curse of the Azure Bonds quest flag and `$4A20` is Pool of
     Radiance's; they are the **same word index**, `$120`, at the same file
     offset, because the whole save image moved by `$200` between the two
-    titles and the array did not change shape (`DosSaveShape.var_base`).
+    titles and the array did not change shape (`DosContainer.var_base`).
 
     This exists because `word_offset` cannot tell the two apart: `$4C20` is
     inside Pool of Radiance's `$4900`-`$52FF` guard, so passing it raises
@@ -668,7 +676,7 @@ def pool_address(address: int, shape: "DosSaveShape | None" = None) -> int:
     return address - shape.var_base + VAR_BASE
 
 
-def word_offset(address: int, shape: "DosSaveShape | None" = None) -> int:
+def word_offset(address: int, shape: "DosContainer | None" = None) -> int:
     """File offset of the VM word for an ECL address.
 
     **The address is Pool of Radiance's**, whatever title the shape is, and
@@ -691,7 +699,7 @@ def word_offset(address: int, shape: "DosSaveShape | None" = None) -> int:
     return shape.var_offset + 2 * (address - VAR_BASE)
 
 
-def _shaped(save: bytes, shape: "DosSaveShape | None" = None) -> DosSaveShape:
+def _shaped(save: bytes, shape: "DosContainer | None" = None) -> DosContainer:
     """The title this buffer is, refusing one that is no title's size.
 
     Every accessor here reads an offset a shape computes, so a buffer of the
@@ -710,13 +718,13 @@ def _shaped(save: bytes, shape: "DosSaveShape | None" = None) -> DosSaveShape:
 
 
 def word(save: bytes, address: int,
-         shape: "DosSaveShape | None" = None) -> int:
+         shape: "DosContainer | None" = None) -> int:
     shape = _shaped(save, shape)
     return struct.unpack_from("<H", save, word_offset(address, shape))[0]
 
 
 # --- Pools of Darkness: the byte-wide array ---------------------------------
-def pod_var_offset(index: int, shape: "DosSaveShape | None" = None) -> int:
+def pod_var_offset(index: int, shape: "DosContainer | None" = None) -> int:
     """File offset of the byte holding ECL variable `index`.
 
     `index - 1`, and the subtraction is the whole finding: `GetVar` and
@@ -736,21 +744,21 @@ def pod_var_offset(index: int, shape: "DosSaveShape | None" = None) -> int:
 
 
 def pod_var(save: bytes, index: int,
-            shape: "DosSaveShape | None" = None) -> int:
+            shape: "DosContainer | None" = None) -> int:
     """One ECL variable, as the engine's own 1-based index."""
     shape = _shaped(save, shape)
     return save[pod_var_offset(index, shape)]
 
 
 def put_pod_var(save: bytearray, index: int, value: int,
-                shape: "DosSaveShape | None" = None) -> None:
+                shape: "DosContainer | None" = None) -> None:
     """Write one ECL variable.  One byte: `SetVar`'s word form writes the
     variable and the one after it, so a caller wanting a word writes both."""
     shape = _shaped(save, shape)
     save[pod_var_offset(index, shape)] = value & 0xFF
 
 
-def pod_in_dungeon(save: bytes, shape: "DosSaveShape | None" = None) -> bool:
+def pod_in_dungeon(save: bytes, shape: "DosContainer | None" = None) -> bool:
     """Is the party in a dungeon rather than the wilderness?
 
     Variable 34, file offset 33.  The counterpart of `outdoors` for a title
@@ -760,7 +768,7 @@ def pod_in_dungeon(save: bytes, shape: "DosSaveShape | None" = None) -> bool:
     return pod_var(save, POD_IN_DUNGEON, shape) != 0
 
 
-def pod_clock(save: bytes, shape: "DosSaveShape | None" = None
+def pod_clock(save: bytes, shape: "DosContainer | None" = None
               ) -> "tuple[int, int, int, int, int]":
     """(hour, minute, day, month, year) from the seven digits at 4-10.
 
@@ -772,7 +780,7 @@ def pod_clock(save: bytes, shape: "DosSaveShape | None" = None
     return d[3], d[2] * 10 + d[1], d[4], d[5], d[6]
 
 
-def dax_number(save: bytes, shape: "DosSaveShape | None" = None) -> int:
+def dax_number(save: bytes, shape: "DosContainer | None" = None) -> int:
     """Which GEO/ECL/WALLDEF/8X8D container holds the current area."""
     shape = _shaped(save, shape)
     if not shape.dax_bytes:
@@ -831,7 +839,7 @@ def clock(save: bytes) -> tuple[int, int, int, int]:
     return d[3], d[2] * 10 + d[1], d[4], d[5]
 
 
-def party_size(save: bytes, shape: "DosSaveShape | None" = None) -> int:
+def party_size(save: bytes, shape: "DosContainer | None" = None) -> int:
     """The party-size byte, the last of the square block.
 
     Reads 6 in all nine shipped containers of all four titles, which is what
@@ -841,7 +849,7 @@ def party_size(save: bytes, shape: "DosSaveShape | None" = None) -> int:
     return save[shape.party_table - 1]
 
 
-def position(save: bytes, shape: "DosSaveShape | None" = None
+def position(save: bytes, shape: "DosContainer | None" = None
              ) -> tuple[int, int, int]:
     """(x, y, facing) with facing in the C64's units, 0 N 1 E 2 S 3 W.
 
@@ -912,7 +920,7 @@ def wall_triple(save: bytes) -> tuple[int, int, int]:
 
 
 def put_character_files(save: bytearray, slot: str,
-                        shape: "DosSaveShape | None" = None) -> None:
+                        shape: "DosContainer | None" = None) -> None:
     """Name the files the engine will load the party from.
 
     The engine loads the party from these names and not from the slot letter
@@ -932,7 +940,7 @@ def put_character_files(save: bytearray, slot: str,
 
 
 def character_files(save: bytes,
-                    shape: "DosSaveShape | None" = None) -> list[str]:
+                    shape: "DosContainer | None" = None) -> list[str]:
     """The CHRDAT filenames the engine will load the party from.
 
     Six of six in all nine shipped containers of all four titles, which is
@@ -1072,7 +1080,7 @@ def dax_block(data: bytes, block_id: int, name: str = "dax") -> bytes:
 # Writing: the retarget, and the two fields a conversion carries
 # ---------------------------------------------------------------------------
 def put_word(save: bytearray, address: int, value: int,
-             shape: "DosSaveShape | None" = None) -> None:
+             shape: "DosContainer | None" = None) -> None:
     """One VM word, by its Pool of Radiance address -- a word index, see
     `word_offset`.  `shape` defaults to whatever the buffer's length names."""
     shape = _shaped(save, shape)
@@ -1080,7 +1088,7 @@ def put_word(save: bytearray, address: int, value: int,
 
 
 def put_position(save: bytearray, x: int, y: int, facing: int,
-                 shape: "DosSaveShape | None" = None) -> None:
+                 shape: "DosContainer | None" = None) -> None:
     """The square, with `facing` in the C64's 0-3.
 
     Writes through `shape.pos_x`/`pos_y`/`pos_facing`, not the Pool of
@@ -1127,7 +1135,7 @@ LATER_TAIL_ZERO = ("zero: what the four shipped Curse and Silver Blades "
 
 
 def put_tail_state(save: bytearray, *, indoors: bool = True,
-                   shape: "DosSaveShape | None" = None) -> None:
+                   shape: "DosContainer | None" = None) -> None:
     """Bytes 12804-12807, from measurement rather than from the template.
 
     **Pool of Radiance**: `indoors` sets **two** of them, not one: the
@@ -1166,7 +1174,7 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
 
 
 def put_travel_square(save: bytearray, x: int, y: int,
-                      shape: "DosSaveShape | None" = None) -> None:
+                      shape: "DosContainer | None" = None) -> None:
     """The overland square, window-local, into `$49C3`/`$49C4`.
 
     The facing byte still matters out there: the engine keeps 12803 live
@@ -1179,7 +1187,7 @@ def put_travel_square(save: bytearray, x: int, y: int,
 
 
 def put_clock(save: bytearray, digits,
-              shape: "DosSaveShape | None" = None) -> None:
+              shape: "DosContainer | None" = None) -> None:
     """The six digit words, in the C64's own order and encoding."""
     shape = _shaped(save, shape)
     digits = list(digits)
@@ -1191,7 +1199,7 @@ def put_clock(save: bytearray, digits,
 
 
 def put_party_size(save: bytearray, count: int,
-                   shape: "DosSaveShape | None" = None) -> None:
+                   shape: "DosContainer | None" = None) -> None:
     """Both copies, which move together.
 
     The byte is the last of the square block in every title, which is
@@ -1204,7 +1212,7 @@ def put_party_size(save: bytearray, count: int,
     save[shape.party_size_byte] = count
 
 
-def wall_block(save: bytes, shape: "DosSaveShape | None" = None
+def wall_block(save: bytes, shape: "DosContainer | None" = None
                ) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     """The two `u16[1..3]` arrays inside a Curse or Silver Blades square
     block, as `(wallset, wallmap)`.
@@ -1231,7 +1239,7 @@ def wall_block(save: bytes, shape: "DosSaveShape | None" = None
 
 
 def put_wall_block(save: bytearray, wallset,
-                   shape: "DosSaveShape | None" = None) -> None:
+                   shape: "DosContainer | None" = None) -> None:
     """Write the wallset triple and its index map into the square block,
     interleaved as `wall_block` reads them."""
     shape = _shaped(save, shape)
@@ -1258,7 +1266,7 @@ def wall_map(wallset) -> tuple[int, int, int]:
 def retarget(save: bytearray, *, area: int, dax: int, wallset,
              script: "bytes | None", outdoors: bool = False,
              geo: "int | None" = None,
-             shape: "DosSaveShape | None" = None) -> None:
+             shape: "DosContainer | None" = None) -> None:
     """Move a saved game to another area.  `script` is its `ECL` DAX block,
     or None for a title that stages none (Silver Blades).
 
