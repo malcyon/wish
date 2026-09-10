@@ -942,11 +942,18 @@ def _no_disks(_game):
 
 
 def _some_disks(_game):
-    """A `game_files` lookup standing in for disks that were found, with an
-    icon table not worth building for the test at hand (`#482`'s own guard
-    checks only that this answers something, and the two callers of it below
-    are testing the write path rather than the combat icon `#422` and `#383`
-    already cover)."""
+    """A `game_files` lookup standing in for disks that were found, carrying
+    no icon table.
+
+    Building one would mean reading a real disk, and no test here needs it:
+    `#482 (With no game disks for the source title, a C64 party converted to
+    DOS or the Amiga silently arrives with no combat figures, though a C64
+    destination refuses)`'s guard checks only that this answers something,
+    and the callers below test the write path rather than the combat icon,
+    which `#422 (A C64 party converted to an Amiga save disk arrives with no
+    combat figure at all, because C64ToAmiga never recognises it)` and
+    `#383 (The live Convert dialog never wires a C64 party's own combat icon
+    into DOS, so region_220 stays on the drop list)` already cover."""
     return SimpleNamespace(icon=None)
 
 
