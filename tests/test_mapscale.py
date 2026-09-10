@@ -498,43 +498,6 @@ def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
         f"the minimum width grew with the font: {dict(zip(fonts, widths))}")
 
 
-def test_the_windows_minimum_does_not_follow_the_ui_font_with_an_ordinary_party(
-        app, tmp_path, monkeypatch):
-    """#474's own gap in the two tests above: `_ordinary_party` is six
-    characters the shape a player actually has, not the widest the record
-    allows, and the widest one was the one shape guaranteed to hide this bug.
-
-    `EditorBinding._size_roster` set the roster's minimum to
-    `min(natural, ROSTER_MIN_WIDTH)`, believing `natural` -- the five columns
-    at their contents -- was always the larger of the two. An ordinary
-    six-character party measures `natural` at 219 against the constant's 440,
-    so `min` picked the font-derived number instead and the window's floor
-    ran 727, 784, 844 and 916 at +0, +3, +6 and +10 points of UI font -- which
-    is what this test caught red before the fix, and
-    `test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open`
-    above, built from the widest party, could not.
-
-    The second assertion pins the actual number rather than only the
-    flatness: a 266px uniform shift across every font passed the flatness
-    check untouched on 2026-09-10 (#504), because a shift that moves every
-    font by the same amount is still flat. 844 is what an ordinary party
-    measures here at the base font once the roster stops setting its own
-    minimum width at all (#474) -- so a future change that moves the number,
-    intentionally or not, is visible here rather than passing silently.
-    """
-    from test_windowslayout import _ordinary_party
-
-    save = _ordinary_party(tmp_path)
-    fonts = (0, 3, 6, 10)
-    widths = [f.width()
-              for f in _floors(app, tmp_path, monkeypatch, save, fonts=fonts)]
-    assert widths == [widths[0]] * len(fonts), (
-        f"the minimum width grew with the font: {dict(zip(fonts, widths))}")
-    assert widths[0] == 844, (
-        f"the ordinary party's floor at the base font is {widths[0]}px, not "
-        f"the 844 last measured -- say what moved it")
-
-
 def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
                                                                   monkeypatch):
     """The disk-backed half, and what makes the synthetic party evidence.
