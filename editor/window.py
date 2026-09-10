@@ -2203,7 +2203,8 @@ class EditorBinding(QObject):
         because nothing here ever calls `setWindowModified` -- that flag
         would just read the widget's inherited default of `False`.
         `self.dirty` is this binding's own record of which rows changed,
-        set by `_flush` and cleared by `save`.
+        added to by `_edited` -- which `_wire_dirty` connects to every
+        bound widget's changed signal -- and cleared by `save`.
         """
         if not self.dirty:
             return True
