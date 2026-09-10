@@ -140,7 +140,7 @@ def _silver_blades_savegame() -> bytes:
     """
     from tools import amigasavegame
     at = amigasavegame.SILVER_BLADES.party_at
-    shape = amiga.SILVER_BLADES_SHAPE
+    shape = amiga.SILVER_BLADES_DELTAS
     record = bytearray(shape.record_size)
     record[0:6] = b"MALACH"
     for i in range(6):                    # six equal (current, maximum) pairs
@@ -163,9 +163,9 @@ def test_a_silver_blades_saved_game_is_not_read_as_curse():
     found = list(cc._amiga_later_characters(data, "savegame", "synthetic",
                                             problems))
     assert problems == []
-    assert [c.shape for c in found] == [amiga.SILVER_BLADES_SHAPE]
+    assert [c.deltas for c in found] == [amiga.SILVER_BLADES_DELTAS]
     # The trap is real: handed Curse's shape, the same bytes parse anyway.
-    assert amiga.party_in_savegame(data, amiga.CURSE_SHAPE)
+    assert amiga.party_in_savegame(data, amiga.CURSE_DELTAS)
 
 
 # -- coverage: the titles the registry does not name ------------------------

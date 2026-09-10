@@ -246,7 +246,7 @@ def test_write_later_writes_zero_and_the_default_with_no_icon():
     from goldbox import neutral
 
     char = neutral.NeutralCharacter(
-        "test", game=amiga.games.by_key(amiga.CURSE_SHAPE.key))
+        "test", game=amiga.games.by_key(amiga.CURSE_DELTAS.key))
     char.set("name", "TESTER", "a test name")
     for ability in neutral.ABILITIES:
         char.set(ability, 12, "a test score")
@@ -266,7 +266,7 @@ def test_write_later_writes_a_given_icon_straight():
     icon = DosIcon(head=5, body=9, colours=bytes.fromhex("11223344e6f7"),
                   figure_source="test", colours_source="test")
     char = neutral.NeutralCharacter(
-        "test", game=amiga.games.by_key(amiga.SILVER_BLADES_SHAPE.key))
+        "test", game=amiga.games.by_key(amiga.SILVER_BLADES_DELTAS.key))
     char.set("name", "TESTER", "a test name")
     for ability in neutral.ABILITIES:
         char.set(ability, 12, "a test score")

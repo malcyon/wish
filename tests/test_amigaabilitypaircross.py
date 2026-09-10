@@ -42,7 +42,7 @@ from test_amiga import (  # noqa: E402
 from goldbox import amiga  # noqa: E402
 from goldbox import dos as _dos
 
-SHAPES = (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE)
+SHAPES = (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS)
 SIX_SCORES = tuple(n for n in _dos.ABILITY_ORDER if n != "exceptional_strength")
 
 

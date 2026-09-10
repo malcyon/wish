@@ -1995,7 +1995,7 @@ def curse_characters():
             out.append(amiga.read_amiga_guy(path))
         elif path.name.startswith("CurseA-savgam"):
             out.extend(amiga.party_in_savegame(path.read_bytes(),
-                                               amiga.CURSE_SHAPE))
+                                               amiga.CURSE_DELTAS))
     if not out:
         pytest.skip("no Amiga Curse records among the specimens")
     return out
@@ -2007,7 +2007,7 @@ def silver_blades_characters():
     for path in _later_files():
         if path.name.startswith("Secret1-savgam"):
             out.extend(amiga.party_in_savegame(path.read_bytes(),
-                                               amiga.SILVER_BLADES_SHAPE))
+                                               amiga.SILVER_BLADES_DELTAS))
     if not out:
         pytest.skip("no Amiga Silver Blades records among the specimens")
     return out
@@ -2071,13 +2071,13 @@ def test_the_curse_shift_map_is_the_one_the_game_s_own_unpacker_writes():
     `/Curse` `0x270A6` expands a packed 422-byte DOS record into the 428-byte
     Amiga one -- it is what the monster loader at `0x26306` calls after
     decompressing `MON<n>CHA` to `0x1A6` bytes -- so every offset in
-    `CURSE_SHAPE` is an instruction rather than an inference from a specimen.
+    `CURSE_DELTAS` is an instruction rather than an inference from a specimen.
 
     The three spell-slot arrays are excluded and have a test of their own:
     the routine copies them as one flat run and lands two of the three in the
     wrong bytes, which is the game's defect rather than this map's.
     """
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     rows = _unpacker_rows(shape, UNPACKERS)
     assert len(rows) > 200
     for dos_offset, amiga_offset in sorted(rows.items()):
@@ -2101,7 +2101,7 @@ def test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays():
     characters all read `goldbox/spells.py`'s Curse table at `0x13A`, which
     only the indexed reading puts there.
     """
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     rows = _unpacker_rows(shape, UNPACKERS)
     for dos_offset in range(0x12D, 0x132):          # the cleric array
         assert rows[dos_offset] == shape.offset(dos_offset)
@@ -2119,7 +2119,7 @@ def test_the_silver_blades_shift_map_is_the_one_its_unpacker_writes():
     into 15 bytes of bitmask rather than copying, and which `shape.offset`
     refuses for that reason.
     """
-    shape = amiga.SILVER_BLADES_SHAPE
+    shape = amiga.SILVER_BLADES_DELTAS
     book = shape.dos_field("spellbook")
     rows = _unpacker_rows(shape, UNPACKERS)
     assert len(rows) > 150
@@ -2137,7 +2137,7 @@ def test_both_item_shift_maps_are_what_their_unpackers_write(key):
     Silver Blades' fourth pointer, so the same assertion covers both and the
     66-byte node is the 70-byte one without its last field.
     """
-    shape = amiga.AMIGA_SHAPES_BY_SIZE[
+    shape = amiga.AMIGA_DELTAS_BY_SIZE[
         428 if key == "curse-of-the-azure-bonds" else 340]
     rows = _unpacker_rows(shape, ITEM_UNPACKERS)
     text = dos_layout.ITEM_FIELDS_BY_NAME["text"]
@@ -2151,8 +2151,8 @@ def test_both_item_shift_maps_are_what_their_unpackers_write(key):
 
 def test_the_record_size_names_the_amiga_title():
     """Three sizes, three titles, and a fourth is refused rather than read."""
-    assert amiga.AMIGA_SHAPES_BY_SIZE[428] is amiga.CURSE_SHAPE
-    assert amiga.AMIGA_SHAPES_BY_SIZE[340] is amiga.SILVER_BLADES_SHAPE
+    assert amiga.AMIGA_DELTAS_BY_SIZE[428] is amiga.CURSE_DELTAS
+    assert amiga.AMIGA_DELTAS_BY_SIZE[340] is amiga.SILVER_BLADES_DELTAS
     with pytest.raises(AmigaRecordError):
         amiga.AmigaCharacter.from_bytes(bytes(288))
 
@@ -2173,7 +2173,7 @@ def test_every_curse_insertion_is_placed_to_the_byte():
     * `sex` and `alignment`, which no character sheet could place, are at
       `0x11A` and `0x11C`.
     """
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     assert shape.unplaced == ()
     placed = {
         0x0F2: 0x0F2,        # the effect chain
@@ -2216,7 +2216,7 @@ def test_the_placed_field_83_87_reads_the_constant_dos_holds():
 
 def test_the_silver_blades_spellbook_has_no_one_to_one_offset():
     """It is 15 bytes of bitmask where DOS spends 117, so there is none."""
-    shape = amiga.SILVER_BLADES_SHAPE
+    shape = amiga.SILVER_BLADES_DELTAS
     assert shape.offset(0x070) == 0x070            # hp_max, just before it
     with pytest.raises(AmigaRecordError):
         shape.offset(0x071)
@@ -2292,7 +2292,7 @@ def test_the_item_node_reads_the_fields_the_constructor_writes():
     `0x3E` look like `charges`; the constructor says both are padding, and a
     Chain Mail with 47 charges was never a plausible reading.
     """
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     assert shape.item_offset(0x03C) == 0x03F        # charges
     assert shape.item_offset(0x02F) == 0x030        # name1, past the pad
     items = [i for c in curse_characters() for i in c.items]
@@ -2314,7 +2314,7 @@ def test_the_silver_blades_item_node_is_seventy_bytes():
     `0x42` that Curse's 66-byte node has no room for.  So the two nodes are
     the same layout for `0x00`-`0x41` and Silver Blades has one more field.
     """
-    ssb, curse = amiga.SILVER_BLADES_SHAPE, amiga.CURSE_SHAPE
+    ssb, curse = amiga.SILVER_BLADES_DELTAS, amiga.CURSE_DELTAS
     assert ssb.item_size == 70 and curse.item_size == 66
     assert ssb.item_size - curse.item_size == 4
     assert amiga.AMIGA_SSB_SCROLL_CHAIN == 0x042
@@ -2350,7 +2350,7 @@ def test_the_curse_shift_map_agrees_with_dos_on_every_shared_constant():
     if not dos:
         pytest.skip("needs the DOS Curse party; set $FR_ARCHIVES")
     chars = curse_characters()
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     checked = 0
     for f in dos_layout.layout_for(shape.dos):
         if f.name in ("name_length", "name_text"):
@@ -2391,7 +2391,7 @@ def test_every_silver_blades_field_decodes_to_what_its_dos_twin_holds():
                ("pick_pockets", "open_locks", "find_traps", "move_silently",
                 "hide_in_shadows", "hear_noise", "climb_walls",
                 "read_languages")}
-    shape = amiga.SILVER_BLADES_SHAPE
+    shape = amiga.SILVER_BLADES_DELTAS
     fields = [f for f in dos_layout.layout_for(shape.dos)
               if f.name not in ("name_length", "name_text", "spellbook")]
     compared = differing = 0
@@ -2431,7 +2431,7 @@ def test_the_silver_blades_spellbook_is_a_bitmask_lsb_first():
            for r in _dos_records("SECRET", 439).values()}
     if not dos:
         pytest.skip("needs the DOS Silver Blades party; set $FR_ARCHIVES")
-    book = amiga.SILVER_BLADES_SHAPE.dos_field("spellbook")
+    book = amiga.SILVER_BLADES_DELTAS.dos_field("spellbook")
     total = wrong_way = 0
     for char in silver_blades_characters():
         twin = dos[char.name][book.offset:book.offset + book.size]
@@ -2454,7 +2454,7 @@ def test_the_curse_spellbook_is_still_one_byte_a_spell():
     is being read the right way: the cleric holds 1-8, 22-28 and 37-44, and
     every magic-user holds 10, 11, 12, 15, 18 and 21.
     """
-    assert amiga.CURSE_SHAPE.spellbook_bytes is None
+    assert amiga.CURSE_DELTAS.spellbook_bytes is None
     books = {c.name: c.spellbook for c in curse_characters()}
     assert books["KAROLYN"] == ([1, 2, 3, 4, 5, 6, 7, 8]
                                 + [22, 23, 24, 25, 26, 27, 28]
@@ -2474,8 +2474,8 @@ def test_the_record_signature_finds_the_party_and_nothing_else():
         if not path.name.endswith((".dat", ".sav")):
             continue
         data = path.read_bytes()
-        shape = (amiga.CURSE_SHAPE if path.name.startswith("CurseA")
-                 else amiga.SILVER_BLADES_SHAPE)
+        shape = (amiga.CURSE_DELTAS if path.name.startswith("CurseA")
+                 else amiga.SILVER_BLADES_DELTAS)
         hits = [at for at in range(len(data) - shape.record_size + 1)
                 if amiga.looks_like_amiga_record(data, at, shape)]
         assert len(hits) == len(amiga.party_in_savegame(data, shape))
@@ -2545,7 +2545,7 @@ def test_the_curse_size_byte_is_one_for_the_small_races():
     four Amiga specimens that are not carrying a custom icon.
     """
     small = {"dwarf", "gnome", "halfling"}
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     assert shape.offset(0x144) == 0x148
     assert shape.offset(0x145) == 0x149
     for char in curse_characters():
@@ -2693,7 +2693,7 @@ def test_every_declared_field_of_a_later_title_has_a_disposition():
     forbids.  Both directions: a name the table does not declare fails too.
     """
     from goldbox import neutral
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         declared = [f.name for f in dos_layout.layout_for(shape.dos)]
         unaccounted, unknown = neutral.undeclared(
             declared, amiga.later_field_disposition(shape))
@@ -2733,7 +2733,7 @@ def test_a_later_amiga_read_sets_the_class_mask_at_all():
     """
     from goldbox import dos
     assert "class_bits" not in [n for n, _ in dos.DIRECT]
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         char = _later_record(shape, 0x08, slot=5)     # a plain fighter
         out = amiga.to_neutral_later(char)
         assert "class_bits" in out.fields, shape.key
@@ -2747,7 +2747,7 @@ def test_a_later_amiga_ranger_gets_the_shared_orders_own_bit():
     Amiga stores the field the same way: bit 6 for both classes, and the
     level array is the only thing that says which.
     """
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         ranger = _later_record(shape, 0x40, RANGER_SLOT)
         paladin = _later_record(shape, 0x40, PALADIN_SLOT)
         assert amiga.to_neutral_later(ranger).get("class_bits") == 0x80
@@ -2758,7 +2758,7 @@ def test_only_the_shared_bit_of_a_later_amiga_mask_is_reread():
     """Every other bit is the byte the game wrote, and a record with bit 6
     and neither level slot filled keeps bit 6 -- there is nothing to read it
     as. A dual-classed fighter/ranger keeps its fighter bit alongside."""
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         assert amiga.to_neutral_later(
             _later_record(shape, 0x40, None)).get("class_bits") == 0x40
         assert amiga.to_neutral_later(
@@ -2824,7 +2824,7 @@ def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
     names the way the DOS reader's own loop does.
     """
     from goldbox import c64_codec
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         char = _ability_record(shape, "strength", 0x12, 0x12)
         out = amiga.to_neutral_later(char)
         assert isinstance(out.get("strength"), int), shape.key
@@ -2848,7 +2848,7 @@ def test_a_later_amiga_ability_pair_splits_permanent_and_in_force_byte():
     what this test asserted before.  Exceptional strength keeps the old
     order, because its percentile pair runs the other way on both ports.
     """
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         char = _ability_record(shape, "dexterity", 0x0A, 0x0B)
         out = amiga.to_neutral_later(char)
         assert out.get("dexterity") == 0x0B, shape.key
@@ -2886,7 +2886,7 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
     `goldbox.dos.to_neutral` computes (#303), and the four-byte alignment is
     the one nothing had exercised before this test.
     """
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         companion = _control_byte_record(shape, 0x93)   # bit 7 + morale 0x13
         out = amiga.to_neutral_later(companion)
         assert out.get("npc") is True, shape.key
@@ -2964,7 +2964,7 @@ def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
     from goldbox import dos as _dos
     monkeypatch.setattr(_dos, "DIRECT", _dos.DIRECT + (("spellbook",
                                                          "spellbook"),))
-    char = _ability_record(amiga.CURSE_SHAPE, "strength", 0x12, 0x12)
+    char = _ability_record(amiga.CURSE_DELTAS, "strength", 0x12, 0x12)
     with pytest.raises(AmigaRecordError, match="spellbook"):
         amiga.to_neutral_later(char)
 
@@ -3079,8 +3079,8 @@ def test_taking_the_items_away_clears_the_head_the_loader_tests():
     from dataclasses import replace
     bare = replace(char, items=(), effects=())
     block = bare.block_bytes()
-    assert len(block) == amiga.CURSE_SHAPE.record_size
-    stripped = amiga.AmigaCharacter.from_bytes(block, amiga.CURSE_SHAPE)
+    assert len(block) == amiga.CURSE_DELTAS.record_size
+    stripped = amiga.AmigaCharacter.from_bytes(block, amiga.CURSE_DELTAS)
     assert stripped.item_chain == 0
     assert stripped.effect_chain == 0
     assert stripped.get("item_count") == 0

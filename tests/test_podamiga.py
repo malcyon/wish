@@ -503,7 +503,7 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
     Amiga Pools of Darkness carries a routine that turns an Amiga *Secret of
     the Silver Blades* record into one of its own, at file offset `0x026000`
     of `/Pools of Darkness` on disk 1. It is a field-by-field copy, and
-    `goldbox.amiga.SILVER_BLADES_SHAPE` names every source offset because
+    `goldbox.amiga.SILVER_BLADES_DELTAS` names every source offset because
     `#55` decoded that record -- so each instruction reads as "Silver Blades'
     *name* is at Pools of Darkness' `0xY`".
 

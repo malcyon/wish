@@ -110,7 +110,7 @@ class SaveShape:
     #: `records` when the party is embedded, `filenames` for the 8 x 41 table.
     party: str
     #: The record shape for an embedded party, `None` for filenames.
-    record_shape: amiga.AmigaShape | None = None
+    record_shape: amiga.AmigaDeltas | None = None
     #: The file's fixed length when the party is filenames, else `None`.
     fixed_size: int | None = None
 
@@ -175,7 +175,7 @@ CURSE = SaveShape(
             SquareField("square_property", 1, _PROPERTY),
             SquareField("pad", 1, _PAD)),
     first_mode_byte="mode before", wallset_table=True, count_bytes=2,
-    party="records", record_shape=amiga.CURSE_SHAPE)
+    party="records", record_shape=amiga.CURSE_DELTAS)
 
 SILVER_BLADES = SaveShape(
     title="Secret of the Silver Blades",
@@ -185,7 +185,7 @@ SILVER_BLADES = SaveShape(
             SquareField("square_property", 1, _PROPERTY),
             SquareField("pad", 1, _PAD)),
     first_mode_byte="mode before", wallset_table=True, count_bytes=2,
-    party="records", record_shape=amiga.SILVER_BLADES_SHAPE)
+    party="records", record_shape=amiga.SILVER_BLADES_DELTAS)
 
 POOL_OF_RADIANCE = SaveShape(
     title="Pool of Radiance",
@@ -412,9 +412,9 @@ def rebuild(save: AmigaSavegame,
             f"a {s.title} party is 1 to {PARTY_MAX} characters; "
             f"{len(party)} given")
     for n, char in enumerate(party):
-        if char.shape is not s.record_shape:
+        if char.deltas is not s.record_shape:
             raise AmigaSaveError(
-                f"character {n} is a {char.shape.title} record and this is a "
+                f"character {n} is a {char.deltas.title} record and this is a "
                 f"{s.title} saved game")
     head = bytearray(save.data[:s.count_at])
     at = s.vm_offset(0x503E)

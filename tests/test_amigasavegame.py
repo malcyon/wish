@@ -59,7 +59,7 @@ def test_variable_words_sit_at_the_dos_offsets_shifted_by_the_header():
 
 # -- synthetic saved games, built from the map -------------------------------
 
-def fake_record(shape: amiga.AmigaShape, name: str) -> bytes:
+def fake_record(shape: amiga.AmigaDeltas, name: str) -> bytes:
     """A record the signature scan accepts, carrying no items or effects."""
     raw = bytearray(shape.record_size)
     raw[:len(name)] = name.encode()
@@ -87,7 +87,7 @@ def synthetic_curse(names=("ALPHA", "BETA")) -> bytes:
         out += block.to_bytes(2, "big") + slot.to_bytes(2, "big")
     out += len(names).to_bytes(2, "big")
     for n in names:
-        out += fake_record(amiga.CURSE_SHAPE, n)
+        out += fake_record(amiga.CURSE_DELTAS, n)
     return bytes(out)
 
 
@@ -99,7 +99,7 @@ def synthetic_silver_blades(names=("GAMMA",)) -> bytes:
     out += bytes.fromhex("00000001ffffffffffffffff")
     out += len(names).to_bytes(2, "big")
     for n in names:
-        out += fake_record(amiga.SILVER_BLADES_SHAPE, n)
+        out += fake_record(amiga.SILVER_BLADES_DELTAS, n)
     return bytes(out)
 
 
@@ -280,7 +280,7 @@ def test_a_shorter_party_shortens_the_file_and_moves_nothing_else():
     data = synthetic_curse(("ALPHA", "BETA"))
     save = parse(data)
     out = amigasavegame.rebuild(save, save.characters[:1])
-    assert len(out) == len(data) - amiga.CURSE_SHAPE.record_size
+    assert len(out) == len(data) - amiga.CURSE_DELTAS.record_size
     at = CURSE.vm_offset(0x503E)
     moved = [i for i in range(CURSE.count_at) if out[i] != data[i]]
     assert moved == [at + 1], moved

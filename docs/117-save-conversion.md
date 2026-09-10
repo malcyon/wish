@@ -529,7 +529,9 @@ and the phrase saying where it came from. It also holds `Writer`, the
 take-refuse-report protocol every writer inherits rather than copies. Every
 port keeps its own declarative table with a confidence on every field —
 `goldbox/layout.py` for the C64, `goldbox/dos_port.py` for DOS — and a codec reads
-only its own.
+only its own. The Amiga keeps no third table: `goldbox/amiga_port.py` is a
+shift map onto the DOS one, so a correction to a DOS offset reaches the Amiga
+with no second edit.
 
 The YAML export is not the interchange. It was, while there was one direction;
 it is one more codec now, and `goldbox/yaml_io.entry_for` takes a
@@ -1929,6 +1931,14 @@ a breach of it: an Amiga record is DOS-shaped underneath, so the Amiga codec
 reads the DOS field table directly, the same exception "Who talks to whom"
 above draws for the C64's own item shape.
 
+`amiga_port` is new in the graph, from the same ticket's stage 4b: what an
+Amiga record looks like — `AmigaDeltas`, and the two later titles' rows — with
+none of the code that reads one. It has exactly one edge, `amiga_port -->
+dos_port`, and the direction it does **not** have is the point: nothing in the
+port imports the codec, so a reader after the offsets never loads the 6,000
+lines that use them. `goldbox/amiga.py` re-exports every name under both its
+old spelling and its new one until stage 9 moves the callers.
+
 The graph does not show the record-table invariant cleanly, and the reason is
 `goldbox/layout.py`. It is two things in one module — the C64's 580-byte field
 table *and* the project's shared vocabulary, `Confidence`, `Field` and `Kind`
@@ -1953,6 +1963,7 @@ the edge somebody adds without noticing.
 graph LR
   amiga --> amiga_adf
   amiga -.->|deferred| amiga_dax
+  amiga --> amiga_port
   amiga --> areas
   amiga -.->|deferred| c64_codec
   amiga -.->|deferred| d64
@@ -1968,6 +1979,7 @@ graph LR
   amiga --> titles
   amiga -.->|deferred| traits
   amiga --> world_state
+  amiga_port --> dos_port
   areas -.->|deferred| geo
   areas --> layout
   c64_codec --> classcode

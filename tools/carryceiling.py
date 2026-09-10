@@ -448,7 +448,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
                       sources=(f"{label}!{volume}:{name}",))
     for label, volume, name, data, what in amigarecords.specimens():
         for char in _amiga_later_characters(data, what, label, problems):
-            key = _amiga_key(char.shape)
+            key = _amiga_key(char.deltas)
             innate, granted, running = _split_effects(
                 [bytes(node) for node in char.effects],
                 dos._innate_effects(key), pad=1)
@@ -558,7 +558,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
         except Exception as exc:                         # pragma: no cover
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
         return
-    for shape in amiga.AMIGA_SHAPES:
+    for shape in amiga.AMIGA_DELTAS:
         if len(data) < shape.record_size:
             continue
         if not amiga.looks_like_amiga_record(data, 0, shape):

@@ -4,7 +4,7 @@
 Amiga Pools of Darkness carries a routine that turns an Amiga *Secret of the
 Silver Blades* character record into one of its own.  It is a straight
 field-by-field copy -- sixty-odd `move.b $src(a3), $dst(a2)` and six block
-copies -- and `goldbox.amiga.SILVER_BLADES_SHAPE` already names every source
+copies -- and `goldbox.amiga.SILVER_BLADES_DELTAS` already names every source
 offset, because `#55 (Decode the Amiga Curse and Silver Blades records)`
 decoded that record.  So the routine reads as a table of "Silver Blades'
 *name* lives at Pools of Darkness' `0xY`", written by the engine itself.
@@ -91,12 +91,12 @@ def executable(quiet: bool = False) -> bytes:
 def _silver_blades_field(offset: int) -> tuple[str, int]:
     """The Silver Blades field covering an Amiga record offset, and its index.
 
-    The spellbook is the one field `AmigaShape` does not place, because the
+    The spellbook is the one field `AmigaDeltas` does not place, because the
     Amiga packs 117 spell ids into fifteen bytes where DOS spends 117.  It
     sits where DOS puts it, immediately after `hp_max`, and the shape's own
     `spellbook_bytes` says how wide it is.
     """
-    shape = amiga.SILVER_BLADES_SHAPE
+    shape = amiga.SILVER_BLADES_DELTAS
     fields = {f.name: f for f in dos_layout.layout_for(shape.dos)}
     book = shape.offset(fields["hp_max"].offset) + 1
     if book <= offset < book + shape.spellbook_bytes:

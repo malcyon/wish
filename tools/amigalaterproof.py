@@ -67,7 +67,7 @@ _DOS_TABLES = ("WRITE_UNSOURCED", "WRITE_UNSOURCED_LATER", "WRITE_DERIVED",
                "WRITE_DERIVED_LATER", "WRITE_CONSTANTS", "WRITE_DEFAULTS")
 
 
-def declared_record_mask(shape: amiga.AmigaShape) -> set[int]:
+def declared_record_mask(shape: amiga.AmigaDeltas) -> set[int]:
     """Amiga record offsets the two sides are allowed to disagree in."""
     names: set[str] = set()
     for table in _DOS_TABLES:
@@ -105,7 +105,7 @@ def declared_block_mask(char: amiga.AmigaCharacter) -> set[int]:
     return out
 
 
-def field_at(shape: amiga.AmigaShape, offset: int) -> str:
+def field_at(shape: amiga.AmigaDeltas, offset: int) -> str:
     """Which field of the record an Amiga offset lands in, for a diff line."""
     for field in dos_layout.layout_for(shape.dos):
         try:

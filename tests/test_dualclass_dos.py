@@ -132,7 +132,7 @@ def test_former_level_has_a_disposition_in_every_later_shape(shape):
 
 
 def test_former_level_has_a_disposition_in_the_amiga_reader():
-    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
         declared = [f.name for f in dos_layout.layout_for(shape.dos)]
         unaccounted, unknown = neutral.undeclared(
             declared, amiga.later_field_disposition(shape))
@@ -148,7 +148,7 @@ def test_amiga_reads_former_levels_with_no_drop_line():
     there was nowhere to put it -- stale since `former_levels` landed. A fake
     record with the array set now reaches the neutral record and the report
     says nothing about a drop."""
-    shape = amiga.CURSE_SHAPE
+    shape = amiga.CURSE_DELTAS
     f = shape.dos_field("former_class_levels")
     raw = bytearray(shape.record_size)
     for i in range(6):

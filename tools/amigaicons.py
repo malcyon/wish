@@ -374,10 +374,10 @@ def report_census(out) -> int:
                 records.append((amiga_mod.read_amiga_guy(path), path.name))
             elif path.name.startswith("CurseA-savgam"):
                 for c in amiga_mod.party_in_savegame(path.read_bytes(),
-                                                     amiga_mod.CURSE_SHAPE):
+                                                     amiga_mod.CURSE_DELTAS):
                     records.append((c, path.name))
             elif path.name.startswith("Secret1-savgam"):
-                shape = amiga_mod.SILVER_BLADES_SHAPE
+                shape = amiga_mod.SILVER_BLADES_DELTAS
                 for c in amiga_mod.party_in_savegame(path.read_bytes(), shape):
                     records.append((c, path.name))
     if not records:

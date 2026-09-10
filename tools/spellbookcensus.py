@@ -400,9 +400,9 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
     distinct between the two.
     """
     if what == "record":
-        shape = amiga.AMIGA_SHAPES_BY_SIZE.get(len(data))
+        shape = amiga.AMIGA_DELTAS_BY_SIZE.get(len(data))
         if shape is None:
-            for candidate in amiga.AMIGA_SHAPES:
+            for candidate in amiga.AMIGA_DELTAS:
                 if amiga.looks_like_amiga_record(data, 0, candidate):
                     shape = candidate
                     break

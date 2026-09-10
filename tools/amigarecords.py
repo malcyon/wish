@@ -45,7 +45,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox.amiga import (  # noqa: E402
-    AMIGA_SHAPES,
+    AMIGA_DELTAS,
     looks_like_amiga_record,
     party_in_savegame,
 )
@@ -64,13 +64,13 @@ def _record_file(data: bytes) -> bool:
     """Whether a file is a character record with its tail, `.guy`-style."""
     return any(len(data) >= shape.record_size
                and looks_like_amiga_record(data, 0, shape)
-               for shape in AMIGA_SHAPES)
+               for shape in AMIGA_DELTAS)
 
 
 def _savegame_party(data: bytes) -> int:
     """How many character blocks a saved game holds, across both shapes."""
     return max((len(party_in_savegame(data, shape))
-                for shape in AMIGA_SHAPES), default=0)
+                for shape in AMIGA_DELTAS), default=0)
 
 
 def specimens(roots: list[pathlib.Path] | None = None):

@@ -61,7 +61,7 @@ def test_a_shorter_name_clears_what_was_under_it():
     # old name for the panel to draw -- which is how the run's proof that the
     # engine read our bytes would have become unreadable.
     char = amiga.AmigaCharacter.from_bytes(
-        fake_record(amiga.CURSE_SHAPE, "IILANDA"), amiga.CURSE_SHAPE)
+        fake_record(amiga.CURSE_DELTAS, "IILANDA"), amiga.CURSE_DELTAS)
     shorter = amigalaterslot.rename(char, "ZEP")
     assert shorter.name == "ZEP"
     assert shorter.raw[:amiga.AMIGA_NAME_SIZE] == b"ZEP" + b"\0" * 13
@@ -71,7 +71,7 @@ def test_a_shorter_name_clears_what_was_under_it():
 
 def test_a_name_that_would_not_fit_is_refused():
     char = amiga.AmigaCharacter.from_bytes(
-        fake_record(amiga.CURSE_SHAPE, "IILANDA"), amiga.CURSE_SHAPE)
+        fake_record(amiga.CURSE_DELTAS, "IILANDA"), amiga.CURSE_DELTAS)
     with pytest.raises(SystemExit):
         amigalaterslot.rename(char, "A" * amiga.AMIGA_NAME_SIZE)
 
@@ -107,20 +107,20 @@ def test_a_shorter_party_moves_the_count_and_the_length(curse_disk, tmp_path):
     assert written.count == 1
     assert written.word(0x503E) == 1
     assert len(written.data) == (len(slot(curse_disk, "A").data)
-                                 - amiga.CURSE_SHAPE.record_size)
+                                 - amiga.CURSE_DELTAS.record_size)
 
 
 def test_stripping_items_zeroes_the_head_the_loader_tests(tmp_path):
     # The loader's only test on the item chain is `tst.l` on the head, so a
     # character with no nodes must carry zero there or the read runs into the
     # next character's block.
-    item = amiga.AmigaItem.from_bytes(bytes(amiga.CURSE_SHAPE.item_size),
-                                      amiga.CURSE_SHAPE)
-    record = bytearray(fake_record(amiga.CURSE_SHAPE, "ALPHA"))
-    at = amiga.CURSE_SHAPE.offset(
-        amiga.CURSE_SHAPE.dos_field("item_count").offset)
+    item = amiga.AmigaItem.from_bytes(bytes(amiga.CURSE_DELTAS.item_size),
+                                      amiga.CURSE_DELTAS)
+    record = bytearray(fake_record(amiga.CURSE_DELTAS, "ALPHA"))
+    at = amiga.CURSE_DELTAS.offset(
+        amiga.CURSE_DELTAS.dos_field("item_count").offset)
     record[at] = 1
-    char = amiga.AmigaCharacter.from_bytes(bytes(record), amiga.CURSE_SHAPE,
+    char = amiga.AmigaCharacter.from_bytes(bytes(record), amiga.CURSE_DELTAS,
                                            items=(item,))
     save = amigasavegame.parse(synthetic_curse(("ALPHA", "BETA")))
     with_item = amigasavegame.rebuild(save, [char, save.characters[1]])
@@ -135,7 +135,7 @@ def test_stripping_items_zeroes_the_head_the_loader_tests(tmp_path):
     written = slot(out, "D")
     assert written.characters[0].item_chain == 0
     assert written.characters[0].get("item_count") == 0
-    assert len(written.data) == len(with_item) - amiga.CURSE_SHAPE.item_size
+    assert len(written.data) == len(with_item) - amiga.CURSE_DELTAS.item_size
 
 
 # -- the two titles' suffixes ------------------------------------------------
