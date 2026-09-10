@@ -1664,6 +1664,36 @@ def can_reenter(target) -> bool:
             or getattr(target, "_mon", None) is not None)
 
 
+def _reentry_stack_bytes(sp: int, items: tuple[int, ...]) -> tuple[int, bytes]:
+    """Where `reenter` pushes `items`, and the bytes it pushes there, built
+    as one contiguous run rather than one `target.write` per address.
+
+    `ViceTarget.write` resumes the connection on *every* call
+    (`automap/target.py`'s `write`, `finally: self._resume_unless_lost()`),
+    and a stop/resume pair hands the emulation real time
+    (`docs/70-driving-the-game.md`). Once `set_registers` has pointed PC at
+    the re-entry target and SP at the finished stack, a second `target.write`
+    would let `DUNGEON`'s dispatch run from the new PC over a stack only half
+    built -- worse than `#494 (reenter() can push return addresses to the
+    stack page and still report failure)`'s own bug, which never moved the
+    real SP and so was never read back. One write, issued after
+    `set_registers` succeeds, means the machine never runs until every byte
+    is in place.
+
+    `sp` is the stack pointer once every one of `items` has been pushed --
+    `reenter`'s own `base_sp - 2 * len(items)`. The main loop's own return
+    goes on first (deepest), then the chain, each two bytes shallower -- high
+    byte then low, the order a 6502's own JSR leaves and RTS expects to pop.
+    In ascending address order that is `items` reversed, low byte then high
+    byte, starting the byte after `sp`.
+    """
+    blob = bytearray()
+    for ret in reversed(items):
+        blob.append(ret & 0xFF)
+        blob.append((ret >> 8) & 0xFF)
+    return 0x0100 + sp + 1, bytes(blob)
+
+
 def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     """Rebuild `DUNGEON`'s own stack from `addr.saved_sp` and land wherever a
     step would have, so the departing script's own dispatch runs the exit's
@@ -1684,9 +1714,10 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     including the monitor's own refusal to take the new SP/PC, runs before
     the stack page is written, so a `False` return always means nothing was
     pushed -- `#494 (reenter() can push return addresses to the stack page
-    and still report failure)`. The monitor stays halted throughout: setting
-    the registers ahead of the pokes changes nothing about what the CPU sees,
-    since nothing runs until `resume()`, called last.
+    and still report failure)`. The monitor is resumed exactly once, whether
+    the handoff succeeds or not: a refused register write leaves nothing
+    written, and still has to let the machine carry on from wherever it was
+    halted rather than leave it frozen at the monitor prompt.
     """
     if not addr.has_exit_reentry:
         return False
@@ -1696,38 +1727,36 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
         return False
     base_sp = base[0]
     items = (addr.main_loop_return, *chain)
-    # The main loop's own return goes on first (deepest), then the chain,
-    # each two bytes shallower -- high byte then low, the order a 6502's own
-    # JSR leaves and RTS expects to pop. This is the SP once every one of
-    # them is pushed, computed directly so the handoff below can be checked
-    # before the write loop runs rather than after it.
+    # The SP once every one of them is pushed, computed directly so the
+    # handoff can be checked -- and, for the monitor path, the stack bytes
+    # built -- before anything is written rather than after.
     sp = base_sp - 2 * len(items)
 
     own = getattr(target, "reenter", None)
-    mon = None
-    if not callable(own):
-        mon = getattr(target, "_mon", None)
-        if mon is None:
-            return False
-        try:
-            mon.set_registers({sp_register(mon): sp, pc_register(mon): pc})
-        except Exception:
-            _log.exception("could not rebuild the stack for $%04X", pc)
-            return False
-
-    write_sp = base_sp
-    for ret in items:
-        target.write(0x0100 + write_sp, bytes([ret >> 8]))
-        target.write(0x0100 + write_sp - 1, bytes([ret & 0xFF]))
-        write_sp -= 2
-
     if callable(own):
+        write_sp = base_sp
+        for ret in items:
+            target.write(0x0100 + write_sp, bytes([ret >> 8]))
+            target.write(0x0100 + write_sp - 1, bytes([ret & 0xFF]))
+            write_sp -= 2
         own(pc, sp)
         return True
+
+    mon = getattr(target, "_mon", None)
+    if mon is None:
+        return False
+    start, blob = _reentry_stack_bytes(sp, items)
     try:
-        mon.resume()
-    except Exception as exc:
-        _log.debug("could not resume after rebuilding the stack: %s", exc)
+        mon.set_registers({sp_register(mon): sp, pc_register(mon): pc})
+        mon.write(start, blob)
+    except Exception:
+        _log.exception("could not rebuild the stack for $%04X", pc)
+        return False
+    finally:
+        try:
+            mon.resume()
+        except Exception as exc:
+            _log.debug("could not resume after rebuilding the stack: %s", exc)
     return True
 
 

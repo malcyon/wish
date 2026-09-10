@@ -1161,19 +1161,100 @@ def test_reenter_writes_nothing_to_the_stack_page_when_set_registers_raises():
     tried, so a `_mon` present with no `reenter` capability, whose
     `set_registers` raises, still left the return addresses pushed to
     `$0100`-`$01FF` under the old ordering. Compute-then-write means a
-    `False` here has written nothing."""
+    `False` here has written nothing.
+
+    And the monitor still has to be resumed -- the review on this ticket's
+    first pass found that a version which only resumed on success left the
+    emulator halted at the monitor prompt behind an "Unable to Fast Travel"
+    message with no player action able to bring it back, since
+    `FastTravel._run_via_exit`'s own cleanup after a `False` only resumes by
+    writing to `target` again, which does not happen when the exit square
+    could not be read in the first place."""
     addr = fasttravel.POOL_OF_RADIANCE
 
     class FailingMon:
+        def __init__(self):
+            self.resumed = False
+
         def set_registers(self, regs):
             raise RuntimeError("this build refused the register write")
 
         def resume(self):
-            pass
+            self.resumed = True
 
     target = MemoryTarget({addr.saved_sp: bytes([0xF0])})
-    target._mon = FailingMon()
+    mon = FailingMon()
+    target._mon = mon
     assert not actions.reenter(target, addr, 1)
     assert target.read(0x0100, 0x100) == bytes(0x100), (
         "nothing should have been pushed to the stack page: the capability "
         "check happens before any write, not after a failed one")
+    assert mon.resumed, (
+        "a refused register write must still resume the monitor -- "
+        "otherwise the machine is left halted with nothing to bring it back")
+
+
+def test_reenter_pushes_the_stack_in_a_single_write_on_the_monitor_path():
+    """`#494`'s second review finding: `ViceTarget.write` resumes the
+    connection on *every* call (`automap/target.py`), and by the time the
+    write loop ran, `set_registers` had already pointed PC at the re-entry
+    target and SP at the finished stack -- so two `target.write` calls per
+    return address let the machine run `DUNGEON`'s dispatch over a stack
+    only half built, between the writes. `reenter` now builds the whole
+    chain as one blob and hands it to the raw monitor's own `write` in a
+    single call, resuming once at the end.
+
+    This pins that the blob is byte-for-byte what the old per-address loop
+    wrote, for chains of one, two and three return addresses -- entry 1 (no
+    chain), and two synthetic longer chains, since no title measured here
+    chains more than one address behind the main loop's own return."""
+    addr = fasttravel.POOL_OF_RADIANCE
+    base_sp = 0xF0
+
+    def old_loop_bytes(items: tuple[int, ...]) -> tuple[int, bytes]:
+        """`reenter`'s own write loop before this ticket's fix, and
+        `tools/exitreentry.py`'s `reenter()` today: high byte then low,
+        each pushed return address two bytes shallower than the last."""
+        mem: dict[int, int] = {}
+        sp = base_sp
+        for ret in items:
+            mem[0x0100 + sp] = ret >> 8
+            mem[0x0100 + sp - 1] = ret & 0xFF
+            sp -= 2
+        lo, hi = min(mem), max(mem)
+        return lo, bytes(mem[a] for a in range(lo, hi + 1))
+
+    for n in (1, 2, 3):
+        items = tuple(addr.main_loop_return - 2 * i for i in range(n))
+        sp = base_sp - 2 * len(items)
+        want_start, want_bytes = old_loop_bytes(items)
+        got_start, got_bytes = actions._reentry_stack_bytes(sp, items)
+        assert (got_start, got_bytes) == (want_start, want_bytes), n
+
+    class RecordingMon:
+        def __init__(self):
+            self.writes: list[tuple[int, bytes]] = []
+            self.registers: dict[int, int] | None = None
+            self.resumes = 0
+
+        def set_registers(self, values):
+            self.registers = values
+
+        def write(self, start, data):
+            self.writes.append((start, bytes(data)))
+
+        def resume(self):
+            self.resumes += 1
+
+    target = MemoryTarget({addr.saved_sp: bytes([base_sp])})
+    mon = RecordingMon()
+    target._mon = mon
+    items = (addr.main_loop_return, addr.forward_key - 1)
+    sp = base_sp - 2 * len(items)
+    want_start, want_bytes = old_loop_bytes(items)
+    assert actions.reenter(target, addr, 0)
+    assert mon.writes == [(want_start, want_bytes)], (
+        "exactly one write, matching the old per-address loop byte for byte")
+    assert mon.registers == {
+        actions.sp_register(mon): sp, actions.pc_register(mon): addr.redraw}
+    assert mon.resumes == 1
