@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Photograph the active-effects panel, with the flag on.
+"""Photograph the active-effects panel.
 
 `.claude/rules/gui-text.md`: any interface decision Donald is asked to make
 comes with a picture of it, and every string on this panel is his to word.
@@ -30,7 +30,6 @@ import sys
 import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["WISH_EXPERIMENTAL_EFFECTS"] = "1"
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))

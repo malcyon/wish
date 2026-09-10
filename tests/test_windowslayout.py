@@ -619,20 +619,16 @@ def test_the_empty_roster_is_already_the_width_a_save_settles_it_to(app,
 # --- the header row's three widgets share a top edge -------------------------
 
 def test_the_roster_and_character_and_effects_boxes_share_a_top_edge(
-        app, tmp_path, monkeypatch):
+        app, tmp_path):
     """#471: `header_row` is a `QHBoxLayout`, which centres a shorter widget
     against a taller one -- and the roster is shorter than the Active
     effects box once it has something to draw, so it dropped below
     `box_identity`'s top instead of lining up with it.
-
-    Needs `WISH_EXPERIMENTAL_EFFECTS` on, or `box_active_effects` is torn out
-    of the row entirely and there is nothing to be misaligned against.
     """
     from PyQt6.QtWidgets import QTabWidget
 
     from editor.window import EditorBinding
 
-    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", "1")
     w = EditorBinding(make_root(), _ordinary_party(tmp_path))
     try:
         root = w.root

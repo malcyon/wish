@@ -16,9 +16,8 @@ guide names. A player can act on where a name came from. A grade -- PROBABLE,
 CONFIRMED -- is a statement about how sure this project is, which is nobody
 else's business.
 
-Every string here is `editor/effects.py`'s and every one of them is a
-placeholder until Donald rules; `WISH_EXPERIMENTAL_TRAITS` is what keeps them
-off a player's screen in the meantime.
+Every string here is `editor/effects.py`'s, and Donald ruled on all of them
+on 2026-09-08.
 """
 
 from __future__ import annotations

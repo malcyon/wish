@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Photograph the Character Traits box and its picker, with the flag on.
+"""Photograph the Character Traits box and its picker.
 
 `.claude/rules/gui-text.md`: any interface decision Donald is asked to make
 comes with a picture of it, and every string on both of these is his to word.
@@ -22,7 +22,6 @@ import sys
 import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["WISH_EXPERIMENTAL_TRAITS"] = "1"
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))

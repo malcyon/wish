@@ -215,7 +215,6 @@ def write(args) -> int:
     config.mkdir(parents=True, exist_ok=True)
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
         os.environ[var] = str(config)
-    os.environ["WISH_EXPERIMENTAL_TRAITS"] = "1"
 
     from PyQt6.QtWidgets import QApplication
 

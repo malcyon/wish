@@ -2806,18 +2806,14 @@ def test_a_code_nobody_has_named_is_shown_as_a_number():
     assert "Code" not in m.HEADERS
 
 
-# --- editing the trait block, behind WISH_EXPERIMENTAL_TRAITS ----------------
+# --- editing the trait block -------------------------------------------------
 #
-# `#13 (Edit traits and active effects, in two separate panels)` step S3. The
-# tests below are in two halves and the second is the one that matters: the
-# gate is only worth having if it can fail, and the round trip is what stops
-# the feature rewriting a player's save just by being switched on.
-
-
-@pytest.fixture
-def traits_on(monkeypatch):
-    """A run with the flag set, the way a player would set it."""
-    monkeypatch.setenv("WISH_EXPERIMENTAL_TRAITS", "1")
+# `#13 (Edit traits and active effects, in two separate panels)` step S3.
+# `WISH_EXPERIMENTAL_TRAITS` came off once `#417 (Prove the game applies a
+# trait Wish wrote, so WISH_EXPERIMENTAL_TRAITS can come off)` and Donald's
+# 2026-09-08 approval of every string met both of the flag's conditions, so
+# Add and Remove are built by default now. What still matters is the round
+# trip: opening a save and touching nothing must not rewrite a byte of it.
 
 
 def _trait_view(window):
@@ -2887,19 +2883,18 @@ def test_an_untouched_block_is_handed_back_exactly_as_it_arrived():
 
 
 @game_disks
-def test_a_no_op_save_writes_nothing_with_the_trait_flag_on(app, save, traits_on):
+def test_a_no_op_save_writes_nothing_with_the_trait_buttons_built(app, save):
     """**The bar this whole step has to clear.**
 
-    Switching a feature on must not, by itself, change a byte of somebody's
-    save. Opening the disk, visiting every character with the buttons built,
-    and saving writes nothing -- the same guarantee
-    `test_a_no_op_save_writes_nothing_at_all` holds with the flag unset, which
-    stays exactly as it was.
+    Building the Add and Remove buttons must not, by itself, change a byte of
+    somebody's save. Opening the disk, visiting every character with the
+    buttons built, and saving writes nothing -- the same guarantee
+    `test_a_no_op_save_writes_nothing_at_all` holds.
     """
     from editor.window import EditorBinding
     before = save.read_bytes()
     w = EditorBinding(make_root(), str(save))
-    assert w._child("button_trait_add") is not None, "the flag did not take"
+    assert w._child("button_trait_add") is not None, "the buttons were not built"
     for row in range(6):
         w.roster.selectRow(row)
     assert w.save(interactive=False) == "no changes"
@@ -2908,7 +2903,7 @@ def test_a_no_op_save_writes_nothing_with_the_trait_flag_on(app, save, traits_on
 
 
 def test_the_one_shape_on_the_disks_that_a_tidying_writer_would_move(
-        app, tmp_path, traits_on):
+        app, tmp_path):
     """The round trip above is a weak guard on `PORSAVE11.D64` and this is the
     disk where it is not.
 
@@ -2917,8 +2912,8 @@ def test_the_one_shape_on_the_disks_that_a_tidying_writer_would_move(
     unchanged and the no-op test would stay green. Across the 150 records on
     the player's save disks five are not: SILAS carries `45, 5` in slots 8 and
     9 with eight zeroes in front of them, on `PORSAVEA.D64`, `PORSAVEB.D64`
-    and three of the DOS-import test disks. Opening that disk with the flag on
-    and saving must not move those two bytes down to slots 0 and 1.
+    and three of the DOS-import test disks. Opening that disk and saving must
+    not move those two bytes down to slots 0 and 1.
     """
     from editor.window import EditorBinding
     src = disk_path("PORSAVEA")
@@ -2939,13 +2934,14 @@ def test_the_one_shape_on_the_disks_that_a_tidying_writer_would_move(
 
 
 @game_disks
-def test_a_trait_added_in_the_editor_reaches_the_disk(app, save, traits_on):
+def test_a_trait_added_in_the_editor_reaches_the_disk(app, save):
     """MALCYON the elf is born with 107 and nothing else. Adding 20 Resist
     Fire puts it in slot 1 and it is still there when the file is reopened.
 
-    What this does **not** show is the game applying it -- that is M3,
-    `#414 (Prove the game applies a trait Wish wrote, so
-    WISH_EXPERIMENTAL_TRAITS can come off)`, and it is why the flag is on.
+    What this does **not** show is the game applying it -- that was M3,
+    `#417 (Prove the game applies a trait Wish wrote, so
+    WISH_EXPERIMENTAL_TRAITS can come off)`, taken separately, on 2026-09-08,
+    and CONFIRMED on all three claims.
     """
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))
@@ -2962,7 +2958,7 @@ def test_a_trait_added_in_the_editor_reaches_the_disk(app, save, traits_on):
 
 @game_disks
 def test_the_preview_names_a_changed_trait_rather_than_printing_hex(
-        app, save, traits_on):
+        app, save):
     """`6b00...` and `6b14...` are the same line to a reader. The preview is
     read by a person in Preview changes and by `wish --dry-run`."""
     from editor import changes
@@ -3003,8 +2999,7 @@ def test_the_picker_offers_the_whole_table_in_two_provenance_sections(app):
         picker.deleteLater()
 
 
-def test_a_monster_attack_form_on_a_character_is_coloured_and_says_why(
-        app, traits_on):
+def test_a_monster_attack_form_on_a_character_is_coloured_and_says_why(app):
     """83 is a basilisk's petrifying gaze and a character has none of the
     parts its handler reads. The editor writes it anyway -- the spellbook
     precedent -- and says what it is not refusing.
@@ -3033,74 +3028,40 @@ def test_a_monster_attack_form_on_a_character_is_coloured_and_says_why(
                       Qt.ItemDataRole.ForegroundRole).color() == effects.WARN
 
 
-def test_the_sheet_says_nothing_about_a_doubtful_code_with_the_flag_unset(
-        app, monkeypatch):
-    """A character who happens to carry a monster's code would otherwise be
-    handed an unapproved sentence in a tooltip with no flag set -- and there
-    is nothing to explain when there is no Add button to explain."""
-    from editor import effects
-    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
-    model = effects.EffectsModel(bytes([83]))
-    assert model.warning_at(0) == ""
-    tip = model.data(model.index(0, 1), Qt.ItemDataRole.ToolTipRole)
-    assert tip == "petrifying gaze (CONFIRMED)"
-
-
-# --- the gate, and it can fail ----------------------------------------------
+# --- the buttons are built by default ----------------------------------------
 #
-# `.claude/rules/feature-flags.md` asks for three and asks that the first two
-# be seen red with the gate forced on. Both were: with `enabled()` made to
-# return True, `test_the_traits_box_has_no_buttons_by_default` and
-# `test_a_forgotten_variable_does_not_build_the_buttons` fail on the two
-# `assert ... is None` lines, and the third passes either way, which is what a
-# gate test for the "on" direction is meant to do.
+# `.claude/rules/feature-flags.md`'s gate is gone: `WISH_EXPERIMENTAL_TRAITS`
+# was deleted once `#417 (Prove the game applies a trait Wish wrote, so
+# WISH_EXPERIMENTAL_TRAITS can come off)` and Donald's 2026-09-08 approval of
+# every string met both of its conditions. What is left to prove is that the
+# buttons are there with a clean environment, and that a stray
+# `WISH_EXPERIMENTAL_TRAITS` left in somebody's shell -- on or off -- cannot
+# change that, since nothing reads it any more.
 
 
 @game_disks
-def test_the_traits_box_has_no_buttons_by_default(app, save, monkeypatch):
-    """The shipped state. Not greyed out -- absent, so nobody has to be told
-    in the interface how to un-grey them."""
+def test_the_traits_box_has_its_buttons_by_default(app, save, monkeypatch):
+    """The shipped state, with no environment variable set at all."""
     from editor.window import EditorBinding
     monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
     w = EditorBinding(make_root(), str(save))
-    assert w._child("traits_buttons") is None
-    assert w._child("button_trait_add") is None
-    assert w._child("button_trait_remove") is None
-    # And the table is still the read-only list it has always been.
-    from PyQt6.QtWidgets import QTableView
-    assert _trait_view(w).editTriggers() == QTableView.EditTrigger.NoEditTriggers
+    assert w._child("traits_buttons") is not None
+    assert w._child("button_trait_add") is not None
+    assert w._child("button_trait_remove") is not None
 
 
-@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "2", "yes please"])
+@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "1", "true",
+                                    "yes", "2", "yes please"])
 @game_disks
-def test_a_forgotten_variable_does_not_build_the_buttons(app, save, monkeypatch,
-                                                         value):
-    """A variable somebody exported once and forgot must not put an unapproved
-    button in front of them.
-
-    The tuple is `wish/debugmode.py`'s, copied rather than reinvented so the
-    flags in this project cannot disagree about what "on" means.
-    """
-    from editor import effects
+def test_a_leftover_variable_does_not_hide_the_buttons(app, save, monkeypatch,
+                                                        value):
+    """`WISH_EXPERIMENTAL_TRAITS` means nothing now: a shell that still
+    exports it, on or off, must not change what the sheet builds."""
     from editor.window import EditorBinding
-    assert effects.TRUE == ("1", "true", "yes", "on")
     monkeypatch.setenv("WISH_EXPERIMENTAL_TRAITS", value)
-    assert not effects.enabled()
     w = EditorBinding(make_root(), str(save))
-    assert w._child("traits_buttons") is None
-    assert w._child("button_trait_add") is None
-
-
-@game_disks
-def test_the_buttons_appear_when_the_flag_asks_for_them(app, save, traits_on):
-    """The third direction: set it, and the two buttons are there with the
-    placeholder text that keeps them off a player's screen until Donald has
-    worded them."""
-    from editor import effects
-    from editor.window import EditorBinding
-    w = EditorBinding(make_root(), str(save))
-    assert w._child("button_trait_add").text() == effects.BUTTON_ADD
-    assert w._child("button_trait_remove").text() == effects.BUTTON_REMOVE
+    assert w._child("button_trait_add") is not None
+    assert w._child("button_trait_remove") is not None
 
 
 def test_no_trait_string_is_waiting_on_approval_any_more():
@@ -3127,14 +3088,12 @@ def test_no_trait_string_is_waiting_on_approval_any_more():
 
 
 @game_disks
-def test_no_unapproved_word_is_on_screen_with_the_flag_unset(app, save,
-                                                             monkeypatch):
-    """The flag's whole job. With it unset, nothing on the sheet carries the
-    marker -- not a button, not a tooltip, not the box title."""
+def test_no_unapproved_word_is_on_screen_by_default(app, save):
+    """Nothing on the sheet carries the marker -- not a button, not a
+    tooltip, not the box title."""
     from PyQt6.QtWidgets import QAbstractButton, QGroupBox, QLabel
 
     from editor.window import EditorBinding
-    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
     w = EditorBinding(make_root(), str(save))
     w.roster.selectRow(5)
     for kind in (QAbstractButton, QLabel, QGroupBox):
@@ -3411,19 +3370,15 @@ def test_a_casters_slots_are_not_a_fighters(app, save):
         window.close()
 
 
-# --- the active-effects panel, behind WISH_EXPERIMENTAL_EFFECTS -------------
+# --- the active-effects panel ------------------------------------------------
 #
-# S4 of `#13 (Edit traits and active effects, in two separate panels)`. The
-# list belongs to the **save**, not to the character the roster has selected,
-# and every test below is ultimately about that: a spell on MALCYON is in the
-# panel while BRUTUS is on the sheet, which is why the panel sits in the top
-# row and why the owner column exists at all.
-
-
-@pytest.fixture
-def effects_on(monkeypatch):
-    """A run with the flag set, the way a player would set it."""
-    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", "1")
+# S4 of `#13 (Edit traits and active effects, in two separate panels)`.
+# `WISH_EXPERIMENTAL_EFFECTS` came off once Donald ruled on every string on
+# 2026-09-08, so the panel is built by default now. The list belongs to the
+# **save**, not to the character the roster has selected, and every test
+# below is ultimately about that: a spell on MALCYON is in the panel while
+# BRUTUS is on the sheet, which is why the panel sits in the top row and why
+# the owner column exists at all.
 
 
 def _payload_with_effects(*slots) -> bytes:
@@ -3537,7 +3492,7 @@ def test_the_panel_shows_no_duration_anywhere():
             assert "11" not in shown and "$8B" not in shown, shown
 
 
-def test_a_save_with_nothing_running_still_has_the_panel(app, party, effects_on):
+def test_a_save_with_nothing_running_still_has_the_panel(app, party):
     """The empty state is the two column headings over no rows, and no
     sentence: a line explaining that an empty list is empty has to be worded
     and approved, and is read by somebody who can already see it.
@@ -3558,7 +3513,7 @@ def test_a_save_with_nothing_running_still_has_the_panel(app, party, effects_on)
         activeeffects.HEADER_EFFECT, activeeffects.HEADER_OWNER]
 
 
-def test_a_roster_disk_has_no_effects_panel_at_all(app, tmp_path, effects_on):
+def test_a_roster_disk_has_no_effects_panel_at_all(app, tmp_path):
     """A `.chr` export or a roster disk has no `SAVEDGAME0`, so there are no
     effect arrays to read and no list to show. Absent, not greyed and not
     empty: an empty table would say the party has nothing running, which is a
@@ -3571,14 +3526,14 @@ def test_a_roster_disk_has_no_effects_panel_at_all(app, tmp_path, effects_on):
     assert w._child("active_effects").model_.rowCount() == 0
 
 
-def test_the_panel_is_in_the_header_and_on_none_of_the_tabs(app, party,
-                                                            effects_on):
+def test_the_panel_is_in_the_header_and_on_none_of_the_tabs(app, party):
     """Where D1 puts it, and the reason it is there: the top row is the
     save-wide row -- the roster is in it -- and a fourth tab or a box on the
     Stats tab would read as the selected character's.
 
-    `BOXES` and `TABS` above are deliberately not touched: every box in them
-    is on the form with no flag set, and this one is not.
+    `BOXES` and `TABS` above are deliberately not touched: they describe the
+    three tabs, and this panel is a header box like `box_identity`, not a tab
+    box.
     """
     from PyQt6.QtWidgets import QGroupBox, QTabWidget
 
@@ -3645,8 +3600,7 @@ def _effects_floor(app, party, extra: int):
         app.setFont(base)
 
 
-def test_the_effects_panel_is_not_a_floor_under_the_window(app, party,
-                                                           effects_on):
+def test_the_effects_panel_is_not_a_floor_under_the_window(app, party):
     """The header does not scroll, so anything standing in it is a floor under
     the whole window -- and this panel's widest line is a sentence rather than
     a field, so it costs more than a field would. Its two column headings
@@ -3707,7 +3661,7 @@ def test_the_effects_panel_is_not_a_floor_under_the_window(app, party,
 
 @pytest.mark.parametrize("extra", [0, 6, 10])
 def test_the_effects_box_title_is_never_clipped_without_an_ellipsis(
-        app, party, effects_on, extra):
+        app, party, extra):
     """The regression `f7b4c9c` left behind: holding the box to
     `ACTIVE_EFFECTS_MIN_WIDTH` (260px) stopped it widening the window, and
     also made the box narrower than its own 51-character title needs --
@@ -3738,12 +3692,10 @@ def test_the_effects_box_title_is_never_clipped_without_an_ellipsis(
 
 
 @game_disks
-def test_a_no_op_save_writes_nothing_with_the_effects_flag_on(app, save,
-                                                              effects_on):
+def test_a_no_op_save_writes_nothing_with_the_effects_panel_built(app, save):
     """**Read-only means read-only.** The panel has no write path at all --
     `goldbox.effects.write_effect` and `clear_effect` have no caller outside
-    their own tests -- so switching the flag on and saving must not move a
-    byte.
+    their own tests -- so building it and saving must not move a byte.
 
     An effect's magnitude is per-id *restore* data, which is why: clearing an
     id here would skip the game's expiry handler and leave a character at
@@ -3760,87 +3712,61 @@ def test_a_no_op_save_writes_nothing_with_the_effects_flag_on(app, save,
     assert save.read_bytes() == before
 
 
-# --- the gate, and it can fail ----------------------------------------------
+# --- the panel is built by default --------------------------------------------
 #
-# `.claude/rules/feature-flags.md` asks for three and asks that the first two
-# be seen red with the gate forced on. Both were: with `activeeffects.enabled`
-# made to return True, `test_there_is_no_effects_panel_by_default` and all
-# seven rows of `test_a_forgotten_variable_does_not_build_the_effects_panel`
-# fail on `assert ... is None`, and the third passes either way, which is what
-# a gate test for the "on" direction is meant to do.
+# `.claude/rules/feature-flags.md`'s gate is gone: `WISH_EXPERIMENTAL_EFFECTS`
+# was deleted once Donald ruled on all seven strings on 2026-09-08. What is
+# left to prove is that the panel is there with a clean environment, and that
+# a stray `WISH_EXPERIMENTAL_EFFECTS` left in somebody's shell -- on or off --
+# cannot change that, since nothing reads it any more.
 
 
 @game_disks
-def test_there_is_no_effects_panel_by_default(app, save, monkeypatch):
-    """The shipped state. Not greyed out and not empty -- absent, so nobody
-    has to be told in the interface how to un-grey it."""
+def test_the_effects_panel_is_built_by_default(app, save, monkeypatch):
+    """The shipped state, with no environment variable set at all."""
     from editor.window import EditorBinding
     monkeypatch.delenv("WISH_EXPERIMENTAL_EFFECTS", raising=False)
     w = EditorBinding(make_root(), str(save))
-    assert w._child("box_active_effects") is None
-    assert w._child("active_effects") is None
-
-
-@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "2", "yes please"])
-def test_a_forgotten_variable_does_not_build_the_effects_panel(app, party,
-                                                               monkeypatch,
-                                                               value):
-    """A variable somebody exported once and forgot must not put an unapproved
-    panel in front of them.
-
-    The tuple is `wish/debugmode.py`'s, copied rather than reinvented so the
-    flags in this project cannot disagree about what "on" means -- and it is
-    the same tuple `editor/effects.py` copied for the traits flag.
-    """
-    from editor import activeeffects
-    from editor.window import EditorBinding
-    assert activeeffects.TRUE == ("1", "true", "yes", "on")
-    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", value)
-    assert not activeeffects.enabled()
-    w = EditorBinding(make_root(), str(party))
-    assert w._child("box_active_effects") is None
-    assert w._child("active_effects") is None
-
-
-def test_the_panel_appears_when_the_flag_asks_for_them(app, party, effects_on):
-    """The third direction: set it, and the panel is there with the
-    placeholder title that keeps it off a player's screen until Donald has
-    worded it."""
-    from editor import activeeffects
-    from editor.window import EditorBinding
-    w = EditorBinding(make_root(), str(party))
-    box = w._child("box_active_effects")
-    assert_title_fits_and_is_not_silently_cut(box, activeeffects.BOX_TITLE)
+    assert w._child("box_active_effects") is not None
     assert w._child("active_effects") is not None
 
 
-def test_every_string_on_the_effects_panel_announces_that_nobody_approved_it():
+@pytest.mark.parametrize("value", ["", "0", "off", "no", "false", "1", "true",
+                                    "yes", "2", "yes please"])
+def test_a_leftover_variable_does_not_hide_the_effects_panel(app, party,
+                                                              monkeypatch,
+                                                              value):
+    """`WISH_EXPERIMENTAL_EFFECTS` means nothing now: a shell that still
+    exports it, on or off, must not change what the header builds."""
+    from editor.window import EditorBinding
+    monkeypatch.setenv("WISH_EXPERIMENTAL_EFFECTS", value)
+    w = EditorBinding(make_root(), str(party))
+    assert w._child("box_active_effects") is not None
+    assert w._child("active_effects") is not None
+
+
+def test_no_string_on_the_effects_panel_is_waiting_on_approval():
     """`.claude/rules/gui-text.md`: every word a user reads in the interface is
-    Donald's, and none of these has been ruled on. The count comes down as he
-    rules and the day it reaches zero the flag's only condition is met --
-    there is no measurement outstanding, because nothing here writes a byte.
+    Donald's. He ruled on all seven on 2026-09-08, choosing brevity: no box
+    title at all, `Party Effect`, `Target`, `Entire Party`, and `Unknown` for
+    a monster's effect, an unnamed code, and somebody no longer in the party.
+    So the count is zero.
     """
     from editor import activeeffects
 
     marked = {name for name, text in vars(activeeffects).items()
               if name.isupper() and isinstance(text, str)
               and "NOT APPROVED" in text}
-    # Donald ruled on all seven on 2026-09-08, choosing brevity: no box title
-    # at all, `Party Effect`, `Target`, `Entire Party`, and `Unknown` for a
-    # monster's effect, an unnamed code, and somebody no longer in the party.
-    # So the count is zero and the flag's only condition is met.
     assert marked == set(), marked
 
 
-def test_no_unapproved_word_is_on_screen_with_the_effects_flag_unset(
-        app, party, monkeypatch):
-    """The flag's whole job. With it unset, nothing in the window carries the
-    marker -- not a box title, not a column heading, not a row."""
+def test_no_unapproved_word_is_on_screen_with_the_effects_panel_by_default(
+        app, party):
+    """Nothing in the window carries the marker -- not a box title, not a
+    column heading, not a row."""
     from PyQt6.QtWidgets import QAbstractButton, QGroupBox, QLabel
 
     from editor.window import EditorBinding
-    monkeypatch.delenv("WISH_EXPERIMENTAL_EFFECTS", raising=False)
-    monkeypatch.delenv("WISH_EXPERIMENTAL_TRAITS", raising=False)
     w = EditorBinding(make_root(), str(party))
     for kind in (QAbstractButton, QLabel, QGroupBox):
         for widget in w.root.findChildren(kind):

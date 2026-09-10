@@ -34,8 +34,6 @@ separates the two lists is that an effect expires and a trait never does.
 
 from __future__ import annotations
 
-import os
-
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt6.QtGui import QBrush
 from PyQt6.QtWidgets import QTableView
@@ -49,50 +47,12 @@ from goldbox.traits import for_game
 from .effects import UNSURE
 
 # ===========================================================================
-# The flag
-# ===========================================================================
-
-#: **Off unless `WISH_EXPERIMENTAL_EFFECTS=1`.** With it unset the box is
-#: **not built** -- it comes out of the header layout and is destroyed, so
-#: there is no greyed-out panel inviting the question of how to un-grey it and
-#: no sentence in the interface answering that question
-#: (`.claude/rules/feature-flags.md`; `wish/window.py` builds the Export
-#: submenu inside the same kind of `if`).
-#:
-#: Separate from `WISH_EXPERIMENTAL_TRAITS` on purpose (`#13`, D3): that one
-#: gates a *write* path and waits on a driven run of the game
-#: (`#417 (Prove the game applies a trait Wish wrote, so
-#: WISH_EXPERIMENTAL_TRAITS can come off)`). This one gates a panel that only
-#: reads, so it must not be held back by a measurement it does not need.
-#:
-#: **Comes off when Donald has ruled on every string in the block below** and
-#: each has lost its `(NOT APPROVED)` marker. That is the whole condition:
-#: there is no measurement outstanding, because nothing here writes a byte.
-#: **Met on 2026-09-08**: Donald ruled on all seven, choosing brevity -- no
-#: box title, `Party Effect`, `Target`, `Entire Party`, and `Unknown` for a
-#: monster's effect, an unnamed code and somebody no longer in the party. So
-#: this flag is due to be deleted, along with the `if` around the panel.
-#: Add and Remove on this panel are a different issue again, filed once M2
-#: reports which effect ids read their magnitude back on expiry.
-ENV = "WISH_EXPERIMENTAL_EFFECTS"
-
-#: Anything else -- an empty string, `0`, `off` -- is off, matching
-#: `wish/debugmode.py`. A variable somebody exported once and forgot must not
-#: put an unapproved panel in front of them.
-TRUE = ("1", "true", "yes", "on")
-
-
-def enabled() -> bool:
-    """Is the active-effects panel built in this run?"""
-    return os.environ.get(ENV, "").strip().lower() in TRUE
-
-
-# ===========================================================================
 # Strings.
 #
-# Every word here is Donald's to word (`.claude/rules/gui-text.md`) and none
-# has been ruled on, so every one ends in the literal ` (NOT APPROVED)` and
-# the flag above is what keeps them off a player's screen. Never invent a
+# Every word here is Donald's to word (`.claude/rules/gui-text.md`), and he
+# ruled on all seven on 2026-09-08, choosing brevity -- no box title,
+# `Party Effect`, `Target`, `Entire Party`, and `Unknown` for a monster's
+# effect, an unnamed code and somebody no longer in the party. Never invent a
 # sentence outside this block.
 #
 # The box title and the owner column are doing the work of saying the list is

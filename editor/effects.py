@@ -10,11 +10,6 @@ a monster's specials and an item's passive power. The live effects are four
 64-entry arrays inside `SAVEDGAME0` and nothing shows them yet --
 `docs/133-active-effects.md` is the plan for both.
 
-**The list is editable only behind `WISH_EXPERIMENTAL_TRAITS`**, and the flag
-block below says what takes the flag off. With the flag unset the two buttons
-are never built and the table keeps `NoEditTriggers`, so the block reaches the
-disk exactly as it was read.
-
 **The codes are per title**, which is why the model carries the game and not
 just the bytes: Secret of the Silver Blades gives an elf 95 where Pool of
 Radiance gives 107, and 95 is Pool of Radiance's "fights on from -6 to 0 hit
@@ -24,8 +19,6 @@ of an elf who has the ordinary elf's resistance to sleep and charm (#186).
 """
 
 from __future__ import annotations
-
-import os
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
@@ -52,64 +45,6 @@ WARN = QColor("#8b3a1a")
 
 
 # ===========================================================================
-# The flag
-# ===========================================================================
-
-#: **Off unless `WISH_EXPERIMENTAL_TRAITS=1`.** The Add and Remove buttons are
-#: **not built** when it is unset -- not greyed out, because a greyed button
-#: invites the question of how to un-grey it and the answer would be a
-#: sentence in the interface (`.claude/rules/feature-flags.md`). The table
-#: itself stays where it has always been, showing the ten slots and editing
-#: nothing.
-#:
-#: **Comes off when both are true:**
-#:
-#: 1. **M3 reports** -- a trait this editor wrote is applied by the running
-#:    game and never expires. `#417 (Prove the game applies a trait Wish
-#:    wrote, so WISH_EXPERIMENTAL_TRAITS can come off)` is the measurement:
-#:    write 20 Resist Fire into a free slot through File > Save, boot, VIEW
-#:    the character, confirm the game lists it, save and reload, confirm it
-#:    survives. **Taken, 2026-09-08, and CONFIRMED on all three claims**: the
-#:    byte survives four cold boots and the game's own save; `LIBRARY $403C`
-#:    executes with the trait's id in the accumulator, once per edited run
-#:    and never in a control; and a fire spell does 1 damage where the
-#:    control takes 2, reproduced over two pairs of boots whose event streams
-#:    are identical for their first 681 events. One step of the plan is
-#:    refuted rather than met: `VIEW` never lists a trait, for any character,
-#:    because Pool of Radiance cannot do it. `#252 (Does a C64 trait slot apply an
-#:    item-granted effect id, or only the ones its own READY routine wrote?)`
-#:    already CONFIRMED the general claim for ids this project staged -- 98
-#:    regenerated a wounded character three a round and a fire spell asked
-#:    the slots about 61 and honoured the byte we put there -- so what is
-#:    left is narrow: the same thing through the editor's own write path.
-#: 2. **Every string in the block below loses its `(NOT APPROVED)` marker**,
-#:    because Donald has ruled on it (`.claude/rules/gui-text.md`). **Ruled
-#:    on, 2026-09-08**: he was shown the box, the picker and a warning, and
-#:    approved every string as it stood, against three alternatives for the
-#:    warnings -- one sentence for all four, a mark with the explanation in a
-#:    tooltip, or his own words.
-#:
-#: **So both are met and this flag is due to be deleted**, along with the
-#: `if` around the buttons -- which is the next commit rather than this one.
-#:
-#: An environment variable and no preference, the same shape as `WISH_DEBUG`
-#: and `editor/convert.py`: a checkbox would need a label, and a label saying
-#: "experimental" would need a sentence saying what that meant for the
-#: player's save disk.
-ENV = "WISH_EXPERIMENTAL_TRAITS"
-
-#: Anything else -- an empty string, `0`, `off` -- is off, matching
-#: `wish/debugmode.py`. A variable somebody exported once and forgot must not
-#: put an unapproved button in front of them.
-TRUE = ("1", "true", "yes", "on")
-
-
-def enabled() -> bool:
-    """Are Add and Remove offered on the traits box in this run?"""
-    return os.environ.get(ENV, "").strip().lower() in TRUE
-
-
-# ===========================================================================
 # Strings.
 #
 # Every one of these is Donald's to word (`.claude/rules/gui-text.md`), and
@@ -123,10 +58,10 @@ def enabled() -> bool:
 # he has seen it.
 #
 # `BOX_TITLE` never carried a marker: `wish/window.ui` has read
-# `Character Traits` since 2026-08-22 and is on screen for every user with no
-# flag set, so appending one would have put those two words in front of
-# everybody -- the trade `editor/convert.py`'s `SOURCE_FILTER` comment
-# describes from the other side. It was on the list he ruled on all the same.
+# `Character Traits` since 2026-08-22 and is on screen for every user, so
+# appending one would have put those two words in front of everybody -- the
+# trade `editor/convert.py`'s `SOURCE_FILTER` comment describes from the
+# other side. It was on the list he ruled on all the same.
 # ===========================================================================
 
 #: The traits box's title, as `wish/window.ui` carries it. Approved
@@ -295,7 +230,7 @@ class EffectsModel(QAbstractTableModel):
         in it, is a block the game wrote and the editor has no business
         tidying. `editor/window.py` writes this back only when it differs from
         the record, so an untouched save reaches the disk byte for byte and
-        that is what `test_the_editor_writes_a_save_back_unchanged_with_traits_on`
+        that is what `test_an_untouched_block_is_handed_back_exactly_as_it_arrived`
         holds. Only :meth:`add` and :meth:`remove` replace it, and they replace
         it with a compacted ten.
         """
@@ -320,16 +255,7 @@ class EffectsModel(QAbstractTableModel):
         return tuple(self._code(n) for n in range(SLOTS) if n != row)
 
     def warning_at(self, row: int) -> str:
-        """Why this slot's code is doubtful, or `""` -- `docs/133`'s table.
-
-        **Silent unless the flag is on**, and for the same reason the buttons
-        are not built: every reason above is a placeholder Donald has not
-        ruled on, and a character who happens to carry a monster's code would
-        otherwise be handed one in a tooltip with no flag set. There is also
-        nothing to explain when there is no Add button to explain.
-        """
-        if not enabled():
-            return ""
+        """Why this slot's code is doubtful, or `""` -- `docs/133`'s table."""
         return warning(self._code(row), self._others(row), self.game)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -365,8 +291,8 @@ class EffectsView(QTableView):
     Speaks `set_bytes` like the spell widgets do, so the window fills it
     without knowing what it is, and `to_bytes` the way the spell widgets do
     too -- but `to_bytes` hands back what it was given until :meth:`add` or
-    :meth:`remove` is called, so a run with `WISH_EXPERIMENTAL_TRAITS` unset
-    writes the block back untouched.
+    :meth:`remove` is called, so an untouched block writes back byte for
+    byte.
     """
 
     #: Something was added or removed, so the window's dirty flag should move.

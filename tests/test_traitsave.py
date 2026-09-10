@@ -58,10 +58,6 @@ def test_an_unchanged_body_has_no_diff():
 
 def _run(tmp_path, monkeypatch, who: str, trait: str) -> tuple[int, object]:
     """`traitsave.py write` against a save built from the format."""
-    # Deleted again at teardown, whatever the tool sets: `monkeypatch.setenv`
-    # on a variable that was unset restores it to unset, and this one must
-    # never leak into the tests that check the flag is off by default.
-    monkeypatch.setenv("WISH_EXPERIMENTAL_TRAITS", "0")
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME"):
         monkeypatch.setenv(var, str(tmp_path / "config"))
     disks = tmp_path / "no-disks"
@@ -129,7 +125,6 @@ def test_a_second_write_against_the_same_out_does_not_die_read_only(tmp_path, mo
     touching the picker or `File > Save` -- the failure this pins is purely
     in the copy step.
     """
-    monkeypatch.setenv("WISH_EXPERIMENTAL_TRAITS", "0")
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME"):
         monkeypatch.setenv(var, str(tmp_path / "config"))
     disks = tmp_path / "no-disks"

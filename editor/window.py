@@ -244,15 +244,14 @@ MUTED_INK = QColor("#4a5b6d")
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells",
               "box_active_effects")
 # Which item in a horizontal row is allowed to grow. `header_row` is the
-# roster, Character and -- behind `WISH_EXPERIMENTAL_EFFECTS` -- the
-# active-effects panel, and the roster is the only one of the three that can
-# use a wider window: every field in Character is sized to the widest value
-# its bytes can hold, and the effects panel is two columns of text sized to
-# their own contents, so a pixel more in either is a pixel of nothing.
+# roster, Character and the active-effects panel, and the roster is the only
+# one of the three that can use a wider window: every field in Character is
+# sized to the widest value its bytes can hold, and the effects panel is two
+# columns of text sized to their own contents, so a pixel more in either is a
+# pixel of nothing.
 #
-# Four entries and three items with the flag unset, which is the shipped
-# state: the loop below pads with 0, so the trailing spacer takes no stretch
-# whether or not the panel was built.
+# Four entries: the loop below pads with 0, so the trailing spacer takes no
+# stretch.
 ROW_STRETCH = {"header_row": (1, 0, 0, 0), "form_identity": (0, 0)}
 #: The Stats tab is a grid and not five independent columns, because a row of
 #: a grid has one top edge and five `QVBoxLayout`s have five. Donald asked for
@@ -761,20 +760,17 @@ class EditorBinding(QObject):
     # -- the traits box's two buttons -------------------------------------
 
     def _build_trait_buttons(self) -> None:
-        """Add and Remove, **built only when `WISH_EXPERIMENTAL_TRAITS` says
-        so** -- and taken off the form altogether when it does not.
+        """Wire Add and Remove to the traits box.
 
-        Not greyed out: a greyed button invites the question of how to un-grey
-        it, and the answer would be a sentence in the interface
-        (`.claude/rules/feature-flags.md`; `wish/window.py` builds the Export
-        submenu inside the same kind of `if`). Designer keeps the container so
-        the box can be rearranged, and this is where it stops existing.
+        Designer keeps the container so the box can be rearranged. The box
+        still comes off the form if `item_effects` was never promoted to
+        `EffectsView` -- a defensive fallback, not a feature gate.
         """
         box = self._child("traits_buttons")
         view = self._widgets.get("item_effects")
         if box is None:
             return
-        if not trait_effects.enabled() or not hasattr(view, "add"):
+        if not hasattr(view, "add"):
             parent = box.parentWidget()
             layout = parent.layout() if parent is not None else None
             if layout is not None:
@@ -799,29 +795,15 @@ class EditorBinding(QObject):
     # -- the active-effects panel -----------------------------------------
 
     def _build_active_effects(self) -> None:
-        """The read-only panel beside the roster, **built only when
-        `WISH_EXPERIMENTAL_EFFECTS` says so** -- and taken off the header
-        row altogether when it does not.
+        """The read-only panel beside the roster.
 
-        Not greyed out, for the reason the traits buttons are not
-        (`.claude/rules/feature-flags.md`): a greyed panel invites the
-        question of how to un-grey it and the answer would be a sentence in
-        the interface. Designer keeps the box so the row can be rearranged,
-        and this is where it stops existing.
-
-        The title is set from the module rather than left in `wish/window.ui`
-        because it is an unapproved string: a title in the form would be on
-        screen for everybody the moment the box is drawn, flag or no flag.
+        The title is set from the module rather than left in `wish/window.ui`,
+        because `BOX_TITLE` is Donald's own wording
+        (`.claude/rules/gui-text.md`) and the form is not where an approved
+        string is kept.
         """
         box = self._child("box_active_effects")
         if box is None:
-            return
-        if not activeeffects.enabled():
-            layout = box.parentWidget().layout() if box.parentWidget() else None
-            if layout is not None:
-                layout.removeWidget(box)
-            box.setParent(None)
-            box.deleteLater()
             return
         box.setTitle(activeeffects.BOX_TITLE)
 
@@ -1023,16 +1005,15 @@ class EditorBinding(QObject):
             for i in range(row.count()):
                 row.setStretch(i, stretch[i] if i < len(stretch) else 0)
 
-        # The active-effects panel takes the slack as well, when the flag has
-        # built it: it is a table of two sentences, and it and the roster are
-        # the only things in the header that can read a wider window. Its own
-        # maximum width -- its two columns at their contents -- is where it
-        # stops, and what neither can use still ends in the spacer.
+        # The active-effects panel takes the slack as well: it is a table of
+        # two sentences, and it and the roster are the only things in the
+        # header that can read a wider window. Its own maximum width -- its
+        # two columns at their contents -- is where it stops, and what
+        # neither can use still ends in the spacer.
         #
-        # Set by widget and not by a position in `ROW_STRETCH`, because the
-        # panel is absent with the flag unset and every index after it moves:
-        # a positional 1 in the third slot would hand the slack to the spacer
-        # in the shipped configuration, which is the one nobody would notice.
+        # Set by widget and not by a position in `ROW_STRETCH`, so a rearrange
+        # of the row in Designer cannot silently hand the slack to the wrong
+        # item.
         panel = self._child("box_active_effects")
         if panel is not None:
             row = self.root.findChild(QLayout, "header_row")
@@ -1912,10 +1893,9 @@ class EditorBinding(QObject):
                 elif isinstance(w, trait_effects.EffectsView):
                     # **Only when it differs.** `to_bytes` hands back the
                     # bytes it was given until Add or Remove has replaced
-                    # them, so an untouched block -- and every block in a run
-                    # with `WISH_EXPERIMENTAL_TRAITS` unset -- compares equal
-                    # and never reaches `set_raw`. That is what keeps opening
-                    # and saving a save with the flag on byte-identical.
+                    # them, so an untouched block compares equal and never
+                    # reaches `set_raw`. That is what keeps opening and
+                    # saving a save with no trait edits byte-identical.
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
             except Exception:
