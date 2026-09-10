@@ -45,6 +45,16 @@ Measuring pixel size needs `@mermaid-js/mermaid-cli`
 (`npm install -g @mermaid-js/mermaid-cli`, or pass `--mmdc` at some other
 path). Without it, this reports classes and edges and says the pixel figure
 needs it -- it does not fail.
+
+## What the tests do not cover
+
+No test here runs `pyreverse` itself -- there is none on this machine, and
+the suite must not install one. `tests/test_classdiagram.py` pins the
+command line `run_pyreverse` hands to it (`-o mmd`, the target, the output
+directory) and the `.mmd` files it is expected to leave behind, so a wrong
+flag in this file goes red. **A change in what `pyreverse` itself does with
+that command line -- a new version writing a different Mermaid shape, say --
+would not be caught here**, and needs a real run to notice.
 """
 
 from __future__ import annotations
@@ -93,23 +103,34 @@ def find_pyreverse(explicit: str | None) -> str:
 
 
 def add_worktree(repo: pathlib.Path) -> pathlib.Path:
-    """A detached worktree at `HEAD`, in its own temporary directory."""
-    wt = pathlib.Path(tempfile.mkdtemp(prefix="classdiagram-")) / "wt"
-    subprocess.run(
-        ["git", "worktree", "add", "-q", "--detach", str(wt), "HEAD"],
-        cwd=repo, check=True,
-    )
+    """A detached worktree at `HEAD`, in its own temporary directory. If
+    `git worktree add` fails -- a stale lock, permissions, disk pressure --
+    the wrapping directory is removed before the error is re-raised, so a
+    failed attempt leaves nothing behind either."""
+    parent = pathlib.Path(tempfile.mkdtemp(prefix="classdiagram-"))
+    wt = parent / "wt"
+    try:
+        subprocess.run(
+            ["git", "worktree", "add", "-q", "--detach", str(wt), "HEAD"],
+            cwd=repo, check=True,
+        )
+    except subprocess.CalledProcessError:
+        shutil.rmtree(parent, ignore_errors=True)
+        raise
     return wt
 
 
 def remove_worktree(repo: pathlib.Path, wt: pathlib.Path) -> None:
-    """Removes a worktree `add_worktree` made. Never raises -- called from a
-    `finally`, and a worktree left behind is one the next run trips over,
-    not a reason to hide the run's real error."""
+    """Removes a worktree `add_worktree` made, including the temporary
+    directory that wrapped it -- `git worktree remove` only deregisters
+    `wt` itself and leaves that parent directory behind. Never raises --
+    called from a `finally`, and a worktree left behind is one the next run
+    trips over, not a reason to hide the run's real error."""
     subprocess.run(
         ["git", "worktree", "remove", str(wt), "--force"],
         cwd=repo, check=False,
     )
+    shutil.rmtree(wt.parent, ignore_errors=True)
 
 
 def slug_for(targets: list[str]) -> str:
@@ -205,16 +226,24 @@ def report_diagram(mmd_path: pathlib.Path, mmdc: str | None) -> None:
           f"{width}x{height} px")
 
 
+def pyreverse_argv(pyreverse: str, targets: list[str], out_dir: pathlib.Path,
+                    extra_args: list[str]) -> list[str]:
+    """The command line `run_pyreverse` hands to `pyreverse` -- pulled out
+    of `run_pyreverse` so a test can pin it without a real `pyreverse` on
+    the machine. `-o mmd` is fixed: it is the one thing this tool depends
+    on `pyreverse` doing, and a test that mocks the `subprocess.run` call
+    away entirely never notices if it changes."""
+    return [pyreverse, "-o", "mmd", "-d", str(out_dir), *extra_args, *targets]
+
+
 def run_pyreverse(pyreverse: str, root: pathlib.Path, targets: list[str],
                    out_dir: pathlib.Path, extra_args: list[str]) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for target in targets:
         if not (root / target).exists():
             raise ClassDiagramError(f"no {target!r} under {root}")
-    subprocess.run(
-        [pyreverse, "-o", "mmd", "-d", str(out_dir), *extra_args, *targets],
-        cwd=root, check=True,
-    )
+    subprocess.run(pyreverse_argv(pyreverse, targets, out_dir, extra_args),
+                    cwd=root, check=True)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -263,7 +292,12 @@ def main(argv: list[str] | None = None) -> int:
     wt = None
     try:
         if not args.dirty:
-            wt = add_worktree(REPO)
+            try:
+                wt = add_worktree(REPO)
+            except subprocess.CalledProcessError as exc:
+                print(f"could not create a worktree at HEAD: {exc}",
+                      file=sys.stderr)
+                return 1
             root = wt
         try:
             run_pyreverse(pyreverse, root, args.targets, out_dir,

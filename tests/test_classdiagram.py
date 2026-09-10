@@ -136,6 +136,50 @@ def test_run_pyreverse_refuses_a_target_that_does_not_exist(tmp_path):
         )
 
 
+def test_pyreverse_argv_pins_the_command_line():
+    """The mutation a reviewer tried by hand: change `-o mmd` to `-o png`
+    in `pyreverse_argv` and this goes red, where the old suite -- which
+    only ever mocked `run_pyreverse` away or exercised the pre-flight check
+    that returns before a command line is built -- did not notice at all."""
+    out_dir = pathlib.Path("/tmp/classdiagram-does-not-need-to-exist")
+
+    argv = classdiagram.pyreverse_argv("PYREV", ["goldbox"], out_dir, [])
+    assert argv == ["PYREV", "-o", "mmd", "-d", str(out_dir), "goldbox"]
+
+    argv = classdiagram.pyreverse_argv(
+        "PYREV", ["goldbox/amiga.py"], out_dir,
+        ["--no-standalone", "-k"],
+    )
+    assert argv == ["PYREV", "-o", "mmd", "-d", str(out_dir),
+                     "--no-standalone", "-k", "goldbox/amiga.py"]
+
+
+def test_run_pyreverse_hands_pyreverse_argv_to_subprocess_run_at_root(
+    monkeypatch, tmp_path,
+):
+    """Proves `run_pyreverse` actually uses `pyreverse_argv`'s output, and
+    runs it with `cwd` set to whichever root it was given -- the thing
+    `--dirty` and the worktree path are supposed to change."""
+    (tmp_path / "goldbox").mkdir()
+    calls = []
+    monkeypatch.setattr(
+        classdiagram.subprocess, "run",
+        lambda argv, cwd, check: calls.append((argv, cwd, check)),
+    )
+
+    out_dir = tmp_path / "out"
+    classdiagram.run_pyreverse("PYREV", tmp_path, ["goldbox"], out_dir, [])
+
+    assert len(calls) == 1
+    argv, cwd, check = calls[0]
+    assert argv == classdiagram.pyreverse_argv(
+        "PYREV", ["goldbox"], out_dir, [],
+    )
+    assert argv[1:3] == ["-o", "mmd"]
+    assert cwd == tmp_path
+    assert check is True
+
+
 def test_worktree_is_created_at_head_and_removed_after(tmp_path):
     """Checks this one worktree's path, not the whole registry -- several
     tests here add their own worktree to the same repository, and under
@@ -161,6 +205,70 @@ def test_worktree_is_created_at_head_and_removed_after(tmp_path):
         cwd=repo, check=True, capture_output=True, text=True,
     ).stdout
     assert str(wt) not in after
+
+
+def test_remove_worktree_also_removes_the_wrapping_temp_directory(tmp_path):
+    """`git worktree remove` only deregisters `wt` itself; the `mkdtemp`
+    directory that wraps it (`add_worktree`'s `parent`) is not git's to
+    clean up and is left behind unless `remove_worktree` does it."""
+    repo = classdiagram.REPO
+    wt = classdiagram.add_worktree(repo)
+    parent = wt.parent
+    assert parent.is_dir()
+
+    classdiagram.remove_worktree(repo, wt)
+
+    assert not parent.exists()
+
+
+def test_add_worktree_removes_its_temp_directory_when_git_fails(
+    monkeypatch, tmp_path,
+):
+    """A `git worktree add` failure -- a stale lock, permissions, disk
+    pressure -- must not leave the `mkdtemp` wrapper behind either."""
+    made = {}
+    real_mkdtemp = classdiagram.tempfile.mkdtemp
+
+    def fake_mkdtemp(prefix):
+        made["parent"] = pathlib.Path(real_mkdtemp(prefix=prefix, dir=str(tmp_path)))
+        return str(made["parent"])
+
+    monkeypatch.setattr(classdiagram.tempfile, "mkdtemp", fake_mkdtemp)
+
+    def fail_run(cmd, cwd, check):
+        raise subprocess.CalledProcessError(128, cmd)
+
+    monkeypatch.setattr(classdiagram.subprocess, "run", fail_run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        classdiagram.add_worktree(classdiagram.REPO)
+
+    assert not made["parent"].exists()
+
+
+def test_main_reports_a_failed_worktree_as_one_line_not_a_traceback(
+    monkeypatch, capsys,
+):
+    """Every other failure this tool can hit -- no pyreverse, a bad target,
+    a failed pyreverse run -- is caught in `main()` and printed as one
+    line. A `git worktree add` failure used to bypass that and raise
+    `CalledProcessError` straight out of `main()`."""
+    monkeypatch.setattr(classdiagram, "find_pyreverse",
+                         lambda explicit: "pyreverse-stub")
+    monkeypatch.setattr(classdiagram.shutil, "which", lambda name: None)
+
+    def fail_add_worktree(repo):
+        raise subprocess.CalledProcessError(
+            128, ["git", "worktree", "add"], stderr="fatal: a lock file")
+
+    monkeypatch.setattr(classdiagram, "add_worktree", fail_add_worktree)
+
+    rc = classdiagram.main(["goldbox"])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "worktree" in err
+    assert "Traceback" not in err
 
 
 def test_worktree_is_removed_even_when_the_run_inside_it_fails(tmp_path):
