@@ -1083,8 +1083,13 @@ def test_fasttravel_exit_failure_message_does_not_claim_the_party_stood_still(
     monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
     outcome = actions.FastTravel().run(target, area=actions.area_by_id(27))
     assert not outcome.ok
+    # The old sentence opened "the party has not moved", which was untrue --
+    # `#493 (A Fast Travel that fails walking the party out leaves them at
+    # the doorway and says they have not moved)`. The fix puts the party
+    # back, so the replacement can say so; Donald worded it on 2026-09-10.
     assert "has not moved" not in outcome.message
-    assert "NOT APPROVED" in outcome.message
+    assert outcome.message == (
+        "ERROR: Unable to Fast Travel. The party is back where it started.")
 
 
 def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
