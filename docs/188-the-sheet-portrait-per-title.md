@@ -1,5 +1,62 @@
 # Only Pool of Radiance draws a sheet portrait
 
+## Settled: the twelve body slots are the same twelve choices on every port
+
+**This is the answer. Do not raise it as a question, do not re-derive it, and
+do not take it to Donald.** It has been asked and answered four times, and each
+time he has supplied the same evidence.
+
+**Every port of Pool of Radiance draws the same twelve body slots in the same
+order, and the same fourteen head slots. The slot the player picked is the
+character's identity. The byte in the record is nothing but that port's own
+index into its own art.**
+
+```
+amiga bodies  01 02 03 04 07 08 12 05 1A 21 23 25
+dos   bodies  01 02 03 04 07 08 12 18 1A 21 23 25
+```
+
+Those are the same twelve choices. They differ at position 8 because two art
+teams numbered their own files differently, and they drew position 8
+differently as well -- six ports draw a bare chest under a cloak there and the
+Amiga draws a knight in mail behind a blue shield.
+
+**So a conversion maps position to position, in every direction, and drops
+nothing.** A reader turns its own port's stored byte into a menu position using
+its own port's table; a writer turns a menu position into a byte using the
+destination port's table. Neither ever sees the other platform's byte values,
+and a byte value the destination's menu does not list is not a field the
+destination cannot hold. `.claude/rules/conversions.md`'s carve-out -- the
+destination platform has nothing that field could be -- does **not** apply.
+
+**The mistake every agent has made** is treating the stored byte as the
+identity. That produces a true observation -- `0x18` is in the DOS menu and in
+none of the Amiga's twenty-one body blocks -- and then a false conclusion, that
+the Amiga cannot represent that choice. It represents it perfectly well, at
+position 8, where it holds `0x05`.
+
+**The evidence Donald has linked repeatedly**, most recently 2026-09-10:
+Nerdly Pleasures, *"Goofy Things in Pool of Radiance"*,
+<https://nerdlypleasures.blogspot.com/2015/11/goofy-things-in-pool-of-radiance-gold.html>
+-- one picture, twelve columns, seven rows, captioned *"From top to bottom you
+have C64, PC CGA, PC EGA/Tandy, Apple II, Macintosh, PC-9801 & Amiga."* Read
+down any column and you are looking at one body choice as seven art teams drew
+it. The article's whole subject is that the ports redrew these figures
+inconsistently. Donald, 2026-09-10: *"I can tell you that the AI agents have
+asked me about the matching of these portraits again and again and again. I
+always link them to this blog article... But the next day, the question comes
+back to me again."*
+
+**Where the code says it.** The neutral record spells a menu position as the
+C64's art id for that position, so `goldbox.portraits.neutral_menu()` is the
+one table every conversion resolves against, whatever the ports on either end.
+`AMIGA_POOL_OF_RADIANCE_MENU` names the Amiga's own **art** and is for drawing
+the Amiga's pictures; it is not a conversion table. In `tests/test_portraits.py`,
+`test_a_body_choice_converts_by_menu_position_and_never_by_stored_byte_value`
+goes red if anybody wires it in as one.
+
+## Which titles draw a face at all
+
 Of the three C64 Gold Box titles this project converts, **one draws a face on
 the character sheet.** Curse of the Azure Bonds and Secret of the Silver
 Blades do not, and the reason is a step earlier than the art: their
@@ -315,11 +372,14 @@ chest under a cloak there. The Amiga row draws a knight in mail behind a blue
 shield with a gold device on it. So the two ports differ in **the art the game
 shipped**, and no decoding error, palette error or off-by-one on our side
 produces that: an independent photograph of the Amiga's own menu shows the
-knight where DOS shows the bare chest. `#480 (An Amiga character whose body is
-the menu's eighth arrives on the C64 or DOS wearing a different body, because
-the Amiga reader uses the C64 and DOS menu)` is therefore a real difference
-between two ports rather than a bug in the reader, and what a converted
-character should get is Donald's to decide.
+knight where DOS shows the bare chest.
+
+**And that is what settles the conversion rather than what complicates it.**
+The picture shows the same twelve choices in the same order on seven ports, so
+a character who picked the eighth choice picked the eighth choice everywhere,
+and each port draws it in its own art. A converted character gets position 8 on
+the other side. Nothing is dropped and nobody has a decision to make -- see the
+opening section of this page, and do not reopen it.
 
 ### The Amiga sheet asks for the face — which reopens a question we closed
 

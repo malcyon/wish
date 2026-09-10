@@ -56,7 +56,7 @@ from .amiga_port import (
 )
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
-from .portraits import stored_tables
+from .portraits import neutral_menu
 
 if TYPE_CHECKING:          # avoided at runtime: goldbox.dos is the heavier
     from .iconparts import DosIcon  # module and this file only needs the name
@@ -2401,6 +2401,14 @@ def to_neutral(char) -> NeutralCharacter:
     :func:`to_neutral_later`, which reads its own title's field table.  The
     rest of this function is Pool of Radiance's, and re-cuts the record into
     the DOS one so that `goldbox.dos.to_neutral` does the reading.
+
+    **That includes the sheet portrait, and the table it uses is the right
+    one.** The Amiga record stores the creation menu's position exactly as
+    DOS does, `goldbox.dos.to_neutral` falls back to
+    `goldbox.portraits.neutral_menu`, and that is what the neutral record
+    spells a position with on every port.  Passing the Amiga's own table in
+    here would resolve the position against the Amiga's art numbering and
+    hand the destination a byte in the wrong port's spelling (#480).
     """
     if isinstance(char, AmigaCharacter):
         return to_neutral_later(char)
@@ -2766,13 +2774,17 @@ def write_por(char: NeutralCharacter,
     and `icon_colours` the game's own freshly-made default, exactly as
     before this parameter existed.
 
-    The sheet portrait is looked up in the **Amiga's own creation menu**
-    (`goldbox.portraits.stored_tables(..., port="amiga")`), not the C64's
-    and DOS's shared one: the Amiga's twelve bodies differ from theirs at
-    menu position 8 (#194), so asking for the wrong menu would draw the
-    wrong body for a character whose own body sits at that position.  A body that only the C64's
-    and DOS's menu offers has no position in the Amiga's and is reported
-    dropped rather than guessed at (#480).
+    **The sheet portrait crosses as a menu position**, resolved through
+    `goldbox.portraits.neutral_menu` -- the same table every other direction
+    resolves against, and deliberately not the Amiga's own.  All seven ports
+    of Pool of Radiance draw the same twelve body slots in the same order:
+    the slot is the character's identity and each port's stored byte is only
+    its own index into its own art, so position 8 converts to position 8 and
+    the Amiga engine then draws its own eighth body.  Asking here for
+    `stored_tables(..., port="amiga")` instead looks a neutral value up in
+    the wrong numbering and reports a drop for a body the Amiga offers
+    (#480); `docs/188-the-sheet-portrait-per-title.md` opens with why that is
+    settled.  `AMIGA_POOL_OF_RADIANCE_MENU` is for drawing the Amiga's art.
     """
     from . import dos as _dos
 
@@ -2782,8 +2794,7 @@ def write_por(char: NeutralCharacter,
     # names DOS to a player who is not converting to DOS.
     record, itm, spc, dosrep = _dos.write(
         char, icon=icon, into="Amiga",
-        portraits=stored_tables(dos_layout.POOL_OF_RADIANCE.key,
-                                 port="amiga"))
+        portraits=neutral_menu(dos_layout.POOL_OF_RADIANCE.key))
     out = from_dos_record(record)
 
     items = [amiga_por_item_from_dos(
@@ -5636,10 +5647,16 @@ def write_later(char: NeutralCharacter,
     # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
     # DOS does with their character): otherwise a drop line this function
     # cannot place names DOS to a player who is not converting to DOS.
+    # `neutral_menu`, not the Amiga's own table: a conversion crosses the
+    # sheet portrait as a menu position and every port resolves it against
+    # the same table (#480, `write_por` above). Neither of these two titles
+    # draws a sheet portrait on any port (#300), so this answers `None` for
+    # both and nothing is looked up -- it is here so the two writers cannot
+    # drift apart the day one of them turns out to need it.
     record, itm, spc, dosrep = _dos.write(
         char, deltas=deltas.dos, icon=icon,
         recompute_thief_skills=False, into="Amiga",
-        portraits=stored_tables(deltas.dos.key, port="amiga"))
+        portraits=neutral_menu(deltas.dos.key))
     out = from_dos_record_later(record, deltas)
 
     stride = deltas.dos.item_size

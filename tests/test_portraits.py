@@ -801,3 +801,74 @@ def test_the_three_panels_name_the_three_bodies_the_ticket_is_between():
     amiga = portraits.stored_tables(
         port=portraits.AMIGA_PORT).bodies[bodychoices.POSITION - 1]
     assert (chosen, amiga) == (0x18, 0x05)
+
+
+# ---------------------------------------------------------------------------
+# Position, not stored byte value (#480)
+# ---------------------------------------------------------------------------
+def test_a_body_choice_converts_by_menu_position_and_never_by_stored_byte_value():
+    """The settled rule, pinned so nobody re-derives it a fifth time (#480).
+
+    **Every port of Pool of Radiance draws the same twelve body slots in the
+    same order. The slot is the player's choice and the character's
+    identity. The stored byte is only that port's own index into its own
+    art.** Position 8 is art `0x18` on the C64 and in DOS and art `0x05` on
+    the Amiga, because two art teams numbered and drew their own files
+    differently -- the published seven-port picture in
+    `docs/188-the-sheet-portrait-per-title.md` shows all twelve slots
+    agreeing across the ports.
+
+    So a conversion resolves a position against
+    `goldbox.portraits.neutral_menu` at both ends and nothing is dropped.
+    Anybody who wires `AMIGA_POOL_OF_RADIANCE_MENU` into a conversion is
+    matching on stored byte values instead, and turns this red: `0x18` is in
+    no Amiga body block, so the Amiga table answers `None` for it and the
+    writer reports a body the Amiga offers as lost.
+    """
+    shared = portraits.neutral_menu()
+    art = portraits.AMIGA_POOL_OF_RADIANCE_MENU
+
+    # The one row the two tables number differently -- and the *only* one.
+    assert shared.differences(art) == (("body", 8, 0x18, 0x05),)
+    assert shared.body_art(8) == 0x18 and art.body_art(8) == 0x05
+
+    # Matching by value fails at that row in both directions, which is what
+    # makes the value the wrong thing to match on.
+    assert art.body_position(0x18) is None
+    assert shared.body_position(0x05) is None
+
+    # Matching by position succeeds at every row, in both directions.
+    for position in range(1, portraits.BODY_COUNT + 1):
+        assert art.body_position(art.body_art(position)) == position
+        assert shared.body_position(shared.body_art(position)) == position
+
+    # And the table a conversion uses is the neutral spelling's, on every
+    # port -- `goldbox.amiga.write_por` asks for this one, not the Amiga's.
+    assert portraits.NEUTRAL_MENU_PORT == portraits.C64_PORT
+    assert shared is portraits.POOL_OF_RADIANCE_MENU
+    assert portraits.neutral_menu("curse-of-the-azure-bonds") is None
+
+
+def test_the_eighth_body_reaches_an_amiga_record_and_comes_back_unchanged():
+    """The rule above, through the writer and the reader (#480).
+
+    `goldbox.amiga.write_por` used to look the neutral value up in
+    `AMIGA_POOL_OF_RADIANCE_MENU`, which has no `0x18` in it, so a character
+    who chose the eighth body was written zero and reported dropped on both
+    Amiga-destination directions -- a choice the Amiga offers, lost because
+    the two ports number their art differently.
+
+    Fails without the fix, on the first assertion.
+    """
+    from test_amiga import sample
+
+    from goldbox import amiga, dos
+
+    char = sample(portrait_head=0x08, portrait_body=0x18)
+    record, _itm, _spc, report = amiga.write_por(char)
+
+    assert not any("portrait" in line for line in report.dropped), report.dropped
+    back = dos.to_neutral(amiga.to_dos_character(
+        amiga.AmigaPorCharacter.from_bytes(record)))
+    assert back.get("portrait_body") == 0x18
+    assert back.get("portrait_head") == 0x08

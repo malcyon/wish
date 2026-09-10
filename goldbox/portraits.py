@@ -35,13 +35,25 @@ give a character his own face.  `stored_tables` is the fallback; the block
 above it says why a handful of integers with their provenance is a
 measurement and not a copy of a game file.
 
-**The three ports do not all offer the same twelve bodies.** The C64's and
-DOS's menus are the same table byte for byte; the Amiga's is the same table
-with one entry changed -- position 8 offers body art `0x05` where the other
-two offer `0x18` (#194).  `PortraitTables.differences` names that, and
-`agrees_with` answers False for the pair, so a conversion between a port that
-offers a body and one that does not is a question somebody has to answer
-rather than a byte that quietly copies.
+**Every port offers the same twelve bodies, in the same order, and stores its
+own numbering of them.**  The C64's and DOS's tables are the same table byte
+for byte; the Amiga's differs at one entry -- position 8 is art `0x05` there
+and `0x18` on the other two, because two art teams numbered their own files
+differently and drew that figure differently (#194, #480).  `differences`
+names that row and `agrees_with` answers False for the pair.
+
+**Neither of those is a question a conversion has to answer.**  The menu
+position is the player's choice and the character's identity; the stored byte
+is only an index into one port's art.  So a conversion maps **position to
+position** and drops nothing, and
+:func:`neutral_menu` is the single table it resolves against, whatever the
+ports on either end -- the neutral record spells a menu position as the C64's
+art id for that position, so the C64's and DOS's shared table is what turns
+one into the other.  `AMIGA_POOL_OF_RADIANCE_MENU` names the Amiga's own
+**art**, for drawing the Amiga's own pictures, and is not a conversion table.
+`docs/188-the-sheet-portrait-per-title.md` opens with the whole of it and with
+the published seven-port picture behind it; it is settled and is not to be
+raised again.
 """
 
 from __future__ import annotations
@@ -121,12 +133,17 @@ class PortraitTables:
         """Every menu position where two ports offer different art.
 
         `(what, position, mine, theirs)` per row, `what` being `"head"` or
-        `"body"` and `position` one-based, so a caller can say *which* choice
-        a conversion cannot make rather than only that the menus differ.
+        `"body"` and `position` one-based, so a caller can say *which* row of
+        the menu two ports number differently rather than only that they do.
         The Amiga's Pool of Radiance menu differs from the C64's and DOS's in
         exactly one row -- `("body", 8, 0x05, 0x18)` read from the Amiga's
-        side -- and that row is the whole of what a converted character can
-        lose here (#194).
+        side (#194).
+
+        **A row here is not a loss a converted character suffers**, and an
+        earlier version of this docstring said it was.  Both ports offer that
+        eighth choice; they draw it differently and number it differently.  A
+        conversion converts position 8 to position 8 and this method is for
+        naming the art, not for gating the crossing (#480).
 
         A table of a different **length** is reported position by position
         for as far as the two overlap, and each position past the shorter
@@ -608,10 +625,19 @@ POOL_OF_RADIANCE_MENU = PortraitTables(
     source="the stored Pool of Radiance creation menu (goldbox/portraits.py)",
 )
 
-#: **The Amiga's own menu, which is not the same menu** (#194).  The fourteen
-#: heads are the block above's byte for byte and in the same order; the
-#: twelve bodies differ in one entry -- position 8 offers art `0x05` where
-#: the C64 and DOS both offer `0x18`.
+#: **The Amiga's own numbering of the same twelve choices** (#194).  The
+#: fourteen heads are the block above's byte for byte and in the same order;
+#: the twelve bodies differ in one entry -- position 8 is art `0x05` here and
+#: `0x18` on the C64 and in DOS.
+#:
+#: **This is an art table, not a conversion table.**  Use it to find the
+#: Amiga's own picture for a menu position -- what `tools/bodychoices.py` and
+#: `tools/amigaportraitmenu.py` draw with -- and never to move a character
+#: between ports.  A conversion maps position to position and resolves both
+#: ends against :func:`neutral_menu`; wiring this table into a writer is what
+#: made `#480 (An Amiga character whose body is the menu's eighth arrives on
+#: the C64 or DOS wearing a different body, because the Amiga reader uses the
+#: C64 and DOS menu)` report a drop for a choice both ports offer.
 #:
 #: Read 2026-09-08 off Amiga Pool of Radiance's `/program`, at file offset
 #: `0x6D68F` in data hunk 31, heads first as DOS has them.  Three `.adf`
@@ -650,12 +676,25 @@ STORED_MENUS: dict[str, PortraitTables] = {
     POOL_OF_RADIANCE_KEY: POOL_OF_RADIANCE_MENU,
 }
 
-#: The same, for the Amiga, which offers a different eighth body.  Kept as a
-#: second dictionary rather than as a `(key, port)` one so that every caller
-#: written before the Amiga was read keeps the menu it was written against.
+#: The same, for the Amiga, which numbers its eighth body differently.  Kept
+#: as a second dictionary rather than as a `(key, port)` one so that every
+#: caller written before the Amiga was read keeps the menu it was written
+#: against.
 STORED_AMIGA_MENUS: dict[str, PortraitTables] = {
     POOL_OF_RADIANCE_KEY: AMIGA_POOL_OF_RADIANCE_MENU,
 }
+
+#: The port whose art ids the **neutral record** spells a menu position with.
+#:
+#: `goldbox/neutral.py`'s `portrait_head` and `portrait_body` are described
+#: there as "the art's own id -- the C64 record's spelling", and that is what
+#: makes this constant necessary rather than decorative: the neutral value is
+#: a menu **position**, written down as the id the C64 gives that position.
+#: So every reader turns its own record's byte into a position and then into
+#: that spelling, and every writer does the reverse -- and the table that
+#: does the spelling is the C64's on all three ports, including the Amiga's
+#: own codec (#480).
+NEUTRAL_MENU_PORT = C64_PORT
 
 
 def stored_tables(game=None, port: str | None = None
@@ -674,10 +713,16 @@ def stored_tables(game=None, port: str | None = None
 
     `port` is `"c64"`, `"dos"`, `"amiga"` or `None`.  **`None` is the C64's
     and DOS's shared menu**, which is what every caller written before the
-    Amiga was read means, and asking for `"amiga"` is what gets the one
-    entry that differs (#194).  An unknown port name raises rather than
-    quietly answering with the wrong port's table: a conversion that draws
-    the wrong body is exactly the failure this argument exists to prevent.
+    Amiga was read means, and asking for `"amiga"` is what gets that port's
+    own numbering of the same twelve choices (#194).  An unknown port name
+    raises rather than quietly answering with another port's table.
+
+    **A conversion wants :func:`neutral_menu` and not this**, whichever ports
+    are on its two ends.  Asking here for `"amiga"` and then looking a
+    neutral value up in the answer is the mistake `#480 (An Amiga character
+    whose body is the menu's eighth arrives on the C64 or DOS wearing a
+    different body, because the Amiga reader uses the C64 and DOS menu)`
+    is about.
     """
     key = getattr(game, "key", game)
     if key is None:
@@ -689,3 +734,35 @@ def stored_tables(game=None, port: str | None = None
     raise PortraitError(
         f"{port!r} is not a port this module carries a creation menu for: "
         f"{C64_PORT!r}, {DOS_PORT!r}, {AMIGA_PORT!r} or None")
+
+
+def neutral_menu(game=None) -> PortraitTables | None:
+    """The menu a conversion resolves against, in every direction.
+
+    The neutral record's `portrait_head` and `portrait_body` hold a **menu
+    position**, spelled as the art id the C64 gives that position
+    (:data:`NEUTRAL_MENU_PORT`, and `goldbox/neutral.py`'s own description of
+    the two fields).  So this is the table that turns one into the other, and
+    it is the same table on every port:
+
+    * a **C64** record already stores that id, so its codec copies the byte;
+    * a **DOS** record stores the position, and `goldbox.dos.to_neutral` and
+      `goldbox.dos.write` cross it with `body_art` and `body_position` here;
+    * an **Amiga** record stores the position too, and `goldbox.amiga`'s
+      writer crosses it with the same two methods and the same table.
+
+    **The Amiga's own table is not used for this and must not be.** The
+    twelve slots correspond across all seven ports of Pool of Radiance and
+    the slot is the character's identity; the Amiga's stored byte is only its
+    own index into its own art, and `AMIGA_POOL_OF_RADIANCE_MENU` exists to
+    say which picture that is.  Resolving a neutral value in it reports
+    position 8 as a body the Amiga cannot hold, which is
+    `#480 (An Amiga character whose body is the menu's eighth arrives on the
+    C64 or DOS wearing a different body, because the Amiga reader uses the
+    C64 and DOS menu)` and is settled:
+    `docs/188-the-sheet-portrait-per-title.md` opens with it.
+
+    `game` is what :func:`stored_tables` takes, and `None` answers `None` for
+    a title with no sheet portrait, the same way.
+    """
+    return stored_tables(game, port=NEUTRAL_MENU_PORT)

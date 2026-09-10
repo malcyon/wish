@@ -105,7 +105,7 @@ from .portraits import (
     PortraitError,
     PortraitTables,
     draws_sheet_portrait,
-    stored_tables,
+    neutral_menu,
     tables_from_dos,
 )
 from .record import CharacterRecord
@@ -1732,15 +1732,21 @@ def to_neutral(dos: DosCharacter,
     `portraits` is the creation menu's two tables, read off the player's own
     files by :func:`portrait_tables` or `goldbox.portraits.tables_from_disks`
     -- **or nothing, and then the stored menu is used**:
-    `goldbox.portraits.stored_tables` carries Pool of Radiance's twenty-six
+    `goldbox.portraits.neutral_menu` carries Pool of Radiance's twenty-six
     ids, so the DOS record's menu position becomes the art id the C64 stores
     whether or not a game disk is anywhere in reach (Donald, 2026-09-06:
     *"Then you don't need the disks at all."*).  A title with no stored menu
     is one whose sheet draws no face (#300), and its portrait pair is left
     alone without a line.
+
+    **An Amiga Pool of Radiance record reads through here too**, because
+    `goldbox.amiga.read_por_slot` re-cuts it into a `DosCharacter` first, and
+    the Amiga stores the same menu position DOS does.  So the fallback above
+    is the right table for an Amiga source as well: what crosses is the menu
+    position, and `goldbox.portraits.neutral_menu` is what spells it (#480).
     """
     if portraits is None:
-        portraits = stored_tables(dos.shape.key)
+        portraits = neutral_menu(dos.shape.key)
     if dos.shape not in CONVERTS:
         raise WrongTitleError(
             f"{dos.shape.title} records read, but only "
