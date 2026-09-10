@@ -1960,7 +1960,9 @@ graph LR
   amiga --> iconparts
   amiga --> layout
   amiga --> neutral
+  amiga --> portraits
   amiga -.->|deferred| savegame
+  amiga --> titles
   amiga -.->|deferred| traits
   amiga --> world_state
   areas -.->|deferred| geo
@@ -1968,15 +1970,15 @@ graph LR
   c64_codec --> classcode
   c64_codec --> derive
   c64_codec --> encoding
-  c64_codec --> games
   c64_codec --> layout
   c64_codec --> levels
   c64_codec --> neutral
   c64_codec --> portraits
   c64_codec --> record
   c64_codec --> spells
+  c64_codec --> titles
   c64_save --> games
-  classcode --> games
+  classcode --> titles
   derive --> items
   derive -.->|deferred| levels
   dos --> areas
@@ -1998,6 +2000,7 @@ graph LR
   dos --> record
   dos -.->|deferred| savegame
   dos -.->|deferred| spells
+  dos --> titles
   dos --> traits
   dos --> world_state
   dos -.->|deferred| yaml_io
@@ -2012,10 +2015,10 @@ graph LR
   items --> d64
   items --> savegame
   items --> spells
-  levelup --> games
   levelup --> levels
   levelup -.->|deferred| record
   levelup --> spells
+  levelup --> titles
   memory --> layout
   neutral --> layout
   portraits -.->|deferred| amiga_adf
@@ -2054,6 +2057,7 @@ graph LR
   yaml_io --> record
   yaml_io --> savegame
   yaml_io --> spells
+  yaml_io --> titles
 ```
 
 A dotted edge is an import inside a function or a class body: real, but
