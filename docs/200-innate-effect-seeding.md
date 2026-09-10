@@ -78,10 +78,46 @@ This corroborates `docs/121-silver-blades.md` from a second, independent
 route. That document derives Curse's ranger 134 and Silver Blades' ranger 105
 from the two engines' **C64** seed tables, `GEN $2515` and `GEN $0FF0` —
 reproducible with `tools/coldread.py traits curse-of-the-azure-bonds`, which
-prints `class ranger -> 134`. The DOS and C64 id spaces agree on every racial
-id and on the ranger, and **disagree on the paladin**: the C64 seeds trait 45
-where DOS writes effect 8. So an id is per port as well as per title, and 45
-and 8 are not two names for one thing.
+prints `class ranger -> 134`.
+
+**The two ports side by side, every seeded id, both titles.** The C64 column
+is each engine's own `GEN` and the DOS column the switches above.
+
+| | C64 Curse `GEN $2515`/`$24EA` | DOS Curse `0x1E244`/`0x20D9E` | C64 Silver Blades `GEN $0FF0`/`$0C4B` | DOS Silver Blades `0x1DF47`/`0x1E345` |
+|---|---|---|---|---|
+| paladin | **45** | **8** | **45** | **8** |
+| ranger | 134 | 134 | 105 | 105 |
+| dwarf | 26, 47, 97 | 97, 26, 47 | 26, 47 | 47, 26, **97** |
+| elf | 107 | 107 | 95 | 95 |
+| gnome | 18, 48, 97 | 97, 18, 47, 48 | 48, 7 | 48, 7, **97** |
+| half-elf | 124 | 124 | 18 | 18 |
+| halfling | **nothing** | **97** | **92** | **97** |
+| human | nothing | nothing | nothing | nothing |
+
+An earlier version of this paragraph said the two ports *agree on every racial
+id* and disagree only on the paladin. **That is wrong on four racial rows**,
+and it was written from the ids the two ports have in common rather than from
+a row-by-row reading.
+`#484 (Does C64 Silver Blades seed a paladin's Protection from Evil as trait
+45, the way Curse does, so that direction loses it converting to DOS too?)`
+disassembled both `GEN` overlays instruction by instruction. What actually
+disagrees:
+
+* **the Silver Blades halfling**, C64 92 against DOS 97 — a different id, not
+  a missing one;
+* **the Silver Blades dwarf and gnome**, each given 97 by DOS and not by the
+  C64;
+* **the Curse halfling**, given 97 by DOS and nothing at all by the C64;
+* **the Curse gnome**, given 47 by DOS and not by the C64.
+
+The counts explain most of it: the C64 seeds two trait slots per race in
+Silver Blades and three in Curse, where the DOS switch calls `add_affect` as
+often as it likes — four times for Pool of Radiance's dwarf. An id past the
+count has nowhere to go. The halfling's 92 is not that, and is the one row
+where the two ports use different numbers for the same thing.
+
+So an id is per port as well as per title, and 45 and 8 are not two names for
+one thing. The paladin is the disagreement both titles share.
 
 ## 2. The Curse corpus, character by character
 

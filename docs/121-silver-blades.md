@@ -263,7 +263,36 @@ and outside it at `$4000`.
 **The trait seeds.** `GEN $0C4B` clears all ten slots and seeds two of them
 from tables at `$0C5B` and `$0C62`, indexed by the race byte — which is why the
 shipped dwarf carries two entries where the Curse import wrote one. `GEN $0FF0`
-then removes any class trait and writes 45 for a paladin or 105 for a ranger.
+then writes 45 for a paladin or 105 for a ranger.
+
+**`GEN $0FF0` read instruction by instruction**, for
+`#484 (Does C64 Silver Blades seed a paladin's Protection from Evil as trait
+45, the way Curse does, so that direction loses it converting to DOS too?)`.
+It is four steps and no table at all — both ids are immediate operands:
+
+1. remove **every** copy of 105, then every copy of 45, by calling `$1013`
+   until it stops finding one. `$26FB` is the search: `LDX #$09`, `CMP $7CAD,X`
+   down to zero, so it walks the ten slots and returns the index in `X`;
+2. `LDA $7CCF` — the paladin level. Zero branches past;
+3. `LDA #$2D`, which is **45**, and `JSR $101E`, which finds the first slot
+   holding zero and stores the id there. `$101E` self-modifies: it writes the
+   id over the operand byte at `$1029` before searching, so the `A9 FF` in the
+   file is a placeholder and the byte stored is the id;
+4. the same again with `LDA $7CD0`, the ranger level, and `LDA #$69` — **105**.
+
+So the paladin's id is 45 and the ranger's is 105, read out of this title's
+own overlay rather than inferred from Curse's. **CONFIRMED.** Curse's
+`GEN $2515` is the same routine with 134 in place of 105 and a slot store
+written out longhand instead of a call.
+
+Two corroborations, neither of which was needed and both of which agree.
+`tools/coldread.py traits secret-of-the-silver-blades` finds the same two
+immediates by pattern. And `SAVEDBASH` on the shipped `SILVER-6` side holds a
+party whose ids are this table's throughout — GUY DE VALOIS, a paladin, 45;
+PAINE, a ranger, 105; MALACHITE, a dwarf, 26 and 47 in slots 0 and 1 and no
+third id. That party has no chain of custody
+(`.claude/rules/testing.md`) and is corroboration rather than evidence, but it
+is not one of ours: a Wish conversion writes the DOS ids, 8 and 47/26/97.
 
 | race | seeded with |
 |---|---|
