@@ -509,18 +509,22 @@ def test_the_windows_minimum_does_not_follow_the_ui_font_with_an_ordinary_party(
     at their contents -- was always the larger of the two. An ordinary
     six-character party measures `natural` at 219 against the constant's 440,
     so `min` picked the font-derived number instead and the window's floor
-    ran 727, 784, 844 and 916 at +0, +3, +6 and +10 points of UI font -- which
-    is what this test caught red before the fix, and
+    ran 993, 1050, 1110 and 1182 at +0, +3, +6 and +10 points of UI font --
+    which is what this test caught red before the fix, and
     `test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open`
     above, built from the widest party, could not.
 
-    The second assertion pins the actual number rather than only the
-    flatness: a 266px uniform shift across every font passed the flatness
-    check untouched on 2026-09-10 (#504), because a shift that moves every
-    font by the same amount is still flat. 844 is what an ordinary party
-    measures here at the base font once the roster stops setting its own
-    minimum width at all (#474) -- so a future change that moves the number,
-    intentionally or not, is visible here rather than passing silently.
+    A first fix let the roster scroll instead of setting any minimum, which
+    made the arithmetic flat -- a 266px uniform shift across every font passed
+    this test's own flatness check untouched on 2026-09-10 (#504), because a
+    shift that moves every font by the same amount is still flat -- but at the
+    window's new floor `Class`, `AC` and `HP` sat behind a horizontal
+    scrollbar. Donald rejected that picture (#504), so `_size_roster` hands
+    `ROSTER_MIN_WIDTH` to `setMinimumWidth` with no `min()` instead: every
+    column stays visible, and the second assertion pins the actual number
+    rather than only the flatness, so a future change that moves it,
+    intentionally or not, is visible here rather than passing silently. 1214
+    is what an ordinary party measures here at the base font under that fix.
     """
     from test_windowslayout import _ordinary_party
 
@@ -530,9 +534,81 @@ def test_the_windows_minimum_does_not_follow_the_ui_font_with_an_ordinary_party(
               for f in _floors(app, tmp_path, monkeypatch, save, fonts=fonts)]
     assert widths == [widths[0]] * len(fonts), (
         f"the minimum width grew with the font: {dict(zip(fonts, widths))}")
-    assert widths[0] == 844, (
+    assert widths[0] == 1214, (
         f"the ordinary party's floor at the base font is {widths[0]}px, not "
-        f"the 844 last measured -- say what moved it")
+        f"the 1214 last measured -- say what moved it")
+
+
+def test_the_rosters_own_columns_fill_its_width_with_no_blank_remainder(
+        app, tmp_path, monkeypatch):
+    """The check the flatness test above could not do, because it only reads
+    the *window's* total width and never what the roster does with the width
+    it is handed.
+
+    `_size_roster` pins the roster's minimum to `ROSTER_MIN_WIDTH` (440) with
+    no `min()`, so at the window's own floor with an ordinary party open the
+    roster is forced to 440px while its five columns at their contents come to
+    only 219 -- `setMinimumWidth` and `setMaximumWidth(natural)` disagree, and
+    Qt resolves that in the minimum's favour. `RosterView._share_width` used
+    to cap `Name` at its own natural width, so the 221px difference went
+    unclaimed by any column: a blank gap between `HP` and the roster's own
+    border, which is what Donald saw and rejected a second time (2026-09-10,
+    `roster-pin-plus0.png`). Dropping that cap lets `Name` take the surplus
+    the same way it gives up a shortfall, so this assertion holds instead.
+
+    `view.viewport().width()` is the space Qt itself has decided the columns
+    may draw in -- the roster's own width minus its frame and its row-number
+    gutter, minus a vertical scrollbar's width if one is actually showing --
+    so it is the one number that already accounts for whatever chrome is real
+    at the moment the columns are measured, rather than a chrome estimate
+    taken once and reused. `header.length()` should equal it exactly: nothing
+    less (a blank remainder) and nothing more (an overshoot Qt would show as
+    a horizontal scrollbar nobody asked for).
+    """
+    from PyQt6.QtCore import Qt
+    from test_windowslayout import _ordinary_party
+
+    from editor.rosterview import RosterView
+    from wish.session import Session
+    from wish.window import EDITOR_TAB, WishWindow
+
+    empty = tmp_path / "empty-home"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(paths, "_home", lambda: empty)
+    monkeypatch.chdir(empty)
+
+    save = _ordinary_party(tmp_path)
+    base = app.font()
+    try:
+        for extra in (0, 6):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+
+            win = WishWindow(save, maps={}, tab=EDITOR_TAB,
+                             session=Session(find=lambda pref=None: None))
+            try:
+                win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+                win.show()
+                win.setMinimumSize(0, 0)
+                layout = win.layout()
+                if layout is not None:
+                    layout.invalidate()
+                    layout.activate()
+                win.resize(win.minimumSizeHint())
+                app.processEvents()
+
+                view = win.findChild(RosterView, "roster")
+                header = view.horizontalHeader()
+                assert header.length() == view.viewport().width(), (
+                    f"+{extra}pt: the viewport is {view.viewport().width()}px "
+                    f"but the five columns come to {header.length()} -- "
+                    f"blank pixels inside the roster's border")
+            finally:
+                win.session.close()
+                win.close()
+    finally:
+        app.setFont(base)
 
 
 def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,

@@ -15,18 +15,32 @@ Three rules, and they are Donald's:
   `AC` and `HP` stay readable for as long as there is width for them;
 * only when `Name` has given everything it has does the table scroll.
 
-`ROSTER_MIN_WIDTH` used to be a floor under the whole window as well, because
-`_size_roster` handed it to `setMinimumWidth`: whatever the roster's minimum
-was became a floor under the header, which does not scroll, and a minimum
+The rules say nothing about the case they did not anticipate: an ordinary
+party's `natural` -- the five columns at their contents -- is *under*
+`ROSTER_MIN_WIDTH`, so the constant forces the roster wider than its own
+contents rather than narrower. The pixels that buys have to go somewhere, and
+the second rule is what decides where: `Name` is the column that gives, in
+both directions, so it is also the column that takes a surplus. It is the same
+rule read the other way round, not a fourth one -- see `_share_width`.
+
+`ROSTER_MIN_WIDTH` is a floor under the whole window as well, because
+`_size_roster` hands it to `setMinimumWidth`: whatever the roster's minimum
+is becomes a floor under the header, which does not scroll, and a minimum
 taken from font metrics is a floor that follows the UI font -- #41's bug, and
-the reason Windows CI once measured 1304 where Linux measured 1036. That stayed
-sound only while the constant was smaller than every real party's own columns,
-and it is not: an ordinary six-character party measures under 440 at every UI
-font up to the base font's own reach, so the window's floor became a text
-measurement again for the common case (#474). `_size_roster` no longer sets
-the roster's minimum width at all -- it keeps whatever `QTableView` has of its
-own, well under any party's columns, and the three rules above still hold from
-`sizeHint` and `_share_width` alone.
+the reason Windows CI once measured 1304 where Linux measured 1036.
+
+`_size_roster` used to hand it `min(natural, ROSTER_MIN_WIDTH)`, believing
+`natural` -- the five columns at their contents -- was always the larger of
+the two, so `min` always picked the constant and the floor was
+font-independent. That was false for an ordinary party: six characters
+measure `natural` at 219 against the constant's 440, so `min` picked the
+font-derived number instead, and the window's floor followed the UI font
+again for the common case (#474). Letting the roster scroll instead of
+setting any minimum fixed the arithmetic and broke the picture -- at the
+window's new floor `Class`, `AC` and `HP` sat behind a horizontal scrollbar,
+which Donald rejected (#504) -- so `_size_roster` hands the constant to
+`setMinimumWidth` with no `min()`: font-independent by construction, and
+every column stays visible at any width down to the floor.
 """
 
 from __future__ import annotations
@@ -39,35 +53,37 @@ from PyQt6.QtWidgets import QTableView
 #: can still recognise from its first few characters.
 NAME_COLUMN = 0
 
-#: What the roster asks the layout for, in pixels, once its five columns are
-#: wider than this, at any font on any platform. Read only by `sizeHint`
-#: below -- `_size_roster` no longer hands it to `setMinimumWidth`, so it is
-#: not a floor under the window any more. It used to be: see the module
-#: docstring for why that stopped holding (`#474`).
+#: What the roster may be squeezed to, in pixels, at any font on any platform.
+#: `_size_roster` hands it straight to `setMinimumWidth` whenever there are
+#: rows, so it is a floor under the whole window.
 #:
-#: Why this number and not another. It has to clear the four contents-sized
-#: columns at the base UI font, or the roster would ask for less room than
-#: they need on a machine nobody has resized anything on: `Race`, `Class`,
-#: `AC`, `HP` and the table's own chrome come to 356px here at 9pt, so 440
-#: leaves `Name` 84 of its 231 -- `WWWWWWW...` at the widest a name can be, and
-#: more of an ordinary one.
+#: It is not derived by measuring what the four fixed columns need -- an
+#: earlier version of this comment claimed `Race`, `Class`, `AC` and `HP` come
+#: to 356px at the base font, and that number was never checked against a
+#: real party: an ordinary six-character party's whole five columns, `Name`
+#: included, measure 219px, nowhere near 356 (#474). 440 is a deliberately
+#: round constant instead, wider than any real party's columns need, chosen
+#: so it clears them comfortably rather than by a measured margin -- and
+#: because it is a constant rather than anything measured from a party's own
+#: text, the floor it sets does not move with the UI font.
 #:
 #: At a Windows-sized font -- which measures here like six to ten points more
-#: than 9pt -- those four columns come to 564 and 694, so this number no
-#: longer covers them either; that is the third rule working (module
-#: docstring), not a number to raise.
+#: than 9pt -- the four fixed columns can outgrow even a generous constant,
+#: and that is the third rule working (module docstring) rather than a reason
+#: to raise this number: raising it to cover the worst font would put the
+#: window's floor back over a 1366px-wide screen.
 ROSTER_MIN_WIDTH = 440
 
 #: What `Name` keeps when it has given away everything else. Enough for an
-#: initial and the ellipsis, and a constant rather than a measurement for the
-#: same reason `ROSTER_MIN_WIDTH` used to be one.
+#: initial and the ellipsis, and a constant for the same reason
+#: `ROSTER_MIN_WIDTH` is one.
 #:
 #: It is a floor under a floor: `QHeaderView` has a `minimumSectionSize` of its
 #: own, that one *is* a font metric, and above the base UI font it is the larger
 #: of the two -- 49px at +3, 61 at +6, 75 at +10 here. So this number decides
 #: what `Name` keeps at the base font and Qt decides it above that, which is
-#: the right way round: the table scrolls either way, and it is only `Name`'s
-#: own width that has to be the same on every machine.
+#: the right way round: the table scrolls either way, and it is only the floor
+#: under the *window* that has to be the same on every machine.
 NAME_MIN_WIDTH = 40
 
 
@@ -75,35 +91,33 @@ class RosterView(QTableView):
     """A `QTableView` that reports what it can survive, not what it wants.
 
     `QAbstractScrollArea.sizeHint` answers 256px whatever is in it, which is
-    why `_size_roster` used to pin `minimumWidth == maximumWidth` to get the
-    roster its five columns -- and that pin is what put a font metric under the
-    window. The hint below is what a `QHBoxLayout` aims for and the maximum is
-    the natural width, so the layout gives the roster everything spare up to
-    its contents and takes it back again first when the window is squeezed --
-    down to the hint, and then further still, to whatever `QTableView` answers
-    for its own `minimumSizeHint`, since `_size_roster` stopped giving the
-    roster an explicit floor of its own (#474). Nothing else in the header has
-    any spare to take: see `ROW_STRETCH` in `window.py`, where the roster is
-    the item with the stretch.
+    why `_size_roster` pins `minimumWidth` to `ROSTER_MIN_WIDTH` to get the
+    roster its five columns -- and that pin is what puts the floor under the
+    window rather than a font metric. The hint is the floor here and the
+    maximum is the natural width, so a `QHBoxLayout` gives the roster
+    everything spare up to its contents and takes it back again first when the
+    window is squeezed. Nothing else in the header has any spare to take: see
+    `ROW_STRETCH` in `window.py`, where the roster is the item with the
+    stretch.
     """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        #: All three are zero until `measure` has been called, and every
-        #: override below falls back to Qt's own answer while they are. The
-        #: form is built long before there is a party to size it from.
+        #: Both are zero until `measure` has been called, and every override
+        #: below falls back to Qt's own answer while they are. The form is
+        #: built long before there is a party to size it from.
         self._natural = 0
         self._name = 0
-        self._fixed = 0
 
     def measure(self, natural: int, name: int) -> None:
         """Record what the columns came to, once they are sized to contents.
 
         `natural` is the whole table at its contents, chrome included; `name`
-        is the `Name` column alone. What is left is the four columns that never
-        give any of it back.
+        is the `Name` column alone. Kept for `sizeHint` -- `_share_width`
+        below measures the other four columns live instead, because they stay
+        in `ResizeToContents` and can drift a pixel or two after this runs.
         """
-        self._natural, self._name, self._fixed = natural, name, natural - name
+        self._natural, self._name = natural, name
         self._share_width()
 
     def sizeHint(self) -> QSize:
@@ -117,7 +131,8 @@ class RosterView(QTableView):
         self._share_width()
 
     def _share_width(self) -> None:
-        """Give `Name` whatever the other four columns did not take.
+        """Give `Name` whatever the other four columns did not take -- all of
+        it, whichever way the difference runs.
 
         This runs from `resizeEvent` and from `measure`, so it answers the
         window changing size and nothing else. **A user dragging the `Name`
@@ -129,10 +144,34 @@ class RosterView(QTableView):
         window's own minimum is built from and a drag does not touch either --
         so a dragged column is a column the user chose, not a broken
         invariant (#93).
+
+        `want` used to be capped at `self._name`, so a widget forced wider
+        than its own contents -- `ROSTER_MIN_WIDTH` conflicting with
+        `setMaximumWidth(natural)` when an ordinary party's `natural` is under
+        the constant -- left the surplus unclaimed by any column: a white gap
+        between `HP` and the roster's own border (#474, rejected a second
+        time on 2026-09-10). Dropping the cap means `Name` takes the surplus
+        the same way it gives up a shortfall.
+
+        It is measured live rather than from `self._fixed` and `self.width()`,
+        which are both a snapshot taken once, before the roster is shown:
+        `Race`, `Class`, `AC` and `HP` stay in `ResizeToContents` forever (only
+        `Name` becomes `Interactive`), so Qt is free to nudge them by a pixel
+        or two once real font metrics are in play, and `self._fixed` -- a
+        constant from that first measurement -- does not follow. `self.width()`
+        has the same defect the other way: it is the whole widget, and the
+        frame, the row-number gutter and a scrollbar (real, when
+        `MAX_ROSTER_ROWS` is exceeded) are Qt's to decide, not a value to
+        recompute by hand. `viewport().width()` and the four sections' own
+        current sizes are what Qt already believes both of those to be *now*,
+        so filling from them leaves no remainder either way.
         """
         if not self._natural:
             return
         header = self.horizontalHeader()
-        want = max(NAME_MIN_WIDTH, min(self._name, self.width() - self._fixed))
+        fixed = sum(header.sectionSize(column)
+                    for column in range(header.count())
+                    if column != NAME_COLUMN)
+        want = max(NAME_MIN_WIDTH, self.viewport().width() - fixed)
         if header.sectionSize(NAME_COLUMN) != want:
             header.resizeSection(NAME_COLUMN, want)
