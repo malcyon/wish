@@ -281,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         files, palette, dos = sources(args.disks, args.dos)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, menu.PaletteNotFound) as e:
         print(str(e)[0].upper() + str(e)[1:])
         return 2
 

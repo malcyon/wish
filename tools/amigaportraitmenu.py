@@ -216,12 +216,17 @@ def amiga_palette(program: bytes) -> tuple[int, list[tuple[int, int, int]]]:
             if to_hunk != hunk.number:
                 continue
             field = exe.by_number(number).file_offset + offset
+            # The stored addend is what gets added to the hunk's base, so a
+            # nonzero one references something further into the hunk than its
+            # first word.  The table is the hunk's first thing, so only a zero
+            # addend can be the reference that reads it.
             if int.from_bytes(program[field:field + 4], "big"):
                 continue
             if _fetches_a_word_through(program, field):
                 return True
         return False
 
+    found: list[tuple[int, list[int]]] = []
     for hunk in exe.hunks:
         if hunk.kind != "DATA" or hunk.file_offset is None:
             continue
@@ -232,10 +237,25 @@ def amiga_palette(program: bytes) -> tuple[int, list[tuple[int, int, int]]]:
             continue
         if not copied_a_word_at_a_time(hunk):
             continue
-        return at, [(((w >> 8) & 15) * 17, ((w >> 4) & 15) * 17, (w & 15) * 17)
-                    for w in words]
-    raise PaletteNotFound(
-        "no DATA hunk here opens with 32 colour words copied a word at a time")
+        found.append((at, words))
+
+    if not found:
+        raise PaletteNotFound(
+            "no DATA hunk here opens with 32 colour words copied a word "
+            "at a time")
+    if len(found) > 1:
+        # One release has been read and exactly one hunk qualifies.  A build
+        # where two do is a release nobody has looked at, and taking whichever
+        # iterated first would be the guess this function exists not to make.
+        raise PaletteNotFound(
+            "%d DATA hunks here open with 32 colour words copied a word at a "
+            "time, at %s -- this release needs reading before one of them can "
+            "be trusted"
+            % (len(found), ", ".join("0x%06X" % at for at, _ in found)))
+
+    at, words = found[0]
+    return at, [(((w >> 8) & 15) * 17, ((w >> 4) & 15) * 17, (w & 15) * 17)
+                for w in words]
 
 
 def dos_image(block: bytes):
@@ -373,7 +393,11 @@ def main(argv: list[str] | None = None) -> int:
             status = 1
 
     if args.palette:
-        at, colours = amiga_palette(files[portraits.AMIGA_PROGRAM][1])
+        try:
+            at, colours = amiga_palette(files[portraits.AMIGA_PROGRAM][1])
+        except PaletteNotFound as e:
+            out(str(e)[0].upper() + str(e)[1:])
+            return 2
         out(f"screen palette at file offset 0x{at:06X}, "
             f"{len(colours)} entries; the first sixteen are what a "
             f"four-bitplane portrait uses")
@@ -393,7 +417,12 @@ def main(argv: list[str] | None = None) -> int:
             out("--montage needs the DOS art as well; set FR_ARCHIVES or "
                 "pass --dos")
             return 2
-        montage(pathlib.Path(args.montage), files, game, args.montage_kind)
+        try:
+            montage(pathlib.Path(args.montage), files, game,
+                    args.montage_kind)
+        except PaletteNotFound as e:
+            out(str(e)[0].upper() + str(e)[1:])
+            return 2
         out(f"wrote {args.montage}: DOS on the top row, the Amiga below")
     return status
 
