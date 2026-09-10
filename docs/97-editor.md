@@ -381,36 +381,16 @@ above `ROSTER_MIN_WIDTH` it is exactly its five columns at their contents,
 below that `Name` absorbs the whole shortfall and elides, and only when `Name`
 has nothing left does the table scroll.
 
-`ROSTER_MIN_WIDTH` is a floor under the whole window as well, handed to
-`setMinimumWidth` -- and a minimum measured from the names a party happens to
-carry is a window floor that follows the UI font, which is the bug in issue 41
-and the last of it in issue 71. `_size_roster` used to hand it `min(natural,
-ROSTER_MIN_WIDTH)`, which held only while `natural` -- the five columns at
-their contents -- was larger than the constant, and it was not: an ordinary
-six-character party measures its columns at 219px against the constant's 440,
-so `min` picked the font-derived number instead, and the window's floor
-followed the UI font again for the common case (issue 474). Letting the roster
-scroll instead of setting any minimum made the floor font-independent again but
-put `Class`, `AC` and `HP` behind a horizontal scrollbar at the window's own
-minimum, which Donald rejected (issue 504). So `_size_roster` hands the
-constant to `setMinimumWidth` with no `min()`: font-independent by
-construction, and every column stays visible at any width down to the floor,
-at the cost of a wider minimum window -- 1214px rather than 993 at the base UI
-font, for an ordinary party.
-
-An ordinary party's `natural` is under the constant, so pinning the roster's
-minimum to the constant forces it wider than its own columns. Handing that
-surplus nowhere left a blank strip between `HP` and the roster's own border --
-the picture Donald rejected a second time, on the same day. `Name` is the
-column that already gives up width when the roster is squeezed below its
-contents, and it is also the column that takes a surplus: `_share_width` fills
-it to whatever the viewport actually has left over, in both directions, so the
-five columns always sum to the roster's own width and nothing inside its
-border is ever blank. It measures live -- `view.viewport().width()` and the
-other four sections' current sizes -- rather than from the numbers `_size_
-roster` captured once before the roster was shown, because `Race`, `Class`,
-`AC` and `HP` stay in `ResizeToContents` and can drift by a pixel or two once
-real font metrics are in play, and a snapshot does not follow that drift.
+`ROSTER_MIN_WIDTH` used to be a floor under the whole window as well, handed
+to `setMinimumWidth` -- and a minimum measured from the names a party happens
+to carry is a window floor that follows the UI font, which is the bug in issue
+41 and the last of it in issue 71. That held only while the constant was
+smaller than every real party's own columns, and it was not: an ordinary
+six-character party measures under it at every UI font up to the base font's
+own reach, so the window's floor became a text measurement again for the
+common case (issue 474). The roster no longer sets its own minimum width at
+all -- it keeps whatever `QTableView` has of its own, and the window's floor
+no longer depends on the roster in any way.
 
 ---
 
