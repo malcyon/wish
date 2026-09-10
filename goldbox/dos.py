@@ -982,7 +982,7 @@ class DosCharacter(_Fielded):
     **The title comes from the length.** 285, 422, 439 and 510 bytes are Pool
     of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and
     Pools of Darkness, and no two are the same size, so a record identifies
-    its own title with nothing else to go on. Pass `shape` to override that.
+    its own title with nothing else to go on. Pass `deltas` to override that.
     """
 
     _TABLE = FIELDS_BY_NAME
@@ -2880,8 +2880,8 @@ def identity_byte(record: bytes | bytearray,
     what was there before.  Two characters identical in all 284 other bytes
     do collide, and are the same character by every field the game has.
 
-    `shape` names the title; with none it is taken from the record's length,
-    which identifies it on its own among the four (`shape_for`).  The field
+    `deltas` names the title; with none it is taken from the record's length,
+    which identifies it on its own among the four (`deltas_for`).  The field
     is at a different offset in every title, so a Pool of Radiance offset
     used on a Curse record would digest the wrong 421 bytes and blank a byte
     of the money block.
@@ -3174,7 +3174,7 @@ def write_deltas(char: NeutralCharacter,
     (`.claude/rules/conversions.md`).  A neutral character carries the title
     its reader read it in -- `NeutralCharacter.game`, which is a
     `goldbox.games.Game`, its key, or `None` for Pool of Radiance -- and that
-    is what decides the shape.  `shape` overrides it, for a caller that has
+    is what decides the deltas.  `deltas` overrides it, for a caller that has
     already resolved the title.
 
     A title with no DOS record raises `DosShapeError`; a DOS record nobody
@@ -4774,7 +4774,7 @@ def never_adventured(savgam: bytes,
       it is unread, so the reading is PROBABLE there.  It is what Silver
       Blades gets, whose 5469-byte container stages no script at all.
 
-    `shape` defaults to whatever the buffer's own length names.
+    `container` defaults to whatever the buffer's own length names.
     """
     container = dos_savegame.save_shape_for(container or len(savgam))
     span = container.script_buffer
