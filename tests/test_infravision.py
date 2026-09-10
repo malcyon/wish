@@ -243,12 +243,21 @@ def _synthetic_save_disk(path: pathlib.Path) -> pathlib.Path:
 
 def test_stage_gives_the_copy_the_write_bit_back(tmp_path):
     """`--source` is often a read-only specimen; `shutil.copy` would carry
-    that mode onto `--out`, and this must not (#495)."""
+    that mode onto `--out`, and this must not (#495).
+
+    Skips with no message read from a disk if Pool of Radiance's own disks
+    are not on this machine -- `stage` reads the generator's race table off
+    them, the same way `test_the_c64_generator_writes_infravision_from_a_race_
+    table` above does, and CI carries none (`AGENTS.md` forbids the game's
+    data entering this repository, so no fixture can stand in)."""
     source = _synthetic_save_disk(tmp_path / "base.d64")
     source.chmod(0o444)
     out = tmp_path / "staged.d64"
 
-    infravision.stage(source, out)
+    try:
+        infravision.stage(source, out)
+    except SystemExit as e:
+        pytest.skip(str(e))
 
     assert out.stat().st_mode & stat.S_IWUSR
 
@@ -261,7 +270,10 @@ def test_staging_over_a_read_only_leftover_does_not_raise(tmp_path):
     read-only leftover forward is `shutil.copy` finding one already sitting
     at `--out` -- a specimen copied there by hand, or an earlier run that
     died between its own copy and its own `image.save` -- and dying opening
-    it for writing."""
+    it for writing.
+
+    Skips with no Pool of Radiance disks on this machine, for the same reason
+    `test_stage_gives_the_copy_the_write_bit_back` above does."""
     import shutil
 
     source = _synthetic_save_disk(tmp_path / "base.d64")
@@ -269,4 +281,7 @@ def test_staging_over_a_read_only_leftover_does_not_raise(tmp_path):
     out = tmp_path / "staged.d64"
     shutil.copy(source, out)  # a read-only leftover, however it got there
 
-    infravision.stage(source, out)  # must not raise
+    try:
+        infravision.stage(source, out)  # must not raise
+    except SystemExit as e:
+        pytest.skip(str(e))

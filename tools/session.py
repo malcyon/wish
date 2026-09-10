@@ -2618,8 +2618,20 @@ def stage_writable(src: pathlib.Path, dest: pathlib.Path) -> str:
     it.  The copy is then handed to `writable`, so what lands in the slot can
     always be overwritten by the game, whatever mode it arrived with
     (`#455`, `#469`, `#472`).
+
+    **The read-only attribute has to come off before the unlink, not after.**
+    Windows refuses to delete a file that still carries it, so a read-only
+    leftover -- the exact thing this function exists to clear -- made the
+    unlink itself raise `PermissionError` there, on every call, and nothing
+    on Linux ever showed it (`#495`).  The `chmod` is guarded because `dest`
+    is routinely nothing at all -- a slot's first stage into a path no
+    earlier tenant used.
     """
     dest = pathlib.Path(dest)
+    try:
+        dest.chmod(dest.stat().st_mode | stat.S_IWUSR)
+    except FileNotFoundError:
+        pass
     dest.unlink(missing_ok=True)
     shutil.copy(src, dest)
     return writable(dest)

@@ -180,6 +180,22 @@ def test_run_pyreverse_hands_pyreverse_argv_to_subprocess_run_at_root(
     assert check is True
 
 
+def _worktree_paths(porcelain: str) -> set[pathlib.Path]:
+    """Every `worktree <path>` line of a `git worktree list --porcelain`,
+    resolved.
+
+    Comparing resolved paths, rather than the raw strings, is what survives
+    Windows spelling the same worktree two ways: `tempfile.mkdtemp` hands
+    back the 8.3 short form (`RUNNER~1`), while git prints the long form with
+    forward slashes.  `Path.resolve()` normalises both to the same spelling
+    when the path still exists, which is why the membership check below
+    happens before `remove_worktree` runs and not after.
+    """
+    return {pathlib.Path(line[len("worktree "):]).resolve()
+            for line in porcelain.splitlines()
+            if line.startswith("worktree ")}
+
+
 def test_worktree_is_created_at_head_and_removed_after(tmp_path):
     """Checks this one worktree's path, not the whole registry -- several
     tests here add their own worktree to the same repository, and under
@@ -195,7 +211,7 @@ def test_worktree_is_created_at_head_and_removed_after(tmp_path):
             ["git", "worktree", "list", "--porcelain"],
             cwd=repo, check=True, capture_output=True, text=True,
         ).stdout
-        assert str(wt) in during
+        assert wt.resolve() in _worktree_paths(during)
     finally:
         classdiagram.remove_worktree(repo, wt)
 
@@ -204,7 +220,7 @@ def test_worktree_is_created_at_head_and_removed_after(tmp_path):
         ["git", "worktree", "list", "--porcelain"],
         cwd=repo, check=True, capture_output=True, text=True,
     ).stdout
-    assert str(wt) not in after
+    assert wt.resolve() not in _worktree_paths(after)
 
 
 def test_remove_worktree_also_removes_the_wrapping_temp_directory(tmp_path):
