@@ -205,6 +205,20 @@ def make_fake_s(slot: FakeSlot, on_boot=None):
             return str(pathlib.Path(slot_.dir) / "SIDE0.D64")
 
         @staticmethod
+        def stage_writable(src, dest):
+            """`#472`'s shared helper, which several of these tools now call.
+
+            `tools/hallmenu.py` and `tools/outdoorstep.py` both call it, and
+            these tests reach neither line because they pass no `--disk`. So
+            this is here before it is needed rather than after: the same gap
+            in `tests/test_savecheck_log.py`'s own double did fire, and the
+            only difference was that that tool calls it unconditionally.
+            A double standing in for the whole of `tools/session.py` has to
+            grow whatever that module grows.
+            """
+            return str(dest)
+
+        @staticmethod
         def Session(disk, slot=None):
             return FakeSession(disk, slot=slot, on_boot=on_boot)
 

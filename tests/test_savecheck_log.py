@@ -135,6 +135,19 @@ def drive_a_failing_run(tmp_path, monkeypatch, on_shot=None) -> pathlib.Path:
         def stage_disks(slot, disks, save=""):
             return str(here / "SIDE1.D64")
 
+        @staticmethod
+        def stage_writable(src, dest):
+            """`#472`'s shared helper, which `run` calls before `Session`.
+
+            This double stands in for the whole of `tools/session.py`, so a
+            helper added there has to appear here or `run` dies on an
+            `AttributeError` before it reaches the `RuntimeError('boot
+            failed')` these tests are about -- which is what happened when
+            the helper landed. Writing nothing is right: the real one copies
+            a save disk into a pool slot, and there is no slot here.
+            """
+            return str(dest)
+
     monkeypatch.setattr(savecheck, "S", FakeS)
     assert savecheck.main(["--disk", str(disk), "--disks", str(tmp_path),
                            "--out", str(out)]) == 1
