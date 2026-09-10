@@ -293,6 +293,34 @@ on block `0x05` becomes grey mail with a blue shield — so a comparison drawn
 through EGA said nothing about whether two ports show a player the same
 picture.
 
+### An independent check on all twelve, from outside this project
+
+Donald supplied it on 2026-09-10, saying he has had to link it several times
+here already, so it is written down: **Nerdly Pleasures, "Goofy Things in Pool
+of Radiance"**,
+<https://nerdlypleasures.blogspot.com/2015/11/goofy-things-in-pool-of-radiance-gold.html>.
+It carries one picture of every creation-menu body on seven ports, twelve
+across and seven down, and the rows are, top to bottom: **C64, PC CGA, PC
+EGA/Tandy, Apple II, Macintosh, PC-9801, Amiga.** The bottom row is the one
+this document is about.
+
+`work/issue480/480-menu.png` agrees with that bottom row at **all twelve
+positions** -- same drawings, same order, same colours. That is a check on
+three separate things at once, taken from outside this project: the palette
+above, the order of the blocks in `body.dax`, and the menu table's contents.
+None of them had been checked against anything but our own reading before.
+
+**And it settles position 8 the same way.** Six of the seven rows draw a bare
+chest under a cloak there. The Amiga row draws a knight in mail behind a blue
+shield with a gold device on it. So the two ports differ in **the art the game
+shipped**, and no decoding error, palette error or off-by-one on our side
+produces that: an independent photograph of the Amiga's own menu shows the
+knight where DOS shows the bare chest. `#480 (An Amiga character whose body is
+the menu's eighth arrives on the C64 or DOS wearing a different body, because
+the Amiga reader uses the C64 and DOS menu)` is therefore a real difference
+between two ports rather than a bug in the reader, and what a converted
+character should get is Donald's to decide.
+
 ### The Amiga sheet asks for the face — which reopens a question we closed
 
 `#322 (Nobody has looked at an Amiga Pool of Radiance character sheet to see
