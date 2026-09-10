@@ -8,8 +8,9 @@ became `DosDeltasError`, and `shape_for` became `deltas_for` -- all three
 old names are re-exported here too, so nothing importing this module has to
 change before stage 9 takes the callers off and deletes it.
 
-**Import `goldbox.dos_port` in anything new.** This module is 81 importers'
-worth of history, not a place to add a tenth-first.
+**Import `goldbox.dos_port` in anything new.** This module exists to keep 81
+existing importers working until stage 9 moves them; it is not a place to add
+an eighty-second.
 """
 
 from __future__ import annotations

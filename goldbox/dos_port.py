@@ -20,8 +20,8 @@ Nothing here is transcribed from a hex-editing guide: the community notes in
 `work/coab-research/formats/` predicted nine of these fields and were right
 about all nine, which is corroboration and is said as much in the notes.
 
-Three things worth knowing before reading the table
----------------------------------------------------
+Three things to know before reading the table
+--------------------------------------------
 * **The name is length-prefixed**, not NUL-padded: one count byte then up to
   15 ASCII.  The C64 spends 20 NUL-padded bytes on the same field, which is
   the whole of the four-byte displacement between the two layouts' early
@@ -548,7 +548,7 @@ _DECLARED: Sequence[Field] = (
     _f(0x0B5, 3, _RAW, "spells_castable_magic_user", "Magic-user spell slots",
        _MAYBE),
     _f(0x0B8, 2, _U16, "experience_award", "Experience award", _OK,
-       "what killing this creature is worth: `base + hp_rolled * "
+       "the experience killing this creature grants: `base + hp_rolled * "
        "experience_per_hit_point` is the end-of-combat routine's own "
        "arithmetic, `SECRET GAME.OVR 0x6B4A`-`0x6B7E`, `CURSE "
        "0x5D7B`-`0x5DAF`, `POOLRAD 0x564E`-`0x5676`. **CONFIRMED from four "
