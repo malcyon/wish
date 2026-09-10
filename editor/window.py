@@ -1376,9 +1376,19 @@ class EditorBinding(QObject):
         `Direction.write` puts the files in it. A C64 destination is opened
         afterwards the same way `File ▸ Open` opens anything; a DOS or
         Amiga destination is not something the editor can show, so it only
-        gets a status line.
+        gets a status line. **Flushes the open party first**, the same as
+        `export_source`: without it the dialog reads the disk image as it
+        was when the file was opened, not the edits on screen (`#478 (File
+        ▸ Convert converts the save as it was opened, not as it is on
+        screen, because it never flushes the editor's own edits)`). Guarded
+        on `self.party`, since Convert -- unlike Export -- still opens with
+        nothing open, to let the picker choose a source.
         """
         from editor import convert as convert_mod
+
+        if self.party is not None:
+            self._report_flush_failures(self._flush())
+            self._write_back()
 
         dialog = convert_mod.ConvertDialog(
             source or "", self.party, self.game_files_for,

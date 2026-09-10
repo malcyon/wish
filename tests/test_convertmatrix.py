@@ -46,6 +46,7 @@ defect, so it gets no issue of its own.
 from __future__ import annotations
 
 import pathlib
+from types import SimpleNamespace
 
 import pytest
 from gamedata import specimen_root
@@ -265,15 +266,20 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 
     shape = dos_layout.SHAPES_BY_KEY[game.key]
     out = tmp_path / "out"
-    # `lambda g: None` -- no C64 disks handed to the dialog for the source's
-    # own combat icon (`#383 (The live Convert dialog never wires a C64
-    # party's own combat icon into DOS, so region_220 stays on the drop
-    # list)`'s own wiring, already proven in `test_convert.py`); both sides of
-    # this comparison then take `icon_parts=None`, the game's own default
-    # figure, so the two calls stay comparable without a fourth disk search.
-    dialog = convert.ConvertDialog(str(disk_path), None, lambda g: None,
-                                   destination="dos", game=str(game_dir),
-                                   folder=str(out))
+    # An `icon=None` game-files stand-in -- no C64 disks handed to the
+    # dialog for the source's own combat icon (`#383 (The live Convert
+    # dialog never wires a C64 party's own combat icon into DOS, so
+    # region_220 stays on the drop list)`'s own wiring, already proven in
+    # `test_convert.py`); both sides of this comparison then take
+    # `icon_parts=None`, the game's own default figure, so the two calls
+    # stay comparable without a fourth disk search. `lambda g: None` would
+    # answer no disks at all, which a C64 source now refuses for
+    # (`#482 (With no game disks for the source title, a C64 party converted
+    # to DOS or the Amiga silently arrives with no combat figures, though a
+    # C64 destination refuses)`).
+    dialog = convert.ConvertDialog(
+        str(disk_path), None, lambda g: SimpleNamespace(icon=None),
+        destination="dos", game=str(game_dir), folder=str(out))
     try:
         assert type(dialog.direction) is convert.C64ToDos
         assert dialog.direction in convert.DIRECTIONS

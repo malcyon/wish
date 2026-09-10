@@ -1235,6 +1235,11 @@ CANNOT_CONVERT = dos.CANNOT_CONVERT
 #: `#342 (A Curse or Silver Blades save cannot be converted unless its C64
 #: sides sit in the Pool of Radiance disk folder)` gave each title its own
 #: folder and the old wording named `File ▸ Import` and one shared folder.
+#: **Reused for a missing source's disks too, since #482**
+#: (`#482 (With no game disks for the source title, a C64 party converted to
+#: DOS or the Amiga silently arrives with no combat figures, though a C64
+#: destination refuses)`): it names no direction, so the same sentence fits
+#: whichever side of the conversion could not be read.
 NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with
@@ -1550,12 +1555,16 @@ class ConvertDialog(QDialog):
                 # *destination*'s icon table, keyed here by the *source*'s
                 # title instead (`direction.title`, `C64ToDos.__init__` and
                 # `C64ToAmiga.__init__` alike). `None` when the player's
-                # disks do not carry it: the conversion still runs, exactly
-                # as before #383 and #422, and every figure comes out the
-                # game's own default.
+                # disks do not carry it: refused the same way a missing C64
+                # destination disk already is above, rather than converting
+                # with every figure silently the game's own default
+                # (`#482 (With no game disks for the source title, a C64
+                # party converted to DOS or the Amiga silently arrives with
+                # no combat figures, though a C64 destination refuses)`).
                 source_files: Any = self._game_files(direction.title)
-                icon_parts = (source_files.icon
-                             if source_files is not None else None)
+                if source_files is None:
+                    return NO_DISKS
+                icon_parts = source_files.icon
                 self.rehearsal = direction.rehearse(
                     self.source, slot, options, icon_parts=icon_parts)
             else:

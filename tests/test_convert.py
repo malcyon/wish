@@ -748,6 +748,61 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
 
 
 # ---------------------------------------------------------------------------
+# `#482 (With no game disks for the source title, a C64 party converted to
+# DOS or the Amiga silently arrives with no combat figures, though a C64
+# destination refuses)`: the source's own disks are needed for the combat
+# icon exactly the way a C64 destination's already are, and a missing set
+# refuses the same way -- rather than converting with `icon_parts=None` and
+# every figure silently the game's own default.
+# ---------------------------------------------------------------------------
+
+def test_a_c64_source_with_no_disks_is_refused_for_a_dos_destination(
+        tmp_path):
+    """Watched failing before the fix: with `_no_disks`, `dialog.rehearsal`
+    was not `None` and the Convert button was pressable, exactly `#482`'s
+    silent loss."""
+    path = _por_c64_disk(tmp_path)
+
+    dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                   destination="dos",
+                                   game=str(tmp_path / "unread"),
+                                   folder=str(tmp_path / "out"))
+    try:
+        assert dialog.direction.destination_port == "dos"
+        assert dialog.rehearsal is None
+        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISKS
+        ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+        assert not ok.isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_a_c64_source_with_no_disks_is_refused_for_an_amiga_destination(
+        tmp_path):
+    """The same refusal, for the other silent direction `#482` named."""
+    path = _por_c64_disk(tmp_path)
+
+    dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                   destination="amiga",
+                                   disk=str(tmp_path / "unread.adf"),
+                                   folder=str(tmp_path / "out"))
+    try:
+        assert dialog.direction.destination_port == "amiga"
+        assert dialog.rehearsal is None
+        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISKS
+        ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+        assert not ok.isEnabled()
+    finally:
+        dialog.close()
+
+
+# The unchanged case: `test_the_c64_disks_are_looked_up_by_the_destination_
+# title` above already proves a C64 destination still refuses through this
+# same `NO_DISKS` line, so the fix above did not move the case that already
+# worked.
+
+
+# ---------------------------------------------------------------------------
 # `#234 (A dual-classed Curse or Silver Blades character converted to DOS
 # loses the class he trained out of)`'s own proof, through this registry
 # rather than a direct `goldbox.dos` call -- the row this issue was waiting
@@ -884,6 +939,15 @@ def _later_c64_disk(tmp_path, game):
 
 def _no_disks(_game):
     return None
+
+
+def _some_disks(_game):
+    """A `game_files` lookup standing in for disks that were found, with an
+    icon table not worth building for the test at hand (`#482`'s own guard
+    checks only that this answers something, and the two callers of it below
+    are testing the write path rather than the combat icon `#422` and `#383`
+    already cover)."""
+    return SimpleNamespace(icon=None)
 
 
 def test_a_pool_of_radiance_d64_lists_dos(tmp_path):
@@ -1110,12 +1174,16 @@ def test_the_writes_block_names_the_full_path_before_the_button_is_enabled(
         tmp_path):
     """The pane says where the file would land, not only its name, so a
     player never has to guess which folder Convert is about to write into --
-    and the button is enabled only once it does."""
+    and the button is enabled only once it does.
+
+    `_some_disks`, not `_no_disks`: this row's own C64 -> DOS default
+    direction now refuses with no source disks (`#482`), and this test is
+    about the writes block rather than that refusal."""
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
 
-    dialog = convert.ConvertDialog(str(path), None, _no_disks,
+    dialog = convert.ConvertDialog(str(path), None, _some_disks,
                                    folder=str(destination),
                                    game=str(_game_dir()))
     try:
@@ -1230,9 +1298,14 @@ def test_the_open_saves_unsaved_edits_cross(tmp_path, monkeypatch):
     """Converting the save already open in the editor uses the bytes on
     screen, edits included -- the same rule
     `exports.Source.from_party` followed, ported here rather than argued
-    from plausibility."""
+    from plausibility.
+
+    `disks=` is passed now: with none configured, `window.game_files_for`
+    answered `None` for every title regardless of the real disks
+    `@needs_disks` requires, and a C64 -> DOS conversion with no source disks
+    now refuses (`#482`) rather than converting with no combat icon."""
     path = _por_c64_disk(tmp_path, name="open.d64")
-    window = EditorBinding(_make_root())
+    window = EditorBinding(_make_root(), disks=str(disk_dir()))
     window.load(str(path))
     assert window.party is not None
 
@@ -1256,6 +1329,48 @@ def test_the_open_saves_unsaved_edits_cross(tmp_path, monkeypatch):
 
     written = next((destination).glob("wish-*/SAVGAMA.DAT"))
     assert written.read_bytes()[:1] != original[:1]
+
+
+@needs_dos_saves
+@needs_disks
+def test_an_edit_typed_on_the_sheet_and_never_saved_still_converts(
+        app, tmp_path, monkeypatch):
+    """The sibling above edits `party.save0` directly, which is the disk
+    image `Source.detect` already reads -- so it cannot tell `convert` was
+    missing the `_flush`/`_write_back` pair `export_source` has always had
+    (`#478 (File ▸ Convert converts the save as it was opened, not as it is
+    on screen, because it never flushes the editor's own edits)`). This one
+    goes through the widget instead: BRUTUS's own gold, typed on the sheet
+    and never saved, has to reach the converted DOS record.
+
+    `disks=` is passed now, for the same reason the sibling above needs it:
+    a C64 -> DOS conversion with no source disks refuses (`#482`)."""
+    from test_editor import make_root
+
+    from editor.window import EditorBinding
+
+    path = _por_c64_disk(tmp_path, name="open.d64")
+    window = EditorBinding(make_root(), disks=str(disk_dir()))
+    window.load(str(path))
+    window.roster.selectRow(0)
+    assert window._widgets["gold"].value() == 120        # BRUTUS, unedited
+    window._widgets["gold"].setValue(9999)
+
+    game_dir = _game_dir()
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    # No `window.close()` afterwards, unlike the sibling above: the gold
+    # edit went through a widget and so is in `self.dirty`, and `close()`
+    # pops a real, blocking `QMessageBox.question` for unsaved changes --
+    # the sibling's edit bypasses that by writing `party.save0` directly.
+    window.convert(source=str(path), folder=str(destination),
+                  game=str(game_dir))
+
+    written = next(destination.glob("wish-*/CHRDATA1.SAV"))
+    assert dos.read_character(written).money["gold"] == 9999
 
 
 @needs_dos_saves
@@ -1338,6 +1453,12 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
     reaches the debug log instead -- `WISH_DEBUG` is exactly where a
     developer note like these belongs (`.claude/rules/gui-text.md` exempts
     that log from the same rule by name).
+
+    `_some_disks`, not `_no_disks`: a C64 source converting to DOS with no
+    source disks now refuses before ever reaching a rehearsal (`#482`), and
+    this test is about the drop list a *completed* rehearsal produces --
+    `icon=None` still leaves the combat-icon field on that list, the same
+    drop `#482`'s own audit quotes.
     """
     import re
 
@@ -1352,7 +1473,7 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
     destination.mkdir()
     debuglog.start()
     try:
-        dialog = convert.ConvertDialog(str(path), None, _no_disks,
+        dialog = convert.ConvertDialog(str(path), None, _some_disks,
                                        game=str(_game_dir()),
                                        folder=str(destination))
         try:
@@ -2192,6 +2313,10 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     `test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter`
     below is the twin that drives the whole path including `disk=` and the
     `CONVERTED_AMIGA` status line.
+
+    `_some_disks`, not `_no_disks`: a C64 source converting to Amiga now
+    refuses with no source disks (`#482`), and this test is about the write
+    path rather than the combat icon.
     """
     from test_toamigapor import _c64_specimen
 
@@ -2202,7 +2327,7 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     destination = tmp_path / "out"
     destination.mkdir()
 
-    dialog = convert.ConvertDialog(str(c64_path), None, _no_disks,
+    dialog = convert.ConvertDialog(str(c64_path), None, _some_disks,
                                    destination="amiga", disk=str(disk2),
                                    folder=str(destination))
     try:
@@ -2233,7 +2358,13 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
     `EditorBinding.convert` itself knows to write into a fresh folder, name
     it `POOLSAVE.ADF`, and report the approved sentence rather than falling
     through to `CONVERTED_DOS` or trying to `self.load()` it as a C64
-    save."""
+    save.
+
+    `window.game_files_for` is patched to answer something for every title:
+    with no disks folder set on this `EditorBinding`, it would otherwise
+    return `None` for the specimen's own title and the conversion would now
+    refuse (`#482`) -- this test is about `EditorBinding.convert`'s own
+    wiring, not about the combat icon."""
     from test_toamigapor import _c64_specimen
 
     from goldbox import amiga
@@ -2246,6 +2377,7 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
 
     monkeypatch.setattr(convert.ConvertDialog, "exec",
                         lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(window, "game_files_for", _some_disks)
     try:
         note = window.convert(source=str(c64_path), destination="amiga",
                               disk=str(disk2), folder=str(destination))
