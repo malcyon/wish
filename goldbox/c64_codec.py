@@ -792,18 +792,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         emit(memorised, "spells_memorised", mem_at, mem_size,
              f" (the C64 fills this title's {mem_size} slots from the start, "
              f"which is the neutral order)")
-        if len(memorised.value) > mem_size:
-            # NOT APPROVED (#399, A conversion that runs out of item or
-            # trait slots tells the player nothing, because the pane never
-            # shows a warning): this reached a player for the first time
-            # when `losses` started reaching the pane, and its old wording
-            # named "C64 record" and "slots" -- reworded to say what did not
-            # fit rather than name the field.
-            rep.warnings.append(
-                f"{len(memorised.value)} memorised spells, and the C64 can "
-                f"hold only {mem_size} at once; the last "
-                f"{len(memorised.value) - mem_size} do not fit. "
-                f"(NOT APPROVED)")
+        # No sentence for running past `mem_size` (#399, A conversion that
+        # runs out of item or trait slots tells the player nothing, because
+        # the pane never shows a warning): a 950-character census across
+        # every C64 disk, DOS archive, played save and specimen on the
+        # machine found nobody reaching either of #399's own ceilings, and
+        # #477's follow-up measured this one directly -- over 442 DOS
+        # records the most any character carries is 5 memorised spells,
+        # against ceilings of 81, 69 and 74 for the three titles with a C64
+        # destination.  The game implements AD&D, so spell slots come from
+        # class and level rather than anything a conversion could lose.
+        # Donald, 2026-09-07: "I agree that we do not need the sentences."
 
     # -- the second ability array -------------------------------------------
     # Curse of the Azure Bonds keeps every ability twice and works in this
@@ -834,13 +833,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # character written back keeps the spells the reader found -- the read half
     # widened in #85 and this is the other end of it.
     #
-    # NOT APPROVED (#399, A conversion that runs out of item or trait slots
-    # tells the player nothing, because the pane never shows a warning):
-    # this reached a player for the first time when `losses` started
-    # reaching the pane. The old wording named "spell id", "byte mask" and
-    # "bit"; reworded below to say which spell did not fit, when its name is
-    # known, and otherwise that one did not without naming its internal id.
-    # Donald has not seen either wording.
+    # No sentence for a spell id above `ceiling` (#399, A conversion that
+    # runs out of item or trait slots tells the player nothing, because the
+    # pane never shows a warning; Donald, 2026-09-07: "I agree that we do
+    # not need the sentences.").  This ceiling is not #399's own census --
+    # it is a title's spellbook mask being narrower than the shared DOS spell
+    # id range, tracked on its own at #411 (Nobody knows whether a converted
+    # cleric loses Restoration, because the spellbook field is one bit short
+    # of the game's own spell list), which is where a future finding about
+    # who can actually reach it belongs.
     known = use("spells_known")
     if known is not None:
         table = spells.for_game(char.game)
@@ -849,19 +850,6 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         spells.write_spellbook(rec, converted, char.game)
         emit(known, "spells_known", 0x078, table.spellbook_size,
              " packed to one bit; ids are identical")
-        for i in known.value:
-            if i > ceiling:
-                if table is spells.POOL_OF_RADIANCE and i == 56:
-                    rep.warnings.append(
-                        "Restoration is set as a known spell, and the C64 "
-                        "version of Pool of Radiance has no room in its "
-                        "spellbook for it, so it is left off. "
-                        "(NOT APPROVED)")
-                else:
-                    rep.warnings.append(
-                        f"A spell known on {port} is not one the C64 "
-                        f"version of {table.title} can record as known, "
-                        f"so it is left off the spellbook. (NOT APPROVED)")
 
     # -- the per-class level array: indexed by the class bit -----------------
     levels = use("levels")
@@ -869,18 +857,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         for name_, level in levels.value.items():
             field = LEVEL_FIELDS.get(name_)
             if field is None:
-                if level:
-                    # NOT APPROVED (#399, A conversion that runs out of item
-                    # or trait slots tells the player nothing, because the
-                    # pane never shows a warning): this reached a player for
-                    # the first time when `losses` started reaching the
-                    # pane, and its old wording named "the C64's eight-slot
-                    # array" -- reworded to name the class rather than the
-                    # array.
-                    rep.warnings.append(
-                        f"{port} has {name_} at level {level}, and the C64 "
-                        f"game has no class like {name_}, so that class is "
-                        f"left off the sheet. (NOT APPROVED)")
+                # No sentence here either (#399, A conversion that runs out
+                # of item or trait slots tells the player nothing, because
+                # the pane never shows a warning; Donald, 2026-09-07: "I
+                # agree that we do not need the sentences."): a source class
+                # the C64 game has no slot for.
                 continue
             rec.set(field, level)
         for f in _LEVEL_ORDER:
@@ -1121,24 +1102,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                  "the removal flag the other ports keep beside it have no "
                  "C64 counterpart, because the C64 removes by id alone and "
                  "its handler holds the magnitude")
-        # NOT APPROVED, both lines below (#399, A conversion that runs out
+        # No sentence for either ceiling (#399, A conversion that runs out
         # of item or trait slots tells the player nothing, because the pane
-        # never shows a warning): they reached a player for the first time
-        # when `losses` started reaching the pane, and the old wording
-        # named "the C64 has ten slots" and "free trait slots" -- reworded
-        # to say what did not fit rather than name the mechanism it uses.
-        if len(innate_ids) > 10:
-            rep.warnings.append(
-                f"{len(innate_ids)} effects your character has on their "
-                f"own, and the C64 allows ten on one character; the last "
-                f"{len(innate_ids) - 10} do not fit. (NOT APPROVED)")
-        if len(granted_ids) > len(free):
-            rep.warnings.append(
-                f"{len(granted_ids)} effects your character's items "
-                f"grant, and only {len(free)} of the ten allowed are "
-                f"still free once your own effects are counted; "
-                f"{len(granted_ids) - len(free)} do not fit. "
-                f"(NOT APPROVED)")
+        # never shows a warning).  #399's own census swept 950 characters --
+        # every C64 disk, DOS archive, played save directory, specimen and
+        # Amiga disk image on the machine -- and found the widest trait list
+        # anywhere is 5 of the 10 slots, engine-written (THRENDER GRONE, a
+        # dwarf's four innate ids plus one ring grant); on Pool of Radiance
+        # the ten slots cannot be exceeded by the game's own items at all,
+        # CONFIRMED by reading `SPELLE04 $ADD4`.  Donald, 2026-09-07: "I
+        # agree that we do not need the sentences."
 
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
@@ -1149,19 +1122,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE] = item
         rec.set_raw("inventory", bytes(inv))
         emit(inventory, "inventory", 0x120, 256)
-        if len(converted) > ITEM_SLOTS:
-            # NOT APPROVED (#399, A conversion that runs out of item or
-            # trait slots tells the player nothing, because the pane never
-            # shows a warning): this sentence is the one #399's own
-            # measurement quoted reaching the pane through `losses`, and its
-            # old wording named "the C64 has sixteen slots" -- reworded here
-            # for the same reason as the other five, so every sentence this
-            # file can put in front of a player avoids "slot" alike.
-            rep.warnings.append(
-                f"{len(converted)} items, and the C64 can carry only "
-                f"sixteen at once; the last "
-                f"{len(converted) - ITEM_SLOTS} do not fit. "
-                f"(NOT APPROVED)")
+        # No sentence past `ITEM_SLOTS` either (#399, A conversion that runs
+        # out of item or trait slots tells the player nothing, because the
+        # pane never shows a warning).  This is the one case #399's own
+        # measurement found reached in practice, and only by a specimen this
+        # project manufactured to exercise it (`tools/dositemcap.py`): 52 of
+        # 950 real characters carry exactly sixteen and none carries more,
+        # and DOS Pool of Radiance refuses a seventeenth item itself --
+        # watched in DOSBox, a character holding fifteen accepted a TRADE and
+        # an identical one holding sixteen was refused -- so the two ports'
+        # own ceilings already agree.  Donald, 2026-09-07: "So why does your
+        # scenario have a DOS save with 20 items on a character if it is not
+        # been measured... I agree that we do not need the sentences."
 
     # -- the combat icon: only the C64 has one -------------------------------
     if icon is not None:

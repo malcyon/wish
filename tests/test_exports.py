@@ -124,12 +124,15 @@ def test_the_losses_are_the_codecs_own_words(one, dos_template, tmp_path):
     # written to the `.SPC`, so they are not a loss and must not be named as
     # one.
     assert "innate_effects" not in text
-    # `infravision` used to sit beside `portrait_head` above.  It went into
-    # `goldbox.dos.WRITE_UNREPORTED_DROPS` on 2026-09-07: the C64 byte is
-    # written once from a race table in the game's own character generator
+    # `infravision` used to sit beside `portrait_head` above.  The C64 byte
+    # is written once from a race table in the game's own character generator
     # and DOS keeps nothing for it, so a converted character arrives in the
     # state a DOS-rolled one of his race is in and there is nothing to tell
-    # him (#52, `tests/test_infravision.py`).
+    # him (#52, `tests/test_infravision.py`).  `write` consumes the field
+    # directly (`goldbox.dos.WRITE_NO_SUCH_FIELD`) rather than through a
+    # silencing list on top of `report.dropped`, since #483 (The Convert flag
+    # could come off while two fields are still lost, because a silencing
+    # list keeps them out of the count that decides it).
     assert "infravision" not in text
     # `summary()` also carries a byte count and the `converted` list; neither
     # is a loss and neither belongs under that heading.

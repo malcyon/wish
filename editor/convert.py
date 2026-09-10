@@ -777,7 +777,7 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     -- a C64 record's combat-icon screen codes, a DOS record's field with no
     Amiga home -- and `goldbox.amiga.write_por`'s own drops for the same
     character, which is what `write_por`'s report already carries by way of
-    `goldbox.dos.write`'s `SilencingWriter.finish` (`goldbox/neutral.py`).
+    `goldbox.dos.write`'s own use of `neutral.Writer.finish` (`goldbox/neutral.py`).
     `report.warnings` gets the same, plus `PorSaveReport.converted` -- the
     place, the clock and the quest-flag count `tools/toamigapor.py` already
     prints -- so a player reading the pane sees where the party has arrived.

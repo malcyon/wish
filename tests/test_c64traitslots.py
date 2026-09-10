@@ -115,25 +115,29 @@ def test_an_id_in_either_list_survives_the_round_trip_back():
 
 # --- the ceiling -------------------------------------------------------------
 
-def test_eleven_ids_fill_every_slot_and_the_eleventh_is_reported():
+def test_eleven_ids_fill_every_slot_and_the_eleventh_is_dropped_silently():
     """Ten is the machine's number, not ours (`.claude/rules/conversions.md`),
-    so the eleventh cannot be written -- but it cannot be silent either
-    (#236)."""
+    so the eleventh cannot be written.  #236 (A character converted to the
+    C64 with more than ten innate effects loses the extra ones with no
+    report) drafted a sentence for this; #399's own 950-character census
+    found nobody reaching the ceiling for real (widest anywhere: 5), and
+    Donald ruled the sentence unneeded -- "I agree that we do not need the
+    sentences." -- so the eleventh is still cut off, just not named."""
     char = _neutral(POOL.key, name="TESTER",
                     innate_effects=list(range(1, 12)))
     rec, rep = c64_codec.write(char)
     assert _slots(rec) == list(range(1, 11))
-    assert [w for w in rep.warnings if "on their own" in w]
+    assert not [w for w in rep.warnings if "on their own" in w]
 
 
-def test_a_grant_with_no_free_slot_left_is_reported_too():
+def test_a_grant_with_no_free_slot_left_is_dropped_silently_too():
     """The other half of the same ceiling: ten racial ids and a ring."""
     char = _neutral(POOL.key, name="TESTER",
                     innate_effects=list(range(1, 11)),
                     granted_effects=[_innate_node(61)])
     rec, rep = c64_codec.write(char)
     assert _slots(rec) == list(range(1, 11))
-    assert [w for w in rep.warnings if "items grant" in w]
+    assert not [w for w in rep.warnings if "items grant" in w]
 
 
 # --- every DOS record on this machine ----------------------------------------

@@ -1711,7 +1711,26 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # wording Donald ruled on 2026-09-07 (`#306 (The Fast Travel button's own
     # disabled tooltip carries a memory address)`), which had been recorded
     # there and never applied.
-    WAITING = {"goldbox.c64_codec": 8, "goldbox.amiga": 1, "goldbox.dos": 7,
+    #
+    # **`goldbox.c64_codec` went 8 to 1 on 2026-09-09, and none of the seven
+    # was approved: the sentences themselves are gone.** All six of #399's
+    # own per-character ceiling sentences (memorised spells, the spellbook,
+    # the class array, both trait-slot lines and the inventory line) are
+    # deleted, not reworded: Donald ruled, on the 950-character census #399's
+    # own closing comment carries, that no real conversion reaches any of
+    # these ceilings -- "I agree that we do not need the sentences." A short
+    # comment citing #399 sits where each one was. The one line left is the
+    # combat-icon figure, `#320`/`#355` territory and untouched here.
+    #
+    # `goldbox.dos` went 7 to 6 the same day, also with nothing approved:
+    # `encumbrance`'s drop-list line moved to `WRITE_DERIVED` (#483, The
+    # Convert flag could come off while two fields are still lost, because a
+    # silencing list keeps them out of the count that decides it), which
+    # `write` now consumes with `use()` rather than ever composing a report
+    # line for -- so, like the four that came off the day before, it stopped
+    # being a string a player, or even a developer reading `report.dropped`,
+    # can reach.
+    WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga": 1, "goldbox.dos": 6,
                "automap.actions": 3}
 
     found: dict[str, list[str]] = {}

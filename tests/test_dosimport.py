@@ -251,11 +251,20 @@ def test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane():
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-item-twenty"),
                     reason="needs the twenty-item specimen")
-def test_a_real_conversion_that_truncates_items_shows_it_in_the_pane():
-    """The same specimen `#399`'s own measurement used, driven through
-    `dos.convert_save` exactly as `rehearse` drives it -- no game disks
-    needed, since neither the combat icon nor `ANIMATE00` change whether the
-    inventory truncates."""
+def test_a_real_conversion_that_truncates_items_shows_nothing_in_the_pane():
+    """The same specimen `#399 (A conversion that runs out of item or trait
+    slots tells the player nothing, because the pane never shows a
+    warning)`'s own measurement used, driven through `dos.convert_save`
+    exactly as `rehearse` drives it -- no game disks needed, since neither
+    the combat icon nor `ANIMATE00` change whether the inventory truncates.
+
+    `#399` drafted a sentence for this specimen reaching the pane; a
+    950-character census across every C64 disk, DOS archive, played save
+    and specimen on the machine found this manufactured character is the
+    only one anywhere over sixteen items, and Donald ruled the sentence
+    unneeded: "I agree that we do not need the sentences."  So the sixteenth
+    item still fits and the rest are still dropped -- nothing says so.
+    """
     from editor.dosimport import pane_text
 
     save0 = bytearray(0x1C00)
@@ -263,7 +272,7 @@ def test_a_real_conversion_that_truncates_items_shows_it_in_the_pane():
     report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
                               save0, save1)
     text = pane_text(report)
-    assert "WISHFTR" in text and "carry only sixteen" in text
+    assert "carry only sixteen" not in text
     # And none of this project's own bookkeeping about the party as a whole.
     assert "quest-flag" not in text
     assert "emptied" not in text
