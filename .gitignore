@@ -238,6 +238,9 @@ gamedisks.local.toml
 # without a second copy of them)`. Everything else under it is local state.
 .agents/*
 !.agents/rules/
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/caveman/
 # The subagent definitions, the standards under `rules/`, the hooks and the
 # project settings are the project's, not one machine's; everything else under
 # `.claude/` is local state. The hooks are tracked because an untracked tool is
@@ -248,6 +251,9 @@ gamedisks.local.toml
 !.claude/hooks/
 !.claude/rules/
 !.claude/settings.json
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/caveman
 skills-lock.json
 # Written by hatch-vcs at build time; the tag is the source of truth.
 wish/_version.py
