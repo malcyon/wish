@@ -287,16 +287,39 @@ _DECLARED: Sequence[Field] = (
        "for `0x01C = 100`, with `DAMAGE 1D2+2` against `1D2+6`. So `0x01C` "
        "answers to C64 `0x01A` and `0x01D` to C64 `0x06B`, and a conversion "
        "that swaps the six must leave this one alone"),
-    _f(0x01C, 16, _RAW, "spells_memorised", "Spells memorised", _MAYBE,
+    _f(0x017, 21, _RAW, "spells_memorised", "Spells memorised", _OK,
        "spell ids in the shared 1-56 numbering, **filled from the end of the "
        "region backwards**: ROLAND (cleric 3) holds 0x027-0x02B = 3 3 3 3 23, "
        "which read back to front is 23 3 3 3 3 -- descending, and exactly "
        "what the C64 writes forward from its own 0x020. GILES and ASTRID "
        "(mage 3) hold 21 21 34 in the last three, again magic-user ids only. "
-       "No specimen has a cleric id in a magic-user's list or the reverse. "
-       "**The Curse importer never reads this region** (0x17-0x2C is one of "
-       "its seven skipped runs), so nobody else's code corroborates the "
-       "width; sixteen is what the C64 declares and what tiles here. "
+       "No specimen has a cleric id in a magic-user's list or the reverse.\n"
+       "**Twenty-one entries starting at 0x017, read out of the engine** "
+       "(#508). The array is reached through a far pointer, so a loop over it "
+       "is a byte counter compared against the last index and then `add di, "
+       "ax` / `es:[di+0x17]`. Four such loops in Pool of Radiance's own "
+       "`GAME.OVR` bound the counter at `0x14`, which is 20, so the indices "
+       "run 0 to 20: the search at 0x016C90 (`0x016C80 cmp byte [bp-2], "
+       "0x14`, and 0x016C9E hands back 0xFF for an index past it), the "
+       "pending-spell sweep at 0x0179A3, the rest completion at 0x02471B and "
+       "the sheet's own list at 0x0275FC. Displacement 0x17 appears at 42 "
+       "sites in that overlay and 0x01C -- what this table declared until "
+       "#508 -- at none. **The same three routines exist in the three later "
+       "engines and their bounds agree with this table's other rows**: "
+       "Curse's are at 0x1E bounded by 0x53 (84), Silver Blades' at 0x1E by "
+       "0x4A (75), Pools of Darkness' at 0x1E by 0x8C (141).\n"
+       "**The high bit is a flag rather than part of the id.** Memorising "
+       "stores `id + 0x80` (0x01827A, after 0x018259 scans from index 0 for "
+       "the first zero byte), the rest that completes it clears the bit "
+       "(0x024756 `sub byte es:[di+0x17], 0x80`), and six sites read the "
+       "entry through `and al, 0x7f`. It is the same convention the C64's "
+       "`CAMP` clears with `AND #$7F`, so the byte crosses between the ports "
+       "unchanged. Every one of the 21 records on this machine with anything "
+       "memorised has the bit clear, which is what a saved game after a "
+       "night's rest looks like.\n"
+       "**The byte at 0x02C is not part of the array**: the same routine "
+       "that clears the pending entries zeroes it separately (0x0179C2), and "
+       "Curse's counterpart does the same to its own 0x072.\n"
        "**The same end-alignment is measured in the two later titles** "
        "(#113), by memorising one spell at a time in DOSBox and diffing the "
        "whole record: Curse's 84 bytes take a level-2 spell at 0x071, then a "
@@ -1116,7 +1139,7 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
     spellbook_spells=100,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
-           "gap_017": 0, "spells_memorised": 84, "spellbook": 100,
+           "spells_memorised": 84, "spellbook": 100,
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
     inserts={"level": (_x(1, "former_level", "Level left the old class at",
@@ -1151,7 +1174,7 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
     spellbook_spells=117, race_numbers=SILVER_BLADES_RACE_NUMBERS,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
-           "gap_017": 0, "spells_memorised": 75, "spellbook": 117,
+           "spells_memorised": 75, "spellbook": 117,
            "field_83_87": 4, "class_levels": 7, "gap_09f": 0,
            "experience": 4, "gap_0af": 0,
            "spells_castable_cleric": 7, "spells_castable_magic_user": 7},
@@ -1195,7 +1218,7 @@ POOLS_OF_DARKNESS = DosDeltas(
     race_numbers=POOLS_OF_DARKNESS_RACE_NUMBERS,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
-           "gap_017": 0, "spells_memorised": 141, "spellbook": 125,
+           "spells_memorised": 141, "spellbook": 125,
            "levels_drained": 0, "hp_lost_to_drain": 0, "field_83_87": 4,
            "copper": 0, "silver": 0, "electrum": 0, "gold": 0,
            "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,

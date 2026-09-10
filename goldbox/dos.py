@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import logging
 import pathlib
 import shutil
 import tempfile
@@ -109,6 +110,14 @@ from .portraits import (
     tables_from_dos,
 )
 from .record import CharacterRecord
+
+#: Where a condition the player must never be shown goes instead.  The name is
+#: a child of the `wish` logger, so `wish/debuglog.py`'s handler picks it up
+#: when a user turns the log on and nothing is written otherwise --
+#: `.claude/rules/conversions.md`: a conversion never explains itself to the
+#: player in place of being fixed, and the evidence still has to land
+#: somewhere.  `automap/state.py` names its own logger the same way.
+_log = logging.getLogger("wish.goldbox.dos")
 
 __all__ = [
     "DosRecordError",
@@ -1078,8 +1087,11 @@ class DosCharacter(_Fielded):
     def spells_memorised(self) -> list[int]:
         """Memorised spell ids, highest first -- the C64's own order.
 
-        DOS fills its sixteen slots **backwards from the end**; the C64 fills
-        its own forwards in descending id.  Reversing is the whole transpose.
+        DOS fills the title's own region **backwards from the end** -- 21
+        slots in Pool of Radiance, 84 in Curse, 75 in Silver Blades and 141 in
+        Pools of Darkness, each read off that engine's own loop bounds (#508)
+        -- where the C64 fills its region forwards in descending id.
+        Reversing is the whole transpose.
         """
         return [b for b in reversed(self.raw("spells_memorised")) if b]
 
@@ -2446,8 +2458,8 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("spells_known", "unpacked to one byte per spell; the ids are identical, "
                      "and DOS even has the byte for id 56 the C64's mask "
                      "lacks"),
-    ("spells_memorised", "reversed: DOS fills its sixteen slots from the "
-                         "end, the neutral order is highest first"),
+    ("spells_memorised", "reversed: DOS fills the title's own region from "
+                         "the end, the neutral order is highest first"),
     ("spells_castable", "unpacked from the class map to two three-byte "
                         "runs, cleric at 0x0B2 and magic-user at 0x0B5"),
     ("size_small", "plus one -- DOS stores 1 small / 2 medium"),
@@ -3489,9 +3501,20 @@ def write(char: NeutralCharacter,
 
     # -- the spellbook: one byte per spell, ids 1..n -------------------------
     # 56 ids in Pool of Radiance, 100 in Curse and 117 in Silver Blades,
-    # which are `goldbox/spells.py`'s three id spaces exactly.  The width is
-    # the title's own `spellbook` field, so an id the destination title has
-    # no byte for is reported rather than written past the end.
+    # which are `goldbox/spells.py`'s three id spaces exactly, and the width
+    # is the title's own `spellbook` field.
+    #
+    # **A source can never carry an id this book has no byte for** (#509), and
+    # that is measured rather than assumed: a conversion is between two ports
+    # of one title, both ports number that title's spells the same way, and
+    # every reader's own ceiling is at or below the byte count here.  Set the
+    # whole of each port's book and read it back -- the C64 mask hands back at
+    # most 55 ids on Pool of Radiance, 100 on Curse and 117 on Silver Blades,
+    # against 56, 100 and 117 bytes on this side, and the Amiga Pool of
+    # Radiance record is read through this very table.  So the branch below is
+    # reached only by a caller that has crossed two titles, which
+    # `.claude/rules/conversions.md` says never happens, and it goes to the
+    # debug log rather than to a sentence the player has to interpret.
     known = use("spells_known")
     if known is not None:
         spells_in_book = table["spellbook"].size
@@ -3500,21 +3523,30 @@ def write(char: NeutralCharacter,
             if 1 <= int(sid) <= spells_in_book:
                 book[int(sid) - 1] = 1
             else:
-                rep.warnings.append(
-                    f"Spell id {sid} is outside the {deltas.title} book's "
-                    f"ids 1-{spells_in_book}")
+                _log.warning(
+                    "spells_known: id %s is outside the %s book's 1-%s, so "
+                    "the source record is not this title's (#509)",
+                    sid, deltas.title, spells_in_book)
         put(known, "spellbook", ", unpacked to one byte per spell",
             value=bytes(book))
 
     # -- memorised spells: the title's slots, filled from the end ------------
+    # The width is the engine's own, read off its loop bounds (#508): 21 in
+    # Pool of Radiance, 84 in Curse, 75 in Silver Blades, 141 in Pools of
+    # Darkness.  Against the C64's own regions -- 81, 69 and 74 -- only Pool
+    # of Radiance's is the narrower of the pair, and no character in any
+    # corpus on this machine holds more than five.  Truncating still goes to
+    # the debug log rather than to the player: a route that loses something
+    # is a route to fix, not one to apologise for.
     memorised = use("spells_memorised")
     if memorised is not None:
         slots = table["spells_memorised"].size
         ids = [int(i) for i in memorised.value][:slots]
         if len(memorised.value) > slots:
-            rep.warnings.append(
-                f"{len(memorised.value)} spells memorised and "
-                f"{deltas.title} has {slots} slots; the rest dropped")
+            _log.warning(
+                "spells_memorised: %s ids and %s allots %s slots, so %s were "
+                "not written (#508)", len(memorised.value), deltas.title,
+                slots, len(memorised.value) - slots)
         put(memorised, "spells_memorised",
             f" reversed -- DOS fills its {slots} slots from the end",
             value=bytes(slots - len(ids)) + bytes(reversed(ids)))

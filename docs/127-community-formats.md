@@ -155,12 +155,32 @@ two worse than each armour's real class, which means nothing.
 So the two ports differ here: DOS spends the byte on rear armour class, the C64
 on the armour bonus. **Our measurement wins and `goldbox/savegame.py` is right.**
 
-### 5. `spells_memorised` is probably 21 bytes, not 16
+### 5. `spells_memorised` is 21 bytes, not 16 — CONFIRMED since, from the engine
 
 DOS Pool of Radiance allots **21** memorised-spell slots (`0x017`–`0x02B`, one
 byte per memorised instance, an index into the 56-spell list). 21 is also the
 C64 ceiling: a cleric 6 with wisdom 18 gets 13 slots and a magic-user 6 gets 8,
 and one character can be both. `goldbox/layout.py` declares 16 at `0x020`.
+
+**This was PROBABLE when the section was written and is CONFIRMED now**, and it
+is the spreadsheet's biggest single win over us. `#508 (A converted magic-user
+loses memorised spells on the way to DOS, because our table says a title has
+fewer slots than the engine gives it)` read the width out of `POOLRAD/GAME.OVR`:
+four loops compare a byte counter against `0x14` — 20, with a `jbe`, so indices
+0 to 20 — and then index `es:[di+0x17]`, at `0x016C90`, `0x0179A3`, `0x02471B`
+and `0x0275FC`. Displacement `0x17` is touched at 42 sites in that overlay and
+`0x01C`, which our table declared, at none. The same three routines in the three
+later engines give 84, 75 and 141 at `0x1E`, which is what our tables already
+said for those titles — so the method is checked against three titles it does
+not change before it is believed about the one it does.
+
+Two things fell out of reading it that the spreadsheet does not say. The **high
+bit of an entry is a flag**: memorising stores `id + 0x80` (`0x01827A`), the
+rest that completes it clears the bit (`0x024756`), and six sites read the entry
+through `and al, 0x7f` — the same convention the C64's `CAMP` clears with
+`AND #$7F`. And **`Unknown_02C` is cleared by the same routine that clears the
+array**, one instruction after the loop ends (`0x0179C2`), which is what bounds
+the array at the top.
 
 The C64 array packs **forward** from `0x020` in descending spell id, where DOS
 fills its 21 in reverse. Verified against `spells_castable` on three
@@ -173,8 +193,10 @@ high-level casters, and every id lands in the right class's range:
 | XAVIER, magic-user 6 | 4/2/2 | 51 47 · 32 31 · 21 21 15 10 | 2 third, 2 second, 4 first — all in the magic-user ranges 45–55, 29–35, 9–21 |
 
 The declared 16 is not contradicted by anything we hold (the most seen in use
-is 13) but it is five short of what the format allows. **PROBABLE.** What would
-settle it: a cleric/magic-user with more than sixteen spells memorised.
+is 13) but it is five short of what the format allows. That was **PROBABLE**
+when it was written and asked for a cleric/magic-user with more than sixteen
+spells memorised to settle it. **No such character was needed: the engine's own
+loop bounds settled it, above.**
 
 ### 6. The thief per-level table, and where it stops
 
@@ -263,7 +285,7 @@ the same offset. Nothing contradicts.**
 |---|---|---|---|
 | `0x000` | name, length-prefixed | `Name_Length` + `Name[15]` | confirm |
 | `0x010`–`0x016` | STR INT WIS DEX CON CHA, exceptional STR | `*_Current` | confirm |
-| `0x01C`–`0x02B` (GUESS) | spells memorised, 16 | `SPL_Memorized_001..021` at **`0x017`–`0x02B`**, filled in reverse | **theirs**; ours was four bytes short and started too late |
+| `0x017`–`0x02B` | spells memorised, 21 | `SPL_Memorized_001..021` at `0x017`–`0x02B`, filled in reverse | agree, and the engine says so — see §5 |
 | — | — | `Unknown_02C`, always 0 | add |
 | `0x02D` | THAC0 base, `60 −` | `THAC0_Base` | confirm |
 | `0x02E` / `0x02F` | race / class | `Race` / `Class` | confirm |
@@ -495,7 +517,6 @@ project had left open for months.
 
 | question | what would settle it |
 |---|---|
-| whether `spells_memorised` is 21 bytes | a cleric/magic-user with more than sixteen spells memorised |
 | the C64 spell counts for Curse, and hence the `spells_known` width | read a Curse caster's spellbook against `COMBAT2`'s name table |
 | whether `0x100` is a STATUS enum | one specimen reading other than 1 |
 | the constitution save bonus below CON 11 | a character with constitution under 11 of a sturdy race |

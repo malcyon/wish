@@ -152,27 +152,105 @@ def test_an_explicit_shape_overrides_the_characters_own():
 
 def test_the_spellbook_is_the_titles_own_id_space():
     """56 ids in Pool of Radiance, 100 in Curse, 117 in Silver Blades --
-    `goldbox/spells.py`'s three id spaces.  Spell 100 fits in Curse's book and
-    is warned about in Pool of Radiance's."""
+    `goldbox/spells.py`'s three id spaces.  Spell 100 fits in Curse's book."""
     rec, _, _, rep = dos.write(_neutral(CURSE.key, spells_known=[1, 100]))
     book = dos_layout.FIELDS_BY_NAME_FOR[CURSE.key]["spellbook"]
     assert book.size == 100
     assert rec[book.offset] == 1 and rec[book.end - 1] == 1
     assert not any("outside" in w for w in rep.warnings)
 
-    _rec, _, _, rep = dos.write(_neutral(POOL.key, spells_known=[1, 100]))
-    assert any("Spell id 100 is outside" in w for w in rep.warnings)
+
+def test_an_id_the_destination_book_has_no_byte_for_never_reaches_the_player(
+        caplog):
+    """#509. An id past the book can only come from a source of a *different*
+    title, which a conversion never offers -- so it is a programming error and
+    it goes to the debug log, never to a sentence the player has to interpret.
+
+    Fails before the fix: `goldbox/dos.py` appended
+    `Spell id 100 is outside the Pool of Radiance book's ids 1-56` to
+    `rep.warnings`, which `editor/convert.py` puts in front of the player.
+    """
+    with caplog.at_level("WARNING", logger="wish.goldbox.dos"):
+        _rec, _, _, rep = dos.write(_neutral(POOL.key, spells_known=[1, 100]))
+    assert rep.warnings == []
+    assert any("id 100 is outside the Pool of Radiance book" in r.getMessage()
+               for r in caplog.records)
+
+
+def test_no_source_can_carry_a_spell_id_the_destination_book_lacks():
+    """The measurement behind #509: both ports number a title's spells the
+    same way, so every reader's own ceiling is at or below the destination's
+    byte count.  Set the whole of each port's book and read it back.
+    """
+    from goldbox import spells
+
+    for key in (POOL.key, CURSE.key, SSB.key):
+        book = dos_layout.FIELDS_BY_NAME_FOR[key]["spellbook"]
+
+        c64 = bytearray(0x100)
+        c64[0x078:0x088] = b"\xff" * 16
+        assert max(spells.spells_known(bytes(c64), key)) <= book.size
+
+        deltas = dos_layout.shape_for(key)
+        dos_rec = bytearray(deltas.record_size)
+        dos_rec[book.offset:book.end] = b"\x01" * book.size
+        ids = dos.DosCharacter(bytes(dos_rec), deltas=deltas).spells_known
+        assert max(ids) <= book.size
 
 
 def test_the_memorised_list_fills_from_the_end_of_the_titles_own_run():
-    """16 slots in Pool of Radiance, 84 in Curse, 75 in Silver Blades, and
-    the ids go against the *end* in every one of them."""
-    for shape, slots in ((POOL, 16), (CURSE, 84), (SSB, 75)):
+    """21 slots in Pool of Radiance, 84 in Curse, 75 in Silver Blades, and
+    the ids go against the *end* in every one of them.
+
+    The three numbers are each engine's own loop bound (#508): Pool of
+    Radiance's `GAME.OVR` compares the index against `0x14` at four sites and
+    reaches the array through `es:[di+0x17]`, Curse's against `0x53` at three
+    sites through `es:[di+0x1e]`, Silver Blades' against `0x4A`.
+    """
+    for shape, slots, at in ((POOL, 21, 0x017), (CURSE, 84, 0x01E),
+                             (SSB, 75, 0x01E)):
         f = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["spells_memorised"]
-        assert f.size == slots
+        assert (f.offset, f.size) == (at, slots)
         rec, _, _, _ = dos.write(_neutral(shape.key, spells_memorised=[9, 3]))
         assert rec[f.end - 2:f.end] == bytes((3, 9))
         assert rec[f.offset:f.end - 2] == bytes(slots - 2)
+
+
+def test_a_character_memorised_to_the_titles_ceiling_loses_nothing(caplog):
+    """#508. Fill every slot the engine allots and the writer keeps them all,
+    with nothing for the player to read.
+
+    Fails before the fix for Pool of Radiance: the table gave it 16 slots, so
+    a 21-deep list came back five short with
+    `21 spells memorised and Pool of Radiance has 16 slots; the rest dropped`
+    on `rep.warnings`.
+    """
+    for shape, slots in ((POOL, 21), (CURSE, 84), (SSB, 75)):
+        f = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["spells_memorised"]
+        ids = list(range(slots, 0, -1))
+        with caplog.at_level("WARNING", logger="wish.goldbox.dos"):
+            rec, _, _, rep = dos.write(
+                _neutral(shape.key, spells_memorised=ids))
+        assert rep.warnings == []
+        assert list(rec[f.offset:f.end]) == list(reversed(ids))
+        assert dos.DosCharacter(rec, deltas=shape).spells_memorised == ids
+    assert not [r for r in caplog.records
+                if "spells_memorised" in r.getMessage()]
+
+
+def test_a_list_past_the_engines_own_slots_is_logged_and_not_shown(caplog):
+    """The other half: a source that somehow holds more than the destination
+    engine allots still loses nothing to a sentence.
+
+    Fails before the fix: the line went to `rep.warnings`.
+    """
+    f = dos_layout.FIELDS_BY_NAME_FOR[POOL.key]["spells_memorised"]
+    with caplog.at_level("WARNING", logger="wish.goldbox.dos"):
+        _rec, _, _, rep = dos.write(
+            _neutral(POOL.key, spells_memorised=list(range(f.size + 3, 0, -1))))
+    assert rep.warnings == []
+    assert any("spells_memorised" in r.getMessage() and "3 were not written"
+               in r.getMessage() for r in caplog.records)
 
 
 def test_the_level_array_is_seven_slots_in_silver_blades():

@@ -7232,3 +7232,106 @@ Each of them fails silently, which is why none had been found.
   read blank on all seven readings across the half-minute between
   `PUNCH BARKEEP` and the combat floor, and `screen()` was answering a bitmap
   for most of them. The mode byte is `2` the moment `LINKER` dispatches.
+
+---
+
+## The gap that was the front of the field
+**Hypothesis.** DOS Pool of Radiance gives a character fewer memorised-spell
+slots than the C64 does — 16 against 81 — and the conversion is right to
+truncate and say so. (`#508 (A converted magic-user loses memorised spells on
+the way to DOS, because our table says a title has fewer slots than the engine
+gives it)`.)
+
+**Method.** Read the width out of each engine rather than out of a save. On DOS
+a character record is reached through a far pointer, so the compiler emits
+`es:[di+<field>]` and a loop over an array is a byte counter compared against
+its last index, then `add di, ax`. Scan `POOLRAD/GAME.OVR` for every
+`es`-prefixed access with displacement `0x17` or `0x1C`, disassemble each, and
+look back 90 bytes for the `cmp byte [bp-n], imm` that guards it. Repeat in
+Curse's, Silver Blades' and Pools of Darkness' overlays, where our table's
+widths were measured a different way and can act as controls. On the C64,
+`tools/memorisedwidth.py` already reads the count-down immediate out of each
+title's `CAMP`.
+
+**Result.** REFUTED, and the truncation was ours.
+
+Pool of Radiance's array is **21 entries at record `0x017`**, not 16 at
+`0x01C`. Four loops bound the counter at `0x14` — 20, under a `jbe` — and index
+`es:[di+0x17]`: the slot search at `0x016C90` (which hands back `0xFF` for an
+index past 20), the pending sweep at `0x0179A3`, the rest completion at
+`0x02471B` and the sheet's list at `0x0275FC`. Displacement `0x17` is touched at
+42 sites in that overlay and `0x01C` at none.
+
+The three controls agree with the three tables the reading does not change:
+`0x53` (84) at `0x1E` in Curse, `0x4A` (75) at `0x1E` in Silver Blades, `0x8C`
+(141) at `0x1E` in Pools of Darkness. So the method was checked against three
+titles before it was believed about the one it corrects.
+
+**Why no specimen had caught it.** The array fills from its end backwards. The
+deepest list on this machine is five entries, at `0x027`–`0x02B`, across the 21
+Pool of Radiance records that have anything memorised at all; `0x017`–`0x01B`
+is zero in every one of them, which is exactly what a five-deep list in a
+twenty-one-deep array looks like. The five bytes had been named `gap_017`, and
+`docs/117-save-conversion.md` records the moment the row was narrowed from 21
+to 16 on the reasoning that "21 was that plus the five undecoded bytes of
+`gap_017` in front of it". The undecoded bytes were the field.
+
+**Two things read out of the same routines that no save could have shown.** The
+high bit of an entry is a flag: memorising stores `id + 0x80` at `0x01827A`,
+and the rest that completes it clears the bit at `0x024756` — the same
+convention the C64's `CAMP` clears with `AND #$7F`, so the byte crosses between
+the ports unchanged. And the insert at `0x018259` scans from index 0 for the
+first zero byte **with no upper bound at all**, so an engine handed a
+twenty-second spell would write it into `0x02C`. Nothing was staged to make it
+do that; it is recorded because it says what SSI believed the ceiling was.
+
+**What is still open.** Whether a Pool of Radiance character can reach 22.
+Through the game's own slot tables (`goldbox.spells.capacity`) a human cleric at
+wisdom 18 tops out at 16 and a magic-user at 11, so no single-classed character
+comes near 21. A half-elf cleric/magic-user at that race's own limits — cleric
+5, magic-user 8, from the racial table at `GEN $1E60` — computes to 12 + 10 =
+22. Whether the game offers that combination, and whether its experience
+economy lets both halves reach their caps, is UNMEASURED, and is `#510 (Can a
+Pool of Radiance character memorise more than the 21 spells its DOS record
+allots?)`. It does not bear on the fix: 21 is what the engine allots.
+
+## The spellbook ceiling nobody could reach
+**Hypothesis.** A conversion can carry a spell id the destination title's book
+has no byte for, which is why the DOS writer warns about one. (`#509 (A
+converted spellbook drops ids the destination title is said not to have, though
+both platforms are the same game)`.)
+
+**Method.** Put the whole of each port's book through each reader and read the
+maximum id back. On the C64 that is the mask at `0x078` set to `0xFF`
+throughout; on DOS it is the byte-per-spell array set to 1 throughout. Compare
+each reader's ceiling against the destination's own byte count for the same
+title, over the ten registered directions.
+
+**Result.** REFUTED. The condition cannot arise.
+
+| title | C64 mask hands back | DOS book has bytes for |
+|---|---|---|
+| Pool of Radiance | 55 | 56 |
+| Curse of the Azure Bonds | 100 | 100 |
+| Secret of the Silver Blades | 117 | 117 |
+
+Both ports number a title's spells out of one table, `goldbox/spells.py`, and
+every reader already caps at its own port's ceiling — `spells.spells_known`
+stops at `SpellTable.last_spellbook_spell`, which is the lower of the mask's
+bits and the title's spell count. The Amiga Pool of Radiance record is read
+through the DOS table itself, so it cannot exceed it either. A conversion is
+between two ports of one title, so the destination is always the title the
+source came from, and the branch can only be reached by a caller that has
+crossed two titles.
+
+The line a player could be shown was therefore never a fact about anybody's
+save. It goes to the debug log, where it is what it always was: a report that
+our own caller mixed two titles.
+
+**A negative result the next reader should not re-derive.** The messages quoted
+in both tickets — `MIALEE: 8 spells memorised and Curse of the Azure Bonds has
+6 slots` and `Spell id 71 is outside the Pool of Radiance book's ids 1-64` —
+are neither reproducible nor observations. Curse's DOS record allots 84 slots
+and never 6, and Pool of Radiance's book is 56 ids and never 64. They are
+illustrative strings, written to show the shape of the two lines; the tickets
+are about the conditions, and the conditions are above.

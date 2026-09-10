@@ -2430,3 +2430,123 @@ def test_which_write_dropped_lines_a_c64_or_amiga_source_reaches_today():
     char = _filled()
     del char.fields["spells_castable"]
     assert not [d for d in _writer_drops(char) if "spells_castable" in d]
+
+
+# --- the memorised list, at each port's own ceiling (#508) --------------------
+
+_MEMORISED_CEILINGS = (
+    # (title key, C64 region, DOS region) -- each read off that engine's own
+    # loop bounds: `tools/memorisedwidth.py` for the C64, and for DOS the four
+    # counters in Pool of Radiance's `GAME.OVR` compared against `0x14` and
+    # their counterparts in the later overlays.
+    ("pool-of-radiance", 81, 21),
+    ("curse-of-the-azure-bonds", 69, 84),
+    ("secret-of-the-silver-blades", 74, 75),
+)
+
+
+@pytest.mark.parametrize("key, c64_slots, dos_slots", _MEMORISED_CEILINGS,
+                         ids=lambda v: v if isinstance(v, str) else str(v))
+def test_the_two_ports_memorised_regions_are_the_engines_own(
+        key, c64_slots, dos_slots):
+    """Both tables say what the title's own code says, per port.
+
+    Fails before the fix on Pool of Radiance: `goldbox/dos_port.py` gave it
+    16 bytes at `0x01C`, where the engine indexes 21 from `0x017` (#508).
+    """
+    assert c64_codec.memorised_span(key)[1] == c64_slots
+    f = dos_layout.FIELDS_BY_NAME_FOR[key]["spells_memorised"]
+    assert f.size == dos_slots
+
+
+@pytest.mark.parametrize("key, c64_slots, dos_slots", _MEMORISED_CEILINGS,
+                         ids=lambda v: v if isinstance(v, str) else str(v))
+def test_a_full_memorised_list_crosses_to_dos_and_back_intact(
+        key, c64_slots, dos_slots):
+    """A character memorised to what both ports can hold makes the whole
+    trip C64 -> DOS -> C64 with every id in place and nothing to tell the
+    player (#508).
+
+    The ceiling is the narrower of the two regions, which is DOS's 21 in Pool
+    of Radiance and the C64's own in the two later titles. Before the fix the
+    Pool of Radiance case came back five ids short of its 21, with
+    `21 spells memorised and Pool of Radiance has 16 slots; the rest dropped`
+    on the report a player reads.
+    """
+    from goldbox import games
+    from goldbox.record import CharacterRecord
+
+    game = games.by_key(key)
+    ids = list(range(min(c64_slots, dos_slots), 0, -1))
+
+    char = neutral.NeutralCharacter("CEILING", source="made up", game=game)
+    char.set("spells_memorised", ids, "made up: every slot both ports have")
+
+    c64, first = c64_codec.write(char)
+    from_c64 = c64_codec.read(CharacterRecord(bytes(c64)), game=game)
+    assert from_c64.get("spells_memorised") == ids
+
+    record, _itm, _spc, out = dos.write(from_c64)
+    deltas = dos_layout.shape_for(key)
+    from_dos = dos.to_neutral(dos.DosCharacter(record, deltas=deltas))
+    assert from_dos.get("spells_memorised") == ids
+
+    again, back = c64_codec.write(from_dos)
+    landed = c64_codec.read(CharacterRecord(bytes(again)), game=game)
+    assert landed.get("spells_memorised") == ids
+    assert first.warnings == out.warnings == back.warnings == []
+
+
+# --- the spellbook, over every id each port can hold (#509) -------------------
+
+def test_every_id_a_c64_book_can_hold_crosses_to_dos_and_back():
+    """#509's condition, put to the whole id space rather than to a specimen.
+
+    Both ports number a title's spells the same way, so the check the DOS
+    writer used to warn about cannot fire: fill the C64 mask with every id it
+    has a bit for, and every one of them lands in the DOS book and comes home
+    again with nothing on any report.
+    """
+    from goldbox import games, spells
+    from goldbox.record import CharacterRecord
+
+    for key in ("pool-of-radiance", "curse-of-the-azure-bonds",
+                "secret-of-the-silver-blades"):
+        game = games.by_key(key)
+        table = spells.for_game(game)
+        ids = [i for i in range(1, table.last_spellbook_spell + 1)]
+
+        char = neutral.NeutralCharacter("BOOK", source="made up", game=game)
+        char.set("spells_known", ids, "made up: every id the mask has a bit for")
+
+        c64, first = c64_codec.write(char)
+        from_c64 = c64_codec.read(CharacterRecord(bytes(c64)), game=game)
+        assert from_c64.get("spells_known") == ids, key
+
+        record, _itm, _spc, out = dos.write(from_c64)
+        deltas = dos_layout.shape_for(key)
+        from_dos = dos.to_neutral(dos.DosCharacter(record, deltas=deltas))
+        assert from_dos.get("spells_known") == ids, key
+
+        again, back = c64_codec.write(from_dos)
+        landed = c64_codec.read(CharacterRecord(bytes(again)), game=game)
+        assert landed.get("spells_known") == ids, key
+        assert first.warnings == out.warnings == back.warnings == [], key
+
+
+def test_every_id_a_dos_book_can_hold_survives_the_dos_writer():
+    """The other port's whole id space, through the writer that used to warn
+    about it: one byte per spell, ids 1..n, and n is the title's own field.
+    """
+    for key in ("pool-of-radiance", "curse-of-the-azure-bonds",
+                "secret-of-the-silver-blades", "pools-of-darkness"):
+        deltas = dos_layout.shape_for(key)
+        book = dos_layout.FIELDS_BY_NAME_FOR[key]["spellbook"]
+        ids = list(range(1, book.size + 1))
+
+        char = neutral.NeutralCharacter("BOOK", source="made up", game=key)
+        char.set("spells_known", ids, "made up: every byte of the book")
+        record, _itm, _spc, rep = dos.write(char)
+
+        assert dos.DosCharacter(record, deltas=deltas).spells_known == ids, key
+        assert rep.warnings == [], key

@@ -232,9 +232,6 @@ having been written back and confirmed in game.
   dexterity adjustment reconciles them. The C64's own modifier table, wherever
   it is on the disks, would settle it in one read.
   See [127-community-formats.md](127-community-formats.md).
-* **Whether `spells_memorised` is 21 bytes rather than 16.** DOS allots 21 and
-  21 is the C64 ceiling; the most anybody has used is 13, so nothing we hold
-  contradicts either width.
 * **Whether `0x100` is a status enum.** Four sources now disagree about it and
   the newest weakens rather than strengthens the case; `roster_in_use` stays
   PROBABLE. One specimen reading other than 1 settles it.

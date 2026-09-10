@@ -371,7 +371,7 @@ rubbish.
 | item / effect file | `.ITM` / `.SPC` | **`.SWG`** / `.FX` | **`.STF`** / `.SFX` | `.THG` / `.EFX` |
 | bytes per item | 63 | 63 | **67** | 63 |
 | bytes per ability | 1 | 2 | 2 | 2 |
-| memorised-spell region | 16 | 84 | 75 | 141 |
+| memorised-spell region | 21 | 84 | 75 | 141 |
 | spellbook entries | 56 | 100 | 117 | 125 |
 | spell-slot arrays × levels | 2 × 3 | 3 × 5 | 4 × 7 | 3 × 9 |
 | per-class level arrays | 1 × 8 | 2 × 8 | 2 × 7 | 3 × 7 |
@@ -382,13 +382,36 @@ The spellbook widths are not guesses: 100 and 117 are `goldbox/spells.py`'s own
 Curse and Silver Blades id spaces, measured on the **C64** long before any DOS
 record was read, and they land exactly.
 
-**The memorised-spell row said 21 for Pool of Radiance and now says 16**, which
-is what `goldbox/dos_port.py` has always carried: the field is `0x01C`+16, and
-21 was that plus the five undecoded bytes of `gap_017` in front of it. The other
-three titles have no such gap, so the row was counting one thing in one column
-and another in the other three, and `#192 (Convert a Curse of the Azure Bonds
-DOS save into a C64 one, which the importer refuses today)` step 0c tripped over
-it. Nothing rests on the old number.
+**The memorised-spell row said 21, was changed to 16, and is 21 again** — and
+the middle step is the instructive one. `goldbox/dos_port.py` carried
+`0x01C`+16, so the five bytes in front of the field fell out as a synthesised
+`gap_017`; the row was corrected downwards on the reasoning that 21 was the
+field plus that gap, and that the other three titles have no such gap. **The
+gap was the front of the field.** `#508 (A converted magic-user loses memorised
+spells on the way to DOS, because our table says a title has fewer slots than
+the engine gives it)` read the width out of the engine instead: four loops in
+Pool of Radiance's own `GAME.OVR` compare a byte counter against `0x14` and
+then index `es:[di+0x17]`, so the array runs indices 0 to 20 from record
+`0x017` — **21 entries, `0x017`–`0x02B`**. Displacement `0x17` is touched at 42
+sites in that overlay and `0x01C` at none.
+
+The reading is checked against the three titles it does not change before it is
+believed about the one it does: the same three routines exist in every DOS
+engine of the family, and their bounds are `0x53` (84) at `0x1E` in Curse,
+`0x4A` (75) at `0x1E` in Silver Blades and `0x8C` (140, so 141) at `0x1E` in
+Pools of Darkness — this table's other three columns exactly.
+
+**The high bit of an entry is a flag, not part of the id.** Memorising stores
+`id + 0x80`; the rest that completes it clears the bit. It is the same
+convention the C64's `CAMP` clears with `AND #$7F`, so the byte crosses between
+the ports unchanged. Every Pool of Radiance record on this machine with
+anything memorised — 21 of them — has the bit clear.
+
+**The array is filled from its end, which is why no specimen contradicted the
+narrow reading**: the deepest list anybody holds is five entries, at
+`0x027`–`0x02B`, and `0x017`–`0x01B` is zero in all 21. Widening the field
+changes nothing about how those records read, and it stops a character with 17
+or more memorised spells losing the first ones.
 
 **The C64 side of that row is not the same number, and a conversion has to
 know it.** Curse's C64 record keeps its memorised list at `0x020` and it is
@@ -1228,7 +1251,7 @@ together:
 * across all 24 specimens every set byte falls in a group its owner's class
   can cast, with no crossover in either direction. A level-1 cleric sets
   exactly bytes 0-7; a level-3 magic-user sets 8-20 and 28-34;
-* the *memorised* list at `0x01C` is written as ids rather than as a mask and
+* the *memorised* list at `0x017` is written as ids rather than as a mask and
   carries the same numbers — 3 `CURE LIGHT WOUNDS` for the cleric, 21 `SLEEP`
   for the mages.
 
@@ -1662,7 +1685,7 @@ The split it enforces is that **a reader says where a value came from and a
 writer says where it went**. Two lines used to break it and no longer do: the
 DOS reader said the name was "re-padded" when the padding is the C64 writer's,
 and `spells_memorised` was explained as a reversal at both ends. The reader
-now says "DOS 0x01C, reversed into the neutral highest-first order" and the
+now says "DOS 0x017, reversed into the neutral highest-first order" and the
 writer says the C64 fills its slots from the start.
 
 ### What a codec author writes, and what it inherits

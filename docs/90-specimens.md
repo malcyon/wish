@@ -522,9 +522,6 @@ Still wanted, and each needs a save we make ourselves:
   has ever been drained;
 * a **multi-class character above level 1** — to tell "character level" at
   `0x0A0` apart from "the single class's level";
-* a **cleric/magic-user with more than sixteen spells memorised**, which is the
-  one observation that would settle whether `spells_memorised` is 16 bytes or
-  the 21 the format allows;
 * a **character of a sturdy race with constitution below 11**, to exercise the
   `+1` and `+2` bands of the saving-throw constitution bonus. Only `+3`/`+4`/`+5`
   have ever been seen;
