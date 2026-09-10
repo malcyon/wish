@@ -164,6 +164,14 @@ def _filled(game=None) -> NeutralCharacter:
     char.set("innate_effects", [18, 47], "made up")
     char.set("inventory", [bytes(range(16))], "made up")
     char.set("roster_tail", bytes(range(9)), "made up")
+    # A real choice, not zero: `0x00` is `HEAD00`, the menu's own first
+    # entry, and a source that never set the field at all is a different
+    # fact from a source that chose it (#503, A C64 character with no sheet
+    # portrait arrives in DOS or on the Amiga wearing the menu's first
+    # head) -- so a fixture meant to catch a value landing in the wrong
+    # place has to give the writer one to place.
+    char.set("portrait_head", 0x08, "made up")
+    char.set("portrait_body", 0x04, "made up")
     return char
 
 

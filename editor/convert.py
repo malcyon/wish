@@ -790,7 +790,14 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     """
     if icons is None:
         icons = [None] * len(party)
-    portraits = any(c.get("portrait_head") for c in party)
+    # `"portrait_head" in c`, not `c.get("portrait_head")`: the field is set
+    # to `0` for a character who really chose the menu's first head (HEAD00),
+    # and a truthiness test reads that zero as "no portrait" -- the same
+    # ambiguity `goldbox.c64_codec.read` had before #503 (A C64 character
+    # with no sheet portrait arrives in DOS or on the Amiga wearing the
+    # menu's first head), fixed there by leaving both fields unset for a
+    # portrait-less character rather than by the value either one holds.
+    portraits = any("portrait_head" in c for c in party)
     savegame, save_report = amiga.new_por_savegame(
         state, slot, len(party), ecl_dax, portraits=portraits)
     disk = amiga.make_por_save_disk(slot, party, savegame, icons=icons)

@@ -1691,8 +1691,29 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     copy("infravision", "infravision")
     copy("turn_power", "turn_power")
     copy("size_small", "size_small")
-    copy("portrait_head", "portrait_head")
-    copy("portrait_body", "portrait_body")
+
+    # -- the sheet portrait: a body of 0x00 is nobody's choice ----------------
+    # `0x0FE` and `0x0FF` are copied together rather than through `copy`,
+    # because the two bytes cannot be read one at a time: a `portrait_head`
+    # of `0x00` is `HEAD00`, a real choice and the menu's first entry
+    # (`goldbox.portraits.POOL_OF_RADIANCE_MENU.heads[0]`), but `BODY00`
+    # names no art at all -- the twelve stored bodies start at `0x01`
+    # (`POOL_OF_RADIANCE_MENU.bodies`), and no title's `GEN` or `START.EXE`
+    # offers a thirteenth choice at position 0.  So `portrait_body == 0x00`
+    # is the one value that cannot be a real choice, and it is what a record
+    # holds when no face was ever picked -- the state `#377 (A converted
+    # character with no portrait at all is shown a message saying its
+    # portrait could not be converted)` fixed on the DOS side by skipping
+    # menu position 0.  Reading the two bytes separately took `0x00`/`0x00`
+    # as HEAD00 with no body, wrote it back as menu position 1 and reported
+    # the body dropped, over a character who never had a face
+    # (#503, A C64 character with no sheet portrait arrives in DOS or on the
+    # Amiga wearing the menu's first head).  Leaving neither field set here
+    # is what a writer already reads as "no portrait", the same absence a
+    # DOS source's own position 0 produces.
+    if rec.is_stored("portrait_body") and rec.get("portrait_body") != 0:
+        copy("portrait_head", "portrait_head")
+        copy("portrait_body", "portrait_body")
 
     out.set("npc", rec.is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
             "itself counts player characters with", grade("flags_0b8"))

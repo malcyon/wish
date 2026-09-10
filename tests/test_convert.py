@@ -2618,7 +2618,7 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     state = amiga.por_state_from_c64(source.save0, str(source.path))
     savegame, report = amiga.new_por_savegame(
         state, "A", len(party), ecl,
-        portraits=any(c.get("portrait_head") for c in party))
+        portraits=any("portrait_head" in c for c in party))
     reference = amiga.make_por_save_disk("A", party, savegame)
     assert report.unwritten == []
 

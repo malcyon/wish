@@ -248,7 +248,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         savegame, report = build_savegame(
             args, party_size=len(party),
-            portraits=any(char.get("portrait_head") for char in party))
+            # `"portrait_head" in char`, not `char.get(...)`: a truthiness
+            # test misreads a character who really chose the menu's first
+            # head (HEAD00, art id 0x00) as having no portrait at all
+            # (#503, A C64 character with no sheet portrait arrives in DOS
+            # or on the Amiga wearing the menu's first head).
+            portraits=any("portrait_head" in char for char in party))
 
     print(f"{source}: {len(party)} character(s)")
     for char in party:
