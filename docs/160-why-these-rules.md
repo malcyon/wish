@@ -384,6 +384,24 @@ and the assistant changed the label back. He curates labels and priorities by
 hand and will keep doing so. The thing that must never happen is a change with
 no comment, because that is what left no record anybody could read or reverse.
 
+**And then the lesson was over-learnt, which is its own entry.** From that one
+incident `.claude/rules/issues.md` grew a section saying priorities were "the
+one place to hold back" and that an agent should recommend one and leave the
+label. That is not what happened and not what he asked for. Donald,
+2026-09-09: *"One time, I changed a priority label, and the AI immediately
+changed it back. I asked it not to do that. Ever since then, the AI is
+absolutely terrified to touch the priority label. That isn't the rule. It is
+fine to change priorities. Just have a reason and post it in the comments.
+Don't just flip it back because you think it was a mistake."*
+
+So the incident above is about **reversing a person's decision**, and it says
+nothing about labels an agent sets, corrects or updates as the world moves.
+Writing it down as *never touch these* made a second invisible error out of
+the first: an issue whose priority no longer matches what is known, left wrong
+because nobody dared. The section is rewritten, and the general shape is worth
+holding on to -- **a rule derived from a single incident tends to come out
+wider than the incident**, and the width is what nobody notices afterwards.
+
 **And the rule cut the other way, which cost a night.** `#69 (No
 WRITE_UNSOURCED zero has been tested during combat)` carried `bug` for months
 while its own body said *"Nothing observed. This is a gap in the evidence

@@ -105,10 +105,19 @@ something Donald can check and contradict:
 * *"This feels more important now"*, *"this looks doable"* -- an opinion, and
   it belongs in your reply rather than in a label.
 
-**Priorities are the one place to hold back.** Donald re-curates `Priority:` by
-hand and reads the backlog through it, so changing one moves what he sees next
-without telling him. Recommend it in your reply, leave the label, and say which
-you would have set.
+**A priority is a label like any other: change it when you have a reason, and
+put the reason in a comment.** Donald, 2026-09-09: *"It is fine to change
+priorities. Just have a reason and post it in the comments. Don't just flip it
+back because you think it was a mistake."*
+
+The banned thing is the same one that governs every other label -- **do not
+reverse a change a person made.** Setting one on an issue that has none,
+correcting your own earlier guess, and moving one the world has since made
+wrong are all ordinary work.
+
+**An earlier version of this section said priorities were "the one place to
+hold back". That was wrong**, and `docs/160-why-these-rules.md` has how it got
+there.
 
 ## The three templates
 
