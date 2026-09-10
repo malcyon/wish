@@ -1680,7 +1680,13 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     (`addr.has_exit_reentry`) or this backend cannot set the stack pointer --
     found the way `jump` finds a PC setter, an optional `target.reenter(pc,
     sp)` or the VICE monitor a `ViceTarget` holds, so a backend that offers
-    neither is refused rather than made to pretend.
+    neither is refused rather than made to pretend. Every one of those checks,
+    including the monitor's own refusal to take the new SP/PC, runs before
+    the stack page is written, so a `False` return always means nothing was
+    pushed -- `#494 (reenter() can push return addresses to the stack page
+    and still report failure)`. The monitor stays halted throughout: setting
+    the registers ahead of the pokes changes nothing about what the CPU sees,
+    since nothing runs until `resume()`, called last.
     """
     if not addr.has_exit_reentry:
         return False
@@ -1688,31 +1694,40 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     base = target.read(addr.saved_sp, 1)
     if not base:
         return False
-    sp = base[0]
+    base_sp = base[0]
+    items = (addr.main_loop_return, *chain)
     # The main loop's own return goes on first (deepest), then the chain,
     # each two bytes shallower -- high byte then low, the order a 6502's own
-    # JSR leaves and RTS expects to pop.
-    for ret in (addr.main_loop_return, *chain):
-        target.write(0x0100 + sp, bytes([ret >> 8]))
-        target.write(0x0100 + sp - 1, bytes([ret & 0xFF]))
-        sp -= 2
+    # JSR leaves and RTS expects to pop. This is the SP once every one of
+    # them is pushed, computed directly so the handoff below can be checked
+    # before the write loop runs rather than after it.
+    sp = base_sp - 2 * len(items)
+
     own = getattr(target, "reenter", None)
+    mon = None
+    if not callable(own):
+        mon = getattr(target, "_mon", None)
+        if mon is None:
+            return False
+        try:
+            mon.set_registers({sp_register(mon): sp, pc_register(mon): pc})
+        except Exception:
+            _log.exception("could not rebuild the stack for $%04X", pc)
+            return False
+
+    write_sp = base_sp
+    for ret in items:
+        target.write(0x0100 + write_sp, bytes([ret >> 8]))
+        target.write(0x0100 + write_sp - 1, bytes([ret & 0xFF]))
+        write_sp -= 2
+
     if callable(own):
         own(pc, sp)
         return True
-    mon = getattr(target, "_mon", None)
-    if mon is None:
-        return False
     try:
-        mon.set_registers({sp_register(mon): sp, pc_register(mon): pc})
-    except Exception:
-        _log.exception("could not rebuild the stack for $%04X", pc)
-        return False
-    finally:
-        try:
-            mon.resume()
-        except Exception as exc:
-            _log.debug("could not resume after rebuilding the stack: %s", exc)
+        mon.resume()
+    except Exception as exc:
+        _log.debug("could not resume after rebuilding the stack: %s", exc)
     return True
 
 

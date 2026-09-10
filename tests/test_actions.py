@@ -1153,3 +1153,27 @@ def test_can_reenter_is_true_for_a_vice_backed_target():
             self._mon = FakeMon()
 
     assert actions.can_reenter(ViceLikeTarget())
+
+
+def test_reenter_writes_nothing_to_the_stack_page_when_set_registers_raises():
+    """`#494 (reenter() can push return addresses to the stack page and still
+    report failure)`: the write loop used to run before the monitor path was
+    tried, so a `_mon` present with no `reenter` capability, whose
+    `set_registers` raises, still left the return addresses pushed to
+    `$0100`-`$01FF` under the old ordering. Compute-then-write means a
+    `False` here has written nothing."""
+    addr = fasttravel.POOL_OF_RADIANCE
+
+    class FailingMon:
+        def set_registers(self, regs):
+            raise RuntimeError("this build refused the register write")
+
+        def resume(self):
+            pass
+
+    target = MemoryTarget({addr.saved_sp: bytes([0xF0])})
+    target._mon = FailingMon()
+    assert not actions.reenter(target, addr, 1)
+    assert target.read(0x0100, 0x100) == bytes(0x100), (
+        "nothing should have been pushed to the stack page: the capability "
+        "check happens before any write, not after a failed one")
