@@ -1,22 +1,34 @@
-"""Sweep of `tools/*.py` for the read-only-specimen staging bug (#472).
+"""Sweep of `tools/*.py` for the read-only-specimen staging bug (#472, #476).
 
 `tools/specimens.py add` makes every specimen read-only on purpose. A bare
-`shutil.copy` into a pool slot's own directory carries that mode onto the
+`shutil.copy` into a directory a tool reuses across runs -- a pool slot, or a
+tool's own `--out`-scoped staging directory -- carries that mode onto the
 staged copy, so the game gets a write-protected save disk and every write it
-makes is silently refused -- and the next run into that same slot dies on a
-bare `PermissionError` staging over the leftover. `#430 (A pool slot with a
-read-only SIDE0.D64 left in it fails every later run with a bare Permission
-denied)`, `#455 (A Silver Blades run staged from a specimen gives the game a
-write-protected save disk)`, `#469 (A second Silver Blades run in the same
-pool slot cannot start, because the staged save disk is left read-only)` and
-`#472 (Eight more tools stage a disk into a pool slot with a bare
-shutil.copy, and session.py's own fix for #430 still leaves the game a
-read-only save disk)` are four rounds of finding this by hand, one file at a
-time. This is the test meant to make a fifth round unnecessary.
+makes is silently refused, and the next run into that same directory dies on
+a bare `PermissionError` staging over the leftover.
+
+Two directories are reused this way and both are covered here:
+
+* **A pool slot's own directory**, `slot.dir` -- `#430 (A pool slot with a
+  read-only SIDE0.D64 left in it fails every later run with a bare
+  Permission denied)`, `#455 (A Silver Blades run staged from a specimen
+  gives the game a write-protected save disk)`, `#469 (A second Silver
+  Blades run in the same pool slot cannot start, because the staged save
+  disk is left read-only)` and `#472 (Eight more tools stage a disk into a
+  pool slot with a bare shutil.copy, and session.py's own fix for #430 still
+  leaves the game a read-only save disk)` are four rounds of finding this by
+  hand, one file at a time.
+* **A tool's own `out / "disks"` staging directory**, built under a `--out`
+  that defaults to a fixed path under `work/` and so is just as reused as a
+  slot unless `--out` is passed each time -- `#476 (Six tools stage a save
+  into their own reused work/ output directory with a bare shutil.copy, the
+  same shape #472 fixed for pool slots)`.
+
+This is the test meant to make a fifth round unnecessary for either shape.
 
 `tools/session.py`'s `stage_writable` is the one place allowed to call
-`shutil.copy` on a destination built from a slot's own directory -- it is the
-function everything else is supposed to go through.
+`shutil.copy` on either kind of destination -- it is the function everything
+else is supposed to go through.
 """
 from __future__ import annotations
 
@@ -25,13 +37,25 @@ import pathlib
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 
-#: The only file allowed to open `shutil.copy` on a slot-scoped destination
+#: The only file allowed to open `shutil.copy` on one of these destinations
 #: directly: it is `stage_writable`'s own implementation.
 EXEMPT = {"session.py"}
 
 
 def _names_a_slot(text: str) -> bool:
     return "slot.dir" in text or "slot_dir" in text
+
+
+def _names_a_reused_staging_dir(text: str) -> bool:
+    """A directory built as `<something> / "disks"`, off a tool's own
+    `--out` -- the shape all six #476 tools shared: `staging = out /
+    "disks"` or `staging_dir = out / "disks"`, checked by hand in each file.
+    `--out` defaults to a fixed path under `work/` unless passed each time,
+    so this directory is reused across invocations exactly the way a pool
+    slot is, and a bare `shutil.copy` into it carries the same read-only
+    mode a specimen brings.
+    """
+    return '/ "disks"' in text or "/ 'disks'" in text
 
 
 def _slot_scoped_bare_copies(root: pathlib.Path = TOOLS) -> list[str]:
@@ -56,7 +80,14 @@ def _slot_scoped_bare_copies(root: pathlib.Path = TOOLS) -> list[str]:
     for path in sorted(root.glob("*.py")):
         if path.name in EXEMPT:
             continue
-        source = path.read_text()
+        # `encoding="utf-8"` and not the platform default: Windows reads as
+        # cp1252, and several tools here carry a byte it has no character
+        # for -- an em dash, a `▸`, a game string quoted in a docstring. Both
+        # Windows CI jobs went red on `UnicodeDecodeError` at position 3972
+        # of the first such file while both Linux jobs passed, which is the
+        # shape `.claude/rules/commits.md` names: something that is not
+        # byte-identical on another machine.
+        source = path.read_text(encoding="utf-8")
         try:
             tree = ast.parse(source, filename=str(path))
         except SyntaxError:
