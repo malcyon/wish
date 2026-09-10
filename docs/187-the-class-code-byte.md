@@ -25,7 +25,7 @@ bytes indexed by the class code and holding the bitmask that code stands for:
 02 00 08 40 80 01 04 00 0a 0b 82 03 06 09 0c 0d 05
 ```
 
-Read against `goldbox/games.py`'s class bits for that title -- magic-user 1,
+Read against `goldbox/c64_port.py`'s class bits for that title -- magic-user 1,
 cleric 2, thief 4, fighter 8, paladin `0x40`, ranger `0x80` -- every entry
 places: index 0 is the cleric, 2 the fighter, 5 the magic-user, 6 the thief,
 8 the cleric/fighter, 13 the fighter/magic-user, 14 the fighter/thief. Two

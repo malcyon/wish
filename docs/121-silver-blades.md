@@ -111,7 +111,7 @@ six.
 transfers, *addresses* do not — except that the **save container's** addresses
 did, exactly. Silver Blades and Gateway both reuse Curse's `$4B00`; the two
 Krynn titles moved the block down `$B00` to `$4000`. So the save geometry is a
-per-title constant with only three values across six games, and `goldbox/games.py`
+per-title constant with only three values across six games, and `goldbox/c64_port.py`
 is where they live. Every *other* absolute number is still a Pool of Radiance
 constant that must be re-measured.
 
@@ -130,7 +130,7 @@ and it is asserted in `tests/test_silverblades.py`.
 | **Higher spell levels than Curse** | **The gift arrived twice.** The cold read showed DOMINIC setting `0x07F = 0x04` — spell id 58 — so the mask was at least eight bytes. The driven session settled it outright: `GEN` clears **sixteen** bytes at `$7C78` and a second loop reads sixteen, so `spells_known` is `0x078`-`0x087`, spell ids 0-127. Usage stops at `0x083` (MORGAINE, id 94). `docs/116`'s prediction of 13 was low, and `gap_07f` is the mask's tail plus sixteen unexplained bytes, not one field |
 | **Dual- and multi-classed characters common at this level** | Weakly held: one of six, MALACHITE, thief 8 / fighter 7 |
 | **No city-block/wilderness structure** | Held at the file level — no `SQRDATA`, `SQRPACI` or `WALLS` on any side, in this or any title after Pool of Radiance. Whether the save's wilderness travel bytes are dead is not answerable statically |
-| **A different race table** | Not predicted at all, and real. Silver Blades drops half-orc and re-orders the rest, so **human is 6, not 7**. `goldbox/games.py` now carries a per-title race table for exactly this |
+| **A different race table** | Not predicted at all, and real. Silver Blades drops half-orc and re-orders the rest, so **human is 6, not 7**. `goldbox/c64_port.py` now carries a per-title race table for exactly this |
 
 ## 4. The phases
 
@@ -143,12 +143,12 @@ and it is asserted in `tests/test_silverblades.py`.
 | 4 | **The import diff** | yes | **done.** `ADD FROM: SECRET CURSE EXIT` — Curse is the only foreign source, there is no `POOL`. §4.1 |
 | 5 | **Live addresses and the automapper run** | yes, exclusively | **done.** Live base `$4B00`, resident `GEO` at `$0400`, live party triple at `$C04B`. Nine steps and three refusals against `GEO10`, no contradictions. §5 |
 | 6 | **Tests** | no | **done** — `tests/test_silverblades.py` for the cold read and `tests/test_ssblive.py` for the run, with Pool of Radiance as the control where there is one and a clean skip when the disks are absent |
-| 7 | **Constants become a table** | no | **done** — `goldbox/games.py`, all six titles, threaded through `goldbox/savegame.py`, `goldbox/yaml_io.py` and `editor/` |
+| 7 | **Constants become a table** | no | **done** — `goldbox/c64_port.py`, all six titles, threaded through `goldbox/savegame.py`, `goldbox/yaml_io.py` and `editor/` |
 
 Phase 7 was planned last on the argument that two games can share code by
 accident and three cannot. That held: it was the six-title inventory that
 showed the seam is the save container's base address and nothing else, and
-`goldbox/games.py` is three numbers wide because of it.
+`goldbox/c64_port.py` is three numbers wide because of it.
 
 ### What phase 2 corrected in its own pass criterion
 
@@ -183,7 +183,7 @@ them — out of the file Silver Blades itself exported; the two agree.
 
 | offset | field | before → after | what explains it |
 |---|---|---|---|
-| `0x072` | `race` | 7 → 6, 4 → 2, 2 → 1 | **Silver Blades' own race table.** Each pair is the same race under this title's numbering: `goldbox/games.py`'s two tables confirmed by the game's arithmetic instead of by inference |
+| `0x072` | `race` | 7 → 6, 4 → 2, 2 → 1 | **Silver Blades' own race table.** Each pair is the same race under this title's numbering: `goldbox/c64_port.py`'s two tables confirmed by the game's arithmetic instead of by inference |
 | `0x0A5`–`0x0AC` | thief skills | re-derived | the same behaviour the Pool → Curse import showed. Only the thief has them |
 | `0x0AD` | racial trait | 124 → 18 (half-elf), 107 → 95 (elf) | `GEN` seeds this from a per-race table indexed by the race byte; the import re-seeds it from **Silver Blades'** table using the **new** code — an independent corroboration of the remap |
 | `0x0B6` | trait, slot 9 | ranger 134 → 105; paladin 45 unchanged | Silver Blades' own pregens carry exactly those two numbers |
@@ -395,7 +395,7 @@ refuses this title for; the pairs are in `work/issue344/` for whoever reads
 **The racial limits are a third independent source for the race table.** The
 routine at `$178A` refuses to look one up for race 6 or above — the human rule —
 and the five rows below it are AD&D's elf, half-elf, dwarf, gnome and halfling
-in exactly the order `goldbox/games.py:RACES_SILVER_BLADES` already had from the
+in exactly the order `goldbox/c64_port.py:RACES_SILVER_BLADES` already had from the
 label pool and from the import's own arithmetic.
 
 **And the item type table decodes.** 42 of 43 of Silver Blades' own named items
@@ -522,7 +522,7 @@ differently, or has been deliberately left alone with a line in
 | a prediction failed | the advice becomes *check, do not assume*, with the Silver Blades counterexample cited by offset. This is the most valuable outcome and should be treated as a success |
 | a step cost far more or less than budgeted | reorder the phases. The order of attack is the skill's main claim; a phase that keeps running last should be documented last |
 | a step needed something the skill does not mention | name the tool, the file and the invocation. A subagent starts cold; "you will need a save disk" belongs in the skill, not in someone's memory |
-| a constant differed | it goes in `goldbox/games.py`, which is where the per-title constants live now that the skill's reference tables are gone. That table is the skill's most reusable artefact and Silver Blades is what makes it a table rather than a pair |
+| a constant differed | it goes in `goldbox/c64_port.py`, which is where the per-title constants live now that the skill's reference tables are gone. That table is the skill's most reusable artefact and Silver Blades is what makes it a table rather than a pair |
 
 `docs/116-second-game.md` §7 is the model: it ends by listing every place the
 earlier plan was wrong, *including where it was wrong in our favour*. Do the same
@@ -535,7 +535,7 @@ references now carry, all from phases 1 and 2:
   Champions and Death Knights have no `GEO00` and start at `$10` or `$20`.
   `goldbox/areas.py` says so at the top of its module docstring.
 * **The save container's geometry is a per-title constant with three values,
-  not six.** `goldbox/games.py` is the table.
+  not six.** `goldbox/c64_port.py` is the table.
 * **`spells_known` is at least eight bytes in the later titles.** Recorded in
   `goldbox/layout.py` against the field itself, where anyone reading the record
   will see it.

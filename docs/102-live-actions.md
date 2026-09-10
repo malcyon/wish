@@ -17,7 +17,7 @@ player saves in the game as usual. That keeps the losslessness promise intact:
 
 ## Which title, and the one address that stops it (#29 (The live reader uses Pool of Radiance's addresses on every title))
 
-**Every address an action writes comes from the `goldbox.games.Game` descriptor.**
+**Every address an action writes comes from the `goldbox.c64_port.Game` descriptor.**
 The slot area, the item area and the roster page are payload offsets that are
 identical in all six titles, so they follow `save_load_address` and nothing
 here is a constant: Pool of Radiance's `$4D00`/`$5900`/`$8300` are Curse's

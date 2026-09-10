@@ -61,7 +61,7 @@ Walk in; `(9,0)` is both the shortest way in and the thieves' school.
 
 Two practical notes the run paid for. `LOW EXPERIENCE OR WRONG CLASS` is
 usually the class half: the school's filter is `$6DA8 = 0x70 | class_bit` and
-the bits are `goldbox.games.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 thief,
+the bits are `goldbox.c64_port.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 thief,
 **8 fighter**. And training costs gold — a flat **1000 gp at every level**,
 measured across twenty-nine of them — so a generated party needs money as well
 as experience.

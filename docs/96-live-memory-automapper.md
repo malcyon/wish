@@ -123,7 +123,7 @@ it still decodes as a sane party, and refuse otherwise. For writes that check
 should be mandatory.
 
 **Batch aggressively.** Read the whole save image in one call, not sixty small
-ones — `$4900`–`$64FF` in Pool of Radiance, and whatever `goldbox/games.py` says for
+ones — `$4900`–`$64FF` in Pool of Radiance, and whatever `goldbox/c64_port.py` says for
 any other title.
 At network latency that is the difference between a usable map and an unusable
 one.
@@ -272,7 +272,7 @@ the visible tab polls at all.
 **One read in every title after it.** Curse and Silver Blades load the save at
 `$4B00` and fold the roster into its last page at `$6700`, so the page is in
 hand already and asking for it again would be a round trip for bytes we have.
-`live.memory_blocks(game)` is where that choice is made and `goldbox/games.py` is
+`live.memory_blocks(game)` is where that choice is made and `goldbox/c64_port.py` is
 where the numbers are; nothing in `automap/live.py` holds an address (#29 (The live reader uses Pool of Radiance's addresses on every title)).
 
 ### The refused step -- wired up
@@ -377,7 +377,7 @@ status pattern, `OUTDOORS +(\d+):(\d+) +(\d+),(\d+)`, plausible over the travel
 grid's own 18x36 window rather than the dungeon's 16x16 -- and `RE_STATUS`
 itself gained the lookarounds `tools/session.py` already had, so `OUTDOORS`
 can no longer be read as a south-facing indoor line at all. The memory
-fallback gained a third answer too, gated on `$49E6` (`goldbox/games.py`'s
+fallback gained a third answer too, gated on `$49E6` (`goldbox/c64_port.py`'s
 `Game.travel_grid`, **True for Pool of Radiance only** -- Curse and Silver
 Blades ship no `SQRDATA`/`SQRPACI`/`WALLS` on any side, `docs/121-silver-blades.md`):
 zero means the grid, and `$49C3`/`$49C4` is the window-local square; non-zero

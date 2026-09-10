@@ -19,7 +19,7 @@ block, and a save image that is Pool of Radiance's constants plus `$200` — and
 `tests/test_second_game.py` pins it. This document is about the gap between
 *the decoders read Curse's bytes* and *the program works on Curse* — a gap that
 was wide because everything above `goldbox/` named Pool of Radiance's files by
-hand, and that `goldbox/games.py` closed.
+hand, and that `goldbox/c64_port.py` closed.
 
 The single most useful check in this document is **tier 5.1: export a Curse
 save disk to YAML and re-import it byte-identically.** It exercises the whole
@@ -250,7 +250,7 @@ three times, one of the flasks readied. Every weight and price matches what the
 shop printed on its own screen, and the readied bit is `$80` at `+6` of exactly
 the one record whose row the game drew as `YES`.
 
-**But there are eight item pages, not twelve.** `goldbox/games.py` describes
+**But there are eight item pages, not twelve.** `goldbox/c64_port.py` describes
 twelve `$100` character slots and twelve `$100` item pages; `SaveGame0` reads
 **eight** slots, and payload `$1800`-`$1BFF` -- pages 8 to 11 -- holds two-bit
 repeating patterns (`55 55 75 55`, `aa aa aa aa`, a run of `0e 0c 09` at
@@ -331,7 +331,7 @@ can be checked without an emulator.
 | `FilenameDigits` | **moot** | there is no filename strategy in `automap/area.py`, and `$2714` is code in a running Curse anyway |
 
 **What is left to make this work in the product**, as against in the experiment:
-a per-title party base for the memory fallback. It is a `goldbox.games`-shaped
+a per-title party base for the memory fallback. It is a `goldbox.c64_port`-shaped
 change — `automap/target.py` and `automap/area.py` both hold their addresses as
 module constants — and the value for Curse is `$C04B`.
 
@@ -347,7 +347,7 @@ second would have been a genuinely new fact about the engine. It found it at
 
 ### 5.0 The blocker, cleared
 
-**`goldbox/games.py` is the game parameter this section asked for**: a frozen
+**`goldbox/c64_port.py` is the game parameter this section asked for**: a frozen
 `Game` descriptor per title carrying the save file name, the load address, the
 payload size and the roster's place, threaded through `goldbox/savegame.py`,
 `goldbox/yaml_io.py` and `editor/`. `games.detect(disk)` names the title from the
@@ -417,7 +417,7 @@ that rip**. What is left:
 | blocker | severity | what would clear it |
 |---|---|---|
 | the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
-| the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/games.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
+| the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/c64_port.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
 | ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32 (One Curse session, to get a party with items)). A save disk the game wrote carrying them is `WISH-SPEC-curse-party-with-items` in the specimen tree, added on 2026-09-08; it was made in `work/issue32/specimens/`, which is scratch and is gone. The measurements are in §3.1 below, and an edit made to that inventory in Wish has since been read off the game's own item screen -- `docs/139-per-title-validation.md` A13 |
 | ~~Curse's level caps are not measured~~ **cleared** | ceilings `GEN $15A1`, racial limits `$15A9` (rows for races 1-5; race 6 and above skip the check at `$155B`), experience `$136E`, hit dice `$161E` — all in `goldbox/levels.py` and asserted in `tests/test_titletables.py` | done. `tools/coldread.py levels curse-of-the-azure-bonds` reads them off the disk again in one command |
 | ~~the spellbook's width in Curse~~ **cleared** | it is **13**, and no specimen was needed: `CAMP $2A25` walks spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id 100, and reads the mask as `TYA / LSR x3 / TAX / LDA $7C78,X` — id 100 puts X at 12, so the game itself reads `0x078`-`0x084` | done (#31 (Cold-read Curse and Silver Blades for the fields the editor shows)). Whether `0x085`-`0x087` are also mask stays UNKNOWN in Curse, whose `GEN` has no clear loop; thirteen is what the game reads and no more is claimed |

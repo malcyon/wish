@@ -839,7 +839,7 @@ placeholder rather than chosen) is still how it works.
   (Donald's own) would otherwise never have the shared one reach
   `game_folders` at all. **Pools of Darkness has no row.** Donald settled on four
   (2026-09-04): Pool of Radiance, Curse, Silver Blades and Pools of Darkness.
-  The fourth is not built -- it has no entry in `goldbox.games.GAMES` at all,
+  The fourth is not built -- it has no entry in `goldbox.c64_port.GAMES` at all,
   and it never shipped on the Commodore 64 this whole module searches for (DOS
   and the Amiga are its only two ports, `#194 (Import and export a Pools of Darkness save between DOS and the Amiga)`), so there is no `disk_glob` a
   folder for it could search against. Left as a finding on `#22 (A disk folder setting per game, not one shared by all six)` for whoever

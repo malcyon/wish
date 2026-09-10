@@ -1992,6 +1992,7 @@ graph LR
   c64_codec --> record
   c64_codec --> spells
   c64_codec --> titles
+  c64_port --> titles
   c64_save --> games
   classcode --> titles
   derive --> items
@@ -2022,7 +2023,7 @@ graph LR
   dos_layout --> dos_port
   dos_port --> layout
   effects --> d64
-  games --> titles
+  games --> c64_port
   geo --> d64
   iconparts --> assets
   iconparts --> d64

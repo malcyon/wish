@@ -12,7 +12,7 @@ They are. But the dialog is the last problem, not the first.
 |---|---|---|
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
 | What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, no names -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, no names and no arrival squares, `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
-| What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/games.py` has six titles and PoD is not one of them | CONFIRMED |
+| What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/c64_port.py` has six titles and PoD is not one of them | CONFIRMED |
 | Does the fasttravel mechanism transfer? | **Yes.** `NEWECL` is the same routine in Curse and in Silver Blades, and four driven warps landed a Curse party in four different areas. §6 | CONFIRMED for Curse, PROBABLE for Silver Blades |
 
 So the honest shape of the feature today is **one title with a list and two
@@ -21,7 +21,7 @@ building the tab bar.
 
 ## 1. What is already per-title, exactly
 
-`goldbox/games.py` carries six frozen `Game` descriptors — Pool of Radiance, Curse,
+`goldbox/c64_port.py` carries six frozen `Game` descriptors — Pool of Radiance, Curse,
 Silver Blades, Champions of Krynn, Death Knights of Krynn, Gateway to the
 Savage Frontier — with save geometry, race and class tables, item-name load
 address and disk glob. Nothing in it touches areas.
@@ -138,7 +138,7 @@ appears when a second title has an area table.** Reasons, in order of weight:
    it). A second bar inside the second tab is two levels of the same control
    doing two different jobs, and the inner one wraps or scrolls on the display
    sizes that made §14 necessary in the first place.
-2. **Six titles, not four.** `goldbox/games.py` already knows six, three of which
+2. **Six titles, not four.** `goldbox/c64_port.py` already knows six, three of which
    (Champions, Death Knights, Gateway) are as C64-real as Silver Blades. A
    selector costs one row whatever the count; a tab bar is sized by it.
 3. **Only one list is ever actionable.** The tab bar's implicit promise is that

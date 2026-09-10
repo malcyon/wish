@@ -34,7 +34,7 @@ offer the direction, so no user could reach it; `goldbox/amiga.py`'s
 
 `goldbox.dos.write_shape` takes the title off the neutral character --
 `NeutralCharacter.game`, which a reader sets and which is a
-`goldbox.games.Game`, its key, or `None` for Pool of Radiance -- and every
+`goldbox.c64_port.Game`, its key, or `None` for Pool of Radiance -- and every
 width in the writer then comes off `goldbox/dos_layout.py`'s table for that
 title. Nothing is a constant in the writer any more:
 

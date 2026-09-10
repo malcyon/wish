@@ -132,7 +132,7 @@ show as a magic-user in Wish's Class box.
 |---|---|---|
 | roster column, `editor/roster.py`'s `class_name` | `72` | `66` |
 | Class box, `editor/window.py`'s `_char_class_shown` | THIEF | MAGIC-USER |
-| `goldbox.games.classes_to_names` | fighter, paladin | cleric, paladin |
+| `goldbox.c64_port.classes_to_names` | fighter, paladin | cleric, paladin |
 
 `editor/enums.py`'s `class_bit_names` builds the sixteen combinations of the
 classic four and then adds `$40` and `$80` alone, on the reasoning that "a

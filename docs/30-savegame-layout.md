@@ -278,7 +278,7 @@ two is named as a cheap job for whoever next touches `goldbox/commissions.py`.
 is six one-byte digits at payload offset `+$C6`, and the clock a player reads
 off the status line is the three at `+$C7`. Both numbers are true and they name
 different things, which is why `goldbox/c64_save.py`'s `Container.clock = 0xC6`
-and `goldbox/games.py`'s `CLOCK_OFFSET = 0xC7` disagree by a byte and neither is
+and `goldbox/c64_port.py`'s `CLOCK_OFFSET = 0xC7` disagree by a byte and neither is
 wrong — settled for
 [#470 (Give the project a neutral title beside its neutral character record, with one port per platform a title shipped on)](https://github.com/malcyon/wish/issues/470),
 which could not write a `clock_base` until somebody said which.

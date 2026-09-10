@@ -20,7 +20,7 @@ work that was already finished, so §0 comes first.
 
 | piece | where | state |
 |---|---|---|
-| detect the travel grid live: the `OUTDOORS` status line and the `$49E6` = 0 / `$49C3`/`$49C4` fallback, gated on `Game.travel_grid` | `automap/target.py`, `goldbox/games.py` | **done**, `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` |
+| detect the travel grid live: the `OUTDOORS` status line and the `$49E6` = 0 / `$49C3`/`$49C4` fallback, gated on `Game.travel_grid` | `automap/target.py`, `goldbox/c64_port.py` | **done**, `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` |
 | the mapper's third mode, `AutomapState.outdoors`; the strip's `Outdoors (x,y)`, the label `Wilderness`, the status `Outdoors, no map` | `automap/state.py`, `automap/panel.py`, `automap/window.py` | **done**, same issue; the three strings are Donald's |
 | read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
 | a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376 (An Amiga party on the travel grid still cannot be converted to the C64 or DOS, because the reader refuses one)` |
@@ -53,7 +53,7 @@ work that was already finished, so §0 comes first.
 | A site is hidden by painting plain terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/test_p3.py` `PAINTED`, `docs/90` |
 | The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets went with `work/` (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
 | `$4A9E` is 0 on the grid and 255 in a random cave, which is `GEO19`/`1A`/`1B` and draws with the existing code | CONFIRMED | `docs/113` |
-| Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/games.py` `travel_grid`, `docs/121-silver-blades.md` |
+| Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/c64_port.py` `travel_grid`, `docs/121-silver-blades.md` |
 | Two candidate looks, both Donald's, 2026-09-04: the game's own tiles read off the player's disk at run time, or game-icons.net icons (`mountain-cave`, `forest`, `grass`, Delapouite). An older ruling (`docs/137` §3) said not to reuse the game's graphics; the later comment reopened it | a decision, not a fact | the 2026-09-04 14:48 comment on `#11 (Draw the wilderness on the automapper)` |
 
 ## 2. What has to be measured first

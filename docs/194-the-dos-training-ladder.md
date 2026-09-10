@@ -116,7 +116,7 @@ engine's own `SAVE CURRENT GAME` with the party standing in the school.
 | fighters' school (8,0) | 120 | `0x78` | 8, fighter |
 | New Phlan, outside the hall | 0 | | none |
 
-That is `0x70 | class_bit`, and the bits are `goldbox.games.CLASS_BITS_CLASSIC`
+That is `0x70 | class_bit`, and the bits are `goldbox.c64_port.CLASS_BITS_CLASSIC`
 -- the same four values the C64 writes into `$6DA8`, which
 `docs/50-experiments.md` P18 read out of `ECL0B`.
 

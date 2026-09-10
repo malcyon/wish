@@ -54,8 +54,8 @@ Assume the left column; re-measure the right one every time.
 | Base versus current: the record holds base values, the roster block the derived current ones | — | [30-savegame-layout.md](30-savegame-layout.md) |
 | The biased encodings — `60 - value`, `48 + value`, `12 - AC` | — | [30-savegame-layout.md](30-savegame-layout.md), [20-character-record.md](20-character-record.md) |
 | Classes 0-based, `class_bits` at `0x0EB` the field to prefer; the per-class level array eight wide at `0x0C9` | Which classes the title implements inside those eight slots, and what slot 4 is called (druid in the Realms titles, knight in the Krynn ones) | [20-character-record.md](20-character-record.md) `level_knight` |
-| The race byte at `0x072` is a code | **The table it indexes.** Silver Blades drops half-orc and human becomes 6; the Krynn titles are 0-based | `goldbox/games.py`, one list per title |
-| Save container geometry, payload-relative | The payload's **base** — but only three values across six titles | `goldbox/games.py`; [116](116-second-game.md), [121](121-silver-blades.md) |
+| The race byte at `0x072` is a code | **The table it indexes.** Silver Blades drops half-orc and human becomes 6; the Krynn titles are 0-based | `goldbox/c64_port.py`, one list per title |
+| Save container geometry, payload-relative | The payload's **base** — but only three values across six titles | `goldbox/c64_port.py`; [116](116-second-game.md), [121](121-silver-blades.md) |
 | The spellbook mask is indexed `0x078 + (id >> 3)` and its declared extent is `0x078`-`0x087` | **How many of those bytes a title actually reads** — 7, 13 and 16 for Pool of Radiance, Curse and Silver Blades, each measured in that title's own code | [20-character-record.md](20-character-record.md) `spells_known_high` |
 | `GEO` maps: 1024 bytes, four 256-byte planes, 16×16, `x + (y << 4)` | Which `GEO` file is which area — always local, always earned | [88-map-files.md](88-map-files.md) |
 | `GEO` ids are **not a range**. Enumerate by directory scan | Which ids a title uses; Silver Blades' high nibble is the disk side | [138-multiple-games.md](138-multiple-games.md) §2 |
@@ -404,7 +404,7 @@ prediction that held gets promoted and names the second corroboration; a
 prediction that failed becomes *check, do not assume* with the counterexample
 cited by offset — **that is the most valuable outcome and should be treated as a
 success**; a step that cost far more or less than budgeted reorders the phases
-above; a constant that differed goes in `goldbox/games.py`, not in prose.
+above; a constant that differed goes in `goldbox/c64_port.py`, not in prose.
 
 **A finding is not closed until this page reads differently, or has been
 deliberately left alone with a line in [50-experiments.md](50-experiments.md)

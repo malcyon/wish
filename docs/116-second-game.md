@@ -1,6 +1,6 @@
 # Curse of the Azure Bonds — how much of it is the same game
 
-**Status: researched, and now supported.** `goldbox/games.py` carries Curse's save
+**Status: researched, and now supported.** `goldbox/c64_port.py` carries Curse's save
 file name, load address, geometry, race table, class bits and item-name base, so
 `wish` opens a Curse save disk, decodes its party and round-trips it
 byte-identically. What is *not* built is anything needing a running Curse — the

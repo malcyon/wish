@@ -4727,7 +4727,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 
   Each school writes a class filter into `$6DA8` — `0x71` magic users, `0x72`
   clerics, `0x74` thieves, `0x78` fighters. The low nibble is exactly
-  `goldbox.games.CLASS_BITS_CLASSIC`, which is a free corroboration of that table
+  `goldbox.c64_port.CLASS_BITS_CLASSIC`, which is a free corroboration of that table
   and of the fact that the trainer tests `class_bits` at `0x0EB`.
 
   **The run.** `work/drive/LVBEFORE.D64`, party at (15,1) in New Phlan.

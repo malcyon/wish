@@ -11,7 +11,7 @@ published (`60-goldbox-field-checklist.md` §5), so every offset in these notes 
 established by experiment. The model is `s-macke/weltendaemmerung`: reverse engineer to
 *understand*, and produce documentation plus an assistant app rather than a port.
 
-Pool of Radiance is the reference title, not the only one. `goldbox/games.py` carries save
+Pool of Radiance is the reference title, not the only one. `goldbox/c64_port.py` carries save
 geometry, race, class and item-name tables for **six** Gold Box titles, and a Curse of the
 Azure Bonds or Secret of the Silver Blades save opens and round-trips byte-identically
 through the same code. See [116-second-game.md](116-second-game.md) and

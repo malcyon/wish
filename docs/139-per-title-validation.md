@@ -27,7 +27,7 @@ the one that now ships.
 
 | | `docs/120` (Curse) | `docs/121` (Silver Blades) |
 |---|---|---|
-| written against | the editor, the CLI and the automapper's map | the same, plus `goldbox/games.py` |
+| written against | the editor, the CLI and the automapper's map | the same, plus `goldbox/c64_port.py` |
 | "the editor" means | the character sheet, inventory, icons, YAML | the shipped party decoding |
 | "the automapper" means | `Geo`, `ResidentGeo`, `party_fix`, `Fingerprint` | the same five |
 | never mentions | Fast Travel, Level Up, the Quest Log, the combat log, the combat view, condition badges, the quickfight badge, map notes, the roster cards, the live actions (heal, store/restore spells, identify), Preferences, the debug log, the DOS converter | all of the same, plus the whole editor UI |
@@ -373,7 +373,7 @@ share one prerequisite and one kind of run.
 is what the five action buttons gate on — is `$7F11` on both later titles, and
 it did not need a differential read at all: it is the absolute operand of
 `LINKER`'s own first instruction and can be taken off the disk. With it in
-`goldbox/games.py` the four `R` cells stop refusing, and one sitting per title read
+`goldbox/c64_port.py` the four `R` cells stop refusing, and one sitting per title read
 a real party through the shipped code, which is C12. Silver Blades' heal was
 done to a real wounded party, which is C16 for that title.
 
@@ -425,7 +425,7 @@ show nothing rather than garbage on the others, the way Fast Travel now does.
 * **Not a release checklist.** `docs/122` is that, and it is per-platform.
 * **Not a decoding plan.** `docs/120` and `docs/121` are those, per title, and
   they remain correct about what they cover.
-* **Not a promise to support the other three titles.** `goldbox/games.py` carries
+* **Not a promise to support the other three titles.** `goldbox/c64_port.py` carries
   Champions of Krynn, Death Knights of Krynn and Gateway to the Savage Frontier
   because the geometry table is cheaper complete than partial. `README.md` does
   not name them and this document does not either.
