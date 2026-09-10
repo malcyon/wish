@@ -318,7 +318,8 @@ def test_a_geo_pointer_outside_this_machines_memory_is_refused():
 def test_pool_of_radiance_has_no_row_and_that_is_deliberate():
     """Its Amiga build is not a small-data one, so the anchor trick locates
     the wrong hunk. A title with no row is refused, never given another
-    title's numbers -- the rule `goldbox.games.Game.live_position` follows."""
+    title's numbers -- the rule `automap.c64.C64Machine.live_position`
+    follows."""
     assert "pool-of-radiance" not in amiga.MACHINES
 
 

@@ -153,10 +153,27 @@ class Title:
     class_bits: tuple[tuple[int, str], ...] | None = None
 
     #: Does this title have a square-engine overland at all? **True for Pool
-    #: of Radiance only**, today. Drawn here because it is a fact about the
-    #: title's own rules rather than about a C64 disk, but it is not read
-    #: through this field yet -- `goldbox.games.Game.travel_grid` is still
-    #: the one every caller reaches, until stage 6 moves them.
+    #: of Radiance only.** Curse of the Azure Bonds and Secret of the Silver
+    #: Blades carry no `SQRDATA`, `SQRPACI` or `WALLS` on either side of any
+    #: disk (`docs/121-silver-blades.md`, "No city-block/wilderness
+    #: structure"), so `$49E6` and `$49C3` there would be read as this
+    #: title's meaning of bytes that belong to something else -- a plausible
+    #: wrong square, which `automap.target.party_fix` refuses to answer rather
+    #: than guess at. See `automap.c64.C64Machine.indoors_flag_base` and
+    #: `travel_position_base`, which are None wherever this is False.
+    #:
+    #: The status line's own `OUTDOORS` pattern is a different question and
+    #: is not gated by this: `#205 (A party that walks out onto the travel
+    #: grid leaves the automapper's marker behind)` found the literal string
+    #: in both titles' `DUNGEON` overlay (`tools/outdoorsgrep.py`), sitting
+    #: among other short message fragments (`EXIT`, `SEARCH`, `" IS "`)
+    #: rather than proven to be a status-line reading -- open, and needs a
+    #: driven session, not this table.
+    #:
+    #: It lives here rather than on the C64 container because it is a fact
+    #: about the title's own rules; `#470`'s stage 6 moved the callers on to
+    #: it, and `goldbox.c64_port.Game.travel_grid` is a read-through that
+    #: stage 9 deletes.
     travel_grid: bool = False
 
     @property

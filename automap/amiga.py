@@ -67,7 +67,7 @@ and the layout table holds only offsets, which are a property of the build.
 
 `AmigaMachine` is the per-title table. A title with no row is refused rather
 than given another title's numbers, which is the same rule
-`goldbox.games.Game.live_position` follows on the C64 side.
+`automap.c64.C64Machine.live_position` follows on the C64 side.
 
 Nothing here writes to the player's disks and nothing claims or releases the
 Amiga lane: `winuae.ps1 claim` is the caller's, exactly as it is for

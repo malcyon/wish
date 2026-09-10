@@ -56,7 +56,8 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 #: The bytes worth writing down beside every screenshot, and why each one is
 #: here.  `$49E6` says which of the two worlds the party is in; `$49C0` is the
 #: dungeon triple, which freezes outdoors at the square the party left the grid
-#: on; `$49C3` is the live travel square; `$C04B` is `Game.live_position`, the
+#: on; `$49C3` is the live travel square; `$C04B` is the machine's own
+#: `live_position`, the
 #: engine's own triple and what `party_fix` falls back to.
 PROBES = {
     "indoors_49E6": (0x49E6, 1),

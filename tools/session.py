@@ -44,6 +44,7 @@ from typing import NamedTuple
 # and CI answered `ModuleNotFoundError: No module named 'session'`.
 TOOLS = str(pathlib.Path(__file__).resolve().parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
+from automap import c64 as machines  # noqa: E402
 from goldbox import games as G  # noqa: E402
 from tools import instance  # noqa: E402
 from tools.drive import (  # noqa: E402
@@ -272,7 +273,7 @@ def parse_status(text: str) -> Status | None:
 #
 # **This is Pool of Radiance's address and `Session.mode()` no longer reads
 # it**: the byte is `$7F11` in Curse and Silver Blades, so the method asks
-# `self.game.mode_flag` (`#334`).  The constant stays because
+# `self.machine.mode_flag` (`#334`).  The constant stays because
 # `tools/defeatdrive.py` and `tools/fleedrive.py` import it, and both drive
 # Pool of Radiance and nothing else.
 MODE = 0x6E11
@@ -629,6 +630,16 @@ class Session:
     #: `walk` it was sent threw the direction letter away and reported the
     #: step as blocked without pressing a key.
     game = G.POOL_OF_RADIANCE
+
+    @property
+    def machine(self):
+        """This title's live addresses -- `automap.c64.C64Machine`.
+
+        The mode flag, the engine's own party square, and whether the title
+        has a travel grid at all.  A property so that setting `game` on a
+        subclass or a fake still answers the right addresses.
+        """
+        return machines.machine_for(self.game)
 
     #: See `__init__`; here as well so a `Session` built without it -- the
     #: fake ones in `tests/` -- still answers the attribute.
@@ -1409,7 +1420,7 @@ class Session:
         **A title with no travel grid is always in a `GEO` area, and no byte
         is read at all.**  Curse of the Azure Bonds and Secret of the Silver
         Blades carry no `SQRDATA`, `SQRPACI` or `WALLS` on either side of any
-        disk (`goldbox.games.Game.travel_grid`,
+        disk (`goldbox.titles.Title.travel_grid`,
         `docs/121-silver-blades.md`), so there is nowhere in either of them
         for a party to be but a dungeon -- and `$49E6` there is a byte of
         `LIBRARY` code that happens to read zero, which is what made the
@@ -1417,7 +1428,7 @@ class Session:
         (`#360 (The session driver will not walk a Curse or Silver Blades party
         in a dungeon, because it reads Pool of Radiance's indoors flag)`).
         """
-        if not self.game.travel_grid:
+        if not self.machine.title.travel_grid:
             return True
         try:
             with self.mon(5) as m:
@@ -1448,7 +1459,7 @@ class Session:
         in the code review of #189.
 
         **A title with no travel grid reads its own live triple instead** --
-        `$C04B`, `goldbox.games.Game.live_position`, which
+        `$C04B`, `automap.c64.C64Machine.live_position`, which
         `tools/cursewarp.py` has driven Curse from since
         `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
         Radiance's alone?)`.  There is no second pair to choose between there,
@@ -1459,8 +1470,8 @@ class Session:
         """
         try:
             with self.mon(5) as m:
-                if not self.game.travel_grid:
-                    x, y = m.read(self.game.live_position, 2)
+                if not self.machine.title.travel_grid:
+                    x, y = m.read(self.machine.live_position, 2)
                     return x, y, True
                 inside = m.read(INDOORS_AT, 1)[0] != 0
                 x, y = m.read(DUNGEON_XY if inside else TRAVEL_XY, 2)
@@ -1819,7 +1830,7 @@ class Session:
         looks exactly like a save that failed to enter combat, and is how a
         working conversion gets written up as broken (`#334`).  `LINKER` opens
         `LDA $7F11` in both later titles where Pool of Radiance's opens
-        `LDA $6E11`; `goldbox.games.Game.mode_flag` has carried both since
+        `LDA $6E11`; `automap.c64.C64Machine.mode_flag` has carried both since
         `#29`.
 
         **None is "the read failed", not a mode**, and a title whose flag
@@ -1832,7 +1843,7 @@ class Session:
         throw away every turn, bar and line gathered up to that point, which
         is the evidence the harness exists to collect.
         """
-        where = self.game.mode_flag
+        where = self.machine.mode_flag
         if where is None:
             return None
         try:

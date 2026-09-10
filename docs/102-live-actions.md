@@ -34,7 +34,7 @@ it neither follows the load address nor transfers: `$6E11` in Pool of Radiance,
 titles' disks — and its overlay name table is the same table entry for entry,
 so `2` is COMBAT in all three and only the address is per title.
 
-It is `Game.mode_flag` — CONFIRMED for Pool of Radiance, Curse and Silver
+It is `automap.c64.C64Machine.mode_flag` — CONFIRMED for Pool of Radiance, Curse and Silver
 Blades, None for the three Krynn-era titles, whose loaders have not been read.
 Silver Blades has been watched through a real fight: `1` `DUNGEON` → `4`
 `COM.PREP` → `2` `COMBAT`, with the three combat-illegal actions refusing on

@@ -27,7 +27,7 @@ function.
 
 import pytest
 
-from automap import actionbar, actions
+from automap import actionbar, actions, c64
 from automap.target import MemoryTarget
 from goldbox import games
 from wish import debugmode
@@ -60,7 +60,7 @@ class Machine(MemoryTarget):
 def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
             pc: int = IN_THE_LOOP, indoors: int = 1) -> Machine:
     """A machine standing in an area, ready to be fasttraveled out of."""
-    return Machine({games.MODE_FLAG_POOL: bytes([mode]),
+    return Machine({c64.MODE_FLAG_POOL: bytes([mode]),
                     actions.FASTTRAVEL_SLOT: bytes([area]),
                     actions.FASTTRAVEL_DISK: bytes([disk]),
                     actions.FASTTRAVEL_INDOORS: bytes([indoors]),
@@ -312,7 +312,7 @@ def test_fasttravel_legality_refusals_carry_no_developer_detail():
         "resident overlay is not DUNGEON": ft.legality(
             machine(mode=3), area(20)).reason,
         "backend cannot read the CPU": actions.FastTravel().legality(
-            MemoryTarget({games.MODE_FLAG_POOL: bytes([WORLD])}),
+            MemoryTarget({c64.MODE_FLAG_POOL: bytes([WORLD])}),
             area(20)).reason,
         "PC outside the key-wait loop": ft.legality(
             machine(pc=0), area(20)).reason,
@@ -454,7 +454,7 @@ def test_a_fasttravel_to_the_area_we_are_in_is_refused():
 
 
 def test_a_backend_with_no_cpu_cannot_fasttravel():
-    plain = MemoryTarget({games.MODE_FLAG_POOL: bytes([WORLD])})
+    plain = MemoryTarget({c64.MODE_FLAG_POOL: bytes([WORLD])})
     verdict = actions.FastTravel().legality(plain, area(20))
     assert not verdict and "program counter" in verdict.reason
 
@@ -691,7 +691,6 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     it under `#20 (Build an area table for Silver Blades)`.
     """
     from automap.config import Settings
-    from goldbox import games
 
     row = bar(app, machine(area=13), settings=Settings(),
               title=games.CHAMPIONS_OF_KRYNN.title,
@@ -712,7 +711,6 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
 def test_the_row_follows_the_title_when_the_disks_change(app):
     """The one place the title moves under a live row: `set_maps`."""
     from automap.config import Settings
-    from goldbox import games
 
     row = bar(app, settings=Settings(), title=games.POOL_OF_RADIANCE.title,
               game=games.POOL_OF_RADIANCE)

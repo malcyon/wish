@@ -10,7 +10,8 @@ routines name it:
   and `CAMP`; Secret of the Silver Blades moved it into `LIBRARY`.
 * the **status line** -- `LDA $ppC9 / print / LDA #$3A / print / LDA $ppC8 /
   print / LDA $ppC7 / print`, which is the hour, a colon, and the two minute
-  digits.  That is why `goldbox.games.CLOCK_OFFSET` is `$C7` and not `$C6`:
+  digits.  That is why `goldbox.c64_port.SHOWN_CLOCK_OFFSET` is `$C7` and
+  not `$C6`:
   the clock a player reads is the last three of the six digits, and the first
   three of the six are a sub-minute counter the game never shows.
 
@@ -22,7 +23,8 @@ twenty-four hours, thirty days, twelve months.
 
 Written for `#470 (Give the project a neutral title beside its neutral
 character record, with one port per platform a title shipped on)`, which
-could not tell whether `goldbox.games.CLOCK_OFFSET = 0xC7` or
+could not tell whether `goldbox.c64_port.SHOWN_CLOCK_OFFSET = 0xC7` -- called
+`CLOCK_OFFSET` until that ticket's stage 6 renamed it -- or
 `goldbox.c64_save.Container.clock = 0xC6` was the wrong one.  Both are right
 and they are two different fields; this is what says so.
 

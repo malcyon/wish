@@ -124,7 +124,7 @@ class FastTravelAddresses:
 
     #: The travel grid's own square, window-local x then y. **Pool of Radiance
     #: only**: no other C64 title in the family has a square-engine overland
-    #: (`goldbox.games.Game.travel_grid`).
+    #: (`goldbox.titles.Title.travel_grid`).
     travel_square: int | None = None
 
     #: Anything else the handler zeroes, one byte each. Silver Blades' zeroes

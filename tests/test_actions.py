@@ -17,7 +17,7 @@ import pathlib
 
 import pytest
 
-from automap import actions, live
+from automap import actions, c64, live
 from automap.target import MemoryTarget
 from goldbox import c64_codec, games, levelup
 from goldbox import items as por_items
@@ -416,7 +416,8 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     target = MemoryTarget({
         games.SECRET_OF_THE_SILVER_BLADES.save_load_address:
             bytes(save0 + roster),
-        games.SECRET_OF_THE_SILVER_BLADES.mode_flag: bytes([WORLD])})
+        c64.MACHINES["secret-of-the-silver-blades"].mode_flag:
+            bytes([WORLD])})
     before = dict(target.memory)
     outcome = actions.LevelUp(games.SECRET_OF_THE_SILVER_BLADES).apply(
         target, slot=0)
@@ -799,7 +800,7 @@ def curse_machine(mode: int | None = None, hp: int | None = None
         roster[ROSTER_HP_CURRENT] = hp
     memory = {CURSE.save_load_address: bytes(save0 + roster)}
     if mode is not None:
-        memory[CURSE.mode_flag] = bytes([mode])
+        memory[c64.machine_for(CURSE).mode_flag] = bytes([mode])
     return MemoryTarget(memory)
 
 
@@ -845,7 +846,7 @@ def test_a_title_with_no_measured_mode_flag_writes_nothing():
     same call heals, so what is asserted is the refusal and not an empty one.
     """
     krynn = games.CHAMPIONS_OF_KRYNN
-    assert krynn.mode_flag is None
+    assert c64.machine_for(krynn).mode_flag is None
     save0, roster = captured()
     roster[ROSTER_HP_CURRENT] = 1
     for name in ("heal", "identify", "store-spells", "restore-spells",
@@ -875,7 +876,7 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
     Pool of Radiance's address: an action that is illegal in combat has to
     refuse, which it cannot do if it is reading the wrong byte.
     """
-    assert CURSE.mode_flag == 0x7F11
+    assert c64.machine_for(CURSE).mode_flag == 0x7F11
     target = curse_machine(mode=WORLD, hp=1)
     target.memory[0x6E11] = bytes([COMBAT])       # PoR's byte says "fight"
     outcome = next(a for a in actions.actions(game=CURSE)
@@ -1026,7 +1027,7 @@ def kobold_caves_machine() -> ReenterTarget:
     what this exit's route runs."""
     addr = fasttravel.POOL_OF_RADIANCE
     return ReenterTarget({
-        games.MODE_FLAG_POOL: bytes([WORLD]),
+        c64.MODE_FLAG_POOL: bytes([WORLD]),
         addr.slot: bytes([13]),
         addr.disk: bytes([3]),
         addr.indoors: bytes([1]),
@@ -1124,7 +1125,7 @@ def test_fasttravel_falls_back_to_the_tail_jump_when_the_backend_cannot_reenter(
             self.jumps.append(address)
 
     target = NoReentryTarget({
-        games.MODE_FLAG_POOL: bytes([WORLD]),
+        c64.MODE_FLAG_POOL: bytes([WORLD]),
         addr.slot: bytes([13]),
         addr.disk: bytes([3]),
         addr.indoors: bytes([1]),

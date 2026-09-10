@@ -30,6 +30,7 @@ is committed: `AGENTS.md` forbids that, test fixture or not.
 
 import pytest
 
+from automap import c64
 from goldbox import levels, levelup, spells
 from goldbox.savegame import load_save
 from tests import gamedata
@@ -843,7 +844,7 @@ def test_a_curse_level_up_action_raises_travis_and_ledera_through_plan_all(
 
     target = MemoryTarget({
         game.save_load_address: sg0.to_bytes(),
-        game.mode_flag: bytes([1])})          # 1: not COMBAT
+        c64.machine_for(game).mode_flag: bytes([1])})   # 1: not COMBAT
 
     outcome = actions.LevelUp(game).apply(target, slot=slot_index, spell=learn)
     assert outcome.ok, outcome.message
@@ -907,7 +908,7 @@ def test_the_level_up_button_asks_for_a_spell_through_the_window_when_class_for_
     sg0.write_record(slot_index, record)
     target = MemoryTarget({
         game.save_load_address: sg0.to_bytes(),
-        game.mode_flag: bytes([1])})          # 1: not COMBAT
+        c64.machine_for(game).mode_flag: bytes([1])})   # 1: not COMBAT
 
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -1148,7 +1149,7 @@ def test_the_level_up_button_asks_about_the_whole_chain_through_the_window(
     sg0.write_record(slot_index, record)
     target = MemoryTarget({
         game.save_load_address: sg0.to_bytes(),
-        game.mode_flag: bytes([1])})          # 1: not COMBAT
+        c64.machine_for(game).mode_flag: bytes([1])})   # 1: not COMBAT
 
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

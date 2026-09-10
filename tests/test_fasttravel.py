@@ -24,9 +24,8 @@ import time
 
 import pytest
 
-from automap import actionbar, actions
+from automap import actionbar, actions, c64
 from automap.target import MemoryTarget, NotConnected
-from goldbox import games
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
 IN_THE_LOOP = 0x10C2                    # a PC a fast travel will accept
@@ -79,7 +78,7 @@ class Machine(MemoryTarget):
 def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
             resting=IN_THE_LOOP, indoors: int = 1) -> Machine:
     """A party standing in an area, ready to be travelled out of."""
-    return Machine({games.MODE_FLAG_POOL: bytes([mode]),
+    return Machine({c64.MODE_FLAG_POOL: bytes([mode]),
                     actions.FASTTRAVEL_SLOT: bytes([area]),
                     actions.FASTTRAVEL_DISK: bytes([disk]),
                     actions.FASTTRAVEL_INDOORS: bytes([indoors]),
@@ -160,7 +159,7 @@ def test_the_mode_flag_is_read_once_per_refresh(app):
     target.reads.clear()
     bar.refresh()
     assert sum(1 for addr, _n in target.reads
-               if addr == games.MODE_FLAG_POOL) == 1, target.reads
+               if addr == c64.MODE_FLAG_POOL) == 1, target.reads
 
 
 # --- and the click waits instead ---------------------------------------------

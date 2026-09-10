@@ -57,6 +57,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap import c64 as machines  # noqa: E402
 from tools import curseload, curserun, cursewarp, gamedisks  # noqa: E402
 from tools import session as por  # noqa: E402
 
@@ -64,11 +65,11 @@ from tools import session as por  # noqa: E402
 #: party while it is running.  `tools/cursewarp.py` established it for
 #: `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 #: Radiance's alone?)`
-#: and `goldbox.games` carries it as `live_position`; it is read here as well
-#: as the status line because **Curse does not print the square in every
-#: area** (area `$03` draws `E 3:44` and no coordinates at all), so a
-#: status-line reader alone proves nothing outside the areas that do.
-LIVE_XY = curserun.CurseSession.game.live_position
+#: and `automap.c64` carries it as `C64Machine.live_position`; it is read
+#: here as well as the status line because **Curse does not print the square
+#: in every area** (area `$03` draws `E 3:44` and no coordinates at all), so
+#: a status-line reader alone proves nothing outside the areas that do.
+LIVE_XY = machines.machine_for(curserun.CurseSession.game).live_position
 
 
 def probe_square(sess) -> list[int]:

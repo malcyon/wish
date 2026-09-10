@@ -36,7 +36,7 @@ import pytest
 # the package's name and a bare `import wish` that resolves to it stays
 # resolved for the whole process.
 import wish  # noqa: F401
-from automap import fasttravel
+from automap import c64, fasttravel
 from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
 from goldbox import games
 from tools import gamedisks
@@ -171,7 +171,7 @@ def test_every_shipped_row_is_what_that_titles_disks_say(newecl, key):
                   "scratch", "indoors", "live_square", "wall_slot_pinned",
                   "key_wait", "key_fetch", "zeroed"):
         assert got[field] == getattr(row, field), field
-    assert got["mode"] == game.mode_flag
+    assert got["mode"] == c64.machine_for(game).mode_flag
 
 
 def test_silver_blades_is_the_one_title_with_a_sixth_write(newecl):

@@ -261,7 +261,7 @@ each has a counterexample already:
   keep the save's copy at `$4BC0` and the engine's working copy at `$C04B`, and
   `$4BC0` does not move at all while the party walks. "Lags a move" is the mild
   version of this failure and "does not move" the severe one; **for the first
-  step they look identical.** `Game.live_position` is measured per title, and a
+  step they look identical.** `C64Machine.live_position` is measured per title, and a
   title where nobody has measured it gets no fallback rather than a plausible
   wrong square ([96-live-memory-automapper.md](96-live-memory-automapper.md)).
 * **A cache has an update rule and you must find it.** Armour class in the roster

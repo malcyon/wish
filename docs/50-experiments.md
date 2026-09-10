@@ -5638,7 +5638,7 @@ party was handed back to the world with no combat. So `2` on Curse rests on the
 dispatch table alone. It is the same table as the one Silver Blades has now
 been watched running, which is why this is a footnote and not a blocker.
 
-**What this is worth to the program.** `Game.mode_flag` is `$7F11` for both
+**What this changes in the program.** `C64Machine.mode_flag` is `$7F11` for both
 later titles, so the five live actions no longer refuse there and
 `docs/139`'s C16–C19 leave `R`. The three Krynn-era titles keep `None`: their
 `LINKER` has not been read, and a title with no gate must refuse rather than

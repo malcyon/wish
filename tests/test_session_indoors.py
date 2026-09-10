@@ -20,6 +20,7 @@ address the driver decides to ask and what it does with the answer.
 import pytest
 from conftest import load_tools_module
 
+from automap import c64 as machines
 from goldbox import games as G
 
 S = load_tools_module("session")
@@ -27,7 +28,7 @@ S = load_tools_module("session")
 #: The two addresses this file is about: Pool of Radiance's indoors flag, and
 #: the live square triple every title in the family keeps at the same place.
 INDOORS_AT = S.INDOORS_AT
-LIVE_XY = G.CURSE_OF_THE_AZURE_BONDS.live_position
+LIVE_XY = machines.machine_for(G.CURSE_OF_THE_AZURE_BONDS).live_position
 
 
 class FakeMonitor:
@@ -100,7 +101,7 @@ class FakeSession(S.Session):
 def test_a_curse_party_reads_as_indoors_without_any_byte_being_asked_for():
     """Curse has no travel grid, so there is nowhere else the party can be.
 
-    `goldbox.games.Game.travel_grid` is the fact -- neither later title
+    `goldbox.titles.Title.travel_grid` is the fact -- neither later title
     carries `SQRDATA`, `SQRPACI` or `WALLS` on any side of any disk -- and it
     settles the question without a read, which is what makes it safe: the
     byte that used to be read means nothing in these two titles.

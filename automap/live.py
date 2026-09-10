@@ -61,6 +61,8 @@ from goldbox.savegame import (
     SaveGame1,
 )
 
+from . import c64
+
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off.
 _log = logging.getLogger("wish.automap.live")
@@ -91,7 +93,7 @@ def memory_blocks(game: games.Game | None = None):
     payload = (game.save_load_address, game.save_size)
     if game.roster_in_payload:
         return (payload,)
-    return (payload, (game.roster_base, ROSTER_PAGE))
+    return (payload, (c64.machine_for(game).roster_base, ROSTER_PAGE))
 
 
 # `FIRST_MONSTER`, `PARTY_WIDE`, `DURATION_COUNT` and `DURATION_UNIT` moved to
@@ -104,8 +106,8 @@ def memory_blocks(game: games.Game | None = None):
 # selecting QUICK moved exactly this bit for exactly the character quickfought.
 # Kept here rather than in `actions.py` because `actions` imports this module
 # and not the other way round; `actions.quickfight_flag` builds its address
-# from these two and `Game.roster_base`, so the read side and the write side
-# cannot drift apart.
+# from these two and `C64Machine.roster_base`, so the read side and the write
+# side cannot drift apart.
 ROSTER_QUICKFIGHT = 0x0C
 QUICKFIGHT_BIT = 0x80
 

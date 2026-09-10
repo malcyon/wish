@@ -27,7 +27,7 @@ import pathlib
 import pytest
 from gamedata import _disk_with, synthetic_geo
 
-from automap import paths
+from automap import c64, paths
 from automap.area import RESIDENT_GEO
 from automap.config import Settings
 from automap.target import MemoryTarget
@@ -248,7 +248,7 @@ def machine(resident: Geo, position=(4, 5, 0)) -> MemoryTarget:
     """A C64 with a block at `$0400` and no status line -- see
     `tests/test_wronggame.py`."""
     blocks = {0xD011: bytes([0x1B]), 0xD018: bytes([0x15]), 0xDD00: bytes([0x17]),
-              games.DEFAULT.live_position: bytes(position),
+              c64.DEFAULT.live_position: bytes(position),
               RESIDENT_GEO: resident.to_bytes()}
     return MemoryTarget(blocks)
 

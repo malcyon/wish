@@ -79,7 +79,22 @@ NAMES_LOAD_ADDRESS_LATER = 0x9E00
 # Both are inside the save image, so both follow `save_load_address` and
 # neither is a per-title field.
 POSITION_OFFSET = 0x0C0        # x, y, facing -- the copy the game *saves*
-CLOCK_OFFSET = 0x0C7           # minute units, tens, hour
+
+# The three digits of the clock the status line draws -- minute units, tens,
+# hour -- which are the second, third and fourth of the six one-byte digits
+# `goldbox.c64_save.Container.clock` starts at `+$C6`. The first is a
+# sub-minute tick nothing ever prints, which is why the two constants sit a
+# byte apart: `automap.target` folds three bytes as `c[2] * 60 + c[1] * 10 +
+# c[0]`, and at `+$C6` that is minute tens times sixty. Read out of the tick
+# loop and the status-line printer in all three titles by `tools/c64clock.py`
+# (`docs/30-savegame-layout.md`); the name says which of the two facts it is,
+# which is what `#470` renamed it for.
+SHOWN_CLOCK_OFFSET = 0x0C7
+
+#: Pre-#470 name, kept so nothing importing it breaks before stage 9. `#470
+#: (Give the project a neutral title beside its neutral character record, with
+#: one port per platform a title shipped on)`.
+CLOCK_OFFSET = SHOWN_CLOCK_OFFSET
 
 # The travel grid's own two facts, both inside the save image and both
 # Pool of Radiance measurements (`docs/113-world-map.md`, `docs/118-debug-mode.md`,
@@ -89,65 +104,22 @@ CLOCK_OFFSET = 0x0C7           # minute units, tens, hour
 INDOORS_FLAG_OFFSET = 0x0E6
 TRAVEL_POSITION_OFFSET = 0x0C3
 
-#: Where the **engine** keeps the party's square while the game runs, which is
-#: not where it writes it when the game saves. `$C04B` x, `$C04C` y, `$C04D`
-#: facing.
-#:
-#: MEASURED, three times over, and not inferred from anything:
-#:
-#: * Pool of Radiance -- `$1A3C` is `if $49E6 then copy $C04B..$C04D into
-#:   $49C0..$49C2`, and 29 of its 30 area scripts write it (`docs/118` §);
-#: * Curse of the Azure Bonds -- found by intersecting two 64K dumps taken
-#:   either side of a step, one candidate left (`docs/120` §4);
-#: * Secret of the Silver Blades -- the same triple, confirmed unchanged over
-#:   nine steps and three refusals (`docs/121` §5).
-#:
-#: `docs/138-multiple-games.md` records it as CONFIRMED for those three titles
-#: and for no others, which is why the Krynn titles and Gateway leave
-#: `live_position` None below.
-LIVE_POSITION_GOLDBOX = 0xC04B
-
-#: `LINKER`'s dispatch byte in Pool of Radiance: which overlay is running, and
-#: `2` is COMBAT. Outside the save image like `live_position`, and like it a
-#: measurement of one title rather than a family constant -- `LINKER` is
-#: 136 bytes of resident code at `$2B80`.
-#:
-#: CONFIRMED: "`$6E11` is the mode flag" in `docs/50-experiments.md` reads the
-#: outer loop itself -- `LDA $6E11`, index the overlay name table, load it at
-#: `$0800`, call it.
-MODE_FLAG_POOL = 0x6E11
-
-#: The same byte in Curse of the Azure Bonds and Secret of the Silver Blades,
-#: and it is **not** Pool of Radiance's plus anything the save image moved by:
-#: `LINKER` is its own resident, so the flag went `$6E11` -> `$7F11` while the
-#: save image went `$4900` -> `$4B00`.
-#:
-#: Read out of the loader's own first instruction, which is where the address
-#: is an absolute operand and so does not depend on where `LINKER` loads:
-#: `LINKER` on `CURSE_A.D64` and on `SILVER-1.D64` both begin `AD 11 7F`,
-#: `LDA $7F11`, then index a name table of ten entries and `JSR $0800`. **The
-#: name table is Pool of Radiance's, entry for entry** -- `GEN`, `DUNGEON`,
-#: `COMBAT`, `INIT`, `COM.PREP`, `POST.COM`, two dead slots, `FINAL`, `CAMP` --
-#: so `2` is COMBAT in all three titles and `automap.actions.COMBAT` needs no
-#: per-title value.
-#:
-#: CONFIRMED for both, each in its own driven session on pool slot 2. `LINKER`
-#: is resident at `$2D00` in both -- byte-identical to the disk copy -- and the
-#: flag was sampled across every overlay change the session made: Curse world
-#: `1`, camp `9`, world `1`, roster `0`, world `1`; Silver Blades credits `3`
-#: `INIT`, roster `0` `GEN`, world `1`, treasure `5` `POST.COM`, world `1`.
-#: `LDA #$09 / STA $7F11` sits at `$100E` in Curse's resident `DUNGEON`, where
-#: Pool of Radiance's `DUNGEON $10B1` writes `9`.
-#:
-#: **`2` was sampled live on Silver Blades**, at the end of 228 driven steps:
-#: `1` -> `4` `COM.PREP` -> `2` with `MOVE VIEW AIM TURN QUICK DONE` on the
-#: command bar, and `identify` refusing because `$7F11` is 2. That is also the
-#: first live sighting of `4` in any title. On Curse it was not: no session has
-#: reached a fight there, so `2` rests on the dispatch table alone -- which is
-#: the same table, so the risk is small and it is written down rather than
-#: glossed. `docs/50-experiments.md`, "the later titles' mode flag is `$7F11`";
-#: issue #29.
-MODE_FLAG_LATER = 0x7F11
+# --- the addresses that are not in the save image ----------------------------
+# `LIVE_POSITION_GOLDBOX`, `MODE_FLAG_POOL` and `MODE_FLAG_LATER` moved to
+# `automap/c64.py`, with the measurements behind each of them, when `#470
+# (Give the project a neutral title beside its neutral character record, with
+# one port per platform a title shipped on)`'s stage 6 gave the C64 a
+# `C64Machine` beside the Amiga's `AmigaMachine`. They are addresses in a
+# *running* game rather than offsets into a save file, and a running machine is
+# `automap/`'s.
+#
+# **No alias is left behind for them here, and that is forced rather than
+# chosen.** Every other rename in this ticket leaves the old name working; this
+# one cannot, because the alias would have to import `automap` and
+# `tests/test_wish.py::test_goldbox_imports_no_transport` forbids that -- it is
+# what keeps `editor/`'s promise that it never talks to an emulator. So the
+# callers moved in the same commit instead, which is the shape stage 4c already
+# used for a renamed parameter: one commit is one revert.
 
 
 @dataclass(frozen=True)
@@ -183,41 +155,28 @@ class Game:
     class_bits: tuple[tuple[int, str], ...] | None = None
     item_names_load_address: int | None = None
 
-    #: The engine's live x/y/facing triple. **Not geometry**: it sits outside
-    #: the save image, so it cannot be derived from `save_load_address` and has
-    #: to be measured on a running machine, one title at a time. None means
-    #: nobody has measured this title's -- and a reader must then refuse rather
-    #: than fall back to another title's, because a wrong address yields a
-    #: plausible square instead of an error.
-    live_position: int | None = None
+    # -- moved to `automap.c64.C64Machine` by `#470`'s stage 6 -------------
+    # `live_position` and `mode_flag` were fields here. Both are addresses in
+    # a running game rather than offsets into a save file, so both are now
+    # `C64Machine`'s -- and neither can be left as a read-through, because a
+    # read-through would import `automap` from `goldbox` and
+    # `tests/test_wish.py::test_goldbox_imports_no_transport` forbids it. Ask
+    # `automap.c64.machine_for(game)` for either.
 
-    #: The loader's resident-overlay flag -- the byte an action has to read
-    #: before it writes, because `2` is combat and half of them are illegal
-    #: there. **Not geometry either**: it is a byte of the loader's own
-    #: resident page, not of the save image, so it neither follows
-    #: `save_load_address` nor transfers. None means nobody has found this
-    #: title's, and every action then refuses: an unmeasured address reads as
-    #: "not combat" whatever the machine is doing, which is a gate that is
-    #: open rather than a gate that is missing.
-    mode_flag: int | None = None
+    @property
+    def travel_grid(self) -> bool:
+        """`goldbox.titles.Title.travel_grid` under its pre-#470 name.
 
-    #: Does this title have a square-engine overland at all? **True for Pool
-    #: of Radiance only.** Curse of the Azure Bonds and Secret of the Silver
-    #: Blades carry no `SQRDATA`, `SQRPACI` or `WALLS` on either side of any
-    #: disk (`docs/121-silver-blades.md`, "No city-block/wilderness
-    #: structure"), so `$49E6` and `$49C3` there would be read as this
-    #: title's meaning of bytes that belong to something else -- a plausible
-    #: wrong square, which `party_fix` refuses to answer rather than guess
-    #: at. See `indoors_flag_base` and `travel_position_base`.
-    #:
-    #: The status line's own `OUTDOORS` pattern is a different question and
-    #: is not gated by this: `#205 (A party that walks out onto the travel
-    #: grid leaves the automapper's marker behind)` found the literal string
-    #: in both titles' `DUNGEON` overlay (`tools/outdoorsgrep.py`), sitting
-    #: among other short message fragments (`EXIT`, `SEARCH`, `" IS "`)
-    #: rather than proven to be a status-line reading -- open, and needs a
-    #: driven session, not this table.
-    travel_grid: bool = False
+        Does this title have a square-engine overland at all? **True for Pool
+        of Radiance only.** It is a fact about the title's own rules rather
+        than about a C64 disk, which is why `#470`'s stage 6 moved it to
+        `Title`; this stays as a read-through until stage 9 deletes it. A
+        `Game` whose key `goldbox/titles.py` does not know answers False,
+        which is what an unregistered row answered when this was a field.
+        """
+        from .titles import BY_KEY
+        found = BY_KEY.get(self.key)
+        return bool(found is not None and found.travel_grid)
 
     # -- derived ----------------------------------------------------------
     @property
@@ -246,6 +205,14 @@ class Game:
         """What the file measures on disk, load address included."""
         return self.save_size + 2
 
+    # -- the save image's regions, live ------------------------------------
+    # `automap.c64.C64Machine` computes each of these as well, from
+    # `goldbox.c64_save.Container`'s own offsets rather than from the module
+    # constants above, and `tests/test_c64machine.py` pins that the two agree
+    # for all six titles. They are duplicated for exactly one stage: these are
+    # what `goldbox/savegame.py` reads, `goldbox/` may not import `automap`,
+    # and `#470`'s stage 7 is where `C64Container` absorbs them.
+
     @property
     def slot_area_base(self) -> int:
         return self.save_load_address + HEADER_SIZE
@@ -263,24 +230,33 @@ class Game:
         """The save image's own copy of the party square.
 
         Refreshed only when the game saves, so it names the square the party
-        stood on at the last save. `live_position` is the one that moves.
+        stood on at the last save. `C64Machine.live_position` is the one that
+        moves.
         """
         return self.save_load_address + POSITION_OFFSET
 
     @property
     def clock_base(self) -> int:
-        """The game clock, which *is* live at its save-image address."""
-        return self.save_load_address + CLOCK_OFFSET
+        """The three clock digits the status line draws, live.
+
+        `C64Machine.shown_clock_base` under its pre-#470 name -- and it is
+        **not** the whole clock, which is six digits from
+        `goldbox.c64_save.Container.clock` at `+$C6`. See
+        `SHOWN_CLOCK_OFFSET` above.
+        """
+        return self.save_load_address + SHOWN_CLOCK_OFFSET
 
     @property
     def indoors_flag_base(self) -> int | None:
         """`$49E6`: zero on the travel grid, non-zero in a `GEO` area.
 
-        None unless `travel_grid`, the same refusal `live_position` makes for
-        the same reason: reading this on a title with no travel grid would
-        answer a byte of unrelated resident code as though it meant something.
+        None unless `travel_grid`, the same refusal `C64Machine.live_position`
+        makes for the same reason: reading this on a title with no travel grid
+        would answer a byte of unrelated resident code as though it meant
+        something.
         """
-        return self.save_load_address + INDOORS_FLAG_OFFSET if self.travel_grid else None
+        return (self.save_load_address + INDOORS_FLAG_OFFSET
+                if self.travel_grid else None)
 
     @property
     def travel_position_base(self) -> int | None:
@@ -288,7 +264,8 @@ class Game:
 
         None unless `travel_grid`, for the same reason as `indoors_flag_base`.
         """
-        return self.save_load_address + TRAVEL_POSITION_OFFSET if self.travel_grid else None
+        return (self.save_load_address + TRAVEL_POSITION_OFFSET
+                if self.travel_grid else None)
 
     @property
     def roster_base(self) -> int:
@@ -322,9 +299,6 @@ POOL_OF_RADIANCE = Game(
     races=RACES_FORGOTTEN_REALMS,
     class_bits=CLASS_BITS_CLASSIC,
     item_names_load_address=NAMES_LOAD_ADDRESS_POOL,
-    live_position=LIVE_POSITION_GOLDBOX,
-    mode_flag=MODE_FLAG_POOL,
-    travel_grid=True,
 )
 
 CURSE_OF_THE_AZURE_BONDS = Game(
@@ -338,8 +312,6 @@ CURSE_OF_THE_AZURE_BONDS = Game(
     races=RACES_CURSE,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    live_position=LIVE_POSITION_GOLDBOX,
-    mode_flag=MODE_FLAG_LATER,
 )
 
 SECRET_OF_THE_SILVER_BLADES = Game(
@@ -353,8 +325,6 @@ SECRET_OF_THE_SILVER_BLADES = Game(
     races=RACES_SILVER_BLADES,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    live_position=LIVE_POSITION_GOLDBOX,
-    mode_flag=MODE_FLAG_LATER,
 )
 
 CHAMPIONS_OF_KRYNN = Game(
@@ -368,9 +338,6 @@ CHAMPIONS_OF_KRYNN = Game(
     races=RACES_KRYNN,
     class_bits=CLASS_BITS_KRYNN,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    # live_position and mode_flag stay None: nobody has run this title under
-    # a monitor, and $C04B and $6E11 are measurements of other games, not
-    # family constants.
 )
 
 DEATH_KNIGHTS_OF_KRYNN = Game(
@@ -384,9 +351,6 @@ DEATH_KNIGHTS_OF_KRYNN = Game(
     races=RACES_KRYNN,
     class_bits=CLASS_BITS_KRYNN,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    # live_position and mode_flag stay None: nobody has run this title under
-    # a monitor, and $C04B and $6E11 are measurements of other games, not
-    # family constants.
 )
 
 GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
@@ -400,9 +364,6 @@ GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
     races=RACES_FORGOTTEN_REALMS,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    # live_position and mode_flag stay None: nobody has run this title under
-    # a monitor, and $C04B and $6E11 are measurements of other games, not
-    # family constants.
 )
 
 GAMES: tuple[Game, ...] = (

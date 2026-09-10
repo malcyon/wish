@@ -212,7 +212,7 @@ class CurseSession(por.Session):
         a caller comparing x and y alone cannot tell a turn from a wall.
         """
         with self.mon(8) as m:
-            return tuple(m.read(self.game.live_position, 3))
+            return tuple(m.read(self.machine.live_position, 3))
 
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4,
                  patience: float = 12.0) -> bool:

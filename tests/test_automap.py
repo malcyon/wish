@@ -26,6 +26,7 @@ from gamedata import disk_dir, game_file, synthetic_geo
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from automap import c64
 from automap.area import RESIDENT_GEO, Fingerprint
 from automap.notes import Note
 from automap.render import (
@@ -734,7 +735,7 @@ def fresh_boot(position=(0, 0, 0)) -> MemoryTarget:
     """
     return MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x15]),
                          0xDD00: bytes([0x17]),
-                         games.DEFAULT.live_position: bytes(position),
+                         c64.DEFAULT.live_position: bytes(position),
                          games.DEFAULT.indoors_flag_base: bytes([1])})
 
 
@@ -1145,7 +1146,7 @@ def test_the_memory_fallback_reads_the_engines_own_triple():
     fallback reads on any title now."""
     for game in (games.POOL_OF_RADIANCE, CURSE,
                  games.SECRET_OF_THE_SILVER_BLADES):
-        assert game.live_position == 0xC04B
+        assert c64.machine_for(game).live_position == 0xC04B
         mem = {0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
               0xDD00: bytes([0x00]),
               0xC04B: bytes([6, 11, 2]),
@@ -1163,7 +1164,7 @@ def test_a_title_whose_live_triple_is_unmeasured_gets_no_fallback():
     `live_position` is None and the fallback refuses. `$C04B` is a measurement
     of three other games, not a family constant, and answering with it would
     give a square rather than an error."""
-    assert CHAMPIONS.live_position is None
+    assert c64.machine_for(CHAMPIONS).live_position is None
     machine = MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
                             0xDD00: bytes([0x00]),
                             0xC04B: bytes([6, 11, 2])})
@@ -3359,7 +3360,7 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     assert bar.watcher.game is CURSE
     # And the gate it reads is Curse's own `LINKER` byte, not $6E11 (#29).
     machine = curse_machine()
-    machine.memory[CURSE.mode_flag] = b"\x01"
+    machine.memory[c64.machine_for(CURSE).mode_flag] = b"\x01"
     bar.attach(machine)
     assert [r for r in machine.reads if r[0] == 0x7F11] == [(0x7F11, 1)]
     assert all(b.isEnabled() for b in bar.buttons.values())
@@ -3373,7 +3374,7 @@ def test_a_title_whose_loader_has_never_been_read_refuses_every_button(app):
     from automap.actionbar import ActionBar
 
     krynn = games.CHAMPIONS_OF_KRYNN
-    assert krynn.mode_flag is None
+    assert c64.machine_for(krynn).mode_flag is None
     bar = ActionBar(make_root())
     bar.set_game(krynn)
     save0, roster = captured()

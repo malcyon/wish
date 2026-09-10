@@ -36,6 +36,8 @@ from test_automapbanks import (  # noqa: E402
     a_machine,
 )
 
+from automap import c64  # noqa: E402
+
 livecheck = pytest.importorskip("tools.livecheck")
 
 
@@ -205,8 +207,9 @@ def test_every_title_the_tool_offers_has_a_descriptor_and_a_boot():
     assert set(livecheck.TITLES) == {"por", "curse", "ssb"}
     for key, title in livecheck.TITLES.items():
         assert title.game is not None, key
-        assert title.game.mode_flag is not None, key
-        assert title.game.live_position is not None, key
+        machine = c64.machine_for(title.game)
+        assert machine.mode_flag is not None, key
+        assert machine.live_position is not None, key
         assert title.boot is not livecheck.Title.boot, key
 
 

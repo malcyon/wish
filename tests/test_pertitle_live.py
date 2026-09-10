@@ -23,7 +23,7 @@ save anybody holds was taken with a spell running on a later title.
 
 import dataclasses
 
-from automap import live
+from automap import c64, live
 from goldbox import games, traits
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0
@@ -168,8 +168,8 @@ def test_a_title_nobody_has_read_keeps_pool_of_radiances_badges():
     """The Krynn pair and Gateway get Pool of Radiance's trait table
     (`traits.for_game`), so they get its badge groups too -- the behaviour
     they have always had. Neither is reachable in the live view anyway:
-    `Game.live_position` is unmeasured for both."""
-    assert KRYNN.live_position is None
+    `C64Machine.live_position` is unmeasured for both."""
+    assert c64.machine_for(KRYNN).live_position is None
     assert live.condition_badges(KRYNN) == live.CONDITION_BADGES
     assert live.condition_badges(None) == live.CONDITION_BADGES
     assert live.condition_badges(SSB) == ()

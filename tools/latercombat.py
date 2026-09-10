@@ -114,7 +114,7 @@ class CombatMemory:
 #: Where each came from, all of it out of the titles' own files (`#334`):
 #:
 #: * `mode` -- both later titles' `LINKER` opens `LDA $7F11` where Pool of
-#:   Radiance's opens `LDA $6E11`. Already `goldbox.games.MODE_FLAG_LATER`.
+#:   Radiance's opens `LDA $6E11`. Already `automap.c64.MODE_FLAG_LATER`.
 #: * `roster` -- `COM.PREP` stores the roster base into `$03DF`/`$03E0`:
 #:   `LDA #$83` at Pool of Radiance `$0895`, `LDA #$67` at Curse `$08A8` and
 #:   Silver Blades `$08A8`.

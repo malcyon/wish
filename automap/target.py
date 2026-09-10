@@ -37,6 +37,7 @@ from typing import Protocol
 
 from goldbox import games
 
+from .c64 import machine_for
 from .screen import SCREEN_COLS, Banks, codes_to_text, is_bitmap, screen_address
 from .vice import Monitor, MonitorError, banked, monitor_address
 
@@ -183,7 +184,7 @@ def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
     **The status line is title-independent and the fallback is not.** Every
     title draws `E 16:48  5,2` on the same row 14 of the same screen, so the
     preferred source needed no change at all; the memory copy is at an address
-    that was measured per title and is `Game.live_position`.
+    that was measured per title and is `C64Machine.live_position`.
 
     **A title whose triple has never been measured gets no fallback**, and says
     so by having none: `live_position` is None, this returns None, and the map
@@ -193,7 +194,7 @@ def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
     curse_machine` is what that looks like.
 
     **The travel grid's memory fallback is the same rule, one gate earlier.**
-    `game.indoors_flag_base` is None on any title `#205 (A party that walks
+    `C64Machine.indoors_flag_base` is None on any title `#205 (A party that walks
     out onto the travel grid leaves the automapper's marker behind)`'s plan
     did not measure a square-engine overland for, so those titles fall
     straight through to the ordinary indoor read below and answer exactly as
@@ -234,20 +235,22 @@ def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
         if _plausible_outdoors(x, y):
             clock = int(m.group(1)) * 60 + int(m.group(2))
             return Fix(x, y, None, "status", clock, outdoors=True)
-    if game.indoors_flag_base is not None:
-        indoors = read(game.indoors_flag_base, 1)[0] != 0
+    machine = machine_for(game)
+    if machine.indoors_flag_base is not None:
+        indoors = read(machine.indoors_flag_base, 1)[0] != 0
         if not indoors:
-            x, y = read(game.travel_position_base, 2)
+            x, y = read(machine.travel_position_base, 2)
             if _plausible_outdoors(x, y):
                 return Fix(x, y, None, "memory", None, outdoors=True)
             return None
-        # Fall through to the ordinary indoor read below: `game.live_position`
-        # is the same $C04B either way.
-    if game.live_position is None:
+        # Fall through to the ordinary indoor read below:
+        # `machine.live_position` is the same $C04B either way.
+    if machine.live_position is None:
         return None
-    x, y, facing = read(game.live_position, POSITION_BYTES)[:POSITION_BYTES]
+    x, y, facing = read(machine.live_position,
+                        POSITION_BYTES)[:POSITION_BYTES]
     if _plausible(x, y, facing):
-        c = read(game.clock_base, CLOCK_BYTES)
+        c = read(machine.shown_clock_base, CLOCK_BYTES)
         clock = c[2] * 60 + c[1] * 10 + c[0]
         return Fix(x, y, facing, "memory", clock)
     return None

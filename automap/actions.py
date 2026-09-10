@@ -20,10 +20,10 @@ at Pool of Radiance's `$4D00`, `$5900` and `$8300` (#29).
 each title's loader: `$6E11` in Pool of Radiance, `$7F11` in Curse and Silver
 Blades, and `2` is COMBAT in all three because their overlay name tables are the
 same table entry for entry (#29). The three Krynn-era titles have never been
-read, so `Game.mode_flag` is None there and every action refuses rather than
-write with no way to see a fight -- an unmeasured address answers "not combat"
-whatever the machine is doing, which is a gate that is open rather than one that
-is missing.
+read, so `C64Machine.mode_flag` is None there and every action refuses rather
+than write with no way to see a fight -- an unmeasured address answers "not
+combat" whatever the machine is doing, which is a gate that is open rather than
+one that is missing.
 
 **Nothing here writes to a disk.** These change the machine's memory; the player
 saves in the game as usual, which is what keeps the losslessness promise intact.
@@ -64,7 +64,7 @@ from goldbox.savegame import (
     SaveGame1,
 )
 
-from . import fasttravel, live
+from . import c64, fasttravel, live
 from .combat import COMBAT
 from .paths import config_dir
 
@@ -124,16 +124,16 @@ def mode(target, game: games.Game | None = None) -> int | None:
 
     Two ways it comes back None and the caller has to separate them itself:
     the machine could not be read, and **this title has no mode flag**.
-    `Game.mode_flag` is `LINKER`'s dispatch byte, read out of the loader on
+    `C64Machine.mode_flag` is `LINKER`'s dispatch byte, read out of the loader on
     Pool of Radiance, Curse and Silver Blades and on no other title, so a title
     with None here has no gate at all -- see `Action.legality`, which refuses
     rather than reading somebody else's address and calling whatever it finds
     "not combat".
     """
-    game = game or games.DEFAULT
-    if game.mode_flag is None:
+    machine = c64.machine_for(game)
+    if machine.mode_flag is None:
         return None
-    raw = _read(target, game.mode_flag, 1)
+    raw = _read(target, machine.mode_flag, 1)
     return raw[0] if raw else None
 
 
@@ -212,16 +212,22 @@ class Member:
         return self.record.name
 
     @property
+    def machine(self):
+        """This title's live addresses -- `automap.c64.C64Machine`."""
+        return c64.machine_for(self.game)
+
+    @property
     def record_base(self) -> int:
-        return self.game.slot_area_base + self.slot * SLOT_STRIDE
+        return self.machine.slot_area_base + self.slot * SLOT_STRIDE
 
     @property
     def roster_base(self) -> int:
-        return self.game.roster_base + self.slot * ROSTER_STRIDE
+        return self.machine.roster_base + self.slot * ROSTER_STRIDE
 
     @property
     def item_base(self) -> int:
-        return self.game.item_area_base + self.slot * por_items.ITEM_BLOCK_STRIDE
+        return (self.machine.item_area_base
+                + self.slot * por_items.ITEM_BLOCK_STRIDE)
 
     @property
     def hp(self) -> int:
@@ -353,7 +359,8 @@ class Action:
         game = self.descriptor
         if target is None:
             return Verdict(False, "no emulator attached")
-        if game.mode_flag is None:
+        machine = c64.machine_for(game)
+        if machine.mode_flag is None:
             # No gate, so no writes. `mode` would answer None here and that
             # reads as "unreadable", which is the wrong sentence: the machine
             # is fine and it is the address that is missing. The flag is
@@ -364,7 +371,7 @@ class Action:
         if state is None:
             return Verdict(False, "the machine is not readable right now")
         if state == COMBAT and not self.combat_legal:
-            # `game.mode_flag` was in the sentence itself -- a developer's
+            # The flag's address was in the sentence itself -- a developer's
             # citation that the flag really does read 2, not something a
             # player facing a greyed-out button can act on
             # (`#306 (The Fast Travel button's own disabled tooltip carries a
@@ -372,7 +379,7 @@ class Action:
             # sentence, so nothing was invented; the address still reaches
             # the log.
             _log.debug("%s refused: $%04X is 2 (combat)",
-                      self.label, game.mode_flag)
+                      self.label, machine.mode_flag)
             return Verdict(False, f"{self.label} is refused during a fight")
         return Verdict(True)
 
@@ -401,7 +408,7 @@ class HealParty(Action):
     is a cheat rather than a corruption risk, and nothing the game recomputes
     would notice -- but that is no longer what the button offers.
 
-    The write is the roster block at `Game.roster_base + slot * $20`, byte
+    The write is the roster block at `C64Machine.roster_base + slot * $20`, byte
     `+0x19`. Current hit points are not in the stored 256 bytes of a record --
     record `0x119` is export-only -- so this is a live-only address and the
     roster is the only copy a running game has.
@@ -560,8 +567,8 @@ class RestoreSpells(Action):
 
     **Illegal in combat.** The write is the memorised list where this title
     keeps it -- 81 bytes from record `0x020` in Pool of Radiance -- in the slot
-    area at `Game.slot_area_base + slot * $100`, inside the stored 256 bytes,
-    so it is also what the next save writes out.
+    area at `C64Machine.slot_area_base + slot * $100`, inside the stored 256
+    bytes, so it is also what the next save writes out.
 
     Only the memorised list moves. The capacity at `0x0EE` says how many spells
     of each level the character *may* prepare and does not change with resting,
@@ -1030,7 +1037,7 @@ class QuickfightFlag:
 #: The offset and the mask are `live.ROSTER_QUICKFIGHT` / `live.QUICKFIGHT_BIT`,
 #: so the roster card's badge and this write cannot come to disagree.
 QUICKFIGHT = QuickfightFlag(
-    base=games.POOL_OF_RADIANCE.roster_base + live.ROSTER_QUICKFIGHT,
+    base=c64.MACHINES["pool-of-radiance"].roster_base + live.ROSTER_QUICKFIGHT,
     stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
 
 
@@ -1039,8 +1046,8 @@ def quickfight_flag(game: games.Game | None = None) -> QuickfightFlag | None:
 
     The *offset* is roster `+0x0C` in every title, because the roster block is
     the same block; what moves is where the roster page lives, and
-    `Game.roster_base` is that -- `$8300` in Pool of Radiance's second file,
-    `$6700` inside the payload in Curse and Silver Blades (#29).
+    `C64Machine.roster_base` is that -- `$8300` in Pool of Radiance's second
+    file, `$6700` inside the payload in Curse and Silver Blades (#29).
 
     `QUICKFIGHT` being None is the separate case, and it stays the one that
     means "nobody has found this bit at all": `ClearQuickfight` then refuses
@@ -1048,8 +1055,8 @@ def quickfight_flag(game: games.Game | None = None) -> QuickfightFlag | None:
     """
     if QUICKFIGHT is None:
         return None
-    game = game or games.DEFAULT
-    return QuickfightFlag(base=game.roster_base + live.ROSTER_QUICKFIGHT,
+    return QuickfightFlag(base=(c64.machine_for(game).roster_base
+                               + live.ROSTER_QUICKFIGHT),
                           stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
 
 
@@ -1060,7 +1067,7 @@ WANTED = ("the quickfight flag has not been found -- see 'The quickfight flag "
 class ClearQuickfight(Action):
     """Clear the bit the combat menu's QUICK sets, for everyone.
 
-    The write is the roster block at `Game.roster_base + slot * $20`, byte
+    The write is the roster block at `C64Machine.roster_base + slot * $20`, byte
     `+0x0C`, bit 7. The roster page is saved with the game, so this bit reaches
     the disk: eight of the player's own save disks carry it set for one
     character and clear for the other seven.
@@ -1902,7 +1909,7 @@ class FastTravel(Action):
         if mode(target, self.game) != DUNGEON:
             _log.debug("fasttravel refused: $%04X is not 1, so DUNGEON is "
                       "not the resident overlay and $%04X is not NEWECL",
-                      self.game.mode_flag, addr.tail)
+                      c64.machine_for(self.game).mode_flag, addr.tail)
             return Verdict(False, FASTTRAVEL_BUSY)
         pc = program_counter(target)
         if pc is None:

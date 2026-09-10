@@ -40,7 +40,7 @@ from gamedata import curse_dir, disk_dir, game_file, synthetic_geo
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from automap import area
+from automap import area, c64
 from automap.area import (
     NEAR_ENOUGH,
     NOT_OURS,
@@ -138,7 +138,7 @@ def machine(resident: Geo | bytes | None = None,
     position triple. The block at `$0400` is the whole of the evidence.
     """
     blocks = {0xD011: bytes([0x1B]), 0xD018: bytes([0x15]), 0xDD00: bytes([0x17]),
-              games.DEFAULT.live_position: bytes(position)}
+              c64.DEFAULT.live_position: bytes(position)}
     if resident is not None:
         blocks[RESIDENT_GEO] = (resident if isinstance(resident, bytes)
                                 else resident.to_bytes())

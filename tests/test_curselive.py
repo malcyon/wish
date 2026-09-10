@@ -25,6 +25,7 @@ committed fixture.
 
 import pytest
 
+from automap import c64
 from automap.area import RESIDENT_GEO, Fingerprint, ResidentGeo
 from automap.target import PARTY_X, party_fix
 from goldbox import games, geo
@@ -195,7 +196,7 @@ def test_the_live_triple_is_the_one_address_that_is_not_save_geometry():
                                             CURSE.save_load_address
                                             + CURSE.save_size)
     # Which is why it is a descriptor field and not a derived property.
-    assert CURSE.live_position == CURSE_LIVE_POSITION
+    assert c64.machine_for(CURSE).live_position == CURSE_LIVE_POSITION
 
 
 def test_the_memory_fallback_no_longer_reads_the_save_images_stale_copy():

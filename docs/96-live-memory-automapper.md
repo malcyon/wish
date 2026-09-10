@@ -16,6 +16,7 @@ editor is a file tool with **zero emulator dependency** ([README.md](README.md)
 | `automap/area.py` | three strategies for "which `GEO` are we on" |
 | `automap/state.py` | position, exploration, notes |
 | `automap/render.py` | map geometry as drawing primitives, plus an SVG renderer — no Qt |
+| `automap/c64.py` | one row per C64 title: the engine's own party square, `LINKER`'s dispatch byte, and each save-image region as a live address. A title nobody has run under a monitor has no addresses and is refused |
 | `automap/live.py` | the running game's party, effects and clock, as plain data — no Qt |
 | `automap/panel.py` | the roster cards and the bottom strip |
 | `automap/window.py` | the PyQt6 window: roster left, map right, strip below |
@@ -154,7 +155,7 @@ in code now rather than in prose. The base moves — `$4B00` in Curse and Silver
 Blades — so every address here is `save_load_address` plus a payload offset, and
 the descriptor carries it. And the header triple is **not what moves**: `$49C0`
 is refreshed only when `$1A3C` flushes it, so the fallback reads the engine's
-own `$C04B`/`$C04C`/`$C04D` instead. That one is `Game.live_position`, it is
+own `$C04B`/`$C04C`/`$C04D` instead. That one is `C64Machine.live_position`, it is
 *measured* per title — Pool of Radiance, Curse (`docs/120` §4) and Silver Blades
 (`docs/121` §5), and no others — and a title where nobody has measured it has
 None there and gets no fallback at all rather than a plausible wrong square.
@@ -366,7 +367,7 @@ Neither source survived out there:
   a square it had never stood on -- the same fault `#189 (The emulator driver
   cannot move a party on the travel grid, and reads its facing out of the word
   OUTDOORS)` fixed in `tools/session.py` and not here, until `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)`;
-* the **fallback**, `Game.live_position` = `$C04B`, read `4C 2F C5` outdoors,
+* the **fallback**, `C64Machine.live_position` = `$C04B`, read `4C 2F C5` outdoors,
   unchanged over four steps: `DUNGEON` is not the resident overlay there, so
   those are somebody else's code bytes and not a triple. Indoors the same three
   read `0F 04 03` then `0E 04 03`, matching the status line, while `$49C0`
@@ -378,7 +379,7 @@ grid's own 18x36 window rather than the dungeon's 16x16 -- and `RE_STATUS`
 itself gained the lookarounds `tools/session.py` already had, so `OUTDOORS`
 can no longer be read as a south-facing indoor line at all. The memory
 fallback gained a third answer too, gated on `$49E6` (`goldbox/c64_port.py`'s
-`Game.travel_grid`, **True for Pool of Radiance only** -- Curse and Silver
+`Title.travel_grid`, **True for Pool of Radiance only** -- Curse and Silver
 Blades ship no `SQRDATA`/`SQRPACI`/`WALLS` on any side, `docs/121-silver-blades.md`):
 zero means the grid, and `$49C3`/`$49C4` is the window-local square; non-zero
 falls through to the ordinary `$C04B` read exactly as before. `automap/state.py`'s

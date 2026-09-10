@@ -20,7 +20,7 @@ work that was already finished, so §0 comes first.
 
 | piece | where | state |
 |---|---|---|
-| detect the travel grid live: the `OUTDOORS` status line and the `$49E6` = 0 / `$49C3`/`$49C4` fallback, gated on `Game.travel_grid` | `automap/target.py`, `goldbox/c64_port.py` | **done**, `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` |
+| detect the travel grid live: the `OUTDOORS` status line and the `$49E6` = 0 / `$49C3`/`$49C4` fallback, gated on `Title.travel_grid` | `automap/target.py`, `automap/c64.py` | **done**, `#205 (A party that walks out onto the travel grid leaves the automapper's marker behind)` |
 | the mapper's third mode, `AutomapState.outdoors`; the strip's `Outdoors (x,y)`, the label `Wilderness`, the status `Outdoors, no map` | `automap/state.py`, `automap/panel.py`, `automap/window.py` | **done**, same issue; the three strings are Donald's |
 | read `SQRDATA04`/`05`/`06` off the disks, the 18 x 36 grid, the 120 tile entries, the stitch at world x 15 and 28 | `goldbox/world.py`, `tests/test_world.py` (19 tests) | **done**, commits `4836f23` and `806497c` |
 | a party's outdoor state in a save, every port: `outdoors`, `travel`, and `geo` holding the `SQRDATA` number when outdoors | `goldbox/world_state.py` | **done**, `#352 (Handle world state for Amiga saves)` and `#376 (An Amiga party on the travel grid still cannot be converted to the C64 or DOS, because the reader refuses one)` |

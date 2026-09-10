@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from automap import actions, fasttravel
+from automap import actions, c64, fasttravel
 from automap.target import MemoryTarget
 from goldbox import games
 
@@ -50,7 +50,7 @@ def machine(game, *, area: int = 1, disk: int = 2, indoors: int = 1,
             pc: int | None = None) -> Machine:
     """A party of `game` standing in an area, idle in the key-wait loop."""
     row = fasttravel.addresses_for(game)
-    return Machine({game.mode_flag: bytes([WORLD]),
+    return Machine({c64.machine_for(game).mode_flag: bytes([WORLD]),
                     row.slot: bytes([area]),
                     row.disk: bytes([disk]),
                     row.indoors: bytes([indoors]),
