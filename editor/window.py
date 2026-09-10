@@ -2197,21 +2197,29 @@ class EditorBinding(QObject):
             self.root.setWindowTitle(f"Wish - {name}{mark}")
 
     def close(self) -> bool:
-        """Called when the window is closing to confirm discarding changes."""
-        from PyQt6.QtWidgets import QMessageBox
-        if bool(self.dirty):
-            # If root has it, but it might not. We should probably track modified explicitly
-            pass # We'll just rely on what is accessible.
+        """Called when the window is closing, to ask about unsaved edits.
 
-        # wait, self.root is a QWidget not necessarily a QMainWindow, but let's check
-        # actually, how did EditorWindow track dirty?
-        # self.isWindowModified() is a QWidget property!
-        if bool(self.dirty):
-            ans = QMessageBox.question(
-                self.root, "Unsaved changes",
-                "You have unsaved changes. Discard them?",
-                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
-            )
-            if ans != QMessageBox.StandardButton.Discard:
-                return False
-        return True
+        Checks `self.dirty` rather than Qt's own `isWindowModified()`
+        because nothing here ever calls `setWindowModified` -- that flag
+        would just read the widget's inherited default of `False`.
+        `self.dirty` is this binding's own record of which rows changed,
+        set by `_flush` and cleared by `save`.
+        """
+        if not self.dirty:
+            return True
+        box = QMessageBox(self.root)
+        box.setWindowTitle("Unsaved changes")
+        box.setText("Save your changes before closing?")
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel
+        )
+        box.button(QMessageBox.StandardButton.Discard).setText("Don't Save")
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        ans = box.exec()
+        if ans == QMessageBox.StandardButton.Cancel:
+            return False
+        if ans == QMessageBox.StandardButton.Discard:
+            return True
+        return self.save() != "failed"

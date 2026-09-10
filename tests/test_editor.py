@@ -3773,3 +3773,144 @@ def test_no_unapproved_word_is_on_screen_with_the_effects_panel_by_default(
             for text in (widget.text() if hasattr(widget, "text")
                          else widget.title(), widget.toolTip()):
                 assert "NOT APPROVED" not in text, widget.objectName()
+
+
+# --- closing with unsaved edits (#489) --------------------------------------
+#
+# `EditorBinding.close()` used to pop a two-button "Discard"/"Cancel" dialog
+# with wording nobody had approved, and the only way to keep the edit was
+# Cancel-then-Save-yourself. Donald's 2026-09-10 ruling on #489 added a Save
+# button: title "Unsaved changes", text "Save your changes before closing?",
+# buttons Save / Don't Save / Cancel.
+
+
+@game_disks
+def test_closing_with_no_edits_asks_nothing(app, save, monkeypatch):
+    import editor.window as ew
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    asked = []
+    monkeypatch.setattr(ew.QMessageBox, "exec", lambda self: asked.append(self) or 0)
+    assert w.close() is True
+    assert asked == []
+
+
+@game_disks
+def test_closing_with_unsaved_edits_shows_the_approved_wording(app, save,
+                                                                monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    import editor.window as ew
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 1)
+    w._edited()
+
+    seen = {}
+
+    def fake_exec(box):
+        seen["title"] = box.windowTitle()
+        seen["text"] = box.text()
+        seen["buttons"] = {b.text() for b in box.buttons()}
+        return int(QMessageBox.StandardButton.Cancel)
+
+    monkeypatch.setattr(ew.QMessageBox, "exec", fake_exec)
+    assert w.close() is False
+    assert seen["title"] == "Unsaved changes"
+    assert seen["text"] == "Save your changes before closing?"
+    assert seen["buttons"] == {"Save", "Don't Save", "Cancel"}
+
+
+@game_disks
+def test_cancel_keeps_the_window_open_and_the_edit_unsaved(app, save,
+                                                            monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    import editor.window as ew
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 1)
+    w._edited()
+
+    monkeypatch.setattr(ew.QMessageBox, "exec",
+                        lambda self: int(QMessageBox.StandardButton.Cancel))
+    assert w.close() is False
+    assert save.read_bytes() == before
+    assert w.dirty
+
+
+@game_disks
+def test_dont_save_closes_and_throws_the_edit_away(app, save, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    import editor.window as ew
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 1)
+    w._edited()
+
+    monkeypatch.setattr(ew.QMessageBox, "exec",
+                        lambda self: int(QMessageBox.StandardButton.Discard))
+    assert w.close() is True
+    assert save.read_bytes() == before
+
+
+@game_disks
+def test_save_writes_the_edit_and_then_closes(app, save, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    import editor.window as ew
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    new_gold = w._widgets["gold"].value() + 1
+    w._widgets["gold"].setValue(new_gold)
+    w._edited()
+
+    monkeypatch.setattr(ew.QMessageBox, "exec",
+                        lambda self: int(QMessageBox.StandardButton.Save))
+    assert w.close() is True
+    assert save.read_bytes() != before
+
+    again = EditorBinding(make_root(), str(save))
+    again.roster.selectRow(0)
+    assert again._widgets["gold"].value() == new_gold
+
+
+@game_disks
+def test_a_failed_save_reports_it_and_keeps_the_window_open(app, save,
+                                                              monkeypatch):
+    """The worst outcome here is losing the edit while telling the player it
+    was saved, so a save that raises must neither close the window nor lose
+    the dirty mark -- it has to report the failure the way `File > Save`
+    does. `files.save_disk` is what actually writes the file, so that is
+    what has to fail here -- a per-field `_flush` failure is reported the
+    same way but does not stop the rest of the record being written."""
+    from PyQt6.QtWidgets import QMessageBox
+
+    import editor.window as ew
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 1)
+    w._edited()
+
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "exec",
+                        lambda self: int(QMessageBox.StandardButton.Save))
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    monkeypatch.setattr(ew.files, "save_disk",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
+    assert w.close() is False
+    assert save.read_bytes() == before
+    assert said == [("Cannot save", "boom")]
+    assert w.dirty
