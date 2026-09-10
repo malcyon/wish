@@ -165,6 +165,142 @@ sheet portrait, because the creation menu is read only off a POOL<n>.D64)`
 had already found that, permissively, across all six sides; this is the
 mechanism behind it.
 
+## The Amiga's portrait byte is a menu position, not an art id — CONFIRMED
+
+`goldbox/portraits.py` has said since `#194 (Import and export a Pools of
+Darkness save between DOS and the Amiga)` that the Amiga Pool of Radiance
+record keeps the creation menu's one-based **position** at `0x0BD` and
+`0x0BE`, the way DOS does, rather than the art's own id the way the C64 does.
+The evidence was a range and nothing more: every value in the twelve shipped
+records falls inside 1-14 and 1-12, and a character the game generated looks
+the same under either reading, so no corpus of generated characters could
+tell them apart. `#480 (An Amiga character whose body is the menu's eighth
+arrives on the C64 or DOS wearing a different body, because the Amiga reader
+uses the C64 and DOS menu)` asked for it to be settled.
+
+Read out of the engine, 2026-09-09, off `/program` — 459,028 bytes,
+SHA-256 `b1cbbecc…`, the same file in all three `.adf` images on this
+machine. All addresses below are file offsets into it, and
+`tools/amigaportraitresolve.py` re-derives every one of them from the
+player's own disk in about a second.
+
+**The route.** The two tables sit at `0x6D68F` (fourteen heads) and `0x6D69D`
+(twelve bodies), found by the shape of the run and checked against the art
+beside them, exactly as `tools/amigaportraitmenu.py` finds them. The
+executable's own `RELOC32` entries then say who refers to them, so nothing
+here rests on a search for a number: **four references, all in hunk 19, and
+all four point one byte in front of a table** — `0x6D68E` and `0x6D69C`.
+A reference to *base minus one* is one-based indexing, and it is the whole
+finding in a single relocation entry.
+
+**The sequence**, at `0x2E0EC`, which is the only routine in the executable
+that reads either byte for this purpose:
+
+```
+02e0fa  movea.l $aea.l, a0        the current character
+02e100  move.b  $bd(a0), d0       portrait_head, out of the record
+02e104  tst.b   d0 / beq          zero draws nothing
+02e10a  move.b  $be(a0), d1       portrait_body
+02e10e  tst.b   d1 / beq          zero draws nothing
+02e118  lea.l   $1a4e.l, a0       the heads table, minus one
+02e11e  adda.l  d1, a0
+02e122  move.b  (a0), d0          and *that* is the art id
+```
+
+The body half is the same nine instructions against `$1a5c`, the bodies
+table minus one. The art id goes on to `0x2E1BA`, which builds a name from
+the literal `"HEAD"` or `"BODY"` and the id, caches the last one it loaded so
+the same picture is not fetched twice, and asks the `.dax` reader for that
+block of `head.dax` or `body.dax`.
+
+**And there is no second path.** The literals `"HEAD"` and `"BODY"` are each
+referenced exactly once in the whole 459,028-byte executable, at `0x2E1FE`
+and `0x2E240`, both inside that one routine. So a record byte cannot reach
+the art loader without going through the menu table. The C64's arrangement —
+the record byte *being* the two hex digits of the filename — has no
+counterpart here.
+
+**What the routine checks, which is the negative result that matters.**
+Between the first record read at `0x2E100` and the last table load at
+`0x2E17E` the only tests of any kind are the two `tst.b` above. There is no
+compare against 12 or 14, no mask, and no clamp, so a value past the end of a
+table indexes off it into whatever the linker put next — see below.
+
+**Corroboration from the creation menu**, which is a second routine and an
+independent argument. `0x198DE` draws the `Head Body Keep` prompt; `H`
+(`0x48`) increments the record's `0x0BD` with `cmp.b #$0E` and wraps to 1 at
+or above fourteen, and `B` (`0x42`) increments `0x0BE` with `cmp.b #$0C` and
+wraps to 1 at or above twelve. It writes the position straight into the
+record and calls the same drawing routine at `0x2E0EC` to show the result.
+So the field the player edits is the position, the range is 1-14 and 1-12,
+and a hand-written value outside it is repaired to 1 by the first keypress.
+
+### What a value past the end of the table reaches
+
+One build's adjacent data, and nothing more principled than that. Printed by
+`tools/amigaportraitresolve.py --out-of-range N`, which computes it from the
+bytes rather than from a claim:
+
+| record body byte | what the engine loads | why |
+|---|---|---|
+| 1-12 | the twelve menu bodies, `0x01 0x02 0x03 0x04 0x07 0x08 0x12 0x05 0x1A 0x21 0x23 0x25` | the table |
+| 24 (`0x18`) | body art `0x03` | reads 24 bytes past the base, landing in a later table |
+| 33 (`0x21`) | body art `0x18` | the same, landing by coincidence on a byte equal to 24 |
+
+The third row is the trap. Writing 33 into an Amiga record really would draw
+the picture DOS calls `BODY18`, and it would do it by indexing thirty-three
+bytes into a twelve-byte table. **Nothing may be written that relies on it**:
+the bytes it lands on are the eight direction keys and an unrelated numeric
+table, they are a fact about this one build, and the creation menu resets the
+field to 1 the first time the player presses `B`.
+
+### The Amiga sheet asks for the face — which reopens a question we closed
+
+`#322 (Nobody has looked at an Amiga Pool of Radiance character sheet to see
+whether it draws a portrait at all)` closed on 2026-09-07 with *"Amiga Pool
+of Radiance draws no portrait on the character sheet, and no box for one"*,
+on seven sheets across two sessions. The code disagrees with the conclusion
+while agreeing with every pixel of the observation, and the reconciliation is
+the zero test above.
+
+**The sheet does ask.** `0x1AA74` draws the character's name, `(NPC)`, age,
+race, alignment, class, the six abilities, `Level`, `Exp`, `Weapon`, `Armor`
+and `Status`; it takes the current-character pointer at `0x1AA86`, and it is
+called from `0x1B47C`, which draws the `Items Spells Trade Drop Rename Exit`
+bar and `View:` — the sheet a player opens with `VIEW`. It ends at `0x1AF36`
+with
+
+```
+01af36  tst.b $bc.l / beq          a settings byte
+01af3e  jsr   $1d0c6(pc)           the portrait routine at 0x2E0EC
+```
+
+That byte is initialised to 1 at `0x3CD9A`, restored from the saved settings
+at `0x27278`, and toggled by `P` in the settings menu at `0x7A70` — so it is
+on unless the player turns it off.
+
+**And every character in that run had a zero pair.** The seven sheets were
+all parties Wish had converted, and the Amiga writer wrote `0`/`0` into the
+portrait pair for every character it ever produced — measured on
+`#479 (A Pool of Radiance party converted to an Amiga save disk loses every
+character's sheet portrait, because the Amiga writer never asks for the
+creation menu)`, 12 of 12 converted records against 18 of 18 engine-written
+ones. The drawing routine's first two instructions on each byte are
+`tst.b` / `beq` to `0x2E1B6`, which is `unlk` and `rts`, and that is *before*
+the frame is drawn at `0x2E188`. So a character with a zero pair gets no face
+and no box — exactly what was photographed.
+
+So the observation stands and the conclusion drawn from it does not: the run
+could not have seen a portrait whatever the port does. **What Amiga Pool of
+Radiance does for a character who has one is still unmeasured**, and the
+sentences it touches — `portrait_head` and `portrait_body` being "fields with
+nothing to draw on this port", and `$49FF` moving to the unsourced list for
+that reason — rest on it.
+
+The screenshot that settles it is one `VIEW` on a save the **engine** wrote:
+`WISH-SPEC-por-amiga-outdoor`, whose six characters carry head/body pairs
+1/8, 4/1, 2/6, 9/7, 12/4 and 3/2.
+
 ## What a conversion should do
 
 **Nothing, and say nothing.** A Curse or Silver Blades character arriving on
@@ -211,6 +347,13 @@ should close on.
 
 ## What is still unmeasured
 
+* **Whether an Amiga character sheet shows the face for a character who has
+  one.** The section above shows that the seven sheets which closed
+  `#322 (Nobody has looked at an Amiga Pool of Radiance character sheet to
+  see whether it draws a portrait at all)` all carried a zero pair, so they
+  answered nothing. One `VIEW` on `WISH-SPEC-por-amiga-outdoor`, whose six
+  characters carry real pairs, photographs it; no face there would mean the
+  settings byte at `h32+0xBC` is cleared somewhere this reading did not find.
 * **Whether DOS Curse and DOS Silver Blades draw a sheet portrait.** This
   page is about the C64 destination. All 12 shipped Curse `CHRDAT*.SAV`
   records in the archives read `portrait_head = portrait_body = 0`, which
