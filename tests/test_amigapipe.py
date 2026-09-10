@@ -21,7 +21,7 @@ import pytest
 
 from automap import amiga
 
-CURSE = amiga.LAYOUTS["curse-of-the-azure-bonds"]
+CURSE = amiga.MACHINES["curse-of-the-azure-bonds"]
 BASE = 0xC4E270
 
 

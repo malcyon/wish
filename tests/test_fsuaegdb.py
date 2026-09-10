@@ -28,7 +28,7 @@ import pytest
 
 from automap import amiga
 
-BLADES = amiga.LAYOUTS["secret-of-the-silver-blades"]
+BLADES = amiga.MACHINES["secret-of-the-silver-blades"]
 BASE = 0xC10000
 
 #: What this build actually advertises, taken from its own source.

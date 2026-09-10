@@ -475,7 +475,7 @@ work — but three things in it are decisions rather than measurements: how a
 user says which WinUAE lane and which title, whether a probe costing an `ssh`
 round trip may sit on the window's retry timer, and the flag and the wording.
 
-**Pool of Radiance's Amiga build has no row in `LAYOUTS`.** It is not a
+**Pool of Radiance's Amiga build has no row in `MACHINES`.** It is not a
 small-data binary, so the anchor search finds the wrong hunk; what it needs is
 hunk 32's own load address (`docs/165-amiga-savegame.md`).
 

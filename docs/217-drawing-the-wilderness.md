@@ -266,7 +266,7 @@ port allowance, and must not be widened to absorb another port's file.
 through `Target.read` and nothing VICE-specific, which is what let the Amiga
 backend reuse `ResidentGeo` unchanged; keep it so and the world identifies
 the same way there. Three things are not shared and are not this plan's:
-Amiga Pool of Radiance has no `LAYOUTS` row (a many-hunk executable, per
+Amiga Pool of Radiance has no `MACHINES` row (a many-hunk executable, per
 that issue's 2026-09-08 comment), its overland data file has not been
 located (DOS's is `BACPAC.DAX`, 40 tiles at 24 x 24 per
 `docs/145-dos-decode-kit.md`, and the C64's 120-entry vocabulary is not that

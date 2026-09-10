@@ -65,7 +65,7 @@ string the game's own data hunk carries, at an offset read out of the
 executable on the player's own disk -- so the base is **computed at run time**
 and the layout table holds only offsets, which are a property of the build.
 
-`AmigaLayout` is the per-title table. A title with no row is refused rather
+`AmigaMachine` is the per-title table. A title with no row is refused rather
 than given another title's numbers, which is the same rule
 `goldbox.games.Game.live_position` follows on the C64 side.
 
@@ -124,7 +124,7 @@ RE_UNKNOWN = re.compile(r"Unknown command", re.I)
 
 
 @dataclass(frozen=True)
-class AmigaLayout:
+class AmigaMachine:
     """Where one title keeps the automapper's three inputs, as offsets.
 
     Every offset is into the executable's **data hunk**, which is how
@@ -159,6 +159,13 @@ class AmigaLayout:
     notes: dict[str, int] = field(default_factory=dict)
 
 
+#: Pre-#470 name, kept so nothing importing it by the old name breaks before
+#: stage 9 removes every shim this ticket left. `#470 (Give the project a
+#: neutral title beside its neutral character record, with one port per
+#: platform a title shipped on)`.
+AmigaLayout = AmigaMachine
+
+
 #: The titles whose offsets have been read out of their executables.
 #:
 #: **Pool of Radiance is deliberately absent.** Its Amiga build is not a
@@ -168,10 +175,10 @@ class AmigaLayout:
 #: locates the wrong hunk. Adding it needs the hunk's own load address, which
 #: is a different measurement -- see `#37 (Automap the Amiga version, not
 #: just the C64)`.
-LAYOUTS: dict[str, AmigaLayout] = {
+MACHINES: dict[str, AmigaMachine] = {
     # `blades.cfg` is the string `docs/143` §5.2 already used to find `a4` in
     # this title, so the anchor is the one with a run behind it.
-    "secret-of-the-silver-blades": AmigaLayout(
+    "secret-of-the-silver-blades": AmigaMachine(
         title="Secret of the Silver Blades",
         executable="/Secret",
         anchor=b"blades.cfg",
@@ -193,7 +200,7 @@ LAYOUTS: dict[str, AmigaLayout] = {
         notes={"wall_ahead": 0x57A3, "square_attribute": 0x57A4,
                "array_pointer": 0x5160, "array_offset": 0x508},
     ),
-    "curse-of-the-azure-bonds": AmigaLayout(
+    "curse-of-the-azure-bonds": AmigaMachine(
         title="Curse of the Azure Bonds",
         executable="/Curse",
         anchor=b"Area Cast View Encamp Search Look",
@@ -206,6 +213,11 @@ LAYOUTS: dict[str, AmigaLayout] = {
         notes={"wall_ahead": 0x3F63, "square_attribute": 0x3F64},
     ),
 }
+
+#: Pre-#470 name, kept for the same reason `AmigaLayout` is. `#470 (Give the
+#: project a neutral title beside its neutral character record, with one
+#: port per platform a title shipped on)`.
+LAYOUTS = MACHINES
 
 
 class GuestError(NotConnected):
@@ -1242,7 +1254,7 @@ class AmigaTarget:
     #: answer, and `__init__` replaces it with the transport's own.
     halts_on_read = True
 
-    def __init__(self, debugger, layout: AmigaLayout,
+    def __init__(self, debugger, layout: AmigaMachine,
                  data_base: int | None = None):
         self.debugger = debugger
         self.layout = layout

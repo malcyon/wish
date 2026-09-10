@@ -985,7 +985,7 @@ the same dump answers the next question without another boot.
 Measured bases, both in slow memory as §5.2 predicted: `/Curse` at `$00C4E270`
 and `/Secret` at `$00C55CE0` on their own boots.
 
-`automap.amiga.LAYOUTS` holds the per-title offsets, and
+`automap.amiga.MACHINES` holds the per-title offsets, and
 `tools/amigatarget.py verify` re-derives them off an ADF with no emulator at
 all. **Pool of Radiance has no row on purpose**: its Amiga build is not a
 small-data one, so the anchor finds the wrong hunk and it needs hunk 32's load

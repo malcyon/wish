@@ -21,7 +21,7 @@ not that this file can read one.
 
 **`verify` needs no emulator at all**, and it is the one to run first: it opens
 the title's executable on the player's own disk and checks that
-`automap.amiga.LAYOUTS` still describes it -- that the anchor string is where
+`automap.amiga.MACHINES` still describes it -- that the anchor string is where
 the table says, that it appears exactly once, and that the party globals and
 the `GEO` pointer are inside the data hunk the loader allocates.  A release
 this project has not seen fails there rather than silently reading the wrong
@@ -66,11 +66,11 @@ from tools.amiga68k import Executable  # noqa: E402
 A4_BIAS = 0x7FFE
 
 
-def executable(adf: pathlib.Path, layout: amiga.AmigaLayout) -> bytes:
+def executable(adf: pathlib.Path, layout: amiga.AmigaMachine) -> bytes:
     return AmigaDisk.open(str(adf)).read_file(layout.executable)
 
 
-def verify(layout: amiga.AmigaLayout, adf: pathlib.Path) -> list[str]:
+def verify(layout: amiga.AmigaMachine, adf: pathlib.Path) -> list[str]:
     """Check the table against the executable.  Returns the failures.
 
     Empty means every claim in the row is true of this build.  This is the
@@ -102,7 +102,7 @@ def verify(layout: amiga.AmigaLayout, adf: pathlib.Path) -> list[str]:
     return bad
 
 
-def connect(holder: str, layout: amiga.AmigaLayout,
+def connect(holder: str, layout: amiga.AmigaMachine,
             timeout: float | None) -> amiga.AmigaTarget:
     debugger = amiga.WinuaeDebugger(holder, timeout=timeout)
     target = amiga.AmigaTarget(debugger, layout)
@@ -123,7 +123,7 @@ def geo_library(path: pathlib.Path) -> dict[int, bytes]:
     return amiga.geo_library(path.read_bytes())
 
 
-def find_maps(layout: amiga.AmigaLayout,
+def find_maps(layout: amiga.AmigaMachine,
               where: str | None = None) -> tuple[dict, pathlib.Path | None]:
     """The title's maps, off a disk image the player already has.
 
@@ -257,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--holder", help="the winuae.ps1 lane claim this run "
                                          "holds; every live command needs one")
     parser.add_argument("--title", default="secret-of-the-silver-blades",
-                        choices=sorted(amiga.LAYOUTS),
+                        choices=sorted(amiga.MACHINES),
                         help="which title is running")
     parser.add_argument("--timeout", type=float, default=None,
                         help="seconds to wait for one guest round trip")
@@ -296,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="where that dump starts, as a data-hunk offset")
     args = parser.parse_args(argv)
 
-    layout = amiga.LAYOUTS[args.title]
+    layout = amiga.MACHINES[args.title]
     if args.command == "verify":
         bad = verify(layout, pathlib.Path(args.adf))
         for line in bad:

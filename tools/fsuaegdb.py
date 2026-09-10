@@ -77,7 +77,7 @@ def target(args) -> amiga.AmigaTarget:
     relocates the executable on every `LoadSeg`, so an address from yesterday
     is wrong today.
     """
-    layout = amiga.LAYOUTS[args.title]
+    layout = amiga.MACHINES[args.title]
     gdb = connect(args)
     tgt = amiga.AmigaTarget(gdb, layout)
     started = time.monotonic()
@@ -305,7 +305,7 @@ def session(args) -> int:
     (out / "shots").mkdir(parents=True, exist_ok=True)
     commands = pathlib.Path(args.commands)
     commands.touch()
-    layout = amiga.LAYOUTS[args.title]
+    layout = amiga.MACHINES[args.title]
     maps, image = find_maps(layout, args.maps)
     print(f"Maps       {len(maps)} from {image}")
 
@@ -409,7 +409,7 @@ def automap(args) -> int:
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    layout = amiga.LAYOUTS[args.title]
+    layout = amiga.MACHINES[args.title]
     maps, image = find_maps(layout, args.maps)
     if not maps:
         raise SystemExit("no Amiga disk image carrying GEO.GLB for "
@@ -604,7 +604,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=None,
                         help="seconds to wait for one packet's reply")
     parser.add_argument("--title", default="secret-of-the-silver-blades",
-                        choices=sorted(amiga.LAYOUTS),
+                        choices=sorted(amiga.MACHINES),
                         help="which title is running")
     sub = parser.add_subparsers(dest="command", required=True)
 

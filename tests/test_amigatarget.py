@@ -21,8 +21,8 @@ import pytest
 from automap import amiga
 from automap.target import Fix, NotConnected, read_fix, screen_banks
 
-SSB = amiga.LAYOUTS["secret-of-the-silver-blades"]
-CURSE = amiga.LAYOUTS["curse-of-the-azure-bonds"]
+SSB = amiga.MACHINES["secret-of-the-silver-blades"]
+CURSE = amiga.MACHINES["curse-of-the-azure-bonds"]
 
 #: A believable data hunk base in the A500's slow memory.
 BASE = 0xC12340
@@ -319,12 +319,12 @@ def test_pool_of_radiance_has_no_row_and_that_is_deliberate():
     """Its Amiga build is not a small-data one, so the anchor trick locates
     the wrong hunk. A title with no row is refused, never given another
     title's numbers -- the rule `goldbox.games.Game.live_position` follows."""
-    assert "pool-of-radiance" not in amiga.LAYOUTS
+    assert "pool-of-radiance" not in amiga.MACHINES
 
 
-@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_every_layout_names_a_width_the_reader_can_use(key):
-    layout = amiga.LAYOUTS[key]
+    layout = amiga.MACHINES[key]
     assert layout.width in (1, 2)
     assert layout.party_y == layout.party_x + layout.width
     assert layout.party_facing == layout.party_y + layout.width
@@ -347,7 +347,7 @@ DISK = {"secret-of-the-silver-blades": "silver",
 def _adf(key: str):
     from tools import gamedisks
     want = DISK[key]
-    exe = amiga.LAYOUTS[key].executable
+    exe = amiga.MACHINES[key].executable
     for root in gamedisks.candidates("amiga"):
         if not root.is_dir():
             continue
@@ -363,21 +363,21 @@ def _adf(key: str):
     pytest.skip(f"no Amiga disk carrying {exe}; set $AMIGA_DISKS")
 
 
-@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_the_layout_still_describes_the_build_on_the_players_disk(key):
     """A different release with the anchor somewhere else is caught here,
     rather than as a plausible wrong square on a live machine."""
     from tools import amigatarget
-    assert amigatarget.verify(amiga.LAYOUTS[key], _adf(key)) == []
+    assert amigatarget.verify(amiga.MACHINES[key], _adf(key)) == []
 
 
-@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_a_wrong_anchor_offset_is_what_verify_is_for(key):
     """Proves the check above can fail: move the offset by one and it must."""
     from dataclasses import replace
 
     from tools import amigatarget
-    layout = amiga.LAYOUTS[key]
+    layout = amiga.MACHINES[key]
     bad = amigatarget.verify(replace(layout,
                                      anchor_offset=layout.anchor_offset + 1),
                              _adf(key))
@@ -552,7 +552,7 @@ def _map_disk(key: str):
     pytest.skip(f"no Amiga disk here carries {key}'s GEO.GLB")
 
 
-@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_the_library_is_keyed_the_way_the_c64_names_the_same_areas(key):
     """`GEO{id:02X}` -- the C64's own filename for the same area, so an Amiga
     party's map is drawn on the same sheet and reads the same notes. Silver
@@ -564,7 +564,7 @@ def test_the_library_is_keyed_the_way_the_c64_names_the_same_areas(key):
                          "curse-of-the-azure-bonds": 16}[key]
 
 
-@pytest.mark.parametrize("key", sorted(amiga.LAYOUTS))
+@pytest.mark.parametrize("key", sorted(amiga.MACHINES))
 def test_every_block_in_the_library_reads_as_a_map(key):
     """The check `ResidentGeo.verdict` puts a live block through, run over the
     disk copies it would be matched against. All of them, or the live reading
