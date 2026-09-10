@@ -11,8 +11,10 @@ slot's ports are arithmetic.
 """
 
 import os
+import stat
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -205,3 +207,39 @@ def test_a_free_named_slot_is_honoured(pool, fake_session, args, monkeypatch):
 
     assert len(FakeSession.instances) == 1
     assert FakeSession.instances[0].slot.n == 0
+
+
+# -- staging: the copy must stay writable, whatever --base arrived as (#495) -
+
+
+@posix
+def test_the_staged_save_disk_is_writable(pool, fake_session, args):
+    """`--base` is often a read-only specimen under `$WISH_SPECIMENS`;
+    `shutil.copy` would carry that mode onto the slot's own `SIDE0.D64`, and
+    the game would then refuse every `ENCAMP > SAVE` with no word at all
+    (#495)."""
+    args.chmod(0o444)
+
+    rc = walkrun.main()
+
+    assert rc == 1  # FakeSession.boot() fails, as always -- staging ran first
+    staged = Path(FakeSession.instances[0].slot.dir) / "SIDE0.D64"
+    assert staged.stat().st_mode & stat.S_IWUSR
+
+
+@posix
+def test_a_second_run_reusing_the_slot_does_not_raise(
+        pool, fake_session, args, monkeypatch):
+    """A pool slot's directory outlives the lease: the second run to land on
+    slot 0 stages `--base` straight over the first run's own `SIDE0.D64`, and
+    that used to die on a bare `PermissionError`."""
+    args.chmod(0o444)
+
+    rc1 = walkrun.main()
+    assert rc1 == 1
+    first = FakeSession.instances[0].slot.n
+
+    rc2 = walkrun.main()  # must not raise
+
+    assert rc2 == 1
+    assert FakeSession.instances[1].slot.n == first  # the same slot, reused

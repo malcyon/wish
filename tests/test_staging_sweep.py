@@ -239,23 +239,12 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
 #: Sites the sweep names that are the defect, filed and not yet fixed.  This
 #: is not an allowlist and it is not a place to put a copy nobody wants to
 #: think about: an entry leaves when the site is fixed.
-OPEN_DEFECTS: dict[tuple[str, str], str] = {
-    ("walkrun.py", "work_save"):
-        "#495: --base goes into the slot's SIDE0.D64 with a bare shutil.copy, "
-        "so a read-only base leaves the game unable to write the one disk per "
-        "step this tool exists to collect",
-    ("dosvmwatch.py", "s.save_dir / p.name"):
-        "#495: --save's CHRDAT records go into the staged SAVE tree bare",
-    ("dosvmwatch.py", "s.save_file(letter)"):
-        "#495: --save's SAVGAM container goes into the staged SAVE tree bare",
-    ("dosslotwatch.py", "s.save_dir / p.name"):
-        "#495: --save's records go into the staged SAVE tree bare, and the "
-        "tool's own --patch write-back then dies on PermissionError",
-    ("infravision.py", "out"):
-        "#495: --source goes to --out bare, and image.save(out) writes it back",
-    ("testparty.py", "out"):
-        "#495: --base goes to --out bare, and disk.save(out) writes it back",
-}
+#:
+#: `#495`'s six emptied this dict.  Each site now routes through
+#: `tools.session.stage_writable`, so the sweep no longer finds a bare
+#: `shutil.copy`/`copy2`/`copytree` into any of the three reused directories
+#: anywhere in `tools/`.
+OPEN_DEFECTS: dict[tuple[str, str], str] = {}
 
 
 # -- the sweep ----------------------------------------------------------------

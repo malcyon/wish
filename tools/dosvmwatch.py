@@ -31,7 +31,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import shutil
 import sys
 import time
 
@@ -39,6 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tools import dosbox, dosboxx  # noqa: E402
 from tools.dosspcexpiry import boot_retry, claim_free, on_screen  # noqa: E402
+from tools.session import stage_writable  # noqa: E402
 
 #: The VM's address classes (`GAME.OVR:0x7BCE`), as the file's word ranges.
 BLOCKS = ((0, 0x4900), (1024, 0x6B00), (2048, 0x9700))
@@ -54,13 +54,19 @@ def vm_address(file_addr: int) -> int:
 
 
 def stage_save(s: dosboxx.XSession, source: pathlib.Path, slot: str) -> bytes:
-    """Copy one save and its character files into the staged tree."""
+    """Copy one save and its character files into the staged tree.
+
+    `stage_writable`, not a bare `shutil.copy`: `source` is often a read-only
+    specimen, and `shutil.copy` carries that mode onto the copy -- the
+    watched session then finds a `SAVE` directory it cannot write and the
+    save it is trying to observe is refused in silence (#495).
+    """
     s.stage(fresh=True)
     letter = slot.upper()
     for p in sorted(source.glob(f"CHRDAT{letter}*")):
-        shutil.copy(p, s.save_dir / p.name)
+        stage_writable(p, s.save_dir / p.name)
     src = source / f"SAVGAM{letter}.DAT"
-    shutil.copy(src, s.save_file(letter))
+    stage_writable(src, s.save_file(letter))
     return src.read_bytes()
 
 

@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import pathlib
-import shutil
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
@@ -43,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox import games, savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
+from tools.session import stage_writable  # noqa: E402
 
 #: Where the record keeps it.  `goldbox/layout.py`'s `infravision`.
 INFRAVISION = 0x0D5
@@ -141,7 +141,16 @@ def stage(source: pathlib.Path, out: pathlib.Path,
     if source.resolve() == out.resolve():
         raise SystemExit("stage writes a copy; --out must differ from --source")
     out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(source, out)
+    # `stage_writable`, not a bare `shutil.copy`: `--source` is often a
+    # read-only specimen, and `shutil.copy` carries that mode onto the copy
+    # -- and `image.save(out)` below then replaces `out` by `os.replace`,
+    # which asks nothing of the file it is overwriting, so a *completed*
+    # `stage` always leaves `out` writable regardless.  What a bare copy
+    # actually breaks is a `--out` that already carries a read-only leftover
+    # -- a specimen copied there by hand, or an earlier `stage` that died
+    # between this line and `image.save` -- which then dies right here,
+    # opening it for writing (#495).
+    stage_writable(source, out)
     image = D64.open(out)
     game, sg0, sg1 = savegame.load_save(image)
     table = race_table(game.key) if game.key in GENERATORS else None

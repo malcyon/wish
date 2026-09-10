@@ -20,11 +20,14 @@ checks here are in two groups, and only the second is evidence about the game.
 from __future__ import annotations
 
 import hashlib
+import shutil
+import stat
 
 import gamedata
 import pytest
 
 from goldbox import derive, games, levels, levelup, savegame
+from goldbox.d64 import D64
 from goldbox.games import CLASS_BITS_CLASSIC
 from goldbox.record import CharacterRecord
 from tools import testparty
@@ -305,6 +308,50 @@ def test_the_written_disk_reads_back_as_the_party_that_was_generated(
         assert derive.check(one.record, save1.roster(index), []) == []
     for index in range(len(built), savegame.ROSTER_COUNT):
         assert not save1.roster(index).occupied
+
+
+# -- write_disk: the copy must stay writable, whatever `base` arrived as (#495)
+
+def _synthetic_save_disk(path):
+    """A `D64` carrying an empty Pool of Radiance save -- no player disk and
+    no game bytes, just the format `goldbox.savegame` already describes."""
+    game = games.by_key("pool-of-radiance")
+    disk = D64.blank()
+    sg0 = savegame.SaveGame0.from_bytes(bytes(game.save_size), game)
+    sg1 = savegame.SaveGame1(bytes(game.roster_size), game)
+    disk.write_file(game.save_file, sg0.to_prg())
+    disk.write_file(game.roster_file, sg1.to_prg())
+    disk.save(str(path))
+    return path
+
+
+def test_write_disk_gives_the_copy_the_write_bit_back(tmp_path):
+    """`base` is often a read-only specimen; `shutil.copy` would carry that
+    mode onto `--out`, and this must not (#495)."""
+    base = _synthetic_save_disk(tmp_path / "base.d64")
+    base.chmod(0o444)
+    out = tmp_path / "TESTPARTY.D64"
+
+    testparty.write_disk([], base, out)
+
+    assert out.stat().st_mode & stat.S_IWUSR
+
+
+def test_writing_over_a_read_only_leftover_does_not_raise(tmp_path):
+    """The loud half of the bug, and it is narrower than "run it twice":
+    `D64.save` replaces `--out` with `os.replace`, which needs no write
+    permission on the file it is replacing, so a completed run leaves `--out`
+    writable regardless of how it got there.  What still carries a read-only
+    leftover forward is `shutil.copy` finding one already sitting at `--out`
+    -- a specimen copied there by hand, or an earlier run that died between
+    its own copy and its own `disk.save` -- and dying opening it for
+    writing."""
+    base = _synthetic_save_disk(tmp_path / "base.d64")
+    base.chmod(0o444)
+    out = tmp_path / "TESTPARTY.D64"
+    shutil.copy(base, out)  # a read-only leftover, however it got there
+
+    testparty.write_disk([], base, out)  # must not raise
 
 
 # --- the loadouts, and the sixteen-item ceiling ------------------------------

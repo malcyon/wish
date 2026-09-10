@@ -29,7 +29,7 @@ _ROOT = _TOOLS.parent
 sys.path.insert(0, str(_ROOT))
 from automap.paths import find_disks  # noqa: E402
 from tools import instance  # noqa: E402
-from tools.session import HERE, Session, claim_slot  # noqa: E402
+from tools.session import HERE, Session, claim_slot, stage_writable  # noqa: E402
 
 WALKS = f"{HERE}/walks"
 _disks = find_disks()
@@ -67,7 +67,12 @@ def main() -> int:
     try:
         here = str(slot.dir)
         work_save = f"{here}/SIDE0.D64"
-        shutil.copy(args.base, work_save)
+        # `stage_writable`, not a bare `shutil.copy`: `--base` is often a
+        # read-only specimen under `$WISH_SPECIMENS`, and `shutil.copy`
+        # carries that mode onto the copy -- the game is then handed a
+        # `SIDE0.D64` it cannot write, refuses every `ENCAMP > SAVE` with no
+        # word at all, and this tool reported the run as a success (#495).
+        stage_writable(args.base, work_save)
 
         sess = Session(slot=slot)
         sess.save_disk = work_save

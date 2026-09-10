@@ -94,7 +94,6 @@ import dataclasses
 import json
 import pathlib
 import random
-import shutil
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -114,6 +113,7 @@ from goldbox import (  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.neutral import NeutralCharacter, Provenance  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
+from tools.session import stage_writable  # noqa: E402
 
 #: The five saving throws in stored order, so the seed writes them in the same
 #: order `goldbox.levelup` rewrites them at every level after the first.
@@ -889,7 +889,16 @@ def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
     if len(built) > savegame.ROSTER_COUNT:
         raise SystemExit(f"a party holds at most {savegame.ROSTER_COUNT}")
     out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(base, out)
+    # `stage_writable`, not a bare `shutil.copy`: `base` is often a read-only
+    # specimen, and `shutil.copy` carries that mode onto the copy -- and
+    # `disk.save(str(out))` below then replaces `out` by `os.replace`, which
+    # asks nothing of the file it is overwriting, so a *completed* run always
+    # leaves `out` writable regardless.  What a bare copy actually breaks is
+    # an `--out` that already carries a read-only leftover -- a specimen
+    # copied there by hand, or an earlier run that died between this line and
+    # `disk.save` -- which then dies right here, opening it for writing
+    # (#495).
+    stage_writable(base, out)
     disk = D64.open(str(out))
     game, sg0, sg1 = savegame.load_save(disk)
     if sg1 is None:

@@ -19,13 +19,15 @@ when neither is on the machine.  `tools/infravision.py` is the tool.
 from __future__ import annotations
 
 import pathlib
+import stat
 import sys
 
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import c64_codec, dos, dos_layout  # noqa: E402
+from goldbox import c64_codec, dos, dos_layout, games, savegame  # noqa: E402
+from goldbox.d64 import D64  # noqa: E402
 from tests import gamedata  # noqa: E402
 from tools import infravision  # noqa: E402
 
@@ -222,3 +224,49 @@ def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
     char.set("infravision", 6, "made up: a C64 source's own byte")
     _, _, _, rep = dos.write(char)
     assert not [d for d in rep.dropped if "infravision" in d]
+
+
+# -- stage: the copy must stay writable, whatever --source arrived as (#495) -
+
+def _synthetic_save_disk(path: pathlib.Path) -> pathlib.Path:
+    """A `D64` carrying an empty Pool of Radiance save -- no game bytes, just
+    the format `goldbox.savegame` and `goldbox.games` already describe."""
+    game = games.POOL_OF_RADIANCE
+    disk = D64.blank()
+    sg0 = savegame.SaveGame0.from_bytes(bytes(game.save_size), game)
+    sg1 = savegame.SaveGame1(bytes(game.roster_size), game)
+    disk.write_file(game.save_file, sg0.to_prg())
+    disk.write_file(game.roster_file, sg1.to_prg())
+    disk.save(str(path))
+    return path
+
+
+def test_stage_gives_the_copy_the_write_bit_back(tmp_path):
+    """`--source` is often a read-only specimen; `shutil.copy` would carry
+    that mode onto `--out`, and this must not (#495)."""
+    source = _synthetic_save_disk(tmp_path / "base.d64")
+    source.chmod(0o444)
+    out = tmp_path / "staged.d64"
+
+    infravision.stage(source, out)
+
+    assert out.stat().st_mode & stat.S_IWUSR
+
+
+def test_staging_over_a_read_only_leftover_does_not_raise(tmp_path):
+    """The loud half of the bug, and it is narrower than "run it twice":
+    `D64.save` replaces `--out` with `os.replace`, which needs no write
+    permission on the file it is replacing, so a run that completes leaves
+    `--out` writable regardless of how it got there.  What still carries a
+    read-only leftover forward is `shutil.copy` finding one already sitting
+    at `--out` -- a specimen copied there by hand, or an earlier run that
+    died between its own copy and its own `image.save` -- and dying opening
+    it for writing."""
+    import shutil
+
+    source = _synthetic_save_disk(tmp_path / "base.d64")
+    source.chmod(0o444)
+    out = tmp_path / "staged.d64"
+    shutil.copy(source, out)  # a read-only leftover, however it got there
+
+    infravision.stage(source, out)  # must not raise

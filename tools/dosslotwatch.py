@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import argparse
 import pathlib
-import shutil
 import subprocess
 import sys
 import time
@@ -49,6 +48,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from tools import dosbox, dosboxx, doscurse  # noqa: E402
 from tools.dosspcexpiry import claim_free, name_key  # noqa: E402
 from tools.dosvmwatch import boot_settled, code_at  # noqa: E402
+from tools.session import stage_writable  # noqa: E402
 
 
 class RawSession(dosboxx.XSession):
@@ -210,8 +210,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"slot {slot.n} display {slot.display}\ncommands: {cmds}\nlog: {log}")
         try:
             s.stage(fresh=True)
+            # `stage_writable`, not a bare `shutil.copy`: `--save` is often a
+            # read-only specimen, and `shutil.copy` carries that mode onto
+            # the copy -- the game then finds a `SAVE` directory it cannot
+            # write, and the `--patch` write-back below used to die on a
+            # bare `PermissionError` over the very leftover this restores
+            # the write bit on (#495).
             for p in sorted(source.glob(f"CHRDAT{letter}*")) + [source / f"SAVGAM{letter}.DAT"]:
-                shutil.copy(p, s.save_dir / p.name)
+                stage_writable(p, s.save_dir / p.name)
             for spec in a.patch:
                 n, edits = parse_patch(spec)
                 p = s.save_dir / f"CHRDAT{letter}{n}.SAV"
