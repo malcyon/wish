@@ -247,12 +247,51 @@ bytes rather than from a claim:
 | 24 (`0x18`) | body art `0x03` | reads 24 bytes past the base, landing in a later table |
 | 33 (`0x21`) | body art `0x18` | the same, landing by coincidence on a byte equal to 24 |
 
-The third row is the trap. Writing 33 into an Amiga record really would draw
-the picture DOS calls `BODY18`, and it would do it by indexing thirty-three
-bytes into a twelve-byte table. **Nothing may be written that relies on it**:
-the bytes it lands on are the eight direction keys and an unrelated numeric
-table, they are a fact about this one build, and the creation menu resets the
-field to 1 the first time the player presses `B`.
+The third row is the trap, and it is a smaller prize than it looks. **Writing
+33 fetches the Amiga's own block `0x18`, which is a different drawing from
+DOS's block `0x18`** — an id on both disks is not a picture on both disks. On
+DOS, `0D` and `18` are one drawing (a bare chest under a red cloak with green
+armbands) and `22` is another; on the Amiga, `0D`, `18` and `22` are one
+block, and it is the one DOS calls `22` (a brown sleeve under a grey tabard).
+So the body a player chose at position 8 has no block anywhere in the Amiga's
+`body.dax`, and no value the record can hold reaches it. `tools/bodychoices.py
+--all` draws every block on both sides and is where that was seen;
+`tests/test_portraits.py::test_the_body_dos_draws_for_position_eight_is_not_
+on_the_amiga_disk` is the byte comparison behind it, 21 ids each side, 20
+distinct pictures on DOS against 19 on the Amiga.
+
+**An earlier version of this section said writing 33 "really would draw the
+picture DOS calls `BODY18`".** That was read off the id and not off the
+pixels, and it is withdrawn: the conclusion it supported — that 33 is a way
+back to the player's own body — is wrong, and there is no such way back.
+
+**Nothing may be written that relies on 33 in any case**: the bytes it lands
+on are the eight direction keys and an unrelated numeric table, they are a
+fact about this one build, and the creation menu resets the field to 1 the
+first time the player presses `B`.
+
+### The colours the Amiga draws them in
+
+Thirty-two big-endian `0RGB` words at the start of a `DATA` hunk — file
+offset `0x008AB0` in the 459,028-byte `/program` — which the boot code copies
+one word at a time into the open screen's colour table, in a thirty-two
+iteration loop whose `lea.l` is at `0x002D1A`. A four-bitplane `.dax` block
+uses the first sixteen. CONFIRMED from the code, and `tools/
+amigaportraitmenu.py --palette` re-derives the offset rather than storing it.
+
+Three of the executable's `DATA` hunks open with a run of thirty-two words
+all below `0x1000`, so the shape of the run does not identify the palette on
+its own. The discriminator is the fetch: the other two are indexed a **byte**
+at a time (`0x0208A0`, `0x02099E`, `0x034984`), and only `0x002D1A` reads a
+word. `amiga_palette()` requires that shape and raises rather than guessing.
+
+Before this, the montage drew the Amiga's four bitplanes through the EGA
+palette and said in its own docstring that the colours were wrong. They were:
+the Amiga's blocks are the same line art as DOS's, recoloured for a richer
+palette — DOS's bright red skin becomes three flesh tones, DOS's red tabard
+on block `0x05` becomes grey mail with a blue shield — so a comparison drawn
+through EGA said nothing about whether two ports show a player the same
+picture.
 
 ### The Amiga sheet asks for the face — which reopens a question we closed
 

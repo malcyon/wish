@@ -702,3 +702,102 @@ def test_the_amiga_tool_prints_the_stored_block_and_agrees_with_it():
     assert done.returncode == 0, done.stdout + done.stderr
     assert "agrees with the stored Amiga menu" in done.stdout
     assert "body position 8" in done.stdout
+
+
+# ---------------------------------------------------------------------------
+# What the eighth body actually looks like, for #480
+# ---------------------------------------------------------------------------
+def test_the_amiga_screen_palette_is_thirty_two_words_the_boot_code_copies():
+    """The colours `#480`'s picture is drawn through, re-derived (#480).
+
+    `tools/amigaportraitmenu.py` drew the Amiga art through the EGA palette
+    until 2026-09-10 and said in its own docstring that the colours were
+    wrong, so a montage was evidence about shape and not about colour.  The
+    table is the first thing in the executable's first referenced `DATA`
+    hunk: thirty-two big-endian `0RGB` words, copied one at a time into the
+    open screen's colour table.  Entry 0 is black and the first sixteen are
+    what a four-bitplane portrait indexes.
+    """
+    from tools import amigaportraitmenu
+
+    files = _amiga_files()
+    if portraits.AMIGA_PROGRAM not in files:
+        pytest.skip("needs the Amiga Pool of Radiance disks; set AMIGA_DISKS")
+    at, colours = amigaportraitmenu.amiga_palette(
+        files[portraits.AMIGA_PROGRAM][1])
+    assert at > 0
+    assert len(colours) == amigaportraitmenu.AMIGA_COLOURS
+    assert colours[0] == (0, 0, 0)
+    assert all(0 <= part <= 255 for rgb in colours for part in rgb)
+    # Every component is a nibble scaled by 17, so nothing here is a byte
+    # read at the wrong width.
+    assert all(part % 17 == 0 for rgb in colours for part in rgb)
+
+
+def test_a_program_with_no_colour_table_is_named_rather_than_guessed_at():
+    """A release that opens its screen differently has to say so (#480)."""
+    from tools import amigaportraitmenu
+
+    files = _amiga_files()
+    if portraits.AMIGA_PROGRAM not in files:
+        pytest.skip("needs the Amiga Pool of Radiance disks; set AMIGA_DISKS")
+    program = bytearray(files[portraits.AMIGA_PROGRAM][1])
+    at, _colours = amigaportraitmenu.amiga_palette(bytes(program))
+    program[at:at + 2 * amigaportraitmenu.AMIGA_COLOURS] = (
+        b"\xff\xff" * amigaportraitmenu.AMIGA_COLOURS)
+    with pytest.raises(amigaportraitmenu.PaletteNotFound):
+        amigaportraitmenu.amiga_palette(bytes(program))
+
+
+def test_the_body_dos_draws_for_position_eight_is_not_on_the_amiga_disk():
+    """An id on both disks is not a picture on both disks (#480).
+
+    `#480`'s discussion had settled on writing 33 into the Amiga record,
+    which indexes off the end of the twelve-byte menu table and fetches art
+    `0x18` -- on the argument that `0x18` "is on the Amiga disk".  The id is;
+    the picture is not.  DOS keeps one drawing under `0D` and `18` and a
+    second under `22`, and the Amiga keeps **one** drawing under all three,
+    which is the one DOS calls `22`.  So the body a player chose at position
+    8 has no block on the Amiga side at all, and this is the byte comparison
+    behind the picture `tools/bodychoices.py --all` draws.
+    """
+    from goldbox import amiga_dax
+    from tools import amigaportraitmenu
+
+    files = _amiga_files()
+    if portraits.AMIGA_BODY_DAX not in files:
+        pytest.skip("needs the Amiga Pool of Radiance disks; set AMIGA_DISKS")
+    game = amigaportraitmenu.dos_game(None)
+    if game is None:
+        pytest.skip("needs the DOS archives; set FR_ARCHIVES")
+
+    art = files[portraits.AMIGA_BODY_DAX][1]
+    amiga = {i: amiga_dax.block(art, i, portraits.AMIGA_BODY_DAX)
+             for i in (0x0D, 0x18, 0x22)}
+    assert amiga[0x0D] == amiga[0x18] == amiga[0x22]
+
+    dos = amigaportraitmenu.dos_blocks(game, "BODY")
+    assert dos[0x0D] == dos[0x18]
+    assert dos[0x22] != dos[0x18]
+    # 21 ids each side, and the Amiga is one distinct picture short.
+    assert set(dos) == set(amiga_dax.block_ids(art, portraits.AMIGA_BODY_DAX))
+    assert len({bytes(b) for b in dos.values()}) == 20
+    assert len({amiga_dax.block(art, i, portraits.AMIGA_BODY_DAX)
+                for i in dos}) == 19
+
+
+def test_the_three_panels_name_the_three_bodies_the_ticket_is_between():
+    """`tools/bodychoices.py` draws the ticket's own three candidates (#480).
+
+    The panels come from the stored menus rather than from constants, so a
+    corrected menu moves the picture instead of leaving it saying something
+    the tables no longer do.
+    """
+    from tools import bodychoices
+
+    assert bodychoices.POSITION == 8
+    assert bodychoices.PAST_THE_END == 33
+    chosen = portraits.stored_tables().bodies[bodychoices.POSITION - 1]
+    amiga = portraits.stored_tables(
+        port=portraits.AMIGA_PORT).bodies[bodychoices.POSITION - 1]
+    assert (chosen, amiga) == (0x18, 0x05)
