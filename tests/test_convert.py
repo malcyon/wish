@@ -42,7 +42,7 @@ from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
 from editor.window import EditorBinding
-from goldbox import dos, dos_layout, dos_savegame, games
+from goldbox import dos, dos_layout, dos_savegame, games, titles
 from goldbox.savegame import SaveGame0, SaveGame1
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
@@ -346,8 +346,37 @@ def test_every_converts_entry_has_a_dos_to_c64_name():
     # C64 port, and there is one: Pools of Darkness reads and writes for its
     # **Amiga** pairing (`#194 (Import and export a Pools of Darkness save
     # between DOS and the Amiga)`) and has no `.D64` to name, ever.
+    #
+    # **The guard behind `C64_PAIRED` moved conceptually, not in code, for
+    # `#470 (Give the project a neutral title beside its neutral character
+    # record, with one port per platform a title shipped on)`'s stage 2.**
+    # It used to read as "is this a title we know" -- true before `goldbox/
+    # titles.py` existed, since `games.BY_KEY` was every title this project
+    # had a registry for. It now reads as "does this title have a C64 port",
+    # which `games.BY_KEY` still answers, because `goldbox/titles.py`'s
+    # seven-title registry is the one that would answer the first question
+    # and get this one wrong -- see
+    # `test_the_c64_guard_is_the_port_registry_not_the_title_one` below.
     assert [s.key for s in dos.CONVERTS if s not in convert.C64_PAIRED] == \
         [dos_layout.POOLS_OF_DARKNESS.key]
+
+
+def test_the_c64_guard_is_the_port_registry_not_the_title_one():
+    """The landmine `#470`'s stage 2 named by hand: swapping `C64_PAIRED`'s
+    `games.BY_KEY` guard for `goldbox.titles.BY_KEY` -- the natural-looking
+    move once every other per-title table in this stage reads through
+    `titles` instead of `games` -- would put Pools of Darkness back into
+    `C64_PAIRED`, since `titles.BY_KEY` knows it and `games.BY_KEY` does not.
+    `DIRECTIONS` would then build `DosToC64(pools-of-darkness)` at import
+    time and raise `UnnamedConversionError`, which is the same failure
+    `#194`'s comment of 2026-09-08 records from before this guard existed,
+    the other way round.
+
+    So this pins the one fact that makes `games.BY_KEY` the right guard and
+    `titles.BY_KEY` the wrong one: a title can be known without having a C64
+    port, and Pools of Darkness is the permanent example."""
+    assert dos_layout.POOLS_OF_DARKNESS.key not in games.BY_KEY
+    assert dos_layout.POOLS_OF_DARKNESS.key in titles.BY_KEY
 
 
 def test_a_converts_entry_missing_its_name_fails_at_construction():
@@ -1064,16 +1093,20 @@ def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
         dialog.close()
 
 
-def test_the_game_files_row_is_shown_only_for_a_dos_destination(tmp_path):
-    """Hidden for the C64: the Game Disk folder preference already answers
-    it (`#52`'s plan, step B's row table)."""
+def test_the_game_files_row_is_shown_for_every_destination_with_its_own_label(
+        tmp_path):
+    """The row that used to appear and vanish is one row now, always shown,
+    in all six directions (`#413 (The Convert window changes shape depending
+    on which platforms you are converting between)`) -- only its label
+    changes, from `DOS game folder` to `C64 game disks` as the destination
+    does."""
     path = _por_c64_disk(tmp_path)
 
     dialog = convert.ConvertDialog(str(path), None, _no_disks)
     try:
         assert dialog.direction.destination_port == "dos"
-        assert dialog.ui.form.isRowVisible(dialog.ui.game_row)
-        assert dialog.ui.label_game.text() == convert.LABEL_GAME
+        assert dialog.ui.form.isRowVisible(dialog.ui.files_row)
+        assert dialog.ui.label_files.text() == convert.LABEL_GAME
     finally:
         dialog.close()
 
@@ -1083,7 +1116,8 @@ def test_the_game_files_row_is_shown_only_for_a_dos_destination(tmp_path):
         str(folder / "SAVGAMC.DAT"), None, _no_disks)
     try:
         assert dialog2.direction.destination_port == "c64"
-        assert not dialog2.ui.form.isRowVisible(dialog2.ui.game_row)
+        assert dialog2.ui.form.isRowVisible(dialog2.ui.files_row)
+        assert dialog2.ui.label_files.text() == convert.LABEL_C64
     finally:
         dialog2.close()
 
@@ -1673,8 +1707,12 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: `pod_to_neutral` outside the tests today, so it reaches no player yet;
     #: the marker stays because wiring it up is what `#194 (Import and export
     #: a Pools of Darkness save between DOS and the Amiga)` is for.
+    # `automap.actions` went 4 -> 3 when Fast Travel's failure line got the
+    # wording Donald ruled on 2026-09-07 (`#306 (The Fast Travel button's own
+    # disabled tooltip carries a memory address)`), which had been recorded
+    # there and never applied.
     WAITING = {"goldbox.c64_codec": 8, "goldbox.amiga": 1, "goldbox.dos": 7,
-               "automap.actions": 4}
+               "automap.actions": 3}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga, dos, actions):
@@ -2113,39 +2151,51 @@ def _outdoor_amiga_disk(tmp_path) -> pathlib.Path:
     return path
 
 
-def test_a_disk_with_one_slot_shows_no_slot_row(amiga_adf):
-    """The shipped disk holds slot A alone -- the row stays hidden and
-    `Source.detect` still takes it silently, exactly as before this row
-    existed (`#372`'s brief: silently taking the one slot is unchanged)."""
+def test_a_disk_with_one_slot_shows_no_slot_combo(amiga_adf):
+    """The shipped disk holds slot A alone -- the combo stays hidden and
+    `Source.detect` still takes it silently, exactly as before this combo
+    existed (`#372`'s brief: silently taking the one slot is unchanged).
+
+    The combo sits on the `From` row rather than owning one of its own
+    since `#413 (The Convert window changes shape depending on which
+    platforms you are converting between)`, so hiding it is the widget's
+    own visibility, not a form row's -- the `From` row itself is always
+    visible, with or without a slot to choose."""
     source = convert.Source.detect(amiga_adf)
     assert source.available_slots == ["A"]
 
     dialog = convert.ConvertDialog(str(amiga_adf), None, _no_disks)
     try:
         assert dialog.source.slot == "A"
-        assert not dialog.ui.form.isRowVisible(dialog.ui.convert_slot)
+        assert dialog.ui.form.isRowVisible(dialog.ui.label_source)
+        # `isVisibleTo`, not `isVisible`: this dialog is never `.show()`n in
+        # a test, and a widget's `isVisible()` answers `False` for that
+        # reason alone, whatever `setVisible` was last called with.
+        assert not dialog.ui.convert_slot.isVisibleTo(dialog)
     finally:
         dialog.close()
 
 
-def test_a_disk_with_three_slots_offers_a_slot_row(tmp_path):
+def test_a_disk_with_three_slots_offers_a_slot_combo(tmp_path):
     """The regression `#372 (An Amiga disk with more than one saved game
     converts its first slot, whichever one the player meant)` describes: a
-    disk naming more than one slot gets a row rather than being reduced to
-    its first."""
+    disk naming more than one slot gets a combo rather than being reduced to
+    its first -- on the `From` row, beside `Choose…`
+    (`#413`'s comment of 2026-09-09)."""
     path = _outdoor_amiga_disk(tmp_path)
     dialog = convert.ConvertDialog(str(path), None, _no_disks)
     try:
         assert dialog.source.available_slots == ["A", "B", "C"]
-        assert dialog.ui.form.isRowVisible(dialog.ui.convert_slot)
-        assert dialog.ui.label_slot.text() == convert.LABEL_SLOT
+        assert dialog.ui.convert_slot.isVisibleTo(dialog)
         items = [dialog.ui.convert_slot.itemData(i)
                 for i in range(dialog.ui.convert_slot.count())]
         assert items == ["A", "B", "C"]
-        # Opening the dialog picks nothing for the player -- the row starts
-        # on the first slot, the same one `Source.detect` always took before
-        # this row existed, so a disk with one game keeps behaving the same
-        # way it always has.
+        assert dialog.ui.convert_slot.currentText() == \
+            convert.SLOT_ITEM.format(slot="A")
+        # Opening the dialog picks nothing for the player -- the combo
+        # starts on the first slot, the same one `Source.detect` always
+        # took before this combo existed, so a disk with one game keeps
+        # behaving the same way it always has.
         assert dialog.source.slot == "A"
     finally:
         dialog.close()
@@ -2283,20 +2333,20 @@ def test_a_curse_c64_source_is_offered_no_amiga_row():
     assert [type(d) for d in directions] == [convert.C64ToDos]
 
 
-def test_the_disk_row_is_shown_only_for_an_amiga_destination(tmp_path):
-    """The twin of `test_the_game_files_row_is_shown_only_for_a_dos_destination`,
-    now that a C64 source offers an Amiga destination too. `NO_DISK` is
-    what the pane says with nothing chosen yet, exactly as `NO_GAME_FOLDER`
-    does for the DOS row."""
+def test_the_files_row_relabels_itself_for_an_amiga_destination(tmp_path):
+    """The twin of
+    `test_the_game_files_row_is_shown_for_every_destination_with_its_own_label`,
+    now that a C64 source offers an Amiga destination too -- one row, same
+    place, relabelled. `NO_DISK` is what the pane says with nothing chosen
+    yet, exactly as `NO_GAME_FOLDER` does for the DOS destination."""
     path = _por_c64_disk(tmp_path)
 
     dialog = convert.ConvertDialog(str(path), None, _no_disks,
                                    destination="amiga")
     try:
         assert dialog.direction.destination_port == "amiga"
-        assert dialog.ui.form.isRowVisible(dialog.ui.disk_row)
-        assert dialog.ui.label_disk.text() == convert.LABEL_DISK
-        assert not dialog.ui.form.isRowVisible(dialog.ui.game_row)
+        assert dialog.ui.form.isRowVisible(dialog.ui.files_row)
+        assert dialog.ui.label_files.text() == convert.LABEL_DISK
         assert dialog.ui.convert_report.toPlainText() == convert.NO_DISK
     finally:
         dialog.close()
@@ -2305,7 +2355,8 @@ def test_the_disk_row_is_shown_only_for_an_amiga_destination(tmp_path):
                                     destination="dos")
     try:
         assert dialog2.direction.destination_port == "dos"
-        assert not dialog2.ui.form.isRowVisible(dialog2.ui.disk_row)
+        assert dialog2.ui.form.isRowVisible(dialog2.ui.files_row)
+        assert dialog2.ui.label_files.text() == convert.LABEL_GAME
     finally:
         dialog2.close()
 
@@ -2590,3 +2641,139 @@ def test_dos_to_amiga_direction_is_the_transfer_test(tmp_path):
     built = out_disk.read_file("/savgamD.dat")
     assert (built[amiga.POR_POS_X], built[amiga.POR_POS_Y],
            built[amiga.POR_POS_FACING]) == (state.x, state.y, state.facing * 2)
+
+
+# ---------------------------------------------------------------------------
+# The four-row form (#413, "The Convert window changes shape depending on
+# which platforms you are converting between") -- the same four rows, in the
+# same places, for every one of the six directions.
+# ---------------------------------------------------------------------------
+
+def _four_rows_in_order(dialog):
+    """`From`, `To`, the game-files row, `Write to` -- in that order, and
+    none of the four hidden. `QFormLayout.itemAt` reads the row structure
+    itself rather than the dialog's own widget list, so a row moved back
+    into existence by accident would still be caught even if nothing else
+    here happened to touch it."""
+    form = dialog.ui.form
+    assert form.rowCount() == 4
+    names = [form.itemAt(i, form.ItemRole.LabelRole).widget().objectName()
+            for i in range(4)]
+    assert names == ["label_source", "label_to", "label_files",
+                     "label_folder"]
+    for name in names:
+        assert form.isRowVisible(getattr(dialog.ui, name)), name
+
+
+def test_the_form_holds_four_rows_for_every_dos_or_c64_destination(tmp_path):
+    """The four directions a DOS or a C64 source offers -- no real game
+    disks needed, so this covers most of the six unconditionally. The row
+    that used to appear and vanish (`_settle_game_row`/`_settle_disk_row`,
+    before this issue) is the third one here, in the same place regardless
+    of which of the three platforms is the destination."""
+    dos_folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
+    c64_path = _por_c64_disk(tmp_path)
+    cases = [
+        (dos_folder / "SAVGAMA.DAT", "c64", convert.LABEL_C64),
+        (dos_folder / "SAVGAMA.DAT", "amiga", convert.LABEL_DISK),
+        (c64_path, "dos", convert.LABEL_GAME),
+        (c64_path, "amiga", convert.LABEL_DISK),
+    ]
+    for source_path, destination, label in cases:
+        dialog = convert.ConvertDialog(str(source_path), None, _no_disks,
+                                       destination=destination)
+        try:
+            assert dialog.direction.destination_port == destination, \
+                (source_path, destination)
+            _four_rows_in_order(dialog)
+            assert dialog.ui.label_files.text() == label, destination
+        finally:
+            dialog.close()
+
+
+def test_the_form_holds_four_rows_for_an_amiga_source_too(amiga_adf):
+    """The two remaining directions, an Amiga `.adf` converting to the
+    Commodore 64 or to DOS -- needs the player's own Amiga disks to detect
+    the source at all (`amiga_adf`'s own fixture), so this is the other
+    half of `test_the_form_holds_four_rows_for_every_dos_or_c64_destination`
+    rather than folded into it."""
+    for destination, label in (("c64", convert.LABEL_C64),
+                               ("dos", convert.LABEL_GAME)):
+        dialog = convert.ConvertDialog(str(amiga_adf), None, _no_disks,
+                                       destination=destination)
+        try:
+            assert dialog.direction.destination_port == destination
+            _four_rows_in_order(dialog)
+            assert dialog.ui.label_files.text() == label, destination
+        finally:
+            dialog.close()
+
+
+def test_an_amiga_source_with_several_slots_shows_the_slot_combo_and_the_dos_folder_together(
+        tmp_path):
+    """The case that settled where the `Slot` combo goes (`#413`'s comment
+    of 2026-09-09): an Amiga source with more than one saved game,
+    converting to DOS, needs the slot *and* the DOS game folder at once.
+    Both fit because the combo rides on the `From` row instead of taking
+    the third-row position the DOS folder needs -- under the rejected
+    design the window would have grown to five rows here, which is the
+    shape `#413` exists to remove."""
+    path = _outdoor_amiga_disk(tmp_path)
+    dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                   destination="dos")
+    try:
+        assert dialog.direction.destination_port == "dos"
+        assert dialog.source.available_slots == ["A", "B", "C"]
+        assert dialog.ui.convert_slot.isVisibleTo(dialog)
+        assert dialog.ui.label_files.text() == convert.LABEL_GAME
+        _four_rows_in_order(dialog)
+    finally:
+        dialog.close()
+
+
+def test_the_c64_row_is_prefilled_from_preferences_and_editing_it_holds_only_for_this_conversion(
+        tmp_path, monkeypatch):
+    """Donald, 2026-09-09: *"How about you include a file input, but
+    autofill it with whatever is in the preferences,"* and, on what
+    editing the row does to that setting: *"Just this conversion.
+    Preferences is untouched."*
+
+    `preferences` stands in for `Settings.game_folders` -- a plain dict,
+    since this module must never import `wish.preferences`, and the
+    injected `game_folder` callable is the only way its value reaches the
+    dialog, the same way `game_files` already stands in for the rest of
+    Preferences' own search."""
+    prefs_folder = tmp_path / "prefs-folder"
+    prefs_folder.mkdir()
+    preferences = {games.POOL_OF_RADIANCE.key: str(prefs_folder)}
+
+    def game_folder(game):
+        return preferences.get(game.key)
+
+    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
+    dialog = convert.ConvertDialog(
+        str(folder / "SAVGAMA.DAT"), None, _no_disks,
+        destination="c64", game_folder=game_folder)
+    try:
+        assert dialog.direction.destination_port == "c64"
+        assert dialog.ui.convert_files.text() == str(prefs_folder)
+
+        chosen = tmp_path / "player-chosen-folder"
+        chosen.mkdir()
+        monkeypatch.setattr(QFileDialog, "getExistingDirectory",
+                            lambda *args, **kwargs: str(chosen))
+        dialog._choose_files()
+
+        assert dialog.ui.convert_files.text() == str(chosen)
+        # Preferences itself never moved -- nothing in this module can
+        # write to it, and this is the behavioural proof rather than an
+        # inspection of the source for an import that is not there.
+        assert preferences[games.POOL_OF_RADIANCE.key] == str(prefs_folder)
+
+        # A later `replan()` -- what changing the `To` combo and changing
+        # it back would trigger -- does not overwrite the player's own
+        # choice with Preferences' answer again.
+        dialog.replan()
+        assert dialog.ui.convert_files.text() == str(chosen)
+    finally:
+        dialog.close()

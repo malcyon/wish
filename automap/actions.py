@@ -1937,10 +1937,8 @@ class FastTravel(Action):
                        "for reload and the next area change will act on it",
                        addr.slot)
             return Outcome(False,
-                           "the party has not moved. Wish set up the travel "
-                           "but could not start it, and the game will finish "
-                           "the move itself the next time the party changes "
-                           "area (NOT APPROVED)",
+                           "ERROR: Unable to Fast Travel. The teleport will "
+                           "happen the next time you move to a new area.",
                            writes, tuple(notes))
         self.back = was
         # Never the `ecl` fallback: it is a script filename, and
