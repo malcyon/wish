@@ -9,17 +9,24 @@ box cannot -- so it is the one thing that does.
 
 Three rules, and they are Donald's:
 
-* above the floor the roster is exactly its five columns at their contents, as
-  it has always been;
+* above `ROSTER_MIN_WIDTH` the roster is exactly its five columns at their
+  contents, as it has always been;
 * below it `Name` absorbs the whole shortfall and elides, so `Race`, `Class`,
   `AC` and `HP` stay readable for as long as there is width for them;
 * only when `Name` has given everything it has does the table scroll.
 
-The floor is a constant rather than a measurement because the header does not
-scroll: whatever the roster's minimum is, it is a floor under the whole window,
-and a minimum taken from font metrics is a floor that follows the UI font --
-which is #41's bug and the reason Windows CI measured 1304 where Linux measured
-1036.
+`ROSTER_MIN_WIDTH` used to be a floor under the whole window as well, because
+`_size_roster` handed it to `setMinimumWidth`: whatever the roster's minimum
+was became a floor under the header, which does not scroll, and a minimum
+taken from font metrics is a floor that follows the UI font -- #41's bug, and
+the reason Windows CI once measured 1304 where Linux measured 1036. That stayed
+sound only while the constant was smaller than every real party's own columns,
+and it is not: an ordinary six-character party measures under 440 at every UI
+font up to the base font's own reach, so the window's floor became a text
+measurement again for the common case (#474). `_size_roster` no longer sets
+the roster's minimum width at all -- it keeps whatever `QTableView` has of its
+own, well under any party's columns, and the three rules above still hold from
+`sizeHint` and `_share_width` alone.
 """
 
 from __future__ import annotations
@@ -32,44 +39,35 @@ from PyQt6.QtWidgets import QTableView
 #: can still recognise from its first few characters.
 NAME_COLUMN = 0
 
-#: What the roster may be squeezed to, in pixels, at any font on any platform.
-#:
-#: The whole window's floor is this plus 508: Character's own cap of 480 plus
-#: 24 of layout margins and spacing plus 4 of window frame, none of which is
-#: measured from a string. So 440 puts the floor at 948 with a six-character
-#: party of the widest shape the record allows, at every UI font -- against
-#: 1093, 1270, 1449 and 1672 at +0, +3, +6 and +10 points before this, where
-#: the roster's minimum was `header.length()` and the floor followed the font.
+#: What the roster asks the layout for, in pixels, once its five columns are
+#: wider than this, at any font on any platform. Read only by `sizeHint`
+#: below -- `_size_roster` no longer hands it to `setMinimumWidth`, so it is
+#: not a floor under the window any more. It used to be: see the module
+#: docstring for why that stopped holding (`#474`).
 #:
 #: Why this number and not another. It has to clear the four contents-sized
-#: columns at the base UI font, or the roster would scroll on a machine nobody
-#: has resized anything on: `Race`, `Class`, `AC`, `HP` and the table's own
-#: chrome come to 356px here at 9pt, so 440 leaves `Name` 84 of its 231 --
-#: `WWWWWWW...` at the widest a name can be, and more of an ordinary one --
-#: and the table never scrolls at the base font at any width the window
-#: permits. Above that it is as small as it can usefully be: every pixel of it
-#: is a pixel the window cannot be dragged narrower than, and the 332 it leaves
-#: under a 1280-wide screen is the margin for whatever Character's box and the
-#: window's chrome measure on a platform none of these numbers were taken on.
+#: columns at the base UI font, or the roster would ask for less room than
+#: they need on a machine nobody has resized anything on: `Race`, `Class`,
+#: `AC`, `HP` and the table's own chrome come to 356px here at 9pt, so 440
+#: leaves `Name` 84 of its 231 -- `WWWWWWW...` at the widest a name can be, and
+#: more of an ordinary one.
 #:
 #: At a Windows-sized font -- which measures here like six to ten points more
-#: than 9pt -- those four columns come to 564 and 694, so at the floor itself
-#: the table does scroll. That is the third rule working, not a number to
-#: raise: the floor is what the window can be dragged to, not what it opens at,
-#: and a 1280-wide window gives the roster 522 at +6pt rather than 440. Raising
-#: the floor to cover the worst font would put the window back over the screen,
-#: which is the bug.
+#: than 9pt -- those four columns come to 564 and 694, so this number no
+#: longer covers them either; that is the third rule working (module
+#: docstring), not a number to raise.
 ROSTER_MIN_WIDTH = 440
 
 #: What `Name` keeps when it has given away everything else. Enough for an
-#: initial and the ellipsis, and a constant for the same reason the floor is.
+#: initial and the ellipsis, and a constant rather than a measurement for the
+#: same reason `ROSTER_MIN_WIDTH` used to be one.
 #:
 #: It is a floor under a floor: `QHeaderView` has a `minimumSectionSize` of its
 #: own, that one *is* a font metric, and above the base UI font it is the larger
 #: of the two -- 49px at +3, 61 at +6, 75 at +10 here. So this number decides
 #: what `Name` keeps at the base font and Qt decides it above that, which is
-#: the right way round: the table scrolls either way, and it is only the floor
-#: under the *window* that has to be the same on every machine.
+#: the right way round: the table scrolls either way, and it is only `Name`'s
+#: own width that has to be the same on every machine.
 NAME_MIN_WIDTH = 40
 
 
@@ -79,11 +77,14 @@ class RosterView(QTableView):
     `QAbstractScrollArea.sizeHint` answers 256px whatever is in it, which is
     why `_size_roster` used to pin `minimumWidth == maximumWidth` to get the
     roster its five columns -- and that pin is what put a font metric under the
-    window. The hint is the floor here and the maximum is the natural width, so
-    a `QHBoxLayout` gives the roster everything spare up to its contents and
-    takes it back again first when the window is squeezed. Nothing else in the
-    header has any spare to take: see `ROW_STRETCH` in `window.py`, where the
-    roster is the item with the stretch.
+    window. The hint below is what a `QHBoxLayout` aims for and the maximum is
+    the natural width, so the layout gives the roster everything spare up to
+    its contents and takes it back again first when the window is squeezed --
+    down to the hint, and then further still, to whatever `QTableView` answers
+    for its own `minimumSizeHint`, since `_size_roster` stopped giving the
+    roster an explicit floor of its own (#474). Nothing else in the header has
+    any spare to take: see `ROW_STRETCH` in `window.py`, where the roster is
+    the item with the stretch.
     """
 
     def __init__(self, parent=None) -> None:

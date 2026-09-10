@@ -49,10 +49,7 @@ from .binding import COMBAT_FIELDS, bindings, field_name, value_range, widest_te
 from .enums import caster_bits, tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
-from .rosterview import (
-    NAME_COLUMN,
-    ROSTER_MIN_WIDTH,
-)
+from .rosterview import NAME_COLUMN
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
 
 #: The spellbook bitmask at 0x078, which `goldbox/layout.py` declares as two
@@ -288,10 +285,10 @@ MAX_ROSTER_ROWS = 8
 #: in pixels. Above this it grows with the window, up to its own two columns
 #: at their contents, and below it the owner line elides.
 #:
-#: A constant for the reason `ROSTER_MIN_WIDTH` is one: the header does not
-#: scroll, so anything standing in it is a floor under the whole window, and
-#: this panel's widest line is a *sentence* rather than a field -- it says who
-#: an effect is on, and "everybody in the party" is longer than any name. Sized
+#: A constant because the header does not scroll, so anything standing in it
+#: is a floor under the whole window, and this panel's widest line is a
+#: *sentence* rather than a field -- it says who an effect is on, and
+#: "everybody in the party" is longer than any name. Sized
 #: from what it can cost rather than from what it would like: with the widest
 #: party a save can hold the editor's floor is 958px without the panel, and
 #: Donald's screen is 1366, so 260 leaves 148px of margin. Its two column
@@ -1489,26 +1486,29 @@ class EditorBinding(QObject):
         header.setSectionResizeMode(NAME_COLUMN,
                                     header.ResizeMode.Interactive)
         view.measure(natural, header.sectionSize(NAME_COLUMN))
-        # With no rows -- an empty window, or a roster disk with nothing on it
-        # -- `natural` is the five headings alone, and it is font-derived, so
-        # `min(natural, ROSTER_MIN_WIDTH)` would set the window's floor to the
-        # headings' own width and bring back #41, which
-        # `test_the_windows_minimum_does_not_follow_the_ui_font` caught. The
-        # *maximum* still wants setting either way, or the table keeps
-        # spreading into whatever the layout has spare (#471).
+        # The roster no longer sets its own minimum width, loaded or empty.
+        # `min(natural, ROSTER_MIN_WIDTH)` was written believing `natural` --
+        # the five columns at their contents -- was always the larger of the
+        # two, so `min` always picked the constant and the window's floor was
+        # font-independent. That is false for an ordinary party: six
+        # characters measure `natural` at 219 against the constant's 440, so
+        # `min` picked the font-derived number instead, and the window's floor
+        # ran 727, 784, 844, 916 at +0, +3, +6 and +10 points of UI font
+        # (#474). Only `gamedata.synthetic_party`'s widest-of-everything shape
+        # stayed above 440, which is why `test_the_windows_minimum_does_not_
+        # follow_the_ui_font_with_a_save_open` read a flat 948 and never saw
+        # it.
         #
-        # **This gate covers the empty case and nothing more, and the loaded
-        # case is not sound.** `ROSTER_MIN_WIDTH` is not a floor a party is
-        # always above: an ordinary six-character party measures `natural` at
-        # 219 against the constant's 440, so `min` picks the font-derived
-        # number here too and the whole window's floor runs 727, 784, 844, 916
-        # at +0, +3, +6 and +10 points of UI font. #474 has the measurement
-        # and the three ways out; `gamedata.synthetic_party`'s widest-of-
-        # everything shape is the one party that stays above 440, which is why
-        # `test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_
-        # open` reads a flat 948 and cannot see this.
-        if self.model.rowCount():
-            view.setMinimumWidth(min(natural, ROSTER_MIN_WIDTH))
+        # Rather than tune the constant, the roster stops contributing to the
+        # window's minimum at all: it keeps whatever minimum `QTableView` has
+        # of its own, well under any party's columns, so the window's floor is
+        # font-free by construction instead of by arithmetic. The three rules
+        # in this module's docstring still hold below that: `_share_width`
+        # keeps giving `Name` the shortfall down to `NAME_MIN_WIDTH`, and only
+        # once `Name` has given everything does the table scroll.
+        #
+        # The *maximum* still wants setting either way, or the table keeps
+        # spreading into whatever the layout has spare (#471).
         view.setMaximumWidth(natural)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()

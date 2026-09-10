@@ -377,13 +377,20 @@ It is promoted rather than plain -- class `RosterView`, header
 `editor.rosterview` -- because it is the header's shock absorber. Everything
 else above the tabs is pinned to the widest value its bytes can hold, so a
 window narrower than the header wants has to be paid for out of the roster:
-above its floor it is exactly its five columns at their contents, below it
-`Name` absorbs the whole shortfall and elides, and only when `Name` has nothing
-left does the table scroll. The floor is a constant, because the header does not
-scroll and the roster's minimum is therefore a floor under the whole window --
-and a minimum measured from the names a party happens to carry is a window floor
-that follows the UI font, which is the bug in issue 41 and the last of it in
-issue 71.
+above `ROSTER_MIN_WIDTH` it is exactly its five columns at their contents,
+below that `Name` absorbs the whole shortfall and elides, and only when `Name`
+has nothing left does the table scroll.
+
+`ROSTER_MIN_WIDTH` used to be a floor under the whole window as well, handed
+to `setMinimumWidth` -- and a minimum measured from the names a party happens
+to carry is a window floor that follows the UI font, which is the bug in issue
+41 and the last of it in issue 71. That held only while the constant was
+smaller than every real party's own columns, and it was not: an ordinary
+six-character party measures under it at every UI font up to the base font's
+own reach, so the window's floor became a text measurement again for the
+common case (issue 474). The roster no longer sets its own minimum width at
+all -- it keeps whatever `QTableView` has of its own, and the window's floor
+no longer depends on the roster in any way.
 
 ---
 
