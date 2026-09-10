@@ -577,6 +577,24 @@ class D64:
         Refused on a read-only variant. `to_bytes` still works, so copying one
         out remains possible; what is refused is this module putting its name to
         a written image whose format it does not fully model.
+
+        **`writable` is about the format and never about the filesystem**, and
+        the rename is why the difference matters. `os.replace` needs write
+        permission on the *directory*, never on the file it replaces, so a
+        destination somebody chmodded to 444 is overwritten without complaint
+        and comes back carrying the temporary's mode. Nothing in the open or
+        save path calls `os.access` on the target, deliberately: an editor that
+        refused to save because a file was marked read-only would be refusing
+        something the operating system allows.
+
+        Settled by running it on 2026-09-10, for #487, which was filed
+        expecting the opposite. The line to hold on to is that a write through
+        here needs no writable destination and a write through `shutil.copy`
+        does, because that opens the destination `wb`. Every round of the
+        staging bug -- #430, #455, #469, #472, #476, #487 -- is the second kind.
+        And neither is the failure that started the family: a save disk the
+        *game* is handed write-protected has its writes refused by the
+        emulated drive, silently, and that is not this program at all.
         """
         self._require_writable()
         target = pathlib.Path(path)
