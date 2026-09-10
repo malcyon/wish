@@ -579,13 +579,19 @@ class D64:
         a written image whose format it does not fully model.
 
         **`writable` is about the format and never about the filesystem**, and
-        the rename is why the difference matters. `os.replace` needs write
-        permission on the *directory*, never on the file it replaces, so a
-        destination somebody chmodded to 444 is overwritten without complaint
+        the rename is why the difference matters. On POSIX `os.replace` needs
+        write permission on the *directory*, never on the file it replaces, so
+        a destination somebody chmodded to 444 is overwritten without complaint
         and comes back carrying the temporary's mode. Nothing in the open or
         save path calls `os.access` on the target, deliberately: an editor that
         refused to save because a file was marked read-only would be refusing
         something the operating system allows.
+
+        **Windows does not allow it.** There `chmod(0o444)` sets the read-only
+        attribute and the rename fails on the destination, so the same save
+        raises instead. `tests/test_traitsave.py` marks the test of this
+        `posix_only` for that reason -- and the failure surfaces as a modal
+        box, which in a headless run is a hang rather than a red test.
 
         Settled by running it on 2026-09-10, for #487, which was filed
         expecting the opposite. The line to hold on to is that a write through
