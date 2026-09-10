@@ -21,8 +21,10 @@ it, and `docs/183-the-two-rings-of-fire-resistance.md` says why they looked
 otherwise.
 
 Grades follow `docs/50-experiments.md`'s scale. Addresses are Pool of
-Radiance's; the three C64 titles share the mechanism but not the numbers
-(`tools/traitquery.py` derives the predicate for Curse and Silver Blades).
+Radiance's; the three C64 titles share the mechanism but not the numbers,
+and "The same three tables in the other two titles" below has Curse's and
+Silver Blades'. `tools/traitquery.py` derives all of it off the disks --
+the predicate on its own, and with `--lists` the check lists as well.
 
 ## Two backing stores, one question
 
@@ -137,8 +139,72 @@ handlers do the work when a list is walked.
 
 The ids on no list at all are the ones a trait slot cannot do anything with
 in combat: among them 38 (extra strength -- the gauntlets go through the
-array, not a slot), 55, 32, 24, 5, 12, 16, 53. An id in a slot is honoured
-**where a list names it**, and nowhere else.
+array, not a slot), 5, 12, 16, 53. An id in a slot is honoured **where a list
+names it, or where an instruction names it**, and nowhere else.
+
+**Three ids reach it by an instruction and by no list: 24, 32 and 55.** The
+first of the three was missed until 2026-09-10, and the reason is a shape
+this page had not looked for: `SPELLE01 +0x09ec` is `LDA #$18 / JSR $28A4`
+and `+0x0e13` is `LDA #$62 / JSR $28A4`, so they ask about 24 and 98 through
+the wrapper rather than reaching `$4027` directly, and a census of calls to
+`$4027` cannot see either. 98 is on list 19 already; 24 is not on any list.
+**So the count of ids a trait slot can do anything with in Pool of Radiance
+is 95** -- 92 from the lists, plus 24, 32 and 55.
+
+## The same three tables in the other two titles
+
+**Every C64 title in the family has this architecture and none of them has
+the same numbers.** `tools/traitquery.py --lists` follows the call chain out
+from the predicate to the wrapper, the ask, the walker and the block, so a
+title nobody has mapped either answers or says it did not; its docstring has
+the four steps. Run against Pool of Radiance it reproduces the live reading
+above byte for byte -- `SPELLE65 +0x0570`, 20 lists, 134 ids, 92 distinct --
+which is what licenses the other two rows, since those have no live reading
+to check against.
+
+| | Pool of Radiance | Curse | Silver Blades |
+|---|---|---|---|
+| the array-then-traits predicate | `LIBRARY $4027` | `$40E2` | `$387D` |
+| the wrapper the lists ask through | `COMBAT +0x20a4` | `ECL64 +0x12c5` | `ECL64 +0x128f` |
+| the ask, and the handler dispatch | `SQRPACI01 +0x0376` | `COMBAT +0x0ac3` | `COMBAT +0x0aae` |
+| handler address per id | `$DA63`/`$DAEE` | `$EE2A`/`$EEBC` | `$EF90`/`$F001` |
+| **ids in the namespace** | **139** | **146** | **113** |
+| the check lists | `$DB7A` | `$EF4F` | `$F073` |
+| the file they ship in | `SPELLE65 +0x0570` | `COMBAT2 +0x0f4f` | `COMBAT2 +0x1073` |
+| which puts that file at | `$D60A` | `$E000` | `$E000` |
+| lists, ids, distinct | 20, 134, **92** | 21, 155, **115** | 21, 110, **80** |
+| ids named by an instruction and no list | 3 | 5 | 10 |
+| **ids a trait slot can do anything with** | **95** | **120** | **90** |
+
+The namespace size is not a guess: it is the gap between the two handler
+tables the ask dispatches through, and the lists land at exactly
+`<high table> + namespace + 1` in all three titles, which is the layout
+checking itself.
+
+**Silver Blades honours 90 ids and `goldbox/traits.py` names six of them.**
+That is what `#497 (The trait picker offers a Secret of the Silver Blades
+character six names, and nobody has ruled on whether it should offer Pool of
+Radiance's 129)` asked for. The six are a **subset** rather than an overlap:
+18, 26, 45, 47 and 48 are on the lists and 95 is on list 9, so every id that
+title's own table names is one its engine asks about.
+
+**How far Pool of Radiance's names can be trusted for Silver Blades is a
+question about the id, not about the title.** The lists are positional -- the
+walker takes a list number -- so an id in the same numbered list in two
+titles is being asked the same question about the same thing. Of the 64 ids
+on a list in both titles, 35 sit in the same numbered list, and the split by
+id is sharp:
+
+| id range | on a list in Pool of Radiance | in Silver Blades | on both | in the same list |
+|---|---|---|---|---|
+| 1-63 | 34 | 45 | 32 | **29** |
+| 64-100 | 33 | 28 | 25 | 6 |
+| 101-139 | 25 | 7 | 7 | **0** |
+
+So the spell-effect half of the namespace is shared and the monster-special
+half is not, which is what the racial seeds said too: Silver Blades gives an
+elf 95 where Pool of Radiance gives 107. PROBABLE, on one measurement of
+positional agreement and no reading of a Silver Blades handler.
 
 ## Watching the asks
 

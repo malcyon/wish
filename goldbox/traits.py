@@ -356,6 +356,16 @@ EMPTY = "—"
 #: PROBABLE throughout. The evidence is which race or class the game seeds
 #: each code on -- the same argument the Pool of Radiance names were earned
 #: by -- and no Silver Blades record has been watched using one.
+#:
+#: **Six is a count of what has been named, not of what the engine honours.**
+#: Silver Blades' combat check lists name 80 distinct effect ids and ten more
+#: reach the trait predicate from an instruction, so **90** ids do something
+#: in a trait slot and this table names six of them; all six are on the
+#: lists. `tools/traitquery.py --lists` takes the measurement off the disks
+#: and `docs/171-c64-trait-slots.md` has it per title, alongside how far Pool
+#: of Radiance's names can be trusted here -- 29 of 32 shared ids below 64
+#: sit in the same numbered check list in both titles, and 0 of 7 above 100
+#: do.
 NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
     18: (NAMES[124][0], "PROBABLE"),
     26: (NAMES[26][0], "PROBABLE"),
