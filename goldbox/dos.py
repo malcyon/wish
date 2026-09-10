@@ -454,10 +454,18 @@ INNATE_EFFECTS = frozenset({18, 26, 47, 48, 90, 97, 107, 124})
 #: Secret of the Silver Blades' own ranger id and not Curse's; the two titles
 #: do not share a class-trait namespace the way they share the racial one.
 #: `docs/121-silver-blades.md` already carried the ranger half of this split
-#: from the two titles' own seed tables (Curse `GEN $2515` hands 45, Silver
-#: Blades 105 -- ids for a *different*, C64-side combat trait computed live
-#: rather than stored, out of `#388`'s scope) and this is the `.SPC` file's
-#: own confirmation of the same split by a different route.
+#: from the two titles' own C64 seed tables, and those agree: `GEN $2515`
+#: hands Curse's ranger **134** -- `LDA $7CD0` / `BEQ` / `LDA #$86` -- where
+#: Silver Blades' `GEN $0FF0` hands hers 105, the same two numbers this
+#: file's `.SPC` evidence lands on by a different route.
+#:
+#: **This note used to say `GEN $2515` handed the ranger 45, and that was
+#: wrong twice over** (#484, Does C64 Silver Blades seed a paladin's
+#: Protection from Evil as trait 45, the way Curse does, so that direction
+#: loses it converting to DOS too?): 45 is what both titles seed for the
+#: **paladin**, and it is stored in a trait slot rather than being a combat
+#: trait computed live.  `C64_CLASS_TRAITS` below is where the C64's 45
+#: becomes this set's 8.
 INNATE_EFFECTS_CURSE = INNATE_EFFECTS | {8, 134}
 
 #: Secret of the Silver Blades' paladin and ranger, added to `INNATE_EFFECTS`.
@@ -516,6 +524,81 @@ def _innate_effects(shape_key: str | None) -> frozenset[int]:
     """This title's innate-effect ids, `INNATE_EFFECTS` for a title not
     listed in `_INNATE_EFFECTS_TABLES` or for `None`."""
     return _INNATE_EFFECTS_TABLES.get(shape_key, INNATE_EFFECTS)
+
+
+#: The paladin's bit in the neutral record's `class_bits`, which is the C64
+#: record's own bit order -- `goldbox.games.CLASS_BITS_WITH_PALADIN_RANGER`,
+#: where 64 is the paladin and 128 the ranger.  DOS gives the two classes one
+#: bit between them, so this is never the DOS record's numbering;
+#: `tests/test_innateeffects.py` pins the two against each other.
+PALADIN_CLASS_BIT = 64
+
+#: A C64 trait id a title's own `GEN` seeds for a class, and the DOS effect id
+#: that names the same effect -- `(class bit, C64 trait id, DOS effect id)`
+#: per title (#481, A C64 Curse paladin converted to DOS loses Protection from
+#: Evil for good, because the C64 seeds it as trait 45 and DOS writes it as
+#: effect 8).
+#:
+#: **Both later titles seed a paladin's Protection from Evil as 45 and DOS
+#: writes 8 for it, so the number itself has to change on the way across.**
+#: CONFIRMED from the shipped code on both sides: Curse's `GEN $2515` and
+#: Silver Blades' `GEN $0FF0` are the same routine with the same immediate --
+#: load the paladin level byte, branch past on zero, `LDA #$2D`, store it in
+#: the first free trait slot -- and the DOS class switch writes 8, at
+#: `GAME.OVR:0x20D9E` in Curse and `0x1E345` in Silver Blades (#484, and
+#: `docs/200-innate-effect-seeding.md`).  Neither ranger has a row because
+#: neither needs one: Curse hands 134 on both ports and Silver Blades 105 on
+#: both.
+#:
+#: **The class bit is the guard and not decoration.**  A C64 record's ten
+#: trait slots carry racial seeds and item grants in one namespace with no
+#: byte saying which is which (`goldbox/c64_codec.py`,
+#: `docs/171-c64-trait-slots.md`), so the reader hands `innate_effects` every
+#: id it finds; and 45 is a live DOS id with a different meaning, carried by
+#: two DOS Curse records for FLORENTZ, a human cleric, as a Protection from
+#: Evil 10' Radius he *cast*.  Translating 45 without asking whether the
+#: character is a paladin would give a cleric's item power or running spell a
+#: paladin's permanent effect.  `GEN $0FF0` and `GEN $2515` make the same
+#: test, on the class's own level byte.
+#:
+#: **Pool of Radiance has no row and that is measured, not assumed**: its
+#: `GEN` never reads `$6BCF` or `$6BD0`, the paladin and ranger level bytes,
+#: and the immediate `A9 2D` occurs nowhere in the 9,083-byte overlay (#484).
+C64_CLASS_TRAITS: dict[str, tuple[tuple[int, int, int], ...]] = {
+    CURSE_OF_THE_AZURE_BONDS.key: ((PALADIN_CLASS_BIT, 45, 8),),
+    SECRET_OF_THE_SILVER_BLADES.key: ((PALADIN_CLASS_BIT, 45, 8),),
+}
+
+
+def _from_c64_class_traits(shape_key: str | None, class_bits: int,
+                           ids: Iterable[int]) -> list[int]:
+    """`ids` with every C64 class-seeded trait id replaced by the DOS effect
+    id naming the same thing, for a character whose class carries it.
+
+    A title with no `C64_CLASS_TRAITS` row, and a character whose class bits
+    match none of its rows, get their ids back unchanged -- which is what
+    keeps a cleric's own 45 out of `INNATE_EFFECTS_CURSE`'s 8.
+
+    **The result is a set rather than a swap.**  A paladin Wish converted the
+    other way arrives on the C64 holding 8, keeps it, and can gain a 45
+    beside it -- `GEN $0FF0` removes only 45 and 105 before it re-seeds --
+    so a record can legitimately hold both ids for one effect.  Mapping and
+    then collapsing gives him one `.SPC` record either way, and in either
+    order.
+    """
+    swap = {c64: into for bit, c64, into in C64_CLASS_TRAITS.get(shape_key, ())
+            if class_bits & bit}
+    if not swap:
+        return [int(e) for e in ids]
+    ids = [int(e) for e in ids]
+    landed = {swap[e] for e in ids if e in swap}
+    out: list[int] = []
+    for e in ids:
+        mapped = swap.get(e, e)
+        if mapped in landed and mapped in out:
+            continue
+        out.append(mapped)
+    return out
 
 #: Bytes 1-4 of a `.SPC` record for an innate effect.  A record is nine bytes:
 #: the effect id, these four, and a four-byte far pointer to the next record.
@@ -2333,8 +2416,11 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "it, and an empty inventory writes no .ITM file at all "
                   "rather than an empty one -- ITM_OMITTED_WHEN_EMPTY"),
     ("innate_effects", "one nine-byte .SPC record each, id + INNATE_PAYLOAD "
-                       "+ a NULL next pointer the engine rebuilds; only "
-                       "this title's own innate ids are written, the rest "
+                       "+ a NULL next pointer the engine rebuilds; a C64 "
+                       "source's class-seeded ids become this port's first "
+                       "-- C64_CLASS_TRAITS, a paladin's 45 for DOS's 8 in "
+                       "both later titles -- then only this title's own "
+                       "innate ids are written, the rest "
                        "reported, "
                        "and a character with none gets no .SPC file"),
     ("status", "the neutral name indexed back into the engine's own nine "
@@ -3739,8 +3825,26 @@ def write(char: NeutralCharacter,
     # importer does: it reads a `.spc` and keeps only the racial and
     # constitutional ids.  A character with none gets no file, the state the
     # engine itself writes for a party member with nothing running.
+    #
+    # A C64 source's class-seeded ids are the C64's numbers and have to
+    # become this port's before anything filters them: both later titles
+    # seed a paladin's Protection from Evil as trait 45 and DOS writes 8 for
+    # it, so a paladin read off a C64 disk used to arrive here carrying an id
+    # `_innate_effects` had never heard of, get reported as an item power,
+    # and lose the effect for good -- the DOS engine writes the record once
+    # and never re-derives it from the class on load (#481, and #388 for the
+    # DOS-source half of the same loss).  `C64_CLASS_TRAITS` carries the
+    # table and the class guard that keeps a cleric's own 45 out of it.
     innate = use("innate_effects")
     converted = [int(e) for e in innate.value] if innate is not None else []
+    seeded: dict[int, int] = {}
+    if port == "C64":
+        before = converted
+        converted = _from_c64_class_traits(
+            shape.key, int(w.get("class_bits", 0) or 0), before)
+        seeded = {into: c64 for _bit, c64, into
+                  in C64_CLASS_TRAITS.get(shape.key, ())
+                  if into in converted and c64 in before}
     race = int(w.get("race", 0) or 0)
     derived = [e for e in _race_combat_effects(char.game, race, shape)
                if e not in converted]
@@ -3767,7 +3871,11 @@ def write(char: NeutralCharacter,
         at = base + n * EFFECT_SIZE
         whence = (f"derived from race {race} -- the C64 works this one out "
                   f"at combat time and stores it nowhere"
-                  if e in derived else f"{port} innate_effects")
+                  if e in derived else
+                  f"{port} innate_effects {seeded[e]}, this title's own C64 "
+                  f"seed for the class, written as the id DOS names the same "
+                  f"effect by" if e in seeded else
+                  f"{port} innate_effects")
         rep.note(at, 1, f"{shape.effect_suffix} record {n}: effect {e} "
                         f"({traits.describe(e)}), {whence}")
         rep.note(at + 1, 4,

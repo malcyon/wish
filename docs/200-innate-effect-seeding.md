@@ -240,11 +240,38 @@ carrying 134 is classified innate and converted whoever holds it.
 
 ## 5. What this changes
 
-Nothing in the code. The fix on `#388 (A converted paladin or ranger loses his
-innate effect on the way to DOS, because the writer filters through Pool of
-Radiance's id list)` is right, and its two class ids are right —
-they are now read from the engine as well as from records. What it changes is
-the **evidence** behind one grade: 134 was graded CONFIRMED over ARGORA and
-RWELLYN, and those two are one party, alongside a third character in the same
-party who carries 134 without being a ranger. The engine's own switch is the
-stronger source and does not depend on that party at all.
+The fix on `#388 (A converted paladin or ranger loses his innate effect on the
+way to DOS, because the writer filters through Pool of Radiance's id list)` is
+right, and its two class ids are right — they are now read from the engine as
+well as from records. What it changes is the **evidence** behind one grade: 134
+was graded CONFIRMED over ARGORA and RWELLYN, and those two are one party,
+alongside a third character in the same party who carries 134 without being a
+ranger. The engine's own switch is the stronger source and does not depend on
+that party at all.
+
+**And one thing in the code, which an earlier version of this section said
+there was not.** The paladin row of §1's table is a *disagreement between the
+ports*, so a filter cannot fix it: a C64 record hands `dos.write` a 45 and the
+DOS `.SPC` file needs an 8. `goldbox.dos.C64_CLASS_TRAITS` is the translation,
+one row per later title, applied only to a source whose port is the C64 and
+only to a character whose `class_bits` carry the paladin bit —
+`#481 (A C64 Curse paladin converted to DOS loses Protection from Evil for
+good, because the C64 seeds it as trait 45 and DOS writes it as effect 8)`.
+
+The class guard is not decoration. The C64's ten trait slots hold racial
+seeds, item grants and a class seed in one namespace with no byte saying which
+is which (`docs/171-c64-trait-slots.md`), and on the DOS side 45 is a live id
+for a Protection from Evil 10' Radius somebody **cast** — FLORENTZ carries one
+at duration 47 in §4 above. Translating without asking the class would hand a
+cleric's running spell a paladin's permanent effect.
+
+The map is a set rather than a swap, because a record can hold both ids at
+once: `GEN $0FF0` and `GEN $2515` remove only their own two ids before
+re-seeding, so a paladin Wish converted from DOS keeps his 8 and could gain a
+45 beside it. **No specimen on this machine has ever shown that**: of the eight
+C64 records here carrying a converted paladin — six Silver Blades, two Curse,
+several of them resaved and walked by the C64 engine — all eight hold 8 alone
+and none has gained a 45. So the both-ids case is provided for and unobserved,
+graded SPECULATIVE. The experiment that would settle it: convert a DOS paladin
+to a C64 disk, load it, use the trainer (which is what `docs/172-curse-trainer.md`
+shows calling the recompute), save, and read the ten trait slots at `0x0AD`.
