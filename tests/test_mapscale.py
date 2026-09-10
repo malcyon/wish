@@ -498,6 +498,43 @@ def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
         f"the minimum width grew with the font: {dict(zip(fonts, widths))}")
 
 
+def test_the_window_still_fits_the_laptop_with_an_ordinary_party_open(
+        app, tmp_path, monkeypatch):
+    """#474's own gap in the two tests above, and what is asserted about it now.
+
+    `_ordinary_party` is six characters at a size a player actually has, not
+    the widest the record allows -- the widest one is what
+    `test_the_window_still_fits_the_laptop_with_a_save_open` measures, and it
+    is the one shape guaranteed to stay above `ROSTER_MIN_WIDTH`, so it never
+    saw this. `EditorBinding._size_roster` hands the roster
+    `min(natural, ROSTER_MIN_WIDTH)`, and an ordinary party's `natural` -- its
+    five columns at their contents -- is 219px against the constant's 440, so
+    `min` picks the font-derived number and the window's floor grows with the
+    UI font here too: 993, 1050, 1110 and 1182px at +0, +3, +6 and +10.
+
+    Two things were tried against that and both made the roster worse to look
+    at: letting it scroll below `ROSTER_MIN_WIDTH` put `Class`, `AC` and `HP`
+    behind a horizontal scrollbar, and pinning the minimum to the constant
+    without capping `Name`'s surplus left a blank strip inside the roster's
+    own border. Donald rejected both, on 2026-09-10 (`#474`, `#504`), so
+    `#41`'s equality guarantee -- the window's minimum width holds flat across
+    every font -- is retired for the loaded, ordinary-party case rather than
+    chased into a third layout. It was only ever a means to the actual
+    guarantee, which this asserts directly: the window still fits on the
+    screen it was built for. 1182 at +10 is nowhere near 1366, so a window
+    that grows a little with the font is a smaller defect than either rejected
+    fix, and the picture matters more than the arithmetic.
+    """
+    from test_windowslayout import _ordinary_party
+
+    save = _ordinary_party(tmp_path)
+    fonts = (0, 3, 6, 10)
+    floors = _floors(app, tmp_path, monkeypatch, save, fonts=fonts)
+    for extra, floor in zip(fonts, floors):
+        assert floor.width() <= SMALL.width(), f"+{extra}pt"
+        assert floor.height() <= SMALL.height(), f"+{extra}pt"
+
+
 def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
                                                                   monkeypatch):
     """The disk-backed half, and what makes the synthetic party evidence.
