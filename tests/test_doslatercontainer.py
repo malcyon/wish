@@ -139,7 +139,8 @@ def test_a_later_titles_retarget_writes_the_block_and_not_the_flag_page(
     save = bytearray(shape.size)
     script = b"\x88\x13" + bytes(range(1, 40))
     sg.retarget(save, area=0x10, dax=1, wallset=(21, sg.EMPTY, sg.EMPTY),
-                script=script if shape.script_bytes else None, shape=shape)
+                script=script if shape.script_bytes else None,
+                container=shape)
     assert sg.word(save, sg.WALLMAP) == 0
     assert all(sg.word(save, sg.WALLSET + i) == 0 for i in range(3))
     assert sg.wall_block(save) == ((21, sg.EMPTY, sg.EMPTY),
@@ -152,7 +153,7 @@ def test_a_later_titles_retarget_writes_the_block_and_not_the_flag_page(
     else:
         with pytest.raises(sg.DosSaveError):
             sg.retarget(save, area=0x10, dax=1, wallset=(21, 0, 0),
-                        script=script, shape=shape)
+                        script=script, container=shape)
 
 
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
@@ -160,7 +161,7 @@ def test_the_later_tail_is_written_zero_and_pool_of_radiances_is_not(shape):
     later = bytearray(shape.size)
     later[shape.tail_scratch:shape.party_size_byte] = b"\xaa" * (
         shape.party_size_byte - shape.tail_scratch)
-    sg.put_tail_state(later, indoors=True, shape=shape)
+    sg.put_tail_state(later, indoors=True, container=shape)
     assert later[shape.tail_scratch:shape.tail_scratch + 2] == b"\0\0"
     assert later[shape.previous_mode] == 0 and later[shape.mode] == 0
     # The block after them is untouched.

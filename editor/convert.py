@@ -415,15 +415,15 @@ class DosToC64(Direction):
     source_port = "dos"
     destination_port = "c64"
 
-    def __init__(self, shape: dos_layout.DosShape):
-        self.shape = shape
-        self.source_key = shape.key
-        self.destination_game = games.by_key(shape.key)
+    def __init__(self, deltas: dos_layout.DosDeltas):
+        self.shape = deltas
+        self.source_key = deltas.key
+        self.destination_game = games.by_key(deltas.key)
         try:
-            self._name = DOS_TO_C64_NAMES[shape.key]
+            self._name = DOS_TO_C64_NAMES[deltas.key]
         except KeyError:
             raise UnnamedConversionError(
-                f"{shape.title} is in goldbox.dos.CONVERTS but "
+                f"{deltas.title} is in goldbox.dos.CONVERTS but "
                 f"editor.convert.DOS_TO_C64_NAMES names no .D64 file for "
                 f"it") from None
 
@@ -538,16 +538,16 @@ class C64ToDos(Direction):
     source_port = "c64"
     destination_port = "dos"
 
-    def __init__(self, shape: dos_layout.DosShape):
-        self.shape = shape
-        self.source_key = shape.key
-        self.destination_game = shape
+    def __init__(self, deltas: dos_layout.DosDeltas):
+        self.shape = deltas
+        self.source_key = deltas.key
+        self.destination_game = deltas
         # Raises `games.UnknownGameError` at import time (via `DIRECTIONS`
         # below) if `WRITES` ever named a title with no C64 port -- the
         # loud failure `DOS_TO_C64_NAMES` gives the other direction, with no
         # table of its own needed: a C64 → DOS conversion writes the same
         # file names whatever the title.
-        self.title = games.by_key(shape.key)
+        self.title = games.by_key(deltas.key)
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
@@ -838,14 +838,14 @@ class C64ToAmiga(Direction):
     source_port = "c64"
     destination_port = "amiga"
 
-    def __init__(self, shape: dos_layout.DosShape):
-        self.shape = shape
-        self.source_key = shape.key
-        self.destination_game = shape
+    def __init__(self, deltas: dos_layout.DosDeltas):
+        self.shape = deltas
+        self.source_key = deltas.key
+        self.destination_game = deltas
         # The C64 title `dos.c64_party` reads the source disk against --
         # `games.by_key` raises loudly at import time if `WRITES` ever named
         # a title with no C64 port, the same guard `C64ToDos.__init__` keeps.
-        self.title = games.by_key(shape.key)
+        self.title = games.by_key(deltas.key)
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
@@ -887,10 +887,10 @@ class DosToAmiga(Direction):
     source_port = "dos"
     destination_port = "amiga"
 
-    def __init__(self, shape: dos_layout.DosShape):
-        self.shape = shape
-        self.source_key = shape.key
-        self.destination_game = shape
+    def __init__(self, deltas: dos_layout.DosDeltas):
+        self.shape = deltas
+        self.source_key = deltas.key
+        self.destination_game = deltas
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path") -> AmigaWriteRehearsal:

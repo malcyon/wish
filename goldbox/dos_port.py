@@ -61,8 +61,8 @@ from .layout import Confidence, Field, Kind
 __all__ = [
     "RECORD_SIZE",
     "DosDeltas",
-    "SHAPES",
-    "SHAPES_BY_SIZE",
+    "DELTAS",
+    "DELTAS_BY_SIZE",
     "POOL_OF_RADIANCE",
     "CURSE_OF_THE_AZURE_BONDS",
     "SECRET_OF_THE_SILVER_BLADES",
@@ -74,10 +74,13 @@ __all__ = [
     # old spelling has to change -- `goldbox/dos_layout.py` re-exports these
     # too, as a shim (`#470 (Give the project a neutral title beside its
     # neutral character record, with one port per platform a title shipped
-    # on)`, stage 3). Gone in stage 9, with the shim.
+    # on)`, stage 3, and stage 3b for the two below). Gone in stage 9, with
+    # the shim.
     "DosShape",
     "DosShapeError",
     "shape_for",
+    "SHAPES",
+    "SHAPES_BY_SIZE",
     "NAME_SIZE",
     "ITEM_SIZE",
     "EFFECT_SIZE",
@@ -1221,12 +1224,19 @@ POOLS_OF_DARKNESS = DosDeltas(
                                _NOPE, _UNNAMED_1E0_NOTE, kind=Kind.U8),),
              "heap_104": 2})
 
-SHAPES: tuple[DosDeltas, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+DELTAS: tuple[DosDeltas, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
                                 SECRET_OF_THE_SILVER_BLADES,
                                 POOLS_OF_DARKNESS)
-SHAPES_BY_KEY: dict[str, DosDeltas] = {s.key: s for s in SHAPES}
+DELTAS_BY_KEY: dict[str, DosDeltas] = {s.key: s for s in DELTAS}
 #: The record size identifies the title on its own: 285, 422, 439, 510.
-SHAPES_BY_SIZE: dict[int, DosDeltas] = {s.record_size: s for s in SHAPES}
+DELTAS_BY_SIZE: dict[int, DosDeltas] = {s.record_size: s for s in DELTAS}
+
+#: The pre-#470 names, kept as aliases -- see `goldbox/dos_layout.py`'s own
+#: shim docstring, which is where a caller reading only that module meets
+#: them.
+SHAPES = DELTAS
+SHAPES_BY_KEY = DELTAS_BY_KEY
+SHAPES_BY_SIZE = DELTAS_BY_SIZE
 
 
 class DosDeltasError(ValueError):
@@ -1260,15 +1270,15 @@ def deltas_for(what: "int | str | DosDeltas") -> DosDeltas:
         return what
     if isinstance(what, int):
         try:
-            return SHAPES_BY_SIZE[what]
+            return DELTAS_BY_SIZE[what]
         except KeyError:
             raise DosDeltasError(
                 f"{what} bytes is no DOS Gold Box character record; the four "
                 f"this project reads are "
-                f"{', '.join(str(n) for n in sorted(SHAPES_BY_SIZE))}"
+                f"{', '.join(str(n) for n in sorted(DELTAS_BY_SIZE))}"
             ) from None
     try:
-        return SHAPES_BY_KEY[what]
+        return DELTAS_BY_KEY[what]
     except KeyError:
         raise DosDeltasError(f"no DOS title keyed {what!r}") from None
 
@@ -1301,14 +1311,14 @@ def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:
     to one of those three titles' deltas is only really tested where the
     archives are.  Say in the commit that you ran it somewhere they exist.
     """
-    shape = deltas_for(what)
+    deltas = deltas_for(what)
     declared: list[Field] = []
     cursor = 0
     for f in LAYOUT:
-        size = shape.sizes.get(f.name, f.size)
+        size = deltas.sizes.get(f.name, f.size)
         if size < 0:
             raise DosDeltasError(
-                f"{shape.key}: field {f.name!r} cannot be {size} bytes")
+                f"{deltas.key}: field {f.name!r} cannot be {size} bytes")
         if size:
             if not f.name.startswith("gap_"):
                 kind = f.kind
@@ -1319,7 +1329,7 @@ def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:
                 declared.append(dataclasses.replace(
                     f, offset=cursor, size=size, kind=kind))
             cursor += size
-        extra = shape.inserts.get(f.name, 0)
+        extra = deltas.inserts.get(f.name, 0)
         if isinstance(extra, int):
             cursor += extra
         else:
@@ -1333,15 +1343,15 @@ def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:
                     continue
                 declared.append(dataclasses.replace(e, offset=cursor))
                 cursor += e.size
-    if cursor != shape.record_size:
+    if cursor != deltas.record_size:
         raise DosDeltasError(
-            f"{shape.key}: the field widths add up to {cursor} bytes, not "
-            f"the {shape.record_size} the record is")
-    return _build(declared, shape.record_size, f"{shape.key} record")
+            f"{deltas.key}: the field widths add up to {cursor} bytes, not "
+            f"the {deltas.record_size} the record is")
+    return _build(declared, deltas.record_size, f"{deltas.key} record")
 
 
 #: Every title's table, by key.  Pool of Radiance's is `LAYOUT` itself.
-LAYOUTS: dict[str, tuple[Field, ...]] = {s.key: layout_for(s) for s in SHAPES}
+LAYOUTS: dict[str, tuple[Field, ...]] = {s.key: layout_for(s) for s in DELTAS}
 FIELDS_BY_NAME_FOR: dict[str, dict[str, Field]] = {
     key: {f.name: f for f in table} for key, table in LAYOUTS.items()}
 

@@ -85,6 +85,7 @@ from .dos_layout import (
     RECORD_SIZE,
     SECRET_OF_THE_SILVER_BLADES,
     SHAPES,
+    DosDeltas,
     DosShape,
     DosShapeError,
     shape_for,
@@ -754,7 +755,7 @@ _RACE_COMBAT_EFFECTS_TABLES: dict[str, dict[str, tuple[int, ...]]] = {
 
 
 def _race_combat_effects(game: object, race: int,
-                         shape: "DosShape | None" = None) -> tuple[int, ...]:
+                         deltas: "DosDeltas | None" = None) -> tuple[int, ...]:
     """This title's innate combat ids for a race code, empty for an unnamed one.
 
     `game` is whatever a caller has in hand for the title -- a
@@ -764,8 +765,8 @@ def _race_combat_effects(game: object, race: int,
     (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
     answers with Pool of Radiance's tables for it)`).
 
-    **`shape` is what names the race, when the caller has one, and it
-    stays**: `goldbox.dos_layout.DosShape.race_numbers` is the string table
+    **`deltas` is what names the race, when the caller has one, and it
+    stays**: `goldbox.dos_port.DosDeltas.race_numbers` is the string table
     read out of a title's own DOS executable (#237), and it disagrees with
     `Title.races` at codes no character-generation menu offers -- Curse's 6,
     the two Realms titles' 0 and 8, Silver Blades' 0 -- so naming the
@@ -773,10 +774,10 @@ def _race_combat_effects(game: object, race: int,
     has one in hand (`#194`). This is the same defect `#293` fixed for
     Silver Blades, one title along.
     """
-    if shape is not None:
-        names = shape.race_numbers
+    if deltas is not None:
+        names = deltas.race_numbers
         name = names[race] if 0 <= race < len(names) else None
-        key = shape.key
+        key = deltas.key
     else:
         name = titles.race_table(game).get(race)
         key = getattr(game, "key", game)
@@ -6155,7 +6156,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     wallset = (state.wallset if indoors else dos_savegame.OUTDOOR_WALLSET)
     dos_savegame.retarget(savgam, area=area, dax=dax,
                           wallset=wallset, script=script,
-                          outdoors=not indoors, geo=geo, shape=shape)
+                          outdoors=not indoors, geo=geo, container=shape)
     report.note(shape.head, shape.dax_bytes,
                 f"the DAX container number, {dax}, for area "
                 f"{area} ({where.name or where.ecl})"
@@ -6230,7 +6231,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         # The note keeps the addresses; the player-facing copy of this
         # sentence is gone (#248, and see OUTDOOR_FACING above).
         report.note(shape.pos_facing, 1, OUTDOOR_FACING_WHY)
-    dos_savegame.put_tail_state(savgam, indoors=indoors, shape=shape)
+    dos_savegame.put_tail_state(savgam, indoors=indoors, container=shape)
     where_stood = "indoors" if indoors else "outdoors"
     if later:
         report.note(shape.tail_scratch, 4,

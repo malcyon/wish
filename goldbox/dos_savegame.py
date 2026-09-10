@@ -7,7 +7,7 @@ specimens -- Donald's own slots A, B and J, four saves taken one action
 apart, two engine resaves of converted parties, and three saves made on the
 overland travel map by playing there (#59's outdoor pass, `work/p59-outdoor`).
 The five-region map below is Pool of Radiance's; the other three titles are
-`SAVE_SHAPES`, one row of region widths each, and what is graded there is
+`CONTAINERS`, one row of region widths each, and what is graded there is
 graded there.  `docs/141-dos-savegame.md` is the prose
 form; `docs/50-experiments.md` "Mapping the DOS saved game" is the reasoning.
 
@@ -82,7 +82,7 @@ class DaxError(DosSaveError):
 SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469,
                              # and Pools of Darkness has no SAVGAM?.DAT at all
                              # -- 1364 bytes of SAVGAM?.PTY beside a 12-byte
-                             # VAULT?.DAT (#53). All four are in SAVE_SHAPES;
+                             # VAULT?.DAT (#53). All four are in CONTAINERS;
                              # only this one is decoded to the field.
 DAX_NUMBER = 0               # byte 0: which GEO/ECL container holds the area
 VAR_BASE = 0x4900
@@ -110,7 +110,7 @@ ECL_HEADER = 2
 #: those regions are the same size in the two titles (#253).  Silver Blades'
 #: is at 5121 because it stages no script, and Pools of Darkness' is at 1024.
 #: So a writer for any title but Pool of Radiance still reads
-#: `shape.pos_x`/`pos_y`/`pos_facing` rather than these three names.
+#: `container.pos_x`/`pos_y`/`pos_facing` rather than these three names.
 POS_X, POS_Y, POS_FACING = 12801, 12802, 12803
 FACING_SCALE = 2             # 0 N, 2 E, 4 S, 6 W
 # The four bytes between the facing and the party size, measured over the
@@ -210,7 +210,7 @@ POD_WILDERNESS_REGION = 58   # file 57, indexed into a table at `DS:0x7D08`
 POD_ENGINE_VARS = 59
 
 #: The twelve bytes of the Pools of Darkness square block, by file offset.
-#: `shape.pos_x`/`pos_y`/`pos_facing` are the first three; these name the rest.
+#: `container.pos_x`/`pos_y`/`pos_facing` are the first three; these name the rest.
 POD_PREVIOUS_MODE = 1029     # `DS:0x880D`, only ever assigned from `0x880C`
 POD_MODE = 1030              # `DS:0x880C`: 3 wilderness, 4 dungeon, 2 in camp
 POD_MAP = 1031               # `DS:0xA9F8`, a word; zeroed on leaving a dungeon
@@ -384,11 +384,12 @@ class DosContainer:
         Blades
         =====================  ===========  ==========================
 
-        In all three that call lands at the same file offset the shape gives,
-        and Pools of Darkness' own writer was read the same way for #175.
+        In all three that call lands at the same file offset the container
+        gives, and Pools of Darkness' own writer was read the same way for
+        #175.
 
         A writer that hardcodes Pool of Radiance's `POS_X`, `POS_Y` and
-        `POS_FACING` for another title's shape still wants
+        `POS_FACING` for another title's container still wants
         `pos_x`/`pos_y`/`pos_facing` instead: the constants happen to agree
         for Curse and Silver Blades and do not for Pools of Darkness, whose
         square is at 1024.
@@ -543,18 +544,25 @@ SAVE_POOLS_OF_DARKNESS = DosContainer(
     suffix=".PTY", var_bytes=POD_VAR_COUNT, dax_bytes=0, var_words=0,
     script_bytes=0, square_bytes=12)
 
-SAVE_SHAPES: "tuple[DosContainer, ...]" = (
+CONTAINERS: "tuple[DosContainer, ...]" = (
     SAVE_POOL_OF_RADIANCE, SAVE_CURSE_OF_THE_AZURE_BONDS,
     SAVE_SECRET_OF_THE_SILVER_BLADES, SAVE_POOLS_OF_DARKNESS)
-SAVE_SHAPES_BY_KEY = {s.key: s for s in SAVE_SHAPES}
-SAVE_SHAPES_BY_SIZE = {s.size: s for s in SAVE_SHAPES}
+CONTAINERS_BY_KEY = {s.key: s for s in CONTAINERS}
+CONTAINERS_BY_SIZE = {s.size: s for s in CONTAINERS}
+
+#: The pre-#470 names, kept as aliases (`#470 (Give the project a neutral
+#: title beside its neutral character record, with one port per platform a
+#: title shipped on)`'s stage 3b).  Gone in stage 9.
+SAVE_SHAPES = CONTAINERS
+SAVE_SHAPES_BY_KEY = CONTAINERS_BY_KEY
+SAVE_SHAPES_BY_SIZE = CONTAINERS_BY_SIZE
 
 
-def save_shape_for(what: "int | str | DosContainer") -> DosContainer:
-    """The container shape for a size, a title key, or a shape.
+def container_for(what: "int | str | DosContainer") -> DosContainer:
+    """The container for a size, a title key, or a container already in hand.
 
-    **The size names the shape, not the title.**  Treasures of the Savage
-    Frontier writes a 1364-byte `SAVGAM<slot>.PTY` and a 12-byte
+    **The size names the container, not the title.**  Treasures of the
+    Savage Frontier writes a 1364-byte `SAVGAM<slot>.PTY` and a 12-byte
     `VAULT<slot>.DAT` beside it, exactly as Pools of Darkness does, and its
     two shipped containers carry the same tail -- six `CHRDAT` entries 41
     bytes apart, a party size of 6, 82 bytes of UI scratch.  So a 1364-byte
@@ -565,17 +573,21 @@ def save_shape_for(what: "int | str | DosContainer") -> DosContainer:
         return what
     if isinstance(what, int):
         try:
-            return SAVE_SHAPES_BY_SIZE[what]
+            return CONTAINERS_BY_SIZE[what]
         except KeyError:
             raise DosSaveError(
                 f"{what} bytes is no DOS Gold Box saved game; the four this "
                 f"project reads are "
-                f"{', '.join(str(n) for n in sorted(SAVE_SHAPES_BY_SIZE))}"
+                f"{', '.join(str(n) for n in sorted(CONTAINERS_BY_SIZE))}"
             ) from None
     try:
-        return SAVE_SHAPES_BY_KEY[what]
+        return CONTAINERS_BY_KEY[what]
     except KeyError:
         raise DosSaveError(f"no DOS title keyed {what!r}") from None
+
+
+#: The pre-#470 name, kept as an alias.
+save_shape_for = container_for
 
 
 # -- the named VM variables --------------------------------------------------
@@ -657,7 +669,7 @@ SAVGAM_CONSTANTS: tuple[tuple[int, int, str], ...] = (
 )
 
 
-def pool_address(address: int, shape: "DosContainer | None" = None) -> int:
+def pool_address(address: int, container: "DosContainer | None" = None) -> int:
     """A title's own ECL address, as the Pool of Radiance address for the
     same word of the variable array.
 
@@ -672,14 +684,14 @@ def pool_address(address: int, shape: "DosContainer | None" = None) -> int:
     out, and every value read through it plausible and wrong.  A caller that
     has a Curse or Silver Blades address in hand converts here first.
     """
-    shape = shape or SAVE_POOL_OF_RADIANCE
-    return address - shape.var_base + VAR_BASE
+    container = container or SAVE_POOL_OF_RADIANCE
+    return address - container.var_base + VAR_BASE
 
 
-def word_offset(address: int, shape: "DosContainer | None" = None) -> int:
+def word_offset(address: int, container: "DosContainer | None" = None) -> int:
     """File offset of the VM word for an ECL address.
 
-    **The address is Pool of Radiance's**, whatever title the shape is, and
+    **The address is Pool of Radiance's**, whatever title the container is, and
     what it really names is a *word index* into the array: `$4900` is index 0
     in every title that has one, because Curse and Silver Blades relocate the
     whole save image by `$200` without changing the array.  Their scripts
@@ -690,85 +702,85 @@ def word_offset(address: int, shape: "DosContainer | None" = None) -> int:
 
     Pools of Darkness has no array here at all and raises.
     """
-    shape = shape or SAVE_POOL_OF_RADIANCE
-    if not shape.var_words:
+    container = container or SAVE_POOL_OF_RADIANCE
+    if not container.var_words:
         raise DosSaveError(
-            f"a {shape.title} saved game holds no ECL variable array")
-    if not VAR_BASE <= address < VAR_BASE + shape.var_words:
+            f"a {container.title} saved game holds no ECL variable array")
+    if not VAR_BASE <= address < VAR_BASE + container.var_words:
         raise DosSaveError(f"${address:04X} is outside the variable space")
-    return shape.var_offset + 2 * (address - VAR_BASE)
+    return container.var_offset + 2 * (address - VAR_BASE)
 
 
-def _shaped(save: bytes, shape: "DosContainer | None" = None) -> DosContainer:
+def _shaped(save: bytes, container: "DosContainer | None" = None) -> DosContainer:
     """The title this buffer is, refusing one that is no title's size.
 
-    Every accessor here reads an offset a shape computes, so a buffer of the
+    Every accessor here reads an offset a container computes, so a buffer of the
     wrong length would read somebody else's region and hand back a plausible
-    number.  Four sizes, four shapes -- 13137, 13149, 5469, 1364 -- and see
-    `save_shape_for` for why that is a shape rather than a title.
+    number.  Four sizes, four containers -- 13137, 13149, 5469, 1364 -- and see
+    `container_for` for why that is a container rather than a title.
     """
-    if shape is None:
-        return save_shape_for(len(save))
-    shape = save_shape_for(shape)
-    if len(save) != shape.size:
+    if container is None:
+        return container_for(len(save))
+    container = container_for(container)
+    if len(save) != container.size:
         raise DosSaveError(
-            f"a {shape.title} saved game is {shape.size} bytes; this is "
+            f"a {container.title} saved game is {container.size} bytes; this is "
             f"{len(save)}")
-    return shape
+    return container
 
 
 def word(save: bytes, address: int,
-         shape: "DosContainer | None" = None) -> int:
-    shape = _shaped(save, shape)
-    return struct.unpack_from("<H", save, word_offset(address, shape))[0]
+         container: "DosContainer | None" = None) -> int:
+    container = _shaped(save, container)
+    return struct.unpack_from("<H", save, word_offset(address, container))[0]
 
 
 # --- Pools of Darkness: the byte-wide array ---------------------------------
-def pod_var_offset(index: int, shape: "DosContainer | None" = None) -> int:
+def pod_var_offset(index: int, container: "DosContainer | None" = None) -> int:
     """File offset of the byte holding ECL variable `index`.
 
     `index - 1`, and the subtraction is the whole finding: `GetVar` and
-    `SetVar` decrement the index and add it to the block base (#175).  A shape
+    `SetVar` decrement the index and add it to the block base (#175).  A container
     with no byte array raises rather than answering, because offset `index -
     1` in a Pool of Radiance save is a word of somebody else's variable.
     """
-    shape = shape or SAVE_POOLS_OF_DARKNESS
-    if not shape.var_bytes:
+    container = container or SAVE_POOLS_OF_DARKNESS
+    if not container.var_bytes:
         raise DosSaveError(
-            f"a {shape.title} saved game holds no byte-wide variable array")
-    if not POD_VAR_FIRST <= index < POD_VAR_FIRST + shape.var_bytes:
+            f"a {container.title} saved game holds no byte-wide variable array")
+    if not POD_VAR_FIRST <= index < POD_VAR_FIRST + container.var_bytes:
         raise DosSaveError(
-            f"variable {index} is outside the {shape.var_bytes} this title "
+            f"variable {index} is outside the {container.var_bytes} this title "
             f"has")
     return index - POD_VAR_FIRST
 
 
 def pod_var(save: bytes, index: int,
-            shape: "DosContainer | None" = None) -> int:
+            container: "DosContainer | None" = None) -> int:
     """One ECL variable, as the engine's own 1-based index."""
-    shape = _shaped(save, shape)
-    return save[pod_var_offset(index, shape)]
+    container = _shaped(save, container)
+    return save[pod_var_offset(index, container)]
 
 
 def put_pod_var(save: bytearray, index: int, value: int,
-                shape: "DosContainer | None" = None) -> None:
+                container: "DosContainer | None" = None) -> None:
     """Write one ECL variable.  One byte: `SetVar`'s word form writes the
     variable and the one after it, so a caller wanting a word writes both."""
-    shape = _shaped(save, shape)
-    save[pod_var_offset(index, shape)] = value & 0xFF
+    container = _shaped(save, container)
+    save[pod_var_offset(index, container)] = value & 0xFF
 
 
-def pod_in_dungeon(save: bytes, shape: "DosContainer | None" = None) -> bool:
+def pod_in_dungeon(save: bytes, container: "DosContainer | None" = None) -> bool:
     """Is the party in a dungeon rather than the wilderness?
 
     Variable 34, file offset 33.  The counterpart of `outdoors` for a title
     that has no `$49E6`, and read the same way round as the engine reads it:
     two sites switch the interface mode on this byte and nothing else.
     """
-    return pod_var(save, POD_IN_DUNGEON, shape) != 0
+    return pod_var(save, POD_IN_DUNGEON, container) != 0
 
 
-def pod_clock(save: bytes, shape: "DosContainer | None" = None
+def pod_clock(save: bytes, container: "DosContainer | None" = None
               ) -> "tuple[int, int, int, int, int]":
     """(hour, minute, day, month, year) from the seven digits at 4-10.
 
@@ -776,17 +788,17 @@ def pod_clock(save: bytes, shape: "DosContainer | None" = None
     of Radiance encodes them; `clock` above is the same arithmetic over words.
     The sub-minute digit at file 4 is dropped, as it is there.
     """
-    d = [pod_var(save, POD_CLOCK + i, shape) for i in range(POD_CLOCK_DIGITS)]
+    d = [pod_var(save, POD_CLOCK + i, container) for i in range(POD_CLOCK_DIGITS)]
     return d[3], d[2] * 10 + d[1], d[4], d[5], d[6]
 
 
-def dax_number(save: bytes, shape: "DosContainer | None" = None) -> int:
+def dax_number(save: bytes, container: "DosContainer | None" = None) -> int:
     """Which GEO/ECL/WALLDEF/8X8D container holds the current area."""
-    shape = _shaped(save, shape)
-    if not shape.dax_bytes:
+    container = _shaped(save, container)
+    if not container.dax_bytes:
         raise DosSaveError(
-            f"a {shape.title} saved game has no container-number byte")
-    return save[shape.head]
+            f"a {container.title} saved game has no container-number byte")
+    return save[container.head]
 
 
 def geo_block(save: bytes) -> int:
@@ -839,17 +851,17 @@ def clock(save: bytes) -> tuple[int, int, int, int]:
     return d[3], d[2] * 10 + d[1], d[4], d[5]
 
 
-def party_size(save: bytes, shape: "DosContainer | None" = None) -> int:
+def party_size(save: bytes, container: "DosContainer | None" = None) -> int:
     """The party-size byte, the last of the square block.
 
     Reads 6 in all nine shipped containers of all four titles, which is what
     says the block sits in the same place in each.
     """
-    shape = _shaped(save, shape)
-    return save[shape.party_table - 1]
+    container = _shaped(save, container)
+    return save[container.party_table - 1]
 
 
-def position(save: bytes, shape: "DosContainer | None" = None
+def position(save: bytes, container: "DosContainer | None" = None
              ) -> tuple[int, int, int]:
     """(x, y, facing) with facing in the C64's units, 0 N 1 E 2 S 3 W.
 
@@ -871,9 +883,9 @@ def position(save: bytes, shape: "DosContainer | None" = None
     (8, 2, 3) -- and a single right turn moved byte 1026 from 4 to 6 and
     nothing else in the file's first 1036 bytes.
     """
-    shape = _shaped(save, shape)
-    return (save[shape.pos_x], save[shape.pos_y],
-            save[shape.pos_facing] // FACING_SCALE)
+    container = _shaped(save, container)
+    return (save[container.pos_x], save[container.pos_y],
+            save[container.pos_facing] // FACING_SCALE)
 
 
 def outdoors(save: bytes) -> bool:
@@ -920,7 +932,7 @@ def wall_triple(save: bytes) -> tuple[int, int, int]:
 
 
 def put_character_files(save: bytearray, slot: str,
-                        shape: "DosContainer | None" = None) -> None:
+                        container: "DosContainer | None" = None) -> None:
     """Name the files the engine will load the party from.
 
     The engine loads the party from these names and not from the slot letter
@@ -931,25 +943,25 @@ def put_character_files(save: bytearray, slot: str,
     shows what a blanked entry does, and the party size says how many are
     read.
     """
-    shape = _shaped(save, shape)
+    container = _shaped(save, container)
     for n in range(PARTY_ENTRIES):
-        at = shape.party_table + n * PARTY_ENTRY
+        at = container.party_table + n * PARTY_ENTRY
         name = f"CHRDAT{slot.upper()}{n + 1}".encode("ascii")
         save[at] = len(name)
         save[at + 1:at + 1 + len(name)] = name
 
 
 def character_files(save: bytes,
-                    shape: "DosContainer | None" = None) -> list[str]:
+                    container: "DosContainer | None" = None) -> list[str]:
     """The CHRDAT filenames the engine will load the party from.
 
     Six of six in all nine shipped containers of all four titles, which is
     the anchor the per-title region map was measured from.
     """
-    shape = _shaped(save, shape)
+    container = _shaped(save, container)
     out = []
     for n in range(PARTY_ENTRIES):
-        at = shape.party_table + n * PARTY_ENTRY
+        at = container.party_table + n * PARTY_ENTRY
         length = save[at]
         # An entry is one length byte, the name, then 32 bytes of heap
         # scratch, so a real name cannot exceed eight -- which is exactly
@@ -1080,21 +1092,21 @@ def dax_block(data: bytes, block_id: int, name: str = "dax") -> bytes:
 # Writing: the retarget, and the two fields a conversion carries
 # ---------------------------------------------------------------------------
 def put_word(save: bytearray, address: int, value: int,
-             shape: "DosContainer | None" = None) -> None:
+             container: "DosContainer | None" = None) -> None:
     """One VM word, by its Pool of Radiance address -- a word index, see
-    `word_offset`.  `shape` defaults to whatever the buffer's length names."""
-    shape = _shaped(save, shape)
-    struct.pack_into("<H", save, word_offset(address, shape), value & 0xFFFF)
+    `word_offset`.  `container` defaults to whatever the buffer's length names."""
+    container = _shaped(save, container)
+    struct.pack_into("<H", save, word_offset(address, container), value & 0xFFFF)
 
 
 def put_position(save: bytearray, x: int, y: int, facing: int,
-                 shape: "DosContainer | None" = None) -> None:
+                 container: "DosContainer | None" = None) -> None:
     """The square, with `facing` in the C64's 0-3.
 
-    Writes through `shape.pos_x`/`pos_y`/`pos_facing`, not the Pool of
-    Radiance constants of the same shape -- those are 12801-12803, which is
+    Writes through `container.pos_x`/`pos_y`/`pos_facing`, not the Pool of
+    Radiance constants of the same container -- those are 12801-12803, which is
     Silver Blades' script buffer and is inside Pools of Darkness' variable
-    array. `shape` defaults to whichever the buffer's own length names, so an
+    array. `container` defaults to whichever the buffer's own length names, so an
     existing Pool of Radiance caller is unaffected.
 
     Every writer here opens with `_shaped` since #299, which takes any of
@@ -1102,15 +1114,15 @@ def put_position(save: bytearray, x: int, y: int, facing: int,
     and the rest were Pool of Radiance-only until the later titles'
     containers were written.
     """
-    shape = _shaped(save, shape)
-    save[shape.pos_x], save[shape.pos_y] = x, y
-    save[shape.pos_facing] = facing * FACING_SCALE
+    container = _shaped(save, container)
+    save[container.pos_x], save[container.pos_y] = x, y
+    save[container.pos_facing] = facing * FACING_SCALE
 
 
 #: What a Curse or Silver Blades conversion writes into the four tail bytes,
 #: which is zero in all four, and why (#299).
 #:
-#: **The two scratch bytes** (`shape.tail_scratch`) are the last two of the
+#: **The two scratch bytes** (`container.tail_scratch`) are the last two of the
 #: five the engine writes from `DS:0x7229` / `DS:0x89D7`, the same struct
 #: whose Pool of Radiance twin `docs/163-dos-vm-address-map.md` read as the
 #: wall-art nibble in front of the party and the square's attribute byte,
@@ -1119,7 +1131,7 @@ def put_position(save: bytearray, x: int, y: int, facing: int,
 #: `01 03` in both played Curse ones and `00 87` in the fourth Silver Blades
 #: one -- a function of the square, not of the party.
 #:
-#: **The mode pair** (`shape.previous_mode`, `shape.mode`) reads `00 00` in
+#: **The mode pair** (`container.previous_mode`, `container.mode`) reads `00 00` in
 #: all four shipped stubs, which are saves the engine loads and plays from
 #: -- `#113` drove the shipped Curse party out of its inn -- and in the
 #: Silver Blades container `WISH-SPEC-ssb-234-party-pair` slot D, which
@@ -1135,7 +1147,7 @@ LATER_TAIL_ZERO = ("zero: what the four shipped Curse and Silver Blades "
 
 
 def put_tail_state(save: bytearray, *, indoors: bool = True,
-                   shape: "DosContainer | None" = None) -> None:
+                   container: "DosContainer | None" = None) -> None:
     """Bytes 12804-12807, from measurement rather than from the template.
 
     **Pool of Radiance**: `indoors` sets **two** of them, not one: the
@@ -1157,62 +1169,62 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
     across engine-written saves of one party -- and the shipped stubs, which
     the engine loads and plays from, hold zero in all four (#299).
     """
-    shape = _shaped(save, shape)
-    if shape is SAVE_POOL_OF_RADIANCE:
+    container = _shaped(save, container)
+    if container is SAVE_POOL_OF_RADIANCE:
         save[SCRATCH_BYTE] = SCRATCH_INDOORS if indoors else SCRATCH_OUTDOORS
         save[VM_COPY_BYTE] = word(bytes(save), VM_SCRATCH) & 0xFF
         save[VIEW_MODE_BYTE] = (VIEW_MODE_INDOORS if indoors
                                 else VIEW_MODE_OUTDOORS)
         save[TAIL_CONSTANT_BYTE] = TAIL_CONSTANT
         return
-    if not shape.var_words:
+    if not container.var_words:
         raise DosSaveError(
-            f"a {shape.title} saved game's square block is not written here")
-    save[shape.tail_scratch:shape.tail_scratch + 2] = bytes(2)
-    save[shape.previous_mode] = 0
-    save[shape.mode] = 0
+            f"a {container.title} saved game's square block is not written here")
+    save[container.tail_scratch:container.tail_scratch + 2] = bytes(2)
+    save[container.previous_mode] = 0
+    save[container.mode] = 0
 
 
 def put_travel_square(save: bytearray, x: int, y: int,
-                      shape: "DosContainer | None" = None) -> None:
+                      container: "DosContainer | None" = None) -> None:
     """The overland square, window-local, into `$49C3`/`$49C4`.
 
     The facing byte still matters out there: the engine keeps 12803 live
     (doubled, as indoors) while 12801/12802 go stale, so a writer placing a
     party outdoors sets this *and* `put_position`'s facing.
     """
-    shape = _shaped(save, shape)
-    put_word(save, TRAVEL_X, x, shape)
-    put_word(save, TRAVEL_Y, y, shape)
+    container = _shaped(save, container)
+    put_word(save, TRAVEL_X, x, container)
+    put_word(save, TRAVEL_Y, y, container)
 
 
 def put_clock(save: bytearray, digits,
-              shape: "DosContainer | None" = None) -> None:
+              container: "DosContainer | None" = None) -> None:
     """The six digit words, in the C64's own order and encoding."""
-    shape = _shaped(save, shape)
+    container = _shaped(save, container)
     digits = list(digits)
     if len(digits) != CLOCK_DIGITS:
         raise DosSaveError(f"the clock is {CLOCK_DIGITS} digits, not "
                            f"{len(digits)}")
     for i, d in enumerate(digits):
-        put_word(save, CLOCK + i, d, shape)
+        put_word(save, CLOCK + i, d, container)
 
 
 def put_party_size(save: bytearray, count: int,
-                   shape: "DosContainer | None" = None) -> None:
+                   container: "DosContainer | None" = None) -> None:
     """Both copies, which move together.
 
     The byte is the last of the square block in every title, which is
-    `shape.party_size_byte`: 12808 in Pool of Radiance, 12820 in Curse and
+    `container.party_size_byte`: 12808 in Pool of Radiance, 12820 in Curse and
     5140 in Silver Blades, each read off that engine's own `BlockWrite`
     chain (#253).
     """
-    shape = _shaped(save, shape)
-    put_word(save, PARTY_SIZE, count, shape)
-    save[shape.party_size_byte] = count
+    container = _shaped(save, container)
+    put_word(save, PARTY_SIZE, count, container)
+    save[container.party_size_byte] = count
 
 
-def wall_block(save: bytes, shape: "DosContainer | None" = None
+def wall_block(save: bytes, container: "DosContainer | None" = None
                ) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     """The two `u16[1..3]` arrays inside a Curse or Silver Blades square
     block, as `(wallset, wallmap)`.
@@ -1228,25 +1240,25 @@ def wall_block(save: bytes, shape: "DosContainer | None" = None
     A played Silver Blades container reads `15 00 01 00 ff ff ...`: wallset
     `(21, $FFFF, $FFFF)`, wallmap `(1, $FFFF, $FFFF)`, in that order (#299).
     """
-    shape = _shaped(save, shape)
-    at = shape.wall_block
+    container = _shaped(save, container)
+    at = container.wall_block
     if at is None:
         raise DosSaveError(
-            f"a {shape.title} saved game keeps its wall triples in the "
+            f"a {container.title} saved game keeps its wall triples in the "
             f"variable array, not in the square block")
     words = struct.unpack_from("<6H", save, at)
     return tuple(words[0::2]), tuple(words[1::2])
 
 
 def put_wall_block(save: bytearray, wallset,
-                   shape: "DosContainer | None" = None) -> None:
+                   container: "DosContainer | None" = None) -> None:
     """Write the wallset triple and its index map into the square block,
     interleaved as `wall_block` reads them."""
-    shape = _shaped(save, shape)
-    at = shape.wall_block
+    container = _shaped(save, container)
+    at = container.wall_block
     if at is None:
         raise DosSaveError(
-            f"a {shape.title} saved game has no wall block in its square "
+            f"a {container.title} saved game has no wall block in its square "
             f"block; write WALLSET/WALLMAP instead")
     wallset = tuple(wallset)
     if len(wallset) != 3:
@@ -1266,16 +1278,16 @@ def wall_map(wallset) -> tuple[int, int, int]:
 def retarget(save: bytearray, *, area: int, dax: int, wallset,
              script: "bytes | None", outdoors: bool = False,
              geo: "int | None" = None,
-             shape: "DosContainer | None" = None) -> None:
+             container: "DosContainer | None" = None) -> None:
     """Move a saved game to another area.  `script` is its `ECL` DAX block,
     or None for a title that stages none (Silver Blades).
 
-    **Shape-aware since #299.**  The four writes every title shares --
-    the container byte, `$49C5`, `$49F2`, `$5012` -- land at the shape's
+    **Container-aware since #299.**  The four writes every title shares --
+    the container byte, `$49C5`, `$49F2`, `$5012` -- land at the container's
     own offsets; the wall triples go into the variable array in Pool of
     Radiance and into the twelve-byte block inside the square block in
     Curse and Silver Blades (`put_wall_block`); and the script is staged
-    only where the shape has a buffer for it.
+    only where the container has a buffer for it.
 
     Every write `RETARGET_WRITES` lists except the square and the party
     size, which a conversion sets separately because they change on their
@@ -1297,36 +1309,36 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
     the field that says the overland names no `GEO`.  The C64 is not the
     same here: its `$49C5` outdoors holds the `SQRDATA` number.
     """
-    shape = _shaped(save, shape)
+    container = _shaped(save, container)
     if geo is None:
         geo = area
-    save[shape.head] = dax
-    put_word(save, AREA, 0 if outdoors else geo, shape)
-    put_word(save, SCRIPT, area, shape)
-    put_word(save, DISK, dax, shape)
-    if shape.unnamed:
+    save[container.head] = dax
+    put_word(save, AREA, 0 if outdoors else geo, container)
+    put_word(save, SCRIPT, area, container)
+    put_word(save, DISK, dax, container)
+    if container.unnamed:
         # Curse and Silver Blades keep the triples inside the square block
         # and hold `$4AFA`/`$4AFD` at zero in all 121 containers (#253); in
         # both, `$4AFD` is a quest flag the scripts use (`goldbox.dos.
         # quest_flags`), so writing a wallmap there would overwrite one.
-        put_wall_block(save, wallset, shape)
+        put_wall_block(save, wallset, container)
     else:
         for i, w in enumerate(wallset):
-            put_word(save, WALLSET + i, w, shape)
+            put_word(save, WALLSET + i, w, container)
         for i, w in enumerate(wall_map(wallset)):
-            put_word(save, WALLMAP + i, w, shape)
-    if shape.script_buffer is None:
+            put_word(save, WALLMAP + i, w, container)
+    if container.script_buffer is None:
         if script:
             raise DosSaveError(
-                f"a {shape.title} saved game stages no script; it reloads "
+                f"a {container.title} saved game stages no script; it reloads "
                 f"the area's from ECL{dax}.DAX")
         return
     if script is None:
         raise DosSaveError(
-            f"a {shape.title} saved game stages the area's script and none "
+            f"a {container.title} saved game stages the area's script and none "
             f"was given")
     body = script[ECL_HEADER:]
-    start, end = shape.script_buffer
+    start, end = container.script_buffer
     if len(body) > end - start:
         raise DosSaveError(f"area {area}'s script is {len(body)} bytes and the "
                            f"buffer holds {end - start}")
