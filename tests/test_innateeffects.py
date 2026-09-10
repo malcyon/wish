@@ -75,7 +75,7 @@ def _neutral(game, **fields) -> neutral.NeutralCharacter:
 def _record(shape, effects) -> dos.DosCharacter:
     """An all-zero record of `shape` carrying only the given `.SPC` nodes."""
     return dos.DosCharacter(bytes(shape.record_size), effects=effects,
-                            shape=shape)
+                            deltas=shape)
 
 
 def _innate_node(effect_id: int) -> bytes:

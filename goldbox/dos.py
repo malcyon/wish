@@ -989,16 +989,22 @@ class DosCharacter(_Fielded):
 
     def __init__(self, data: bytes, items: Sequence[DosItem] = (),
                  effects: Sequence[bytes] = (), source: str | None = None,
-                 shape: "int | str | DosShape | None" = None):
+                 deltas: "int | str | DosDeltas | None" = None):
         try:
-            self.shape = shape_for(len(data) if shape is None else shape)
+            self.deltas = shape_for(len(data) if deltas is None else deltas)
         except DosShapeError as e:
             raise DosRecordError(str(e)) from None
-        super().__init__(data, self.shape.record_size, "character record",
-                         FIELDS_BY_NAME_FOR[self.shape.key])
+        super().__init__(data, self.deltas.record_size, "character record",
+                         FIELDS_BY_NAME_FOR[self.deltas.key])
         self.items = tuple(items)
         self.effects = tuple(effects)
         self.source = source
+
+    @property
+    def shape(self) -> DosDeltas:
+        """`.deltas` under its pre-#470 name, for every external reader that
+        never went through the constructor's own `deltas` parameter."""
+        return self.deltas
 
     @property
     def is_pool_of_radiance(self) -> bool:
@@ -1178,7 +1184,7 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
              for i in range(min(count, len(itm) // stride))]
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)
                if len(spc[i:i + EFFECT_SIZE]) == EFFECT_SIZE]
-    return DosCharacter(data, items, effects, source=str(path), shape=shape)
+    return DosCharacter(data, items, effects, source=str(path), deltas=shape)
 
 
 def slots_available(folder: str | pathlib.Path) -> list[str]:
@@ -1550,7 +1556,7 @@ _PAIRED_ABILITY = ("the score in force; the permanent score goes to the "
                    "pair.md)")
 
 
-def field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                       ) -> dict[str, str]:
     """Every field one title declares and what the conversion does with it.
 
@@ -1565,10 +1571,10 @@ def field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     of Radiance's.  Answering with Pool of Radiance's disposition for all four
     is what let `former_class_levels` sit unnamed.
     """
-    shape = shape_for(shape)
-    declared = set(FIELDS_BY_NAME_FOR[shape.key])
+    deltas = shape_for(deltas)
+    declared = set(FIELDS_BY_NAME_FOR[deltas.key])
     paired = {n for n in ABILITY_ORDER
-              if n in declared and FIELDS_BY_NAME_FOR[shape.key][n].size > 1}
+              if n in declared and FIELDS_BY_NAME_FOR[deltas.key][n].size > 1}
 
     def only(rows):
         return tuple((n, w) for n, w in rows if n in declared and
@@ -2522,7 +2528,7 @@ _ABSENT_WHY: dict[str, str] = {
 }
 
 
-def write_absent(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                  ) -> tuple[tuple[str, str], ...]:
     """Neutral fields this title's DOS record has no field for, and why.
 
@@ -2530,8 +2536,8 @@ def write_absent(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     gains or loses a field cannot leave a stale row behind: a name in
     :data:`WRITE_DIRECT` whose DOS field is not declared has nowhere to go.
     """
-    table = FIELDS_BY_NAME_FOR[shape_for(shape).key]
-    title = shape_for(shape).title
+    table = FIELDS_BY_NAME_FOR[shape_for(deltas).key]
+    title = shape_for(deltas).title
     return tuple((n, f"{title} {_ABSENT_WHY[n]}")
                  for n, dos_name in WRITE_DIRECT if dos_name not in table)
 
@@ -2860,7 +2866,7 @@ _THIEF_SKILL_RECOMPUTE_FROM_PORTS = ("C64",)
 
 
 def identity_byte(record: bytes | bytearray,
-                  shape: "int | str | DosShape | None" = None) -> int:
+                  deltas: "int | str | DosDeltas | None" = None) -> int:
     """The `unnamed_0ab` byte for a record, derived from the rest of it.
 
     The engine draws this at random when it creates a character, and uses it
@@ -2880,8 +2886,8 @@ def identity_byte(record: bytes | bytearray,
     used on a Curse record would digest the wrong 421 bytes and blank a byte
     of the money block.
     """
-    shape = shape_for(len(record) if shape is None else shape)
-    f = FIELDS_BY_NAME_FOR[shape.key]["unnamed_0ab"]
+    deltas = shape_for(len(record) if deltas is None else deltas)
+    f = FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
     body = bytearray(record)
     body[f.offset:f.end] = bytes(f.size)
     return hashlib.blake2b(bytes(body), digest_size=1).digest()[0]
@@ -3072,7 +3078,7 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
 ).items() if n in FIELDS_BY_NAME}
 
 
-def write_constants(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+def write_constants(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                     ) -> tuple[tuple[str, bytes, str], ...]:
     """:data:`WRITE_CONSTANTS`, cut to the title's own field widths.
 
@@ -3088,7 +3094,7 @@ def write_constants(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     all -- `goldbox/dos_layout.py` gives it a width of zero -- so there is
     nothing for the constant to be written into (#194).
     """
-    table = FIELDS_BY_NAME_FOR[shape_for(shape).key]
+    table = FIELDS_BY_NAME_FOR[shape_for(deltas).key]
     out = []
     for name, data, why in WRITE_CONSTANTS:
         if name not in table:
@@ -3100,7 +3106,7 @@ def write_constants(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     return tuple(out)
 
 
-def write_targets(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                   ) -> dict[str, str]:
     """:data:`WRITE_TARGETS` for one title.
 
@@ -3111,11 +3117,11 @@ def write_targets(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     is a field written or zeroed in silence, the thing this table exists to
     make impossible.
     """
-    shape = shape_for(shape)
-    declared = set(FIELDS_BY_NAME_FOR[shape.key])
+    deltas = shape_for(deltas)
+    declared = set(FIELDS_BY_NAME_FOR[deltas.key])
     out = dict(WRITE_TARGETS)
     out |= {name: f"constant: {why}"
-            for name, _, why in write_constants(shape)}
+            for name, _, why in write_constants(deltas)}
     # The whole of `WRITE_DEFAULTS`, not the part Pool of Radiance declares:
     # `WRITE_TARGETS` is cut to its own title's names and Pools of Darkness'
     # `unnamed_1e0` is not one of them (#194).
@@ -3159,8 +3165,8 @@ def _encode(f: Field, rec: bytearray, value: Any) -> None:
         rec[f.offset:f.end] = data
 
 
-def write_shape(char: NeutralCharacter,
-                shape: "int | str | DosShape | None" = None) -> DosShape:
+def write_deltas(char: NeutralCharacter,
+                deltas: "int | str | DosDeltas | None" = None) -> DosDeltas:
     """Which DOS record :func:`write` will build for this character.
 
     **The title is the character's, not the caller's**, because a conversion
@@ -3175,23 +3181,26 @@ def write_shape(char: NeutralCharacter,
     has written raises `WrongTitleError`, which is the same refusal
     :func:`to_neutral` makes in the other direction.
     """
-    if shape is None:
+    if deltas is None:
         game = char.game
-        shape = shape_for(getattr(game, "key", game) or POOL_OF_RADIANCE)
+        deltas = shape_for(getattr(game, "key", game) or POOL_OF_RADIANCE)
     else:
-        shape = shape_for(shape)
-    if shape not in WRITES:
+        deltas = shape_for(deltas)
+    if deltas not in WRITES:
         raise WrongTitleError(
-            f"{shape.title} records read, but only "
+            f"{deltas.title} records read, but only "
             f"{', '.join(s.title for s in WRITES)} can be written: no other "
             f"pair of ports has been measured against each other (#53)",
-            title=shape.title)
-    return shape
+            title=deltas.title)
+    return deltas
+
+
+write_shape = write_deltas
 
 
 def write(char: NeutralCharacter,
           portraits: PortraitTables | None = None,
-          shape: "int | str | DosShape | None" = None,
+          deltas: "int | str | DosDeltas | None" = None,
           icon: "DosIcon | None" = None,
           recompute_thief_skills: bool = True,
           into: str = "DOS"
@@ -3255,19 +3264,19 @@ def write(char: NeutralCharacter,
     the live heap and the three unattributed runs, which the round-trip test
     masks *by this same list* rather than by whatever happened to differ.
     """
-    shape = write_shape(char, shape)
-    table = FIELDS_BY_NAME_FOR[shape.key]
-    size = shape.record_size
-    item_size = shape.item_size
+    deltas = write_deltas(char, deltas)
+    table = FIELDS_BY_NAME_FOR[deltas.key]
+    size = deltas.record_size
+    item_size = deltas.item_size
     rec = bytearray(size)
     rep = WriteReport()
     port = char.port
     # The later titles turn two of Pool of Radiance's drops into conversions,
     # so the sweep's reasons are the title's rather than the module's.
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
-    dropped = (WRITE_DROPPED if shape is POOL_OF_RADIANCE else
+    dropped = (WRITE_DROPPED if deltas is POOL_OF_RADIANCE else
                tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
-    dropped += write_absent(shape)
+    dropped += write_absent(deltas)
     w = neutral.Writer(char, rep, into=into, dropped=dropped)
     use, emit = w.use, w.emit
 
@@ -3367,7 +3376,7 @@ def write(char: NeutralCharacter,
     if second is not None and not any(table[n].size == 2
                                       for n in ABILITY_ORDER):
         rep.dropped.append(
-            f"abilities_second: {shape.title} keeps one copy of each ability "
+            f"abilities_second: {deltas.title} keeps one copy of each ability "
             f"score, so the source's second copy has nowhere to go")
 
     # A dual-classed character who has trained his new class past the level
@@ -3427,7 +3436,7 @@ def write(char: NeutralCharacter,
         former = _former_for_regain
         source = "levels" if any(former.values()) else "class_bits"
         want = classcode.repair(int(code.value), int(w.get("class_bits") or 0),
-                                _dos_levels, former, shape.key)
+                                _dos_levels, former, deltas.key)
         if want is None:
             put(code, "char_class")
         else:
@@ -3456,7 +3465,7 @@ def write(char: NeutralCharacter,
                 book[int(sid) - 1] = 1
             else:
                 rep.warnings.append(
-                    f"Spell id {sid} is outside the {shape.title} book's "
+                    f"Spell id {sid} is outside the {deltas.title} book's "
                     f"ids 1-{spells_in_book}")
         put(known, "spellbook", ", unpacked to one byte per spell",
             value=bytes(book))
@@ -3469,7 +3478,7 @@ def write(char: NeutralCharacter,
         if len(memorised.value) > slots:
             rep.warnings.append(
                 f"{len(memorised.value)} spells memorised and "
-                f"{shape.title} has {slots} slots; the rest dropped")
+                f"{deltas.title} has {slots} slots; the rest dropped")
         put(memorised, "spells_memorised",
             f" reversed -- DOS fills its {slots} slots from the end",
             value=bytes(slots - len(ids)) + bytes(reversed(ids)))
@@ -3488,7 +3497,7 @@ def write(char: NeutralCharacter,
                 if lv:
                     rep.warnings.append(
                         f"{port} carries {cname} level {lv}, and "
-                        f"{shape.title}'s {slots}-slot array has no {cname} "
+                        f"{deltas.title}'s {slots}-slot array has no {cname} "
                         f"slot")
                 continue
             raw[n] = min(int(lv), 0xFF)
@@ -3534,7 +3543,7 @@ def write(char: NeutralCharacter,
     # until the character is next trained.
     base = use("thac0_base")
     if base is not None:
-        derived = (level_tables.dos_base_thac0(w.get("levels"), shape.key)
+        derived = (level_tables.dos_base_thac0(w.get("levels"), deltas.key)
                    if port in _THAC0_RECOMPUTE_FROM_PORTS else None)
         if derived is None:
             put(base, "thac0_base")
@@ -3600,7 +3609,7 @@ def write(char: NeutralCharacter,
     if (thief_level and recompute_thief_skills
             and port in _THIEF_SKILL_RECOMPUTE_FROM_PORTS):
         computed_thief_skills = level_tables.dos_thief_skills(
-            thief_level, w.get("race", 0), shape.key,
+            thief_level, w.get("race", 0), deltas.key,
             dexterity=w.get("dexterity", 0))
         if computed_thief_skills is not None:
             thief_skill_reason = (
@@ -3608,9 +3617,9 @@ def write(char: NeutralCharacter,
                 "through DOS's own table: the C64's racial row is the DOS "
                 "one a byte short and its build never applies a dexterity "
                 "adjustment DOS does (#431)")
-        elif level_tables.thief_skill_dos_storage_inflated(shape.key):
+        elif level_tables.thief_skill_dos_storage_inflated(deltas.key):
             computed_thief_skills = level_tables.thief_skills(
-                thief_level, w.get("race", 0), shape.key,
+                thief_level, w.get("race", 0), deltas.key,
                 dexterity=w.get("dexterity", 0))
             thief_skill_reason = (
                 ", recomputed from the thief level, race and dexterity "
@@ -3656,7 +3665,7 @@ def write(char: NeutralCharacter,
         # and the fact it states -- this title has no former-class array --
         # is true of the title on any port (#389).
         rep.dropped.append(
-            f"former_levels: a {shape.title} record has no former-class "
+            f"former_levels: a {deltas.title} record has no former-class "
             f"level array; that title does not let a character change "
             f"class. (NOT APPROVED)")
 
@@ -3675,7 +3684,7 @@ def write(char: NeutralCharacter,
                     # title's record on any port, and this sentence reaches
                     # an Amiga player through `write_por`/`write_later`.
                     rep.dropped.append(
-                        f"spells_castable[{school!r}]: a {shape.title} "
+                        f"spells_castable[{school!r}]: a {deltas.title} "
                         f"record has no {school} spell-slot array. "
                         f"(NOT APPROVED)")
                 continue
@@ -3684,7 +3693,7 @@ def write(char: NeutralCharacter,
             if len(run) > depth and any(run[depth:]):
                 rep.warnings.append(
                     f"{port} carries {school} spell slots {len(run)} levels "
-                    f"deep and {shape.title} keeps {depth}; the rest dropped")
+                    f"deep and {deltas.title} keeps {depth}; the rest dropped")
             run = (run + (0,) * depth)[:depth]
             put(castable, dos_name, f", the {school} run",
                 value=bytes(min(int(n), 0xFF) for n in run))
@@ -3727,7 +3736,7 @@ def write(char: NeutralCharacter,
     # Blades character has no face at either end and there is no loss to
     # report; the line below is for the two cases that are one, where Pool of
     # Radiance's own sheet draws a portrait the DOS record cannot name.
-    draws_portrait = draws_sheet_portrait(shape.key)
+    draws_portrait = draws_sheet_portrait(deltas.key)
     portraits_written: set[str] = set()
     for pname, lookup, stem in (("portrait_head", "head_position", "HEAD"),
                                 ("portrait_body", "body_position", "BODY")):
@@ -3794,7 +3803,7 @@ def write(char: NeutralCharacter,
         projected = [bytes(i) for i in inventory.value]
         itm = b"".join(item_from_c64(i, item_size) for i in projected)
         if projected:
-            emit(inventory, f"the {shape.item_suffix} file", size, len(itm),
+            emit(inventory, f"the {deltas.item_suffix} file", size, len(itm),
                  f", each sixteen-byte record unpacked onto the DOS "
                  f"{item_size}")
             for n in range(len(projected)):
@@ -3832,14 +3841,14 @@ def write(char: NeutralCharacter,
     if port == "C64":
         before = converted
         converted = _from_c64_class_traits(
-            shape.key, int(w.get("class_bits", 0) or 0), before)
+            deltas.key, int(w.get("class_bits", 0) or 0), before)
         seeded = {into: c64 for _bit, c64, into
-                  in C64_CLASS_TRAITS.get(shape.key, ())
+                  in C64_CLASS_TRAITS.get(deltas.key, ())
                   if into in converted and c64 in before}
     race = int(w.get("race", 0) or 0)
-    derived = [e for e in _race_combat_effects(char.game, race, shape)
+    derived = [e for e in _race_combat_effects(char.game, race, deltas)
                if e not in converted]
-    innate_ids = _innate_effects(shape.key)
+    innate_ids = _innate_effects(deltas.key)
     keep = derived + [e for e in converted if e in innate_ids]
 
     # An item's grant follows the innate records in the same file, each one
@@ -3867,30 +3876,30 @@ def write(char: NeutralCharacter,
                   f"seed for the class, written as the id DOS names the same "
                   f"effect by" if e in seeded else
                   f"{port} innate_effects")
-        rep.note(at, 1, f"{shape.effect_suffix} record {n}: effect {e} "
+        rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {e} "
                         f"({traits.describe(e)}), {whence}")
         rep.note(at + 1, 4,
-                 f"{shape.effect_suffix} record {n}: INNATE_PAYLOAD, the four "
+                 f"{deltas.effect_suffix} record {n}: INNATE_PAYLOAD, the four "
                  f"bytes every innate specimen in the archives holds")
         rep.note(at + 5, 4,
-                 f"{shape.effect_suffix} record {n}: next pointer NULL -- the "
+                 f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
                  f"loader allocates a node per record and relinks them, and "
                  f"the count comes from the file's length")
     for i, g in enumerate(grants):
         n = len(keep) + i
         at = base + n * EFFECT_SIZE
-        rep.note(at, 1, f"{shape.effect_suffix} record {n}: effect {g[0]} "
+        rep.note(at, 1, f"{deltas.effect_suffix} record {n}: effect {g[0]} "
                         f"({traits.describe(g[0])}), {port} granted_effects")
         rep.note(at + 1, 2,
-                 f"{shape.effect_suffix} record {n}: duration zero -- the "
+                 f"{deltas.effect_suffix} record {n}: duration zero -- the "
                  f"engine's expiry pass skips a node at zero and never "
                  f"removes it")
         rep.note(at + 3, 2,
-                 f"{shape.effect_suffix} record {n}: the value the effect "
+                 f"{deltas.effect_suffix} record {n}: the value the effect "
                  f"carries and the flag the engine reads when the item comes "
                  f"off, the source record's own two bytes")
         rep.note(at + 5, 4,
-                 f"{shape.effect_suffix} record {n}: next pointer NULL -- the "
+                 f"{deltas.effect_suffix} record {n}: next pointer NULL -- the "
                  f"loader allocates a node per record and relinks them, and "
                  f"the count comes from the file's length")
     for e in converted:
@@ -3899,14 +3908,14 @@ def write(char: NeutralCharacter,
                 f"innate_effects {e} ({traits.describe(e)}): not one of the "
                 f"ids the game's own importer keeps, so it is an item power "
                 f"or a running effect rather than an innate one and no "
-                f"{shape.effect_suffix} record is written for it")
+                f"{deltas.effect_suffix} record is written for it")
 
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)
     rec[table["item_count"].offset] = count
     rep.note(table["item_count"].offset, 1,
              f"item_count: computed -- the {count} records of the "
-             f"{shape.item_suffix} file")
+             f"{deltas.item_suffix} file")
     money = sum(int(w.get(k, 0)) for k in _COINS if k in table)
     weight = sum(int.from_bytes(i[8:10], "little") * (i[10] or 1)
                  for i in projected)
@@ -3922,7 +3931,7 @@ def write(char: NeutralCharacter,
              "the identity the DOS engine itself uses")
 
     # -- documented constants ------------------------------------------------
-    for cname, data, why in write_constants(shape):
+    for cname, data, why in write_constants(deltas):
         f = table[cname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size, f"{cname}: {why}")
@@ -4073,12 +4082,12 @@ def write(char: NeutralCharacter,
         rep.note(f.offset, f.size,
                  f"{_derived_name}: {rec[f.offset]:#04x} <- {supplied.origin}")
     else:
-        rec[f.offset] = identity_byte(rec, shape)
+        rec[f.offset] = identity_byte(rec, deltas)
         rep.note(f.offset, f.size,
                  f"{_derived_name}: {rec[f.offset]:#04x} -- {_derived_why}")
 
     # -- the gaps, zero in every specimen held -------------------------------
-    for f in LAYOUTS[shape.key]:
+    for f in LAYOUTS[deltas.key]:
         if f.name.startswith("gap_"):
             rep.note(f.offset, f.size, f"{f.name}: zero ({f.note})")
 
@@ -4100,7 +4109,7 @@ _WRITE_FIELD_DISPOSITION_DERIVED: tuple[tuple[str, str], ...] = (
     + WRITE_NO_SUCH_FIELD)
 
 
-def write_field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
+def write_field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                             ) -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
 
@@ -4114,11 +4123,11 @@ def write_field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     character left -- so a Pool of Radiance answer given for a Curse record
     would call a conversion a loss.
     """
-    shape = shape_for(shape)
-    absent = write_absent(shape)
+    deltas = shape_for(deltas)
+    absent = write_absent(deltas)
     gone = {n for n, _ in absent}
     direct = tuple((n, d) for n, d in WRITE_DIRECT if n not in gone)
-    if shape is POOL_OF_RADIANCE:
+    if deltas is POOL_OF_RADIANCE:
         return neutral.disposition(
             direct, WRITE_TRANSFORMED, WRITE_DROPPED + absent,
             "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)
@@ -4238,7 +4247,7 @@ SHARED_SCRATCH = (0x49EB,) + tuple(range(0x4A00, 0x4A20))
 
 
 def quest_flags(save: bytes,
-                shape: "dos_savegame.DosSaveShape | None" = None,
+                container: "dos_savegame.DosContainer | None" = None,
                 window: "tuple[int, int] | None" = None) -> bytes:
     """The flag page as the C64's bytes: read each word, keep the low byte.
 
@@ -4270,7 +4279,7 @@ def quest_flags(save: bytes,
                              FLAGS_LAST - FLAGS_FIRST + 1)
     out = bytearray()
     for i in range(size):
-        out.append(dos_savegame.word(save, SAVE0_BASE + first + i, shape)
+        out.append(dos_savegame.word(save, SAVE0_BASE + first + i, container)
                    & 0xFF)
     return bytes(out)
 
@@ -4736,7 +4745,7 @@ class NotSetOutError(DosRecordError):
 
 
 def never_adventured(savgam: bytes,
-                     shape: "dos_savegame.DosSaveShape | None" = None) -> bool:
+                     container: "dos_savegame.DosContainer | None" = None) -> bool:
     """Was this save made before the party pressed `BEGIN ADVENTURING`?
 
     **The area word is not the test.**  It is 0 in such a save on all three
@@ -4767,11 +4776,11 @@ def never_adventured(savgam: bytes,
 
     `shape` defaults to whatever the buffer's own length names.
     """
-    shape = dos_savegame.save_shape_for(shape or len(savgam))
-    span = shape.script_buffer
+    container = dos_savegame.save_shape_for(container or len(savgam))
+    span = container.script_buffer
     if span is not None:
         return not any(savgam[span[0]:span[1]])
-    return dos_savegame.word(savgam, LATER_BEGUN_WORD, shape) == 0
+    return dos_savegame.word(savgam, LATER_BEGUN_WORD, container) == 0
 
 
 def _start_of_the_story(title: str) -> "tuple[areas.Start, areas.Area]":
@@ -4807,7 +4816,7 @@ def _start_of_the_story(title: str) -> "tuple[areas.Start, areas.Area]":
 
 
 def _where_the_party_is(savgam: bytes, title: str,
-                        shape: "dos_savegame.DosSaveShape | None" = None
+                        container: "dos_savegame.DosContainer | None" = None
                         ) -> "tuple[areas.Area, bool]":
     """The area row a conversion writes, and whether the party had set out.
 
@@ -4816,7 +4825,7 @@ def _where_the_party_is(savgam: bytes, title: str,
     title has no row for is refused -- `NOT_AN_AREA`, the one refusal the
     save cannot answer for itself.
     """
-    if never_adventured(savgam, shape):
+    if never_adventured(savgam, container):
         return _start_of_the_story(title)[1], True
     there = dos_savegame.current_area(savgam)
     where = areas.area_in(there, title)
@@ -5875,18 +5884,18 @@ SAVGAM_UNSOURCED_LATER: tuple[tuple[int, int, str], ...] = (
 )
 
 
-def savgam_constants(shape: "dos_savegame.DosSaveShape"
+def savgam_constants(container: "dos_savegame.DosContainer"
                      ) -> tuple[tuple[int, int, str], ...]:
     """The words written to a measured constant for this title."""
-    if shape is dos_savegame.SAVE_POOL_OF_RADIANCE:
+    if container is dos_savegame.SAVE_POOL_OF_RADIANCE:
         return dos_savegame.SAVGAM_CONSTANTS
-    return SAVGAM_CONSTANTS_LATER[shape.key]
+    return SAVGAM_CONSTANTS_LATER[container.key]
 
 
-def savgam_unsourced(shape: "dos_savegame.DosSaveShape"
+def savgam_unsourced(container: "dos_savegame.DosContainer"
                      ) -> tuple[tuple[int, int, str], ...]:
     """The words written zero with a reason, for this title."""
-    if shape is dos_savegame.SAVE_POOL_OF_RADIANCE:
+    if container is dos_savegame.SAVE_POOL_OF_RADIANCE:
         return SAVGAM_UNSOURCED
     return SAVGAM_UNSOURCED_LATER
 
@@ -6047,10 +6056,10 @@ def _area_script(area: int, template: "pathlib.Path | None",
 
 
 def _note_word(report: "SaveReport", address: int, words: int,
-               why: str, shape: "dos_savegame.DosSaveShape | None" = None
+               why: str, container: "dos_savegame.DosContainer | None" = None
                ) -> None:
     """Provenance for `words` VM words, at the file offset they live at."""
-    report.note(dos_savegame.word_offset(address, shape), 2 * words, why)
+    report.note(dos_savegame.word_offset(address, container), 2 * words, why)
 
 
 def c64_title(save0: bytes, title=None) -> games.Game:
@@ -6315,7 +6324,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
 
 
 def savgam_zeroes(savgam: bytearray, report: "SaveReport",
-                  shape: "dos_savegame.DosSaveShape | None" = None) -> None:
+                  container: "dos_savegame.DosContainer | None" = None) -> None:
     """Account for every byte of the file :func:`savgam_writes` left zero.
 
     Called only when the buffer started zeroed, because that is the only case
@@ -6326,16 +6335,16 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     the variable space, which reads zero in every genuine specimen of the
     title.
     """
-    shape = dos_savegame.save_shape_for(
-        len(savgam) if shape is None else shape)
-    for address, words, why in savgam_unsourced(shape):
-        _note_word(report, address, words, f"zeroed -- {why}", shape)
+    container = dos_savegame.save_shape_for(
+        len(savgam) if container is None else container)
+    for address, words, why in savgam_unsourced(container):
+        _note_word(report, address, words, f"zeroed -- {why}", container)
     for n in range(dos_savegame.PARTY_ENTRIES):
-        at = (shape.party_table + n * dos_savegame.PARTY_ENTRY
+        at = (container.party_table + n * dos_savegame.PARTY_ENTRY
               + dos_savegame.PARTY_NAME_LEN)
         report.note(at, dos_savegame.PARTY_ENTRY - dos_savegame.PARTY_NAME_LEN,
                     PARTY_TABLE_SCRATCH)
-    report.note(shape.size - dos_savegame.UI_SCRATCH,
+    report.note(container.size - dos_savegame.UI_SCRATCH,
                 dos_savegame.UI_SCRATCH, PARTY_TABLE_SCRATCH)
     # The sweep, and the one claim here that rests on a census rather than on
     # a run: these words read zero in all four engine-written containers on
@@ -6355,12 +6364,12 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     # containers: 2516 of 2560 words are zero in every Curse and Silver
     # Blades container on this machine (`tools/dossavcensus.py --title`),
     # and every one of the live words is written or declared above (#299).
-    rest = [i for i in range(shape.var_offset,
-                             shape.var_offset + 2 * shape.var_words)
+    rest = [i for i in range(container.var_offset,
+                             container.var_offset + 2 * container.var_words)
             if i not in report.sources]
     for i in rest:
         report.sources[i] = (
-            f"zeroed: this word reads zero in every genuine {shape.title} "
+            f"zeroed: this word reads zero in every genuine {container.title} "
             f"specimen on this machine, and nothing in a C64 save "
             f"corresponds to it")
 

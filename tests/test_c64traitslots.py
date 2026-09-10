@@ -61,7 +61,7 @@ def _innate_node(effect_id: int) -> bytes:
 
 def _dos_record(shape, effects) -> dos.DosCharacter:
     return dos.DosCharacter(bytes(shape.record_size), effects=effects,
-                            shape=shape)
+                            deltas=shape)
 
 
 # --- the two lists, and the ends of the block they fill from -----------------

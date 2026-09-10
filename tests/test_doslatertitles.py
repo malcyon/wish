@@ -144,7 +144,7 @@ def test_a_title_with_no_dos_record_says_so():
 
 
 def test_an_explicit_shape_overrides_the_characters_own():
-    rec, _, _, _ = dos.write(_neutral(None, name="X"), shape=SSB)
+    rec, _, _, _ = dos.write(_neutral(None, name="X"), deltas=SSB)
     assert len(rec) == SSB.record_size
 
 
@@ -387,7 +387,7 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
     one, so its own two lines have to stay until #57 is done.
     """
     for shape in LATER:
-        char = dos.DosCharacter(bytes(shape.record_size), shape=shape.key)
+        char = dos.DosCharacter(bytes(shape.record_size), deltas=shape.key)
         dropped = dos.to_neutral(char).dropped
         assert not [d for d in dropped if "portrait" in d.lower()], \
             (shape.key, dropped)
@@ -408,7 +408,7 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
     raw = bytearray(POOL.record_size)
     raw[0xBB] = 99                      # portrait_head, past the menu
     raw[0xBC] = 99                      # portrait_body
-    pool = dos.DosCharacter(bytes(raw), shape=POOL.key)
+    pool = dos.DosCharacter(bytes(raw), deltas=POOL.key)
     assert pool.get("portrait_head") == 99, "the offsets moved"
     assert len([d for d in dos.to_neutral(pool).dropped
                 if "portrait" in d.lower()]) == 2
@@ -417,11 +417,11 @@ def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
     chose = bytearray(POOL.record_size)
     chose[0xBB] = chose[0xBC] = 1
     assert not [d for d in dos.to_neutral(
-        dos.DosCharacter(bytes(chose), shape=POOL.key)).dropped
+        dos.DosCharacter(bytes(chose), deltas=POOL.key)).dropped
         if "portrait" in d.lower()]
 
     # And the shape `#377` is about: no face chosen, nothing reported.
-    faceless = dos.DosCharacter(bytes(POOL.record_size), shape=POOL.key)
+    faceless = dos.DosCharacter(bytes(POOL.record_size), deltas=POOL.key)
     assert not [d for d in dos.to_neutral(faceless).dropped
                 if "portrait" in d.lower()]
 

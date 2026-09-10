@@ -665,7 +665,7 @@ def test_the_control_byte_lands_at_each_titles_own_index(key, size, index):
     rec = CharacterRecord.blank()
     rec.set("flags_0b8", 0xB2)
     char = c64_codec.read(rec, game="pool-of-radiance")
-    out, _itm, _spc, _rep = dos.write(char, shape=key)
+    out, _itm, _spc, _rep = dos.write(char, deltas=key)
     f = dos.FIELDS_BY_NAME_FOR[key]["field_83_87"]
     assert f.size == size
     assert out[f.offset + index] == 0xB2

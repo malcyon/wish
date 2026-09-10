@@ -147,7 +147,7 @@ def read_records(extra: list[str], archives: bool = True):
             seen[key][2].append(path)
             continue
         try:
-            char = dos.DosCharacter(data, shape=shape)
+            char = dos.DosCharacter(data, deltas=shape)
             char.name                                  # raises on a non-record
         except Exception:
             continue

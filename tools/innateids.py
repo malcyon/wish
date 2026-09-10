@@ -114,7 +114,7 @@ class Record:
         self.data = data
         self.spc = spc
         self.shape = dl.shape_for(len(data))
-        self.char = gdos.DosCharacter(data, shape=self.shape)
+        self.char = gdos.DosCharacter(data, deltas=self.shape)
         self.effects = [spc[i:i + dl.EFFECT_SIZE]
                         for i in range(0, len(spc), dl.EFFECT_SIZE)
                         if len(spc[i:i + dl.EFFECT_SIZE]) == dl.EFFECT_SIZE]

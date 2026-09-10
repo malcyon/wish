@@ -186,7 +186,7 @@ def test_c64_to_dos_writes_the_permanent_byte_first(who):
     neutral_char = party[who]
     assert neutral_char.get(ability) == in_force, \
         f"{who}'s {ability} read off the C64 as in force"
-    rec, _, _, _ = dos.write(neutral_char, shape=dos.CURSE_OF_THE_AZURE_BONDS)
+    rec, _, _, _ = dos.write(neutral_char, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
     f = dos.FIELDS_BY_NAME_FOR[dos.CURSE_OF_THE_AZURE_BONDS.key][ability]
     assert rec[f.offset] == permanent, f"{who}'s permanent {ability} in DOS"
     assert rec[f.offset + 1] == in_force, f"{who}'s {ability} in force in DOS"
@@ -212,7 +212,7 @@ def test_a_character_whose_halves_agree_converts_exactly_as_before():
                            ("exceptional_strength", 0)):
         f = table[ability]
         rec[f.offset], rec[f.offset + 1] = value, value
-    dos_char = dos.DosCharacter(bytes(rec), shape=CURSE_SHAPE)
+    dos_char = dos.DosCharacter(bytes(rec), deltas=CURSE_SHAPE)
     neutral_char = dos.to_neutral(dos_char)
     for ability, value in (("strength", 17), ("intelligence", 12),
                            ("wisdom", 9), ("dexterity", 14),
@@ -220,7 +220,7 @@ def test_a_character_whose_halves_agree_converts_exactly_as_before():
                            ("exceptional_strength", 0)):
         assert neutral_char.get(ability) == value, ability
         assert neutral_char.get("abilities_second")[ability] == value, ability
-    written, _, _, _ = dos.write(neutral_char, shape=CURSE_SHAPE)
+    written, _, _, _ = dos.write(neutral_char, deltas=CURSE_SHAPE)
     for ability, value in (("strength", 17), ("intelligence", 12),
                            ("wisdom", 9), ("dexterity", 14),
                            ("constitution", 15), ("charisma", 10),

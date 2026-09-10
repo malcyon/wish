@@ -47,7 +47,7 @@ def dos_record(shape: dos_layout.DosShape, **values) -> bytes:
 
 def neutral_of(shape: dos_layout.DosShape, **values):
     return dos.to_neutral(dos.DosCharacter(dos_record(shape, **values),
-                                           shape=shape))
+                                           deltas=shape))
 
 
 def _former_class_levels(shape: dos_layout.DosShape, **slots: int) -> bytes:

@@ -147,7 +147,7 @@ class Specimen:
         self.built = is_built(path)
         self.digest = hashlib.sha256(data).hexdigest()[:12]
         self.paths = [path]
-        char = gdos.DosCharacter(data, shape=self.shape)
+        char = gdos.DosCharacter(data, deltas=self.shape)
         self.char = char
         try:
             self.name = char.name or "(unnamed)"

@@ -5637,7 +5637,7 @@ def write_later(char: NeutralCharacter,
     # DOS does with their character): otherwise a drop line this function
     # cannot place names DOS to a player who is not converting to DOS.
     record, itm, spc, dosrep = _dos.write(
-        char, shape=deltas.dos, icon=icon,
+        char, deltas=deltas.dos, icon=icon,
         recompute_thief_skills=False, into="Amiga",
         portraits=stored_tables(deltas.dos.key, port="amiga"))
     out = from_dos_record_later(record, deltas)

@@ -116,8 +116,8 @@ def test_a_regained_character_converts_to_dos_in_the_engines_own_shape():
     dual-classed shape DOS itself ever writes.
     """
     neutral = _philippe("curse-dualclass-trained")
-    rec, _itm, _spc, rep = dos.write(neutral, shape=dos.CURSE_OF_THE_AZURE_BONDS)
-    char = dos.DosCharacter(rec, shape=dos.CURSE_OF_THE_AZURE_BONDS)
+    rec, _itm, _spc, rep = dos.write(neutral, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
+    char = dos.DosCharacter(rec, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
 
     assert char.class_levels == {"fighter": 8}
     assert list(char.raw("class_levels")) == [0, 0, 8, 0, 0, 0, 0, 0]
@@ -137,8 +137,8 @@ def test_an_unregained_dual_classed_character_is_unchanged():
     `class_levels` carries the new class alone before conversion as well as
     after, so nothing here has anything to zero."""
     neutral = _philippe("curse-dual-classed")
-    rec, _itm, _spc, rep = dos.write(neutral, shape=dos.CURSE_OF_THE_AZURE_BONDS)
-    char = dos.DosCharacter(rec, shape=dos.CURSE_OF_THE_AZURE_BONDS)
+    rec, _itm, _spc, rep = dos.write(neutral, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
+    char = dos.DosCharacter(rec, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
 
     assert char.class_levels == {"fighter": 1}
     assert list(char.raw("former_class_levels")) == [0, 0, 0, 0, 0, 6, 0, 0]
