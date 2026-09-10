@@ -1731,7 +1731,12 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # being a string a player, or even a developer reading `report.dropped`,
     # can reach.
     WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga": 1, "goldbox.dos": 6,
-               "automap.actions": 3}
+               # 3 -> 2 on 2026-09-10: Donald approved the failure line for
+               # a Fast Travel that cannot walk the party through a door
+               # (`#493 (A Fast Travel that fails walking the party out
+               # leaves them at the doorway and says they have not moved)`),
+               # once its fix made "the party is back where it started" true.
+               "automap.actions": 2}
 
     found: dict[str, list[str]] = {}
     for module in (c64_codec, amiga, dos, actions):

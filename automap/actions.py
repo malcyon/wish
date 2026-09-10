@@ -1999,7 +1999,7 @@ class FastTravel(Action):
                              bytes(v & 0xFF for v in was.square))
             return Outcome(False,
                            "ERROR: Unable to Fast Travel. The party is back "
-                           "where it started. (NOT APPROVED)",
+                           "where it started.",
                            ())
         self.back = was
         name = getattr(area, "name", None) or "this area"
