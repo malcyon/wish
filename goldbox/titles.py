@@ -92,7 +92,8 @@ RACES_KRYNN = ((0, "silvanesti elf"), (1, "qualinesti elf"), (2, "half-elf"),
 
 #: Pools of Darkness has no C64 port, so this is not read off a C64 `LIBRARY`
 #: like the six above -- it is built from `dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS`,
-#: the string table read out of the title's own `GAME.EXE` (`#237`), as pairs:
+#: the string table read out of the title's own `GAME.EXE`
+#: (`#237 (The DOS race table is one table for four titles, and it is wrong for two of them)`), as pairs:
 #: 0 = elf .. 6 = monster.
 RACES_POOLS_OF_DARKNESS = tuple(
     enumerate(dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS))
@@ -121,7 +122,10 @@ CLASS_BITS_CLASSIC = ((1, "magic-user"), (2, "cleric"), (4, "thief"),
 #: Pools of Darkness has no C64 port and no class-bit table of its own read
 #: off any disk; it shares this one, since it is the DOS engine directly
 #: descended from Curse and Silver Blades' (`goldbox.amiga.POD_CLASS_BITS`
-#: said the same thing before #470 and is retired in stage 2).
+#: said the same thing before
+#: `#470 (Give the project a neutral title beside its neutral character
+#: record, with one port per platform a title shipped on)` and is retired
+#: in stage 2).
 CLASS_BITS_WITH_PALADIN_RANGER = CLASS_BITS_CLASSIC + ((0x40, "paladin"),
                                                        (0x80, "ranger"))
 
