@@ -155,8 +155,7 @@ __all__ = [
     "save_disk",
     "WriteReport",
     "write",
-    "WRITE_UNREPORTED_DROPS",
-    "SilencingWriter",
+    "WRITE_NO_SUCH_FIELD",
     "write_field_disposition",
     "c64_party",
     "write_dos_save_from",
@@ -1464,7 +1463,8 @@ LATER_TITLE_DROPPED: tuple[tuple[str, str], ...] = (
 #: the import-side counterpart of the export side's own accounting, over
 #: the DOS field vocabulary the way :data:`DROPPED` is.  Four of these
 #: fields appear on that side too, in :data:`WRITE_UNSOURCED` rather than
-#: in :data:`WRITE_DERIVED`, which holds only `unnamed_0ab`.
+#: in :data:`WRITE_DERIVED`, whose two entries are `unnamed_0ab` and
+#: `encumbrance`.
 #:
 #: `(name, why, the run that demonstrated it)` -- a row with nothing in the
 #: third field is a row nobody has earned yet.
@@ -2459,36 +2459,19 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
-#: `Writer.finish` for any character that carries one, unless
-#: :data:`WRITE_UNREPORTED_DROPS` names it.
+#: `Writer.finish` for any character that carries one.
+#:
+#: `infravision`, `turn_power` and `encumbrance` used to sit here too, silenced
+#: from the report by `WRITE_UNREPORTED_DROPS`/`SilencingWriter` (removed,
+#: #483, The Convert flag could come off while two fields are still lost,
+#: because a silencing list keeps them out of the count that decides it) or,
+#: for `encumbrance`, simply never reported for any registered direction. None
+#: of the three is a loss -- the destination platform has no such field, or
+#: derives it -- so each is `w.use()`-consumed in :func:`write` instead and
+#: declared on :data:`WRITE_NO_SUCH_FIELD` or :data:`WRITE_DERIVED`, which
+#: report `derived:` rather than `dropped:` and reach nobody, honestly rather
+#: than by a list built to keep them off the count.
 WRITE_DROPPED: tuple[tuple[str, str], ...] = (
-    ("infravision", "DOS stores no infravision for any character, and the "
-                    "C64's own is worked out from the character's race, "
-                    "which is converted"),
-    # The defensive half of this used to be in the `why` itself -- "this is
-    # not a byte we have failed to find" -- which is a developer arguing with
-    # a reviewer rather than an account of the field, and it reached a
-    # report.  The argument, kept here where it belongs: the turn-undead
-    # routine has been read end to end and the only record byte it takes is
-    # the row belonging to the creature being turned, so there is no caster
-    # byte to look for (#297, docs/178-turning-undead.md).
-    ("turn_power", "the DOS game works a cleric's turning strength out for "
-                   "itself, from his own class and level, at the moment the "
-                   "player presses the command, so it keeps no byte for it "
-                   "and there is nothing to write"),
-    # No "DOS" in the three reasons below (#389, A conversion to the Amiga
-    # tells the player what DOS does with their character): this table's
-    # text reaches an Amiga player unchanged, since `write_por` and
-    # `write_later` build their own record out of this one and copy its
-    # report verbatim.  `encumbrance` is the one of the three a real
-    # specimen reaches today -- an Amiga Curse or Silver Blades character
-    # carries the field on read, this writer always recomputes rather than
-    # copies it, and the sweep reported it in the DOS engine's name for
-    # every character on `WISH-SPEC-ssb-amiga-adventuring/savgamB.sav`
-    # before this fix.
-    ("encumbrance", "recomputed from money and item weight -- the identity "
-                    "this game's own engine uses -- rather than copied. "
-                    "(NOT APPROVED)"),
     # The two below are the later titles' fields, and this writer builds a
     # Pool of Radiance record: it declares one copy of each ability and no
     # former-class array, so there is nowhere to put either.  A C64 source
@@ -2551,22 +2534,23 @@ def write_absent(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     return tuple((n, f"{title} {_ABSENT_WHY[n]}")
                  for n, dos_name in WRITE_DIRECT if dos_name not in table)
 
-#: Writer drops the **player** is not shown.  It was the mirror of a reader
-#: list, `UNREPORTED_DROPS`, from #307 (The DOS writer's drop list has no
-#: way to silence a field the DOS engine puts back on load) until
-#: 2026-09-06, when the reader's went: Donald asked to see every import
-#: drop that is not derived (*"Show others for now"*), and that ruling was
-#: made about the import pane.  This one is the export's and stands until
-#: he rules on it; the export dialog is still behind its own flag.
+#: Neutral fields DOS has no field for **on any title**, ever -- distinct from
+#: :data:`_ABSENT_WHY`, which is a title-by-title gap in one record layout.
+#: `.claude/rules/conversions.md`'s first carve-out: "the destination *format*
+#: has no such field ... established by reading its layout, not assumed."
+#: `write` calls `w.use()` on each of these and discards the value, so it
+#: counts as consumed and `Writer.finish` composes no line for it -- the same
+#: honest silence :data:`WRITE_DERIVED` gets for a field DOS does write, just
+#: not by copying.
 #:
-#: **Nothing measured leaves the code.**  A name here is still in
-#: :data:`WRITE_DROPPED`, so :func:`write_field_disposition` still calls it a
-#: drop and the accounting is unchanged; what goes is the line.
-#:
-#: **An entry needs a measurement, not an argument.**
-#: `.claude/rules/conversions.md` allows silence for a field the destination
-#: *derives*, and only when the derivation has been demonstrated in the
-#: running game.
+#: Until 2026-09-09 these two were still in :data:`WRITE_DROPPED`, and a now
+#: -deleted `WRITE_UNREPORTED_DROPS`/`SilencingWriter` faked them as consumed
+#: without ever measuring the destination -- so a real C64 source's drop list
+#: was never actually empty, only silenced, which is what
+#: `#483 (The Convert flag could come off while two fields are still lost,
+#: because a silencing list keeps them out of the count that decides it)`
+#: found.  The measurements below did not change; only how the code tells the
+#: truth about them did.
 #:
 #: * `turn_power` -- both engines work a cleric's turning strength out from
 #:   his class and level when the player presses the command.  The DOS
@@ -2605,42 +2589,21 @@ def write_absent(shape: "int | str | DosShape" = POOL_OF_RADIANCE
 #: `use`\\ d on every path, so the closing sweep never sees it, and a neutral
 #: record with no `spells_castable` at all -- which is what a C64 Curse or
 #: Silver Blades source produces, `RecordShape.spell_slots` being `False` for
-#: both -- writes zeroes and reports nothing.  Measured over the 24 records
-#: on the player's own disks: `turn_power` is the only `WRITE_DROPPED` line
-#: any of them reaches.  Those are DOS records; a **C64** source reaches
-#: `infravision` as well, and reached nothing else on 2026-09-07 --
-#: `tools/convertrun.py --no-play` on a six-character Pool of Radiance party
-#: put one line in the pane.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the
-#: `spells_castable` line on the DOS-to-C64 direction, went the same way for
-#: the same reason (#324): #192 step 3 and #193 step 3 both watched the
-#: memorise screen enforce a ceiling nothing in the converted save wrote, so
-#: it is a note over the six bytes it leaves zero rather than a line in
-#: `report.dropped`.
-WRITE_UNREPORTED_DROPS = frozenset({"turn_power", "infravision"})
-
-
-class SilencingWriter(neutral.Writer):
-    """A `goldbox.neutral.Writer` with the reader's second list.
-
-    `neutral.Writer.finish` composes a line for every neutral field the
-    writer took nothing from.  This adds the other half the DOS *reader* has
-    had since 2026-08-27: which of those a player is not told about, because
-    the destination puts the field back for itself.
-
-    The names in `silent` are counted as consumed by the sweep and by nothing
-    else -- :func:`write_field_disposition` still calls each one a drop -- so
-    the accounting is the same and only the list in front of a person is
-    shorter.
-    """
-
-    def __init__(self, *args: Any, silent: Iterable[str] = (),
-                 **kw: Any) -> None:
-        super().__init__(*args, **kw)
-        self.silent = frozenset(silent)
-
-    def finish(self) -> None:
-        self.taken.extend(n for n in self.silent if n not in self.taken)
-        super().finish()
+#: both -- writes zeroes and reports nothing.  `goldbox.c64_codec.
+#: NO_SPELL_SLOTS`, the `spells_castable` line on the DOS-to-C64 direction,
+#: went the same way for the same reason (#324): #192 step 3 and #193 step 3
+#: both watched the memorise screen enforce a ceiling nothing in the
+#: converted save wrote, so it is a note over the six bytes it leaves zero
+#: rather than a line in `report.dropped`.
+WRITE_NO_SUCH_FIELD: tuple[tuple[str, str], ...] = (
+    ("turn_power", "the DOS game works a cleric's turning strength out for "
+                   "itself, from his own class and level, at the moment the "
+                   "player presses the command, so it keeps no byte for it "
+                   "and there is nothing to write"),
+    ("infravision", "DOS stores no infravision for any character, and the "
+                    "C64's own is worked out from the character's race, "
+                    "which is converted"),
+)
 
 #: **A character carrying nothing gets no `.ITM` file at all**, and an empty
 #: file is not the same thing as no file.  Measured, #62: the engine's own
@@ -2791,15 +2754,32 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "apart (#194)"),
 )
 
-#: Fields written from a rule over the **record itself** rather than from a
-#: neutral value, a constant or a default.  One so far, and it is here because
-#: a zero was measured harmful rather than merely unattributed.
+#: Fields written from a rule rather than copied from a single neutral value:
+#: a digest of the rest of the record, or a sum the engine itself computes
+#: from money and item weight.  Neither is a constant or a default -- both
+#: change with the character -- and neither is a loss: DOS writes the byte,
+#: just not by copying it.
 #:
 #: `tests/test_doswriter.py` masks these in the round trip beside
 #: :data:`WRITE_UNSOURCED` and :data:`WRITE_DEFAULTS`: the value is ours and
 #: not the source's, so a written record differing from the original here is
 #: expected.
 WRITE_DERIVED: tuple[tuple[str, str], ...] = (
+    ("encumbrance",
+     "money plus item weight times quantity -- the identity Pool of "
+     "Radiance's own engine rebuilds at `START.EXE` image 0x1758, and Curse "
+     "of the Azure Bonds and Secret of the Silver Blades share the same "
+     "routine in `GAME.OVR` (`.claude/rules/testing.md`).  Not a copy of the "
+     "source's own stored total: a source whose own copy has drifted from "
+     "the identity -- a training fee or a shop purchase caught mid-drift, "
+     "`#323 (The encumbrance identity does not survive the training fee, so "
+     "failing it is not evidence of an edited record)` -- gets the engine's "
+     "own number back rather than the drift.  Unreachable by any registered "
+     "direction today: only an Amiga Curse or Silver Blades reader sets the "
+     "neutral `encumbrance` field, and no registered direction takes that "
+     "source yet (#483, The Convert flag could come off while two fields "
+     "are still lost, because a silencing list keeps them out of the count "
+     "that decides it)"),
     ("unnamed_0ab",
      "the identity byte the engine uses to tell two characters of the same "
      "name apart. Written by character creation as one call to the random "
@@ -3219,7 +3199,7 @@ def write(char: NeutralCharacter,
     character.
 
     `into` names the destination a drop line reports, for the one sentence
-    this function still composes itself -- `SilencingWriter.finish`'s "the
+    this function still composes itself -- `neutral.Writer.finish`'s "the
     neutral record carries it and the {into} conversion takes nothing from
     it".  Every other caller writes straight to a DOS save and leaves this at
     its default; `goldbox.amiga.write_por` and `write_later` build an Amiga
@@ -3287,9 +3267,19 @@ def write(char: NeutralCharacter,
     dropped = (WRITE_DROPPED if shape is POOL_OF_RADIANCE else
                tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
     dropped += write_absent(shape)
-    w = SilencingWriter(char, rep, into=into, dropped=dropped,
-                        silent=WRITE_UNREPORTED_DROPS)
+    w = neutral.Writer(char, rep, into=into, dropped=dropped)
     use, emit = w.use, w.emit
+
+    # -- fields DOS has no field for on any title, ever ----------------------
+    # Consumed and discarded rather than declared in `dropped` above: a name
+    # marked taken this way never reaches `Writer.finish`'s closing sweep, the
+    # same honest silence a field DOS does write gets from `WRITE_DERIVED`
+    # below.  `WRITE_NO_SUCH_FIELD` has the two measurements this rests on
+    # (#483, The Convert flag could come off while two fields are still
+    # lost, because a silencing list keeps them out of the count that
+    # decides it).
+    for _no_field_name, _ in WRITE_NO_SUCH_FIELD:
+        use(_no_field_name)
 
     def put(v: neutral.Value, dos_name: str, extra: str = "",
             value: Any = None) -> None:
@@ -3338,7 +3328,7 @@ def write(char: NeutralCharacter,
         # A field this title's record does not have at all -- Pools of
         # Darkness' four lighter coins, its drained-level pair and its
         # missing experience rate (#194).  Left untaken on purpose, so
-        # `SilencingWriter.finish` reports it out of `absent` below rather
+        # `Writer.finish` reports it out of `absent` below rather
         # than this loop reaching for a `table` entry that is not there.
         if dos_name not in table:
             continue
@@ -3919,6 +3909,12 @@ def write(char: NeutralCharacter,
     money = sum(int(w.get(k, 0)) for k in _COINS if k in table)
     weight = sum(int.from_bytes(i[8:10], "little") * (i[10] or 1)
                  for i in projected)
+    # `use`, not `get`, so a source that supplies its own `encumbrance` --
+    # today only an Amiga Curse or Silver Blades reader -- counts as consumed
+    # rather than reaching `Writer.finish` as unwritten: the value computed
+    # below is the engine's own identity (`WRITE_DERIVED`), not a copy of the
+    # source's, so there is nothing lost by not copying it.
+    use("encumbrance")
     _encode(table["encumbrance"], rec, min(money + weight, 0xFFFF))
     rep.note(table["encumbrance"].offset, 2,
              "encumbrance: computed -- money plus item weight x quantity, "
@@ -4052,20 +4048,23 @@ def write(char: NeutralCharacter,
     # -- derived from the record, once everything else in it is written ------
     # Last, so the digest covers the finished record: a field written after
     # this would change the character without changing its identity byte.
-    # `WRITE_DERIVED` is the declaration the tests read; the rule itself is
-    # per field, and there is one -- with the exceptions its own note
-    # describes: a C64 Pool of Radiance source's own draw (#258) or an Amiga
-    # Pool of Radiance source's own draw (#378), each taken instead of a
-    # digest of a record it never held.  `IDENTITY_HELD_PORTS` asks which
-    # *port* the value came from because that is the signal every reader
-    # already gives -- `NeutralCharacter.port`, "so a writer can say whose
-    # value it is turning away" -- and the true question is not "which port"
-    # but "does this port's own record hold a genuine draw rather than
+    # `WRITE_DERIVED` is the declaration the tests read and now names two
+    # fields (`encumbrance`, written above, and `unnamed_0ab` below), so this
+    # picks its own entry by name rather than assuming it is the only one.
+    # The rule itself is per field, and there is one -- with the exceptions
+    # its own note describes: a C64 Pool of Radiance source's own draw (#258)
+    # or an Amiga Pool of Radiance source's own draw (#378), each taken
+    # instead of a digest of a record it never held.  `IDENTITY_HELD_PORTS`
+    # asks which *port* the value came from because that is the signal every
+    # reader already gives -- `NeutralCharacter.port`, "so a writer can say
+    # whose value it is turning away" -- and the true question is not "which
+    # port" but "does this port's own record hold a genuine draw rather than
     # something DOS itself would have to invent", which is every port but
     # DOS.  `w.use`, not `char.get`, so a value graded below the floor is
     # refused and reported rather than taken, and so the field counts as
     # consumed either way.
-    (_derived_name, _derived_why), = WRITE_DERIVED
+    _derived_name = "unnamed_0ab"
+    _derived_why = dict(WRITE_DERIVED)[_derived_name]
     f = table[_derived_name]
     supplied = w.use(_derived_name)
     if supplied is not None and char.port in IDENTITY_HELD_PORTS:
@@ -4088,6 +4087,18 @@ def write(char: NeutralCharacter,
     return bytes(rec), itm, spc, rep
 
 
+#: The `derived=` `write_field_disposition` passes to `neutral.disposition`:
+#: `WRITE_DERIVED` plus `WRITE_NO_SUCH_FIELD`, minus `unnamed_0ab`.
+#: `disposition` applies `derived` after `transformed`, so a name in both
+#: would have its `WRITE_TRANSFORMED` text overwritten by the shorter
+#: `derived:` one -- `unnamed_0ab` is exactly that name, already carrying its
+#: own transform text there, so it is left for `transformed` to describe.
+_WRITE_FIELD_DISPOSITION_DERIVED: tuple[tuple[str, str], ...] = (
+    tuple((n, w) for n, w in WRITE_DERIVED
+          if n not in {tn for tn, _ in WRITE_TRANSFORMED})
+    + WRITE_NO_SUCH_FIELD)
+
+
 def write_field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
                             ) -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
@@ -4107,13 +4118,14 @@ def write_field_disposition(shape: "int | str | DosShape" = POOL_OF_RADIANCE
     gone = {n for n, _ in absent}
     direct = tuple((n, d) for n, d in WRITE_DIRECT if n not in gone)
     if shape is POOL_OF_RADIANCE:
-        return neutral.disposition(direct, WRITE_TRANSFORMED,
-                                   WRITE_DROPPED + absent, "the DOS record's")
+        return neutral.disposition(
+            direct, WRITE_TRANSFORMED, WRITE_DROPPED + absent,
+            "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
     return neutral.disposition(
         direct, WRITE_TRANSFORMED + WRITE_TRANSFORMED_LATER,
         tuple((n, w) for n, w in WRITE_DROPPED if n not in later) + absent,
-        "the DOS record's")
+        "the DOS record's", derived=_WRITE_FIELD_DISPOSITION_DERIVED)
 
 
 # ---------------------------------------------------------------------------

@@ -137,9 +137,12 @@ def test_every_neutral_field_has_a_write_disposition():
     into the DOS writer is named here."""
     assert neutral.undeclared(neutral.FIELDS, dos.write_field_disposition()) \
         == (set(), set())
+    derived = tuple((n, w) for n, w in dos.WRITE_DERIVED
+                    if n not in {tn for tn, _ in dos.WRITE_TRANSFORMED}) \
+        + dos.WRITE_NO_SUCH_FIELD
     assert dos.write_field_disposition() == neutral.disposition(
         dos.WRITE_DIRECT, dos.WRITE_TRANSFORMED, dos.WRITE_DROPPED,
-        "the DOS record's")
+        "the DOS record's", derived=derived)
 
 
 def test_the_writer_and_reader_direct_tables_are_mirrors():
@@ -185,7 +188,11 @@ def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
     # And the field is not silently unaccounted for at either end.
     assert dos.write_targets()["turn_class"].startswith("constant:")
     assert "turn_power" in dos.write_field_disposition()
-    assert dos.write_field_disposition()["turn_power"].startswith("dropped:")
+    # Not a loss any more (#483, The Convert flag could come off while two
+    # fields are still lost, because a silencing list keeps them out of the
+    # count that decides it): both engines derive it, so the accounting says
+    # `derived:` rather than `dropped:`.
+    assert dos.write_field_disposition()["turn_power"].startswith("derived:")
 
 
 # --- the item projection, both ways ------------------------------------------
@@ -2358,10 +2365,11 @@ def test_a_field_both_engines_work_out_for_themselves_is_not_reported():
     assert not [d for d in _writer_drops(char) if "turn_power" in d]
 
 
-def test_a_writer_drop_that_is_not_silenced_still_reaches_the_report():
-    """The other direction, which is what stops the silencing list becoming a
-    way to make the pane short: a field with no measurement behind it is
-    still named. `abilities_second` has none -- a DOS Pool of Radiance
+def test_a_writer_drop_with_no_measurement_behind_it_still_reaches_the_report():
+    """A field with no measurement behind it is still named -- consuming a
+    field silently is only for the two names `.claude/rules/conversions.md`
+    lets stand on `WRITE_NO_SUCH_FIELD` and the two on `WRITE_DERIVED`, not a
+    general licence.  `abilities_second` has none -- a DOS Pool of Radiance
     record keeps one copy of each ability score, so a second has nowhere to
     go.
 
@@ -2372,65 +2380,53 @@ def test_a_writer_drop_that_is_not_silenced_still_reaches_the_report():
     """
     char = _filled()
     char.set("abilities_second", {"strength": 18}, "made up: a second copy")
-    assert "abilities_second" not in dos.WRITE_UNREPORTED_DROPS
     assert [d for d in _writer_drops(char) if d.startswith("abilities_second:")]
 
 
-def test_nothing_measured_leaves_the_code_when_a_writer_drop_goes_silent():
-    """A silenced name is still a declared drop, so `field_disposition` still
-    accounts for it and the conversion still knows it happened. The failure
-    worth catching is a fact being deleted rather than a line being hidden --
-    the assertion `tests/test_dosconvert.py` used to make for the reader's
-    `UNREPORTED_DROPS`, until that set went on 2026-09-06 and every reader
-    drop became visible.  This writer-side set is still the export's.
-    """
-    declared = dict(dos.WRITE_DROPPED)
-    assert dos.WRITE_UNREPORTED_DROPS <= set(declared)
-    disposition = dos.write_field_disposition()
-    for name in dos.WRITE_UNREPORTED_DROPS:
-        assert disposition[name].startswith("dropped:"), name
+def test_write_unreported_drops_and_silencing_writer_are_gone():
+    """#483 (The Convert flag could come off while two fields are still
+    lost, because a silencing list keeps them out of the count that decides
+    it): the mechanism that faked a name as consumed without ever measuring
+    the destination is deleted, not renamed."""
+    assert not hasattr(dos, "WRITE_UNREPORTED_DROPS")
+    assert not hasattr(dos, "SilencingWriter")
 
 
-def test_the_writer_silencing_list_cannot_grow_without_a_measurement():
-    """`.claude/rules/conversions.md` allows a line to go only for a field the
-    destination *derives*, demonstrated in the running game. So every name in
-    `WRITE_UNREPORTED_DROPS` has to be argued where the list is defined, with
-    a `docs/` page behind it -- and a name added without one fails here
-    instead of quietly shortening the pane.
-    """
-    import pathlib
-    import re
-
-    source = pathlib.Path(dos.__file__).read_text(encoding="utf-8")
-    block = re.search(
-        r"((?:^#:.*\n)+)WRITE_UNREPORTED_DROPS = ", source, re.M)
-    assert block, "WRITE_UNREPORTED_DROPS has lost its documentation block"
-    why = block.group(1)
-    for name in dos.WRITE_UNREPORTED_DROPS:
-        assert name in why, name
-    assert "docs/" in why
+def test_turn_power_infravision_and_encumbrance_reach_no_report_line():
+    """The three names #483 found silenced never appear in `report.dropped`
+    for a real conversion -- honestly this time, because `write` `use`s each
+    one and discards it (`WRITE_NO_SUCH_FIELD`, `WRITE_DERIVED`), not because
+    a separate list marks it consumed after the fact."""
+    char = _filled()
+    char.set("turn_power", 6, "made up: a cleric 5's turning strength")
+    char.set("infravision", 6, "made up: a C64 source's own byte")
+    char.set("encumbrance", 999, "made up: an Amiga source's own stored total")
+    drops = _writer_drops(char)
+    assert not [d for d in drops if "turn_power" in d]
+    assert not [d for d in drops if "infravision" in d]
+    assert not [d for d in drops if "encumbrance" in d]
 
 
-def test_which_write_dropped_lines_are_silenced_today():
+def test_which_write_dropped_lines_a_c64_or_amiga_source_reaches_today():
     """The measured state of the list, so a future entry is a deliberate
     change rather than a drift.
 
     Counted over the 24 DOS records on the player's own disks in
-    `tests/test_dosconvert.py`'s corpus: `turn_power` is the only
-    `WRITE_DROPPED` line the C64-to-DOS direction reaches for any of them.
-    A **C64** source reaches `infravision` as well, and that is the second
-    entry, added 2026-09-07 -- the C64 byte is written once from a race table
-    in the game's own character generator and DOS keeps nothing for it, so a
-    converted character arrives in the state a DOS-rolled one of his race is
-    in (#52, `tests/test_infravision.py`).
+    `tests/test_dosconvert.py`'s corpus: no `WRITE_DROPPED` line reaches
+    them any more -- `turn_power` moved to `WRITE_NO_SUCH_FIELD` (#483). A
+    **C64** source reaches `infravision` too, also on `WRITE_NO_SUCH_FIELD`
+    -- the C64 byte is written once from a race table in the game's own
+    character generator and DOS keeps nothing for it, so a converted
+    character arrives in the state a DOS-rolled one of his race is in (#52,
+    `tests/test_infravision.py`).
     `spells_castable` -- named by #307 (The DOS writer's drop list has no way
     to silence a field the DOS engine puts back on load) as the second entry
     -- never reaches this report at all: the writer `use`s it on every path,
     so the closing sweep never sees it, and a source with none writes zeroes
     in silence.
     """
-    assert dos.WRITE_UNREPORTED_DROPS == frozenset({"turn_power",
-                                                    "infravision"})
+    assert {n for n, _ in dos.WRITE_NO_SUCH_FIELD} == {"turn_power",
+                                                       "infravision"}
     char = _filled()
     del char.fields["spells_castable"]
     assert not [d for d in _writer_drops(char) if "spells_castable" in d]

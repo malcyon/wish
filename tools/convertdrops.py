@@ -7,8 +7,17 @@ supports)`'s condition 8 -- every registered direction perfect, its drop list
 empty -- is a claim about what a conversion *reports*, not about what a
 writer's `DROPPED` tuple declares.  The two are not the same thing:
 `goldbox.neutral.Writer.finish` composes a line only for a field the neutral
-record actually carries, so a declared entry no source can reach never fires,
-and `goldbox.dos.WRITE_UNREPORTED_DROPS` silences two that do.
+record actually carries, so a declared entry no source can reach never fires.
+
+Until 2026-09-09 `goldbox.dos.WRITE_UNREPORTED_DROPS` also silenced two
+entries that a real C64 source does reach -- `turn_power` and `infravision`
+-- so the count this tool's `sweep` reports could look emptier than the
+conversion actually was.  `#483 (The Convert flag could come off while two
+fields are still lost, because a silencing list keeps them out of the count
+that decides it)` removed the silencing list: both names, plus `encumbrance`,
+are on `goldbox.dos.WRITE_NO_SUCH_FIELD` or `WRITE_DERIVED` now, genuinely
+consumed by `write` rather than faked as taken after the fact, so `sweep`'s
+count needs no code change here to read honestly.
 
 Two modes:
 
@@ -255,7 +264,8 @@ def reach() -> int:
     for key in sorted(carried):
         print(f"  {key[0]:6} {key[1]:30} {len(carried[key])} fields")
     print()
-    silent = dos.WRITE_UNREPORTED_DROPS
+    derived = {n for n, _ in dos.WRITE_NO_SUCH_FIELD} | {n for n, _ in
+                                                         dos.WRITE_DERIVED}
     for direction in convert.DIRECTIONS:
         label, drops = WRITER_DROPS[direction.destination_port]
         have = carried.get((direction.source_port, direction.source_key), set())
@@ -263,8 +273,9 @@ def reach() -> int:
         print(f"{type(direction).__name__} {direction.source_key} -> "
               f"{direction.destination_port}   ({label})")
         print(f"   reachable:    {can or 'none'}")
-        print(f"   of those, silenced by WRITE_UNREPORTED_DROPS: "
-              f"{[n for n in can if n in silent] or 'none'}")
+        print(f"   of those the destination derives, so `write` consumes "
+              f"and reports neither (WRITE_NO_SUCH_FIELD/WRITE_DERIVED): "
+              f"{[n for n in have if n in derived] or 'none'}")
         print(f"   no source carries: "
               f"{[n for n, _ in drops if n not in have]}")
         print()

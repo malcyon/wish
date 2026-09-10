@@ -200,12 +200,25 @@ def test_no_dos_effect_id_a_race_is_born_with_means_infravision():
 
 # --- the accounting ---------------------------------------------------------
 
-def test_the_writers_accounting_still_calls_infravision_a_drop():
-    """Silence is a line in front of a person, not a change to the books:
-    `write_field_disposition` still says `dropped` for it."""
+def test_the_writers_accounting_calls_infravision_derived_not_dropped():
+    """`write_field_disposition` still names the field -- it is not a loss
+    that dropped off the books, it is one the destination derives -- and
+    since #483 (The Convert flag could come off while two fields are still
+    lost, because a silencing list keeps them out of the count that decides
+    it) it says so honestly: `derived:` rather than a `dropped:` line a
+    now-deleted silencing list kept out of the report."""
     said = dos.write_field_disposition()
-    assert said["infravision"].startswith("dropped:")
+    assert said["infravision"].startswith("derived:")
 
 
 def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
-    assert "infravision" in dos.WRITE_UNREPORTED_DROPS
+    """The C64's own byte is a pure function of race (this module's own
+    measurement), so a real conversion never puts a line about it in front of
+    anybody -- achieved since #483 by `write` consuming the field with `use`
+    rather than by a separate list built to keep it off the count."""
+    from test_neutral import _filled
+
+    char = _filled()
+    char.set("infravision", 6, "made up: a C64 source's own byte")
+    _, _, _, rep = dos.write(char)
+    assert not [d for d in rep.dropped if "infravision" in d]

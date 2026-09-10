@@ -268,43 +268,73 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
 
 
 def test_a_field_the_target_cannot_represent_is_reported():
-    """Never dropped silently: a class the C64 has no level slot for, and a
-    field this writer takes nothing from.
+    """Never dropped silently: a field this writer takes nothing from.
 
     `encumbrance` is the example rather than `portrait_head`: since #57 the
     C64 writer copies a `portrait_head` it is given, so a field genuinely
     left untaken is one still in `c64_codec.DROPPED`.
     """
     char = _filled()
-    char.set("levels", {"fighter": 7, "druid": 4}, "made up")
     char.set("encumbrance", 42, "made up")
     _, rep = c64_codec.write(char)
-    assert any("druid" in w for w in rep.warnings)
     assert any(d.startswith("encumbrance:") for d in rep.dropped)
 
 
-def test_a_spell_the_target_has_no_bit_for_is_reported():
+def test_a_class_the_c64_has_no_level_slot_for_is_silent():
+    """A DOS class the C64 title's level array has no slot for is still
+    left off the sheet -- but not named, since #399 (A conversion that runs
+    out of item or trait slots tells the player nothing, because the pane
+    never shows a warning) drafted a sentence for this and Donald ruled it
+    unneeded after a 950-character census found nobody reaching any of that
+    ticket's ceilings: "I agree that we do not need the sentences." """
+    char = _filled()
+    char.set("levels", {"fighter": 7, "druid": 4}, "made up")
+    rec, rep = c64_codec.write(char)
+    assert not any("druid" in w for w in rep.warnings)
+    assert rec.get("level_fighter") == 7
+
+
+def test_a_spell_the_target_has_no_bit_for_is_silent():
+    """Restoration, id 56, is one bit short of Pool of Radiance's own C64
+    spellbook mask -- still left off, but not named, on the same #399
+    ruling as the class and item ceilings below.  #411 (Nobody knows
+    whether a converted cleric loses Restoration, because the spellbook
+    field is one bit short of the game's own spell list) is where a future
+    finding about who can actually reach this belongs."""
     char = _filled()
     char.set("spells_known", [1, 56], "made up")
-    _, rep = c64_codec.write(char)
-    assert any("Restoration" in w for w in rep.warnings)
+    rec, rep = c64_codec.write(char)
+    assert not any("Restoration" in w for w in rep.warnings)
+    back = c64_codec.read(rec, game=char.game).get("spells_known")
+    assert 1 in back and 56 not in back
 
 
-def test_more_items_than_slots_is_reported():
+def test_more_items_than_slots_is_silent():
+    """Truncated to sixteen and not named -- #399's own census found this
+    ceiling touched only by a specimen the project manufactured to reach
+    it, never by a real character.  Donald, 2026-09-07: "I agree that we do
+    not need the sentences."."""
     char = _filled()
-    char.set("inventory", [bytes(16)] * 20, "made up")
-    _, rep = c64_codec.write(char)
-    assert any("carry only sixteen" in w for w in rep.warnings)
+    items = [bytes([n]) + bytes(15) for n in range(1, 21)]
+    char.set("inventory", items, "made up")
+    rec, rep = c64_codec.write(char)
+    assert not any("carry only sixteen" in w for w in rep.warnings)
+    raw = rec.get_raw("inventory")
+    assert [raw[n * 16] for n in range(16)] == list(range(1, 17))
 
 
-def test_more_innate_effects_than_slots_is_reported():
+def test_more_innate_effects_than_slots_is_silent():
     """#236 (A character converted to the C64 with more than ten innate
-    effects loses the extra ones with no report): eleven ids, ten trait
-    slots -- the eleventh must be named in the report, not just cut off."""
+    effects loses the extra ones with no report) drafted a sentence for
+    this; #399's own census found no real character reaching the ten trait
+    slots (widest anywhere: 5, engine-written), and Donald ruled the
+    sentence unneeded -- so eleven ids still fill only the first ten slots,
+    silently."""
     char = _filled()
     char.set("innate_effects", list(range(1, 12)), "made up")
-    _, rep = c64_codec.write(char)
-    assert any("11" in w and "on their own" in w for w in rep.warnings)
+    rec, rep = c64_codec.write(char)
+    assert not any("on their own" in w for w in rep.warnings)
+    assert list(rec.get_raw("item_effects")) == list(range(1, 11))
 
 
 def _granted(effect_id: int) -> bytes:
@@ -338,15 +368,16 @@ def test_a_granted_effect_fills_from_the_top_after_the_innate_ones():
     assert slots[9] == 61
 
 
-def test_more_granted_effects_than_free_slots_is_reported():
+def test_more_granted_effects_than_free_slots_is_silent():
     """Nine innate ids leave one free slot; two item grants do not both
-    fit, and the loss must be named rather than silently cut off."""
+    fit -- still not named, on the same #399 ruling as the test above."""
     char = _filled()
     char.set("innate_effects", list(range(1, 10)), "made up")
     char.set("granted_effects", [_granted(61), _granted(89)], "made up")
-    _, rep = c64_codec.write(char)
-    assert any("2 effects your character's items grant" in w
-               and "1 of the ten allowed" in w for w in rep.warnings)
+    rec, rep = c64_codec.write(char)
+    assert not any("effects your character's items grant" in w
+                   for w in rep.warnings)
+    assert rec.get_raw("item_effects")[9] == 61
 
 
 # --- the DOS reader, against real files --------------------------------------

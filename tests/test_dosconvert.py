@@ -937,25 +937,23 @@ def test_convert_save_accounts_for_save0_alone_when_there_is_no_save1():
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-item-twenty"),
                     reason="needs the twenty-item specimen")
-def test_a_character_with_more_items_than_the_c64_holds_reports_a_loss():
+def test_a_character_with_more_items_than_the_c64_holds_truncates_silently():
     """#399 (A conversion that runs out of item or trait slots tells the
-    player nothing, because the pane never shows a warning).
-
-    `WISH-SPEC-por-item-twenty` is WISHFTR, whose `.ITM` an editor widened to
-    twenty items before the engine loaded and re-saved all of them intact
-    (`provenance.toml`).  Converting him to the C64 truncates to sixteen, and
-    that is a fact about *his* items -- `losses` is where it has to land for
-    `editor.dosimport.pane_text` to ever show it.
+    player nothing, because the pane never shows a warning) drafted a
+    sentence for this.  `WISH-SPEC-por-item-twenty` is WISHFTR, whose `.ITM`
+    an editor widened to twenty items before the engine loaded and re-saved
+    all of them intact (`provenance.toml`) -- this project's own manufactured
+    specimen, the only record anywhere on the machine over sixteen items in
+    #399's own 950-character census.  Donald ruled the sentence unneeded
+    after seeing that: "I agree that we do not need the sentences." So
+    converting him to the C64 still truncates to sixteen; nothing says so.
     """
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
     report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
                               save0, save1)
-    assert any("WISHFTR" in w and "carry only sixteen" in w
-              for w in report.losses)
-    # Still in `warnings` too -- log visibility does not move.
-    assert any("WISHFTR" in w and "carry only sixteen" in w
-              for w in report.warnings)
+    assert not any("carry only sixteen" in w for w in report.losses)
+    assert not any("carry only sixteen" in w for w in report.warnings)
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("por-party-l1"),
