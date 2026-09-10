@@ -847,7 +847,7 @@ def main(argv=None) -> int:
     save = "STAGED.D64"
     src = pathlib.Path(args.save) if os.path.isabs(args.save) \
         else disks / args.save
-    shutil.copy(src, staging_dir / save)
+    S.stage_writable(src, staging_dir / save)
     game_disk = str(disks / "POOL1.D64")
 
     staged_items: list[dict] = []

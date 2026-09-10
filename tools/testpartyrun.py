@@ -30,7 +30,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -90,7 +89,7 @@ def main(argv=None) -> int:
     # the originals are only ever read -- the shape `tools/turndrive.py` uses.
     staging = out / "disks"
     staging.mkdir(parents=True, exist_ok=True)
-    shutil.copy(args.disk, staging / "STAGED.D64")
+    S.stage_writable(args.disk, staging / "STAGED.D64")
     for i in range(1, 9):
         src = pathlib.Path(args.disks) / f"POOL{i}.D64"
         link = staging / f"POOL{i}.D64"

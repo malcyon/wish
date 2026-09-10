@@ -59,22 +59,33 @@ def _names_a_reused_staging_dir(text: str) -> bool:
 
 
 def _slot_scoped_bare_copies(root: pathlib.Path = TOOLS) -> list[str]:
-    """Every `shutil.copy(src, <dest built from a slot's own directory>)`.
+    """Every `shutil.copy` into a directory a run reuses across processes:
+    a pool slot's own directory, or a tool's own `out / "disks"` staging
+    directory (`#472`, `#476`).
 
     Found by walking each file's AST rather than grepping text, so a call
     split across lines, or reached through a variable a few lines above it --
     `staged = pathlib.Path(slot.dir) / "SIDE0.D64"` then `shutil.copy(save,
     staged)`, which is the shape `tools/splatload.py`, `tools/cursewarp.py`
-    and `tools/ssbwarp.py`'s old `SAVE_IN.D64` copy all had -- is still
-    caught. The variable tracking is file-wide rather than scoped to one
-    function, which trades a false positive from an unrelated reuse of a name
-    like `staged` for never missing the real shape again; nothing in this
-    tree reuses those names for anything else.
+    and `tools/ssbwarp.py`'s old `SAVE_IN.D64` copy all had, and
+    `staging = out / "disks"` then `shutil.copy(src, staging / "STAGED.D64")`,
+    which is what every one of the six `#476` tools did -- is still caught.
+    The variable tracking is file-wide rather than scoped to one function,
+    which trades a false positive from an unrelated reuse of a name like
+    `staged` for never missing the real shape again; nothing in this tree
+    reuses those names for anything else.
+
+    **The destination need not be a bare name.** `staging / "STAGED.D64"` is
+    a `BinOp`, not a `Name`, so the check walks every name inside the
+    destination expression rather than only asking whether the whole
+    expression *is* one -- which is what a `dest` reached through a tracked
+    variable but combined with a literal filename, the `#476` shape, needs.
 
     A destination naming `slot.dir` (however it is spelled -- `run.slot.dir`,
-    `self.slot.dir`, an f-string built from it) is what makes a copy land in
-    a directory a pool reuses across separate processes, which is the
-    property that turns a read-only specimen into a poisoned slot.
+    `self.slot.dir`, an f-string built from it) or built as `<out> /
+    "disks"` is what makes a copy land in a directory reused across separate
+    runs, which is the property that turns a read-only specimen into a
+    poisoned destination.
     """
     found = []
     for path in sorted(root.glob("*.py")):
@@ -92,14 +103,14 @@ def _slot_scoped_bare_copies(root: pathlib.Path = TOOLS) -> list[str]:
             tree = ast.parse(source, filename=str(path))
         except SyntaxError:
             continue
-        slot_scoped_names = set()
+        reused_names = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 text = ast.get_source_segment(source, node.value) or ""
-                if _names_a_slot(text):
+                if _names_a_slot(text) or _names_a_reused_staging_dir(text):
                     for target in node.targets:
                         if isinstance(target, ast.Name):
-                            slot_scoped_names.add(target.id)
+                            reused_names.add(target.id)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -113,21 +124,27 @@ def _slot_scoped_bare_copies(root: pathlib.Path = TOOLS) -> list[str]:
             if dest is None:
                 continue
             text = ast.get_source_segment(source, dest) or ""
-            is_hit = _names_a_slot(text) or (
-                isinstance(dest, ast.Name) and dest.id in slot_scoped_names)
+            is_hit = (
+                _names_a_slot(text)
+                or _names_a_reused_staging_dir(text)
+                or any(isinstance(n, ast.Name) and n.id in reused_names
+                       for n in ast.walk(dest)))
             if is_hit:
                 found.append(f"{path.name}:{node.lineno}")
     return found
 
 
-def test_no_tool_stages_a_disk_into_a_slot_with_a_bare_shutil_copy():
-    """#472: name the file and line rather than just say something failed."""
+def test_no_tool_stages_a_disk_into_a_reused_directory_with_a_bare_shutil_copy():
+    """#472, #476: name the file and line rather than just say something
+    failed."""
     offenders = _slot_scoped_bare_copies()
     assert offenders == [], (
-        "these call sites copy into a pool slot's own directory with a bare "
-        "shutil.copy, which carries a read-only specimen's mode onto the "
-        "staged file and leaves it there for the next run to trip over -- "
-        "route them through tools.session.stage_writable instead:\n  "
+        "these call sites copy into a directory a run reuses across "
+        "processes -- a pool slot, or a tool's own out/disks staging "
+        "directory -- with a bare shutil.copy, which carries a read-only "
+        "specimen's mode onto the staged file and leaves it there for the "
+        "next run to trip over -- route them through "
+        "tools.session.stage_writable instead:\n  "
         + "\n  ".join(offenders))
 
 
@@ -163,6 +180,23 @@ def test_the_sweep_catches_a_copy_reached_through_a_variable(tmp_path):
         "    shutil.copy(save, staged)\n")
 
     assert _slot_scoped_bare_copies(tmp_path) == ["toolstub.py:6"]
+
+
+def test_the_sweep_catches_a_copy_into_a_reused_out_disks_directory(tmp_path):
+    """#476: the shape all six named tools shared -- `staging = out /
+    "disks"` a few lines above a bare `shutil.copy(src, staging /
+    "STAGED.D64")`, where the destination is a `BinOp` built from the
+    tracked variable and a literal filename, not the variable alone."""
+    (tmp_path / "toolstub.py").write_text(
+        "import shutil\n"
+        "import pathlib\n"
+        "\n"
+        "def stage(out, src):\n"
+        "    staging = out / 'disks'\n"
+        "    staging.mkdir(parents=True, exist_ok=True)\n"
+        "    shutil.copy(src, staging / 'STAGED.D64')\n")
+
+    assert _slot_scoped_bare_copies(tmp_path) == ["toolstub.py:7"]
 
 
 def test_the_sweep_leaves_a_wrapped_copy_alone(tmp_path):

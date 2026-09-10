@@ -222,8 +222,8 @@ def main(argv=None) -> int:
         if src.exists() and not link.exists():
             link.symlink_to(src.resolve())
     save = "STAGED.D64"
-    shutil.copy(disks / args.save if not os.path.isabs(args.save)
-                else args.save, staging_dir / save)
+    S.stage_writable(disks / args.save if not os.path.isabs(args.save)
+                     else args.save, staging_dir / save)
     if args.stage:
         written = stage_traits(staging_dir / save, parse_stage(args.stage))
         log.emit("staged", values=written)

@@ -378,7 +378,7 @@ def boot(args) -> int:
         if s.exists() and not link.exists():
             link.symlink_to(s.resolve())
     save = "STAGED.D64"
-    shutil.copy(disk, staging_dir / save)
+    S.stage_writable(disk, staging_dir / save)
 
     slot = S.claim_slot(args.slot, "traitsave")
     log.say(f"pool slot {slot.n} display {slot.display}  out {out}")

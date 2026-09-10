@@ -236,7 +236,7 @@ def main(argv=None) -> int:
             if src.exists() and not link.exists():
                 link.symlink_to(src.resolve())
         save = "STAGED.D64"
-        shutil.copy(args.save_path, staging / save)
+        S.stage_writable(args.save_path, staging / save)
         disks = staging
         if args.stage:
             written = stage_status(staging / save, parse_stage(args.stage))

@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import shutil
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
@@ -166,7 +165,7 @@ def main(argv=None) -> int:
             src, link = disks / f"POOL{i}.D64", staging / f"POOL{i}.D64"
             if src.exists() and not link.exists():
                 link.symlink_to(src.resolve())
-        shutil.copy(disks / args.save, staging / "STAGED.D64")
+        S.stage_writable(disks / args.save, staging / "STAGED.D64")
         save, disks = "STAGED.D64", staging
         written = stage(staging / save, parse_stage(args.stage))
         log.emit("staged", values=written)
