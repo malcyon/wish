@@ -248,21 +248,29 @@ def test_the_byte_at_0x1e0_is_written_at_the_value_twenty_of_them_hold():
 # --- the race table this title never had -------------------------------------
 
 def test_the_race_is_read_through_the_titles_own_numbering():
-    """The defect this closes: `goldbox/games.py` has never heard of Pools of
-    Darkness, so `games.BY_KEY` answers `None` and `games.race_table` then
-    hands back **Pool of Radiance's** numbering -- under which this title's
-    race 5, the human ten of its twelve pregens are, reads as a halfling and
-    collects the halfling's two innate records.
+    """The defect this closed: `goldbox/games.py` has never heard of Pools of
+    Darkness, so `games.BY_KEY` answered `None` and `games.race_table` then
+    handed back **Pool of Radiance's** numbering -- under which this title's
+    race 5, the human ten of its twelve pregens are, read as a halfling and
+    collected the halfling's two innate records.
 
-    `goldbox.dos_layout.DosShape.race_numbers` is the measured per-title
-    tuple (`#237`) and is what the record's own byte means. This is `#293`'s
-    bug one title along.
+    `#470 (Give the project a neutral title beside its neutral character
+    record, with one port per platform a title shipped on)`'s stage 2 points
+    `_race_combat_effects` at `goldbox.titles.race_table`, which -- unlike
+    `games.race_table` -- has a Pools of Darkness row, so the bug is closed
+    even with no `DosShape` in hand: passing one is no longer what makes
+    this title's own numbering apply, it is what lets the record's own byte
+    win at the handful of codes where a title's rules-level `races` and its
+    DOS executable's own string table disagree (`goldbox.dos_layout.DosShape.
+    race_numbers`, `#237`) -- and Pools of Darkness has no such disagreement,
+    its `races` tuple being built from that very table. This is `#293`'s bug
+    one title along.
     """
     from goldbox import games
     assert games.BY_KEY.get(POD.key) is None
-    # Pool of Radiance's own numbering, which is what the old lookup used.
-    assert dos._race_combat_effects(POD.key, 5) == (90, 97)     # halfling
-    # This title's own: race 5 is the human, who gets nothing.
+    # Correct without a shape now: titles.py knows this title's race 5 is
+    # the human, who gets nothing.
+    assert dos._race_combat_effects(POD.key, 5) == ()
     assert dos._race_combat_effects(POD.key, 5, POD) == ()
     # And the change is inert for the three titles `games` does know.
     for shape in (POOL, dos_layout.CURSE_OF_THE_AZURE_BONDS, SSB):

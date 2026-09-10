@@ -1,8 +1,8 @@
 """Fields whose numbers have names, and the names the game itself uses.
 
-The tables come from `goldbox/games.py`, re-exported through `goldbox/yaml_io.py`, so
-the CLI and the editor cannot drift apart, and from the field notes in
-`goldbox/layout.py` for the two it does not carry.
+The tables come from `goldbox/titles.py`, re-exported through
+`goldbox/yaml_io.py`, so the CLI and the editor cannot drift apart, and from
+the field notes in `goldbox/layout.py` for the two it does not carry.
 
 **Race and class are per-title and so are functions, not constants.** Silver
 Blades moves human from 7 to 6, the Krynn titles use a different race list
@@ -27,7 +27,8 @@ from __future__ import annotations
 
 from goldbox import classcode
 from goldbox.games import Game
-from goldbox.yaml_io import ALIGNMENTS, SEXES, class_table, race_table
+from goldbox.titles import class_table, race_table
+from goldbox.yaml_io import ALIGNMENTS, SEXES
 
 
 def _full_name_for_bits(bits: int, table) -> str | None:
@@ -54,8 +55,9 @@ def race_labels(game: Game | None = None) -> dict[int, str]:
     Empty when the title's list is unknown, and a code that list does not name
     is left out: the caller then prints the raw number, which is the honest
     answer where a name would be a guess. Curse's 6 is the case that matters --
-    its own label table points both 6 and 7 at HUMAN, so `goldbox/games.py` names
-    neither and a Pool of Radiance half-orc converted across shows as a bare 6.
+    its own label table points both 6 and 7 at HUMAN, so `goldbox/titles.py`
+    names neither and a Pool of Radiance half-orc converted across shows as a
+    bare 6.
 
     The sheet's dropdown wants these in capitals (`race_names`); the roster
     wants them as the tables spell them (`editor/roster.py`). One table, two

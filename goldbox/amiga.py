@@ -39,7 +39,7 @@ import struct
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Sequence
 
-from . import areas, dos_layout, dos_savegame, games, neutral, world_state
+from . import areas, dos_layout, dos_savegame, games, neutral, titles, world_state
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
@@ -1821,79 +1821,39 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     return writer, rep
 
 
-#: Pools of Darkness' class bitmask, in the **neutral** bit order, for a
-#: title `goldbox/games.py` has no entry to answer for.
-#:
-#: It is Curse of the Azure Bonds' and Secret of the Silver Blades' table
-#: exactly, and that is measured on 24 records across both ports (#194):
-#: this disk's twelve `.pc` files hold `01` for each of three magic-users,
-#: `02` for two clerics, `04` for the thief, `08` for the fighter, `40` for
-#: two paladins and two rangers alike, and `0D` for TRIPEL TURBO, a
-#: fighter/magic-user/thief; the twelve DOS records hold `40` for both
-#: paladins and all the rangers, `0C` for BINKY, a fighter/thief, and `0D`
-#: for ORATISI NOMOON.  **`40` is the shared paladin-and-ranger bit both
-#: ports store**, and the ranger's `80` here is the neutral record's own
-#: spelling, which is what this table is asked about --
-#: `goldbox.dos.neutral_class_bits_from` is what separates them.
-#:
-#: **The right home for this is a Pools of Darkness entry in
-#: `goldbox/games.py`**, beside the other five titles', and it is here
-#: instead because that file belongs to the window as well as to the
-#: library: a title added there is a title the editor's own lists start
-#: offering, and nothing in the window can open a Pools of Darkness save yet.
-POD_CLASS_BITS: tuple[tuple[int, str], ...] = (
-    (0x01, "magic-user"), (0x02, "cleric"), (0x04, "thief"),
-    (0x08, "fighter"), (0x40, "paladin"), (0x80, "ranger"))
-
-
 def _class_names(char: NeutralCharacter, bits: int) -> list[str]:
     """The classes a neutral mask holds, named for the source's own title.
 
-    `games.classes_to_names` wants a `goldbox.games.Game` and gets whatever
-    `NeutralCharacter.game` holds -- a descriptor, a bare key or `None` --
-    so a DOS source raised `AttributeError: 'str' object has no attribute
-    'class_bits'` here, which nothing reached until Pools of Darkness became
-    convertible (#194).
+    `NeutralCharacter.game` holds a `goldbox.games.Game`, a bare key, or
+    `None`, and `titles.classes_to_names` is duck-typed on `.key` to take all
+    three -- a DOS source used to raise `AttributeError: 'str' object has no
+    attribute 'class_bits'` here, which nothing reached until Pools of
+    Darkness became convertible (#194).
 
-    A title that file has never heard of falls back to
-    :data:`POD_CLASS_BITS` rather than to `games`' own default, which is
-    Pool of Radiance's **four** classes and names neither the paladin nor
-    the ranger -- so every Pools of Darkness paladin arrived as an
-    unnameable raw `64` and was refused.
+    **Pools of Darkness is a `Title` now**, so a bare `"pools-of-darkness"`
+    key resolves through `titles.BY_KEY` to its own six classes rather than
+    falling through to `games`' Pool of Radiance default, which names
+    neither the paladin nor the ranger -- every Pools of Darkness paladin
+    used to arrive as an unnameable raw `64` and was refused
+    (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
+    answers with Pool of Radiance's tables for it)`).
     """
-    key = getattr(char.game, "key", char.game)
-    resolved = char.game if hasattr(char.game, "class_bits") \
-        else games.BY_KEY.get(key)
-    if resolved is None and key in dos_layout.SHAPES_BY_KEY:
-        return [name for bit, name in POD_CLASS_BITS if bits & bit] or [bits]
-    return games.classes_to_names(bits, resolved)
+    return titles.classes_to_names(bits, char.game)
 
 
 def _races(char: NeutralCharacter) -> dict[int, str]:
     """The source title's race table, so an index can be named.
 
     **`NeutralCharacter.game` is a `goldbox.games.Game`, its key, or `None`,
-    and all three arrive here.**  `goldbox.dos.to_neutral` sets the bare key
-    and `goldbox.amiga.to_neutral_later` sets the descriptor, so asking
-    `games.race_table` directly raised `AttributeError: 'str' object has no
-    attribute 'race_names'` for any DOS source -- which nothing reached until
-    Pools of Darkness became convertible (#194).
-
-    **And `goldbox/games.py` has never heard of Pools of Darkness**, so even
-    resolved it answers `None` there and `games.race_table(None)` hands back
-    *Pool of Radiance's* numbering, under which this title's race 5 -- the
-    human -- reads as a halfling.  A title `games` does not know but
-    `goldbox/dos_layout.py` does is named from the shape's own
-    `race_numbers`, which is the measured per-title tuple (`#237`).
+    and all three arrive here.** `titles.race_table` is duck-typed on `.key`
+    to take all three, including a bare `"pools-of-darkness"` key, which
+    `titles.BY_KEY` answers directly -- it used to fall through to
+    `goldbox/games.py`, which has never heard of the title, and land on Pool
+    of Radiance's numbering, under which this title's race 5 -- the human --
+    read as a halfling (`#460 (goldbox/games.py has no Pools of Darkness
+    entry, so every lookup answers with Pool of Radiance's tables for it)`).
     """
-    key = getattr(char.game, "key", char.game)
-    resolved = char.game if hasattr(char.game, "race_names") \
-        else games.BY_KEY.get(key)
-    if resolved is None and key in dos_layout.SHAPES_BY_KEY:
-        return {n: name for n, name
-                in enumerate(dos_layout.SHAPES_BY_KEY[key].race_numbers)}
-    return games.race_table(resolved) if resolved is not None \
-        else games.race_table(None)
+    return titles.race_table(char.game)
 
 
 def to_pc(char: NeutralCharacter) -> tuple[bytes, Report]:

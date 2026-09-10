@@ -121,11 +121,11 @@ CLASS_BITS_CLASSIC = ((1, "magic-user"), (2, "cleric"), (4, "thief"),
 #:
 #: Pools of Darkness has no C64 port and no class-bit table of its own read
 #: off any disk; it shares this one, since it is the DOS engine directly
-#: descended from Curse and Silver Blades' (`goldbox.amiga.POD_CLASS_BITS`
-#: said the same thing before
+#: descended from Curse and Silver Blades' -- a standalone table in
+#: `goldbox/amiga.py` said the same thing before
 #: `#470 (Give the project a neutral title beside its neutral character
-#: record, with one port per platform a title shipped on)` and is retired
-#: in stage 2).
+#: record, with one port per platform a title shipped on)`'s stage 2 deleted
+#: it in favour of this row.
 CLASS_BITS_WITH_PALADIN_RANGER = CLASS_BITS_CLASSIC + ((0x40, "paladin"),
                                                        (0x80, "ranger"))
 

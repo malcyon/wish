@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from . import classcode, derive, games, neutral, spells
+from . import classcode, derive, neutral, spells, titles
 from . import levels as level_tables
 from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
@@ -468,8 +468,8 @@ _LEVEL_ORDER = ("level_magic_user", "level_cleric", "level_thief",
 #: 7 in Pool of Radiance and Curse and 6 in Silver Blades, which used to be
 #: the half-orc's slot -- so every converted Silver Blades human read the
 #: half-orc's 6.  :func:`_infravision` looks the number up through
-#: `goldbox.games.race_table` for the record's own title before this table is
-#: asked, so the name and not the number is what travels between titles.
+#: `goldbox.titles.race_table` for the record's own title before this table
+#: is asked, so the name and not the number is what travels between titles.
 INFRAVISION = {
     "dwarf": 6, "elf": 6, "half-elf": 6, "gnome": 6, "halfling": 3,
     "half-orc": 6, "human": 0, "monster": 0,
@@ -483,10 +483,12 @@ def _infravision(game: object, race: int) -> int:
     `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
     three shapes :func:`record_shape` accepts, and for the same reason: a
     conversion carries a bare key rather than the descriptor.
+    `goldbox.titles.race_table` is duck-typed on `.key` and resolves all
+    three itself, Pools of Darkness' own key included
+    (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
+    answers with Pool of Radiance's tables for it)`).
     """
-    resolved = (game if hasattr(game, "race_names")
-               else games.BY_KEY.get(getattr(game, "key", game)))
-    name = games.race_table(resolved).get(race)
+    name = titles.race_table(game).get(race)
     return INFRAVISION.get(name, 0)
 
 

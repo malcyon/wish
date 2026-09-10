@@ -51,7 +51,7 @@ import yaml
 from . import c64_codec, classcode, derive, layout
 from .d64 import D64
 from .games import DEFAULT as DEFAULT_GAME
-from .games import Game, by_key, class_table, classes_to_names, race_table
+from .games import Game, by_key
 from .icons import icon_for_slot
 from .items import (
     ITEM_AREA_BASE,
@@ -82,12 +82,15 @@ from .spells import (
     write_spellbook,
 )
 from .spells import for_game as spell_table
+from .titles import class_table, classes_to_names, race_table
 
-# `race_table`, `class_table` and `classes_to_names` used to live here and are
-# now `goldbox/games.py`'s, re-exported above so every name still resolves. They
-# moved because `goldbox/amiga.py` needs them too, and a codec reaching into
-# another codec for a table is the pairwise web `docs/117-save-conversion.md`
-# exists to prevent -- a per-title table belongs beside the per-title data.
+# `race_table`, `class_table` and `classes_to_names` used to live here, then
+# in `goldbox/games.py`, and now in `goldbox/titles.py`, a title's own rules
+# rather than the C64 disk's -- imported back so every name still resolves.
+# They moved because `goldbox/amiga.py` needs them too, and a codec reaching
+# into another codec for a table is the pairwise web
+# `docs/117-save-conversion.md` exists to prevent -- a per-title table
+# belongs beside the per-title data.
 #
 # Pool of Radiance's tables, kept at module level because they are what a
 # caller with no `Game` in hand means. **They are not universal** -- Silver

@@ -17,7 +17,7 @@ so nothing that already imports them by name has to change.
 
 from __future__ import annotations
 
-from . import games
+from . import titles
 
 __all__ = [
     "CLASS_CODE_TABLE",
@@ -92,11 +92,11 @@ def table_for(game: object) -> dict[int, int]:
     return _TABLES.get(key, CLASS_CODE_FOR_BITS)
 
 
-#: Class name -> its bit in the shared order, from `goldbox/games.py`'s own
+#: Class name -> its bit in the shared order, from `goldbox/titles.py`'s own
 #: per-title lists so the two cannot drift apart.  Krynn's is the widest,
 #: adding the Knight of Solamnia at `0x10`; every other title's is a subset.
 CLASS_BIT_FOR_NAME: dict[str, int] = {
-    name: bit for bit, name in games.CLASS_BITS_KRYNN}
+    name: bit for bit, name in titles.CLASS_BITS_KRYNN}
 
 
 def code_for(bits: int, levels: "dict[str, int] | None" = None,

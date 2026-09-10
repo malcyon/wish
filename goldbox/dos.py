@@ -65,6 +65,7 @@ from . import (
     dos_savegame,
     games,
     neutral,
+    titles,
     traits,
     world_state,
 )
@@ -560,7 +561,7 @@ EFFECT_NEXT_NULL = bytes(4)
 #: table, and Secret of the Silver Blades renumbers them -- its dwarf is 3,
 #: where Pool of Radiance's 3 is the gnome, so a converted Silver Blades
 #: dwarf used to be handed the gnome's set.  `_race_combat_effects` looks the
-#: number up through `goldbox.games.race_table` for the record's own title
+#: number up through `goldbox.titles.race_table` for the record's own title
 #: before either table below is asked, the way `_infravision` in
 #: `goldbox/c64_codec.py` does for #287 (A converted Silver Blades human sees
 #: in the dark, because the infravision table is keyed by Pool of Radiance's
@@ -676,29 +677,27 @@ def _race_combat_effects(game: object, race: int,
 
     `game` is whatever a caller has in hand for the title -- a
     `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
-    three shapes `c64_codec._infravision` accepts, and for the same reason: a
-    conversion carries a bare key rather than the descriptor.
+    three shapes `c64_codec._infravision` accepts, and `goldbox.titles.race_table`
+    resolves all three the same way, Pools of Darkness' own key included
+    (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
+    answers with Pool of Radiance's tables for it)`).
 
-    **`shape` is what names the race, when the caller has one.**
-    `goldbox/games.py` knows five titles and Pools of Darkness is not one of
-    them, so `games.BY_KEY` hands back `None` for it and `games.race_table`
-    then answers with Pool of Radiance's numbering -- under which Pools of
-    Darkness' race 5, which is the human every one of its shipped pregens but
-    two is, reads as a halfling and collects the halfling's two records.
-    `goldbox.dos_layout.DosShape.race_numbers` is the measured per-title
-    numbering (#237) and is what the record's own byte means, so a caller
-    holding the shape passes it and the title's own table decides (#194).
-    This is the same defect `#293` fixed for Silver Blades, one title along.
+    **`shape` is what names the race, when the caller has one, and it
+    stays**: `goldbox.dos_layout.DosShape.race_numbers` is the string table
+    read out of a title's own DOS executable (#237), and it disagrees with
+    `Title.races` at codes no character-generation menu offers -- Curse's 6,
+    the two Realms titles' 0 and 8, Silver Blades' 0 -- so naming the
+    record's own byte through the port's own table is right when the caller
+    has one in hand (`#194`). This is the same defect `#293` fixed for
+    Silver Blades, one title along.
     """
-    resolved = (game if hasattr(game, "race_names")
-               else games.BY_KEY.get(getattr(game, "key", game)))
     if shape is not None:
         names = shape.race_numbers
         name = names[race] if 0 <= race < len(names) else None
         key = shape.key
     else:
-        name = games.race_table(resolved).get(race)
-        key = getattr(resolved, "key", resolved)
+        name = titles.race_table(game).get(race)
+        key = getattr(game, "key", game)
     table = _RACE_COMBAT_EFFECTS_TABLES.get(key, RACE_COMBAT_EFFECTS)
     return table.get(name, ())
 

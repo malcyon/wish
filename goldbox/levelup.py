@@ -98,7 +98,7 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 
 from . import levels, spells
-from .games import CLASS_BITS_CLASSIC
+from .titles import CLASS_BITS_CLASSIC
 
 #: `0x0C9` upwards, in class-bit order -- the order every one of the game's own
 #: tables is indexed in. Paladin and ranger are here because Curse has both and
