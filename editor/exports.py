@@ -194,9 +194,20 @@ FAILED_TITLE = "Cannot export"
 #:   nobody, and they are not to be reworded; they are to be deleted with the
 #:   rest.
 #:
-#: The **conversion** underneath is not going anywhere.
-#: `goldbox.dos.write_dos_save` and `goldbox.amiga.export_party` are what
-#: `File > Convert...` already calls; it is this second front door that goes.
+#: The **conversion** underneath is not going anywhere -- but it is not
+#: literally this file's writers that Convert calls, and an earlier
+#: version of this paragraph said it was. `C64ToDos.write` calls
+#: `goldbox.dos.new_dos_save`, where `DosExport.write` below calls
+#: `goldbox.dos.write_dos_save`, and nothing in `editor/convert.py`
+#: calls `goldbox.amiga.export_party` at all.
+#:
+#: **The difference is the destination, and it is why this file needs a
+#: remove list and Convert does not.** `write_dos_save` clears the slot
+#: in a folder the player picked, which may already hold a party --
+#: `#68 (A second export into the same folder leaves five strangers in
+#: the party)`. `new_dos_save` writes into `editor/convert.py`'s
+#: `fresh_folder`, which never returns a folder that already exists, so
+#: there is nothing to clear and nothing to warn about.
 #: `#79 (Two party members whose names share eight characters export as one
 #: Amiga .pc)` is therefore a bug in the writer rather than in this dialog, and
 #: does not close by deleting this file.
