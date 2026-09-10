@@ -28,8 +28,13 @@ character record)`.** A bare number is a lookup Donald has to go and do:
 gh issue view N --json number,title -q '"#\(.number) (\(.title))"'
 ```
 
-It applies to replies, issue comments, documents and tables, every mention and
-not just the first. **Two exceptions, both about where the reader is:**
+**It is a rule about talking to Donald**: replies, issue comments and
+documents, every mention and not just the first. **It does not govern code.**
+Donald, 2026-09-09: *"I don't care about bare issue numbers in code or
+docstrings. I care about it when you are communicating with me."* Do not sweep
+`.py` for them and do not file tickets about them.
+
+**Two more exceptions, both about where the reader is:**
 
 * **A commit message**, where the number goes bare in parentheses at the end of
   the one line -- see `.claude/rules/commits.md`.

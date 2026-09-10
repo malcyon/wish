@@ -20,21 +20,26 @@ Seven cover one area of the tree each: `testing.md`, `conversions.md`,
 
 ## Name every issue you cite
 
-`#59 (Map the DOS saved game, not just the character record)`, never a bare
-`#59`. **Every mention** -- replies, comments, documents, tables, and the prose
-around a table as much as the table. There is no "already introduced it above"
-exemption: a reply is skimmed rather than read in order.
+**This is a rule about talking to Donald.** In a reply to him, in an issue
+comment he will read, in a document: `#59 (Map the DOS saved game, not just the
+character record)`, never a bare `#59`. **Every mention** -- there is no
+"already introduced it above" exemption, because a reply is skimmed rather than
+read in order. The title comes from `gh issue view N --json number,title`.
 
-A bare number makes Donald do the lookup: fast for the assistant, which has the
+A bare number makes him do the lookup: fast for the assistant, which has the
 number in hand, slow for him. *"When you only reference a number, it never means
-anything to me."* As the **subject** of a sentence it is worst of all, because
-that is where the reader most needs to know the subject. The title comes from
-`gh issue view N --json number,title`.
+anything to me."* As the **subject** of a sentence it is worst of all.
 
-Two exceptions, both about where the reader is: a **commit message**, where the
-number goes bare in parentheses at the end of the line, and the **body of an
-issue**, read on the web where the number hovers into its title -- so do not go
-back and add titles to bare numbers in existing bodies.
+**It does not govern code.** Donald, 2026-09-09: *"I don't care about bare issue
+numbers in code or docstrings. I care about it when you are communicating with
+me."* A docstring is read by somebody already in that file, and
+`tests/test_repository_contents.py`'s guard scans Markdown for that reason. Do
+not sweep `.py` for bare numbers and do not file tickets about them.
+
+Nor a **commit message**, where the number goes bare in parentheses at the end
+of the line, nor the **body of an issue**, read on the web where the number
+hovers into its title -- so do not go back and add titles to bare numbers in
+existing bodies.
 
 ## Writing
 
