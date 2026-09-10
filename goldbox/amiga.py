@@ -43,6 +43,7 @@ from . import areas, dos_layout, dos_savegame, games, neutral, titles, world_sta
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
+from .portraits import stored_tables
 
 if TYPE_CHECKING:          # avoided at runtime: goldbox.dos is the heavier
     from .iconparts import DosIcon  # module and this file only needs the name
@@ -2759,6 +2760,14 @@ def write_por(char: NeutralCharacter,
     (#422).  With none given, `icon_head` and `icon_body` are written zero
     and `icon_colours` the game's own freshly-made default, exactly as
     before this parameter existed.
+
+    The sheet portrait is looked up in the **Amiga's own creation menu**
+    (`goldbox.portraits.stored_tables(..., port="amiga")`), not the C64's
+    and DOS's shared one: the Amiga's twelve bodies differ from theirs at
+    menu position 8 (#194), so asking for the wrong menu would draw the
+    wrong body for a character whose is there.  A body that only the C64's
+    and DOS's menu offers has no position in the Amiga's and is reported
+    dropped rather than guessed at (#480).
     """
     from . import dos as _dos
 
@@ -2766,7 +2775,10 @@ def write_por(char: NeutralCharacter,
     # DOS does with their character): without it, a drop line this function
     # cannot place is composed as though it were a straight DOS write and
     # names DOS to a player who is not converting to DOS.
-    record, itm, spc, dosrep = _dos.write(char, icon=icon, into="Amiga")
+    record, itm, spc, dosrep = _dos.write(
+        char, icon=icon, into="Amiga",
+        portraits=stored_tables(dos_layout.POOL_OF_RADIANCE.key,
+                                 port="amiga"))
     out = from_dos_record(record)
 
     items = [amiga_por_item_from_dos(
@@ -5906,9 +5918,10 @@ def write_later(char: NeutralCharacter,
     # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
     # DOS does with their character): otherwise a drop line this function
     # cannot place names DOS to a player who is not converting to DOS.
-    record, itm, spc, dosrep = _dos.write(char, shape=shape.dos, icon=icon,
-                                          recompute_thief_skills=False,
-                                          into="Amiga")
+    record, itm, spc, dosrep = _dos.write(
+        char, shape=shape.dos, icon=icon,
+        recompute_thief_skills=False, into="Amiga",
+        portraits=stored_tables(shape.dos.key, port="amiga"))
     out = from_dos_record_later(record, shape)
 
     stride = shape.dos.item_size

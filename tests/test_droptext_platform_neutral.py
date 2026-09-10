@@ -188,14 +188,25 @@ def test_a_c64_pool_of_radiance_party_converted_to_the_amiga_names_no_platform()
     way `#389`'s Silver Blades combat-figure line inherited one.
 
     `WISH-SPEC-por-c64-hall-resave` is a Pool of Radiance C64 save with a
-    head and body portrait set on every character, which is what makes the
-    branch fire.
+    head and body portrait set on every character, which used to be what
+    made the branch fire: before `#479 (A Pool of Radiance party converted
+    to an Amiga save disk loses every character's sheet portrait, because
+    the Amiga writer never asks for the creation menu)`, `write_por` asked
+    for no creation-menu tables at all, so every portrait was dropped for
+    that reason alone.  It now asks for the Amiga's own menu and this
+    party's faces are all in it, so nothing here drops any more -- the
+    thing #479 fixed.  What this test is actually proving still needs a
+    portrait no menu can place, so `portrait_head` is forced to `0xFF`,
+    an id past both ports' fourteen-entry table.
     """
     path = _c64_disk("por-c64-hall-resave")
     _game, party = _c64_party(path)
     assert len(party) >= 1
     checked = 0
     for char in party:
+        char.set("portrait_head", 0xFF,
+                  "forced past the menu, so the drop this test needs fires "
+                  "regardless of #479's fix")
         _record, _itm, _spc, report = amiga.write_por(char)
         portrait_lines = [d for d in report.dropped
                           if d.startswith("portrait_")]

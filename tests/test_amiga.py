@@ -1532,6 +1532,55 @@ def test_the_three_insertions_hold_what_the_specimens_hold():
                for o in amiga.AMIGA_POR_INSERTION_CANDIDATES)
 
 
+def test_write_por_gives_a_character_his_own_amiga_menu_position():
+    """#479: `write_por` used to ask `goldbox.dos.write` for no portrait
+    tables at all, so the pair was written zero and reported dropped on
+    every character who had a face.  It must ask for the **Amiga's own**
+    menu, not the C64's and DOS's shared one -- head `0x08` and body `0x04`
+    sit at the same position in both, so this does not yet distinguish the
+    two tables; the next test does that.
+    """
+    from goldbox.portraits import AMIGA_POOL_OF_RADIANCE_MENU
+
+    char = sample(portrait_head=0x08, portrait_body=0x04)
+    record, _, _, rep = amiga.write_por(char)
+    head_at = amiga_por_offset(dos_layout.FIELDS_BY_NAME["portrait_head"].offset)
+    body_at = amiga_por_offset(dos_layout.FIELDS_BY_NAME["portrait_body"].offset)
+    assert record[head_at] == AMIGA_POOL_OF_RADIANCE_MENU.head_position(0x08)
+    assert record[body_at] == AMIGA_POOL_OF_RADIANCE_MENU.body_position(0x04)
+    assert not any("portrait" in d for d in rep.dropped), rep.dropped
+
+
+def test_write_por_reads_the_amiga_menu_not_the_c64_and_dos_one():
+    """The one entry the two menus disagree at (#194): body position 8 is
+    art `0x18` on the C64 and in DOS and art `0x05` on the Amiga.  A
+    character with the C64/DOS art at that position has no position in the
+    Amiga's own menu, and `write_por` must say so rather than writing the
+    C64/DOS menu's position 8 -- that would draw somebody else's body
+    (#480, which is the read side of the same confusion and not this fix's
+    to make).
+    """
+    char = sample(portrait_body=0x18)
+    record, _, _, rep = amiga.write_por(char)
+    body_at = amiga_por_offset(dos_layout.FIELDS_BY_NAME["portrait_body"].offset)
+    assert record[body_at] == 0
+    assert any("portrait_body" in d and "BODY18" in d
+               and "does not offer" in d for d in rep.dropped), rep.dropped
+
+
+def test_write_por_and_read_it_back_give_the_character_his_own_face():
+    """The round trip the player actually takes: convert to the Amiga, then
+    read the disk back.  Head `0x08` and body `0x04` sit at the same menu
+    position on both sides, so this is unaffected by #480 and isolates
+    #479's own fix.
+    """
+    char = sample(portrait_head=0x08, portrait_body=0x04)
+    record, itm, spc, _ = amiga.write_por(char)
+    back = amiga.to_neutral(amiga.por_character(record, itm, spc))
+    assert back.get("portrait_head") == 0x08
+    assert back.get("portrait_body") == 0x04
+
+
 def test_a_character_carrying_nothing_gets_no_item_file():
     """`b""` is not an empty file: #62 is what a zero-length one did."""
     _, itm, spc, _ = amiga.write_por(sample())
