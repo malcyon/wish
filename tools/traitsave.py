@@ -185,6 +185,8 @@ def _pick_in_picker(dialog, trait: str) -> int:
 
 def write(args) -> int:
     """Add a trait through the buttons and save through the File menu."""
+    from tools import session as S
+
     SC.catch_signals()
     out = pathlib.Path(args.out)
     log = Log(out, args.quiet)
@@ -198,8 +200,13 @@ def write(args) -> int:
     original = out / "original.d64"
     edited = out / "edited.d64"
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copy(src, original)          # the control, and the diff's left side
-    shutil.copy(src, edited)
+    # `--out` defaults to a fixed path and is reused across invocations, so
+    # a bare `shutil.copy` from a read-only `$WISH_SPECIMENS` file leaves
+    # `original.d64`/`edited.d64` read-only too, and a second run into the
+    # same `--out` dies opening them for writing (#487). `stage_writable`
+    # unlinks the destination first and restores the write bit.
+    S.stage_writable(src, original)     # the control, and the diff's left side
+    S.stage_writable(src, edited)
     log.emit("copied", source=str(src), original=str(original),
              edited=str(edited))
 
