@@ -1056,6 +1056,37 @@ def test_fasttravel_runs_the_kobold_caves_handler_instead_of_the_tail_jump():
     assert target.read(addr.disk, 1) == bytes([3])
 
 
+def test_fasttravel_restores_the_square_when_reentry_fails(monkeypatch):
+    """`#493 (A Fast Travel that fails walking the party out leaves them at
+    the doorway and says they have not moved)`: `_run_via_exit` writes the
+    exit's own square before asking `reenter` to rebuild the stack, and
+    `reenter` failing here is Wish failing to reach `DUNGEON`'s dispatch --
+    nothing the game did, so nothing to reason about except the one write
+    this method made. That write has to come back."""
+    target = kobold_caves_machine()
+    addr = fasttravel.POOL_OF_RADIANCE
+    original = target.read(addr.live_square, 3)
+    monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(27))
+    assert not outcome.ok
+    assert target.read(addr.live_square, 3) == original
+
+
+def test_fasttravel_exit_failure_message_does_not_claim_the_party_stood_still(
+        monkeypatch):
+    """The old wording said "the party has not moved" while the write above
+    it had just moved them -- untrue the moment it was read, and the message
+    itself said which two things disagreed about it. With the square
+    restored, nothing here claims the party did not move; it says where it
+    ended up instead."""
+    target = kobold_caves_machine()
+    monkeypatch.setattr(actions, "reenter", lambda *a, **k: False)
+    outcome = actions.FastTravel().run(target, area=actions.area_by_id(27))
+    assert not outcome.ok
+    assert "has not moved" not in outcome.message
+    assert "NOT APPROVED" in outcome.message
+
+
 def test_fasttravel_falls_back_to_the_tail_jump_off_the_direct_exit_table():
     """A destination with no row in `EXIT_ROUTES` -- New Phlan (0) is not
     reachable by one of area 13's own scripted exits -- still enters `NEWECL`

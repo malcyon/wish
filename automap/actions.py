@@ -1926,6 +1926,16 @@ class FastTravel(Action):
                                arrival, overland=overland, addresses=addr)
         _write_all(target, writes)
         if not jump(target, addr.tail):
+            # Unlike `_run_via_exit`'s failure below (`#493 (A Fast Travel
+            # that fails walking the party out leaves them at the doorway
+            # and says they have not moved)`), `writes` above are not undone
+            # here. That is deliberate: `writes` set `$6E1B`'s reload flag
+            # (`addr.slot`), so `DUNGEON`'s own key-wait loop picks the
+            # destination up and finishes the move at the next area change --
+            # the message below says exactly that. `_run_via_exit` has no
+            # such flag to lean on: `reenter` failing there means Wish never
+            # reached the script that would act on anything, so nothing is
+            # left pending and the write it made has to come back instead.
             # **`Outcome.message` is read by a player**, not only by a log:
             # `automap/actionbar.py` puts it straight into the Messages panel.
             # It carried `$xxxx is flagged for reload` until 2026-09-07, which
@@ -1976,10 +1986,20 @@ class FastTravel(Action):
         target.write(addr.live_square,
                      bytes((x & 0xFF, y & 0xFF, facing & 0xFF)))
         if not reenter(target, addr, route.entry):
+            # `reenter` failing here means Wish could not rebuild `DUNGEON`'s
+            # own stack -- nothing the game did, so nothing it left behind to
+            # reason about. The one write this method made is the square
+            # above, and it is the only thing to undo: `was.square` is the
+            # position read before that write, at the same three bytes
+            # (`addr.live_square`) it overwrote. `was.square` is only ever
+            # None where `current_square` could not read it in the first
+            # place, and then there is nothing recorded to put back.
+            if was.square is not None:
+                target.write(addr.live_square,
+                             bytes(v & 0xFF for v in was.square))
             return Outcome(False,
-                           "the party has not moved. Wish stood it at the "
-                           "way out but could not send it through "
-                           "(NOT APPROVED)",
+                           "ERROR: Unable to Fast Travel. The party is back "
+                           "where it started. (NOT APPROVED)",
                            ())
         self.back = was
         name = getattr(area, "name", None) or "this area"
