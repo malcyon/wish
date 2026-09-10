@@ -367,13 +367,8 @@ def test_claude_md_imports_the_file_that_holds_the_rules():
     assert (ROOT / IMPORTED).is_file(), (
         f"CLAUDE.md imports {IMPORTED}, which is not there.")
 
-    # "Words to avoid" is the one exception, and it moved here on 2026-09-10.
-    # It is a list of the jargon *Claude* reaches for -- "worth noting",
-    # "load-bearing", "blast radius", "plainly" -- written down a row at a time
-    # as Donald caught each one. Donald: "Codex doesn't say those words. Claude
-    # does. It's a claude problem." A correction aimed at one model's habits
-    # belongs in that model's file; a tool without the habit does not need the
-    # rule. The writing rules that bind any agent stay in AGENTS.md.
+    # "Words to avoid" is the one exception: it lists the jargon Claude
+    # reaches for, so it belongs in Claude's file. Moved 2026-09-10.
     assert "## Words to avoid" in text, (
         "CLAUDE.md no longer holds the words table. It lives here rather than "
         f"in {IMPORTED} because it corrects this model's own habits.")

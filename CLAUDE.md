@@ -18,14 +18,6 @@ an agent should read the ones its brief names rather than assuming they arrived.
 
 ## Words to avoid
 
-**This table is here rather than in `AGENTS.md` because it is a list of
-*this model's* habits.** Donald, 2026-09-10: *"Codex doesn't say those words.
-Claude does. It's a claude problem."* Every row was written down after Claude
-reached for the same jargon again -- so it corrects one model's writing rather
-than setting a house style, and a tool that does not have the habit does not
-need the rule. The writing rules that bind **any** agent are in `AGENTS.md`
-under "Writing"; this is the Claude-only appendix to them.
-
 | instead of | say |
 |---|---|
 | **load-bearing** | what holds it up, what depends on it, what breaks without it |
