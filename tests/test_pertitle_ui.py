@@ -51,7 +51,13 @@ def test_the_race_table_follows_the_title():
     assert race_names(POOL)[6] == "HALF-ORC"
     # Silver Blades drops half-orc and re-orders, moving human to 6.
     assert race_names(SSB)[6] == "HUMAN"
-    assert 7 not in race_names(SSB)
+    # And 7 is MONSTER, as it is in the other two titles. `#470 (Give the
+    # project a neutral title beside its neutral character record, with one
+    # port per platform a title shipped on)` added the entry: `LIBRARY $306A`
+    # folds race 7 and above to the MONSTER label and 50 of this title's 71
+    # C64 `MON*` records read 7, so the table was missing a row rather than
+    # this title differing. This asserted `7 not in` and pinned the gap.
+    assert race_names(SSB)[7] == "MONSTER"
     # Krynn is the 0-based one, and 0 is a race rather than "monster".
     assert race_names(KRYNN)[0] == "SILVANESTI ELF"
 
@@ -249,8 +255,12 @@ def _label(combo, code: int) -> str:
 def test_the_race_dropdown_follows_the_open_game(window):
     race = window._widgets["race"]
     window._fill_combos(SSB)
-    assert _codes(race) == [1, 2, 3, 4, 5, 6]
+    # 7 is MONSTER since `#470 (Give the project a neutral title beside its
+    # neutral character record, with one port per platform a title shipped
+    # on)`; this read `[1, 2, 3, 4, 5, 6]` while the table was missing it.
+    assert _codes(race) == [1, 2, 3, 4, 5, 6, 7]
     assert "HUMAN" in _label(race, 6)
+    assert "MONSTER" in _label(race, 7)
 
 
 def test_changing_game_leaves_no_stale_race_behind(window):

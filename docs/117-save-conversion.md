@@ -2003,6 +2003,7 @@ graph LR
   dos -.->|deferred| yaml_io
   dos_layout --> layout
   effects --> d64
+  games --> titles
   geo --> d64
   iconparts --> assets
   iconparts --> d64
@@ -2034,6 +2035,7 @@ graph LR
   strength --> layout
   strength --> petscii
   strength --> savegame
+  titles --> dos_layout
   world --> d64
   world_state -.->|deferred| amiga
   world_state --> areas
