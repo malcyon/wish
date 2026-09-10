@@ -30,6 +30,7 @@ import pytest
 # and again here.
 pytest.importorskip("capstone")
 
+from goldbox import dos  # noqa: E402
 from goldbox import dos_layout as dl  # noqa: E402
 from tools import innateids  # noqa: E402
 
@@ -227,3 +228,35 @@ def test_pool_of_radiance_seeds_no_class_effect_at_all():
         assert innateids.constant_sites(ovr, target, eid) == []
     (_, by_race), = race
     assert by_race[2] == [(107, 0, 0xFF, 0)]      # elf, the shared racial id
+
+
+# --- #490: the race table has to be each title's own, not Pool of Radiance's
+# or the C64's --------------------------------------------------------------
+def test_curse_seeds_its_own_race_table_not_pool_of_radiances():
+    """`goldbox.dos.RACE_COMBAT_EFFECTS_CURSE` against the engine's own
+    switch (`GAME.OVR:0x1E244`), which never pushes 90 for anybody -- a
+    converted Curse dwarf or halfling used to arrive with it anyway, because
+    the writer read Pool of Radiance's table (#490)."""
+    _, _, race, _ = _tables("CURSE", "curse-of-the-azure-bonds")
+    assert race, "no race switch found in Curse's GAME.OVR"
+    for _, by_race in race:                    # Curse keeps two copies (#395)
+        for num, name in ((1, "dwarf"), (3, "gnome"), (5, "halfling")):
+            ids = tuple(c[0] for c in by_race[num])
+            assert ids == dos.RACE_COMBAT_EFFECTS_CURSE[name], name
+            assert 90 not in ids, name
+
+
+def test_silver_blades_seeds_its_own_race_table_not_the_c64s():
+    """`goldbox.dos.RACE_COMBAT_EFFECTS_SILVER_BLADES` against the engine's
+    own switch (`GAME.OVR:0x1DF47`).  The table used to be read off the C64's
+    seed table, which seeds two trait slots per race where DOS calls
+    `add_affect` a third time -- so a converted dwarf and gnome arrived with
+    no saving-throw record at all, and a converted halfling carried 92, an id
+    the DOS engine never writes (#490)."""
+    _, _, race, _ = _tables("SECRET", "secret-of-the-silver-blades")
+    (_, by_race), = race
+    names = {1: "elf", 2: "half-elf", 3: "dwarf", 4: "gnome", 5: "halfling"}
+    for num, name in names.items():
+        ids = tuple(c[0] for c in by_race[num])
+        assert ids == dos.RACE_COMBAT_EFFECTS_SILVER_BLADES[name], name
+    assert 92 not in (c[0] for c in by_race[5])   # the C64's own halfling id

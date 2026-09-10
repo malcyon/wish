@@ -264,26 +264,38 @@ def test_a_silver_blades_elf_carries_his_own_effect_not_the_dwarfs():
 
 def test_a_silver_blades_dwarf_carries_his_own_effects_not_the_gnomes():
     """`race=3` is Silver Blades' dwarf -- Pool of Radiance's gnome slot, so a
-    converted dwarf used to be handed 97, 18, 47 and 48."""
+    converted dwarf used to be handed 97, 18, 47 and 48.
+
+    47, 26 and 97, in that order, are what the engine's own race switch pushes
+    (`GAME.OVR:0x1DF47`) -- CONFIRMED for #490 (A converted dwarf, gnome or
+    halfling gets the wrong racial effect records in DOS, because the
+    writer's table is Pool of Radiance's or the C64's rather than that
+    title's own), where the table used to be read off the C64's seed table
+    and was short the 97 the DOS switch also pushes."""
     char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
     char.set("race", 3, "made up: dwarf")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
     _, _, spc, _ = dos.write(char)
-    assert _spc_ids(spc) == [26, 47]
+    assert _spc_ids(spc) == [47, 26, 97]
 
 
 def test_a_silver_blades_gnome_carries_his_own_effects():
     """`race=4` had no entry at all in the old, Pool-of-Radiance-numbered
-    table, so a converted Silver Blades gnome carried nothing."""
+    table, so a converted Silver Blades gnome carried nothing.
+
+    48, 7 and 97, in that order, are the engine's own race switch (#490); the
+    C64-derived table this used to read was short the same 97 as the dwarf's."""
     char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
     char.set("race", 4, "made up: gnome")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
     _, _, spc, _ = dos.write(char)
-    assert _spc_ids(spc) == [48, 7]
+    assert _spc_ids(spc) == [48, 7, 97]
 
 
 def test_a_silver_blades_half_elf_and_halfling_carry_their_own_effect():
-    for race, expect in ((2, [18]), (5, [92])):
+    """The halfling used to get 92, the C64's own id for the same bonus; the
+    DOS engine's own switch pushes 97 (#490)."""
+    for race, expect in ((2, [18]), (5, [97])):
         char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
         char.set("race", race, "made up")
         char.set("innate_effects", [], "made up: nothing in the trait slots")
@@ -308,13 +320,29 @@ def test_a_pool_of_radiance_dwarf_is_unmoved_by_the_silver_blades_split():
     assert _spc_ids(spc) == [90, 97, 26, 47]
 
 
-def test_a_curse_dwarf_still_carries_his_four():
-    """Curse shares Pool of Radiance's race numbering (`race=1` dwarf) and
-    its table, the way it does for infravision above."""
+def test_a_curse_dwarf_carries_his_own_three_not_pool_of_radiances_four():
+    """Curse shares Pool of Radiance's race numbering (`race=1` dwarf) but not
+    its innate effects: a converted Curse dwarf used to be handed 90 as well,
+    an id Curse's own creation switch (`GAME.OVR:0x1E244`) never pushes for
+    anybody -- `#490 (A converted dwarf, gnome or halfling gets the wrong
+    racial effect records in DOS, because the writer's table is Pool of
+    Radiance's or the C64's rather than that title's own)`."""
     char = _filled(game=games.CURSE_OF_THE_AZURE_BONDS)
     char.set("innate_effects", [], "made up: nothing in the trait slots")
     _, _, spc, _ = dos.write(char)
-    assert _spc_ids(spc) == [90, 97, 26, 47]
+    assert _spc_ids(spc) == [97, 26, 47]
+    assert 90 not in _spc_ids(spc)
+
+
+def test_a_curse_gnome_and_halfling_carry_their_own_effects():
+    """The gnome's set is unchanged from Pool of Radiance's; the halfling
+    loses the 90 the dwarf also loses (#490)."""
+    for race, expect in ((3, [97, 18, 47, 48]), (5, [97])):
+        char = _filled(game=games.CURSE_OF_THE_AZURE_BONDS)
+        char.set("race", race, "made up")
+        char.set("innate_effects", [], "made up: nothing in the trait slots")
+        _, _, spc, _ = dos.write(char)
+        assert _spc_ids(spc) == expect, race
 
 
 # --- the item record: 67 bytes in this title alone ---------------------------

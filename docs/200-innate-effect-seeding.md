@@ -275,3 +275,19 @@ and none has gained a 45. So the both-ids case is provided for and unobserved,
 graded SPECULATIVE. The experiment that would settle it: convert a DOS paladin
 to a C64 disk, load it, use the trainer (which is what `docs/172-curse-trainer.md`
 shows calling the recompute), save, and read the ten trait slots at `0x0AD`.
+
+## 6. The race split landed too
+
+`#490 (A converted dwarf, gnome or halfling gets the wrong racial effect
+records in DOS, because the writer's table is Pool of Radiance's or the C64's
+rather than that title's own)` is the class ids' twin for §1's race table.
+`goldbox.dos.RACE_COMBAT_EFFECTS` was Pool of Radiance's and stood in for
+Curse of the Azure Bonds too, so a converted Curse dwarf or halfling arrived
+holding 90 -- an id Curse's own switch never pushes.
+`goldbox.dos.RACE_COMBAT_EFFECTS_SILVER_BLADES` was read off the C64's seed
+table rather than DOS's own switch, so it was short a 97 for the dwarf and
+the gnome and held the C64's 92 for the halfling instead of DOS's 97.
+
+`goldbox.dos.RACE_COMBAT_EFFECTS_CURSE` and the corrected
+`RACE_COMBAT_EFFECTS_SILVER_BLADES` are §1's table, CONFIRMED rather than
+PROBABLE now that they come from the switch rather than from the C64's.

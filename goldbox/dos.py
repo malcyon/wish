@@ -483,9 +483,10 @@ INNATE_EFFECTS_CURSE = INNATE_EFFECTS | {8, 134}
 #:
 #: MALACHITE, a dwarf in the same three specimens, carries `2F 1A 61` (47, 26,
 #: 97) -- already in `INNATE_EFFECTS` and outside this issue's scope, but it
-#: is the first Silver Blades `.SPC` anybody has read carrying 97 for a dwarf,
-#: which bears on `RACE_COMBAT_EFFECTS_SILVER_BLADES`' own PROBABLE grade and
-#: is not acted on here.
+#: was the first Silver Blades `.SPC` anybody had read carrying 97 for a
+#: dwarf, and #490 is where it got acted on: `RACE_COMBAT_EFFECTS_SILVER_BLADES`
+#: now carries 97 for the dwarf and the gnome too, CONFIRMED from the
+#: engine's own switch.
 INNATE_EFFECTS_SILVER_BLADES = INNATE_EFFECTS | {8, 105}
 
 #: Pools of Darkness' own set, and the three ids its `.EFX` files carry.
@@ -650,10 +651,17 @@ EFFECT_NEXT_NULL = bytes(4)
 #: in the dark, because the infravision table is keyed by Pool of Radiance's
 #: race numbers).
 #:
-#: This table is Pool of Radiance's and Curse of the Azure Bonds' -- they
-#: share race names for dwarf, gnome and halfling, and both were measured
-#: only on Pool of Radiance specimens.  Two races have a DOS specimen, and
-#: each is written the whole set the engine's own save holds for it:
+#: This table is Pool of Radiance's own.  It used to also stand in for Curse
+#: of the Azure Bonds, because the two titles share race names for dwarf,
+#: gnome and halfling and this table was measured only on Pool of Radiance
+#: specimens -- `RACE_COMBAT_EFFECTS_CURSE` below is Curse's own table, read
+#: from its own race switch for #490 (A converted dwarf, gnome or halfling
+#: gets the wrong racial effect records in DOS, because the writer's table is
+#: Pool of Radiance's or the C64's rather than that title's own): Curse never
+#: seeds 90 for anybody, so a converted Curse dwarf or halfling used to arrive
+#: with an extra saving-throw record no DOS Curse character can have.  Two
+#: races have a DOS specimen, and each is written the whole set the engine's
+#: own save holds for it:
 #:
 #: * **the dwarf (1): 90, 97, 26 and 47** -- THRENDER GRONE's `.SPC`, in both
 #:   of the archives' Pool of Radiance save directories;
@@ -714,19 +722,39 @@ RACE_COMBAT_EFFECTS: dict[str, tuple[int, ...]] = {
     "halfling": (90, 97),
 }
 
-#: Secret of the Silver Blades' own ids, from the same seed table
-#: `goldbox/traits.py`'s `NAMES_SILVER_BLADES` reads: `GEN $0C5B`/`$0C62`
-#: seed elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92,
-#: human nothing.  PROBABLE throughout, the grade `goldbox/traits.py` gives
-#: the same nine codes -- no Silver Blades `.SPC` has been watched carrying
-#: any of them yet, so this is the seed table's own claim rather than a
-#: measurement of a written file the way the two races above are.
+#: Curse of the Azure Bonds' own ids, read from its character-creation race
+#: switch rather than from Pool of Radiance's table above (#490).  CONFIRMED,
+#: `tools/innateids.py seed --game CURSE` against the archives' `GAME.OVR`,
+#: both copies of the switch (`0x1E244` and `0x20989`) agreeing id for id and
+#: order for order: `GAME.OVR:0x1E244` pushes the dwarf 97, 26 then 47, the
+#: gnome 97, 18, 47 then 48, and the halfling 97 alone -- never 90, which is
+#: Pool of Radiance's own addition and nothing here seeds it.
+#: `docs/200-innate-effect-seeding.md` carries the same reading.
+RACE_COMBAT_EFFECTS_CURSE: dict[str, tuple[int, ...]] = {
+    "dwarf": (97, 26, 47),
+    "gnome": (97, 18, 47, 48),
+    "halfling": (97,),
+}
+
+#: Secret of the Silver Blades' own ids, read from its character-creation
+#: race switch (#490).  CONFIRMED, `tools/innateids.py seed --game SECRET`
+#: against the archives' `GAME.OVR:0x1DF47`: the dwarf pushes 47, 26 then 97,
+#: the gnome 48, 7 then 97, and the halfling 97 alone.
+#:
+#: This corrects the table's own earlier reading, taken from the **C64**'s
+#: seed table (`GEN $0C5B`/`$0C62`) rather than from DOS's own switch and
+#: graded PROBABLE for it.  The C64 seeds only two trait slots per race here,
+#: where the DOS switch calls `add_affect` a third time for the dwarf and the
+#: gnome -- both times with 97, the id every sturdy race gets -- and gives the
+#: halfling 97, not the C64's own 92.  MALACHITE, a dwarf in three specimens
+#: cited on `INNATE_EFFECTS_SILVER_BLADES` above, already carried 97 beside
+#: 26 and 47, which was the first sign this table was short by one.
 RACE_COMBAT_EFFECTS_SILVER_BLADES: dict[str, tuple[int, ...]] = {
     "elf": (95,),
     "half-elf": (18,),
-    "dwarf": (26, 47),
-    "gnome": (48, 7),
-    "halfling": (92,),
+    "dwarf": (47, 26, 97),
+    "gnome": (48, 7, 97),
+    "halfling": (97,),
 }
 
 #: **Pools of Darkness gets no derived racial record at all**, and the empty
@@ -745,10 +773,12 @@ RACE_COMBAT_EFFECTS_SILVER_BLADES: dict[str, tuple[int, ...]] = {
 #: `.EFX` the engine writes beside each.
 RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS: dict[str, tuple[int, ...]] = {}
 
-#: Title key -> its table.  A title not listed gets Pool of Radiance's and
-#: Curse of the Azure Bonds', which is what every caller written before this
-#: split existed means.
+#: Title key -> its table.  A title not listed gets `RACE_COMBAT_EFFECTS`,
+#: Pool of Radiance's own, which is what every caller written before this
+#: split existed means -- and is right only for Pool of Radiance now that
+#: Curse has its own row (#490).
 _RACE_COMBAT_EFFECTS_TABLES: dict[str, dict[str, tuple[int, ...]]] = {
+    CURSE_OF_THE_AZURE_BONDS.key: RACE_COMBAT_EFFECTS_CURSE,
     games.SECRET_OF_THE_SILVER_BLADES.key: RACE_COMBAT_EFFECTS_SILVER_BLADES,
     POOLS_OF_DARKNESS.key: RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS,
 }
