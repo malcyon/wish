@@ -149,7 +149,12 @@ def test_the_module_level_tables_are_pool_of_radiances():
 def test_silver_blades_moves_human_from_seven_to_six():
     ssb = games.SECRET_OF_THE_SILVER_BLADES.race_names
     assert ssb[6] == "human"
-    assert 7 not in ssb
+    # `LIBRARY $306A` folds race 7 and above to MONSTER, and 50 of this
+    # title's 71 C64 `MON*` records read 7 -- so this was a missing entry
+    # rather than a difference between the games, added for
+    # `#470 (Give the project a neutral title beside its neutral character
+    # record, with one port per platform a title shipped on)`.
+    assert ssb[7] == "monster"
     assert ssb[3] == "dwarf"            # not `gnome`, which is Pool's 3
 
 

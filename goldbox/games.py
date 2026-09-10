@@ -32,6 +32,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# The races and class bits a title's own rules define now live in
+# `goldbox/titles.py`, as `Title.races` and `Title.class_bits` -- a fact about
+# the title rather than about the C64 disk -- and are imported back here so
+# that a `Game` row's tuple is the very same object as its `Title`'s
+# (`#470 (Give the project a neutral title beside its neutral character
+# record, with one port per platform a title shipped on)`, stage 1). Every
+# name below is re-exported so nothing that imported it from here has to
+# change.
+from .titles import (  # noqa: F401
+    CLASS_BITS_CLASSIC,
+    CLASS_BITS_KRYNN,
+    CLASS_BITS_WITH_PALADIN_RANGER,
+    RACES_CURSE,
+    RACES_FORGOTTEN_REALMS,
+    RACES_KRYNN,
+    RACES_SILVER_BLADES,
+    class_table,
+    classes_to_names,
+    race_table,
+)
+from .titles import (
+    UnknownTitleError as UnknownGameError,
+)
+
 # Every title in the family agrees on these, so they are constants rather than
 # fields. The one that is not obvious is the icon table: 8 icons of 36 bytes
 # from $2E0 end exactly at $400, the start of the slot area, in both games where
@@ -41,88 +65,6 @@ SLOT_STRIDE = 0x100
 ITEM_AREA_OFFSET = 0x1000
 ICON_TABLE_OFFSET = 0x2E0
 ROSTER_PAGE = 0x100
-
-# --- race codes -------------------------------------------------------------
-# The record's race byte at 0x072 indexes a table of names the game itself
-# carries, and that table is NOT the same in every title. Each list below was
-# read off the player's disks twice over, from two independent places, and then
-# checked against the six-character party each title ships inside its own save.
-#
-# Where the table lives:
-#
-# * Pool of Radiance, Curse and Gateway keep it in `LIBRARY`, reached through a
-#   pointer table the resident code indexes with `LDA table,X / STA $07`. Base
-#   $2C48 for Pool of Radiance and $2DC8 for the other two -- fitted, not read,
-#   by scoring how many of the 66-odd pointers land on a string start (63 of 66
-#   at $2C48 against 14 at the next best).
-# * Silver Blades and the two Krynn titles fold the labels into `ITEMNAMES`'s
-#   own 256-entry string pool, at pool index `140 + race`.
-#
-# And what generation offers: `GEN` carries the character-creation menu, and in
-# Pool of Radiance, Curse and Gateway it is followed by the six bytes
-# `01 02 03 04 05 07` -- the menu-entry-to-race-code map, which is why human is
-# 7 in all three even though only six races can be rolled. Silver Blades and
-# the Krynn titles have no such array, so their menu order *is* the code order.
-#
-# CONFIRMED for all six: every one of the 36 shipped pre-generated characters
-# decodes to a race its class allows. The decisive ones are the rule cases --
-# a paladin or a Knight of Solamnia must be human, a ranger human or half-elf --
-# and Champions' TRAPSPRINGER, race 5, who is a kender by name.
-
-#: Pool of Radiance and Gateway to the Savage Frontier, identically.
-RACES_FORGOTTEN_REALMS = ((1, "dwarf"), (2, "elf"), (3, "gnome"),
-                          (4, "half-elf"), (5, "halfling"), (6, "half-orc"),
-                          (7, "human"), (8, "monster"))
-
-#: Curse drops half-orc from generation but keeps human at 7: its label table
-#: points BOTH 6 and 7 at HUMAN. 6 is left out here on purpose -- naming it
-#: "half-orc" would contradict what the game prints, and naming it "human"
-#: would give two codes one name and let an import silently rewrite a 7 as a 6.
-#: A Pool of Radiance half-orc converted across shows as a bare `6`, which is the
-#: honest answer.
-RACES_CURSE = ((1, "dwarf"), (2, "elf"), (3, "gnome"), (4, "half-elf"),
-               (5, "halfling"), (7, "human"), (8, "monster"))
-
-#: Silver Blades drops half-orc and re-orders the rest, so human moves to 6.
-#: Codes 1-6 are the generation menu in menu order; 0 also prints ELF.
-RACES_SILVER_BLADES = ((1, "elf"), (2, "half-elf"), (3, "dwarf"),
-                       (4, "gnome"), (5, "halfling"), (6, "human"))
-
-#: Krynn: a different list entirely, and the only one that is **0-based** --
-#: Death Knights' CELESTE is race 0, which is why 0 had to be a real race
-#: rather than the "monster" it is in the Realms titles.
-RACES_KRYNN = ((0, "silvanesti elf"), (1, "qualinesti elf"), (2, "half-elf"),
-               (3, "mountain dwarf"), (4, "hill dwarf"), (5, "kender"),
-               (6, "human"))
-
-# --- class bits -------------------------------------------------------------
-# 0x0EB, one bit per class. The low four are the whole story in Pool of
-# Radiance; the later titles add classes above them.
-#
-# **The bit number is the slot number in the per-class level array**, and that
-# array is eight bytes at 0x0C9-0x0D0, not four. Bit 4 is the knight at 0x0CD,
-# bit 6 the paladin at 0x0CF, bit 7 the ranger at 0x0D0 -- so
-# `class_bits == sum(1 << i for every non-zero slot i)` holds uniformly, on all
-# 36 shipped characters in all six titles. It is a cross-title check, not a
-# Pool of Radiance quirk, and `tests/test_gametables.py` asserts it.
-#
-# (An early report, since lost, said the rule fails for the
-# 0x10/0x40/0x80 classes. It read only the first four slots of an eight-slot
-# array; the levels are in the slots it did not read.)
-CLASS_BITS_CLASSIC = ((1, "magic-user"), (2, "cleric"), (4, "thief"),
-                      (8, "fighter"))
-
-#: Curse, Silver Blades and Gateway. CONFIRMED for Curse, whose shipped party
-#: has two characters literally named PALADIN (0x40) and RANGER (0x80); the
-#: same two names sit at the same places in all three titles' label tables.
-CLASS_BITS_WITH_PALADIN_RANGER = CLASS_BITS_CLASSIC + ((0x40, "paladin"),
-                                                       (0x80, "ranger"))
-
-#: Krynn adds the Knight of Solamnia at 0x10. PROBABLE: Champions' STRONGSWORD
-#: and Death Knights' SIR DRYDEN are single-class 0x10, lawful good, and the
-#: label pool carries KNIGHT and KNIGHT OF THE ROSE.
-CLASS_BITS_KRYNN = CLASS_BITS_CLASSIC + ((0x10, "knight"), (0x40, "paladin"),
-                                         (0x80, "ranger"))
 
 # --- item names -------------------------------------------------------------
 # `ITEMNAMES` is 256 low bytes, 256 high bytes, then the strings, and the
@@ -492,10 +434,6 @@ def by_title(title: str | None) -> Game | None:
     return BY_TITLE.get(title) if title else None
 
 
-class UnknownGameError(ValueError):
-    """Raised when a key names no title we know."""
-
-
 def by_key(key: str) -> Game:
     try:
         return BY_KEY[key]
@@ -524,44 +462,3 @@ def detect(disk, default: Game | None = None) -> Game | None:
     """The title a D64 holds a save for, or `default`."""
     found = detect_from_names(e.name for e in disk.directory())
     return found if found is not None else default
-
-
-# ---------------------------------------------------------------------------
-# The per-title tables, resolved
-# ---------------------------------------------------------------------------
-# `race`, `char_class` and `class_bits` are *indices into this title's own
-# tables* wherever they appear -- in a C64 record, in `goldbox/neutral.py`'s
-# vocabulary, in the YAML. Turning one into a name therefore needs the title,
-# and every codec needs the same answer. These live here, beside the tables
-# themselves, so that a codec asking for a name imports a table module rather
-# than another codec: `goldbox/yaml_io.py` and `goldbox/amiga.py` both need this and
-# neither may reach for the other.
-def race_table(game: "Game | None") -> dict[int, str]:
-    """Race code -> name for a title, or Pool of Radiance's.
-
-    Empty when the title's list is unknown, so a caller shows the raw number
-    rather than inventing a name for it.
-    """
-    if game is None:
-        return dict(DEFAULT.races or ())
-    return game.race_names or {}
-
-
-def class_table(game: "Game | None") -> list[tuple[int, str]]:
-    """The bit -> name pairs for a title, or Pool of Radiance's four.
-
-    A title whose list we do not know gets an empty table, which makes
-    :func:`classes_to_names` hand back the raw bitmask rather than a wrong
-    name.
-    """
-    if game is None:
-        return list(DEFAULT.class_bits or ())
-    return list(game.class_bits or ())
-
-
-def classes_to_names(bits: int, game: "Game | None" = None) -> list[str]:
-    """The classes a bitmask holds, named -- or the mask itself, unnamed."""
-    names = [name for bit, name in class_table(game) if bits & bit]
-    if not names:                       # unknown encoding: keep it visible
-        return [bits]
-    return names
