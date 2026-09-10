@@ -81,6 +81,13 @@ UNLIMITED = 99
 #: `ITEMNAMES`'s own pool rather than keeping one in `LIBRARY`.
 RACE_LABEL_POOL_INDEX = 140
 
+#: Race codes whose label is **not** at `RACE_LABEL_POOL_INDEX + code`, per
+#: title, because the game reaches them by a different instruction. Silver
+#: Blades folds 7 and above to pool entry 219 (`LIBRARY $306A`, `LDX #$4F`),
+#: so its 7 is `MONSTER` while `140 + 7` is `MALE `. Pinned separately in
+#: `tests/test_silverblades.py`.
+OUTSIDE_THE_RUN = {"secret-of-the-silver-blades": (7,)}
+
 
 # --- finding the disks -------------------------------------------------------
 
@@ -515,11 +522,24 @@ def test_the_later_titles_fold_the_race_labels_into_the_item_name_pool(game, whi
     """`LDA $9E8C,X` is `$9E00 + 140`: the race label is pool entry
     `140 + race`, read straight out of `ITEMNAMES` with no table in `LIBRARY`
     at all. Pool of Radiance and Curse keep theirs in `LIBRARY` instead, and
-    the same instruction is absent there."""
+    the same instruction is absent there.
+
+    **The run holds the labels a generation menu offers, and nothing else.**
+    Silver Blades' `LIBRARY $306A` is `LDX <race> / CPX #$07 / BCC / LDX #$4F`,
+    so 7 and above are folded to pool entry `140 + 79 = 219`, `MONSTER`, and
+    `140 + 7` is `MALE `, the first entry of the gender table. `OUTSIDE_THE_RUN`
+    is that folded case: it is a real race code the game prints a label for,
+    read through a different instruction. `#470 (Give the project a neutral
+    title beside its neutral character record, with one port per platform a
+    title shipped on)` added it to the tuple and this loop had to learn that
+    the arithmetic was only ever true of the run.
+    """
     folded = games.NAMES_LOAD_ADDRESS_LATER + RACE_LABEL_POOL_INDEX
     assert _library_reads(_library_of(which), folded)
     names = _item_names_of(which, game)
     for code, label in game.races:
+        if code in OUTSIDE_THE_RUN.get(game.key, ()):
+            continue
         assert names[RACE_LABEL_POOL_INDEX + code] == label.upper()
 
 

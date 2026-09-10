@@ -580,9 +580,23 @@ def test_races_classes_and_alignments_are_named_from_itemnames():
     from goldbox.items import load_item_names
 
     names = load_item_names(str(_game_disk_with(b"ITEMNAMES")), SSB)
-    assert {code: names[140 + code] for code, _ in SSB.races} == {
-        code: label.upper() for code, label in SSB.races}
+    # `140 + race` holds for codes 1 to 6 and **not** for 7, which is why
+    # this excludes it rather than asserting it. `LIBRARY $306A` is
+    # `LDX <race> / CPX #$07 / BCC / LDX #$4F`: 7 and above are folded to
+    # pool entry 140 + 79 = 219, and 147 is `MALE `, the gender table, not a
+    # seventh race label. So Silver Blades has six race labels in the pool
+    # and one folded case outside it. `#470 (Give the project a neutral
+    # title beside its neutral character record, with one port per platform
+    # a title shipped on)` added `(7, "monster")` to the tuple, which is
+    # correct and broke this formula, since the formula was only ever true
+    # of the labels that sit in the run.
+    folded = {7}
+    assert {code: names[140 + code] for code, _ in SSB.races
+            if code not in folded} == {
+        code: label.upper() for code, label in SSB.races
+        if code not in folded}
     assert names[140] == "ELF", "race 0 shares elf's label"
+    assert names[219] == "MONSTER", "race 7 and above, folded by LIBRARY $306A"
 
     alignments = [names[158 + i] for i in range(9)]
     assert alignments[0] == "LAWFUL GOOD" and alignments[8] == "CHAOTIC EVIL"
