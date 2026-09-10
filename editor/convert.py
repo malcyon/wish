@@ -73,9 +73,12 @@ at step 5.
 
 **`ConvertDialog`, below, is step B of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment** (also
 `#52`'s comment of 2026-09-05 13:58:53): the source and destination rows, a
-game-files row, a write-to-folder row, and the report pane --
-`editor/dosimport.py`'s rehearse-then-enable pattern, one dialog for every
-registered direction rather than one dialog per port. **Four rows, in the
+game-files row and a write-to-folder row carrying its own `Destination:`
+line -- `editor/dosimport.py`'s rehearse-then-enable pattern, one dialog for
+every registered direction rather than one dialog per port. The report pane
+this paragraph used to name is gone (2026-09-10): what it showed is now
+either a modal `QMessageBox` or the debug log, `_rehearse_and_report`'s own
+docstring has which goes where. **Four rows, in the
 same places, in all six directions** since `#413 (The Convert window changes
 shape depending on which platforms you are converting between)`: the
 game-files row used to appear only for a DOS or an Amiga destination and
@@ -100,6 +103,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QMessageBox,
     QWidget,
 )
 
@@ -111,7 +115,8 @@ _log = logging.getLogger("wish.editor.convert")
 
 
 class ConvertError(Exception):
-    """Anything a direction or `Source.detect` refuses, phrased for a pane."""
+    """Anything a direction or `Source.detect` refuses, phrased for a
+    player to read -- in a modal `QMessageBox` since 2026-09-10."""
 
 
 def _same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
@@ -1117,9 +1122,12 @@ def fresh_folder(destination: str | pathlib.Path,
 #: fields have no home in it, so a converted character loses his spells and
 #: possessions)` is the shape of the work that closes it.
 #:
-#: **The Convert log is gone from the dialog**, so nothing tells a player
-#: about a drop any more; the drop list is our accounting and goes to the
-#: debug log, which `.claude/rules/gui-text.md` exempts from approval.
+#: **Nothing tells a player about a drop.** The drop list is our accounting
+#: and goes to the debug log, which `.claude/rules/gui-text.md` exempts from
+#: approval, and was never read by the pane in the first place -- confirmed
+#: false until 2026-09-10 was this same paragraph's claim that the `Convert
+#: Log` heading over that pane was already gone; it was not, Donald found it
+#: still there, and removing it is what made the claim true.
 ENV = "WISH_EXPERIMENTAL_CONVERT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
@@ -1189,12 +1197,17 @@ LABEL_DISK = "Amiga game disk 2"
 LABEL_C64 = "C64 game disks"
 LABEL_FOLDER = "Write to"
 
-#: The heading above the report pane. Donald's own words, 2026-09-07, from
-#: reviewing the Amiga-row mock-up for `#316 (Write the Amiga Pool of
+#: **Removed 2026-09-10.** The heading was Donald's own words, 2026-09-07,
+#: from reviewing the Amiga-row mock-up for `#316 (Write the Amiga Pool of
 #: Radiance saved game from the source save, so a converted party arrives
 #: where it was standing)`: *"It gains a label above it reading `Convert
-#: Log`."* Not marked unapproved -- he supplied the text himself.
-LABEL_REPORT = "Convert Log"
+#: Log`."* He then found it still on screen and asked for it gone: *"In the
+#: Convert Window, I still see the Convert Log. I specifically asked for
+#: that to be removed."* The pane it headed carries no label any more --
+#: `dosimport.pane_text`'s own messages and capacity losses (`#416`) and
+#: this dialog's own error text still show inside it, unlabeled; the
+#: destination path that used to live under a `This writes:` line inside it
+#: is `DESTINATION_PREFIX` below, on its own line under `Write to`.
 
 #: One combo item per slot `Source.available_slots` lists, `{slot}` the
 #: letter `read_por_slot` takes. **No separate label any more** -- the combo
@@ -1255,7 +1268,8 @@ DESTINATION_LABELS: dict[str, str] = {
     "amiga": "Amiga",
 }
 
-#: The pane while a required row is still empty.
+#: Shown in a modal while this required row is still empty (2026-09-10; a
+#: pane drew it until then).
 NO_GAME_FOLDER = "Choose the DOS game folder."
 #: The Amiga disk row's own empty-state line, ruled the same night as
 #: `LABEL_DISK` and following its own wording.
@@ -1290,8 +1304,17 @@ NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: is no longer a list here for a heading to sit over. Kept defined for
 #: whichever caller still names it.
 DROPPED_HEADING = dosimport.DROPPED_HEADING
-#: `editor/exports.py`'s `WRITES_HEADING`, approved 2026-08-25.
-WRITES_HEADING = "This writes:"
+#: The destination line under `Write to`, replacing the `This writes:`
+#: heading that used to sit inside the report pane
+#: (`editor/exports.py`'s own `WRITES_HEADING`, approved 2026-08-25, was the
+#: shape it copied). Donald's own wording, 2026-09-10, asking for the report
+#: pane's heading gone and the path moved: *"Make it say `Destination:
+#: /tmp/wish-2026-09-10/wish-2026-09-10/PORSAVEA.D64`."* Names the folder
+#: alone as of the same day's second ruling -- a C64 → DOS write can name a
+#: dozen files, and joining them onto this one line was what forced the
+#: dialog to 6688px wide; the pane itself is gone too, so there is nothing
+#: left of it for this line to sit "inside" any more.
+DESTINATION_PREFIX = "Destination: "
 
 #: The status line after a DOS write, which nothing else in the window
 #: reports (a C64 write is opened in the editor and gets its own status the
@@ -1311,8 +1334,11 @@ CONVERTED_DOS = "Converted to DOS slot {slot} in {folder}"
 CONVERTED_AMIGA = "Wrote POOLSAVE.ADF to {folder}. Load game {slot}."
 
 
-def _writes_text(rehearsal: "Rehearsal", folder: pathlib.Path) -> str:
-    """The files a write would produce, one to a line, under a heading.
+def _destination_text(folder: pathlib.Path) -> str:
+    """`DESTINATION_PREFIX` followed by the folder Convert would write
+    into -- the folder alone, not the files inside it (2026-09-10: a C64 ->
+    DOS write can name a dozen of those, and joining them onto one line
+    was what forced the dialog to 6688px wide).
 
     `folder` is `fresh_folder`'s own preview of where Convert would write --
     named, not reserved, so a second Convert before this one commits can
@@ -1320,9 +1346,7 @@ def _writes_text(rehearsal: "Rehearsal", folder: pathlib.Path) -> str:
     `mkdir()` happens once, in `EditorBinding.convert`, right before the
     write it guards).
     """
-    return "\n".join([WRITES_HEADING, ""]
-                     + [f"  {folder / name}"
-                        for name in sorted(rehearsal.files)])
+    return DESTINATION_PREFIX + str(folder)
 
 
 def _game_files_from_folder(folder: pathlib.Path,
@@ -1387,18 +1411,21 @@ def _game_files_from_folder(folder: pathlib.Path,
 # ---------------------------------------------------------------------------
 
 class ConvertDialog(QDialog):
-    """The source, the destination, what will be lost, and where it goes.
+    """The source, the destination, and where it goes.
 
     One dialog for every registered direction (`#52`'s comment of
     2026-09-02: one Convert dialog with a source and a destination, not one
     per port). Every row change calls `replan()`, which detects the source,
     lists its registered destinations, rehearses the chosen one in memory,
-    and puts the result on the pane -- `editor/dosimport.py`'s
-    rehearse-then-enable pattern. Convert is enabled only once a rehearsal
-    exists and a folder to write it into has been named; nothing is written
-    until the caller commits it (`editor.window.EditorBinding.convert`),
-    which is what keeps `fresh_folder`'s naming and the actual `mkdir()`
-    together rather than racing between two calls.
+    and either names the destination or says why it cannot -- a modal
+    `QMessageBox` (`_maybe_warn`) now that the pane this used to draw on
+    is gone (2026-09-10) -- `editor/dosimport.py`'s rehearse-then-enable
+    pattern otherwise unchanged. Convert is enabled
+    only once a rehearsal exists and a folder to write it into has been
+    named; nothing is written until the caller commits it
+    (`editor.window.EditorBinding.convert`), which is what keeps
+    `fresh_folder`'s naming and the actual `mkdir()` together rather than
+    racing between two calls.
 
     `game_files` is a callable, `title -> GameFiles | None` --
     `EditorBinding.game_files_for` in the running program -- so this class
@@ -1412,10 +1439,6 @@ class ConvertDialog(QDialog):
     injected callable is what stands in for it, the same way `game_files`
     already does.
     """
-
-    #: How tall the report pane is, in lines of its own font. Donald,
-    #: 2026-09-07: "The report pane gets smaller."
-    REPORT_LINES = 6
 
     def __init__(self, source: str, party: Any,
                 game_files: "Any",
@@ -1461,9 +1484,10 @@ class ConvertDialog(QDialog):
         self._rebuilding_combo = False
         self._rebuilding_slot_combo = False
 
-        #: Set by `replan()`. `source`/`direction` are `None` whenever the
-        #: pane is not showing a ready-to-write conversion; `rehearsal` is
-        #: the one thing `EditorBinding.convert` needs to commit a write.
+        #: Set by `replan()`. `source`/`direction` are `None` whenever this
+        #: dialog does not currently hold a ready-to-write conversion;
+        #: `rehearsal` is the one thing `EditorBinding.convert` needs to
+        #: commit a write.
         #: `slot` is the DOS slot the rehearsal used -- the source's own for
         #: a DOS → C64 direction, the fixed `"A"` a fresh DOS folder always
         #: gets for a C64 → DOS one -- so a status line can name it without
@@ -1472,6 +1496,32 @@ class ConvertDialog(QDialog):
         self.direction: Direction | None = None
         self.rehearsal: Rehearsal | None = None
         self.slot: str | None = None
+
+        #: What stops Convert right now, `(title, text)` or `None` -- one of
+        #: the five refusals below, reused verbatim as a modal
+        #: `QMessageBox.critical` instead of a line in a pane that no
+        #: longer exists (2026-09-10).
+        self._blocked: tuple[str, str] | None = None
+        #: A name DOS's own fifteen-character field could not hold whole
+        #: (`dosimport.name_warnings`), or `None` -- the one thing left in
+        #: `report.losses` a player is shown; everything else there is
+        #: evidence for a bug (#508, #509) and goes to the debug log
+        #: instead (`dosimport.log_unshown_losses`, Donald's ruling of
+        #: 2026-09-10: *"Things like this are WHY we have to remove the
+        #: Convert dialog... We need it to be correct."*).
+        self._name_warning: str | None = None
+        #: What `_maybe_warn` last actually showed, so replanning after an
+        #: unrelated change -- cancelling a picker, say -- does not repeat
+        #: an identical modal the player has already read.
+        self._last_blocked_shown: tuple[str, str] | None = None
+        self._last_name_warning_shown: str | None = None
+        #: `False` through the constructor's own first `replan()` below, so
+        #: building a `ConvertDialog` with a state already prefilled --
+        #: every test in `tests/test_convert.py` that does that -- never
+        #: has to expect a modal of its own. `True` from here on: a real
+        #: player only reaches this dialog after construction has already
+        #: run once.
+        self._interactive = False
 
         self.ui.label_source.setText(LABEL_SOURCE)
         self.ui.label_to.setText(LABEL_TO)
@@ -1493,23 +1543,12 @@ class ConvertDialog(QDialog):
         self.ui.convert_choose_folder.setText(BUTTON_CHOOSE)
         self.ui.convert_choose_folder.clicked.connect(self._choose_folder)
 
-        self.ui.label_report.setText(LABEL_REPORT)
-        #: Donald, 2026-09-07: "The report pane gets smaller." A fixed
-        #: number of the pane's own font's lines, the way
-        #: `editor.window.CharacterEditor.HEADER_LINES` sizes the character
-        #: header, rather than a pixel count that would only mean this
-        #: machine's font (`.claude/rules/testing.md`). Longer content still
-        #: scrolls; nothing it prints is lost.
-        metrics = self.ui.convert_report.fontMetrics()
-        self.ui.convert_report.setMaximumHeight(
-            self.REPORT_LINES * metrics.height()
-            + 2 * self.ui.convert_report.frameWidth())
-
         self.buttons = self.ui.buttons
         self.buttons.button(
             QDialogButtonBox.StandardButton.Ok).setText(BUTTON_CONVERT)
 
         self.replan()
+        self._interactive = True
 
     # -- where it writes ---------------------------------------------------
 
@@ -1519,9 +1558,14 @@ class ConvertDialog(QDialog):
         return self._folder_path or ""
 
     def refuse(self, text: str) -> None:
-        """Put a failed write in the pane the losses are already reported
-        in, the way `editor/dosimport.py`'s `DosImportDialog.refuse` does."""
-        self.ui.convert_report.setPlainText(text)
+        """Report a failed write the way the rest of the app reports one --
+        `EditorBinding.save`'s own `QMessageBox.critical(self.root, "Cannot
+        save", ...)` -- now that this dialog carries no pane of its own to
+        put it on (2026-09-10). `editor/window.py`'s two callers
+        (`dialog.refuse(str(exc))`, `dialog.refuse(convert_mod.
+        CANNOT_CONVERT)`) are unchanged; only what this does with the text
+        they hand it changed."""
+        QMessageBox.critical(self, DIALOG_TITLE, text)
 
     # -- choosing -----------------------------------------------------------
 
@@ -1599,20 +1643,29 @@ class ConvertDialog(QDialog):
     # -- the rehearsal --------------------------------------------------
 
     def replan(self) -> None:
-        """Detect the source, rehearse the chosen destination, and put the
-        result on the pane. Failures are shown, not raised -- the same rule
-        `editor/dosimport.py`'s `_rehearse` follows."""
+        """Detect the source, rehearse the chosen destination, and either
+        name where it would write or say why it cannot -- as a modal now,
+        `_maybe_warn` below, rather than a line in a pane that no longer
+        exists (2026-09-10). Failures are shown, not raised -- the same
+        rule `editor/dosimport.py`'s `_rehearse` follows."""
         self.source = None
         self.direction = None
         self.rehearsal = None
         self.slot = None
+        #: Cleared on every plan and set only by `_rehearse_and_report`'s
+        #: own success tail below, so every early return here -- no source,
+        #: an unreadable one, no registered destination -- leaves both
+        #: blank rather than naming a file Convert will not write.
+        self.ui.convert_destination_line.setText("")
+        self._blocked = None
+        self._name_warning = None
 
         if not self._source_path:
             self._populate_destinations([])
             self._populate_slots(None)
-            self.ui.convert_report.setPlainText("")
             self._settle_files_row()
             self._settle_button()
+            self._maybe_warn()
             return
 
         try:
@@ -1623,23 +1676,52 @@ class ConvertDialog(QDialog):
             _log.exception("could not read %s", self._source_path)
             self._populate_destinations([])
             self._populate_slots(None)
-            self.ui.convert_report.setPlainText(CANNOT_CONVERT)
+            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
             self._settle_files_row()
             self._settle_button()
+            self._maybe_warn()
             return
 
         self._populate_destinations(options)
         self._populate_slots(self.source)
         if not options:
-            self.ui.convert_report.setPlainText(CANNOT_CONVERT)
+            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
             self._settle_files_row()
             self._settle_button()
+            self._maybe_warn()
             return
 
         self.direction = self._chosen_direction(options)
-        self.ui.convert_report.setPlainText(self._rehearse_and_report())
+        self._rehearse_and_report()
         self._settle_files_row()
         self._settle_button()
+        self._maybe_warn()
+
+    def _maybe_warn(self) -> None:
+        """Tell the player the one or two things left to tell them, now
+        that `replan()` has nowhere to draw a running status: why Convert
+        will not go (`self._blocked`), or a name DOS's own field could not
+        hold whole (`self._name_warning`).
+
+        Gated on `self._interactive`, so a `ConvertDialog` built with a
+        state already prefilled -- every test in `tests/test_convert.py`
+        that does that -- never has to expect a modal of its own; a real
+        player only reaches this after `__init__` has already run once.
+        Deduplicated against what was last actually shown, so replanning
+        after an unrelated change -- cancelling a picker, say -- does not
+        repeat an identical modal the player has already read.
+        """
+        if not self._interactive:
+            return
+        if self._blocked != self._last_blocked_shown:
+            self._last_blocked_shown = self._blocked
+            if self._blocked is not None:
+                title, text = self._blocked
+                QMessageBox.critical(self, title, text)
+        if self._name_warning != self._last_name_warning_shown:
+            self._last_name_warning_shown = self._name_warning
+            if self._name_warning:
+                QMessageBox.warning(self, DIALOG_TITLE, self._name_warning)
 
     def _chosen_direction(self, options: list["Direction"]) -> "Direction":
         for d in options:
@@ -1647,7 +1729,15 @@ class ConvertDialog(QDialog):
                 return d
         return options[0]
 
-    def _rehearse_and_report(self) -> str:
+    def _rehearse_and_report(self) -> None:
+        """Rehearse `self.direction`, and set `self._blocked` or the
+        destination line -- never both -- for `_maybe_warn` and the dialog
+        itself to read.  Returned a string for `convert_report` to show
+        until 2026-09-10, when that pane was removed outright (Donald: "the
+        box under it has to be removed, too. That was the entire point.");
+        every `return NO_X` below became `self._blocked = (title, NO_X);
+        return` instead.
+        """
         direction = self.direction
         if direction.destination_port == "c64":
             if not self.source.slot:
@@ -1656,7 +1746,8 @@ class ConvertDialog(QDialog):
                 # branch); only a caller handing `Source.detect` a bare
                 # folder directly -- a test or `tools/` script -- can reach
                 # this, and there is no slot to guess at for it.
-                return CANNOT_CONVERT
+                self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+                return
             slot = self.source.slot
             # A folder the player picked or edited by hand off this row
             # names exactly that folder (2026-09-09's ruling: "just this
@@ -1670,7 +1761,8 @@ class ConvertDialog(QDialog):
             else:
                 options = self._game_files(direction.destination_game)
             if options is None:
-                return NO_DISKS
+                self._blocked = (NO_DISKS_TITLE, NO_DISKS)
+                return
         elif direction.destination_port == "amiga":
             # A C64 source has no slot of its own (`C64ToAmiga` always
             # writes `A`); a DOS source keeps its own letter
@@ -1680,12 +1772,14 @@ class ConvertDialog(QDialog):
             # the direction actually wrote.
             slot = self.source.slot or "A"
             if not self._disk_path:
-                return NO_DISK
+                self._blocked = (DIALOG_TITLE, NO_DISK)
+                return
             options = pathlib.Path(self._disk_path)
         else:
             slot = "A"
             if not self._game_path:
-                return NO_GAME_FOLDER
+                self._blocked = (DIALOG_TITLE, NO_GAME_FOLDER)
+                return
             options = pathlib.Path(self._game_path)
 
         try:
@@ -1704,7 +1798,8 @@ class ConvertDialog(QDialog):
                 # no combat figures, though a C64 destination refuses)`).
                 source_files: Any = self._game_files(direction.title)
                 if source_files is None:
-                    return NO_DISKS
+                    self._blocked = (NO_DISKS_TITLE, NO_DISKS)
+                    return
                 icon_parts = source_files.icon
                 self.rehearsal = direction.rehearse(
                     self.source, slot, options, icon_parts=icon_parts)
@@ -1713,33 +1808,41 @@ class ConvertDialog(QDialog):
             self.slot = slot
         except dos.DosRecordError as exc:
             _log.exception("could not rehearse %s", self._source_path)
-            return exc.player_message
+            self._blocked = (DIALOG_TITLE, exc.player_message)
+            return
         except Exception:
             _log.exception("could not rehearse %s", self._source_path)
-            return CANNOT_CONVERT
+            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            return
 
         if not self._folder_path:
-            return NO_FOLDER
+            self._blocked = (DIALOG_TITLE, NO_FOLDER)
+            return
 
         preview = fresh_folder(pathlib.Path(self._folder_path))
-        #: `dosimport.pane_text`, not `dropped_text` -- the same function
-        #: `editor/dosimport.py`'s own dialog draws, so the two cannot drift
-        #: on what a conversion tells the player (`#416 (The live Convert
-        #: dialog never shows a DOS→C64 conversion's own messages or
-        #: capacity-ceiling warnings)`).  It reads `report.messages` (what
-        #: Wish did to the player's own save) and `report.losses` (a genuine
-        #: platform ceiling a character's own data hit, #399), and is empty
-        #: when there is nothing to say (`#338 (The conversion pane says
-        #: fields could not be converted and then lists none)`) -- joining
-        #: it unconditionally would leave two blank lines above what it
-        #: writes, which a player reads as something missing.  What it does
-        #: not read any more is `report.dropped`: a route that drops
-        #: something is not offered as though it worked, so as of
-        #: 2026-09-08 that accounting goes to the debug log instead of this
-        #: pane (`.claude/rules/conversions.md`).
-        report_text = dosimport.pane_text(self.rehearsal.report)
-        writes = _writes_text(self.rehearsal, preview)
-        return f"{report_text}\n\n{writes}" if report_text else writes
+        self.ui.convert_destination_line.setText(_destination_text(preview))
+
+        #: Still called for its own side effect -- `report.dropped`, to the
+        #: debug log -- even though nothing shows its returned text any
+        #: more (`dropped_text`'s own sibling in this respect, both left
+        #: reachable rather than reworded tonight).
+        dosimport.pane_text(self.rehearsal.report)
+
+        #: `report.losses` split in two, Donald's ruling of 2026-09-10 on
+        #: being shown two of the three lines this could produce: a name
+        #: DOS's own field could not hold whole is real and goes to the
+        #: player; a magic-user memorising more spells than the destination
+        #: title's own slots (#508) and a spell id outside the destination's
+        #: own book (#509) are bugs, not platform limits, and a modal
+        #: reporting a bug instead of it getting fixed is the pattern this
+        #: dialog is being rebuilt to stop -- *"the agents find a bug, and
+        #: instead of fixing it, they want to write an excuse to the player
+        #: and then they never fix it... We need it to be correct."* Those
+        #: two still go to the debug log, so the evidence for both issues
+        #: is not lost along with the pane.
+        names = dosimport.name_warnings(self.rehearsal.report)
+        self._name_warning = "\n".join(names) if names else None
+        dosimport.log_unshown_losses(self.rehearsal.report)
 
     # -- what is shown, and when Convert is pressable -----------------
 

@@ -243,7 +243,8 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_an_amiga_convert(
                                    folder=str(destination))
     try:
         assert dialog.rehearsal is not None
-        text = dialog.ui.convert_report.toPlainText()
+        text = (dialog.ui.convert_destination_line.text()
+                + (dialog._name_warning or ""))
         assert FIGURE_NOT_SET not in text, text
         final = tmp_path / "final"
         dialog.direction.write(dialog.rehearsal, final)

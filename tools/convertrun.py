@@ -120,7 +120,12 @@ def write_via_dialog(source: pathlib.Path, to: str, folder: pathlib.Path,
         destination=to, game=str(game) if game else None,
         folder=str(folder))
     try:
-        report["pane"] = preview.ui.convert_report.toPlainText()
+        # `report["pane"]` until 2026-09-10, when the report pane it read
+        # was removed outright; the three places anything a player would
+        # see can still reach, now that it is gone.
+        report["destination_line"] = preview.ui.convert_destination_line.text()
+        report["blocked"] = preview._blocked
+        report["name_warning"] = preview._name_warning
         report["destinations"] = [
             preview.ui.convert_destination.itemText(i)
             for i in range(preview.ui.convert_destination.count())]

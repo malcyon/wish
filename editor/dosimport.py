@@ -16,28 +16,30 @@ Convert button, it does what the user expects. it converts."* The write
 itself is still the editor's own Save, so the backup guarantee in
 `editor/files.py` covers this the way it covers every other write.
 
-**The pane -- `editor/convert.py`'s now -- shows two things**: the
-conversion's own messages (`C64SaveReport.messages`) and then a genuine
-platform ceiling a character's own data hit (`C64SaveReport.losses` -- twenty
-items arriving where the C64 holds sixteen slots is the worked example,
-#399). What it does not show any more is `report.dropped` -- every field the
-conversion did not convert. Donald ruled on 2026-09-08 that a route which
-drops something is not offered to a player as though it had worked: *"I want
-perfect conversions. We should not have to tell the player that anything is
-dropped, because everything should just work."* So the drop list stays as
-this project's own accounting -- a test reads it, and every driven tool still
-prints it with `--report` -- and goes to the debug log (`wish/debuglog.py`)
-instead of the pane, which is empty for a conversion that drops nothing
-(`.claude/rules/conversions.md`). This supersedes the two rulings the
-paragraph used to describe here, from 2026-09-05 and 2026-09-06, about which
-of those lines a player should see.
+**`editor/convert.py` carries no pane at all as of 2026-09-10** -- Donald,
+seeing the two that had stood in for it in turn: *"the box under it has to
+be removed, too. That was the entire point."* What a player is shown now is
+two modals and nothing else: one of the refusals below, or a name DOS's own
+fifteen-character field could not hold whole (`name_warnings`). Everything
+else that used to reach the pane -- `C64SaveReport.messages` entirely, and
+`C64SaveReport.losses` beyond the one name-length kind -- goes to the debug
+log instead (`log_unshown_losses`, `pane_text`'s own `report.dropped`
+logging), never a player. Two of those losses are Donald's own examples of
+why: a magic-user memorising more spells than the destination title's slots
+and a spell id outside the destination's own book are both **bugs** (#508,
+#509), not platform limits, and a modal reporting a bug instead of it
+getting fixed is the pattern this file is being kept narrow to stop --
+*"the agents find a bug, and instead of fixing it, they want to write an
+excuse to the player and then they never fix it... We need it to be
+correct."*
 
 **`report.warnings` is not shown wholesale, and never has been** -- most of
 it is this project's own bookkeeping (a quest-flag byte count, a party's
 roster slots left empty), which fires on every conversion and is not a fact
 about anything the player owns.  `losses` is the hand-picked subset
 `write_c64_save` already knows is the player's own loss; see its docstring
-in `goldbox/dos.py` for which lines those are.
+in `goldbox/dos.py` for which lines those are -- and `name_warnings` below
+for the one kind of those Donald ruled real.
 
 **There is no template any more** (#118). The old window used to make the
 user pick an existing `.d64` to convert *onto*, and every byte the
@@ -213,45 +215,74 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
 
 def pane_text(report: dos.Report) -> str:
-    """What the pane shows: the messages, then a ceiling a character's own
-    data hit. What did not convert goes to the debug log instead of here
-    (`.claude/rules/conversions.md`, Donald's ruling of 2026-09-08).
+    """The messages, then the losses, joined the way `editor/convert.py`'s
+    pane used to draw them -- until 2026-09-10, when that pane was removed
+    outright and nothing calls this for its returned text any more.
 
-    `C64SaveReport.messages` is the sentences a player reads about what the
-    conversion did to their own save -- Donald's *"Your party had not set
-    out yet, so it starts at the beginning of the story."* is the first --
-    and `C64SaveReport.losses` is a genuine platform limit a character's own
-    data ran into (#399, `.claude/rules/conversions.md`'s platform-limit
-    carve-out) -- twenty items and the C64 holding sixteen slots is the
-    worked example.  Both are `goldbox/dos.py`'s own lines, so the pane and
-    the terminal cannot drift into two accounts of one conversion.
-
-    **Not `report.warnings` wholesale.**  That list also carries this
-    project's own bookkeeping -- how many quest-flag bytes changed, how many
-    roster slots a six-character DOS party leaves empty in an eight-slot C64
-    save -- which fires on every conversion, truncation or not, and is not a
-    fact about anything the player owns.  `losses` is the subset of
-    `warnings` `write_c64_save` already knows is a character's own loss.
-
-    `report.dropped` -- every field the conversion did not convert, in the
-    words `goldbox.dos.DROPPED_PLAYER_TEXT` gives each -- is the accounting
-    a route is judged perfect or not by, and it stays that: a test reads it
-    and every driven tool still prints it with `--report`.  A player is
-    never shown it; `_log` carries it to `WISH_DEBUG`'s file instead, so a
+    **Still called, for `report.dropped`'s own logging below.** Every
+    field the conversion did not convert, in the words
+    `goldbox.dos.DROPPED_PLAYER_TEXT` gives each, is the accounting a route
+    is judged perfect or not by, and it stays that: a test reads it and
+    every driven tool still prints it with `--report`. A player has never
+    been shown it; `_log` carries it to `WISH_DEBUG`'s file instead, so a
     bug report can still say what a conversion left behind.
 
-    One blank line between the messages and the losses when both are
-    non-empty, and no heading over either: `editor/convert.py`'s own
-    `Convert Log` label is the heading.  Empty when there is nothing to
-    say -- the standard now, for a conversion that drops nothing.  A plain
-    `Report` has no `messages` or `losses` -- `to_c64_record`'s
-    per-character one -- and contributes nothing here.
+    `C64SaveReport.messages` and `C64SaveReport.losses` beyond a truncated
+    name are no longer shown to a player at all, `editor/convert.py`'s own
+    `_rehearse_and_report` and `dosimport.log_unshown_losses` -- Donald,
+    2026-09-10, of two `losses` lines a player had been shown: *"the agents
+    find a bug, and instead of fixing it, they want to write an excuse to
+    the player and then they never fix it... We need it to be correct."*
+    This function's own joining of the two lists into one string is dead
+    weight now rather than a defect -- nobody reads what it returns -- and
+    is left in place the way `dropped_text` below is.
     """
     if report.dropped:
         _log.info("Not converted: %s", "; ".join(report.dropped))
     halves = [list(getattr(report, "messages", ())),
               list(getattr(report, "losses", ()))]
     return "\n\n".join("\n".join(half) for half in halves if half)
+
+
+#: The one substring of a `C64SaveReport.losses` line Donald ruled real,
+#: 2026-09-10: a name DOS's own fifteen-character field could not hold in
+#: full. `goldbox.dos.write`'s own words, kept verbatim rather than
+#: reworded here -- *"do not 'improve' either of the two warning
+#: strings"* governs this one too, even though it is the one that is shown.
+NAME_TRUNCATED_MARKER = "is longer than the DOS "
+
+
+def name_warnings(report: dos.Report) -> list[str]:
+    """`report.losses` filtered to the one kind of loss Donald ruled a
+    player is entitled to see: a name too long for DOS's own field.
+
+    Everything else on that list -- a magic-user memorising more spells
+    than the destination title's own slots, a spell id outside the
+    destination's own book -- is a bug (#508, #509) rather than a platform
+    limit, so it is not returned here; `log_unshown_losses` below is where
+    it goes instead. Matched by substring because `goldbox.dos.write`
+    appends all three kinds to the one list, `rep.warnings`, with no marker
+    of which is which beyond the sentence itself, and that sentence is not
+    this function's to reword (`.claude/rules/conversions.md`, 2026-09-10:
+    "do not... delete the code that raises them... only their destination
+    changes").
+    """
+    return [line for line in getattr(report, "losses", ())
+           if NAME_TRUNCATED_MARKER in line]
+
+
+def log_unshown_losses(report: dos.Report) -> None:
+    """Every `report.losses` line `name_warnings` does not return, to the
+    debug log instead of a player -- evidence for #508 and #509 without
+    putting an excuse in front of somebody. Donald, 2026-09-10, on being
+    shown two such lines: *"Things like this are WHY we have to remove the
+    Convert dialog... It's not okay. We need it to be correct."*
+    """
+    unshown = [line for line in getattr(report, "losses", ())
+              if NAME_TRUNCATED_MARKER not in line]
+    if unshown:
+        _log.info("Not shown to the player (#508, #509): %s",
+                  "; ".join(unshown))
 
 
 def dropped_text(report: dos.Report) -> str:

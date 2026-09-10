@@ -1,5 +1,5 @@
-"""Every pane state `editor.convert.ConvertDialog` can reach, rendered to
-PNGs so Donald can look at them without running anything.
+"""Every state `editor.convert.ConvertDialog` can reach, rendered to PNGs so
+Donald can look at them without running anything.
 
 `.claude/rules/gui-text.md`: "any UI decision requires a screenshot" -- a
 hex colour or a field name is not a picture, and `QWidget.grab()` works
@@ -14,7 +14,12 @@ and hand-built `SAVGAM?.*`/`CHRDAT?1.SAV` pairs, the same specimens
 `tests/test_convert.py` uses -- and are always produced. The two "ready to
 write" states need a rehearsal to actually succeed, which needs the
 player's own DOS save and C64/DOS game files; those two are skipped, with a
-line saying so, on a machine that has neither.
+line saying so, on a machine that has neither. A seventh, `_modal_state`, is
+not the dialog at all: the report pane it used to draw on is gone
+(2026-09-10), so a refusal or a name DOS's own field could not hold whole
+now shows in a modal `QMessageBox` instead, and that box is what this one
+renders -- built directly rather than through `QMessageBox.warning`, which
+blocks on `.exec()` waiting for somebody to click it.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
         GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py work/convertshots
@@ -139,6 +144,26 @@ def _ready_states(root: pathlib.Path):
            ("06-ready-to-write-dos", ready_dos)]
 
 
+def _modal_state():
+    """The one place left that a refusal or a name warning is shown, now
+    that the report pane is gone: a modal `QMessageBox`. One example of
+    each icon `ConvertDialog._maybe_warn` uses -- `.critical` for the five
+    refusals, `.warning` for a name DOS's own field could not hold whole --
+    built directly so nothing here blocks on a click."""
+    from PyQt6.QtWidgets import QMessageBox
+
+    warning = QMessageBox(
+        QMessageBox.Icon.Warning, convert.DIALOG_TITLE,
+        "SOVELISS: Name 'Soveliss the Magnificent' is longer than the DOS "
+        "15 characters; truncated",
+        QMessageBox.StandardButton.Ok)
+    critical = QMessageBox(
+        QMessageBox.Icon.Critical, convert.NO_DISKS_TITLE, convert.NO_DISKS,
+        QMessageBox.StandardButton.Ok)
+    return [("07-name-warning-modal", warning),
+           ("08-refusal-modal", critical)]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out_dir", nargs="?", default="work/convertshots",
@@ -152,7 +177,8 @@ def main(argv: list[str] | None = None) -> int:
 
     with tempfile.TemporaryDirectory(prefix="wish-convertshots-") as tmp:
         root = pathlib.Path(tmp)
-        states = _synthetic_states(root) + _ready_states(root)
+        states = _synthetic_states(root) + _ready_states(root) \
+            + _modal_state()
         for name, dialog in states:
             dialog.resize(dialog.sizeHint())
             dialog.show()

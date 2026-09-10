@@ -195,7 +195,7 @@ def test_dos_to_c64_matches_the_library_for_every_title(
         # proved, not whichever row was registered last.
         offered = [type(d) for d in convert.destinations_for(dialog.source)]
         assert offered[0] is convert.DosToC64, offered
-        assert dialog.rehearsal is not None, dialog.ui.convert_report.toPlainText()
+        assert dialog.rehearsal is not None, dialog._blocked
         slot = dialog.source.slot
         written = dialog.direction.write(dialog.rehearsal,
                                          tmp_path / "dialog-write")
@@ -293,7 +293,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         # proved, not whichever row was registered last.
         offered = [type(d) for d in convert.destinations_for(dialog.source)]
         assert offered[0] is convert.C64ToDos, offered
-        assert dialog.rehearsal is not None, dialog.ui.convert_report.toPlainText()
+        assert dialog.rehearsal is not None, dialog._blocked
         assert dialog.slot == "A"
         written = dialog.direction.write(dialog.rehearsal,
                                          tmp_path / "dialog-write")

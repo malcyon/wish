@@ -799,7 +799,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_a_dos_destination(
     try:
         assert dialog.direction.destination_port == "dos"
         assert dialog.rehearsal is None
-        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISKS
+        assert dialog._blocked == (convert.NO_DISKS_TITLE, convert.NO_DISKS)
         ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
         assert not ok.isEnabled()
     finally:
@@ -818,7 +818,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_an_amiga_destination(
     try:
         assert dialog.direction.destination_port == "amiga"
         assert dialog.rehearsal is None
-        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISKS
+        assert dialog._blocked == (convert.NO_DISKS_TITLE, convert.NO_DISKS)
         ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
         assert not ok.isEnabled()
     finally:
@@ -918,6 +918,31 @@ def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_r
 def app():
     """The session-wide application `tests/conftest.py` holds a reference to."""
     return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _no_real_modals(monkeypatch):
+    """Neutralise `QMessageBox.critical`/`.warning` by default, for every
+    test in this module.
+
+    `ConvertDialog._maybe_warn` (2026-09-10) pops a real one once a dialog
+    is `_interactive` -- true for anything built and then driven further,
+    `_choose_files()`, `_choose_source()` and a second `replan()` among
+    them. Without this fixture several of those hang under `pytest`'s
+    offscreen platform, waiting on a `QMessageBox.exec()` nobody can
+    dismiss: seen directly, a serial (`-n0`) run of this whole file was
+    killed by its own 300-second `timeout` with no test past the first one
+    that reaches this having printed anything at all.
+
+    A test that wants to know what the dialog actually showed does its own
+    `monkeypatch.setattr` on `convert.QMessageBox` -- `test_editor.py`'s own
+    pattern for `EditorBinding.save`'s failures -- which simply replaces
+    this default for that one test.
+    """
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda *a, **k: None)
+    monkeypatch.setattr(convert.QMessageBox, "warning",
+                        lambda *a, **k: None)
 
 
 def _make_root():
@@ -1086,7 +1111,7 @@ def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
         str(folder / "SAVGAMA.PTY"), None, _no_disks)
     try:
         assert dialog.ui.convert_destination.count() == 0
-        assert dialog.ui.convert_report.toPlainText() == convert.CANNOT_CONVERT
+        assert dialog._blocked == (convert.DIALOG_TITLE, convert.CANNOT_CONVERT)
         ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
         assert not ok.isEnabled()
     finally:
@@ -1139,7 +1164,7 @@ def test_the_c64_disks_are_looked_up_by_the_destination_title(tmp_path):
         str(folder / "SAVGAMA.DAT"), None, fake_lookup)
     try:
         assert seen == [games.CURSE_OF_THE_AZURE_BONDS.key]
-        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISKS
+        assert dialog._blocked == (convert.NO_DISKS_TITLE, convert.NO_DISKS)
     finally:
         dialog.close()
 
@@ -1211,15 +1236,52 @@ def test_disk_candidates_with_no_per_title_folder_still_uses_the_shared_one(
 
 
 @needs_dos_saves
-def test_the_writes_block_names_the_full_path_before_the_button_is_enabled(
+def test_the_destination_line_is_blank_with_nothing_chosen(tmp_path):
+    """Before a source is picked, before it can be read, and before a
+    destination folder is chosen, the line under `Write to` says nothing --
+    it is not the label with nothing after it, and not a guess at a file
+    Convert is not about to write.
+
+    Fails before the fix: reverting `replan`'s own reset (put the file back,
+    per `.claude/rules/scratch.md`, then delete `__pycache__`) leaves
+    `AttributeError: 'Ui_ConvertDialog' object has no attribute
+    'convert_destination_line'` instead, since the widget and the reset are
+    the same commit -- seen red, then the fix put back.
+    """
+    empty_source = convert.ConvertDialog("", None, _no_disks)
+    try:
+        assert empty_source.ui.convert_destination_line.text() == ""
+    finally:
+        empty_source.close()
+
+    path = _por_c64_disk(tmp_path)
+    no_folder_chosen = convert.ConvertDialog(str(path), None, _some_disks,
+                                             game=str(_game_dir()))
+    try:
+        assert no_folder_chosen.rehearsal is not None
+        assert no_folder_chosen.ui.convert_destination_line.text() == ""
+    finally:
+        no_folder_chosen.close()
+
+
+@needs_dos_saves
+def test_the_destination_line_names_the_folder_before_the_button_is_enabled(
         tmp_path):
-    """The pane says where the file would land, not only its name, so a
-    player never has to guess which folder Convert is about to write into --
-    and the button is enabled only once it does.
+    """The destination line under `Write to` says where the write would
+    land, not the files inside it, so a player never has to guess which
+    folder Convert is about to write into -- and the button is enabled
+    only once it does.
+
+    Names the folder alone since 2026-09-10's second ruling that day: a
+    C64 -> DOS write can name a dozen files, and joining them onto one
+    line forced the dialog to 6688px wide. Fails before that fix -- the
+    file's own name, `SAVGAMA.DAT`, appearing in the line asserted below --
+    seen red when the destination text still comma-joined every file in
+    `rehearsal.files`, then the fix put back.
 
     `_some_disks`, not `_no_disks`: this row's own C64 -> DOS default
     direction now refuses with no source disks (`#482`), and this test is
-    about the writes block rather than that refusal."""
+    about the destination line rather than that refusal."""
     path = _por_c64_disk(tmp_path)
     destination = tmp_path / "out"
     destination.mkdir()
@@ -1229,8 +1291,10 @@ def test_the_writes_block_names_the_full_path_before_the_button_is_enabled(
                                    game=str(_game_dir()))
     try:
         today = datetime.date.today().isoformat()
-        expected = str(destination / f"wish-{today}" / "SAVGAMA.DAT")
-        assert expected in dialog.ui.convert_report.toPlainText()
+        expected_folder = str(destination / f"wish-{today}")
+        assert dialog.ui.convert_destination_line.text() == \
+            convert.DESTINATION_PREFIX + expected_folder
+        assert "SAVGAMA.DAT" not in dialog.ui.convert_destination_line.text()
         ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
         assert ok.isEnabled()
     finally:
@@ -1447,8 +1511,10 @@ def test_a_c64_destinations_result_is_the_party_on_screen_afterwards(
 
 def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
     """`.claude/rules/gui-text.md`: no memory address or file offset in
-    front of a player. Every pane state this module can reach with no real
-    game disks, checked at once."""
+    front of a player. Every state this module can reach with no real game
+    disks, checked at once -- the destination line, and the refusal
+    `_blocked` would show in a modal (`_no_real_modals` keeps the modal
+    itself from actually opening; the text is checked here instead)."""
     import re
 
     hexish = re.compile(r"(?:0x[0-9A-Fa-f]+|\$[0-9A-Fa-f]{2,})")
@@ -1458,16 +1524,19 @@ def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
     folder = _synthetic_dos_folder(tmp_path, dos_layout.POOLS_OF_DARKNESS,
                                    suffix="PTY", name="pod")
     d1 = convert.ConvertDialog(str(folder / "SAVGAMA.PTY"), None, _no_disks)
-    states.append(d1.ui.convert_report.toPlainText())
+    states.append(d1.ui.convert_destination_line.text())
+    states.append(d1._blocked[1] if d1._blocked else "")
     d1.close()
 
     path = _por_c64_disk(tmp_path)
     d2 = convert.ConvertDialog(str(path), None, _no_disks)
-    states.append(d2.ui.convert_report.toPlainText())
+    states.append(d2.ui.convert_destination_line.text())
+    states.append(d2._blocked[1] if d2._blocked else "")
     d2.close()
 
     d3 = convert.ConvertDialog("", None, _no_disks)
-    states.append(d3.ui.convert_report.toPlainText())
+    states.append(d3.ui.convert_destination_line.text())
+    states.append(d3._blocked[1] if d3._blocked else "")
     d3.close()
 
     for text in states:
@@ -1518,7 +1587,8 @@ def test_no_string_in_the_ready_to_write_c64_to_dos_pane_carries_developer_detai
                                        game=str(_game_dir()),
                                        folder=str(destination))
         try:
-            text = dialog.ui.convert_report.toPlainText()
+            text = (dialog.ui.convert_destination_line.text()
+                    + (dialog._name_warning or ""))
             dropped = dialog.rehearsal.report.dropped
         finally:
             dialog.close()
@@ -1932,72 +2002,56 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
 
 @needs_dos_saves
 @needs_disks
-def test_a_conversion_that_drops_nothing_opens_with_what_it_writes(
+def test_a_successful_rehearsal_still_calls_pane_text_for_its_own_logging(
         tmp_path, game_files, monkeypatch):
-    """No heading, and no gap where the heading used to be.
+    """`_rehearse_and_report` still calls `dosimport.pane_text` on every
+    successful rehearsal, even though nothing shows what it returns any
+    more (2026-09-10) -- `pane_text`'s own `report.dropped` logging is the
+    reason, and the only way `report.dropped` keeps reaching the debug log
+    without duplicating that logic here.
 
-    `#338 (The conversion pane says fields could not be converted and then
-    lists none)` was the heading standing over an empty list, once tonight's
-    work emptied the lists.  Removing the heading on its own left two blank
-    lines at the top of the pane, which a player reads as something missing
-    -- the same defect one layer down.
-
-    The empty case is forced rather than found: which fields a given
-    specimen drops depends on the disks and creation art the run can reach,
-    so a test that waited for a clean one would skip on most machines and
-    prove nothing on the rest.  Both branches are asserted here.
-
-    Patches `pane_text`, not `dropped_text` -- `#416 (The live Convert
-    dialog never shows a DOS→C64 conversion's own messages or
-    capacity-ceiling warnings)` moved `_rehearse_and_report` onto the
-    former, and this test is about the blank-line joining logic around it,
-    not about which function produces the text being joined.
+    Fails before the fix: with the call removed, `calls` stays empty --
+    seen red by deleting the `dosimport.pane_text(self.rehearsal.report)`
+    line, then the fix put back.
     """
     source = str(_save_dir() / "SAVGAMA.DAT")
+    calls = []
+    real_pane_text = dosimport.pane_text
 
-    def pane(report_text):
-        monkeypatch.setattr(dosimport, "pane_text",
-                            lambda report: report_text)
-        dialog = convert.ConvertDialog(
-            source, None, lambda game: game_files,
-            destination="c64", folder=str(tmp_path))
-        try:
-            assert dialog.rehearsal is not None
-            return dialog.ui.convert_report.toPlainText()
-        finally:
-            dialog.close()
+    def spy(report):
+        calls.append(report)
+        return real_pane_text(report)
 
-    empty = pane("")
-    assert not empty.startswith("\n"), repr(empty[:40])
-    assert empty.startswith(convert.WRITES_HEADING), repr(empty[:60])
-
-    #: And the other branch still puts the gap back when there is something
-    #: above it, so this cannot pass by the pane having lost its spacing.
-    with_lines = pane("Something was dropped")
-    assert with_lines.startswith("Something was dropped\n\n"), repr(
-        with_lines[:60])
-    assert convert.WRITES_HEADING in with_lines
+    monkeypatch.setattr(dosimport, "pane_text", spy)
+    dialog = convert.ConvertDialog(
+        source, None, lambda game: game_files,
+        destination="c64", folder=str(tmp_path))
+    try:
+        assert dialog.rehearsal is not None
+        assert calls == [dialog.rehearsal.report]
+    finally:
+        dialog.close()
 
 
-def test_the_pane_shows_a_conversions_own_messages_and_capacity_losses(
+def test_a_name_too_long_for_dos_pops_a_warning_and_nothing_else_does(
         tmp_path, monkeypatch):
-    """`#416 (The live Convert dialog never shows a DOS→C64 conversion's own
-    messages or capacity-ceiling warnings)`: `editor.dosimport.pane_text`
-    draws `report.messages` and `report.losses`, and `_rehearse_and_report`
-    used to call `dropped_text`, which read neither. `DosToC64.rehearse` is
-    monkeypatched to return a report carrying one of each plus a drop line,
-    exactly the recipe the issue's own audit used.
+    """The one `C64SaveReport.losses` line Donald ruled a player is
+    entitled to see -- a name DOS's own fifteen-character field could not
+    hold whole -- reaches a modal; the other two kinds his ruling named as
+    bugs rather than platform limits (#508, #509) reach the debug log
+    instead, and `report.messages` and `report.dropped` reach neither.
 
-    `report.dropped` is checked absent rather than present now -- Donald's
-    ruling of 2026-09-08 (`.claude/rules/conversions.md`) took it out of the
-    pane; `test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_
-    pane` in `tests/test_dosimport.py` is where that half of this test
-    moved.
+    The dialog's own first `replan()`, inside `__init__`, is not
+    `_interactive` (`ConvertDialog.__init__`'s own docstring note), so a
+    second `replan()` is what a real player's next action would trigger --
+    changing the destination combo, say -- and is what is called here to
+    reach the point `_maybe_warn` actually pops anything.
 
-    Fails before the original fix: reverting `_rehearse_and_report` to call
-    `dosimport.dropped_text` instead of `dosimport.pane_text` makes the
-    first two asserts below fail, with the pane showing only `This writes:`
-    and the file path -- seen red, then the fix put back.
+    Fails before the fix: with `name_warnings` returning the whole
+    `losses` list instead of the filtered one, `warned` below gains the
+    spell-count line as a second entry -- seen red by reverting
+    `editor.dosimport.name_warnings` to `return list(report.losses)`, then
+    the fix put back.
     """
     folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
     destination = tmp_path / "out"
@@ -2006,8 +2060,10 @@ def test_the_pane_shows_a_conversions_own_messages_and_capacity_losses(
     report = SimpleNamespace(
         messages=["Your party had not set out yet, so it starts at the "
                   "beginning of the story."],
-        losses=["WISHFTR: 20 items and the C64 has sixteen slots; 4 "
-                "dropped from the end."],
+        losses=["SOVELISS: Name 'Soveliss' is longer than the DOS 15 "
+                "characters; truncated",
+                "MIALEE: 8 spells memorised and Pool of Radiance has 6 "
+                "slots; the rest dropped"],
         dropped=["quickfight: the C64 has no matching option"])
 
     def fake_rehearse(self, source, slot, options):
@@ -2015,19 +2071,28 @@ def test_the_pane_shows_a_conversions_own_messages_and_capacity_losses(
 
     monkeypatch.setattr(convert.DosToC64, "rehearse", fake_rehearse)
 
+    warned = []
+    monkeypatch.setattr(convert.QMessageBox, "warning",
+                        lambda self_, title, text: warned.append((title, text)))
+    critical = []
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda self_, title, text: critical.append((title, text)))
+
     game_files = dosimport.GameFiles(icon=b"", animate=b"")
     dialog = convert.ConvertDialog(
         str(folder), None, lambda game: game_files,
         destination="c64", folder=str(destination))
     try:
-        text = dialog.ui.convert_report.toPlainText()
+        assert dialog.rehearsal is not None
+        #: The dialog's own construction ran non-interactively; this is
+        #: the first `replan()` a real player's own next action would
+        #: trigger.
+        dialog.replan()
     finally:
         dialog.close()
 
-    assert report.messages[0] in text, text
-    assert report.losses[0] in text, text
-    assert report.dropped[0] not in text, text
-    assert "NOT APPROVED" not in text, text
+    assert warned == [(convert.DIALOG_TITLE, report.losses[0])], warned
+    assert critical == [], critical
 
 
 # ---------------------------------------------------------------------------
@@ -2301,34 +2366,23 @@ def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
         dialog.close()
 
 
-def test_the_report_pane_is_labelled_and_bounded_at_six_lines():
-    """The two changes Donald asked for on 2026-09-07, reviewing the
-    Amiga-row mock-up for `#316 (Write the Amiga Pool of Radiance saved game
-    from the source save, so a converted party arrives where it was
-    standing)`: *"The report pane gets smaller"* and *"It gains a label
-    above it reading `Convert Log`."* -- his words, approved.
+def test_the_report_pane_carries_no_label_and_no_box(tmp_path):
+    """Donald asked for the report pane's `Convert Log` label removed on
+    2026-09-10, having found it still there: *"I still see the Convert
+    Log. I specifically asked for that to be removed."* -- and then, on
+    being shown a screenshot with the box it headed still standing under
+    it: *"the box under it has to be removed, too. That was the entire
+    point."*
 
-    The height is asserted as a multiple of the pane's own font, never a
-    pixel count (`.claude/rules/testing.md`: "A number measured on this
-    machine is not a number"), so this holds at whatever font the machine
-    running it uses.
+    Fails before either fix: `hasattr(dialog.ui, "label_report")` was true
+    with `Convert Log` as its text before the first, and
+    `hasattr(dialog.ui, "convert_report")` was true before the second --
+    both seen red, then put back.
     """
     dialog = convert.ConvertDialog("", None, _no_disks)
     try:
-        assert dialog.ui.label_report.text() == convert.LABEL_REPORT
-        assert dialog.ui.label_report.font().bold()
-
-        metrics = dialog.ui.convert_report.fontMetrics()
-        expected = (convert.ConvertDialog.REPORT_LINES * metrics.height()
-                   + 2 * dialog.ui.convert_report.frameWidth())
-        assert dialog.ui.convert_report.maximumHeight() == expected
-        #: Smaller than the pane's own natural, unbounded size for a report
-        #: with real content -- proven with the destination row filled in
-        #: elsewhere in this file; here it is enough that a cap exists at
-        #: all, since `QWIDGETSIZE_MAX` is what an unbounded `QPlainTextEdit`
-        #: carries otherwise.
-        from PyQt6.QtWidgets import QWIDGETSIZE_MAX
-        assert dialog.ui.convert_report.maximumHeight() < QWIDGETSIZE_MAX
+        assert not hasattr(dialog.ui, "label_report")
+        assert not hasattr(dialog.ui, "convert_report")
     finally:
         dialog.close()
 
@@ -2371,7 +2425,7 @@ def test_the_files_row_relabels_itself_for_an_amiga_destination(tmp_path):
         assert dialog.direction.destination_port == "amiga"
         assert dialog.ui.form.isRowVisible(dialog.ui.files_row)
         assert dialog.ui.label_files.text() == convert.LABEL_DISK
-        assert dialog.ui.convert_report.toPlainText() == convert.NO_DISK
+        assert dialog._blocked == (convert.DIALOG_TITLE, convert.NO_DISK)
     finally:
         dialog.close()
 

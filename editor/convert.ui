@@ -13,7 +13,7 @@
   <property name="windowTitle">
    <string></string>
   </property>
-  <layout class="QVBoxLayout" name="outer_layout" stretch="0,0,1,0">
+  <layout class="QVBoxLayout" name="outer_layout" stretch="0,0">
    <item>
     <layout class="QFormLayout" name="form">
      <item row="0" column="0">
@@ -55,32 +55,23 @@
       <widget class="QLabel" name="label_folder"/>
      </item>
      <item row="3" column="1">
-      <layout class="QHBoxLayout" name="folder_row" stretch="1,0">
+      <layout class="QVBoxLayout" name="folder_column">
        <item>
-        <widget class="QLabel" name="convert_folder"/>
+        <layout class="QHBoxLayout" name="folder_row" stretch="1,0">
+         <item>
+          <widget class="QLabel" name="convert_folder"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="convert_choose_folder"/>
+         </item>
+        </layout>
        </item>
        <item>
-        <widget class="QPushButton" name="convert_choose_folder"/>
+        <widget class="QLabel" name="convert_destination_line"/>
        </item>
       </layout>
      </item>
     </layout>
-   </item>
-   <item>
-    <widget class="QLabel" name="label_report">
-     <property name="font">
-      <font>
-       <bold>true</bold>
-      </font>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPlainTextEdit" name="convert_report">
-     <property name="readOnly">
-      <bool>true</bool>
-     </property>
-    </widget>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttons">
