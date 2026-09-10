@@ -3014,7 +3014,7 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
 
 
 def test_no_drop_line_of_a_later_read_says_a_field_was_carried():
-    """`AGENTS.md`'s "Words to avoid" table bans "carried", however phrased,
+    """`CLAUDE.md`'s "Words to avoid" table bans "carried", however phrased,
     for anything a conversion does not convert -- #319 (The Amiga export's
     drop line still says a conversion "does not carry" a combat icon) and
     #270 (A conversion's drop text still tells the player a field was "not

@@ -1,6 +1,6 @@
 ---
 name: backlog-auditor
-description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by AGENTS.md's "Words to avoid" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy.
+description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by CLAUDE.md's "Words to avoid" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: high
@@ -64,7 +64,7 @@ Here, blocking is the `blocked` label plus prose. `.claude/rules/issues.md` defi
 
 **6. Decayed context.** Tickets whose description references code paths, config keys, function names or file paths that no longer exist. **Grep every referenced identifier against the repository and report what no longer resolves.**
 
-**7. Banned language.** `AGENTS.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
+**7. Banned language.** `CLAUDE.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
 
 **The entries are not copied here on purpose.** `AGENTS.md`'s table is the only list, so go and read it; a second copy in this file would drift out of step with the first, which is the exact defect the other seven checks hunt for. Report the table's contents at the top of your findings so the run says which version it was checking against.
 
