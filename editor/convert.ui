@@ -20,57 +20,41 @@
       <widget class="QLabel" name="label_source"/>
      </item>
      <item row="0" column="1">
-      <layout class="QHBoxLayout" name="source_row" stretch="1,0">
+      <layout class="QHBoxLayout" name="source_row" stretch="1,0,0">
        <item>
         <widget class="QLabel" name="convert_source"/>
        </item>
        <item>
         <widget class="QPushButton" name="convert_choose_source"/>
        </item>
+       <item>
+        <widget class="QComboBox" name="convert_slot"/>
+       </item>
       </layout>
      </item>
      <item row="1" column="0">
-      <widget class="QLabel" name="label_slot"/>
-     </item>
-     <item row="1" column="1">
-      <widget class="QComboBox" name="convert_slot"/>
-     </item>
-     <item row="2" column="0">
       <widget class="QLabel" name="label_to"/>
      </item>
-     <item row="2" column="1">
+     <item row="1" column="1">
       <widget class="QComboBox" name="convert_destination"/>
      </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="label_files"/>
+     </item>
+     <item row="2" column="1">
+      <layout class="QHBoxLayout" name="files_row" stretch="1,0">
+       <item>
+        <widget class="QLabel" name="convert_files"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="convert_choose_files"/>
+       </item>
+      </layout>
+     </item>
      <item row="3" column="0">
-      <widget class="QLabel" name="label_game"/>
-     </item>
-     <item row="3" column="1">
-      <layout class="QHBoxLayout" name="game_row" stretch="1,0">
-       <item>
-        <widget class="QLabel" name="convert_game"/>
-       </item>
-       <item>
-        <widget class="QPushButton" name="convert_choose_game"/>
-       </item>
-      </layout>
-     </item>
-     <item row="4" column="0">
-      <widget class="QLabel" name="label_disk"/>
-     </item>
-     <item row="4" column="1">
-      <layout class="QHBoxLayout" name="disk_row" stretch="1,0">
-       <item>
-        <widget class="QLabel" name="convert_disk"/>
-       </item>
-       <item>
-        <widget class="QPushButton" name="convert_choose_disk"/>
-       </item>
-      </layout>
-     </item>
-     <item row="5" column="0">
       <widget class="QLabel" name="label_folder"/>
      </item>
-     <item row="5" column="1">
+     <item row="3" column="1">
       <layout class="QHBoxLayout" name="folder_row" stretch="1,0">
        <item>
         <widget class="QLabel" name="convert_folder"/>

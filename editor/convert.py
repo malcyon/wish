@@ -73,11 +73,17 @@ at step 5.
 
 **`ConvertDialog`, below, is step B of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment** (also
 `#52`'s comment of 2026-09-05 13:58:53): the source and destination rows, a
-game-files row shown only for a DOS destination, a write-to-folder row, and
-the report pane -- `editor/dosimport.py`'s rehearse-then-enable pattern, one
-dialog for every registered direction rather than one dialog per port. Every
-string not already approved elsewhere ends in the literal
-` (NOT APPROVED)`; see the block below it.
+game-files row, a write-to-folder row, and the report pane --
+`editor/dosimport.py`'s rehearse-then-enable pattern, one dialog for every
+registered direction rather than one dialog per port. **Four rows, in the
+same places, in all six directions** since `#413 (The Convert window changes
+shape depending on which platforms you are converting between)`: the
+game-files row used to appear only for a DOS or an Amiga destination and
+vanish for a Commodore 64 one, which moved the buttons under the pointer
+every time the destination changed; it is always shown now, and only its
+label, its displayed value and what `Choose…` opens follow the
+destination. Every string not already approved elsewhere ends in the
+literal ` (NOT APPROVED)`; see the block below it.
 """
 
 from __future__ import annotations
@@ -673,7 +679,7 @@ class AmigaToDos(C64ToDos):
 
     `options` is the DOS game directory `ECL<n>.DAX` lives in, exactly as
     the C64 → DOS row takes it; the dialog already shows that row for any
-    DOS destination (`_settle_game_row`), so this needs nothing new there.
+    DOS destination (`_settle_files_row`), so this needs nothing new there.
     """
 
     source_port = "amiga"
@@ -940,12 +946,25 @@ class DosToAmiga(Direction):
 #: **Amiga** pairing: the title never shipped on the C64, so a DOS-to-C64 row
 #: has no destination and a C64-to-DOS row has no source.
 #:
-#: `games.BY_KEY` is the test, and it is the same one `DosToC64.__init__`
-#: makes one line further down -- kept here so a title with no C64 game at
-#: all is *left out* rather than raising at import time.  The alarm the
-#: comment above describes is unchanged for every title that does have one:
-#: a shape `games` knows and `DOS_TO_C64_NAMES` does not still raises
-#: `UnnamedConversionError`.
+#: The test is **"does this title have a C64 port", not "is this a title we
+#: know"** -- `#470 (Give the project a neutral title beside its neutral
+#: character record, with one port per platform a title shipped on)`'s own
+#: model, a port being optional and absent being normal.  `games.BY_KEY` is
+#: that answer: it is the six C64 titles' own registry and stays that way
+#: through `#470`'s stage 2, so it is the test here too, and it is the same
+#: one `DosToC64.__init__` makes one line further down -- kept here so a
+#: title with no C64 game at all is *left out* rather than raising at import
+#: time.  The alarm the comment above describes is unchanged for every title
+#: that does have one: a shape `games` knows and `DOS_TO_C64_NAMES` does not
+#: still raises `UnnamedConversionError`.
+#:
+#: **Do not swap this for `goldbox.titles.BY_KEY`.** Every other table this
+#: stage touches reads through `titles` instead of `games`, because a title's
+#: races and classes are the same fact on every port; whether a title *has*
+#: a C64 port is not that kind of fact, and `titles.BY_KEY` knows Pools of
+#: Darkness, which has none.  That swap is exactly what broke the editor on
+#: import once already, the other way round, when `dos.CONVERTS` gained the
+#: title before this guard existed (`#194`'s comment of 2026-09-08).
 C64_PAIRED: tuple[dos_layout.DosShape, ...] = tuple(
     shape for shape in dos.CONVERTS if shape.key in games.BY_KEY)
 
@@ -1138,14 +1157,29 @@ DIALOG_TITLE = "Convert a save"
 LABEL_SOURCE = "From"
 LABEL_TO = "To"
 LABEL_GAME = "DOS game folder"
-#: The Amiga disk row's label, shown only for an Amiga destination. Ruled on
+#: The game-files row's label for an Amiga destination. Ruled on
 #: `#316 (Write the Amiga Pool of Radiance saved game from the source save,
 #: so a converted party arrives where it was standing)` on 2026-09-07, over
 #: `Amiga disk 2` and `Amiga data disk`, because it is unambiguous the
 #: player is being asked for one of his own original game disks rather than
 #: anything Wish produced. Not `#36 (Write an Amiga disk image, not just the
 #: character files)`'s own -- `#316` settled it first and this one follows.
+#: Re-confirmed rather than reopened on `#413`'s comment of 2026-09-09.
 LABEL_DISK = "Amiga game disk 2"
+#: The game-files row's label for a Commodore 64 destination. Approved
+#: 2026-09-09 on `#413 (The Convert window changes shape depending on which
+#: platforms you are converting between)`, alongside a real, editable
+#: picker replacing the three drawn alternatives (a blank row, a line of
+#: read-only text, and a `Preferences…` button) that a C64 destination used
+#: to need nothing shown at all -- Donald: *"How about you include a file
+#: input, but autofill it with whatever is in the preferences."* It borrows
+#: Preferences' own noun (`Game disks not found`) rather than inventing a
+#: fourth word for the same thing, matching `LABEL_GAME` and `LABEL_DISK`'s
+#: own pattern of naming the platform and what it keeps: a folder, one
+#: particular disk, a set of disks. A single shared label (`Your game
+#: files`) was also put to him and rejected, because it would stop telling
+#: an Amiga player they need disk 2 specifically.
+LABEL_C64 = "C64 game disks"
 LABEL_FOLDER = "Write to"
 
 #: The heading above the report pane. Donald's own words, 2026-09-07, from
@@ -1155,14 +1189,12 @@ LABEL_FOLDER = "Write to"
 #: Log`."* Not marked unapproved -- he supplied the text himself.
 LABEL_REPORT = "Convert Log"
 
-#: The slot row's label, shown only when the source names more than one
-#: saved game -- today an Amiga `.adf`, the source port that has no other
-#: way to say which slot (`#372 (An Amiga disk with more than one saved game
-#: converts its first slot, whichever one the player meant)`).
-LABEL_SLOT = "Slot"
-
 #: One combo item per slot `Source.available_slots` lists, `{slot}` the
-#: letter `read_por_slot` takes.
+#: letter `read_por_slot` takes. **No separate label any more** -- the combo
+#: sits on the `From` row now (`#413`'s comment of 2026-09-09, "the `Slot`
+#: combo rides on the `From` row, not in the third-row position"), after
+#: `Choose…`, and each item already names itself. The row it used to have of
+#: its own is what this dropped: `LABEL_SLOT`, unused since.
 SLOT_ITEM = "Slot {slot}"
 
 #: Buttons. `BUTTON_CHOOSE` is `editor/exports.py`'s word, approved
@@ -1286,6 +1318,63 @@ def _writes_text(rehearsal: "Rehearsal", folder: pathlib.Path) -> str:
                         for name in sorted(rehearsal.files)])
 
 
+def _game_files_from_folder(folder: pathlib.Path,
+                            game: Any) -> "dosimport.GameFiles | None":
+    """The icon, `ANIMATE00` and the creation menu read straight off
+    `folder`, for a Commodore 64 destination whose game-files row a player
+    has pointed at a specific folder by hand (`#413 (The Convert window
+    changes shape depending on which platforms you are converting
+    between)`, 2026-09-09's ruling: *"Just this conversion. Preferences is
+    untouched."*).
+
+    Mirrors `editor.window.EditorBinding.game_files_for`'s own read, cut to
+    the one folder the row names -- this module must not import
+    `wish.preferences`, so it cannot walk that method's full precedence of a
+    title's own folder, the shared one, an environment variable and a path
+    beside the open save. A player who edits the row is naming this one
+    folder outright, not adding another candidate to that chain; with
+    nothing edited, `ConvertDialog` still calls the injected `game_files`
+    callable instead of this, which is that full precedence in the running
+    program.
+    """
+    from goldbox.d64 import load_payload
+    from goldbox.iconparts import IconParts
+    from goldbox.portraits import PortraitError, tables_from_disks
+
+    def read_animate(disk):
+        return load_payload(disk, dos.ANIMATE_FILE)
+
+    candidates = sorted(pathlib.Path(folder).glob(game.disk_glob))
+
+    def find(read):
+        for candidate in candidates:
+            try:
+                read(str(candidate))
+            except Exception:
+                continue
+            return str(candidate)
+        return None
+
+    icon_disk = find(IconParts.load)
+    animate_disk = find(read_animate)
+    if icon_disk is None or animate_disk is None:
+        return None
+    portraits = None
+    if game.key == games.POOL_OF_RADIANCE.key:
+        try:
+            portraits = tables_from_disks(folder)
+        except (PortraitError, OSError) as exc:
+            _log.debug("no creation menu off %s: %s", folder, exc)
+    try:
+        return dosimport.GameFiles(icon=IconParts.load(icon_disk),
+                                   animate=read_animate(animate_disk),
+                                   portraits=portraits)
+    except Exception:
+        _log.exception("could not read the conversion's game files off %s",
+                       folder)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # The dialog
 # ---------------------------------------------------------------------------
@@ -1306,7 +1395,15 @@ class ConvertDialog(QDialog):
 
     `game_files` is a callable, `title -> GameFiles | None` --
     `EditorBinding.game_files_for` in the running program -- so this class
-    never has to know how the player's C64 disks are found.
+    never has to know how the player's C64 disks are found. `game_folder` is
+    its sibling for the third row's own prefill (`#413 (The Convert window
+    changes shape depending on which platforms you are converting between)`,
+    2026-09-09: *"How about you include a file input, but autofill it with
+    whatever is in the preferences."*): `title -> str | None`, read on every
+    `replan()` until the player edits the row by hand, and never written
+    back to -- this module must not import `wish.preferences`, so the
+    injected callable is what stands in for it, the same way `game_files`
+    already does.
     """
 
     #: How tall the report pane is, in lines of its own font. Donald,
@@ -1320,7 +1417,8 @@ class ConvertDialog(QDialog):
                 disk: str | None = None,
                 folder: str | None = None,
                 parent: QWidget | None = None,
-                start_dir: str = ""):
+                start_dir: str = "",
+                game_folder: "Any | None" = None):
         super().__init__(parent)
         from .ui_convert import Ui_ConvertDialog
 
@@ -1330,17 +1428,28 @@ class ConvertDialog(QDialog):
 
         self.party = party
         self._game_files = game_files
+        #: `title -> str | None`, the game-files row's own prefill for a
+        #: Commodore 64 destination -- `None` with nothing injected, which
+        #: leaves the row exactly as blank as it was before this existed.
+        self._game_folder = game_folder or (lambda _game: None)
         self.start_dir = start_dir or str(pathlib.Path.home())
 
         self._source_path = str(source)
         self._wanted_port = destination
         self._wanted_slot: str | None = None
         self._game_path = game
-        #: The player's own Amiga disk 2, for an Amiga destination
-        #: (`_settle_disk_row`) -- `disk=` here is what lets a test drive
-        #: the whole path with no picker, the way `game=` already does for
-        #: the DOS game folder row.
+        #: The player's own Amiga disk 2, for an Amiga destination -- `disk=`
+        #: here is what lets a test drive the whole path with no picker, the
+        #: way `game=` already does for the DOS game folder.
         self._disk_path = disk
+        #: The Commodore 64 game-files row's own value -- prefilled from
+        #: `game_folder` on each `replan()` until `_c64_folder_edited` is
+        #: set, which happens the first time the player picks one by hand
+        #: (`_choose_files`) and then holds for the rest of this dialog's
+        #: life, per 2026-09-09's ruling: *"Just this conversion. Preferences
+        #: is untouched."*
+        self._c64_folder_path: str | None = None
+        self._c64_folder_edited = False
         self._folder_path = folder
         self._rebuilding_combo = False
         self._rebuilding_slot_combo = False
@@ -1370,13 +1479,8 @@ class ConvertDialog(QDialog):
         self.ui.convert_destination.currentIndexChanged.connect(
             self._destination_changed)
 
-        self.ui.convert_game.setText(self._game_path or "")
-        self.ui.convert_choose_game.setText(BUTTON_CHOOSE)
-        self.ui.convert_choose_game.clicked.connect(self._choose_game)
-
-        self.ui.convert_disk.setText(self._disk_path or "")
-        self.ui.convert_choose_disk.setText(BUTTON_CHOOSE)
-        self.ui.convert_choose_disk.clicked.connect(self._choose_disk)
+        self.ui.convert_choose_files.setText(BUTTON_CHOOSE)
+        self.ui.convert_choose_files.clicked.connect(self._choose_files)
 
         self.ui.convert_folder.setText(self._folder_path or "")
         self.ui.convert_choose_folder.setText(BUTTON_CHOOSE)
@@ -1425,21 +1529,45 @@ class ConvertDialog(QDialog):
             self._wanted_slot = None
             self.replan()
 
-    def _choose_game(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self, GAME_TITLE, self._game_path or self.start_dir)
-        if path:
-            self._game_path = path
-            self.ui.convert_game.setText(path)
-            self.replan()
+    def _choose_files(self) -> None:
+        """`Choose…` on the one row for the destination's own game files --
+        `_settle_files_row` already says, by its label and its displayed
+        value, which of the three this destination needs, so this only has
+        to pick the right kind of picker.
 
-    def _choose_disk(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, DISK_TITLE, self._disk_path or self.start_dir, DISK_FILTER)
-        if path:
-            self._disk_path = path
-            self.ui.convert_disk.setText(path)
-            self.replan()
+        A Commodore 64 destination marks itself edited on a real choice --
+        never on a cancelled picker, which leaves whatever `game_folder`
+        prefilled in place rather than clearing it -- so a later `replan()`
+        stops overwriting it with Preferences' own answer
+        (2026-09-09's ruling: *"Just this conversion. Preferences is
+        untouched."*).
+        """
+        if self.direction is None:
+            return
+        port = self.direction.destination_port
+        if port == "amiga":
+            path, _ = QFileDialog.getOpenFileName(
+                self, DISK_TITLE, self._disk_path or self.start_dir,
+                DISK_FILTER)
+            if path:
+                self._disk_path = path
+        elif port == "c64":
+            # No title of its own yet -- `LABEL_C64` is the row's own label
+            # and is approved; a picker caption saying the same thing is a
+            # second string nobody has ruled on, so this leaves Qt's own
+            # platform default in place rather than inventing one
+            # (`.claude/rules/gui-text.md`).
+            path = QFileDialog.getExistingDirectory(
+                self, "", self._c64_folder_path or self.start_dir)
+            if path:
+                self._c64_folder_path = path
+                self._c64_folder_edited = True
+        else:
+            path = QFileDialog.getExistingDirectory(
+                self, GAME_TITLE, self._game_path or self.start_dir)
+            if path:
+                self._game_path = path
+        self.replan()
 
     def _choose_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -1476,8 +1604,7 @@ class ConvertDialog(QDialog):
             self._populate_destinations([])
             self._populate_slots(None)
             self.ui.convert_report.setPlainText("")
-            self._settle_game_row()
-            self._settle_disk_row()
+            self._settle_files_row()
             self._settle_button()
             return
 
@@ -1490,8 +1617,7 @@ class ConvertDialog(QDialog):
             self._populate_destinations([])
             self._populate_slots(None)
             self.ui.convert_report.setPlainText(CANNOT_CONVERT)
-            self._settle_game_row()
-            self._settle_disk_row()
+            self._settle_files_row()
             self._settle_button()
             return
 
@@ -1499,15 +1625,13 @@ class ConvertDialog(QDialog):
         self._populate_slots(self.source)
         if not options:
             self.ui.convert_report.setPlainText(CANNOT_CONVERT)
-            self._settle_game_row()
-            self._settle_disk_row()
+            self._settle_files_row()
             self._settle_button()
             return
 
         self.direction = self._chosen_direction(options)
         self.ui.convert_report.setPlainText(self._rehearse_and_report())
-        self._settle_game_row()
-        self._settle_disk_row()
+        self._settle_files_row()
         self._settle_button()
 
     def _chosen_direction(self, options: list["Direction"]) -> "Direction":
@@ -1527,7 +1651,17 @@ class ConvertDialog(QDialog):
                 # this, and there is no slot to guess at for it.
                 return CANNOT_CONVERT
             slot = self.source.slot
-            options: Any = self._game_files(direction.destination_game)
+            # A folder the player picked or edited by hand off this row
+            # names exactly that folder (2026-09-09's ruling: "just this
+            # conversion"); anything else still goes through the injected
+            # `game_files` lookup, unchanged, which is Preferences' full
+            # precedence in the running program.
+            if self._c64_folder_edited and self._c64_folder_path:
+                options: Any = _game_files_from_folder(
+                    pathlib.Path(self._c64_folder_path),
+                    direction.destination_game)
+            else:
+                options = self._game_files(direction.destination_game)
             if options is None:
                 return NO_DISKS
         elif direction.destination_port == "amiga":
@@ -1619,11 +1753,19 @@ class ConvertDialog(QDialog):
         self._rebuilding_combo = False
 
     def _populate_slots(self, source: "Source | None") -> None:
-        """The slot row: shown only when the source names more than one
-        saved game (`#372 (An Amiga disk with more than one saved game
-        converts its first slot, whichever one the player meant)`) -- an
-        Amiga `.adf` today, since a DOS folder or file already names its own
-        slot through the save picker and has nothing to list here.
+        """The slot combo on the `From` row: shown only when the source
+        names more than one saved game (`#372 (An Amiga disk with more than
+        one saved game converts its first slot, whichever one the player
+        meant)`) -- an Amiga `.adf` today, since a DOS folder or file
+        already names its own slot through the save picker and has nothing
+        to list here.
+
+        **A widget's own visibility, not a form row's**, since 2026-09-09
+        (`#413 (The Convert window changes shape depending on which
+        platforms you are converting between)`): the combo sits inside
+        `source_row` next to `Choose…` now rather than owning a row of its
+        own, so hiding it hides only itself and never moves the `From` row
+        the way `setRowVisible` would have.
 
         Rebuilt from `source.available_slots` every `replan()`, the way
         `_populate_destinations` rebuilds the destination combo from
@@ -1632,10 +1774,9 @@ class ConvertDialog(QDialog):
         combo = self.ui.convert_slot
         slots = source.available_slots if source is not None else None
         show = bool(slots) and len(slots) > 1
-        self.ui.form.setRowVisible(self.ui.convert_slot, show)
+        combo.setVisible(show)
         if not show:
             return
-        self.ui.label_slot.setText(LABEL_SLOT)
         self._rebuilding_slot_combo = True
         combo.blockSignals(True)
         combo.clear()
@@ -1647,32 +1788,45 @@ class ConvertDialog(QDialog):
         combo.blockSignals(False)
         self._rebuilding_slot_combo = False
 
-    def _settle_game_row(self) -> None:
-        """The game-files row is shown only for a DOS destination -- the C64
-        disks are a Preferences setting already, whichever port the source
-        is, so the Amiga → C64 row needs no picker of its own either
-        (`#52`'s plan, "three C64 titles means the disks are chosen by the
-        destination title"). An Amiga destination has its own row instead,
-        `_settle_disk_row` below -- that conversion reads `ecl.dax` off the
-        player's own disk 2 rather than the Game Disk folder preference
-        (`#316 (Write the Amiga Pool of Radiance saved game from the source
-        save, so a converted party arrives where it was standing)`)."""
-        show = self.direction is not None and self.direction.destination_port == "dos"
-        self.ui.form.setRowVisible(self.ui.game_row, show)
-        if show:
-            self.ui.label_game.setText(LABEL_GAME)
+    def _settle_files_row(self) -> None:
+        """The one row for the destination's own game files -- always
+        shown, in all six directions, replacing `_settle_game_row` and
+        `_settle_disk_row`, which used to show and hide two different rows
+        and left the window a different height for a DOS, a C64 and an
+        Amiga destination alike (`#413 (The Convert window changes shape
+        depending on which platforms you are converting between)`).  Only
+        the label, the displayed value and what `Choose…` opens change.
 
-    def _settle_disk_row(self) -> None:
-        """The Amiga disk row is shown only for an Amiga destination -- the
-        twin of `_settle_game_row` above, for the one row that asks for
-        something no preference already answers: the player's own Amiga
-        disk 2, which carries the area's own `ecl.dax` script
-        (`#316 (Write the Amiga Pool of Radiance saved game from the source
-        save, so a converted party arrives where it was standing)`)."""
-        show = self.direction is not None and self.direction.destination_port == "amiga"
-        self.ui.form.setRowVisible(self.ui.disk_row, show)
-        if show:
-            self.ui.label_disk.setText(LABEL_DISK)
+        A Commodore 64 destination is prefilled from `_game_folder` on
+        every call here, unless the player has already edited this row by
+        hand (`_c64_folder_edited`) -- 2026-09-09's ruling: *"How about you
+        include a file input, but autofill it with whatever is in the
+        preferences,"* and, on what an edit does to that setting, *"Just
+        this conversion. Preferences is untouched."*
+
+        With no direction chosen yet -- the dialog holds no source, or the
+        source could not be read -- the row stays visible with nothing in
+        it and its `Choose…` disabled, rather than guessing which of the
+        three destinations it does not yet know about.
+        """
+        self.ui.form.setRowVisible(self.ui.files_row, True)
+        port = self.direction.destination_port if self.direction is not None else None
+        self.ui.convert_choose_files.setEnabled(port is not None)
+        if port == "amiga":
+            self.ui.label_files.setText(LABEL_DISK)
+            self.ui.convert_files.setText(self._disk_path or "")
+        elif port == "c64":
+            if not self._c64_folder_edited:
+                self._c64_folder_path = self._game_folder(
+                    self.direction.destination_game) or ""
+            self.ui.label_files.setText(LABEL_C64)
+            self.ui.convert_files.setText(self._c64_folder_path or "")
+        elif port == "dos":
+            self.ui.label_files.setText(LABEL_GAME)
+            self.ui.convert_files.setText(self._game_path or "")
+        else:
+            self.ui.label_files.setText("")
+            self.ui.convert_files.setText("")
 
     def _settle_button(self) -> None:
         """Convert is pressable only once there is a rehearsal to write and
