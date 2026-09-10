@@ -2765,7 +2765,7 @@ def write_por(char: NeutralCharacter,
     (`goldbox.portraits.stored_tables(..., port="amiga")`), not the C64's
     and DOS's shared one: the Amiga's twelve bodies differ from theirs at
     menu position 8 (#194), so asking for the wrong menu would draw the
-    wrong body for a character whose is there.  A body that only the C64's
+    wrong body for a character whose own body sits at that position.  A body that only the C64's
     and DOS's menu offers has no position in the Amiga's and is reported
     dropped rather than guessed at (#480).
     """

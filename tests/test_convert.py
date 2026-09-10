@@ -2738,7 +2738,7 @@ def test_the_c64_row_is_prefilled_from_preferences_and_editing_it_holds_only_for
     editing the row does to that setting: *"Just this conversion.
     Preferences is untouched."*
 
-    `preferences` stands in for `Settings.game_folders` -- a plain dict,
+    `preferences` stands in for `Settings.game_folders` -- a simple dict,
     since this module must never import `wish.preferences`, and the
     injected `game_folder` callable is the only way its value reaches the
     dialog, the same way `game_files` already stands in for the rest of
@@ -2777,3 +2777,31 @@ def test_the_c64_row_is_prefilled_from_preferences_and_editing_it_holds_only_for
         assert dialog.ui.convert_files.text() == str(chosen)
     finally:
         dialog.close()
+
+
+def test_window_convert_hands_the_dialog_its_own_preferences_folder():
+    """`EditorBinding.convert` passes `game_folder=`, so the C64 row is
+    prefilled from Preferences in the running editor.
+
+    `#413 (The Convert window changes shape depending on which platforms you
+    are converting between)` built the prefilled row and its dialog-level
+    tests pass a stand-in, so all of them went green while
+    `EditorBinding.convert` passed nothing at all -- a player with a C64
+    folder set still saw a blank row, which is the feature the ticket was
+    for. Caught by the review of `1c3bfa1`.
+
+    This asserts the wiring rather than the behaviour, because the behaviour
+    is already covered: what can rot is the one argument at the call site.
+    `_own_disk_folder` is the right function and reads only
+    `Settings.game_folders`, not `automap.paths.resolve_disks`' full
+    precedence, which would start a search of the machine when no folder is
+    set for either title.
+    """
+    import inspect
+
+    from editor import window as window_mod
+
+    source = inspect.getsource(window_mod.EditorBinding.convert)
+    assert "game_folder=self._own_disk_folder" in source, (
+        "EditorBinding.convert must pass game_folder= or the C64 row is "
+        "blank however the player has set Preferences")

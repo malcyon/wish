@@ -109,7 +109,7 @@ def _size_combo(combo: QComboBox) -> None:
 
 class _NoClassCode(int):
     """A `char_class` value the Class combo must not match to a real class,
-    even though it is a plain number like any other (#409).
+    even though it is a simple number like any other (#409).
 
     A regained dual-classed paladin or ranger whose mask Curse's own table
     cannot name stores `dual_class_level` at `0x073`, not a class code, and a
@@ -117,7 +117,7 @@ class _NoClassCode(int):
     title's table -- `_select`'s `combo.findData(value)` would find that real
     entry and show it as though it were the character's class, which it is
     not. Subclassing `int` rather than returning something else keeps
-    `_char_class_shown` comparing equal to a plain `int` of the same value
+    `_char_class_shown` comparing equal to a simple `int` of the same value
     for every caller that only asks what the code is (`tests/test_dualclasscombo.py`,
     `tools/classcombocheck.py`); only `_populate`, which decides *how* to
     show it, tells the two apart.
@@ -1393,6 +1393,14 @@ class EditorBinding(QObject):
         dialog = convert_mod.ConvertDialog(
             source or "", self.party, self.game_files_for,
             destination=destination, game=game, disk=disk, folder=folder,
+            # `#413 (The Convert window changes shape depending on which
+            # platforms you are converting between)` built the prefilled C64
+            # row and nothing passed this, so the row was blank however the
+            # player had set Preferences. `_own_disk_folder` is the function
+            # it wants, and reads only `Settings.game_folders` -- not
+            # `resolve_disks`' full precedence, which would start a search
+            # of the machine when no folder is set for either title.
+            game_folder=self._own_disk_folder,
             parent=self.root,
             start_dir=files.open_start_dir(self.last_save_folder, self.path,
                                            self.saves_folder))
