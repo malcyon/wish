@@ -49,6 +49,26 @@ drop, because a route that drops something is not offered.** Donald,
 tell the player that anything is dropped, because everything should just work.
 We should keep things behind feature flags until they are perfect."*
 
+**Never write a sentence to the player in place of fixing the thing it
+describes.** Finding a condition the conversion cannot handle and reporting it
+is how a defect turns into furniture: the sentence ships, the bug does not get
+fixed, and the next agent reads the sentence as the design. Donald, 2026-09-10,
+on being shown two such lines: *"Things like this are WHY we have to remove the
+Convert dialog. Because the agents find a bug, and instead of fixing it, they
+want to write an excuse to the player and then they never fix it. It's not
+okay. We need it to be correct."* If a condition cannot be fixed in the session
+that found it, **file it and send the line to the debug log** -- the evidence
+stays, the excuse does not.
+
+**And the same game on two platforms is the same game.** Both ports run the
+same rules on the same content, so a magic-user memorises the same number of
+spells on the C64 as in DOS, and a title's spellbook holds the same spells on
+both. **A difference between the platforms in what a character may hold is our
+table being wrong until the engine's own code says otherwise** -- read the
+code, do not reason from a record, and do not encode the difference as a limit
+to warn about. #508 and #509 are both that mistake, each found as a sentence
+shown to a player.
+
 So there are exactly two states a conversion may be in. **Perfect and
 offered**: its drop list is empty, and there is nothing to say. **Imperfect
 and behind a flag**: `.claude/rules/feature-flags.md` governs, and the flag
