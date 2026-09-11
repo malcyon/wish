@@ -438,7 +438,16 @@ def entry_for(char, slot_index: int, items, icon, game: Game | None = None,
     """
     entry: dict[str, Any] = {"slot": slot_index}
     for f in EDITABLE:
-        entry[f] = char.get(f)
+        # `f in char`, not `char.get(f) is not None`: the only field this
+        # ever matters for is `portrait_head`/`portrait_body`, which
+        # `goldbox.c64_codec.read` leaves unset rather than 0 for a
+        # character with no sheet portrait (#503) -- the same
+        # "membership, not truthiness" rule `editor/convert.py` and
+        # `tools/toamigapor.py` already follow for this pair. Writing the
+        # key as `null` sent `import_into` a value it could not put back
+        # in the record.
+        if f in char:
+            entry[f] = char.get(f)
     # Present the opaque numbers as names. The bitmask, the race table and
     # the alignment index are implementation details; a person editing this
     # file should not have to know them.

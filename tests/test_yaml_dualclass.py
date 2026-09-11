@@ -120,6 +120,50 @@ def test_a_record_with_no_former_class_round_trips_byte_identical(tmp_path):
     assert out.read_bytes() == pathlib.Path(save).read_bytes()
 
 
+# --- portrait_head/portrait_body: the sibling of former_levels above ---
+#
+# `#503 (A C64 character with no sheet portrait arrives in DOS or on the
+# Amiga wearing the menu's first head)` made `goldbox.c64_codec.read` leave
+# `portrait_head`/`portrait_body` unset -- not `0` -- for a record whose
+# body byte is `0x00`, the same way this title leaves `former_levels`
+# unset rather than `{}` when a title has no such field. `entry_for` has
+# to answer the same way former_levels does: omit the key rather than
+# write `null`, or the importer is handed a value `Record.set` cannot
+# encode. `CURSE_DUAL_CLASSED`'s whole party has no portrait; `POOL_
+# ORDINARY`'s does.
+
+def test_a_character_with_no_portrait_exports_with_the_pair_absent():
+    data = export_save(CURSE_DUAL_CLASSED())
+    for e in data["party"]:
+        assert "portrait_head" not in e, e["name"]
+        assert "portrait_body" not in e, e["name"]
+
+
+def test_a_character_with_a_real_portrait_exports_the_pair():
+    data = export_save(POOL_ORDINARY())
+    for e in data["party"]:
+        assert e["portrait_head"] == 0x00
+        assert e["portrait_body"] == 0x01
+
+
+def test_a_record_with_no_portrait_round_trips_and_stays_unset(tmp_path):
+    """The direct regression test: importing the unedited export of a
+    no-portrait party must not crash, and the pair must still read as
+    unset afterwards rather than reappearing as the menu's first head."""
+    save = CURSE_DUAL_CLASSED()
+    data = export_save(save)
+    out = tmp_path / "rt.d64"
+    changes = import_into(save, data, str(out))
+    assert changes == []
+    assert out.read_bytes() == pathlib.Path(save).read_bytes()
+
+    game, sg, _sg1 = load_save(D64.open(str(out)))
+    for slot in sg.characters:
+        read_back = c64_codec.read(slot.record, game=game)
+        assert "portrait_head" not in read_back, slot.record.name
+        assert "portrait_body" not in read_back, slot.record.name
+
+
 # --- the importer refuses rather than writing what it is given ---------
 
 def _edited(mutate):
