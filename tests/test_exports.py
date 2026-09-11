@@ -411,10 +411,22 @@ def test_the_file_menu_carries_both_directions_when_asked(app, tmp_path,
     window.close()
 
 
-#: `test_import_and_export_are_two_submenus_not_one_dialog` pinned Import and
-#: Export as adjacent File-menu submenus, and asked to be deleted once Import
-#: went (`#52 (File ▸ Import and File ▸ Export for every direction the
-#: library supports)`'s step 5). Import is `File ▸ Convert…` now, which
-#: `tests/test_dosimport.py::test_the_file_menu_no_longer_carries_the_dos_import_submenu`
-#: covers, and there is no longer an adjacency to pin: Export's own position
-#: relative to Convert is not a shape anybody has asked to keep.
+def test_import_and_export_are_two_submenus_not_one_dialog(app, tmp_path,
+                                                           monkeypatch):
+    """The shape, asserted so a later change to it is a deliberate one.
+
+    Import is already a submenu (#23) and export sits beside it: the source of
+    an export is always the save this window has open, so a source control in
+    a combined dialog would be a control with one sensible value.  Import is
+    built for everyone since `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
+    needs the import working for all three C64 titles)`; only Export still
+    needs its flag.
+    """
+    from editor.dosimport import MENU_IMPORT
+    from editor.exports import ENV, MENU_EXPORT
+
+    monkeypatch.setenv(ENV, "1")
+    window = _window(tmp_path, monkeypatch)
+    texts = [a.text() for a in _file_menu(window).actions()]
+    assert texts.index(MENU_IMPORT) + 1 == texts.index(MENU_EXPORT)
+    window.close()

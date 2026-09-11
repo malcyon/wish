@@ -1,37 +1,45 @@
 """Turning a DOS save into a C64 one, with what happened on screen first.
 
-`goldbox/dos.py` does the conversion; this file is the library a window sits
-over rather than a window of its own -- `File ▸ Import ▸ DOS Save Folder…`
-was that window until `#52 (File ▸ Import and File ▸ Export for every
-direction the library supports)`'s step 5 removed it, and `editor/convert.py`'s
-`File ▸ Convert…` is the only one left, reaching `rehearse`, `pane_text`,
-`GameFiles`, `NO_DISKS`/`NO_DISKS_TITLE` and `DROPPED_HEADING` here. The one
-thing that shape gives every caller is the order of events: the conversion is
+`goldbox/dos.py` does the conversion and this is the window over it. The one
+thing this file exists for is the order of events: the conversion is
 **rehearsed** in memory, what it did to the player's own save is put on
 screen -- `C64SaveReport.messages`, a party that had not set out being
 started at the beginning of the story -- and only then is there a button to
-press. `editor/convert.py`'s own destination row follows the same rule the
-old window did -- Donald's shape, 2026-08-27: *"when the user clicks the
-Convert button, it does what the user expects. it converts."* The write
-itself is still the editor's own Save, so the backup guarantee in
+press. The file the write goes to is named in this window, on the bottom
+row, before Convert is pressed -- Donald's shape, 2026-08-27: *"when the user
+clicks the Convert button, it does what the user expects. it converts."* The
+write itself is still the editor's own Save, so the backup guarantee in
 `editor/files.py` covers this the way it covers every other write.
 
-**`editor/convert.py` carries no pane at all as of 2026-09-10** -- Donald,
-seeing the two that had stood in for it in turn: *"the box under it has to
-be removed, too. That was the entire point."* What a player is shown now is
-two modals and nothing else: one of the refusals below, or a name DOS's own
-fifteen-character field could not hold whole (`name_warnings`). Everything
-else that used to reach the pane -- `C64SaveReport.messages` entirely, and
-`C64SaveReport.losses` beyond the one name-length kind -- goes to the debug
-log instead (`log_unshown_losses`, `pane_text`'s own `report.dropped`
-logging), never a player. Two of those losses are Donald's own examples of
-why: a magic-user memorising more spells than the destination title's slots
-and a spell id outside the destination's own book are both **bugs** (#508,
-#509), not platform limits, and a modal reporting a bug instead of it
-getting fixed is the pattern this file is being kept narrow to stop --
-*"the agents find a bug, and instead of fixing it, they want to write an
-excuse to the player and then they never fix it... We need it to be
-correct."*
+`DosImportDialog`, below, is `File ▸ Import ▸ DOS save folder…`'s own window
+and it draws `pane_text` -- `C64SaveReport.messages`, then every
+`C64SaveReport.losses` line -- exactly as it did on 2026-09-06, before this
+window was removed once (2026-09-07, `375bf07`) on the belief that
+`editor/convert.py`'s dialog already did its job in full. That dialog sits
+behind `WISH_EXPERIMENTAL_CONVERT`, so the removal had in fact left a player
+running Wish as it ships with no import path at all; Donald put this window
+back on 2026-09-10 for that reason, and it stays until `#52 (File ▸ Import
+and File ▸ Export for every direction the library supports)`'s flag is
+lifted (`editor/convert.py`'s own condition 7).
+
+**`editor/convert.py`'s own dialog carries no pane at all as of 2026-09-10**
+-- Donald, seeing the two that had stood in for it in turn: *"the box under
+it has to be removed, too. That was the entire point."* What a player is
+shown there now is two modals and nothing else: one of the refusals below,
+or a name DOS's own fifteen-character field could not hold whole
+(`name_warnings`). Everything else that used to reach that pane --
+`C64SaveReport.messages` entirely, and `C64SaveReport.losses` beyond the one
+name-length kind -- goes to the debug log instead (`log_unshown_losses`,
+`pane_text`'s own `report.dropped` logging), never a player of that dialog.
+Two of those losses are Donald's own examples of why: a magic-user
+memorising more spells than the destination title's own slots and a spell
+id outside the destination's own book are both **bugs** (#508, #509), not
+platform limits, and a modal reporting a bug instead of it getting fixed is
+the pattern that dialog is being kept narrow to stop -- *"the agents find a
+bug, and instead of fixing it, they want to write an excuse to the player
+and then they never fix it... We need it to be correct."* This window
+predates that ruling and is not held to it: what a player sees here is
+unfiltered, the way it was on 2026-09-06.
 
 **`report.warnings` is not shown wholesale, and never has been** -- most of
 it is this project's own bookkeeping (a quest-flag byte count, a party's
@@ -41,28 +49,27 @@ about anything the player owns.  `losses` is the hand-picked subset
 in `goldbox/dos.py` for which lines those are -- and `name_warnings` below
 for the one kind of those Donald ruled real.
 
-**There is no template any more** (#118). The old window used to make the
-user pick an existing `.d64` to convert *onto*, and every byte the
-conversion did not explicitly set kept the value it had in somebody else's
-saved game -- a different party, in a different place, at a different time.
-`goldbox.dos` now writes all 9216 bytes of both payloads and `D64.blank()`
-carries them, so what the user gets is theirs and nothing else's.
+**There is no template any more** (#118). The dialog used to make the user
+pick an existing `.d64` to convert *onto*, and every byte the conversion did
+not explicitly set kept the value it had in somebody else's saved game -- a
+different party, in a different place, at a different time. `goldbox.dos`
+now writes all 9216 bytes of both payloads and `D64.blank()` carries them, so
+what the user gets is theirs and nothing else's.
 
-What that costs is the player's own game disks at the moment the conversion
+What that costs is the player's own game disks at the moment the import
 runs: the combat icon is composed out of `SPELLE64`/`SPELLN64` and `$8400`
 is `ANIMATE00`, and neither may be stored here. Donald's ruling, 2026-08-27
 -- *"We should never attempt to write a save file if we don't have the game
 disks and we need them. That would mean making up data, which we will not
-do."* -- so whichever window calls `rehearse` checks for both before
-offering the player a folder or file to pick and refuses with a pop-up if
-either is missing.  The third thing a Pool of Radiance conversion once read
-off the disks, the creation menu in `GEN`, is twenty-six integers and is
-stored (`goldbox.portraits.POOL_OF_RADIANCE_MENU`, 2026-09-06), so a sheet
-portrait needs no disk and nothing here refuses for its lack.
+do."* -- so `editor/window.py` checks for both before the folder picker
+opens and refuses with a pop-up.  The third thing a Pool of Radiance
+conversion once read off the disks, the creation menu in `GEN`, is
+twenty-six integers and is stored (`goldbox.portraits.POOL_OF_RADIANCE_MENU`,
+2026-09-06), so a sheet portrait needs no disk and nothing here refuses for
+its lack.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`, so
-the two are never told apart by sniffing: whichever picker starts a DOS
-conversion asks for a folder, never a file.
+the two are never told apart by sniffing: the first picker asks for a folder.
 """
 
 from __future__ import annotations
@@ -72,29 +79,74 @@ import logging
 import pathlib
 from typing import Any
 
+from PyQt6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QWidget,
+)
+
 from goldbox import dos, games
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
+
+from .ui_dosimport import Ui_DosImportDialog
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: whenever `WISH_DEBUG` is on -- the same pattern `editor/convert.py` and
 #: `editor/window.py` already use, rather than importing `wish.debuglog`
 #: directly.
 _log = logging.getLogger("wish.editor.dosimport")
-
 # Every string below is Donald's -- approved 2026-08-24, and the refusal
 # 2026-08-27. Changing one is his call, not a refactor.
+
+#: The File menu entry and the submenu it hangs under.
+MENU_IMPORT = "&Import"
+#: The entry says **Folder** because the picker behind it asks for one -- a
+#: DOS save is a dozen loose files with no single one to point at, and
+#: "DOS…" read as a file chooser.  Donald's wording, approved 2026-08-26.
+MENU_DOS_SAVE = "&DOS Save Folder…"
+
+#: The folder picker, and what is said when the folder holds no DOS save.
+FOLDER_TITLE = "Choose a DOS save folder"
+NO_SLOTS_TITLE = "No DOS save here"
+NO_SLOTS = "{folder} holds no DOS Pool of Radiance save."
+
+#: The conversion window.
+DIALOG_TITLE = "Import a DOS save"
+LABEL_FOLDER = "DOS save"
+LABEL_SLOT = "Slot"
+BUTTON_CONVERT = "Convert"
+
+#: The destination row, from the mock-up Donald picked on #118: a full path,
+#: filled in before he touches it, and a button beside it. *"when the user
+#: clicks the Convert button, it does what the user expects. it converts."*
+#: -- so there is no Save As after this window any more.
+LABEL_DESTINATION = "Save as"
+BUTTON_BROWSE = "Browse…"
+
+#: What the path is suggested as. The C64 game's own save name with the DOS
+#: slot letter in it, so importing slot J offers `PORSAVEJ.D64`. The letter is
+#: the slot's, so the box is rebuilt every time the slot changes or it goes on
+#: naming a slot nobody is converting -- but never over a path the user typed
+#: or browsed to, which is theirs.
+DEFAULT_NAME = "PORSAVE{slot}.D64"
 
 #: The heading over a list of what a converted character loses, Donald's
 #: wording of 2026-09-05 (`09027bb`).  **Nothing draws it any more**: the
 #: pane stopped carrying the drop list at all on 2026-09-08, when the
 #: accounting moved to the debug log (`pane_text` below), and before that it
-#: sat under `Conversion Info` with no heading of its own (2026-09-06). It
-#: stays defined because `editor/convert.py` still imports the name at
+#: sat under `Conversion Info` with no heading of its own (2026-09-06); this
+#: window's own pane never drew it either, both before and after that date.
+#: It stays defined because `editor/convert.py` still imports the name at
 #: module load (`DROPPED_HEADING = dosimport.DROPPED_HEADING`); deleting it
 #: here would break that import.
 DROPPED_HEADING = "Wish cannot currently convert these fields:"
+
+#: The heading over the pane, Donald's wording of 2026-09-06: *"how about
+#: 'Conversion Info'."*  It is in `dosimport.ui` and is here so a test can
+#: name it; the two must agree.
+PANE_HEADING = "Conversion Info"
 
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of
@@ -215,27 +267,28 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
 
 def pane_text(report: dos.Report) -> str:
-    """The messages, then the losses, joined the way `editor/convert.py`'s
-    pane used to draw them -- until 2026-09-10, when that pane was removed
-    outright and nothing calls this for its returned text any more.
+    """The messages, then the losses, joined -- what `DosImportDialog`'s own
+    pane, below, has always shown, and what `editor/convert.py`'s pane used
+    to draw before that pane was removed outright, 2026-09-10.
 
-    **Still called, for `report.dropped`'s own logging below.** Every
-    field the conversion did not convert, in the words
+    **Still called by `editor/convert.py`, for `report.dropped`'s own
+    logging below, even though nothing there reads the string it returns
+    any more.** Every field the conversion did not convert, in the words
     `goldbox.dos.DROPPED_PLAYER_TEXT` gives each, is the accounting a route
     is judged perfect or not by, and it stays that: a test reads it and
-    every driven tool still prints it with `--report`. A player has never
-    been shown it; `_log` carries it to `WISH_DEBUG`'s file instead, so a
-    bug report can still say what a conversion left behind.
+    every driven tool still prints it with `--report`. `editor/convert.py`'s
+    dialog has never shown it to a player; `_log` carries it to
+    `WISH_DEBUG`'s file instead, so a bug report can still say what a
+    conversion left behind.
 
     `C64SaveReport.messages` and `C64SaveReport.losses` beyond a truncated
-    name are no longer shown to a player at all, `editor/convert.py`'s own
+    name are no longer shown by `editor/convert.py`'s own dialog at all,
     `_rehearse_and_report` and `dosimport.log_unshown_losses` -- Donald,
-    2026-09-10, of two `losses` lines a player had been shown: *"the agents
-    find a bug, and instead of fixing it, they want to write an excuse to
-    the player and then they never fix it... We need it to be correct."*
-    This function's own joining of the two lists into one string is dead
-    weight now rather than a defect -- nobody reads what it returns -- and
-    is left in place the way `dropped_text` below is.
+    2026-09-10, of two `losses` lines a player had been shown there:
+    *"the agents find a bug, and instead of fixing it, they want to write
+    an excuse to the player and then they never fix it... We need it to be
+    correct."* `DosImportDialog` predates that ruling and still shows both
+    halves unfiltered, in the pane this function's return value fills.
     """
     if report.dropped:
         _log.info("Not converted: %s", "; ".join(report.dropped))
@@ -288,14 +341,10 @@ def log_unshown_losses(report: dos.Report) -> None:
 def dropped_text(report: dos.Report) -> str:
     """The losses, one to a line, under a heading -- or nothing at all.
 
-    **Nobody calls this today.** `File ▸ Import ▸ DOS Save Folder…`, which
-    this file used to build, drew `pane_text` rather than this, and
-    `editor/convert.py`'s pane stopped calling it too once `#416 (The live
-    Convert dialog never shows a DOS→C64 conversion's own messages or
-    capacity-ceiling warnings)` moved onto `pane_text`. Left in place --
-    deleting it was not `#52 (File ▸ Import and File ▸ Export for every
-    direction the library supports)`'s step 5's to do, and is recorded there
-    as a separate finding.
+    **Not this window's.** `DosImportDialog` draws :func:`pane_text`, which
+    puts the same drop lines under the pane's own `Conversion Info` label
+    with no heading of their own; this is kept for `editor/convert.py`,
+    which still calls it, and goes when that dialog stops.
 
     Empty when nothing was dropped (#338): the heading says something was
     lost, and a heading over no lines told a player that with nothing to
@@ -306,3 +355,169 @@ def dropped_text(report: dos.Report) -> str:
         return ""
     return "\n".join([DROPPED_HEADING, ""]
                      + [f"  {d}" for d in report.dropped])
+
+
+class DosImportDialog(QDialog):
+    """The folder, the slot, what the conversion did, and where it goes.
+
+    Every change to the slot re-runs `rehearse`, so the pane is never showing
+    the messages of a conversion other than the one the button would commit
+    -- and Convert is disabled unless there is a rehearsal behind it and a
+    path in front of it.
+
+    The bottom row is the destination, and it is why there is no Save As after
+    this window any more: the file is named before Convert is pressed, so
+    Convert converts.
+
+    `files` is the icon and `ANIMATE00`, already read: `editor/window.py`
+    refuses the whole import before this window is built when they cannot be
+    found, so by the time anything here runs they exist.
+    """
+
+    def __init__(self, folder: str | pathlib.Path, files: GameFiles,
+                 parent: QWidget | None = None, start_dir: str = ""):
+        super().__init__(parent)
+        self.ui = Ui_DosImportDialog()
+        self.ui.setupUi(self)
+        self.folder = pathlib.Path(folder)
+        self.files = files
+        self.conversion: Conversion | None = None
+        #: Where a suggested path is put. `editor/window.py` hands over what
+        #: `editor/files.py`'s `open_start_dir` answered -- the saves folder
+        #: preference if one is set, otherwise beside the open save, or the
+        #: folder one was last opened from -- so an import and a `File > Open`
+        #: start in the same place rather than under two rules. That answer is
+        #: empty when none of those apply, and a field that has to show a path
+        #: cannot be empty, so the home directory is the last resort.
+        self.start_dir = start_dir or str(pathlib.Path.home())
+        #: The user has typed a path or browsed to one, and the slot must stop
+        #: rewriting it.
+        self._named = False
+
+        self._folder_label = self.ui.dos_folder
+        self._folder_label.setText(str(self.folder))
+
+        self.slots = self.ui.dos_slot
+        self.slots.addItems(dos.slots_available(self.folder))
+        self.slots.currentTextChanged.connect(lambda _t: self._rehearse())
+
+        self.report_pane = self.ui.dos_report
+
+        self.destination = self.ui.dos_destination
+        self.destination.textEdited.connect(self._typed)
+        self.destination.textChanged.connect(lambda _t: self._settle_button())
+
+        self.browse_button = self.ui.dos_browse
+        self.browse_button.clicked.connect(self.browse)
+
+        self.buttons = self.ui.buttons
+        self.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).setText(BUTTON_CONVERT)
+
+        self._rehearse()
+
+    # -- the parts ---------------------------------------------------------
+
+    @property
+    def slot(self) -> str:
+        return self.slots.currentText()
+
+    def target(self) -> str:
+        """The file Convert writes, as the user has left it."""
+        return self.destination.text().strip()
+
+    # -- where it goes -----------------------------------------------------
+
+    def _typed(self, _text: str) -> None:
+        """Anything the user types in the box is theirs from then on."""
+        self._named = True
+
+    def _suggest(self) -> None:
+        """Fill the destination in from the slot, over nothing the user chose.
+
+        The name is the slot's -- `PORSAVEJ.D64` for slot J -- so it has to be
+        rebuilt whenever the slot changes or it goes on naming a slot that is
+        no longer being converted.
+        """
+        if self._named:
+            return
+        self.destination.setText(
+            str(pathlib.Path(self.start_dir)
+                / DEFAULT_NAME.format(slot=self.slot or "")))
+
+    def browse(self) -> None:
+        """The editor's own Save As picker, with its own title and filter.
+
+        Imported here rather than worded again: it is the same picker doing
+        the same job, and two copies of an approved string is how they drift.
+        """
+        from PyQt6.QtWidgets import QFileDialog
+
+        from .window import DISK_FILTER, SAVE_AS_TITLE
+
+        path, _ = QFileDialog.getSaveFileName(self, SAVE_AS_TITLE,
+                                              self.target(), DISK_FILTER)
+        if path:
+            self._named = True
+            self.destination.setText(path)
+
+    def refuse(self, text: str) -> None:
+        """Put a failed write in the pane the messages are already shown in.
+
+        The window stays open on the path that did not work, which is the one
+        thing the user has to change -- and it is a sentence rather than the
+        traceback that reaches `wish/debuglog.py`.
+        """
+        self.report_pane.setPlainText(text)
+
+    # -- the rehearsal -----------------------------------------------------
+
+    def _rehearse(self) -> None:
+        """Build the save in memory, and put what it did on screen.
+
+        Failures are shown, not raised: a refusal reaches the user as its own
+        message while the log keeps the traceback, which is a sentence in the
+        pane rather than what looks like a broken menu item.
+        """
+        self.conversion = None
+        text = self._attempt()
+        self.report_pane.setPlainText(text)
+        self._suggest()
+        self._settle_button()
+
+    def _settle_button(self) -> None:
+        """Convert is pressable when there is a conversion and somewhere to
+        put it. Clearing the box is the one way a user can leave it with
+        nowhere, and a disabled button says so without a sentence saying it."""
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
+            self.conversion is not None and bool(self.target()))
+
+    def _attempt(self) -> str:
+        # No slot is not a state the user can reach: `import_dos_save` refuses
+        # a folder with no DOS save in it before this window is built. An
+        # empty pane rather than a sentence, because a sentence about a state
+        # nobody can be in is a sentence nobody should have to read.
+        if not self.slot:
+            return ""
+        try:
+            self.conversion = rehearse(self.folder, self.slot, self.files)
+        except dos.DosRecordError as exc:
+            # The exception text is written for the tracker and may carry an
+            # issue number, an address or a source file name; a player reads
+            # `player_message` instead -- `WrongTitleError`'s own sentence, or
+            # `dos.CANNOT_CONVERT` for every other refusal (#176, #195).
+            _log.exception("could not convert %s slot %s",
+                           self.folder, self.slot)
+            return exc.player_message
+        except Exception:
+            # Anything `DosRecordError` does not cover is still not a
+            # developer's traceback in front of a player (#195).
+            _log.exception("could not convert %s slot %s",
+                           self.folder, self.slot)
+            return dos.CANNOT_CONVERT
+        # The same lines the pane shows, for whoever is debugging with
+        # `WISH_DEBUG` and no window in front of them.
+        for line in self.conversion.report.dropped:
+            _log.debug("not converted, %s slot %s: %s",
+                       self.folder, self.slot, line)
+        return pane_text(self.conversion.report)

@@ -1101,11 +1101,18 @@ def fresh_folder(destination: str | pathlib.Path,
 #: front of it -- met 2026-09-07 (`1616a53`),
 #: `#412 (File ▸ Convert demands a save in a file picker before it will show
 #: you the Convert window)`; (7) `File ▸ Import ▸ DOS save folder` is
-#: removed, since two menu items doing the same job is the state this dialog
-#: exists to end -- `#52`'s own step 5. **Met 2026-09-07 (`375bf07`):**
+#: removed -- two menu items doing the same job is still the state this
+#: dialog exists to end, and stays the goal, but **not before this flag
+#: comes off, and in the same change that does.** Tried the other way round
+#: on 2026-09-07 (`375bf07`, `#52`'s own step 5) and reverted on 2026-09-10:
+#: this dialog sits behind its own flag, so removing the only unflagged
+#: import path left a player running Wish as it ships with no way in at
+#: all. Donald: *"I think you removed the File->Import dialog prematurely.
+#: That needs to come back until the Convert dialog is done."*
 #: `DosImportDialog`, the menu entry, `editor/dosimport.ui` and
-#: `editor/ui_dosimport.py` are gone;
-#: `test_the_file_menu_no_longer_carries_the_dos_import_submenu` pins it.
+#: `editor/ui_dosimport.py` are back;
+#: `test_the_file_menu_carries_the_import_with_nothing_set`
+#: (`tests/test_dosimport.py`) pins their presence.
 #:
 #: **(8) Every registered direction is perfect -- its drop list is empty.**
 #: Donald, 2026-09-08, adding this condition and choosing what it waits for:

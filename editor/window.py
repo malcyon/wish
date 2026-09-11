@@ -1765,9 +1765,21 @@ class EditorBinding(QObject):
             self.icon_parts_disk = disk
 
     def save(self, interactive: bool = True) -> str:
-        """Write the disk back. Returns what happened, for the status bar."""
-        if self.party is None or self.path is None:
+        """Write the disk back. Returns what happened, for the status bar.
+
+        The two ways there is nothing to write are kept apart on purpose
+        (#514): `self.party is None` is an editor with nothing open at all,
+        which `close()` never even reaches -- it returns before calling this
+        when `self.dirty` is empty, and an empty editor is never dirty.
+        `self.path is None` with a party that *is* dirty is the one state a
+        converted-but-unnamed party (`adopt_conversion` with no destination)
+        can be in, and it is not a successful save: `close()` below has to
+        tell the two apart from `"failed"` rather than read either as "done".
+        """
+        if self.party is None:
             return "nothing open"
+        if self.path is None:
+            return "no destination"
         failures = self._flush()
         if failures and interactive:
             self._report_flush_failures(failures)
@@ -2236,4 +2248,8 @@ class EditorBinding(QObject):
             return False
         if ans == QMessageBox.StandardButton.Discard:
             return True
-        return self.save() != "failed"
+        # Not `!= "failed"`: a converted party with no destination
+        # (`adopt_conversion`, no path) answers `"no destination"` here,
+        # neither an exception nor a written file, and treating that as
+        # success closed the window and threw the party away (#505, #514).
+        return self.save() not in ("failed", "no destination")
