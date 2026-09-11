@@ -22,7 +22,7 @@ gap cost a decision twice on 2026-09-10.
 |---|---|
 | Commit, push, or check CI | `commits.md` |
 | File, label, prioritise or close an issue | `issues.md` |
-| Write a brief for a subagent | `delegating.md` -- its "Choosing the agent" table names Claude models; the Codex model for each is in `tools/gencodex.py`'s `CODEX_MODELS` |
+| Write a brief for a subagent | `delegating.md` -- its "Choosing the agent" table names Claude's models; each agent carries its own |
 | End a turn, end a session, or plan an unattended run (Claude Code only -- describes its own re-invocation model) | `sessions.md` |
 | Put a major feature behind a flag | `feature-flags.md` |
 | Write a script, or leave a file in `work/` | `scratch.md` |
