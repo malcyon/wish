@@ -1,24 +1,12 @@
 name: issue origin
 
-# Label every new issue by who opened it, and lock the ones our own bot opened.
-#
-# `opened` only, deliberately. A trigger on `labeled`/`unlabeled` would let this
-# re-assert the label whenever somebody moved it, which is a workflow that
-# reverses a person's edit -- the thing `.claude/rules/issues.md` forbids in so
-# many words, and one nobody can argue with in a comment. So the label is set
-# once and people move it freely.
-#
-# Nothing reads the label as permission. An issue's origin is
-# `github.event.issue.user.login`, which nobody but GitHub can set; the label is
-# only that fact made visible to somebody scanning the tracker.
-# `docs/218-the-wish-agent-bot.md` has the whole model.
+# `opened` only. A trigger on `labeled`/`unlabeled` would re-assert the label
+# whenever somebody moved it, which is a workflow reversing a person's edit --
+# forbidden by `.claude/rules/issues.md`, and unarguable-with in a comment.
 on:
   issues:
     types: [opened]
 
-# Nothing else. Not contents, not actions, not packages. The default for a
-# repository with default settings is read and write on everything, so this
-# block exists to narrow it.
 permissions:
   issues: write
 
@@ -27,36 +15,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Label by author, and lock the bot's own
+      - name: Label by author
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The app slug plus "[bot]". Confirmed against the API on 2026-09-11:
-          # GitHub user 328160683, type Bot. A wrong string here does not fail
-          # the job -- it silently takes the `else` branch and labels every one
-          # of the bot's issues `human`, which looks like it is working.
+          # A wrong login here does not fail the job: it takes the `else`
+          # branch and labels every one of the bot's issues `human`.
           BOT_LOGIN: wish-agent[bot]
-          # Read through the environment, never interpolated into the script
-          # below. `${{ ... }}` inside `run:` is substituted into the shell
-          # source before bash sees it, so a value carrying a metacharacter is
-          # a script-injection hole. A login cannot carry one today; a title
-          # can, and this is the habit that keeps the next edit of this file
-          # safe.
+          # Read through the environment, never interpolated into `run:` --
+          # `${{ }}` is substituted into the shell source before bash sees it.
           AUTHOR: ${{ github.event.issue.user.login }}
           NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # A freshly-opened issue never carries either label, so the
-          # `--remove-label` half of each branch targets a label that is not
-          # there on every ordinary run. It only ever does something when a
-          # human with triage access opened this issue already carrying the
-          # opposite label -- and under `set -euo pipefail`, a `gh` error on
-          # an absent label would fail the whole job and leave the issue
-          # unlabelled, so the removal must never be allowed to fail the add.
+          # The removal must not be able to fail the add: a new issue carries
+          # neither label, so it targets an absent one on every ordinary run.
           if [ "$AUTHOR" = "$BOT_LOGIN" ]; then
             gh issue edit "$NUMBER" --repo "$REPO" --add-label "AI"
             gh issue edit "$NUMBER" --repo "$REPO" --remove-label "human" || true
-            gh issue lock "$NUMBER" --repo "$REPO" --reason resolved
           else
             gh issue edit "$NUMBER" --repo "$REPO" --add-label "human"
             gh issue edit "$NUMBER" --repo "$REPO" --remove-label "AI" || true
