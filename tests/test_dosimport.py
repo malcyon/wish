@@ -178,19 +178,24 @@ def _dialog_showing(app, tmp_path, monkeypatch, report):
     return dialog
 
 
-def test_the_pane_shows_what_the_conversion_did_and_what_it_did_not_convert(
+def test_the_pane_shows_what_the_conversion_did_and_never_a_dropped_field(
         app, tmp_path, monkeypatch):
     """Donald, 2026-09-06, having seen the messages-only pane `#131 (Lift
     WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
     three C64 titles)` shipped: *"do not show dropped fields if they are
     derived in the new game. Show others for now. I will refine them as we
-    go."*
+    go."* -- and then, 2026-09-08, having seen the ones left standing:
+    *"a route which drops something is not offered to a player as though it
+    worked."* `report.dropped` stopped reaching this pane at all that day
+    (`pane_text`'s own docstring), so this window shows the same thing
+    `editor/convert.py`'s dialog does with the same report: the messages
+    alone, the drop line only in the debug log
+    (`test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane`).
 
-    A report carrying both -- the one approved sentence on `messages` and a
-    drop line from `DROPPED_PLAYER_TEXT` -- puts the sentence on screen
-    first and the drop line after it, with no `DROPPED_HEADING` over either:
-    the pane's own `Conversion Info` label is the heading.  Watched failing
-    against the night-before pane, which drew the sentence alone.
+    Corrected 2026-09-10 (`#52 (File ▸ Import and File ▸ Export for every
+    direction the library supports)`'s revert of `375bf07`): this test used
+    to assert the drop line was shown, from before the 09-08 ruling, and
+    that assertion came back stale when this window did.
     """
     from PyQt6.QtWidgets import QDialogButtonBox
 
@@ -209,8 +214,8 @@ def test_the_pane_shows_what_the_conversion_did_and_what_it_did_not_convert(
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
 
     shown = dialog.report_pane.toPlainText()
-    assert shown.startswith(NOT_SET_OUT)
-    assert shown.endswith(drop)
+    assert shown == NOT_SET_OUT
+    assert drop not in shown
     assert DROPPED_HEADING not in shown
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
@@ -219,19 +224,26 @@ def test_the_pane_shows_what_the_conversion_did_and_what_it_did_not_convert(
 def test_a_conversion_with_nothing_to_say_leaves_the_pane_empty(
         app, tmp_path, monkeypatch):
     """No heading over nothing (#338's rule): a conversion that did nothing
-    remarkable and dropped nothing shows an empty pane under its label --
-    and one that only dropped something shows that line alone."""
+    remarkable shows an empty pane under its label, whether or not it
+    dropped a field -- `report.dropped` never reaches this pane at all
+    (2026-09-08 ruling, the test above) -- and a genuine platform ceiling on
+    `report.losses` shows that line alone."""
     from goldbox.dos import C64SaveReport
 
     report = C64SaveReport(save0_size=0x1C00)
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
     assert dialog.report_pane.toPlainText() == ""
 
-    #: Its own sentence, for the reason the test above gives.
-    drop = "Something the C64 has no place for"
-    report.dropped.append(drop)
+    #: Dropped, not lost: never reaches the pane, whatever it says.
+    report.dropped.append("Something the C64 has no place for")
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
-    assert dialog.report_pane.toPlainText() == drop
+    assert dialog.report_pane.toPlainText() == ""
+
+    #: A genuine capacity ceiling still shows, alone.
+    loss = "carries more items than the C64 can hold"
+    report.losses.append(loss)
+    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
+    assert dialog.report_pane.toPlainText() == loss
 
 
 def test_pane_text_is_the_messages_and_never_the_drops():
@@ -842,10 +854,10 @@ def test_closing_a_converted_party_with_no_destination_keeps_the_edit(
     would: `save()` cannot write with no path, and `close()` must read that
     as "not saved" rather than as success.
     """
-    from editor.dosimport import rehearse
     from PyQt6.QtWidgets import QMessageBox
 
     import editor.window as ew
+    from editor.dosimport import rehearse
     from editor.window import EditorBinding
 
     window = EditorBinding(make_root())
@@ -1024,8 +1036,8 @@ def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
     # state and is what a failed Save As leaves too -- so closing asks, and a
     # test that did not answer would block here forever.
     assert window.dirty
-    monkeypatch.setattr(ew.QMessageBox, "question",
-                        lambda *a, **k: ew.QMessageBox.StandardButton.Discard)
+    monkeypatch.setattr(ew.QMessageBox, "exec",
+                        lambda self: int(ew.QMessageBox.StandardButton.Discard))
     window.close()
 
 
