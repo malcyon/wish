@@ -46,11 +46,18 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # A freshly-opened issue never carries either label, so the
+          # `--remove-label` half of each branch targets a label that is not
+          # there on every ordinary run. It only ever does something when a
+          # human with triage access opened this issue already carrying the
+          # opposite label -- and under `set -euo pipefail`, a `gh` error on
+          # an absent label would fail the whole job and leave the issue
+          # unlabelled, so the removal must never be allowed to fail the add.
           if [ "$AUTHOR" = "$BOT_LOGIN" ]; then
-            gh issue edit "$NUMBER" --repo "$REPO" \
-              --add-label "AI" --remove-label "human"
+            gh issue edit "$NUMBER" --repo "$REPO" --add-label "AI"
+            gh issue edit "$NUMBER" --repo "$REPO" --remove-label "human" || true
             gh issue lock "$NUMBER" --repo "$REPO" --reason resolved
           else
-            gh issue edit "$NUMBER" --repo "$REPO" \
-              --add-label "human" --remove-label "AI"
+            gh issue edit "$NUMBER" --repo "$REPO" --add-label "human"
+            gh issue edit "$NUMBER" --repo "$REPO" --remove-label "AI" || true
           fi

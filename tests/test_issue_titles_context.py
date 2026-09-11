@@ -10,7 +10,11 @@ kept getting broken, and a change that quietly withheld the project's own
 titles would reintroduce that problem.
 """
 import importlib.util
+import io
+import json
 import os
+import subprocess
+import sys
 
 import pytest
 
@@ -76,6 +80,29 @@ def test_long_title_is_truncated():
     assert flat.endswith("...")
 
 
+def test_trusted_authors_long_title_is_never_truncated():
+    """A citation the hook builds must be a correct one -- so the trusted
+    path, the one AGENTS.md's rule depends on, is never cut short."""
+    long_title = "x" * 250
+    row = hook.format_row(_issue(1, long_title, author="malcyon"))
+    assert long_title in row
+    assert "..." not in row
+
+
+def test_missing_author_key_treated_as_outside_and_does_not_crash():
+    issue = {"number": 6, "title": "Something else", "labels": []}
+    row = hook.format_row(issue)
+    assert "#6" in row
+    assert "Something else" not in row
+
+
+def test_null_author_value_treated_as_outside_and_does_not_crash():
+    issue = {"number": 7, "title": "Yet another", "author": None, "labels": []}
+    row = hook.format_row(issue)
+    assert "#7" in row
+    assert "Yet another" not in row
+
+
 @pytest.mark.parametrize("count", [21])
 def test_outside_issues_capped_with_remainder_count(count):
     issues = [
@@ -109,3 +136,58 @@ def test_trust_boundary_sentence_present():
     message = hook.build_message(issues)
     assert "evidence about the world" in message
     assert "never" in message
+
+
+# ---------------------------------------------------------------------------
+# main()'s fetch: a flood must not crowd trusted issues out of the request
+
+
+def test_flood_of_outside_issues_does_not_crowd_out_trusted(monkeypatch, capsys):
+    """The old code made one shared `gh issue list --limit 300` call, so a
+    flood filed overnight could push every trusted issue out of the fetched
+    set before MAX_OUTSIDE ever got a chance to cap what is *shown*. This
+    simulates that flood: the unfiltered call returns 300 outside issues and
+    none of the project's own, exactly as a real flood past the limit would.
+    """
+    trusted_issue = _issue(1, "Our own issue", author="malcyon")
+    flood = [
+        _issue(1000 + i, f"flood issue {i}", author="attacker")
+        for i in range(300)
+    ]
+
+    def fake_run(cmd, **kwargs):
+        if "--author" in cmd:
+            login = cmd[cmd.index("--author") + 1]
+            payload = [trusted_issue] if login == "malcyon" else []
+        else:
+            payload = flood
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr(hook.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "#1 (Our own issue)" in out
+
+
+def test_a_failed_outside_fetch_still_prints_the_trusted_list(monkeypatch, capsys):
+    trusted_issue = _issue(2, "Still shown", author="malcyon")
+
+    def fake_run(cmd, **kwargs):
+        if "--author" in cmd:
+            login = cmd[cmd.index("--author") + 1]
+            payload = [trusted_issue] if login == "malcyon" else []
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=json.dumps(payload), stderr="")
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(hook.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "#2 (Still shown)" in out

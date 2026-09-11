@@ -5,6 +5,8 @@ test replaces `wishagent._request`, the single function that would.
 import json
 import os
 import sys
+import time
+import urllib.error
 
 import jwt
 import pytest
@@ -94,6 +96,19 @@ def test_jwt_carries_app_id_and_a_window_under_the_600s_ceiling(configured):
     assert payload["exp"] - payload["iat"] < 600
 
 
+def test_jwt_iat_is_backdated_by_the_clock_skew_constant(configured):
+    before = int(time.time())
+    token = wishagent.make_jwt()
+    after = int(time.time())
+    payload = jwt.decode(token, options={"verify_signature": False})
+
+    # `iat` must sit close to `now - IAT_SKEW_SECONDS`, not just leave a gap
+    # under 600s to `exp` -- a test that only checked the gap would still
+    # pass with the backdating deleted entirely.
+    assert before - wishagent.IAT_SKEW_SECONDS - 2 <= payload["iat"]
+    assert payload["iat"] <= after - wishagent.IAT_SKEW_SECONDS + 2
+
+
 # ---------------------------------------------------------------------------
 # Key file safety
 
@@ -177,6 +192,34 @@ def test_403_is_not_retried(monkeypatch):
     assert len(calls) == 1
 
 
+def test_5xx_is_retried_then_succeeds(monkeypatch):
+    _prime_token_cache()
+    monkeypatch.setattr(wishagent.time, "sleep", lambda _seconds: None)
+    calls = _install_fake_transport(
+        monkeypatch,
+        [
+            (500, {"message": "Internal Server Error"}),
+            (500, {"message": "Internal Server Error"}),
+            (200, {"html_url": "http://example"}),
+        ],
+    )
+
+    wishagent.comment_on_issue(1, "body")
+
+    assert len(calls) == 3
+
+
+def test_5xx_stops_after_the_retry_bound(monkeypatch):
+    _prime_token_cache()
+    monkeypatch.setattr(wishagent.time, "sleep", lambda _seconds: None)
+    calls = _install_fake_transport(monkeypatch, (500, {"message": "Internal Server Error"}))
+
+    with pytest.raises(wishagent.ApiError):
+        wishagent.comment_on_issue(1, "body")
+
+    assert len(calls) == 1 + wishagent.MAX_5XX_RETRIES
+
+
 # ---------------------------------------------------------------------------
 # Label removal percent-encodes its name
 
@@ -191,3 +234,82 @@ def test_label_remove_percent_encodes_a_space(monkeypatch):
     method, url, _headers, _body = calls[0]
     assert method == "DELETE"
     assert url.endswith("/labels/Priority%3A%20Medium")
+
+
+# ---------------------------------------------------------------------------
+# Connection-level failures: no status code for _call's retry to inspect
+
+
+def test_request_passes_a_bounded_timeout_to_urlopen(monkeypatch):
+    seen = {}
+
+    def fake_urlopen(req, timeout=None):
+        seen["timeout"] = timeout
+        raise urllib.error.URLError("stop here, the timeout was already seen")
+
+    monkeypatch.setattr(wishagent.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(wishagent.ApiError):
+        wishagent._request("GET", "http://example", {}, None)
+
+    assert seen["timeout"] == wishagent.REQUEST_TIMEOUT
+
+
+def test_url_error_from_urlopen_becomes_api_error(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.URLError("Name or service not known")
+
+    monkeypatch.setattr(wishagent.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(wishagent.ApiError):
+        wishagent._request("GET", "http://example", {}, None)
+
+
+def test_bare_os_error_from_urlopen_becomes_api_error(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        raise ConnectionResetError("connection reset by peer")
+
+    monkeypatch.setattr(wishagent.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(wishagent.ApiError):
+        wishagent._request("GET", "http://example", {}, None)
+
+
+def test_connection_failure_is_not_retried(monkeypatch):
+    """`_call`'s retry loop inspects a status code a connection failure never
+    has, so this fails on the first attempt rather than looping."""
+    _prime_token_cache()
+    attempts = []
+
+    def fake_request(method, url, headers, body):
+        attempts.append(1)
+        raise wishagent.ApiError("boom")
+
+    monkeypatch.setattr(wishagent, "_request", fake_request)
+
+    with pytest.raises(wishagent.ApiError):
+        wishagent.comment_on_issue(1, "body")
+
+    assert len(attempts) == 1
+
+
+# ---------------------------------------------------------------------------
+# A malformed config.json is reported, not left to crash
+
+
+def test_malformed_config_json_raises_config_error_naming_the_path(monkeypatch, tmp_path):
+    bad = tmp_path / "config.json"
+    bad.write_text("{not valid json")
+    monkeypatch.setattr(wishagent, "CONFIG_PATH", str(bad))
+
+    with pytest.raises(wishagent.ConfigError, match=str(bad)):
+        wishagent._config_json()
+
+
+# ---------------------------------------------------------------------------
+# repo() treats an empty environment variable like its siblings do
+
+
+def test_repo_empty_env_var_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("WISH_AGENT_REPO", "")
+    assert wishagent.repo() == wishagent.DEFAULT_REPO

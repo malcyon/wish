@@ -59,20 +59,27 @@ _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
-def flatten_title(title: str) -> str:
+def flatten_title(title: str, max_length: int | None = MAX_TITLE_LEN) -> str:
     """Make a title safe to paste into context, whoever wrote it.
 
     The web form cannot put a newline in a title; the API can. A title
     carrying a fake conversation turn is a different kind of problem from a
     title carrying an English sentence, so every C0 control character
     (including tab, newline and carriage return) and DEL is replaced with a
-    space, runs of whitespace collapse to one, and the result is capped in
-    length.
+    space, and runs of whitespace collapse to one -- always, whoever wrote
+    the title.
+
+    The length cap is a separate step, controlled by `max_length`, and it is
+    not applied to a trusted author's title: `format_row` calls this with
+    `max_length=None` for that path, because AGENTS.md's rule is to cite an
+    issue by number *and title*, and a truncated title is a wrong citation of
+    exactly the kind this hook exists to prevent. `max_length` defaults on
+    for a caller that wants the old, bounded behaviour.
     """
     flat = _CONTROL_RE.sub(" ", title)
     flat = _WHITESPACE_RE.sub(" ", flat).strip()
-    if len(flat) > MAX_TITLE_LEN:
-        flat = flat[:MAX_TITLE_LEN - 3].rstrip() + "..."
+    if max_length is not None and len(flat) > max_length:
+        flat = flat[:max_length - 3].rstrip() + "..."
     return flat
 
 
@@ -87,16 +94,19 @@ def _blocked_marker(issue: dict) -> str:
 def format_row(issue: dict) -> str:
     """Render one issue's row.
 
-    A trusted author's issue renders exactly as before: number and title. An
-    outside author's title is withheld -- only the number, the author, and
-    where to look it up -- because nobody here has read it yet.
+    A trusted author's title is flattened -- control characters stripped,
+    whitespace collapsed -- but never truncated: AGENTS.md's rule is to cite
+    an issue by number and title, in full, and this is the row that citation
+    is copied from. An outside author's title is withheld outright -- only
+    the number, the author, and where to look it up -- because nobody here
+    has read it yet.
     """
     number = issue.get("number")
     author = (issue.get("author") or {}).get("login", "")
     blocked = _blocked_marker(issue)
 
     if author in TRUSTED_AUTHORS:
-        title = flatten_title(issue.get("title", ""))
+        title = flatten_title(issue.get("title", ""), max_length=None)
         return f"#{number} ({title}){blocked}"
 
     return (
@@ -153,31 +163,51 @@ def build_message(issues: list[dict]) -> str:
     return text
 
 
+def _fetch_issues(extra_args: list[str]) -> list[dict]:
+    """One `gh issue list` call. `[]` on any failure -- offline,
+    unauthenticated, timed out, or a malformed reply -- so a caller never has
+    to tell "no issues" apart from "gh could not be asked", and one failed
+    call cannot take down the other.
+    """
+    try:
+        done = subprocess.run(
+            ["gh", "issue", "list", "--limit", LIMIT, "--state", "open",
+             "--json", "number,title,labels,author", *extra_args],
+            capture_output=True, text=True, timeout=TIMEOUT, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if done.returncode != 0:
+        return []
+    try:
+        issues = json.loads(done.stdout)
+    except (json.JSONDecodeError, ValueError):
+        return []
+    return issues if isinstance(issues, list) else []
+
+
 def main() -> int:
     try:
         json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         pass                            # the payload is not needed; carry on
 
-    try:
-        done = subprocess.run(
-            ["gh", "issue", "list", "--limit", LIMIT, "--state", "open",
-             "--json", "number,title,labels,author"],
-            capture_output=True, text=True, timeout=TIMEOUT, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return 0
-    if done.returncode != 0:
-        return 0
+    # One call per trusted login, so a flood of outside issues can never
+    # crowd a project's own issue out of the fetched set: MAX_OUTSIDE only
+    # caps what is *shown* from a shared `--limit 300` call, and a flood past
+    # that limit could previously push every trusted issue out of the
+    # request before that cap ever got a look at it.
+    trusted: list[dict] = []
+    for login in sorted(TRUSTED_AUTHORS):
+        trusted.extend(_fetch_issues(["--author", login]))
 
-    try:
-        issues = json.loads(done.stdout)
-    except (json.JSONDecodeError, ValueError):
-        return 0
-    if not isinstance(issues, list):
-        return 0
+    outside_candidates = _fetch_issues([])
+    outside = [
+        issue for issue in outside_candidates
+        if (issue.get("author") or {}).get("login", "") not in TRUSTED_AUTHORS
+    ]
 
-    message = build_message(issues)
+    message = build_message(trusted + outside)
     if message:
         print(message)
     return 0

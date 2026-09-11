@@ -54,6 +54,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 IAT_SKEW_SECONDS = 60
 EXP_AHEAD_SECONDS = 500
 MAX_5XX_RETRIES = 2
+REQUEST_TIMEOUT = 30
 
 # Populated by get_installation_token() and read by nothing else; an
 # installation token lives an hour and one process invocation lives seconds,
@@ -83,6 +84,8 @@ def _config_json():
             return json.load(f)
     except FileNotFoundError:
         return {}
+    except (json.JSONDecodeError, OSError) as e:
+        raise ConfigError(f"Could not read {CONFIG_PATH}: {e}") from e
 
 
 def key_path():
@@ -116,7 +119,8 @@ def installation_id():
 
 
 def repo():
-    return os.environ.get("WISH_AGENT_REPO", DEFAULT_REPO)
+    value = os.environ.get("WISH_AGENT_REPO")
+    return value if value else DEFAULT_REPO
 
 
 def _read_private_key():
@@ -230,7 +234,16 @@ def _error_detail(raw):
 
 
 def _request(method, url, headers, body):
-    """The one function that reaches the network. Tests replace this."""
+    """The one function that reaches the network. Tests replace this.
+
+    An `HTTPError` still carries a status GitHub sent, so it is returned like
+    any other response and left to `_call`'s 5xx retry. A `URLError` or a
+    bare `OSError` -- DNS failure, connection refused, reset, a hung TLS
+    handshake -- carries no status at all, so there is nothing for that retry
+    loop to inspect; it is raised as `ApiError` here and left uncaught, which
+    fails the call immediately rather than looping on a problem `_call`'s
+    retry was never written to reason about.
+    """
     data = None
     sent_headers = dict(headers)
     if body is not None:
@@ -238,10 +251,12 @@ def _request(method, url, headers, body):
         sent_headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=sent_headers, method=method)
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers or {}), e.read()
+    except (urllib.error.URLError, OSError) as e:
+        raise ApiError(f"{method} {url} failed: {e}") from e
 
 
 def _call(method, path_or_url, token, body=None):
