@@ -262,3 +262,7 @@ skills-lock.json
 !.codex/agents/
 # Written by hatch-vcs at build time; the tag is the source of truth.
 wish/_version.py
+
+# Credentials never live in this tree -- the wish-agent app's key is at
+# ~/.config/wish-agent/. This is a second line of defence, not the mechanism.
+*.pem
