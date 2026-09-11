@@ -853,6 +853,14 @@ def test_closing_a_converted_party_with_no_destination_keeps_the_edit(
     Closing it must not silently discard the party the way `#505` found it
     would: `save()` cannot write with no path, and `close()` must read that
     as "not saved" rather than as success.
+
+    `#515 (Clicking Save on an imported party with no destination does
+    nothing and says nothing, so the button looks broken)`: clicking **Save**
+    here now opens the same chooser `Save As` does, so the mocked exec below
+    is followed by a mocked, cancelled `getSaveFileName` -- an empty path is
+    exactly what a player sees when they close that chooser without naming a
+    file, and the edit has to survive that the same way it survived before
+    the chooser existed.
     """
     from PyQt6.QtWidgets import QMessageBox
 
@@ -867,9 +875,42 @@ def test_closing_a_converted_party_with_no_destination_keeps_the_edit(
 
     monkeypatch.setattr(ew.QMessageBox, "exec",
                         lambda self: int(QMessageBox.StandardButton.Save))
+    monkeypatch.setattr(ew.QFileDialog, "getSaveFileName",
+                        lambda *a, **k: ("", ""))
     assert window.close() is False, \
         "closed and lost a converted party with no file behind it"
     assert window.dirty, "the edit must not be marked saved"
+    assert window.path is None, "a cancelled chooser must not adopt a path"
+
+
+@needs_dos_saves
+@needs_disks
+def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes(
+        app, dos_save, files, monkeypatch, tmp_path):
+    """The other half of `#515`: given a name in the chooser the Save button
+    opens, the party is written there and the window closes, the same as if
+    it had been named all along.
+    """
+    from PyQt6.QtWidgets import QMessageBox
+
+    import editor.window as ew
+    from editor.dosimport import rehearse
+    from editor.window import EditorBinding
+
+    window = EditorBinding(make_root())
+    window.adopt_conversion(rehearse(dos_save, "A", files), path=None)
+    assert window.dirty
+    assert window.path is None
+
+    out = tmp_path / "NAMED.D64"
+    monkeypatch.setattr(ew.QMessageBox, "exec",
+                        lambda self: int(QMessageBox.StandardButton.Save))
+    monkeypatch.setattr(ew.QFileDialog, "getSaveFileName",
+                        lambda *a, **k: (str(out), ""))
+    assert window.close() is True
+    assert not window.dirty
+    assert window.path == out
+    assert out.exists() and out.stat().st_size == 174848
 
 
 # --- the destination row, and Convert writing (#118) -------------------------

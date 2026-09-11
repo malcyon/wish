@@ -1773,13 +1773,18 @@ class EditorBinding(QObject):
         when `self.dirty` is empty, and an empty editor is never dirty.
         `self.path is None` with a party that *is* dirty is the one state a
         converted-but-unnamed party (`adopt_conversion` with no destination)
-        can be in, and it is not a successful save: `close()` below has to
-        tell the two apart from `"failed"` rather than read either as "done".
+        can be in. When `interactive`, that opens the same chooser
+        `save_as()` opens (#515) -- cancelling it still answers
+        `"no destination"`, which is not a successful save: `close()` below
+        has to tell the two apart from `"failed"` rather than read either as
+        "done". When not `interactive` (`import_dos_save`'s own call), no
+        chooser opens and an unnamed party is simply left unwritten.
         """
         if self.party is None:
             return "nothing open"
         if self.path is None:
-            return "no destination"
+            if not interactive or not self._choose_save_path():
+                return "no destination"
         failures = self._flush()
         if failures and interactive:
             self._report_flush_failures(failures)
@@ -1829,13 +1834,23 @@ class EditorBinding(QObject):
     def save_as(self) -> None:
         if self.party is None:
             return
+        if self._choose_save_path():
+            self.save()
+
+    def _choose_save_path(self) -> bool:
+        """Open the `Save As` chooser and adopt what it picks.
+
+        Shared by `save_as()` and by `save()` when a converted-but-unnamed
+        party (#515) needs somewhere to go before it can write. False means
+        the chooser was cancelled and `self.path` is untouched.
+        """
         path, _ = QFileDialog.getSaveFileName(
             self.root, SAVE_AS_TITLE, str(self.path or ""), DISK_FILTER)
         if not path:
-            return
+            return False
         self.path = pathlib.Path(path)
         self.opened.emit(str(self.path))
-        self.save()
+        return True
 
     def _write_back(self) -> None:
         """Push edited records into the disk image."""

@@ -938,6 +938,13 @@ def _no_real_modals(monkeypatch):
     `monkeypatch.setattr` on `convert.QMessageBox` -- `test_editor.py`'s own
     pattern for `EditorBinding.save`'s failures -- which simply replaces
     this default for that one test.
+
+    `EditorBinding.save()` (`#515`) can now open a real `getSaveFileName`
+    chooser too, whenever `window.close()` is called on a dirty party with
+    no path -- the same hazard as the message boxes above, and the same
+    fix: default it to a cancelled chooser so nothing here can block on
+    one, and a test that wants to drive the chooser overrides this default
+    the same way `test_dosimport.py` does.
     """
     monkeypatch.setattr(convert.QMessageBox, "critical",
                         lambda *a, **k: None)
@@ -948,6 +955,10 @@ def _no_real_modals(monkeypatch):
     #: names, so patching it here reaches `editor/window.py`'s call too.
     monkeypatch.setattr(convert.QMessageBox, "information",
                         lambda *a, **k: None)
+    #: Same reasoning, for `QFileDialog.getSaveFileName` -- the same class
+    #: object `editor/window.py`'s `save()` and `save_as()` call.
+    monkeypatch.setattr(convert.QFileDialog, "getSaveFileName",
+                        lambda *a, **k: ("", ""))
 
 
 def _make_root():
