@@ -2152,6 +2152,7 @@ def test_a_name_too_long_for_dos_pops_a_warning_and_nothing_else_does(
 # stays modal.
 # ---------------------------------------------------------------------------
 
+@needs_dos_saves
 def test_no_folder_chosen_pops_no_modal(tmp_path):
     """The bug itself: a readable source, a destination that needs nothing
     else, and no folder chosen yet -- `_blocked` still names `NO_FOLDER` for
@@ -2246,6 +2247,7 @@ def test_no_disk_chosen_pops_no_modal(tmp_path):
     assert critical == [], critical
 
 
+@needs_dos_saves
 def test_no_disks_in_preferences_pops_no_modal(tmp_path):
     """The twin for `NO_DISKS` -- `#482`'s own refusal, with no game disks
     for the destination title, popped a modal named `Game disks not found`
