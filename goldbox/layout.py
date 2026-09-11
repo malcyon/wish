@@ -250,7 +250,7 @@ _DECLARED: Sequence[Field] = (
            "for spells. All three CONFIRMED; tools/memorisedwidth.py reads "
            "them again off the disks. This field is declared as the run they "
            "all agree about, and the per-title span is "
-           "goldbox.c64_codec.RecordShape.memorised, which every reader and "
+           "goldbox.c64_codec.C64Deltas.memorised, which every reader and "
            "the writer both go through. #268 (A character with more than "
            "sixteen memorised spells loses the rest, because the layout "
            "gives the list sixteen bytes and the game gives it "

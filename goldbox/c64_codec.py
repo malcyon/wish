@@ -37,6 +37,11 @@ __all__ = [
     "write",
     "read",
     "READ_TARGETS",
+    "C64Deltas",
+    "RecordShape",
+    "DELTAS_BY_KEY",
+    "RECORD_SHAPES",
+    "deltas_for",
     "record_shape",
     "span_of",
     "memorised_span",
@@ -175,14 +180,21 @@ _THIEF_SKILL_COLUMNS: tuple[tuple[str, str], ...] = tuple(
     pair for pair in DIRECT if pair[0].startswith("thief_"))
 
 @dataclasses.dataclass(frozen=True)
-class RecordShape:
-    """The parts of the 580-byte record the titles do not agree about.
+class C64Deltas:
+    """The deltas: how one title's C64 record departs from Pool of Radiance's.
 
     `goldbox/layout.py` is Pool of Radiance's table and every offset in it is
     the same in the later titles -- what differs is how far three regions run
     and whether two fields are used at all.  Each row below was read out of
     the title's own overlays, and a title with no row is refused (#274) --
     only no title *at all*, `None`, still means Pool of Radiance.
+
+    Named `C64Deltas` rather than `RecordShape` since `#470 (Give the project
+    a neutral title beside its neutral character record, with one port per
+    platform a title shipped on)`: it holds none of the record's form, which
+    is `goldbox/layout.py`'s and which every title shares.  `DosDeltas` in
+    `goldbox/dos_port.py` and `AmigaDeltas` in `goldbox/amiga.py` are the same
+    role on the other two ports, and the three names now agree.
     """
 
     key: str
@@ -248,7 +260,7 @@ class RecordShape:
 #: `docs/117-save-conversion.md` said twenty-one.  Nothing crosses to DOS
 #: past sixteen either way -- DOS Pool of Radiance allots sixteen slots, so a
 #: converted character never arrives with more (#192).
-POOL_OF_RADIANCE_RECORD = RecordShape(
+POOL_OF_RADIANCE_RECORD = C64Deltas(
     key="pool-of-radiance",
     memorised=("spells_memorised", "abilities_second", "gap_06c"),
     identity_pair=True)
@@ -273,7 +285,7 @@ POOL_OF_RADIANCE_RECORD = RecordShape(
 #: level-5 cleric who has memorised nothing and would have every slot free.
 #: So the C64 has no such field in this title and `CAMP` works the ceiling
 #: out for itself (#192 step 0d).
-CURSE_RECORD = RecordShape(
+CURSE_RECORD = C64Deltas(
     key="curse-of-the-azure-bonds",
     memorised=("spells_memorised",),
     second_abilities=True, spell_slots=False, dual_class=True,
@@ -319,25 +331,28 @@ CURSE_RECORD = RecordShape(
 #:   engine-written records reading zero at `0x0EE`, and no Silver Blades save
 #:   on this machine has been written by the engine.  One that reads zero
 #:   there for a caster who has memorised nothing settles it.
-SILVER_BLADES_RECORD = RecordShape(
+SILVER_BLADES_RECORD = C64Deltas(
     key="secret-of-the-silver-blades",
     memorised=("gap_01b", "spells_memorised"),
     second_abilities=True, spell_slots=False, dual_class=True)
 
-RECORD_SHAPES: dict[str, RecordShape] = {
+DELTAS_BY_KEY: dict[str, C64Deltas] = {
     s.key: s for s in (POOL_OF_RADIANCE_RECORD, CURSE_RECORD,
                        SILVER_BLADES_RECORD)}
 
+#: Pre-#470 name, kept until stage 9 moves the callers off it.
+RECORD_SHAPES = DELTAS_BY_KEY
 
-def record_shape(game=None) -> RecordShape:
-    """The record shape for a title, Pool of Radiance's when none is given.
+
+def deltas_for(game=None) -> C64Deltas:
+    """This title's C64 record deltas, Pool of Radiance's when none is given.
 
     Duck-typed on `.key` the way `goldbox.spells.for_game` is, so a
-    `goldbox.games.Game`, a key or None all work and this module still does
-    not import `goldbox/games.py`.
+    `goldbox.c64_save.C64Container`, a key or None all work and this module
+    still does not import `goldbox/c64_port.py`.
 
     **A title with a key that names no measured row raises** (#274, A C64
-    title nobody has measured is read with Pool of Radiance's record shape,
+    title nobody has measured is read with Pool of Radiance's record deltas,
     silently) -- `goldbox/c64_save.py`'s `container_for` is the precedent:
     handing back Pool of Radiance's spell span, ability layout and dual-class
     answer for a title nobody has read the overlays of is inventing that
@@ -346,18 +361,29 @@ def record_shape(game=None) -> RecordShape:
     (`automap/fasttravel.py`). Only `None` -- a caller with no title in hand
     at all, not a title that is unmeasured -- still means Pool of Radiance.
     """
-    if isinstance(game, RecordShape):
+    if isinstance(game, C64Deltas):
         return game
     key = getattr(game, "key", game)
     if key is None:
         return POOL_OF_RADIANCE_RECORD
     try:
-        return RECORD_SHAPES[key]
+        return DELTAS_BY_KEY[key]
     except KeyError:
         raise KeyError(
-            f"no C64 record shape measured for {key!r}; "
-            f"{', '.join(sorted(RECORD_SHAPES))} are the only titles this "
+            f"no C64 record deltas measured for {key!r}; "
+            f"{', '.join(sorted(DELTAS_BY_KEY))} are the only titles this "
             f"project has read the overlays of") from None
+
+
+#: `deltas_for` under its pre-#470 name, kept until stage 9. `record_shape`
+#: is what `editor/roster.py`, `editor/window.py`, `goldbox/yaml_io.py` and
+#: eight tests still call.
+record_shape = deltas_for
+
+
+#: Pre-#470 spelling of the class. `goldbox.dos_port.DosShape` and
+#: `goldbox.amiga.AmigaShape` are the same alias on the other two ports.
+RecordShape = C64Deltas
 
 
 def span_of(names: "tuple[str, ...]") -> tuple[int, int]:
@@ -411,17 +437,17 @@ def memorised_span(game=None) -> tuple[int, int]:
     Pool of Radiance character everything past their sixteenth memorised
     spell (#268).
     """
-    return span_of(record_shape(game).memorised)
+    return span_of(deltas_for(game).memorised)
 
 
 def get_memorised(rec: CharacterRecord, game=None) -> bytes:
     """The whole memorised-spell list, as wide as this title reads it."""
-    return _get_span(rec, record_shape(game).memorised)
+    return _get_span(rec, deltas_for(game).memorised)
 
 
 def set_memorised(rec: CharacterRecord, data: bytes, game=None) -> None:
     """Write the whole list back.  `data` must be the title's own width."""
-    _set_span(rec, record_shape(game).memorised, bytes(data))
+    _set_span(rec, deltas_for(game).memorised, bytes(data))
 
 
 #: Class name -> the C64 field holding that class's level.  The C64 indexes
@@ -481,7 +507,7 @@ def _infravision(game: object, race: int) -> int:
 
     `game` is whatever a caller has in hand for the title -- a
     `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
-    three shapes :func:`record_shape` accepts, and for the same reason: a
+    three shapes :func:`deltas_for` accepts, and for the same reason: a
     conversion carries a bare key rather than the descriptor.
     `goldbox.titles.race_table` is duck-typed on `.key` and resolves all
     three itself, Pools of Darkness' own key included
@@ -665,7 +691,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rec = CharacterRecord.blank()
     rep = Report()
     port = char.port
-    shape = record_shape(char.game)
+    deltas = deltas_for(char.game)
     w = neutral.Writer(char, rep, into="C64", dropped=DROPPED)
     use, emit = w.use, w.emit
 
@@ -785,10 +811,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # Written before the second ability array because in Pool of Radiance the
     # list runs *through* `0x065` and in Curse it stops just short of it.
     memorised = use("spells_memorised")
-    mem_at, mem_size = span_of(shape.memorised)
+    mem_at, mem_size = span_of(deltas.memorised)
     if memorised is not None:
         ids = list(memorised.value)[:mem_size]
-        _set_span(rec, shape.memorised, bytes(ids) + bytes(mem_size - len(ids)))
+        _set_span(rec, deltas.memorised, bytes(ids) + bytes(mem_size - len(ids)))
         emit(memorised, "spells_memorised", mem_at, mem_size,
              f" (the C64 fills this title's {mem_size} slots from the start, "
              f"which is the neutral order)")
@@ -811,7 +837,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # such field: these seven bytes are part of its memorised list, written
     # above.
     second = use("abilities_second")
-    if shape.second_abilities:
+    if deltas.second_abilities:
         if second is not None:
             rec.set_raw("abilities_second",
                         bytes(second.value.get(n, 0) & 0xFF
@@ -899,7 +925,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
 
     # -- spell slots: three packed nibbles, cleric high, magic-user low ------
     castable = use("spells_castable")
-    if castable is not None and shape.spell_slots:
+    if castable is not None and deltas.spell_slots:
         cleric = castable.value.get("cleric", (0, 0, 0))
         mage = castable.value.get("magic-user", (0, 0, 0))
         packed = bytes((_clamp_nibble(cleric[i]) << 4) | _clamp_nibble(mage[i])
@@ -925,7 +951,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         held = {n: lv for n, lv in former.value.items() if lv}
         if not held:
             pass                                  # not dual-classed: zero
-        elif not shape.dual_class:
+        elif not deltas.dual_class:
             rep.dropped.append(NO_DUAL_CLASS)
         elif len(held) > 1:
             rep.dropped.append(TWO_FORMER_CLASSES.format(
@@ -1208,7 +1234,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         v = use(name)
         if v is None:
             both = False
-            if draws_sheet_portrait(shape.key) and port != "DOS":
+            if draws_sheet_portrait(deltas.key) and port != "DOS":
                 rep.dropped.append(
                     f"the character sheet's portrait {stem[:4].lower()}: "
                     f"{port} gave none, so the sheet draws no face")
@@ -1633,7 +1659,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     in; it travels on the neutral record so a writer can name them.
     """
     out = NeutralCharacter("C64", source=source, game=game)
-    shape = record_shape(game)
+    deltas = deltas_for(game)
 
     def grade(name: str) -> Confidence:
         return _field(name).confidence
@@ -1854,13 +1880,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # Only in a title that has one. In Pool of Radiance these seven bytes are
     # part of the memorised list read above, and reading them here as well
     # would put seven spell ids into the neutral record's ability array.
-    if shape.second_abilities and rec.is_stored("abilities_second"):
+    if deltas.second_abilities and rec.is_stored("abilities_second"):
         out.set("abilities_second",
                 dict(zip(neutral.ABILITIES, rec.get_raw("abilities_second"))),
                 "the second ability array @0x065", grade("abilities_second"))
     # `{}` for an ordinary character in a title that keeps the pair at all --
     # `goldbox/neutral.py`'s own convention for `former_levels` -- and absent
-    # only where the title has no such bytes (`shape.dual_class` False:
+    # only where the title has no such bytes (`deltas.dual_class` False:
     # Pool of Radiance, which never touches either byte and holds `$FF` in
     # some NPC records). Gated past that on `dual_class_level`, the engine's
     # own sentinel (`GEN $18EB`: zero there means "not dual-classed" whatever
@@ -1868,7 +1894,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # keyed by class name through the same permutation `write` uses, not by
     # the raw slot number, or a C64-to-C64 round trip cannot find its own
     # class back (#256, #234).
-    if shape.dual_class and rec.is_stored("dual_class_level"):
+    if deltas.dual_class and rec.is_stored("dual_class_level"):
         level = rec.get("dual_class_level")
         held: dict[str, int] = {}
         if level:
@@ -1895,7 +1921,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # level he left his old class at for a dual-classed one -- so a record
     # read straight off the disk can disagree with its own classes.
     #
-    # **Gated on `shape.class_code_repairable`, Curse only.** A blanket,
+    # **Gated on `deltas.class_code_repairable`, Curse only.** A blanket,
     # title-agnostic predicate here once fired on any self-contradiction at
     # all, which is exactly the shape `docs/50-experiments.md`'s "A
     # losslessness bug, found by taking the NPCs seriously" already
@@ -1913,7 +1939,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # the same rule.  `editor/roster.py` reads `class_bits` and never this
     # field, so nothing in the window changes.
     klass = out.get("char_class")
-    if klass is not None and shape.class_code_repairable:
+    if klass is not None and deltas.class_code_repairable:
         bits = out.get("class_bits") or 0
         levels = out.get("levels") or {}
         former = out.get("former_levels") or {}
@@ -1959,7 +1985,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # is DOS's own 0x0AB, and only Pool of Radiance's GEN draws the pair at
     # all -- Curse of the Azure Bonds and Secret of the Silver Blades hold
     # `00 00` in every shipped party because their GEN never writes it.
-    if shape.identity_pair and rec.is_stored("identity_pair"):
+    if deltas.identity_pair and rec.is_stored("identity_pair"):
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
                 "the C64's identity pair @0x0E6, the first byte",
                 grade("identity_pair"))
