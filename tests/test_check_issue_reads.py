@@ -11,11 +11,14 @@ off within the hour, and then it would be guarding nothing.
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import subprocess
 import sys
 
 import pytest
+
+WINDOWS = os.name == "nt"
 
 HOOK = pathlib.Path(__file__).resolve().parents[1] / ".claude" / "hooks" / "check-issue-reads.py"
 
@@ -47,20 +50,39 @@ REFUSED = [
     "gh api --paginate /repos/malcyon/wish/issues/510/comments",
     # The reason this project reaches for it, straight out of sessions.md.
     "gh issue view 89 --comments | head -50",
+    # `title` and `body` are an issue's own text, just as much as a comment
+    # is -- these nine plus the four in
+    # test_a_real_call_is_refused_wherever_it_sits_in_the_line got straight
+    # through the first version of this hook.
+    "gh issue view 510 --json number,title",
+    "gh issue list --limit 300 --json number,title",
+    "gh issue list --json comments",
+    "gh issue view 510 --json title,body",
+    "gh search issues --repo malcyon/wish --json title",
+    "gh search issues --json body",
+    "gh api /repos/malcyon/wish/issues",
+    "gh api /repos/malcyon/wish/issues/510",
+    "gh api graphql -f query='...'",
+    # `gh issue view --web` is refused for a different reason -- see
+    # test_web_is_refused_for_the_browser_reason_not_the_trust_one.
 ]
 
 ALLOWED = [
-    "gh issue view 510 --json number,title",
     "gh issue view 510 --json author,state,labels",
     "gh issue list --limit 300 --state open",
     "gh issue create --title x --body-file /tmp/b",
     "gh issue comment 510 --body-file /tmp/b",
     "gh issue close 510",
+    "gh issue edit 510 --add-label bug",
     "gh label list",
+    "gh run list",
+    "gh pr list",
     ".venv/bin/python tools/issueread.py 510",
     "git log --oneline -3",
-    # `comments` as a substring of another field must not trip it.
-    "gh issue view 510 --json number,title,commentsCount",
+    "gh issue list --json number,labels,state",
+    # `comments` as a substring of another field must not trip it -- and
+    # this no longer carries `title` too, which is banned outright now.
+    "gh issue view 510 --json number,state,commentsCount",
     # Talking *about* the command is not running it. The first version of this
     # hook refused the edit that wrote this project's own documentation.
     "grep -rn 'gh issue view --comments' docs/",
@@ -112,14 +134,50 @@ def test_a_heredoc_that_quotes_the_command_is_let_through(command, monkeypatch):
     "git add -A && gh issue view 510 --comments",
     "echo hi | gh issue view 510 --json comments",
     "cd /tmp; gh issue view 510 --comments",
+    # Neither the position in the line nor the way `gh` is reached is an
+    # anchor any more -- an environment-variable prefix, a word that is not
+    # a shell operator, a path to the binary, and a backtick all reach the
+    # same `gh issue view --comments`.
+    "GH_PAGER=cat gh issue view 510 --comments",
+    "then gh issue view 510 --comments",
+    "/usr/bin/gh issue view 510 --comments",
+    "`gh issue view 510 --comments`",
 ])
 def test_a_real_call_is_refused_wherever_it_sits_in_the_line(command, monkeypatch):
     """Anchoring on command position must not become a way through.
 
     `shlex` keeps shell punctuation glued to a word, so the subshell form hands
     back `--comments)` -- which the first narrowed version let straight past.
+    The first version also anchored on what character came *before* `gh`,
+    which is what let the last four of these through.
     """
     assert run(command, monkeypatch=monkeypatch) == 2
+
+
+@pytest.mark.parametrize("command", [
+    "bash -c 'gh issue view 510 --comments'",
+    "sh -c \"gh issue view 510 --json comments\"",
+    "eval 'gh issue view 510 --comments'",
+])
+def test_a_call_quoted_as_a_script_for_bash_sh_or_eval_is_refused(command, monkeypatch):
+    """`bash -c`, `sh -c` and `eval` all execute their argument as a new
+    command line, so a `gh` call quoted inside one is a real invocation --
+    unlike the same text quoted for `grep` or `git commit -m`, which never
+    runs it. `shlex` folds the whole quoted script into one token, so `gh`
+    never appears as a token of its own in the outer command at all; a scan
+    that only started at a `gh` token would never reach it.
+    """
+    assert run(command, monkeypatch=monkeypatch) == 2
+
+
+def test_web_is_refused_for_the_browser_reason_not_the_trust_one(capsys, monkeypatch):
+    """`gh issue view --web` opens a browser on Donald's own screen --
+    `AGENTS.md`, "The machine" -- which is a different reason from the trust
+    one every other refusal here gives, and reads differently."""
+    assert run("gh issue view --web 510", monkeypatch=monkeypatch) == 2
+    err = capsys.readouterr().err
+    assert "browser" in err
+    assert "Donald" in err
 
 
 def test_the_refusal_names_the_filtered_reader(capsys, monkeypatch):
@@ -176,6 +234,7 @@ def test_the_hook_is_registered(monkeypatch):
     assert any("check-issue-reads.py" in c for c in commands)
 
 
+@pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")
 def test_the_hook_runs_under_the_system_interpreter():
     """It is executed by the harness, not by `.venv`, so it must be stdlib.
 
@@ -190,3 +249,28 @@ def test_the_hook_runs_under_the_system_interpreter():
         capture_output=True, text=True, timeout=30)
     assert done.returncode == 2
     assert "issueread.py" in done.stderr
+
+
+@pytest.mark.parametrize("tool_input, expected", [
+    ({"command": "gh issue view 510 --comments"}, 2),
+    ({"command": ["gh", "issue", "view", "510", "--comments"]}, 2),
+    ({"command": ["gh", "issue", "list", "--json", "title"]}, 2),
+    ({"command": ["gh", "issue", "list", "--json", "number,state"]}, 0),
+    ({"command": 17}, 0),
+    ({"command": ["gh", 17]}, 0),
+    ({}, 0),
+    (None, 0),
+    ("not a dict at all", 0),
+])
+def test_both_harnesses_payload_shapes(tool_input, expected, monkeypatch):
+    """Codex sends `tool_name`/`tool_input` too, but may spell Bash's command
+    as an argv list rather than a string.
+
+    An unread command makes this hook see nothing and fail open **silently**,
+    which is the worst way for a guard to be wrong -- so both shapes are read,
+    and anything unreadable is let through rather than guessed at.
+    """
+    mod = _module()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(
+        json.dumps({"tool_name": "Bash", "tool_input": tool_input})))
+    assert mod.main() == expected

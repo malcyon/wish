@@ -260,6 +260,9 @@ skills-lock.json
 # `.codex/` -- its own session and cache state -- is local.
 .codex/*
 !.codex/agents/
+# The Codex wiring for the shared PreToolUse hook is the project's too:
+# one script, two harnesses. `.claude/hooks/check-issue-reads.py` is it.
+!.codex/hooks.json
 # Written by hatch-vcs at build time; the tag is the source of truth.
 wish/_version.py
 
