@@ -1686,7 +1686,7 @@ somebody re-reads them, and the experiment that settles it is one line: the
 PoD reads its 404 bytes, finds no items and no effects, and never touches the
 80 zero bytes after them. Those 80 bytes are harmless padding rather than a
 length the game requires, and `RECORD_LENGTH = 484` says otherwise in a
-comment; see `#154 (goldbox/amiga_codec.py says 484 is the shortest record Pools of
+comment; see `#154 (goldbox/amiga.py says 484 is the shortest record Pools of
 Darkness will read, and 404 is)`.
 
 **Two of the three `pc` literals in §1.2 were attributed to the wrong sites**,
