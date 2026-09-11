@@ -5,6 +5,8 @@ which get withheld; `flatten` and `withheld` are the shared scrubbing and
 wording both `.claude/hooks/issue-titles-context.py` and
 `tools/issueread.py` rest on. Everything here is pure and needs no `gh`.
 """
+import re
+
 from tools import ghtrust
 
 # ---------------------------------------------------------------------------
@@ -15,8 +17,26 @@ def test_is_trusted_for_repository_owner():
     assert ghtrust.is_trusted({"login": "malcyon"})
 
 
-def test_is_trusted_for_the_projects_own_bot():
+# `gh` spells the project's own bot three different ways depending on the
+# route -- measured live against malcyon/wish on 2026-09-11, with a real
+# issue opened and commented on by the `wish-agent` App installation. The
+# first version of `is_trusted` recognised only the first of these, so it
+# trusted none of the shapes `gh` actually hands back.
+
+
+def test_is_trusted_for_the_bots_rest_api_spelling():
+    """`POST /issues`'s response, `user.login`."""
     assert ghtrust.is_trusted({"login": "wish-agent[bot]"})
+
+
+def test_is_trusted_for_the_bots_gh_issue_view_spelling():
+    """`gh issue view N --json author`."""
+    assert ghtrust.is_trusted({"is_bot": True, "login": "app/wish-agent"})
+
+
+def test_is_trusted_for_the_bots_bare_comment_author_spelling():
+    """`gh issue view N --json comments`, each comment's own `author`."""
+    assert ghtrust.is_trusted({"login": "wish-agent"})
 
 
 def test_is_trusted_false_for_an_outside_account():
@@ -45,6 +65,37 @@ def test_is_trusted_false_for_a_non_dict():
     assert not ghtrust.is_trusted(123)
 
 
+def test_is_bot_alone_does_not_trust_a_differently_named_app():
+    """Any GitHub App commenting here carries `is_bot: true`, ours included
+    -- so the flag says nothing about *which* App this is, and trust has to
+    turn on the name instead."""
+    assert not ghtrust.is_trusted({"is_bot": True, "login": "app/some-other-app"})
+    assert not ghtrust.is_trusted({"is_bot": True, "login": "some-other-app[bot]"})
+
+
+def test_normalising_the_bots_wrapper_does_not_widen_trust_to_the_owners_name():
+    """Stripping `app/` and `[bot]` must only ever produce evidence of *the
+    bot*, never of the owner -- `malcyon` never legitimately appears wrapped
+    this way, so a wrapped login that reduces to `malcyon` is a different
+    actor (an unrelated App whose slug happens to be `malcyon`), not the
+    repository owner, and must not be trusted."""
+    assert not ghtrust.is_trusted({"login": "app/malcyon"})
+    assert not ghtrust.is_trusted({"login": "malcyon[bot]"})
+
+
+def test_a_wrapped_login_could_not_have_come_from_a_persons_own_username():
+    """The reasoning that makes stripping `app/` and `[bot]` safe: GitHub
+    restricts a username someone chooses to letters, digits and single
+    hyphens, so a login carrying `/` or `[` was never typed in by a person
+    signing up -- it is always `gh`'s own rendering of a bot or App actor.
+    This is the premise `_strip_bot_wrapper` rests on; assert it here so a
+    future edit that widens the allowed username characters cannot silently
+    make that premise false."""
+    username_chars = re.compile(r"^[A-Za-z0-9-]+$")
+    assert not username_chars.match("app/malcyon")
+    assert not username_chars.match("malcyon[bot]")
+
+
 # ---------------------------------------------------------------------------
 # flatten
 
@@ -64,24 +115,51 @@ def test_flatten_collapses_a_newline_and_strips():
     assert flat == "line one line two"
 
 
-def test_flatten_with_no_max_length_never_truncates():
+def test_flatten_never_truncates():
+    """Truncation was removed with the `max_length` parameter -- a title is
+    always cited in full, per AGENTS.md's rule."""
     long_text = "x" * 500
     assert ghtrust.flatten(long_text) == long_text
 
 
-def test_flatten_with_max_length_truncates_with_an_ellipsis():
-    long_text = "x" * 500
-    flat = ghtrust.flatten(long_text, max_length=50)
-    assert len(flat) <= 50
-    assert flat.endswith("...")
-
-
-def test_flatten_with_max_length_leaves_short_text_untouched():
-    assert ghtrust.flatten("short", max_length=50) == "short"
-
-
 def test_flatten_none_is_empty_string():
     assert ghtrust.flatten(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# scrub_body
+
+
+def test_scrub_body_keeps_newlines():
+    """Unlike `flatten`, a body or comment keeps its line structure -- an
+    issue body here is Markdown with headings, lists and tables in it."""
+    scrubbed = ghtrust.scrub_body("line one\nline two")
+    assert scrubbed == "line one\nline two"
+
+
+def test_scrub_body_replaces_a_tab_with_a_space():
+    assert ghtrust.scrub_body("a\tb") == "a b"
+
+
+def test_scrub_body_replaces_other_c0_controls_and_del_with_a_space():
+    scrubbed = ghtrust.scrub_body("a\x01b\x1fc\x7fd")
+    assert scrubbed == "a b c d"
+
+
+def test_scrub_body_does_not_collapse_or_strip_whitespace():
+    """Unlike `flatten`, nothing here is collapsed to one line or trimmed --
+    a hex dump or an indented code block keeps its own spacing."""
+    scrubbed = ghtrust.scrub_body("  line one\n\n  line two  ")
+    assert scrubbed == "  line one\n\n  line two  "
+
+
+def test_scrub_body_never_truncates():
+    long_text = "x" * 5000
+    assert ghtrust.scrub_body(long_text) == long_text
+
+
+def test_scrub_body_none_is_empty_string():
+    assert ghtrust.scrub_body(None) == ""
 
 
 # ---------------------------------------------------------------------------

@@ -73,16 +73,11 @@ def test_control_characters_flattened_to_single_line():
     assert flat == "line one line two tail"
 
 
-def test_long_title_is_truncated():
-    long_title = "x" * 250
-    flat = hook.flatten_title(long_title)
-    assert len(flat) <= hook.MAX_TITLE_LEN
-    assert flat.endswith("...")
-
-
-def test_trusted_authors_long_title_is_never_truncated():
+def test_a_trusted_authors_long_title_is_never_truncated():
     """A citation the hook builds must be a correct one -- so the trusted
-    path, the one AGENTS.md's rule depends on, is never cut short."""
+    path, the one AGENTS.md's rule depends on, is never cut short.
+    Truncation was removed with `MAX_TITLE_LEN`; a title is always cited in
+    full now, however long."""
     long_title = "x" * 250
     row = hook.format_row(_issue(1, long_title, author="malcyon"))
     assert long_title in row
@@ -142,13 +137,12 @@ def test_trust_boundary_sentence_present():
 # main()'s fetch: a flood must not crowd trusted issues out of the request
 
 
-def test_flood_of_outside_issues_does_not_crowd_out_trusted(monkeypatch, capsys):
-    """The old code made one shared `gh issue list --limit 300` call, so a
-    flood filed overnight could push every trusted issue out of the fetched
-    set before MAX_OUTSIDE ever got a chance to cap what is *shown*. This
-    simulates that flood: the unfiltered call returns 300 outside issues and
-    none of the project's own, exactly as a real flood past the limit would.
-    """
+def test_a_flood_of_outside_issues_does_not_crowd_out_trusted(monkeypatch, capsys):
+    """One `gh issue list --limit 1000` call now does the whole fetch, and
+    `build_message` splits trusted from outside afterwards -- so a flood
+    that fits inside that limit, however large, cannot push the project's
+    own issue out of the set `build_message` sees, which is what a two-call
+    design used to need a loop to guarantee."""
     trusted_issue = _issue(1, "Our own issue", author="malcyon")
     flood = [
         _issue(1000 + i, f"flood issue {i}", author="attacker")
@@ -156,13 +150,8 @@ def test_flood_of_outside_issues_does_not_crowd_out_trusted(monkeypatch, capsys)
     ]
 
     def fake_run(cmd, **kwargs):
-        if "--author" in cmd:
-            login = cmd[cmd.index("--author") + 1]
-            payload = [trusted_issue] if login == "malcyon" else []
-        else:
-            payload = flood
         return subprocess.CompletedProcess(
-            cmd, 0, stdout=json.dumps(payload), stderr="")
+            cmd, 0, stdout=json.dumps([trusted_issue, *flood]), stderr="")
 
     monkeypatch.setattr(hook.subprocess, "run", fake_run)
     monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
@@ -173,24 +162,22 @@ def test_flood_of_outside_issues_does_not_crowd_out_trusted(monkeypatch, capsys)
     assert "#1 (Our own issue)" in out
 
 
-def test_a_failed_outside_fetch_still_prints_the_trusted_list(monkeypatch, capsys):
-    trusted_issue = _issue(2, "Still shown", author="malcyon")
-
+def test_a_failed_fetch_prints_nothing_rather_than_blocking(monkeypatch, capsys):
+    """One call now does the whole fetch, so there is only one way for it to
+    fail -- and failing here means the session starts with no issue list at
+    all, the same silent-failure contract as an offline or unauthenticated
+    `gh` everywhere else in this hook."""
     def fake_run(cmd, **kwargs):
-        if "--author" in cmd:
-            login = cmd[cmd.index("--author") + 1]
-            payload = [trusted_issue] if login == "malcyon" else []
-            return subprocess.CompletedProcess(
-                cmd, 0, stdout=json.dumps(payload), stderr="")
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="boom")
 
     monkeypatch.setattr(hook.subprocess, "run", fake_run)
     monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
 
-    hook.main()
+    result = hook.main()
 
     out = capsys.readouterr().out
-    assert "#2 (Still shown)" in out
+    assert result == 0
+    assert out == ""
 
 
 def test_missing_ghtrust_module_exits_0_printing_nothing(monkeypatch, capsys):
@@ -207,9 +194,8 @@ def test_missing_ghtrust_module_exits_0_printing_nothing(monkeypatch, capsys):
     outside_issue = _issue(521, "Something", author="someuser")
 
     def fake_run(cmd, **kwargs):
-        payload = [] if "--author" in cmd else [outside_issue]
         return subprocess.CompletedProcess(
-            cmd, 0, stdout=json.dumps(payload), stderr="")
+            cmd, 0, stdout=json.dumps([outside_issue]), stderr="")
 
     monkeypatch.setattr(hook, "ghtrust", None)
     monkeypatch.setattr(hook.subprocess, "run", fake_run)

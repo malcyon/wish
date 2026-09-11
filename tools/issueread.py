@@ -160,7 +160,7 @@ def render_text(issue: dict, repo: str = DEFAULT_REPO) -> str:
     lines.append("")
 
     if trusted:
-        body = ghtrust.flatten(issue.get("body") or "")
+        body = ghtrust.scrub_body(issue.get("body") or "")
     else:
         body = ghtrust.withheld(
             "body", author=login, length=len(issue.get("body") or ""),
@@ -177,7 +177,7 @@ def render_text(issue: dict, repo: str = DEFAULT_REPO) -> str:
         lines.append("")
         lines.append(f"Comment by {c_login} on {created}:")
         if ghtrust.is_trusted(c_author):
-            lines.append(ghtrust.flatten(comment.get("body") or ""))
+            lines.append(ghtrust.scrub_body(comment.get("body") or ""))
         else:
             lines.append(ghtrust.withheld(
                 "comment", author=c_login,
@@ -198,7 +198,7 @@ def render_json(issue: dict, repo: str = DEFAULT_REPO) -> dict:
 
     if trusted:
         title = ghtrust.flatten(issue.get("title", ""))
-        body = ghtrust.flatten(issue.get("body") or "")
+        body = ghtrust.scrub_body(issue.get("body") or "")
     else:
         title = ghtrust.withheld(
             "title", author=login, length=len(issue.get("title") or ""),
@@ -213,7 +213,7 @@ def render_json(issue: dict, repo: str = DEFAULT_REPO) -> dict:
         c_login = (c_author or {}).get("login") or None
         c_trusted = ghtrust.is_trusted(c_author)
         c_body = (
-            ghtrust.flatten(comment.get("body") or "") if c_trusted else
+            ghtrust.scrub_body(comment.get("body") or "") if c_trusted else
             ghtrust.withheld(
                 "comment", author=c_login,
                 length=len(comment.get("body") or ""),

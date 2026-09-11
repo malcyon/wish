@@ -64,33 +64,23 @@ except Exception:                          # noqa: BLE001 -- see module docstrin
     ghtrust = None
 
 TIMEOUT = 15
-LIMIT = "300"
+LIMIT = "1000"
 
 #: Titles are withheld past this many outside issues, newest first, so a
 #: flood filed overnight cannot push the project's own list out of context.
 MAX_OUTSIDE = 20
 
-#: Re-exported from `tools/ghtrust.py` so this module still has a name for
-#: it -- nothing here still defines its own copy.
-TRUSTED_AUTHORS = ghtrust.TRUSTED_AUTHORS if ghtrust else frozenset()
 
-MAX_TITLE_LEN = 200
-
-
-def flatten_title(title: str, max_length: int | None = MAX_TITLE_LEN) -> str:
+def flatten_title(title: str) -> str:
     """Make a title safe to paste into context, whoever wrote it.
 
-    A thin wrapper over `ghtrust.flatten`, kept under this name and with
-    this default because `format_row` and this module's tests already call
-    it this way. The length cap is a separate step, controlled by
-    `max_length`, and it is not applied to a trusted author's title:
-    `format_row` calls this with `max_length=None` for that path, because
-    AGENTS.md's rule is to cite an issue by number *and title*, and a
-    truncated title is a wrong citation of exactly the kind this hook exists
-    to prevent. `max_length` defaults on for a caller that wants the old,
-    bounded behaviour.
+    A thin wrapper over `ghtrust.flatten`, kept under this name because
+    `format_row` and this module's tests already call it this way.
+    `ghtrust.flatten` never truncates: AGENTS.md's rule is to cite an issue
+    by number *and title*, in full, and a truncated title is a wrong
+    citation of exactly the kind this hook exists to prevent.
     """
-    return ghtrust.flatten(title, max_length=max_length)
+    return ghtrust.flatten(title)
 
 
 def _blocked_marker(issue: dict) -> str:
@@ -117,7 +107,7 @@ def format_row(issue: dict) -> str:
     blocked = _blocked_marker(issue)
 
     if ghtrust.is_trusted(author_obj):
-        title = flatten_title(issue.get("title", ""), max_length=None)
+        title = flatten_title(issue.get("title", ""))
         return f"#{number} ({title}){blocked}"
 
     reason = ghtrust.withheld(
@@ -172,16 +162,21 @@ def build_message(issues: list[dict]) -> str:
     return text
 
 
-def _fetch_issues(extra_args: list[str]) -> list[dict]:
+def _fetch_issues() -> list[dict]:
     """One `gh issue list` call. `[]` on any failure -- offline,
     unauthenticated, timed out, or a malformed reply -- so a caller never has
-    to tell "no issues" apart from "gh could not be asked", and one failed
-    call cannot take down the other.
+    to tell "no issues" apart from "gh could not be asked".
+
+    `LIMIT` is 1000 rather than the 300 a single call used to ask for,
+    because `build_message`'s split into trusted and outside happens here in
+    Python, in one pass over whatever this returns, rather than by asking
+    `gh` once per trusted login: two calls are two failure modes, and a loop
+    over two names bought nothing a bigger limit does not.
     """
     try:
         done = subprocess.run(
             ["gh", "issue", "list", "--limit", LIMIT, "--state", "open",
-             "--json", "number,title,labels,author", *extra_args],
+             "--json", "number,title,labels,author"],
             capture_output=True, text=True, timeout=TIMEOUT, check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -204,22 +199,7 @@ def main() -> int:
     except (json.JSONDecodeError, ValueError):
         pass                            # the payload is not needed; carry on
 
-    # One call per trusted login, so a flood of outside issues can never
-    # crowd a project's own issue out of the fetched set: MAX_OUTSIDE only
-    # caps what is *shown* from a shared `--limit 300` call, and a flood past
-    # that limit could previously push every trusted issue out of the
-    # request before that cap ever got a look at it.
-    trusted: list[dict] = []
-    for login in sorted(TRUSTED_AUTHORS):
-        trusted.extend(_fetch_issues(["--author", login]))
-
-    outside_candidates = _fetch_issues([])
-    outside = [
-        issue for issue in outside_candidates
-        if not ghtrust.is_trusted(issue.get("author"))
-    ]
-
-    message = build_message(trusted + outside)
+    message = build_message(_fetch_issues())
     if message:
         print(message)
     return 0
