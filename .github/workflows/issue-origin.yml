@@ -1,0 +1,56 @@
+name: issue origin
+
+# Label every new issue by who opened it, and lock the ones our own bot opened.
+#
+# `opened` only, deliberately. A trigger on `labeled`/`unlabeled` would let this
+# re-assert the label whenever somebody moved it, which is a workflow that
+# reverses a person's edit -- the thing `.claude/rules/issues.md` forbids in so
+# many words, and one nobody can argue with in a comment. So the label is set
+# once and people move it freely.
+#
+# Nothing reads the label as permission. An issue's origin is
+# `github.event.issue.user.login`, which nobody but GitHub can set; the label is
+# only that fact made visible to somebody scanning the tracker.
+# `docs/218-the-wish-agent-bot.md` has the whole model.
+on:
+  issues:
+    types: [opened]
+
+# Nothing else. Not contents, not actions, not packages. The default for a
+# repository with default settings is read and write on everything, so this
+# block exists to narrow it.
+permissions:
+  issues: write
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Label by author, and lock the bot's own
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The app slug plus "[bot]". Confirmed against the API on 2026-09-11:
+          # GitHub user 328160683, type Bot. A wrong string here does not fail
+          # the job -- it silently takes the `else` branch and labels every one
+          # of the bot's issues `human`, which looks like it is working.
+          BOT_LOGIN: wish-agent[bot]
+          # Read through the environment, never interpolated into the script
+          # below. `${{ ... }}` inside `run:` is substituted into the shell
+          # source before bash sees it, so a value carrying a metacharacter is
+          # a script-injection hole. A login cannot carry one today; a title
+          # can, and this is the habit that keeps the next edit of this file
+          # safe.
+          AUTHOR: ${{ github.event.issue.user.login }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$AUTHOR" = "$BOT_LOGIN" ]; then
+            gh issue edit "$NUMBER" --repo "$REPO" \
+              --add-label "AI" --remove-label "human"
+            gh issue lock "$NUMBER" --repo "$REPO" --reason resolved
+          else
+            gh issue edit "$NUMBER" --repo "$REPO" \
+              --add-label "human" --remove-label "AI"
+          fi
