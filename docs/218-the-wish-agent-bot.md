@@ -8,8 +8,8 @@ project's own rules cannot be mistaken for each other.
 ## Why the bot exists
 
 Before 2026-09-11 every issue and every comment on this tracker was authored by
-`malcyon`, whether a person wrote it or an agent did. Three hundred issues, one
-author. That made the tracker say something untrue — Donald appeared to have
+`malcyon`, whether a person wrote it or an agent did. Five hundred and twelve
+issues, one author. That made the tracker say something untrue — Donald appeared to have
 personally written every finding an agent had posted — and it left nothing for a
 workflow to classify on.
 
@@ -44,34 +44,58 @@ If a human issue is ever to be handed to an agent, that is Donald saying so, and
 an agent reads it as his instruction because it came from him. The label never
 becomes the authorization.
 
-## Why AI issues are locked, and what that does not buy
+## Nothing is locked, and that was measured
 
-A locked issue can still be read by anyone and still be commented on by the
-repository's owner and by accounts with write access. What it stops is a
-stranger adding a comment.
+The first design locked every issue the bot opened, so that the public could
+read them and not comment. It does not work. **A GitHub App installation is
+refused a comment on a locked issue whatever permissions it holds**, tested
+three ways on 2026-09-11 against a scratch issue:
 
-That is a smaller thing than it first appears, and the table is the honest
-accounting:
+| token | result |
+|---|---|
+| narrowed to `issues: write` | `403 Unable to create comment because issue is locked.` |
+| `issues: write` + `contents: write` | `403` |
+| the whole installation, unnarrowed | `403` |
+
+Labelling and closing a locked issue both return `200`, so it is the comment
+path specifically. `Contents: write` was granted to test the theory that
+GitHub's lock check is a push check; it is not, and the grant should be revoked.
+
+The bot **can** unlock its own issue, comment, and re-lock -- all three return
+`204`/`201` with `issues: write` alone, in a window of about 2.3 seconds. That
+was rejected rather than impossible: every comment leaves an `unlocked` and a
+`locked` event in the timeline, and a ticket here collects twenty comments, so
+forty of those lines would be interleaved with the findings. Issues are this
+project's knowledge trail and that would make them harder to read.
+
+So the public keeps its comment channel, and the filtering happens where an
+agent **reads** instead.
+
+## What each measure buys
 
 | measure | stops | does not stop |
 |---|---|---|
 | Bot identity as author | a reader mistaking an agent's ticket for Donald's | nothing an attacker does |
-| `AI` / `human` labels | a human misreading the tracker | nothing; labels are cosmetic by design |
-| Locking AI issues | a stranger commenting on an agent's ticket | the title and body of any **newly opened** issue; comments on human issues, which stay open on purpose |
-| Rules saying issue text is data | a compliant agent obeying a sentence in an issue | nothing mechanically — a rule is a prompt, and a prompt is not a boundary |
-| Filtering in `issue-titles-context.py` | an outside title reaching a session unannounced | text Donald pastes in himself |
+| `AI` / `human` labels | a human misreading the tracker; agents posting into an outsider's thread | nothing; labels are cosmetic by design |
+| `issue-titles-context.py` withholding a title | an outside title reaching a session unannounced, before the user has typed anything | text Donald pastes in himself |
+| `tools/issueread.py` withholding a body | an outside comment's text entering an agent's context at all | the agent knowing the comment exists, which is the point |
+| `check-issue-reads.py` refusing `gh issue view --comments` | the filter being something to remember | an agent reading the issue on the web and telling Donald |
+| Rules saying issue text is data | a compliant agent obeying a sentence in an issue | nothing mechanically -- a rule is a prompt, and a prompt is not a boundary |
 
-Reading down the middle column: **locking is the smallest of the five.** The
-channel that was actually open before this work was not a comment at all. It was
+The channel that was open before any of this was not a comment. It was
 `.claude/hooks/issue-titles-context.py`, which runs at every `SessionStart` and
-pastes every open issue's title into context before the assistant has read a word
-the user typed. An issue cannot be locked before it is opened, so locking does
-nothing about it. That hook now withholds the title of any issue not authored by
-`malcyon` or `wish-agent[bot]`.
+pastes every open issue's title into context before the assistant has read a
+word the user typed. No lock could have touched it: an issue cannot be locked
+before it is opened.
 
-The real boundary is none of the five. It is that `AGENTS.md`, `.claude/rules/`
-and the agent definitions live in this repository, and changing them needs push
-access.
+And the threat was never hypothetical. On 2026-09-11 the account `UsmanGhias`
+had already commented twice on
+`#510 (Can a Pool of Radiance character memorise more than the 21 spells its DOS
+record allots?)`, the day this was built.
+
+The real boundary is none of the measures above. It is that `AGENTS.md`,
+`.claude/rules/` and the agent definitions live in this repository, and changing
+them needs push access.
 
 ## The rule, stated once
 
@@ -91,9 +115,14 @@ public comment is a channel in its own right.
 
 ## How to file and how to report
 
-**An agent** uses `tools/wishagent.py` — `create` to open an issue, `comment` to
-post a finding, `close` to close one. Not `gh issue create`, which would author
-it as Donald. Do not add the `AI` label by hand; the workflow owns it.
+**An agent writes** with `tools/wishagent.py` -- `create` to open an issue,
+`comment` to post a finding, `close` to close one. Not `gh issue create`, which
+would author it as Donald. Do not add the `AI` label by hand; the workflow owns
+it. **And it does not comment at all on a thread labelled `human`**, which is a
+conversation between Donald and somebody outside the project.
+
+**An agent reads** with `tools/issueread.py N`, which
+`.claude/hooks/check-issue-reads.py` enforces by refusing the unfiltered form.
 
 **A person** opens an issue the ordinary way, on the web or with `gh`. The
 templates in `.github/ISSUE_TEMPLATE/` still apply, and so does every convention
@@ -101,10 +130,14 @@ in `.claude/rules/issues.md`: one type label, exactly one `Priority:`, findings
 in comments, descriptions never rewritten.
 
 `AI` and `human` are a third axis alongside those two and are not part of the
-"exactly one priority" count. **Issues opened before 2026-09-11 carry neither**,
-because nothing was backfilled: all three hundred of them were opened by
-`malcyon`, so a `human` label on every one would have meant nothing. An issue
-with neither label predates the scheme.
+"exactly one priority" count. **All 512 issues that existed on 2026-09-11 were
+given `AI`**, at Donald's instruction: every one was opened by him or by an
+agent working as him, so `AI` is the truthful label for all of them, and `human`
+is reserved for the outside issues that have not arrived yet.
+
+After that the classifier does it, and it keys on the author alone because
+**Donald does not open issues**. Anything opened by a person other than the bot
+is therefore somebody outside the project, which is what `human` should mark.
 
 ## The credentials
 
@@ -113,18 +146,18 @@ with neither label predates the scheme.
 | Private key | `~/.config/wish-agent/private-key.pem`, mode `0600`, directory `0700`. Never in this repository; `*.pem` is gitignored as a second line of defence |
 | App ID, installation ID | `~/.config/wish-agent/config.json`, or `$WISH_AGENT_APP_ID` / `$WISH_AGENT_INSTALLATION_ID`. Neither is a secret — both are integers that appear in GitHub URLs |
 | Installed on | `malcyon/wish` only — *Only select repositories*, not *All repositories* |
-| Permissions | `Issues: Read & write`, `Metadata: Read-only`, `Actions: Read-only`. **Not Contents**: the bot never pushes, and commits go out over SSH as Donald |
+| Permissions | `Issues: Read & write`, `Metadata: Read-only`, `Actions: Read-only`, and `Contents: Read & write` **which should be revoked** -- granted only to test the locked-comment theory above, it changed nothing, and the bot never pushes: commits go out over SSH as Donald |
 | Token lifetime | One hour. `tools/wishagent.py` caches it in the process only and never writes it to a file |
 
 Tokens are narrowed further at mint time — the request body asks for
 `{"repositories": ["wish"], "permissions": {"issues": "write"}}`, and a token can
 only ever be narrower than the installation.
 
-`Actions: Read-only` is granted and nothing here uses it. It can be dropped, but
-dropping a permission is not free: GitHub asks the account owner to approve any
-change to an installation's permission set, so it costs a click and a moment
-where the installation is between states. Leave it unless a review wants the
-grant to match the use exactly.
+Every write path this project uses works with `issues: write` alone: creating,
+commenting, labelling, closing, and even unlocking and re-locking. `Actions:
+Read-only` and `Contents: Read & write` are both unused, and `Contents` should
+go. Dropping one costs a click -- GitHub asks the account owner to approve any
+change to an installation's set, and until he does it keeps what it had.
 
 **To rotate the key:** generate a new one on the app's settings page, put it at
 the path above, `chmod 600`, then delete the old one from GitHub. The tool needs
@@ -151,38 +184,10 @@ In this order, because that is roughly how often each one is the cause:
    approve the new set at `github.com/settings/installations`, and until he does,
    the installation keeps the old permissions and the API keeps returning `403`.
    This is the one that looks like a bug in the tool.
-6. **`403` on a locked issue** — see the next section.
-
-## The open question: can the bot comment on a locked issue?
-
-GitHub's own wording is *"While a conversation is locked, only people with write
-access and repository owners and collaborators can add, hide, and delete
-comments."* A GitHub App installation is none of those three, and GitHub's
-documentation does not say how an installation is scored against that check.
-
-This matters because `AGENTS.md` requires findings to go on the issue when they
-arrive. If the bot cannot comment on a locked issue, every AI issue is a ticket
-nothing can report into, and locking has to be dropped in favour of the hook
-filter alone — which, per the table above, was carrying most of the weight
-anyway.
-
-The test is five minutes and settles it:
-
-```sh
-N=$(gh issue create --title "wish-agent lock test" --body "Delete me." \
-      --label "Priority: Low" --json number -q .number)
-gh issue lock "$N" --reason resolved
-TOKEN=$(tools/wishagent.py token)
-curl -sS -o /dev/stderr -w '%{http_code}\n' -X POST \
-  -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/malcyon/wish/issues/$N/comments" \
-  -d '{"body":"Can the bot still speak in here?"}'
-gh issue delete "$N" --yes
-```
-
-`201` means the design works as drawn. `403` means the lock line comes out of
-`.github/workflows/issue-origin.yml` and this section is rewritten to say so.
-**Record the answer here when it is known** — that is what this page is for.
+6. **`403` on a comment.** If the issue is locked, that is expected and
+   permanent -- see "Nothing is locked" above. Nothing on this tracker
+   should be locked; if something is, unlock it rather than working round
+   it.
 
 ## What this does not cover
 
