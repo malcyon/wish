@@ -15,7 +15,7 @@ loaded slot.
 whether it draws a portrait at all)`.
 
 The disk was built the way that issue asked for -- a C64 party whose records
-carry portrait ids, so `goldbox.amiga.new_por_savegame` wrote `$49FF` = 3:
+carry portrait ids, so `goldbox.amiga_codec.new_por_savegame` wrote `$49FF` = 3:
 
 ```sh
 tools/toamigapor.py work/3q/por1.adf --to B --out work/3q/por1-B.adf \
@@ -52,7 +52,7 @@ it wrote it for)`, and not one drew a face.
 So the second half of the question does not arise: **there is no portrait for
 `$49FF` to gate**, and building the disk twice more with the word forced to 0
 and to 3 would compare two identical pictures. The word's entry in
-`goldbox.amiga.POR_SAVGAM_MEASURED` opens by calling it "the word that gates
+`goldbox.amiga_codec.POR_SAVGAM_MEASURED` opens by calling it "the word that gates
 the sheet portrait", which this run makes untrue on this port; 3 is still the
 right value to write, because every engine-written Amiga saved game holds it,
 so the entry belongs beside the unsourced ones with that as its reason.
@@ -117,7 +117,7 @@ and the command at the top of §1 rebuilds them.
 
 **Read a name to the first NUL, not to 16 bytes.** Slot D's field is
 `… 4f 58 00 78 00 …`: a lowercase `x` one byte past the terminator, because the
-engine does not clear the field behind it. `goldbox.amiga` already stops at the
+engine does not clear the field behind it. `goldbox.amiga_codec` already stops at the
 NUL.
 
 ## 3. Pools of Darkness lists what `File > Export > Amiga...` writes
@@ -126,7 +126,7 @@ NUL.
 into the pool drawer?)`.
 
 `tools/toamiga.py` is the command-line half of the same
-`goldbox.amiga.export_party` the menu item calls, so this exercises the menu
+`goldbox.amiga_codec.export_party` the menu item calls, so this exercises the menu
 item's writer:
 
 ```sh

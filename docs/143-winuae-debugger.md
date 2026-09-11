@@ -917,7 +917,7 @@ That is a better first move than disassembling, and it is how a C64 address in
 
 **The Amiga is not the C64 and the addresses do not carry over.** Nothing in
 `goldbox/c64_port.py` applies: different CPU, different memory map, relocatable
-hunks. `goldbox/amiga.py` decodes the *save record*, which is a file format and
+hunks. `goldbox/amiga_codec.py` decodes the *save record*, which is a file format and
 title-independent; a live address is neither.
 
 ## 10. Fitting it to `automap` — built, and measured

@@ -1,6 +1,6 @@
 # Writing a DOS record for Curse and Silver Blades
 
-What it took to make `goldbox.dos.write` build the 422-byte Curse of the Azure
+What it took to make `goldbox.dos_codec.write` build the 422-byte Curse of the Azure
 Bonds record and the 439-byte Secret of the Silver Blades one, what came out
 byte for byte, and what a converted character still loses.
 
@@ -15,7 +15,7 @@ be converted to DOS for the later titles)`.
 Take a Curse or Silver Blades character off a C64 or Amiga save and convert it
 to DOS. Not badly -- at all.
 
-The failure was worse than a refusal. `goldbox.dos.write` built 285 bytes
+The failure was worse than a refusal. `goldbox.dos_codec.write` built 285 bytes
 whatever it was handed, so a C64 Curse party came back as six **Pool of
 Radiance** records:
 
@@ -24,15 +24,15 @@ Radiance** records:
 | `WISH-SPEC-curse-h-engine-resave.D64`, six characters | 285 bytes each | 422 |
 | `WISH-SPEC-ssb-d-engine-resave.D64`, six characters | 285 bytes each | 439, one with an 804-byte `.STF` |
 
-Nothing raised. `goldbox.dos.read_character` would have identified the result
+Nothing raised. `goldbox.dos_codec.read_character` would have identified the result
 as Pool of Radiance, because the record size names the title, and no Curse or
 Silver Blades game could ever have loaded it. `editor/convert.py` does not
-offer the direction, so no user could reach it; `goldbox/amiga.py`'s
-`write_por` calls `goldbox.dos.write` directly and could.
+offer the direction, so no user could reach it; `goldbox/amiga_codec.py`'s
+`write_por` calls `goldbox.dos_codec.write` directly and could.
 
 ## The shape decides, and the character decides the shape
 
-`goldbox.dos.write_shape` takes the title off the neutral character --
+`goldbox.dos_codec.write_shape` takes the title off the neutral character --
 `NeutralCharacter.game`, which a reader sets and which is a
 `goldbox.c64_port.Game`, its key, or `None` for Pool of Radiance -- and every
 width in the writer then comes off `goldbox/dos_layout.py`'s table for that
@@ -54,14 +54,14 @@ title. Nothing is a constant in the writer any more:
 
 The 67-byte item stride is the trap `#113 (Play DOS Curse far enough to save a
 party with items)` closed once already, and it is why `item_from_c64` now takes
-the stride rather than assuming one. `goldbox.dos.ITEM_TAIL` names the four
+the stride rather than assuming one. `goldbox.dos_codec.ITEM_TAIL` names the four
 bytes Silver Blades has and the others do not; they are zero in 48 of 48 item
 records driven out of the game, so the longer record is the shorter one with
 four measured zeroes after it.
 
 Pools of Darkness is refused rather than written. Its shape reads, there is no
 C64 port to convert from, and nobody has written one of its 510-byte records;
-`goldbox.dos.WRITES` is the list and `WrongTitleError` is the refusal, the same
+`goldbox.dos_codec.WRITES` is the list and `WrongTitleError` is the refusal, the same
 one `to_neutral` makes in the other direction.
 
 ## What round-trips
@@ -148,14 +148,14 @@ refuses today)` did.
 Every difference is one of three known things, and none of them is the DOS
 writer:
 
-* **`spells_castable`.** `goldbox/c64_codec.py`'s `RecordShape.spell_slots` is
+* **`spells_castable`.** `goldbox/c64_codec.py`'s `C64Deltas.spell_slots` is
   `False` for both later titles -- the C64 records of those two games have
   nowhere to keep how many spells are still free -- so the DOS-to-C64 leg
   reports the loss (`NO_SPELL_SLOTS`) and the C64-to-DOS leg has nothing to
   give back. **The section below shows the DOS engine putting it back on
   load**, so this costs a converted cleric nothing.
 * **the name.** `Guy de Valois ` comes back as `GUY DE VALOIS`, 13 bytes
-  over 14. That is `goldbox.dos.c64_name` doing what `#193 (Convert a Secret
+  over 14. That is `goldbox.dos_codec.c64_name` doing what `#193 (Convert a Secret
   of the Silver Blades DOS save into a C64 one, which the importer refuses
   today)` proved in the running game: the C64 draws its text in the
   uppercase/graphics set, where a lower-case letter is a punctuation mark,
@@ -207,7 +207,7 @@ byte this writer declares.**
 
 **That last row settles something the C64 side could only report as a loss.**
 The C64 records of Curse and Silver Blades have nowhere to keep how many
-spells are still free (`RecordShape.spell_slots` is `False` for both), so this
+spells are still free (`C64Deltas.spell_slots` is `False` for both), so this
 writer put zeroes in. DOMINIC went in with a zeroed cleric array and the
 engine's own resave holds `05 05 04 03 00 00 00`, which is byte for byte what
 the DOS specimen of the same cleric 8 holds; MORGAINE's magic-user array came
@@ -287,7 +287,7 @@ one gone: `00 01 00 00` against Pool of Radiance's `00 00 01 00 00`, and the
 byte that differs for MALACHITE is the share.
 
 That gives the neutral `npc` field a DOS home, which
-`goldbox.dos.WRITE_DROPPED` still says it has none of. **The reading is now
+`goldbox.dos_codec.WRITE_DROPPED` still says it has none of. **The reading is now
 CONFIRMED out of each title's own shipped `GAME.OVR` rather than from coab**,
 and the measurement that seemed to contradict it does not:
 `docs/195-three-dos-record-bytes-named-from-the-overlays.md` has the constants
@@ -318,7 +318,7 @@ Everything below is a Curse or Silver Blades character coming *from* the C64.
 
 The DOS engine loads a party *from* `SAVGAM<slot>.DAT`: it holds the six
 character filenames, the quest flags, the clock, the party's place and, in
-Curse, the area's own script. `goldbox.dos.write_dos_save` built only Pool of
+Curse, the area's own script. `goldbox.dos_codec.write_dos_save` built only Pool of
 Radiance's 13137 bytes until `#299 (goldbox.dos.write builds only Pool of
 Radiance's record, so nothing can be converted to DOS for the later titles)`
 made it shape-driven on both ends: it reads the C64 party through
@@ -361,7 +361,7 @@ change:**
   by file). Silver Blades packs six C64 sides into three DOS containers --
   `ECL1` holds `$03`/`$10`/`$20`-`$22`, `ECL2` holds `$11`/`$30`-`$44`, `ECL3`
   holds `$50`-`$63` -- so 21 of its 22 rows disagree, and
-  `goldbox.dos.dos_dax_number` reads the answer off the DOS files.
+  `goldbox.dos_codec.dos_dax_number` reads the answer off the DOS files.
   **The table is not wrong and must not be "fixed":** its column is the side
   the C64 loader asks for.
 * **`$49FC` and `$49FF` are not zero in the later titles.** Each engine's save

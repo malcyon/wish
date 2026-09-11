@@ -206,7 +206,7 @@ Silver Blades character at `size` 2 with head 10 lost a hat the C64 head
 option does not have, and one at `size` 1 with body 11 gained a weapon his
 DOS figure does not hold. Both are now rows of that file's
 `overrides: secret-of-the-silver-blades:` section, split by size because each
-redraw is at one size only, and `goldbox.dos.write_c64_save` builds
+redraw is at one size only, and `goldbox.dos_codec.write_c64_save` builds
 `dos_icon_tables(title=..., size=...)` once per size so they reach a
 converted character rather than only a proposal document (`#335 (Two
 combat-figure rows describe Pool of Radiance's art, and Silver Blades draws
@@ -224,7 +224,7 @@ saves across the four titles holds either combination -- though a player
 reaches both from the ICON menu, and those saves have no chain of custody.
 `tools/iconrowproof.py` is how each of the four readings above was taken: it
 stages an `icon_head`/`icon_body` onto a copy of an engine-written DOS party,
-converts it through `goldbox.dos.convert_save`, and reads the arriving C64
+converts it through `goldbox.dos_codec.convert_save`, and reads the arriving C64
 icon back into the menu choices that drew it, with a `--control` run that
 ignores the title's `overrides:` section.
 
@@ -232,9 +232,9 @@ ignores the title's `overrides:` section.
 `tools/iconreverse.yaml` gained its own `overrides:` section for Secret of the
 Silver Blades -- C64 large head 2 back to DOS head 10, C64 small weapon 1 back
 to DOS body 11 -- and `goldbox.iconparts.c64_icon_tables` and
-`goldbox.dos.c64_party` both take the title now, `c64_party` reading
+`goldbox.dos_codec.c64_party` both take the title now, `c64_party` reading
 `c64_save.container_for(game).game.key`, the mirror of `write_c64_save`'s own
-`container.game.key`. A Silver Blades character converted to the C64 and back
+`container.key`. A Silver Blades character converted to the C64 and back
 now returns with head 10 and body 11, not head 4 and body 0. That is
 `#452 (A Silver Blades combat figure does not survive a round trip through
 the C64, because the reverse table has no per-title rows)`.
@@ -325,7 +325,7 @@ is still open.
 
 **That row does not reach a converted character today.**
 `goldbox.iconparts.dos_icon_tables` applies an override only when it is given
-a `title`, and `goldbox.dos._icon_for` calls `IconParts.dos_icon` with no
+a `title`, and `goldbox.dos_codec._icon_for` calls `IconParts.dos_icon` with no
 `tables` argument at all, so the no-title reading is what a conversion gets:
 
     dos_icon_tables().heads[10]                              -> 15

@@ -179,7 +179,7 @@ monster record is not something the converter converts.
 
 ## Still open
 
-**The C64-to-DOS direction writes the wrong field.** `goldbox/dos.py` copies
+**The C64-to-DOS direction writes the wrong field.** `goldbox/dos_codec.py` copies
 neutral `turn_power` straight into DOS `0x076`, which the section above shows
 is the undead's row. Converting Curse's shipped CLERIC to DOS therefore gives
 him a 6 there, the wight and wraith row. That predates this work -- the C64

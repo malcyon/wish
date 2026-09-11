@@ -10,7 +10,7 @@ The short version, and it is the answer `#105 (Write an Amiga Pool of
 Radiance character, not just a Pools of Darkness one)` had been waiting for
 since 2026-08-26: **the ITEMS screen draws an item whose 42-byte display line is
 entirely NUL in the file, and it writes the render it drew back into that
-line.** So `goldbox.amiga.amiga_por_item_from_dos` leaving the buffer NUL is
+line.** So `goldbox.amiga_codec.amiga_por_item_from_dos` leaving the buffer NUL is
 right, and nothing in the writer has to change.
 
 ## 1. What was loaded
@@ -18,7 +18,7 @@ right, and nothing in the writer has to change.
 | slot | party | who wrote it |
 |---|---|---|
 | `A` | GARWAN and five others | the game, shipped on disk 1 |
-| `F` | the same six, Amiga -> neutral -> Amiga | `goldbox.amiga.write_por_slot`, for `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)` on 2026-09-01 |
+| `F` | the same six, Amiga -> neutral -> Amiga | `goldbox.amiga_codec.write_por_slot`, for `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)` on 2026-09-01 |
 | `B` | MALCYON, TWIN, ROLAND, LADY KATHERINE, MAGNUS, BRUTUS | `tools/toamigapor.py --c64`, from the C64 specimen `por-party-twin-pair` |
 | `C` | the same six | **the engine**, saved from slot `B` in camp |
 | `D` | THRENDER GRONE | `tools/toamigapor.py --dos`, from the DOS specimen `por-item-granted` |
@@ -125,7 +125,7 @@ live-heap fields the list is short.
 
 Three things follow.
 
-* **`goldbox.dos.WRITE_UNSOURCED`'s three pointer fields are the engine's, on
+* **`goldbox.dos_codec.WRITE_UNSOURCED`'s three pointer fields are the engine's, on
   this port too.** Our NULLs went in, the engine's own addresses came out, and
   the party played. `hands_used`, which the conversion reports as not
   converted because it is "set again the next time the character fights", was
@@ -146,7 +146,7 @@ Three things follow.
   saving throws)` reaches the Amiga for free, and the dwarf keeps his
   bonus.**
   MAGNUS's `.spc` went in holding effect ids 90, 97, 26 and 47 -- the four
-  `goldbox.dos.RACE_COMBAT_EFFECTS` writes for a dwarf -- and the engine's own
+  `goldbox.dos_codec.RACE_COMBAT_EFFECTS` writes for a dwarf -- and the engine's own
   save holds all four, in the same order, with only the chain pointers moved.
   So the arrangement a converted Amiga dwarf ends in is the one `#191 (A
   converted dwarf loses his constitution bonus to saving throws)` established

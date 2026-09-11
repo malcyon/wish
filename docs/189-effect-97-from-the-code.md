@@ -109,7 +109,7 @@ checks all seventeen values against the function.
 
 ## What it settles beyond the question
 
-* **`goldbox/dos.py`'s "writing 97 is PROBABLE" beside `RACE_COMBAT_EFFECTS`
+* **`goldbox/dos_codec.py`'s "writing 97 is PROBABLE" beside `RACE_COMBAT_EFFECTS`
   can become CONFIRMED**, and the sentence about a low-constitution
   character being handed a bonus deleted: the engine writes the id by race
   and computes the bonus from the constitution it finds.

@@ -217,7 +217,7 @@ former classes.
 stores the level twice -- `former_level` and the array entry -- and the gate
 reads only the array. A file with `former_level` set and the array zeroed would
 pass the gate, and a change of class would then leave the two disagreeing.
-`goldbox/dos.py`'s reader compares them and warns, naming both numbers, which
+`goldbox/dos_codec.py`'s reader compares them and warns, naming both numbers, which
 is the right behaviour for exactly this. **SPECULATIVE** that any real file
 does it; what would produce one is a cross-title import that copies one and not
 the other, and the experiment is to read Silver Blades' Curse-party importer

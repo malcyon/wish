@@ -144,7 +144,7 @@ So the party list is **the occupied slots, highest first**, and reading them
 [`#160 (The automapper and the editor list the party backwards)`](https://github.com/malcyon/wish/issues/160) is.
 `SaveGame0.marching_order` is the fix: `reversed(self.characters)`, not
 `reversed(range(slot_count))`, because a dropped character can leave a hole
-and the range form would count it. `goldbox.dos.marching_slot`'s `count - 1 -
+and the range form would count it. `goldbox.dos_codec.marching_slot`'s `count - 1 -
 index`, from [`#101 (A converted DOS party is listed in the reverse of its DOS order)`](https://github.com/malcyon/wish/issues/101), stays as
 it was: its one caller always writes a packed party, so the gap this section
 is about never reaches it.
@@ -277,15 +277,15 @@ two is named as a cheap job for whoever next touches `goldbox/commissions.py`.
 **CONFIRMED, from the engine's own tick, in all three C64 titles.** The clock
 is six one-byte digits at payload offset `+$C6`, and the clock a player reads
 off the status line is the three at `+$C7`. Both numbers are true and they name
-different things, which is why `goldbox/c64_save.py`'s `Container.clock = 0xC6`
-and `goldbox/c64_port.py`'s `SHOWN_CLOCK_OFFSET = 0xC7` disagree by a byte and
+different things, which is why `goldbox/c64_save.py`'s `C64Container.clock = 0xC6`
+and that module's own `SHOWN_CLOCK_OFFSET = 0xC7` disagree by a byte and
 neither is wrong — settled for
 [#470 (Give the project a neutral title beside its neutral character record, with one port per platform a title shipped on)](https://github.com/malcyon/wish/issues/470),
 which could not write a clock address until somebody said which. **The second
 constant was called `CLOCK_OFFSET` until that ticket's stage 6 renamed it**, so
 that the name says which of the two facts it holds; `automap.c64.C64Machine`
 exposes it as `shown_clock_base`, and `tests/test_c64machine.py` pins that it is
-one past `Container.clock` rather than a number of its own.
+one past `C64Container.clock` rather than a number of its own.
 
 | digit | offset | limit | what it is |
 |---|---|---|---|

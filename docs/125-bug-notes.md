@@ -125,7 +125,7 @@ generation but leaves human at code 7, and its label table names **both 6 and 7
 **What the player sees.** Nothing directly. It matters to anything importing a
 Pool of Radiance character: a half-orc arrives as code 6, prints as HUMAN, and
 there is no way to tell it apart from a real human without looking at the byte.
-`goldbox/c64_port.py` deliberately leaves 6 unnamed for that reason — naming it
+`goldbox/titles.py` deliberately leaves 6 unnamed for that reason — naming it
 "half-orc" would contradict what the game prints and naming it "human" would let
 an import silently rewrite a 7 as a 6.
 
@@ -823,7 +823,7 @@ record)`.
 
 **And it matters to this project beyond the game.** A Pool of Radiance
 character with a readied bag of holding stores encumbrance **5000 below**
-`money + Σ(weight × quantity)`, so the identity `goldbox.dos.expected_
+`money + Σ(weight × quantity)`, so the identity `goldbox.dos_codec.expected_
 encumbrance` checks fails on a record nobody edited. That is the engine's own
 counterexample to reading a "below" miss as evidence of an edit;
 `.claude/rules/testing.md` says how to read a miss now.

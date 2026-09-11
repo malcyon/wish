@@ -235,7 +235,7 @@ map, for whoever owns those files:
 |---|---|---|
 | `tools/cursesavediff.py` `REGIONS`, `tools/ssbsavediff.py` | "the area map the engine builds on load" | `ANIMATE00`'s picture buffer: the camp scene's current animation frame at the moment of the save |
 | `goldbox/c64_save.py` module note and the `CURSE_OF_THE_AZURE_BONDS` note, `goldbox/README.md` | "a page of map memory", "map memory at `+$1800`" | the picture buffer |
-| `goldbox/dos.py` near the `7424` accounting | "the area map it builds" | the picture buffer |
+| `goldbox/dos_codec.py` near the `7424` accounting | "the area map it builds" | the picture buffer |
 | `tools/cursedisk.py`, `tools/ssbdisk.py` docstrings, `tools/README.md` rows | "the explored map", "the area map" | the picture buffer |
 | `docs/116-second-game.md` §3 | "the region above `$6300` did change between two saves, which is what slots 8-11 would do" | it is the picture buffer, and it changes because the picture animates |
 | `docs/175-silver-blades-save-conversion.md` | "594 [engine] the area map the engine builds on load" | `PIC3B` frame 0, 594 non-zero bytes |

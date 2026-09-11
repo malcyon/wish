@@ -206,7 +206,7 @@ one area a C64 save can offer nothing better for. A save moved into area 0 with
 same move carrying DOS's own `(0, $FFFF, $FFFF)` — `work/p60/run3` Z0 against
 `run2` X3, the only differing pixels being the colour-cycling command bar.
 
-And end to end through `goldbox.dos.write_dos_save`, both walked: `PORSAVE13` in
+And end to end through `goldbox.dos_codec.write_dos_save`, both walked: `PORSAVE13` in
 the Slums onto template A comes up at 15,4 W 21:15, and `PORSAVE12` in New
 Phlan onto template J at 0,4 W 16:58 — each party's own square, facing and
 clock, with six characters on the roster (`work/p60/run3` and `run4`).
@@ -662,8 +662,8 @@ The rule in `.claude/rules/conversions.md` is **measured versus inherited**: a
 value we established is fine at any number, and a value taken from somebody
 else's save is not. This section used to be a list of what a converted save still
 took from a template. It is now a list of nothing, because there is no
-template: `goldbox.dos.new_dos_save` builds all 13137 bytes from 13137 zeroes,
-and `goldbox.dos.SAVGAM_UNSOURCED` carries a stated reason for every zero it
+template: `goldbox.dos_codec.new_dos_save` builds all 13137 bytes from 13137 zeroes,
+and `goldbox.dos_codec.SAVGAM_UNSOURCED` carries a stated reason for every zero it
 writes that a real save has ever been seen to hold something at.
 
 **The party in a save built that way loads, walks and changes area**, and the

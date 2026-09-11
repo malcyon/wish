@@ -31,7 +31,15 @@ from test_dossave import (
 from test_dossave import _records as _archive_records
 from test_neutral import _filled
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, neutral, world_state
+from goldbox import (
+    c64_codec,
+    c64_save,
+    dos,
+    dos_codec,
+    dos_layout,
+    neutral,
+    world_state,
+)
 from goldbox import dos_savegame as sg
 from goldbox import levels as level_tables
 from goldbox.encoding import combat_value
@@ -2137,7 +2145,11 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
     def boom(char, portraits=None, icon=None):
         raise dos.DosRecordError("this character will not encode")
 
-    monkeypatch.setattr(dos, "write", boom)
+    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # stage 8 the shim holds its own binding for every re-exported
+    # name, so rebinding one there leaves the codec's own global --
+    # the one this code reads -- untouched.
+    monkeypatch.setattr(dos_codec, "write", boom)
     with pytest.raises(dos.DosRecordError):
         dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
     after = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
@@ -2239,7 +2251,11 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
     file whose zeroes nobody stands behind.
     """
     save0, save1 = _fixture_payloads()
-    monkeypatch.setattr(dos, "savgam_zeroes", lambda *a, **k: None)
+    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # stage 8 the shim holds its own binding for every re-exported
+    # name, so rebinding one there leaves the codec's own global --
+    # the one this code reads -- untouched.
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
     with pytest.raises(dos.DosRecordError) as e:
         dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
     assert "no source" in str(e.value)
@@ -2264,7 +2280,11 @@ def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
     keep.write_bytes(b"the party that was already here")
     before = sorted(p.name for p in out.iterdir())
 
-    monkeypatch.setattr(dos, "savgam_zeroes", lambda *a, **k: None)
+    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # stage 8 the shim holds its own binding for every re-exported
+    # name, so rebinding one there leaves the codec's own global --
+    # the one this code reads -- untouched.
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
     with pytest.raises(dos.DosRecordError):
         dos.new_dos_save(save0, save1, out, "A", _game_dir())
 

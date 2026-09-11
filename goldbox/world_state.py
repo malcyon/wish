@@ -135,7 +135,7 @@ def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosSaveShape"):
     same two contradictions: an area no row of this title names, and a
     save whose own indoors byte disagrees with its area's row.
     """
-    from . import dos as _dos
+    from . import dos_codec as _dos
 
     where, fresh = _dos._where_the_party_is(savgam, shape.title, shape)
     if fresh:
@@ -184,7 +184,7 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     C64 save this project has read represents a party already in the
     world, so `set_out` is always true.
     """
-    from . import dos as _dos
+    from . import dos_codec as _dos
 
     container = c64_save.container_for(game)
     base = _dos.SAVE0_BASE
@@ -227,7 +227,7 @@ def from_dos(savgam: bytes,
     `goldbox.amiga.por_state_from_dos` refuses nothing either -- for the
     same reason `from_c64`'s wrapper stopped, on 2026-09-07.
     """
-    from . import dos as _dos
+    from . import dos_codec as _dos
 
     shape = dos_savegame.save_shape_for(
         shape if shape is not None else len(savgam))
@@ -285,8 +285,8 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     DOS save)` -- holds 5 in that slot for the same area 26 this reads 0
     for.  So this takes the same substitution `_resolve_dos_place` does.
     """
-    from . import amiga as _amiga
-    from . import dos as _dos
+    from . import amiga_codec as _amiga
+    from . import dos_codec as _dos
     from . import games
 
     area = _amiga.por_word(savgam, dos_savegame.SCRIPT)

@@ -325,7 +325,7 @@ seen)`'s final snapshot had no per-character files in it.
 ### What creation itself measured
 
 CONFIRMED, one run, six of six records read back with
-`goldbox.dos.read_character` and matching the menu positions asked for.
+`goldbox.dos_codec.read_character` and matching the menu positions asked for.
 
 **The class list is not the same for two races.** Only human and half-elf are
 offered CLERIC:

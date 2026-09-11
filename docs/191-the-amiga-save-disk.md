@@ -49,7 +49,7 @@ Three things follow, and the third is the one that makes a save disk possible.
 
 ## 2. What is on one
 
-`goldbox.amiga.make_por_save_disk` formats it with `AmigaDisk.blank` and puts
+`goldbox.amiga_codec.make_por_save_disk` formats it with `AmigaDisk.blank` and puts
 these in the root. A six-character slot takes 54 blocks of the 1758 a floppy
 has, so nine slots would fit before anybody had to think about room.
 
@@ -121,7 +121,7 @@ blocks out of **our** bitmap, threaded ten new files and a `savgamC.dat` into
 | free blocks | 1704 | 1656 |
 | `AmigaDisk.verify()` | `[]` | `[]` |
 
-`' BC       '` is the array `goldbox.amiga.slot_list_bytes` writes -- `B` in
+`' BC       '` is the array `goldbox.amiga_codec.slot_list_bytes` writes -- `B` in
 byte 1, `C` in byte 2, byte 0 still a space because no `A` was ever on this
 disk. That is the same shape `#109 (A save slot written onto an Amiga disk is
 not offered by the game's picker)` measured on a game disk, on a disk where
@@ -297,7 +297,7 @@ the C64's `ECL1E`, is the attract-mode demo, which nothing sends a party to
 loads GEO12)`). Nothing anywhere on `POOLDATA` is the Amiga's copy of `ECL1E`:
 all 843 blocks of all 23 containers were unpacked and compared, and the closest
 match is 23%, which is the background resemblance of one ECL script to another.
-`goldbox.amiga.por_area_script` refuses that area by name, so an area 30 source
+`goldbox.amiga_codec.por_area_script` refuses that area by name, so an area 30 source
 is an error rather than a party arriving somewhere else.
 
 **Which disks the dialog needs depends on what it writes.** A `POOLSAVE` save

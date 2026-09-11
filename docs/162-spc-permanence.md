@@ -11,7 +11,7 @@ sixteen-bit little-endian duration at record bytes 1-2, and nothing else.
 Zero is never counted down and never removed. Anything else is counted down
 as the clock advances and the record is removed on the step that reaches it.**
 The id is not consulted, there is no table of permanent ids, and bytes 3-4
-are not read on that path. `goldbox.dos.to_neutral`'s reading of bytes 1-2 as
+are not read on that path. `goldbox.dos_codec.to_neutral`'s reading of bytes 1-2 as
 the permanence test is the engine's own.
 
 Grades follow `docs/50-experiments.md`'s scale. "The build" is the 1.3
@@ -65,7 +65,7 @@ five arguments land in the record as:
 | 1-2 | minutes | the duration, `u16le`; **0 = permanent** |
 | 3 | data | a per-effect value: `0xFF` for a racial bonus, `0x0C` for an item-granted one, the caster's level for a spell, the strength being replaced for a strength item |
 | 4 | flag | **a boolean the engine reads back** -- whether removing the node must also run the effect's handler (`coab`'s `callAffectTable`). Not payload |
-| 5-8 | -- | next, live on the heap, rebuilt on load (`goldbox/dos.py`'s `EFFECT_NEXT_NULL`) |
+| 5-8 | -- | next, live on the heap, rebuilt on load (`goldbox/dos_codec.py`'s `EFFECT_NEXT_NULL`) |
 
 `INNATE_PAYLOAD`'s `00 00 FF 00` is therefore duration 0, data `0xFF`,
 flag 0, which is what character creation passes for every racial id.
@@ -162,13 +162,13 @@ including an editor's Detect Magic.
 
 ## What the conversion should do with this
 
-Reported for `goldbox/neutral.py` and `goldbox.dos.to_neutral`, which
+Reported for `goldbox/neutral.py` and `goldbox.dos_codec.to_neutral`, which
 another agent holds tonight.
 
 1. **Duration zero is the discriminator, on both ports.** The carrying half
    of `#232 (An item-granted effect is dropped on the way through the neutral record, with no report)` can be built as specified: a neutral field holding the whole
    record for every non-innate `.SPC` node at duration zero, written back by
-   `goldbox.dos.write` and `goldbox.amiga.write_por`. A nonzero duration is a
+   `goldbox.dos_codec.write` and `goldbox.amiga_codec.write_por`. A nonzero duration is a
    running spell and stays unreported under Donald's 2026-08-27 ruling.
 2. **Carry all four payload bytes, and name byte 4 a flag.** A strength
    item's node is `26 00 00 vv 01`; writing it back with byte 4 zero would

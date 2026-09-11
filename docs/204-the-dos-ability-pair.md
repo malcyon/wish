@@ -143,7 +143,7 @@ identical strength bytes and only the percentile crossed between them, and the
 
 ## What it means for the conversion
 
-`goldbox.dos._ability_pair` sends the pair's **first** byte to the neutral
+`goldbox.dos_codec._ability_pair` sends the pair's **first** byte to the neutral
 ability, which `goldbox.c64_codec.write` puts at C64 `0x014` -- the score in
 force. For the six abilities that is inverted, and
 `#404 (A converted Curse or Silver Blades character keeps a temporary strength
@@ -158,7 +158,7 @@ Strength, a running `Strength` spell or a shadow's drain: he arrives on the
 other port with the number he should not have kept, and the next thing that
 recomputes his score makes it permanent.
 
-`goldbox/amiga.py`'s later-title reader copies the same `(first, second)`
+`goldbox/amiga_codec.py`'s later-title reader copies the same `(first, second)`
 pairing, so it is presumably crossed in the same way -- an inference from the
 DOS engine rather than a measurement of the Amiga one, and it needs its own
 evidence.

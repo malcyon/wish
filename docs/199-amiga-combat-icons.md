@@ -37,7 +37,7 @@ block `icon_head` into buffer `combat_figure + 0x34`, and the block loader adds
 [`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.md) read out
 of `GAME.OVR`, instruction for instruction.
 
-**It reads exactly the offsets `goldbox/amiga.py`'s shift map predicts**, in
+**It reads exactly the offsets `goldbox/amiga_codec.py`'s shift map predicts**, in
 both titles, which is an independent confirmation of five fields of that map:
 
 | field | DOS Curse | Amiga Curse | DOS Silver Blades | Amiga Silver Blades |
@@ -60,7 +60,7 @@ table, then for each of the six parts writes the low nibble of the record's
 colour byte into the entry the part's main colour uses and the high nibble
 into the entry its highlight uses, and applies that table to all four loaded
 buffers. `g1BB9` and `g1F76` both hold `01 02 03 04 06 07` -- body, arm, leg,
-hair, shield, weapon -- which is `goldbox.dos.DOS_PAIR_CLASSES`. The nibbles a
+hair, shield, weapon -- which is `goldbox.dos_codec.DOS_PAIR_CLASSES`. The nibbles a
 record stores are therefore the same nibbles DOS stores, and are translated to
 an Amiga palette entry only at draw time.
 
@@ -159,11 +159,11 @@ the three DOS titles.
 
 **And to the C64 through the machinery that already exists.**
 `goldbox.iconparts.IconParts.dos_icon(head, body, size, colours)` composes a
-C64 figure from exactly these four values and is what `goldbox.dos._icon_for`
+C64 figure from exactly these four values and is what `goldbox.dos_codec._icon_for`
 already calls; the Amiga's numbers are its arguments unchanged.
 
-So the four names on `goldbox.amiga.LATER_DROPPED` are three transformations
-and one silent constant, mirroring what `goldbox/dos.py` already does with the
+So the four names on `goldbox.amiga_codec.LATER_DROPPED` are three transformations
+and one silent constant, mirroring what `goldbox/dos_codec.py` already does with the
 same fields:
 
 | field | what it should do | where DOS's own reader puts it |
@@ -185,7 +185,7 @@ All 21 Amiga Curse and Silver Blades records, read with
 `tools/amigaicons.py --census`: `icon_head` 0-9, `icon_body` 0-31,
 `icon_dimension` 1 in 21 of 21, `size` 1 or 2, and **every `(head, body,
 size)` triple names four blocks the libraries actually hold**. Twelve of the
-21 carry `91 A2 B3 C4 E6 F7`, `goldbox.dos`'s own DOS default -- the eleven
+21 carry `91 A2 B3 C4 E6 F7`, `goldbox.dos_codec`'s own DOS default -- the eleven
 `.guy` pregens contribute three of them and Silver Blades' whole party the
 other six. (`#396 (Whether an Amiga Curse or Silver Blades record's
 combat-icon fields share DOS's own numbering is unmeasured)`'s own body says

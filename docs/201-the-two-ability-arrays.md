@@ -169,7 +169,7 @@ for it: a strength drain must not lower a permanent level limit.
 
 ## What it means for a conversion
 
-The C64 pair maps onto the DOS pair, and `goldbox.dos`'s reader already puts
+The C64 pair maps onto the DOS pair, and `goldbox.dos_codec`'s reader already puts
 the first DOS byte into the neutral ability and the second into
 `abilities_second`, which `goldbox.c64_codec` writes to `0x014` and `0x065`.
 What this settles is the **meaning**, so three things follow.

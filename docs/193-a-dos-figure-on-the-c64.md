@@ -291,7 +291,7 @@ wearing the figure this whole ticket was filed about.
 The party is `WISH-SPEC-por-party-l1-intown` with six figures staged into it:
 an archer, a sword and shield, a robed staff, a raised axe, a crossbow and a
 flail, three of them repainted. Converted with `tools/dosfigures.py`, which
-hands `goldbox.dos.new_save` the option tables themselves and lets the shipped
+hands `goldbox.dos_codec.new_save` the option tables themselves and lets the shipped
 conversion compose the six icons; it then composes them a second time and
 compares, so the run is a check on `convert_save` rather than on the tool.
 Until the wiring landed on 2026-09-05 the tool wrote the six icons over the

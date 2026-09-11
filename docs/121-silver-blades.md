@@ -395,7 +395,7 @@ refuses this title for; the pairs are in `work/issue344/` for whoever reads
 **The racial limits are a third independent source for the race table.** The
 routine at `$178A` refuses to look one up for race 6 or above — the human rule —
 and the five rows below it are AD&D's elf, half-elf, dwarf, gnome and halfling
-in exactly the order `goldbox/c64_port.py:RACES_SILVER_BLADES` already had from the
+in exactly the order `goldbox/titles.py:RACES_SILVER_BLADES` already had from the
 label pool and from the import's own arithmetic.
 
 **And the item type table decodes.** 42 of 43 of Silver Blades' own named items

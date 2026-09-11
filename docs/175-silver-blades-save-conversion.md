@@ -58,7 +58,7 @@ wallmap -- is named by seventeen of the twenty-two scripts, 33 reads and 63
 writes, and `$4CFE` and `$4CFF` by eight and one.
 
 So the window is `+$120`-`+$1FF`, 224 bytes, and it is per title:
-`Container.quest_flags`. **CONFIRMED in the running game.** With the old
+`C64Container.quest_flags`. **CONFIRMED in the running game.** With the old
 window the conversion wrote zero at `+$1FD` and the C64 engine's own
 `ENCAMP > SAVE` put `$FF` back there; all three driven DOS Silver Blades
 containers hold 255 at that word and the shipped one holds 0.
@@ -86,11 +86,11 @@ five-character party stored a table holding **one** entry, naming a character
 who had just been taken out of that party -- `docs/216-the-c64-name-table.md`
 has the three runs.
 
-So `Container.names_in_marching_order` describes two disks rather than an
+So `C64Container.names_in_marching_order` describes two disks rather than an
 engine, and the experiment this section used to propose -- reorder a party,
 convert it and read the panel -- cannot settle it, because the panel is drawn
 from the records and the game never reads the stored order at all.
-`goldbox/dos.py` keeps writing the table for the reason the identity byte is
+`goldbox/dos_codec.py` keeps writing the table for the reason the identity byte is
 written: the bytes are there and Wish's own roster list is a reader outside
 the game.
 
@@ -113,7 +113,7 @@ are named in capitals and drew correctly.
 **SSI did the same thing themselves**: the C64 `SAVEDBASH` holds
 `GUY DE VALOIS` for the character DOS calls `Guy de Valois `, and that is the
 only field of the six shipped characters where the two ports' records differ
-for a reason that is not a separate roll. So `goldbox.dos.c64_name` folds the
+for a reason that is not a separate roll. So `goldbox.dos_codec.c64_name` folds the
 name to capitals and cuts its trailing blanks, and the second run of the same
 disk drew `GUY DE VALOIS` in the panel.
 
@@ -133,16 +133,16 @@ and PAINE's C64 twin reads `$80` with `level_ranger` 8.
 `class_bits` used to be DIRECT, copied byte for byte, so PAINE arrived on the
 C64 with `class_bits` `$40` and `level_ranger` 8 -- a paladin holding a
 ranger's levels, which is a combination no C64 save of either title holds.
-`goldbox.dos.neutral_class_bits` rereads **bit 6 only** from the level array
+`goldbox.dos_codec.neutral_class_bits` rereads **bit 6 only** from the level array
 and leaves every other bit as the record has it;
-`goldbox.dos.dos_class_bits` folds it back on the way out, so no DOS record's
-own byte moves through a round trip. `goldbox/amiga.py`'s `CLASS_BIT` had
+`goldbox.dos_codec.dos_class_bits` folds it back on the way out, so no DOS record's
+own byte moves through a round trip. `goldbox/amiga_codec.py`'s `CLASS_BIT` had
 recorded the same fact from the other side and the Amiga codec has always
 computed the mask rather than copying it.
 
 **Curse of the Azure Bonds had the same defect and it shipped**, because the
 party `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)` proved that conversion on had two paladins and no ranger. The fix
-is in `goldbox/dos.py` and covers both titles.
+is in `goldbox/dos_codec.py` and covers both titles.
 
 ### Items are 67 bytes, and the four extra ones hold nothing
 

@@ -250,8 +250,8 @@ three times, one of the flasks readied. Every weight and price matches what the
 shop printed on its own screen, and the readied bit is `$80` at `+6` of exactly
 the one record whose row the game drew as `YES`.
 
-**But there are eight item pages, not twelve.** `goldbox/c64_port.py` describes
-twelve `$100` character slots and twelve `$100` item pages; `SaveGame0` reads
+**But there are eight item pages, not twelve.** Pool of Radiance's container row
+describes twelve `$100` character slots and twelve `$100` item pages; `SaveGame0` reads
 **eight** slots, and payload `$1800`-`$1BFF` -- pages 8 to 11 -- holds two-bit
 repeating patterns (`55 55 75 55`, `aa aa aa aa`, a run of `0e 0c 09` at
 `$1BC0`) that are all zero in a save made before the party walked anywhere.

@@ -246,7 +246,7 @@ after the restore is what closes it.
 **A copy-back reverted an agent's fix, 2026-09-02.** A copy-back is a `git
 checkout` with a different name, and the copy is a snapshot of the file at the
 moment it was taken -- so putting it back deletes every edit anybody made in
-between. The main window had given `goldbox/dos.py` to an agent working
+between. The main window had given `goldbox/dos_codec.py` to an agent working
 `#191 (A converted dwarf loses his constitution bonus to saving throws)`, then
 edited the same file itself for `#176 (A player importing a Curse of the Azure
 Bonds save is shown an issue number)`, and its copy-back restore silently

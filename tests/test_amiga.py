@@ -2981,7 +2981,10 @@ def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
     all, since class_bits dropped out of dos.DIRECT)` named as the hole
     nothing else closes.
     """
-    from goldbox import dos as _dos
+    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # stage 8 the shim holds its own binding for every re-exported
+    # name, and `amiga_codec` reads the codec's.
+    from goldbox import dos_codec as _dos
     monkeypatch.setattr(_dos, "DIRECT", _dos.DIRECT + (("spellbook",
                                                          "spellbook"),))
     char = _ability_record(amiga.CURSE_DELTAS, "strength", 0x12, 0x12)

@@ -53,7 +53,7 @@ work that was already finished, so §0 comes first.
 | A site is hidden by painting plain terrain over its square until its flag is set; four are known: `1A` (12,11) nomad camp, `1B` (11,8) lizardman keep, (6,15) kobold caves, (7,23) a site that was cut | CONFIRMED | `tests/test_p3.py` `PAINTED`, `docs/90` |
 | The full site list (46) and the impassable-terrain tables, including `ECL1A`'s swap when `$4AB3` reaches 254, are in the scripts' own bytecode; their offsets went with `work/` (`#136 (Thirty-two cited write-ups are gone, because the knowledge base pointed into gitignored scratch)`) | UNKNOWN, and closed research | `docs/115-review-the-scripts.md`; `goldbox/world.py`'s docstring |
 | `$4A9E` is 0 on the grid and 255 in a random cave, which is `GEO19`/`1A`/`1B` and draws with the existing code | CONFIRMED | `docs/113` |
-| Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/c64_port.py` `travel_grid`, `docs/121-silver-blades.md` |
+| Only Pool of Radiance has a travel grid: Curse and Silver Blades ship no `SQRDATA` or `SQRPACI` | CONFIRMED | `goldbox/titles.py` `Title.travel_grid`, `docs/121-silver-blades.md` |
 | Two candidate looks, both Donald's, 2026-09-04: the game's own tiles read off the player's disk at run time, or game-icons.net icons (`mountain-cave`, `forest`, `grass`, Delapouite). An older ruling (`docs/137` §3) said not to reuse the game's graphics; the later comment reopened it | a decision, not a fact | the 2026-09-04 14:48 comment on `#11 (Draw the wilderness on the automapper)` |
 
 ## 2. What has to be measured first

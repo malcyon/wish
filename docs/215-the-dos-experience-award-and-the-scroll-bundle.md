@@ -152,7 +152,7 @@ the routine that recomputes it (`SECRET 0x3A2C7`) walks `next` at `0x02A` and
 never `0x03F`.
 
 So a file holding a bundle has more 67-byte records than `item_count` says,
-and `goldbox.dos.read_character`, which takes the first `item_count` of them,
+and `goldbox.dos_codec.read_character`, which takes the first `item_count` of them,
 would read the bundle's spell pages as items and lose that many real items off
 the end of the pack. That is
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it
@@ -163,7 +163,7 @@ engine's loop and `slice_naively()` is the other one.
 `tools/dosscrollbundle.py census` walked **140 item files** across the
 specimen tree and the archives: **0 scroll bundles**, 0 files whose record
 count disagrees with `item_count`, and 18 with an `item_count` of zero, which
-is an export beside a stale item file and is what `goldbox.dos` documents. The
+is an export beside a stale item file and is what `goldbox.dos_codec` documents. The
 defect is reachable in the game and unexercised by the corpus, which is why
 `#432 (A joined scroll in a DOS Silver Blades save shifts everything after it out of the character's pack)` carries a recipe rather than a specimen.
 

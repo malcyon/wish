@@ -1,6 +1,6 @@
 # A converted party in Amiga Curse and Amiga Silver Blades
 
-`goldbox.amiga.write_later` turns a neutral Curse or Silver Blades character
+`goldbox.amiga_codec.write_later` turns a neutral Curse or Silver Blades character
 into an Amiga block. Until 2026-09-07 every check on it was this project's own
 reader re-parsing this project's own writer's bytes — 59 blocks round-tripping
 and 150 field comparisons against the Amiga's own twins — and neither engine had
@@ -112,8 +112,8 @@ were read off the party panel instead.
 
 Each party was written back by the game and compared with what we wrote, masked
 by the lists the writers **declare** —
-`goldbox.amiga.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
-`LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos`'s six, mapped through the
+`goldbox.amiga_codec.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
+`LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos_codec`'s six, mapped through the
 title's shift map — and never by whatever happened to differ.
 `tools/amigalaterproof.py diff` is the comparison.
 

@@ -135,7 +135,7 @@ Curse's trainer is `GAME.OVR:0x24CEE`.
 
 ## What it costs a conversion
 
-`goldbox.dos.write` writes the old class's level into **both** arrays and a
+`goldbox.dos_codec.write` writes the old class's level into **both** arrays and a
 combined class code, because the neutral record it is handed carries the C64's
 shape faithfully and nothing transposes it.
 
@@ -164,14 +164,14 @@ on gives him about half the hit points he should get, because the divide counts
 two live classes where the game counts one.
 
 The fix, which `#408 (What does a DOS record hold once a dual-classed character regains his old class, since our conversion writes his old level into both arrays) (What does a DOS record hold once a dual-classed character regains his old class, since our conversion writes his old level into both arrays)` carries and this page does not implement: in
-`goldbox.dos.write`, zero the regained class's slot in `class_levels` — the
+`goldbox.dos_codec.write`, zero the regained class's slot in `class_levels` — the
 mirror of the rule `goldbox.c64_codec.write` already applies going the other
 way — and write `char_class` as the code for the class the character is now,
 alone. `class_bits` needs no change; the engine's own derive produces the same
 `$09` either way.
 
 **One more thing in our own code implements the regained rule for every
-record.** `goldbox.dos.class_bits_for` ORs the class bit for every non-zero
+record.** `goldbox.dos_codec.class_bits_for` ORs the class bit for every non-zero
 entry in **both** arrays with no comparison against `level`, so it disagrees
 with the stored byte for five characters here -- DEMELTINA `$42` against `$02`,
 MATHEW-before-the-training and Silver Blades' PAINE `$41` against `$01`,

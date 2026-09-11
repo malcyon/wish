@@ -22,10 +22,10 @@ ran, has one exemption and is the last section here.
 Every grade above is CONFIRMED except the last, and the difference is what
 the displacement is known to be rather than what the code does. Amiga Pools
 of Darkness's `0x0C7` is the offset the one-`0x0F`-plus-four-`0x10`
-signature lands on, and no shape in `goldbox/amiga.py` covers that title's
+signature lands on, and no shape in `goldbox/amiga_codec.py` covers that title's
 record, so calling it `item_count` is an inference from the signature and
 from the routine's shape. The other seven compares sit at exactly the
-`item_count` offset `goldbox/dos_layout.py` or `goldbox/amiga.py` already
+`item_count` offset `goldbox/dos_layout.py` or `goldbox/amiga_codec.py` already
 gives that title.
 
 The C64 needs no such routine: its record **has** sixteen item slots of
@@ -97,7 +97,7 @@ Three things about it:
 * **The compare displacement is `item_count`'s offset for that title**:
   `0x0C7`, `0x14C`, `0x160`, `0x1A6` on DOS, exactly
   `goldbox/dos_layout.py`'s; `0x0C9`, `0x150`, `0x0FC`, `0x0C7` on the Amiga,
-  the first three exactly `goldbox/amiga.py`'s shift maps. Amiga Pools of
+  the first three exactly `goldbox/amiga_codec.py`'s shift maps. Amiga Pools of
   Darkness's `0x0C7` is the exception graded above.
 * **One flag, two tests.** The same boolean carries "sixteen already" and
   "`encumbrance + weight x quantity` above carrying capacity plus 1500", so

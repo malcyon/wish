@@ -22,7 +22,7 @@ import pathlib
 import pytest
 from gamedata import specimen_root
 
-from goldbox import areas, dos, dos_layout
+from goldbox import areas, dos, dos_codec, dos_layout
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
@@ -336,7 +336,11 @@ def test_the_gate_can_fail_for_the_later_titles_too(shape, tmp_path,
     """With the zero account taken away `new_dos_save` refuses rather than
     handing back a file whose zeroes nobody stands behind."""
     game, save0, save1 = _payloads(shape)
-    monkeypatch.setattr(dos, "savgam_zeroes", lambda *a, **k: None)
+    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # stage 8 the shim holds its own binding for every re-exported
+    # name, so rebinding one there leaves the codec's own global --
+    # the one this code reads -- untouched.
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
     with pytest.raises(dos.DosRecordError) as e:
         dos.new_dos_save(save0, save1, tmp_path, "D",
                          _game_dir(SOURCES[shape][1]), title=game)

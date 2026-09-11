@@ -185,7 +185,7 @@ The specification `#258 (The C64 side of 0x0AB is unnamed, so the conversion dro
   identity pair) and `0x0E3` (the strength flag), leaving `0x0E4`-`0x0E5`
   in `region_0e3` as unattributed.
 * **C64 to DOS:** `0x0AB` from `0x0E6` when the source is a Pool of Radiance
-  record, and `goldbox.dos.identity_byte`'s digest for Curse and Silver
+  record, and `goldbox.dos_codec.identity_byte`'s digest for Curse and Silver
   Blades, whose GEN never writes the pair (`00 00` in every party of theirs).
   `#216 (Every converted DOS character carries the same identity byte at
   0x0AB)` asked for exactly this if the pair turned out to be the same field:
@@ -208,10 +208,10 @@ nothing about it: the "nowhere on the C64 to put it" drop line this file
 previously specified for the other two titles is gone.
 
 **This is the write direction alone, and the round trip is not yet
-finished.** `read` still asks `RecordShape.identity_pair` -- False for Curse
+finished.** `read` still asks `C64Deltas.identity_pair` -- False for Curse
 and Silver Blades -- before trusting a stored `0x0E6` as the pair GEN drew, so
 a Curse or Silver Blades character converted to the C64 and back to DOS today
-still gets `goldbox.dos.identity_byte`'s digest, the same as before this
+still gets `goldbox.dos_codec.identity_byte`'s digest, the same as before this
 change. What this change buys is a home for the byte on the C64 side and the
 gone drop line; teaching `read` to trust `0x0E6` for these two titles once it
 is *our own* writer's value there, and telling that apart from a shipped

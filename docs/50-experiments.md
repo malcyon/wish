@@ -5102,7 +5102,7 @@ too is 648/648 the cache edit is exonerated, and walking the party within sight
 of (12,11) says whether the player is actually shown the camp.
 
 **What this leaves for the converter.** The C64 side is closed: the refusal in
-`goldbox.dos.apply_file_cache` for areas 25–27 can be replaced by the recipe above
+`goldbox.dos_codec.apply_file_cache` for areas 25–27 can be replaced by the recipe above
 (slot 4 = the `SQRDATA` number, slot 8 = the id, `$49C5` = the `SQRDATA`
 number, `$49E6` = 0, disk from `goldbox/areas.py`, position into `$49C3`/`$49C4`).
 The **DOS side is not**: none of the three DOS specimen saves is outdoors, so
@@ -5334,9 +5334,9 @@ then saves are font-shaped heap, `quantity` `0xFE`, which is the `254` on the
 sheet. Settling it would need the overlay disassembled, and nothing turns on
 it.
 
-**The fix**, `goldbox.dos.write_dos_save`: write the `.ITM` only when the
+**The fix**, `goldbox.dos_codec.write_dos_save`: write the `.ITM` only when the
 character carries something, and remove a stale one, the way the stale `.SPC`
-already was (`goldbox.dos.ITM_OMITTED_WHEN_EMPTY`). Verified by conversion,
+already was (`goldbox.dos_codec.ITM_OMITTED_WHEN_EMPTY`). Verified by conversion,
 not by hand-edit: the fixture converted by the fixed writer loads, views
 clean and resaves without inventing anything (`work/p62/out-fixed/`).
 
@@ -5964,7 +5964,7 @@ item count and not a mystery. The falsifiable part: the 514-byte file must hold
 5 at `0x08` **and** a non-zero longword at `0x04`, and nobody has re-read the
 files to check.
 
-Nothing about `goldbox.amiga.PodWriter` moves: it leaves both counts zero, so
+Nothing about `goldbox.amiga_codec.PodWriter` moves: it leaves both counts zero, so
 PoD reads 404 bytes and stops, and the 80 bytes after them are padding rather
 than a length the game wants.
 
@@ -6610,7 +6610,7 @@ set to slot 3, level 5 and nothing else changed.
 
 ## Two same-named characters and one byte: `unnamed_0ab` (#216 (Every converted DOS character carries the same identity byte at 0x0AB))
 
-`goldbox.dos.write` used to leave DOS `0x0AB` zero in every record it made,
+`goldbox.dos_codec.write` used to leave DOS `0x0AB` zero in every record it made,
 on the grounds that the byte was unattributed and the engine carried our zero
 through a resave unread (#69 (No WRITE_UNSOURCED zero has been tested during combat)). The question `#216 (Every converted DOS
 character carries the same identity byte at 0x0AB)` asked was whether that
@@ -6661,7 +6661,7 @@ Three details the read added:
 
 ### The measurement, one byte apart
 
-`tools/dosaddchar.py`. Two `.CHA` files built by `goldbox.dos.write` from two
+`tools/dosaddchar.py`. Two `.CHA` files built by `goldbox.dos_codec.write` from two
 **different** shipped records, both renamed `DUPLICO` through the neutral
 character, offered to an **empty** party so capacity cannot be the cause.
 
@@ -6689,7 +6689,7 @@ highlight within the page, `N`/`P` and `PgDn`/`PgUp` turn the page, `E` and
 ### The fix, and why it is a digest and not a draw
 
 `unnamed_0ab` moves out of `WRITE_UNSOURCED` into a new one-entry
-`WRITE_DERIVED`, written by `goldbox.dos.identity_byte` as a one-byte
+`WRITE_DERIVED`, written by `goldbox.dos_codec.identity_byte` as a one-byte
 `blake2b` of the other 284 bytes of the finished record. Not `random`, because
 every acceptance run this project has — `tools/dosnewsave.py`'s resave diff,
 the round trip in `tests/test_doswriter.py` — converts twice and compares, and
@@ -6798,7 +6798,7 @@ raised score reaches.
 
 Three things had to be told apart, and only the running machine could do it.
 
-`goldbox.dos.to_c64_record` copies DOS's *own* THAC0 and damage bonus into the
+`goldbox.dos_codec.to_c64_record` copies DOS's *own* THAC0 and damage bonus into the
 roster block — `0x10E` and roster `+0x17` — and those are right, because DOS
 did the same arithmetic on its side. The C64's `VIEW CHARACTER` draws that
 block verbatim. So the sheet after an import is correct **whatever `0x0E3`
@@ -6837,7 +6837,7 @@ byte, +2 to hit and +3 damage.
 
 **Run 4 (`work/issue277/run4/`) repeats it against the fixed writer**, with a
 fifth copy called `ASWRITTEN` whose `0x0E3` the tool never touches after
-`goldbox.dos.to_c64_record` returns and whose roster went in spoiled to 50 /
+`goldbox.dos_codec.to_c64_record` returns and whose roster went in spoiled to 50 /
 +7. It came out of the same ambush at **18 / +3**, beside `ZEROFLAG` at 20 /
 +0. The gate count was 33 again, at the same step, so the reading is
 reproduced rather than seen once. Combat's own `VIEW` drew the sheet
@@ -6854,7 +6854,7 @@ and the third is the one that decides it:
   reads 1, and every DOS record anybody has — 24 shipped and the six this
   project rolled — reads 1 at DOS `0x0AA`;
 * **the DOS writer already does the same thing in the other direction.**
-  `goldbox.dos`'s `WRITE_DEFAULTS` has carried `("strength_bonus", b"\x01")`
+  `goldbox.dos_codec`'s `WRITE_DEFAULTS` has carried `("strength_bonus", b"\x01")`
   since long before this, and that half is proven in the running DOS game.
   A constant on one side and a copied field on the other would have been two
   answers to one question.
@@ -6864,7 +6864,7 @@ record layout — and this writer never builds one.
 
 ### What is still open
 
-`goldbox/dos.py`'s `DROPPED` still lists `strength_bonus` with the reason *"a
+`goldbox/dos_codec.py`'s `DROPPED` still lists `strength_bonus` with the reason *"a
 boolean on DOS; the C64's aligned byte is a strength index and is computed
 instead"*. The first half is right and the second describes `0x0E2`, not the
 field's actual C64 home at `0x0E3`. The entry stays — no neutral field carries
@@ -7095,7 +7095,7 @@ are on the five disks this project itself converted from DOS.
 and hold the same six names, classes and levels as DOS slots A and B in the
 player's game folder -- BRUTUS, MAGNUS, ROLAND, GILES, ASTRID, SILAS -- with
 `thac0_base` equal character for character. They are conversions, and
-`goldbox/dos.py`'s `DIRECT` carries `("thac0_base", "thac0_base")`, so the DOS
+`goldbox/dos_codec.py`'s `DIRECT` carries `("thac0_base", "thac0_base")`, so the DOS
 number came across verbatim. `#366 (A converted magic-user or thief arrives
 with the other port's THAC0, because the two ports ship different tables and
 the conversion copies the byte)` is the defect.

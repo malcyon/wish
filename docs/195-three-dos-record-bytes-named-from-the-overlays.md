@@ -3,7 +3,7 @@
 Four bytes of the DOS character record that this project had wrong, right for
 the wrong reason, or unattributed, settled by reading the game's own
 instructions rather than by counting saves. `tools/dosbyteimm.py` is the scan;
-`goldbox/dos_layout.py` and `goldbox/dos.py` carry the notes; the issues are
+`goldbox/dos_layout.py` and `goldbox/dos_codec.py` carry the notes; the issues are
 `#305 (Two DOS record bytes have one name from Pool of Radiance and another
 from the Curse decompilation)`,
 `#304 (field_83_87 is written as a constant that the characters we rolled
@@ -77,9 +77,9 @@ eighth hold 6 and 7. Eight is the number of combat-icon slots and the number of
 combatants a party can have -- six player characters plus two companions.
 
 **The identifier in `goldbox/dos_layout.py` is still `party_order` and is a
-misnomer.** `goldbox.dos.DIRECT`'s reader loop requires the DOS field name and
+misnomer.** `goldbox.dos_codec.DIRECT`'s reader loop requires the DOS field name and
 the neutral field name to be the same string, so renaming the DOS field means
-renaming the neutral one -- which `goldbox/amiga.py`, `goldbox/c64_codec.py`,
+renaming the neutral one -- which `goldbox/amiga_codec.py`, `goldbox/c64_codec.py`,
 `goldbox/yaml_io.py` and the window's own `field_party_order` all read. The
 label is corrected to "Combat icon slot" and the note says the rest. What the
 conversion writes is right either way: the C64 keeps its own 0-7 slot index at
@@ -275,7 +275,7 @@ non-zero value -- 0 in all five C64 companions and in all 297 records.
 
 ## What the conversion does with them, and what it still cannot
 
-`goldbox.dos.WRITE_CONSTANTS` writes `00 00 01 00 00` into the five-byte run
+`goldbox.dos_codec.WRITE_CONSTANTS` writes `00 00 01 00 00` into the five-byte run
 (`00 01 00 00` in the four-byte titles). **1 is a choice, and the note now says
 so**: the byte is inert for a player character, 1 is the only value any engine
 writes, and 0 is the one value the split treats specially, so a converted
@@ -286,7 +286,7 @@ difference instead of converting it.
 
 **The neutral `npc` flag now has a DOS home that nobody has wired up**: bit 7
 of the control byte, in all four titles, against bit 7 of `0x0B8` on the C64
-(`goldbox/record.py`'s `is_npc`). `goldbox.dos.WRITE_DROPPED`'s reason -- "no
+(`goldbox/record.py`'s `is_npc`). `goldbox.dos_codec.WRITE_DROPPED`'s reason -- "no
 attributed DOS field holds it" -- is wrong as of this page.
 
 **And the value is settled too**, by the section above: the two ports keep the
@@ -302,7 +302,7 @@ each side of the conversion has to do:
   being counted. The trainer bit has its own DOS home in the share byte and
   the constant `1` already written there.
 * **DOS to C64.** The reverse, with the same rule. It drops today for a
-  second reason as well: `field_83_87` is on `goldbox.dos.CONSTANTS`, which is
+  second reason as well: `field_83_87` is on `goldbox.dos_codec.CONSTANTS`, which is
   silent, so a DOS companion imports as a player character with the flag lost
   and nothing said about it in the reader's own list. `goldbox/c64_codec.py`'s
   `DROPPED` does report it from the writer's side.
@@ -314,7 +314,7 @@ each side of the conversion has to do:
 
 Two things still block the wiring, and neither is a measurement:
 
-* splitting `field_83_87` into named bytes needs `goldbox/amiga.py`, which
+* splitting `field_83_87` into named bytes needs `goldbox/amiga_codec.py`, which
   names the whole run in its own drop table;
 * the C64 side drops the flag in the other direction too, in
   `goldbox/c64_codec.py`.

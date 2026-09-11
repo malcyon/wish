@@ -437,7 +437,7 @@ does not draw one for any character, including one the engine made itself.
 field -- is met here in its strongest form, established by reading the
 destination's own code and then watching it, rather than assumed.
 
-`goldbox/dos.py` already encodes this for the C64-to-DOS direction:
+`goldbox/dos_codec.py` already encodes this for the C64-to-DOS direction:
 `draws_portrait = shape is POOL_OF_RADIANCE`, with the comment that the pair
 is zero in all 32 Curse and all 44 Silver Blades records the project holds.
 The import direction has no such gate, so a Curse or Silver Blades import
@@ -449,7 +449,7 @@ should close on.
 
 ## Corrections this made to what was written down
 
-* **`goldbox/dos.py` cites the portrait routine as `LIBRARY $2C5C`.** It is
+* **`goldbox/dos_codec.py` cites the portrait routine as `LIBRARY $2C5C`.** It is
   `LIBRARY $48A4`. `$2C5C` is the file offset added to the PRG header's
   `$1000`, and `docs/40-memory-map.md` says in its first paragraph that a
   header on these disks is a family stamp rather than a load address. The

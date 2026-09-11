@@ -38,7 +38,7 @@ and a switch is a read of the race or class byte into `al` followed by
 | constant call sites | 18 | 28 of 51 | 20 |
 
 **By race**, every branch pushing `(id, 0, 0xFF, 0)` — duration zero and
-`goldbox.dos.INNATE_PAYLOAD` in bytes 1 to 4:
+`goldbox.dos_codec.INNATE_PAYLOAD` in bytes 1 to 4:
 
 | race | Pool of Radiance | Curse | Silver Blades |
 |---|---|---|---|
@@ -62,7 +62,7 @@ Radiance's id list)` is about:
 
 Pool of Radiance has no class switch at all, and never pushes 8, 105 or 134
 anywhere: it instantiates neither a paladin nor a ranger, which is why
-`goldbox.dos.INNATE_EFFECTS`' default set needs no class ids and why
+`goldbox.dos_codec.INNATE_EFFECTS`' default set needs no class ids and why
 `#388 (A converted paladin or ranger loses his innate effect on the way to
 DOS, because the writer filters through Pool of Radiance's id list)` was a
 later-titles defect.
@@ -185,7 +185,7 @@ saving it back changed, per character:
 | `CHRDAT?6` | 1: `effect_chain+2` |
 
 Both are heap addresses. The `.FX` files came back identical except for the
-four-byte far pointer the engine rebuilds, which `goldbox.dos.EFFECT_NEXT_NULL`
+four-byte far pointer the engine rebuilds, which `goldbox.dos_codec.EFFECT_NEXT_NULL`
 already records. **So the engine neither re-seeds nor strips an innate effect
 on a load and save**: FLORENTZ went in a cleric carrying 134 and came out a
 cleric carrying 134. CONFIRMED, six records. The C64 does the opposite —
@@ -235,7 +235,7 @@ Two candidates, and neither can be told from the other by reading these bytes:
   (`.claude/rules/testing.md`), so this cannot be excluded.
 
 SPECULATIVE either way. Nothing a player sees turns on it, and no conversion
-does either: `goldbox.dos`'s per-title sets only ever *add* ids, so a record
+does either: `goldbox.dos_codec`'s per-title sets only ever *add* ids, so a record
 carrying 134 is classified innate and converted whoever holds it.
 
 ## 5. What this changes
@@ -252,7 +252,7 @@ that party at all.
 **And one thing in the code, which an earlier version of this section said
 there was not.** The paladin row of §1's table is a *disagreement between the
 ports*, so a filter cannot fix it: a C64 record hands `dos.write` a 45 and the
-DOS `.SPC` file needs an 8. `goldbox.dos.C64_CLASS_TRAITS` is the translation,
+DOS `.SPC` file needs an 8. `goldbox.dos_codec.C64_CLASS_TRAITS` is the translation,
 one row per later title, applied only to a source whose port is the C64 and
 only to a character whose `class_bits` carry the paladin bit —
 `#481 (A C64 Curse paladin converted to DOS loses Protection from Evil for
@@ -281,13 +281,13 @@ shows calling the recompute), save, and read the ten trait slots at `0x0AD`.
 `#490 (A converted dwarf, gnome or halfling gets the wrong racial effect
 records in DOS, because the writer's table is Pool of Radiance's or the C64's
 rather than that title's own)` is the class ids' twin for §1's race table.
-`goldbox.dos.RACE_COMBAT_EFFECTS` was Pool of Radiance's and stood in for
+`goldbox.dos_codec.RACE_COMBAT_EFFECTS` was Pool of Radiance's and stood in for
 Curse of the Azure Bonds too, so a converted Curse dwarf or halfling arrived
 holding 90 -- an id Curse's own switch never pushes.
-`goldbox.dos.RACE_COMBAT_EFFECTS_SILVER_BLADES` was read off the C64's seed
+`goldbox.dos_codec.RACE_COMBAT_EFFECTS_SILVER_BLADES` was read off the C64's seed
 table rather than DOS's own switch, so it was short a 97 for the dwarf and
 the gnome and held the C64's 92 for the halfling instead of DOS's 97.
 
-`goldbox.dos.RACE_COMBAT_EFFECTS_CURSE` and the corrected
+`goldbox.dos_codec.RACE_COMBAT_EFFECTS_CURSE` and the corrected
 `RACE_COMBAT_EFFECTS_SILVER_BLADES` are §1's table, CONFIRMED rather than
 PROBABLE now that they come from the switch rather than from the C64's.

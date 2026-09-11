@@ -1724,7 +1724,13 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     import inspect
 
     from automap import actions
-    from goldbox import amiga, c64_codec, dos
+
+    # The two codecs by their own names rather than through the
+    # `goldbox/dos.py` and `goldbox/amiga.py` shims: `#470`'s stage 8 moved
+    # the code to `dos_codec.py` and `amiga_codec.py`, and
+    # `inspect.getsource` of a shim reads the shim, which carries no strings
+    # at all. `WAITING` is keyed on `module.__name__`, so both move together.
+    from goldbox import amiga_codec, c64_codec, dos_codec
 
     #: How many marked strings each module carries today, waiting on Donald.
     #: **This is a count of what he has to rule on, not a licence.** A new
@@ -1844,7 +1850,8 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # line for -- so, like the four that came off the day before, it stopped
     # being a string a player, or even a developer reading `report.dropped`,
     # can reach.
-    WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga": 1, "goldbox.dos": 6,
+    WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga_codec": 1,
+               "goldbox.dos_codec": 6,
                # 3 -> 2 on 2026-09-10: Donald approved the failure line for
                # a Fast Travel that cannot walk the party through a door
                # (`#493 (A Fast Travel that fails walking the party out
@@ -1853,7 +1860,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
                "automap.actions": 2}
 
     found: dict[str, list[str]] = {}
-    for module in (c64_codec, amiga, dos, actions):
+    for module in (c64_codec, amiga_codec, dos_codec, actions):
         source = inspect.getsource(module)
         found[module.__name__] = [
             f"{module.__name__}:{n}: {line.strip()}"

@@ -11,7 +11,7 @@ This is what `#301 (A DOS Curse save standing in area 0 is refused by the
 import, because no row of the area table names area 0)` and
 `#326 (A Pool of Radiance save made before the party began adventuring is
 refused, because the initialiser left $49E6 at 0 and New Phlan is indoors)`
-turned out to be, and since 2026-09-06 `goldbox/dos.py` converts such a
+turned out to be, and since 2026-09-06 `goldbox/dos_codec.py` converts such a
 save to the start of the story on the two titles whose start is measured.
 `docs/179-loading-a-curse-save.md` is the neighbouring document: how to get
 a Curse save disk into the running game at all.
@@ -106,9 +106,9 @@ where both can be taken.** The empty script buffer has a mechanism behind it
 what the import uses on Pool of Radiance and Curse. `$4FE1` needs no buffer,
 which matters because Silver Blades' 5469-byte container stages no script;
 Curse's `GAME.OVR:0x832F` stores `$FF` into it and three sites compare
-against `$FF` (`goldbox.dos.LATER_BEGUN_WORD`), while what Pool of
+against `$FF` (`goldbox.dos_codec.LATER_BEGUN_WORD`), while what Pool of
 Radiance's 255, 16 and 8 mean is unread, so for that title the word is a
-census result rather than a reading of the engine. `goldbox.dos.never_adventured`
+census result rather than a reading of the engine. `goldbox.dos_codec.never_adventured`
 takes the buffer where the shape has one and the word where it does not, and
 `tools/neveradventured.py --by rule` sweeps with exactly that.
 
@@ -143,7 +143,7 @@ live, and that is the first thing the game will want.
 **But a C64 save that *names* area 0 cannot be entered.**
 `tools/curseareazero.py --doctor --recipe` stamps the never-adventured header
 into a copy of an engine-written area-1 save disk, with exactly the cache
-`goldbox.dos.apply_file_cache` would write -- `$FF` in all twenty-five, then
+`goldbox.dos_codec.apply_file_cache` would write -- `$FF` in all twenty-five, then
 slot 2 the map, slot 8 the area and slot 11 `ANIMATE00`, each with bit 7 set.
 
 | disk | changed from the engine's own | `BEGIN ADVENTURING` |
@@ -197,15 +197,15 @@ nothing to lose yet -- and that refusing would leave somebody who saved
 straight after making their characters unable to move them at all.
 
 `goldbox/areas.py`'s `STARTS` says where each title's story begins, and
-`goldbox/dos.py` applies it:
+`goldbox/dos_codec.py` applies it:
 
 | title | `STARTS` | what a never-adventured save converts to |
 |---|---|---|
 | Pool of Radiance | `Start(0x00, Arrival(15, 1, 3))`, CONFIRMED from the seven containers, agreeing with `AREAS`' driven arrival for New Phlan | area 0, `GEO00`, side 3, `15,1` facing west, `$49E6` = 1 -- what the save already holds, except that `$49E6` is now written from the row instead of compared against the initialiser's 0 |
 | Curse of the Azure Bonds | `Start(0x01, Arrival(7, 13, 1))`, CONFIRMED in the running DOS game above | area 1, `GEO01`, side 2, `7,13` facing east, clock 00:00 |
-| Secret of the Silver Blades | **no row**, deliberately | refused with `goldbox.dos.NotSetOutError`, whose sentence is Donald's of 2026-09-06: *"This save has never been played yet. Wish does not yet support converting these saves."* |
+| Secret of the Silver Blades | **no row**, deliberately | refused with `goldbox.dos_codec.NotSetOutError`, whose sentence is Donald's of 2026-09-06: *"This save has never been played yet. Wish does not yet support converting these saves."* |
 
-The mechanics, in `goldbox/dos.py`:
+The mechanics, in `goldbox/dos_codec.py`:
 
 * `never_adventured(savgam, shape)` is the test, off the container and never
   off the area word;

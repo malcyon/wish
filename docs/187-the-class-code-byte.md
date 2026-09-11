@@ -25,7 +25,7 @@ bytes indexed by the class code and holding the bitmask that code stands for:
 02 00 08 40 80 01 04 00 0a 0b 82 03 06 09 0c 0d 05
 ```
 
-Read against `goldbox/c64_port.py`'s class bits for that title -- magic-user 1,
+Read against `goldbox/titles.py`'s class bits for that title -- magic-user 1,
 cleric 2, thief 4, fighter 8, paladin `0x40`, ranger `0x80` -- every entry
 places: index 0 is the cleric, 2 the fighter, 5 the magic-user, 6 the thief,
 8 the cleric/fighter, 13 the fighter/magic-user, 14 the fighter/thief. Two
@@ -101,7 +101,7 @@ code does not. One thing it had to get right first, and it was this project's
 mistake before it was a finding: **DOS numbers the paladin's and the ranger's
 bits differently from the C64**, so reading a stored DOS `class_bits` against
 the C64's table makes every DOS ranger in the corpus look like a
-disagreement. `goldbox.dos.neutral_class_bits` folds it, and the census calls
+disagreement. `goldbox.dos_codec.neutral_class_bits` folds it, and the census calls
 it.
 
 | corpus | records | disagree |
@@ -131,7 +131,7 @@ matches.
 ## What it costs a conversion
 
 **A C64 Curse party that has been trained arrives in DOS with the wrong class
-drawn on its sheet.** `char_class` is in `goldbox/dos.py`'s `WRITE_DIRECT`, so
+drawn on its sheet.** `char_class` is in `goldbox/dos_codec.py`'s `WRITE_DIRECT`, so
 the stale byte is copied straight across, and Curse's DOS `GAME.OVR` reads
 that offset in 47 places. Measured in the running game on 2026-09-05, six
 records converted out of `WISH-SPEC-curse-dual-classed` and loaded in DOS
@@ -151,7 +151,7 @@ wrong code back rather than repairing it.
 
 ## The fix, and why the mask rather than the level array
 
-`goldbox.dos.write` now checks the code against the record's own classes and
+`goldbox.dos_codec.write` now checks the code against the record's own classes and
 rewrites it when the two contradict each other. `char_class` stays in
 `WRITE_DIRECT` -- a straight copy is what it is in every record whose source
 kept it up to date, and the reader's `DIRECT` and the writer's table are
@@ -195,25 +195,25 @@ still reads the way it did.
 ## The reader repairs it too, so the neutral record is never stale
 
 The write-side fix above leaves one gap: the neutral record itself still
-carries the stale code, because the repair lived only in `goldbox.dos.write`.
+carries the stale code, because the repair lived only in `goldbox.dos_codec.write`.
 `goldbox/c64_codec.py`'s reader now makes the same repair on the way in,
 against the same rule, so nothing downstream of it -- `goldbox/yaml_io.py`'s
 `class_code` export, a C64-to-C64 round trip, and any future writer that is
-not `goldbox.dos.write` -- ever sees the stale number.
+not `goldbox.dos_codec.write` -- ever sees the stale number.
 
 **The rule lives once, in `goldbox/classcode.py`**, which both codecs import:
-`goldbox/c64_codec.py` cannot import `goldbox/dos.py` and `goldbox/dos.py`
+`goldbox/c64_codec.py` cannot import `goldbox/dos_codec.py` and `goldbox/dos_codec.py`
 imports `goldbox/c64_codec.py`, so the table and the mask-then-levels rule
 belong in the middle. `classcode.code_for` is the rule this page describes --
 mask first, the level array only for a dual-classed character -- and
 `classcode.repair` says what should replace a stored code that disagrees.
-`goldbox.dos.CLASS_CODE_TABLE`, `goldbox.dos.CLASS_CODE_FOR_BITS` and
+`goldbox.dos_codec.CLASS_CODE_TABLE`, `goldbox.dos_codec.CLASS_CODE_FOR_BITS` and
 `goldbox.yaml_io.CLASS_CODES` re-export the two tables, so nothing that
 already imported them by name had to change.
 
 `goldbox.c64_codec.read` sets `char_class` with `Provenance.COMPUTED` and an
 origin naming both numbers whenever the repair fires, exactly the way
-`goldbox.dos.write`'s report line does -- our own accounting, not a warning a
+`goldbox.dos_codec.write`'s report line does -- our own accounting, not a warning a
 player sees. `goldbox.yaml_io.entry_for` exports that repaired number as
 `class_code`, which means `import_into`'s "was this edited" check has to
 compare against what export actually wrote rather than the raw stored byte:

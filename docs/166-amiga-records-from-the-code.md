@@ -9,7 +9,7 @@ was holding open for specimens nobody has.
 Every offset here is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
 `tools/amiga68k.py`. `tools/amigaunpack.py` prints each map, and
-`tests/test_amiga.py` runs it against `goldbox/amiga.py`'s shapes, so the two
+`tests/test_amiga.py` runs it against `goldbox/amiga_codec.py`'s shapes, so the two
 cannot drift.
 
 ## What changed, and what it corrects
@@ -83,7 +83,7 @@ immediately, and none does.
 | — | `0x1AB` | 1 | | trailing pad; 422 + 5 = 427 is odd |
 
 `field_83_87` was refused as unplaceable before this. Placed, it reads
-`00 00 01 00 00` in all four played characters — **`goldbox/dos.py`'s DOS
+`00 00 01 00 00` in all four played characters — **`goldbox/dos_codec.py`'s DOS
 constant, byte for byte, in 24 of 24 DOS records** — and five zeros in all
 eleven pregens. That third byte is the "party flag at `0x0F8`" earlier work
 named without knowing what field it belonged to.
@@ -145,7 +145,7 @@ pins it so it is not smoothed back into the shift map.
 ## Silver Blades: the map, and the spellbook
 
 `tools/amigaunpack.py --shape secret-of-the-silver-blades --size 0x154 281a2 285b0`.
-The four shift steps `goldbox/amiga.py` already carried — 0, −102, −101,
+The four shift steps `goldbox/amiga_codec.py` already carried — 0, −102, −101,
 −100, −99 — all reproduce, and the three pads are located to the byte at
 `0x095`, `0x0C7` and `0x0FD`. `sex` and `alignment` are the single-byte
 copies of DOS `0x11F` and `0x120`, landing at `0x0BA` and `0x0BB`.

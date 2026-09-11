@@ -84,10 +84,10 @@ order is the order the character files stood in the directory at the last
 scan, and the ssb3 save above shows it need not have as many entries as the
 party has members.
 
-`goldbox.c64_save.Container.names_in_marching_order` therefore describes two
+`goldbox.c64_save.C64Container.names_in_marching_order` therefore describes two
 disks rather than an engine, and no experiment on the running game can settle
 what it claims, because the game never reads the stored order.
-`goldbox/dos.py` still fills the table when it converts a DOS party, which is
+`goldbox/dos_codec.py` still fills the table when it converts a DOS party, which is
 right for the same reason the identity byte is written: the bytes are there,
 they cost nothing, and a reader outside the game -- Wish's own roster list --
 has something sensible to show.

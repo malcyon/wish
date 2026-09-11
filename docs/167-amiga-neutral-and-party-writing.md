@@ -99,16 +99,16 @@ CONFIRMED as "read only in combat".
 
 ## What reaches the neutral record
 
-`goldbox.amiga.to_neutral` now takes an `AmigaCharacter` as well and hands it
+`goldbox.amiga_codec.to_neutral` now takes an `AmigaCharacter` as well and hands it
 to `to_neutral_later`, which reads the record through
 `goldbox/dos_layout.py`'s table **for that title**, at each field's own
-confidence grade. It does not go through `goldbox.dos.to_neutral` the way the
+confidence grade. It does not go through `goldbox.dos_codec.to_neutral` the way the
 Amiga Pool of Radiance reader does: that one raises `WrongTitleError` for
 anything but Pool of Radiance, because no other pair of ports has been measured
 against each other (`#53 (Read and write DOS saves for Curse, Silver Blades and
 Pools of Darkness)`).
 
-`goldbox.amiga.later_field_disposition` states what becomes of **every** field
+`goldbox.amiga_codec.later_field_disposition` states what becomes of **every** field
 of the title's DOS table, and `tests/test_amiga.py` fails if one is named
 nowhere. All 21 specimens on this machine read without an exception: the
 fifteen Curse records and the six Silver Blades ones.
@@ -132,7 +132,7 @@ Carried by a rule rather than a copy:
 ### What it cannot say, and it is a classification rather than a byte
 
 **Which effect records are innate and which an item granted.**
-`goldbox.dos.INNATE_EFFECTS` is Pool of Radiance's id space and must not be
+`goldbox.dos_codec.INNATE_EFFECTS` is Pool of Radiance's id space and must not be
 applied here: 107 is an elf in Curse where Silver Blades' PAINE carries 105 for
 a ranger, so the two later titles do not share one namespace even with each
 other. So everything at duration zero goes into `granted_effects` whole, graded
@@ -143,7 +143,7 @@ exactly the misfiling the warning is about.
 **What would settle it**: the routine each title runs when a character is
 created, which is where a racial effect is added. `/Curse`'s import of a Pool
 of Radiance `.spc` keeps exactly eighteen ids and that list is already in
-`goldbox/dos.py`; the equivalent for a Curse character created in Curse has not
+`goldbox/dos_codec.py`; the equivalent for a Curse character created in Curse has not
 been read.
 
 ### The two fields the read drops with a reason
@@ -156,7 +156,7 @@ see the table above. The byte after `level` was an unnamed gap until the same
 step named it `former_level`; `later_field_disposition` now accounts for it
 as one more field the array's permutation already covers, without this
 reader reading it a second time -- that is the DOS reader's own disagreement
-check, on `goldbox/dos.py`'s side of the pair.
+check, on `goldbox/dos_codec.py`'s side of the pair.
 
 * **`portrait_head` and `portrait_body`** — a position in the Amiga's own
   creation menu. `#57 (Convert the character portrait across ports)` read DOS's menu tables out of `START.EXE` and that is
@@ -165,7 +165,7 @@ check, on `goldbox/dos.py`'s side of the pair.
   no character of either port sets a byte of.
 
 The rest of the drop list is live heap state and combat icon art, and
-`goldbox.amiga.LATER_DROPPED` names each one.
+`goldbox.amiga_codec.LATER_DROPPED` names each one.
 
 ## Writing: what the format takes, and what nobody has watched it take
 
@@ -206,7 +206,7 @@ every node but the last, and zero on the last. The addresses step by 66 along
 an item chain and by 10 along an effect chain, which is what a heap of those
 node sizes looks like.
 
-`goldbox.amiga.AmigaCharacter.block_bytes` sets the three chain fields and
+`goldbox.amiga_codec.AmigaCharacter.block_bytes` sets the three chain fields and
 `item_count` to match what actually follows, and leaves a field whose truth
 already matches alone — so a block read out of a saved game and written back is
 byte for byte the block that came in.

@@ -258,7 +258,7 @@ writes the same byte — `docs/50-experiments.md`'s murder run watched
 ## What this does not touch
 
 Nothing in `goldbox/` reads `$6DD2` or `$6DD3`. They appear once each as prose
-in the named-word tables — `goldbox/dos.py` at file word `0x4FD2` and
-`goldbox/amiga.py` at the same — and no conversion, editor field or automap
+in the named-word tables — `goldbox/dos_codec.py` at file word `0x4FD2` and
+`goldbox/amiga_codec.py` at the same — and no conversion, editor field or automap
 reading depends on them. This is a finding about the game and there is nothing
 in Wish to change for it.
