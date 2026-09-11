@@ -255,5 +255,10 @@ gamedisks.local.toml
 .claude/skills/*
 !.claude/skills/caveman
 skills-lock.json
+# `.codex/agents/*.toml` (#506) is generated from `.claude/agents/*.md` and is
+# the project's, not one machine's; everything else Codex writes under
+# `.codex/` -- its own session and cache state -- is local.
+.codex/*
+!.codex/agents/
 # Written by hatch-vcs at build time; the tag is the source of truth.
 wish/_version.py

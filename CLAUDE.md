@@ -12,9 +12,11 @@ true of Claude Code and of nothing else, so `AGENTS.md` stays honest for both.
 file they cover**, so the routing table in `AGENTS.md` is mostly a formality
 here. It is not one for a reader that has no such mechanism.
 
-**A subagent inherits this file and `AGENTS.md`, and does *not* inherit
-`.claude/rules/`.** So a brief has to name the rule files its agent needs, and
-an agent should read the ones its brief names rather than assuming they arrived.
+**A subagent inherits this file, `AGENTS.md`, and the same six unscoped rule
+files, exactly as you do.** Observed from inside a running subagent on
+2026-09-10. What it does not get until it touches a matching file is the seven
+`paths:`-scoped ones -- so a brief only needs to name one of those, when the
+agent's work will not itself touch a file that loads it.
 
 ## Words to avoid
 

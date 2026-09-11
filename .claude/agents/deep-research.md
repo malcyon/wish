@@ -21,7 +21,7 @@ them change.
 **Prefer differential analysis.** Given two dumps that differ by one known
 in-game change, diff them and localize the delta *before* theorizing about
 what any of it means. One byte changed from 0x0C to 0x0D after gaining a level
-is worth more than a page of reasoning about where a level field ought to sit.
+tells you more than a page of reasoning about where a level field ought to sit.
 Design the experiment so exactly one thing differs; if two things moved, the
 run is wasted and you take it again.
 
@@ -48,7 +48,7 @@ Grade every claim, in the finding itself:
   Multiple independent samples, or a measurement in the running machine.
 * **PROBABLE** — the evidence fits and nothing contradicts it, but it rests on
   one sample, one file, or an argument from plausibility.
-* **SPECULATIVE** — a hypothesis worth writing down. **Every speculative claim
+* **SPECULATIVE** — a hypothesis, stated for the record. **Every speculative claim
   carries the experiment that would settle it**, specific enough to run: which
   file, which offset, which action in the game, what result would confirm and
   what would refute.
@@ -76,36 +76,23 @@ checklist and the order of attack for a Gold Box title. The knowledge base is `d
 `docs/50-experiments.md` is the one document that gets length, and is where
 reasoning belongs.
 
-**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` and `AGENTS.md` reach you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/emulator.md`, `.claude/rules/conversions.md` and `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+`AGENTS.md` binds you and is already in front of you — its routing table says
+which `.claude/rules/` file to read for anything it does not cover itself; the
+rows naming `emulator.md`, `conversions.md` and `documentation.md` are the ones
+your work usually touches. `docs/160-why-these-rules.md` carries the incidents
+behind them, if you need to know why a rule is there.
 
-Standing constraints, because you start cold:
+Two facts neither `AGENTS.md` nor any `.claude/rules/` file states, because a
+reverse-engineering session can run entirely through the VICE MCP tools
+without ever touching a file that would load `emulator.md` for you:
 
 * **Never write to `/home/donald/c64/Pool of Radiance Disks/`.** Read only,
   always. Copies go under `work/`, which is gitignored.
-* **Never commit the game's code, art, music, manuals, data files or a
-  disassembly listing** — not as documentation, not as a test fixture, not
-  renamed. Quoting an address, a handful of instructions, or a short block that
-  carries the evidence is commentary and is fine; a dump of a routine is not.
-  Tests read game data off the player's own disks through `tests/gamedata.py`.
-* **You do not commit.** The main window makes the commits. Leave your work in
-  the tree and say what you changed.
-* **Emulator work goes through the instance pool.** `tools/instance.py claim`
-  hands you a slot: two monitor ports, a command port, an X display, a work
-  directory and a private `vicerc`. `Session(disk, slot=slot)` takes it from
-  there, and `POR_HEADLESS=1` keeps the window off Donald's desktop.
-* **Ports 6502, 6510 and 6600 are a human's.** Do not attach to them, probe
-  them or kill them. **Never kill a process by name** — only
-  `Session.terminate()` or `slot.teardown()`, which kill the process group
-  your own slot started.
 * **Do not leave a background wait loop running when you report.** A `sleep`
   loop watching an emulator or a DOSBox run keeps waking the session long
   after the work is done, and one that outlives you looks exactly like an
   orphan holding a slot. Wait for what you are waiting for, then stop it, and
   check nothing of yours is still running before you write your report.
-* **Never point VICE at Donald's own config.** Every pooled instance gets its
-  own seeded `vicerc`.
-* **A new file means a new row in that directory's `README.md`**, in the same
-  change that adds the file.
 
 ## Reporting
 

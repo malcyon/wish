@@ -1,13 +1,8 @@
----
-name: backlog-auditor
-description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by CLAUDE.md's "Words to avoid" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy.
-tools: Read, Grep, Glob, Bash
-model: sonnet
-effort: high
-memory: local
-color: orange
----
-
+name = "backlog-auditor"
+description = "Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by CLAUDE.md's \"Words to avoid\" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+developer_instructions = '''
 `AGENTS.md` binds you and is already in front of you; its routing table points
 at `.claude/rules/issues.md`, which is what most of this work touches.
 `docs/160-why-these-rules.md` carries the incidents behind them, if you need to
@@ -122,3 +117,4 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+'''

@@ -3,20 +3,36 @@
 The rules that bind every task, wherever in the tree it lands. The rest is
 thirteen files under `.claude/rules/`, reachable as `.agents/rules/` as well --
 the same files, by symlink. `docs/160-why-these-rules.md` has the incidents
-behind all of it. **Read the one covering what you are about to do**, whether or
-not it is already in front of you.
+behind all of it.
+
+**Nothing loads these for you except Claude Code, and Claude Code only loads
+six of the thirteen.** Six carry no `paths:` frontmatter and load into every
+Claude Code session and every one of its subagents at launch: `commits.md`,
+`delegating.md`, `feature-flags.md`, `issues.md`, `scratch.md`, `sessions.md`.
+The other seven carry `paths:` and load only when Claude Code reads a file
+they name. For any other tool -- Codex included -- this table is the only
+route to any of the thirteen: **read the file yourself**, whether or not it is
+already in front of you.
+
+Each trigger below is a situation, not an action, because a rule that only
+fires "before you write X" misses "before you ask Donald to decide X" -- that
+gap cost a decision twice on 2026-09-10.
 
 | Before you | Read (all under `.claude/rules/`) |
 |---|---|
 | Commit, push, or check CI | `commits.md` |
 | File, label, prioritise or close an issue | `issues.md` |
-| Write a brief for a subagent | `delegating.md` |
-| End a turn, or end a session | `sessions.md` |
+| Write a brief for a subagent | `delegating.md` -- its "Choosing the agent" table names Claude models; the Codex model for each is in `tools/gencodex.py`'s `CODEX_MODELS` |
+| End a turn, end a session, or plan an unattended run (Claude Code only -- describes its own re-invocation model) | `sessions.md` |
 | Put a major feature behind a flag | `feature-flags.md` |
 | Write a script, or leave a file in `work/` | `scratch.md` |
-
-Seven cover one area of the tree each: `testing.md`, `conversions.md`,
-`gui-text.md`, `qt-designer.md`, `documentation.md`, `art.md`, `emulator.md`.
+| Show Donald anything about how the program looks, ask him to decide how it should look, or touch `wish/`, `editor/` or `automap/` | `gui-text.md` |
+| Add, change or propose any image, sprite or icon, or touch `ui/`, `assets/` or a `.svg` | `art.md` |
+| Say a field or a record cannot be converted, or touch `goldbox/` | `conversions.md` |
+| Write a finding anywhere, or touch `docs/`, a `README.md`, or `INDEX.md` | `documentation.md` |
+| Touch a `.ui` file, a generated `ui_*.py`, or `tools/genui.py` | `qt-designer.md` |
+| Write, change or run a test, or touch `tests/` | `testing.md` |
+| Drive an emulator, or touch `automap/`, `tools/session.py` or `tools/instance.py` | `emulator.md` |
 
 ## Name every issue you cite
 
@@ -141,15 +157,31 @@ what died was his own window.
 
 ## Delegating
 
-**The default is to delegate** -- reading a lot of files, a long experiment, a
-disassembly, driving the emulator, writing something up. The reason is context:
-a subagent's tool output never enters the main window. **Give each agent its own
-files**, and say which in the brief along with the standing constraints above,
-because a subagent starts cold. **Every agent gets an escape hatch, and using it
-is a success**: work that needs something the agent is not for stops and says
-so, because pressing on into a decision that was not its own costs more than the
-re-route. Which agent for what, how to write the brief, and the
-commit-review-push sequence: `.claude/rules/delegating.md`.
+**The default is to delegate, and that is practice, not mechanism -- it holds
+for both tools.** Reading a lot of files, a long experiment, a disassembly,
+driving the emulator, writing something up: all of it goes to a subagent
+rather than staying in the main window, because a subagent's tool output never
+enters the session that spawned it. **Give each agent its own files**, and say
+in the brief which files it owns, any `paths:`-scoped rule it needs but will
+not itself touch a matching file for, its emulator slot if it has one, and its
+escape hatch -- everything else here reaches the agent already. **Every agent
+gets an escape hatch, and using it is a success**: work that needs something
+the agent is not for stops and says so, because pressing on into a decision
+that was not its own costs more than the re-route.
+
+**What differs between the two tools is mechanism, not the practice above.**
+The nine agent definitions have one source, `.claude/agents/<name>.md`, which
+Claude Code reads directly and `tools/gencodex.py` generates into
+`.codex/agents/<name>.toml` for Codex -- `--check` fails if the two drift --
+and the two name different models, since a Claude model name (`sonnet`,
+`opus`, `fable`, `haiku`) has no Codex counterpart. `.claude/rules/` also
+loads automatically into a Claude Code session and does not load into a Codex
+one at all, which is the whole reason the table above exists.
+
+Which agent for what, how to write a brief, and the commit-review-push
+sequence: `.claude/rules/delegating.md`, written in Claude Code's own
+vocabulary (`main window`, its own subagent tools) but describing the same
+practice.
 
 ## Findings go on the issue, when they arrive
 
@@ -172,7 +204,9 @@ It is not what you set out to learn.
 **The whole suite runs once, in a detached worktree, before the push.** Six
 agents each running all 3,190 tests is six copies of Qt on one machine, and on
 2026-09-04 that cost a reviewer its run. **One run, not six -- that is the
-rule, and who starts it is not.** The main window either makes that run or
-sends it to `test-runner`, whose whole job it is; never both, and never two at
-once. The message, the push, the CI check, and where to run it:
-`.claude/rules/commits.md`.
+rule, and who starts it is not.** Whoever is about to push either makes that
+run itself or sends it to a `test-runner` subagent, whose whole job it is;
+never both, and never two at once. Claude Code's is
+`.claude/agents/test-runner.md`; Codex's is the same definition, generated
+into `.codex/agents/test-runner.toml`. The message, the push, the CI check,
+and where to run it: `.claude/rules/commits.md`.

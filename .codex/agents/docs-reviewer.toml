@@ -1,13 +1,8 @@
----
-name: docs-reviewer
-description: Audits repository documentation for internal contradictions, claims that no longer match the code, and facts discovered during work that were never written down. Use when documentation may have drifted.
-tools: Read, Grep, Glob, Bash, Write, Edit
-model: sonnet
-effort: high
-memory: project
-color: green
----
-
+name = "docs-reviewer"
+description = "Audits repository documentation for internal contradictions, claims that no longer match the code, and facts discovered during work that were never written down. Use when documentation may have drifted."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+developer_instructions = '''
 ## You audit documentation, and you may fix what you find in it.
 
 **You have `Write` and `Edit` for correcting documentation, and `Bash`, which
@@ -194,3 +189,4 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+'''

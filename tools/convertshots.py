@@ -201,12 +201,12 @@ def _success_states():
     dos_box = QMessageBox(
         QMessageBox.Icon.Information, convert.DIALOG_TITLE,
         convert.CONVERT_SUCCESS.format(
-            folder="/home/donald/dos_por_play/wish-2026-09-10"),
+            folder="~/dos_por_play/wish-2026-09-10"),
         QMessageBox.StandardButton.Ok)
     c64_box = QMessageBox(
         QMessageBox.Icon.Information, convert.DIALOG_TITLE,
         convert.CONVERT_SUCCESS.format(
-            folder="/home/donald/c64_por_play/wish-2026-09-10"),
+            folder="~/c64_por_play/wish-2026-09-10"),
         QMessageBox.StandardButton.Ok)
     return [("11-success-dos", dos_box),
            ("12-success-c64", c64_box)]

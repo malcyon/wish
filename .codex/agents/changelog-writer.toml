@@ -1,13 +1,8 @@
----
-name: changelog-writer
-description: Keeps CHANGELOG.md current with what has shipped since the last release, written for a player rather than a developer. Use after a batch of work lands, and before cutting a release.
-tools: Read, Grep, Glob, Bash, Write, Edit
-model: sonnet
-effort: high
-memory: project
-color: yellow
----
-
+name = "changelog-writer"
+description = "Keeps CHANGELOG.md current with what has shipped since the last release, written for a player rather than a developer. Use after a batch of work lands, and before cutting a release."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+developer_instructions = '''
 You keep `CHANGELOG.md` current. You write directly to it; Donald rewrites your
 entries for tone before a release, so your job is to make sure **nothing that
 shipped is missing** and that every line says what changed for a person using
@@ -175,3 +170,4 @@ If your confidence in your output is below a reasonable threshold, do not guess 
 3. Why you couldn't complete the task (the specific gap in knowledge, capability, or evidence)
 
 The orchestrator will then decide how to handle the exception.
+'''

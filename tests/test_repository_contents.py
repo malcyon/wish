@@ -133,12 +133,26 @@ def test_no_hardcoded_user_paths(files):
     # written `~/...`, which works on every machine; spelling the home out
     # names one person's and nobody else's.
     for path in (p for p in files if p.suffix == ".toml"):
+        # `.codex/agents/<name>.toml` (#506) is generated verbatim from
+        # `.claude/agents/<name>.md`'s body by `tools/gencodex.py`, so a line
+        # this loop would otherwise flag is only a problem if it is *new* --
+        # if the same text is not already sitting, unflagged, in the source
+        # `.md` (this test does not walk `.md` at all). This is narrower than
+        # exempting the whole directory: a hardcoded path introduced by the
+        # generator itself, rather than copied from its source, still fails.
+        source_text = None
+        if path.parent.as_posix() == ".codex/agents":
+            source_md = ROOT / ".claude" / "agents" / f"{path.stem}.md"
+            if source_md.exists():
+                source_text = source_md.read_text(encoding="utf-8").lower()
         for n, line in enumerate((ROOT / path).read_text(encoding="utf-8").splitlines(), 1):
             val = line.lower()
             if "/home/ada" in val:
                 continue
             if ("/home/" + "donald" in val or "/users/" + "donald" in val
                     or "c:\\users\\" + "donald" in val):
+                if source_text is not None and val in source_text:
+                    continue
                 bad.append(f"{path}:{n}")
 
     assert not bad, f"Hardcoded developer paths found in string literals: {bad}"
@@ -279,6 +293,79 @@ def test_every_rule_file_points_at_a_heading_that_exists(files):
     assert not bad, "\n  ".join(
         ["broken links to the incidents page:"] + bad
         + ["", f"Rename a heading in {WHY} and the rule citing it must change too."])
+
+
+def test_every_rule_file_has_a_row_in_the_routing_table(files):
+    """A file under `.claude/rules/` with no row in `AGENTS.md`'s table is
+    unreachable by anything that is not Claude Code.
+
+    Six of the thirteen load into a Claude Code session at launch and seven
+    load when Claude Code reads a matching file, but neither mechanism exists
+    for a tool with no `paths:` frontmatter and no launch-time rule loader --
+    `AGENTS.md`'s table is the only route it has to any of them, which is why
+    every one of the thirteen needs a row.
+
+    This only checks that the filename is *named* somewhere in the table; it
+    says nothing about whether the trigger sentence beside it is honest about
+    the situation that should send a reader to the file.
+    """
+    agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    start = agents_md.index("| Before you |")
+    end = agents_md.index("\n\n", start)
+    table = agents_md[start:end]
+    named = set(re.findall(r"`([a-z0-9_-]+\.md)`", table))
+
+    rules = {p.name for p in files if p.parent.as_posix() == RULES_DIR}
+    assert rules, f"nothing is tracked under {RULES_DIR}"
+
+    missing = sorted(rules - named)
+    assert not missing, (
+        "these .claude/rules/ files have no row in AGENTS.md's routing "
+        "table:\n  " + "\n  ".join(missing)
+        + "\n\nA tool with no paths: mechanism has no other way to find them.")
+
+
+#: Phrases that drifted out of step with `AGENTS.md` once each, inside a
+#: `.claude/agents/*.md` file that had retyped rather than pointed at it --
+#: `junior-dev.md` told an agent to commit its own work and to run the whole
+#: suite, against the shared rules that subagents never commit and scope a run
+#: to the files they touched; `backlog-auditor.md` carried a label rule
+#: `.claude/rules/issues.md` retired on 2026-09-09; several files repeated the
+#: false "a subagent does not inherit `.claude/rules/`" premise.
+#:
+#: A literal match against wording that has already drifted once, not a
+#: general redundancy check. It catches one of these phrases coming back,
+#: including a rewritten agent file resurrecting an old one; it will not catch
+#: a *new* paraphrase of a prohibition `AGENTS.md` already makes, and it says
+#: nothing about whether an agent file is otherwise redundant with `AGENTS.md`.
+DRIFTED_PROHIBITIONS = (
+    "does not inherit",
+    "Commit your work.",
+    "Run the suite before you report",
+    "Never propose removing or changing a label somebody else set",
+)
+
+
+def test_no_agent_definition_restates_a_prohibition_agents_md_already_makes(files):
+    """A subagent definition that retypes `AGENTS.md` drifts away from it.
+
+    `junior-dev.md` once said "Commit your work" where `AGENTS.md` says
+    subagents never commit, and "Run the suite before you report" where
+    `AGENTS.md` scopes a subagent's run to the files it touched -- both typed
+    once and never touched again while the shared rule moved on.
+    """
+    bad = []
+    for rel in files:
+        if rel.parent.as_posix() != ".claude/agents" or rel.suffix != ".md":
+            continue
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for phrase in DRIFTED_PROHIBITIONS:
+            if phrase in text:
+                bad.append(f"{rel.as_posix()}: {phrase!r}")
+    assert not bad, (
+        "these agent definitions restate a prohibition AGENTS.md already "
+        "makes, or a sentence that drifted away from it before:\n  "
+        + "\n  ".join(bad))
 
 
 #: Everything under `.agents/rules/` is a symlink to the one copy in

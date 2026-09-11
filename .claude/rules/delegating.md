@@ -91,10 +91,15 @@ here is four minutes Donald cannot ask anything. It is the reason that agent
 exists. Everything above still binds it: foreground, explicit timeout, never
 backgrounded. **Never start two.**
 
-**The brief carries the standing constraints**, because a subagent starts cold:
-never write to the player's disk directory, never commit the game's code, art
-or data, never run the git commands that revert a file, and leave the VICE
-configs alone. Name the emulator slot the agent has, if it needs one.
+**Say in the brief what `AGENTS.md` cannot say for you, because it does not
+know this task.** `AGENTS.md` and its six unscoped rule files already reach
+every subagent at launch, so retyping their prohibitions in the brief is pure
+drift -- an agent definition once told an agent to commit its own work,
+against the rule that subagents never commit. What a brief adds is specific to
+the task: which files the agent owns, any `paths:`-scoped rule it needs but
+will not itself touch a matching file for (`gui-text.md`, say, when the work is
+a decision rather than an edit), its emulator slot if it has one, and its
+escape hatch.
 
 **Every agent gets an escape hatch, and using it is a success.** If the work
 turns out to need something the agent is not for -- a general-purpose agent
