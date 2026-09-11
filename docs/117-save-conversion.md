@@ -1928,7 +1928,10 @@ one, and `dos.export_party` ran the same edge the other way. Two middles, the
 older one C64-shaped, and DOS to Amiga would have gone through a port neither
 end asked for.
 
-Now `goldbox/c64_codec.read` is the C64 reader, `goldbox/amiga.write` and
+Now `goldbox/c64_codec.read` is the C64 reader, `goldbox/amiga_pod.write_pod`
+(`goldbox/amiga.write` until `#470 (Give the project a neutral title beside
+its neutral character record, with one port per platform a title shipped on)`'s
+stage 10 gave each Amiga title's writer its own name) and
 `goldbox/yaml_io.entry_for` both take a `NeutralCharacter`, and both name a race
 or a class by asking `goldbox/titles.py` — a table module, not another codec. A
 save slot holds only 256 of the record's 580 bytes, so the reader takes the
@@ -1971,6 +1974,27 @@ port imports the codec, so a reader after the offsets never loads the 6,000
 lines that use them. `goldbox/amiga_codec.py` re-exports every name under both its
 old spelling and its new one until stage 9 moves the callers.
 
+**The Amiga codec is four modules as of the same ticket's stage 10**, because
+one file held all three Amiga titles and its unprefixed names read as the
+port's when they were one title's. `goldbox/amiga_pod.py` is Pools of
+Darkness' `.pc`, `goldbox/amiga_por.py` is Pool of Radiance's record, save slot
+and disk, `goldbox/amiga_later.py` is Curse and Silver Blades, and
+`goldbox/amiga_shared.py` is what more than one of them needs with no title
+fact in it — the two byte readers, the three neutral key tuples,
+`amiga_shape_for` and the `CONVERTS`/`WRITES` registries. `goldbox/amiga_codec.py`
+is a shim at the old path, which is why the graph now shows four edges out of
+it and nothing else.
+
+**Two edges between titles are deliberate and both are in the graph.**
+`amiga_later --> amiga_por` is three names — `PorWriteReport` and the pair that
+re-cuts a ten-byte effect node — which are facts about the Amiga rather than
+about Pool of Radiance and wear that title's spelling because it is the one
+they were decoded on. The two deferred ones, `amiga_por -.-> amiga_later` and
+`amiga_later -.-> amiga_pod`, are a single dispatch in `to_neutral` and a
+single error message naming the other titles' record lengths; deferring them
+is what keeps `amiga_pod` and `amiga_shared` free of any other title at import
+time.
+
 The graph does not show the record-table invariant cleanly, and the reason is
 `goldbox/layout.py`. It is two things in one module — the C64's 580-byte field
 table *and* the project's shared vocabulary, `Confidence`, `Field` and `Kind`
@@ -1995,25 +2019,48 @@ the edge somebody adds without noticing.
 ```mermaid
 graph LR
   amiga --> amiga_codec
-  amiga_codec --> amiga_adf
-  amiga_codec -.->|deferred| amiga_dax
-  amiga_codec --> amiga_port
-  amiga_codec --> areas
-  amiga_codec -.->|deferred| c64_codec
-  amiga_codec -.->|deferred| d64
-  amiga_codec -.->|deferred| dos_codec
-  amiga_codec --> dos_layout
-  amiga_codec --> dos_savegame
-  amiga_codec --> games
-  amiga_codec --> iconparts
-  amiga_codec --> layout
-  amiga_codec --> neutral
-  amiga_codec --> portraits
-  amiga_codec -.->|deferred| savegame
-  amiga_codec --> titles
-  amiga_codec -.->|deferred| traits
-  amiga_codec --> world_state
+  amiga_codec --> amiga_later
+  amiga_codec --> amiga_pod
+  amiga_codec --> amiga_por
+  amiga_codec --> amiga_shared
+  amiga_later -.->|deferred| amiga_pod
+  amiga_later --> amiga_por
+  amiga_later --> amiga_port
+  amiga_later --> amiga_shared
+  amiga_later -.->|deferred| dos_codec
+  amiga_later --> dos_layout
+  amiga_later --> games
+  amiga_later --> iconparts
+  amiga_later --> layout
+  amiga_later --> neutral
+  amiga_later --> portraits
+  amiga_pod --> amiga_shared
+  amiga_pod -.->|deferred| c64_codec
+  amiga_pod -.->|deferred| d64
+  amiga_pod -.->|deferred| dos_codec
+  amiga_pod --> dos_layout
+  amiga_pod --> layout
+  amiga_pod --> neutral
+  amiga_pod -.->|deferred| savegame
+  amiga_pod --> titles
+  amiga_por --> amiga_adf
+  amiga_por -.->|deferred| amiga_dax
+  amiga_por -.->|deferred| amiga_later
+  amiga_por --> amiga_port
+  amiga_por --> areas
+  amiga_por -.->|deferred| dos_codec
+  amiga_por --> dos_layout
+  amiga_por --> dos_savegame
+  amiga_por --> iconparts
+  amiga_por --> layout
+  amiga_por --> neutral
+  amiga_por --> portraits
+  amiga_por -.->|deferred| traits
+  amiga_por --> world_state
   amiga_port --> dos_port
+  amiga_shared -.->|deferred| amiga_por
+  amiga_shared --> amiga_port
+  amiga_shared --> dos_layout
   areas -.->|deferred| geo
   areas --> layout
   c64_codec --> classcode

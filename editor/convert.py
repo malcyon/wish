@@ -1125,10 +1125,22 @@ def fresh_folder(destination: str | pathlib.Path,
 #:
 #: So this flag now waits on decoding rather than on wiring, and the distance
 #: is not small. Today: `goldbox.c64_codec` drops **2** of its 75 fields and
-#: `goldbox.dos` drops **2** of 77, so DOS to C64 both ways is close --
-#: but `goldbox.amiga`'s Pool of Radiance writer drops **39 of 75** and its
-#: later-titles writer **14**, and those are fields with no established home
-#: in the Amiga record rather than fields somebody forgot to wire.
+#: `goldbox.dos` drops **2** of 77, so DOS to C64 both ways is close -- and
+#: `goldbox.amiga_later.LATER_DROPPED` is **14**, fields with no established
+#: home in that record rather than fields somebody forgot to wire.
+#:
+#: **The 39 this paragraph used to name here was the wrong writer's**, and the
+#: naming that made that possible is gone. It is
+#: `goldbox.amiga_pod.POD_WRITE_DROPPED`, the **Pools of Darkness** `.pc`
+#: writer's list, which was spelled `goldbox.amiga.DROPPED` until `#470 (Give
+#: the project a neutral title beside its neutral character record, with one
+#: port per platform a title shipped on)`'s stage 10 split the Amiga codec by
+#: title. No registered direction reaches it: there is no Pools of Darkness
+#: direction at all. What the **Pool of Radiance** writer reports is
+#: `goldbox.dos.WRITE_DROPPED`, **2**, because `write_por` copies the DOS
+#: writer's report verbatim -- which is its own defect, since a drop list is a
+#: claim about what the *destination* cannot hold, and is how the sheet
+#: portrait's loss hid behind a DOS reason.
 #: `.claude/rules/conversions.md` has the standard and the reasoning; `#462
 #: (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral
 #: fields have no home in it, so a converted character loses his spells and

@@ -427,13 +427,14 @@ def neutral_party() -> list:
 
 
 def test_every_neutral_field_has_a_disposition():
-    """A field `goldbox/neutral.py` declares and `field_disposition` does not name
+    """A field `goldbox/neutral.py` declares and the writer's disposition
+    table does not name
     would be a field silently dropped, which is the one thing the conversion
     promises not to do."""
     from goldbox import neutral
 
-    unaccounted, unknown = neutral.undeclared(neutral.FIELDS,
-                                              amiga.field_disposition())
+    unaccounted, unknown = neutral.undeclared(
+        neutral.FIELDS, amiga.pod_write_field_disposition())
     assert unaccounted == set(), "no disposition for these"
     assert unknown == set(), "a disposition for a field the vocabulary lacks"
 
@@ -442,7 +443,8 @@ def test_the_c64_reader_supplies_what_the_amiga_writer_takes():
     """The other half: a neutral name the writer takes and the C64 reader
     never sets is a value that would arrive as nothing on every conversion
     off a C64 save."""
-    taken = {n for n, _ in amiga.DIRECT} | {n for n, _ in amiga.TRANSFORMED}
+    taken = ({n for n, _ in amiga.POD_WRITE_DIRECT}
+             | {n for n, _ in amiga.POD_WRITE_TRANSFORMED})
     for char in neutral_party():
         assert taken - set(char.keys()) == set()
 

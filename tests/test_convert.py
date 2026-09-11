@@ -1741,7 +1741,10 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # the code to `dos_codec.py` and `amiga_codec.py`, and
     # `inspect.getsource` of a shim reads the shim, which carries no strings
     # at all. `WAITING` is keyed on `module.__name__`, so both move together.
-    from goldbox import amiga_codec, c64_codec, dos_codec
+    # Stage 10 then split the Amiga codec by title and `amiga_codec.py` became
+    # a shim itself; the one marked string is the Pools of Darkness reader's,
+    # so it is `goldbox/amiga_pod.py` that is read here now.
+    from goldbox import amiga_pod, c64_codec, dos_codec
 
     #: How many marked strings each module carries today, waiting on Donald.
     #: **This is a count of what he has to rule on, not a licence.** A new
@@ -1861,7 +1864,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # line for -- so, like the four that came off the day before, it stopped
     # being a string a player, or even a developer reading `report.dropped`,
     # can reach.
-    WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga_codec": 1,
+    WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga_pod": 1,
                "goldbox.dos_codec": 6,
                # 3 -> 2 on 2026-09-10: Donald approved the failure line for
                # a Fast Travel that cannot walk the party through a door
@@ -1871,7 +1874,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
                "automap.actions": 2}
 
     found: dict[str, list[str]] = {}
-    for module in (c64_codec, amiga_codec, dos_codec, actions):
+    for module in (c64_codec, amiga_pod, dos_codec, actions):
         source = inspect.getsource(module)
         found[module.__name__] = [
             f"{module.__name__}:{n}: {line.strip()}"

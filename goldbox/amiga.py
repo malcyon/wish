@@ -8,6 +8,15 @@ every class, constant and function kept its name, and `AmigaDeltas` still
 lives next door in `goldbox/amiga_port.py` and is re-exported from the codec
 as stage 4b left it.
 
+**Stage 10 then split that module by title**, so what stands behind this shim
+is `goldbox/amiga_pod.py`, `goldbox/amiga_por.py`, `goldbox/amiga_later.py`
+and `goldbox/amiga_shared.py`, with `goldbox/amiga_codec.py` a shim of its own
+in front of them. Five names went in that stage rather than moving --
+`DROPPED`, `DIRECT`, `TRANSFORMED`, `field_disposition` and `write`, every one
+of them the Pools of Darkness writer's alone -- so this module no longer
+answers to any of the five. `goldbox/amiga_codec.py`'s docstring names what
+each became.
+
 **`goldbox/amiga_codec.py` declares no `__all__`**, so the wildcard below
 carries all 303 of its public names, including the ones it imports from
 elsewhere and re-exports -- `AmigaDeltas`, `CURSE_DELTAS` and the rest. What a

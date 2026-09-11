@@ -150,7 +150,7 @@ converted? It makes no sense. No shortcuts."*
 This was asked because the two rulings above had only ever been made about the
 DOS-to-C64 import, and the program keeps six more lists of the same kind --
 `dos.WRITE_DROPPED`, `WRITE_UNSOURCED`, `WRITE_DEFAULTS`, `c64_codec.READ_DROPPED`,
-`amiga.DROPPED` and `amiga.LATER_DROPPED`. **They are all covered.** A list is
+`amiga_pod.POD_WRITE_DROPPED` and `amiga_later.LATER_DROPPED`. **They are all covered.** A list is
 not exempt because its direction is the less travelled one, and the Amiga
 lists are not exempt because they are the longest.
 

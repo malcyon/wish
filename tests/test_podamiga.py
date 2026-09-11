@@ -191,7 +191,7 @@ def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     -- because that would be a field this module claims to convert in a
     direction it cannot even read.
     """
-    writer = {n for n, _ in amiga.DROPPED}
+    writer = {n for n, _ in amiga.POD_WRITE_DROPPED}
     reader = {n for n, _ in amiga.pod_read_dropped()}
     assert reader < writer
     for name in READ_ONLY:
@@ -362,7 +362,8 @@ def test_a_dual_classed_character_arrives_as_the_class_he_is():
     class she is not, and it refused PAINE outright -- Pools of Darkness has
     no magic-user/ranger code, and no character can be both at once.
 
-    The old class is on `goldbox.amiga.DROPPED` as `former_levels`, so what
+    The old class is on `goldbox.amiga_pod.POD_WRITE_DROPPED` as
+    `former_levels`, so what
     is asserted here is that it is reported rather than silently lost.
     """
     seen = 0

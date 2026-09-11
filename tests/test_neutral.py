@@ -85,8 +85,12 @@ def test_the_two_ports_share_one_report_shape():
         dos.DIRECT, dos.TRANSFORMED, dos.DROPPED, "the C64's",
         derived=tuple((n, w) for n, w, _run in dos.DERIVED),
         constants=dos.CONSTANTS)
-    assert amiga.field_disposition() == neutral.disposition(
-        amiga.DIRECT, amiga.TRANSFORMED, amiga.DROPPED, "the Amiga's")
+    # Spelled `POD_WRITE_*` since #470's stage 10 split the Amiga codec by
+    # title: these four are the Pools of Darkness writer's own tables and
+    # were named as though they were the whole port's.
+    assert amiga.pod_write_field_disposition() == neutral.disposition(
+        amiga.POD_WRITE_DIRECT, amiga.POD_WRITE_TRANSFORMED,
+        amiga.POD_WRITE_DROPPED, "the Amiga's")
 
 
 def test_undeclared_finds_a_field_no_disposition_names():
@@ -426,10 +430,17 @@ def test_every_neutral_field_has_a_disposition_in_every_writer():
 
     Both writers now state what they do with each of the 64 names, and this is
     what fails when one of them forgets.
+
+    **The Amiga writer is named rather than duck-typed since #470's stage 10.**
+    A module-wide `field_disposition` read as the whole port's and was the
+    Pools of Darkness writer's alone -- the Amiga has three writers and the
+    other two already answer under their own names, `write_por` through
+    `goldbox.dos`'s table and `later_field_disposition(deltas)`.
     """
-    for writer in (c64_codec, amiga):
-        unaccounted, unknown = neutral.undeclared(
-            neutral.FIELDS, writer.field_disposition())
+    tables = ((c64_codec, c64_codec.field_disposition()),
+              (amiga, amiga.pod_write_field_disposition()))
+    for writer, table in tables:
+        unaccounted, unknown = neutral.undeclared(neutral.FIELDS, table)
         assert unaccounted == set(), (writer.__name__, "no disposition")
         assert unknown == set(), (writer.__name__, "not in the vocabulary")
 
