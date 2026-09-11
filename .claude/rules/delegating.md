@@ -13,26 +13,34 @@ writing the brief costs more than doing the work.
 
 ## Choosing the agent
 
-| agent | model | when |
-|---|---|---|
-| `reverse-engineering` | Opus | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
-| `deep-research` | **Fable** | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
-| `architect` | **Fable** | a plan for another agent to execute, when the shape of the work is the hard part. Writes the plan, does not build it. Also Fable |
-| `junior-dev` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
-| `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
-| `code-reviewer` | Sonnet | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
-| `docs-reviewer` | Sonnet | when documentation may have drifted from the code. Scope it to the files it owns |
-| `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**, including the banned-words sweep of titles, bodies and comments |
-| `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
-| `test-runner` | **Haiku** | the whole suite before a push, or a scoped run on named files. **The one agent that may run everything**, because it exists so that one run does not block the window Donald is asking questions in. It reports and fixes nothing |
+One definition, `.claude/agents/<name>.md`, drives both tools -- Claude Code
+reads it directly, and `tools/gencodex.py` generates Codex's
+`.codex/agents/<name>.toml` from it. Only the model differs, since a Claude
+model name has no Codex counterpart: the two columns below are Donald's own
+choice for each tool, not the same decision spelled two ways.
 
-**Cost is not the filter on the two Fable agents; fit is.** Donald, 2026-09-04:
-*"consider deep-research and architect as available options to use when
-necessary. I don't want to waste tokens where another agent could do the job.
-But I don't think using Fable will run us out of tokens anytime soon."* So the
-question to ask is the same one the table asks of every row -- does this
-agent's definition already describe the work? -- and not whether the budget can
-stand it. Sending a measurement to `deep-research` is still waste, because a
+| agent | Claude | Codex | when |
+|---|---|---|---|
+| `reverse-engineering` | Opus | `gpt-5.6-sol` | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
+| `deep-research` | **Fable** | `gpt-6-astra` | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
+| `architect` | **Fable** | `gpt-6-astra` | a plan for another agent to execute, when the shape of the work is the hard part. Writes the plan, does not build it. |
+| `junior-dev` | Sonnet | `gpt-5.6-terra` | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
+| `general-purpose` | inherits | unset -- inherits | everything else, including work that looks like reverse engineering and is not |
+| `code-reviewer` | Sonnet | `gpt-5.6-terra` | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
+| `docs-reviewer` | Sonnet | `gpt-5.6-terra` | when documentation may have drifted from the code. Scope it to the files it owns |
+| `backlog-auditor` | Sonnet | `gpt-5.6-terra` | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**, including the banned-words sweep of titles, bodies and comments |
+| `changelog-writer` | Sonnet | `gpt-5.6-terra` | after a batch of work lands, and before cutting a release |
+| `test-runner` | **Haiku** | `gpt-5.6-luna` | the whole suite before a push, or a scoped run on named files. **The one agent that may run everything**, because it exists so that one run does not block the window Donald is asking questions in. It reports and fixes nothing |
+
+**Cost is not the filter on `deep-research` and `architect`; fit is.** Donald,
+2026-09-04, of Fable, Claude Code's name for the tier behind both (Codex runs
+the same two agents on its own top tier, `gpt-6-astra`): *"consider
+deep-research and architect as available options to use when necessary. I
+don't want to waste tokens where another agent could do the job. But I don't
+think using Fable will run us out of tokens anytime soon."* So the question to
+ask is the same one the table asks of every row -- does this agent's
+definition already describe the work? -- and not whether the budget can stand
+it. Sending a measurement to `deep-research` is still waste, because a
 `reverse-engineering` agent would do it as well; sending it a question that
 more specimens cannot answer is what it is for.
 
@@ -52,7 +60,7 @@ assumption above is a **sufficient** reason to route here rather than the only
 one, and a ticket that has sat because nobody could say what some bytes hold is
 this agent's work now. What still does not come here is ordinary building and
 ordinary measuring: a `reverse-engineering` agent does those as well, and
-sending them to Fable buys nothing.
+sending them to `deep-research` or `architect` buys nothing.
 
 **`junior-dev`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? `#71 (Character draws on top of itself when the header is squeezed to its floor)`
