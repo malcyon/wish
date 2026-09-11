@@ -76,9 +76,14 @@ at step 5.
 game-files row and a write-to-folder row carrying its own `Destination:`
 line -- `editor/dosimport.py`'s rehearse-then-enable pattern, one dialog for
 every registered direction rather than one dialog per port. The report pane
-this paragraph used to name is gone (2026-09-10): what it showed is now
-either a modal `QMessageBox` or the debug log, `_rehearse_and_report`'s own
-docstring has which goes where. **Four rows, in the
+this paragraph used to name is gone (2026-09-10): what it showed is now a
+modal `QMessageBox`, a silently disabled Convert button, or the debug log,
+`_rehearse_and_report`'s own docstring has which goes where. **A modal fires
+only for a real refusal** -- a source that cannot be read, a conversion that
+cannot run -- **never for a row the player has simply not filled in yet**;
+that used to pop on the very next field after `From`, before the player had
+done anything wrong, and `ConvertDialog._SILENT_BLOCKS` is what stops it
+(`#52`'s comment of 2026-09-10). **Four rows, in the
 same places, in all six directions** since `#413 (The Convert window changes
 shape depending on which platforms you are converting between)`: the
 game-files row used to appear only for a DOS or an Amiga destination and
@@ -1268,13 +1273,25 @@ DESTINATION_LABELS: dict[str, str] = {
     "amiga": "Amiga",
 }
 
-#: Shown in a modal while this required row is still empty (2026-09-10; a
-#: pane drew it until then).
+#: **Never shown to the player** -- `_settle_button` already leaves Convert
+#: disabled for as long as this row is empty, and popping a modal on top of
+#: a form a player has not finished filling in told them they had made a
+#: mistake that was actually inevitable (`#52`'s comment of 2026-09-10:
+#: Donald hit this the first time he opened the dialog, on the very next
+#: field, before he had done anything wrong). Kept as a string and recorded
+#: on `self._blocked` -- `_maybe_warn` reads that set to decide what still
+#: needs a modal -- so the reason is still there to test and to log, it is
+#: only the popup that is gone.
 NO_GAME_FOLDER = "Choose the DOS game folder."
 #: The Amiga disk row's own empty-state line, ruled the same night as
-#: `LABEL_DISK` and following its own wording.
+#: `LABEL_DISK` and following its own wording. Silent for the same reason
+#: as `NO_GAME_FOLDER` above.
 NO_DISK = "Choose Amiga game disk 2."
-#: `editor/exports.py`'s `NO_DESTINATION`, approved 2026-08-25.
+#: `editor/exports.py`'s `NO_DESTINATION`, approved 2026-08-25. The first of
+#: these a player would actually reach -- `Write to` is the very next field
+#: after `From` -- and so the one Donald caught: a modal here fired before
+#: he had touched anything past the source row. Silent since `#52`'s fix of
+#: 2026-09-10, for the same reason as `NO_GAME_FOLDER` above.
 NO_FOLDER = "Choose where to write."
 #: `goldbox.dos.CANNOT_CONVERT`, approved under `#195 (The import pane shows
 #: a player a memory address when the conversion refuses for any reason but
@@ -1293,6 +1310,15 @@ CANNOT_CONVERT = dos.CANNOT_CONVERT
 #: DOS or the Amiga silently arrives with no combat figures, though a C64
 #: destination refuses)`): it names no direction, so the same sentence fits
 #: whichever side of the conversion could not be read.
+#:
+#: **Silent inside `ConvertDialog`, since `#52`'s fix of 2026-09-10** -- a
+#: missing set of game disks is a field the dialog itself cannot fill in for
+#: the player, the same shape as `NO_FOLDER` and the other rows above, so a
+#: modal added nothing a disabled Convert button did not already say.
+#: `editor/window.py`'s own direct use of it, for `File ▸ Import` refusing
+#: outright before its dialog even opens, is unchanged: a player who has just
+#: chosen that menu item has asked for something this sentence explains why
+#: it cannot do, which is a real refusal rather than an unfinished row.
 NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with
@@ -1418,8 +1444,10 @@ class ConvertDialog(QDialog):
     per port). Every row change calls `replan()`, which detects the source,
     lists its registered destinations, rehearses the chosen one in memory,
     and either names the destination or says why it cannot -- a modal
-    `QMessageBox` (`_maybe_warn`) now that the pane this used to draw on
-    is gone (2026-09-10) -- `editor/dosimport.py`'s rehearse-then-enable
+    `QMessageBox` for a real refusal, and nothing at all for a row still
+    empty, since the disabled Convert button already says that
+    (`_maybe_warn`, `_SILENT_BLOCKS`) -- now that the pane this used to draw
+    on is gone (2026-09-10) -- `editor/dosimport.py`'s rehearse-then-enable
     pattern otherwise unchanged. Convert is enabled
     only once a rehearsal exists and a folder to write it into has been
     named; nothing is written until the caller commits it
@@ -1497,10 +1525,12 @@ class ConvertDialog(QDialog):
         self.rehearsal: Rehearsal | None = None
         self.slot: str | None = None
 
-        #: What stops Convert right now, `(title, text)` or `None` -- one of
-        #: the five refusals below, reused verbatim as a modal
-        #: `QMessageBox.critical` instead of a line in a pane that no
-        #: longer exists (2026-09-10).
+        #: What stops Convert right now, `(title, text)` or `None`. Four of
+        #: the reasons below (`_SILENT_BLOCKS`) mean only "a row is still
+        #: empty" and never reach a modal; the rest are a real refusal --
+        #: `CANNOT_CONVERT`, a `DosRecordError`'s own message -- and are
+        #: shown verbatim as `QMessageBox.critical`, in place of a line in a
+        #: pane that no longer exists (2026-09-10).
         self._blocked: tuple[str, str] | None = None
         #: A name DOS's own fifteen-character field could not hold whole
         #: (`dosimport.name_warnings`), or `None` -- the one thing left in
@@ -1644,10 +1674,13 @@ class ConvertDialog(QDialog):
 
     def replan(self) -> None:
         """Detect the source, rehearse the chosen destination, and either
-        name where it would write or say why it cannot -- as a modal now,
-        `_maybe_warn` below, rather than a line in a pane that no longer
+        name where it would write or say why it cannot -- a modal for a real
+        refusal, nothing at all for a row still empty (`_maybe_warn` below,
+        `_SILENT_BLOCKS`), in place of a line in a pane that no longer
         exists (2026-09-10). Failures are shown, not raised -- the same
-        rule `editor/dosimport.py`'s `_rehearse` follows."""
+        rule `editor/dosimport.py`'s `_rehearse` follows. Called on every
+        row change, so an empty row is the normal state this runs against
+        far more often than a finished one."""
         self.source = None
         self.direction = None
         self.rehearsal = None
@@ -1697,11 +1730,34 @@ class ConvertDialog(QDialog):
         self._settle_button()
         self._maybe_warn()
 
+    #: The `self._blocked` reasons that mean nothing more than "a field the
+    #: player has not filled in yet" -- `NO_FOLDER`, `NO_GAME_FOLDER`,
+    #: `NO_DISK` and `NO_DISKS`. `_settle_button` already leaves Convert
+    #: disabled while any of these hold, so popping a modal on top of that
+    #: told a player they had made a mistake that was actually inevitable
+    #: (`#52`'s comment of 2026-09-10: it fired the moment `From` was filled
+    #: in, before `Write to` had been touched at all). `self._blocked` is
+    #: still set for these -- tests read it, and it is what `_settle_button`
+    #: would explain if it had a line to draw -- only the popup is gone.
+    _SILENT_BLOCKS = frozenset((NO_FOLDER, NO_GAME_FOLDER, NO_DISK, NO_DISKS))
+
     def _maybe_warn(self) -> None:
         """Tell the player the one or two things left to tell them, now
         that `replan()` has nowhere to draw a running status: why Convert
         will not go (`self._blocked`), or a name DOS's own field could not
         hold whole (`self._name_warning`).
+
+        **Only a real refusal pops a modal.** `self._blocked` also carries
+        the four `_SILENT_BLOCKS` reasons -- a row the player has simply not
+        filled in yet -- and those never reach `QMessageBox`: the Convert
+        button is already disabled for exactly as long as one of them holds,
+        so the modal said nothing the greyed-out button did not already say,
+        and firing on every field change made it appear before the player
+        had done anything wrong (`#52`'s comment of 2026-09-10). `CANNOT_
+        CONVERT` and a `DosRecordError`'s own message are not in that set --
+        the player asked for a file that could not be read, or a conversion
+        that could not run, which is a real refusal of something they
+        actually did.
 
         Gated on `self._interactive`, so a `ConvertDialog` built with a
         state already prefilled -- every test in `tests/test_convert.py`
@@ -1715,7 +1771,7 @@ class ConvertDialog(QDialog):
             return
         if self._blocked != self._last_blocked_shown:
             self._last_blocked_shown = self._blocked
-            if self._blocked is not None:
+            if self._blocked is not None and self._blocked[1] not in self._SILENT_BLOCKS:
                 title, text = self._blocked
                 QMessageBox.critical(self, title, text)
         if self._name_warning != self._last_name_warning_shown:

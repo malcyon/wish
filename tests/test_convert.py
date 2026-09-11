@@ -2096,6 +2096,169 @@ def test_a_name_too_long_for_dos_pops_a_warning_and_nothing_else_does(
 
 
 # ---------------------------------------------------------------------------
+# `#52 (File ▸ Import and File ▸ Export for every direction the library
+# supports)`'s own comment of 2026-09-10: choosing a save in `From` used to
+# pop `Choose where to write.` in a modal before the player had touched
+# anything past that one field -- "you think all users using this tool made
+# a mistake". `NO_FOLDER`, `NO_GAME_FOLDER`, `NO_DISK` and `NO_DISKS` are the
+# four rows this names; none of them may open a modal any more, because
+# `_settle_button` already leaves Convert disabled for exactly as long as
+# each one holds. `CANNOT_CONVERT` is the opposite case named in the same
+# comment -- a source the player actually chose and Wish cannot read -- and
+# stays modal.
+# ---------------------------------------------------------------------------
+
+def test_no_folder_chosen_pops_no_modal(tmp_path):
+    """The bug itself: a readable source, a destination that needs nothing
+    else, and no folder chosen yet -- `_blocked` still names `NO_FOLDER` for
+    the disabled button to explain, but `QMessageBox.critical` is never
+    called for it.
+
+    Fails before the fix: reverting `_maybe_warn` to fire on any
+    `self._blocked` (put the file back per `.claude/rules/scratch.md`, then
+    delete `__pycache__`) makes `critical` gain
+    `(convert.DIALOG_TITLE, convert.NO_FOLDER)` the moment `_choose_folder`'s
+    own `replan()` is *not* the one under test -- construction alone already
+    reaches this, since `NO_FOLDER` is set on the dialog's own first
+    `replan()` -- seen red, then the fix put back.
+    """
+    path = _por_c64_disk(tmp_path)
+    critical = []
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(convert.QMessageBox, "critical",
+                            lambda self_, title, text: critical.append((title, text)))
+        # `_some_disks`, not `_no_disks`: this C64 source's own game files
+        # are checked before the folder is (`_rehearse_and_report`'s own
+        # order), and `_no_disks` here would reach `NO_DISKS` instead of the
+        # `NO_FOLDER` this test is about (`#482`).
+        dialog = convert.ConvertDialog(str(path), None, _some_disks,
+                                       destination="dos",
+                                       game=str(_game_dir()))
+        try:
+            # Re-run interactively -- the dialog's own first `replan()` is
+            # not `_interactive`, so this is what a real player's next
+            # action (choosing this same folder by hand) would trigger.
+            dialog._interactive = True
+            dialog.replan()
+            assert dialog._blocked == (convert.DIALOG_TITLE, convert.NO_FOLDER)
+            ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+            assert not ok.isEnabled()
+        finally:
+            dialog.close()
+
+    assert critical == [], critical
+
+
+def test_no_game_folder_chosen_pops_no_modal(tmp_path):
+    """The twin of `test_no_folder_chosen_pops_no_modal` for `NO_GAME_FOLDER`
+    -- a DOS destination with everything else named but the game folder.
+
+    Fails before the fix the same way, on `(convert.DIALOG_TITLE,
+    convert.NO_GAME_FOLDER)` instead."""
+    path = _por_c64_disk(tmp_path)
+    critical = []
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(convert.QMessageBox, "critical",
+                            lambda self_, title, text: critical.append((title, text)))
+        dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                       destination="dos",
+                                       folder=str(tmp_path / "out"))
+        try:
+            dialog._interactive = True
+            dialog.replan()
+            assert dialog._blocked == (convert.DIALOG_TITLE,
+                                       convert.NO_GAME_FOLDER)
+            ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+            assert not ok.isEnabled()
+        finally:
+            dialog.close()
+
+    assert critical == [], critical
+
+
+def test_no_disk_chosen_pops_no_modal(tmp_path):
+    """The twin for `NO_DISK` -- an Amiga destination with no disk 2
+    chosen yet."""
+    path = _por_c64_disk(tmp_path)
+    critical = []
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(convert.QMessageBox, "critical",
+                            lambda self_, title, text: critical.append((title, text)))
+        dialog = convert.ConvertDialog(str(path), None, _some_disks,
+                                       destination="amiga",
+                                       folder=str(tmp_path / "out"))
+        try:
+            dialog._interactive = True
+            dialog.replan()
+            assert dialog._blocked == (convert.DIALOG_TITLE, convert.NO_DISK)
+            ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+            assert not ok.isEnabled()
+        finally:
+            dialog.close()
+
+    assert critical == [], critical
+
+
+def test_no_disks_in_preferences_pops_no_modal(tmp_path):
+    """The twin for `NO_DISKS` -- `#482`'s own refusal, with no game disks
+    for the destination title, popped a modal named `Game disks not found`
+    on every field change before this fix."""
+    path = _por_c64_disk(tmp_path)
+    critical = []
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(convert.QMessageBox, "critical",
+                            lambda self_, title, text: critical.append((title, text)))
+        dialog = convert.ConvertDialog(str(path), None, _no_disks,
+                                       destination="dos",
+                                       game=str(_game_dir()),
+                                       folder=str(tmp_path / "out"))
+        try:
+            dialog._interactive = True
+            dialog.replan()
+            assert dialog._blocked == (convert.NO_DISKS_TITLE, convert.NO_DISKS)
+            ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+            assert not ok.isEnabled()
+        finally:
+            dialog.close()
+
+    assert critical == [], critical
+
+
+def test_an_unreadable_source_still_pops_a_modal(tmp_path):
+    """The one case that stays modal: the player chose a file and Wish
+    cannot read it, which is a real refusal of something they actually
+    asked for -- not a row they have simply not filled in yet.
+
+    Fails before the fix existed at all -- this is the behaviour `_blocked`
+    already had (`test_a_pools_of_darkness_folder_lists_nothing` pins the
+    same refusal without a modal spy); checked here so the modal-suppression
+    change above cannot be read as covering this case too."""
+    unreadable = tmp_path / "not-a-save.d64"
+    unreadable.write_bytes(b"\x00" * 4)
+    critical = []
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(convert.QMessageBox, "critical",
+                            lambda self_, title, text: critical.append((title, text)))
+        dialog = convert.ConvertDialog("", None, _no_disks)
+        try:
+            dialog._source_path = str(unreadable)
+            dialog.ui.convert_source.setText(str(unreadable))
+            dialog._interactive = True
+            dialog.replan()
+            assert dialog._blocked == (convert.DIALOG_TITLE,
+                                       convert.CANNOT_CONVERT)
+        finally:
+            dialog.close()
+
+    assert critical == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)], critical
+
+
+# ---------------------------------------------------------------------------
 # Amiga -> C64: the registry's third source port (#353)
 # ---------------------------------------------------------------------------
 

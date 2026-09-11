@@ -9,17 +9,21 @@ Export for every direction the library supports)` step B's own tool,
 `tools/iconsheet.py`'s pattern applied to a dialog instead of a custom-painted
 canvas.
 
-Four states need nothing but synthetic inputs -- a fake `game_files` lookup
+Six states need nothing but synthetic inputs -- a fake `game_files` lookup
 and hand-built `SAVGAM?.*`/`CHRDAT?1.SAV` pairs, the same specimens
-`tests/test_convert.py` uses -- and are always produced. The two "ready to
-write" states need a rehearsal to actually succeed, which needs the
-player's own DOS save and C64/DOS game files; those two are skipped, with a
-line saying so, on a machine that has neither. A seventh, `_modal_state`, is
-not the dialog at all: the report pane it used to draw on is gone
-(2026-09-10), so a refusal or a name DOS's own field could not hold whole
-now shows in a modal `QMessageBox` instead, and that box is what this one
-renders -- built directly rather than through `QMessageBox.warning`, which
-blocks on `.exec()` waiting for somebody to click it.
+`tests/test_convert.py` uses -- and are always produced, including
+`05-only-from-filled` and `06-unreadable-source`, added for `#52`'s own bug
+report of 2026-09-10: a source chosen and nothing else used to pop a modal
+saying a field the player had not reached yet was empty, and only a source
+Wish genuinely cannot read still does. The two "ready to write" states need
+a rehearsal to actually succeed, which needs the player's own DOS save and
+C64/DOS game files; those two are skipped, with a line saying so, on a
+machine that has neither. `_modal_state` is not the dialog at all: the
+report pane it used to draw on is gone (2026-09-10), so a real refusal or a
+name DOS's own field could not hold whole now shows in a modal
+`QMessageBox` instead, and that box is what this one renders -- built
+directly rather than through `QMessageBox.warning`, which blocks on
+`.exec()` waiting for somebody to click it.
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
         GDK_BACKEND=x11 .venv/bin/python tools/convertshots.py work/convertshots
@@ -73,7 +77,15 @@ def _no_disks(_game):
 
 
 def _synthetic_states(root: pathlib.Path):
-    """The four states no real specimen is needed for."""
+    """The states no real specimen is needed for.
+
+    `04-no-dos-game-folder`/`05-only-from-filled` is `#52 (File ▸ Import and
+    File ▸ Export for every direction the library supports)`'s own bug
+    report, 2026-09-10: a source chosen and nothing else, which used to pop
+    `Choose the DOS game folder.` in a modal before the player had done
+    anything wrong. `06-unreadable-source` is the case that still does --
+    the player chose a real file and Wish cannot read it.
+    """
     empty = convert.ConvertDialog("", None, _no_disks)
 
     pod_folder = _dos_folder(root, dos_layout.POOLS_OF_DARKNESS, suffix="PTY")
@@ -87,11 +99,19 @@ def _synthetic_states(root: pathlib.Path):
     c64_disk = _por_disk(root)
     no_game_folder = convert.ConvertDialog(str(c64_disk), None, _no_disks)
 
+    only_from_filled = convert.ConvertDialog(str(c64_disk), None, _no_disks)
+
+    unreadable = root / "not-a-save.d64"
+    unreadable.write_bytes(b"\x00" * 4)
+    unreadable_source = convert.ConvertDialog(str(unreadable), None, _no_disks)
+
     return [
         ("01-empty", empty),
         ("02-cannot-convert", refused),
         ("03-no-c64-disks", no_disks_state),
         ("04-no-dos-game-folder", no_game_folder),
+        ("05-only-from-filled", only_from_filled),
+        ("06-unreadable-source", unreadable_source),
     ]
 
 
@@ -132,23 +152,26 @@ def _ready_states(root: pathlib.Path):
         break
     if c64_disk is None:
         window.close()
-        print("skipping '06-ready-to-write-dos': no readable POOL*.D64 save "
+        print("skipping '08-ready-to-write-dos': no readable POOL*.D64 save "
              "disk here")
-        return [("05-ready-to-write-c64", ready_c64)]
+        return [("07-ready-to-write-c64", ready_c64)]
 
     ready_dos = convert.ConvertDialog(
         str(c64_disk), None, window.game_files_for,
         game=str(save_dir.parent), folder=str(root))
     window.close()
-    return [("05-ready-to-write-c64", ready_c64),
-           ("06-ready-to-write-dos", ready_dos)]
+    return [("07-ready-to-write-c64", ready_c64),
+           ("08-ready-to-write-dos", ready_dos)]
 
 
 def _modal_state():
     """The one place left that a refusal or a name warning is shown, now
-    that the report pane is gone: a modal `QMessageBox`. One example of
-    each icon `ConvertDialog._maybe_warn` uses -- `.critical` for the five
-    refusals, `.warning` for a name DOS's own field could not hold whole --
+    that the report pane is gone: a modal `QMessageBox`. `.critical` fires
+    only for a real refusal since `#52`'s fix of 2026-09-10 -- `CANNOT_
+    CONVERT` here, a source the player chose that Wish cannot read --
+    never for `NO_FOLDER`, `NO_GAME_FOLDER`, `NO_DISK` or `NO_DISKS`, which
+    name a row still empty and are silent (`ConvertDialog._SILENT_BLOCKS`).
+    `.warning` is still a name DOS's own field could not hold whole. Both
     built directly so nothing here blocks on a click."""
     from PyQt6.QtWidgets import QMessageBox
 
@@ -158,10 +181,10 @@ def _modal_state():
         "15 characters; truncated",
         QMessageBox.StandardButton.Ok)
     critical = QMessageBox(
-        QMessageBox.Icon.Critical, convert.NO_DISKS_TITLE, convert.NO_DISKS,
+        QMessageBox.Icon.Critical, convert.DIALOG_TITLE, convert.CANNOT_CONVERT,
         QMessageBox.StandardButton.Ok)
-    return [("07-name-warning-modal", warning),
-           ("08-refusal-modal", critical)]
+    return [("09-name-warning-modal", warning),
+           ("10-refusal-modal", critical)]
 
 
 def main(argv: list[str] | None = None) -> int:
