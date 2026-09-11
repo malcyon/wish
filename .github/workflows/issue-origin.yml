@@ -1,17 +1,28 @@
 name: issue origin
 
-# `opened` only. A trigger on `labeled`/`unlabeled` would re-assert the label
-# whenever somebody moved it, which is a workflow reversing a person's edit --
-# forbidden by `.claude/rules/issues.md`, and unarguable-with in a comment.
+# Two triggers, and neither ever removes a label.
+#
+# `issues: opened` says who built the ticket. `issue_comment: created` says
+# somebody outside the project is talking in it -- which is the thing a visitor
+# wants to see and the thing an agent needs, since an agent does not comment on
+# a `human` thread.
+#
+# Adding only, never removing, never on `labeled`/`unlabeled`: a workflow that
+# re-asserts a label reverses a person's edit, which `.claude/rules/issues.md`
+# forbids and which nobody can argue with in a comment. Donald can take either
+# label off and it stays off.
 on:
   issues:
     types: [opened]
+  issue_comment:
+    types: [created]
 
 permissions:
   issues: write
 
 jobs:
   classify:
+    if: github.event_name == 'issues'
     runs-on: ubuntu-latest
 
     steps:
@@ -37,3 +48,35 @@ jobs:
             gh issue edit "$NUMBER" --repo "$REPO" --add-label "human"
             gh issue edit "$NUMBER" --repo "$REPO" --remove-label "AI" || true
           fi
+
+  discussion:
+    # Not a pull request: `issue_comment` fires for both, and the two labels
+    # describe issues.
+    if: github.event_name == 'issue_comment' && !github.event.issue.pull_request
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mark a thread an outside account is talking in
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A webhook payload spells an App the REST way, `wish-agent[bot]` --
+          # unlike `gh`, which reports the same account as `app/wish-agent` on
+          # a `view` and bare `wish-agent` on a comment. Measured 2026-09-11.
+          OWNER: malcyon
+          BOT_LOGIN: wish-agent[bot]
+          COMMENTER: ${{ github.event.comment.user.login }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$COMMENTER" = "$OWNER" ] || [ "$COMMENTER" = "$BOT_LOGIN" ]; then
+            exit 0
+          fi
+          # Adding a label the issue already has is a question nobody has
+          # answered, and a job that fails on every second comment is noise.
+          # Asking first costs one call and settles it.
+          if gh issue view "$NUMBER" --repo "$REPO" --json labels \
+               -q 'any(.labels[]; .name == "human")' | grep -qx true; then
+            exit 0
+          fi
+          gh issue edit "$NUMBER" --repo "$REPO" --add-label "human"
