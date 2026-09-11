@@ -191,3 +191,32 @@ def test_a_failed_outside_fetch_still_prints_the_trusted_list(monkeypatch, capsy
 
     out = capsys.readouterr().out
     assert "#2 (Still shown)" in out
+
+
+def test_missing_ghtrust_module_exits_0_printing_nothing(monkeypatch, capsys):
+    """`tools/ghtrust.py` not being findable or importable must never be
+    the thing that breaks somebody starting work -- same silent-failure
+    contract as an unauthenticated or offline `gh`.
+
+    `gh` is monkeypatched too, to an outside issue: with `ghtrust` gone,
+    `main()`'s own filtering would otherwise call `ghtrust.is_trusted` on a
+    real result and crash with an `AttributeError` rather than exiting
+    cleanly -- which is exactly the failure this guards against, and why the
+    fetch cannot be left to return an empty list by accident.
+    """
+    outside_issue = _issue(521, "Something", author="someuser")
+
+    def fake_run(cmd, **kwargs):
+        payload = [] if "--author" in cmd else [outside_issue]
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr(hook, "ghtrust", None)
+    monkeypatch.setattr(hook.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+
+    result = hook.main()
+
+    out = capsys.readouterr().out
+    assert result == 0
+    assert out == ""
