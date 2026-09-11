@@ -1408,15 +1408,28 @@ class EditorBinding(QObject):
                 continue
             if dialog.direction.destination_port == "c64":
                 self.load(str(written[0]))
-                return f"converted into {fresh}"
-            if dialog.direction.destination_port == "amiga":
+                result = f"converted into {fresh}"
+            elif dialog.direction.destination_port == "amiga":
                 note = convert_mod.CONVERTED_AMIGA.format(
                     slot=dialog.slot or "", folder=fresh)
+                self.status(note)
+                result = note
             else:
                 note = convert_mod.CONVERTED_DOS.format(
                     slot=dialog.slot or "", folder=fresh)
-            self.status(note)
-            return note
+                self.status(note)
+                result = note
+            #: `dialog` is already closed by this point -- `buttons.accepted`
+            #: is wired straight to `QDialog.accept` and fires the instant
+            #: Convert is clicked, before this method ever runs. So this
+            #: pop-up replaces silence after that close, not the close
+            #: itself: the destination's own slot, where one exists, is
+            #: still `self.status(note)` above -- Donald's own wording names
+            #: only the folder.
+            QMessageBox.information(
+                self.root, convert_mod.DIALOG_TITLE,
+                convert_mod.CONVERT_SUCCESS.format(folder=fresh))
+            return result
 
     # -- exports ----------------------------------------------------------
 

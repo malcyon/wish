@@ -187,6 +187,31 @@ def _modal_state():
            ("10-refusal-modal", critical)]
 
 
+def _success_states():
+    """`EditorBinding.convert`'s own success pop-up (`#52 (File ▸ Import
+    and File ▸ Export for every direction the library supports)`, Donald's
+    wording of 2026-09-10), for a DOS destination and a C64 one -- the two
+    the ticket asked to see, since the box is the same shape for either but
+    the folder underneath it is not: a C64 write names one `.D64`, a DOS
+    write a folder of several files, and only the folder is shown either
+    way. Built directly, the same way `_modal_state` above builds `warning`
+    and `critical`, so nothing here blocks on a click."""
+    from PyQt6.QtWidgets import QMessageBox
+
+    dos_box = QMessageBox(
+        QMessageBox.Icon.Information, convert.DIALOG_TITLE,
+        convert.CONVERT_SUCCESS.format(
+            folder="/home/donald/dos_por_play/wish-2026-09-10"),
+        QMessageBox.StandardButton.Ok)
+    c64_box = QMessageBox(
+        QMessageBox.Icon.Information, convert.DIALOG_TITLE,
+        convert.CONVERT_SUCCESS.format(
+            folder="/home/donald/c64_por_play/wish-2026-09-10"),
+        QMessageBox.StandardButton.Ok)
+    return [("11-success-dos", dos_box),
+           ("12-success-c64", c64_box)]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out_dir", nargs="?", default="work/convertshots",
@@ -201,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="wish-convertshots-") as tmp:
         root = pathlib.Path(tmp)
         states = _synthetic_states(root) + _ready_states(root) \
-            + _modal_state()
+            + _modal_state() + _success_states()
         for name, dialog in states:
             dialog.resize(dialog.sizeHint())
             dialog.show()

@@ -922,8 +922,8 @@ def app():
 
 @pytest.fixture(autouse=True)
 def _no_real_modals(monkeypatch):
-    """Neutralise `QMessageBox.critical`/`.warning` by default, for every
-    test in this module.
+    """Neutralise `QMessageBox.critical`/`.warning`/`.information` by
+    default, for every test in this module.
 
     `ConvertDialog._maybe_warn` (2026-09-10) pops a real one once a dialog
     is `_interactive` -- true for anything built and then driven further,
@@ -942,6 +942,11 @@ def _no_real_modals(monkeypatch):
     monkeypatch.setattr(convert.QMessageBox, "critical",
                         lambda *a, **k: None)
     monkeypatch.setattr(convert.QMessageBox, "warning",
+                        lambda *a, **k: None)
+    #: `EditorBinding.convert`'s own success pop-up, `QMessageBox.
+    #: information` (`#52`) -- the same class object `convert.QMessageBox`
+    #: names, so patching it here reaches `editor/window.py`'s call too.
+    monkeypatch.setattr(convert.QMessageBox, "information",
                         lambda *a, **k: None)
 
 
@@ -1507,6 +1512,45 @@ def test_a_c64_destinations_result_is_the_party_on_screen_afterwards(
     assert window.party.game is games.POOL_OF_RADIANCE
     assert len(opened) == 1
     window.close()
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_successful_c64_conversion_pops_the_confirmation_after_loading_it(
+        tmp_path, monkeypatch):
+    """`#52`'s `CONVERT_SUCCESS` box, on the C64 branch -- the one
+    destination with no status-line note of its own (`self.load()` is all
+    it did before this, easy to miss when a save was already open). The
+    party is already on screen when the box appears, since `EditorBinding.
+    convert` calls `self.load()` first (`test_a_c64_destinations_result_is_
+    the_party_on_screen_afterwards` proves that load); this only adds the
+    pop-up on top of it, with Donald's own wording and the same folder the
+    dialog's `Destination:` line names."""
+    save_dir = _save_dir()
+    disks = disk_dir()
+    window = EditorBinding(_make_root(), disks=str(disks))
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    shown = []
+    monkeypatch.setattr(convert.ConvertDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(
+        convert.QMessageBox, "information",
+        lambda parent, title, text: shown.append((title, text)))
+    opened = []
+    window.opened.connect(opened.append)
+    try:
+        window.convert(source=str(save_dir / "SAVGAMA.DAT"),
+                      folder=str(destination))
+    finally:
+        window.close()
+
+    today = datetime.date.today().isoformat()
+    fresh = destination / f"wish-{today}"
+    assert len(opened) == 1        # the party was already loaded
+    assert shown == [(convert.DIALOG_TITLE,
+                     convert.CONVERT_SUCCESS.format(folder=fresh))]
 
 
 def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
@@ -2736,6 +2780,158 @@ def test_window_convert_reports_the_amiga_status_line_with_no_real_disk(
     assert note == convert.CONVERTED_AMIGA.format(slot="A", folder=fresh)
     assert written.read_bytes() == b"not a real disk"
     assert list(fresh.iterdir()) == [written]
+
+
+def test_a_successful_amiga_conversion_pops_the_confirmation_alongside_the_status_line(
+        tmp_path, monkeypatch):
+    """`#52`'s `CONVERT_SUCCESS` box, on the Amiga branch, alongside --
+    never instead of -- `CONVERTED_AMIGA`'s own status line: that line
+    still carries the load-game letter Donald's new sentence does not name,
+    so both fire on the one write. CI-safe, the same
+    `_synthetic_amiga_rehearsal()` plumbing as the status-line test above."""
+    from goldbox import dos_layout
+
+    window = EditorBinding(_make_root())
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    rehearsal = _synthetic_amiga_rehearsal()
+    direction = convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE)
+
+    class _FakeDialog:
+        def __init__(self, *args, **kwargs):
+            self.direction = direction
+            self.rehearsal = rehearsal
+            self.slot = "A"
+            self.folder = str(destination)
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def close(self):
+            pass
+
+    shown = []
+    monkeypatch.setattr(convert, "ConvertDialog", _FakeDialog)
+    monkeypatch.setattr(
+        convert.QMessageBox, "information",
+        lambda parent, title, text: shown.append((title, text)))
+    try:
+        note = window.convert(source="ignored", destination="amiga",
+                              disk="ignored", folder=str(destination))
+    finally:
+        window.close()
+
+    today = datetime.date.today().isoformat()
+    fresh = destination / f"wish-{today}"
+    assert note == convert.CONVERTED_AMIGA.format(slot="A", folder=fresh)
+    assert shown == [(convert.DIALOG_TITLE,
+                     convert.CONVERT_SUCCESS.format(folder=fresh))]
+
+
+def test_a_successful_dos_conversion_pops_the_confirmation_alongside_the_status_line(
+        tmp_path, monkeypatch):
+    """`#52`'s `CONVERT_SUCCESS` box, on the DOS branch, alongside --
+    never instead of -- `CONVERTED_DOS`'s own status line and the slot it
+    names. CI-safe: a hand-built direction that never touches real game
+    data, the same shape as the Amiga test above."""
+    window = EditorBinding(_make_root())
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    class _FakeDosDirection:
+        destination_port = "dos"
+
+        def write(self, rehearsal, folder):
+            path = pathlib.Path(folder) / "SAVGAMA.DAT"
+            path.write_bytes(b"not a real save")
+            return [path]
+
+    class _FakeDialog:
+        def __init__(self, *args, **kwargs):
+            self.direction = _FakeDosDirection()
+            self.rehearsal = object()
+            self.slot = "A"
+            self.folder = str(destination)
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def close(self):
+            pass
+
+    shown = []
+    monkeypatch.setattr(convert, "ConvertDialog", _FakeDialog)
+    monkeypatch.setattr(
+        convert.QMessageBox, "information",
+        lambda parent, title, text: shown.append((title, text)))
+    try:
+        note = window.convert(source="ignored", destination="dos",
+                              folder=str(destination))
+    finally:
+        window.close()
+
+    today = datetime.date.today().isoformat()
+    fresh = destination / f"wish-{today}"
+    assert note == convert.CONVERTED_DOS.format(slot="A", folder=fresh)
+    assert shown == [(convert.DIALOG_TITLE,
+                     convert.CONVERT_SUCCESS.format(folder=fresh))]
+
+
+def test_a_refused_conversion_never_pops_the_success_confirmation(
+        tmp_path, monkeypatch):
+    """A write that fails still shows only its own refusal
+    (`CANNOT_CONVERT`, via `dialog.refuse`) -- never `CONVERT_SUCCESS`
+    alongside it. CI-safe: a direction whose `write` always raises, the
+    same retry shape `test_a_writer_that_fails_partway_leaves_no_folder_
+    behind` proves against a real DOS write."""
+    window = EditorBinding(_make_root())
+    destination = tmp_path / "out"
+    destination.mkdir()
+
+    class _FailingDirection:
+        destination_port = "dos"
+
+        def write(self, rehearsal, folder):
+            pathlib.Path(folder).joinpath("partial.dat").write_bytes(b"x")
+            raise OSError("disk full")
+
+    dialogs = []
+
+    class _FakeDialog:
+        def __init__(self, *args, **kwargs):
+            self.direction = _FailingDirection()
+            self.rehearsal = object()
+            self.slot = "A"
+            self.folder = str(destination)
+            self.refusals = []
+            self._answers = iter([QDialog.DialogCode.Accepted,
+                                 QDialog.DialogCode.Rejected])
+            dialogs.append(self)
+
+        def exec(self):
+            return next(self._answers)
+
+        def refuse(self, text):
+            self.refusals.append(text)
+
+        def close(self):
+            pass
+
+    shown = []
+    monkeypatch.setattr(convert, "ConvertDialog", _FakeDialog)
+    monkeypatch.setattr(
+        convert.QMessageBox, "information",
+        lambda *a, **k: shown.append(a))
+    try:
+        outcome = window.convert(source="ignored", destination="dos",
+                                folder=str(destination))
+    finally:
+        window.close()
+
+    assert outcome == "cancelled"
+    assert dialogs[0].refusals == [convert.CANNOT_CONVERT]
+    assert shown == []
 
 
 def _synthetic_amiga_rehearsal():

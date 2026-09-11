@@ -1359,6 +1359,19 @@ CONVERTED_DOS = "Converted to DOS slot {slot} in {folder}"
 #: which is another agent's file tonight; see `#36`'s comment.
 CONVERTED_AMIGA = "Wrote POOLSAVE.ADF to {folder}. Load game {slot}."
 
+#: The modal `QMessageBox.information` shown after any write that succeeds
+#: -- C64, Amiga or DOS alike, over `EditorBinding.convert`'s own already-
+#: closed dialog. Donald's own wording, verbatim, `#52 (File ▸ Import and
+#: File ▸ Export for every direction the library supports)`, 2026-09-10:
+#: *"Instead of closing the window, could we get a success pop-up that
+#: says, 'Conversion successful!'. Then, on the next line, say, 'Your new
+#: save is located at: '"* -- `{folder}` is the same path named on the
+#: `Destination:` line above (`_destination_text`), never a second path
+#: composed some other way. `CONVERTED_DOS` and `CONVERTED_AMIGA` still
+#: carry the slot this sentence does not -- both fire alongside this one
+#: rather than being replaced by it.
+CONVERT_SUCCESS = "Conversion successful!\nYour new save is located at: {folder}"
+
 
 def _destination_text(folder: pathlib.Path) -> str:
     """`DESTINATION_PREFIX` followed by the folder Convert would write
