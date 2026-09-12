@@ -1226,7 +1226,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # the disk's own creation menu does not offer), whenever the destination
     # would otherwise have drawn a face.  Adding this one too read as the
     # same loss reported twice, in two vocabularies (#314), and it can be
-    # imported to check directly: `dos.py` imports this module, not the
+    # imported to check directly: `dos_codec.py` imports this module, not the
     # other way round.  A source with no such sentence of its own would need
     # this line back.
     both = True
