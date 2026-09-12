@@ -3,20 +3,20 @@ import os
 import pathlib
 import sys
 
-from goldbox.games import Game
+from goldbox.c64_port import C64Container
 from goldbox.geo import load_geo_files
 
 from .paths import disk_globs, resolve_disks, titles_in
 
 
-def default_disks(game: Game | None = None) -> str:
+def default_disks(game: C64Container | None = None) -> str:
     where, _source = resolve_disks(game=game)
     return str(where) if where is not None else str(pathlib.Path.cwd())
 
-def load_maps(disks: str | None = None, game: Game | None = None) -> dict:
+def load_maps(disks: str | None = None, game: C64Container | None = None) -> dict:
     return load_maps_titled(disks, game)[0]
 
-def load_maps_titled(disks: str | None = None, game: Game | None = None) -> tuple[dict, Game | None]:
+def load_maps_titled(disks: str | None = None, game: C64Container | None = None) -> tuple[dict, C64Container | None]:
     if disks is None:
         where, _source = resolve_disks(game=game)
         if where is None:

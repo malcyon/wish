@@ -85,7 +85,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import dos, games
+from goldbox import c64_port, dos_codec
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
@@ -218,7 +218,7 @@ class Conversion:
     game: Any
     save0: SaveGame0
     save1: SaveGame1 | None
-    report: dos.Report
+    report: dos_codec.Report
     folder: pathlib.Path
     slot: str
 
@@ -240,10 +240,10 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     payload `goldbox/c64_save.py` describes -- so `save1` stays `None` rather
     than an empty `SaveGame1`, which the constructor would refuse anyway.
     """
-    party = dos.read_party(folder, slot)
+    party = dos_codec.read_party(folder, slot)
     try:
-        game = games.by_key(party[0].shape.key)
-    except games.UnknownGameError:
+        game = c64_port.by_key(party[0].shape.key)
+    except c64_port.UnknownGameError:
         # Pools of Darkness is the one title this reads and `goldbox/games.py`
         # does not list, because there is no C64 port to convert it to. Before
         # the title came from the save, that folder ran on into `to_neutral`
@@ -251,22 +251,22 @@ def rehearse(folder: str | pathlib.Path, slot: str,
         # this, `UnknownGameError` is not a `DosRecordError`, so the dialog
         # falls through to "This save cannot be converted." and the player is
         # told less than we know.
-        raise dos.WrongTitleError(
+        raise dos_codec.WrongTitleError(
             f"{party[0].shape.title} has no C64 port to convert to, so "
             f"goldbox/games.py has no entry for it (#176)",
             party[0].shape.title) from None
-    payload0, payload1, report = dos.new_save(folder, slot,
+    payload0, payload1, report = dos_codec.new_save(folder, slot,
                                               files.icon, files.animate,
                                               portraits=files.portraits,
                                               game=game)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
-    disk = dos.save_disk(bytes(payload0), bytes(payload1), game)
+    disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)
     return Conversion(disk, game, sg0, sg1, report,
                       pathlib.Path(folder), slot)
 
 
-def pane_text(report: dos.Report) -> str:
+def pane_text(report: dos_codec.Report) -> str:
     """The messages, then the losses, joined -- what `DosImportDialog`'s own
     pane, below, has always shown, and what `editor/convert.py`'s pane used
     to draw before that pane was removed outright, 2026-09-10.
@@ -305,7 +305,7 @@ def pane_text(report: dos.Report) -> str:
 NAME_TRUNCATED_MARKER = "is longer than the DOS "
 
 
-def name_warnings(report: dos.Report) -> list[str]:
+def name_warnings(report: dos_codec.Report) -> list[str]:
     """`report.losses` filtered to the one kind of loss Donald ruled a
     player is entitled to see: a name too long for DOS's own field.
 
@@ -324,7 +324,7 @@ def name_warnings(report: dos.Report) -> list[str]:
            if NAME_TRUNCATED_MARKER in line]
 
 
-def log_unshown_losses(report: dos.Report) -> None:
+def log_unshown_losses(report: dos_codec.Report) -> None:
     """Every `report.losses` line `name_warnings` does not return, to the
     debug log instead of a player -- evidence for #508 and #509 without
     putting an excuse in front of somebody. Donald, 2026-09-10, on being
@@ -338,7 +338,7 @@ def log_unshown_losses(report: dos.Report) -> None:
                   "; ".join(unshown))
 
 
-def dropped_text(report: dos.Report) -> str:
+def dropped_text(report: dos_codec.Report) -> str:
     """The losses, one to a line, under a heading -- or nothing at all.
 
     **Not this window's.** `DosImportDialog` draws :func:`pane_text`, which
@@ -398,7 +398,7 @@ class DosImportDialog(QDialog):
         self._folder_label.setText(str(self.folder))
 
         self.slots = self.ui.dos_slot
-        self.slots.addItems(dos.slots_available(self.folder))
+        self.slots.addItems(dos_codec.slots_available(self.folder))
         self.slots.currentTextChanged.connect(lambda _t: self._rehearse())
 
         self.report_pane = self.ui.dos_report
@@ -501,11 +501,11 @@ class DosImportDialog(QDialog):
             return ""
         try:
             self.conversion = rehearse(self.folder, self.slot, self.files)
-        except dos.DosRecordError as exc:
+        except dos_codec.DosRecordError as exc:
             # The exception text is written for the tracker and may carry an
             # issue number, an address or a source file name; a player reads
             # `player_message` instead -- `WrongTitleError`'s own sentence, or
-            # `dos.CANNOT_CONVERT` for every other refusal (#176, #195).
+            # `dos_codec.CANNOT_CONVERT` for every other refusal (#176, #195).
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
             return exc.player_message
@@ -514,7 +514,7 @@ class DosImportDialog(QDialog):
             # developer's traceback in front of a player (#195).
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
-            return dos.CANNOT_CONVERT
+            return dos_codec.CANNOT_CONVERT
         # The same lines the pane shows, for whoever is debugging with
         # `WISH_DEBUG` and no window in front of them.
         for line in self.conversion.report.dropped:

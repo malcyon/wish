@@ -20,9 +20,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from goldbox import games
+from goldbox import c64_port
+from goldbox.c64_port import C64Container
+from goldbox.c64_save import ICON_TABLE_OFFSET
 from goldbox.d64 import D64
-from goldbox.games import ICON_TABLE_OFFSET, Game
 from goldbox.icons import ICON_SIZE, Icon, icon_for_slot
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0, SaveGame1, load_save, looks_occupied
@@ -54,7 +55,7 @@ class Member:
     #: looked up in that title's tables rather than Pool of Radiance's. **None
     #: means Pool of Radiance**, which is what a `Member` built without one
     #: meant before there was a second title (#78).
-    game: Game | None = None
+    game: C64Container | None = None
 
     @property
     def is_npc(self) -> bool:
@@ -187,7 +188,7 @@ class Party:
     -- and that now identifies the *title* as well as the kind of disk.
     """
 
-    def __init__(self, path: str, game: Game | None = None, disk=None):
+    def __init__(self, path: str, game: C64Container | None = None, disk=None):
         """`disk` is an image already in memory, standing in for reading one.
 
         The one caller is the DOS import, which builds a converted disk that
@@ -197,8 +198,8 @@ class Party:
         """
         self.path = path
         self.disk = D64.open(path) if disk is None else disk
-        self.game = game or games.detect(self.disk, games.DEFAULT)
-        self.is_save = games.detect(self.disk) is not None
+        self.game = game or c64_port.detect(self.disk, c64_port.DEFAULT)
+        self.is_save = c64_port.detect(self.disk) is not None
         self.save0: SaveGame0 | None = None
         self.save1: SaveGame1 | None = None
         self.members: list[Member] = []

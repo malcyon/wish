@@ -42,7 +42,7 @@ from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
 from editor.window import EditorBinding
-from goldbox import dos, dos_layout, dos_savegame, games, titles
+from goldbox import dos, dos_codec, dos_layout, dos_savegame, games, titles
 from goldbox.savegame import SaveGame0, SaveGame1
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
@@ -2049,14 +2049,18 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
         return real_refuse(self, text)
 
     monkeypatch.setattr(convert.ConvertDialog, "refuse", note_refusal)
-    monkeypatch.setattr(dos, "new_dos_save", half_a_write)
+    # `editor.convert` calls `dos_codec.new_dos_save` directly now (#470 stage
+    # 9), not through the `goldbox.dos` shim this test otherwise uses, so the
+    # patch has to land on the module the caller actually looks the name up
+    # on -- patching the shim's own attribute leaves `dos_codec`'s untouched.
+    monkeypatch.setattr(dos_codec, "new_dos_save", half_a_write)
     try:
         outcome = window.convert(source=str(_por_c64_disk(tmp_path)),
                                  destination="dos",
                                  game=str(_game_dir()),
                                  folder=str(destination))
     finally:
-        monkeypatch.setattr(dos, "new_dos_save", real)
+        monkeypatch.setattr(dos_codec, "new_dos_save", real)
         window.close()
 
     assert outcome == "cancelled"

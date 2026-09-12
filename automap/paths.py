@@ -11,7 +11,7 @@ import os
 import pathlib
 import sys
 
-from goldbox import games
+from goldbox import c64_port
 
 APP = "wish"
 
@@ -42,23 +42,23 @@ def data_dir() -> pathlib.Path:
     return pathlib.Path(root) / APP
 
 
-def disk_globs(game: games.Game | None = None) -> tuple[str, ...]:
+def disk_globs(game: c64_port.C64Container | None = None) -> tuple[str, ...]:
     """The patterns matching one title's disk images.
 
     `Game.disk_glob` already covers `POOL1.D64` and `POOL1.d64`; the lowered
     copy is for a directory unpacked from an archive that lower-cased the whole
     name. No game means Pool of Radiance, as everywhere else.
     """
-    glob = (game or games.DEFAULT).disk_glob
+    glob = (game or c64_port.DEFAULT).disk_glob
     return (glob, glob.lower()) if glob.lower() != glob else (glob,)
 
 
-def _dir_names(game: games.Game | None) -> tuple[str, ...]:
+def _dir_names(game: c64_port.C64Container | None) -> tuple[str, ...]:
     """Directory names somebody would actually give a title's disks."""
     out = []
-    for title in ([game.title] if game else [g.title for g in games.GAMES]):
+    for title in ([game.title] if game else [g.title for g in c64_port.GAMES]):
         out += [f"{title} Disks", title]
-    if game is None or game is games.POOL_OF_RADIANCE:
+    if game is None or game is c64_port.POOL_OF_RADIANCE:
         out.append("PoR")
     return tuple(dict.fromkeys(out))
 
@@ -67,7 +67,7 @@ def _dir_names(game: games.Game | None) -> tuple[str, ...]:
 # somebody would actually put them, and finally the working directory. There is
 # deliberately no absolute default -- an earlier version hard-coded one
 # developer's home directory, which is useless to everybody else.
-def disk_candidates(game: games.Game | None = None) -> list[pathlib.Path]:
+def disk_candidates(game: c64_port.C64Container | None = None) -> list[pathlib.Path]:
     env = os.environ.get("POR_DISKS")
     if env:
         return [pathlib.Path(env)]
@@ -87,7 +87,7 @@ def disk_candidates(game: games.Game | None = None) -> list[pathlib.Path]:
     return out
 
 
-def has_disks(path: pathlib.Path, game: games.Game | None = None) -> bool:
+def has_disks(path: pathlib.Path, game: c64_port.C64Container | None = None) -> bool:
     """Does this directory hold that title's disks?"""
     try:
         if not path.is_dir():
@@ -100,14 +100,14 @@ def has_disks(path: pathlib.Path, game: games.Game | None = None) -> bool:
     return False
 
 
-def titles_in(path) -> list[games.Game]:
+def titles_in(path) -> list[c64_port.C64Container]:
     """Every title whose disks sit in this directory, Pool of Radiance first."""
     path = pathlib.Path(path)
-    return [g for g in games.GAMES if has_disks(path, g)]
+    return [g for g in c64_port.GAMES if has_disks(path, g)]
 
 
-def locate_disks(game: games.Game | None = None
-                 ) -> tuple[pathlib.Path, games.Game] | None:
+def locate_disks(game: c64_port.C64Container | None = None
+                 ) -> tuple[pathlib.Path, c64_port.C64Container] | None:
     """The first directory holding a title's disks, and which title that is.
 
     With no `game` every title is tried, Pool of Radiance first: a machine with
@@ -116,14 +116,14 @@ def locate_disks(game: games.Game | None = None
     fallback for when nothing says which game is wanted -- a caller that knows,
     because a save is open, passes it and gets no guessing at all.
     """
-    for want in ([game] if game is not None else list(games.GAMES)):
+    for want in ([game] if game is not None else list(c64_port.GAMES)):
         for path in disk_candidates(want):
             if has_disks(path, want):
                 return path, want
     return None
 
 
-def find_disks(game: games.Game | None = None) -> pathlib.Path | None:
+def find_disks(game: c64_port.C64Container | None = None) -> pathlib.Path | None:
     """The first directory that actually holds this title's disks."""
     hit = locate_disks(game)
     return hit[0] if hit is not None else None
@@ -150,7 +150,7 @@ SEARCHED = "searched"
 NOWHERE = "nothing found"
 
 
-def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
+def resolve_disks(flag=None, beside=None, game: c64_port.C64Container | None = None,
                   settings=None) -> tuple[pathlib.Path | None, str]:
     """Where to look for the game disks, and who said so.
 
@@ -172,7 +172,7 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
     title's own folder does not make it map that title)`). With `game`
     given, only that title's own row answers. With no
     game -- nothing has said which title is wanted, which is the state the
-    window opens in with no save chosen -- the first title in `games.GAMES`
+    window opens in with no save chosen -- the first title in `c64_port.GAMES`
     order that has a row answers; that is `wish/window.py`'s job to correct
     once the machine says which title is actually running, this function only
     ever answers from what is configured.
@@ -185,7 +185,7 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
     if settings is None:
         settings = Settings.load()
     per_game = getattr(settings, "game_folders", None) or {}
-    wanted = [game] if game is not None else list(games.GAMES)
+    wanted = [game] if game is not None else list(c64_port.GAMES)
     for want in wanted:
         own = (per_game.get(want.key, "") or "").strip()
         if own:

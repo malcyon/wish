@@ -33,7 +33,7 @@ from PyQt6.QtWidgets import (
 )
 
 from goldbox import c64_codec, classcode
-from goldbox import games as por_games
+from goldbox import c64_port as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
@@ -900,7 +900,7 @@ class EditorBinding(QObject):
             found["spells_memorised"] = self.root.findChild(QWidget, "field_spells_memorised")
         return found
 
-    def _fill_combos(self, game: por_games.Game | None = None) -> None:
+    def _fill_combos(self, game: por_games.C64Container | None = None) -> None:
         """Name the codes for the fields whose encoding is known, per title."""
         tables = tables_for(game)
         for name, w in self._widgets.items():
@@ -1183,14 +1183,14 @@ class EditorBinding(QObject):
         cannot be converted unless its C64 sides sit in the Pool of
         Radiance disk folder)`).
         """
-        from goldbox import dos
+        from goldbox import dos_codec
         from goldbox.d64 import load_payload
         from goldbox.portraits import PortraitError, tables_from_disks
 
         from .dosimport import GameFiles
 
         def read_animate(disk):
-            return load_payload(disk, dos.ANIMATE_FILE)
+            return load_payload(disk, dos_codec.ANIMATE_FILE)
 
         game = self.party.game if self.party is not None else por_games.DEFAULT
         icon_disk = self._find_disk(IconParts.load, game=game)
@@ -1245,14 +1245,14 @@ class EditorBinding(QObject):
         had already set Curse's and Silver Blades' own, and this asked only
         the shared one.
         """
-        from goldbox import dos, games
+        from goldbox import c64_port, dos_codec
         from goldbox.d64 import load_payload
         from goldbox.portraits import PortraitError, tables_from_disks
 
         from .dosimport import GameFiles
 
         def read_animate(disk):
-            return load_payload(disk, dos.ANIMATE_FILE)
+            return load_payload(disk, dos_codec.ANIMATE_FILE)
 
         pattern = game.disk_glob
         icon_disk = self._find_disk(IconParts.load, pattern, game)
@@ -1260,7 +1260,7 @@ class EditorBinding(QObject):
         if icon_disk is None or animate_disk is None:
             return None
         portraits = None
-        if game.key == games.POOL_OF_RADIANCE.key:
+        if game.key == c64_port.POOL_OF_RADIANCE.key:
             for candidate in (self.disks, self._own_disk_folder(game)):
                 if not candidate:
                     continue
@@ -1280,7 +1280,7 @@ class EditorBinding(QObject):
 
     def import_dos_save(self, folder: str | None = None) -> str:
         """File > Import > DOS Save Folder… Returns what happened, for a test."""
-        from goldbox import dos
+        from goldbox import dos_codec
 
         from .dosimport import (
             FOLDER_TITLE,
@@ -1301,7 +1301,7 @@ class EditorBinding(QObject):
                 str(self.path.parent if self.path else ""))
         if not folder:
             return "cancelled"
-        if not dos.slots_available(folder):
+        if not dos_codec.slots_available(folder):
             QMessageBox.warning(self.root, NO_SLOTS_TITLE,
                                 NO_SLOTS.format(folder=folder))
             return "no DOS save"
@@ -1598,7 +1598,7 @@ class EditorBinding(QObject):
             # eliding this title used to need went with it.
             box.setTitle(activeeffects.BOX_TITLE)
 
-    def _own_disk_folder(self, game: por_games.Game) -> str | None:
+    def _own_disk_folder(self, game: por_games.C64Container) -> str | None:
         """`game`'s own folder out of `self.game_folders` -- the constructor
         argument sourced from Preferences (`Settings.game_folders`,
         `#22 (A disk folder setting per game, not one shared by all six)`) --
@@ -1616,7 +1616,7 @@ class EditorBinding(QObject):
         return own or None
 
     def _disk_candidates(self, pattern: str | None = None,
-                        game: por_games.Game | None = None) -> list[str]:
+                        game: por_games.C64Container | None = None) -> list[str]:
         """`--game-disk`, then that title's own folder in Preferences, then
         the shared Game directory setting, then $POR_GAME_DISK, then any
         game disk of the open title beside the save.
@@ -1674,7 +1674,7 @@ class EditorBinding(QObject):
         return unique
 
     def _find_disk(self, read, pattern: str | None = None,
-                  game: por_games.Game | None = None) -> str | None:
+                  game: por_games.C64Container | None = None) -> str | None:
         """The first candidate `read` succeeds on."""
         for c in self._disk_candidates(pattern, game):
             try:

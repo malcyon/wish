@@ -73,7 +73,7 @@ from automap import paths
 from automap.actionbar import DANGER, no_areas
 from automap.config import clamp_to_screen
 from goldbox import areas as area_table
-from goldbox import games
+from goldbox import c64_port
 
 from . import backends
 from .ui_preferences import Ui_PreferencesDialog
@@ -178,14 +178,14 @@ def _pretty(glob: str) -> str:
 #: (`#194`). There is no `disk_glob` a folder for it could search against, and
 #: inventing one would be exactly the fabricated data `.claude/rules/
 #: conversions.md` refuses. Left as a finding on #22 rather than built here.
-GAME_FOLDER_TITLES: tuple[games.Game, ...] = (
-    games.POOL_OF_RADIANCE,
-    games.CURSE_OF_THE_AZURE_BONDS,
-    games.SECRET_OF_THE_SILVER_BLADES,
+GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
+    c64_port.POOL_OF_RADIANCE,
+    c64_port.CURSE_OF_THE_AZURE_BONDS,
+    c64_port.SECRET_OF_THE_SILVER_BLADES,
 )
 
 
-def title_folder_report(folder: str, game: games.Game) -> str:
+def title_folder_report(folder: str, game: c64_port.C64Container) -> str:
     """What one title's own folder box has found.
 
     Not `report()`: that walks the whole precedence, and a per-title row is
@@ -215,12 +215,12 @@ def title_folder_report(folder: str, game: games.Game) -> str:
     return f"{n} disk{'' if n == 1 else 's'}"
 
 
-def game_named(title: str | None) -> games.Game | None:
+def game_named(title: str | None) -> c64_port.C64Container | None:
     """The `Game` a title string names, or None."""
-    return next((g for g in games.GAMES if g.title == title), None)
+    return next((g for g in c64_port.GAMES if g.title == title), None)
 
 
-def _images(where: pathlib.Path, game: games.Game | None) -> list[pathlib.Path]:
+def _images(where: pathlib.Path, game: c64_port.C64Container | None) -> list[pathlib.Path]:
     """Every disk image of a title in this folder, each of them once.
 
     Both patterns match the same file on a case-insensitive filesystem, so a
@@ -289,7 +289,7 @@ def backup_folder(settings, save) -> str:
 
 
 def report(settings, flag=None, beside=None,
-           game: games.Game | None = None) -> list[tuple[str, str]]:
+           game: c64_port.C64Container | None = None) -> list[tuple[str, str]]:
     """The two lines the dialog prints, as (label, value) pairs.
 
     Each answers a question somebody has actually had: is it even looking where
@@ -304,7 +304,7 @@ def report(settings, flag=None, beside=None,
     where, _source = paths.resolve_disks(flag=flag, beside=beside, game=game,
                                          settings=settings)
     rows = [("In use", str(where) if where is not None else "nothing found")]
-    wanted = [game] if game else list(games.GAMES)[:2]
+    wanted = [game] if game else list(c64_port.GAMES)[:2]
     patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
     if where is None:
         return rows + [("Titles",
@@ -372,7 +372,7 @@ def _invalidate_layout(layout) -> None:
             _invalidate_layout(item.widget().layout())
 
 
-def _row_suffix(game: games.Game) -> str:
+def _row_suffix(game: c64_port.C64Container) -> str:
     """The part of a per-title widget's `objectName` that names `game`.
 
     `game.key` itself has a hyphen in it (`pool-of-radiance`), and pyuic
@@ -492,7 +492,7 @@ class PreferencesDialog(QDialog):
         **The shared folder itself is gone**
         (`#357 (The automapper reads the shared Game disks folder, so
         setting a title's own folder does not make it map that title)`): it
-        answered for whichever title was first in `games.GAMES`, whatever
+        answered for whichever title was first in `c64_port.GAMES`, whatever
         was actually being played, and a title's own row is the only setting
         left.
         """
@@ -535,10 +535,10 @@ class PreferencesDialog(QDialog):
             self.game_folder_edits[game.key] = edit
             self.game_folder_reports[game.key] = note
 
-    def game_folder_text(self, game: games.Game) -> str:
+    def game_folder_text(self, game: c64_port.C64Container) -> str:
         return self.game_folder_edits[game.key].text().strip()
 
-    def browse_game_folder(self, game: games.Game) -> None:
+    def browse_game_folder(self, game: c64_port.C64Container) -> None:
         """The folder picker. A method so a test can replace it."""
         chosen = QFileDialog.getExistingDirectory(
             self, "Where the game disks are",
@@ -546,12 +546,12 @@ class PreferencesDialog(QDialog):
         if chosen:
             self.set_game_folder(game, chosen)
 
-    def set_game_folder(self, game: games.Game, folder: str) -> None:
+    def set_game_folder(self, game: c64_port.C64Container, folder: str) -> None:
         """Type this in and apply it, as Browse and Clear do."""
         self.game_folder_edits[game.key].setText(folder)
         self._game_folder_settled(game)
 
-    def _game_folder_settled(self, game: games.Game) -> None:
+    def _game_folder_settled(self, game: c64_port.C64Container) -> None:
         folder = self.game_folder_text(game)
         table = dict(getattr(self.win.settings, "game_folders", None) or {})
         changed = table.get(game.key, "") != folder

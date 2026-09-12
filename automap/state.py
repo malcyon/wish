@@ -13,7 +13,7 @@ import logging
 import pathlib
 from dataclasses import dataclass, field
 
-from goldbox import areas, games
+from goldbox import areas, c64_port
 from goldbox.areas import POOL_OF_RADIANCE
 from goldbox.geo import DIRECTIONS, GRID, STEP, Geo
 
@@ -68,7 +68,7 @@ def title_dir(title: str | None) -> str:
     split is that `GEO15` is a different place in every game, and that is true
     of a game we do not have a descriptor for as well.
     """
-    game = games.by_title(title)
+    game = c64_port.by_title(title)
     if game is not None:
         return game.key
     slug = "".join(c if c.isalnum() else "-" for c in (title or "").lower())
@@ -369,7 +369,7 @@ class Automapper:
         #: None for a title with no descriptor, which `party_fix` reads as
         #: "assume the default" -- it is only ever reached from a window that
         #: has already resolved the title from the disks.
-        self.game = games.by_title(title)
+        self.game = c64_port.by_title(title)
         #: Whether the machine agrees that it is running `state.title`:
         #: `area.OURS`, `area.NOT_OURS` or `area.UNKNOWN`. See `_check_resident`.
         self.title_check = UNKNOWN
@@ -413,7 +413,7 @@ class Automapper:
         self._contradictions = 0
         if title:
             self.state.title = title
-            self.game = games.by_title(title)
+            self.game = c64_port.by_title(title)
         if self.state.area:
             self.state.geo = self._maps.get(self.state.area)
 
@@ -741,7 +741,7 @@ class Automapper:
         **And the same read validates the title.** A block that is a Gold Box
         map but *none of ours* says the machine is not running the title the
         preference named, which is the whole of #21: the title used to be a
-        chain of guesses -- the open save, the disks folder, `games.DEFAULT` --
+        chain of guesses -- the open save, the disks folder, `c64_port.DEFAULT` --
         that nothing ever contradicted, so attaching to a Curse session with
         the Game directory pointing at Pool of Radiance left both per-title
         safeguards running on Pool of Radiance's data.

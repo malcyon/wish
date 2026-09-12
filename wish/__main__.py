@@ -74,9 +74,9 @@ def game_of(save: str | None):
     if not save:
         return None
     try:
-        from goldbox import games
+        from goldbox import c64_port
         from goldbox.d64 import D64
-        return games.detect(D64.open(save))
+        return c64_port.detect(D64.open(save))
     except Exception:
         # The editor opens the same disk and reports its own failure; this one
         # only decides which title's maps to load.

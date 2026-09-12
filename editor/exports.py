@@ -46,7 +46,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import games
+from goldbox import c64_port
 
 from .ui_exports import Ui_ExportDialog
 
@@ -365,11 +365,11 @@ class DosPlan(Plan):
                          owned=_dos_slot_names(slot))
 
     def _convert(self, out: pathlib.Path):
-        from goldbox import dos
+        from goldbox import dos_codec
 
-        return dos.write_dos_save(self.source.save0, self.source.save1,
-                                  self.template, out, self.slot,
-                                  self.game_dir)
+        return dos_codec.write_dos_save(self.source.save0, self.source.save1,
+                                        self.template, out, self.slot,
+                                        self.game_dir)
 
     def write(self) -> str:
         self._convert(self.destination)
@@ -397,7 +397,7 @@ class AmigaPlan(Plan):
 
     @staticmethod
     def _convert(source: Source, out: pathlib.Path, scratch: pathlib.Path):
-        from goldbox.amiga import export_party
+        from goldbox.amiga_pod import export_party
 
         return export_party(source.scratch_disk(scratch), out)
 
@@ -579,12 +579,12 @@ class DosExportDialog(ExportDialog):
                                  self.choose_game))
 
     def _fill_slots(self) -> None:
-        from goldbox import dos
+        from goldbox import dos_codec
 
         self.slots.blockSignals(True)
         self.slots.clear()
         if self._template is not None:
-            self.slots.addItems(dos.slots_available(self._template))
+            self.slots.addItems(dos_codec.slots_available(self._template))
         self.slots.blockSignals(False)
 
     @property
@@ -615,7 +615,7 @@ class DosExportDialog(ExportDialog):
         self.replan()
 
     def _build(self) -> Plan:
-        if getattr(self.source.game, "key", None) != games.POOL_OF_RADIANCE.key:
+        if getattr(self.source.game, "key", None) != c64_port.POOL_OF_RADIANCE.key:
             raise NotPoolOfRadiance(
                 WRONG_GAME.format(title=getattr(self.source.game, "title",
                                                 "unknown")))

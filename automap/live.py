@@ -38,7 +38,7 @@ import os
 import pathlib
 from dataclasses import dataclass
 
-from goldbox import games, levels, traits
+from goldbox import c64_port, levels, traits
 from goldbox.effects import (  # noqa: F401 -- re-exported, see the note below
     DURATION_COUNT,
     DURATION_UNIT,
@@ -81,7 +81,7 @@ ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
 # `live.EFFECT_ID_OFFSET` and the rest unchanged.
 
 
-def memory_blocks(game: games.Game | None = None):
+def memory_blocks(game: c64_port.C64Container | None = None):
     """The ranges one poll reads, as (address, length), for this title.
 
     Two for Pool of Radiance, whose roster is a second file at `$8300`. One for
@@ -89,7 +89,7 @@ def memory_blocks(game: games.Game | None = None):
     asking for that page separately would be a second round trip for bytes
     already in hand, and a round trip is the whole cost of a read.
     """
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     payload = (game.save_load_address, game.save_size)
     if game.roster_in_payload:
         return (payload,)
@@ -296,7 +296,7 @@ class Character:
     #: required only because every field above `effects` would otherwise have
     #: to move -- #196 is what happens when the title is dropped one call
     #: short of where it is needed.
-    game: games.Game | None = None
+    game: c64_port.C64Container | None = None
 
     @property
     def down(self) -> bool:
@@ -413,7 +413,7 @@ class Snapshot:
     #: The title these bytes came from, for the same reason `Character` carries
     #: it: the bottom strip's badges are per title too, and it draws through
     #: the same `badges()` a card does.
-    game: games.Game | None = None
+    game: c64_port.C64Container | None = None
 
     @property
     def party_effects(self) -> tuple[Effect, ...]:
@@ -541,7 +541,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     Silver Blades ranger a card reading `?  L8`, with no class name and no
     experience bar (#197).
 
-    `getattr` rather than `games.class_table` because this is also called with
+    `getattr` rather than `c64_port.class_table` because this is also called with
     a `levels.LevelTables` (`tests/test_ssblevels.py`), and because a title
     whose class list nobody has is better read as the classic four -- which is
     what it has always been read as -- than as no classes at all.
@@ -550,7 +550,7 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     experience = record.get("experience")
     out = []
     for bit, name in (getattr(game, "class_bits", None)
-                      or games.class_table(None)):
+                      or c64_port.class_table(None)):
         if not bits & bit:
             continue
         field = CLASS_LEVEL_FIELD.get(name)
@@ -706,7 +706,7 @@ def roster_page_plausible(save0: SaveGame0, save1: SaveGame1) -> bool:
 
 def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
                         names: dict[int, str] | None = None,
-                        game: games.Game | None = None) -> Snapshot | None:
+                        game: c64_port.C64Container | None = None) -> Snapshot | None:
     """Decode one snapshot, or None if these bytes are not a live party.
 
     The checks are the ones `docs/100-live-view.md` asks for: a position inside
@@ -716,7 +716,7 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
     for when the position and the records are fine and only the roster page
     itself is scrap (#82).
     """
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     if len(save0_bytes) != game.save_size or len(roster_bytes) < ROSTER_PAGE:
         return None
     try:
@@ -752,7 +752,7 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
     )
 
 
-def read_blocks(target, game: games.Game | None = None) -> list[bytes]:
+def read_blocks(target, game: c64_port.C64Container | None = None) -> list[bytes]:
     """The save image and the roster page, in one burst where the backend can.
 
     Always a pair, whichever shape the title stores them in: a title that keeps
@@ -765,7 +765,7 @@ def read_blocks(target, game: games.Game | None = None) -> list[bytes]:
     without it gets one round trip per block, which is what `read` alone can
     promise.
     """
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     ranges = memory_blocks(game)
     burst = getattr(target, "read_blocks", None)
     if burst is not None:
@@ -780,10 +780,10 @@ def read_blocks(target, game: games.Game | None = None) -> list[bytes]:
 
 
 def read_snapshot(target, names: dict[int, str] | None = None,
-                  game: games.Game | None = None) -> Snapshot | None:
+                  game: c64_port.C64Container | None = None) -> Snapshot | None:
     """Two reads, whole tab. None when there is nothing sane to show."""
     if target is None:
         return None
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     save0_bytes, roster_bytes = read_blocks(target, game)
     return snapshot_from_bytes(save0_bytes, roster_bytes, names, game)

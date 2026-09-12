@@ -26,7 +26,7 @@ it as MONSTER, which is why PRINCESS FATIMA reads oddly.
 from __future__ import annotations
 
 from goldbox import classcode
-from goldbox.games import Game
+from goldbox.c64_port import C64Container
 from goldbox.titles import class_table, race_table
 from goldbox.yaml_io import ALIGNMENTS, SEXES
 
@@ -49,7 +49,7 @@ def _full_name_for_bits(bits: int, table) -> str | None:
     return "/".join(parts) if matched == bits else None
 
 
-def race_labels(game: Game | None = None) -> dict[int, str]:
+def race_labels(game: C64Container | None = None) -> dict[int, str]:
     """0x072. Race code -> name, in the table's own spelling, for one title.
 
     Empty when the title's list is unknown, and a code that list does not name
@@ -78,12 +78,12 @@ def race_labels(game: Game | None = None) -> dict[int, str]:
     return table
 
 
-def race_names(game: Game | None = None) -> dict[int, str]:
+def race_names(game: C64Container | None = None) -> dict[int, str]:
     """`race_labels`, in the capitals the generation menu prints."""
     return {code: name.upper() for code, name in race_labels(game).items()}
 
 
-def class_bit_names(game: Game | None = None) -> dict[int, str]:
+def class_bit_names(game: C64Container | None = None) -> dict[int, str]:
     """0x0EB, the bitmask -- the field to prefer, and the one the game reads."""
     table = class_table(game)
     if not table:
@@ -136,7 +136,7 @@ CHAR_CLASS = {
 }
 
 
-def char_class_names(game: Game | None = None) -> dict[int, str]:
+def char_class_names(game: C64Container | None = None) -> dict[int, str]:
     """`CHAR_CLASS`, plus code 10 for the title that actually names it.
 
     `goldbox.classcode.table_for(game)` is the game's own bitmask -> code
@@ -194,7 +194,7 @@ SIZE = {0: "small", 1: "large"}
 CASTING_CLASSES = frozenset({"magic-user", "cleric", "ranger"})
 
 
-def caster_bits(game: Game | None = None) -> int:
+def caster_bits(game: C64Container | None = None) -> int:
     """0x0EB. The class bits that can hold a spellbook, for one title.
 
     Zero for a title whose class list is unknown, which greys the box -- the
@@ -205,7 +205,7 @@ def caster_bits(game: Game | None = None) -> int:
                if name in CASTING_CLASSES)
 
 
-def tables_for(game: Game | None = None) -> dict[str, dict[int, str]]:
+def tables_for(game: C64Container | None = None) -> dict[str, dict[int, str]]:
     """Which field each table belongs to, for one title.
 
     A `field_*` QComboBox on the form is filled from here by name, like every
@@ -222,7 +222,7 @@ def tables_for(game: Game | None = None) -> dict[str, dict[int, str]]:
 
 
 # `TABLES`, `RACE` and `CLASS_BIT_NAMES` used to sit here: Pool of Radiance's
-# lists, for a caller with no `Game` in hand. `editor/roster.py` was the last
+# lists, for a caller with no `C64Container` in hand. `editor/roster.py` was the last
 # one, and naming every title's characters out of Pool of Radiance's tables is
 # exactly what #78 was. Nothing reads them now, so they are gone rather than
 # left as a second answer to a question that has one -- `tables_for(game)`.

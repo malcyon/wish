@@ -51,7 +51,7 @@ import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 
-from goldbox import c64_codec, games, levels, levelup
+from goldbox import c64_codec, c64_port, levels, levelup
 from goldbox import items as por_items
 from goldbox.layout import Confidence, field_by_name
 from goldbox.record import CharacterRecord
@@ -119,7 +119,7 @@ UNSUPPORTED = "ERROR: Action unsupported on {title}."
 FASTTRAVEL_BUSY = "Fast travel cannot act right now."
 
 
-def mode(target, game: games.Game | None = None) -> int | None:
+def mode(target, game: c64_port.C64Container | None = None) -> int | None:
     """Which overlay is running, or None if that cannot be established.
 
     Two ways it comes back None and the caller has to separate them itself:
@@ -137,7 +137,7 @@ def mode(target, game: games.Game | None = None) -> int | None:
     return raw[0] if raw else None
 
 
-def in_combat(target, game: games.Game | None = None) -> bool:
+def in_combat(target, game: c64_port.C64Container | None = None) -> bool:
     """True only when the mode flag *says* combat. An unreadable machine is not
     combat -- it is unreadable, and every action refuses on that separately."""
     return mode(target, game) == COMBAT
@@ -205,7 +205,7 @@ class Member:
     slot: int
     record: CharacterRecord
     roster: bytes
-    game: games.Game = games.DEFAULT
+    game: c64_port.C64Container = c64_port.DEFAULT
 
     @property
     def name(self) -> str:
@@ -258,7 +258,7 @@ class Party:
 
     members: tuple[Member, ...]
     save0_bytes: bytes = dc_field(repr=False, default=b"")
-    game: games.Game = games.DEFAULT
+    game: c64_port.C64Container = c64_port.DEFAULT
 
     def __iter__(self):
         return iter(self.members)
@@ -273,7 +273,7 @@ class Party:
         return None
 
 
-def read_party(target, game: games.Game | None = None) -> Party | None:
+def read_party(target, game: c64_port.C64Container | None = None) -> Party | None:
     """The party, or None when these bytes are not one.
 
     Same blocks as `live.read_snapshot`, read through the same
@@ -290,7 +290,7 @@ def read_party(target, game: games.Game | None = None) -> Party | None:
     """
     if target is None:
         return None
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     try:
         save0_bytes, roster_bytes = live.read_blocks(target, game)
         save0 = SaveGame0.from_bytes(bytes(save0_bytes), game)
@@ -335,7 +335,7 @@ class Action:
     #: undo for anything that carries one.
     confirm = ""
 
-    def __init__(self, game: games.Game | None = None):
+    def __init__(self, game: c64_port.C64Container | None = None):
         """Which title this acts on. None is Pool of Radiance.
 
         Every address an action writes is `Game` geometry now -- the slot
@@ -343,10 +343,10 @@ class Action:
         `save_load_address` -- so the title is the whole of what a subclass
         has to be told (#29).
         """
-        self.game = game or games.DEFAULT
+        self.game = game or c64_port.DEFAULT
 
     @property
-    def descriptor(self) -> games.Game:
+    def descriptor(self) -> c64_port.C64Container:
         """This action's title, as the descriptor its addresses come from.
 
         A property rather than the attribute itself because `LevelUp` accepts
@@ -524,7 +524,7 @@ class StoreSpells(Action):
     description = "Save the state of the memorized spell list for every character."
 
     def __init__(self, store: SpellStore | None = None,
-                 game: games.Game | None = None):
+                 game: c64_port.C64Container | None = None):
         super().__init__(game)
         self.store = store or SpellStore()
 
@@ -580,7 +580,7 @@ class RestoreSpells(Action):
     description = "Restore your character's memorized spells."
 
     def __init__(self, store: SpellStore | None = None,
-                 game: games.Game | None = None):
+                 game: c64_port.C64Container | None = None):
         super().__init__(game)
         self.store = store or SpellStore()
 
@@ -719,10 +719,10 @@ def game_title(game=None) -> str:
     if game is None:
         return levels.DEFAULT.title
     try:
-        from goldbox import games
+        from goldbox import c64_port
     except ImportError:                     # pragma: no cover - defensive
         return str(game)
-    known = games.BY_KEY.get(str(game))
+    known = c64_port.BY_KEY.get(str(game))
     return known.title if known else str(game)
 
 
@@ -830,19 +830,19 @@ class LevelUp(Action):
         self.game = game
 
     @property
-    def descriptor(self) -> games.Game:
+    def descriptor(self) -> c64_port.C64Container:
         """`game` as a `Game`, for the addresses `run` writes to.
 
         An unknown key falls back to Pool of Radiance's geometry, which costs
         nothing: `level_up_blockers` has already refused every title but the
         one whose trainer was measured.
         """
-        if isinstance(self.game, games.Game):
+        if isinstance(self.game, c64_port.C64Container):
             return self.game
         key = getattr(self.game, "key", self.game)
-        if isinstance(key, str) and key in games.BY_KEY:
-            return games.BY_KEY[key]
-        return games.DEFAULT
+        if isinstance(key, str) and key in c64_port.BY_KEY:
+            return c64_port.BY_KEY[key]
+        return c64_port.DEFAULT
 
     @staticmethod
     def offers(record, game=None) -> list[int]:
@@ -1041,7 +1041,7 @@ QUICKFIGHT = QuickfightFlag(
     stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
 
 
-def quickfight_flag(game: games.Game | None = None) -> QuickfightFlag | None:
+def quickfight_flag(game: c64_port.C64Container | None = None) -> QuickfightFlag | None:
     """This title's flag, or None while the bit itself is unfound.
 
     The *offset* is roster `+0x0C` in every title, because the roster block is
@@ -1093,7 +1093,7 @@ class ClearQuickfight(Action):
     combat_legal = True
 
     def __init__(self, flag: QuickfightFlag | None = None,
-                 game: games.Game | None = None):
+                 game: c64_port.C64Container | None = None):
         super().__init__(game)
         self.flag = flag if flag is not None else quickfight_flag(self.game)
 
@@ -1131,13 +1131,13 @@ class QuickfightWatcher:
     """
 
     def __init__(self, action: ClearQuickfight | None = None,
-                 enabled: bool = False, game: games.Game | None = None):
+                 enabled: bool = False, game: c64_port.C64Container | None = None):
         self.action = action or ClearQuickfight(game=game)
         self.enabled = enabled
         self.was: int | None = None
 
     @property
-    def game(self) -> games.Game:
+    def game(self) -> c64_port.C64Container:
         """Whose mode flag to watch: the action's, so the two cannot drift."""
         return self.action.descriptor
 
@@ -1159,7 +1159,7 @@ class QuickfightWatcher:
 
 
 def actions(store: SpellStore | None = None,
-            game: games.Game | None = None) -> tuple[Action, ...]:
+            game: c64_port.C64Container | None = None) -> tuple[Action, ...]:
     """Every action, in the order the bar lays them out.
 
     The window iterates this: one button per action, `label` on it,
@@ -1828,7 +1828,7 @@ class FastTravel(Action):
         "inside the game, so point the emulator at a copy of your save disk, "
         "never the original.")
 
-    def __init__(self, game: games.Game | None = None):
+    def __init__(self, game: c64_port.C64Container | None = None):
         """Which title to travel in. None is Pool of Radiance.
 
         **The addresses come with the title and are never defaulted.**
@@ -1839,7 +1839,7 @@ class FastTravel(Action):
         `#14` fixed it for the area list, and this is the same mistake one
         address at a time.
         """
-        super().__init__(game or games.POOL_OF_RADIANCE)
+        super().__init__(game or c64_port.POOL_OF_RADIANCE)
         #: This title's `NEWECL` addresses, or None if nobody has read it.
         self.addresses = fasttravel.addresses_for(self.game)
         #: Where the last fasttravel came from. `FastTravel Back` reads it; None until a

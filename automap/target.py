@@ -35,7 +35,7 @@ import sys
 from dataclasses import dataclass
 from typing import Protocol
 
-from goldbox import games
+from goldbox import c64_port
 
 from .c64 import machine_for
 from .screen import SCREEN_COLS, Banks, codes_to_text, is_bitmap, screen_address
@@ -172,7 +172,7 @@ def screen_banks(target) -> Banks | None:
     return Banks(target.read, target.read)
 
 
-def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
+def party_fix(read, game: c64_port.C64Container | None = None, banks=None) -> Fix | None:
     """Where the party is, read through any backend's `read(addr, length)`.
 
     Tries the game's own status line first -- indoors, then the travel grid's
@@ -215,7 +215,7 @@ def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
     C64 has, so nothing about them changes. With no `banks` the whole thing
     reads through `read`, which is what it did before `#421`.
     """
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     banks = Banks.of(read if banks is None else banks)
     if is_bitmap(banks):
         return None
@@ -256,7 +256,7 @@ def party_fix(read, game: games.Game | None = None, banks=None) -> Fix | None:
     return None
 
 
-def read_fix(target, game: games.Game | None = None) -> Fix | None:
+def read_fix(target, game: c64_port.C64Container | None = None) -> Fix | None:
     """One fix from whatever this target is.
 
     A target may answer for itself -- `ViceTarget` does, to keep its burst of
@@ -551,7 +551,7 @@ class ViceTarget:
 
     # -- what the automapper actually asks for ---------------------------
 
-    def fix(self, game: games.Game | None = None) -> Fix | None:
+    def fix(self, game: c64_port.C64Container | None = None) -> Fix | None:
         """`party_fix` over this connection, with exactly one resume.
 
         The reads go through the monitor directly rather than through
@@ -662,7 +662,7 @@ class ReplayTarget:
     def close(self) -> None:
         pass
 
-    def fix(self, game: games.Game | None = None) -> Fix | None:
+    def fix(self, game: c64_port.C64Container | None = None) -> Fix | None:
         if self._i >= len(self._fixes):
             return self._fixes[-1] if self._fixes else None
         f = self._fixes[self._i]

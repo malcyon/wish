@@ -58,7 +58,7 @@ conversion writes -- and a `CONVERTS` entry missing a row there fails loudly
 when `DIRECTIONS` is built, at import time, rather than answering `[]` for a
 title the library can actually write. `WRITES` needs no such table: a C64 →
 DOS conversion always writes the same file names (`SAVGAM<slot>.DAT`,
-`CHRDAT<slot><n>.SAV`...), whatever the title, so `games.by_key(shape.key)`
+`CHRDAT<slot><n>.SAV`...), whatever the title, so `c64_port.by_key(shape.key)`
 -- which already raises loudly on a key with no C64 game -- is the whole of
 the check that direction needs.
 
@@ -112,7 +112,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import amiga, dos, dos_layout, games, neutral
+from goldbox import amiga_codec, c64_port, dos_codec, dos_port, neutral
 
 from . import dosimport
 
@@ -241,8 +241,8 @@ class Source:
                 f"{folder} holds SAVGAM{slot} but no CHRDAT{slot}1.SAV to "
                 f"read its shape from")
         try:
-            shape = dos_layout.shape_for(record.stat().st_size)
-        except dos_layout.DosShapeError as exc:
+            shape = dos_port.deltas_for(record.stat().st_size)
+        except dos_port.DosDeltasError as exc:
             raise ConvertError(str(exc)) from exc
         return cls(port="dos", title=shape, path=folder, slot=slot)
 
@@ -283,17 +283,17 @@ class Source:
 
         try:
             disk = AmigaDisk.open(str(path))
-            slots = amiga.por_slots_present(disk)
-        except (AmigaDiskError, amiga.AmigaRecordError, OSError) as exc:
+            slots = amiga_codec.por_slots_present(disk)
+        except (AmigaDiskError, amiga_codec.AmigaRecordError, OSError) as exc:
             raise ConvertError(str(exc)) from exc
         if not slots:
             raise ConvertError(f"{path} holds no Amiga saved game")
         chosen = slot if slot in slots else slots[0]
         try:
-            record = disk.read_file(amiga.por_save_path(
-                amiga.por_filename(chosen, 1), amiga.por_save_drawer(disk)))
-            shape = amiga.amiga_shape_for(len(record))
-        except (AmigaDiskError, amiga.AmigaRecordError) as exc:
+            record = disk.read_file(amiga_codec.por_save_path(
+                amiga_codec.por_filename(chosen, 1), amiga_codec.por_save_drawer(disk)))
+            shape = amiga_codec.amiga_shape_for(len(record))
+        except (AmigaDiskError, amiga_codec.AmigaRecordError) as exc:
             raise ConvertError(str(exc)) from exc
         return cls(port="amiga", title=shape, path=path, slot=chosen,
                   available_slots=slots)
@@ -397,11 +397,11 @@ class UnnamedConversionError(Exception):
 #: shape itself, which knows nothing about C64 file names.
 DOS_TO_C64_NAMES: dict[str, str] = {
     # The player's own disks are named this way (`PORSAVE2.D64`).
-    dos_layout.POOL_OF_RADIANCE.key: "PORSAVE{slot}.D64",
+    dos_port.POOL_OF_RADIANCE.key: "PORSAVE{slot}.D64",
     # What `tools/cursedisk.py` writes.
-    dos_layout.CURSE_OF_THE_AZURE_BONDS.key: "CURSE{slot}.D64",
+    dos_port.CURSE_OF_THE_AZURE_BONDS.key: "CURSE{slot}.D64",
     # What `tools/ssbdisk.py` writes.
-    dos_layout.SECRET_OF_THE_SILVER_BLADES.key: "SSB{slot}.D64",
+    dos_port.SECRET_OF_THE_SILVER_BLADES.key: "SSB{slot}.D64",
 }
 
 
@@ -425,10 +425,10 @@ class DosToC64(Direction):
     source_port = "dos"
     destination_port = "c64"
 
-    def __init__(self, deltas: dos_layout.DosDeltas):
+    def __init__(self, deltas: dos_port.DosDeltas):
         self.shape = deltas
         self.source_key = deltas.key
-        self.destination_game = games.by_key(deltas.key)
+        self.destination_game = c64_port.by_key(deltas.key)
         try:
             self._name = DOS_TO_C64_NAMES[deltas.key]
         except KeyError:
@@ -485,13 +485,13 @@ class AmigaToC64(DosToC64):
         from goldbox.amiga_adf import AmigaDisk
 
         disk = AmigaDisk.open(str(source.path))
-        party, savgam = amiga.read_por_slot(disk, slot)
-        state = amiga.read_por_state(
+        party, savgam = amiga_codec.read_por_slot(disk, slot)
+        state = amiga_codec.read_por_state(
             savgam, source=f"{source.path} slot {slot}")
-        save0, save1, report = dos.new_save_from(
+        save0, save1, report = dos_codec.new_save_from(
             state, party, options.icon, options.animate,
             portraits=options.portraits, game=self.destination_game)
-        image = dos.save_disk(bytes(save0), bytes(save1),
+        image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
         return Rehearsal(report, {name: image.to_bytes()})
@@ -548,16 +548,16 @@ class C64ToDos(Direction):
     source_port = "c64"
     destination_port = "dos"
 
-    def __init__(self, deltas: dos_layout.DosDeltas):
+    def __init__(self, deltas: dos_port.DosDeltas):
         self.shape = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
-        # Raises `games.UnknownGameError` at import time (via `DIRECTIONS`
+        # Raises `c64_port.UnknownGameError` at import time (via `DIRECTIONS`
         # below) if `WRITES` ever named a title with no C64 port -- the
         # loud failure `DOS_TO_C64_NAMES` gives the other direction, with no
         # table of its own needed: a C64 → DOS conversion writes the same
         # file names whatever the title.
-        self.title = games.by_key(deltas.key)
+        self.title = c64_port.by_key(deltas.key)
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
@@ -565,7 +565,7 @@ class C64ToDos(Direction):
         game_dir = pathlib.Path(options)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
-            report = dos.new_dos_save(source.save0, source.save1,
+            report = dos_codec.new_dos_save(source.save0, source.save1,
                                       scratch_path, slot, game_dir,
                                       title=self.title,
                                       icon_parts=icon_parts)
@@ -577,7 +577,7 @@ class C64ToDos(Direction):
     def write(self, rehearsal: DosWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
         folder = pathlib.Path(folder)
-        dos.new_dos_save(rehearsal.save0, rehearsal.save1, folder,
+        dos_codec.new_dos_save(rehearsal.save0, rehearsal.save1, folder,
                          rehearsal.slot, rehearsal.game_dir, title=self.title,
                          icon_parts=rehearsal.icon_parts)
         return sorted(folder / name for name in rehearsal.files)
@@ -674,7 +674,7 @@ class AmigaToDos(C64ToDos):
     **`__init__` is `C64ToDos`'s**, and deliberately, the way `AmigaToC64`
     takes `DosToC64`'s: the destination is the same DOS save folder written
     by the same engine to the same file names, so the shape lookup and the
-    `games.by_key` check that fails loudly at import time are one
+    `c64_port.by_key` check that fails loudly at import time are one
     implementation rather than two.  What differs is where the party and
     the place are read from, which is `rehearse`, and that
     `goldbox.dos.new_dos_save_from` takes them directly where
@@ -706,18 +706,18 @@ class AmigaToDos(C64ToDos):
             raise ConvertError(f"{source.path} names no Amiga save slot")
         game_dir = pathlib.Path(options)
         disk = AmigaDisk.open(str(source.path))
-        party, savgam = amiga.read_por_slot(disk, source.slot)
-        state = amiga.read_por_state(
+        party, savgam = amiga_codec.read_por_slot(disk, source.slot)
+        state = amiga_codec.read_por_state(
             savgam, source=f"{source.path} slot {source.slot}")
         # The Amiga file order **is** the DOS file order (`docs/165-amiga-
         # savegame.md`), so there is no reversal here; `goldbox.dos.
         # marching_slot` and `c64_party`'s own `reverse()` are the C64's
         # business and `#101`'s.
-        characters = [dos.to_neutral(c) for c in party]
+        characters = [dos_codec.to_neutral(c) for c in party]
         icons = [amiga_combat_icon(c) for c in party]
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
-            report = dos.new_dos_save_from(state, characters, scratch_path,
+            report = dos_codec.new_dos_save_from(state, characters, scratch_path,
                                            slot, game_dir, icons=icons)
             files = {p.name: p.read_bytes()
                     for p in sorted(scratch_path.iterdir())}
@@ -727,7 +727,7 @@ class AmigaToDos(C64ToDos):
     def write(self, rehearsal: AmigaDosRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
         folder = pathlib.Path(folder)
-        dos.new_dos_save_from(rehearsal.state, rehearsal.characters, folder,
+        dos_codec.new_dos_save_from(rehearsal.state, rehearsal.characters, folder,
                               rehearsal.slot, rehearsal.game_dir,
                               icons=rehearsal.icons)
         return sorted(folder / name for name in rehearsal.files)
@@ -808,18 +808,18 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     # menu's first head), fixed there by leaving both fields unset for a
     # portrait-less character rather than by the value either one holds.
     portraits = any("portrait_head" in c for c in party)
-    savegame, save_report = amiga.new_por_savegame(
+    savegame, save_report = amiga_codec.new_por_savegame(
         state, slot, len(party), ecl_dax, portraits=portraits)
-    disk = amiga.make_por_save_disk(slot, party, savegame, icons=icons)
+    disk = amiga_codec.make_por_save_disk(slot, party, savegame, icons=icons)
     problems = disk.verify()
     if problems:
-        raise amiga.AmigaRecordError(
+        raise amiga_codec.AmigaRecordError(
             "the disk this conversion built does not verify:\n  "
             + "\n  ".join(problems))
 
     report = neutral.Report()
     for char, icon in zip(party, icons):
-        _, _, _, char_report = amiga.write_por(char, icon=icon)
+        _, _, _, char_report = amiga_codec.write_por(char, icon=icon)
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
     report.warnings.extend(save_report.converted)
@@ -855,14 +855,14 @@ class C64ToAmiga(Direction):
     source_port = "c64"
     destination_port = "amiga"
 
-    def __init__(self, deltas: dos_layout.DosDeltas):
+    def __init__(self, deltas: dos_port.DosDeltas):
         self.shape = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
-        # The C64 title `dos.c64_party` reads the source disk against --
-        # `games.by_key` raises loudly at import time if `WRITES` ever named
+        # The C64 title `dos_codec.c64_party` reads the source disk against --
+        # `c64_port.by_key` raises loudly at import time if `WRITES` ever named
         # a title with no C64 port, the same guard `C64ToDos.__init__` keeps.
-        self.title = games.by_key(deltas.key)
+        self.title = c64_port.by_key(deltas.key)
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
@@ -870,9 +870,9 @@ class C64ToAmiga(Direction):
         from goldbox.amiga_adf import AmigaDisk
 
         ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
-        party, icons = dos.c64_party(source.save0, source.save1,
+        party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
-        state = amiga.por_state_from_c64(source.save0, str(source.path))
+        state = amiga_codec.por_state_from_c64(source.save0, str(source.path))
         return _rehearse_por_savegame(state, "A", party, ecl_dax, icons=icons)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
@@ -904,7 +904,7 @@ class DosToAmiga(Direction):
     source_port = "dos"
     destination_port = "amiga"
 
-    def __init__(self, deltas: dos_layout.DosDeltas):
+    def __init__(self, deltas: dos_port.DosDeltas):
         self.shape = deltas
         self.source_key = deltas.key
         self.destination_game = deltas
@@ -920,16 +920,16 @@ class DosToAmiga(Direction):
             raise ConvertError(f"{source.path} names no DOS save slot")
         letter = source.slot
         ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
-        raw_party = dos.read_party(source.path, letter)
-        party = [dos.to_neutral(c) for c in raw_party]
+        raw_party = dos_codec.read_party(source.path, letter)
+        party = [dos_codec.to_neutral(c) for c in raw_party]
         # `amiga_combat_icon` is duck-typed to `goldbox.dos.DosCharacter`
         # too (its own docstring) and reads the icon straight off the raw
-        # record, before `dos.to_neutral` discards it -- the same shape
+        # record, before `dos_codec.to_neutral` discards it -- the same shape
         # `AmigaToDos.rehearse` already uses for an Amiga source (#424,
         # mirroring #422's fix for a C64 source).
         icons = [amiga_combat_icon(c) for c in raw_party]
         savgam_path = pathlib.Path(source.path) / f"SAVGAM{letter}.DAT"
-        state = amiga.por_state_from_dos(savgam_path.read_bytes(),
+        state = amiga_codec.por_state_from_dos(savgam_path.read_bytes(),
                                          str(savgam_path))
         return _rehearse_por_savegame(state, letter, party, ecl_dax,
                                       icons=icons)
@@ -952,7 +952,7 @@ class DosToAmiga(Direction):
 #: Amiga tuple. See the module docstring for what would extend this and the
 #: issues it waits on.
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
-#: names a title `DOS_TO_C64_NAMES` does not; `games.UnknownGameError` does
+#: names a title `DOS_TO_C64_NAMES` does not; `c64_port.UnknownGameError` does
 #: the same for `WRITES` and a title with no C64 game at all.
 #: The DOS shapes with a C64 port on the other side.
 #:
@@ -966,7 +966,7 @@ class DosToAmiga(Direction):
 #: The test is **"does this title have a C64 port", not "is this a title we
 #: know"** -- `#470 (Give the project a neutral title beside its neutral
 #: character record, with one port per platform a title shipped on)`'s own
-#: model, a port being optional and absent being normal.  `games.BY_KEY` is
+#: model, a port being optional and absent being normal.  `c64_port.BY_KEY` is
 #: that answer: it is the six C64 titles' own registry and stays that way
 #: through `#470`'s stage 2, so it is the test here too, and it is the same
 #: one `DosToC64.__init__` makes one line further down -- kept here so a
@@ -980,23 +980,23 @@ class DosToAmiga(Direction):
 #: races and classes are the same fact on every port; whether a title *has*
 #: a C64 port is not that kind of fact, and `titles.BY_KEY` knows Pools of
 #: Darkness, which has none.  That swap is exactly what broke the editor on
-#: import once already, the other way round, when `dos.CONVERTS` gained the
+#: import once already, the other way round, when `dos_codec.CONVERTS` gained the
 #: title before this guard existed (`#194`'s comment of 2026-09-08).
-C64_PAIRED: tuple[dos_layout.DosShape, ...] = tuple(
-    shape for shape in dos.CONVERTS if shape.key in games.BY_KEY)
+C64_PAIRED: tuple[dos_port.DosDeltas, ...] = tuple(
+    shape for shape in dos_codec.CONVERTS if shape.key in c64_port.BY_KEY)
 
 DIRECTIONS: tuple[Direction, ...] = tuple(
     DosToC64(shape) for shape in C64_PAIRED
 ) + tuple(
     C64ToDos(shape) for shape in C64_PAIRED
 ) + tuple(
-    AmigaToC64(shape) for shape in amiga.CONVERTS
+    AmigaToC64(shape) for shape in amiga_codec.CONVERTS
 ) + tuple(
-    AmigaToDos(shape) for shape in amiga.CONVERTS
+    AmigaToDos(shape) for shape in amiga_codec.CONVERTS
 ) + tuple(
-    C64ToAmiga(shape) for shape in amiga.WRITES
+    C64ToAmiga(shape) for shape in amiga_codec.WRITES
 ) + tuple(
-    DosToAmiga(shape) for shape in amiga.WRITES
+    DosToAmiga(shape) for shape in amiga_codec.WRITES
 )
 
 
@@ -1317,8 +1317,8 @@ NO_FOLDER = "Choose where to write."
 #: the wrong title)` on 2026-09-02 -- reused rather than a second sentence
 #: meaning the same thing, for a source with no registered destination, for
 #: `Source.detect` failing, and for anything `rehearse` raises that is not a
-#: `dos.DosRecordError` with its own `player_message`.
-CANNOT_CONVERT = dos.CANNOT_CONVERT
+#: `dos_codec.DosRecordError` with its own `player_message`.
+CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
 #: `editor/dosimport.py`'s `NO_DISKS`/`NO_DISKS_TITLE`. The title is Donald's
 #: of 2026-08-27; the line is his of 2026-09-05, rewritten when
 #: `#342 (A Curse or Silver Blades save cannot be converted unless its C64
@@ -1431,7 +1431,7 @@ def _game_files_from_folder(folder: pathlib.Path,
     from goldbox.portraits import PortraitError, tables_from_disks
 
     def read_animate(disk):
-        return load_payload(disk, dos.ANIMATE_FILE)
+        return load_payload(disk, dos_codec.ANIMATE_FILE)
 
     candidates = sorted(pathlib.Path(folder).glob(game.disk_glob))
 
@@ -1449,7 +1449,7 @@ def _game_files_from_folder(folder: pathlib.Path,
     if icon_disk is None or animate_disk is None:
         return None
     portraits = None
-    if game.key == games.POOL_OF_RADIANCE.key:
+    if game.key == c64_port.POOL_OF_RADIANCE.key:
         try:
             portraits = tables_from_disks(folder)
         except (PortraitError, OSError) as exc:
@@ -1894,7 +1894,7 @@ class ConvertDialog(QDialog):
             else:
                 self.rehearsal = direction.rehearse(self.source, slot, options)
             self.slot = slot
-        except dos.DosRecordError as exc:
+        except dos_codec.DosRecordError as exc:
             _log.exception("could not rehearse %s", self._source_path)
             self._blocked = (DIALOG_TITLE, exc.player_message)
             return

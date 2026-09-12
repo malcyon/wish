@@ -174,8 +174,8 @@ _log = logging.getLogger("wish.automap.window")
 
 def game_named(title: str | None):
     """The `Game` this title is, for the readers that need one."""
-    from goldbox import games
-    return games.by_title(title)
+    from goldbox import c64_port
+    return c64_port.by_title(title)
 
 
 class MapCanvas(QWidget):

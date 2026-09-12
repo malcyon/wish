@@ -41,7 +41,7 @@ from automap.config import (
 from automap.state import Automapper
 from automap.window import AutomapBinding
 from editor.window import EditorBinding, RowSplitter
-from goldbox import games
+from goldbox import c64_port
 from ui.appicon import app_icon
 
 from . import backends, debuglog, debugmode, licenses, nativewatch
@@ -196,7 +196,7 @@ class WishWindow(QMainWindow):
     def _open_title(self) -> str:
         """The open save's game, or Pool of Radiance when nothing is open."""
         game = getattr(getattr(self.editor, "party", None), "game", None)
-        return getattr(game, "title", None) or games.DEFAULT.title
+        return getattr(game, "title", None) or c64_port.DEFAULT.title
 
     # -- chrome ----------------------------------------------------------
 
@@ -424,7 +424,7 @@ class WishWindow(QMainWindow):
         **Not `game()`**, which is the open save's and is None with nothing
         open. The fast-travel list has to agree with the map, and the map
         always has a title -- it falls back through the open save, the disks
-        folder and `games.DEFAULT` (`docs/138-multiple-games.md` §3). A list
+        folder and `c64_port.DEFAULT` (`docs/138-multiple-games.md` §3). A list
         keyed off anything else would offer one game's areas in another's
         session, which is the whole of #14.
         """
@@ -470,7 +470,7 @@ class WishWindow(QMainWindow):
         folders = getattr(self.settings, "game_folders", None) or {}
         current = self.map.state.title
         out: dict[str, dict] = {}
-        for g in games.GAMES:
+        for g in c64_port.GAMES:
             if g.title == current:
                 continue
             folder = (folders.get(g.key, "") or "").strip()
