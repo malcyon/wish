@@ -223,6 +223,58 @@ def test_the_saving_throw_rows_are_the_games_own():
                 f"{name} {row.level}"
 
 
+def test_a_zero_class_slot_is_not_a_level_one_class():
+    """`#527`: the full array a DOS record carries must answer what the sparse
+    map answers.
+
+    `goldbox.dos_codec.to_neutral` builds `levels` from DOS's whole eight-slot
+    array, so every class the character does **not** have arrives holding zero.
+    Read as level-1 classes those four combine into `(10, 12, 11, 15, 12)` --
+    the field-wise best of magic-user, cleric, thief and fighter at level 1 --
+    and that is the row a human fighter 3 came off `TEST_DOS_IMPORT3.D64`
+    holding, where the game's own row is `(13, 14, 15, 16, 16)`.
+    """
+    full = {"magic-user": 0, "cleric": 0, "thief": 0, "fighter": 3}
+    assert levels.saving_throws(full, race=7, constitution=18) == \
+        (13, 14, 15, 16, 16)
+    assert levels.saving_throws(full, race=7, constitution=18) == \
+        levels.saving_throws({"fighter": 3}, race=7, constitution=18)
+
+
+@pytest.mark.parametrize("class_name,level", [("magic-user", 3), ("cleric", 4),
+                                              ("thief", 5), ("fighter", 3)])
+def test_every_single_class_row_survives_the_empty_slots(class_name, level):
+    """The same claim for all four of Pool of Radiance's classes, so a rule
+    that happened to fit the fighter is not what this rests on."""
+    full = {name: 0 for name in CLASS_ORDER}
+    full[class_name] = level
+    assert levels.saving_throws(full, race=7, constitution=18) == \
+        levels.saving_throws({class_name: level}, race=7, constitution=18)
+    assert levels.saving_throws(full, race=7, constitution=18) == \
+        tuple(levels.at_level(class_name, level).saves)
+
+
+def test_the_engine_branches_past_a_zero_class_slot():
+    """`GEN $1F44` reads the four-slot level array at `0x0C9` and skips a slot
+    holding zero, which is where the rule above comes from rather than from an
+    argument about what an unused slot ought to mean.
+
+    ```
+    $1F52  LDX $FE            ; slot 3 down to 0
+    $1F54  LDY $6BC9,X        ; that class's level
+    $1F57  BEQ $1F9B          ; zero: skip the class entirely
+    ...
+    $1F9B  DEC $FE / BPL $1F52
+    ```
+    """
+    gen = _gen()
+    assert _at(gen, 0x1F52, 2) == bytes((0xA6, 0xFE))            # LDX $FE
+    assert _at(gen, 0x1F54, 3) == bytes((0xBC, 0xC9, 0x6B))      # LDY $6BC9,X
+    assert _at(gen, 0x1F57, 2) == bytes((0xF0, 0x42))            # BEQ $1F9B
+    assert 0x1F57 + 2 + 0x42 == 0x1F9B                           # the loop tail
+    assert _at(gen, 0x1F9B, 2) == bytes((0xC6, 0xFE))            # DEC $FE
+
+
 def test_the_fighters_level_four_breath_save_is_fifteen():
     """P76, settled. AD&D 1st edition says 16; the game has always written 15,
     and the mask that does it is `$0C` where the other four columns hold `$08`.

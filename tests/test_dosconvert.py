@@ -131,6 +131,76 @@ def test_a_human_still_gets_the_plain_row():
     assert got == (14, 15, 16, 17, 17)
 
 
+#: `goldbox.dos_codec.to_neutral` names every slot of DOS's eight-entry class
+#: level array, so a single-class character arrives with seven zeros beside his
+#: one level.  `_plain_row_character` above sets a one-entry map instead, which
+#: is why nothing here caught `#527` -- the bug needs the zeros to be present.
+_DOS_CLASS_SLOTS = ("cleric", "druid", "fighter", "paladin", "ranger",
+                    "magic-user", "thief", "monk")
+
+
+def _single_class_character(class_name: str, level: int, stored, race: int = 7,
+                            constitution: int = 18,
+                            game: str = "pool-of-radiance"
+                            ) -> neutral.NeutralCharacter:
+    """A DOS-read neutral single-class character, with the whole level array.
+
+    Every class DOS names is present and only one of them has a level, which
+    is what `to_neutral` builds off a real `CHRDAT*.SAV`.
+    """
+    char = neutral.NeutralCharacter("DOS", game=game)
+    char.set("race", race, "test fixture")
+    char.set("constitution", constitution, "test fixture")
+    char.set("levels", {name: (level if name == class_name else 0)
+                        for name in _DOS_CLASS_SLOTS}, "test fixture")
+    for name, value in zip(
+            ("save_paralysis", "save_petrification", "save_wands",
+             "save_breath", "save_spell"), stored):
+        char.set(name, value, "test fixture")
+    return char
+
+
+@pytest.mark.parametrize("class_name,level,stored,expected", [
+    ("fighter", 3, (13, 14, 15, 16, 16), (13, 14, 15, 16, 16)),
+    ("magic-user", 3, (14, 13, 11, 15, 12), (14, 13, 11, 15, 12)),
+])
+def test_a_converted_single_class_character_keeps_his_own_saving_throws(
+        class_name, level, stored, expected):
+    """`#527 (A DOS import combines saving throws from classes the character
+    does not have)`.
+
+    BRUTUS, a human fighter 3, came off `TEST_DOS_IMPORT3.D64` holding
+    `10 12 11 15 12` -- the field-wise best of all four classes at level 1 --
+    where his DOS record held the fighter-3 row and the C64's own `GEN $1F44`
+    would have written it back.  The empty slots are the whole of the bug, so
+    the character here carries DOS's full eight-slot array rather than the
+    one-entry map the tests above use.
+    """
+    char = _single_class_character(class_name, level, stored)
+    rec, _ = c64_codec.write(char)
+    got = tuple(rec.get(n) for n in
+                ("save_paralysis", "save_petrification", "save_wands",
+                 "save_breath", "save_spell"))
+    assert got == expected
+
+
+def test_the_empty_slots_are_what_used_to_move_the_row():
+    """The negative control: the same character with the zeros taken out must
+    answer the same thing, and both must be the game's own row.
+
+    A test that only asserted the full array is right would still pass if the
+    conversion stopped consulting the level array at all.
+    """
+    full = _single_class_character("fighter", 3, (13, 14, 15, 16, 16))
+    sparse = _plain_row_character(race=7, constitution=18)
+    sparse.set("levels", {"fighter": 3}, "test fixture")
+    columns = ("save_paralysis", "save_petrification", "save_wands",
+               "save_breath", "save_spell")
+    rows = [tuple(c64_codec.write(c)[0].get(n) for n in columns)
+            for c in (full, sparse)]
+    assert rows[0] == rows[1] == (13, 14, 15, 16, 16)
+
+
 _THIEF_SKILL_FIELDS = (
     "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
     "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",

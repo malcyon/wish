@@ -139,6 +139,11 @@ below implements it:
 > the best number in each column across every class it holds, less the AD&D
 > constitution bonus when the character is a dwarf, gnome or halfling.
 
+**"Every class it holds" is every slot of the array at `0x0C9` with a level in
+it**, and `$1F57 BEQ $1F9B` is where the engine says so: a slot holding zero is
+skipped, not read as a level-1 class. It is also the level array rather than
+the `class_bits` mask that the walk reads.
+
 Pool of Radiance does not tabulate the rows. `GEN $1F44` fills all five columns
 with 20, then for each class subtracts, per column, the number of set bits in
 the low `level - 1` bits of *two* masks -- `$1FB6` and `$1FCA` -- from the
@@ -1295,10 +1300,30 @@ class LevelTables:
         `class_levels` maps a class name to its level -- the per-class array at
         `0x0C9`, not the single level byte at `0x0A0`, because a multi-class
         character takes the best column from each of its classes.
+
+        **A class whose level is zero is not a class.**  Pool of Radiance's
+        `GEN $1F44` fills all five columns with 20, then walks the four-slot
+        array at `0x0C9` from slot 3 down to slot 0 and `$1F57 BEQ $1F9B`
+        branches straight past any slot holding zero; only a slot with a level
+        reaches the row lookup and the per-column minimum at `$1F8D`.  Until
+        `#527 (A DOS import combines saving throws from classes the character
+        does not have)` this read `max(int(level), 1)` and turned every unused
+        slot into a level-1 class, so a record arriving with the whole
+        eight-slot array -- which is what `goldbox.dos_codec.to_neutral`
+        builds, zeros and all -- came out holding the field-wise best of
+        magic-user, cleric, thief and fighter at level 1.  A human fighter 3
+        stored `10 12 11 15 12` instead of `13 14 15 16 16`.
+        `LevelTables.base_thac0` has read `GEN $1EF3`'s equivalent walk
+        correctly since it was written; this method was the outlier.
+
+        One deliberate divergence from `$1F44` remains: where no class has a
+        level the engine leaves all five columns at 20 and this answers None,
+        which every caller reads as "write nothing".  Writing 20 over a row we
+        could not compute would be worse than leaving the stored one alone.
         """
         rows = [row.saves for row in
-                (self.at_level(name, max(int(level), 1))
-                 for name, level in dict(class_levels).items())
+                (self.at_level(name, int(level))
+                 for name, level in dict(class_levels).items() if int(level))
                 if row is not None]
         if not rows:
             return None
