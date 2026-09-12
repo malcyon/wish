@@ -1,0 +1,80 @@
+name: measure conftest guard flake
+
+# #522 (A conftest guard test fails at random on the Windows 3.13 job, so a
+# red main no longer means the commit broke something): this exists to
+# establish a failure rate for
+# tests/test_conftest_state_guard.py::test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it
+# on Windows, not to fix anything. workflow_dispatch only -- nobody wants a
+# few-hundred-iteration loop running on every push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: How many times to run the single test, per Python version
+        required: false
+        default: "300"
+
+jobs:
+  measure:
+    name: measure (windows-latest, py${{ matrix.python }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 is where #522 was observed; 3.12 is the control the issue asks
+        # for, since one pass on 3.12 in the same run is two samples and not
+        # yet a signal.
+        python: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev,gui]"
+
+      - name: run the probe test in a loop and count failures
+        env:
+          QT_QPA_PLATFORM: offscreen
+        shell: pwsh
+        run: |
+          $iterations = [int]"${{ inputs.iterations }}"
+          $failures = 0
+          $failureLog = @()
+
+          for ($i = 1; $i -le $iterations; $i++) {
+            $output = pytest -q -p no:cacheprovider -o addopts="" `
+              "tests/test_conftest_state_guard.py::test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it" `
+              2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) {
+              $failures++
+              $failureLog += "=== iteration $i ===`n$output"
+            }
+            if ($i % 25 -eq 0) {
+              Write-Host "...$i / $iterations done, $failures failure(s) so far"
+            }
+          }
+
+          $rate = "$failures / $iterations"
+          Write-Host "RESULT (py${{ matrix.python }}): $rate failures"
+          "### py${{ matrix.python }} on windows-latest`n`n$rate failures" `
+            | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+          if ($failureLog.Count -gt 0) {
+            $failureLog -join "`n`n" | Out-File -FilePath failures.log -Encoding utf8
+          }
+
+      - name: upload failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failures-py${{ matrix.python }}
+          path: failures.log
+          if-no-files-found: ignore
