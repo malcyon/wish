@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read each DOS Gold Box title's race-name table out of its own executable.
 
-`goldbox/dos_layout.py` carried one race table for all four titles until #237,
+`goldbox/dos_port.py` carried one race table for all four titles until #237,
 where it turned out to be right for Pool of Radiance and Curse and wrong for
 Silver Blades and Pools of Darkness.  The tables the two later games actually
 use are in the games, so this reads them rather than guessing:

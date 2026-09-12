@@ -3,7 +3,7 @@
 duplicate test.
 
 The measurement `#216 (Every converted DOS character carries the same identity
-byte at 0x0AB)` asked for.  `goldbox.dos.write` used to leave `unnamed_0ab`
+byte at 0x0AB)` asked for.  `goldbox.dos_codec.write` used to leave `unnamed_0ab`
 zero in every record it made, and the engine uses that byte in one test:
 adding a saved character to the party is refused when the candidate's **name
 and `0x0AB` both** match a character already in the party.  Six converted
@@ -11,10 +11,10 @@ characters therefore carried the same value where the game's own carry a
 random one each, and the question was whether a player can be refused an add
 that the game would have allowed.  They can: the answer this tool measured is
 that the second of two same-named converted characters is turned away in
-silence, and `goldbox.dos.WRITE_DERIVED` is what the writer does instead now.
+silence, and `goldbox.dos_codec.WRITE_DERIVED` is what the writer does instead now.
 
 **One byte is the whole experiment.**  Two `.CHA` files are built by
-`goldbox.dos.write` from two *different* shipped records, both renamed to the
+`goldbox.dos_codec.write` from two *different* shipped records, both renamed to the
 same name, and offered to a party that already holds the first.  The variants
 differ in one byte and nothing else:
 
@@ -22,7 +22,7 @@ differ in one byte and nothing else:
 |---|---|---|
 | `--ident 0` | `0x00` and `0x00`, what the conversion used to write | refused, party of one |
 | `--ident 0x42` | `0x00` and `0x42`, the second hand-set | accepted, party of two |
-| `--writer` | whatever `goldbox.dos.write` writes today | accepted, party of two |
+| `--writer` | whatever `goldbox.dos_codec.write` writes today | accepted, party of two |
 
 If both of the first two are accepted, the byte is not part of the test and
 the issue is refuted.  If both are refused, the test is on the name alone and
@@ -93,7 +93,7 @@ OUT = REPO / "work" / "issue216"
 
 
 def converted(src: Path, name: str, ident: int | None) -> tuple[bytes, bytes]:
-    """A record `goldbox.dos.write` made from `src`, renamed, `0x0AB` forced.
+    """A record `goldbox.dos_codec.write` made from `src`, renamed, `0x0AB` forced.
 
     The rename is done on the neutral character rather than on the bytes, so
     the writer lays the name out itself -- one count byte and fifteen of
@@ -118,7 +118,7 @@ def stage_characters(save_dir: Path, ident: int | None) -> dict[str, str]:
     """Write the two `.CHA`/`.ITM` pairs and the `CHARLIST.TXT` that lists them.
 
     `ident` is forced on **both** files when it is `0`, which is the state
-    `goldbox.dos.write` used to leave every converted character in, and on
+    `goldbox.dos_codec.write` used to leave every converted character in, and on
     the second alone otherwise, so the pair differs in one byte.  `None`
     leaves both files carrying whatever the writer produces today, which is
     the run that says whether the fix works in the game.
@@ -231,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--both", action="store_true",
                         help="run 0x00 and 0x42 and print the comparison")
     parser.add_argument("--writer", action="store_true",
-                        help="leave 0x0AB as goldbox.dos.write leaves it, "
+                        help="leave 0x0AB as goldbox.dos_codec.write leaves it, "
                              "which is the run that tests the fix")
     parser.add_argument("--keep", action="store_true",
                         help="do not release the DOSBox slot afterwards")

@@ -15,7 +15,7 @@ things the engine and our own record layout already say:
   `mov dx, <stride> / mul dx / mov di, ax / add di, cx / mov al, [di + <off>]`
   in `GAME.OVR`, which `tools/thac0census.py --code` prints;
 * the **row count** is the width of `class_levels` in
-  `goldbox/dos_layout.py`, because the loop walks that array once a class --
+  `goldbox/dos_port.py`, because the loop walks that array once a class --
   and it is 7 rather than 8 for Silver Blades, which drops the monk;
 * the **block** is the one maximal run of bytes in 30..70 whose length is
   exactly `rows * stride`. In each image there is exactly one.
@@ -266,7 +266,7 @@ def records(title: str):
 
     The specimen tree and the player's archives, the same two places
     `tools/thac0census.py` sweeps.  That tool's own reader cannot be used for
-    Silver Blades: `goldbox.dos.DosCharacter.class_levels` walks all eight
+    Silver Blades: `goldbox.dos_codec.DosCharacter.class_levels` walks all eight
     `CLASS_LEVEL_SLOTS` and that title's array is **seven** wide, so it raises
     `IndexError` on every record -- `#423 (Reading a Silver Blades or Pools of
     Darkness DOS character's class levels raises IndexError, because the array

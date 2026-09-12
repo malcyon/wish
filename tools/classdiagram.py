@@ -14,7 +14,7 @@ command.
     tools/classdiagram.py goldbox/titles.py
     tools/classdiagram.py goldbox                        # whole package -- 112 classes, illegible, see the issue
     tools/classdiagram.py goldbox --pyreverse-args "--no-standalone -k"
-    tools/classdiagram.py goldbox/amiga.py --dirty        # against the working tree, not HEAD
+    tools/classdiagram.py goldbox/amiga_por.py --dirty     # against the working tree, not HEAD
     tools/classdiagram.py goldbox --pyreverse /tmp/pyreverse-env/bin/pyreverse
 
 Runs against a detached worktree at `HEAD` by default, because `goldbox/` is
@@ -34,9 +34,9 @@ not install anything itself.
   classes written to the file and changes nothing else. It does not
   disambiguate two classes sharing a bare name, which is the reason anybody
   would reach for it -- `goldbox/neutral.py`, `goldbox/c64_codec.py` and
-  `goldbox/amiga.py` each define a class called `Report`, and a whole-package
+  `goldbox/amiga_pod.py` each define a class called `Report`, and a whole-package
   run collapses all three into one Mermaid node.
-* **`-c` needs a fully qualified name.** `-c goldbox.amiga.AmigaShape` works;
+* **`-c` needs a fully qualified name.** `-c goldbox.amiga_later.AmigaShape` works;
   `-c AmigaShape` produces no output and no error.
 
 ## Pixels
@@ -135,7 +135,7 @@ def remove_worktree(repo: pathlib.Path, wt: pathlib.Path) -> None:
 
 def slug_for(targets: list[str]) -> str:
     """A directory name for a run's output, built from its targets:
-    `goldbox/amiga.py` becomes `amiga`, `goldbox` stays `goldbox`, and
+    `goldbox/amiga_por.py` becomes `amiga_por`, `goldbox` stays `goldbox`, and
     several targets join on `+`."""
     parts = []
     for target in targets:
@@ -254,7 +254,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("targets", nargs="+",
                          help="a package directory or a module file, "
                               "relative to the repository root, e.g. "
-                              "'goldbox' or 'goldbox/amiga.py'")
+                              "'goldbox' or 'goldbox/amiga_por.py'")
     parser.add_argument("--out", type=pathlib.Path, default=None,
                          help="output directory (default: a new directory "
                               "under work/issue488/tool/)")
@@ -271,7 +271,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--pyreverse-args", default="",
                          help="extra arguments passed straight to "
                               "pyreverse, e.g. "
-                              "'--no-standalone -k -c goldbox.amiga.AmigaShape'")
+                              "'--no-standalone -k -c goldbox.amiga_later.AmigaShape'")
     return parser.parse_args(argv)
 
 

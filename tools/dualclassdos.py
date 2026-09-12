@@ -72,7 +72,7 @@ SUFFIXES = (".SAV", ".CHA", ".GUY")
 
 #: Class number -> name, which is how *both* level arrays are indexed on DOS.
 #: The C64 indexes its own eight slots by the class *bit* instead, which is
-#: the permutation `goldbox/dos.py` already carries.
+#: the permutation `goldbox/dos_port.py` already carries.
 CLASS_NAMES = dos_port.CLASS_NUMBERS
 
 

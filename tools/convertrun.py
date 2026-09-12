@@ -7,9 +7,9 @@ supports)` -- and the one thing the flag's removal condition 5 asks for:
 *each registered direction has been loaded and walked in its emulator from a
 save the dialog's own code path wrote*.
 
-`tools/dosdisk.py` and `tools/dosnewsave.py` already prove `goldbox.dos`.
-They are not this: they call `goldbox.dos.new_save` and
-`goldbox.dos.new_dos_save` directly, where a player presses Convert and the
+`tools/dosdisk.py` and `tools/dosnewsave.py` already prove `goldbox.dos_codec`.
+They are not this: they call `goldbox.dos_codec.new_save` and
+`goldbox.dos_codec.new_dos_save` directly, where a player presses Convert and the
 bytes come out of `editor.window.EditorBinding.convert` ▸
 `editor.convert.ConvertDialog` ▸ `Direction.rehearse` ▸ `Direction.write`.
 `tests/test_convert.py`'s three transfer tests assert those two routes are
@@ -272,7 +272,7 @@ def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
     """Copy the dialog's files into a staged game tree and load them.
 
     The files are copied verbatim -- nothing is rebuilt here, which is the
-    whole point of the run. `goldbox.dos.new_dos_save` clears the slot's
+    whole point of the run. `goldbox.dos_codec.new_dos_save` clears the slot's
     stale `CHRDAT<slot><n>.*` before it moves its own files in, and a copy
     into a freshly staged tree has to do the same or a shipped party's
     record could outlive the one being loaded.

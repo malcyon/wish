@@ -60,7 +60,7 @@ C64_CLASS_BITS = 0x0EB
 C64_CHAR_CLASS = 0x073
 
 #: Class name -> its bit, in the order every port's bitmask uses once
-#: `goldbox.dos.neutral_class_bits` has folded DOS's paladin and ranger back.
+#: `goldbox.dos_codec.neutral_class_bits` has folded DOS's paladin and ranger back.
 BIT_FOR_CLASS = {"magic-user": 0x01, "cleric": 0x02, "thief": 0x04,
                  "fighter": 0x08, "knight": 0x10, "paladin": 0x40,
                  "ranger": 0x80}
@@ -75,7 +75,7 @@ def bits_from_levels(levels: dict) -> int:
     slot at zero, and for SILAS -- the shipped Pool of Radiance fighter -- the
     level array carries a thief 1 the mask has never heard of.  Reading the
     levels catches **both** kinds of disagreement, which is what a census
-    wants; `goldbox.dos.write` takes the mask, which is what a *writer* wants,
+    wants; `goldbox.dos_codec.write` takes the mask, which is what a *writer* wants,
     and `docs/187-the-class-code-byte.md` says why.
     """
     out = 0
@@ -111,7 +111,7 @@ def dos_records(root: pathlib.Path):
 
     **The bitmask is the neutral one**, not the stored byte: DOS numbers the
     paladin's and the ranger's bits differently from the C64, which
-    `goldbox.dos.neutral_class_bits` folds back.  Reading the stored byte
+    `goldbox.dos_codec.neutral_class_bits` folds back.  Reading the stored byte
     against the C64's table made every DOS ranger in the corpus look like a
     disagreement, which was this tool's fault and not the game's.
 

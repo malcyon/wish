@@ -3,7 +3,7 @@
 
 `#395 (A Curse cleric carries the ranger's innate effect and a human carries
 the elf's, in the specimen both ids were graded from)` is why this exists.
-`goldbox/dos.py` grades effect id 134 as Curse of the Azure Bonds' ranger id
+`goldbox/dos_codec.py` grades effect id 134 as Curse of the Azure Bonds' ranger id
 and 107 as the elf's, and a code review found a cleric carrying 134 and a
 human carrying 107 in the same specimen the grades cite.  A grade of that
 shape is a claim about a **partition** -- every carrier of this id is a
@@ -75,7 +75,7 @@ from tools import dostailcensus, specimens  # noqa: E402
 #: sweep can find a record's effects without opening every file twice.
 EFFECT_SUFFIXES = tuple(sorted({s.effect_suffix for s in dl.DELTAS_BY_SIZE.values()}))
 
-#: Bytes 1-4 of an innate effect's record.  `goldbox/dos.py`'s own constant;
+#: Bytes 1-4 of an innate effect's record.  `goldbox/dos_codec.py`'s own constant;
 #: a record matching it in those four bytes is in "the innate payload shape",
 #: which is the phrase `#395` uses.
 INNATE_PAYLOAD = gdos.INNATE_PAYLOAD

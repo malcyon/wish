@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy an Amiga Pool of Radiance save slot into another slot on the disk.
 
-`goldbox.amiga.write_por_slot` writes a whole slot -- six characters, their
+`goldbox.amiga_por.write_por_slot` writes a whole slot -- six characters, their
 items and effects, the saved game pointed at those files, and `save/save`, the
 ten-byte array the picker reads -- and until this there was no way to run it
 outside the test suite.  It is what the emulator proof for
@@ -11,8 +11,8 @@ hand, so the game can be asked whether it offers it.
 
     tools/porslot.py work/por1.adf --from A --to F --out work/por1-F.adf
 
-The party is read back out of the disk through `goldbox.amiga.read_por_slot`
-and `goldbox.dos.to_neutral`, so it goes through the same neutral record a
+The party is read back out of the disk through `goldbox.amiga_por.read_por_slot`
+and `goldbox.dos_codec.to_neutral`, so it goes through the same neutral record a
 converted party would, and anything that cannot cross is reported rather than
 dropped.
 
@@ -35,10 +35,10 @@ from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 def read_slot(disk: AmigaDisk, slot: str):
     """The characters of one slot, as neutral records, and its saved game.
 
-    Reads through `goldbox.amiga.read_por_slot`, which reads the `.sav`,
+    Reads through `goldbox.amiga_por.read_por_slot`, which reads the `.sav`,
     `.itm` and `.spc` blocks straight off the disk -- nothing here is written
     to the host filesystem to read a slot.  `read_por_slot` answers
-    `list[goldbox.dos.DosCharacter]`, so each one is turned neutral with
+    `list[goldbox.dos_codec.DosCharacter]`, so each one is turned neutral with
     `dos.to_neutral`.  Raises `amiga.AmigaRecordError` for a slot with no
     characters, and for one with characters and no saved game.
     """

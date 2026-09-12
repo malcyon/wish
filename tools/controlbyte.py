@@ -65,7 +65,7 @@ def dos_offsets(shape) -> tuple[int, int]:
     """(control, share) in one DOS title's own record.
 
     Derived from the shape rather than tabulated per title: the run
-    `goldbox/dos_layout.py` calls `field_83_87` is five bytes in Pool of
+    `goldbox/dos_port.py` calls `field_83_87` is five bytes in Pool of
     Radiance and Curse and four in Silver Blades and Pools of Darkness, and
     it is the **first** byte that the later two dropped -- Curse's own Pool
     of Radiance importer copies `0x083`-`0x087` to `0x0F6`-`0x0FA` one for

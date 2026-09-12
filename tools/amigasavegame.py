@@ -7,7 +7,7 @@ executables -- `/Curse`, `/Secret` and Pool of Radiance's `/program` -- and
 this is the parser that proves the map was read right.  It walks the file
 region by region in the order the game writes it, and :func:`check` compares
 what it finds against things the file says independently: the signature scan
-in `goldbox.amiga.party_in_savegame`, the `$503E` and `$5012` words in the
+in `goldbox.amiga_later.party_in_savegame`, the `$503E` and `$5012` words in the
 variable array, and the file's own length.
 
     tools/amigasavegame.py --adf work/copy-of-disk.adf
@@ -397,7 +397,7 @@ def rebuild(save: AmigaSavegame,
 
     **What this cannot say** is whether the game will load the result.  The
     format takes it -- the loader has no checksum, no length field and no
-    signature, and `goldbox.amiga.AmigaCharacter.block_bytes` sets the three
+    signature, and `goldbox.amiga_later.AmigaCharacter.block_bytes` sets the three
     chain fields it does test -- but a save the engine has actually accepted
     is an emulator's word and nobody has had one on screen.
     """
@@ -405,7 +405,7 @@ def rebuild(save: AmigaSavegame,
     if s.party != "records":
         raise AmigaSaveError(
             f"{s.title} keeps its party in files beside the saved game, not "
-            f"in it; goldbox.amiga.write_por_slot writes that one")
+            f"in it; goldbox.amiga_por.write_por_slot writes that one")
     party = save.characters if characters is None else tuple(characters)
     if not 1 <= len(party) <= PARTY_MAX:
         raise AmigaSaveError(
@@ -553,7 +553,7 @@ def savegames_on(disk: AmigaDisk):
     """Every saved game on a disk, as `(path, bytes)`.
 
     A game disk keeps them in a `save` drawer; **a `POOLSAVE` save disk keeps
-    them in the root**, which is where `goldbox.amiga.make_por_save_disk`
+    them in the root**, which is where `goldbox.amiga_por.make_por_save_disk`
     writes them and where the Amiga game's own picker looks when the player
     answers its `PATH FOR SAVE` prompt with RETURN.  Both are read: pointing
     this at the disk a conversion just produced used to report that no image

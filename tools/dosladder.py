@@ -705,7 +705,7 @@ def audit(root: pathlib.Path) -> list[str]:
 def thac0_rows(root: pathlib.Path) -> list[str]:
     """What the DOS engine stored in `thac0_base` at every level it wrote.
 
-    `goldbox/dos_layout.py` reads `0x02D` as `60 - THAC0`, and
+    `goldbox/dos_port.py` reads `0x02D` as `60 - THAC0`, and
     `goldbox/levels.py`'s rows are the **C64's**, expanded from `GEN $1F1F`.
     Comparing the two says whether the two ports agree, and one place they are
     known to be in question is magic-user and thief level 1, which the C64

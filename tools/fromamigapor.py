@@ -18,8 +18,8 @@ characters, which have crossed since 2026-08-26, but the game around them.
         --slot C --to dos --out work/354/save --report
 
 **Nothing is written from a template** (#118).  Whichever destination is
-asked for, every byte comes from a zeroed buffer, and `goldbox.dos.
-new_save_from` and `goldbox.dos.new_dos_save_from` each raise rather than
+asked for, every byte comes from a zeroed buffer, and `goldbox.dos_codec.
+new_save_from` and `goldbox.dos_codec.new_dos_save_from` each raise rather than
 hand back a save with a byte in it nobody sourced -- `--report` prints that
 accounting.
 
@@ -81,7 +81,7 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 def read_slot(disk, slot: str):
     """One Amiga slot as the pair both destinations take.
 
-    `goldbox.amiga.read_por_slot` reads the party straight off the `.adf`
+    `goldbox.amiga_por.read_por_slot` reads the party straight off the `.adf`
     blocks and `read_por_state` the place and the clock.  Both destinations
     below start here, which is the whole of what they share.
     """
@@ -95,12 +95,12 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
     """Convert one Amiga slot into a C64 `.d64` at `out`.  Nothing else is
     touched.
 
-    From :func:`read_slot` this is `goldbox.dos.new_save_from`, which is the
+    From :func:`read_slot` this is `goldbox.dos_codec.new_save_from`, which is the
     same engine `File ▸ Import` has used for a DOS folder since #118.
 
     The creation menu's two tables (#57) come off the same `disks` directory
     the icon and `ANIMATE00` do.  Unlike those two a conversion does not
-    refuse without them: `goldbox.dos.to_neutral` falls back on the stored
+    refuse without them: `goldbox.dos_codec.to_neutral` falls back on the stored
     menu, so a Pool of Radiance party arrives with every face its own
     whether or not `GEN` was anywhere to be read.
     """
@@ -125,9 +125,9 @@ def build_dos(disk, slot: str, game: pathlib.Path,
 
     The library call behind `File ▸ Convert…`'s Amiga → DOS row, and the
     same three steps that row takes: :func:`read_slot`, the party through
-    `goldbox.dos.to_neutral` -- the Amiga file order **is** the DOS file
+    `goldbox.dos_codec.to_neutral` -- the Amiga file order **is** the DOS file
     order, so nothing is reversed here -- and
-    `goldbox.dos.new_dos_save_from`, which raises rather than write a save
+    `goldbox.dos_codec.new_dos_save_from`, which raises rather than write a save
     with a byte in it nobody sourced.
 
     `editor.convert.amiga_combat_icon` is what keeps each character's own
@@ -163,7 +163,7 @@ def _item_line(item) -> str:
     """One item as the ITEMS screen's own cached line, with its quantity.
 
     The line is the buffer the game last drew and is stale by construction
-    (`goldbox.amiga.AmigaPorItem.display_line` says why), so it is printed
+    (`goldbox.amiga_por.AmigaPorItem.display_line` says why), so it is printed
     to be read against the same stale line on the C64's own screen rather
     than as a claim about what the item is.
     """
@@ -176,7 +176,7 @@ def sheet(party, state) -> list[str]:
 
     `tools/dosdisk.py`'s `--sheet` for a DOS folder, over an Amiga slot: the
     records have been re-cut into the DOS shape by
-    `goldbox.amiga.to_dos_character`, so the same reader and the same three
+    `goldbox.amiga_por.to_dos_character`, so the same reader and the same three
     display constants serve, imported from there rather than copied.
     """
     from goldbox.c64_port import classes_to_names

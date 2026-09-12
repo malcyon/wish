@@ -27,7 +27,7 @@ is, and what zeroes it are all in the code, and this reads them:
   carries: a count is an upper bound and a site is worth believing only
   when a disassembly corroborates it.
 
-Block offsets come from `goldbox.dos_layout` (`spells_castable_cleric`).
+Block offsets come from `goldbox.dos_port` (`spells_castable_cleric`).
 Prints offsets, counts and short instruction windows; the game's bytes stay
 in the player's own directory.
 """

@@ -2,7 +2,7 @@
 """Does the DOS engine keep, show or recompute `0x10C`-`0x10F`?
 
 `tools/dostailcensus.py` established that Pool of Radiance's `0x10C`-`0x10F`
-is not the constant `goldbox/dos.py` writes back: the engine's own resave
+is not the constant `goldbox/dos_codec.py` writes back: the engine's own resave
 after a fight holds `00 01 00 01`, and a character at zero hit points holds
 `04 00 00 00`.  What a census cannot say is what happens on the way **in** --
 whether a value staged into a save survives a load, whether the game shows it,

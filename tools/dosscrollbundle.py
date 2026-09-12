@@ -247,7 +247,7 @@ def cmd_census(args) -> int:
                       f"{records} records against an item_count of {count}")
             if count == 0:
                 # An export zeroes `item_count` and may sit beside an item
-                # file from an earlier save; `goldbox.dos.read_character`
+                # file from an earlier save; `goldbox.dos_codec.read_character`
                 # documents that and hands back no items.
                 exports += 1
             elif records != count:

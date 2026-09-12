@@ -65,7 +65,7 @@ def install_whole(save: pathlib.Path, save_dir: pathlib.Path,
     """Put a whole save this project wrote into a clean `SAVE` (#299).
 
     The other half of :func:`install`: here the container is **ours too**,
-    built from nothing by `goldbox.dos.new_dos_save`, so every file of the
+    built from nothing by `goldbox.dos_codec.new_dos_save`, so every file of the
     slot comes from `save` and nothing is borrowed from a specimen.  The
     slot letter is kept as written unless `letter` differs from `source`,
     and Silver Blades refuses a save installed under a different letter from

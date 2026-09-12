@@ -100,7 +100,7 @@ def columns(spec) -> dict[str, str]:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("title", help="a goldbox.dos_layout shape key")
+    parser.add_argument("title", help="a goldbox.dos_port shape key")
     parser.add_argument("roots", nargs="*", type=pathlib.Path,
                         help="directories to sweep; the default is "
                              "tools/dostailcensus.py's")

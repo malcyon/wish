@@ -201,7 +201,7 @@ def references(image: bytes, offset: int, *,
 
 
 def unsourced_fields() -> list[tuple[str, int, int]]:
-    """`(name, offset, size)` for every field `goldbox.dos.write` zeroes."""
+    """`(name, offset, size)` for every field `goldbox.dos_codec.write` zeroes."""
     return [(n, dl.FIELDS_BY_NAME[n].offset, dl.FIELDS_BY_NAME[n].size)
             for n, _ in dos_codec.WRITE_UNSOURCED]
 
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offset", default=None,
                     help="the record offset, e.g. 0x100")
     ap.add_argument("--unsourced", action="store_true",
-                    help="every offset goldbox.dos.write leaves zero")
+                    help="every offset goldbox.dos_codec.write leaves zero")
     ap.add_argument("--any-segment", action="store_true",
                     help="do not require an ES override (noisier by far)")
     ap.add_argument("--region", default=None,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write DOS character records for every title `goldbox.dos` can write, and
+"""Write DOS character records for every title `goldbox.dos_codec` can write, and
 measure how well they came out.
 
 The measuring half of
@@ -65,7 +65,7 @@ from goldbox.savegame import load_save  # noqa: E402
 #: 2026-09-05 by the writer as it stood *before* `#310` taught it to check a
 #: class code against the class mask, so it holds 0 (cleric) for MATHEW the
 #: paladin 6, TRAVIS the fighter 5 / thief 6 and LEDERA the fighter 5 /
-#: magic-user 5 -- the very symptom `goldbox.dos`' `char_class` comment
+#: magic-user 5 -- the very symptom `goldbox.dos_codec`' `char_class` comment
 #: describes, "that drew CLERIC on a dwarf thief 6 / fighter 5 in the running
 #: game".  `curse-234-engine-resave` is DOS Curse's own `SAVE CURRENT GAME`
 #: over those records and holds the same wrong bytes, which is the separate
@@ -267,8 +267,8 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
     the DOS engine cannot be pointed at.
 
     That is a property of this mode and no longer of the library:
-    `goldbox.dos.new_dos_save` builds the whole save from nothing for all
-    three titles `goldbox.dos.WRITES` names -- Pool of Radiance's 13137-byte
+    `goldbox.dos_codec.new_dos_save` builds the whole save from nothing for all
+    three titles `goldbox.dos_codec.WRITES` names -- Pool of Radiance's 13137-byte
     container, Curse's 13149 with its `ECL<n>.DAX` script staged, and Silver
     Blades' 5469 without one -- and both later ones have been loaded and
     played in DOSBox (`#299`).
@@ -299,7 +299,7 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
               f"{len(report.dropped)} reported")
     print(f"{shape.title}: {len(party)} records in {out}")
     print("No SAVGAM was written, and the DOS engine loads a party from one: "
-          "this mode measures the records alone. goldbox.dos.new_dos_save "
+          "this mode measures the records alone. goldbox.dos_codec.new_dos_save "
           "builds the whole save for every title this writer writes (#299)")
     return 0
 

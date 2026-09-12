@@ -100,7 +100,7 @@ FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
 # Silver Blades load at `$4B00` rather than `$4900`, so `$49E6` in those two is
 # a byte of `LIBRARY` code that reads zero -- and a driver that took that for
 # the travel grid sent compass digits at a dungeon and pressed nothing at all.
-# `Session.game` is what decides now, and `goldbox.games` already knows that
+# `Session.game` is what decides now, and `goldbox.c64_port` already knows that
 # neither later title has a travel grid to be on.
 INDOORS_AT = 0x49E6
 #: The dungeon's live position triple: x, y, facing.  It freezes outdoors at

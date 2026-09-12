@@ -395,7 +395,7 @@ def report_closest(out: io.TextIOBase, show: int = 10,
 
     **`--all-dos-titles` widens the corpus past what the automapper can hold,
     and the exit code does not follow it there.** Gateway, Treasures and Pools
-    of Darkness have no entry in `goldbox.games`, so `load_maps` can never glob
+    of Darkness have no entry in `goldbox.c64_port`, so `load_maps` can never glob
     one of their disks and `verdict` can never be handed their maps as a
     candidate set: a pair inside one of them cannot make today's constant
     ambiguous, however close it is. Those pairs are printed as `WATCH`, naming
@@ -487,7 +487,7 @@ def report_closest(out: io.TextIOBase, show: int = 10,
             # because floor division already lands one under the half.
             print(f"  WATCH           {(gap - 1) // 2:5d}   what it would have "
                   f"to become for {label} {a}/{b} at {gap}, a title "
-                  f"`goldbox.games` does not know", file=out)
+                  f"`goldbox.c64_port` does not know", file=out)
         print(f"  and under       {nearest_wrong:5d}   the closest two "
               f"different places, one of them ours: "
               f"{(touching or other_place)[0][1]} and "

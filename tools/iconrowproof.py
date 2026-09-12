@@ -7,7 +7,7 @@ becomes.  Reading the row proves nothing about a *converted character*: the
 table is merged from four levels, the merge takes a title and a size, and a
 caller that forgets either gets the base answer and a complete, plausible
 figure that is simply not the one the player made.  This drives the whole
-path the import dialog drives -- `goldbox.dos.convert_save`, which reads the
+path the import dialog drives -- `goldbox.dos_codec.convert_save`, which reads the
 party and the place off the folder and calls `write_c64_save` -- and then
 reads each C64 icon back into the menu choices that drew it, through
 `IconParts.recognise`.
@@ -38,7 +38,7 @@ assertion.
 `IconParts.dos_icon_from_c64` -- the other direction, `tools/iconreverse.yaml`
 (`#320`) -- twice: once through `goldbox.iconparts.c64_icon_tables()` with no
 title, the base table, and once with the title this run staged for, which is
-what `goldbox.dos.c64_party` itself now passes
+what `goldbox.dos_codec.c64_party` itself now passes
 (`#452 (A Silver Blades combat figure does not survive a round trip through
 the C64, because the reverse table has no per-title rows)`).  Comparing the
 two against what was staged shows the fix's effect, not a reading of either
@@ -91,7 +91,7 @@ def stage(source: pathlib.Path, into: pathlib.Path, slot: str, title: str,
         if path.is_file() and path.name != "provenance.toml":
             shutil.copy(path, into / path.name)
             (into / path.name).chmod(0o644)
-    #: The same walk `goldbox.dos.read_party` makes -- `CHRDAT<slot><n>.SAV`
+    #: The same walk `goldbox.dos_codec.read_party` makes -- `CHRDAT<slot><n>.SAV`
     #: for n in 1..6, skipping the ones that are not there -- so a party of
     #: fewer than six is edited on the file each character actually came
     #: from rather than on the nth existing one.
@@ -123,7 +123,7 @@ def arrivals(folder: pathlib.Path, slot: str, title: str,
 
     Returns the rows, and the `save0`/`save1` the conversion wrote --
     a real converted save, so :func:`homecoming` can read it back through
-    `goldbox.dos.c64_party` itself rather than through a reimplementation of
+    `goldbox.dos_codec.c64_party` itself rather than through a reimplementation of
     what that function does.
     """
     game = c64_port.by_key(title)
@@ -156,7 +156,7 @@ def homecoming(rows: list[dict], save0: bytes, save1: bytes | None,
               title: str, parts: IconParts) -> list[dict]:
     """Read the just-converted save back into DOS two ways (`#320`, `#452`).
 
-    **`goldbox.dos.c64_party` itself**, the exact call a real C64-to-DOS
+    **`goldbox.dos_codec.c64_party` itself**, the exact call a real C64-to-DOS
     conversion makes, against the same title this run staged for -- what
     this project calls "wired" below. And the base, title-less table read
     directly through `IconParts.dos_icon_from_c64`, which is what

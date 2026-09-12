@@ -6,7 +6,7 @@ The DOS half of `#57 (Carry the character portrait across ports)` is settled:
 twelve-entry creation menu, the C64 record stores the art id the menu chose,
 and `SAVGAM<slot>.DAT` word `$49FF` gates whether DOS draws the picture at
 all.  Nobody had looked at the **C64** sheet, so nothing said whether the C64
-has the same gate -- and `goldbox.dos.HEADER_ZEROED` writes zero at `$49FF` of
+has the same gate -- and `goldbox.dos_codec.HEADER_ZEROED` writes zero at `$49FF` of
 a converted `SAVEDGAME0`, which is exactly the value that made a converted DOS
 party faceless.
 

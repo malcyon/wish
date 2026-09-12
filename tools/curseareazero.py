@@ -65,9 +65,9 @@ HEADER_BYTES = 0x2E0
 #: The name the engine loads and saves under.  `GEN $1F66`.
 SAVE_NAME = b"SAVEAZURE"
 
-#: What an empty loaded-files cache slot holds.  `goldbox.dos.FILE_CACHE_EMPTY`
+#: What an empty loaded-files cache slot holds.  `goldbox.dos_codec.FILE_CACHE_EMPTY`
 #: says the same; it is repeated rather than imported so that `--doctor` works
-#: with no `goldbox.dos` import at all.
+#: with no `goldbox.dos_codec` import at all.
 CACHE_EMPTY = 0xFF
 
 #: The status line the game draws once the party is in an area: square,
@@ -96,7 +96,7 @@ def fields(page: bytes, container) -> dict:
 #: nothing about any of them.
 ZEROABLE = ("area", "geo", "cache", "fdfe")
 
-#: `goldbox.dos.apply_file_cache`'s own recipe, repeated here as three slot
+#: `goldbox.dos_codec.apply_file_cache`'s own recipe, repeated here as three slot
 #: numbers so `--recipe` can build the disk the converter *would* write
 #: without importing the module that currently refuses to write it.  Curse
 #: sets bit 7 in every slot it fills (`Container.cache_bit7`).

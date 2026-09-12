@@ -30,11 +30,11 @@ unavailable still has the other:
   script buffer (`script_bytes` is 0), so this test cannot be taken there.
 * **`$4FE1`**, which is 0 in every never-adventured container and in no
   other, on all three titles -- `--by word`.  Curse's `GAME.OVR:0x832F`
-  stores `$FF` into it (`goldbox.dos.LATER_BEGUN_WORD`); what Pool of
+  stores `$FF` into it (`goldbox.dos_codec.LATER_BEGUN_WORD`); what Pool of
   Radiance's 255, 16 and 8 mean there is unread, so for that title this is
   a census result and not a reading of the engine.
 
-`--by rule` is what the import itself applies -- `goldbox.dos.never_adventured`,
+`--by rule` is what the import itself applies -- `goldbox.dos_codec.never_adventured`,
 the buffer where the shape has one and the word where it does not -- so a
 sweep can say whether the rule and either reading ever part company.  They
 agreed on all 107 containers where both could be taken on 2026-09-06.
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
                     default="buffer",
                     help="Which test names a never-adventured save: the "
                          "staged script (default), $4FE1, or the rule the "
-                         "import applies (goldbox.dos.never_adventured)")
+                         "import applies (goldbox.dos_codec.never_adventured)")
     ap.add_argument("--title", help="One title's key, e.g. "
                                     "curse-of-the-azure-bonds")
     ap.add_argument("--list", action="store_true",

@@ -10,7 +10,7 @@ engine derives or a field we got wrong, and there is no third kind.
     tools/porslotdiff.py work/109/por1-F-after-C.adf --from F --to C
 
 That run is `docs/124-amiga-port.md` §1.12a: slot `F` was written by
-`goldbox.amiga.write_por_slot` and slot `C` is the engine's own save of the
+`goldbox.amiga_por.write_por_slot` and slot `C` is the engine's own save of the
 same six characters in the same session.  The answer was `item_chain`,
 `heap_104`, `effect_chain` and five thief skills, and nothing else in 1728
 bytes of record.
@@ -35,7 +35,7 @@ def field_at(offset: int) -> str:
     """The DOS field name covering an Amiga record offset, or a pad's name.
 
     The shift map is the only translation, so a name here is the same name the
-    writer's provenance lines and `goldbox.dos`'s declared tables use -- which
+    writer's provenance lines and `goldbox.dos_codec`'s declared tables use -- which
     is the point: a difference is worth reading only if it can be looked up.
     """
     for f in dos_port.LAYOUT:

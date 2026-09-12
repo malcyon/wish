@@ -9,13 +9,13 @@ writer's `DROPPED` tuple declares.  The two are not the same thing:
 `goldbox.neutral.Writer.finish` composes a line only for a field the neutral
 record actually carries, so a declared entry no source can reach never fires.
 
-Until 2026-09-09 `goldbox.dos.WRITE_UNREPORTED_DROPS` also silenced two
+Until 2026-09-09 `goldbox.dos_codec.WRITE_UNREPORTED_DROPS` also silenced two
 entries that a real C64 source does reach -- `turn_power` and `infravision`
 -- so the count this tool's `sweep` reports could look emptier than the
 conversion actually was.  `#483 (The Convert flag could come off while two
 fields are still lost, because a silencing list keeps them out of the count
 that decides it)` removed the silencing list: both names, plus `encumbrance`,
-are on `goldbox.dos.WRITE_NO_SUCH_FIELD` or `WRITE_DERIVED` now, genuinely
+are on `goldbox.dos_codec.WRITE_NO_SUCH_FIELD` or `WRITE_DERIVED` now, genuinely
 consumed by `write` rather than faked as taken after the fact, so `sweep`'s
 count needs no code change here to read honestly.
 
@@ -66,12 +66,12 @@ def specimen_root() -> pathlib.Path:
 
 
 #: Each destination port's writer, and the list it declares.  All three Amiga
-#: rows go through `goldbox.amiga.write_por`, which copies `goldbox.dos.write`'s
+#: rows go through `goldbox.amiga_por.write_por`, which copies `goldbox.dos_codec.write`'s
 #: own report verbatim, so its declared list is the DOS writer's.
 WRITER_DROPS = {
     "c64": ("goldbox.c64_codec.DROPPED", c64_codec.DROPPED),
-    "dos": ("goldbox.dos.WRITE_DROPPED", dos_codec.WRITE_DROPPED),
-    "amiga": ("goldbox.dos.WRITE_DROPPED, via goldbox.amiga.write_por",
+    "dos": ("goldbox.dos_codec.WRITE_DROPPED", dos_codec.WRITE_DROPPED),
+    "amiga": ("goldbox.dos_codec.WRITE_DROPPED, via goldbox.amiga_por.write_por",
               dos_codec.WRITE_DROPPED),
 }
 

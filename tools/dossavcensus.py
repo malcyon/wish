@@ -20,7 +20,7 @@ What it does, and it reads only -- it never writes a saved game:
    square, its clock, its party size, its wallset triple, and whether its ECL
    buffer is a real script or 7680 zeroes.  A save whose buffer is zero and
    whose clock is 00:00 is one made before the party set out -- the same
-   state `goldbox.dos.never_adventured` and `tools/neveradventured.py` name,
+   state `goldbox.dos_codec.never_adventured` and `tools/neveradventured.py` name,
    whoever wrote it -- and is excluded from the counts by default, on the
    reasoning that a census of world state has nothing to say about a party
    that has none yet: `--include-never-adventured` keeps it in.  Nothing here
@@ -222,7 +222,7 @@ def describe(path: pathlib.Path,
         wallmap=[sg.word(save, sg.WALLMAP + i) for i in range(3)],
         flags=sum(1 for a in range(sg.FLAGS_FIRST, sg.FLAGS_LAST + 1)
                   if sg.word(save, a)),
-        # The state `goldbox.dos.never_adventured` and
+        # The state `goldbox.dos_codec.never_adventured` and
         # `tools/neveradventured.py` name: a party saved before
         # `BEGIN ADVENTURING` carries the initialiser's world state rather
         # than a played one.  It is legitimate evidence about what the

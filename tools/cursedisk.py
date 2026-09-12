@@ -14,7 +14,7 @@ than a `--game` on the first.
         --out work/issue192/CURSESAVE.D64 --report --sheet
 
 **Two reach-arounds this tool used to need, both closed by step 4.**
-`goldbox.dos.CONVERTS` now carries Curse for real and `goldbox/areas.py` now
+`goldbox.dos_codec.CONVERTS` now carries Curse for real and `goldbox/areas.py` now
 carries these same twenty-five rows in `areas.TABLES` -- `File > Import`
 converts a Curse folder too, for everyone since 2026-09-06 (#131).
 `enable_curse()` and `CURSE_AREAS` below are kept as a defensive no-op rather
@@ -26,7 +26,7 @@ this copy rather than against `goldbox/areas.py`'s -- catching either table
 going stale on its own.
 
 Everything else is the shipped conversion.  No byte comes from another save:
-`goldbox.dos.new_save` refuses a payload with an unsourced byte in it, and
+`goldbox.dos_codec.new_save` refuses a payload with an unsourced byte in it, and
 the two things no DOS save can supply -- the 36-byte combat icon and
 `ANIMATE00` -- are read off the player's own Curse sides at run time.
 """

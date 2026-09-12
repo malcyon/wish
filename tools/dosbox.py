@@ -1034,7 +1034,7 @@ ITEM_SPECIAL = 0x03C     # three bytes: charges, effect, power -- or, on a
 C64_ITEM_SIZE = 16
 
 
-#: The projection itself now lives in `goldbox/dos.py`, because it is part of the
+#: The projection itself now lives in `goldbox/dos_codec.py`, because it is part of the
 #: converter rather than part of the harness that drives DOSBox.  Re-exported
 #: here so the measurements in `tests/test_dosbox.py` keep reading it from the
 #: place they were written against, and so there is one copy of it.

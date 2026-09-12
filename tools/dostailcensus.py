@@ -3,7 +3,7 @@
 
 Written for `#235 (Two unattributed DOS byte ranges in the combat tail are
 dropped converting to C64, and nobody knows what they hold)`, whose two
-entries in `goldbox/dos.py`'s `DROPPED` table -- `field_83_87` and
+entries in `goldbox/dos_codec.py`'s `DROPPED` table -- `field_83_87` and
 `field_10c_10f` -- rested on "the same bytes in all 24 specimens", and 24 is
 one played Pool of Radiance party.  `#224 (0x0B9 and 0x0BA are documented both
 as an NPC marker and as the dual-class slot)` is the standing warning: **a byte
@@ -14,7 +14,7 @@ What it does, and it reads only:
 
 1. **Finds every DOS Gold Box character record** under the roots given, or
    under the player's archives and `work/` by default.  A record is a file
-   whose size is one of the four `goldbox/dos_layout.py` knows -- 285 Pool of
+   whose size is one of the four `goldbox/dos_port.py` knows -- 285 Pool of
    Radiance, 422 Curse, 439 Silver Blades, 510 Pools of Darkness -- and whose
    suffix is a record suffix (`.SAV`, `.CHA`, `.GUY`).  Anything else,
    including the 288-byte Amiga records under `work/`, is skipped.  A record
@@ -67,7 +67,7 @@ from tools import gamedisks  # noqa: E402
 RECORD_SUFFIXES = (".sav", ".cha", ".guy")
 
 #: Filename prefixes this project's own writers use for records **we** made.
-#: A record we wrote carries whatever `goldbox/dos.py` chose to write, so it
+#: A record we wrote carries whatever `goldbox/dos_codec.py` chose to write, so it
 #: is evidence about our writer and never about the game.
 BUILT_PREFIXES = ("built-", "seed-", "c64-", "conv-")
 

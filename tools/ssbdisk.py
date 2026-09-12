@@ -14,8 +14,8 @@ the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
     tools/ssbdisk.py --folder work/curse/SSB-D-paine-memorised --slot D \\
         --out work/193/SSBD.D64 --report --sheet
 
-**`enable_ssb()` is a reach-around and says so.** `goldbox.dos.CONVERTS` does
-not carry Silver Blades: the refusal in `goldbox/dos.py` stands until a party
+**`enable_ssb()` is a reach-around and says so.** `goldbox.dos_codec.CONVERTS` does
+not carry Silver Blades: the refusal in `goldbox/dos_codec.py` stands until a party
 this tool built has been loaded in the running game and read off the screen,
 which is `#193` step 3.  This tool puts the shape on `CONVERTS` **in its own
 process only**, the same way `tools/cursedisk.py` did while `#192` was open.
@@ -27,7 +27,7 @@ Blades)`, so there is no copy of the table here -- `--check-areas` re-derives
 them off the disks and diffs them against `goldbox.areas` rather than against
 a second copy that could go stale on its own.
 
-No byte comes from another save: `goldbox.dos.new_save` refuses a payload with
+No byte comes from another save: `goldbox.dos_codec.new_save` refuses a payload with
 an unsourced byte in it, and the one thing no DOS save can supply -- the
 36-byte combat icon -- is composed from `SPELLE64` on the player's own sides
 at run time.  **This title stages no `ANIMATE00` into the save**, because its

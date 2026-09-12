@@ -21,7 +21,7 @@ by a guess.
     tools/dosportraitparty.py --slot A --probe n,Down,Right,plus --out work/z
 
 With `--c64` the party is converted **from nothing** through
-`goldbox.dos.new_dos_save`, which is the code `File > Import` runs -- not a
+`goldbox.dos_codec.new_dos_save`, which is the code `File > Import` runs -- not a
 staged copy of what the writer would have produced.  The comparison is then
 between the C64 record's own `portrait_head`/`portrait_body` art ids and the
 art the DOS game fetched, so a wrong table, a wrong order and a dropped byte

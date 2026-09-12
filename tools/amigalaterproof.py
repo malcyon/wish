@@ -2,7 +2,7 @@
 """Put a converted Amiga Curse or Silver Blades party in front of the engine.
 
 `tools/amigalaterwrite.py` builds the party and writes a disk;
-`goldbox.amiga.write_later` is what it calls.  What neither of them can do is
+`goldbox.amiga_later.write_later` is what it calls.  What neither of them can do is
 the last step of
 `#384 (Write an Amiga Curse or Silver Blades character, so a C64 or DOS party
 has an Amiga to arrive on)` -- boot the disk and read the engine's answer back
@@ -25,9 +25,9 @@ converts from happens to keep its only item-carrying character last.
 
 `diff` is the other half.  The engine loads what we wrote, the player camps
 and saves, and the two parties are compared block by block -- masked by the
-lists the writers **declare** (`goldbox.amiga.LATER_WRITE_UNSOURCED`,
+lists the writers **declare** (`goldbox.amiga_later.LATER_WRITE_UNSOURCED`,
 `LATER_WRITE_DERIVED`, `LATER_ITEM_WRITE_UNSOURCED`,
-`LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos`'s six, mapped through the
+`LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos_codec`'s six, mapped through the
 title's shift map) and never by whatever happened to differ, which is
 `.claude/rules/conversions.md`'s rule and the reason a new difference is a
 failure rather than a wider mask.  `LATER_WRITE_DERIVED` is the one the

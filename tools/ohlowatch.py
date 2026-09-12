@@ -80,7 +80,7 @@ from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
-#: The window one poll reads. `goldbox/games.py` POOL_OF_RADIANCE, and
+#: The window one poll reads. `goldbox/c64_port.py` POOL_OF_RADIANCE, and
 #: `automap/live.py`'s `memory_blocks`.
 SAVE0_AT, SAVE0_LEN = 0x4900, 0x1C00
 

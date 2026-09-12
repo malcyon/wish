@@ -75,7 +75,7 @@ BAG_DISCOUNT = 0x1388
 
 #: `ITEMNAMES` index 186, read off `POOL1.D64` through
 #: `goldbox.items.load_item_names`.  The DOS item record stores the C64's own
-#: name-word indices (`goldbox/dos_layout.py`, `name1`), so the compare in the
+#: name-word indices (`goldbox/dos_port.py`, `name1`), so the compare in the
 #: engine is against this number on both ports.
 HOLDING = 186
 
@@ -83,7 +83,7 @@ HOLDING = 186
 #: plus Pools of Darkness where the archives carry it.
 TITLES = ("POOLRAD", "CURSE", "SECRET", "DARKNESS")
 
-#: `goldbox/dos_layout.py`'s key for each archive directory name.
+#: `goldbox/dos_port.py`'s key for each archive directory name.
 SHAPE_KEY = {"POOLRAD": "pool-of-radiance",
              "CURSE": "curse-of-the-azure-bonds",
              "SECRET": "secret-of-the-silver-blades",
@@ -155,7 +155,7 @@ VALUABLE_FIELDS = ("gems", "jewelry")
 def offsets(stem: str) -> dict[str, list[int] | int]:
     """The encumbrance and the money displacements for this title.
 
-    Straight out of `goldbox/dos_layout.py`, so a shape correction there moves
+    Straight out of `goldbox/dos_port.py`, so a shape correction there moves
     this tool rather than leaving it quietly reading the wrong field.  Pools of
     Darkness declares no money fields, so its purses come back empty and its
     `callers` row has nothing to intersect.

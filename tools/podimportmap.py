@@ -4,7 +4,7 @@
 Amiga Pools of Darkness carries a routine that turns an Amiga *Secret of the
 Silver Blades* character record into one of its own.  It is a straight
 field-by-field copy -- sixty-odd `move.b $src(a3), $dst(a2)` and six block
-copies -- and `goldbox.amiga.SILVER_BLADES_DELTAS` already names every source
+copies -- and `goldbox.amiga_port.SILVER_BLADES_DELTAS` already names every source
 offset, because `#55 (Decode the Amiga Curse and Silver Blades records)`
 decoded that record.  So the routine reads as a table of "Silver Blades'
 *name* lives at Pools of Darkness' `0xY`", written by the engine itself.
@@ -17,7 +17,7 @@ the spellbook, which the importer plants at `0x159`, and the combat block,
 which Pools of Darkness splits between `0x5E`-`0x5F` and `0x184`-`0x185`.
 
     tools/podimportmap.py                 # the map, as the engine writes it
-    tools/podimportmap.py --check         # against goldbox.amiga's constants
+    tools/podimportmap.py --check         # against goldbox.amiga_pod's constants
     tools/podimportmap.py --json out.json
 
 The executable is read out of the player's own disk images, read-only, and
@@ -161,7 +161,7 @@ def read(quiet: bool = False) -> list[dict]:
     return moves(listing)
 
 
-#: What `goldbox/amiga.py` says, for `--check`.  A name here is the module's
+#: What `goldbox/amiga_pod.py` says, for `--check`.  A name here is the module's
 #: constant and the value is the Silver Blades field and index the importer
 #: reads it from, plus how far back from that instruction's destination the
 #: constant sits -- which is zero everywhere but `ROSTER_TAIL`, whose first
@@ -234,7 +234,7 @@ def check(found: list[dict]) -> int:
         if got is not None:
             got -= back
         if want is None:
-            print(f"  MISSING goldbox.amiga.{constant}")
+            print(f"  MISSING goldbox.amiga_pod.{constant}")
             bad += 1
         elif got is None:
             print(f"  {constant}: the importer copies no {key[0]}[{key[1]}]")
@@ -249,7 +249,7 @@ def check(found: list[dict]) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
-                    help="compare goldbox.amiga's constants with the engine")
+                    help="compare goldbox.amiga_pod's constants with the engine")
     ap.add_argument("--json", type=pathlib.Path, help="write the map here")
     args = ap.parse_args()
 

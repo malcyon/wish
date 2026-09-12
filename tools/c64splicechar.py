@@ -13,7 +13,7 @@ run measures a round trip rather than a character somebody invented.
     tools/c64splicechar.py --cha ~/wish-specimens/por-dos/WISH-SPEC-gnomf1/halfelf-GNOMF1.CHA \
         --c64 PORSAVE13.D64 --slot 5 --out work/issue243/GNOME.D64
 
-The four per-slot regions are the ones `goldbox.dos.convert_save` writes for a
+The four per-slot regions are the ones `goldbox.dos_codec.convert_save` writes for a
 whole party, at the same offsets and out of the same 580-byte record:
 
 | region | record bytes | where in `SAVEDGAME0`/`1` |
@@ -25,7 +25,7 @@ whole party, at the same offsets and out of the same 580-byte record:
 
 **The icon is left as the disk already had it.**  A C64 combat icon is 18
 `CHARPIC00` screen codes and 18 colours; DOS has no equivalent and
-`goldbox.dos.write` does not carry one back, so composing a new one would
+`goldbox.dos_codec.write` does not carry one back, so composing a new one would
 change a byte the experiment does not read.  `--icon default` composes one
 from the player's own game disk instead, for a slot that was empty.
 

@@ -17,7 +17,7 @@ than as an inference from specimens, which is what
 
 Each row is one copy the routine makes, and `swap` rows are the byte-order
 fixes it applies afterwards.  The `dos` column is the field
-`goldbox/dos_layout.py` puts at that source offset, when `--shape` names a
+`goldbox/dos_port.py` puts at that source offset, when `--shape` names a
 title, so a boundary that does not land on a field boundary is visible rather
 than assumed.
 

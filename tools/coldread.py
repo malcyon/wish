@@ -387,7 +387,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Read a title's own tables off its own disks.")
     ap.add_argument("what", choices=("traits", "levels", "effects", "table"))
-    ap.add_argument("title", help="a key from goldbox.games, e.g. "
+    ap.add_argument("title", help="a key from goldbox.c64_port, e.g. "
                                   "curse-of-the-azure-bonds")
     ap.add_argument("address", nargs="?", help="table: the run-time address")
     ap.add_argument("count", nargs="?", type=int, default=8,

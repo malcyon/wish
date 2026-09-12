@@ -122,13 +122,13 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
 
 
 #: `60 - value` is the family's encoding for both armour class and THAC0 --
-#: `goldbox/dos_layout.py` 0x111 and 0x110, where SILAS' 63 is AC -3.  The
+#: `goldbox/dos_port.py` 0x111 and 0x110, where SILAS' 63 is AC -3.  The
 #: sheet shows the decoded number, and the gap between the two is where an
 #: AC of 9 once reached a player as 51.
 AC_BIAS = 60
 
 #: What the C64 sheet calls the two sexes and the nine alignments, in the
-#: game's own order -- `goldbox/layout.py` 0x0E9 and `goldbox/dos_layout.py`
+#: game's own order -- `goldbox/layout.py` 0x0E9 and `goldbox/dos_port.py`
 #: 0x0A0, both 0-based on the table at `$32B3`.
 SEXES = ("MALE", "FEMALE")
 ALIGNMENTS = tuple(f"{law} {mood}"

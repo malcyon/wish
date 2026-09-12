@@ -55,7 +55,7 @@ from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
 #: Class name -> its bit, in the neutral order every port's mask uses once
-#: `goldbox.dos.neutral_class_bits` has folded DOS's paladin and ranger back.
+#: `goldbox.dos_codec.neutral_class_bits` has folded DOS's paladin and ranger back.
 #: The same table `tools/classcodecensus.py` carries, for the same reason: the
 #: bitmask a level array implies is not a field any record stores.
 BIT_FOR_CLASS = {"magic-user": 0x01, "cleric": 0x02, "thief": 0x04,
@@ -113,8 +113,8 @@ def dos_rows(root: pathlib.Path):
     it into a C64 one.  Measuring the combo rule against a raw DOS record
     would be measuring a call that cannot happen -- and it reads wrong, since
     DOS gives the paladin and the ranger one bit between them where the
-    neutral order gives the ranger bit 7 (`goldbox.dos.neutral_class_bits`).
-    So this walks the same road the player does: `goldbox.dos.to_neutral`
+    neutral order gives the ranger bit 7 (`goldbox.dos_codec.neutral_class_bits`).
+    So this walks the same road the player does: `goldbox.dos_codec.to_neutral`
     then `goldbox.c64_codec.write`, and asks the two questions of the C64
     record that comes out.
     """

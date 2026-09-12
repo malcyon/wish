@@ -20,9 +20,9 @@ disagreement -- a field this project calls DIRECT differing on all six is a
 wrong offset or a wrong encoding, and that is a defect in our table rather
 than a fact about SSI's party.
 
-It reaches past `goldbox.dos.CONVERTS` **in its own process only**, the same
+It reaches past `goldbox.dos_codec.CONVERTS` **in its own process only**, the same
 way `tests/test_curseconvert.py` did while `#192` was open, so that the
-refusal in `goldbox/dos.py` can stay where it is until a run in the game has
+refusal in `goldbox/dos_codec.py` can stay where it is until a run in the game has
 earned its removal.
 
 Nothing here prints a name, a spell or an item text of the game's: the
@@ -71,7 +71,7 @@ def c64_twins(payload: bytes) -> dict[str, CharacterRecord]:
     """The shipped party's records, by name, with roster and items joined on.
 
     A save slot stores 256 of the 580 bytes; the rest is the roster block, the
-    item page and the icon.  `goldbox.dos.convert_save` writes exactly those
+    item page and the icon.  `goldbox.dos_codec.convert_save` writes exactly those
     four regions, so this rebuilds the same four to compare like with like.
     """
     save = SaveGame0(payload, GAME)
@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         folder = pathlib.Path(archives) / SHIPPED_DOS
     disks = args.disks or gamedisks.find("secret-of-the-silver-blades")
 
-    # In this process only: the refusal in goldbox/dos.py stands until a run
+    # In this process only: the refusal in goldbox/dos_codec.py stands until a run
     # in the running game has earned its removal (#193 step 3).
     if dos_port.SECRET_OF_THE_SILVER_BLADES not in dos_codec.CONVERTS:
         dos_codec.CONVERTS = dos_codec.CONVERTS + (dos_port.SECRET_OF_THE_SILVER_BLADES,)

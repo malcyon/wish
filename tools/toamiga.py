@@ -17,7 +17,7 @@ shipped on the C64, so "the same title's other port" does not exist for it.
 **So it is for exercising the Amiga writer and for nothing else**, which is
 what it was written for before there were real conversions to exercise it.
 `tools/toamigapor.py` is the honest same-title route for Pool of Radiance, and
-`goldbox.amiga.export_party` -- the conversion this file only wraps -- is
+`goldbox.amiga_pod.export_party` -- the conversion this file only wraps -- is
 tested in `tests/test_amiga.py` and `tests/test_exports.py` and used by
 `editor/exports.py`. Nothing imports this wrapper.
 

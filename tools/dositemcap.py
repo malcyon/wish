@@ -128,7 +128,7 @@ def install(save_dir: pathlib.Path, game: pathlib.Path,
         name = raw[1:1 + raw[0]].decode("latin-1")
         itm = save_dir / f"CHRDAT{SLOT}{n}.ITM"
         # A character carrying nothing gets *no* file, not an empty one --
-        # `goldbox.dos.ITM_OMITTED_WHEN_EMPTY`.  Run 3 of 2026-09-05 wrote
+        # `goldbox.dos_codec.ITM_OMITTED_WHEN_EMPTY`.  Run 3 of 2026-09-05 wrote
         # zero-length files here by accident and reproduced the second half
         # of `#62 (A converted character who owns nothing gets a corrupt
         # sheet, and DOS then invents a garbage item)`: the engine's next

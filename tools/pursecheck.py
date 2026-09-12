@@ -112,7 +112,7 @@ LABELS = {"copper": "COPPER", "silver": "SILVER", "electrum": "ELECTRUM",
 #: `ENCUMBRANCE` is not a purse and is not stored on the C64 at all: the
 #: engine recomputes it while drawing the sheet.  Reading it is what turns a
 #: screenshot of seven labels into a check that the engine read seven
-#: *numbers* -- `goldbox/dos.py:expected_encumbrance` is the same identity.
+#: *numbers* -- `goldbox/dos_codec.py:expected_encumbrance` is the same identity.
 ENCUMBRANCE = "ENCUMBRANCE"
 
 
@@ -144,12 +144,12 @@ def item_weight(path: str | pathlib.Path, slot: int) -> int:
 
     The weight is in tenths of a pound and the engine adds it to a purse of
     coins without scaling either, which is the arithmetic
-    `goldbox/dos.py:expected_encumbrance` does and what `MATHEW`'s
+    `goldbox/dos_codec.py:expected_encumbrance` does and what `MATHEW`'s
     `PLATINUM 288` beside `ENCUMBRANCE 803` says the C64 does too.
 
     A quantity of zero means one -- the field counts *extra* copies for
     anything that does not stack -- which is the rule
-    `goldbox/dos.py:expected_encumbrance` uses and the only one under which
+    `goldbox/dos_codec.py:expected_encumbrance` uses and the only one under which
     the identity balances.
     """
     disk, game, container = _container(path)

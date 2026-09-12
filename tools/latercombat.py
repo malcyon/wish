@@ -103,7 +103,7 @@ class CombatMemory:
         return HEADER_SIZE + RECORD_SLOT_COUNT * SLOT_STRIDE
 
 
-#: One row a title, keyed the way `goldbox.games.Game.key` is.
+#: One row a title, keyed the way `goldbox.c64_port.Game.key` is.
 #:
 #: **Curse of the Azure Bonds and Secret of the Silver Blades agree on every
 #: address**, which is why the two rows below are the same values rather than

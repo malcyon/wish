@@ -57,7 +57,7 @@ POOL_C64_STRIDE = 9
 C64_CLASS_ORDER = ("magic-user", "cleric", "thief", "fighter")
 
 #: The eight DOS class numbers, in the order `class_levels` stores them and the
-#: order the DOS THAC0 table's rows are in.  `goldbox.dos.CLASS_LEVEL_SLOTS`
+#: order the DOS THAC0 table's rows are in.  `goldbox.dos_codec.CLASS_LEVEL_SLOTS`
 #: names the same eight; this is here so the anchor below can be built without
 #: importing the record layout.
 DOS_CLASS_ORDER = ("cleric", "druid", "fighter", "paladin", "ranger",

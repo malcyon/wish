@@ -61,7 +61,7 @@ from goldbox import portraits  # noqa: E402
 from tools import amiga68k, m68dis  # noqa: E402
 
 #: Where the pair sits in the Amiga Pool of Radiance record, from
-#: `goldbox.amiga`'s field table: the DOS record's `0x0BB`/`0x0BC` shifted by
+#: `goldbox.amiga_por`'s field table: the DOS record's `0x0BB`/`0x0BC` shifted by
 #: the three insertions in `AMIGA_POR_SHIFTS`.
 RECORD_HEAD, RECORD_BODY = 0xBD, 0xBE
 

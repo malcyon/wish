@@ -12,7 +12,7 @@ DOS record names, through `goldbox.iconparts.IconParts.dos_icon`.
         --out work/issue130/FIGURES.D64 --json work/issue130/figures.json
 
 **The disk is built by the shipped conversion, not by this tool.**
-`goldbox/dos.py`'s `convert_save` takes an `IconParts` as its `icon` and
+`goldbox/dos_codec.py`'s `convert_save` takes an `IconParts` as its `icon` and
 gives each character the figure his own record names, so this hands it the
 option tables and then *reports* what came out -- it composes the same six
 icons a second time only to say what each character asked for and to check

@@ -2,7 +2,7 @@
 """Watch a converted party's `WRITE_UNSOURCED` bytes through a DOS fight.
 
 The measurement `#69 (No WRITE_UNSOURCED zero has been tested during combat)`
-asks for.  `goldbox.dos.write` leaves nine fields zero on the grounds that the
+asks for.  `goldbox.dos_codec.write` leaves nine fields zero on the grounds that the
 engine supplies its own value, and every measurement behind that is a load, a
 `VIEW` and a resave **outside a fight**.  `tools/dosfightrun.py` proved the
 fight can be driven; this puts the debugger on the record while it happens.
@@ -18,7 +18,7 @@ because it was gone before any character acted.
 
 How it runs, in order:
 
-1. `goldbox.dos.new_dos_save` builds a save from a C64 disk into a staged
+1. `goldbox.dos_codec.new_dos_save` builds a save from a C64 disk into a staged
    game tree -- no template, every `WRITE_UNSOURCED` byte zero;
 2. DOSBox-X boots, the game loads the slot, and the party walks until a
    wandering encounter stops it at `COMBAT WAIT FLEE ADVANCE`;
@@ -101,7 +101,7 @@ FIGHT_BARS = frozenset({"encounter", "message", "command",
 
 
 def unsourced_fields() -> list[tuple[str, int, int]]:
-    """`(name, offset, size)` for every field `goldbox.dos.write` zeroes.
+    """`(name, offset, size)` for every field `goldbox.dos_codec.write` zeroes.
 
     Read out of the layout rather than written down here, so a field added to
     or removed from `WRITE_UNSOURCED` changes what this watches without
@@ -617,7 +617,7 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
     a field the engine only ever *carries*, an `ENCAMP > SAVE` hands back
     whatever it was given: `hands_used`, the four portrait and icon bytes and
     `unnamed_0ab` -- which this no longer watches, because #216 measured what
-    its zero costs and `goldbox.dos.write` now derives it -- all came back
+    its zero costs and `goldbox.dos_codec.write` now derives it -- all came back
     `00` in `engine_slot`, because they were `00` in the conversion it
     loaded.  So this says what the engine holds when a
     fight begins, and says nothing about what it would have chosen for a

@@ -205,7 +205,7 @@ def by_shop(shop_id: int) -> tuple[int, dict]:
                      f"{sorted(r['shop'] for r in SHOPS.values())}")
 
 
-#: `goldbox.dos_layout`'s stored encumbrance, quoted here so the poke says
+#: `goldbox.dos_port`'s stored encumbrance, quoted here so the poke says
 #: what it is.
 ENCUMBRANCE_AT = 0x102
 

@@ -3,7 +3,7 @@
 
 The acceptance check behind `#26 (Write a DOS save, not just read one)`, and
 the DOS-side twin of `tools/dosdisk.py` and `tools/savecheck.py`.
-`goldbox.dos.new_dos_save` builds all 13137 bytes of `SAVGAM<slot>.DAT` and
+`goldbox.dos_codec.new_dos_save` builds all 13137 bytes of `SAVGAM<slot>.DAT` and
 every `CHRDAT<slot><n>` beside it from a C64 save disk and the player's own
 DOS game files -- no existing DOS save is opened at any point -- and this
 boots the result under DOSBox and reads the party off the game's own screens.
@@ -20,7 +20,7 @@ held the C64 direction's 193 zeroed header bytes to.
 
 What it does, in order:
 
-1. `goldbox.dos.new_dos_save` writes the slot into a **staged copy** of the
+1. `goldbox.dos_codec.new_dos_save` writes the slot into a **staged copy** of the
    game tree -- `tools.dosbox.Session.stage` makes it, so the archives stay
    read-only and nothing of Donald's is touched;
 2. DOSBox boots and the game's own `LOAD SAVED GAME` is asked for the slot;

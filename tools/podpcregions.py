@@ -3,10 +3,10 @@
 
 The loader reads 404 bytes of character record, then twenty bytes per item,
 then ten per effect (`docs/124-amiga-port.md` §1.16).  The twenty bytes land
-at heap-node offset `0x2E`, which is where `goldbox.amiga`'s later-Amiga item
+at heap-node offset `0x2E`, which is where `goldbox.amiga_port`'s later-Amiga item
 node keeps `type_index` -- so the hypothesis this tool tests is that the
 twenty bytes are the same seventeen DOS item fields, in the same order,
-through :data:`goldbox.amiga.AMIGA_LATER_ITEM_SHIFTS`.
+through :data:`goldbox.amiga_port.AMIGA_LATER_ITEM_SHIFTS`.
 
 It reads the `.pc` files out of the disk images `tools/amigasaves.py` finds,
 read-only, and prints every item's fields beside the sanity each one has to

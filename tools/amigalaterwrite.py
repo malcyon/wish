@@ -2,7 +2,7 @@
 """Convert a C64 or DOS party into Amiga Curse or Silver Blades records.
 
 `#384 (Write an Amiga Curse or Silver Blades character, so a C64 or DOS party
-has an Amiga to arrive on)` built `goldbox.amiga.write_later`; this is the
+has an Amiga to arrive on)` built `goldbox.amiga_later.write_later`; this is the
 driver that runs it over a whole party, and the harness for the thing that
 would close that issue -- a converted party in front of the running game.
 
@@ -35,7 +35,7 @@ required before anything is written.  Nothing here starts an emulator.
 
 **DOS and the C64 both work**, and the two paths differ in one thing: a C64
 source keeps the paladin's and the ranger's innate effect and
-a DOS one does not, because `goldbox.dos.write` filtered it out on the way
+a DOS one does not, because `goldbox.dos_codec.write` filtered it out on the way
 into the DOS file -- #388.  So a party that has been round the C64-to-DOS
 conversion arrives here already missing it.
 """

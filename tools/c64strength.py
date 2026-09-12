@@ -15,7 +15,7 @@ one boot can answer whether the flag is what a player sees, by putting the
 *same* converted character in five party slots that differ in that byte and in
 nothing else that reaches the recompute.
 
-The five variants, all built from one DOS specimen by `goldbox.dos`:
+The five variants, all built from one DOS specimen by `goldbox.dos_codec`:
 
 | name | `0x0E3` | roster block |
 |---|---|---|
@@ -26,7 +26,7 @@ The five variants, all built from one DOS specimen by `goldbox.dos`:
 | `ASWRITTEN` | whatever the writer wrote | the same spoiling |
 
 `ASWRITTEN` is the one that tests the shipped code rather than this tool: its
-`0x0E3` is not touched after `goldbox.dos.to_c64_record` returns, so the row it
+`0x0E3` is not touched after `goldbox.dos_codec.to_c64_record` returns, so the row it
 lands on after the recompute is the conversion's own answer.
 
 The spoiled pair is what separates "the engine recomputed and the flag decided
@@ -85,7 +85,7 @@ SPOIL_THAC0 = 0x0A
 SPOIL_DAMAGE = 0x07
 
 #: name, slot, the byte to force into `0x0E3`, whether the roster block is
-#: spoiled.  A flag of `None` leaves whatever `goldbox.dos.to_c64_record`
+#: spoiled.  A flag of `None` leaves whatever `goldbox.dos_codec.to_c64_record`
 #: wrote, which is how a run proves the shipped writer rather than the tool.
 VARIANTS = (("ZEROFLAG", 0, 0, False),
             ("ONEFLAG", 1, 1, False),

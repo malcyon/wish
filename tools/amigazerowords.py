@@ -2,7 +2,7 @@
 """Which words a converted Amiga saved game zeroes could an unvisited area fill?
 
 `#446 (The Amiga saved game's zero argument rests on three of the game's
-twenty-nine areas)` is the ticket.  `goldbox.amiga.por_savegame_zeroes` ends
+twenty-nine areas)` is the ticket.  `goldbox.amiga_por.por_savegame_zeroes` ends
 by sweeping every offset of the 5120-byte variable array no earlier writer
 claimed and declaring all of them zero on the strength of "this word reads
 zero in every Amiga saved game swept so far" -- and every Amiga saved game on
@@ -14,7 +14,7 @@ This says how many of those bytes an unvisited area could plausibly fill, and
 which saved game would settle each.  It reads seven things, none of them
 committed and none of them ours:
 
-1. **The build.** A container built by `goldbox.amiga.new_por_savegame` from a
+1. **The build.** A container built by `goldbox.amiga_por.new_por_savegame` from a
    real source save, so the catch-all count is the writer's own rather than a
    number quoted from a document.
 2. **The game's own scripts**, `ecl.dax` off Amiga disk 2, every block walked

@@ -133,7 +133,7 @@ CREATION_MOVEMENT = 12
 #: `GEN $0BF3`, indexed by the race byte: the only innate effects a C64 Pool
 #: of Radiance character is born with.  DOS seeds a dwarf, a gnome and a
 #: halfling as well and the C64 does not (`goldbox/traits.py`,
-#: `goldbox/dos.py`'s `RACE_COMBAT_EFFECTS`), which is why no generated C64
+#: `goldbox/dos_codec.py`'s `RACE_COMBAT_EFFECTS`), which is why no generated C64
 #: party can exercise more than one of the ten trait slots.
 C64_RACE_TRAIT_SEED: dict[int, tuple[int, ...]] = {2: (107,), 4: (124,)}
 

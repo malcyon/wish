@@ -38,7 +38,7 @@ and the player's archives -- and counts how many carry a non-zero award, which
 is how "this is a monster field and reads zero in a player" is stated as a
 number rather than as an impression.
 
-Offsets come from `goldbox/dos_layout.py`: the field named `experience_award`
+Offsets come from `goldbox/dos_port.py`: the field named `experience_award`
 if somebody has since named it, otherwise the gap that ends where the portrait
 or icon block begins.  Nothing here writes anything, and the game's bytes stay
 in the player's own directories.
@@ -104,7 +104,7 @@ def find_game(stem: str) -> pathlib.Path:
 def award_offsets(size: int) -> tuple[int, int | None]:
     """`(base, per_hit_point)` for a record of `size` bytes.
 
-    Read off `goldbox/dos_layout.py` rather than written down here, so that
+    Read off `goldbox/dos_port.py` rather than written down here, so that
     naming the fields there moves this tool with it.  Until that happens the
     pair is the unnamed run that ends where the portrait block begins --
     three bytes in the four earlier titles, two in the two later ones, which
@@ -189,7 +189,7 @@ def monsters(game: pathlib.Path, size: int):
 def records_under(root: pathlib.Path):
     """Every DOS character record beneath `root`, as `(path, bytes)`.
 
-    A record is named by its length, the way `goldbox.dos` names one, so a
+    A record is named by its length, the way `goldbox.dos_codec` names one, so a
     file of any other size is passed over rather than guessed at.
     """
     for path in sorted(root.rglob("*")):

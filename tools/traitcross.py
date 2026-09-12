@@ -10,8 +10,8 @@ and `granted_effects` from slot 9 down. So "did the effect cross?" cannot be
 answered by looking at either list alone, and the question a player actually
 asks is about the ten bytes.
 
-This runs the DOS side of the conversion for real: `goldbox.dos.read_character`,
-`goldbox.dos.to_neutral`, then `goldbox.c64_codec.write`, and prints per
+This runs the DOS side of the conversion for real: `goldbox.dos_codec.read_character`,
+`goldbox.dos_codec.to_neutral`, then `goldbox.c64_codec.write`, and prints per
 character what the source `.SPC`/`.FX`/`.SFX`/`.EFX` file held, how the neutral
 record classified it, what landed in the ten slots, and -- the column the
 ticket is about -- any id that was in the source and reached no slot.
@@ -28,7 +28,7 @@ Nothing is written and every file is opened read only.
 **What a run here can and cannot say.** It measures *this project's writer*,
 not the game: a specimen's own bytes are the input and `c64_codec.write` is
 what is under test, so a LOST column is a defect in `goldbox/c64_codec.py` or
-`goldbox/dos.py` and an empty one is not evidence about what the engine does
+`goldbox/dos_codec.py` and an empty one is not evidence about what the engine does
 with the slot afterwards. `.claude/rules/testing.md` has the rest of it.
 """
 

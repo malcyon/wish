@@ -159,7 +159,7 @@ class Carried:
     innate: int = 0
     granted: int = 0
     #: Records that are neither: a spell counting down, which never crosses
-    #: and is never reported (`goldbox/dos.py`, Donald 2026-08-27).
+    #: and is never reported (`goldbox/dos_codec.py`, Donald 2026-08-27).
     running: int = 0
     #: Every path this record's bytes were found at, for `--json`.  The table
     #: prints `where`; a claim about provenance needs the whole path.
@@ -514,7 +514,7 @@ def _split_effects(nodes, innate_ids, pad: int = 0):
     """`(innate, granted, running)` over a list of effect nodes.
 
     The Amiga node is DOS's nine bytes with one pad inserted at offset 1
-    (`goldbox/amiga.py`'s `effect_size`), so the duration word that decides
+    (`goldbox/amiga_port.py`'s `effect_size`), so the duration word that decides
     "granted or counting down" sits at `1 + pad`.
     """
     innate = granted = running = 0

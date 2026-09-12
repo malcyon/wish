@@ -14,7 +14,7 @@ Amiga disk the game will load.
         --dos ~/wish-specimens/por-dos/WISH-SPEC-por-item-granted --dos-slot D
 
 Both readers go through `goldbox/neutral.py`'s `NeutralCharacter` and out
-through `goldbox.amiga.write_por`, so this shares every field table, every
+through `goldbox.amiga_por.write_por`, so this shares every field table, every
 declared unsourced list and every drop line with the writers the test suite
 already measures.  What cannot be converted is printed rather than dropped
 quietly.
@@ -69,7 +69,7 @@ def read_c64_party(path: str) -> list:
     """Every character of a C64 save disk, as neutral records, in the file
     order the Amiga (and DOS) want them in.
 
-    Read through `goldbox.dos.c64_party`, the same call `write_dos_save`
+    Read through `goldbox.dos_codec.c64_party`, the same call `write_dos_save`
     makes for the DOS direction (`#106`) -- the C64 lists the highest
     occupied slot first, and both DOS and the Amiga list `CHRDAT<L>1` first,
     so the party has to come back reversed or the front-rank fighter arrives

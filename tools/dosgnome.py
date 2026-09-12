@@ -3,7 +3,7 @@
 the `.SPC` records the engine writes for it.
 
 `#84 (Roll a gnome in DOS and read the two innate effect ids nobody has seen)`
-is the reason this exists.  `goldbox.dos.INNATE_EFFECTS` holds eight ids, six
+is the reason this exists.  `goldbox.dos_codec.INNATE_EFFECTS` holds eight ids, six
 of them measured over three races and 32 archive files and two -- **18** and
 **48** -- carried by nobody in any save the archives hold, because nobody in
 the archives is a gnome.  The only way to stop guessing is to make the engine
@@ -66,7 +66,7 @@ from tools import dosbox  # noqa: E402
 OUT = REPO / "work" / "issue84"
 
 #: One `.SPC` record.  Nine bytes: the effect id, four of payload, and a
-#: four-byte far pointer the loader rebuilds (`goldbox.dos.EFFECT_NEXT_NULL`).
+#: four-byte far pointer the loader rebuilds (`goldbox.dos_codec.EFFECT_NEXT_NULL`).
 EFFECT_SIZE = 9
 
 

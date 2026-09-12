@@ -74,7 +74,7 @@ SLUMS_FIGHTS = 0x4ABB
 QUICKFIGHT_BYTE = 0x10F
 
 #: `CHRDAT` offsets read directly, so a state snapshot needs no field table.
-#: Both are `goldbox/dos_layout.py`'s and are asserted against it in
+#: Both are `goldbox/dos_port.py`'s and are asserted against it in
 #: `tests/test_dosfight.py`.
 XP = 0x0AC          # three bytes, little-endian
 HP_CURRENT = 0x11B
@@ -89,7 +89,7 @@ def party_state(save_dir: Path, letter: str) -> dict:
     """Experience, hit points and the quickfight candidate, per character.
 
     Read straight out of `CHRDAT<letter><n>.SAV` rather than through
-    `goldbox.dos.read_party`, because a snapshot wants the raw record too: the
+    `goldbox.dos_codec.read_party`, because a snapshot wants the raw record too: the
     diff between two of these is what says which *other* bytes a fight moved.
     """
     out: dict = {"slot": letter, "chars": [], "save": None}

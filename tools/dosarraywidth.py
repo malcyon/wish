@@ -180,7 +180,7 @@ def report(title: str, field: str | None, displacement: int,
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("field", nargs="?",
-                    help="a field name in goldbox/dos_layout.py, whose "
+                    help="a field name in goldbox/dos_port.py, whose "
                          "offset is what gets scanned")
     ap.add_argument("--title", default="pool-of-radiance",
                     help="which title's overlay to read (default: %(default)s)")

@@ -48,7 +48,7 @@ from tools.dosparty import wipe_roster  # noqa: E402
 TRAIN_LEVEL = 0xD51
 
 
-#: `goldbox.dos_layout`'s offsets, quoted here so the poke says what it is.
+#: `goldbox.dos_port`'s offsets, quoted here so the poke says what it is.
 XP_AT, XP_SIZE = 0x0AC, 3
 GOLD_AT = 0x08E
 ENCUMBRANCE_AT = 0x102

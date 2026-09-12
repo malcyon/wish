@@ -14,8 +14,8 @@ navigation nobody has automated.  What this does instead is the same seed and
 resave `tools/dosoutdoor.py` does on the DOS side:
 
 1. one of the player's own indoor save disks is read (never written), its
-   `SAVEDGAME0` is pointed at a travel window by `goldbox.dos.apply_file_cache`
-   and `goldbox.dos.apply_position` -- the outdoor recipe
+   `SAVEDGAME0` is pointed at a travel window by `goldbox.dos_codec.apply_file_cache`
+   and `goldbox.dos_codec.apply_position` -- the outdoor recipe
    `#47 (Decode the travel grid's cache entries, so the wilderness can be
    retargeted too)` proved live twice -- and the pair is written to a fresh
    `.D64` in the slot's own directory;

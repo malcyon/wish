@@ -142,7 +142,7 @@ def _carried(items) -> int:
     """The item half of the identity: sum(weight x quantity or 1).
 
     A quantity of zero means one -- the field counts *extra* copies for
-    anything that does not stack, which is `goldbox.dos.expected_encumbrance`'s
+    anything that does not stack, which is `goldbox.dos_codec.expected_encumbrance`'s
     own rule and the only one the identity balances under.
     """
     return sum(it.get("weight") * (it.get("quantity") or 1) for it in items)

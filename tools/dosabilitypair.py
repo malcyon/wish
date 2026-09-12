@@ -50,7 +50,7 @@ sys.path.insert(0, str(ROOT))
 from tools import dosbox  # noqa: E402
 
 #: The seven pairs and the lower address of each, in the order the record
-#: holds them.  `goldbox/dos_layout.py` declares the same offsets for the
+#: holds them.  `goldbox/dos_port.py` declares the same offsets for the
 #: 422-, 439- and 510-byte shapes; Pool of Radiance keeps one byte apiece and
 #: has no pairs at all.
 PAIRS: dict[str, int] = {

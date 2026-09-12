@@ -45,7 +45,7 @@ picking by position needs to know what is at each position.
 `--build` reads a JSON spec -- a list of `{name, race, gender, class,
 alignment}`, each of the last four a menu **index** -- creates every character
 in it, adds them all to the party, saves to `--slot`, and then reads the
-records the engine wrote back with `goldbox.dos` and checks each one's name,
+records the engine wrote back with `goldbox.dos_codec` and checks each one's name,
 race, class and alignment against what was asked for.  That check is the
 evidence: the party is what we said it was because the engine's own bytes say
 so, not because the screenshots look right.
@@ -80,7 +80,7 @@ from tools import dosbox  # noqa: E402
 
 #: The race list, in the order CREATE NEW CHARACTER draws it.  Read off the
 #: screen in `#84 (Roll a gnome in DOS and read the two innate effect ids
-#: nobody has seen)`'s own shots; `goldbox.games.RACES_FORGOTTEN_REALMS` says
+#: nobody has seen)`'s own shots; `goldbox.c64_port.RACES_FORGOTTEN_REALMS` says
 #: the record codes are 1, 2, 3, 4, 5 and 7 -- half-orc, code 6, is not
 #: offered at creation.
 RACE_MENU = ("DWARF", "ELF", "GNOME", "HALF-ELF", "HALFLING", "HUMAN")
@@ -109,7 +109,7 @@ class Spec:
     cls: int
     alignment: int
     #: What the class ought to come back as, for the check afterwards.  A
-    #: mapping of `goldbox.dos` class name to level, or None to skip.
+    #: mapping of `goldbox.dos_codec` class name to level, or None to skip.
     classes: dict[str, int] | None = None
 
     @classmethod

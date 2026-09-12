@@ -12,7 +12,7 @@ own sheet against the source, read as words rather than as bytes.
 Works for all three C64 titles: `goldbox.savegame.load_save` identifies the
 title off the disk's own directory, and every field below comes through
 `goldbox.c64_codec.read`, which is the same reader
-`goldbox.dos.new_dos_save` uses -- so a difference between this and the DOS
+`goldbox.dos_codec.new_dos_save` uses -- so a difference between this and the DOS
 sheet is the writer or the engine, never a second reading of the C64 bytes.
 
 Nothing is written.  The disk is opened read only.

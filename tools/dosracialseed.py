@@ -24,7 +24,7 @@ the band table, and the roll accumulator `[0x6816]` it adds to.
 
 Prints tables and file offsets only; the game's bytes stay in the player's
 own directory.  Pool of Radiance's layout throughout: race at record `0x2E`,
-constitution at `0x14` (`goldbox/dos_layout.py`).
+constitution at `0x14` (`goldbox/dos_port.py`).
 """
 
 from __future__ import annotations

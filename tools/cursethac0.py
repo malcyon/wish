@@ -72,7 +72,7 @@ from tools import session as S  # noqa: E402
 
 #: Where `SAVEAZURE` loads, and the two regions inside it this asks about.
 #: The eight 256-byte character slots start `$400` in and the eight 32-byte
-#: roster blocks `$1C00` in, which is `goldbox.games`' own geometry.
+#: roster blocks `$1C00` in, which is `goldbox.c64_port`' own geometry.
 SAVE_LOAD = 0x4B00
 SLOT0 = 0x400
 SLOT_STRIDE = 0x100

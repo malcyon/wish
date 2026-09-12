@@ -27,7 +27,7 @@ constants at that title's record displacement (13 heads, 31 bodies in Pool of
 Radiance), and the importer that reads the *previous* title's record and
 writes this one's.  A straight copy there is the shipped game asserting that
 the two numbering schemes are the same.  The record displacements come from
-`goldbox.dos_layout`, so a wrong offset in our own table shows up here as a
+`goldbox.dos_port`, so a wrong offset in our own table shows up here as a
 missing scan rather than as a silent pass.
 
     tools/dosicontitles.py                       # art, all four DOS titles
@@ -58,7 +58,7 @@ from goldbox.dos_savegame import DaxError, dax_index, dax_unpack  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
 #: The four DOS Gold Box titles this project reads, and the directory name the
-#: archives give each.  Keyed by `goldbox.dos_layout` shape key so the record
+#: archives give each.  Keyed by `goldbox.dos_port` shape key so the record
 #: displacements below come from one place.
 TITLES: tuple[tuple[str, str], ...] = (
     ("pool-of-radiance", "POOLRAD"),
