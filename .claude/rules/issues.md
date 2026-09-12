@@ -233,7 +233,7 @@ defect half the audit checks hunt for.
   would settle it.
 
 **"What would fix it", not "Fix".** An issue carrying a patch ages into a stale
-patch that no longer applies; an issue carrying the *shape* of the fix stays
+patch that no longer applies; an issue saying *what the fix must do* stays
 true. Every enhancement ends with a `Documentation:` line linking the doc it
 rests on -- that link is what joins the work list to the knowledge base.
 
@@ -323,7 +323,7 @@ says so and leaves the label alone.
 
 **Lead with what you would do first and why, one line each.** Not an exhaustive
 survey, not a table of everything open. Group by category when there are more
-than a handful, because the categories are what make the shape visible.
+than a handful, because the categories are what show how the work divides up.
 
 What moves an issue up:
 
@@ -345,7 +345,7 @@ What moves it down:
   only he has. Work blocked on a measurement we could take ourselves is not
   blocked and the label should come off.
 * **Anything needing a design decision he has not made.** Do not schedule the
-  building of something whose shape is still his to choose; schedule the
+  building of something he has not yet decided the look of; schedule the
   question instead.
 * **A `question` with no consequence attached.** If nothing changes when it is
   answered, it can wait for the session that stumbles over it.

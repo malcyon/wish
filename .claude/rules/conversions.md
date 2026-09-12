@@ -35,7 +35,7 @@ port, for every combination. A tool that writes a party of one title into
 another title's save is doing the game's job with none of the game's knowledge.
 
 `editor/convert.py` already builds it that way -- a direction's destination is
-`games.by_key(shape.key)`, the same title on the other port -- so this rule is
+`games.by_key(deltas.key)`, the same title on the other port -- so this rule is
 here to stop somebody adding the other thing rather than to describe a defect.
 It also settles a question that
 would otherwise keep coming back: **a character who cannot exist in the
@@ -105,7 +105,7 @@ field converts, never when it stops being counted.**
 
 **A full byte-coverage audit of every save file on every platform was proposed
 on 2026-09-08 and Donald declined it.** The reasoning that led there is sound
-and is kept because it explains the shape of the problem: an unnamed byte only
+and is kept because it explains what the problem is: an unnamed byte only
 costs anything when a writer has to produce a container it did not receive,
 which is cross-platform writing alone -- editing a save in place carries opaque
 regions through untouched, and reading simply shows what can be named. What
@@ -267,7 +267,7 @@ never a memory address, a record offset or a script filename, which
 
 **An earlier version of this rule said the pane was a temporary state that
 would end with the flag. That was my inference and it is wrong; do not plan
-its removal.** The example sentence above is Donald's shape rather than
+its removal.** The example sentence above is Donald's wording rather than
 approved wording, and `.claude/rules/gui-text.md` governs every string that
 ends up in it.
 
@@ -291,7 +291,7 @@ have not decoded, a value we have nowhere to put yet, an effect whose bytes
 nobody has read -- those are ours, and they get fixed rather than announced.
 
 **So it is one mechanism, not one per field.** Items, trait slots and anything
-else with a hard count all take the same shape: say what will not fit, and let
+else with a hard count are all written the same way: say what will not fit, and let
 the player pick which of them to keep. Do not design a chooser for items and
 a different one for effects.
 

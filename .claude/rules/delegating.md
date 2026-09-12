@@ -23,7 +23,7 @@ choice for each tool, not the same decision spelled two ways.
 |---|---|---|---|
 | `reverse-engineering` | Opus | `gpt-5.6-sol` | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
 | `deep-research` | **Fable** | `gpt-6-astra` | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
-| `architect` | **Fable** | `gpt-6-astra` | a plan for another agent to execute, when the shape of the work is the hard part. Writes the plan, does not build it. |
+| `architect` | **Fable** | `gpt-6-astra` | a plan for another agent to execute, when working out how to do the work is harder than doing it. Writes the plan, does not build it. |
 | `junior-dev` | Sonnet | `gpt-5.6-terra` | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | unset -- inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | `gpt-5.6-terra` | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
@@ -44,7 +44,7 @@ it. Sending a measurement to `deep-research` is still waste, because a
 `reverse-engineering` agent would do it as well; sending it a question that
 more specimens cannot answer is what it is for.
 
-**The shape that earns `deep-research`** is an assumption that broke. On
+**What earns `deep-research`** is an assumption that broke. On
 2026-09-04 the project had been reading a `.SPC` effect's duration of zero as
 "permanent", and SILAS turned up carrying two running spells at duration zero
 -- so the discriminator is not in the bytes anybody has been reading, and no
@@ -65,7 +65,7 @@ sending them to `deep-research` or `architect` buys nothing.
 **`junior-dev`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? `#71 (Character draws on top of itself when the header is squeezed to its floor)`
 looked like ordinary work and took nine rounds and a `QTableView` subclass.
-`#73 (The DOSBox-X harness refuses to start without DOSBox 0.74, which it never runs)` named the two candidate shapes and said
+`#73 (The DOSBox-X harness refuses to start without DOSBox 0.74, which it never runs)` named the two candidate approaches and said
 which was smaller, and that is what made it assignable.
 
 **Send work to the agent whose definition already describes it.** Each

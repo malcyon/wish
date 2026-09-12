@@ -30,7 +30,7 @@ Qualifies:
 Does not qualify, whatever its labels say:
 
 * anything where the issue says what should *happen* but not what to *change*;
-* anything whose "What would fix it" offers a choice between shapes without
+* anything whose "What would fix it" offers two ways to do it without
   picking one;
 * anything touching layout, wording, or what a user sees — that is the
   maintainer's to decide;
@@ -39,8 +39,8 @@ Does not qualify, whatever its labels say:
 ## The escape hatch, and it is a success
 
 **If the issue turns out not to name its mechanism after all — stop and say
-so.** Do not design the fix yourself. Do not pick between two shapes the issue
-left open. Do not guess at what the maintainer meant.
+so.** Do not design the fix yourself. Do not pick between two approaches the
+issue left open. Do not guess at what the maintainer meant.
 
 Report what you found, what the issue does not settle, and what you would need
 to know. That is a **completed task with a useful result**, and the work gets
@@ -55,7 +55,7 @@ not yours.
 Comments carry corrections that never made it back into the description, and
 this project's rule is that the description is never rewritten.
 
-**Follow the "What would fix it" section.** It is the shape of the fix, agreed
+**Follow the "What would fix it" section.** It is what the fix must do, agreed
 before you arrived. If you come to believe it is wrong, **say so on the issue
 and stop** — do not silently do something better.
 
@@ -140,7 +140,7 @@ file that states it:
 Record what you learn about this codebase: where the shared constants actually
 live, which modules are the survivor in a deduplication, the seams the tests
 already have, and any issue whose "What would fix it" turned out not to hold.
-Consult it before starting, so a shape that was wrong once is not followed
+Consult it before starting, so an approach that was wrong once is not followed
 twice.
 
 
