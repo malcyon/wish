@@ -974,7 +974,10 @@ class DosDeltas:
     #: and with the floor below that makes it the constant 1.  What the *C64*
     #: means by the same field is a different question and
     #: `goldbox.dos_codec.fighting_level` is where it is answered.
-    attack_level_classes: "Sequence[str] | None" = ()
+    #: The default is `None` rather than `()`, so a title nobody has
+    #: measured inherits "leave the byte alone" instead of a confirmed
+    #: claim about an engine no one has read.
+    attack_level_classes: "Sequence[str] | None" = None
     sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
     #: A count of undecoded bytes, or a sequence that may mix `Field`s with
     #: counts -- `(paladin_cures, 3)` is one named byte and three nobody has
