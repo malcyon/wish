@@ -1174,11 +1174,6 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
     pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")
 
 
-def dos_unreported_drops() -> frozenset:
-    from goldbox import dos_codec
-    return dos_codec.UNREPORTED_DROPS
-
-
 def dos_field_disposition() -> dict:
     from goldbox import dos_codec
     return dos_codec.field_disposition()
