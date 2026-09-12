@@ -1,9 +1,9 @@
 """The save container: Pool of Radiance's two files, and the family's one.
 
-Which title a save belongs to is a `goldbox.games.Game`, passed to every class here
+Which title a save belongs to is a `goldbox.c64_port.C64Container`, passed to every class here
 and defaulting to Pool of Radiance so that callers written before there was a
 second game keep working. The constants below are Pool of Radiance's and stay
-for those callers; anything that must work on Curse reads the `Game`.
+for those callers; anything that must work on Curse reads the `C64Container`.
 
 
 `SAVEDGAME0` is a **raw memory image** of $4900-$64FF with no header, no packing
@@ -53,13 +53,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import c64_port as _c64_port
 from . import encoding as _enc
-from . import games as _games
+from .c64_port import C64Container
 
 # split/attach_load_address are the *generic* PRG helpers; record.py's variants
 # are record-specific and validate a 582-byte length.
 from .d64 import attach_load_address, split_load_address
-from .games import Game
 from .record import RECORD_SIZE, CharacterRecord
 
 SAVE0_LOAD_ADDRESS = 0x4900
@@ -284,7 +284,7 @@ class PartyPosition:
     know.
     """
 
-    def __init__(self, data: bytearray, game: Game = _games.DEFAULT):
+    def __init__(self, data: bytearray, game: C64Container = _c64_port.DEFAULT):
         self._data = data
         self._game = game
 
@@ -377,7 +377,7 @@ class SaveGame0:
     is reached through `SaveGame1`, not through here.
     """
 
-    def __init__(self, payload: bytes, game: Game = _games.DEFAULT):
+    def __init__(self, payload: bytes, game: C64Container = _c64_port.DEFAULT):
         if len(payload) != game.save_size:
             raise SaveGameError(
                 f"{game.save_file.decode()} payload must be {game.save_size} "
@@ -411,11 +411,11 @@ class SaveGame0:
     # -- construction -----------------------------------------------------
     @classmethod
     def from_bytes(cls, payload: bytes,
-                   game: Game = _games.DEFAULT) -> "SaveGame0":
+                   game: C64Container = _c64_port.DEFAULT) -> "SaveGame0":
         return cls(payload, game)
 
     @classmethod
-    def from_prg(cls, data: bytes, game: Game = _games.DEFAULT) -> "SaveGame0":
+    def from_prg(cls, data: bytes, game: C64Container = _c64_port.DEFAULT) -> "SaveGame0":
         load, payload = split_load_address(data)
         if load != game.save_load_address:
             raise SaveGameError(
@@ -564,7 +564,7 @@ class RosterBlock:
     """
 
     def __init__(self, data: bytearray, index: int,
-                 game: Game = _games.DEFAULT, offset: int = 0):
+                 game: C64Container = _c64_port.DEFAULT, offset: int = 0):
         self._data = data
         self._index = index
         self._game = game
@@ -787,7 +787,7 @@ class SaveGame1:
     still opaque, and is carried through a load/save cycle untouched.
     """
 
-    def __init__(self, payload: bytes, game: Game = _games.DEFAULT):
+    def __init__(self, payload: bytes, game: C64Container = _c64_port.DEFAULT):
         if len(payload) != game.roster_size:
             raise SaveGameError(
                 f"roster payload must be {game.roster_size} bytes, "
@@ -810,7 +810,7 @@ class SaveGame1:
         return [self.roster(i) for i in range(ROSTER_COUNT)]
 
     @classmethod
-    def from_prg(cls, data: bytes, game: Game = _games.DEFAULT) -> "SaveGame1":
+    def from_prg(cls, data: bytes, game: C64Container = _c64_port.DEFAULT) -> "SaveGame1":
         if game.roster_in_payload:
             raise SaveGameError(
                 f"{game.title} has no separate roster file; its roster is the "
@@ -839,7 +839,7 @@ class SaveGame1:
 
 # -- the disk, for the callers that would otherwise name files by hand ------
 
-def load_save(disk, game: Game | None = None):
+def load_save(disk, game: C64Container | None = None):
     """Read a save off a D64 image as `(game, SaveGame0, SaveGame1 | None)`.
 
     With no `game` the title is identified from the disk's own directory, which
@@ -853,9 +853,9 @@ def load_save(disk, game: Game | None = None):
     title keeps the roster inside the save payload, so it is always there.
     """
     if game is None:
-        game = _games.detect(disk)
+        game = _c64_port.detect(disk)
         if game is None:
-            known = ", ".join(g.save_file.decode() for g in _games.GAMES)
+            known = ", ".join(g.save_file.decode() for g in _c64_port.GAMES)
             raise SaveGameError(
                 f"no save file on this disk: looked for {known}")
     prg = disk.read_file(game.save_file)
@@ -874,7 +874,7 @@ def load_save(disk, game: Game | None = None):
 
 
 def store_save(disk, sg0: SaveGame0, sg1: "SaveGame1 | None" = None,
-               game: Game | None = None) -> None:
+               game: C64Container | None = None) -> None:
     """Write a save back into a D64 image, in place.
 
     The mirror of `load_save`, and the only place that knows a later title's

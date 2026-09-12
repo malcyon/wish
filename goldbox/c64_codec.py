@@ -506,7 +506,7 @@ def _infravision(game: object, race: int) -> int:
     """This title's infravision for a race code, 0 for an unnamed one.
 
     `game` is whatever a caller has in hand for the title -- a
-    `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
+    `goldbox.c64_port.C64Container`, its `.key`, or None for Pool of Radiance -- the same
     three shapes :func:`deltas_for` accepts, and for the same reason: a
     conversion carries a bare key rather than the descriptor.
     `goldbox.titles.race_table` is duck-typed on `.key` and resolves all
@@ -1559,7 +1559,7 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
     ("strength_index", "derived from strength and the percentile; a writer "
                        "that wants it recomputes it",
      "`goldbox.c64_codec.strength_index` computing it at write time, and "
-     "goldbox/dos_layout.py's own byte-level account of 0x0AA, which "
+     "goldbox/dos_port.py's own byte-level account of 0x0AA, which "
      "confirms the DOS record has no counterpart of the C64's 0x0E2 to "
      "read one back from"),
     ("missile_attack_adjustment",

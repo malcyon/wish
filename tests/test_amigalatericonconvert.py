@@ -243,10 +243,10 @@ def test_write_later_writes_zero_and_the_default_with_no_icon():
     `icon_colours` the game's own freshly-made default -- so every existing
     caller that never knew about combat icons keeps working unchanged.
     """
-    from goldbox import neutral
+    from goldbox import c64_port, neutral
 
     char = neutral.NeutralCharacter(
-        "test", game=amiga.games.by_key(amiga.CURSE_DELTAS.key))
+        "test", game=c64_port.by_key(amiga.CURSE_DELTAS.key))
     char.set("name", "TESTER", "a test name")
     for ability in neutral.ABILITIES:
         char.set(ability, 12, "a test score")
@@ -260,13 +260,13 @@ def test_write_later_writes_a_given_icon_straight():
     """With an `icon`, `write_later` writes its three fields into the
     produced Amiga record unchanged -- the "write the five bytes straight"
     half of `#396`'s comment for `goldbox.amiga.write_later`."""
-    from goldbox import neutral
+    from goldbox import c64_port, neutral
     from goldbox.iconparts import DosIcon
 
     icon = DosIcon(head=5, body=9, colours=bytes.fromhex("11223344e6f7"),
                   figure_source="test", colours_source="test")
     char = neutral.NeutralCharacter(
-        "test", game=amiga.games.by_key(amiga.SILVER_BLADES_DELTAS.key))
+        "test", game=c64_port.by_key(amiga.SILVER_BLADES_DELTAS.key))
     char.set("name", "TESTER", "a test name")
     for ability in neutral.ABILITIES:
         char.set(ability, 12, "a test score")

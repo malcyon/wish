@@ -3,7 +3,7 @@
 A character's memorised spells are a packed list of **spell ids** at record
 offset `0x020`, and the names live on the game disk. *Where* on the disk is the
 one thing that does not transfer between titles, so this module is a table per
-title -- the shape `goldbox/games.py` settled on -- and every entry point takes an
+title -- the shape `goldbox/c64_port.py` settled on -- and every entry point takes an
 optional `game`.
 
 | | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
@@ -70,7 +70,7 @@ class SpellTable:
     them the title chose.
 
     Pairs rather than dicts in `groups`, so the descriptor stays frozen and
-    hashable, which is what `goldbox/games.py` does for the same reason.
+    hashable, which is what `goldbox/c64_port.py` does for the same reason.
     """
 
     key: str
@@ -423,8 +423,8 @@ DEFAULT = POOL_OF_RADIANCE
 def for_game(game=None) -> SpellTable:
     """The spell table for a title.
 
-    Takes a `goldbox.games.Game`, a game key, a `SpellTable`, or None. Duck-typed
-    on `.key` rather than importing `goldbox.games`, which would be a whole module
+    Takes a `goldbox.c64_port.C64Container`, a game key, a `SpellTable`, or None. Duck-typed
+    on `.key` rather than importing `goldbox.c64_port`, which would be a whole module
     of coupling for one string.
     """
     if isinstance(game, SpellTable):
@@ -645,7 +645,7 @@ def capacity(class_bits: int, level: int, wisdom: int,
         # Silver Blades' progression tables have not been read off its disks,
         # and neither have the Krynn titles' or Gateway's. Nothing here, so a
         # caller shows no number rather than another game's -- the same rule
-        # `goldbox/games.py` applies to a race table it does not have. Issue #31.
+        # `goldbox/c64_port.py` applies to a race table it does not have. Issue #31.
         return {}
     magic_user, cleric = rows
     level = max(1, min(int(level or 1), len(magic_user)))

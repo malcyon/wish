@@ -223,7 +223,7 @@ POD_MODE_WILDERNESS, POD_MODE_DUNGEON = 3, 4
 # ---------------------------------------------------------------------------
 #: One title's saved-game container, as a run of region widths (#53).
 #:
-#: `goldbox/dos_layout.py`'s `DosShape` is this table's sibling and the same
+#: `goldbox/dos_port.py`'s `DosDeltas` is this table's sibling and the same
 #: idea: a title is **a row of widths**, not a branch, and the widths have to
 #: add up to the size the file actually is or the row raises at import.
 #:

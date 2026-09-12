@@ -30,6 +30,14 @@ another.
 
 from __future__ import annotations
 
+# The pre-#470 spellings, under the names the 81 importers of this shim
+# still use. They live here rather than in `goldbox/dos_codec.py`
+# because this file is the one that exists to be deleted: stage 9 of
+# `#470 (Give the project a neutral title beside its neutral character
+# record, with one port per platform a title shipped on)` takes the
+# callers off it, and the old names should go with it rather than be
+# left behind in a module nothing asks them of.
+from . import c64_port as games  # noqa: F401
 from .dos_codec import *  # noqa: F401,F403
 from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     _ABSENT_WHY,
@@ -152,7 +160,6 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     SCRIPT_SCRATCH,
     SCROLL_BUNDLE_TYPE,
     SECRET_OF_THE_SILVER_BLADES,
-    SHAPES,
     SLOT_AREA,
     SLOT_COUNT,
     SLOT_STRIDE,
@@ -175,7 +182,6 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     DosDeltas,
     DosIcon,
     DosIconTables,
-    DosShape,
     DosShapeError,
     Field,
     IconParts,
@@ -224,7 +230,6 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     dos_size,
     draws_sheet_portrait,
     field_disposition,
-    games,
     hashlib,
     level_tables,
     logging,
@@ -250,3 +255,5 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     write_shape,
     write_targets,
 )
+from .dos_codec import DELTAS as SHAPES  # noqa: F401
+from .dos_codec import DosDeltas as DosShape  # noqa: F401

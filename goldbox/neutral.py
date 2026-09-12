@@ -347,7 +347,7 @@ class NeutralCharacter:
     `game` is the *title* whose tables the port-relative indices were read in
     -- `race`, `char_class` and `class_bits` are numbers into a table that is
     not the same in every Gold Box game, so a writer that wants a name asks
-    `goldbox/games.py` with this in hand.  None means Pool of Radiance's, which is
+    `goldbox/c64_port.py` with this in hand.  None means Pool of Radiance's, which is
     what a caller with no title in hand means.
     """
 

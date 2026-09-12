@@ -71,7 +71,7 @@ class WorldState:
     other.
     """
 
-    #: The title this save belongs to, `goldbox.games.Game.title`.
+    #: The title this save belongs to, `goldbox.c64_port.C64Container.title`.
     title: str
     #: The area the party is in, indoors or out.
     area: int
@@ -286,17 +286,17 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     for.  So this takes the same substitution `_resolve_dos_place` does.
     """
     from . import amiga_codec as _amiga
+    from . import c64_port
     from . import dos_codec as _dos
-    from . import games
 
     area = _amiga.por_word(savgam, dos_savegame.SCRIPT)
     outdoors = not _amiga.por_word(savgam, dos_savegame.INDOORS)
-    where = areas.area_in(area, games.POOL_OF_RADIANCE.title)
+    where = areas.area_in(area, c64_port.POOL_OF_RADIANCE.title)
     geo = (_dos._sqrdata_number(where.sqrdata)
            if outdoors and where is not None and where.sqrdata
            else _amiga.por_word(savgam, dos_savegame.AREA))
     return WorldState(
-        title=games.POOL_OF_RADIANCE.title,
+        title=c64_port.POOL_OF_RADIANCE.title,
         area=area,
         geo=geo,
         x=savgam[_amiga.POR_POS_X], y=savgam[_amiga.POR_POS_Y],

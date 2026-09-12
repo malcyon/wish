@@ -44,7 +44,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
-from . import dos_layout, neutral, titles
+from . import dos_port, neutral, titles
 from .amiga_shared import ABILITY_KEYS, SAVE_KEYS, THIEF_KEYS, _name, u16, u32
 from .layout import Confidence
 from .neutral import NeutralCharacter
@@ -187,7 +187,7 @@ HP_MAX_HIGHEST = 0x0B6
 #: whose constitution is 17 rather than 18 (five at +3).
 HP_ROLLED = 0x0B8
 #: The sheet portrait, which this title draws on neither port -- zero in 19 of
-#: 19, and `goldbox.dos_layout.POOLS_OF_DARKNESS` gives the pair width zero
+#: 19, and `goldbox.dos_port.POOLS_OF_DARKNESS` gives the pair width zero
 #: (#451). The bytes are here because Silver Blades has them and the importer
 #: copies them; nothing reads them back.
 PORTRAIT_HEAD = 0x0B9
@@ -813,9 +813,9 @@ class PodWriter:
 
 
 #: Gold Box race names -> PoD's own six-entry table. The C64 tables differ per
-#: title (`goldbox/games.py`), which is exactly why the conversion goes by name
+#: title (`goldbox/c64_port.py`), which is exactly why the conversion goes by name
 #: and not by number: the neutral `race` is an index into the *source title's*
-#: table and `goldbox.games.race_table` is what turns it into a name.
+#: table and `goldbox.titles.race_table` is what turns it into a name.
 RACE_FROM_C64: dict[str, str] = {
     "elf": "ELF",
     "half-elf": "HALF-ELF",
@@ -1028,7 +1028,7 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     # **combat icon** (`docs/199-amiga-combat-icons.md`), and the title has
     # no sheet portrait at all.  CONFIRMED three ways (#194): neither port
     # ships head or body art -- 52 DOS files and 55 Amiga ones with no
-    # `HEAD*`/`BODY*` among them; `goldbox.dos_layout.POOLS_OF_DARKNESS`
+    # `HEAD*`/`BODY*` among them; `goldbox.dos_port.POOLS_OF_DARKNESS`
     # gives the pair a width of zero; and the fourteen-and-twelve creation
     # menu is cut out of the Amiga engine's own copy of the data block that
     # carries it, in 60 bytes otherwise byte-identical across four binaries.
@@ -1124,7 +1124,7 @@ POD_WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     # #254: a creature's own field, zero in every player record measured on
     # any port.  `experience_per_hit_point` is narrower: the later engine
     # drops the byte outright, so DOS Pools of Darkness has nowhere for it
-    # either (`goldbox/dos_layout.py`'s 510-byte shape declares
+    # either (`goldbox/dos_port.py`'s 510-byte shape declares
     # `experience_award` alone) and the `.pc` has nothing to hold.
     ("experience_award", "the word at 0x054 (#462), which the writer does not "
                          "fill yet; it is zero in every player record on "
@@ -1154,7 +1154,7 @@ def pod_write_field_disposition() -> dict[str, str]:
 #: tables**, which is what makes a copy right rather than a guess:
 #:
 #: * `RACES` here is `('ELF', 'HALF-ELF', 'DWARF', 'GNOME', 'HALFLING',
-#:   'HUMAN')` and `goldbox.dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS` is the
+#:   'HUMAN')` and `goldbox.dos_port.POOLS_OF_DARKNESS_RACE_NUMBERS` is the
 #:   same six names in the same order with `monster` after them, so race 5 is
 #:   the human on both ports;
 #: * `CLASSES` here is seventeen entries and DOS Pools of Darkness' class
@@ -1265,7 +1265,7 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #:   `hp_lost_to_drain` with high-water marks of the levels, the experience
 #:   and the hit points (0x096, 0x048, 0x0B6), and drops
 #:   `experience_per_hit_point` outright.  `infravision` is a C64 field and
-#:   `goldbox.dos_layout.POOLS_OF_DARKNESS` declares none either.  A
+#:   `goldbox.dos_port.POOLS_OF_DARKNESS` declares none either.  A
 #:   same-title conversion can never be handed one of these, so there is
 #:   nothing to lose;
 #: * **neither port stores it.**  `turn_power` is the cleric's own turning
@@ -1365,7 +1365,7 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     if not isinstance(char, PodCharacter):
         char = PodCharacter.from_bytes(char)
     out = NeutralCharacter("Amiga", source=getattr(char, "source", ""),
-                           game=dos_layout.POOLS_OF_DARKNESS.key)
+                           game=dos_port.POOLS_OF_DARKNESS.key)
 
     def grade(name: str) -> Confidence:
         return Confidence[CONFIDENCE.get(name, "PROBABLE")]
@@ -1804,7 +1804,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
 def _class_names(char: NeutralCharacter, bits: int) -> list[str]:
     """The classes a neutral mask holds, named for the source's own title.
 
-    `NeutralCharacter.game` holds a `goldbox.games.Game`, a bare key, or
+    `NeutralCharacter.game` holds a `goldbox.c64_port.C64Container`, a bare key, or
     `None`, and `titles.classes_to_names` is duck-typed on `.key` to take all
     three -- a DOS source used to raise `AttributeError: 'str' object has no
     attribute 'class_bits'` here, which nothing reached until Pools of
@@ -1824,7 +1824,7 @@ def _class_names(char: NeutralCharacter, bits: int) -> list[str]:
 def _races(char: NeutralCharacter) -> dict[int, str]:
     """The source title's race table, so an index can be named.
 
-    **`NeutralCharacter.game` is a `goldbox.games.Game`, its key, or `None`,
+    **`NeutralCharacter.game` is a `goldbox.c64_port.C64Container`, its key, or `None`,
     and all three arrive here.** `titles.race_table` is duck-typed on `.key`
     to take all three, including a bare `"pools-of-darkness"` key, which
     `titles.BY_KEY` answers directly -- it used to fall through to

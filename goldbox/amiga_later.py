@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Sequence
 
-from . import dos_layout, games, neutral
+from . import c64_port, dos_port, neutral
 from .amiga_por import (
     PorWriteReport,
     amiga_por_effect_from_dos,
@@ -241,8 +241,8 @@ class AmigaItem:
         return int.from_bytes(self.raw[at:at + 4], "big")
 
     def get(self, field_name: str):
-        """One field, by its `goldbox/dos_layout.py` item-table name."""
-        f = dos_layout.item_field_by_name(field_name)
+        """One field, by its `goldbox/dos_port.py` item-table name."""
+        f = dos_port.item_field_by_name(field_name)
         at = self.deltas.item_offset(f.offset)
         chunk = self.raw[at:at + f.size]
         if f.kind in (Kind.U16LE, Kind.UINT_LE):
@@ -254,7 +254,7 @@ class AmigaItem:
         return chunk
 
     def to_dos_bytes(self) -> bytes:
-        """This node as the 63 bytes `goldbox/dos_layout.py` describes.
+        """This node as the 63 bytes `goldbox/dos_port.py` describes.
 
         The same re-cut :meth:`AmigaPorItem.to_dos_bytes` makes, through this
         title's own item shift map: the display text becomes DOS's count byte
@@ -267,13 +267,13 @@ class AmigaItem:
         Silver Blades' own item is 67 bytes and `#254` is where its last four
         are being read.
         """
-        out = bytearray(dos_layout.ITEM_SIZE)
+        out = bytearray(dos_port.ITEM_SIZE)
         text = self.raw[:self.deltas.item_text]
         line = text.split(b"\0")[0]
-        size = dos_layout.ITEM_FIELDS_BY_NAME["text"].size
+        size = dos_port.ITEM_FIELDS_BY_NAME["text"].size
         out[0] = min(len(line), size)
         out[1:1 + size] = text[:size].ljust(size, b"\0")
-        for f in dos_layout.ITEM_LAYOUT:
+        for f in dos_port.ITEM_LAYOUT:
             if f.name in ("text_length", "text", "next"):
                 continue
             at = self.deltas.item_offset(f.offset)
@@ -345,7 +345,7 @@ class AmigaCharacter:
         return self.raw[:AMIGA_NAME_SIZE].split(b"\0")[0].decode("latin1")
 
     def get(self, field_name: str):
-        """One field, by its `goldbox/dos_layout.py` name.
+        """One field, by its `goldbox/dos_port.py` name.
 
         `U16LE` and `UINT_LE` are read big-endian, which -- outside the name,
         the shifts and Silver Blades' spellbook -- is the whole of the
@@ -394,11 +394,11 @@ class AmigaCharacter:
         if self.deltas.spellbook_bytes is None:
             at = self.deltas.offset(book.offset)
             raw = self.raw[at:at + book.size]
-            return [i + dos_layout.SPELLBOOK_FIRST_ID
+            return [i + dos_port.SPELLBOOK_FIRST_ID
                     for i, v in enumerate(raw) if v]
         at = book.offset            # shift is zero where the book begins
         mask = self.raw[at:at + self.deltas.spellbook_bytes]
-        return [i + dos_layout.SPELLBOOK_FIRST_ID
+        return [i + dos_port.SPELLBOOK_FIRST_ID
                 for i in range(8 * len(mask))
                 if mask[i // 8] >> (i % 8) & 1]
 
@@ -436,7 +436,7 @@ class AmigaCharacter:
         class the array belongs to, or the DOS field's name where nobody has
         attributed it.
         """
-        table = dos_layout.layout_for(self.deltas.dos)
+        table = dos_port.layout_for(self.deltas.dos)
         out: dict[str, tuple[int, ...]] = {}
         for n, f in enumerate(table):
             if not f.name.startswith("spells_castable"):
@@ -624,7 +624,7 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 # of ports has been measured against each other yet (#53) -- so there is
 # nothing here to hand a Curse record to.  What this reader shares with it
 # instead is the **field table**: every value below is read through
-# `goldbox/dos_layout.py`'s own table for the title, at that field's own
+# `goldbox/dos_port.py`'s own table for the title, at that field's own
 # confidence, so a correction there reaches here with no second edit.
 #
 # Two conventions come from what landed for the DOS side on 2026-09-04 and are
@@ -785,7 +785,7 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                    "record has no field for it. The DOS reader drops it for "
                    "the same reason (#297, docs/178-turning-undead.md)"),
     ("paladin_cures", "how many times the paladin may still CURE DISEASE, "
-                      "named in `goldbox/dos_layout.py` from the Curse "
+                      "named in `goldbox/dos_port.py` from the Curse "
                       "decompilation and measured 1 for every paladin and 0 "
                       "for everybody else. The neutral record has no field "
                       "for it, so nothing here can take it; the DOS writer "
@@ -868,7 +868,7 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     """
     from . import dos_codec as _dos
 
-    declared = {f.name for f in dos_layout.layout_for(deltas.dos)}
+    declared = {f.name for f in dos_port.layout_for(deltas.dos)}
     direct = [(n, n) for n, _ in _dos.DIRECT
               if n in declared and n not in _dos.ABILITY_ORDER]
     transformed = [(n, why) for n, why in LATER_TRANSFORMED if n in declared]
@@ -881,7 +881,7 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
 def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     """One Amiga Curse or Silver Blades character in the neutral record.
 
-    Every value is read through `goldbox/dos_layout.py`'s table for the
+    Every value is read through `goldbox/dos_port.py`'s table for the
     title, at that field's own confidence, so a writer asking for a grade it
     will stand behind gets the same answer it would get from a DOS record of
     the same title.  What the record holds and no neutral field does is named
@@ -891,9 +891,9 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     from . import dos_codec as _dos
 
     deltas = char.deltas
-    table = dos_layout.FIELDS_BY_NAME_FOR[deltas.dos.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[deltas.dos.key]
     out = NeutralCharacter("Amiga", source=char.source,
-                           game=games.by_key(deltas.key))
+                           game=c64_port.by_key(deltas.key))
 
     def grade(name: str) -> Confidence:
         return table[name].confidence
@@ -911,7 +911,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             # `#294`, the shape rather than one field of it: a name in
             # `DIRECT` whose base table declares it `U8`/`I8` is read back
             # raw the moment a later title's `sizes` widens it -- the check
-            # `goldbox/dos_layout.py:layout_for` itself makes.  The abilities
+            # `goldbox/dos_port.py:layout_for` itself makes.  The abilities
             # are the only field this has happened to today; the next one
             # would otherwise reach here as a silent byte-pair copy, exactly
             # as the abilities did before this fix.
@@ -927,7 +927,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 
     # -- the abilities, a DOS-shaped pair carrying the same asymmetry --------
     # `goldbox.dos.DIRECT` hands every name in `ABILITY_ORDER` back as a
-    # two-byte `RAW` chunk rather than a number (`goldbox/dos_layout.py`'s
+    # two-byte `RAW` chunk rather than a number (`goldbox/dos_port.py`'s
     # `sizes` widen every one of the seven), so the loop above would
     # otherwise pass the pair whole into a field the neutral record and
     # `goldbox.c64_codec.write` both expect to be a score -- which is
@@ -1113,7 +1113,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f"stored halved",
                 Confidence.PROBABLE)
 
-    declared = {f.name for f in dos_layout.layout_for(deltas.dos)}
+    declared = {f.name for f in dos_port.layout_for(deltas.dos)}
     for name, _why in LATER_DROPPED:
         if name in declared and name in LATER_DROPPED_PLAYER_TEXT:
             out.drop(LATER_DROPPED_PLAYER_TEXT[name])
@@ -1196,7 +1196,7 @@ LATER_WRITE_UNSOURCED: dict[str, tuple[tuple[int, int, str], ...]] = {
 #: the recomputed value is the one a player reads and the stored one never
 #: reached the screen. MATHEW's `roster_tail`'s sixth byte -- one of the
 #: eight running attack-form bytes the field's own note in
-#: `goldbox/dos_layout.py` describes -- moved `0x08` to `0x02` the same way.
+#: `goldbox/dos_port.py` describes -- moved `0x08` to `0x02` the same way.
 #: The other five characters and the whole Silver Blades party in the same
 #: run did not move at either byte, which says nothing either way: their
 #: converted values already agreed with what the engine would have
@@ -1321,7 +1321,7 @@ def later_unsourced_offsets(deltas: AmigaDeltas) -> tuple[int, ...]:
     if deltas.spellbook_bytes is not None:
         covered.update(range(AMIGA_SSB_SPELLBOOK_AT,
                              AMIGA_SSB_SPELLBOOK_AT + deltas.spellbook_bytes))
-    for f in dos_layout.layout_for(deltas.dos):
+    for f in dos_port.layout_for(deltas.dos):
         try:
             at = deltas.offset(f.offset)
         except AmigaRecordError:
@@ -1346,13 +1346,13 @@ def later_write_shape(char: NeutralCharacter,
     """
     if deltas is None:
         game = char.game
-        key = getattr(game, "key", game) or dos_layout.POOL_OF_RADIANCE.key
+        key = getattr(game, "key", game) or dos_port.POOL_OF_RADIANCE.key
     else:
         key = getattr(deltas, "key", deltas)
     for known in AMIGA_DELTAS:
         if known.key == key:
             return known
-    if key in (dos_layout.POOL_OF_RADIANCE.key, "pools-of-darkness"):
+    if key in (dos_port.POOL_OF_RADIANCE.key, "pools-of-darkness"):
         raise AmigaRecordError(
             f"{key} has its own Amiga writer: write_por for Pool of "
             f"Radiance and write for Pools of Darkness")
@@ -1416,7 +1416,7 @@ def from_dos_record_later(record: bytes, deltas: AmigaDeltas) -> bytes:
             f"got {len(record)}")
     out = bytearray(deltas.record_size)
     out[:AMIGA_NAME_SIZE] = _later_name_bytes(record, deltas)
-    for f in dos_layout.layout_for(deltas.dos):
+    for f in dos_port.layout_for(deltas.dos):
         if f.name in ("name_length", "name_text"):
             continue
         if deltas.spellbook_bytes is not None and f.name == "spellbook":
@@ -1458,7 +1458,7 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
             f"a DOS {deltas.title} item is {deltas.dos.item_size} bytes, got "
             f"{len(item)}")
     out = bytearray(deltas.item_size)
-    for f in dos_layout.ITEM_LAYOUT:
+    for f in dos_port.ITEM_LAYOUT:
         if f.name in ("text_length", "text", "next"):
             continue
         at = deltas.item_offset(f.offset)
@@ -1466,7 +1466,7 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
         if f.kind in (Kind.U16LE, Kind.UINT_LE):
             chunk = chunk[::-1]
         out[at:at + f.size] = chunk
-    for n in range(dos_layout.ITEM_SIZE, deltas.dos.item_size):
+    for n in range(dos_port.ITEM_SIZE, deltas.dos.item_size):
         out[deltas.item_offset(n)] = item[n]
     return bytes(out)
 
@@ -1632,7 +1632,7 @@ def write_later(char: NeutralCharacter,
              f"count byte and its text -- {converted('name_length')}")
     for at, size, why in LATER_WRITE_UNSOURCED[deltas.key]:
         rep.note(at, size, f"{at:#05x}: {why}")
-    for f in dos_layout.layout_for(deltas.dos):
+    for f in dos_port.layout_for(deltas.dos):
         if f.name in ("name_length", "name_text"):
             continue
         if deltas.spellbook_bytes is not None and f.name == "spellbook":
@@ -1658,7 +1658,7 @@ def write_later(char: NeutralCharacter,
         rep.note(at + AMIGA_LATER_ITEM_NEXT, 4,
                  f"item {n}: next pointer, non-zero exactly when another "
                  f"node follows -- the loader's own tst.l")
-        for f in dos_layout.ITEM_LAYOUT:
+        for f in dos_port.ITEM_LAYOUT:
             if f.name in ("text_length", "text", "next"):
                 continue
             rep.note(at + deltas.item_offset(f.offset), f.size,
@@ -1669,7 +1669,7 @@ def write_later(char: NeutralCharacter,
                      f"item {n}: the insertion at {pad:#05x}, zero because "
                      f"the game's own item constructor clears the node and "
                      f"never writes here")
-        for i in range(dos_layout.ITEM_SIZE, stride):
+        for i in range(dos_port.ITEM_SIZE, stride):
             rep.note(at + deltas.item_offset(i), 1,
                      f"item {n}: Silver Blades' scroll chain at "
                      f"{AMIGA_SSB_SCROLL_CHAIN:#05x}, NULL because no "

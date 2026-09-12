@@ -5,7 +5,7 @@ because it was written to hand its party on to *Curse of the Azure Bonds*;
 Curse raises every ceiling, adds paladin and ranger, and carries thirteen
 experience rows where Pool of Radiance carries nine. Nothing about that is a
 different *kind* of table, so this module is data per title -- the same choice
-`goldbox/games.py` made -- and every entry point takes an optional `game`.
+`goldbox/c64_port.py` made -- and every entry point takes an optional `game`.
 
 **Every number here is either read off the player's own disks or transcribed
 from AD&D 1st edition and then checked against them.** The tables the game
@@ -776,7 +776,7 @@ _THIEF_SKILL_DEX_SSB = _THIEF_SKILL_DEX_CURSE
 #: dead data and every race reads the row laid out for the *next* one --
 #: `thief_skill_race_index_from=0` on the title below reproduces that. The
 #: five rows that are read are Curse's `_THIEF_SKILL_RACE_CURSE` rows
-#: re-ordered into `games.RACES_SILVER_BLADES`; row 5 is not a racial row at
+#: re-ordered into `c64_port.RACES_SILVER_BLADES`; row 5 is not a racial row at
 #: all but the first row of `_THIEF_SKILL_DEX_SSB`, which is what the
 #: halfling (race 5) actually reads.
 _THIEF_SKILL_RACE_SSB = (
@@ -878,7 +878,7 @@ class LevelTables:
     """One title's progression, as data.
 
     Pairs rather than dicts so the descriptor stays hashable and frozen, which
-    is the shape `goldbox/games.py` settled on for the same reason.
+    is the shape `goldbox/c64_port.py` settled on for the same reason.
 
     `class_order` is **class-bit order** -- index `n` is bit `n` of
     `class_bits` at `0x0EB` and slot `n` of the per-class level array at
@@ -897,7 +897,7 @@ class LevelTables:
     #: Race codes that take it at all. The default, `(1, 3, 5)`, is Pool of
     #: Radiance's dwarf, gnome and halfling; Silver Blades overrides it to the
     #: dwarf alone (`(3,)` -- race 3 there, not the gnome it is in Pool of
-    #: Radiance). Derivable from `games.Game.races` and would live better
+    #: Radiance). Derivable from `c64_port.C64Container.races` and would live better
     #: there; it is here because nothing else needs it yet and this module
     #: does not import that one.
     sturdy_races: tuple[int, ...] = (1, 3, 5)
@@ -1421,7 +1421,7 @@ _DOS_THAC0_SSB = (
                     14, 14, 12, 12)),
 )
 
-#: Race 3 is the dwarf in this title (`games.RACES_SILVER_BLADES`), not the
+#: Race 3 is the dwarf in this title (`c64_port.RACES_SILVER_BLADES`), not the
 #: gnome it is in Pool of Radiance. Row 6, the human, is not on disk -- `$178A`
 #: refuses to look one up for race 6 or above, which is "no limit" -- and is
 #: synthesised the same way Curse's row 7 is.
@@ -1710,11 +1710,11 @@ def trainer_measured(game=None) -> bool:
 def for_game(game=None) -> LevelTables:
     """The tables for a title.
 
-    Takes a `goldbox.games.Game`, a game key, a `LevelTables`, or None. Deliberately
-    duck-typed on `.key` rather than importing `goldbox.games`: this module needs
+    Takes a `goldbox.c64_port.C64Container`, a game key, a `LevelTables`, or None. Deliberately
+    duck-typed on `.key` rather than importing `goldbox.c64_port`: this module needs
     one string from that one, and a title it has no tables for falls back to
     Pool of Radiance rather than raising, because every geometry-only title in
-    `goldbox/games.py` runs an engine whose progression has not been read.
+    `goldbox/c64_port.py` runs an engine whose progression has not been read.
     """
     if isinstance(game, LevelTables):
         return game

@@ -352,8 +352,8 @@ def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
     the one `GEN` happened to be on -- a table found is still a table naming
     portraits that exist somewhere on the player's own disks.
     """
+    from .c64_port import GAMES
     from .d64 import D64, D64Error
-    from .games import GAMES
 
     disks = pathlib.Path(disks)
     # `dict.fromkeys` rather than a set: several titles could share one glob
@@ -526,7 +526,7 @@ def tables_from_amiga_disks(disks: str | pathlib.Path) -> PortraitTables:
 #: `goldbox.dos` decides today with `shape is POOL_OF_RADIANCE` in the
 #: C64-to-DOS direction and does not decide at all in the other, which is
 #: why a Curse import reports a portrait it never could have written.
-#: Spelled out rather than imported from `goldbox.games`: `goldbox.traits`
+#: Spelled out rather than imported from `goldbox.c64_port`: `goldbox.traits`
 #: does the same and says why -- this package duck-types on `.key` to keep
 #: the import graph acyclic.
 POOL_OF_RADIANCE_KEY = "pool-of-radiance"
@@ -537,7 +537,7 @@ SHEET_PORTRAIT_TITLES = frozenset({POOL_OF_RADIANCE_KEY})
 def draws_sheet_portrait(game=None) -> bool:
     """Whether this title's C64 character sheet draws a portrait at all.
 
-    `game` is a `goldbox.games.Game`, anything else carrying a `key`, or the
+    `game` is a `goldbox.c64_port.C64Container`, anything else carrying a `key`, or the
     key itself.  A title this answers False for has nothing to convert and
     nothing to report: a character arriving there without a face is a
     character arriving correct, because the engine draws none for any
@@ -701,7 +701,7 @@ def stored_tables(game=None, port: str | None = None
                   ) -> PortraitTables | None:
     """The creation menu this module carries for `game`, or `None`.
 
-    `game` is a `goldbox.games.Game`, anything else carrying a `key`, or the
+    `game` is a `goldbox.c64_port.C64Container`, anything else carrying a `key`, or the
     key itself, and `None` means Pool of Radiance for the same reason
     :func:`draws_sheet_portrait` says it does.  This is what a conversion
     falls back to when nobody handed it tables read off the player's own

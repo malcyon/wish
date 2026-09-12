@@ -277,7 +277,7 @@ def turn_power(game, class_levels: Mapping[str, int] | None) -> int:
     byte the game itself stores for one, and it is what a blank record starts
     at where Pool of Radiance's `BEQ` writes nothing.
 
-    `game` is whatever the caller has for the title -- a `goldbox.games.Game`,
+    `game` is whatever the caller has for the title -- a `goldbox.c64_port.C64Container`,
     a `goldbox.levels.LevelTables`, a bare key, or None for Pool of Radiance.
     """
     from . import levels as _levels

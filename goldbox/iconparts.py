@@ -148,7 +148,7 @@ DEFAULT_BACKGROUND = 6
 # -- converting a DOS figure -------------------------------------------------
 #
 # DOS keeps a character's combat figure as a body, a head, a size and six
-# colour pairs (`goldbox/dos_layout.py` at `0x0BE`, `0x0BD`, `0x0C0`,
+# colour pairs (`goldbox/dos_port.py` at `0x0BE`, `0x0BD`, `0x0C0`,
 # `0x0C1`); the C64 keeps eighteen screen codes and eighteen colours.  Neither
 # side stores the other's, and the two sets of art do not correspond index for
 # index -- the DOS list is 32 bodies and 14 heads, the C64's 35 large weapons,
@@ -217,7 +217,7 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
                     size: str | None = None) -> DosIconTables:
     """Read the three tables out of :data:`PROPOSAL_PATH`.
 
-    `title` is a `goldbox.games.Game.key` such as
+    `title` is a `goldbox.c64_port.C64Container.key` such as
     `"secret-of-the-silver-blades"`, and `size` is `"small"` or `"large"`.
     With neither, this is exactly the base table every conversion has
     always read (#330). Where a title's own `overrides:` section names a
@@ -323,7 +323,7 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
     plus exceptions, because a C64 option number is a different drawing at
     each size and there is no size-free answer to fall back to.
 
-    `title` is a `goldbox.games.Game.key`, the mirror of
+    `title` is a `goldbox.c64_port.C64Container.key`, the mirror of
     :func:`dos_icon_tables`'s own argument (`#452 (A Silver Blades combat
     figure does not survive a round trip through the C64, because the
     reverse table has no per-title rows)`). `tools/iconproposal.yaml`'s

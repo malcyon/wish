@@ -114,7 +114,7 @@ __all__ = [
 
 
 #: Game titles this module knows about. Plain strings on purpose, and the seam
-#: with `goldbox/games.py`: these are `Game.title`, so a caller holding a descriptor
+#: with `goldbox/c64_port.py`: these are `C64Container.title`, so a caller holding a descriptor
 #: writes `areas.area_name(geo, game.title)` and neither module imports the
 #: other. `tests/test_areas.py` pins the two spellings together.
 POOL_OF_RADIANCE = "Pool of Radiance"

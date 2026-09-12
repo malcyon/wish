@@ -12,7 +12,7 @@ read-only and never written -- :func:`write` builds *new* bytes, and
 The middle is `goldbox/neutral.py`'s typed record, and this module is the DOS
 codec of that pair -- the only module that knows a DOS offset.  The C64 half
 is `goldbox/c64_codec.py`'s, and the two never mention each other.
-`goldbox/dos_layout.py` is the field table, in the same declarative style as
+`goldbox/dos_port.py` is the field table, in the same declarative style as
 `goldbox/layout.py` and with a confidence on every entry, which is the grade the
 neutral value carries and a writer refuses to write below.
 
@@ -33,7 +33,7 @@ The three places the formats diverge in kind
 * **The spellbook.** DOS spends one byte per spell across `0x033`-`0x06A`;
   the C64 packs 56 bits at `0x078`.  The *ordering* turns out to be identical
   -- DOS byte *n* is spell id *n + 1*, the same id `goldbox/spells.py` uses -- so
-  the transpose is a pack and not a permutation.  See `dos_layout.spellbook`.
+  the transpose is a pack and not a permutation.  See `dos_port.spellbook`.
   Spell 56, `RESTORATION`, is the one id with no C64 bit and is reported.
 * **The per-class level array.** Eight wide on both.  DOS indexes by the class
   *number*, the C64 by the class *bit*, and the neutral record names the class
@@ -61,10 +61,10 @@ from typing import Any, Iterable, Sequence
 from . import (
     areas,
     c64_codec,
+    c64_port,
     c64_save,
     classcode,
     dos_savegame,
-    games,
     neutral,
     titles,
     traits,
@@ -72,9 +72,10 @@ from . import (
 )
 from . import levels as level_tables
 from .c64_codec import Report
-from .dos_layout import (
+from .dos_port import (
     CLASS_NUMBERS,
     CURSE_OF_THE_AZURE_BONDS,
+    DELTAS,
     EFFECT_SIZE,
     FIELDS_BY_NAME,
     FIELDS_BY_NAME_FOR,
@@ -85,9 +86,7 @@ from .dos_layout import (
     POOLS_OF_DARKNESS,
     RECORD_SIZE,
     SECRET_OF_THE_SILVER_BLADES,
-    SHAPES,
     DosDeltas,
-    DosShape,
     DosShapeError,
     shape_for,
 )
@@ -314,7 +313,7 @@ class DosItem(_Fielded):
 
     The four extra bytes are at the **end** and are zero in every specimen, so
     every field below `0x03E` is at the same offset whichever title wrote it
-    (#113).  `size` is the title's, from `DosShape.item_size`.
+    (#113).  `size` is the title's, from `DosDeltas.item_size`.
     """
 
     _TABLE = ITEM_FIELDS_BY_NAME
@@ -386,7 +385,7 @@ def item_to_c64(record: bytes) -> bytes:
     different places, not near misses.  The write-up,
     `work/reports/dos-items.md`, is lost; asserted in `tests/test_dosbox.py`.
     """
-    sizes = sorted({s.item_size for s in SHAPES})
+    sizes = sorted({s.item_size for s in DELTAS})
     if len(record) not in sizes:
         raise DosRecordError(
             f"a DOS item is {' or '.join(str(n) for n in sizes)} bytes; "
@@ -537,7 +536,7 @@ def _innate_effects(shape_key: str | None) -> frozenset[int]:
 
 
 #: The paladin's bit in the neutral record's `class_bits`, which is the C64
-#: record's own bit order -- `goldbox.games.CLASS_BITS_WITH_PALADIN_RANGER`,
+#: record's own bit order -- `goldbox.c64_port.CLASS_BITS_WITH_PALADIN_RANGER`,
 #: where 64 is the paladin and 128 the ranger.  DOS gives the two classes one
 #: bit between them, so this is never the DOS record's numbering;
 #: `tests/test_innateeffects.py` pins the two against each other.
@@ -788,7 +787,7 @@ RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS: dict[str, tuple[int, ...]] = {}
 #: Curse has its own row (#490).
 _RACE_COMBAT_EFFECTS_TABLES: dict[str, dict[str, tuple[int, ...]]] = {
     CURSE_OF_THE_AZURE_BONDS.key: RACE_COMBAT_EFFECTS_CURSE,
-    games.SECRET_OF_THE_SILVER_BLADES.key: RACE_COMBAT_EFFECTS_SILVER_BLADES,
+    c64_port.SECRET_OF_THE_SILVER_BLADES.key: RACE_COMBAT_EFFECTS_SILVER_BLADES,
     POOLS_OF_DARKNESS.key: RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS,
 }
 
@@ -798,7 +797,7 @@ def _race_combat_effects(game: object, race: int,
     """This title's innate combat ids for a race code, empty for an unnamed one.
 
     `game` is whatever a caller has in hand for the title -- a
-    `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
+    `goldbox.c64_port.C64Container`, its `.key`, or None for Pool of Radiance -- the same
     three shapes `c64_codec._infravision` accepts, and `goldbox.titles.race_table`
     resolves all three the same way, Pools of Darkness' own key included
     (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
@@ -1603,7 +1602,7 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     """Every field one title declares and what the conversion does with it.
 
     The test that keeps this module honest: a field declared in
-    `goldbox/dos_layout.py` and named nowhere here would be a field silently
+    `goldbox/dos_port.py` and named nowhere here would be a field silently
     dropped, which `docs/117-save-conversion.md` forbids.  The shape is
     `goldbox/neutral.py`'s, so every direction reports its drops the same way.
 
@@ -1696,9 +1695,9 @@ def portrait_tables(game: str | pathlib.Path | None
 #:     necessary and not sufficient.
 #:
 #: Two of the shape's eight UNKNOWN runs turned out to carry something, and
-#: both are named in `goldbox/dos_layout.py` rather than left as gaps a
+#: both are named in `goldbox/dos_port.py` rather than left as gaps a
 #: writer would zero: `unnamed_1a4` and `unnamed_1e0`.
-CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+CONVERTS: tuple[DosDeltas, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
                                   SECRET_OF_THE_SILVER_BLADES,
                                   POOLS_OF_DARKNESS)
 
@@ -1810,7 +1809,7 @@ def to_neutral(dos: DosCharacter,
             continue                      # a pair in three of the four titles
         if dos_name not in dos.fields:
             # A field this title does not declare at all, which is
-            # `goldbox/dos_layout.py`'s width of zero.  Pools of Darkness is
+            # `goldbox/dos_port.py`'s width of zero.  Pools of Darkness is
             # the title that has any: it keeps three money slots instead of
             # seven and drops `levels_drained`, `hp_lost_to_drain` and
             # `experience_per_hit_point` outright, so there is no byte here
@@ -2338,7 +2337,7 @@ def item_from_c64(record: bytes, item_size: int = ITEM_SIZE) -> bytes:
     rewrites whenever it draws the list, and NULL at `0x02A` is the chain's
     own last-item marker.
 
-    `item_size` is the title's own stride, `DosShape.item_size` -- 63 in
+    `item_size` is the title's own stride, `DosDeltas.item_size` -- 63 in
     three of the four titles and **67 in Secret of the Silver Blades**, whose
     four extra bytes are :data:`ITEM_TAIL` and are zero in 48 of 48 item
     records this project drove the game into writing (#113).  So the longer
@@ -2347,7 +2346,7 @@ def item_from_c64(record: bytes, item_size: int = ITEM_SIZE) -> bytes:
     """
     if len(record) != 16:
         raise DosRecordError(f"a C64 item is 16 bytes; got {len(record)}")
-    sizes = sorted({s.item_size for s in SHAPES})
+    sizes = sorted({s.item_size for s in DELTAS})
     if item_size not in sizes:
         raise DosRecordError(
             f"a DOS item is {' or '.join(str(n) for n in sizes)} bytes; "
@@ -2542,7 +2541,7 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 )
 
 #: Why a neutral field is not written when the destination title's record has
-#: no such field **at all** -- `goldbox/dos_layout.py` gives it a width of
+#: no such field **at all** -- `goldbox/dos_port.py` gives it a width of
 #: zero rather than a place to hold something we could not fill.
 #:
 #: **Pools of Darkness is the only title of the four with any**, and all
@@ -2863,7 +2862,7 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
      "`goldbox.c64_codec.write` has something to give the C64, and a pure "
      "DOS-to-DOS conversion keeps deriving the digest exactly as before -- "
      "a real shipped party already holds zero there for one of its six "
-     "(dos_layout.py's own note, `\"165, 204, 0, 120, 154, 231 for the "
+     "(dos_port.py's own note, `\"165, 204, 0, 120, 154, 231 for the "
      "party\"`), so passing a DOS source's own copy through would risk "
      "exactly the zero-collision #216 fixed"),
 )
@@ -2949,7 +2948,7 @@ def identity_byte(record: bytes | bytearray,
 #: export a Pools of Darkness save between DOS and the Amiga)`), which is
 #: what makes an Amiga `.pc` convertible into a DOS record and back.  See
 #: :data:`CONVERTS` for the standard it came in on and what has not been done.
-WRITES: tuple[DosShape, ...] = CONVERTS
+WRITES: tuple[DosDeltas, ...] = CONVERTS
 
 #: Neutral fields the writer takes by a rule in the **later titles only**.
 #: Pool of Radiance declares neither field, so it drops both and keeps its
@@ -3085,7 +3084,7 @@ WRITE_DERIVED_LATER: tuple[tuple[str, str], ...] = (
 )
 
 
-#: What :func:`write` does with every field `goldbox/dos_layout.py` declares --
+#: What :func:`write` does with every field `goldbox/dos_port.py` declares --
 #: the *output-side* account, over DOS field names, where
 #: :func:`write_field_disposition` accounts over the neutral vocabulary.
 #: `tests/test_doswriter.py` fails if a field is declared in the layout and
@@ -3139,7 +3138,7 @@ def write_constants(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 
     **A constant naming a field the title does not declare is left out**
     rather than raising: Pools of Darkness has no `strength_bonus` byte at
-    all -- `goldbox/dos_layout.py` gives it a width of zero -- so there is
+    all -- `goldbox/dos_port.py` gives it a width of zero -- so there is
     nothing for the constant to be written into (#194).
     """
     table = FIELDS_BY_NAME_FOR[shape_for(deltas).key]
@@ -3221,7 +3220,7 @@ def write_deltas(char: NeutralCharacter,
     is between two ports of the same title and never between titles
     (`.claude/rules/conversions.md`).  A neutral character carries the title
     its reader read it in -- `NeutralCharacter.game`, which is a
-    `goldbox.games.Game`, its key, or `None` for Pool of Radiance -- and that
+    `goldbox.c64_port.C64Container`, its key, or `None` for Pool of Radiance -- and that
     is what decides the deltas.  `deltas` overrides it, for a caller that has
     already resolved the title.
 
@@ -3276,7 +3275,7 @@ def write(char: NeutralCharacter,
     ability score (exceptional strength's percentile the other way round), a
     100-spell book and a former-class array, and Secret of the Silver Blades
     439 with a 117-spell book, seven spell-slot levels and **67-byte items**.
-    Every width comes off `goldbox/dos_layout.py`'s table for the title and
+    Every width comes off `goldbox/dos_port.py`'s table for the title and
     none of them is a constant here: that is what `#113 (Play DOS Curse far
     enough to save a party with items)` closed and what a second writer would
     have reopened.  :func:`write_shape` says how the title is chosen.
@@ -3863,7 +3862,7 @@ def write(char: NeutralCharacter,
     # `.ITM` in Pool of Radiance, **`.SWG`** in Curse and **`.STF`** in
     # Silver Blades, whose records are 67 bytes rather than 63 (#113).  The
     # stride is the shape's and the caller writes the file under
-    # `DosShape.item_suffix`; nothing here assumes either.
+    # `DosDeltas.item_suffix`; nothing here assumes either.
     itm = b""
     projected: list[bytes] = []
     inventory = use("inventory")
@@ -5316,7 +5315,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
 
     at = container.portrait_switch
     faces = bool(party) and all_faced
-    if container.game.key == games.POOL_OF_RADIANCE.key:
+    if container.game.key == c64_port.POOL_OF_RADIANCE.key:
         save0[at] = PORTRAIT_ON if faces else PORTRAIT_OFF
         report.note(at, 1, f"${save0[at]:02X}: {PORTRAIT_SWITCH_WHY}"
                     + ("" if faces else ". Written with bit 7 clear "
@@ -5578,7 +5577,7 @@ def save_disk(save0: bytes, save1: bytes, game=None):
     final-sector slack, on all 13 (`tests/test_d64_blank.py`).
     """
     from .d64 import D64, attach_load_address
-    game = game or games.POOL_OF_RADIANCE
+    game = game or c64_port.POOL_OF_RADIANCE
     disk = D64.blank()
     if not game.roster_in_payload:
         disk.write_file(game.roster_file,
@@ -6130,10 +6129,10 @@ def _note_word(report: "SaveReport", address: int, words: int,
     report.note(dos_savegame.word_offset(address, container), 2 * words, why)
 
 
-def c64_title(save0: bytes, title=None) -> games.Game:
+def c64_title(save0: bytes, title=None) -> c64_port.C64Container:
     """Which C64 title a `SAVEDGAME0` payload belongs to.
 
-    `title` is a `goldbox.games.Game`, its key, or None.  **A 7424-byte
+    `title` is a `goldbox.c64_port.C64Container`, its key, or None.  **A 7424-byte
     payload is refused without one**: Curse of the Azure Bonds and Secret
     of the Silver Blades write the same size, their DOS containers differ
     (13149 against 5469 bytes, one staging a script and one not), and
@@ -6141,15 +6140,15 @@ def c64_title(save0: bytes, title=None) -> games.Game:
     (#299).  Pool of Radiance's 7168 bytes name themselves.
     """
     if title is not None:
-        game = games.by_key(getattr(title, "key", title))
+        game = c64_port.by_key(getattr(title, "key", title))
         if len(save0) != game.save_size:
             raise DosRecordError(
                 f"a {game.title} save is {game.save_size} bytes; this is "
                 f"{len(save0)}")
         return game
-    if len(save0) == games.POOL_OF_RADIANCE.save_size:
-        return games.POOL_OF_RADIANCE
-    same = [g.title for g in games.GAMES if g.save_size == len(save0)]
+    if len(save0) == c64_port.POOL_OF_RADIANCE.save_size:
+        return c64_port.POOL_OF_RADIANCE
+    same = [g.title for g in c64_port.GAMES if g.save_size == len(save0)]
     raise DosRecordError(
         f"a {len(save0)}-byte C64 save is one of {', '.join(same) or 'no'} "
         f"titles; say which with `title=`")
@@ -6180,7 +6179,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     area.  The caller refuses instead.  **Silver Blades stages none**, and
     passes None.
 
-    **`game` is the C64 title** (`goldbox.games.Game`, or None for Pool of
+    **`game` is the C64 title** (`goldbox.c64_port.C64Container`, or None for Pool of
     Radiance), and it chooses both ends of the join (#299): the DOS side
     comes from `dos_savegame.save_shape_for(game.key)`, whose size `savgam`
     must already be.  `dax` is the DOS `ECL<n>.DAX` number holding the
@@ -6208,8 +6207,8 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     payload's own `$49E6` byte, and that is unchanged -- only where the
     reads come from moved.
     """
-    game = games.by_key(getattr(game, "key", game)) if game else \
-        games.POOL_OF_RADIANCE
+    game = c64_port.by_key(getattr(game, "key", game)) if game else \
+        c64_port.POOL_OF_RADIANCE
     container = c64_save.container_for(game)
     shape = dos_savegame.save_shape_for(game.key)
     later = shape is not dos_savegame.SAVE_POOL_OF_RADIANCE
@@ -6563,7 +6562,7 @@ def write_dos_save_from(state: "world_state.WorldState",
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
     standing in the Slums on the Amiga arrives there under DOSBox)` needs
     once an Amiga reader can fill both instead (`#352`'s order of work,
-    step 3).  `state.title` (`goldbox.games.Game.title`) says which title's
+    step 3).  `state.title` (`goldbox.c64_port.C64Container.title`) says which title's
     own DOS record shape and quest-flag width apply; whatever built `state`
     already resolved which of Curse and Silver Blades it is -- the same
     size on the C64 and two different DOS files -- so there is no size left
@@ -6596,7 +6595,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         raise DosRecordError(
             f"a save slot is a single letter, not {slot!r}")
 
-    c64 = games.by_title(state.title) or games.POOL_OF_RADIANCE
+    c64 = c64_port.by_title(state.title) or c64_port.POOL_OF_RADIANCE
     shape = dos_savegame.save_shape_for(c64.key)
     characters = list(characters)
     if len(characters) > 6:
@@ -6751,7 +6750,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     own area's script has to be staged in the save or the game exits to DOS
     on load, and the game's files are the only copy of it.
 
-    **`title` is the C64 title** -- a `goldbox.games.Game`, its key, or
+    **`title` is the C64 title** -- a `goldbox.c64_port.C64Container`, its key, or
     None for Pool of Radiance -- and it chooses both ends of the join
     (#299): the payload is read through `c64_save.container_for(title)`
     and the DOS file is built to `dos_savegame.save_shape_for(title)`, so a
@@ -6889,7 +6888,7 @@ def new_dos_save_from(state: "world_state.WorldState",
         # to happen here rather than in `write_dos_save_from`, which only
         # ever saw the empty staging directory.  Same enumeration, same
         # reason (#68), in the title's own suffixes.
-        c64 = games.by_title(state.title) or games.POOL_OF_RADIANCE
+        c64 = c64_port.by_title(state.title) or c64_port.POOL_OF_RADIANCE
         record_shape = shape_for(c64.key)
         cleared = _clear_slot(
             out, slot, (".SAV", record_shape.item_suffix,

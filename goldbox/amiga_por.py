@@ -37,7 +37,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Sequence
 
-from . import areas, dos_layout, dos_savegame, neutral, world_state
+from . import areas, dos_port, dos_savegame, neutral, world_state
 from .amiga_adf import AmigaDisk, AmigaDiskError
 from .amiga_port import (
     AMIGA_POR_EFFECT_PAD,
@@ -59,7 +59,7 @@ if TYPE_CHECKING:          # avoided at runtime: goldbox.dos_codec is the
 #
 # `CHRDATA<n>.sav` on an Amiga Pool of Radiance save disk, and `<NAME>.cha`
 # where a party has been exported, is **288 bytes**: the 285-byte DOS record
-# of `goldbox/dos_layout.py` with the multi-byte fields byte-swapped, the name
+# of `goldbox/dos_port.py` with the multi-byte fields byte-swapped, the name
 # re-encoded, and three insertions.  Nothing here is a second field table --
 # the DOS one is read through a shift map, so the two cannot drift apart.
 #
@@ -139,12 +139,12 @@ class AmigaPorCharacter:
         return raw.split(b"\0")[0].decode("latin1")
 
     def get(self, field_name: str):
-        """One field, by its `goldbox/dos_layout.py` name.
+        """One field, by its `goldbox/dos_port.py` name.
 
         `U16LE` and `UINT_LE` fields are read big-endian, which is the whole
         of the difference outside the name and the shifts.
         """
-        f = dos_layout.FIELDS_BY_NAME.get(field_name)
+        f = dos_port.FIELDS_BY_NAME.get(field_name)
         if f is None:
             raise AmigaRecordError(f"no field called {field_name!r}")
         at = amiga_por_offset(f.offset)
@@ -187,7 +187,7 @@ class AmigaPorCharacter:
 
 
 def dos_experience_offset() -> int:
-    return dos_layout.FIELDS_BY_NAME["experience"].offset
+    return dos_port.FIELDS_BY_NAME["experience"].offset
 
 
 def read_amiga_por(path) -> AmigaPorCharacter:
@@ -304,12 +304,12 @@ class AmigaPorItem:
             raise AmigaRecordError(
                 f"an Amiga Pool of Radiance item is {AMIGA_POR_ITEM_SIZE} "
                 f"bytes, got {len(data)}; the Amiga Curse item is 66 and the "
-                f"DOS item is {dos_layout.ITEM_SIZE}")
+                f"DOS item is {dos_port.ITEM_SIZE}")
         return cls(bytes(data))
 
     def get(self, field_name: str):
-        """One field, by its `goldbox/dos_layout.py` item name, big-endian."""
-        f = dos_layout.ITEM_FIELDS_BY_NAME.get(field_name)
+        """One field, by its `goldbox/dos_port.py` item name, big-endian."""
+        f = dos_port.ITEM_FIELDS_BY_NAME.get(field_name)
         if f is None:
             raise AmigaRecordError(f"no item field called {field_name!r}")
         at = amiga_por_item_offset(f.offset)
@@ -342,20 +342,20 @@ class AmigaPorItem:
         return int.from_bytes(self.raw[0x02A:0x02E], "big")
 
     def to_dos_bytes(self) -> bytes:
-        """This item as the 63 bytes `goldbox/dos_layout.py` describes.
+        """This item as the 63 bytes `goldbox/dos_port.py` describes.
 
         The `next` far pointer is written NULL rather than converted: it is a
         live Amiga heap address, and the DOS engine rebuilds its own chain
         from the file's length regardless (`goldbox/dos.py`, `EFFECT_NEXT_NULL`
         records the same measurement for the effect chain).
         """
-        out = bytearray(dos_layout.ITEM_SIZE)
+        out = bytearray(dos_port.ITEM_SIZE)
         text = self.raw[:AMIGA_POR_ITEM_TEXT]
         line = text.split(b"\0")[0]
-        size = dos_layout.ITEM_FIELDS_BY_NAME["text"].size
+        size = dos_port.ITEM_FIELDS_BY_NAME["text"].size
         out[0] = min(len(line), size)
         out[1:1 + size] = text[:size].ljust(size, b"\0")
-        for f in dos_layout.ITEM_LAYOUT:
+        for f in dos_port.ITEM_LAYOUT:
             if f.name in ("text_length", "text", "next"):
                 continue
             at = amiga_por_item_offset(f.offset)
@@ -404,7 +404,7 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 #   * the name -- 16 NUL-padded bytes become DOS's count byte and fifteen;
 #   * the `u16` and `u32` fields -- big-endian becomes little-endian;
 #   * experience -- one `u32` on the Amiga, spanning DOS's 24-bit field *and*
-#     the byte `goldbox/dos_layout.py` calls `gap_0af`.  PROBABLE: the DOS field
+#     the byte `goldbox/dos_port.py` calls `gap_0af`.  PROBABLE: the DOS field
 #     is a `u32le` and the gap is its fourth byte.  Written that way, which
 #     is lossless either way round because the fourth byte is zero below
 #     16 777 216 experience and no Gold Box character reaches it;
@@ -420,14 +420,14 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 #     be putting a DOS value into a record built from an Amiga one --
 #     inheriting rather than measuring.  `goldbox/dos.py` drops the field anyway;
 #   * the Amiga's trailing byte at `0x11F`, which DOS does not have.
-DOS_RECORD_SIZE = dos_layout.RECORD_SIZE
+DOS_RECORD_SIZE = dos_port.RECORD_SIZE
 
 
 def _amiga_por_name(raw: bytes) -> tuple[int, bytes]:
     """The 16 NUL-padded bytes as DOS's count byte and fifteen."""
     text = raw[:AMIGA_POR_NAME_SIZE]
     line = text.split(b"\0")[0]
-    size = dos_layout.FIELDS_BY_NAME["name_text"].size
+    size = dos_port.FIELDS_BY_NAME["name_text"].size
     return min(len(line), size), text[:size].ljust(size, b"\0")
 
 
@@ -444,14 +444,14 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     out[0] = count
     out[1:1 + len(text)] = text
 
-    exp = dos_layout.FIELDS_BY_NAME["experience"]
+    exp = dos_port.FIELDS_BY_NAME["experience"]
     at = amiga_por_offset(exp.offset)
     out[exp.offset:exp.offset + 4] = int.from_bytes(
         char.raw[at:at + 4], "big").to_bytes(4, "little")
 
     skip = {"name_length", "name_text", "experience", "gap_0af",
             "field_83_87", "effect_chain"}
-    for f in dos_layout.LAYOUT:
+    for f in dos_port.LAYOUT:
         if f.name in skip:
             continue
         at = amiga_por_offset(f.offset)
@@ -530,7 +530,7 @@ def to_neutral(char) -> NeutralCharacter:
         "name the DOS field table, which is the table both ports share")
 
     line, _ = _amiga_por_name(char.raw)
-    if line >= dos_layout.FIELDS_BY_NAME["name_text"].size:
+    if line >= dos_port.FIELDS_BY_NAME["name_text"].size:
         out.warnings.append(
             f"The Amiga name fills all {AMIGA_POR_NAME_SIZE} bytes with no "
             f"terminator; DOS holds fifteen, so it was truncated")
@@ -752,7 +752,7 @@ class PorWriteReport(neutral.Report):
 
 def _por_name_bytes(record: bytes) -> bytes:
     """DOS's count byte and fifteen as the Amiga's sixteen NUL-padded."""
-    size = dos_layout.FIELDS_BY_NAME["name_text"].size
+    size = dos_port.FIELDS_BY_NAME["name_text"].size
     count = min(record[0], size)
     return record[1:1 + count].ljust(AMIGA_POR_NAME_SIZE, b"\0")
 
@@ -771,7 +771,7 @@ def from_dos_record(record: bytes) -> bytes:
     out = bytearray(AMIGA_POR_RECORD_SIZE)
     out[:AMIGA_POR_NAME_SIZE] = _por_name_bytes(record)
 
-    exp = dos_layout.FIELDS_BY_NAME["experience"]
+    exp = dos_port.FIELDS_BY_NAME["experience"]
     assert amiga_por_offset(exp.offset) == AMIGA_POR_EXPERIENCE
     out[AMIGA_POR_EXPERIENCE:AMIGA_POR_EXPERIENCE + 4] = int.from_bytes(
         record[exp.offset:exp.offset + 4], "little").to_bytes(4, "big")
@@ -780,7 +780,7 @@ def from_dos_record(record: bytes) -> bytes:
         AMIGA_POR_FIELD_83_87_AT + len(AMIGA_POR_FIELD_83_87)] = \
         AMIGA_POR_FIELD_83_87
 
-    for f in dos_layout.LAYOUT:
+    for f in dos_port.LAYOUT:
         if _por_special(f):
             continue
         at = amiga_por_offset(f.offset)
@@ -823,12 +823,12 @@ def amiga_por_item_from_dos(item: bytes) -> bytes:
     camp and a save, which is why the earlier measurement said the engine did
     not compose it.
     """
-    if len(item) != dos_layout.ITEM_SIZE:
+    if len(item) != dos_port.ITEM_SIZE:
         raise AmigaRecordError(
-            f"a DOS Pool of Radiance item is {dos_layout.ITEM_SIZE} bytes, "
+            f"a DOS Pool of Radiance item is {dos_port.ITEM_SIZE} bytes, "
             f"got {len(item)}")
     out = bytearray(AMIGA_POR_ITEM_SIZE)
-    for f in dos_layout.ITEM_LAYOUT:
+    for f in dos_port.ITEM_LAYOUT:
         if f.name in ("text_length", "text", "next"):
             continue
         at = amiga_por_item_offset(f.offset)
@@ -845,9 +845,9 @@ def amiga_por_effect_from_dos(node: bytes) -> bytes:
     The inverse of :func:`amiga_por_effect_to_dos`: a pad at offset 1, the
     duration byte-swapped into `0x02`, and the four-byte next pointer NULL.
     """
-    if len(node) != dos_layout.EFFECT_SIZE:
+    if len(node) != dos_port.EFFECT_SIZE:
         raise AmigaRecordError(
-            f"a DOS effect record is {dos_layout.EFFECT_SIZE} bytes, "
+            f"a DOS effect record is {dos_port.EFFECT_SIZE} bytes, "
             f"got {len(node)}")
     return bytes((node[0], 0, node[2], node[1], node[3], node[4])) + bytes(4)
 
@@ -900,15 +900,15 @@ def write_por(char: NeutralCharacter,
     # names DOS to a player who is not converting to DOS.
     record, itm, spc, dosrep = _dos.write(
         char, icon=icon, into="Amiga",
-        portraits=neutral_menu(dos_layout.POOL_OF_RADIANCE.key))
+        portraits=neutral_menu(dos_port.POOL_OF_RADIANCE.key))
     out = from_dos_record(record)
 
     items = [amiga_por_item_from_dos(
-        itm[n * dos_layout.ITEM_SIZE:(n + 1) * dos_layout.ITEM_SIZE])
-        for n in range(len(itm) // dos_layout.ITEM_SIZE)]
+        itm[n * dos_port.ITEM_SIZE:(n + 1) * dos_port.ITEM_SIZE])
+        for n in range(len(itm) // dos_port.ITEM_SIZE)]
     effects = [amiga_por_effect_from_dos(
-        spc[n * dos_layout.EFFECT_SIZE:(n + 1) * dos_layout.EFFECT_SIZE])
-        for n in range(len(spc) // dos_layout.EFFECT_SIZE)]
+        spc[n * dos_port.EFFECT_SIZE:(n + 1) * dos_port.EFFECT_SIZE])
+        for n in range(len(spc) // dos_port.EFFECT_SIZE)]
     amiga_itm = b"".join(items)
     amiga_spc = b"".join(effects)
 
@@ -935,7 +935,7 @@ def write_por(char: NeutralCharacter,
     rep.total = AMIGA_POR_RECORD_SIZE + len(amiga_itm) + len(amiga_spc)
 
     def converted(name: str) -> str:
-        f = dos_layout.FIELDS_BY_NAME[name]
+        f = dos_port.FIELDS_BY_NAME[name]
         return dosrep.sources.get(f.offset, f"{name}: no DOS provenance")
 
     rep.note(0, AMIGA_POR_NAME_SIZE,
@@ -956,21 +956,21 @@ def write_por(char: NeutralCharacter,
              "0x11F: the trailing pad DOS has no room for. Zero in 15 of 20 "
              "specimens and uninitialised junk in the other five")
 
-    for f in dos_layout.LAYOUT:
+    for f in dos_port.LAYOUT:
         if _por_special(f):
             continue
         rep.note(amiga_por_offset(f.offset), f.size, converted(f.name))
 
     for n in range(len(items)):
         base = AMIGA_POR_RECORD_SIZE + n * AMIGA_POR_ITEM_SIZE
-        dos_base = _dos.RECORD_SIZE + n * dos_layout.ITEM_SIZE
+        dos_base = _dos.RECORD_SIZE + n * dos_port.ITEM_SIZE
         rep.note(base, AMIGA_POR_ITEM_TEXT,
                  f"item {n}: the rendered-line cache, left NUL -- the game "
                  f"rewrites it whenever it draws the list")
         rep.note(base + 0x02A, 4,
                  f"item {n}: next pointer left NULL -- the loader rebuilds "
                  f"the chain")
-        for f in dos_layout.ITEM_LAYOUT:
+        for f in dos_port.ITEM_LAYOUT:
             if f.name in ("text_length", "text", "next"):
                 continue
             rep.note(base + amiga_por_item_offset(f.offset), f.size,
@@ -985,7 +985,7 @@ def write_por(char: NeutralCharacter,
     dos_base = _dos.RECORD_SIZE + len(itm)
     for n in range(len(effects)):
         at = base + n * AMIGA_POR_EFFECT_SIZE
-        dos_at = dos_base + n * dos_layout.EFFECT_SIZE
+        dos_at = dos_base + n * dos_port.EFFECT_SIZE
         rep.note(at, 1, dosrep.sources.get(dos_at, f".spc record {n}: id"))
         rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
                  f".spc record {n}: the extra byte, a pad. Zero in every "

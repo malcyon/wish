@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import struct
 
-from . import dos_layout
+from . import dos_port
 from .amiga_port import AMIGA_DELTAS_BY_SIZE, AmigaRecordError
 
 
@@ -53,12 +53,12 @@ THIEF_KEYS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
               "thief_read_languages")
 
 
-def amiga_shape_for(size: int) -> "dos_layout.DosShape":
+def amiga_shape_for(size: int) -> "dos_port.DosDeltas":
     """Which title an Amiga character record of this length belongs to.
 
     The Amiga three are 288, 428 and 340 bytes and no two are the same, so a
     record names its own title the way the DOS four do
-    (`goldbox.dos_layout.shape_for`) -- which is what lets a reader handed an
+    (`goldbox.dos_port.shape_for`) -- which is what lets a reader handed an
     `.adf` with no other clue say what is on it.  Pool of Radiance is not in
     :data:`AMIGA_DELTAS` because it has no `AmigaDeltas` of its own: it is
     read straight through the DOS field table (:func:`to_dos_record`).
@@ -74,7 +74,7 @@ def amiga_shape_for(size: int) -> "dos_layout.DosShape":
     from .amiga_por import AMIGA_POR_RECORD_SIZE
 
     if size == AMIGA_POR_RECORD_SIZE:
-        return dos_layout.POOL_OF_RADIANCE
+        return dos_port.POOL_OF_RADIANCE
     deltas = AMIGA_DELTAS_BY_SIZE.get(size)
     if deltas is None:
         known = ", ".join(str(n) for n in
@@ -99,7 +99,7 @@ def amiga_shape_for(size: int) -> "dos_layout.DosShape":
 #: around it is the thing `#353 (Convert an Amiga Pool of Radiance save to
 #: the C64, so a party standing in the Slums on the Amiga arrives there in
 #: VICE)` exists to stop.
-CONVERTS: "tuple[dos_layout.DosShape, ...]" = (dos_layout.POOL_OF_RADIANCE,)
+CONVERTS: "tuple[dos_port.DosDeltas, ...]" = (dos_port.POOL_OF_RADIANCE,)
 
 #: The titles a C64 or DOS save can be **converted to** an Amiga save disk
 #: today, as the DOS shapes whose `key` `editor/convert.py` registers a
@@ -116,7 +116,7 @@ CONVERTS: "tuple[dos_layout.DosShape, ...]" = (dos_layout.POOL_OF_RADIANCE,)
 #: writer -- `#359 (Bring the Amiga into every permutation: C64 ↔ Amiga and
 #: DOS ↔ Amiga)`'s step 6 -- so they stay off this tuple until one exists,
 #: the same way they are missing from `CONVERTS` above.
-WRITES: "tuple[dos_layout.DosShape, ...]" = (dos_layout.POOL_OF_RADIANCE,)
+WRITES: "tuple[dos_port.DosDeltas, ...]" = (dos_port.POOL_OF_RADIANCE,)
 
 #: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**
 #: within each byte, where DOS spends one byte per spell for ids 1..117.

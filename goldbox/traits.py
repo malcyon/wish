@@ -400,8 +400,8 @@ DEFAULT_NAMES = NAMES
 def for_game(game=None) -> dict[int, tuple[str, str]]:
     """The code table for a title.
 
-    Takes a `goldbox.games.Game`, a game key, a table, or None. Duck-typed on
-    `.key` rather than importing `goldbox.games`, which is what
+    Takes a `goldbox.c64_port.C64Container`, a game key, a table, or None. Duck-typed on
+    `.key` rather than importing `goldbox.c64_port`, which is what
     `goldbox/spells.py:for_game` does and for the same reason: a whole module
     of coupling for one string.
 

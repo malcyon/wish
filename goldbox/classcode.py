@@ -85,7 +85,7 @@ def table_for(game: object) -> dict[int, int]:
     """The bitmask -> code table for one title's own engine.
 
     `game` is whatever a caller has in hand for the title -- a
-    `goldbox.games.Game`, its `.key`, or `None` -- the same three shapes
+    `goldbox.c64_port.C64Container`, its `.key`, or `None` -- the same three shapes
     `goldbox.c64_codec.record_shape` accepts.
     """
     key = getattr(game, "key", game)

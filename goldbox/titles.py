@@ -9,8 +9,8 @@ answered Pool of Radiance's (`#460 (goldbox/games.py has no Pools of Darkness
 entry, so every lookup answers with Pool of Radiance's tables for it)`).
 
 **A `Title` is what a title's own rules are, whatever machine reads them.**
-`goldbox/games.py` still holds the six C64 titles' save-container geometry --
-`BY_KEY` there stays six entries, and `games.BY_KEY.get("pools-of-darkness")`
+`goldbox/c64_port.py` still holds the six C64 titles' save-container geometry --
+`BY_KEY` there stays six entries, and `c64_port.BY_KEY.get("pools-of-darkness")`
 is `None` on purpose, because Pools of Darkness has no C64 container -- but
 each `Game` row now takes its `races` and `class_bits` from here, so the
 tuple is defined once and a `Game`'s is the very same object as its `Title`'s.
@@ -215,7 +215,7 @@ GATEWAY_TO_THE_SAVAGE_FRONTIER = Title(
 #: The whole reason this module exists: a title with no C64 release at all
 #: (`#460 (goldbox/games.py has no Pools of Darkness entry, so every lookup
 #: answers with Pool of Radiance's tables for it)`). It has its own races and
-#: class bits and no C64 anything -- no row in `goldbox.games.BY_KEY`, no
+#: class bits and no C64 anything -- no row in `goldbox.c64_port.BY_KEY`, no
 #: guard anywhere. Absent is ordinary.
 POOLS_OF_DARKNESS = Title(
     key="pools-of-darkness", title="Pools of Darkness",
@@ -276,7 +276,7 @@ def by_title(title: str | None) -> Title | None:
 #
 # Duck-typed the way `goldbox.spells.for_game` is: a bare key or `None`
 # resolves through `BY_KEY`; anything that already carries `race_names` --
-# a `Title` or a `goldbox.games.Game`, `races=None` included -- is read
+# a `Title` or a `goldbox.c64_port.C64Container`, `races=None` included -- is read
 # directly, which is what lets a caller ask to see the raw number for a title
 # whose table is not (yet) known rather than get a wrong name.
 def race_table(title: "Title | object | str | None" = None) -> dict[int, str]:

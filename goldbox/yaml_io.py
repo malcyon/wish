@@ -22,7 +22,7 @@ and the damage bonus. Those appear under `combat:`, together with the three
 bytes at `+0x03`–`+0x05` whose meaning is not established, and are the only part
 of `SAVEDGAME1` this module touches. Curse of the Azure Bonds and the four
 titles after it write **one** file with the same roster as its last page; which
-shape a disk has is `goldbox/games.py`'s business, not this module's.
+shape a disk has is `goldbox/c64_port.py`'s business, not this module's.
 
 **The document records the title it came from**, as `game:`, and an import into
 a different title's disk is refused. The container geometry differs between them
@@ -49,9 +49,9 @@ from typing import Any
 import yaml
 
 from . import c64_codec, classcode, derive, layout
+from .c64_port import DEFAULT as DEFAULT_GAME
+from .c64_port import C64Container, by_key
 from .d64 import D64
-from .games import DEFAULT as DEFAULT_GAME
-from .games import Game, by_key
 from .icons import icon_for_slot
 from .items import (
     ITEM_AREA_BASE,
@@ -93,10 +93,10 @@ from .titles import class_table, classes_to_names, race_table
 # belongs beside the per-title data.
 #
 # Pool of Radiance's tables, kept at module level because they are what a
-# caller with no `Game` in hand means. **They are not universal** -- Silver
+# caller with no `C64Container` in hand means. **They are not universal** -- Silver
 # Blades moves human from 7 to 6 and the Krynn titles use a different race list
 # altogether -- so anything that knows which title it is holding should read
-# `game.race_names` and `game.class_bits` instead. See `goldbox/games.py` for the
+# `game.race_names` and `game.class_bits` instead. See `goldbox/c64_port.py` for the
 # evidence behind each list.
 RACES = dict(DEFAULT_GAME.races)
 ALIGNMENTS = ["lawful good", "lawful neutral", "lawful evil",
@@ -112,7 +112,7 @@ LEVEL_FIELD_BY_CLASS = {"magic-user": "level_magic_user",
                         "cleric": "level_cleric", "thief": "level_thief",
                         "fighter": "level_fighter", "knight": "level_knight",
                         "paladin": "level_paladin", "ranger": "level_ranger"}
-#: Pool of Radiance's four, for a caller with no `Game` in hand.
+#: Pool of Radiance's four, for a caller with no `C64Container` in hand.
 LEVEL_FIELDS = {k: LEVEL_FIELD_BY_CLASS[k]
                 for _, k in DEFAULT_GAME.class_bits}
 SEXES = {0: "male", 1: "female"}
@@ -144,7 +144,7 @@ def _encode(table: dict[int, str], value, field: str) -> int:
     raise ValueError_(f"{field}: {value!r} is not valid. Use one of: {options}")
 
 
-def level_fields(game: Game | None) -> dict[str, str]:
+def level_fields(game: C64Container | None) -> dict[str, str]:
     """Class name -> the record field holding that class's level, per title.
 
     One entry per class the title has, because the level array has one slot
@@ -155,7 +155,7 @@ def level_fields(game: Game | None) -> dict[str, str]:
             if name in LEVEL_FIELD_BY_CLASS}
 
 
-def names_to_classes(value, game: Game | None = None) -> int:
+def names_to_classes(value, game: C64Container | None = None) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, str):
@@ -255,7 +255,7 @@ FIELD_COMMENTS = {
 CLASS_CODES = classcode.POOL_OF_RADIANCE_CLASS_CODES
 
 
-def comments_for(game: Game | None) -> dict[str, str]:
+def comments_for(game: C64Container | None) -> dict[str, str]:
     """`FIELD_COMMENTS` with the race and class lists this title actually has.
 
     The lists differ per title, and a comment naming Pool of Radiance's races
@@ -275,7 +275,7 @@ def comments_for(game: Game | None) -> dict[str, str]:
     return out
 
 
-def class_code_for(bits: int, game: Game | None = None) -> int:
+def class_code_for(bits: int, game: C64Container | None = None) -> int:
     """The single class code matching a class bitmask.
 
     Three combinations have no code in the game's table -- magic-user/cleric/
@@ -359,7 +359,7 @@ def _consistency(char, block, items, names, types, spell_names, game=None):
                        f"only {allowed} may be")
 
 
-def _spell_level(spell_id: int, game: Game | None = None) -> int | None:
+def _spell_level(spell_id: int, game: C64Container | None = None) -> int | None:
     """Which spell level an id belongs to, in *this* title's grouping.
 
     The title matters: Curse and Silver Blades number past Pool of Radiance's
@@ -374,7 +374,7 @@ def _spell_level(spell_id: int, game: Game | None = None) -> int | None:
 
 
 def export_save(path: str, game_disk: str | None = None,
-                game: Game | None = None) -> dict[str, Any]:
+                game: C64Container | None = None) -> dict[str, Any]:
     """Read a save disk and return the whole party as plain data.
 
     The title is identified from the disk unless one is named.
@@ -422,7 +422,7 @@ def export_save(path: str, game_disk: str | None = None,
     }
 
 
-def entry_for(char, slot_index: int, items, icon, game: Game | None = None,
+def entry_for(char, slot_index: int, items, icon, game: C64Container | None = None,
               names=None, types=None, spell_names=None,
               block=None) -> dict[str, Any]:
     """One :class:`goldbox.neutral.NeutralCharacter` as plain data.
@@ -913,7 +913,7 @@ def _apply_npc(rec, entry, slot: int, who: str) -> list[str]:
     ]
 
 
-def _check_game(data: dict[str, Any], game: Game) -> None:
+def _check_game(data: dict[str, Any], game: C64Container) -> None:
     """Refuse a party exported from one title into another title's disk.
 
     A document with no `game:` key predates this check and is assumed to be
@@ -935,7 +935,7 @@ def _check_game(data: dict[str, Any], game: Game) -> None:
 
 def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 game_disk: str | None = None,
-                game: Game | None = None) -> list[str]:
+                game: C64Container | None = None) -> list[str]:
     """Apply a parsed YAML document to a save disk, writing to `out_path`.
 
     Returns a human-readable list of the changes made. The input file is never
