@@ -1,19 +1,49 @@
 name: measure conftest guard flake
 
 # #522 (A conftest guard test fails at random on the Windows 3.13 job, so a
-# red main no longer means the commit broke something): this exists to
-# establish a failure rate for
-# tests/test_conftest_state_guard.py::test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it
-# on Windows, not to fix anything. workflow_dispatch only -- nobody wants a
-# few-hundred-iteration loop running on every push.
+# red main no longer means the commit broke something): this exists to test
+# one candidate cause, not to fix anything.
+#
+# The candidate: `tests/test_conftest_state_guard.py`'s two tests each spawn
+# a child `pytest` that collects a single target file under `tests/` by
+# path. Resolving a one-file argument makes that child collect the *whole*
+# `tests/` directory first -- confirmed locally by instrumenting
+# `pytest_make_collect_report` directly, a single-file argument against this
+# tree produces one `Dir` collect report for `tests/` holding every sibling
+# file, before the target is picked out of it. On `win32` only,
+# `_pytest/main.py`'s matching loop falls back to
+# `_pytest.pathlib.samefile_nofollow()` for every sibling whose path does
+# not string-equal the target's, and that function calls `.lstat()` on both
+# arguments with no missing-file handling. If the *other* guard test's own
+# probe (on a different `-n auto` worker) is deleted by its own `finally`
+# block in that instant, the stat sees a file that is already gone.
+#
+# `tools/issue522_windows_repro.py` forces this deterministically instead of
+# waiting on `-n auto`'s scheduler: it deletes a disposable sibling file
+# right after `tests/`'s own collect report is produced (`ISSUE522_MODE=force`),
+# or leaves it alone (`ISSUE522_MODE=control`), and logs both arguments
+# `samefile_nofollow` is called with. The prediction: every `force` iteration
+# fails collection naming the *sibling*, no `control` iteration fails at all.
+# A `force` failure naming the *target* instead would refute the mechanism.
+#
+# This was proven once already, on Linux, by faking `sys.platform` to
+# `"win32"` for the collection phase only (not shipped -- it needs real
+# Windows-only console APIs faked too far up the stack to survive faking the
+# platform any earlier): 10 of 10 `force` runs failed collection with
+# `FileNotFoundError` naming the sibling, 10 of 10 `control` runs passed. So
+# this workflow is confirming the same mechanism on the platform that
+# actually exercises the `win32` branch, not discovering it fresh.
+#
+# workflow_dispatch only -- nobody wants a few-hundred-iteration loop running
+# on every push.
 
 on:
   workflow_dispatch:
     inputs:
       iterations:
-        description: How many times to run the single test, per Python version
+        description: How many times to run each of force/control, per Python version
         required: false
-        default: "300"
+        default: "30"
 
 jobs:
   measure:
@@ -40,41 +70,82 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev,gui]"
 
-      - name: run the probe test in a loop and count failures
+      - name: force the sibling-deletion race and count collection failures
         env:
           QT_QPA_PLATFORM: offscreen
         shell: pwsh
         run: |
           $iterations = [int]"${{ inputs.iterations }}"
-          $failures = 0
-          $failureLog = @()
+          $results = @{}
+          $refuted = @()
 
-          for ($i = 1; $i -le $iterations; $i++) {
-            $output = pytest -q -p no:cacheprovider -o addopts="" `
-              "tests/test_conftest_state_guard.py::test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it" `
-              2>&1 | Out-String
-            if ($LASTEXITCODE -ne 0) {
-              $failures++
-              $failureLog += "=== iteration $i ===`n$output"
+          foreach ($mode in @("force", "control")) {
+            $failures = 0
+            $failureLog = @()
+
+            for ($i = 1; $i -le $iterations; $i++) {
+              $target = "tests/test_zzz_issue522_target_$([guid]::NewGuid().ToString('N')).py"
+              $siblingName = "test_zzz_issue522_sibling_$([guid]::NewGuid().ToString('N')).py"
+              $sibling = "tests/$siblingName"
+              $log = "issue522-$mode-$i.log"
+
+              "def test_ok():`n    pass`n" | Out-File -FilePath $target -Encoding utf8 -NoNewline
+              "def test_ok():`n    pass`n" | Out-File -FilePath $sibling -Encoding utf8 -NoNewline
+
+              $env:ISSUE522_MODE = $mode
+              $env:ISSUE522_SIBLING = $siblingName
+              $env:ISSUE522_LOG = $log
+
+              $output = pytest -q -p no:cacheprovider -p tools.issue522_windows_repro -n0 $target 2>&1 | Out-String
+
+              Remove-Item -Path $target -ErrorAction SilentlyContinue
+              Remove-Item -Path $sibling -ErrorAction SilentlyContinue
+
+              if ($LASTEXITCODE -ne 0) {
+                $failures++
+                $failureLog += "=== $mode iteration $i ===`n$output"
+
+                if (Test-Path $log) {
+                  $logText = Get-Content $log -Raw
+                  if ($logText -match [regex]::Escape($target) -and $logText -match "RAISED FileNotFoundError") {
+                    $refuted += "$mode iteration $i named the TARGET ($target), not the sibling -- this refutes the mechanism"
+                  }
+                }
+              }
+
+              if (Test-Path $log) {
+                Get-Content $log -Raw | Out-File -FilePath "issue522-all-$mode.log" -Append -Encoding utf8
+                Remove-Item -Path $log -ErrorAction SilentlyContinue
+              }
             }
-            if ($i % 25 -eq 0) {
-              Write-Host "...$i / $iterations done, $failures failure(s) so far"
+
+            $results[$mode] = $failures
+            Write-Host "MODE=$mode : $failures / $iterations collection failures"
+            if ($failureLog.Count -gt 0) {
+              $failureLog -join "`n`n" | Out-File -FilePath "issue522-failures-$mode.log" -Encoding utf8
             }
           }
 
-          $rate = "$failures / $iterations"
-          Write-Host "RESULT (py${{ matrix.python }}): $rate failures"
-          "### py${{ matrix.python }} on windows-latest`n`n$rate failures" `
+          "### py${{ matrix.python }} on windows-latest`n" `
+            | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "force:   $($results['force']) / $iterations collection failures (predicted: $iterations / $iterations)" `
+            | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "control: $($results['control']) / $iterations collection failures (predicted: 0 / $iterations)" `
             | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-          if ($failureLog.Count -gt 0) {
-            $failureLog -join "`n`n" | Out-File -FilePath failures.log -Encoding utf8
+          if ($refuted.Count -gt 0) {
+            "`n**REFUTED**: a force iteration named the target file, not the sibling:`n" `
+              | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            $refuted | ForEach-Object { "- $_" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+          } else {
+            "`nEvery force failure named the sibling, never the target -- consistent with the mechanism." `
+              | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
-      - name: upload failure logs
+      - name: upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: failures-py${{ matrix.python }}
-          path: failures.log
+          name: issue522-logs-py${{ matrix.python }}
+          path: issue522-*.log
           if-no-files-found: ignore
