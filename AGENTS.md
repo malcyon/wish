@@ -40,7 +40,12 @@ gap cost a decision twice on 2026-09-10.
 comment he will read, in a document: `#59 (Map the DOS saved game, not just the
 character record)`, never a bare `#59`. **Every mention** -- there is no
 "already introduced it above" exemption, because a reply is skimmed rather than
-read in order. The title comes from `gh issue view N --json number,title`.
+read in order. The title comes from `tools/issueread.py N --cite`, which
+prints exactly that line for a trusted issue, and for one opened by an outside
+account prints the number with the title visibly withheld rather than a
+stranger's words. `gh issue view N --json number,title` prints an outside
+author's title unfiltered and is refused by `.claude/hooks/
+check-issue-reads.py` for exactly that reason.
 
 A bare number makes him do the lookup: fast for the assistant, which has the
 number in hand, slow for him. *"When you only reference a number, it never means

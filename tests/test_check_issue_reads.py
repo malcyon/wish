@@ -65,6 +65,11 @@ REFUSED = [
     "gh api graphql -f query='...'",
     # `gh issue view --web` is refused for a different reason -- see
     # test_web_is_refused_for_the_browser_reason_not_the_trust_one.
+    # The exact command `AGENTS.md`'s "Name every issue you cite" and
+    # `.claude/rules/issues.md`'s "Citing an issue" both gave before #523 --
+    # already caught by the `--json ...,title` check above, kept here as a
+    # named regression so a future edit to either cannot silently un-ban it.
+    "gh issue view 510 --json number,title -q '\"#\\(.number) (\\(.title))\"'",
 ]
 
 ALLOWED = [
@@ -78,6 +83,9 @@ ALLOWED = [
     "gh run list",
     "gh pr list",
     ".venv/bin/python tools/issueread.py 510",
+    # The one-line citation form #523 gave both rule files, in place of the
+    # `--json number,title` command above.
+    ".venv/bin/python tools/issueread.py 510 --cite",
     "git log --oneline -3",
     "gh issue list --json number,labels,state",
     # `comments` as a substring of another field must not trip it -- and
@@ -186,6 +194,18 @@ def test_the_refusal_names_the_filtered_reader(capsys, monkeypatch):
     err = capsys.readouterr().err
     assert "tools/issueread.py" in err
     assert "public" in err
+
+
+def test_the_refusal_names_the_citation_mode(capsys, monkeypatch):
+    """#523: the refused command is often the one `AGENTS.md`'s "Name every
+    issue you cite" documents, so the refusal must point at the one-line
+    replacement rather than only at the whole-issue reader -- a message that
+    tells you to print the whole issue when you wanted one line is what gets
+    a guard worked around."""
+    assert run("gh issue view 510 --json number,title",
+               monkeypatch=monkeypatch) == 2
+    err = capsys.readouterr().err
+    assert "--cite" in err
 
 
 def test_a_non_bash_tool_is_ignored(monkeypatch):

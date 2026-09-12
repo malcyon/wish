@@ -3,6 +3,7 @@
 
     tools/issueread.py N            # one issue, its body and all its comments
     tools/issueread.py N --json     # the same, as JSON, for a script
+    tools/issueread.py N --cite     # one line: `#N (Title)`, for citing it to Donald
 
 `.claude/rules/sessions.md` tells a fresh session to run `gh issue view N
 --comments` for any issue it is about to work, because this project never
@@ -27,6 +28,16 @@ App, no token; a read needs no bot identity. Unlike the `SessionStart` hook
 this shares `ghtrust.py` with, this tool is run deliberately and so fails
 loudly: a `gh` that is missing, unauthenticated, offline, or errors on this
 issue number exits non-zero with the reason on stderr.
+
+`--cite` is the one-line form `AGENTS.md`'s "Name every issue you cite" and
+`.claude/rules/issues.md`'s "Citing an issue" both ask for: `#N (Title)`, for
+a trusted author. Before this flag existed both rule files pointed at `gh
+issue view N --json number,title`, which prints an outside author's title
+just as directly as `--comments` prints their body -- so following the
+documented citation was refused by the same hook that refuses that
+`--comments`. For an outside author `--cite` withholds the title the same way
+the rest of this tool withholds one, so a citation of an untriaged issue
+reads as visibly incomplete rather than as a title a stranger wrote.
 """
 from __future__ import annotations
 
@@ -128,6 +139,28 @@ def summary_line(issue: dict) -> str | None:
     if not parts:
         return None
     return "Withheld below: " + "; ".join(parts) + "."
+
+
+def render_citation(issue: dict, repo: str = DEFAULT_REPO) -> str:
+    """The one line `AGENTS.md`'s "Name every issue you cite" asks for: `#N (Title)`.
+
+    For a trusted author this is exactly that, nothing else on the line. For
+    an outside author the title is withheld the same way `render_text` and
+    `render_json` withhold one -- so a citation of an issue nobody has
+    triaged yet still names the number and still says, visibly, that the
+    title is not to be trusted rather than quietly showing a stranger's
+    words as though Donald had written them.
+    """
+    number = issue.get("number")
+    author = issue.get("author")
+    login = (author or {}).get("login") or "an unknown or deleted account"
+    if ghtrust.is_trusted(author):
+        title = ghtrust.flatten(issue.get("title", ""))
+    else:
+        title = ghtrust.withheld(
+            "title", author=login, length=len(issue.get("title") or ""),
+            where=f"gh issue view {number} --repo {repo} --json title")
+    return f"#{number} ({title})"
 
 
 def render_text(issue: dict, repo: str = DEFAULT_REPO) -> str:
@@ -244,8 +277,11 @@ def render_json(issue: dict, repo: str = DEFAULT_REPO) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("number", type=int, help="issue number")
-    parser.add_argument("--json", dest="as_json", action="store_true",
-                         help="print the same information as JSON")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--json", dest="as_json", action="store_true",
+                       help="print the same information as JSON")
+    mode.add_argument("--cite", dest="as_cite", action="store_true",
+                       help="print one line for citing this issue: `#N (Title)`")
     parser.add_argument("--repo", default=DEFAULT_REPO,
                          help=f"default {DEFAULT_REPO}")
     args = parser.parse_args(argv)
@@ -256,7 +292,9 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    if args.as_json:
+    if args.as_cite:
+        print(render_citation(issue, args.repo))
+    elif args.as_json:
         print(json.dumps(render_json(issue, args.repo), indent=2))
     else:
         print(render_text(issue, args.repo))

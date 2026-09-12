@@ -117,6 +117,34 @@ def test_outside_comment_author_and_date_still_appear():
 
 
 # ---------------------------------------------------------------------------
+# the citation line -- #523
+
+
+def test_citation_for_trusted_author_is_exactly_hash_n_paren_title():
+    issue = _issue(number=510, title="A trusted title", author="malcyon")
+    line = issueread.render_citation(issue)
+    assert line == "#510 (A trusted title)"
+
+
+def test_citation_for_outside_author_never_shows_the_title_text():
+    issue = _issue(number=510, author="someuser", title=SENTINEL)
+    line = issueread.render_citation(issue)
+    assert SENTINEL not in line
+    assert line.startswith("#510 (")
+    assert "withheld" in line.lower()
+    assert "someuser" in line
+
+
+def test_main_prints_the_citation_when_asked(monkeypatch, capsys):
+    issue = _issue(number=510, title="A trusted title", author="malcyon")
+    monkeypatch.setattr(issueread.subprocess, "run", _fake_gh(issue))
+    code = issueread.main(["510", "--cite"])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out == "#510 (A trusted title)\n"
+
+
+# ---------------------------------------------------------------------------
 # the summary line
 
 

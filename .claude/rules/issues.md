@@ -25,8 +25,14 @@ character record)`.** A bare number is a lookup Donald has to go and do:
 *"when you only reference a number, it never means anything to me."*
 
 ```sh
-gh issue view N --json number,title -q '"#\(.number) (\(.title))"'
+.venv/bin/python tools/issueread.py N --cite
 ```
+
+For a trusted issue this prints exactly that line. For one opened by an
+outside account it prints the number with the title visibly withheld, rather
+than a stranger's words -- `gh issue view N --json number,title` prints that
+title unfiltered and `.claude/hooks/check-issue-reads.py` refuses it for the
+same reason it refuses `--comments`.
 
 **It is a rule about talking to Donald**: replies, issue comments and
 documents, every mention and not just the first. **It does not govern code.**
