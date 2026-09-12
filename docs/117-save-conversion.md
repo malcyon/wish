@@ -2018,11 +2018,6 @@ the edge somebody adds without noticing.
 
 ```mermaid
 graph LR
-  amiga --> amiga_codec
-  amiga_codec --> amiga_later
-  amiga_codec --> amiga_pod
-  amiga_codec --> amiga_por
-  amiga_codec --> amiga_shared
   amiga_later -.->|deferred| amiga_pod
   amiga_later --> amiga_por
   amiga_later --> amiga_port
@@ -2079,8 +2074,6 @@ graph LR
   classcode --> titles
   derive --> items
   derive -.->|deferred| levels
-  dos --> c64_port
-  dos --> dos_codec
   dos_codec --> areas
   dos_codec --> c64_codec
   dos_codec --> c64_port
@@ -2104,10 +2097,8 @@ graph LR
   dos_codec --> traits
   dos_codec --> world_state
   dos_codec -.->|deferred| yaml_io
-  dos_layout --> dos_port
   dos_port --> layout
   effects --> d64
-  games --> c64_port
   geo --> d64
   iconparts --> assets
   iconparts --> d64
@@ -2141,7 +2132,7 @@ graph LR
   strength --> savegame
   titles --> dos_port
   world --> d64
-  world_state -.->|deferred| amiga_codec
+  world_state -.->|deferred| amiga_por
   world_state --> areas
   world_state -.->|deferred| c64_port
   world_state --> c64_save
