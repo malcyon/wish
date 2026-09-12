@@ -65,7 +65,7 @@ and every one lands where the DOS page says:
 4 by area, the C64 2. Three ports, three values, nothing to convert.
 
 **And the sweep: every one of the 92 distinct non-zero words the ten Amiga
-saved games hold is either written by `goldbox.amiga_codec.por_savegame_writes` or
+saved games hold is either written by `goldbox.amiga_por.por_savegame_writes` or
 named in `POR_SAVGAM_UNSOURCED`, with none left over.**
 
 ## 3. The area's script is on disk 2, in one `ecl.dax`

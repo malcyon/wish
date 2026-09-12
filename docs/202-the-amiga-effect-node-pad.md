@@ -15,7 +15,7 @@ clears. The three values are whatever the Amiga's public memory held under
 the first three slots of the pool during the session SSI saved that party
 in, copied faithfully from file to file ever since.
 
-So the byte carries nothing a player could lose, `goldbox.amiga_codec.write_later`
+So the byte carries nothing a player could lose, `goldbox.amiga_later.write_later`
 may write anything, and zero is proven in the running game.
 
 ## 1. The node
@@ -29,7 +29,7 @@ may write anything, and zero is proven in the running game.
 | `0x5` | 1 | expiry-action flag | `/Secret 0x11E78` `tst.b $5(a2)`, and only then dispatches the per-effect handler |
 | `0x6` | 4 | `next`, a live heap address | cleared by the constructor, walked everywhere |
 
-`goldbox/amiga_codec.py`'s `amiga_por_effect_to_dos` maps the other nine bytes onto
+`goldbox/amiga_por.py`'s `amiga_por_effect_to_dos` maps the other nine bytes onto
 DOS's, and the DOS twins of the three characters carrying the odd values read
 `08 00 00 FF 00`, `69 00 00 FF 00` and `2F 00 00 FF 00` — zero where the
 Amiga has `0x2E`, `0x6D` and `0x64`, three of three.
@@ -185,7 +185,7 @@ party. All 27 Curse nodes read zero.
 `#384 (Write an Amiga Curse or Silver Blades character, so a C64 or DOS party
 has an Amiga to arrive on)` put a converted party — the same six people, from
 the C64 save the C64 engine itself wrote — in front of Amiga Silver Blades
-under WinUAE on 2026-09-07, with `goldbox.amiga_codec.write_later`'s zero at offset
+under WinUAE on 2026-09-07, with `goldbox.amiga_later.write_later`'s zero at offset
 1 of all five nodes. The engine loaded it, drew an ITEMS screen, ran the
 opening scene, camped, and wrote the party back twice
 (`WISH-SPEC-ssb-amiga-converted-menu-resave` and
@@ -204,7 +204,7 @@ them", which is a defect with a settling experiment rather than an exemption.
 This was that experiment, and it comes out the other way: there is nothing to
 convert.
 
-Recommended, and **not done here** — `goldbox/amiga_codec.py` belongs to another
+Recommended, and **not done here** — `goldbox/amiga_later.py` belongs to another
 agent:
 
 * `AMIGA_LATER_EFFECT_UNKNOWN`'s comment says the value is UNKNOWN and names

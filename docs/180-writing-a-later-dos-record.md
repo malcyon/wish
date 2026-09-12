@@ -6,7 +6,7 @@ byte for byte, and what a converted character still loses.
 
 `docs/117-save-conversion.md` is the plan this serves and
 `docs/141-dos-savegame.md` the container; the field table itself is
-`goldbox/dos_layout.py`. This page is the writing side, for
+`goldbox/dos_port.py`. This page is the writing side, for
 `#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing can
 be converted to DOS for the later titles)`.
 
@@ -27,7 +27,7 @@ Radiance** records:
 Nothing raised. `goldbox.dos_codec.read_character` would have identified the result
 as Pool of Radiance, because the record size names the title, and no Curse or
 Silver Blades game could ever have loaded it. `editor/convert.py` does not
-offer the direction, so no user could reach it; `goldbox/amiga_codec.py`'s
+offer the direction, so no user could reach it; `goldbox/amiga_por.py`'s
 `write_por` calls `goldbox.dos_codec.write` directly and could.
 
 ## The shape decides, and the character decides the shape
@@ -35,7 +35,7 @@ offer the direction, so no user could reach it; `goldbox/amiga_codec.py`'s
 `goldbox.dos_codec.write_shape` takes the title off the neutral character --
 `NeutralCharacter.game`, which a reader sets and which is a
 `goldbox.c64_port.Game`, its key, or `None` for Pool of Radiance -- and every
-width in the writer then comes off `goldbox/dos_layout.py`'s table for that
+width in the writer then comes off `goldbox/dos_port.py`'s table for that
 title. Nothing is a constant in the writer any more:
 
 | what | Pool of Radiance | Curse | Silver Blades |
@@ -233,7 +233,7 @@ own save of it.
 `docs/117-save-conversion.md` and `tests/test_coabsource.py` already read as
 corroboration. Its `Classes/Player.cs` declares a player struct of
 `StructSize = 0x1A6` -- the 422 bytes of the Curse record -- so its offsets
-are file offsets, and against `goldbox/dos_layout.py`'s Curse table it
+are file offsets, and against `goldbox/dos_port.py`'s Curse table it
 agrees on every field but two (`#305 (Two DOS record bytes have one name
 from Pool of Radiance and another from the Curse decompilation)`).
 

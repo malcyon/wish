@@ -81,7 +81,7 @@ occupied roster slots hold `0x10C` = `0x00` in 99 and `0x80` in 5, never
 Every engine-written player record on this machine converts to `0x00` or
 `0x80`, so nothing a player owns changes value; what changes is that the
 byte is converted rather than filled. The specification for
-`goldbox/layout.py`, `goldbox/dos_layout.py` and the two codecs is on the
+`goldbox/layout.py`, `goldbox/dos_port.py` and the two codecs is on the
 issue.
 
 ## Beside it: `0x084` -- PROBABLE

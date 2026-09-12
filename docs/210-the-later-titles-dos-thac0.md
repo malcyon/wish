@@ -40,7 +40,7 @@ three checks have to agree:
 
 * the block is the **one maximal run of bytes in 30..70** whose length is
   `rows * stride`, where `rows` is the width of `class_levels` in
-  `goldbox/dos_layout.py` -- 7 for Silver Blades, which drops the monk -- and
+  `goldbox/dos_port.py` -- 7 for Silver Blades, which drops the monk -- and
   `stride` is the engine's own `mul`;
 * `block - DS offset` is a **paragraph boundary**, which is what fixes `DS`;
 * the **class-bit array follows the block**, which is the array the same loop
@@ -107,7 +107,7 @@ title would settle it.
 
 `tools/laterthac0.py writers` prints every instruction in `GAME.OVR` that
 touches `thac0_base` -- `0x02D` in Pool of Radiance, `0x073` in Curse, `0x06A`
-in Silver Blades, which is what `goldbox/dos_layout.py` says for each and is
+in Silver Blades, which is what `goldbox/dos_port.py` says for each and is
 the first corroboration that our layouts are right. Five kinds of site, and
 no sixth:
 

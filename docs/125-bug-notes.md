@@ -525,7 +525,7 @@ those two were edited**, and the untested alternative is picking items up,
 which nothing here has measured. This replaces an earlier entry that read the
 same three records as the engine leaving both fields stale and concluded the
 quantity byte was the fresher of the two; the pair the engine keeps together
-is the quantity byte and the stored total, and `goldbox/dos_layout.py`'s field
+is the quantity byte and the stored total, and `goldbox/dos_port.py`'s field
 note should be read that way round.
 
 **Why no player sees it.** Every screen that draws encumbrance recomputes

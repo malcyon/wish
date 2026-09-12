@@ -110,7 +110,7 @@ the call, with no message.
 `tools/dualclassagain.py dos --game CURSE --party work/curse/234-curse-dualclassed`
 loads the save DEMELTINA was dual-classed in on `#234 (A dual-classed Curse or Silver Blades character converted to DOS loses the class he trained out of)` and photographs the
 party menu once per character, moving the roster highlight with `End`. The
-records were read at `goldbox/dos_layout.py`'s own offsets from the same files.
+records were read at `goldbox/dos_port.py`'s own offsets from the same files.
 
 | roster | race | class now | `former_class_levels` | `HUMAN CHANGE CLASSES` |
 |---|---|---|---|---|

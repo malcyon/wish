@@ -5964,7 +5964,7 @@ item count and not a mystery. The falsifiable part: the 514-byte file must hold
 5 at `0x08` **and** a non-zero longword at `0x04`, and nobody has re-read the
 files to check.
 
-Nothing about `goldbox.amiga_codec.PodWriter` moves: it leaves both counts zero, so
+Nothing about `goldbox.amiga_pod.PodWriter` moves: it leaves both counts zero, so
 PoD reads 404 bytes and stops, and the 80 bytes after them are padding rather
 than a length the game wants.
 

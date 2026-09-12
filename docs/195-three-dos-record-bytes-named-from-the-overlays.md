@@ -3,7 +3,7 @@
 Four bytes of the DOS character record that this project had wrong, right for
 the wrong reason, or unattributed, settled by reading the game's own
 instructions rather than by counting saves. `tools/dosbyteimm.py` is the scan;
-`goldbox/dos_layout.py` and `goldbox/dos_codec.py` carry the notes; the issues are
+`goldbox/dos_port.py` and `goldbox/dos_codec.py` carry the notes; the issues are
 `#305 (Two DOS record bytes have one name from Pool of Radiance and another
 from the Curse decompilation)`,
 `#304 (field_83_87 is written as a constant that the characters we rolled
@@ -76,15 +76,18 @@ the Savage Frontier's shipped save has eight records, and its seventh and
 eighth hold 6 and 7. Eight is the number of combat-icon slots and the number of
 combatants a party can have -- six player characters plus two companions.
 
-**The identifier in `goldbox/dos_layout.py` is still `party_order` and is a
-misnomer.** `goldbox.dos_codec.DIRECT`'s reader loop requires the DOS field name and
-the neutral field name to be the same string, so renaming the DOS field means
-renaming the neutral one -- which `goldbox/amiga_codec.py`, `goldbox/c64_codec.py`,
-`goldbox/yaml_io.py` and the window's own `field_party_order` all read. The
-label is corrected to "Combat icon slot" and the note says the rest. What the
-conversion writes is right either way: the C64 keeps its own 0-7 slot index at
-`goldbox/layout.py` `0x10D`, both whole-save directions renumber by file
-position, and the DOS loader reallocates the byte on load regardless.
+**The identifier in `goldbox/dos_port.py` was `party_order`, a misnomer, and
+`#305 (Two DOS record bytes have one name from Pool of Radiance and another
+from the Curse decompilation)` renamed it to `combat_figure`.**
+`goldbox.dos_codec.DIRECT`'s reader loop requires the DOS field name and the
+neutral field name to be the same string, so renaming the DOS field meant
+renaming the neutral one -- across `goldbox/amiga_pod.py`,
+`goldbox/c64_codec.py` and `goldbox/yaml_io.py`. The window's own
+`field_party_order` keeps its old identifier, because it names a different
+field: the C64's own 0-7 slot index at `goldbox/layout.py` `0x10D`. What the
+conversion writes was right under either name; both whole-save directions
+renumber by file position, and the DOS loader reallocates the byte on load
+regardless.
 
 ## `0x10D` and `in_combat` are one field, not two readings
 
@@ -314,7 +317,7 @@ each side of the conversion has to do:
 
 Two things still block the wiring, and neither is a measurement:
 
-* splitting `field_83_87` into named bytes needs `goldbox/amiga_codec.py`, which
+* splitting `field_83_87` into named bytes needs `goldbox/amiga_later.py`, which
   names the whole run in its own drop table;
 * the C64 side drops the flag in the other direction too, in
   `goldbox/c64_codec.py`.

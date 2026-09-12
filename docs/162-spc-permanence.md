@@ -168,7 +168,7 @@ another agent holds tonight.
 1. **Duration zero is the discriminator, on both ports.** The carrying half
    of `#232 (An item-granted effect is dropped on the way through the neutral record, with no report)` can be built as specified: a neutral field holding the whole
    record for every non-innate `.SPC` node at duration zero, written back by
-   `goldbox.dos_codec.write` and `goldbox.amiga_codec.write_por`. A nonzero duration is a
+   `goldbox.dos_codec.write` and `goldbox.amiga_por.write_por`. A nonzero duration is a
    running spell and stays unreported under Donald's 2026-08-27 ruling.
 2. **Carry all four payload bytes, and name byte 4 a flag.** A strength
    item's node is `26 00 00 vv 01`; writing it back with byte 4 zero would

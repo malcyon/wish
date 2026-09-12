@@ -38,7 +38,7 @@ reads the same sequence back into the same globals.
 | first record or name at | `0x3219` | `0x1417` | 12813 |
 
 CONFIRMED, all three, from the code; the totals land the first record where
-`goldbox.amiga_codec.party_in_savegame` found it on every specimen.
+`goldbox.amiga_later.party_in_savegame` found it on every specimen.
 
 **The variable array is three heap blocks, not one**, written from three
 pointers (`[g3d00]+$9600`, `[g3dbe]+$f800`, `[g588a]+$f400` on Curse). That is
@@ -176,7 +176,7 @@ outdoor Amiga saved games -- unmoved across a step that changed the travel
 square and the facing, where indoors the same byte is recomputed on every
 step. It is the same 14 DOS holds at `goldbox.dos_savegame.SCRATCH_BYTE` in
 its own engine-written outdoor saves, and the value
-`goldbox.amiga_codec.POR_WALL_OUTDOORS` now writes (`#321 (An Amiga Pool of
+`goldbox.amiga_por.POR_WALL_OUTDOORS` now writes (`#321 (An Amiga Pool of
 Radiance conversion refuses a party standing on the travel grid, because no
 outdoor Amiga saved game has ever been read)`).
 
@@ -219,7 +219,7 @@ the outdoor pair's ancestor went in holding three *different* values (`$5082`
 bought a passage and landed on the travel grid: 25 → 0, 0 → 1, 0 → 1. It
 touched them and still left `$5082` unequal to the other two.
 
-Nothing rests on this. `goldbox.amiga_codec.POR_SAVGAM_UNSOURCED` and
+Nothing rests on this. `goldbox.amiga_por.POR_SAVGAM_UNSOURCED` and
 `goldbox.dos_codec.SAVGAM_UNSOURCED` both name the two words engine-rebuilt and
 write zero, which both WinUAE runs of `#316 (Write the Amiga Pool of Radiance
 saved game from the source save, so a converted party arrives where it was
@@ -417,7 +417,7 @@ picker)`. A fourth per-title difference.
   Radiance's saved games here stand in three of the game's 29 areas -- The
   Slums, New Phlan and one wilderness window -- and **108 of the 2560 words
   are non-zero in at least one of the nineteen**. The rest are written zero by
-  `goldbox.amiga_codec.new_por_savegame` on the strength of that sweep, and the
+  `goldbox.amiga_por.new_por_savegame` on the strength of that sweep, and the
   sweep is only as wide as the places the party has stood:
 
   | `$5012` | files | words non-zero | a corpus of this one alone would have missed |

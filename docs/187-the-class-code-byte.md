@@ -11,7 +11,7 @@ into it, which a conversion then copies onto a sheet a player reads.
 | DOS Pool of Radiance | `0x0DC` | `0x00C` |
 | DOS Curse of the Azure Bonds | `0x12B` | `0x075` |
 
-`goldbox/layout.py` and `goldbox/dos_layout.py` carry the offsets; the codes
+`goldbox/layout.py` and `goldbox/dos_port.py` carry the offsets; the codes
 themselves are the standard Gold Box order, 0 cleric, 1 druid, 2 fighter,
 3 paladin, 4 ranger, 5 magic-user, 6 thief, 7 monk, and 8 upward for the
 multi-class combinations.

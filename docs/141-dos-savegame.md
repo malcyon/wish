@@ -760,7 +760,7 @@ it in the game. CONFIRMED, and re-takeable in a second by anybody.
 **Not part of `SAVGAM<slot>.DAT`** — these four bytes are in the
 `CHRDAT<slot><n>.SAV` files the container's party table names, and they are
 here because the container page is where the DOS saved game's parts are
-listed and `goldbox/dos_layout.py` carries the per-field table. Measured for
+listed and `goldbox/dos_port.py` carries the per-field table. Measured for
 `#235 (Two unattributed DOS byte ranges in the combat tail are dropped
 converting to C64, and nobody knows what they hold)`, where the entries said
 only "unattributed".
@@ -819,7 +819,7 @@ Radiance's with the **first** byte gone — Curse's own Pool of Radiance
 importer copies `0x083`-`0x087` into `0x0F6`-`0x0FA` one for one — so Silver
 Blades' MALACHITE reading `00 00 00 00` where the others read `00 01 00 00` is
 a character nobody put through MODIFY CHARACTER, and nothing about him being a
-companion. `goldbox/dos_layout.py`'s five-to-four shrink is placed by the
+companion. `goldbox/dos_port.py`'s five-to-four shrink is placed by the
 importer, not fitted to make the widths add up.
 
 ## What this leaves open

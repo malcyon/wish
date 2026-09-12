@@ -87,7 +87,7 @@ DOS record for a converter to copy.
 
 ### The DOS byte at `0x076` is the undead's row, not the caster's
 
-`goldbox/dos_layout.py` names DOS `0x076` `turn_power` at PROBABLE, with a
+`goldbox/dos_port.py` names DOS `0x076` `turn_power` at PROBABLE, with a
 note saying the two C64 turning bytes cannot be told apart from a party with
 no undead in it. They can be told apart from the code and from the monster
 files, and the answer is the other one:

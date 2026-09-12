@@ -4,7 +4,7 @@ What the C64 keeps where DOS keeps its `0x0AB`, read out of the engine for
 `#258 (The C64 side of 0x0AB is unnamed, so the conversion drops it with no
 issue behind it)`. The DOS half is in
 [50-experiments.md](50-experiments.md), "Two same-named characters and one
-byte: `unnamed_0ab`", and in `goldbox/dos_layout.py`'s note on the field.
+byte: `unnamed_0ab`", and in `goldbox/dos_port.py`'s note on the field.
 
 ## The finding
 

@@ -1,6 +1,6 @@
 # A converted party in Amiga Curse and Amiga Silver Blades
 
-`goldbox.amiga_codec.write_later` turns a neutral Curse or Silver Blades character
+`goldbox.amiga_later.write_later` turns a neutral Curse or Silver Blades character
 into an Amiga block. Until 2026-09-07 every check on it was this project's own
 reader re-parsing this project's own writer's bytes — 59 blocks round-tripping
 and 150 field comparisons against the Amiga's own twins — and neither engine had
@@ -112,7 +112,7 @@ were read off the party panel instead.
 
 Each party was written back by the game and compared with what we wrote, masked
 by the lists the writers **declare** —
-`goldbox.amiga_codec.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
+`goldbox.amiga_later.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
 `LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos_codec`'s six, mapped through the
 title's shift map — and never by whatever happened to differ.
 `tools/amigalaterproof.py diff` is the comparison.
@@ -136,7 +136,7 @@ run we wrote 0 for everybody and the engine wrote 0, 1, 2, 3, 4, 5 — the first
 character's own 0 is why it is five and not six. This is the combat-icon slot
 rather than the marching order (`#305 (Two DOS record bytes have one name from
 Pool of Radiance and another from the Curse decompilation)`),
-`goldbox/dos_layout.py` reads the allocation loop out of the shipped overlays,
+`goldbox/dos_port.py` reads the allocation loop out of the shipped overlays,
 and this run is the demonstration that the **Amiga** engine allocates it on
 load too. Nothing a player can see: the sheet, the panel and the figure all
 draw from the engine's own number. This was

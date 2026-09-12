@@ -137,7 +137,7 @@ identical strength bytes and only the percentile crossed between them, and the
   `simeonpilgrim/coab`'s IDA struct calls `0x10` `tmp_str` and `0x11`
   `strenght`, while its C# reads the weight allowance and the damage bonus from
   the byte it calls `full`, which is `0x11`. Its *usage* matches the engine and
-  its *names* are the opposite way round. `goldbox/dos_layout.py`'s
+  its *names* are the opposite way round. `goldbox/dos_port.py`'s
   "(base, current)" was taken from that naming and happened to be right for the
   six; it could not have been evidence for either answer.
 
@@ -158,7 +158,7 @@ Strength, a running `Strength` spell or a shadow's drain: he arrives on the
 other port with the number he should not have kept, and the next thing that
 recomputes his score makes it permanent.
 
-`goldbox/amiga_codec.py`'s later-title reader copies the same `(first, second)`
+`goldbox/amiga_later.py`'s later-title reader copies the same `(first, second)`
 pairing, so it is presumably crossed in the same way -- an inference from the
 DOS engine rather than a measurement of the Amiga one, and it needs its own
 evidence.

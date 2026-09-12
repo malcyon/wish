@@ -206,7 +206,7 @@ beside the world bar coming back.
 ## What a fight moves in a character record
 
 The union of every byte that differed either side of the three fights, in the
-engine's **own** records, named by `goldbox/dos_layout.py`:
+engine's **own** records, named by `goldbox/dos_port.py`:
 
 | field | offsets |
 |---|---|

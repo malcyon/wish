@@ -144,7 +144,7 @@ party has two rangers who carry 134 and one cleric who also does.
 
 **A trap the census hit first, recorded so nobody re-treads it.** Gateway to
 the Savage Frontier's `.GUY` exports are 422 bytes, which is Curse's record
-size, so `dos_layout.shape_for` reads them through Curse's table. The first
+size, so `dos_port.deltas_for` reads them through Curse's table. The first
 sweep counted TARLREN, a Gateway human ranger carrying 134, as a Curse
 carrier. He is not; a fifth title reading the same numbers is a separate
 finding and not evidence about this one. `tools/innateids.py` now skips 24

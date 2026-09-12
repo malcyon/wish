@@ -277,7 +277,7 @@ and `GB_UA_SCRIPT.xlsx` / `SCRIPT.GLB`, which are Unlimited Adventures content.
 ## 2. Their DOS table against ours
 
 The DOS Pool of Radiance record, established from 24
-specimens (`goldbox/dos_layout.py`), is 285 bytes.
+specimens (`goldbox/dos_port.py`), is 285 bytes.
 `CHR_01` covers all of them. **Every field we claimed, they name at
 the same offset. Nothing contradicts.**
 

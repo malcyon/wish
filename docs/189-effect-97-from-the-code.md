@@ -65,7 +65,7 @@ player). `1d20` into `[0x6816]`; a 1 fails and a 20 succeeds outright;
 otherwise the caller's bonus and record `0x101` are added, the save type is
 stored in `[0x682A]`, and check list 12 is walked. Then
 `es:[di + 0x6D + type]` -- type 0 paralysis/poison/death, 1 petrification,
-2 wands, 3 breath, 4 spell, the five bytes `goldbox/dos_layout.py` names --
+2 wands, 3 breath, 4 spell, the five bytes `goldbox/dos_port.py` names --
 is compared with `[0x6816]`, and `ja` fails. **The race byte is not read on
 this path.** CONFIRMED.
 

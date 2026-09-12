@@ -9,7 +9,7 @@ was holding open for specimens nobody has.
 Every offset here is a file offset into `/Curse` on Curse of the Azure Bonds
 disk 1 or `/Secret` on Secret of the Silver Blades disk 1, read with
 `tools/amiga68k.py`. `tools/amigaunpack.py` prints each map, and
-`tests/test_amiga.py` runs it against `goldbox/amiga_codec.py`'s shapes, so the two
+`tests/test_amiga.py` runs it against `goldbox/amiga_later.py`'s shapes, so the two
 cannot drift.
 
 ## What changed, and what it corrects
@@ -47,7 +47,7 @@ Two things that were not on the list came with them:
 **The packed source is the DOS record, and that is measured rather than
 assumed.** Curse's monster loader hands the decompressor `0x1A6` = 422, which
 is the DOS Curse record size, and **all 26 of the unpacker's copy boundaries
-land on a `goldbox/dos_layout.py` Curse field boundary**; Silver Blades' 22
+land on a `goldbox/dos_port.py` Curse field boundary**; Silver Blades' 22
 land on its own. A copy that ended one byte inside a field would show up
 immediately, and none does.
 
@@ -145,7 +145,7 @@ pins it so it is not smoothed back into the shift map.
 ## Silver Blades: the map, and the spellbook
 
 `tools/amigaunpack.py --shape secret-of-the-silver-blades --size 0x154 281a2 285b0`.
-The four shift steps `goldbox/amiga_codec.py` already carried — 0, −102, −101,
+The four shift steps `goldbox/amiga_later.py` already carried — 0, −102, −101,
 −100, −99 — all reproduce, and the three pads are located to the byte at
 `0x095`, `0x0C7` and `0x0FD`. `sex` and `alignment` are the single-byte
 copies of DOS `0x11F` and `0x120`, landing at `0x0BA` and `0x0BB`.
@@ -166,7 +166,7 @@ is the answer; the specimens were the corroboration.
 
 Both titles build an item with the same routine compiled twice — `/Curse`
 `0x1C1EA`, `/Secret` `0x1B862`. It allocates the node, clears it, and writes
-fifteen arguments in `goldbox/dos_layout.py`'s own item order:
+fifteen arguments in `goldbox/dos_port.py`'s own item order:
 
 | Amiga | field | Amiga | field |
 |---|---|---|---|

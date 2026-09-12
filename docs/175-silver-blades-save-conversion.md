@@ -136,7 +136,7 @@ ranger's levels, which is a combination no C64 save of either title holds.
 `goldbox.dos_codec.neutral_class_bits` rereads **bit 6 only** from the level array
 and leaves every other bit as the record has it;
 `goldbox.dos_codec.dos_class_bits` folds it back on the way out, so no DOS record's
-own byte moves through a round trip. `goldbox/amiga_codec.py`'s `CLASS_BIT` had
+own byte moves through a round trip. `goldbox/amiga_pod.py`'s `CLASS_BIT` had
 recorded the same fact from the other side and the Amiga codec has always
 computed the mask rather than copying it.
 
@@ -280,7 +280,7 @@ saves this project has had.
 |---|---|
 | the container row | `goldbox/c64_save.py`, `SECRET_OF_THE_SILVER_BLADES` |
 | the record shape | `goldbox/c64_codec.py`, `SILVER_BLADES_RECORD` |
-| the DOS record table | `goldbox/dos_layout.py`, `SECRET_OF_THE_SILVER_BLADES` |
+| the DOS record table | `goldbox/dos_port.py`, `SECRET_OF_THE_SILVER_BLADES` |
 | the areas | `goldbox/areas.py`, `AREAS_SILVER_BLADES`, twenty-two rows |
 | building a save disk | `tools/ssbdisk.py` |
 | driving the game | `tools/ssbrun.py`, on `tools/ssbwarp.py`'s boot |

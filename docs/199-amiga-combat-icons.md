@@ -37,7 +37,7 @@ block `icon_head` into buffer `combat_figure + 0x34`, and the block loader adds
 [`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.md) read out
 of `GAME.OVR`, instruction for instruction.
 
-**It reads exactly the offsets `goldbox/amiga_codec.py`'s shift map predicts**, in
+**It reads exactly the offsets `goldbox/amiga_later.py`'s shift map predicts**, in
 both titles, which is an independent confirmation of five fields of that map:
 
 | field | DOS Curse | Amiga Curse | DOS Silver Blades | Amiga Silver Blades |
@@ -162,7 +162,7 @@ the three DOS titles.
 C64 figure from exactly these four values and is what `goldbox.dos_codec._icon_for`
 already calls; the Amiga's numbers are its arguments unchanged.
 
-So the four names on `goldbox.amiga_codec.LATER_DROPPED` are three transformations
+So the four names on `goldbox.amiga_later.LATER_DROPPED` are three transformations
 and one silent constant, mirroring what `goldbox/dos_codec.py` already does with the
 same fields:
 

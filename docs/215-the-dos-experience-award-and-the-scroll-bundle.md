@@ -1,6 +1,6 @@
 # The DOS experience award, and the Silver Blades scroll bundle
 
-Two runs of bytes `goldbox/dos_layout.py` called gaps, named from the six
+Two runs of bytes `goldbox/dos_port.py` called gaps, named from the six
 shipped DOS engines rather than from a saved game.
 `#254 (Two DOS gaps the Amiga port gives a shape to: a 16-bit field in
 gap_13c, and a pointer at the end of the Silver Blades item)` asked for both;
@@ -35,7 +35,7 @@ writing an experience value, "so much, plus so much per hit point".
 `POOLRAD 0x564E`-`0x5676`. The base is widened with `xor dx, dx`, so it is
 unsigned. In `DARKNESS 0x4813` the multiply is gone and the base is added
 alone, and the money loop runs three slots rather than seven — which is what
-`goldbox/dos_layout.py` already says about that title's money block.
+`goldbox/dos_port.py` already says about that title's money block.
 
 **Which chain it walks is PROBABLE and does not matter to the naming**: its
 two callers in Silver Blades (`0x7169`, `0x737A`) sit beside `The party has
@@ -93,7 +93,7 @@ carries a non-zero per-hit-point byte.
 are zero in every player record anywhere, and the C64 keeps the same pair at
 `0x0F7`/`0x0F9`, so a conversion in either direction copies zero onto zero.
 What the naming buys is three bytes off the unknown list and a `u16le` where
-`goldbox/dos_layout.py` has three loose bytes.
+`goldbox/dos_port.py` has three loose bytes.
 
 ## 2. The Silver Blades item's last four bytes are a chain
 
@@ -169,7 +169,7 @@ defect is reachable in the game and unexercised by the corpus, which is why
 
 ## What a following agent needs
 
-* **Name the fields in `goldbox/dos_layout.py`**: `experience_award` (`u16le`)
+* **Name the fields in `goldbox/dos_port.py`**: `experience_award` (`u16le`)
   and `experience_per_hit_point` (`u8`) in the four earlier shapes,
   `experience_award` alone in the two later ones. `tools/dosxpaward.py` looks
   those names up first and falls back to the gap, so it moves with the rename;

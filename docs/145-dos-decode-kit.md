@@ -183,7 +183,7 @@ engine's and not the plausibility check.
 (9 = Warrior, 6 = Priest, 12 = Rogue/Mage)"**, and builds a class-resolution
 heuristic on top of it.
 
-**It is `movement_current`.** `goldbox/dos_layout.py` has `0x11C` (= 284) as current
+**It is `movement_current`.** `goldbox/dos_port.py` has `0x11C` (= 284) as current
 movement, graded from 24 real DOS records: **12 for everyone unencumbered and 6
 for SILAS, who wears plate mail**. `docs/127-community-formats.md` has the same
 byte as the community workbook's `MOV_Current`, independently. The DOS class

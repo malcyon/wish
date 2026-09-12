@@ -175,7 +175,7 @@ under `work/issue222/run1/` and `run2/`.
 
 ## What should change in `goldbox/`, reported rather than done
 
-`goldbox/dos_layout.py`'s `spells_castable_unattributed` (and the `_NOPE`
+`goldbox/dos_port.py`'s `spells_castable_unattributed` (and the `_NOPE`
 grade on it) can become a field whose note says: spell class 2's slots in a
 block the engine dimensions as four classes, zeroed by the engine's own
 `FillChar` before every rebuild and added to by nothing, because no spell in

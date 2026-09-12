@@ -99,16 +99,16 @@ CONFIRMED as "read only in combat".
 
 ## What reaches the neutral record
 
-`goldbox.amiga_codec.to_neutral` now takes an `AmigaCharacter` as well and hands it
-to `to_neutral_later`, which reads the record through
-`goldbox/dos_layout.py`'s table **for that title**, at each field's own
+`goldbox.amiga_por.to_neutral` now takes an `AmigaCharacter` as well and hands it
+to `goldbox.amiga_later.to_neutral_later`, which reads the record through
+`goldbox/dos_port.py`'s table **for that title**, at each field's own
 confidence grade. It does not go through `goldbox.dos_codec.to_neutral` the way the
 Amiga Pool of Radiance reader does: that one raises `WrongTitleError` for
 anything but Pool of Radiance, because no other pair of ports has been measured
 against each other (`#53 (Read and write DOS saves for Curse, Silver Blades and
 Pools of Darkness)`).
 
-`goldbox.amiga_codec.later_field_disposition` states what becomes of **every** field
+`goldbox.amiga_later.later_field_disposition` states what becomes of **every** field
 of the title's DOS table, and `tests/test_amiga.py` fails if one is named
 nowhere. All 21 specimens on this machine read without an exception: the
 fifteen Curse records and the six Silver Blades ones.
@@ -165,7 +165,7 @@ check, on `goldbox/dos_codec.py`'s side of the pair.
   no character of either port sets a byte of.
 
 The rest of the drop list is live heap state and combat icon art, and
-`goldbox.amiga_codec.LATER_DROPPED` names each one.
+`goldbox.amiga_later.LATER_DROPPED` names each one.
 
 ## Writing: what the format takes, and what nobody has watched it take
 
@@ -206,7 +206,7 @@ every node but the last, and zero on the last. The addresses step by 66 along
 an item chain and by 10 along an effect chain, which is what a heap of those
 node sizes looks like.
 
-`goldbox.amiga_codec.AmigaCharacter.block_bytes` sets the three chain fields and
+`goldbox.amiga_later.AmigaCharacter.block_bytes` sets the three chain fields and
 `item_count` to match what actually follows, and leaves a field whose truth
 already matches alone — so a block read out of a saved game and written back is
 byte for byte the block that came in.

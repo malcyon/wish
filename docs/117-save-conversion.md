@@ -602,9 +602,9 @@ all three container writers.
 |---|---|---|
 | C64 `SAVEDGAME0`/`SAVEDGAME1` | `goldbox.world_state.from_c64` | `goldbox.dos_codec.write_c64_save`, or `new_save_from` for a save owing nothing to another (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)) |
 | DOS `SAVGAM<slot>.DAT` | `goldbox.world_state.from_dos` | `goldbox.dos_codec.write_dos_save_from`, or `new_dos_save_from` for a save owing nothing to another (#26 (Write a DOS save, not just read one)) |
-| Amiga `savgam<letter>.dat` | `goldbox.world_state.from_amiga` | `goldbox.amiga_codec.por_savegame_writes`, or `new_por_savegame` for a save owing nothing to another |
+| Amiga `savgam<letter>.dat` | `goldbox.world_state.from_amiga` | `goldbox.amiga_por.por_savegame_writes`, or `new_por_savegame` for a save owing nothing to another |
 
-`goldbox.amiga_codec.por_state_from_c64`, `.por_state_from_dos`, `.por_state_from_amiga`
+`goldbox.amiga_por.por_state_from_c64`, `.por_state_from_dos`, `.por_state_from_amiga`
 and `.read_por_state` are wrappers around the readers above kept for the
 Amiga's existing callers — `tools/toamigapor.py` and `tools/fromamigapor.py`
 among them — and `PorSaveState` is `WorldState` under its old name.
@@ -642,7 +642,7 @@ because the combat figure crosses through `icon_head`, `icon_body`,
 world-state fields and not ones a `NeutralCharacter` carries either. That
 stays true with an Amiga source too: the Amiga stores a character in DOS's
 own field order, big-endian ("What the two formats actually are" above), so
-`goldbox.amiga_codec.read_por_slot` turns each record into a `DosCharacter`
+`goldbox.amiga_por.read_por_slot` turns each record into a `DosCharacter`
 directly (`to_dos_character`), never through a `WorldState` field; only the
 DOS-bound direction sends the same party through `dos.to_neutral` afterwards,
 the same conversion a DOS source has always used.
@@ -871,7 +871,7 @@ allows. Left as it stands rather than resolved.
 
 `goldbox/dos_port.py`'s three later titles' deltas name the byte after `level`
 **`former_level`**, CONFIRMED, at the offsets this section measured. Reading
-it (`goldbox/dos_codec.py` `to_neutral`, `goldbox/amiga_codec.py` `to_neutral_later`):
+it (`goldbox/dos_codec.py` `to_neutral`, `goldbox/amiga_later.py` `to_neutral_later`):
 
 * `former_class_levels` is read as `former_levels`, **non-zero entries
   only** -- `{}` for a character who never dual-classed, never eight zero
@@ -1812,7 +1812,7 @@ classDiagram
     +strength_index(strength, percentile) int
   }
   class AmigaWriter {
-    <<writer, goldbox/amiga_codec.py>>
+    <<writer, goldbox/amiga_pod.py>>
     +write(char) tuple
     +to_pc(char) tuple
     +DIRECT
@@ -1825,7 +1825,7 @@ classDiagram
     +unaccounted() list
   }
   class AmigaReport {
-    <<goldbox/amiga_codec.py, total 484>>
+    <<goldbox/amiga_pod.py, total 484>>
     +unaccounted(record) list
   }
 
@@ -1873,7 +1873,7 @@ graph LR
     neutral["goldbox/neutral.py<br/>NeutralCharacter, Value, FIELDS,<br/>Writer, Report"]:::mid
     c64r["goldbox/c64_codec.py<br/>read — the C64 reader"]
     c64["goldbox/c64_codec.py<br/>write — the C64 writer"]
-    amiga["goldbox/amiga_codec.py<br/>write — the Amiga writer"]
+    amiga["goldbox/amiga_pod.py<br/>write — the Amiga writer"]
     yaml["goldbox/yaml_io.py<br/>entry_for — the YAML writer"]
   end
 
@@ -1951,30 +1951,32 @@ keeps that arrangement honest is that **a format's own record table is reached
 only by that format's own codec**: `dos_port` (`goldbox/dos_layout.py` until
 `#470 (Give the project a neutral title beside its neutral character record,
 with one port per platform a title shipped on)`'s stage 3 renamed it) is
-imported by `dos_codec`, through that same shim, and `c64_codec` never reaches
-for it. `amiga_codec` is the graph's one declared exception to the invariant
-rather than a breach of it: an Amiga record is DOS-shaped underneath, so the
-Amiga codec reads the DOS field table directly, the same exception "Who talks
-to whom" above draws for the C64's own item shape.
+imported by `dos_codec` directly, and `c64_codec` never reaches for it. The
+four Amiga modules below -- `amiga_later`, `amiga_pod`, `amiga_por` and
+`amiga_shared` -- are the graph's declared exception to the invariant rather
+than a breach of it: an Amiga record is DOS-shaped underneath, so each of them
+reads the DOS field table directly, the same exception "Who talks to whom"
+above draws for the C64's own item shape.
 
-**The two codecs are named for their platform as of the same ticket's stage
-8**: `goldbox/dos.py` is now `goldbox/dos_codec.py` and `goldbox/amiga.py` is
-now `goldbox/amiga_codec.py`, beside `goldbox/c64_codec.py`, which already had
-the name. Nothing inside either file changed. The only new edges in the graph
-are `dos --> dos_codec` and `amiga --> amiga_codec`, which are the two shims
-standing at the old paths until stage 9 moves the callers; every edge that
-used to leave `dos` or `amiga` now leaves the codec instead, including
-`world_state`'s two deferred ones.
+**The two codecs were named for their platform at the same ticket's stage
+8**: `goldbox/dos.py` became `goldbox/dos_codec.py` and `goldbox/amiga.py`
+became `goldbox/amiga_codec.py` (itself split further at stage 10, below),
+beside `goldbox/c64_codec.py`, which already had the name. Nothing inside
+either file changed at that stage. `dos --> dos_codec` and
+`amiga --> amiga_codec` were the two shims standing at the old paths until
+stage 9 deleted them and moved every caller onto the codec directly,
+including `world_state`'s two deferred ones.
 
 `amiga_port` is new in the graph, from the same ticket's stage 4b: what an
 Amiga record looks like — `AmigaDeltas`, and the two later titles' rows — with
 none of the code that reads one. It has exactly one edge, `amiga_port -->
 dos_port`, and the direction it does **not** have is the point: nothing in the
-port imports the codec, so a reader after the offsets never loads the 6,000
-lines that use them. `goldbox/amiga_codec.py` re-exports every name under both its
-old spelling and its new one until stage 9 moves the callers.
+port imports a codec, so a reader after the offsets never loads the 6,000
+lines that use them. `goldbox/amiga_codec.py` re-exported every name under
+both its old spelling and its new one until stage 9 deleted it and moved
+every caller onto the four modules below.
 
-**The Amiga codec is four modules as of the same ticket's stage 10**, because
+**The Amiga codec became four modules at the same ticket's stage 10**, because
 one file held all three Amiga titles and its unprefixed names read as the
 port's when they were one title's. `goldbox/amiga_pod.py` is Pools of
 Darkness' `.pc`, `goldbox/amiga_por.py` is Pool of Radiance's record, save slot
@@ -1982,8 +1984,10 @@ and disk, `goldbox/amiga_later.py` is Curse and Silver Blades, and
 `goldbox/amiga_shared.py` is what more than one of them needs with no title
 fact in it — the two byte readers, the three neutral key tuples,
 `amiga_shape_for` and the `CONVERTS`/`WRITES` registries. `goldbox/amiga_codec.py`
-is a shim at the old path, which is why the graph now shows four edges out of
-it and nothing else.
+stood as a shim at the old path until stage 9 deleted it, which is why the
+graph now shows four edges where it used to show one — `amiga_later`,
+`amiga_pod`, `amiga_por` and `amiga_shared` each importing `dos_port` on its
+own account.
 
 **Two edges between titles are deliberate and both are in the graph.**
 `amiga_later --> amiga_por` is three names — `PorWriteReport` and the pair that
@@ -2005,7 +2009,7 @@ port and is nothing of the kind.
 The three edges into `c64_codec`, and `dos_codec --> yaml_io`, are not breaches
 either: they are **drivers**. A codec module also holds the convenience that
 opens a file of its own format and runs a whole party through —
-`dos_codec.export_party`, `amiga_codec.export_party`,
+`dos_codec.export_party`, `amiga_pod.export_party`,
 `yaml_io.export_save` — and a driver that reads a C64
 save has to call the C64 reader. What crosses each of those edges is a
 `NeutralCharacter`, never one port's record handed to another port's writer,
@@ -2182,7 +2186,7 @@ the block above ever drifts from what the tool prints.
 3. **What does adding a codec cost?** One reader or one writer. The
    vocabulary, the grades, `Value`, `Report`, `disposition` and the whole
    take-refuse-report protocol — `use`, `emit`, `get` and the closing sweep —
-   are inherited from `goldbox/neutral.py`. `goldbox/amiga_codec.py` is the demonstration:
+   are inherited from `goldbox/neutral.py`. `goldbox/amiga_pod.py` is the demonstration:
    rewritten onto the neutral record it lost its own copy of that bookkeeping
    and its own C64-shaped middle, and every `.pc` byte it writes is what it
    was before. The DOS writer of #26 (Write a DOS save, not just read one) is the second demonstration, with a
@@ -2557,7 +2561,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   character.** Extra strength, a Ring of Fire Resistance, being displaced --
   a `.spc` record at duration zero that is not one of the eight racial ids.
   `NeutralCharacter` now holds it whole, as `granted_effects`, and
-  `goldbox.dos_codec.to_neutral` and `goldbox.amiga_codec.to_neutral` convert it rather
+  `goldbox.dos_codec.to_neutral` and `goldbox.amiga_por.to_neutral` convert it rather
   than dropping it -- `#232 (An item-granted effect is dropped on the way
   through the neutral record, with no report)`'s fix landed for both ports,
   and a DOS or Amiga round trip keeps the effect working. **The C64 record
