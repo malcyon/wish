@@ -1,11 +1,23 @@
 {
+  "description": "The two issue guards, shared with Claude Code. One script each, no Codex-specific version: Codex sends the same `tool_name` and `tool_input` fields and honours exit code 2 with the reason on stderr.",
   "hooks": {
     "PreToolUse": [
       {
-        "command": ".claude/hooks/check-issue-reads.py"
-      },
-      {
-        "command": ".claude/hooks/check-issue-writes.py"
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 .claude/hooks/check-issue-reads.py",
+            "timeout": 30,
+            "statusMessage": "Checking the issue read"
+          },
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 .claude/hooks/check-issue-writes.py",
+            "timeout": 30,
+            "statusMessage": "Checking the issue write"
+          }
+        ]
       }
     ]
   }

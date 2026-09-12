@@ -192,9 +192,16 @@ def test_the_hook_is_registered_in_both_harnesses():
                 for h in group["hooks"]]
     assert any("check-issue-writes.py" in c for c in commands)
 
+    # Codex's schema nests the same way Claude Code's does: a `matcher`, then
+    # an inner `hooks` array. An earlier version of this file used a flat
+    # `[{"command": ...}]` taken from a third-party write-up, and Codex showed
+    # `PreToolUse  0  0` -- discovered nothing, said nothing.
     codex = json.loads((root / ".codex" / "hooks.json").read_text())
-    entries = [h["command"] for h in codex["hooks"].get("PreToolUse", [])]
+    entries = [h["command"]
+               for group in codex["hooks"].get("PreToolUse", [])
+               for h in group["hooks"]]
     assert any("check-issue-writes.py" in c for c in entries)
+    assert any("check-issue-reads.py" in c for c in entries)
 
 
 @pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")
