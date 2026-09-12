@@ -5,7 +5,7 @@ through the conversion, in both directions (#404).
 
 `#401 (Which byte of a DOS ability pair is the current score, now that the
 C64's two arrays are named)` read the DOS engine and confirmed in the running
-game that `goldbox.dos._ability_pair` had the six ability scores inverted:
+game that `goldbox.dos_codec._ability_pair` had the six ability scores inverted:
 the record's lower byte is the *permanent* score and the higher one is what
 is *in force*, and the exceptional-strength percentile runs the other way
 round.  `docs/204-the-dos-ability-pair.md` has the full account.
@@ -111,7 +111,7 @@ def test_dos_to_neutral_separates_permanent_from_in_force(who):
 
 @pytest.mark.parametrize("who", sorted(DOS_CROSSED))
 def test_dos_to_c64_lands_each_half_on_the_byte_the_docs_table_names(who):
-    """The same six characters, converted whole through `dos.convert_save`
+    """The same six characters, converted whole through `dos_codec.convert_save`
     into a C64 `SAVEDGAME0` payload: the score in force at `0x014`-`0x01A`,
     the permanent score at `0x065`-`0x06B`, per character slot.
 

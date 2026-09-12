@@ -597,7 +597,7 @@ def test_pools_of_darkness_carries_no_creation_menu_in_its_amiga_binary():
     binary at all, and it is asked over the widest id set this project has.
     The answer is that it does not -- the title ships no `head.dax` or
     `body.dax` on any of its three disks, and its record has no portrait
-    pair either (`goldbox.dos_layout.POOLS_OF_DARKNESS`).
+    pair either (`goldbox.dos_port.POOLS_OF_DARKNESS`).
     """
     from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
     from tools import amigasaves
@@ -843,7 +843,7 @@ def test_a_body_choice_converts_by_menu_position_and_never_by_stored_byte_value(
         assert shared.body_position(shared.body_art(position)) == position
 
     # And the table a conversion uses is the neutral spelling's, on every
-    # port -- `goldbox.amiga.write_por` asks for this one, not the Amiga's.
+    # port -- `goldbox.amiga_por.write_por` asks for this one, not the Amiga's.
     assert portraits.NEUTRAL_MENU_PORT == portraits.C64_PORT
     assert shared is portraits.POOL_OF_RADIANCE_MENU
     assert portraits.neutral_menu("curse-of-the-azure-bonds") is None
@@ -852,7 +852,7 @@ def test_a_body_choice_converts_by_menu_position_and_never_by_stored_byte_value(
 def test_the_eighth_body_reaches_an_amiga_record_and_comes_back_unchanged():
     """The rule above, through the writer and the reader (#480).
 
-    `goldbox.amiga.write_por` used to look the neutral value up in
+    `goldbox.amiga_por.write_por` used to look the neutral value up in
     `AMIGA_POOL_OF_RADIANCE_MENU`, which has no `0x18` in it, so a character
     who chose the eighth body was written zero and reported dropped on both
     Amiga-destination directions -- a choice the Amiga offers, lost because

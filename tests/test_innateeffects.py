@@ -5,15 +5,15 @@ effect ids (#388, A converted paladin or ranger loses his innate effect on
 the way to DOS, because the writer filters through Pool of Radiance's id
 list).
 
-`goldbox.dos.INNATE_EFFECTS` is Pool of Radiance's own set -- the racial and
-constitutional bonuses `goldbox/dos.py`'s own docstring already measured.
-Pool of Radiance has no paladin and no ranger (`goldbox.games.POOL_OF_RADIANCE`
+`goldbox.dos_codec.INNATE_EFFECTS` is Pool of Radiance's own set -- the racial and
+constitutional bonuses `goldbox/dos_codec.py`'s own docstring already measured.
+Pool of Radiance has no paladin and no ranger (`goldbox.c64_port.POOL_OF_RADIANCE`
 carries `CLASS_BITS_CLASSIC`, with neither class bit), so the set was never
 wrong for the title it was measured on -- it was wrong to use, unchanged, for
 the two titles that do instantiate both classes.
 
 Four ids, all CONFIRMED from DOS `.SPC` records this project watched the
-running game write, none of them passed through `goldbox.dos.write` or
+running game write, none of them passed through `goldbox.dos_codec.write` or
 `goldbox.c64_codec.write` first (every specimen's own `provenance.toml` says
 so):
 
@@ -147,7 +147,7 @@ def test_pool_of_radiance_still_reads_the_paladins_id_as_granted():
         [_innate_node(PALADIN_EFFECT)]
 
 
-# --- the write side: dos.write no longer drops the two ids ------------------
+# --- the write side: dos_codec.write no longer drops the two ids ------------
 
 @pytest.mark.parametrize("shape", [CURSE, SSB], ids=lambda s: s.key)
 def test_a_paladins_effect_reaches_the_spc_file(shape):
@@ -231,7 +231,7 @@ def _c64_party(path):
 
 def test_a_c64_silver_blades_paladin_and_ranger_convert_with_their_own_ids():
     """The scenario #388 opens with, reproduced end to end: a C64 party is
-    read and handed straight to `dos.write`, the way `editor/convert.py`
+    read and handed straight to `dos_codec.write`, the way `editor/convert.py`
     does.  `WISH-SPEC-ssb-d-engine-resave.D64` is the C64 save the C64 engine
     itself wrote (its own `provenance.toml`), and the two nine-byte records
     below are the ones #388's own issue body quoted out of the shipped DOS
@@ -250,20 +250,20 @@ def test_a_c64_silver_blades_paladin_and_ranger_convert_with_their_own_ids():
     assert not [d for d in rep.dropped if "innate_effects" in d]
 
 
-# --- goldbox/amiga.py's write_later, read-only: no double, no drop ---------
+# --- goldbox/amiga_later.py's write_later, read-only: no double, no drop ---
 #
-# `goldbox.amiga.write_later` calls `goldbox.dos.write` for its DOS half and
+# `goldbox.amiga_later.write_later` calls `goldbox.dos_codec.write` for its DOS half and
 # builds its own Amiga effect chain separately, from the neutral record
-# rather than from `dos.write`'s `.SPC` payload
-# (`goldbox.amiga.LATER_EFFECTS_FROM_NEUTRAL`) -- precisely so a dwarf's
+# rather than from `dos_codec.write`'s `.SPC` payload
+# (`goldbox.amiga_later.LATER_EFFECTS_FROM_NEUTRAL`) -- precisely so a dwarf's
 # racial bonus is not written twice.  `_later_effect_nodes` reads
 # `innate_effects` and `granted_effects` directly and does not consult
-# `dos.INNATE_EFFECTS` or `_innate_effects` at all, so #388's fix changes
+# `dos_codec.INNATE_EFFECTS` or `_innate_effects` at all, so #388's fix changes
 # which of those two neutral fields a paladin's or a ranger's id lands in
 # but not what `write_later` does with it.  Confirmed by reverting the fix
-# (`goldbox/dos.py` copied aside, `#388`'s change removed, `__pycache__`
+# (`goldbox/dos_codec.py` copied aside, `#388`'s change removed, `__pycache__`
 # cleared) and comparing: the Amiga block's own effect bytes are identical
-# either way; what changes is that `rep.dropped`, copied from `dos.write`'s
+# either way; what changes is that `rep.dropped`, copied from `dos_codec.write`'s
 # own report, carried a spurious "innate_effects ... not one of the ids"
 # line before the fix even though the id reached the Amiga block correctly
 # -- a false drop this fix also removes, on a file this issue does not own.
@@ -348,7 +348,7 @@ def test_the_paladin_and_ranger_specimens_round_trip_masked_by_the_declared_list
 # `GEN $0FF0`, the same routine with the same `LDA #$2D` (`#484 (Does C64
 # Silver Blades seed a paladin's Protection from Evil as trait 45, the way
 # Curse does, so that direction loses it converting to DOS too?)`) -- and
-# both DOS engines write 8, so `goldbox.dos.C64_CLASS_TRAITS` has one row
+# both DOS engines write 8, so `goldbox.dos_codec.C64_CLASS_TRAITS` has one row
 # each.  Neither ranger needs one: 134 is Curse's on both ports and 105 is
 # Silver Blades' on both.
 
@@ -382,7 +382,7 @@ def test_both_later_titles_map_the_same_paladin_pair():
 
 def test_the_guarded_bit_is_the_paladins_in_both_titles_own_tables():
     """`PALADIN_CLASS_BIT` is a number in this module, and the tables it has
-    to agree with are `goldbox.games`'.  A renumbering that left this behind
+    to agree with are `goldbox.c64_port`'.  A renumbering that left this behind
     would silently stop translating, or start translating a fighter's ids."""
     for game in (c64_port.CURSE_OF_THE_AZURE_BONDS,
                  c64_port.SECRET_OF_THE_SILVER_BLADES):

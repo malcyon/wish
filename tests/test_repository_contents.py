@@ -243,7 +243,7 @@ def test_no_citation_points_at_a_rule_file_that_is_not_there(files):
     before every task)` turned one file into thirteen and rewrote eighteen
     citations to point at them. That trades a file everybody knew for a set of
     paths nothing verifies -- rename `gui-text.md` and the tooltip rule in
-    `goldbox/dos.py` quietly points at nothing.
+    `goldbox/dos_codec.py` quietly points at nothing.
 
     Scoped to tracked `.md` and `.py` files, and to the two paths the split
     created, because those are the ones with no other guard.

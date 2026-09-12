@@ -52,7 +52,7 @@ TRAVEL_X, TRAVEL_Y = 7, 27
 def _dax_with(block_id: int, body: bytes) -> bytes:
     """A `.DAX` container holding one block, in the format the reader wants.
 
-    Generated rather than copied: `goldbox.dos._area_script` reads a block of
+    Generated rather than copied: `goldbox.dos_codec._area_script` reads a block of
     a given id out of `ECL<n>.DAX` and stages it, and every test here is
     about *where the party ends up*, not about what the game's script says.
     Run-length coded the way `dax_unpack` decodes -- a lead byte under 128

@@ -151,7 +151,7 @@ def _curse_save_payload() -> bytes:
 def test_the_save_image_lives_at_its_own_load_address():
     """The whole 7424 bytes were byte-identical at `$4B00` in the running game.
 
-    So `goldbox.games`' geometry is not merely the file's shape, it is the live
+    So `goldbox.c64_port`' geometry is not merely the file's shape, it is the live
     layout, and every payload offset in it names a real address.
     """
     assert CURSE.save_load_address == 0x4B00

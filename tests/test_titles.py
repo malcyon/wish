@@ -5,7 +5,7 @@ shipped on)`.
 Two things this pins down, beside the module existing at all:
 
 * **Pools of Darkness is a `Title` and not a `Game`.** It has no C64 release,
-  so `goldbox.games.BY_KEY` must never answer for it -- that silent fallback
+  so `goldbox.c64_port.BY_KEY` must never answer for it -- that silent fallback
   to Pool of Radiance's tables was `#460 (goldbox/games.py has no Pools of
   Darkness entry, so every lookup answers with Pool of Radiance's tables for
   it)`.
@@ -76,11 +76,11 @@ def test_a_games_races_and_class_bits_are_its_titles_own_object(game, title):
     assert game.class_bits is title.class_bits
 
 
-# --- the DOS titles: titles.py and dos_layout.py, except where they always
+# --- the DOS titles: titles.py and dos_port.py, except where they always
 # --- disagreed --------------------------------------------------------------
 
 #: Where a title's rules-level race list (`titles.py`) and its DOS
-#: executable's own string table (`dos_layout.DosShape.race_numbers`)
+#: executable's own string table (`dos_port.DosDeltas.race_numbers`)
 #: disagree, and why.  Every row is a code no character-generation menu
 #: offers; every code not in this table has to agree on both sides, which is
 #: what the test below asserts.  Measured for #470 on 2026-09-09: the DOS
@@ -129,14 +129,14 @@ RACE_TABLE_EXCEPTIONS: dict[str, dict[int, tuple[str | None, str, str]]] = {
         # loop below checks it like any other code.
     },
     # Pools of Darkness has no exceptions: its races tuple is built straight
-    # from `dos_layout.POOLS_OF_DARKNESS_RACE_NUMBERS`, so the two sides are
+    # from `dos_port.POOLS_OF_DARKNESS_RACE_NUMBERS`, so the two sides are
     # the same table by construction.
 }
 
-#: The four titles with both a C64 `races` tuple and a DOS `DosShape`.
-#: Gateway to the Savage Frontier has no `DosShape` and contributes no row;
+#: The four titles with both a C64 `races` tuple and a DOS `DosDeltas`.
+#: Gateway to the Savage Frontier has no `DosDeltas` and contributes no row;
 #: Pools of Darkness has no C64 `races` tuple of its own kind but does have
-#: both a `Title.races` and a `DosShape`, so it is in this list.
+#: both a `Title.races` and a `DosDeltas`, so it is in this list.
 DOS_TITLE_KEYS = (
     "pool-of-radiance", "curse-of-the-azure-bonds",
     "secret-of-the-silver-blades", "pools-of-darkness",

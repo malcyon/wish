@@ -242,7 +242,7 @@ def test_a_lowercase_record_name_is_folded_to_capitals() -> None:
     """`#290`: the C64 draws its text in the uppercase/graphics character
     set, where a lower-case letter's screen code lands in the symbol range --
     watched on the running machine, `Guy de Valois ` drew as
-    `G59 $% V!,/)3`. `goldbox.dos.c64_name` folded this for the DOS-to-C64
+    `G59 $% V!,/)3`. `goldbox.dos_codec.c64_name` folded this for the DOS-to-C64
     path only; this is the encoder every route into a C64 record's name
     field ends at, so the fold belongs here.
     """

@@ -5,7 +5,7 @@
 emulator involved -- this is the whole test surface, since driving VICE is
 the rest of the tool's job and not what #369 is about.
 
-The bug: a buffer this short also matches `goldbox.dos.never_adventured`'s
+The bug: a buffer this short also matches `goldbox.dos_codec.never_adventured`'s
 "never set out" signature -- an all-zero staged area script -- so
 `world_state.from_dos` substituted Pool of Radiance's own indoor start square
 (area 0, `15,1`, indoors) rather than reading the three words the buffer
@@ -39,7 +39,7 @@ def test_outdoor_request_carries_the_requested_travel_window():
 
 
 def test_outdoor_requests_buffer_does_not_read_as_never_adventured():
-    """The mechanism the bug report names directly: `dos.never_adventured`
+    """The mechanism the bug report names directly: `dos_codec.never_adventured`
     on the raw buffer, before `world_state.from_dos` ever substitutes
     anything."""
     import goldbox.dos_savegame as sg

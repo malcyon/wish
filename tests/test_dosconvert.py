@@ -3,12 +3,12 @@ from __future__ import annotations
 """Turning a DOS Pool of Radiance save into a C64 one, checked field by field.
 
 `tests/test_dossave.py` measures the DOS file; this module checks what
-`goldbox/dos.py` does with it.  The two halves of the promise in
+`goldbox/dos_codec.py` does with it.  The two halves of the promise in
 `docs/117-save-conversion.md` are what most of these tests are:
 
 * **losslessness** -- a DOS record read and handed back byte for byte, which
   is how a read-only decoder proves it understood the file;
-* **nothing dropped silently** -- every field declared in `goldbox/dos_layout.py`
+* **nothing dropped silently** -- every field declared in `goldbox/dos_port.py`
   has a disposition, and every byte of the 580-byte C64 record has a
   provenance.
 
@@ -1242,7 +1242,7 @@ def _mismatched_savgam(indoors_word: int, area: int, script: int) -> bytes:
     sg.put_word(savgam, sg.SCRIPT, script)
     # A party in the world, not one that has never set out: a container
     # built from nothing is all zero, which is exactly the never-adventured
-    # signature `dos.never_adventured` reads (#301, #326), and such a save
+    # signature `dos_codec.never_adventured` reads (#301, #326), and such a save
     # is converted to the start rather than refused.  Stage a script.
     _stage_a_script(savgam)
     return bytes(savgam)
@@ -1388,7 +1388,7 @@ def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
 # --- the other three titles (#53) -------------------------------------------
 #
 # Reading is per title and the title is the record's own length.  These tests
-# are the evidence that `goldbox/dos_layout.py`'s four shapes are right: a shape
+# are the evidence that `goldbox/dos_port.py`'s four shapes are right: a shape
 # one byte out fails several of them at once, because each check is a fact
 # about the *content* of a field rather than about the table that names it.
 
@@ -1942,7 +1942,7 @@ def test_a_party_missing_one_face_leaves_the_portrait_switched_off(tmp_path):
 #: slot)`: both NPC slots on both disks are 36 bytes of zero, the pattern
 #: every DOS-to-C64 conversion produced before `#363 (A DOS-to-C64 conversion
 #: writes zero into the two NPC-only combat-icon slots instead of the
-#: engine's own seeded default)` fixed `goldbox.dos.write_c64_save`. That fix
+#: engine's own seeded default)` fixed `goldbox.dos_codec.write_c64_save`. That fix
 #: does not rewrite a disk already on the player's machine, so these two stay
 #: exceptions until Donald converts that party again.
 NPC_SLOT_EXPLAINED = {
@@ -2222,7 +2222,7 @@ def _stage_a_script(savgam: bytearray) -> None:
     """Make a container from nothing read as a party **in the world**: one
     non-zero byte in the staged area script, and `$4FE1` at the 255 that 51
     of the 95 played Pool of Radiance containers on this machine hold -- the
-    two readings `dos.never_adventured` takes."""
+    two readings `dos_codec.never_adventured` takes."""
     start, _ = sg.SAVE_POOL_OF_RADIANCE.script_buffer
     savgam[start] = 0x01
     sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255)

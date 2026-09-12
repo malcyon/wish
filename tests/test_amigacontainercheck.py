@@ -10,7 +10,7 @@ The test that matters most is
 result means something only because its two ends share no reader -- the C64
 payload read by hand at `address - 0x4900`, the built container read at fixed
 offsets -- and the natural tidy-up is to replace either with a call into
-`goldbox.amiga`, which would leave a tool that agrees with the writer by
+`goldbox.amiga_por`, which would leave a tool that agrees with the writer by
 construction and can never fail.  That test turns the tidy-up red.
 """
 

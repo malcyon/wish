@@ -12,13 +12,13 @@ Three kinds of test, hardest evidence first.
 
 * **The round trip** over every Pools of Darkness record on this machine --
   read into the neutral record and written back, byte for byte outside the
-  writer's own declared mask. The mask is `goldbox.dos.WRITE_UNSOURCED`,
+  writer's own declared mask. The mask is `goldbox.dos_codec.WRITE_UNSOURCED`,
   `WRITE_UNSOURCED_LATER`, `WRITE_DEFAULTS` and `WRITE_DERIVED`, never
   whatever happened to differ, and the two records that do differ are named
   and counted here rather than masked away.
 * **The measurements this title needed that no earlier one did**: two
   undecoded runs that are not zero, an innate-effect set that is not Pool of
-  Radiance's, and a race table `goldbox/games.py` has never had.
+  Radiance's, and a race table `goldbox/c64_port.py` has never had.
 * **The tables**, which need no save: what the writer says it does with
   every field, and what this record has no field for at all.
 
@@ -258,10 +258,10 @@ def test_the_race_is_read_through_the_titles_own_numbering():
     record, with one port per platform a title shipped on)`'s stage 2 points
     `_race_combat_effects` at `goldbox.titles.race_table`, which -- unlike
     `games.race_table` -- has a Pools of Darkness row, so the bug is closed
-    even with no `DosShape` in hand: passing one is no longer what makes
+    even with no `DosDeltas` in hand: passing one is no longer what makes
     this title's own numbering apply, it is what lets the record's own byte
     win at the handful of codes where a title's rules-level `races` and its
-    DOS executable's own string table disagree (`goldbox.dos_layout.DosShape.
+    DOS executable's own string table disagree (`goldbox.dos_port.DosDeltas.
     race_numbers`, `#237`) -- and Pools of Darkness has no such disagreement,
     its `races` tuple being built from that very table. This is `#293`'s bug
     one title along.
@@ -272,7 +272,7 @@ def test_the_race_is_read_through_the_titles_own_numbering():
     # the human, who gets nothing.
     assert dos_codec._race_combat_effects(POD.key, 5) == ()
     assert dos_codec._race_combat_effects(POD.key, 5, POD) == ()
-    # And the change is inert for the three titles `games` does know.
+    # And the change is inert for the three titles `c64_port` does know.
     for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
         for race in range(len(shape.race_numbers)):
             assert dos_codec._race_combat_effects(shape.key, race, shape) == \
@@ -345,7 +345,7 @@ def test_an_absent_field_is_reported_as_dropped_and_never_copied():
     drops rather than as bytes written over the field that follows.
 
     **No conversion reaches this today**: the only other Pools of Darkness
-    port is the Amiga and `goldbox.amiga.PodCharacter` reads only platinum,
+    port is the Amiga and `goldbox.amiga_pod.PodCharacter` reads only platinum,
     gems and jewelry too, so a source carrying gold into this title would
     have to be a fourth port nobody has. It is tested because the writer must
     not be the thing that discovers it.

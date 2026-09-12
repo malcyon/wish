@@ -533,7 +533,7 @@ FORBIDDEN_TRANSPORT_ROOTS = ("automap", "socket", "telnet", "telnetlib", "serial
 def test_goldbox_imports_no_transport():
     """goldbox/ stays transport-free -- checked by import, not by grepping prose.
 
-    goldbox/areas.py, goldbox/games.py and goldbox/strength.py all *mention* automap in
+    goldbox/areas.py, goldbox/c64_save.py and goldbox/strength.py all *mention* automap in
     comments, so a substring grep would be a false positive on every one of
     them. Parsing the AST and looking only at Import/ImportFrom nodes is the
     difference.

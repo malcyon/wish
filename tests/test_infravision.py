@@ -230,7 +230,7 @@ def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
 
 def _synthetic_save_disk(path: pathlib.Path) -> pathlib.Path:
     """A `D64` carrying an empty Pool of Radiance save -- no game bytes, just
-    the format `goldbox.savegame` and `goldbox.games` already describe."""
+    the format `goldbox.savegame` and `goldbox.c64_port` already describe."""
     game = c64_port.POOL_OF_RADIANCE
     disk = D64.blank()
     sg0 = savegame.SaveGame0.from_bytes(bytes(game.save_size), game)

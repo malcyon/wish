@@ -69,7 +69,7 @@ POOL = c64_port.POOL_OF_RADIANCE.title
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS.title
 SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES.title
 
-#: The fourth Realms title, which `goldbox/games.py` has no descriptor for because
+#: The fourth Realms title, which `goldbox/c64_port.py` has no descriptor for because
 #: **the C64 never got it** (`docs/138` §0). It can only ever reach the window
 #: as a title somebody typed, so what matters is that a title with no
 #: descriptor behind it is guarded exactly like one that has.

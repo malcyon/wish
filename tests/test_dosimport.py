@@ -10,7 +10,7 @@ def make_root():
     return root
 
 
-"""File > Import > DOS save: the window over `goldbox/dos.py`'s converter.
+"""File > Import > DOS save: the window over `goldbox/dos_codec.py`'s converter.
 
 The conversion itself is `tests/test_dosconvert.py`'s. What is tested here is
 the one thing a menu can get wrong that a command line cannot: **the losses
@@ -393,7 +393,7 @@ def test_log_unshown_losses_keeps_the_evidence_out_of_the_players_way():
 def test_a_real_conversion_that_truncates_items_shows_nothing_in_the_pane():
     """The same specimen `#399 (A conversion that runs out of item or trait
     slots tells the player nothing, because the pane never shows a
-    warning)`'s own measurement used, driven through `dos.convert_save`
+    warning)`'s own measurement used, driven through `dos_codec.convert_save`
     exactly as `rehearse` drives it -- no game disks needed, since neither
     the combat icon nor `ANIMATE00` change whether the inventory truncates.
 
@@ -766,7 +766,7 @@ def test_the_game_files_an_import_needs_include_the_creation_menu(app, tmp_path)
 @needs_disks
 def test_an_import_started_from_the_window_carries_its_own_faces(app, tmp_path):
     """The whole chain, window to converted disk: `game_files_for_import`
-    finds the creation menu, `rehearse` passes it on to `dos.new_save`, and a
+    finds the creation menu, `rehearse` passes it on to `dos_codec.new_save`, and a
     party wholly inside the fourteen-and-twelve menu comes back with the
     sheet portrait switched on.
 
@@ -823,7 +823,7 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
     assert window.dirty                      # unsaved, and the title says so
     assert window.path is None, "an import has no file behind it"
     # The converter puts DOS marching position 0 in the *highest* C64 slot
-    # (#101, `dos.marching_slot`), and the roster now lists the highest
+    # (#101, `dos_codec.marching_slot`), and the roster now lists the highest
     # occupied slot first (`#160`) -- so the window's own order is DOS's,
     # not its reverse.
     names = [m.name for m in window.party.members if m.name]
@@ -1241,8 +1241,8 @@ def test_a_refusal_cannot_be_raised_without_naming_the_title():
 
 #: The two developer sentences `#195 (The import pane shows a player a
 #: memory address when the conversion refuses for any reason but the wrong
-#: title)` names as confirmed reachable from `rehearse` -> `dos.new_save`,
-#: quoted from `goldbox/dos.py:new_save` and `goldbox/dos.py:apply_file_cache`
+#: title)` names as confirmed reachable from `rehearse` -> `dos_codec.new_save`,
+#: quoted from `goldbox/dos_codec.py:new_save` and `goldbox/dos_codec.py:apply_file_cache`
 #: so the test forces the real wording rather than a guess at it.
 _UNWRITTEN_BYTES_MESSAGE = (
     "29 bytes of the save have no source and were left zero by accident "
@@ -1254,7 +1254,7 @@ _OUTDOOR_DISAGREEMENT_MESSAGE = (
 
 
 def _fake_dos_dir(tmp_path):
-    """A folder `dos.slots_available` reads as holding slot A, with none of
+    """A folder `dos_codec.slots_available` reads as holding slot A, with none of
     a real DOS save's files in it. `rehearse` is monkeypatched in every test
     below, so nothing here ever reads a character out of it."""
     (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
@@ -1272,7 +1272,7 @@ def _fake_files():
 ])
 def test_the_pane_shows_the_fallback_and_not_the_developers_sentence(
         message, app, tmp_path, monkeypatch):
-    """`_attempt` used to catch `dos.WrongTitleError` specially and fall
+    """`_attempt` used to catch `dos_codec.WrongTitleError` specially and fall
     through to `str(exc)` for everything else, so a real refusal -- the
     unwritten-bytes one, or the outdoor-signals one -- filled the pane with
     `SAVEDGAME0 $8300` or `goldbox/areas.py`. This forces each of those two

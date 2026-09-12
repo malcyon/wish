@@ -374,7 +374,7 @@ def test_the_curse_corpus_carries_no_such_byte_at_all():
 def test_the_engine_keeps_the_zero_a_converted_party_arrives_with():
     """A converted Silver Blades party in front of the running game.
 
-    `goldbox.amiga.write_later` writes zero at offset 1 because there is
+    `goldbox.amiga_later.write_later` writes zero at offset 1 because there is
     nothing in a neutral record to write.  Both saved games `#384 (Write an
     Amiga Curse or Silver Blades character, so a C64 or DOS party has an
     Amiga to arrive on)` brought back on 2026-09-07 are the **engine's own**

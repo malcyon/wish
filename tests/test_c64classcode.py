@@ -1,6 +1,6 @@
 """The C64 reader's half of the class code repair (#310).
 
-`goldbox.dos.write` already checks a record's class code against its own
+`goldbox.dos_codec.write` already checks a record's class code against its own
 classes and repairs it when the two contradict each other -- Curse of the
 Azure Bonds' own `GEN $1939` stops maintaining `char_class` the moment a
 character is trained. `tests/test_dosclasscode.py` covers that half.
@@ -8,7 +8,7 @@ character is trained. `tests/test_dosclasscode.py` covers that half.
 This file is the other one: `goldbox.c64_codec.read` makes the same repair,
 so the neutral record itself carries the right code, and so does anything
 that reads it -- `goldbox/yaml_io.py`'s export, a C64-to-C64 round trip, and
-any future writer that is not `goldbox.dos.write`. `docs/187-the-class-code-
+any future writer that is not `goldbox.dos_codec.write`. `docs/187-the-class-code-
 byte.md` has the reading and the census; `goldbox/classcode.py` is the shared
 rule both readers and the DOS writer now call.
 """
@@ -47,7 +47,7 @@ def test_a_trained_curse_records_zeroed_code_reads_repaired():
     """TRAVIS's shape: a dwarf thief 6 / fighter 5 whose code reads 0, what
     Curse's own trainer leaves. The neutral record carries 14
     (fighter/thief), marked `COMPUTED` rather than `COPIED`, so anything
-    reading the neutral value -- not only `goldbox.dos.write` -- sees the
+    reading the neutral value -- not only `goldbox.dos_codec.write` -- sees the
     repaired class."""
     rec = _c64_record(class_bits=0x0C, char_class=0,
                       level_thief=6, level_fighter=5)

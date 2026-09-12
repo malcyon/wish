@@ -1,7 +1,7 @@
 """`#379 (The DOS writer's byte accounting says an Amiga party's combat
 figure was recognised off C64 screen codes)`.
 
-`goldbox.dos.write`'s byte-accounting report used to say every `DosIcon` it
+`goldbox.dos_codec.write`'s byte-accounting report used to say every `DosIcon` it
 was handed had been read back off eighteen C64 screen codes and looked up
 through `tools/iconreverse.yaml`, whatever port actually built it. An Amiga
 Pool of Radiance record stores `icon_head`, `icon_body` and `icon_colours` at
@@ -22,12 +22,12 @@ from goldbox.iconparts import IconParts, c64_icon_tables
 
 
 def _synthetic_dos_char(head: int, body: int, colours: bytes, size: int = 2):
-    """A `goldbox.dos.DosCharacter` carrying nothing but a combat figure --
+    """A `goldbox.dos_codec.DosCharacter` carrying nothing but a combat figure --
     enough for `editor.convert.amiga_combat_icon`, which reads only
     `icon_head`, `icon_body`, `icon_colours` and `size`.
 
-    `amiga_combat_icon` takes the `DosCharacter` `goldbox.amiga.
-    to_dos_record` already re-cut an Amiga record into (`goldbox.amiga.
+    `amiga_combat_icon` takes the `DosCharacter` `goldbox.amiga_por.
+    to_dos_record` already re-cut an Amiga record into (`goldbox.amiga_por.
     read_por_slot`'s own list), so handing it one built directly exercises
     the same code `amiga_combat_icon` runs without needing an Amiga `.adf`.
     """

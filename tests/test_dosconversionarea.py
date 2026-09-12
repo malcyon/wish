@@ -8,7 +8,7 @@ training hall among them, where an engine-written save holds `$49C5` = 0 with
 `$49F2` = 11.  `savgam_writes` reads both out of the C64 save now; what these
 tests hold is that the **refusal** in front of it lets the save through.
 
-`dos.retarget_reason` and `dos.conversion_reason` answer two different
+`dos_codec.retarget_reason` and `dos_codec.conversion_reason` answer two different
 questions and this file pins the difference: a retarget names an area the
 party has never been in, so `goldbox/areas.py` is its only source for the map;
 a conversion reads the map out of the save it is converting.

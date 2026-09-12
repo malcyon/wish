@@ -69,7 +69,7 @@ def _record(size: int, name: str = "GOBLIN", base: int = 0,
 
 @pytest.mark.parametrize("size,expected", sorted(OFFSETS.items()))
 def test_the_award_offsets_are_the_run_before_the_portrait(size, expected):
-    """`award_offsets` reads them off `goldbox/dos_layout.py` rather than
+    """`award_offsets` reads them off `goldbox/dos_port.py` rather than
     carrying its own table, so naming the fields there moves the tool."""
     assert xp.award_offsets(size) == expected
 

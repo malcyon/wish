@@ -16,7 +16,7 @@ Three kinds of assertion, and they are different in nature:
   these twelve facts fail.
 * **The import diff**, expressed as the rule it obeys rather than as bytes. The
   game rewrote `0x072` from 7 to 6, from 4 to 2 and from 2 to 1 -- which is
-  exactly "keep the race, take Silver Blades' code for it". `goldbox/games.py`'s two
+  exactly "keep the race, take Silver Blades' code for it". `goldbox/c64_port.py`'s two
   race tables have to agree with that.
 * **The spellbook's width.** `GEN` clears sixteen bytes at the record's `0x078`,
   so the mask is `0x078`-`0x087`; the shipped party reaches `0x083` and no
@@ -139,7 +139,7 @@ def test_the_import_rewrites_the_race_byte_into_silver_blades_numbering():
     """`0x072` went 7 to 6, 4 to 2 and 2 to 1 across six imported characters.
 
     Not a diff of specimens: the game's own import arithmetic. Each pair is
-    "same race, this title's code for it", so `goldbox/games.py`'s two tables have
+    "same race, this title's code for it", so `goldbox/c64_port.py`'s two tables have
     to reproduce all three -- and human moving 7 to 6 is the one that would
     silently turn a Curse human into a Silver Blades halfling if either table
     were wrong.

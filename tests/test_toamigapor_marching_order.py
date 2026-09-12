@@ -1,5 +1,5 @@
 """`tools/toamigapor.py`'s `read_c64_party` hands its party to
-`goldbox.amiga.write_por_slot`, which writes list position *n* to
+`goldbox.amiga_por.write_por_slot`, which writes list position *n* to
 `CHRDAT<L><n+1>` -- so the list has to arrive in the order the Amiga wants,
 front of the party first.
 
@@ -10,12 +10,12 @@ C64 order)`: the C64 displays the *highest occupied slot* first on its own
 low to high and hand that straight to the writer, so the C64's front-rank
 character landed in the Amiga's last file and vice versa -- the same bug
 `#106 (A C64 party exported to DOS marches in the reverse of its C64 order)`
-was for the DOS direction, which `goldbox.dos.c64_party` already carries the
+was for the DOS direction, which `goldbox.dos_codec.c64_party` already carries the
 fix for.  This asserts `read_c64_party` now routes through it.
 
 Everything here reads a C64 specimen out of `$WISH_SPECIMENS` and skips on a
 machine that has none; no Amiga disk is needed, since the ordering is decided
-before `goldbox.amiga` ever sees the party.
+before `goldbox.amiga_por` ever sees the party.
 """
 
 from __future__ import annotations

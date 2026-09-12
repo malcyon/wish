@@ -9,7 +9,7 @@ character's constitution at the moment a saving throw is rolled
 
 The synthetic test pins the reader's grammar with no game data.  The rest
 read the player's own `GAME.OVR` and `START.EXE` out of the archives through
-`tools.dosbox.find_game`, and skip without them -- `goldbox.dos`'s race table
+`tools.dosbox.find_game`, and skip without them -- `goldbox.dos_codec`'s race table
 is checked against the engine's creation switch, and `goldbox.levels`'s
 constitution rule against the handler's band table.
 """

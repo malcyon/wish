@@ -218,7 +218,7 @@ def test_silver_blades_seeds_105_for_the_same_ranger_slot():
 
 
 def test_pool_of_radiance_seeds_no_class_effect_at_all():
-    """Why `goldbox.dos.INNATE_EFFECTS`' default set needs no class ids, and
+    """Why `goldbox.dos_codec.INNATE_EFFECTS`' default set needs no class ids, and
     why `#388` was a later-titles bug: Pool of Radiance's creation has a race
     switch and no class switch, and never pushes 8, 105 or 134."""
     ovr, target, race, klass = _tables("POOLRAD", "pool-of-radiance")
@@ -233,7 +233,7 @@ def test_pool_of_radiance_seeds_no_class_effect_at_all():
 # --- #490: the race table has to be each title's own, not Pool of Radiance's
 # or the C64's --------------------------------------------------------------
 def test_curse_seeds_its_own_race_table_not_pool_of_radiances():
-    """`goldbox.dos.RACE_COMBAT_EFFECTS_CURSE` against the engine's own
+    """`goldbox.dos_codec.RACE_COMBAT_EFFECTS_CURSE` against the engine's own
     switch (`GAME.OVR:0x1E244`), which never pushes 90 for anybody -- a
     converted Curse dwarf or halfling used to arrive with it anyway, because
     the writer read Pool of Radiance's table (#490)."""
@@ -247,7 +247,7 @@ def test_curse_seeds_its_own_race_table_not_pool_of_radiances():
 
 
 def test_silver_blades_seeds_its_own_race_table_not_the_c64s():
-    """`goldbox.dos.RACE_COMBAT_EFFECTS_SILVER_BLADES` against the engine's
+    """`goldbox.dos_codec.RACE_COMBAT_EFFECTS_SILVER_BLADES` against the engine's
     own switch (`GAME.OVR:0x1DF47`).  The table used to be read off the C64's
     seed table, which seeds two trait slots per race where DOS calls
     `add_affect` a third time -- so a converted dwarf and gnome arrived with

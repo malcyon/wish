@@ -8,8 +8,8 @@ inverse, in the two forms that direction can have:
 * **the round trip** -- a record read into the neutral middle and written out
   again is byte for byte the block it came from, everywhere a byte *can*
   survive.  The mask is the writer's own declared lists --
-  `goldbox.amiga.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
-  `LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos`'s five -- and never
+  `goldbox.amiga_later.LATER_WRITE_UNSOURCED`, `LATER_ITEM_WRITE_UNSOURCED`,
+  `LATER_EFFECT_WRITE_UNSOURCED` and `goldbox.dos_codec`'s five -- and never
   whatever happened to differ, so a new difference fails rather than being
   absorbed;
 * **nothing unexplained** -- every byte of the block has a provenance line.
@@ -329,7 +329,7 @@ def test_the_effect_chain_is_the_neutral_records_and_not_the_races():
     """The measurement behind `LATER_EFFECTS_FROM_NEUTRAL`.
 
     `to_neutral_later` cannot tell an innate effect from an item's grant in
-    these titles, so it calls them all grants; `goldbox.dos.write` then adds
+    these titles, so it calls them all grants; `goldbox.dos_codec.write` then adds
     the racial ids from its own table as well.  Taking its `.SPC` payload
     would put a dwarf's infravision in the chain twice, and the three Curse
     dwarves and gnomes come back with 7, 7 and 8 records where the game wrote
@@ -383,7 +383,7 @@ def _round_trip(label: str, char: amiga_later.AmigaCharacter) -> None:
     # fields share DOS's own numbering is unmeasured)`: the source record's
     # own combat icon, read straight off it -- the same builder Amiga Pool
     # of Radiance uses (#354) -- and handed to `write_later`'s own `icon`
-    # argument, the way `goldbox.dos.write`'s already worked.
+    # argument, the way `goldbox.dos_codec.write`'s already worked.
     icon = amiga_combat_icon(char)
     built, report = amiga_later.write_later(amiga_later.to_neutral_later(char), icon=icon)
     got, want = built.block_bytes(), char.block_bytes()
@@ -395,7 +395,7 @@ def _round_trip(label: str, char: amiga_later.AmigaCharacter) -> None:
     assert differ == [], (
         f"{label} {char.name}: {len(differ)} bytes differ outside the "
         f"declared lists, first at {differ[0]:#05x}" if differ else "")
-    # The combat icon is masked above -- `goldbox.dos.WRITE_UNSOURCED` and
+    # The combat icon is masked above -- `goldbox.dos_codec.WRITE_UNSOURCED` and
     # `WRITE_DEFAULTS` name `icon_head`/`icon_body`/`icon_colours`
     # unconditionally, whether or not this call gave `write` an `icon` --
     # so the check that actually proves the figure round-trips is this one,

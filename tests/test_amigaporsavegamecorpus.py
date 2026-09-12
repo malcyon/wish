@@ -12,7 +12,7 @@ to `por_word_offset`'s arithmetic or to the ByteKiller depacker.  Each is a
 boundary the writer builds the file around, and each is found here by a
 property of the bytes -- a `CHRDAT` string, a match against the player's own
 `ecl.dax`, three documented constants -- so none of it agrees with
-`goldbox.amiga` by construction.
+`goldbox.amiga_por` by construction.
 
 Everything reads the player's own disks: the saved games out of
 `$WISH_SPECIMENS`, `ecl.dax` off Pool of Radiance disk 2.  Nothing is

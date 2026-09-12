@@ -2,7 +2,7 @@
 
 Two halves, and they fail differently.
 
-**The record**, `goldbox/dos.py`'s `to_neutral` and `goldbox/c64_codec.py`'s
+**The record**, `goldbox/dos_codec.py`'s `to_neutral` and `goldbox/c64_codec.py`'s
 `write`: Curse keeps every ability twice, keeps 69 memorised spells where Pool
 of Radiance keeps 81, keeps the class a dual-classed human left, and keeps no
 free-spell-slot array at all.  Each of those is a byte the conversion either
@@ -15,7 +15,7 @@ memory and the roster inside the payload -- against Pool of Radiance's two
 files and twelve pages.
 
 **Where the specimens come from.**  The synthetic records here are built from
-`goldbox/dos_layout.py`'s own table, so they belong to us and run anywhere.
+`goldbox/dos_port.py`'s own table, so they belong to us and run anywhere.
 The two tests that read a C64 save the *game* wrote are marked and skip
 without it: `work/issue32/specimens/` holds three C64 Curse saves an agent
 drove the game to write for `#32`.  The tests that read a *played DOS*
@@ -56,7 +56,7 @@ SPECIMENS = WORK / "issue32" / "specimens"
 def curse_record(**values) -> bytes:
     """A 422-byte Curse record with the named fields set.
 
-    Built from `goldbox/dos_layout.py`'s own table rather than sliced out of
+    Built from `goldbox/dos_port.py`'s own table rather than sliced out of
     anybody's save, so it carries no game data and needs no disks.  A value
     that is an `int` fills every byte of a field that is wider than one, which
     is what an ability pair holds in all 406 pairs measured.
@@ -445,7 +445,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     lines before this pair of fixes -- two portrait, one identity -- and
     shows neither kind now, the same measurement `tests/test_ssbconvert.py`
     takes on Silver Blades.  What it does show since 2026-09-06 is every
-    line still on `goldbox.dos.DROPPED` -- Donald: *"Show others for now"*
+    line still on `goldbox.dos_codec.DROPPED` -- Donald: *"Show others for now"*
     -- so this asserts the absence of the two kinds rather than an empty
     list."""
     from editor.dosimport import GameFiles, rehearse

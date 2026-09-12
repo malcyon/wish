@@ -551,7 +551,7 @@ def test_the_earlier_titles_keep_their_labels_in_library(which):
 
 def test_champions_race_table_is_death_knights_race_table():
     """Both Krynn titles, read from their own disks and compared to each other
-    rather than to `goldbox/games.py`. If they ever disagree this fails and
+    rather than to `goldbox/c64_port.py`. If they ever disagree this fails and
     `RACES_KRYNN` has to split in two."""
     champions = _item_names_of("champions", COK)
     death = items.load_item_names(str(death_knights_disk()), DKK)

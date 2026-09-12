@@ -1,6 +1,6 @@
 """The DOS race tables: read out of the games, checked against AD&D (#237).
 
-`goldbox/dos_layout.py` carried one race table for all four DOS titles until
+`goldbox/dos_port.py` carried one race table for all four DOS titles until
 #237.  It was right for Pool of Radiance and Curse and wrong for the two later
 games, which reorder the table and drop the half-orc, and the way that showed
 was a party of half-orc paladins.
@@ -15,7 +15,7 @@ Two kinds of test here, and they are deliberately different in kind.
   against the pre-#237 numbering on the same records.
 * **The reader tests** check that `tools/dosraces.py` finds each title's own
   race-name table in the executable the game runs, and that what it reads is
-  what `DosShape.race_numbers` says.  Run against Pool of Radiance and Curse
+  what `DosDeltas.race_numbers` says.  Run against Pool of Radiance and Curse
   the reader reproduces `RACE_NUMBERS`, a table established here independently
   from 24 specimens and from the C64 -- which is what makes the same reading
   of the other two a measurement rather than a guess.
@@ -93,7 +93,7 @@ def _records() -> tuple[tuple[str, str, str, int, int], ...]:
     """Every shipped character record in the archives.
 
     `(path, shape key, name, race byte, class byte)` per file.  The record
-    size names the shape, which is `shape_for`'s own claim; a file of any
+    size names the shape, which is `deltas_for`'s own claim; a file of any
     other length is not a record and is skipped.
     """
     out: dict[str, tuple[str, str, str, int, int]] = {}

@@ -188,7 +188,7 @@ def test_the_default_icon_reads_back_as_the_choices_that_made_it(parts):
 # -- a C64 icon becomes a DOS one (#320) --------------------------------------
 #
 # `IconParts.dos_icon_from_c64` is the write side's own source for
-# `icon_head`/`icon_body`/`icon_colours` (`goldbox.dos.write`'s `icon`
+# `icon_head`/`icon_body`/`icon_colours` (`goldbox.dos_codec.write`'s `icon`
 # argument) -- `recognise` plus a lookup in `tools/iconreverse.yaml`,
 # read here through `c64_icon_tables`.
 

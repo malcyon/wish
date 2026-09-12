@@ -37,7 +37,7 @@ def _all_characters():
 # The pane: the four drop lines are gone, because the fields convert
 # ---------------------------------------------------------------------------
 
-#: The phrases the four lines `goldbox.amiga.LATER_DROPPED_PLAYER_TEXT` used
+#: The phrases the four lines `goldbox.amiga_later.LATER_DROPPED_PLAYER_TEXT` used
 #: to carry, lower-cased for a case-insensitive search. Watched failing
 #: before the fix: reverting `LATER_TRANSFORMED`/`LATER_DROPPED` to move
 #: `icon_head`, `icon_body` and `icon_colours` back onto `LATER_DROPPED`
@@ -150,7 +150,7 @@ def test_a_default_colours_character_and_a_customised_one_both_convert():
 
 
 def test_amiga_combat_icon_written_through_dos_write_matches_the_source():
-    """The whole path, not just the builder: `goldbox.dos.write`'s own
+    """The whole path, not just the builder: `goldbox.dos_codec.write`'s own
     `icon` argument actually lands the bytes in the DOS record it produces,
     for a Curse and a Silver Blades specimen -- `tests/test_iconprovenance.py`
     already proves this for a synthetic record; this is the same claim on
@@ -183,7 +183,7 @@ def test_amiga_combat_icon_written_through_dos_write_matches_the_source():
 
 def test_amiga_icon_fields_compose_a_legal_c64_figure_for_every_specimen():
     """`IconParts.dos_icon(head, body, size, colours, tables=...)` is what
-    `goldbox.dos._icon_for` already calls for a DOS source; an Amiga Curse
+    `goldbox.dos_codec._icon_for` already calls for a DOS source; an Amiga Curse
     or Silver Blades record's own icon fields are the same four values
     (#396), passed through the title-aware table so a title's own override
     -- Silver Blades' redrawn head 10 and body 11 -- applies to the Amiga
@@ -234,7 +234,7 @@ def test_silver_blades_large_head_ten_needs_its_own_titles_table():
 
 
 # ---------------------------------------------------------------------------
-# Anything -> Amiga: goldbox.amiga.write_later's new `icon` argument
+# Anything -> Amiga: goldbox.amiga_later.write_later's new `icon` argument
 # ---------------------------------------------------------------------------
 
 def test_write_later_writes_zero_and_the_default_with_no_icon():
@@ -259,7 +259,7 @@ def test_write_later_writes_zero_and_the_default_with_no_icon():
 def test_write_later_writes_a_given_icon_straight():
     """With an `icon`, `write_later` writes its three fields into the
     produced Amiga record unchanged -- the "write the five bytes straight"
-    half of `#396`'s comment for `goldbox.amiga.write_later`."""
+    half of `#396`'s comment for `goldbox.amiga_later.write_later`."""
     from goldbox import c64_port, neutral
     from goldbox.iconparts import DosIcon
 

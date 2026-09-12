@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """A crossed Amiga Curse or Silver Blades ability pair keeps its permanent
-and in-force halves apart through `goldbox.amiga.to_neutral_later`, the same
+and in-force halves apart through `goldbox.amiga_later.to_neutral_later`, the same
 crossed-pair bug `#404 (A converted Curse or Silver Blades character keeps a
 temporary strength boost or drain for good, because the two halves of the
 DOS ability pair are crossed)` fixed on the DOS side --

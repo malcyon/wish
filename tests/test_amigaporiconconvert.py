@@ -7,9 +7,9 @@ combat figure at all, because C64ToAmiga never recognises it)).
 `#396 (Whether an Amiga Curse or Silver Blades record's combat-icon fields
 share DOS's own numbering is unmeasured)` and `#319 (The Amiga export's drop
 line still says a conversion "does not carry" a combat icon)` already gave
-`goldbox.amiga.write_later` an `icon` argument and wired it through
+`goldbox.amiga_later.write_later` an `icon` argument and wired it through
 `editor.convert.amiga_combat_icon` for Curse and Silver Blades. This file is
-the same fix for Pool of Radiance's own writer, `goldbox.amiga.write_por`,
+the same fix for Pool of Radiance's own writer, `goldbox.amiga_por.write_por`,
 which `#383 (The live Convert dialog never wires a C64 party's own combat
 icon into DOS, so region_220 stays on the drop list)` proves the shape of on
 the DOS side.
@@ -51,7 +51,7 @@ def test_write_por_took_no_icon_argument_before_this_fix():
     """Regression marker: `write_por(char, icon=...)` raised `TypeError`
     before this ticket, because the parameter did not exist at all -- the
     second half of #422's root cause, distinct from #383's wiring-only half.
-    Reverting `goldbox/amiga.py`'s `write_por` to `HEAD` and rerunning this
+    Reverting `goldbox/amiga_por.py`'s `write_por` to `HEAD` and rerunning this
     file makes every test below fail at collection or at this call; this one
     names why.
     """
@@ -92,9 +92,9 @@ def test_with_no_icon_the_figure_is_zero_as_before():
 @needs_dos_saves
 def test_c64_to_amiga_direction_recognises_the_sources_own_combat_icon(
         tmp_path):
-    """`C64ToAmiga.rehearse` takes the `icon_parts` `goldbox.dos.c64_party`
+    """`C64ToAmiga.rehearse` takes the `icon_parts` `goldbox.dos_codec.c64_party`
     always could, the way `C64ToDos.rehearse` already does (#383) -- and
-    `goldbox.amiga.write_por` now has somewhere to put what it recognises.
+    `goldbox.amiga_por.write_por` now has somewhere to put what it recognises.
 
     Watched failing before the fix: `C64ToAmiga.rehearse` took no
     `icon_parts` keyword at all (`TypeError`), and even patched to accept
@@ -164,8 +164,8 @@ def test_c64_to_amiga_direction_with_no_icon_parts_still_converts(tmp_path):
 def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
         tmp_path):
     """`DosToAmiga.rehearse` used to hand `_rehearse_por_savegame` no
-    `icons` at all -- `dos.to_neutral` has nowhere to put a combat figure,
-    and the raw `DosCharacter` list `dos.read_party` returns was discarded
+    `icons` at all -- `dos_codec.to_neutral` has nowhere to put a combat figure,
+    and the raw `DosCharacter` list `dos_codec.read_party` returns was discarded
     before `write_por` ever saw it. `amiga_combat_icon` reads the figure off
     that raw record instead, the same shape `AmigaToDos.rehearse` already
     uses for an Amiga source.

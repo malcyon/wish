@@ -1,6 +1,6 @@
 """The former class of a dual-classed character, named and read (#256, #234).
 
-`goldbox/dos_layout.py`'s three later shapes have always had the level array
+`goldbox/dos_port.py`'s three later shapes have always had the level array
 `former_class_levels`, and the byte right after `level` that repeats the same
 number -- both write once, by the same routine, in Curse of the Azure Bonds,
 Secret of the Silver Blades and Pools of Darkness.  Until now the second byte
@@ -9,7 +9,7 @@ including the zeros `goldbox/neutral.py`'s `former_levels` convention says to
 leave out.  This file is the regression test for naming the byte
 `former_level` and fixing both readers.
 
-Synthetic records come from `goldbox/dos_layout.py`'s own table, exactly as
+Synthetic records come from `goldbox/dos_port.py`'s own table, exactly as
 `tests/test_curseconvert.py`'s `curse_record` does, so they run everywhere with
 no game data in them.  Two pairs are specimen-backed: `WISH-SPEC-curse-234-*`
 and `WISH-SPEC-ssb-234-*`, DEMELTINA and PAINE one action apart from their own
@@ -34,7 +34,7 @@ POOL_OF_RADIANCE = dos_port.POOL_OF_RADIANCE
 # --- helpers ------------------------------------------------------------
 def dos_record(shape: dos_port.DosDeltas, **values) -> bytes:
     """A record of the given shape with the named fields set, built from
-    `goldbox/dos_layout.py`'s own table -- no game data, runs anywhere."""
+    `goldbox/dos_port.py`'s own table -- no game data, runs anywhere."""
     rec = bytearray(shape.record_size)
     table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     for name, value in values.items():
@@ -194,7 +194,7 @@ def test_silver_blades_specimen_before_and_after_the_training_hall(monkeypatch):
     """PAINE, human ranger 8, one action through Silver Blades' HUMAN CHANGE
     CLASSES: ranger 8 -> magic-user 1.
 
-    Silver Blades is not on `dos.CONVERTS` -- nobody has loaded a converted
+    Silver Blades is not on `dos_codec.CONVERTS` -- nobody has loaded a converted
     Silver Blades save in the running game the way `#192` did for Curse, and
     this test does not claim to settle that. It only exercises the
     former-class reader this file is about, so `CONVERTS` is widened for the

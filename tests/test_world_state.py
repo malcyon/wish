@@ -1,9 +1,9 @@
-"""`goldbox.world_state.WorldState`, the lift of `goldbox.amiga.PorSaveState`
+"""`goldbox.world_state.WorldState`, the lift of `goldbox.amiga_por.PorSaveState`
 into one shape every port's saved-game reader fills
 (`#352 (Handle world state for Amiga saves)`).
 
 `tests/test_amigaporsavegame.py` and `tests/test_toamigapor.py` keep the
-Amiga-specific coverage of the three `goldbox.amiga.por_state_from_*`
+Amiga-specific coverage of the three `goldbox.amiga_por.por_state_from_*`
 wrappers; what belongs here is the general reader itself -- that it agrees
 with a title's own C64 and DOS specimens, and the five fields it added
 against `PorSaveState`.
@@ -54,7 +54,7 @@ def _dos_savgam(name: str, slot: str) -> bytes:
 def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
     """`WISH-SPEC-por-c64-hall-resave` is the C64 engine's own `ENCAMP >
     SAVE` of `WISH-SPEC-por-party-trained-c2` (DOS slot F), converted by
-    this project's own `dos.convert_save` and then loaded and resaved --
+    this project's own `dos_codec.convert_save` and then loaded and resaved --
     `tests/test_dosconversionarea.py` already cites the pair for `$49C5`
     and `$49F2` alone. `from_c64` and `from_dos` read both files
     independently and agree exactly on area, resident map, square, facing
@@ -69,7 +69,7 @@ def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
 
     The wallset, the per-script scratch and the header words are **not**
     asserted here: area 11 borrows New Phlan's `GEO00` and loads no
-    `WALLSET` of its own (`goldbox.dos.c64_wall_triple`'s own docstring),
+    `WALLSET` of its own (`goldbox.dos_codec.c64_wall_triple`'s own docstring),
     and the hall's script runs between the DOS save and the C64 resave, so
     those three are expected to differ and do.
     """

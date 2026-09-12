@@ -336,7 +336,7 @@ def test_the_gate_can_fail_for_the_later_titles_too(shape, tmp_path,
     """With the zero account taken away `new_dos_save` refuses rather than
     handing back a file whose zeroes nobody stands behind."""
     game, save0, save1 = _payloads(shape)
-    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.

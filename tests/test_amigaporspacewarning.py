@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`goldbox.amiga.write_por` warns a player when their character's name will
+"""`goldbox.amiga_por.write_por` warns a player when their character's name will
 lose its space on the Amiga's first save.
 
 `#308 (Does Amiga Pool of Radiance drop the space out of a character's name

@@ -424,14 +424,14 @@ def test_a_dos_companions_control_byte_crosses_to_the_c64():
 
 
 def test_npc_is_off_the_dos_writers_drop_list():
-    """Before #303 gave it a home, `npc` was on `dos.WRITE_DROPPED`
+    """Before #303 gave it a home, `npc` was on `dos_codec.WRITE_DROPPED`
     unconditionally -- a C64 companion converted to DOS arrived an ordinary
     player character with no line saying so."""
     assert "npc" not in dict(dos_codec.WRITE_DROPPED)
 
 
 def test_a_dos_source_supplies_npc_rather_than_dropping_it_in_silence():
-    """Before #303, `field_83_87` sat on `dos.CONSTANTS`, silent, and
+    """Before #303, `field_83_87` sat on `dos_codec.CONSTANTS`, silent, and
     `to_neutral` never set neutral `npc` at all -- a DOS companion imported
     with nothing said about it anywhere, on either side of the pane."""
     plain = dos_codec.to_neutral(_dos_record(constant=b"\x00\x00\x01\x00\x00"))
@@ -548,7 +548,7 @@ def test_the_dos_reader_grades_the_two_bytes_above_the_field_they_sit_in():
 # save actually reaches `c64_codec.read` as a `goldbox.savegame.Slot.record`,
 # whose `stored_size` is 256 -- both fields end past that, so `is_stored` was
 # False unconditionally and neither was ever set.  These build the save the
-# way `goldbox/dos.py` and `goldbox/amiga.py` do, through `SaveGame0.slot`
+# way `goldbox/dos_codec.py` and `goldbox/amiga.py` do, through `SaveGame0.slot`
 # and `SaveGame1.roster`.
 
 def _occupied_save() -> SaveGame0:

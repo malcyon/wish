@@ -6,7 +6,7 @@ these tests existed, both of which would have made the ticket's headline
 number wrong:
 
 * **A record whose item file is not beside it "fails" by its whole
-  inventory.**  `goldbox.dos.read_character` gives an export with no `.ITM`
+  inventory.**  `goldbox.dos_codec.read_character` gives an export with no `.ITM`
   no items and does not complain, so its money alone is compared against a
   stored total that counts items.  Six Amiga `.cha` exports on the Curse save
   disk declare 6 to 16 items each and were being reported as misses of +240

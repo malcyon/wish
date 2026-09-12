@@ -1369,7 +1369,7 @@ def test_the_class_combo_shows_both_classes_for_a_regained_paladin(app):
     (`$48`, `$42`), so there is no code to fall back to either; the combo
     now names both classes the mask holds, the same way the C64's own sheet
     draws a regained dual-classed character (`FIGHTER/PALADIN`,
-    `CLERIC/PALADIN`) -- `goldbox.games.classes_to_names` off `class_bits`.
+    `CLERIC/PALADIN`) -- `goldbox.c64_port.classes_to_names` off `class_bits`.
 
     Driven through the real window: selecting each row populates the combo
     through `editor.window._char_class_shown`, which returns a

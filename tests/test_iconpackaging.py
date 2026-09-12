@@ -109,11 +109,11 @@ def test_it_resolves_under_a_frozen_root(monkeypatch, tmp_path):
     **Restored from a snapshot, not by reloading again.** `importlib.reload`
     redefines every class in the module in place, so `goldbox.iconparts.
     IconParts` after even the "restoring" reload is a *third* class object,
-    still not the one `goldbox.dos` already holds a reference to from its own
+    still not the one `goldbox.dos_codec` already holds a reference to from its own
     `from .iconparts import IconParts` at import time. Any `IconParts`
     instance built after that -- `tests/test_ssbconvert.py`'s `ssb_parts`
     fixture makes one straight off a disk -- then fails every `isinstance`
-    check `goldbox/dos.py` runs against its own, older reference, and a
+    check `goldbox/dos_codec.py` runs against its own, older reference, and a
     combat icon comes back as the unconverted `IconParts` object instead of
     36 bytes. That is what was failing only inside a full parallel run in
     `#374 (The Silver Blades figure test fails only inside a full parallel

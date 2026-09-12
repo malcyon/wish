@@ -12,7 +12,7 @@ Everything here needs the player's copy of *Forgotten Realms: The Archives*
 and skips without it, the way `tests/gamedata.py` skips without the C64 disks.
 The two tests that need no game data at all are the ones that would go red on
 a reader mistake rather than on a missing corpus: the gate reader, and the
-insistence that the money fields come from `goldbox/dos_layout.py`.
+insistence that the money fields come from `goldbox/dos_port.py`.
 
 One thing these do **not** assert: a remembered address.  The tool finds the
 routine by signature, and pinning `0x1758` here would turn a re-derivation
@@ -48,7 +48,7 @@ def _found(stem: str):
 
 
 def test_the_money_offsets_come_from_the_layout_rather_than_a_local_table():
-    """A shape correction in `goldbox/dos_layout.py` must move this tool.
+    """A shape correction in `goldbox/dos_port.py` must move this tool.
 
     The failure this prevents is silent: a tool with its own copy of the seven
     displacements goes on reading whatever used to be at `0x88` and reports a
@@ -129,7 +129,7 @@ def test_exactly_one_routine_writes_gems_or_jewelry_and_recomputes(stem):
 def test_pool_of_radiance_discounts_a_readied_bag_of_holding():
     """5000 tenths of a pound, gated on a local the item walk sets.
 
-    This is the term `goldbox.dos.expected_encumbrance` does not have, so a
+    This is the term `goldbox.dos_codec.expected_encumbrance` does not have, so a
     character carrying one stores *below* the sum with nobody having edited
     anything.
     """

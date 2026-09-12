@@ -502,7 +502,7 @@ def test_a_hand_edited_area_list_is_read_for_what_it_holds(tmp_path,
 def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
         tmp_path, monkeypatch):
     """An area id means nothing without a title, so the file is keyed by
-    `goldbox.games.Game.key` -- `docs/138-multiple-games.md` §5.
+    `goldbox.c64_port.Game.key` -- `docs/138-multiple-games.md` §5.
 
     Only Pool of Radiance has a default, because only Pool of Radiance has an
     area table: a tick for a title with no table would be an id off another

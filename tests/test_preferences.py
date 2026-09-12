@@ -250,9 +250,9 @@ def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
 #
 # A row per title, each optional and each reporting what it found the way the
 # shared folder above does. Pool of Radiance, Curse of the Azure Bonds and
-# Secret of the Silver Blades only -- the three titles `goldbox.games.GAMES`
+# Secret of the Silver Blades only -- the three titles `goldbox.c64_port.GAMES`
 # gives a real C64 `disk_glob` for. Pools of Darkness is the fourth row Donald
-# settled on and is not built: it has no entry in `goldbox.games.GAMES` at all
+# settled on and is not built: it has no entry in `goldbox.c64_port.GAMES` at all
 # and never shipped on the C64 this search reads, so there is no `disk_glob`
 # a folder for it could search against -- a finding left on #22 rather than
 # guessed at here.

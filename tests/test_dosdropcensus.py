@@ -1,6 +1,6 @@
 """`tools/dosdropcensus.py`'s `0x0E6` column (#284).
 
-`goldbox/dos_layout.py` renamed that byte from `gap_0e6` to `former_level` as
+`goldbox/dos_port.py` renamed that byte from `gap_0e6` to `former_level` as
 part of `#256 (The neutral record has nowhere to put a dual-classed
 character's former levels)`, and `tools/dosdropcensus.py` kept the old name in
 its lookup, so the column silently degraded to `-` for every record.

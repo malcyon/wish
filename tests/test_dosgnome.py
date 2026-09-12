@@ -110,7 +110,7 @@ def test_records_are_nine_bytes_each():
 def test_a_short_tail_is_dropped_rather_than_padded():
     """The record count comes from the file's length, so a file that is not a
     multiple of nine is a fact about the run rather than something to round
-    away -- `goldbox.dos.EFFECT_NEXT_NULL`, which measured that."""
+    away -- `goldbox.dos_codec.EFFECT_NEXT_NULL`, which measured that."""
     assert dosgnome.records(bytes(9 + 4)) == [bytes(9)]
     assert dosgnome.records(bytes(5)) == []
     assert dosgnome.records(b"") == []
@@ -172,7 +172,7 @@ def test_a_second_party_rolled_later_reproduces_the_same_sets(filename, ids):
 def test_every_innate_record_we_watched_being_written_carries_the_same_payload():
     """`00 00 FF 00`, in every innate record in the specimen tree.
 
-    `goldbox.dos.INNATE_PAYLOAD` is those four bytes.  24 innate records
+    `goldbox.dos_codec.INNATE_PAYLOAD` is those four bytes.  24 innate records
     across the two parties, and every one of them holds the same four -- so a
     change to the reader that broke the shape fails here rather than only in
     an emulator run nobody reruns.

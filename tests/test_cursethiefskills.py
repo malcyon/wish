@@ -13,7 +13,7 @@ reads is 7 in every DOS Curse record on this machine.  Silver Blades' copy
 opens by zeroing the same local and Pool of Radiance's has no such term, which
 is why neither title shows the offset.
 
-The fix: `goldbox.dos.write` and `goldbox.c64_codec.write` both recompute a
+The fix: `goldbox.dos_codec.write` and `goldbox.c64_codec.write` both recompute a
 Curse thief's eight skills from `goldbox.levels`' shared table rather than
 copy whatever the source held, so neither an inflated DOS byte nor a stale
 carried-over one reaches the destination.  The tests below build a neutral

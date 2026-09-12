@@ -7,7 +7,7 @@ library supports)`'s plan (`work/reports/52-plan.md`, on the issue's own
 comments): no window, no menu, no template.
 
 **Every test here is a round trip.** It proves `editor.convert` wraps
-`goldbox.dos` the way `editor/dosimport.py`, `tools/dosdisk.py` and
+`goldbox.dos_codec` the way `editor/dosimport.py`, `tools/dosdisk.py` and
 `tools/dosnewsave.py` already do, byte for byte -- not a fact about the game,
 so the input's provenance does not matter to the assertion
 (`.claude/rules/testing.md`, "A specimen is only evidence if we know who
@@ -107,7 +107,7 @@ def _fake_party(path, game, save0, save1=None, disk=b""):
 # ---------------------------------------------------------------------------
 
 def test_source_detect_reads_a_c64_save_disk(tmp_path):
-    """A round trip: `detect` reads back what `dos.save_disk` wrote, the way
+    """A round trip: `detect` reads back what `dos_codec.save_disk` wrote, the way
     `editor/exports.py`'s `Source.from_disk` already did before this moved
     the class here."""
     save0, save1 = _fixture_payloads()
@@ -223,7 +223,7 @@ def test_source_detect_refuses_a_matching_party_with_nothing_open(tmp_path):
 
 def test_destinations_for_lists_pool_of_radiances_registered_directions():
     """Pool of Radiance is the one title with an Amiga writer
-    (`goldbox.amiga.WRITES`, `#316 (Write the Amiga Pool of Radiance saved
+    (`goldbox.amiga_shared.WRITES`, `#316 (Write the Amiga Pool of Radiance saved
     game from the source save, so a converted party arrives where it was
     standing)`), so its two sources each answer two directions rather than
     one -- DOS still first for a DOS source, C64 still first for a C64
@@ -249,7 +249,7 @@ def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
         shape):
     """`#299 (goldbox.dos.write builds only Pool of Radiance's record, so
     nothing can be converted to DOS for the later titles)`'s container
-    writer put both later titles on `goldbox.dos.WRITES`, so each is offered
+    writer put both later titles on `goldbox.dos_codec.WRITES`, so each is offered
     with no edit to this module beyond the derivation itself -- the same
     shape `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
     already proves for the other direction."""
@@ -261,16 +261,16 @@ def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
 
 
 def test_directions_holds_ten_rows_derived_from_four_library_tuples():
-    """Three titles read DOS → C64 (`goldbox.dos.CONVERTS`) and the same
-    three write C64 → DOS (`goldbox.dos.WRITES`, as of `#299`); Pool of
+    """Three titles read DOS → C64 (`goldbox.dos_codec.CONVERTS`) and the same
+    three write C64 → DOS (`goldbox.dos_codec.WRITES`, as of `#299`); Pool of
     Radiance alone reads Amiga → C64 and Amiga → DOS
-    (`goldbox.amiga.CONVERTS`, as of
+    (`goldbox.amiga_shared.CONVERTS`, as of
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` and
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
     standing in the Slums on the Amiga arrives there under DOSBox)`), and
     Pool of Radiance alone writes C64 → Amiga and DOS → Amiga
-    (`goldbox.amiga.WRITES`, `#316 (Write the Amiga Pool of Radiance saved
+    (`goldbox.amiga_shared.WRITES`, `#316 (Write the Amiga Pool of Radiance saved
     game from the source save, so a converted party arrives where it was
     standing)`), so the registry holds ten rows -- up from four before
     `#299`'s container writer, six before `#353`'s Amiga reader, and eight
@@ -298,7 +298,7 @@ def test_directions_holds_ten_rows_derived_from_four_library_tuples():
 
 
 def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
-    """Curse of the Azure Bonds joined `goldbox.dos.CONVERTS` overnight
+    """Curse of the Azure Bonds joined `goldbox.dos_codec.CONVERTS` overnight
     (`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
     which the importer refuses today)`), and this registry derives its row
     from `CONVERTS` rather than listing it -- so it is offered with no edit
@@ -318,8 +318,8 @@ def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
     **This used to use Secret of the Silver Blades**, which was read with no
     C64 writer until `#193 (Convert a Secret of the Silver Blades DOS save
     into a C64 one, which the importer refuses today)` built one and it
-    joined `goldbox.dos.CONVERTS` on 2026-09-05. Pools of Darkness is the
-    permanent example: `goldbox/games.py` has no entry for it at all, because
+    joined `goldbox.dos_codec.CONVERTS` on 2026-09-05. Pools of Darkness is the
+    permanent example: `goldbox/c64_port.py` has no entry for it at all, because
     there is no C64 port to convert to, so no writer will ever appear.
 
     A fake folder is enough -- `Source.detect` reads only the record size."""
@@ -342,7 +342,7 @@ def test_every_converts_entry_has_a_dos_to_c64_name():
     for shape in convert.C64_PAIRED:
         assert shape.key in convert.DOS_TO_C64_NAMES, (
             f"{shape.title} converts but names no .D64 file")
-    # `dos.CONVERTS` and `C64_PAIRED` differ by exactly the titles with no
+    # `dos_codec.CONVERTS` and `C64_PAIRED` differ by exactly the titles with no
     # C64 port, and there is one: Pools of Darkness reads and writes for its
     # **Amiga** pairing (`#194 (Import and export a Pools of Darkness save
     # between DOS and the Amiga)`) and has no `.D64` to name, ever.
@@ -380,20 +380,20 @@ def test_the_c64_guard_is_the_port_registry_not_the_title_one():
 
 
 def test_a_converts_entry_missing_its_name_fails_at_construction():
-    """The loud failure `DIRECTIONS` would hit if `goldbox.dos.CONVERTS`
+    """The loud failure `DIRECTIONS` would hit if `goldbox.dos_codec.CONVERTS`
     grew a row `DOS_TO_C64_NAMES` has none for, provoked directly rather
     than by editing `CONVERTS` itself. Secret of the Silver Blades is a real
-    `goldbox.games.by_key` entry -- so this proves the *name* lookup fails
+    `goldbox.c64_port.by_key` entry -- so this proves the *name* lookup fails
     loudly, not the *game* lookup that would run first for a title nobody
     has heard of.
 
-    The shape is built here rather than named from `dos_layout`, because
+    The shape is built here rather than named from `dos_port`, because
     every title that has one is now in `DOS_TO_C64_NAMES` -- Silver Blades
     joined on 2026-09-05 with `#193 (Convert a Secret of the Silver Blades
     DOS save into a C64 one, which the importer refuses today)`. Copying a
     real shape under a key nothing names is what leaves this test asserting
     the same thing it always did. Champions of Krynn is the key to borrow:
-    `goldbox/games.py` knows it, so `games.by_key` succeeds and the failure
+    `goldbox/c64_port.py` knows it, so `c64_port.by_key` succeeds and the failure
     can only come from the name lookup, which is the point."""
     unnamed = dataclasses.replace(dos_port.SECRET_OF_THE_SILVER_BLADES,
                                   key="champions-of-krynn")
@@ -505,7 +505,7 @@ def test_dos_to_c64_direction_writes_only_into_its_own_folder(game_files,
 @needs_disks
 def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
     """The bytes this direction writes equal what `tools/dosdisk.py` writes,
-    calling `goldbox.dos.new_save` and `goldbox.dos.save_disk` directly for
+    calling `goldbox.dos_codec.new_save` and `goldbox.dos_codec.save_disk` directly for
     the same slot -- so `#119 (Play a converted DOS save in VICE, off a disk
     Wish built from nothing)`'s VICE proof stands for this path too."""
     folder = _save_dir()
@@ -532,7 +532,7 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
 @needs_curse_dos_save
 def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
     """The registry's derived Curse row writes the same bytes a direct call
-    writes, calling `goldbox.dos.new_save` and `goldbox.dos.save_disk`
+    writes, calling `goldbox.dos_codec.new_save` and `goldbox.dos_codec.save_disk`
     directly with `game=CURSE_OF_THE_AZURE_BONDS` -- so `#192 (Convert a
     Curse of the Azure Bonds DOS save into a C64 one, which the importer
     refuses today)`'s VICE proof stands for this path too. This is the
@@ -604,7 +604,7 @@ def test_c64_to_dos_direction_writes_only_into_its_own_folder(tmp_path):
 @needs_dos_saves
 def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
     """The files this direction writes equal what `tools/dosnewsave.py`
-    writes, calling `goldbox.dos.new_dos_save` directly for the same inputs
+    writes, calling `goldbox.dos_codec.new_dos_save` directly for the same inputs
     -- so `#26 (Write a DOS save, not just read one)`'s DOSBox proof stands
     for this path too. No template anywhere (`.claude/rules/conversions.md`).
     """
@@ -642,7 +642,7 @@ def _six_icon_party() -> "tuple[bytes, bytes, object]":
 
     The same shape `tests/test_doswriter.py`'s own
     `test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures`
-    builds at `goldbox.dos`'s own layer -- nothing here is the game's own
+    builds at `goldbox.dos_codec`'s own layer -- nothing here is the game's own
     saved bytes, only its documented icon format applied six times to one
     committed fixture. Returns `(save0, save1, IconParts)` so a caller needs
     to read `SPELLE64`/`SPELLN64` only once.
@@ -681,7 +681,7 @@ def _six_icon_party() -> "tuple[bytes, bytes, object]":
 @needs_dos_saves
 def test_c64_to_dos_direction_recognises_the_sources_own_combat_icon(
         tmp_path):
-    """`C64ToDos.rehearse`/`write` take the `icon_parts` `goldbox.dos.
+    """`C64ToDos.rehearse`/`write` take the `icon_parts` `goldbox.dos_codec.
     new_dos_save` always could, and the two runs stay in step -- `write`'s
     second run recognises what `rehearse`'s did, not the game's own default.
     """
@@ -834,7 +834,7 @@ def test_a_c64_source_with_no_disks_is_refused_for_an_amiga_destination(
 # ---------------------------------------------------------------------------
 # `#234 (A dual-classed Curse or Silver Blades character converted to DOS
 # loses the class he trained out of)`'s own proof, through this registry
-# rather than a direct `goldbox.dos` call -- the row this issue was waiting
+# rather than a direct `goldbox.dos_codec` call -- the row this issue was waiting
 # on `#299 (goldbox.dos.write builds only Pool of Radiance's record, so
 # nothing can be converted to DOS for the later titles)` for.
 # ---------------------------------------------------------------------------
@@ -875,7 +875,7 @@ needs_dual_classed_curse_specimen = pytest.mark.skipif(
 def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_registry(
         tmp_path):
     """`#234`'s own case, run through `editor.convert.DIRECTIONS` rather
-    than the direct `goldbox.dos.new_dos_save` call its comments proved this
+    than the direct `goldbox.dos_codec.new_dos_save` call its comments proved this
     with: converting PHILIPPE's disk through the registered Curse C64 → DOS
     direction and reading the DOS record back gets the same answer -- fighter
     1, no experience, carrying the magic-user 6 she left in the two places
@@ -901,7 +901,7 @@ def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_r
 
     assert philippe.class_levels == {"fighter": 1}
     assert philippe.get("experience") == 0
-    # magic-user is slot 5 of `dos.CLASS_LEVEL_SLOTS` -- the class she left.
+    # magic-user is slot 5 of `dos_codec.CLASS_LEVEL_SLOTS` -- the class she left.
     assert philippe.raw("former_class_levels")[5] == 6
     assert philippe.raw("former_level")[0] == 6
 
@@ -970,7 +970,7 @@ def _synthetic_dos_folder(tmp_path, shape, slot="A", suffix="DAT",
                           name="dos"):
     """A folder just real enough for `Source.detect` to name its shape --
     one `SAVGAM<slot>.<suffix>` and one right-sized `CHRDAT<slot>1.SAV`,
-    neither of them anything `goldbox.dos` could actually read. Every test
+    neither of them anything `goldbox.dos_codec` could actually read. Every test
     that uses this is testing the dialog's wiring, not the game
     (`.claude/rules/testing.md`, "A specimen is only evidence if we know who
     wrote it").
@@ -995,7 +995,7 @@ def _later_c64_disk(tmp_path, game):
     """A readable Curse or Silver Blades C64 save disk, zero-filled.
 
     Both later titles keep one payload where Pool of Radiance keeps two, so
-    `goldbox.dos.save_disk` is handed the `Game` and writes whichever files
+    `goldbox.dos_codec.save_disk` is handed the `Game` and writes whichever files
     that title's disk holds. Zeroes are enough: nothing here converts the
     party, only names the title off the disk's own directory, and a slice of
     a real save would be the copy `AGENTS.md` bans as a fixture.
@@ -1057,7 +1057,7 @@ def test_a_curse_or_silver_blades_d64_lists_dos(tmp_path, game):
     of either later title offers the Commodore 64.  This is the reverse, and
     it became true only when `#299 (goldbox.dos.write builds only Pool of
     Radiance's record, so nothing can be converted to DOS for the later
-    titles)` closed and `goldbox.dos.WRITES` grew from one title to three --
+    titles)` closed and `goldbox.dos_codec.WRITES` grew from one title to three --
     `editor.convert.DIRECTIONS` went from four rows to six with no edit.
     `test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction`
     checks the registry; this checks the combo a player reads, which is one
@@ -1104,7 +1104,7 @@ def test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot(
                                    dos_port.SECRET_OF_THE_SILVER_BLADES],
                         ids=lambda s: s.key)
 def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
-    """Both later titles convert now (`goldbox.dos.CONVERTS`), so the
+    """Both later titles convert now (`goldbox.dos_codec.CONVERTS`), so the
     dialog offers the Commodore 64 for either without an edit here."""
     folder = _synthetic_dos_folder(tmp_path, shape)
     dialog = convert.ConvertDialog(
@@ -1700,18 +1700,18 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     `#306 (The Fast Travel button's own disabled tooltip carries a memory
     address)`'s last comment found that the `(NOT APPROVED)` marker was
     checked only in `editor/convert.py`, so a marked string in
-    `goldbox/c64_codec.py`, `goldbox/amiga.py`, `goldbox/dos.py` or
+    `goldbox/c64_codec.py`, `goldbox/amiga.py`, `goldbox/dos_codec.py` or
     `automap/actions.py` shipped to a player silently instead of failing
     here first. This walks each module's own source, the way the test above
     does, rather than a typed list of strings, so a new marked string added
     to any of the four fails here too.
 
-    `goldbox/dos.py` joined the sweep on `#52 (File ▸ Import and File ▸
+    `goldbox/dos_codec.py` joined the sweep on `#52 (File ▸ Import and File ▸
     Export for every direction the library supports)`: `#389 (A conversion
     to the Amiga tells the player what DOS does with their character)`
     (`d0c280f`) put a marked portrait-position line in `to_neutral`, the DOS
     reader every registered direction with a DOS source calls, and this test
-    did not reach that module -- `dos.py`'s own docstring at its `rep.dropped`
+    did not reach that module -- `dos_codec.py`'s own docstring at its `rep.dropped`
     field says it "is read by a person in the conversion pane", so it always
     belonged in this sweep.
 
@@ -1723,7 +1723,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     are reworded here and marked `(NOT APPROVED)` rather than shipped guessed
     at; two more marked strings in `c64_codec.py` predate this ticket (the
     combat-icon lines, both directions), and one each in `goldbox/amiga.py`,
-    `goldbox/dos.py` and `automap/actions.py` predate or follow it. None of
+    `goldbox/dos_codec.py` and `automap/actions.py` predate or follow it. None of
     the twelve is this test's to approve -- Donald ruled on 2026-09-07 that
     the two combat-icon lines (`c64_codec.py`'s and `amiga.py`'s) stay
     unworded until the tickets that would delete them close, so the right
@@ -1737,7 +1737,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     from automap import actions
 
     # The two codecs by their own names rather than through the
-    # `goldbox/dos.py` and `goldbox/amiga.py` shims: `#470`'s stage 8 moved
+    # `goldbox/dos_codec.py` and `goldbox/amiga.py` shims: `#470`'s stage 8 moved
     # the code to `dos_codec.py` and `amiga_codec.py`, and
     # `inspect.getsource` of a shim reads the shim, which carries no strings
     # at all. `WAITING` is keyed on `module.__name__`, so both move together.
@@ -1757,7 +1757,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: warning)` and `#52`: nine in `goldbox/c64_codec.py` -- the six
     #: per-character ceiling sentences that ticket put in front of a player
     #: for the first time, plus three combat-figure lines that predate it --
-    #: one in `goldbox/amiga.py`, one in `goldbox/dos.py`
+    #: one in `goldbox/amiga.py`, one in `goldbox/dos_codec.py`
     #: (`#389 (A conversion to the Amiga tells the player what DOS does with
     #: their character)`'s portrait-position line) and one in
     #: `automap/actions.py`, the Fast Travel failure line
@@ -1794,17 +1794,17 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: effect region and the combat tail among them. One sentence naming that
     #: is what keeps the loss out of silence; thirty-seven written by an
     #: agent would be the opposite of Donald wording what a player reads.
-    #: `goldbox.dos` went from one to eight and `goldbox.amiga` from two to
+    #: `goldbox.dos_codec` went from one to eight and `goldbox.amiga` from two to
     #: three on 2026-09-08, closing the write-side half of `#389 (A
     #: conversion to the Amiga tells the player what DOS does with their
-    #: character)` its own last comment left open: `goldbox.dos.write` always
+    #: character)` its own last comment left open: `goldbox.dos_codec.write` always
     #: builds a DOS record, even when `goldbox.amiga.write_por` and
     #: `write_later` re-cut it into an Amiga one, and five of its own canned
     #: drop reasons named "DOS" regardless of which writer was asking --
     #: `write` now takes an `into` parameter the two Amiga writers pass
     #: `"Amiga"` through, so the composed sentences differ by wording rather
     #: than by number, and each of the five needed its own marker. A sixth
-    #: line in `goldbox.dos.write` and one in `goldbox.amiga.to_neutral` had
+    #: line in `goldbox.dos_codec.write` and one in `goldbox.amiga.to_neutral` had
     #: the same defect in the same commit but only lost the word "DOS"
     #: without otherwise changing, so they carry a marker too rather than
     #: being judged already-approved by resemblance to the old wording --
@@ -1819,7 +1819,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: nobody's to word. `editor/dosimport.pane_text` is the whole of what
     #: the Convert dialog draws and it reads `messages` and `losses` alone,
     #: logging `dropped` instead. The four: `goldbox.c64_codec`'s
-    #: combat-icon line in `write` (9 to 8), `goldbox.dos.to_neutral`'s
+    #: combat-icon line in `write` (9 to 8), `goldbox.dos_codec.to_neutral`'s
     #: portrait-position line (8 to 7), and `goldbox.amiga`'s `0x11F`
     #: trailing-pad line and its `field_83_87` treasure-share entry in
     #: `LATER_DROPPED_PLAYER_TEXT` (3 to 1).
@@ -1830,7 +1830,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: `WISH_EXPERIMENTAL_EXPORT` is set. That pane reads a **C64** save, so
     #: every drop line the C64 reader and the DOS and Amiga writers compose
     #: can still reach a person -- which is `goldbox.c64_codec`'s
-    #: `READ_DROPPED_PLAYER_TEXT` entry and all seven of `goldbox.dos`'s.
+    #: `READ_DROPPED_PLAYER_TEXT` entry and all seven of `goldbox.dos_codec`'s.
     #: The four above are on the other side of that split: a C64
     #: *destination*, a DOS *reader* and an Amiga *reader* reach the Convert
     #: dialog and nothing else.
@@ -1856,7 +1856,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # comment citing #399 sits where each one was. The one line left is the
     # combat-icon figure, `#320`/`#355` territory and untouched here.
     #
-    # `goldbox.dos` went 7 to 6 the same day, also with nothing approved:
+    # `goldbox.dos_codec` went 7 to 6 the same day, also with nothing approved:
     # `encumbrance`'s drop-list line moved to `WRITE_DERIVED` (#483, The
     # Convert flag could come off while two fields are still lost, because a
     # silencing list keeps them out of the count that decides it), which
@@ -2050,7 +2050,7 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
 
     monkeypatch.setattr(convert.ConvertDialog, "refuse", note_refusal)
     # `editor.convert` calls `dos_codec.new_dos_save` directly now (#470 stage
-    # 9), not through the `goldbox.dos` shim this test otherwise uses, so the
+    # 9), not through the `goldbox.dos_codec` shim this test otherwise uses, so the
     # patch has to land on the module the caller actually looks the name up
     # on -- patching the shim's own attribute leaves `dos_codec`'s untouched.
     monkeypatch.setattr(dos_codec, "new_dos_save", half_a_write)
@@ -2420,8 +2420,8 @@ def test_an_adf_that_holds_no_saved_game_is_refused_and_not_guessed_at(
 
 def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     """The bytes the dialog's Amiga row writes equal what
-    `tools/fromamigapor.py` writes, calling `goldbox.amiga.read_por_slot`,
-    `goldbox.dos.new_save_from` and `goldbox.dos.save_disk` directly for the
+    `tools/fromamigapor.py` writes, calling `goldbox.amiga_por.read_por_slot`,
+    `goldbox.dos_codec.new_save_from` and `goldbox.dos_codec.save_disk` directly for the
     same slot -- so `#353`'s VICE proof stands for this path too, which is
     the same argument `test_dos_to_c64_direction_is_the_transfer_test`
     makes for the DOS row.
@@ -2632,7 +2632,7 @@ def test_the_report_pane_carries_no_label_and_no_box(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_a_curse_c64_source_is_offered_no_amiga_row():
-    """`goldbox.amiga.WRITES` holds Pool of Radiance alone -- no Amiga
+    """`goldbox.amiga_shared.WRITES` holds Pool of Radiance alone -- no Amiga
     saved-game writer exists yet for Curse of the Azure Bonds or Secret of
     the Silver Blades (`#359`'s step 6) -- so a Curse source is offered only
     the registered C64 -> DOS row, the same way
@@ -3019,9 +3019,9 @@ def _por_amiga_disk_2(tmp_path):
 
 def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     """Every file on the `.adf` this direction writes equals, byte for
-    byte, the same file on a disk built by calling `goldbox.dos.c64_party`,
-    `goldbox.amiga.por_state_from_c64`, `goldbox.amiga.new_por_savegame` and
-    `goldbox.amiga.make_por_save_disk` by hand -- the same argument
+    byte, the same file on a disk built by calling `goldbox.dos_codec.c64_party`,
+    `goldbox.amiga_por.por_state_from_c64`, `goldbox.amiga_por.new_por_savegame` and
+    `goldbox.amiga_por.make_por_save_disk` by hand -- the same argument
     `test_dos_to_c64_direction_is_the_transfer_test` makes for the DOS row.
 
     **File content, not the disk's raw bytes**: `goldbox.amiga_adf.
@@ -3035,7 +3035,7 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     `CHRDATA1` is BRUTUS and `CHRDATA6` is MALCYON, the C64's own marching
     order (`#385 (A C64 party converted to an Amiga disk marches in the
     reverse of its C64 order)`, closed before this row was built): this
-    direction calls `dos.c64_party` exactly as `tools/toamigapor.py` does
+    direction calls `dos_codec.c64_party` exactly as `tools/toamigapor.py` does
     since that fix, so the two cannot disagree.
     """
     from test_toamigapor import _c64_specimen

@@ -8,7 +8,7 @@ direction reuses whole (`tests/test_amigatoc64.py` owns those tests).
 
 **What is left for this file is the writing half**, and it is a shorter list
 than `#353`'s because the destination is the port the Amiga record was
-already shaped like: `goldbox.amiga.to_dos_record` re-cuts 288 Amiga bytes
+already shaped like: `goldbox.amiga_por.to_dos_record` re-cuts 288 Amiga bytes
 into the 285 DOS ones, so a converted record can be compared with its source
 field for field rather than through a codec. That comparison is the point of
 this file -- `test_the_written_record_is_the_amiga_record` names every byte
@@ -130,7 +130,7 @@ def test_a_source_with_no_amiga_slot_is_refused_rather_than_guessed_at(
 
 @needs_dos_saves
 def test_the_rehearsal_writes_nothing(shipped_adf, tmp_path):
-    """`goldbox.dos.new_dos_save_from` writes real files, so the rehearsal
+    """`goldbox.dos_codec.new_dos_save_from` writes real files, so the rehearsal
     runs into a scratch directory the player never sees -- the same order
     `C64ToDos` follows."""
     source = convert.Source.detect(shipped_adf)
@@ -162,7 +162,7 @@ def test_the_dos_slot_written_is_not_the_amiga_slot_read(one_character_adf,
     `source.slot` -- E on this disk -- and the DOS slot is what the dialog
     passes, always `A` for a fresh folder. Reading the wrong one converts
     whichever Amiga slot happens to share the DOS letter, which on this disk
-    is a different party: slot D is `goldbox.amiga.write_por_slot`'s own
+    is a different party: slot D is `goldbox.amiga_por.write_por_slot`'s own
     output and slot E is the Amiga engine's resave of it."""
     source = convert.Source.detect(one_character_adf)
     assert source.slot == "D"          # the first slot the disk holds files for
@@ -206,7 +206,7 @@ def test_a_party_of_one_writes_one_record_and_no_others(one_character_adf,
     savgam = (tmp_path / "out" / "SAVGAMA.DAT").read_bytes()
     assert dos_savegame.party_size(savgam) == 1
     # **All six names, and the party size is what says how many are read.**
-    # The two ports part company here: `goldbox.amiga.retarget_savegame`
+    # The two ports part company here: `goldbox.amiga_por.retarget_savegame`
     # fills the Amiga table only as far as the party goes, and
     # `goldbox.dos_savegame.put_character_files` writes six because no DOS
     # specimen shows what a blanked entry does. So converting a party of one
@@ -220,7 +220,7 @@ def test_the_transfer_test_says_the_dialog_writes_what_the_library_writes(
         shipped_adf, tmp_path):
     """The bytes the dialog's Amiga → DOS row writes equal what
     `tools/fromamigapor.py --to dos` writes, calling `read_por_slot`,
-    `read_por_state` and `goldbox.dos.new_dos_save_from` directly for the
+    `read_por_state` and `goldbox.dos_codec.new_dos_save_from` directly for the
     same slot -- so `#354`'s DOSBox proof stands for the dialog's own path
     too, which is the argument
     `test_c64_to_dos_direction_is_the_transfer_test` makes for the C64 row.
@@ -294,7 +294,7 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
     which is `.claude/rules/conversions.md`'s rule for a round trip. What is
     allowed to differ, and why:
 
-    * `field_83_87` -- `goldbox.amiga.to_dos_record` writes those five bytes
+    * `field_83_87` -- `goldbox.amiga_por.to_dos_record` writes those five bytes
       zero because the second insertion is not located, and the DOS writer
       writes the constant `00 00 01 00 00` that 101 of 101 engine-written
       Pool of Radiance records hold;
@@ -303,7 +303,7 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
       `#378 (An Amiga character converted to DOS loses the identity byte his
       own record has always held)`;
     * `item_chain`, `hands_used`, `heap_104` -- live heap and combat state,
-      `goldbox.dos.WRITE_UNSOURCED`, which the engine rebuilds on load.
+      `goldbox.dos_codec.WRITE_UNSOURCED`, which the engine rebuilds on load.
 
     A new name in that set is a new loss and fails here.
     """
@@ -340,7 +340,7 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
     draws**, and it is the one thing in the record that does not reach the
     DOS writer through the neutral vocabulary.
 
-    `goldbox.dos.to_neutral` has nowhere to put `icon_head`, `icon_body` and
+    `goldbox.dos_codec.to_neutral` has nowhere to put `icon_head`, `icon_body` and
     the six `icon_colours` bytes -- the C64 stores drawn cells rather than an
     index -- so a party read into neutral records and written straight back
     out arrives with six identical default figures, which is
@@ -379,7 +379,7 @@ def test_the_party_is_written_in_the_amiga_s_own_order(shipped_adf, tmp_path):
     """**No reversal here, and that is the difference from `#353`.** The
     Amiga lists a party in DOS file order -- `CHRDAT<letter>1` first -- so
     `CHRDATA1.SAV` is the Amiga's own `CHRDATA1.sav`. `#101`'s reversal, and
-    `goldbox.dos.marching_slot`, are the C64's business: it displays the
+    `goldbox.dos_codec.marching_slot`, are the C64's business: it displays the
     highest occupied slot first and the two lists really are reverses there.
     """
     source = convert.Source.detect(shipped_adf)
@@ -399,7 +399,7 @@ def test_the_party_is_written_in_the_amiga_s_own_order(shipped_adf, tmp_path):
 def test_every_byte_of_the_saved_game_has_a_source(shipped_adf, tmp_path):
     """No template anywhere (`.claude/rules/conversions.md`): a byte with no
     source is a byte written zero by accident rather than by measurement, and
-    `goldbox.dos.new_dos_save_from` raises rather than hand one back. This
+    `goldbox.dos_codec.new_dos_save_from` raises rather than hand one back. This
     asserts the report says so rather than trusting the raise."""
     source = convert.Source.detect(shipped_adf)
     rehearsal = _direction().rehearse(source, "A", _game_dir())

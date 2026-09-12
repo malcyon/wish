@@ -14,7 +14,7 @@ Two halves, and only the first needs the player's disks:
 
 * the **gate** and the **table** are read off the game's own overlays, so the
   disk gets to contradict the claim rather than a transcription of it;
-* the **conversion** is checked on records built from `goldbox/dos_layout.py`
+* the **conversion** is checked on records built from `goldbox/dos_port.py`
   and `goldbox/neutral.py`'s own tables, so it runs anywhere.
 
 Nothing here is a fixture sliced out of a game file: `AGENTS.md` forbids that,
@@ -247,7 +247,7 @@ def test_a_converted_cleric_arrives_able_to_turn_undead(game):
     """The regression the ticket asks for: a cleric 8 must reach `0x0A4` as 9.
 
     Before the fix the writer copied whatever the source gave it, which for
-    every DOS record is zero -- `goldbox/dos.py` reads DOS `0x076`, and that
+    every DOS record is zero -- `goldbox/dos_codec.py` reads DOS `0x076`, and that
     byte is the *undead's* row rather than the caster's, zero on every player
     character in either port.
     """
@@ -293,7 +293,7 @@ def test_the_conversion_says_it_computed_the_byte_rather_than_copying_it():
 def _dos_record(shape, **values) -> bytes:
     """A `shape`'s own size of DOS record with the named fields set.
 
-    Built from `goldbox/dos_layout.py`'s table, so it is ours and needs no
+    Built from `goldbox/dos_port.py`'s table, so it is ours and needs no
     disks. The same helper `tests/test_ssbconvert.py` uses, kept here rather
     than imported so this file stands on its own.
     """
@@ -315,7 +315,7 @@ def _class_levels(size: int, **by_slot) -> bytes:
 
 
 def test_a_dos_cleric_converted_to_the_c64_can_turn_undead():
-    """The whole path, `goldbox.dos.to_c64_record`, on a DOS Pool of Radiance
+    """The whole path, `goldbox.dos_codec.to_c64_record`, on a DOS Pool of Radiance
     record with cleric 8 in slot 0 of its own level array and **nothing** at
     `0x076`, which is what every DOS record holds there."""
     shape = dos_port.POOL_OF_RADIANCE

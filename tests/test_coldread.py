@@ -505,7 +505,7 @@ def test_silver_blades_raises_every_ceiling_curse_set():
 def test_silver_blades_racial_limits_are_the_rulebooks_under_its_own_races():
     """The third independent source for `RACES_SILVER_BLADES`.
 
-    `goldbox/games.py` has that table from the label pool and from the Curse
+    `goldbox/c64_port.py` has that table from the label pool and from the Curse
     import's own arithmetic. Here it is again from a table neither of those
     touches: race 1's row is an elf's limits, race 3's a dwarf's, and the
     routine refuses to look up race 6 at all, which is the human rule.

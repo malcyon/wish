@@ -18,13 +18,13 @@ composed line reaches a reader.
 The read-side reproduction is the exact one `#389`'s finding used: a C64
 Silver Blades party the C64 engine itself wrote
 (`WISH-SPEC-ssb-d-engine-resave.D64`), converted to Amiga Silver Blades with
-`goldbox.amiga.write_later`.  The write-side one needs no specimen tree: any
+`goldbox.amiga_later.write_later`.  The write-side one needs no specimen tree: any
 Amiga Pool of Radiance record converted to the C64 has no computed combat
 icon to pass in, so `write`'s `else` branch always fires.
 
-A fourth and fifth instance turned up in `goldbox.dos.write` itself, on the
+A fourth and fifth instance turned up in `goldbox.dos_codec.write` itself, on the
 sweep the issue asked for once the three read-side ones above were closed:
-`write` always builds a DOS record, even when `goldbox.amiga.write_por` and
+`write` always builds a DOS record, even when `goldbox.amiga_por.write_por` and
 `write_later` are re-cutting it into an Amiga one, and it named "DOS" in
 composed drop lines regardless of which writer was really asking. `write`
 now takes an `into` parameter, defaulting to `"DOS"` for a direct write and
@@ -40,7 +40,7 @@ carrying a dual-class field Pool of Radiance has no way to set; `turn_power`
 and `infravision` are silenced project-wide) and were reworded for
 consistency rather than left as a trap for the day one of them is.
 
-A sixth turned up in `goldbox.amiga.to_neutral` (the Amiga Pool of Radiance
+A sixth turned up in `goldbox.amiga_por.to_neutral` (the Amiga Pool of Radiance
 *reader*): its trailing-pad drop line named "the DOS record" while reading
 the source, before any writer was chosen, and `tests/test_amigatoc64.py`
 already proves an Amiga Pool of Radiance save converts to the C64 as well as
@@ -65,7 +65,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 NAMES_DOS = re.compile(r"\bDOS\b", re.IGNORECASE)
 
 #: Same idea, for the third instance the issue's own comments traced:
-#: `goldbox.dos.to_neutral`'s portrait drop naming "C64" while reading a DOS
+#: `goldbox.dos_codec.to_neutral`'s portrait drop naming "C64" while reading a DOS
 #: record, before any writer -- C64 or Amiga -- has been chosen.
 NAMES_C64 = re.compile(r"\bC64\b", re.IGNORECASE)
 
@@ -120,9 +120,9 @@ def test_a_c64_party_converted_to_the_amiga_names_no_platform():
 
 
 def test_an_amiga_pool_of_radiance_source_names_no_platform():
-    """The sixth instance: `goldbox.amiga.to_neutral` reads an Amiga Pool of
+    """The sixth instance: `goldbox.amiga_por.to_neutral` reads an Amiga Pool of
     Radiance record through a DOS-shaped intermediate table
-    (`goldbox.amiga.to_dos_record`) and reported its own trailing pad byte as
+    (`goldbox.amiga_por.to_dos_record`) and reported its own trailing pad byte as
     something "the DOS record has no room for" -- unconditionally, while
     reading the source, before `to_neutral` or `write_por` know whether the
     destination is DOS, the C64 or another Amiga save.
@@ -152,7 +152,7 @@ def test_an_amiga_pool_of_radiance_source_names_no_platform():
 
 def test_a_dos_portrait_the_menu_cannot_answer_for_names_no_platform():
     """The third instance the issue's own comments traced:
-    `goldbox.dos.to_neutral`'s portrait block named "C64" unconditionally,
+    `goldbox.dos_codec.to_neutral`'s portrait block named "C64" unconditionally,
     while reading the *source* DOS record -- before any writer, C64 or
     Amiga, has been chosen -- so a DOS-to-Amiga conversion inherited a claim
     about the C64 the same way the C64-to-Amiga direction inherited one
@@ -180,10 +180,10 @@ def test_a_dos_portrait_the_menu_cannot_answer_for_names_no_platform():
 
 def test_a_c64_pool_of_radiance_party_converted_to_the_amiga_names_no_platform():
     """The write side of the same bug, found after the three read-side
-    instances above were fixed: `goldbox.dos.write` builds a `portrait_head`/
+    instances above were fixed: `goldbox.dos_codec.write` builds a `portrait_head`/
     `portrait_body` drop line naming "the DOS record" unconditionally, and
-    `goldbox.amiga.write_por` builds every Amiga Pool of Radiance record out
-    of `goldbox.dos.write`'s own -- so a C64 party with no creation-menu
+    `goldbox.amiga_por.write_por` builds every Amiga Pool of Radiance record out
+    of `goldbox.dos_codec.write`'s own -- so a C64 party with no creation-menu
     tables at hand for the Amiga side inherited a claim about DOS the same
     way `#389`'s Silver Blades combat-figure line inherited one.
 
@@ -219,11 +219,11 @@ def test_a_c64_pool_of_radiance_party_converted_to_the_amiga_names_no_platform()
 
 def test_an_amiga_source_character_converted_to_the_amiga_names_no_platform():
     """A different field than `#389`'s own finding, in the same shape:
-    `goldbox.dos.WRITE_DROPPED`'s `encumbrance` reason said "the identity the
-    DOS engine itself uses", and `goldbox.amiga.write_later` copies
-    `goldbox.dos.write`'s report verbatim -- so an Amiga Curse or Silver
+    `goldbox.dos_codec.WRITE_DROPPED`'s `encumbrance` reason said "the identity the
+    DOS engine itself uses", and `goldbox.amiga_later.write_later` copies
+    `goldbox.dos_codec.write`'s report verbatim -- so an Amiga Curse or Silver
     Blades character, which carries `encumbrance` on read
-    (`goldbox.amiga.to_neutral_later`), was told about a DOS engine on its
+    (`goldbox.amiga_later.to_neutral_later`), was told about a DOS engine on its
     way to another Amiga save.
 
     `engine_written_parties` is `tests/test_amigalaterwrite.py`'s corpus of

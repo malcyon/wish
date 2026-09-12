@@ -112,7 +112,7 @@ def test_the_mask_is_the_declared_lists_and_not_everything(shape):
 def test_the_live_heap_pointers_the_engine_fills_in_are_masked(shape):
     """`effect_chain` and `item_chain` come back as real Amiga addresses in
     the engine's own resave -- measured on both titles, 2026-09-07 -- and
-    `goldbox.dos.WRITE_UNSOURCED` is where the writer says so."""
+    `goldbox.dos_codec.WRITE_UNSOURCED` is where the writer says so."""
     mask = proof.declared_record_mask(shape)
     table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
     for name in ("effect_chain", "item_chain"):

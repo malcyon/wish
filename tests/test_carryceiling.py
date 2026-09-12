@@ -57,7 +57,7 @@ def _amiga_node(effect_id: int, duration: int) -> bytes:
 def test_a_spell_counting_down_is_not_an_item_grant():
     """A running spell must not be counted against the ten slots.
 
-    `goldbox/dos.py` crosses only the records at duration zero, and Donald
+    `goldbox/dos_codec.py` crosses only the records at duration zero, and Donald
     ruled on 2026-08-27 that a Bless with four rounds left is not a loss
     anybody can see.  Counting it would inflate every trait figure this
     ticket rests on.

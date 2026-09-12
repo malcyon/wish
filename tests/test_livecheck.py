@@ -197,9 +197,9 @@ def test_a_card_with_no_slot_in_the_file_is_a_disagreement():
 
 
 def test_every_title_the_tool_offers_has_a_descriptor_and_a_boot():
-    """Three titles, each with a `goldbox.games` descriptor of its own.
+    """Three titles, each with a `goldbox.c64_port` descriptor of its own.
 
-    A key that no longer resolves would give `games.by_key` None and every
+    A key that no longer resolves would give `c64_port.by_key` None and every
     address the run reads would be `None`-derived, which is the failure
     `#29 (The live reader uses Pool of Radiance's addresses on every title)`
     exists to prevent.

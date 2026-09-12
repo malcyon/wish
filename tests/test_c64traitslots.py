@@ -14,7 +14,7 @@ neutral lists it travelled in.**
 `innate_effects` from slot 0 upward, the way the engine's own creation seeds a
 race, and `granted_effects` from slot 9 down, the way `SPELLE04 $ADD4` scans
 for a free slot when an item is readied.  Which list an id lands in is
-`goldbox.dos.to_neutral`'s classification and it changes the *position*, not
+`goldbox.dos_codec.to_neutral`'s classification and it changes the *position*, not
 whether the id crosses; `LIBRARY $402D` reads all ten regardless of holes, and
 `docs/171-c64-trait-slots.md` watched an id staged into slot 9 dispatch its
 handler.  A test that only looked at `innate_effects` would pass while a

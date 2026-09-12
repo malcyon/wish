@@ -3,8 +3,8 @@ registered, two defects and a question left)`: for every one of the six DOS
 ↔ C64 directions, the bytes `File ▸ Convert…`'s own code path writes --
 `editor.convert.ConvertDialog` ▸ `Direction.rehearse` ▸ `Direction.write` --
 are compared against the bytes the library's own entry point writes for the
-same input, called directly (`goldbox.dos.new_save`/`save_disk` for a DOS
-source, `goldbox.dos.new_dos_save` for a C64 one).
+same input, called directly (`goldbox.dos_codec.new_save`/`save_disk` for a DOS
+source, `goldbox.dos_codec.new_dos_save` for a C64 one).
 
 `#52 (File ▸ Import and File ▸ Export for every direction the library
 supports)`'s own `tests/test_convert.py` already proves this for
@@ -160,7 +160,7 @@ DOS_TO_C64_CASES = [
 def test_dos_to_c64_matches_the_library_for_every_title(
         app, tmp_path, specimen_name, file_name, game):
     """`ConvertDialog` ▸ `DosToC64.rehearse`/`write` writes the same `.d64`
-    bytes `goldbox.dos.new_save` + `goldbox.dos.save_disk` write directly for
+    bytes `goldbox.dos_codec.new_save` + `goldbox.dos_codec.save_disk` write directly for
     the same DOS source, the same icon/animate/portraits and the same slot --
     and reports the same drops. Proves requirements 1-4 of `#358`'s step 4 in
     one assertion each: the direction registered and offered is `DosToC64`,
@@ -241,7 +241,7 @@ C64_TO_DOS_CASES = [
 def test_c64_to_dos_matches_the_library_for_every_title(
         app, tmp_path, specimen_name, game, stem):
     """`ConvertDialog` ▸ `C64ToDos.rehearse`/`write` writes the same DOS
-    files `goldbox.dos.new_dos_save` writes directly for the same C64 source,
+    files `goldbox.dos_codec.new_dos_save` writes directly for the same C64 source,
     the same DOS game directory and slot `"A"` -- and reports the same drops.
     Same four requirements as the DOS -> C64 case above, mirrored: the
     direction is `C64ToDos`, its destination is `game`'s own DOS shape, never

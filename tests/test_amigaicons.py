@@ -32,7 +32,7 @@ TRANSLATION = (0, 7, 12, 13, 2, 14, 11, 9, 8, 6, 5, 15, 3, 10, 4, 1)
 
 #: The six part codes a record's `icon_colours` bytes are written through --
 #: body, arm, leg, hair, shield, weapon -- at `/Curse` `g1bb9` and `/Secret`
-#: `g1f76`.  `goldbox.dos.DOS_PAIR_CLASSES` is DOS's own copy.
+#: `g1f76`.  `goldbox.iconparts.DOS_PAIR_CLASSES` is DOS's own copy.
 PARTS = (1, 2, 3, 4, 6, 7)
 
 #: How many `CHEAD` and `CBODY` blocks each library holds: fourteen heads and

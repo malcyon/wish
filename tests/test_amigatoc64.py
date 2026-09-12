@@ -4,7 +4,7 @@ from __future__ import annotations
 
 You save on the Amiga standing in the Slums at 21:22 with half the quests
 done and you want to carry on on the Commodore 64.  The six characters have
-crossed since 2026-08-26 -- `goldbox.amiga.to_neutral` then
+crossed since 2026-08-26 -- `goldbox.amiga_por.to_neutral` then
 `goldbox.c64_codec.write`, 90 of 90 sheet fields -- and what these tests
 cover is the game around them: the party's own square, the area it is
 standing in, the clock and the 217 quest flags.
@@ -83,7 +83,7 @@ def _pool_of_radiance_disk_1() -> AmigaDisk:
     `save/CHRDATA1.sav` names, and a search that stops at the first disk
     carrying those picks up the Curse save disk on this machine and then
     fails several calls down with a 428-byte record. 288 bytes is Pool of
-    Radiance's own (`goldbox.amiga.amiga_shape_for`).
+    Radiance's own (`goldbox.amiga_shared.amiga_shape_for`).
     """
     from tools import amigasaves, gamedisks
 
@@ -167,7 +167,7 @@ def test_a_disk_with_no_save_entry_at_all_is_refused(tmp_path):
 def test_the_shipped_slot_reads_six_characters_and_its_saved_game(
         shipped_disk):
     """`read_por_slot` gives the pair the C64 writer takes: a party of
-    `goldbox.dos.DosCharacter` and the 13,141-byte `savgam<letter>.dat`.
+    `goldbox.dos_codec.DosCharacter` and the 13,141-byte `savgam<letter>.dat`.
 
     The names are read back off the records rather than pinned to a list,
     because what is under test is that the disk's blocks were read at all.
@@ -302,7 +302,7 @@ def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
 
     **Facing is not asserted.**  Outdoors, the C64 keeps its live overland
     heading at `$033D`, outside the region `SAVEDGAME0` is an image of, so
-    `goldbox.dos.apply_position` writes only the travel square outdoors and
+    `goldbox.dos_codec.apply_position` writes only the travel square outdoors and
     leaves the C64's own `$49C2` however `new_save_from` zeroed it -- a
     limit of the C64 container itself, the same one `#321`'s own comment
     found in the other direction, and not something this reader can supply.
@@ -359,7 +359,7 @@ def test_the_converted_save_stands_the_party_where_the_amiga_save_did(
 
     #: **The wallset is not asserted, and that is not a gap.** The C64 keeps
     #: its three `WALLSET` pieces in loaded-files cache slots 15-17, and
-    #: `goldbox.dos.apply_file_cache` writes `$FF` -- empty -- into all
+    #: `goldbox.dos_codec.apply_file_cache` writes `$FF` -- empty -- into all
     #: twenty-five and then fills only slots 2, 8 and 11, which is the recipe
     #: `docs/140-loaded-files-cache.md` proved live twice. So a converted
     #: save names no wallset and the engine loads the area's own on arrival,
@@ -398,7 +398,7 @@ def test_the_engine_written_amiga_slot_is_in_the_slums_at_21_22(engine_disk):
 def test_the_converted_party_is_the_amiga_partys_own_fields(shipped_disk):
     """Every character the C64 save carries reads back as the character the
     Amiga record held -- through `goldbox.c64_codec.read` on one side and
-    `goldbox.amiga.to_neutral` on the other, which is two readers over two
+    `goldbox.amiga_por.to_neutral` on the other, which is two readers over two
     containers rather than one value compared with itself.
 
     The shipped party is the one to do this on: six characters, three
@@ -421,7 +421,7 @@ def test_the_converted_party_is_the_amiga_partys_own_fields(shipped_disk):
 
     #: **The C64 lists its party from the highest slot down** (#101), so the
     #: Amiga file order and the C64 slot order are reverses of one another
-    #: and `goldbox.dos.marching_slot` is what turns one into the other.
+    #: and `goldbox.dos_codec.marching_slot` is what turns one into the other.
     #: Zipping the two lists as they come compares GARWAN against MELCAR and
     #: fails on the first field, which is what this reversal is here to stop
     #: -- and asserting it is also the check that the marching order crossed
@@ -462,7 +462,7 @@ def test_the_converted_party_is_the_amiga_partys_own_fields(shipped_disk):
 def test_every_byte_of_the_converted_save_has_a_source(shipped_disk):
     """`.claude/rules/conversions.md`'s rule against a template: a save built
     from an Amiga slot owes nothing to anybody else's, and
-    `goldbox.dos.new_save_from` raises rather than hand one back with a byte
+    `goldbox.dos_codec.new_save_from` raises rather than hand one back with a byte
     in it nobody wrote."""
     party, savgam = amiga_por.read_por_slot(shipped_disk, "A")
     state = amiga_por.read_por_state(savgam, "the shipped slot A")
@@ -478,7 +478,7 @@ def test_the_amiga_party_arrives_with_its_own_combat_figures(shipped_disk):
     `#353`'s plan named.
 
     The Amiga record holds `icon_head`, `icon_body` and `icon_colours` at
-    the same offsets the DOS record does (`goldbox.amiga.to_dos_record`), so
+    the same offsets the DOS record does (`goldbox.amiga_por.to_dos_record`), so
     an `IconParts` composes each character's own figure exactly as it does
     for a DOS source.  The check is that six characters do not all get the
     same 36 bytes, which is what a converter with no route to the figure

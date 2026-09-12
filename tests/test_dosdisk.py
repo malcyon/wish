@@ -1,8 +1,8 @@
 """The disk Wish builds from nothing, read back the way the game reads it.
 
-`tests/test_dosconvert.py` checks what `goldbox/dos.py` writes into the two
+`tests/test_dosconvert.py` checks what `goldbox/dos_codec.py` writes into the two
 payloads.  This module goes one step further out, to the thing a player is
-handed: a `.d64` image built by `goldbox.dos.save_disk`, serialised, reopened
+handed: a `.d64` image built by `goldbox.dos_codec.save_disk`, serialised, reopened
 from its bytes, and read back through `goldbox.savegame` and
 `goldbox.c64_codec` -- the same path `editor/` takes when it opens a save.
 
@@ -32,7 +32,7 @@ from goldbox import portraits as portraits_mod
 from goldbox.d64 import D64
 
 #: `60 - value` is the family's encoding for armour class and THAC0 alike --
-#: `goldbox/dos_layout.py` 0x110 and 0x111, where SILAS' 63 is AC -3.  Both
+#: `goldbox/dos_port.py` 0x110 and 0x111, where SILAS' 63 is AC -3.  Both
 #: ports store the biased byte and both display the difference, so a test that
 #: compared the displayed numbers would prove less than one that compares the
 #: bytes: an off-by-fifty is exactly the fault that shipped.
@@ -154,7 +154,7 @@ def test_every_sheet_number_on_the_built_disk_is_the_dos_partys_own(tmp_path):
     sheet: names, classes, levels, hit points, experience, money"* -- reduced
     to what a file can answer.  It is deliberately a comparison of two
     independently read records rather than of the conversion against itself:
-    the DOS side comes from `dos.to_neutral` off `CHRDAT<slot><n>.SAV`, the
+    the DOS side comes from `dos_codec.to_neutral` off `CHRDAT<slot><n>.SAV`, the
     C64 side from `c64_codec.read` off the built image, and the two meet only
     in the neutral record.
 
@@ -181,7 +181,7 @@ def test_every_sheet_number_on_the_built_disk_is_the_dos_partys_own(tmp_path):
                 == DISPLAY_BIAS - want["armour_class"].value
             # Levels on the classes both ports have.  DOS numbers druid and
             # monk and the C64 does not, and the C64 numbers knight and DOS
-            # does not -- `dos.CLASS_LEVEL_SLOTS`.  A druid or a monk would
+            # does not -- `dos_codec.CLASS_LEVEL_SLOTS`.  A druid or a monk would
             # be a real loss and no DOS Pool of Radiance character can be
             # one, so the two absent slots are asserted empty rather than
             # skipped.
@@ -297,7 +297,7 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
 def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
     """`tools/dosdisk.py`'s `build()` reads the creation menu (#57) off the
     same disks directory it already reads the icon and `ANIMATE00` from, and
-    passes it on to `dos.new_save` -- so a party wholly inside the menu
+    passes it on to `dos_codec.new_save` -- so a party wholly inside the menu
     arrives on the disk with the sheet portrait switched on rather than with
     every face silently dropped.
 
@@ -305,7 +305,7 @@ def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
     already proves `new_save(..., portraits=tables)` sets the switch. What
     was missing is `build()` ever calling `tables_from_disks` at all --
     before this it always passed `portraits=None`, so `$49FF` came out
-    `dos.PORTRAIT_OFF` for every party, however complete its faces were.
+    `dos_codec.PORTRAIT_OFF` for every party, however complete its faces were.
     """
     dosdisk = load_tools_module("dosdisk")
 

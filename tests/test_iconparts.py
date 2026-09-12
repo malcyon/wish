@@ -280,7 +280,7 @@ def test_every_title_numbers_its_icon_fields_where_our_layout_says(dos_art):
 
     Two things at once: the wrap constants are 13 and 31 in all three, so
     every title offers the same 14 heads and 32 bodies; and they are found at
-    the record displacement `goldbox/dos_layout.py` gives that title, so a
+    the record displacement `goldbox/dos_port.py` gives that title, so a
     wrong offset in our own table shows up here rather than silently.
     """
     dosicontitles = pytest.importorskip("tools.dosicontitles")
@@ -317,7 +317,7 @@ def test_each_later_title_copies_the_earlier_ones_icon_bytes_unchanged():
 # -- the per-title override section (#330, #335) -----------------------------
 #
 # `tools/iconproposal.yaml` gained an `overrides:` section for a title whose
-# C64 art disagrees with Pool of Radiance's, keyed by `goldbox.games.Game.key`.
+# C64 art disagrees with Pool of Radiance's, keyed by `goldbox.c64_port.Game.key`.
 # It is empty until Donald picks Silver Blades' two rows on
 # `#335 (Two combat-figure rows describe Pool of Radiance's art, and Silver
 # Blades draws those two options differently)`, and these pin that `dos_icon_
@@ -408,7 +408,7 @@ def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
 def test_dos_icon_tables_with_no_title_reads_the_base_table():
     """No `title` means no override, whatever the section holds.
 
-    The contract every caller with no title relies on. `goldbox.dos.
+    The contract every caller with no title relies on. `goldbox.dos_codec.
     write_c64_save` builds `tables=dos_icon_tables(title=container.game.key,
     size=which)` once per size and passes it through `_icon_for` to
     `IconParts.dos_icon`, so a converted Silver Blades character now gets
@@ -623,7 +623,7 @@ def test_a_silver_blades_dwarf_with_body_eleven_arrives_holding_nothing(parts):
 
 
 def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
-    """Through `goldbox.dos._icon_for`, with the `tables` argument
+    """Through `goldbox.dos_codec._icon_for`, with the `tables` argument
     `write_c64_save` builds -- `dos_icon_tables(title=..., size=...)` --
     rather than through `tools/iconproposal.py`'s own reader, which is a
     different reading of the same file and says nothing about what a
@@ -692,7 +692,7 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
     """The whole path, on a party the game itself wrote.
 
     `#335`'s two rows, staged onto a copy of an engine-written DOS Silver
-    Blades save and converted through `goldbox.dos.convert_save` -- the
+    Blades save and converted through `goldbox.dos_codec.convert_save` -- the
     entry point the import dialog uses -- then read back out of the C64
     icon table by `IconParts.recognise`, which names the menu choices that
     drew the eighteen screen codes.  Nothing here reads the table it is
@@ -903,7 +903,7 @@ def test_a_silver_blades_figure_composed_with_the_title_survives_the_round_trip(
 
     The regression this fixes is the second half of the assertion: the very
     same C64 icon, decoded with the base, title-less reverse table --
-    `goldbox.dos.c64_party`'s own reading before this fix, when nothing
+    `goldbox.dos_codec.c64_party`'s own reading before this fix, when nothing
     there passed `title` to `c64_icon_tables` -- comes home as head 4 at
     `size` 2 (keeping its own body 11) and as body 0 at `size` 1 (keeping its
     own head 10), the exact two readings `#452 (A Silver Blades combat
@@ -934,7 +934,7 @@ def test_a_silver_blades_figure_composed_with_the_title_survives_the_round_trip(
 
 def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
         tmp_path):
-    """The wiring the table check above cannot see: `goldbox.dos.c64_party`
+    """The wiring the table check above cannot see: `goldbox.dos_codec.c64_party`
     -- the function `editor/convert.py`'s C64-to-DOS direction actually
     calls -- has to pass its own title to `c64_icon_tables` rather than a
     caller passing one by hand.
@@ -943,14 +943,14 @@ def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
     (`#299 (goldbox.dos.write builds only Pool of Radiance's record, so
     nothing can be converted to DOS for the later titles)`): stage DOS head
     10 and body 11 onto the specimen's six characters, convert them into a
-    C64 payload through `goldbox.dos.convert_save`, then read that payload
-    back through `goldbox.dos.c64_party` -- not through `c64_icon_tables`
+    C64 payload through `goldbox.dos_codec.convert_save`, then read that payload
+    back through `goldbox.dos_codec.c64_party` -- not through `c64_icon_tables`
     directly -- and check what comes home. Before `#452 (A Silver Blades
     combat figure does not survive a round trip through the C64, because the
     reverse table has no per-title rows)`'s fix, `c64_party` built
     `c64_icon_tables()` with no title and every large character came home
     head 4 and the small one came home body 0; watched red in that shape
-    with `goldbox/dos.py` reverted to its pre-fix state, via
+    with `goldbox/dos_codec.py` reverted to its pre-fix state, via
     `tools/iconrowproof.py --home`.
     """
     pytest.importorskip("tools.gamedisks")

@@ -64,7 +64,7 @@ def _record(name: str, **pairs: tuple[int, int]) -> bytes:
 
 
 def test_the_pair_offsets_are_the_ones_the_layout_declares():
-    """A pair's lower address is where `goldbox/dos_layout.py` puts the field.
+    """A pair's lower address is where `goldbox/dos_port.py` puts the field.
 
     The tool would otherwise be free to drift away from the module the rest of
     the project reads records with, and every claim in `docs/204` is stated as

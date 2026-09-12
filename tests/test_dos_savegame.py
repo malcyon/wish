@@ -364,7 +364,7 @@ def test_a_block_ending_on_a_dangling_run_is_named_not_indexed():
     The run branch of the unpacker indexes `chunk[i + 1]`, where the copy
     branch beside it takes a slice and degrades to something the length check
     catches. A half-copied `.DAX` used to raise `IndexError` from inside, and
-    `goldbox.dos.write_dos_save` catches only `DosSaveError` -- so the whole
+    `goldbox.dos_codec.write_dos_save` catches only `DosSaveError` -- so the whole
     conversion came down with a traceback instead of keeping the template's
     square and saying why.
     """

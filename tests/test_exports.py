@@ -10,8 +10,8 @@ def make_root():
     return root
 
 
-"""File > Export: the windows over `goldbox.dos.write_dos_save` and
-`goldbox.amiga.export_party`.
+"""File > Export: the windows over `goldbox.dos_codec.write_dos_save` and
+`goldbox.amiga_pod.export_party`.
 
 The conversions themselves are `tests/test_doswriter.py`'s and
 `tests/test_amiga.py`'s. What is tested here is the pair of things a menu item
@@ -113,7 +113,7 @@ def test_the_export_is_rehearsed_and_the_destination_is_untouched(
 
 @needs_dos_saves
 def test_the_losses_are_the_codecs_own_words(one, dos_template, tmp_path):
-    """The lines come from `goldbox/dos.py`'s report, so the pane and
+    """The lines come from `goldbox/dos_codec.py`'s report, so the pane and
     `tools/` cannot become two accounts of the same conversion."""
     from editor.exports import DROPPED_HEADING, DosPlan
 
@@ -129,7 +129,7 @@ def test_the_losses_are_the_codecs_own_words(one, dos_template, tmp_path):
     # and DOS keeps nothing for it, so a converted character arrives in the
     # state a DOS-rolled one of his race is in and there is nothing to tell
     # him (#52, `tests/test_infravision.py`).  `write` consumes the field
-    # directly (`goldbox.dos.WRITE_NO_SUCH_FIELD`) rather than through a
+    # directly (`goldbox.dos_codec.WRITE_NO_SUCH_FIELD`) rather than through a
     # silencing list on top of `report.dropped`, since #483 (The Convert flag
     # could come off while two fields are still lost, because a silencing
     # list keeps them out of the count that decides it).
@@ -147,7 +147,7 @@ def test_a_second_export_names_the_first_partys_leftovers_before_writing(
         one, six, dos_template, tmp_path):
     """#68, moved forward of the button.
 
-    `goldbox.dos.write_dos_save` clears the slot, so the party that arrives is
+    `goldbox.dos_codec.write_dos_save` clears the slot, so the party that arrives is
     right -- but a user who is told nothing has five files silently deleted.
     The plan names them while there is still a Cancel.
     """
@@ -242,12 +242,12 @@ def test_the_amiga_export_removes_nothing_and_says_what_it_overwrites(
 
 
 def test_two_characters_with_one_amiga_file_name_are_named_as_a_loss():
-    """`goldbox.amiga.pc_filename` cuts a name to eight AmigaDOS characters, so
+    """`goldbox.amiga_pod.pc_filename` cuts a name to eight AmigaDOS characters, so
     LADY KATHERINE and LADY KATHRYN are both `LADYKATH.pc` and
-    `goldbox.amiga.export_party` writes the second over the first in silence --
+    `goldbox.amiga_pod.export_party` writes the second over the first in silence --
     a character that leaves the window and does not arrive.
 
-    The defect is `goldbox/amiga.py`'s and is #79; what this asserts
+    The defect is `goldbox/amiga_pod.py`'s and is #79; what this asserts
     is that the pane does not repeat it, because a menu item that drops a
     whole character silently would be worse than no menu item (#36).
     """

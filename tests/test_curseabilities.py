@@ -34,7 +34,7 @@ def _curse_record(second: bytes = SEVEN_SCORES) -> CharacterRecord:
 def test_a_curse_second_ability_array_reads_as_the_neutral_dict():
     """The vocabulary in `goldbox/neutral.py` calls `abilities_second` an
     ability name -> score mapping, keyed in `neutral.ABILITIES` order -- the
-    same dict `goldbox/dos.py`'s `to_neutral` builds for Curse."""
+    same dict `goldbox/dos_codec.py`'s `to_neutral` builds for Curse."""
     out = c64_codec.read(_curse_record(), game=CURSE)
     assert out.get("abilities_second") == dict(
         zip(neutral.ABILITIES, SEVEN_SCORES))

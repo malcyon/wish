@@ -224,7 +224,7 @@ def test_the_tolerance_is_smaller_than_the_gap_between_two_distinct_maps():
     two closest maps come nearer than twice the tolerance turns this red
     rather than quietly making the answer ambiguous. Pools of Darkness'
     `GEO21` and `GEO31` are 18 bytes apart and would do exactly that, and are
-    not measured here because `goldbox.games` does not know the title, so the
+    not measured here because `goldbox.c64_port` does not know the title, so the
     automapper can never build that candidate set.
     """
     sets = geoports.closest_within_sets(_ports())
@@ -256,7 +256,7 @@ def test_a_map_is_never_nearer_a_different_area_than_its_own_other_port():
 
 #: Every `GEO<n>.DAX` library in the Forgotten Realms archives and how many
 #: blocks it holds. Measured 2026-09-09 over all six DOS titles installed
-#: there; the last three are titles `goldbox.games` does not know, and the
+#: there; the last three are titles `goldbox.c64_port` does not know, and the
 #: reader takes them because `--all-dos-titles` asks it to.
 DOS_LIBRARIES = {"Pool of Radiance": 29, "Curse": 16, "Silver Blades": 17,
                  "DOS GATEWAY": 30, "DOS TREASURE": 41, "DOS DARKNESS": 32}

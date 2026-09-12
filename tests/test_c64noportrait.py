@@ -70,7 +70,7 @@ def test_a_nonzero_head_with_no_body_still_reads_as_no_portrait():
 
 def test_a_c64_character_with_no_portrait_converts_to_dos_with_no_drop():
     """Fails today: the old reader gave DOS `portrait_head=0x00` (a real
-    id, HEAD00) and no `portrait_body`, so `dos.write` wrote head position 1
+    id, HEAD00) and no `portrait_body`, so `dos_codec.write` wrote head position 1
     -- a face the character never chose -- and reported the body dropped
     over a body he never had.
     """

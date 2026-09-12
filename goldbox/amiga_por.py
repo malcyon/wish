@@ -526,7 +526,7 @@ def to_neutral(char) -> NeutralCharacter:
     out.source = char.source
     out.warnings.append(
         "Read from a 288-byte Amiga Pool of Radiance record re-cut to the "
-        "285-byte DOS one by goldbox.amiga.to_dos_record; the provenance lines "
+        "285-byte DOS one by goldbox.amiga_por.to_dos_record; the provenance lines "
         "name the DOS field table, which is the table both ports share")
 
     line, _ = _amiga_por_name(char.raw)

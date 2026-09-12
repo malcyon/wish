@@ -23,7 +23,7 @@ game on VICE pool slots 0 and 1 on 2026-09-05 before it was fixed:
   its wall triples somewhere else.
 
 **Where the specimens come from.**  The synthetic records are built from
-`goldbox/dos_layout.py`'s own table, so they belong to us and run anywhere.
+`goldbox/dos_port.py`'s own table, so they belong to us and run anywhere.
 The tests that read a save the *game* wrote take it from `$WISH_SPECIMENS`
 (`~/wish-specimens/` by default) through `gamedata.specimen`, which verifies
 the manifest and skips when the tree is not on the machine -- so CI runs the
@@ -59,7 +59,7 @@ SSB_GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
 CURSE_GAME = c64_port.CURSE_OF_THE_AZURE_BONDS
 WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
 
-#: DOS level-array slots, `goldbox.dos.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
+#: DOS level-array slots, `goldbox.dos_codec.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
 PALADIN, RANGER = 3, 4
 
 
@@ -67,7 +67,7 @@ PALADIN, RANGER = 3, 4
 def converts_ssb(monkeypatch):
     """Put Silver Blades on `CONVERTS` for one test.
 
-    `goldbox.dos.CONVERTS` does not carry this title yet: the refusal stands
+    `goldbox.dos_codec.CONVERTS` does not carry this title yet: the refusal stands
     until a converted party has been read off the running game and the three
     wires `#193` step 4 names are in.  This fixture comes out with it.
     """
@@ -78,7 +78,7 @@ def converts_ssb(monkeypatch):
 def _dos_record(shape, **values) -> bytes:
     """A `shape`'s own size of DOS record with the named fields set.
 
-    Built from `goldbox/dos_layout.py`'s own table rather than sliced out of
+    Built from `goldbox/dos_port.py`'s own table rather than sliced out of
     anybody's save, so it carries no game data and needs no disks.
     """
     rec = bytearray(shape.record_size)
@@ -242,7 +242,7 @@ def test_a_curse_dwarf_still_has_infravision():
 
 
 # --- innate combat effects, going back to DOS: keyed by race name too --------
-# `RACE_COMBAT_EFFECTS` is `dos.write`'s twin of `INFRAVISION` above: a C64
+# `RACE_COMBAT_EFFECTS` is `dos_codec.write`'s twin of `INFRAVISION` above: a C64
 # record carries no trait id for a dwarf's constitution bonus or a gnome's, so
 # the DOS `.SPC` file the writer builds has to derive them from the race byte,
 # the same way the C64 record's own infravision byte is derived.  It used to
@@ -553,7 +553,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     `WISH-SPEC-ssb-234-party-pair` slot D through `editor.dosimport.rehearse`
     showed three lines before this pair of fixes -- two portrait, one
     identity -- and shows neither kind now.  What it does show since
-    2026-09-06 is every line still on `goldbox.dos.DROPPED` -- Donald:
+    2026-09-06 is every line still on `goldbox.dos_codec.DROPPED` -- Donald:
     *"Show others for now"* -- so this asserts the absence of the two
     kinds rather than an empty list."""
     from editor.dosimport import GameFiles, rehearse

@@ -40,7 +40,7 @@ def test_every_field_the_c64_writer_takes_is_declared():
 
 
 def test_the_dos_reader_and_the_neutral_vocabulary_agree_on_combat_figure():
-    """#305: `dos.to_neutral`'s `DIRECT` loop reads `dos.fields[dos_name]`
+    """#305: `dos_codec.to_neutral`'s `DIRECT` loop reads `dos_codec.fields[dos_name]`
     and then does `out.set(dos_name, ...)` with the very same string, so the
     DOS field name and the neutral field it becomes cannot be two different
     spellings -- renaming one without the other leaves the byte unset on one
@@ -67,7 +67,7 @@ def test_the_dos_reader_and_the_neutral_vocabulary_agree_on_combat_figure():
 def test_a_synthetic_dos_record_reads_its_combat_figure_byte_as_neutral():
     """The round trip the table check above cannot see: a DOS record built
     from zero bytes but for `combat_figure` (0x0BF, #305) comes back out of
-    `dos.to_neutral` under that name, not under the old `party_order`."""
+    `dos_codec.to_neutral` under that name, not under the old `party_order`."""
     raw = bytearray(dos_port.RECORD_SIZE)
     field = dos_port.FIELDS_BY_NAME["combat_figure"]
     raw[field.offset] = 4
@@ -130,7 +130,7 @@ def test_a_grade_a_writer_will_take_is_written():
 
 def test_a_lowercase_name_from_a_non_dos_source_is_folded_to_capitals():
     """`#290 (A character named in lower case draws as punctuation on the
-    C64, and only the DOS import folds the name)`: `goldbox.dos.c64_name`
+    C64, and only the DOS import folds the name)`: `goldbox.dos_codec.c64_name`
     only reached the DOS-to-C64 path. An Amiga source, a YAML import or
     anything else that builds a `NeutralCharacter` and calls
     `c64_codec.write` went through unfolded, and the C64 drew the name as
@@ -351,7 +351,7 @@ def test_more_innate_effects_than_slots_is_silent():
 
 def _granted(effect_id: int) -> bytes:
     """One nine-byte `granted_effects` node, in the shared shape
-    `goldbox/dos.py` reads: id, a zero duration, the value `0x0C` a passive
+    `goldbox/dos_codec.py` reads: id, a zero duration, the value `0x0C` a passive
     item grant carries, a clear removal flag, and a NULL next pointer."""
     return bytes((effect_id, 0, 0, 0x0C, 0, 0, 0, 0, 0))
 
@@ -411,7 +411,7 @@ def test_the_dos_reader_sets_nothing_the_c64_writer_leaves_behind():
 @needs_dos_saves
 def test_the_reader_grades_every_value_it_carries():
     """A value with no grade cannot be refused, so every one carries the grade
-    `goldbox/dos_layout.py` gives the field it was read from."""
+    `goldbox/dos_port.py` gives the field it was read from."""
     path = next(p for p in sorted(_save_dir().glob("*.SAV"))
                 if p.stat().st_size == dos_port.RECORD_SIZE)
     char = dos_codec.to_neutral(dos_codec.read_character(path))
@@ -424,7 +424,7 @@ def test_the_reader_grades_every_value_it_carries():
 # --- the neutral vocabulary's own disposition --------------------------------
 
 def test_every_neutral_field_has_a_disposition_in_every_writer():
-    """The gap the design review found: `goldbox.dos.field_disposition` checks the
+    """The gap the design review found: `goldbox.dos_codec.field_disposition` checks the
     DOS layout and nothing checked the *neutral* vocabulary, so a name added
     to `FIELDS` and never wired up would rot in silence.
 
@@ -435,7 +435,7 @@ def test_every_neutral_field_has_a_disposition_in_every_writer():
     A module-wide `field_disposition` read as the whole port's and was the
     Pools of Darkness writer's alone -- the Amiga has three writers and the
     other two already answer under their own names, `write_por` through
-    `goldbox.dos`'s table and `later_field_disposition(deltas)`.
+    `goldbox.dos_codec`'s table and `later_field_disposition(deltas)`.
     """
     tables = ((c64_codec, c64_codec.field_disposition()),
               (amiga_pod, amiga_pod.pod_write_field_disposition()))

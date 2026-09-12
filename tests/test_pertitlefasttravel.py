@@ -87,7 +87,7 @@ def test_three_titles_have_addresses_and_three_do_not():
 
 def test_a_row_can_be_looked_up_by_whatever_the_caller_is_holding():
     """A `Game`, a key, a title, or None -- because `goldbox/areas.py` spells a
-    title one way and `goldbox/games.py` another, and the seam between them is
+    title one way and `goldbox/c64_port.py` another, and the seam between them is
     where a lookup silently answers nothing."""
     row = fasttravel.CURSE_OF_THE_AZURE_BONDS
     assert fasttravel.addresses_for(CURSE) is row

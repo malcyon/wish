@@ -8,7 +8,7 @@ The other half of `tests/test_dosconvert.py`.  That module proves the DOS
 
 * **the round trip** -- a DOS record read into the neutral middle and written
   out again is byte-for-byte the original everywhere a byte *can* survive,
-  and the mask of bytes that cannot is `goldbox.dos.WRITE_UNSOURCED` -- the named
+  and the mask of bytes that cannot is `goldbox.dos_codec.WRITE_UNSOURCED` -- the named
   live-heap and unattributed runs -- not whatever happened to differ;
 * **nothing dropped silently** -- every neutral field has a disposition in
   the writer, every DOS layout field has a target, and every byte of both
@@ -58,7 +58,7 @@ from goldbox.savegame import HEADER_SIZE, SLOT_STRIDE
 
 def test_write_targets_tile_the_dos_layout():
     """The promise the brief for #26 makes explicit: a field added to
-    `goldbox/dos_layout.py` and forgotten by the writer fails here rather than
+    `goldbox/dos_port.py` and forgotten by the writer fails here rather than
     passing in silence."""
     declared = {f.name for f in dos_port.LAYOUT
                 if not f.name.startswith("gap_")}
@@ -85,7 +85,7 @@ def test_read_targets_tile_the_c64_layout():
 def test_read_dropped_and_read_derived_are_disjoint():
     """A name is dropped or derived, never both -- the read side's twin of
     `test_dosconvert.py`'s `test_every_dropped_field_reaches_the_player_
-    unless_the_c64_derives_it`, which pins the same rule for `goldbox.dos.
+    unless_the_c64_derives_it`, which pins the same rule for `goldbox.dos_codec.
     DROPPED`/`DERIVED`. `.claude/rules/conversions.md`: a field the
     destination derives needs no line, and everything else on `READ_DROPPED`
     reaches the player unless it has no sentence."""
@@ -365,7 +365,7 @@ def test_a_filled_character_lands_field_for_field():
     magic-user or thief arrives with the other port's THAC0, because the two
     ports ship different tables and the conversion copies the byte)` actually
     measured a disagreement for, which today is the C64 alone
-    (`goldbox.dos._THAC0_RECOMPUTE_FROM_PORTS`, #318). `_filled`'s own port is
+    (`goldbox.dos_codec._THAC0_RECOMPUTE_FROM_PORTS`, #318). `_filled`'s own port is
     a made-up one and would not trigger it, so the port is overridden here to
     exercise the real mechanism.
 
@@ -375,7 +375,7 @@ def test_a_filled_character_lands_field_for_field():
     source's, for a source port `#431 (A converted halfling thief keeps the
     other port's skill percentages, because the two ports ship different
     halfling rows)` measured a disagreement for -- the C64 alone
-    (`goldbox.dos._THIEF_SKILL_RECOMPUTE_FROM_PORTS`).
+    (`goldbox.dos_codec._THIEF_SKILL_RECOMPUTE_FROM_PORTS`).
     """
     char = _filled()
     char.port = "C64"
@@ -462,7 +462,7 @@ def _c64_thief_character(race: int, dexterity: int, stored: tuple[int, ...],
                          game: str = "pool-of-radiance"
                          ) -> neutral.NeutralCharacter:
     """A C64-read neutral thief, holding the C64's own eight stored
-    percentages -- the shape a real C64 -> DOS conversion hands `dos.write`.
+    percentages -- the shape a real C64 -> DOS conversion hands `dos_codec.write`.
     """
     char = neutral.NeutralCharacter("C64", game=game)
     char.set("race", race, "test fixture")
@@ -1384,8 +1384,8 @@ def test_an_amiga_source_writes_its_own_identity_byte_not_a_digest():
     writer instead of being replaced by `identity_byte`'s digest.
 
     The shipped Amiga disk 1 slot A party, six characters read through
-    `goldbox.amiga.to_neutral` and `goldbox.dos.write` -- the same route
-    `goldbox.dos.new_dos_save_from` takes -- against the six bytes `#378`'s
+    `goldbox.amiga_por.to_neutral` and `goldbox.dos_codec.write` -- the same route
+    `goldbox.dos_codec.new_dos_save_from` takes -- against the six bytes `#378`'s
     table measured for the Amiga's own record. Needs no DOS save: the six
     records are the Amiga's own, read through `amiga_por_with_items`
     (`tests/test_amiga.py`), which is the party with a `.itm` file beside
@@ -1684,7 +1684,7 @@ def test_the_combat_figure_comes_from_the_roster_blocks_own_slot_index():
 
 
 def test_the_c64_combat_figure_reaches_the_dos_record_and_is_accounted_for():
-    """Through `dos.write`, which is the single-character crossing: the byte
+    """Through `dos_codec.write`, which is the single-character crossing: the byte
     lands at DOS 0x0BF and the write report can say where it came from.
 
     Before #282 the DOS byte was left at the blank record's zero and 0x0BF
@@ -2012,7 +2012,7 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
 
     Area 11, the training hall, is where the two words part company: its
     script loads no map at all, so an engine-written save there holds
-    `$49C5` = 0 with `$49F2` = 11.  `dos.write_dos_save` cannot reach this --
+    `$49C5` = 0 with `$49F2` = 11.  `dos_codec.write_dos_save` cannot reach this --
     `retarget_reason` refuses area 11 before `savgam_writes` is ever called,
     which is the refusal the issue says hides the fault -- so this calls
     `savgam_writes` directly, the same way that caller does.
@@ -2144,7 +2144,7 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
     def boom(char, portraits=None, icon=None):
         raise dos_codec.DosRecordError("this character will not encode")
 
-    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
@@ -2250,7 +2250,7 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
     file whose zeroes nobody stands behind.
     """
     save0, save1 = _fixture_payloads()
-    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
@@ -2279,7 +2279,7 @@ def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
     keep.write_bytes(b"the party that was already here")
     before = sorted(p.name for p in out.iterdir())
 
-    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
@@ -2362,7 +2362,7 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
 # --- engine puts back on load) -----------------------------------------------
 
 def _writer_drops(char) -> list[str]:
-    """Every line `dos.write` puts in front of a person for this character."""
+    """Every line `dos_codec.write` puts in front of a person for this character."""
     return list(dos_codec.write(char)[3].dropped)
 
 

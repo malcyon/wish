@@ -8,7 +8,7 @@ stores `A`, which is zero on the matching path and the level he left his old
 class at for a dual-classed one.  `docs/187-the-class-code-byte.md` has the
 reading and the census.
 
-So `goldbox.dos.write` checks the code against the record's own classes and
+So `goldbox.dos_codec.write` checks the code against the record's own classes and
 repairs it when the two contradict each other.  What these tests hold is the
 three cases that decide the rule:
 
@@ -34,7 +34,7 @@ def _code_in(rec: bytes, key: str = "curse-of-the-azure-bonds") -> int:
 def _character(class_bits: int, char_class: int, levels: dict,
                former: dict | None = None,
                game: str = "curse-of-the-azure-bonds") -> neutral.NeutralCharacter:
-    """The smallest neutral record `dos.write` will build a record from."""
+    """The smallest neutral record `dos_codec.write` will build a record from."""
     char = neutral.NeutralCharacter(port="C64", source="test", game=game)
     char.set("name", "TESTER", "test")
     char.set("class_bits", class_bits, "test")

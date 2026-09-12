@@ -2,11 +2,11 @@ from __future__ import annotations
 
 """Reading an Amiga Pools of Darkness `.pc`, and the DOS route (#194).
 
-`goldbox.amiga.PodWriter` has turned a neutral character into a `Save/NAME.pc`
+`goldbox.amiga_pod.PodWriter` has turned a neutral character into a `Save/NAME.pc`
 since `#7`, and **nothing turned one back**: `PodCharacter` had no caller
 anywhere in `goldbox/`, `editor/` or `tools/`, so the Amiga end of
 `#194 (Import and export a Pools of Darkness save between DOS and the Amiga)`
-had one direction of two. `goldbox.amiga.pod_to_neutral` is the other, and
+had one direction of two. `goldbox.amiga_pod.pod_to_neutral` is the other, and
 this is its proof.
 
 What is tested, hardest evidence first.
@@ -109,12 +109,12 @@ def dos_records() -> list[pathlib.Path]:
 # --- the two ports index the same tables -------------------------------------
 
 def test_the_race_numbering_is_the_same_on_both_ports():
-    """`goldbox.amiga.RACES` and `goldbox.dos_layout
+    """`goldbox.amiga_pod.RACES` and `goldbox.dos_port
     .POOLS_OF_DARKNESS_RACE_NUMBERS` are the same six names in the same
     order, with `monster` after them on the DOS side only.
 
     This is what makes `race` a copy rather than a lookup, and it is also
-    what `goldbox/games.py`'s Pools of Darkness entry would have to say --
+    what `goldbox/c64_port.py`'s Pools of Darkness entry would have to say --
     it has none, and its default is Pool of Radiance's numbering, under which
     race 5 is a halfling rather than the human it is here.
     """
@@ -127,7 +127,7 @@ def test_the_race_numbering_is_the_same_on_both_ports():
 
 def test_the_class_codes_and_level_slots_are_the_same_on_both_ports():
     """A class code read off a DOS record names the same class in
-    `goldbox.amiga.CLASSES`, and the seven level slots are in one order.
+    `goldbox.amiga_pod.CLASSES`, and the seven level slots are in one order.
 
     Checked against both ports' own files rather than by reading the two
     tuples side by side: every DOS record's class code, looked up in the
@@ -317,7 +317,7 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
 
 
 def test_every_dos_record_converts_into_a_pc():
-    """DOS -> `dos.to_neutral` -> `amiga.to_pc`, 12 of 12.
+    """DOS -> `dos_codec.to_neutral` -> `amiga_pod.to_pc`, 12 of 12.
 
     The route this ticket asked for, in the direction that has both ends: the
     DOS reader learned this title today and the Amiga writer has always had
@@ -504,7 +504,7 @@ def test_every_offset_matches_the_engines_own_silver_blades_importer():
     Amiga Pools of Darkness carries a routine that turns an Amiga *Secret of
     the Silver Blades* record into one of its own, at file offset `0x026000`
     of `/Pools of Darkness` on disk 1. It is a field-by-field copy, and
-    `goldbox.amiga.SILVER_BLADES_DELTAS` names every source offset because
+    `goldbox.amiga_port.SILVER_BLADES_DELTAS` names every source offset because
     `#55` decoded that record -- so each instruction reads as "Silver Blades'
     *name* is at Pools of Darkness' `0xY`".
 

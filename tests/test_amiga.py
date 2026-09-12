@@ -1058,7 +1058,7 @@ def test_an_item_of_the_wrong_length_is_refused_by_name():
 
 
 def test_the_effect_node_transposes_onto_the_dos_payload():
-    """`goldbox/dos.py`'s `INNATE_PAYLOAD` is `00 00 FF 00` for a permanent
+    """`goldbox/dos_codec.py`'s `INNATE_PAYLOAD` is `00 00 FF 00` for a permanent
     effect; the Amiga writes the same four bytes one later, behind the pad
     at offset 1.  So a transposed node has to reproduce it exactly."""
     from goldbox.dos_codec import EFFECT_NEXT_NULL, INNATE_PAYLOAD
@@ -1090,7 +1090,7 @@ NOT_TRANSPOSED = {
 
 
 def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
-    """Read the re-cut record back through `goldbox/dos.py` and compare.
+    """Read the re-cut record back through `goldbox/dos_codec.py` and compare.
 
     The two readers are independent -- one applies the shift map to the
     Amiga bytes, the other reads a DOS record straight -- so this fails if
@@ -1133,7 +1133,7 @@ def test_the_neutral_record_carries_the_amiga_port_and_its_items():
         # or a mis-strided one shows up here as the wrong item entirely.
         assert [it[0] for it in n.get("inventory")] == \
             [it.get("type_index") for it in c.items]
-        assert any("goldbox.amiga.to_dos_record" in w for w in n.warnings)
+        assert any("goldbox.amiga_por.to_dos_record" in w for w in n.warnings)
 
 
 def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
@@ -1151,16 +1151,16 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
         assert n.get("experience") == 17
         assert n.get("exceptional_strength") == 100
         assert n.get("movement_current") == 9
-        # Encumbrance is derived, so `goldbox/dos.py` does not convert it --
+        # Encumbrance is derived, so `goldbox/dos_codec.py` does not convert it --
         # the identity that proves the item file is decoded is asserted on
         # the reader above, not here.  It is deliberately *not* in
         # `dropped`: money plus item weight is a number the destination
         # works out for itself, so there is nothing for a player to see go
         # missing.  `#118 (Stop showing the player drops nobody would
-        # notice)` first hid it in `goldbox.dos.UNREPORTED_DROPS` on
+        # notice)` first hid it in `goldbox.dos_codec.UNREPORTED_DROPS` on
         # 2026-08-27; `#324 (The import pane tells a player nine fields
         # could not be converted that the C64 recomputes for itself)` moved
-        # it to `goldbox.dos.DERIVED` on 2026-09-05, which says the same
+        # it to `goldbox.dos_codec.DERIVED` on 2026-09-05, which says the same
         # thing without calling it a drop at all.  This test asserted the
         # line before that until 2026-09-04 and never went red, because the
         # specimen corpus had been lost with `work/` and every test that
@@ -1181,7 +1181,7 @@ def dos_field_disposition() -> dict:
 
 def test_the_innate_effects_reach_the_neutral_record():
     """The dwarf's four racial ids and the elf's one, through the ten-byte
-    Amiga node and the nine-byte DOS one that `goldbox/dos.py` filters.
+    Amiga node and the nine-byte DOS one that `goldbox/dos_codec.py` filters.
 
     `INNATE_EFFECTS` is the filter and the ids it turns away do **not** reach
     the neutral record -- nine of the twelve specimens with a `.spc` file are
@@ -1216,7 +1216,7 @@ def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
     and reported the loss.
 
     **The C64 side writes the id into a free trait slot and says nothing
-    either**, the way `goldbox.dos.to_c64_record` already does for the same
+    either**, the way `goldbox.dos_codec.to_c64_record` already does for the same
     three ids off a DOS record
     (`tests/test_dosconvert.py::test_an_item_granted_effect_reaches_a_c64_trait_slot`)
     -- the id is the whole of what the item's own READY would write there
@@ -1271,8 +1271,8 @@ def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
 def por_write_mask() -> set[int]:
     """Offsets a round trip is allowed to differ in, and why each is there.
 
-    Built from the **declared** tables -- `amiga.POR_WRITE_UNSOURCED` for the
-    three insertions and the heap pointer, and `goldbox.dos`'s own
+    Built from the **declared** tables -- `amiga_por.POR_WRITE_UNSOURCED` for the
+    three insertions and the heap pointer, and `goldbox.dos_codec`'s own
     `WRITE_UNSOURCED`, `WRITE_CONSTANTS`, `WRITE_DEFAULTS`, `WRITE_DERIVED`
     and computed
     fields for everything the DOS writer already says it does not carry.  Masking by the diff
@@ -1303,9 +1303,9 @@ def por_write_mask() -> set[int]:
         mask |= field(name)
     for name, _ in dos_codec.WRITE_DERIVED:
         mask |= field(name)
-    # Computed rather than copied, and `goldbox.dos.WRITE_TARGETS` says so.
+    # Computed rather than copied, and `goldbox.dos_codec.WRITE_TARGETS` says so.
     mask |= field("encumbrance") | field("item_count")
-    # Repacked: `goldbox.dos` reads the sixteen slots as a set and writes them
+    # Repacked: `goldbox.dos_codec` reads the sixteen slots as a set and writes them
     # back from the end.  Four of the fourteen Amiga exports are not filled
     # from the end, so the positions do not survive -- #110.
     mask |= field("spells_memorised")
@@ -1320,7 +1320,7 @@ def test_every_masked_field_is_one_the_declared_tables_name():
     """The mask cannot quietly grow.
 
     Every offset it covers has to be inside a field named in
-    `amiga.POR_WRITE_UNSOURCED`, in one of `goldbox.dos`'s four declared tables,
+    `amiga_por.POR_WRITE_UNSOURCED`, in one of `goldbox.dos_codec`'s four declared tables,
     or in the short computed/repacked list above -- so a new difference in a
     field nobody declared fails the round trip instead of being absorbed.
     """
@@ -1367,8 +1367,8 @@ def test_the_record_writer_is_the_readers_exact_inverse():
 def test_a_specimen_round_trips_through_the_neutral_record():
     """Amiga -> neutral -> Amiga, byte for byte outside the declared mask.
 
-    The full path a conversion takes, so it exercises `goldbox.dos.to_neutral`
-    and `goldbox.dos.write` as well as the two transpositions.
+    The full path a conversion takes, so it exercises `goldbox.dos_codec.to_neutral`
+    and `goldbox.dos_codec.write` as well as the two transpositions.
     """
     mask = por_write_mask()
     seen = 0
@@ -1483,7 +1483,7 @@ def test_experience_is_one_big_endian_longword_across_dos_gap_0af():
     """DOS spends three bytes plus `gap_0af`; the Amiga spends one `u32be`.
 
     Tested on the transposition rather than through `write_por`, because
-    `goldbox.dos.write`'s own field is three bytes wide and nothing that goes
+    `goldbox.dos_codec.write`'s own field is three bytes wide and nothing that goes
     through it can put anything in the fourth -- #111.  A writer that
     swapped only three would put a large total's bytes in the wrong order.
     """
@@ -1504,7 +1504,7 @@ def test_a_written_experience_total_survives_the_round_trip():
 def test_the_effect_chain_is_written_null():
     """A live heap address has no business in a file we authored.
 
-    Tested against a DOS record that **holds** one, because `goldbox.dos.write`
+    Tested against a DOS record that **holds** one, because `goldbox.dos_codec.write`
     already zeroes its own field: going through `write_por` alone would pass
     whether or not this writer nulled anything, and did.
     """
@@ -1539,7 +1539,7 @@ def test_the_three_insertions_hold_what_the_specimens_hold():
 
 
 def test_write_por_gives_a_character_his_own_menu_position():
-    """#479: `write_por` used to ask `goldbox.dos.write` for no portrait
+    """#479: `write_por` used to ask `goldbox.dos_codec.write` for no portrait
     tables at all, so the pair was written zero and reported dropped on
     every character who had a face.  It must ask for a menu, and the menu is
     `goldbox.portraits.neutral_menu` -- head `0x08` and body `0x04` sit at
@@ -1928,7 +1928,7 @@ def test_the_saved_game_file_name_is_the_shipped_one():
 
 
 def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case():
-    """A guard against `goldbox/dos_layout.py` moving under this module.
+    """A guard against `goldbox/dos_port.py` moving under this module.
 
     That table belongs to the DOS side and a field there can be renamed,
     split or moved. Every field either lands somewhere in the 288 bytes or is
@@ -2226,7 +2226,7 @@ def test_every_curse_insertion_is_placed_to_the_byte():
 def test_the_placed_field_83_87_reads_the_constant_dos_holds():
     """A free check on the window this map used to refuse.
 
-    `goldbox/dos.py` records `00 00 01 00 00` at DOS `0x0F6` in 24 of 24 Pool
+    `goldbox/dos_codec.py` records `00 00 01 00 00` at DOS `0x0F6` in 24 of 24 Pool
     of Radiance records.  Placing the Amiga field at the same offset makes
     the four **played** Curse characters read exactly that, and the eleven
     pregens read five zeros -- which is the same third byte that separated a
@@ -2728,14 +2728,14 @@ def test_every_declared_field_of_a_later_title_has_a_disposition():
 
 
 # --- the class mask: this port gives paladin and ranger one bit, as DOS does -
-#: DOS level-array slots, `goldbox.dos.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
+#: DOS level-array slots, `goldbox.dos_codec.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
 PALADIN_SLOT, RANGER_SLOT = 3, 4
 
 
 def _later_record(shape, class_bits: int, slot: int | None, level: int = 8):
     """A record of `shape` holding one class mask and one class level.
 
-    Built from `goldbox/dos_layout.py`'s own table through the shape's shift
+    Built from `goldbox/dos_port.py`'s own table through the shape's shift
     map, so it belongs to this project and runs with no disks. Every other
     byte is zero, which is what makes the two fields the only thing under
     test.
@@ -2752,7 +2752,7 @@ def test_a_later_amiga_read_sets_the_class_mask_at_all():
     """The regression: no class mask at all reached the neutral record.
 
     `to_neutral_later` builds its copied-field list by iterating
-    `goldbox.dos.DIRECT`, and `class_bits` left that tuple when the DOS
+    `goldbox.dos_codec.DIRECT`, and `class_bits` left that tuple when the DOS
     reader started rereading it -- so an Amiga Curse or Silver Blades
     character converted to the C64 got the blank record's `0` for its class
     and nothing said so (#292).
@@ -2828,7 +2828,7 @@ def test_every_later_specimen_sets_a_class_mask_its_levels_agree_with():
 def _ability_record(shape, name: str, first: int, second: int):
     """A record of `shape` holding one ability pair and nothing else.
 
-    Built from `goldbox/dos_layout.py`'s own table through the shape's shift
+    Built from `goldbox/dos_port.py`'s own table through the shape's shift
     map, the way `_later_record` builds a class mask above, so it belongs to
     this project and runs with no disks.
     """
@@ -2846,7 +2846,7 @@ def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
     `goldbox.c64_codec.write` raised `ValueError: invalid literal for int()
     with base 10: b'\\x12\\x12'` before it wrote a byte (#294).
     `to_neutral_later` builds its copied-field list by iterating
-    `goldbox.dos.DIRECT`, which has no `continue` for the seven ability
+    `goldbox.dos_codec.DIRECT`, which has no `continue` for the seven ability
     names the way the DOS reader's own loop does.
     """
     from goldbox import c64_codec
@@ -2909,7 +2909,7 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
 
     Curse's `field_83_87` run is five bytes and the control byte is the
     second; Silver Blades' is four and it is the first -- the same index
-    `goldbox.dos.to_neutral` computes (#303), and the four-byte alignment is
+    `goldbox.dos_codec.to_neutral` computes (#303), and the four-byte alignment is
     the one nothing had exercised before this test.
     """
     for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
@@ -2980,14 +2980,14 @@ def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
     `to_neutral_later`'s `DIRECT` loop and reads back as raw bytes -- the
     shape every one of the seven abilities had before the fix -- raises
     rather than handing a byte pair to a neutral field the writer expects to
-    be a number.  Simulated by adding a field `goldbox.dos.DIRECT` has no
+    be a number.  Simulated by adding a field `goldbox.dos_codec.DIRECT` has no
     entry for today, because no other field of either later title is shaped
     this way to test it against for real -- which is the coupling `#292 (An Amiga
     Curse or Silver Blades character arrives on the C64 with no class at
     all, since class_bits dropped out of dos.DIRECT)` named as the hole
     nothing else closes.
     """
-    # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
+    # The codec rather than the `goldbox/dos_codec.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, and `amiga_codec` reads the codec's.
     from goldbox import dos_codec as _dos

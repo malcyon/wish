@@ -7,7 +7,7 @@ module proves the same writer against the **422-byte Curse of the Azure Bonds
 record and the 439-byte Secret of the Silver Blades one**, which is the whole
 of `#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing
 can be converted to DOS for the later titles)`: before it, a Curse or Silver
-Blades character handed to `goldbox.dos.write` came back as 285 bytes of Pool
+Blades character handed to `goldbox.dos_codec.write` came back as 285 bytes of Pool
 of Radiance, silently, and no Curse or Silver Blades game could ever have
 loaded it.
 
@@ -15,11 +15,11 @@ Three kinds of test here, in order of how much they are worth.
 
 * **The round trip**, over every record on the machine -- a DOS record read
   into the neutral middle and written out again, byte for byte outside the
-  writer's own declared mask.  The mask is `goldbox.dos.WRITE_UNSOURCED`,
+  writer's own declared mask.  The mask is `goldbox.dos_codec.WRITE_UNSOURCED`,
   `WRITE_UNSOURCED_LATER`, `WRITE_DEFAULTS` and `WRITE_DERIVED`, never
   whatever happened to differ.
 * **The shape**, which needs no save at all: the width of every field the
-  writer fills comes off `goldbox/dos_layout.py`'s table for the title, so a
+  writer fills comes off `goldbox/dos_port.py`'s table for the title, so a
   63-byte item stride or a 56-spell book cannot be hard-coded back in.
 * **The tables**, which say the writer accounts for every field of every
   title it will write.
@@ -129,8 +129,8 @@ def test_pools_of_darkness_is_written_now_that_it_has_a_second_port():
     both directions -- so the shape joined `CONVERTS` and `WRITES` together.
     A 510-byte record comes back for a Pools of Darkness character, and the
     C64 remains a title it can never be converted to for the reason it always
-    was: `goldbox/games.py` has no Pools of Darkness at all, so
-    `editor/convert.py`'s `games.by_key(shape.key)` never offers a
+    was: `goldbox/c64_port.py` has no Pools of Darkness at all, so
+    `editor/convert.py`'s `c64_port.by_key(shape.key)` never offers a
     destination.
     """
     rec, _itm, _spc, _rep = dos_codec.write(_neutral(POD.key, name="X"))
@@ -166,7 +166,7 @@ def test_an_id_the_destination_book_has_no_byte_for_never_reaches_the_player(
     title, which a conversion never offers -- so it is a programming error and
     it goes to the debug log, never to a sentence the player has to interpret.
 
-    Fails before the fix: `goldbox/dos.py` appended
+    Fails before the fix: `goldbox/dos_codec.py` appended
     `Spell id 100 is outside the Pool of Radiance book's ids 1-56` to
     `rep.warnings`, which `editor/convert.py` puts in front of the player.
     """
@@ -650,7 +650,7 @@ def test_the_shipped_records_of_the_later_titles_round_trip_too():
     **Only the two titles' own directories**, and by name: Gateway to the
     Savage Frontier's `.GUY` exports are 422 bytes and Treasures of the
     Savage Frontier's records are 510, so a sweep of the whole archive by
-    size reads two games this project does not convert (`shape_for`'s own
+    size reads two games this project does not convert (`deltas_for`'s own
     docstring says the size names the shape and the directory names the
     game).
     """
