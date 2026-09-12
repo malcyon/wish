@@ -30,10 +30,10 @@ from __future__ import annotations
 import pytest
 from gamedata import needs_specimens, specimen, specimen_root
 
-from goldbox import c64_codec, dos, dos_layout, neutral
+from goldbox import c64_codec, dos_codec, dos_port, neutral
 
-CURSE = dos_layout.CURSE_OF_THE_AZURE_BONDS
-POOL = dos_layout.POOL_OF_RADIANCE
+CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
+POOL = dos_port.POOL_OF_RADIANCE
 
 #: The ten trait slots, C64 record 0x0AD.
 SLOTS = 0x0AD
@@ -56,11 +56,11 @@ def _neutral(key, **fields) -> neutral.NeutralCharacter:
 
 def _innate_node(effect_id: int) -> bytes:
     """One nine-byte effect record in the permanent shape: duration zero."""
-    return bytes((effect_id,)) + dos.INNATE_PAYLOAD + dos.EFFECT_NEXT_NULL
+    return bytes((effect_id,)) + dos_codec.INNATE_PAYLOAD + dos_codec.EFFECT_NEXT_NULL
 
 
-def _dos_record(shape, effects) -> dos.DosCharacter:
-    return dos.DosCharacter(bytes(shape.record_size), effects=effects,
+def _dos_record(shape, effects) -> dos_codec.DosCharacter:
+    return dos_codec.DosCharacter(bytes(shape.record_size), effects=effects,
                             deltas=shape)
 
 
@@ -71,7 +71,7 @@ def test_a_curse_paladins_protection_from_evil_reaches_a_trait_slot():
     own effect record becomes a non-zero trait slot, and nothing tells the
     player anything was lost."""
     char = _dos_record(CURSE, [_innate_node(PALADIN_EFFECT)])
-    rec, rep = c64_codec.write(dos.to_neutral(char))
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert PALADIN_EFFECT in _slots(rec)
     assert not [d for d in rep.dropped if "effect" in d.lower()]
 
@@ -142,7 +142,7 @@ def test_a_grant_with_no_free_slot_left_is_dropped_silently_too():
 
 # --- every DOS record on this machine ----------------------------------------
 
-def _permanent_ids(char: dos.DosCharacter) -> list[int]:
+def _permanent_ids(char: dos_codec.DosCharacter) -> list[int]:
     """The effect ids the engine's expiry pass never removes -- duration zero
     at bytes 1-2, `docs/162-spc-permanence.md`.  A running spell counting down
     is deliberately not converted and is not one of these."""
@@ -184,8 +184,8 @@ def test_no_permanent_effect_id_in_the_specimen_tree_fails_to_cross():
                 f"{expected[:12]}, now {actual[:12]}; run tools/specimens.py "
                 f"check")
         for path in records:
-            char = dos.read_character(path)
-            rec, _ = c64_codec.write(dos.to_neutral(char))
+            char = dos_codec.read_character(path)
+            rec, _ = c64_codec.write(dos_codec.to_neutral(char))
             slots = _slots(rec)
             checked += 1
             ids = _permanent_ids(char)
@@ -205,8 +205,8 @@ def test_both_paladins_of_the_disagreeings_own_source_arrive_with_id_8(record):
     MARK are its two paladins.  Each holds one `.FX` record, `08 00 00 FF 00`,
     and each arrives with 8 in the block."""
     where = specimen("curse-131-dualclassed-in-area-1")
-    char = dos.read_character(where / record)
+    char = dos_codec.read_character(where / record)
     assert [e[0] for e in char.effects] == [PALADIN_EFFECT]
-    rec, rep = c64_codec.write(dos.to_neutral(char))
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert _slots(rec)[0] == PALADIN_EFFECT
     assert not [d for d in rep.dropped if "effect" in d.lower()]

@@ -35,7 +35,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosraces  # noqa: E402
 
 #: What AD&D lets each race be, as the Gold Box character creation screen
@@ -112,10 +112,10 @@ def _records() -> tuple[tuple[str, str, str, int, int], ...]:
                 size = path.stat().st_size
             except OSError:
                 continue
-            if size not in dos_layout.SHAPES_BY_SIZE:
+            if size not in dos_port.DELTAS_BY_SIZE:
                 continue
-            shape = dos_layout.SHAPES_BY_SIZE[size]
-            fields = {f.name: f for f in dos_layout.LAYOUTS[shape.key]}
+            shape = dos_port.DELTAS_BY_SIZE[size]
+            fields = {f.name: f for f in dos_port.LAYOUTS[shape.key]}
             blob = path.read_bytes()
             name = blob[1:1 + blob[0]].decode("latin-1").strip()
             out[str(path)] = (str(path), shape.key, name,
@@ -148,12 +148,12 @@ def _violations(records, table_for) -> list[str]:
     bad = []
     for path, key, name, race, char_class in records:
         races = table_for(key)
-        if race >= len(races) or char_class >= len(dos_layout.CLASS_NUMBERS):
+        if race >= len(races) or char_class >= len(dos_port.CLASS_NUMBERS):
             bad.append(f"{key} {name}: race {race} class {char_class} "
                        f"out of range")
             continue
         race_name = races[race]
-        class_name = dos_layout.CLASS_NUMBERS[char_class]
+        class_name = dos_port.CLASS_NUMBERS[char_class]
         if race_name in NOT_A_PLAYER_RACE or class_name == "monster":
             continue
         if class_name not in ALLOWED[race_name]:
@@ -175,7 +175,7 @@ def test_every_shipped_record_is_a_race_its_class_may_be():
     produced; neither can be created in any of these games.
     """
     records = _need_records()
-    bad = _violations(records, lambda key: dos_layout.shape_for(key).race_numbers)
+    bad = _violations(records, lambda key: dos_port.deltas_for(key).race_numbers)
     assert not bad, f"{len(bad)} of {len(records)} records:\n" + "\n".join(bad)
     assert len(records) >= 100, f"only {len(records)} records found"
 
@@ -189,7 +189,7 @@ def test_the_single_table_is_what_the_legality_test_catches():
     whether it was capable of failing.
     """
     records = _need_records()
-    bad = _violations(records, lambda key: dos_layout.RACE_NUMBERS)
+    bad = _violations(records, lambda key: dos_port.RACE_NUMBERS)
     assert len(bad) >= 20, f"expected the old table to be caught, got {bad}"
     assert all("pool-of-radiance" not in line
                and "curse-of-the-azure-bonds" not in line for line in bad), (
@@ -200,19 +200,19 @@ def test_the_single_table_is_what_the_legality_test_catches():
 def test_the_two_later_titles_are_the_only_ones_that_moved():
     """Pool of Radiance and Curse keep today's tuple, which is the part of
     #237 that had to not change meaning."""
-    assert dos_layout.POOL_OF_RADIANCE.race_numbers is dos_layout.RACE_NUMBERS
-    assert (dos_layout.CURSE_OF_THE_AZURE_BONDS.race_numbers
-            is dos_layout.RACE_NUMBERS)
-    assert (dos_layout.SECRET_OF_THE_SILVER_BLADES.race_numbers
-            != dos_layout.RACE_NUMBERS)
-    assert dos_layout.POOLS_OF_DARKNESS.race_numbers != dos_layout.RACE_NUMBERS
+    assert dos_port.POOL_OF_RADIANCE.race_numbers is dos_port.RACE_NUMBERS
+    assert (dos_port.CURSE_OF_THE_AZURE_BONDS.race_numbers
+            is dos_port.RACE_NUMBERS)
+    assert (dos_port.SECRET_OF_THE_SILVER_BLADES.race_numbers
+            != dos_port.RACE_NUMBERS)
+    assert dos_port.POOLS_OF_DARKNESS.race_numbers != dos_port.RACE_NUMBERS
 
 
 def test_the_race_byte_never_runs_off_the_end_of_its_title_table():
     """Silver Blades has eight races and Pools of Darkness seven, so a
     too-short table would raise on a real record rather than mis-name one."""
     for path, key, name, race, _ in _need_records():
-        races = dos_layout.shape_for(key).race_numbers
+        races = dos_port.deltas_for(key).race_numbers
         assert race < len(races), f"{name} in {path}: race {race}"
 
 
@@ -234,7 +234,7 @@ def test_the_reader_finds_the_table_pool_of_radiance_already_knew():
         if key not in found:
             continue
         _, _, _, names = found[key]
-        assert tuple(n.lower() for n in names) == dos_layout.RACE_NUMBERS, key
+        assert tuple(n.lower() for n in names) == dos_port.RACE_NUMBERS, key
 
 
 def test_each_titles_table_is_what_dos_layout_says_it_is():
@@ -242,7 +242,7 @@ def test_each_titles_table_is_what_dos_layout_says_it_is():
     found = _need_tables()
     assert len(found) >= 2, f"only {sorted(found)} found"
     for key, (path, offset, stride, names) in found.items():
-        shape = dos_layout.shape_for(key)
+        shape = dos_port.deltas_for(key)
         assert tuple(n.lower() for n in names) == tuple(shape.race_numbers), (
             f"{shape.title}: {path} at 0x{offset:06x} stride {stride} reads "
             f"{names}")

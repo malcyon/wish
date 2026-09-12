@@ -177,12 +177,12 @@ def test_every_innate_record_we_watched_being_written_carries_the_same_payload()
     change to the reader that broke the shape fails here rather than only in
     an emulator run nobody reruns.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
     seen = 0
     for name in tuple(CENSUS) + (CONTROL_PARTY,):
         for path in sorted(specimen(name).glob("*.SPC")):
             for rec in dosgnome.records(path.read_bytes()):
-                if rec[0] in dos.INNATE_EFFECTS:
-                    assert rec[1:5] == dos.INNATE_PAYLOAD, (path.name, rec[0])
+                if rec[0] in dos_codec.INNATE_EFFECTS:
+                    assert rec[1:5] == dos_codec.INNATE_PAYLOAD, (path.name, rec[0])
                     seen += 1
     assert seen >= 24, f"only {seen} innate records checked"

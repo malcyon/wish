@@ -35,7 +35,7 @@ import shutil
 
 import pytest
 
-from goldbox import c64_save, games
+from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER
 from tests import gamedata
@@ -107,14 +107,14 @@ def _copy(path, tmp_path) -> str:
 
 def _payload(path) -> bytes:
     disk = D64.open(str(path))
-    game = games.detect(disk)
+    game = c64_port.detect(disk)
     _addr, payload = split_load_address(disk.read_file(game.save_file))
     return bytes(payload)
 
 
 def _names(path, side):
     from goldbox import items
-    return items.load_item_names(side, games.detect(D64.open(str(path))))
+    return items.load_item_names(side, c64_port.detect(D64.open(str(path))))
 
 
 def _listed(path, slot, side) -> list[tuple[str, int, bool]]:
@@ -237,7 +237,7 @@ def test_an_edit_moves_no_byte_outside_that_characters_item_page(
                                   add=None, game_disk=side)
     before, after = _payload(base), _payload(out)
     assert len(before) == len(after)
-    game = games.detect(D64.open(out))
+    game = c64_port.detect(D64.open(out))
     page = c64_save.CONTAINERS[game.key].items(report["slot"])
     moved = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
     assert moved, "the edit wrote nothing at all"

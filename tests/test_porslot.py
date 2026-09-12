@@ -27,7 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from test_amigatoc64 import _pool_of_radiance_disk_1  # noqa: E402
 
-from goldbox import amiga, dos  # noqa: E402
+from goldbox import amiga_por, amiga_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools import porslot  # noqa: E402
 
@@ -47,13 +47,13 @@ def test_read_slot_gives_what_read_por_slot_and_to_neutral_give(
     directly, so a hand rewrite that quietly changed what it composes would
     be caught here rather than only by a byte-for-byte comparison downstream.
     """
-    party, savegame = amiga.read_por_slot(shipped_disk, "A")
-    want = [dos.to_neutral(c) for c in party]
+    party, savegame = amiga_por.read_por_slot(shipped_disk, "A")
+    want = [dos_codec.to_neutral(c) for c in party]
 
     got, got_savegame = porslot.read_slot(shipped_disk, "A")
 
     assert got_savegame == savegame
-    assert len(got) == len(want) == amiga.POR_PARTY_MAX
+    assert len(got) == len(want) == amiga_por.POR_PARTY_MAX
     for w, g in zip(want, got):
         assert g.get("name") == w.get("name")
         assert g.fields.keys() == w.fields.keys()
@@ -81,8 +81,8 @@ def test_read_slot_creates_no_temporary_directory(shipped_disk, monkeypatch):
     monkeypatch.setattr(tempfile, "mkdtemp", _boom)
 
     characters, savegame = porslot.read_slot(shipped_disk, "A")
-    assert len(characters) == amiga.POR_PARTY_MAX
-    assert len(savegame) == amiga.POR_SAVEGAME_SIZE
+    assert len(characters) == amiga_por.POR_PARTY_MAX
+    assert len(savegame) == amiga_por.POR_SAVEGAME_SIZE
 
 
 def test_read_slot_raises_amiga_record_error_for_an_absent_slot(
@@ -91,5 +91,5 @@ def test_read_slot_raises_amiga_record_error_for_an_absent_slot(
     files. `amiga.read_por_slot` is what names the missing file; `read_slot`
     no longer has its own `SystemExit` for this, so the same exception has
     to reach the caller."""
-    with pytest.raises(amiga.AmigaRecordError):
+    with pytest.raises(amiga_port.AmigaRecordError):
         porslot.read_slot(shipped_disk, "F")

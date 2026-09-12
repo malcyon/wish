@@ -25,7 +25,7 @@ from automap import busguard  # noqa: E402
 from automap.busguard import BusGuard, bus_released  # noqa: E402
 from automap.live import memory_blocks  # noqa: E402
 from automap.target import MemoryTarget, NotConnected  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from tests.test_automap import captured, make_window  # noqa: E402
 
 
@@ -413,7 +413,7 @@ def test_a_device_that_vanishes_under_the_guard_read_is_a_disconnection(
 # -- the size ceiling ---------------------------------------------------------
 
 def test_no_poll_block_on_any_title_passes_the_ceiling():
-    for game in games.GAMES:
+    for game in c64_port.GAMES:
         for _, length in memory_blocks(game):
             assert length <= busguard.READ_CEILING, game.key
 

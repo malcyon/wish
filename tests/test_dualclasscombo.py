@@ -34,11 +34,11 @@ from gamedata import specimen_root
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from goldbox import c64_codec, classcode, games, items
+from goldbox import c64_codec, c64_port, classcode, items
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
 
-CURSE = games.by_key("curse-of-the-azure-bonds")
+CURSE = c64_port.by_key("curse-of-the-azure-bonds")
 
 #: Class name -> its bit in the neutral order, the same table
 #: `tools/classcombocheck.py` and `tools/classcodecensus.py` carry.  The

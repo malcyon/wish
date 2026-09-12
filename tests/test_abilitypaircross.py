@@ -37,11 +37,11 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_codec, c64_save, dos, games, neutral  # noqa: E402
+from goldbox import c64_codec, c64_port, c64_save, dos_codec, neutral  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 
-CURSE_GAME = games.CURSE_OF_THE_AZURE_BONDS
+CURSE_GAME = c64_port.CURSE_OF_THE_AZURE_BONDS
 CONTAINER = c64_save.CURSE_OF_THE_AZURE_BONDS
 
 
@@ -98,9 +98,9 @@ def test_dos_to_neutral_separates_permanent_from_in_force(who):
     """
     where = _dos_crossed_specimen()
     filename, ability, permanent, in_force = DOS_CROSSED[who]
-    dos_char = dos.read_character(where / filename)
+    dos_char = dos_codec.read_character(where / filename)
     assert dos_char.name == who
-    neutral_char = dos.to_neutral(dos_char)
+    neutral_char = dos_codec.to_neutral(dos_char)
     assert neutral_char.get(ability) == in_force, \
         f"{who}'s {ability} in force"
     assert neutral_char.get("abilities_second")[ability] == permanent, \
@@ -122,7 +122,7 @@ def test_dos_to_c64_lands_each_half_on_the_byte_the_docs_table_names(who):
     where = _dos_crossed_specimen()
     filename, ability, permanent, in_force = DOS_CROSSED[who]
     save0 = bytearray(CONTAINER.payload_size)
-    dos.convert_save(where, "E", save0, game=CURSE_GAME)
+    dos_codec.convert_save(where, "E", save0, game=CURSE_GAME)
     # `write_c64_save` does not keep the DOS file order -- read each C64
     # slot's own name rather than assume one, the C64 slot for `MATHEW`
     # (`CHRDATE1.SAV`) turned out to be the DOS file order reversed.
@@ -186,8 +186,8 @@ def test_c64_to_dos_writes_the_permanent_byte_first(who):
     neutral_char = party[who]
     assert neutral_char.get(ability) == in_force, \
         f"{who}'s {ability} read off the C64 as in force"
-    rec, _, _, _ = dos.write(neutral_char, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
-    f = dos.FIELDS_BY_NAME_FOR[dos.CURSE_OF_THE_AZURE_BONDS.key][ability]
+    rec, _, _, _ = dos_codec.write(neutral_char, deltas=dos_codec.CURSE_OF_THE_AZURE_BONDS)
+    f = dos_codec.FIELDS_BY_NAME_FOR[dos_codec.CURSE_OF_THE_AZURE_BONDS.key][ability]
     assert rec[f.offset] == permanent, f"{who}'s permanent {ability} in DOS"
     assert rec[f.offset + 1] == in_force, f"{who}'s {ability} in force in DOS"
 
@@ -199,8 +199,8 @@ def test_a_character_whose_halves_agree_converts_exactly_as_before():
     the two staged above -- where both bytes of every pair hold the same
     number, so the fix must not move anything for it.
     """
-    from goldbox.dos_layout import CURSE_OF_THE_AZURE_BONDS as CURSE_SHAPE
-    from goldbox.dos_layout import FIELDS_BY_NAME_FOR
+    from goldbox.dos_port import CURSE_OF_THE_AZURE_BONDS as CURSE_SHAPE
+    from goldbox.dos_port import FIELDS_BY_NAME_FOR
 
     rec = bytearray(CURSE_SHAPE.record_size)
     rec[0] = 5
@@ -212,15 +212,15 @@ def test_a_character_whose_halves_agree_converts_exactly_as_before():
                            ("exceptional_strength", 0)):
         f = table[ability]
         rec[f.offset], rec[f.offset + 1] = value, value
-    dos_char = dos.DosCharacter(bytes(rec), deltas=CURSE_SHAPE)
-    neutral_char = dos.to_neutral(dos_char)
+    dos_char = dos_codec.DosCharacter(bytes(rec), deltas=CURSE_SHAPE)
+    neutral_char = dos_codec.to_neutral(dos_char)
     for ability, value in (("strength", 17), ("intelligence", 12),
                            ("wisdom", 9), ("dexterity", 14),
                            ("constitution", 15), ("charisma", 10),
                            ("exceptional_strength", 0)):
         assert neutral_char.get(ability) == value, ability
         assert neutral_char.get("abilities_second")[ability] == value, ability
-    written, _, _, _ = dos.write(neutral_char, deltas=CURSE_SHAPE)
+    written, _, _, _ = dos_codec.write(neutral_char, deltas=CURSE_SHAPE)
     for ability, value in (("strength", 17), ("intelligence", 12),
                            ("wisdom", 9), ("dexterity", 14),
                            ("constitution", 15), ("charisma", 10),

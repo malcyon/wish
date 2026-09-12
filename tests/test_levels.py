@@ -391,21 +391,21 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
     which is right for a spell name and wrong for writing a record -- so a
     writer asks `trainer_measured`, which does not fall back.
     """
-    from goldbox import games
+    from goldbox import c64_port
 
     assert levels.trainer_measured() is True             # None is the default
-    assert levels.trainer_measured(games.POOL_OF_RADIANCE)
+    assert levels.trainer_measured(c64_port.POOL_OF_RADIANCE)
     assert levels.trainer_measured(levels.POOL_OF_RADIANCE)
-    assert levels.trainer_measured(games.CURSE_OF_THE_AZURE_BONDS)
-    for game in games.GAMES:
-        if game in (games.POOL_OF_RADIANCE, games.CURSE_OF_THE_AZURE_BONDS):
+    assert levels.trainer_measured(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    for game in c64_port.GAMES:
+        if game in (c64_port.POOL_OF_RADIANCE, c64_port.CURSE_OF_THE_AZURE_BONDS):
             continue
         assert not levels.trainer_measured(game), game.title
     # Silver Blades has tables too (#187) and is still refused: having a
     # table is not having read the trainer.
-    assert levels.for_game(games.CURSE_OF_THE_AZURE_BONDS).key == \
+    assert levels.for_game(c64_port.CURSE_OF_THE_AZURE_BONDS).key == \
         "curse-of-the-azure-bonds"
-    assert levels.for_game(games.SECRET_OF_THE_SILVER_BLADES).key == \
+    assert levels.for_game(c64_port.SECRET_OF_THE_SILVER_BLADES).key == \
         "secret-of-the-silver-blades"
 
 

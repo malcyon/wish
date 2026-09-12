@@ -27,15 +27,15 @@ that do not being a save this converter itself wrote.
 
 import pytest
 
-from goldbox import c64_codec, derive, dos, dos_layout, games, levels, neutral
+from goldbox import c64_codec, c64_port, derive, dos_codec, dos_port, levels, neutral
 from goldbox.d64 import D64
 from goldbox.layout import Confidence
 from goldbox.savegame import load_save
 from tests import gamedata
 
-POOL = games.POOL_OF_RADIANCE
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SSB = games.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 #: `MOVE VIEW AIM USE CAST TURN QUICK DONE` -- the count byte at the head of
 #: the table says eight, and TURN is the sixth, so its mask bit is 5 and the
@@ -298,7 +298,7 @@ def _dos_record(shape, **values) -> bytes:
     than imported so this file stands on its own.
     """
     rec = bytearray(shape.record_size)
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     for name, value in values.items():
         field = table[name]
         raw = bytes([value] * field.size) if isinstance(value, int) else value
@@ -318,11 +318,11 @@ def test_a_dos_cleric_converted_to_the_c64_can_turn_undead():
     """The whole path, `goldbox.dos.to_c64_record`, on a DOS Pool of Radiance
     record with cleric 8 in slot 0 of its own level array and **nothing** at
     `0x076`, which is what every DOS record holds there."""
-    shape = dos_layout.POOL_OF_RADIANCE
-    size = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["class_levels"].size
+    shape = dos_port.POOL_OF_RADIANCE
+    size = dos_port.FIELDS_BY_NAME_FOR[shape.key]["class_levels"].size
     raw = _dos_record(shape, class_bits=0x02, char_class=0, level=8,
                       class_levels=_class_levels(size, **{"0": 8}))
     assert raw[0x076] == 0
-    rec, _rep = dos.to_c64_record(dos.DosCharacter(raw))
+    rec, _rep = dos_codec.to_c64_record(dos_codec.DosCharacter(raw))
     assert rec.get("level_cleric") == 8
     assert rec.get("turn_power") == 9

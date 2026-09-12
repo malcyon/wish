@@ -24,14 +24,14 @@ save anybody holds was taken with a spell running on a later title.
 import dataclasses
 
 from automap import c64, live
-from goldbox import games, traits
+from goldbox import c64_port, traits
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0
 
-POOL = games.POOL_OF_RADIANCE
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SSB = games.SECRET_OF_THE_SILVER_BLADES
-KRYNN = games.CHAMPIONS_OF_KRYNN
+POOL = c64_port.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
+KRYNN = c64_port.CHAMPIONS_OF_KRYNN
 
 #: The *hasted* badge's only id, and the one Pool of Radiance's table names
 #: "hasted". Silver Blades' own table does not name it at all -- `GEN $0C4B`
@@ -138,7 +138,7 @@ def test_a_badge_takes_its_name_from_the_running_titles_table(monkeypatch):
     meaning. Before the fix the card reads "Hasted", Pool of Radiance's word,
     whatever is running.
     """
-    from goldbox import games as _games
+    from goldbox import c64_port as _games
 
     invented = dataclasses.replace(CURSE, key="a-title-with-its-own-codes",
                                    title="A title with its own codes")

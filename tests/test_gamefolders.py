@@ -32,7 +32,7 @@ from automap.area import RESIDENT_GEO
 from automap.config import Settings
 from automap.target import MemoryTarget
 from automap.window import WRONG_GAME
-from goldbox import games
+from goldbox import c64_port
 from goldbox.geo import (
     ATTRIBUTES,
     BARRIERS,
@@ -43,9 +43,9 @@ from goldbox.geo import (
     Geo,
 )
 
-POOL = games.POOL_OF_RADIANCE
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SILVER = games.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 
 def disks(where, *names):

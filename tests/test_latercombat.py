@@ -24,16 +24,16 @@ from gamedata import COMBAT_MAP, synthetic_arena
 
 from automap import combat
 from automap.target import MemoryTarget
-from goldbox import games
+from goldbox import c64_port
 
 session = load_tools_module("session")
 latercombat = load_tools_module("latercombat")
 
 Session = session.Session
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SILVER = games.SECRET_OF_THE_SILVER_BLADES
-POOL = games.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
 
 #: Where the two fighters `synthetic_arena` puts on the floor stand.
 PARTY_AT = (25, 13)
@@ -129,9 +129,9 @@ def test_a_title_nobody_has_run_under_a_monitor_is_refused():
     plausible fight rather than as an error, which is the whole failure this
     ticket is about with the titles swapped round.
     """
-    assert latercombat.memory_for(games.CHAMPIONS_OF_KRYNN) is None
+    assert latercombat.memory_for(c64_port.CHAMPIONS_OF_KRYNN) is None
     target = MemoryTarget(synthetic_arena())
-    assert latercombat.read_battle(target, games.CHAMPIONS_OF_KRYNN) is None
+    assert latercombat.read_battle(target, c64_port.CHAMPIONS_OF_KRYNN) is None
     assert target.reads == [], "it read the machine before refusing"
 
 
@@ -213,7 +213,7 @@ def test_a_title_with_no_measured_mode_flag_is_not_asked_at_all():
     That is a gate that is open rather than a gate that is missing, so the
     driver says it does not know instead of asking a byte it cannot read.
     """
-    sess = ModeSession(games.CHAMPIONS_OF_KRYNN, {0x6E11: 2, 0x7F11: 2})
+    sess = ModeSession(c64_port.CHAMPIONS_OF_KRYNN, {0x6E11: 2, 0x7F11: 2})
     assert sess.mode() is None
     assert sess.in_combat() is False
     assert sess.reads == []

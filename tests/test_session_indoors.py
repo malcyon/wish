@@ -21,7 +21,7 @@ import pytest
 from conftest import load_tools_module
 
 from automap import c64 as machines
-from goldbox import games as G
+from goldbox import c64_port as G
 
 S = load_tools_module("session")
 

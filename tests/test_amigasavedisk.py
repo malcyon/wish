@@ -16,12 +16,12 @@ from __future__ import annotations
 import pytest
 from test_amiga import sample, synthetic_savegame
 
-from goldbox import amiga
+from goldbox import amiga_por, amiga_port
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 
 SLOT_FILES = ["savgamB.dat"] + [
     f"CHRDATB{n}{suffix}"
-    for n in range(1, amiga.POR_PARTY_MAX + 1)
+    for n in range(1, amiga_por.POR_PARTY_MAX + 1)
     for suffix in (".sav", ".itm", ".spc")
 ]
 
@@ -32,30 +32,30 @@ def party(count: int = 2):
 
 
 def save_disk(slot: str = "B", count: int = 2) -> AmigaDisk:
-    return amiga.make_por_save_disk(slot, party(count), synthetic_savegame())
+    return amiga_por.make_por_save_disk(slot, party(count), synthetic_savegame())
 
 
 def game_disk(slot: str = "B", count: int = 2) -> AmigaDisk:
     """The other route: a `save` drawer on a copy of the game disk."""
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
-    disk.write_file(amiga.POR_SLOT_LIST, amiga.slot_list_bytes(["A"]))
-    amiga.write_por_slot(disk, slot, party(count), synthetic_savegame())
+    disk.write_file(amiga_por.POR_SLOT_LIST, amiga_por.slot_list_bytes(["A"]))
+    amiga_por.write_por_slot(disk, slot, party(count), synthetic_savegame())
     return disk
 
 
 def test_the_two_answers_to_the_path_prompt_give_two_layouts():
     """`SAVE/` + `save` is a drawer; `POOLSAVE:` + `save` is a root."""
-    assert amiga.por_save_path("save") == "/save/save"
-    assert amiga.por_save_path("savgamB.dat") == "/save/savgamB.dat"
-    assert amiga.por_save_path("save", "") == "/save"
-    assert amiga.por_save_path("savgamB.dat", "") == "/savgamB.dat"
+    assert amiga_por.por_save_path("save") == "/save/save"
+    assert amiga_por.por_save_path("savgamB.dat") == "/save/savgamB.dat"
+    assert amiga_por.por_save_path("save", "") == "/save"
+    assert amiga_por.por_save_path("savgamB.dat", "") == "/savgamB.dat"
 
 
 def test_a_save_disk_is_a_poolsave_volume_with_the_slot_in_its_root():
     disk = save_disk()
     assert disk.volume_name == "POOLSAVE"
-    assert amiga.POR_SAVE_VOLUME == "POOLSAVE"
+    assert amiga_por.POR_SAVE_VOLUME == "POOLSAVE"
     assert disk.verify() == []
     assert disk.read_file("/CHRDATB1.sav")
     assert disk.read_file("/savgamB.dat")
@@ -75,9 +75,9 @@ def test_the_picker_reads_the_slot_list_from_the_root_of_a_save_disk():
     be clean, and the game would offer nothing.
     """
     disk = save_disk()
-    assert amiga.read_slot_list(disk, "") == ["B"]
+    assert amiga_por.read_slot_list(disk, "") == ["B"]
     assert disk.read_file("/save") == b" B        "
-    assert amiga.read_slot_list(disk) == []
+    assert amiga_por.read_slot_list(disk) == []
 
 
 def test_the_slot_list_on_a_save_disk_is_an_array_indexed_by_letter():
@@ -88,9 +88,9 @@ def test_the_slot_list_on_a_save_disk_is_an_array_indexed_by_letter():
     space because no A was ever on it.
     """
     disk = save_disk()
-    amiga.write_por_slot(disk, "C", party(), synthetic_savegame(), drawer="")
+    amiga_por.write_por_slot(disk, "C", party(), synthetic_savegame(), drawer="")
     assert disk.read_file("/save") == b" BC       "
-    assert amiga.read_slot_list(disk, "") == ["B", "C"]
+    assert amiga_por.read_slot_list(disk, "") == ["B", "C"]
     assert disk.verify() == []
 
 
@@ -123,7 +123,7 @@ def test_a_save_disk_ships_the_empty_character_list_the_game_disk_does():
     at 122608 in `/program`.
     """
     disk = save_disk()
-    assert disk.read_file(f"/{amiga.POR_CHARACTER_LIST_NAME}") == b""
+    assert disk.read_file(f"/{amiga_por.POR_CHARACTER_LIST_NAME}") == b""
 
 
 def test_the_saved_game_on_a_save_disk_names_this_slots_own_files():
@@ -131,10 +131,10 @@ def test_the_saved_game_on_a_save_disk_names_this_slots_own_files():
     disk = save_disk()
     save = disk.read_file("/savgamB.dat")
     names = [
-        save[at:at + amiga.POR_CHARACTER_TABLE_NAME]
-        for at in (amiga.POR_CHARACTER_TABLE
-                   + n * amiga.POR_CHARACTER_TABLE_STRIDE
-                   for n in range(amiga.POR_PARTY_MAX))
+        save[at:at + amiga_por.POR_CHARACTER_TABLE_NAME]
+        for at in (amiga_por.POR_CHARACTER_TABLE
+                   + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
+                   for n in range(amiga_por.POR_PARTY_MAX))
     ]
     assert names == [f"CHRDATB{n}".encode("ascii") for n in range(1, 7)]
 
@@ -145,5 +145,5 @@ def test_a_saved_game_of_the_wrong_size_is_refused_before_anything_is_written():
     It still has to be a refusal rather than a disk with a 13,000-byte
     container on it: the game reads a fixed length.
     """
-    with pytest.raises(amiga.AmigaRecordError):
-        amiga.make_por_save_disk("B", party(), b"\0" * 13000)
+    with pytest.raises(amiga_port.AmigaRecordError):
+        amiga_por.make_por_save_disk("B", party(), b"\0" * 13000)

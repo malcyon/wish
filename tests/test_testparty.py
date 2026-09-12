@@ -26,13 +26,13 @@ import stat
 import gamedata
 import pytest
 
-from goldbox import derive, games, levels, levelup, savegame
+from goldbox import c64_port, derive, levels, levelup, savegame
+from goldbox.c64_port import CLASS_BITS_CLASSIC
 from goldbox.d64 import D64
-from goldbox.games import CLASS_BITS_CLASSIC
 from goldbox.record import CharacterRecord
 from tools import testparty
 
-GAME = games.by_key("pool-of-radiance")
+GAME = c64_port.by_key("pool-of-radiance")
 
 #: One party, generated once. Every check below reads it rather than paying
 #: for six characters' worth of level-ups per test.
@@ -238,7 +238,7 @@ def test_a_generated_level_one_matches_the_six_the_engine_rolled():
       each port keeps. `#10 (Finish the high-level test party)` carries the
       numbers.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     directory = gamedata.specimen("por-party-l1-rolled")
     tables = levels.for_game(GAME)
@@ -246,7 +246,7 @@ def test_a_generated_level_one_matches_the_six_the_engine_rolled():
     assert len(files) == 6, files
     compared = 0
     for path in files:
-        engine = dos.DosCharacter(path.read_bytes())
+        engine = dos_codec.DosCharacter(path.read_bytes())
         spec = _spec_from(engine, str(engine.name))
         rolled = engine.get("hp_rolled")
         record, _ = testparty.level_one(spec, GAME,
@@ -315,7 +315,7 @@ def test_the_written_disk_reads_back_as_the_party_that_was_generated(
 def _synthetic_save_disk(path):
     """A `D64` carrying an empty Pool of Radiance save -- no player disk and
     no game bytes, just the format `goldbox.savegame` already describes."""
-    game = games.by_key("pool-of-radiance")
+    game = c64_port.by_key("pool-of-radiance")
     disk = D64.blank()
     sg0 = savegame.SaveGame0.from_bytes(bytes(game.save_size), game)
     sg1 = savegame.SaveGame1(bytes(game.roster_size), game)

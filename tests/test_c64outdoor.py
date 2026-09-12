@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tools import c64outdoor  # noqa: E402
 
 
@@ -47,8 +47,8 @@ def test_outdoor_requests_buffer_does_not_read_as_never_adventured():
     req = bytearray(sg.SAVGAM_SIZE)
     start, _ = sg.SAVE_POOL_OF_RADIANCE.script_buffer
     req[start] = 0x01
-    sg.put_word(req, dos.LATER_BEGUN_WORD, 255)
+    sg.put_word(req, dos_codec.LATER_BEGUN_WORD, 255)
     sg.put_word(req, sg.SCRIPT, 26)
     sg.put_word(req, sg.INDOORS, 0)
     sg.put_travel_square(req, 7, 29)
-    assert not dos.never_adventured(bytes(req))
+    assert not dos_codec.never_adventured(bytes(req))

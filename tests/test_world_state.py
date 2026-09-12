@@ -15,7 +15,7 @@ import pathlib
 
 import pytest
 
-from goldbox import c64_save, dos, dos_savegame, games, world_state
+from goldbox import c64_port, c64_save, dos_codec, dos_savegame, world_state
 from tests import gamedata
 
 
@@ -32,7 +32,7 @@ def _c64_specimen(name: str) -> pathlib.Path:
 def _c64_state(name: str, game=None) -> world_state.WorldState:
     from goldbox.d64 import load_payload
 
-    game = game or games.POOL_OF_RADIANCE
+    game = game or c64_port.POOL_OF_RADIANCE
     disk = _c64_specimen(name)
     payload = load_payload(str(disk), game.save_file)
     return world_state.from_c64(payload, game, str(disk))
@@ -99,8 +99,8 @@ def test_from_c64_and_from_dos_agree_on_the_projects_one_twin_pair():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("game,width", [
-    (games.CURSE_OF_THE_AZURE_BONDS, 224),
-    (games.SECRET_OF_THE_SILVER_BLADES, 224),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, 224),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, 224),
 ])
 def test_the_flag_window_is_the_later_titles_own_wider_one(game, width):
     """`PorSaveState` always read Pool of Radiance's 217-byte window, which
@@ -108,7 +108,7 @@ def test_the_flag_window_is_the_later_titles_own_wider_one(game, width):
     (`c64_save.Container.quest_flags`).  `from_c64` and `from_dos` both
     read the width from that table instead of assuming Pool of Radiance's.
     """
-    name = ("curse-dual-classed" if game is games.CURSE_OF_THE_AZURE_BONDS
+    name = ("curse-dual-classed" if game is c64_port.CURSE_OF_THE_AZURE_BONDS
             else "ssb-malachite-trained")
     state = _c64_state(name, game)
     assert len(state.flags) == width == \
@@ -161,7 +161,7 @@ def test_a_party_standing_in_the_world_is_left_where_it_is():
     dos_savegame.put_clock(savgam, (0, 8, 5, 16, 4, 2))
     start, _ = dos_savegame.SAVE_POOL_OF_RADIANCE.script_buffer
     savgam[start] = 0x01
-    dos_savegame.put_word(savgam, dos.LATER_BEGUN_WORD, 255)
+    dos_savegame.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255)
     state = world_state.from_dos(bytes(savgam))
     assert state.set_out is True
     assert (state.x, state.y, state.facing) == (3, 9, 2)
@@ -173,6 +173,6 @@ def test_a_party_standing_in_the_world_is_left_where_it_is():
 # ---------------------------------------------------------------------------
 
 def test_por_save_state_is_world_state():
-    from goldbox import amiga
+    from goldbox import amiga_por
 
-    assert amiga.PorSaveState is world_state.WorldState
+    assert amiga_por.PorSaveState is world_state.WorldState

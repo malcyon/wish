@@ -25,7 +25,7 @@ import dataclasses
 
 import pytest
 
-from goldbox import c64_port, c64_save, games, titles
+from goldbox import c64_port, c64_save, titles
 from goldbox.c64_save import C64Container
 
 MEASURED = ("pool-of-radiance", "curse-of-the-azure-bonds",
@@ -37,17 +37,17 @@ UNMEASURED = ("champions-of-krynn", "death-knights-of-krynn",
 # --- the registry -----------------------------------------------------------
 
 def test_the_six_rows_are_one_class_and_one_object_per_title():
-    """`goldbox.games.Game` and `c64_save.Container` are the same class now.
+    """`goldbox.c64_port.Game` and `c64_save.Container` are the same class now.
 
-    Both names stay until stage 9, and a caller holding either holds the same
-    six objects -- which is what lets `container.game` answer `container`.
+    A caller holding either name holds the same six objects -- which is what
+    lets `container.game` answer `container`.
     """
-    assert games.Game is C64Container
+    assert c64_port.Game is C64Container
     assert c64_save.Container is C64Container
-    assert len(games.GAMES) == 6
-    assert all(isinstance(g, C64Container) for g in games.GAMES)
-    assert games.POOL_OF_RADIANCE is c64_save.POOL_OF_RADIANCE
-    assert games.GATEWAY_TO_THE_SAVAGE_FRONTIER is \
+    assert len(c64_port.GAMES) == 6
+    assert all(isinstance(g, C64Container) for g in c64_port.GAMES)
+    assert c64_port.POOL_OF_RADIANCE is c64_save.POOL_OF_RADIANCE
+    assert c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER is \
         c64_save.GATEWAY_TO_THE_SAVAGE_FRONTIER
 
 
@@ -57,13 +57,13 @@ def test_pool_of_radiance_and_curse_are_still_the_first_two():
     An order dependency on the tuple, so the merge had to keep the order the
     merge could most easily have lost.
     """
-    assert [g.key for g in games.GAMES[:2]] == [
+    assert [g.key for g in c64_port.GAMES[:2]] == [
         "pool-of-radiance", "curse-of-the-azure-bonds"]
-    assert [g.key for g in games.GAMES] == list(MEASURED) + list(UNMEASURED)
+    assert [g.key for g in c64_port.GAMES] == list(MEASURED) + list(UNMEASURED)
 
 
 def test_a_row_is_its_own_game_and_answers_both_slot_counts():
-    for game in games.GAMES:
+    for game in c64_port.GAMES:
         assert game.game is game
         assert game.slot_count == game.party_slots == 8
 
@@ -71,7 +71,7 @@ def test_a_row_is_its_own_game_and_answers_both_slot_counts():
 def test_a_game_descriptor_is_still_hashable():
     """The tables are pairs rather than dicts for exactly this reason, and the
     merge added `rules`, which is a frozen dataclass and hashable too."""
-    assert len(set(games.GAMES)) == len(games.GAMES)
+    assert len(set(c64_port.GAMES)) == len(c64_port.GAMES)
 
 
 # --- the refusal ------------------------------------------------------------
@@ -94,7 +94,7 @@ def test_an_unmeasured_title_is_refused_by_its_own_row(key):
     Pool of Radiance's by default.  `tools/carryceiling.py` counts on this
     raise to say a title was not counted.
     """
-    row = games.BY_KEY[key]
+    row = c64_port.BY_KEY[key]
     assert isinstance(row, C64Container) and not row.measured
     with pytest.raises(KeyError):
         c64_save.container_for(row)
@@ -102,9 +102,9 @@ def test_an_unmeasured_title_is_refused_by_its_own_row(key):
 
 @pytest.mark.parametrize("key", MEASURED)
 def test_a_measured_title_answers_its_own_row(key):
-    assert c64_save.container_for(key) is games.BY_KEY[key]
-    assert c64_save.container_for(games.BY_KEY[key]) is games.BY_KEY[key]
-    assert games.BY_KEY[key].measured is True
+    assert c64_save.container_for(key) is c64_port.BY_KEY[key]
+    assert c64_save.container_for(c64_port.BY_KEY[key]) is c64_port.BY_KEY[key]
+    assert c64_port.BY_KEY[key].measured is True
 
 
 def test_no_title_at_all_still_means_pool_of_radiance():
@@ -113,7 +113,7 @@ def test_no_title_at_all_still_means_pool_of_radiance():
 
 def test_the_measured_set_and_the_flag_cannot_drift_apart():
     assert set(c64_save.CONTAINERS) == set(MEASURED)
-    assert {g.key for g in games.GAMES if g.measured} == set(MEASURED)
+    assert {g.key for g in c64_port.GAMES if g.measured} == set(MEASURED)
 
 
 # --- the title it belongs to ------------------------------------------------
@@ -126,7 +126,7 @@ def test_a_row_holds_its_titles_own_object(key):
     `Title` would be a second copy of the races and class bits, which is the
     duplication stage 1 removed.
     """
-    row = games.BY_KEY[key]
+    row = c64_port.BY_KEY[key]
     assert row.rules is titles.BY_KEY[key]
     assert row.key == row.rules.key and row.title == row.rules.title
     assert row.races is row.rules.races
@@ -134,9 +134,9 @@ def test_a_row_holds_its_titles_own_object(key):
 
 
 def test_only_pool_of_radiance_has_a_travel_grid():
-    assert [g.key for g in games.GAMES if g.travel_grid] == ["pool-of-radiance"]
-    assert games.POOL_OF_RADIANCE.indoors_flag_base == 0x49E6
-    assert games.CURSE_OF_THE_AZURE_BONDS.indoors_flag_base is None
+    assert [g.key for g in c64_port.GAMES if g.travel_grid] == ["pool-of-radiance"]
+    assert c64_port.POOL_OF_RADIANCE.indoors_flag_base == 0x49E6
+    assert c64_port.CURSE_OF_THE_AZURE_BONDS.indoors_flag_base is None
 
 
 def test_a_row_built_outside_the_registry_gets_a_title_with_no_tables():
@@ -157,7 +157,7 @@ def test_replacing_a_rows_tables_leaves_the_row_answering_none():
     """`dataclasses.replace(row, races=None)` is how `tests/test_gametables.py`
     builds the designed failure -- no names at all rather than wrong ones --
     and it has to keep working now that `rules` sits beside `races`."""
-    blank = dataclasses.replace(games.POOL_OF_RADIANCE, races=None,
+    blank = dataclasses.replace(c64_port.POOL_OF_RADIANCE, races=None,
                                 class_bits=None)
     assert blank.race_names is None and blank.class_bit_names is None
     assert blank.rules is titles.POOL_OF_RADIANCE
@@ -188,7 +188,7 @@ def test_each_module_constant_is_the_field_default_it_names(constant, field):
 
 @pytest.mark.parametrize("key", MEASURED)
 def test_a_measured_row_agrees_with_the_constants_it_could_have_moved(key):
-    row = games.BY_KEY[key]
+    row = c64_port.BY_KEY[key]
     assert row.slot_area == c64_save.HEADER_SIZE
     assert row.item_area == c64_save.ITEM_AREA_OFFSET
     assert row.icon_table == c64_save.ICON_TABLE_OFFSET
@@ -202,7 +202,7 @@ def test_the_shown_clock_is_one_past_the_six_digits_the_row_names(key):
     """`clock` is six digits from `+$C6` and the status line draws three of
     them from `+$C7`; `clock_base` is the second fact and computes from the
     first, so the two cannot come apart."""
-    row = games.BY_KEY[key]
+    row = c64_port.BY_KEY[key]
     assert c64_save.SHOWN_CLOCK_OFFSET == row.clock + 1
     assert row.clock_base == row.save_load_address + c64_save.SHOWN_CLOCK_OFFSET
 
@@ -213,10 +213,10 @@ def test_the_roster_offset_says_where_the_roster_is_in_one_field():
     """`Game.roster_offset` was an int and `Container.roster_offset` an int or
     None, with Pool of Radiance the row where they disagreed.  One field now,
     and `roster_in_payload` is the question both callers were asking."""
-    pool = games.POOL_OF_RADIANCE
+    pool = c64_port.POOL_OF_RADIANCE
     assert pool.roster_file == b"SAVEDGAME1" and not pool.roster_in_payload
     assert pool.roster_offset == 0 and pool.roster_size == 0x800
-    for game in games.GAMES:
+    for game in c64_port.GAMES:
         if game is pool:
             continue
         assert game.roster_in_payload and game.roster_offset == 0x1C00

@@ -19,7 +19,7 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga, dos, traits
+from goldbox import amiga_later, amiga_port, dos_codec, traits
 from goldbox import items as c64items
 from tools import carryceiling as cc
 
@@ -62,11 +62,11 @@ def test_a_spell_counting_down_is_not_an_item_grant():
     anybody can see.  Counting it would inflate every trait figure this
     ticket rests on.
     """
-    innate_id = sorted(dos.INNATE_EFFECTS)[0]
+    innate_id = sorted(dos_codec.INNATE_EFFECTS)[0]
     nodes = [_dos_node(innate_id, 0),      # racial: innate
              _dos_node(200, 0),            # never expires: an item's grant
              _dos_node(201, 5)]            # counting down: neither
-    assert cc._split_effects(nodes, dos.INNATE_EFFECTS) == (1, 1, 1)
+    assert cc._split_effects(nodes, dos_codec.INNATE_EFFECTS) == (1, 1, 1)
 
 
 def test_the_amiga_duration_word_is_read_past_its_pad_byte():
@@ -77,10 +77,10 @@ def test_the_amiga_duration_word_is_read_past_its_pad_byte():
     -- and a `granted` count is what decides whether the ten slots overflow.
     """
     nodes = [_amiga_node(200, 0), _amiga_node(201, 5)]
-    assert cc._split_effects(nodes, dos.INNATE_EFFECTS, pad=1) == (0, 1, 1)
+    assert cc._split_effects(nodes, dos_codec.INNATE_EFFECTS, pad=1) == (0, 1, 1)
     # Read with DOS's offsets instead and the two swap places, which is the
     # failure this pad argument exists to prevent.
-    assert cc._split_effects(nodes, dos.INNATE_EFFECTS, pad=0) != (0, 1, 1)
+    assert cc._split_effects(nodes, dos_codec.INNATE_EFFECTS, pad=0) != (0, 1, 1)
 
 
 def test_trait_demand_is_the_slots_on_the_c64_and_the_two_halves_elsewhere():
@@ -140,7 +140,7 @@ def _silver_blades_savegame() -> bytes:
     """
     from tools import amigasavegame
     at = amigasavegame.SILVER_BLADES.party_at
-    shape = amiga.SILVER_BLADES_DELTAS
+    shape = amiga_port.SILVER_BLADES_DELTAS
     record = bytearray(shape.record_size)
     record[0:6] = b"MALACH"
     for i in range(6):                    # six equal (current, maximum) pairs
@@ -163,9 +163,9 @@ def test_a_silver_blades_saved_game_is_not_read_as_curse():
     found = list(cc._amiga_later_characters(data, "savegame", "synthetic",
                                             problems))
     assert problems == []
-    assert [c.deltas for c in found] == [amiga.SILVER_BLADES_DELTAS]
+    assert [c.deltas for c in found] == [amiga_port.SILVER_BLADES_DELTAS]
     # The trap is real: handed Curse's shape, the same bytes parse anyway.
-    assert amiga.party_in_savegame(data, amiga.CURSE_DELTAS)
+    assert amiga_later.party_in_savegame(data, amiga_port.CURSE_DELTAS)
 
 
 # -- coverage: the titles the registry does not name ------------------------

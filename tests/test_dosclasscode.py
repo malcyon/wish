@@ -24,11 +24,11 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import dos, dos_layout, neutral
+from goldbox import dos_codec, dos_port, neutral
 
 
 def _code_in(rec: bytes, key: str = "curse-of-the-azure-bonds") -> int:
-    return rec[dos_layout.FIELDS_BY_NAME_FOR[key]["char_class"].offset]
+    return rec[dos_port.FIELDS_BY_NAME_FOR[key]["char_class"].offset]
 
 
 def _character(class_bits: int, char_class: int, levels: dict,
@@ -50,7 +50,7 @@ def test_a_code_that_agrees_with_the_class_mask_is_copied():
     records and 48 of 48 C64 Pool of Radiance and Silver Blades ones agree,
     so this rule may only ever fire on a record that contradicts itself."""
     char = _character(0x08, 2, {"fighter": 5})
-    rec, _itm, _spc, _rep = dos.write(char)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
     assert _code_in(rec) == 2
 
 
@@ -62,11 +62,11 @@ def test_a_trained_curse_records_zeroed_code_is_recomputed():
     sheet drew for him in the running game before this rule existed.
     """
     char = _character(0x0C, 0, {"thief": 6, "fighter": 5})
-    rec, _itm, _spc, _rep = dos.write(char)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
     assert _code_in(rec) == 14        # fighter/thief
     # The repair is in the report's own byte-by-byte account, which is our
     # accounting rather than anything a player reads.
-    at = dos_layout.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"][
+    at = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"][
         "char_class"].offset
     assert "recomputed from class_bits" in _rep.sources[at], _rep.sources[at]
     # And it is not a warning: `editor/exports.py` puts every warning in front
@@ -87,10 +87,10 @@ def test_a_dual_classed_records_code_comes_from_the_level_array():
     branches away from the mask walk entirely when `dual_class_level` is set.
     """
     char = _character(0x08, 6, {"fighter": 1}, former={"magic-user": 6})
-    rec, _itm, _spc, _rep = dos.write(char)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
     assert _code_in(rec) == 2         # fighter
     char = _character(0x09, 6, {"fighter": 7}, former={"magic-user": 6})
-    rec, _itm, _spc, _rep = dos.write(char)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
     assert _code_in(rec) == 2
 
 
@@ -104,7 +104,7 @@ def test_a_level_array_the_mask_does_not_know_about_is_not_a_contradiction():
     """
     char = _character(0x08, 2, {"fighter": 4, "thief": 1},
                       game="pool-of-radiance")
-    rec, _itm, _spc, _rep = dos.write(char)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
     assert _code_in(rec, "pool-of-radiance") == 2
 
 
@@ -114,7 +114,7 @@ def test_a_mask_the_games_table_has_no_code_for_leaves_the_source_value():
     in the table means a different class.  There is nothing to repair with,
     so nothing is repaired."""
     char = _character(0x07, 9, {"magic-user": 3, "cleric": 3, "thief": 3})
-    rec, _itm, _spc, _rep = dos.write(char)
+    rec, _itm, _spc, _rep = dos_codec.write(char)
     assert _code_in(rec) == 9
 
 
@@ -133,5 +133,5 @@ def test_the_class_table_is_the_games_own(bits, code):
     """`CLASS_CODE_TABLE` is Curse's C64 `GEN $1951` byte for byte, and the
     codes it is indexed by are the standard Gold Box order every title's
     front end lists its classes in."""
-    assert dos.CLASS_CODE_FOR_BITS[bits] == code
-    assert dos.CLASS_CODE_TABLE[code] == bits
+    assert dos_codec.CLASS_CODE_FOR_BITS[bits] == code
+    assert dos_codec.CLASS_CODE_TABLE[code] == bits

@@ -53,7 +53,7 @@ from automap.area import (
 from automap.state import Automapper
 from automap.target import MemoryTarget
 from automap.window import WRONG_GAME
-from goldbox import games
+from goldbox import c64_port
 from goldbox.geo import (
     ATTRIBUTES,
     BARRIERS,
@@ -65,9 +65,9 @@ from goldbox.geo import (
     Geo,
 )
 
-POOL = games.POOL_OF_RADIANCE.title
-CURSE = games.CURSE_OF_THE_AZURE_BONDS.title
-SILVER = games.SECRET_OF_THE_SILVER_BLADES.title
+POOL = c64_port.POOL_OF_RADIANCE.title
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS.title
+SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES.title
 
 #: The fourth Realms title, which `goldbox/games.py` has no descriptor for because
 #: **the C64 never got it** (`docs/138` §0). It can only ever reach the window

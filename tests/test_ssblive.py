@@ -28,14 +28,14 @@ Everything skips when the disks are absent. Nothing reads a committed fixture.
 
 import pytest
 
-from goldbox import games
+from goldbox import c64_port
 from goldbox.d64 import D64, split_load_address
 from goldbox.geo import EAST, GEO_SIZE, NORTH, SOUTH, WEST, Geo
 from tests.gamedata import curse_dir, curse_disks
 from tests.test_silverblades import _party, ssb_dir, ssb_disks
 
-SSB = games.SECRET_OF_THE_SILVER_BLADES
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 #: The map the party stands on when the story drops it into New Verdigris. The
 #: game asks for "SIDE A" and side 1 carries exactly one `GEO`.
@@ -144,7 +144,7 @@ def test_the_import_rewrites_the_race_byte_into_silver_blades_numbering():
     silently turn a Curse human into a Silver Blades halfling if either table
     were wrong.
     """
-    curse = dict(games.RACES_CURSE)
+    curse = dict(c64_port.RACES_CURSE)
     ssb = {name: code for code, name in SSB.races}
     for before, after in ((7, 6), (4, 2), (2, 1)):
         assert curse[before] in ssb, f"Curse race {before} has no name here"
@@ -207,7 +207,7 @@ def test_a_curse_export_is_the_four_save_blocks_concatenated():
 
 def _slot_holding(payload: bytes, name: bytes) -> int | None:
     for i in range(SSB.slot_count):
-        at = games.HEADER_SIZE + i * games.SLOT_STRIDE
+        at = c64_port.HEADER_SIZE + i * c64_port.SLOT_STRIDE
         if payload[at:at + len(name)] == name and not payload[at + len(name)]:
             return i
     return None
@@ -215,10 +215,10 @@ def _slot_holding(payload: bytes, name: bytes) -> int | None:
 
 def _assemble(payload: bytes, i: int) -> bytes:
     """The 580-byte record for slot *i*, out of the four places it is kept."""
-    head = payload[games.HEADER_SIZE + i * games.SLOT_STRIDE:][:games.SLOT_STRIDE]
+    head = payload[c64_port.HEADER_SIZE + i * c64_port.SLOT_STRIDE:][:c64_port.SLOT_STRIDE]
     roster = payload[CURSE.roster_offset + i * 0x20:][:0x20]
-    items = payload[games.ITEM_AREA_OFFSET + i * games.SLOT_STRIDE:][:games.SLOT_STRIDE]
-    icon = payload[games.ICON_TABLE_OFFSET + i * 36:][:36]
+    items = payload[c64_port.ITEM_AREA_OFFSET + i * c64_port.SLOT_STRIDE:][:c64_port.SLOT_STRIDE]
+    icon = payload[c64_port.ICON_TABLE_OFFSET + i * 36:][:36]
     return bytes(head + roster + items + icon)
 
 

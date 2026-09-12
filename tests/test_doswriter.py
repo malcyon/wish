@@ -34,9 +34,8 @@ from test_neutral import _filled
 from goldbox import (
     c64_codec,
     c64_save,
-    dos,
     dos_codec,
-    dos_layout,
+    dos_port,
     neutral,
     world_state,
 )
@@ -61,10 +60,10 @@ def test_write_targets_tile_the_dos_layout():
     """The promise the brief for #26 makes explicit: a field added to
     `goldbox/dos_layout.py` and forgotten by the writer fails here rather than
     passing in silence."""
-    declared = {f.name for f in dos_layout.LAYOUT
+    declared = {f.name for f in dos_port.LAYOUT
                 if not f.name.startswith("gap_")}
-    assert declared - set(dos.WRITE_TARGETS) == set()
-    assert set(dos.WRITE_TARGETS) - declared == set()
+    assert declared - set(dos_codec.WRITE_TARGETS) == set()
+    assert set(dos_codec.WRITE_TARGETS) - declared == set()
 
 
 def test_read_targets_tile_the_c64_layout():
@@ -143,13 +142,13 @@ def test_every_neutral_field_has_a_write_disposition():
     """The writer's twin of `test_every_neutral_field_has_a_disposition_in_
     every_writer`: a name added to `goldbox/neutral.py`'s FIELDS and never wired
     into the DOS writer is named here."""
-    assert neutral.undeclared(neutral.FIELDS, dos.write_field_disposition()) \
+    assert neutral.undeclared(neutral.FIELDS, dos_codec.write_field_disposition()) \
         == (set(), set())
-    derived = tuple((n, w) for n, w in dos.WRITE_DERIVED
-                    if n not in {tn for tn, _ in dos.WRITE_TRANSFORMED}) \
-        + dos.WRITE_NO_SUCH_FIELD
-    assert dos.write_field_disposition() == neutral.disposition(
-        dos.WRITE_DIRECT, dos.WRITE_TRANSFORMED, dos.WRITE_DROPPED,
+    derived = tuple((n, w) for n, w in dos_codec.WRITE_DERIVED
+                    if n not in {tn for tn, _ in dos_codec.WRITE_TRANSFORMED}) \
+        + dos_codec.WRITE_NO_SUCH_FIELD
+    assert dos_codec.write_field_disposition() == neutral.disposition(
+        dos_codec.WRITE_DIRECT, dos_codec.WRITE_TRANSFORMED, dos_codec.WRITE_DROPPED,
         "the DOS record's", derived=derived)
 
 
@@ -157,8 +156,8 @@ def test_the_writer_and_reader_direct_tables_are_mirrors():
     """Every straight copy the reader makes, the writer makes back.  The two
     name the same neutral fields; only the roster spellings differ, and those
     on the C64 side, not this one."""
-    read_neutral = {n for n, _ in dos.DIRECT}
-    write_neutral = {n for n, _ in dos.WRITE_DIRECT}
+    read_neutral = {n for n, _ in dos_codec.DIRECT}
+    write_neutral = {n for n, _ in dos_codec.WRITE_DIRECT}
     # The reader's DIRECT names DOS fields, and its neutral names are the
     # same strings.  The two tables were mirrors but for `turn_power`, which
     # the writer copied into DOS 0x076 and the reader took back out of it --
@@ -167,7 +166,7 @@ def test_the_writer_and_reader_direct_tables_are_mirrors():
     # `turn_class`, written zero as a constant and dropped on the way in.
     assert write_neutral == read_neutral
     assert "turn_power" not in write_neutral
-    assert "turn_class" in {n for n, _ in dos.DROPPED}
+    assert "turn_class" in {n for n, _ in dos_codec.DROPPED}
 
 
 def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
@@ -186,21 +185,21 @@ def test_a_converted_cleric_does_not_claim_an_undead_s_turning_row():
     A round trip cannot catch this: the DOS records it round-trips all hold
     0, so a writer copying a source value of 0 into 0 agrees with them.
     """
-    f = dos_layout.FIELDS_BY_NAME["turn_class"]
+    f = dos_port.FIELDS_BY_NAME["turn_class"]
     assert f.offset == 0x076
     assert f.confidence is Confidence.CONFIRMED
     char = _filled()
     char.set("turn_power", 6, "made up: a cleric 5's turning strength")
-    rec, _, _, _ = dos.write(char)
+    rec, _, _, _ = dos_codec.write(char)
     assert rec[f.offset] == 0
     # And the field is not silently unaccounted for at either end.
-    assert dos.write_targets()["turn_class"].startswith("constant:")
-    assert "turn_power" in dos.write_field_disposition()
+    assert dos_codec.write_targets()["turn_class"].startswith("constant:")
+    assert "turn_power" in dos_codec.write_field_disposition()
     # Not a loss any more (#483, The Convert flag could come off while two
     # fields are still lost, because a silencing list keeps them out of the
     # count that decides it): both engines derive it, so the accounting says
     # `derived:` rather than `dropped:`.
-    assert dos.write_field_disposition()["turn_power"].startswith("derived:")
+    assert dos_codec.write_field_disposition()["turn_power"].startswith("derived:")
 
 
 # --- the item projection, both ways ------------------------------------------
@@ -215,7 +214,7 @@ def _synthetic_dos_item() -> bytes:
             ("type_index", 33), ("name1", 48), ("name2", 162),
             ("name3", 208), ("plus", 0xFB), ("plus_save", 0xFE),
             ("readied", 1), ("hidden", 5), ("cursed", 1))):
-        raw[dos_layout.ITEM_FIELDS_BY_NAME[name].offset] = value
+        raw[dos_port.ITEM_FIELDS_BY_NAME[name].offset] = value
     raw[0x037:0x039] = (2312).to_bytes(2, "little")   # weight
     raw[0x039] = 7                                     # quantity
     raw[0x03A:0x03C] = (1234).to_bytes(2, "little")   # value
@@ -228,7 +227,7 @@ def test_item_from_c64_inverts_the_projection():
     packed bytes back into readied, hidden and cursed.  What does not come
     back is exactly the cache and the pointer, both left empty."""
     original = _synthetic_dos_item()
-    back = dos.item_from_c64(dos.item_to_c64(original))
+    back = dos_codec.item_from_c64(dos_codec.item_to_c64(original))
     assert back[0x02E:] == original[0x02E:]
     assert back[:0x02A] == bytes(0x02A)      # the rendered-line cache
     assert back[0x02A:0x02E] == bytes(4)     # the next pointer
@@ -238,7 +237,7 @@ def test_item_to_c64_inverts_item_from_c64():
     """The other way is exact: any legal sixteen-byte item survives."""
     sixteen = bytes((33, 48, 162, 208, 0xFB, 0xFE, 0x85, 0x80,
                      0x08, 0x09, 7, 0xD2, 0x04, 20, 3, 9))
-    assert dos.item_to_c64(dos.item_from_c64(sixteen)) == sixteen
+    assert dos_codec.item_to_c64(dos_codec.item_from_c64(sixteen)) == sixteen
 
 
 # --- the .SPC file: a permanent effect INNATE_EFFECTS turns away ------------
@@ -252,17 +251,17 @@ def test_item_to_c64_inverts_item_from_c64():
 # (`docs/162-spc-permanence.md`), so a node with rounds left is a spell
 # counting down and needs no report at all -- Donald, 2026-08-27.
 
-def _dos_record(effects) -> dos.DosCharacter:
+def _dos_record(effects) -> dos_codec.DosCharacter:
     """An all-zero 285-byte Pool of Radiance record carrying only the given
     `.SPC` nodes -- synthetic bytes, not a slice of a save."""
-    return dos.DosCharacter(bytes(dos_layout.RECORD_SIZE), effects=effects)
+    return dos_codec.DosCharacter(bytes(dos_port.RECORD_SIZE), effects=effects)
 
 
 def _effect(effect_id: int, duration: int = 0, value: int = 0xFF) -> bytes:
     """One nine-byte `.SPC` node: the id, a little-endian `u16` duration at
     byte 1, one payload byte, one more, and a NULL next pointer."""
     return (bytes((effect_id,)) + duration.to_bytes(2, "little")
-            + bytes((value, 0)) + dos.EFFECT_NEXT_NULL)
+            + bytes((value, 0)) + dos_codec.EFFECT_NEXT_NULL)
 
 
 def test_a_permanent_item_granted_effect_is_converted_whole():
@@ -277,9 +276,9 @@ def test_a_permanent_item_granted_effect_is_converted_whole():
     """
     node = _effect(61, duration=0, value=12)
     char = _dos_record([node])
-    out = dos.to_neutral(char)
+    out = dos_codec.to_neutral(char)
     assert [bytes(g) for g in out.get("granted_effects")] == [node]
-    _rec, _itm, spc, _rep = dos.write(out)
+    _rec, _itm, spc, _rep = dos_codec.write(out)
     assert spc == node
 
 
@@ -290,10 +289,10 @@ def test_a_strength_items_own_flag_byte_survives_the_write():
     both from `INNATE_PAYLOAD` would write `FF 00` and leave the character
     with the girdle's strength for good.
     """
-    node = bytes((38, 0, 0, 0x5C, 0x01)) + dos.EFFECT_NEXT_NULL
-    _rec, _itm, spc, _rep = dos.write(dos.to_neutral(_dos_record([node])))
+    node = bytes((38, 0, 0, 0x5C, 0x01)) + dos_codec.EFFECT_NEXT_NULL
+    _rec, _itm, spc, _rep = dos_codec.write(dos_codec.to_neutral(_dos_record([node])))
     assert spc == node
-    assert spc[1:5] != dos.INNATE_PAYLOAD
+    assert spc[1:5] != dos_codec.INNATE_PAYLOAD
 
 
 def test_the_innate_records_come_first_and_the_granted_ones_after():
@@ -305,8 +304,8 @@ def test_the_innate_records_come_first_and_the_granted_ones_after():
     """
     innate = _effect(18, duration=0, value=0xFF)
     ring = _effect(61, duration=0, value=12)
-    _rec, _itm, spc, _rep = dos.write(
-        dos.to_neutral(_dos_record([ring, innate])))
+    _rec, _itm, spc, _rep = dos_codec.write(
+        dos_codec.to_neutral(_dos_record([ring, innate])))
     assert spc == innate + ring
 
 
@@ -316,12 +315,12 @@ def test_a_record_with_only_innate_ids_sets_no_granted_field():
     is not set at all, so no player is told about a loss that did not
     happen."""
     char = _dos_record([_effect(18, duration=0, value=0xFF)])
-    out = dos.to_neutral(char)
+    out = dos_codec.to_neutral(char)
     assert "granted_effects" not in out
     # Compared against the same record with no `.SPC` at all rather than
     # against a fixed phrase: other drop lines share the same shape for
     # their own reasons, and this test is about what the effect adds.
-    assert out.dropped == dos.to_neutral(_dos_record([])).dropped
+    assert out.dropped == dos_codec.to_neutral(_dos_record([])).dropped
 
 
 def test_a_running_spell_is_neither_converted_nor_reported():
@@ -331,9 +330,9 @@ def test_a_running_spell_is_neither_converted_nor_reported():
     node on the step that reaches it, so this one was on its way out.
     """
     char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's shape
-    out = dos.to_neutral(char)
+    out = dos_codec.to_neutral(char)
     assert "granted_effects" not in out
-    bare = dos.to_neutral(_dos_record([]))
+    bare = dos_codec.to_neutral(_dos_record([]))
     assert out.dropped == bare.dropped
     _rec, rep = c64_codec.write(out)
     assert rep.dropped == c64_codec.write(bare)[1].dropped
@@ -349,7 +348,7 @@ def test_the_c64_writes_the_granted_effect_into_a_trait_slot():
     longer a loss the report has to explain.
     """
     char = _dos_record([_effect(61, duration=0, value=12)])
-    rec, rep = c64_codec.write(dos.to_neutral(char))
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert 61 in rec.get_raw("item_effects")
     assert not [d for d in rep.dropped if "Ring of Fire Resistance" in d]
 
@@ -380,13 +379,13 @@ def test_a_filled_character_lands_field_for_field():
     """
     char = _filled()
     char.port = "C64"
-    rec, itm, _spc, rep = dos.write(char)
-    assert len(rec) == dos_layout.RECORD_SIZE
-    back = dos.DosCharacter(rec, items=[dos.DosItem(itm[i:i + 63])
+    rec, itm, _spc, rep = dos_codec.write(char)
+    assert len(rec) == dos_port.RECORD_SIZE
+    back = dos_codec.DosCharacter(rec, items=[dos_codec.DosItem(itm[i:i + 63])
                                         for i in range(0, len(itm), 63)])
     assert back.name == "ROUNDTRIP"
-    for neutral_name, dos_name in dos.WRITE_DIRECT:
-        if neutral_name == "thac0_base" or neutral_name in dos._THIEF_SKILL_NAMES:
+    for neutral_name, dos_name in dos_codec.WRITE_DIRECT:
+        if neutral_name == "thac0_base" or neutral_name in dos_codec._THIEF_SKILL_NAMES:
             continue
         assert back.get(dos_name) == char.get(neutral_name), dos_name
     expected_thac0 = level_tables.dos_base_thac0(char.get("levels"))
@@ -425,7 +424,7 @@ def test_a_filled_character_lands_field_for_field():
     # `_filled`'s item is bytes(range(16)), which is not a *legal* C64 item:
     # +7 is cursed in bit 7 and nothing else, so its value 0x07 has no DOS
     # home and comes back 0.  Everything that means something survives.
-    back_item = dos.item_to_c64(itm[:63])
+    back_item = dos_codec.item_to_c64(itm[:63])
     assert back_item[:7] == bytes(range(7))
     assert back_item[7] == 0
     assert back_item[8:] == bytes(range(8, 16))
@@ -437,17 +436,17 @@ def test_a_filled_character_lands_field_for_field():
     # goes beside the record: nine bytes each, id + INNATE_PAYLOAD + a NULL
     # next pointer.  90, 97 and 26 come first because a dwarf's four innate
     # ids are derived from the race byte, and 47 is already converted.
-    assert _spc == b"".join(bytes((e,)) + dos.INNATE_PAYLOAD + bytes(4)
+    assert _spc == b"".join(bytes((e,)) + dos_codec.INNATE_PAYLOAD + bytes(4)
                             for e in (90, 97, 26, 18, 47))
     # And every byte of all three outputs has a provenance.
-    assert rep.total == dos_layout.RECORD_SIZE + len(itm) + len(_spc)
+    assert rep.total == dos_port.RECORD_SIZE + len(itm) + len(_spc)
     assert rep.unaccounted == []
 
 
 def _spc_ids(spc: bytes) -> list[int]:
     """The effect ids of a `.SPC` payload, one per nine-byte record."""
-    assert len(spc) % dos.EFFECT_SIZE == 0
-    return [spc[n] for n in range(0, len(spc), dos.EFFECT_SIZE)]
+    assert len(spc) % dos_codec.EFFECT_SIZE == 0
+    return [spc[n] for n in range(0, len(spc), dos_codec.EFFECT_SIZE)]
 
 
 # --- the DOS half of #431: recomputing a converted thief's eight skills -----
@@ -486,9 +485,9 @@ def test_a_c64_halfling_thief_gets_doss_own_skills_not_the_c64_row():
     at zero, which is what `goldbox.levels.dos_thief_skills` gives.
     """
     stored = (35, 30, 30, 30, 15, -5, 80, -5)
-    rec, _, _, _ = dos.write(_c64_thief_character(race=5, dexterity=12,
+    rec, _, _, _ = dos_codec.write(_c64_thief_character(race=5, dexterity=12,
                                                    stored=stored))
-    got = tuple(dos.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
+    got = tuple(dos_codec.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
     assert got == (35, 30, 25, 20, 25, 15, 70, 0)
 
 
@@ -508,9 +507,9 @@ def test_a_curse_thief_gets_the_table_row_not_the_stored_c64_one():
     C64 side, not `dos_thief_skills`'s clamped-at-zero one, since Curse has
     no override table of its own (both ports agree)."""
     stored = (35, 30, 30, 30, 15, -5, 80, -5)
-    rec, _, _, _ = dos.write(_c64_thief_character(
+    rec, _, _, _ = dos_codec.write(_c64_thief_character(
         race=5, dexterity=12, stored=stored, game="curse-of-the-azure-bonds"))
-    got = tuple(dos.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
+    got = tuple(dos_codec.DosCharacter(rec).get(n) for n in _THIEF_SKILL_FIELDS)
     assert got != stored, "the C64's own bytes must not simply be copied"
     assert got == level_tables.thief_skills(
         1, 5, "curse-of-the-azure-bonds", dexterity=12)
@@ -527,12 +526,12 @@ def test_a_converted_dwarf_carries_his_constitution_bonus_to_saves():
     """
     char = _filled()                        # race 1, and carrying 18 and 47
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [90, 97, 26, 47]
     # THRENDER GRONE's own file, record for record: the id, the four bytes
     # every innate specimen holds, and a NULL next pointer the loader relinks.
-    assert spc == b"".join(bytes((e,)) + dos.INNATE_PAYLOAD
-                           + dos.EFFECT_NEXT_NULL
+    assert spc == b"".join(bytes((e,)) + dos_codec.INNATE_PAYLOAD
+                           + dos_codec.EFFECT_NEXT_NULL
                            for e in (90, 97, 26, 47))
 
 
@@ -544,7 +543,7 @@ def test_a_converted_halfling_carries_the_two_records_his_own_kind_has():
     char = _filled()
     char.set("race", 5, "made up: halfling")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [90, 97]
 
 
@@ -555,7 +554,7 @@ def test_a_converted_gnome_carries_his_four_innate_records():
     char = _filled()
     char.set("race", 3, "made up: gnome")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [97, 18, 47, 48]
 
 
@@ -567,7 +566,7 @@ def test_a_race_with_no_innate_effects_gets_no_spc_file():
         char = _filled()
         char.set("race", race, "made up")
         char.set("innate_effects", [], "made up: nothing in the trait slots")
-        _, _, spc, _ = dos.write(char)
+        _, _, spc, _ = dos_codec.write(char)
         assert spc == b"", race
 
 
@@ -613,33 +612,33 @@ def test_the_engines_own_item_granted_record_survives_the_round_trip():
     if path is None:
         pytest.skip("no por-item-granted specimen; "
                     "tools/dosspcexpiry.py ready makes one")
-    char = dos.read_character(path)
+    char = dos_codec.read_character(path)
     nodes = [bytes(e) for e in char.effects]
     ring = [e for e in nodes if e[0] == 61]
     assert len(ring) == 1 and ring[0][:5] == bytes((61, 0, 0, 0x0C, 0)), nodes
 
-    out = dos.to_neutral(char)
+    out = dos_codec.to_neutral(char)
     assert [bytes(g) for g in out.get("granted_effects")] == \
-        [ring[0][:5] + dos.EFFECT_NEXT_NULL]
-    _rec, _itm, spc, _rep = dos.write(out)
+        [ring[0][:5] + dos_codec.EFFECT_NEXT_NULL]
+    _rec, _itm, spc, _rep = dos_codec.write(out)
     written = [spc[i:i + 9] for i in range(0, len(spc), 9)]
     assert [w[0] for w in written] == [90, 97, 26, 47, 61], written
-    assert written[-1] == ring[0][:5] + dos.EFFECT_NEXT_NULL
+    assert written[-1] == ring[0][:5] + dos_codec.EFFECT_NEXT_NULL
     # The BLESS had two minutes left and is neither written nor reported.
     assert 1 not in [w[0] for w in written]
     # Compared against the same record with the running node taken out, so
     # the claim is "the BLESS adds nothing a player reads" rather than "no
     # line anywhere uses a fixed phrase", which other fields do.
     kept = [n for n in nodes if int.from_bytes(n[1:3], "little") == 0]
-    without = dos.DosCharacter(bytes(char), effects=kept)
-    assert _rep.dropped == dos.write(dos.to_neutral(without))[3].dropped
+    without = dos_codec.DosCharacter(bytes(char), effects=kept)
+    assert _rep.dropped == dos_codec.write(dos_codec.to_neutral(without))[3].dropped
 
 
 def test_a_value_graded_unknown_is_not_written_to_dos():
     char = _filled()
     char.set("wisdom", 9, "somewhere", Confidence.UNKNOWN)
-    rec, _, _, rep = dos.write(char)
-    assert rec[dos_layout.FIELDS_BY_NAME["wisdom"].offset] == 0
+    rec, _, _, rep = dos_codec.write(char)
+    assert rec[dos_port.FIELDS_BY_NAME["wisdom"].offset] == 0
     assert any("wisdom" in d and "UNKNOWN" in d for d in rep.dropped)
 
 
@@ -648,9 +647,9 @@ def test_a_class_with_no_dos_slot_is_reported():
     monk go the other way -- DOS has their slots, so they carry."""
     char = _filled()
     char.set("levels", {"fighter": 7, "knight": 2, "druid": 4}, "made up")
-    rec, _, _, rep = dos.write(char)
+    rec, _, _, rep = dos_codec.write(char)
     assert any("knight" in w for w in rep.warnings)
-    raw = rec[dos_layout.FIELDS_BY_NAME["class_levels"].span]
+    raw = rec[dos_port.FIELDS_BY_NAME["class_levels"].span]
     assert raw[2] == 7      # fighter is class number 2
     assert raw[1] == 4      # druid has a DOS slot the C64 lacks
     assert 2 not in (raw[0], raw[3], raw[4], raw[5], raw[6], raw[7])
@@ -660,7 +659,7 @@ def test_a_name_too_long_for_dos_is_truncated_and_said():
     char = _filled()
     char.set("name", "ABCDEFGHIJKLMNOPQRST", "made up",
              Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
-    rec, _, _, rep = dos.write(char)
+    rec, _, _, rep = dos_codec.write(char)
     assert rec[0] == 15
     assert rec[1:16] == b"ABCDEFGHIJKLMNO"
     assert any("truncated" in w for w in rep.warnings)
@@ -672,8 +671,8 @@ def _unsourced_offsets() -> set[int]:
     """The bytes the writer says it cannot source, as offsets -- the round
     trip's mask comes from the writer's own account, not from the diff."""
     out: set[int] = set()
-    for name, _ in dos.WRITE_UNSOURCED:
-        f = dos_layout.FIELDS_BY_NAME[name]
+    for name, _ in dos_codec.WRITE_UNSOURCED:
+        f = dos_port.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     # A measured default is not converted either: it is what a *newly made*
     # character has, and a played one's own value differs -- 12 of the 24
@@ -687,16 +686,16 @@ def _unsourced_offsets() -> set[int]:
     #
     # `unnamed_1e0` is Pools of Darkness' and no other title declares it, so
     # it has no Pool of Radiance offset to mask (#194).
-    for name, _, _, _ in dos.WRITE_DEFAULTS:
-        if name == "field_10c_10f" or name not in dos_layout.FIELDS_BY_NAME:
+    for name, _, _, _ in dos_codec.WRITE_DEFAULTS:
+        if name == "field_10c_10f" or name not in dos_port.FIELDS_BY_NAME:
             continue
-        f = dos_layout.FIELDS_BY_NAME[name]
+        f = dos_port.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     # Nor is a byte derived from the rest of the record: `unnamed_0ab` is the
     # identity the engine draws at random, and a converted record gets a
     # digest of its own bytes rather than the source's draw (#216).
-    for name, _ in dos.WRITE_DERIVED:
-        f = dos_layout.FIELDS_BY_NAME[name]
+    for name, _ in dos_codec.WRITE_DERIVED:
+        f = dos_port.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     return out
 
@@ -705,15 +704,15 @@ def _records():
     where = _save_dir()
     if where is None:
         pytest.skip("needs a DOS save; set FR_ARCHIVES to the archives")
-    out = [dos.read_character(p) for p in
+    out = [dos_codec.read_character(p) for p in
            sorted(where.glob("*.SAV")) + sorted(where.glob("*.CHA"))
-           if p.stat().st_size == dos_layout.RECORD_SIZE]
+           if p.stat().st_size == dos_port.RECORD_SIZE]
     if not out:
         pytest.skip("no DOS Pool of Radiance character records here")
     return out
 
 
-ENC = dos_layout.FIELDS_BY_NAME["encumbrance"]
+ENC = dos_port.FIELDS_BY_NAME["encumbrance"]
 
 
 def _diff_against(char, rec: bytes) -> tuple[set[int], bool]:
@@ -740,7 +739,7 @@ PORTRAIT_FIELDS = ("portrait_head", "portrait_body")
 def _portrait_offsets() -> set[int]:
     out: set[int] = set()
     for name in PORTRAIT_FIELDS:
-        f = dos_layout.FIELDS_BY_NAME[name]
+        f = dos_port.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     return out
 
@@ -783,10 +782,10 @@ def test_the_portrait_pair_round_trips_when_the_menu_can_be_read():
     total = 0
     for char in _records():
         original = char.to_bytes()
-        neutral_char = dos.to_neutral(char, portraits=tables)
-        rec, _, _, _ = dos.write(neutral_char, portraits=tables)
+        neutral_char = dos_codec.to_neutral(char, portraits=tables)
+        rec, _, _, _ = dos_codec.write(neutral_char, portraits=tables)
         for name in PORTRAIT_FIELDS:
-            f = dos_layout.FIELDS_BY_NAME[name]
+            f = dos_port.FIELDS_BY_NAME[name]
             assert rec[f.offset] == original[f.offset], (char.name, name)
             assert rec[f.offset] != 0, (char.name, name)
         assert neutral_char.get("portrait_head") in tables.heads
@@ -810,11 +809,11 @@ def test_the_portrait_is_the_only_thing_the_menu_tables_change():
     tables = _portrait_tables()
     if tables is None:
         pytest.skip("the DOS saves here are not beside the game's own files")
-    identity = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    identity = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     pair = _portrait_offsets() | set(range(identity.offset, identity.end))
     for char in _records():
-        without, _, _, _ = dos.write(dos.to_neutral(char))
-        with_them, _, _, _ = dos.write(dos.to_neutral(char, portraits=tables),
+        without, _, _, _ = dos_codec.write(dos_codec.to_neutral(char))
+        with_them, _, _, _ = dos_codec.write(dos_codec.to_neutral(char, portraits=tables),
                                        portraits=tables)
         differ = {i for i in range(len(without)) if without[i] != with_them[i]}
         assert differ <= pair, (char.name, sorted(hex(i) for i in differ))
@@ -839,11 +838,11 @@ def test_without_the_menu_tables_the_portrait_is_zero_and_reported():
     separate decision and it is Donald's.
     """
     char = _records()[0]
-    neutral = dos.to_neutral(char)
+    neutral = dos_codec.to_neutral(char)
     assert "portrait_head" in neutral and "portrait_body" in neutral
-    rec, _, _, rep = dos.write(neutral)
+    rec, _, _, rep = dos_codec.write(neutral)
     for name in PORTRAIT_FIELDS:
-        f = dos_layout.FIELDS_BY_NAME[name]
+        f = dos_port.FIELDS_BY_NAME[name]
         assert rec[f.offset] == 0, name
     text = " ".join(rep.dropped)
     assert "HEAD" in text and "BODY" in text
@@ -865,10 +864,10 @@ def test_a_portrait_outside_the_menu_is_reported_rather_than_substituted():
         pytest.skip("the DOS saves here are not beside the game's own files")
     outside = 0x67
     assert outside not in tables.heads
-    char = dos.to_neutral(_records()[0], portraits=tables)
+    char = dos_codec.to_neutral(_records()[0], portraits=tables)
     char.set("portrait_head", outside, "made up: an NPC's own portrait")
-    rec, _, _, rep = dos.write(char, portraits=tables)
-    f = dos_layout.FIELDS_BY_NAME["portrait_head"]
+    rec, _, _, rep = dos_codec.write(char, portraits=tables)
+    f = dos_port.FIELDS_BY_NAME["portrait_head"]
     assert rec[f.offset] == 0
     assert any("HEAD67" in d for d in rep.dropped), rep.dropped
 
@@ -889,7 +888,7 @@ def test_a_converted_party_arrives_with_its_own_faces(tmp_path):
     if tables is None:
         pytest.skip("the DOS saves here are not beside the game's own files")
     save0, save1 = _fixture_payloads()
-    dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    dos_codec.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
 
     wanted = []
     for slot in SaveGame0.from_bytes(save0).characters:
@@ -898,8 +897,8 @@ def test_a_converted_party_arrives_with_its_own_faces(tmp_path):
                        tables.body_position(c64.get("portrait_body"))))
     wanted.reverse()          # DOS lists the party from the other end (#101)
 
-    head = dos_layout.FIELDS_BY_NAME["portrait_head"].offset
-    body = dos_layout.FIELDS_BY_NAME["portrait_body"].offset
+    head = dos_port.FIELDS_BY_NAME["portrait_head"].offset
+    body = dos_port.FIELDS_BY_NAME["portrait_body"].offset
     seen = 0
     for n, (want_head, want_body) in enumerate(wanted, start=1):
         rec = (tmp_path / f"CHRDATA{n}.SAV").read_bytes()
@@ -925,10 +924,10 @@ def test_the_saved_game_carries_the_word_the_portrait_needs(tmp_path):
     table entry that the writer stops reading would pass the lookup.
     """
     save0, save1 = _fixture_payloads()
-    dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    dos_codec.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     assert sg.word(savgam, 0x49FF) == 3
-    assert 0x49FF not in {a for a, _, _ in dos.SAVGAM_UNSOURCED}
+    assert 0x49FF not in {a for a, _, _ in dos_codec.SAVGAM_UNSOURCED}
 
 
 @needs_dos_saves
@@ -942,10 +941,10 @@ def test_a_conversion_with_no_game_directory_says_the_faces_went(tmp_path):
     `HEAD<xx>` that went.  `editor/exports.py`'s `losses` reads both.
     """
     save0, save1 = _fixture_payloads()
-    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    report = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
     assert any("portrait" in w for w in report.warnings), report.warnings
     assert any("portrait_head" in d for d in report.dropped), report.dropped
-    head = dos_layout.FIELDS_BY_NAME["portrait_head"].offset
+    head = dos_port.FIELDS_BY_NAME["portrait_head"].offset
     assert (tmp_path / "CHRDATA1.SAV").read_bytes()[head] == 0
 
 
@@ -961,9 +960,9 @@ def test_the_written_icon_colours_are_not_zero():
     a hand-built save loaded, re-saved from inside the game, and the game
     writing our zeros straight back.
     """
-    f = dos_layout.FIELDS_BY_NAME["icon_colours"]
+    f = dos_port.FIELDS_BY_NAME["icon_colours"]
     for char in _records():
-        rec, _, _, _ = dos.write(dos.to_neutral(char))
+        rec, _, _, _ = dos_codec.write(dos_codec.to_neutral(char))
         assert rec[f.offset:f.end] != bytes(f.size), char.name
 
 
@@ -988,9 +987,9 @@ _MADE_UP_ICON = DosIcon(
 def test_write_with_no_icon_still_zeroes_head_and_body():
     """The state every caller that does not yet supply an `icon` is still
     in -- `write_c64_save`'s own callers among them, until they do."""
-    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
-    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
-    rec, _, _, rep = dos.write(_filled())
+    f_head = dos_port.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_port.FIELDS_BY_NAME["icon_body"]
+    rec, _, _, rep = dos_codec.write(_filled())
     assert rec[f_head.offset] == 0
     assert rec[f_body.offset] == 0
     assert any("icon_head" in line for line in rep.sources.values())
@@ -1001,10 +1000,10 @@ def test_write_takes_the_given_icon_over_the_default():
     `DosIcon`, and the two lists this would otherwise have drawn from --
     `WRITE_UNSOURCED`'s zero and `WRITE_DEFAULTS`'s colour set -- are not
     written over it."""
-    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
-    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
-    f_colours = dos_layout.FIELDS_BY_NAME["icon_colours"]
-    rec, _, _, rep = dos.write(_filled(), icon=_MADE_UP_ICON)
+    f_head = dos_port.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_port.FIELDS_BY_NAME["icon_body"]
+    f_colours = dos_port.FIELDS_BY_NAME["icon_colours"]
+    rec, _, _, rep = dos_codec.write(_filled(), icon=_MADE_UP_ICON)
     assert rec[f_head.offset] == _MADE_UP_ICON.head
     assert rec[f_body.offset] == _MADE_UP_ICON.body
     assert rec[f_colours.offset:f_colours.end] == _MADE_UP_ICON.colours
@@ -1021,9 +1020,9 @@ def test_the_icon_from_a_c64_party_reaches_the_written_record(tmp_path):
     parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
     save0, save1 = _fixture_payloads()
 
-    without = dos.write_dos_save(save0, save1, _save_dir(), tmp_path / "a",
+    without = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path / "a",
                                  "A")
-    party = dos.read_party(tmp_path / "a", "A")
+    party = dos_codec.read_party(tmp_path / "a", "A")
     assert party[0].get("icon_head") == 0
     assert party[0].get("icon_body") == 0
     assert any("figure is not set" in d for d in without.dropped), \
@@ -1038,10 +1037,10 @@ def test_the_icon_from_a_c64_party_reaches_the_written_record(tmp_path):
     poked = bytearray(save0)
     poked[at:at + container.icon_size] = icon
 
-    with_icon = dos.write_dos_save(bytes(poked), save1, _save_dir(),
+    with_icon = dos_codec.write_dos_save(bytes(poked), save1, _save_dir(),
                                    tmp_path / "b", "A",
                                    icon_parts=parts)
-    party = dos.read_party(tmp_path / "b", "A")
+    party = dos_codec.read_party(tmp_path / "b", "A")
     assert (party[0].get("icon_head"), party[0].get("icon_body")) != (0, 0)
     # The drop line is no longer true, so it comes off (#355).
     assert not any("figure is not set" in d for d in with_icon.dropped), \
@@ -1063,9 +1062,9 @@ def test_a_hand_authored_icon_does_not_fail_the_whole_party(tmp_path):
     poked = bytearray(save0)
     poked[container.icon(0):container.icon(0) + container.icon_size] = garbage
 
-    report = dos.write_dos_save(bytes(poked), save1, _save_dir(), tmp_path,
+    report = dos_codec.write_dos_save(bytes(poked), save1, _save_dir(), tmp_path,
                                 "A", icon_parts=parts)
-    party = dos.read_party(tmp_path, "A")
+    party = dos_codec.read_party(tmp_path, "A")
     assert (party[0].get("icon_head"), party[0].get("icon_body")) == (0, 0)
     assert any("figure is not set" in d for d in report.dropped), \
         report.dropped
@@ -1100,14 +1099,14 @@ def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(
         at = container.icon(i)
         base[at:at + container.icon_size] = icon
 
-    report = dos.write_dos_save(bytes(base), save1, _save_dir(), tmp_path,
+    report = dos_codec.write_dos_save(bytes(base), save1, _save_dir(), tmp_path,
                                 "A", icon_parts=parts)
     # No game directory was given, so the sheet portrait is reported
     # separately (`test_a_conversion_with_no_game_directory_says_the_faces_
     # went`); nothing here is about the combat icon.
     assert not any("combat icon" in w for w in report.warnings), \
         report.warnings
-    party = dos.read_party(tmp_path, "A")
+    party = dos_codec.read_party(tmp_path, "A")
     assert len(party) == 6
 
     pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
@@ -1160,14 +1159,14 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     about status, active, the combat side or quickfight, and a source
     staged away from the constant would fail the constant write outright.
     """
-    assert "field_10c_10f" not in {n for n, _, _ in dos.WRITE_CONSTANTS}
-    assert "field_10c_10f" in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
+    assert "field_10c_10f" not in {n for n, _, _ in dos_codec.WRITE_CONSTANTS}
+    assert "field_10c_10f" in {n for n, _, _, _ in dos_codec.WRITE_DEFAULTS}
 
-    f = dos_layout.FIELDS_BY_NAME["field_10c_10f"]
-    raw = bytearray(dos_layout.RECORD_SIZE)
+    f = dos_port.FIELDS_BY_NAME["field_10c_10f"]
+    raw = bytearray(dos_port.RECORD_SIZE)
     raw[f.offset:f.end] = b"\x04\x00\x01\x01"          # unconscious, hostile, quick
-    char = dos.DosCharacter(bytes(raw))
-    rec, _, _, rep = dos.write(dos.to_neutral(char))
+    char = dos_codec.DosCharacter(bytes(raw))
+    rec, _, _, rep = dos_codec.write(dos_codec.to_neutral(char))
     assert rec[f.offset:f.end] == b"\x04\x00\x01\x01"
     note = rep.sources[f.offset]
     assert "Not converted" not in note
@@ -1175,7 +1174,7 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
 
     # And a character the source says nothing about still gets the
     # fresh-character default across all four.
-    bare = dos.write(neutral.NeutralCharacter("test"))[0]
+    bare = dos_codec.write(neutral.NeutralCharacter("test"))[0]
     assert bare[f.offset:f.end] == b"\x00\x01\x00\x00"
 
 
@@ -1201,7 +1200,7 @@ def test_field_83_87s_third_byte_splits_on_who_wrote_the_record():
     through the neutral record, with no report)`, not one we created, so he
     arrived with the byte already set.
     """
-    share = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+    share = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
     ours = {k: v[share] for k, v in
             _clean_records(CLEAN_PARTY, CLEAN_ROLLS, CLEAN_TRAINED).items()}
     assert len(ours) >= 26, "the clean corpus shrank; see tools/specimens.py"
@@ -1216,7 +1215,7 @@ def test_the_archives_hold_the_share_byte_the_writer_writes():
     record in the archives reads 1 where the records we rolled read 0, which
     is why 1 is the value kept: it is what a character an engine has lived
     with holds, and a share of 0 is the one value the split skips."""
-    share = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+    share = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
     theirs = {name: rec[share]
               for name, rec in _archive_records().items()}
     assert len(theirs) >= 18
@@ -1244,7 +1243,7 @@ def test_keeping_a_character_out_of_modify_sets_the_share_byte():
     save rewrites can be mistaken for it, and the first character, who never
     went near the screen, is the control that says so.
     """
-    share = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+    share = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
     before = specimen("por-304-modify-exited")
     after = specimen("por-304-modify-kept")
     control_b = (before / "CHRDATC1.SAV").read_bytes()
@@ -1270,13 +1269,13 @@ def test_field_83_87_is_a_constant_the_writer_chooses_and_says_so():
     `#303 (The DOS record may hold the NPC flag that the conversion reports
     as having nowhere to go)`'s work rather than a masking decision.
     """
-    consts = {n: (data, why) for n, data, why in dos.WRITE_CONSTANTS}
+    consts = {n: (data, why) for n, data, why in dos_codec.WRITE_CONSTANTS}
     assert "field_83_87" in consts
     data, why = consts["field_83_87"]
     assert data == b"\x00\x00\x01\x00\x00"
     assert "101 of 101" not in why, "the stale census sentence is back"
     assert "45 of the 54" in why and "archives" in why
-    assert "field_83_87" not in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
+    assert "field_83_87" not in {n for n, _, _, _ in dos_codec.WRITE_DEFAULTS}
 
 
 def test_two_characters_of_the_same_name_get_different_identity_bytes():
@@ -1295,15 +1294,15 @@ def test_two_characters_of_the_same_name_get_different_identity_bytes():
     bug with the whole suite green.  This is the test that goes red instead.
     Needs no DOS save -- two neutral characters differing only in name.
     """
-    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     one, two = _filled(), _filled()
     made_up = "made up: two characters a player named the same thing"
     one.set("name", "DUPLICO", made_up)
     two.set("name", "DUPLICO", made_up)
     two.set("experience", one.get("experience") + 1, made_up)
     assert one.get("name") == two.get("name")
-    first, _, _, _ = dos.write(one)
-    second, _, _, _ = dos.write(two)
+    first, _, _, _ = dos_codec.write(one)
+    second, _, _, _ = dos_codec.write(two)
     assert first[f.offset:f.end] != second[f.offset:f.end]
 
 
@@ -1316,10 +1315,10 @@ def test_the_identity_byte_is_the_same_on_a_second_write():
     A digest of the other 284 bytes gives the distinctness the engine needs
     without giving up that comparison (#216).
     """
-    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     char = _filled()
-    first, _, _, _ = dos.write(char)
-    second, _, _, _ = dos.write(char)
+    first, _, _, _ = dos_codec.write(char)
+    second, _, _, _ = dos_codec.write(char)
     assert first[f.offset:f.end] == second[f.offset:f.end]
 
 
@@ -1346,14 +1345,14 @@ def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
     Asserting global distinctness would be asserting something the fix does
     not claim and does not need.
     """
-    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     where = _save_dir()
     parties: dict[str, dict[int, list[str]]] = {}
     for path in sorted(where.glob("CHRDAT*.SAV")):
-        if path.stat().st_size != dos_layout.RECORD_SIZE:
+        if path.stat().st_size != dos_port.RECORD_SIZE:
             continue
-        char = dos.read_character(path)
-        rec, _, _, _ = dos.write(dos.to_neutral(char))
+        char = dos_codec.read_character(path)
+        rec, _, _, _ = dos_codec.write(dos_codec.to_neutral(char))
         assert rec[f.offset] != 0, path.name
         # `CHRDAT<slot><n>.SAV`: the slot letter is the party.
         parties.setdefault(path.name[6], {}).setdefault(
@@ -1394,17 +1393,17 @@ def test_an_amiga_source_writes_its_own_identity_byte_not_a_digest():
     """
     from test_amiga import amiga_por_with_items
 
-    from goldbox import amiga
+    from goldbox import amiga_por
 
-    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     seen = {}
     for path in amiga_por_with_items():
-        char = amiga.read_amiga_por(path)
+        char = amiga_por.read_amiga_por(path)
         if char.name not in AMIGA_POR_IDENTITY_BYTES:
             continue
-        neutral_char = amiga.to_neutral(char)
+        neutral_char = amiga_por.to_neutral(char)
         assert neutral_char.port == "Amiga"
-        rec, _, _, _ = dos.write(neutral_char)
+        rec, _, _, _ = dos_codec.write(neutral_char)
         seen[char.name] = rec[f.offset]
     assert seen == AMIGA_POR_IDENTITY_BYTES, seen
 
@@ -1418,12 +1417,12 @@ def test_a_c64_curse_or_silver_blades_source_still_gets_the_digest():
     deriving the digest for it exactly as before, whatever `char.port`
     says.
     """
-    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     char = _filled()
     char.port = "C64"
     assert "unnamed_0ab" not in char
-    rec, _, _, _ = dos.write(char)
-    assert rec[f.offset] == dos.identity_byte(rec)
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[f.offset] == dos_codec.identity_byte(rec)
 
 
 def test_a_pure_dos_source_still_gets_the_digest_not_its_own_byte():
@@ -1433,13 +1432,13 @@ def test_a_pure_dos_source_still_gets_the_digest_not_its_own_byte():
     risk the zero-collision `#216 (Every converted DOS character carries
     the same identity byte at 0x0AB)` fixed.
     """
-    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     char = _filled()
     char.port = "DOS"
     char.set("unnamed_0ab", 0x00, "made up: a DOS source's own zero byte")
-    rec, _, _, _ = dos.write(char)
-    assert rec[f.offset] == dos.identity_byte(rec)
-    assert "DOS" not in dos.IDENTITY_HELD_PORTS
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[f.offset] == dos_codec.identity_byte(rec)
+    assert "DOS" not in dos_codec.IDENTITY_HELD_PORTS
 
 
 @needs_dos_saves
@@ -1463,7 +1462,7 @@ def test_a_record_round_trips_through_the_neutral_middle():
     """
     total = enc_misses = granted = 0
     for char in _records():
-        rec, itm, spc, _ = dos.write(dos.to_neutral(char))
+        rec, itm, spc, _ = dos_codec.write(dos_codec.to_neutral(char))
         outside, enc = _diff_against(char, rec)
         assert outside == set(), (char.name, sorted(hex(i) for i in outside))
         enc_misses += enc
@@ -1475,15 +1474,15 @@ def test_a_record_round_trips_through_the_neutral_middle():
         # The `.SPC` is the original's permanent records with the next
         # pointers NULLed -- which is also the claim that every innate record
         # in the player's own saves carries `INNATE_PAYLOAD` in bytes 1-4.
-        innate = [e for e in char.effects if e[0] in dos.INNATE_EFFECTS]
+        innate = [e for e in char.effects if e[0] in dos_codec.INNATE_EFFECTS]
         kept = [e for e in char.effects
-                if e[0] not in dos.INNATE_EFFECTS
+                if e[0] not in dos_codec.INNATE_EFFECTS
                 and int.from_bytes(e[1:3], "little") == 0]
         granted += bool(kept)
         assert spc == b"".join(e[:5] + bytes(4) for e in innate + kept), \
             char.name
         for e in innate:
-            assert e[1:5] == dos.INNATE_PAYLOAD, (char.name, e.hex())
+            assert e[1:5] == dos_codec.INNATE_PAYLOAD, (char.name, e.hex())
     assert total >= 24
     assert enc_misses <= 2, f"{enc_misses} encumbrance misses of {total}"
     assert granted, "no record here carries a permanent non-innate effect"
@@ -1506,7 +1505,7 @@ _SAVE_THROW_NAMES = ("save_paralysis", "save_petrification", "save_wands",
 def _save_throw_offsets() -> set[int]:
     out: set[int] = set()
     for name in _SAVE_THROW_NAMES:
-        f = dos_layout.FIELDS_BY_NAME[name]
+        f = dos_port.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
     return out
 
@@ -1521,8 +1520,8 @@ def _save_throw_offsets() -> set[int]:
 #: record's own recomputed byte, which `tests/test_c64thac0.py` covers on
 #: its own.
 _THAC0_CURRENT_OFFSETS = frozenset(
-    range(dos_layout.FIELDS_BY_NAME["thac0_current"].offset,
-          dos_layout.FIELDS_BY_NAME["thac0_current"].end))
+    range(dos_port.FIELDS_BY_NAME["thac0_current"].offset,
+          dos_port.FIELDS_BY_NAME["thac0_current"].end))
 
 
 @needs_dos_saves
@@ -1540,10 +1539,10 @@ def test_a_record_round_trips_through_the_c64_record():
     total = 0
     mask = _save_throw_offsets() | _THAC0_CURRENT_OFFSETS
     for char in _records():
-        neutral_char = dos.to_neutral(char)
+        neutral_char = dos_codec.to_neutral(char)
         c64_rec, _ = c64_codec.write(neutral_char)
         back = c64_codec.read(c64_rec, source="round trip")
-        rec, _, _, _ = dos.write(back)
+        rec, _, _, _ = dos_codec.write(back)
         outside, _ = _diff_against(char, rec)
         assert outside - mask == set(), \
             (char.name, sorted(hex(i) for i in outside))
@@ -1552,9 +1551,9 @@ def test_a_record_round_trips_through_the_c64_record():
             neutral_char.get("levels"), neutral_char.get("race"),
             neutral_char.get("constitution"), neutral_char.game)
         for value, name in zip(expected, _SAVE_THROW_NAMES):
-            f = dos_layout.FIELDS_BY_NAME[name]
+            f = dos_port.FIELDS_BY_NAME[name]
             assert rec[f.offset] == value, (char.name, name)
-        thac0 = dos_layout.FIELDS_BY_NAME["thac0_current"]
+        thac0 = dos_port.FIELDS_BY_NAME["thac0_current"]
         assert rec[thac0.offset] == c64_rec.get("thac0"), char.name
         total += 1
     assert total >= 24
@@ -1563,7 +1562,7 @@ def test_a_record_round_trips_through_the_c64_record():
 @needs_dos_saves
 def test_the_write_report_accounts_for_every_byte():
     for char in _records():
-        _, _, _, rep = dos.write(dos.to_neutral(char))
+        _, _, _, rep = dos_codec.write(dos_codec.to_neutral(char))
         assert rep.unaccounted == [], (char.name, rep.unaccounted[:8])
         assert rep.dropped
 
@@ -1593,8 +1592,8 @@ def test_the_roster_path_speaks_the_stored_encoding():
     # short of it, and the first conversion wrote zeros into the DOS tail.
     assert char.get("roster_tail") == block.raw[0x10:0x19]
     # And through the DOS writer, the stored byte lands verbatim.
-    rec, _, _, _ = dos.write(char)
-    assert rec[dos_layout.FIELDS_BY_NAME["armour_class"].offset] == \
+    rec, _, _, _ = dos_codec.write(char)
+    assert rec[dos_port.FIELDS_BY_NAME["armour_class"].offset] == \
         COMBAT_BIAS - block.armour_class
 
 
@@ -1635,7 +1634,7 @@ def test_the_roster_spell_counts_are_derived_not_dropped():
 def _slot_and_roster(slot_index: int | None):
     """A synthetic one-character `SAVEDGAME0` slot, and a `SAVEDGAME1` roster
     block whose +0x0D carries `slot_index` -- `None` for no roster at all."""
-    from goldbox.games import by_key
+    from goldbox.c64_port import by_key
     from goldbox.record import CharacterRecord
     from goldbox.savegame import ROSTER_SLOT_INDEX, SaveGame0, SaveGame1
 
@@ -1692,8 +1691,8 @@ def test_the_c64_combat_figure_reaches_the_dos_record_and_is_accounted_for():
     was the one offset in the whole 285-byte record with no provenance, for
     every character converted off a C64 save."""
     record, roster = _slot_and_roster(5)
-    rec, _itm, _spc, rep = dos.write(c64_codec.read(record, roster=roster))
-    at = dos_layout.FIELDS_BY_NAME["combat_figure"].offset
+    rec, _itm, _spc, rep = dos_codec.write(c64_codec.read(record, roster=roster))
+    at = dos_port.FIELDS_BY_NAME["combat_figure"].offset
     assert at == 0x0BF
     assert rec[at] == 5
     assert rep.unaccounted == []
@@ -1731,8 +1730,8 @@ def _fixture_payloads():
 @needs_dos_saves
 def test_write_dos_save_writes_a_readable_party(tmp_path):
     save0, save1 = _fixture_payloads()
-    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
-    party = dos.read_party(tmp_path, "A")
+    report = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    party = dos_codec.read_party(tmp_path, "A")
     assert [c.name for c in party] == ["BRUTUS"]
     # The fixture BRUTUS carries nothing, so he gets no `.ITM` at all -- see
     # `test_a_character_who_carries_nothing_gets_no_itm_file`.
@@ -1741,11 +1740,11 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
 
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     # The quest flags are the C64 bytes, widened to words.
-    for addr in range(dos.FLAGS_FIRST, dos.FLAGS_LAST + 1):
-        assert sg.word(savgam, addr) == save0[addr - dos.SAVE0_BASE], \
+    for addr in range(dos_codec.FLAGS_FIRST, dos_codec.FLAGS_LAST + 1):
+        assert sg.word(savgam, addr) == save0[addr - dos_codec.SAVE0_BASE], \
             hex(addr)
     # Both parties stand in area 0, so the square converts too.
-    assert sg.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]
+    assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
     x, y, facing = sg.position(savgam)
     assert (x, y) == (save0[0x49C0 - 0x4900], save0[0x49C1 - 0x4900])
     # `sg.position` halves the facing back to the C64's 0-3; the stored
@@ -1755,7 +1754,7 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
     # #67: the clock and the party size are converted, not left the template's.
     for i in range(sg.CLOCK_DIGITS):
         assert sg.word(savgam, sg.CLOCK + i) == \
-            save0[sg.CLOCK + i - dos.SAVE0_BASE], i
+            save0[sg.CLOCK + i - dos_codec.SAVE0_BASE], i
     assert sg.party_size(savgam) == len(party) == 1
     assert sg.word(savgam, sg.PARTY_SIZE) == len(party)
     assert any("the clock" in c for c in report.converted)
@@ -1768,8 +1767,8 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
 @needs_dos_saves
 def test_write_dos_save_refuses_to_write_into_the_template(tmp_path):
     save0, save1 = _fixture_payloads()
-    with pytest.raises(dos.DosRecordError):
-        dos.write_dos_save(save0, save1, _save_dir(), _save_dir(), "A")
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.write_dos_save(save0, save1, _save_dir(), _save_dir(), "A")
     assert not list(tmp_path.iterdir())
 
 
@@ -1781,8 +1780,8 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     save0 = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
-    report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
-    party = dos.read_party(tmp_path, "B")
+    report = dos_codec.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
+    party = dos_codec.read_party(tmp_path, "B")
     assert len(party) == 6
     # **The file order is the reverse of the C64 slot order** (#101): the C64
     # lists the party from the highest slot down and DOS from `CHRDATB1` up,
@@ -1800,7 +1799,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     # This C64 party stands in New Phlan and the template's slot B in Sokol
     # Keep, so the save is retargeted -- with the empty wallset triple the
     # C64 carries for New Phlan, which draws it correctly.
-    assert sg.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 0
+    assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 0
     assert sg.wall_triple(savgam) == (sg.EMPTY,) * 3
     assert sg.position(savgam) == (save0[0x49C0 - 0x4900],
                                    save0[0x49C1 - 0x4900],
@@ -1830,9 +1829,9 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     save0 = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
-    dos.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
+    dos_codec.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
 
-    party = dos.read_party(tmp_path, "B")
+    party = dos_codec.read_party(tmp_path, "B")
     # The party arrives reversed (#101), so the elf and the half-elf are the
     # last two files rather than the first two. Keyed by name so the test is
     # about the effects rather than about the ordering.
@@ -1842,7 +1841,7 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
     assert by_name["LADY KATHERINE"].effect_ids == [124]      # the half-elf's
     elf = party.index(by_name["MALCYON"]) + 1
     assert (tmp_path / f"CHRDATB{elf}.SPC").read_bytes() == \
-        bytes((107,)) + dos.INNATE_PAYLOAD + dos.EFFECT_NEXT_NULL
+        bytes((107,)) + dos_codec.INNATE_PAYLOAD + dos_codec.EFFECT_NEXT_NULL
     # MAGNUS the dwarf: 90 and 97 for the constitution bonus to saving throws,
     # 26 against orcs and 47 against giants, all four from the race byte.  The
     # C64 spends the constitution bonus inside the five saving-throw bytes,
@@ -1873,12 +1872,12 @@ def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     six = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
-    dos.write_dos_save(six, None, _save_dir(), tmp_path, "B")
-    assert len(dos.read_party(tmp_path, "B")) == 6
+    dos_codec.write_dos_save(six, None, _save_dir(), tmp_path, "B")
+    assert len(dos_codec.read_party(tmp_path, "B")) == 6
 
     save0, save1 = _fixture_payloads()
-    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
-    assert [c.name for c in dos.read_party(tmp_path, "B")] == ["BRUTUS"]
+    report = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
+    assert [c.name for c in dos_codec.read_party(tmp_path, "B")] == ["BRUTUS"]
     for n in range(2, 7):
         for suffix in (".SAV", ".ITM", ".SPC"):
             assert not (tmp_path / f"CHRDATB{n}{suffix}").exists()
@@ -1897,7 +1896,7 @@ def test_clearing_a_slot_leaves_the_other_slots_and_the_user_s_files(tmp_path):
     }
     for path, body in keep.items():
         path.write_bytes(body)
-    dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
+    dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
     for path, body in keep.items():
         assert path.read_bytes() == body, path.name
 
@@ -1912,14 +1911,14 @@ def test_a_conversion_that_cannot_read_its_template_clears_nothing(tmp_path):
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     six = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
-    dos.write_dos_save(six, None, _save_dir(), tmp_path, "B")
+    dos_codec.write_dos_save(six, None, _save_dir(), tmp_path, "B")
 
     empty = tmp_path / "no-template"
     empty.mkdir()
     save0, save1 = _fixture_payloads()
     with pytest.raises(FileNotFoundError):
-        dos.write_dos_save(save0, save1, empty, tmp_path, "B")
-    assert len(dos.read_party(tmp_path, "B")) == 6
+        dos_codec.write_dos_save(save0, save1, empty, tmp_path, "B")
+    assert len(dos_codec.read_party(tmp_path, "B")) == 6
 
 
 # --- the retarget (#60) ------------------------------------------------------
@@ -1938,10 +1937,10 @@ def _c64_in_the_slums() -> bytes:
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     save0 = bytearray(SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes())
-    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = 20
-    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = 20
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_WALLSET
-    save0[at:at + dos.CACHE_WALLSET_PIECES] = bytes((2, 4, 1))
+    save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] = 20
+    save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] = 20
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE + dos_codec.CACHE_WALLSET
+    save0[at:at + dos_codec.CACHE_WALLSET_PIECES] = bytes((2, 4, 1))
     return bytes(save0)
 
 
@@ -1961,7 +1960,7 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
     from goldbox import dos_savegame
 
     save0 = _c64_in_the_slums()
-    report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "A")
+    report = dos_codec.write_dos_save(save0, None, _save_dir(), tmp_path, "A")
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     assert sg.area_id(savgam) == 20
     assert sg.word(savgam, sg.SCRIPT) == 20
@@ -1998,8 +1997,8 @@ def test_a_conversion_with_no_game_files_refuses_rather_than_borrowing_an_area(
     save0 = _c64_in_the_slums()
     empty = tmp_path / "no-game"
     empty.mkdir()
-    with pytest.raises(dos.DosRecordError) as e:
-        dos.write_dos_save(save0, None, _save_dir(), tmp_path / "out", "A",
+    with pytest.raises(dos_codec.DosRecordError) as e:
+        dos_codec.write_dos_save(save0, None, _save_dir(), tmp_path / "out", "A",
                            game=empty)
     assert "ECL2.DAX" in str(e.value)
     # And nothing was written, so a slot the conversion refuses is a slot the
@@ -2018,17 +2017,17 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
     which is the refusal the issue says hides the fault -- so this calls
     `savgam_writes` directly, the same way that caller does.
     """
-    save0 = bytearray(dos.SAVE0_SIZE)
-    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = 11
-    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = 0
-    save0[dos.PARTY_X - dos.SAVE0_BASE] = 5
-    save0[dos.PARTY_Y - dos.SAVE0_BASE] = 0
-    save0[dos.PARTY_FACING - dos.SAVE0_BASE] = 0
+    save0 = bytearray(dos_codec.SAVE0_SIZE)
+    save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] = 11
+    save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] = 0
+    save0[dos_codec.PARTY_X - dos_codec.SAVE0_BASE] = 5
+    save0[dos_codec.PARTY_Y - dos_codec.SAVE0_BASE] = 0
+    save0[dos_codec.PARTY_FACING - dos_codec.SAVE0_BASE] = 0
     script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
     state = world_state.from_c64(bytes(save0))
     savgam = bytearray(sg.SAVGAM_SIZE)
-    report = dos.SaveReport(total=sg.SAVGAM_SIZE)
-    dos.savgam_writes(savgam, report, state, "A", 1, script)
+    report = dos_codec.SaveReport(total=sg.SAVGAM_SIZE)
+    dos_codec.savgam_writes(savgam, report, state, "A", 1, script)
     assert sg.word(bytes(savgam), sg.SCRIPT) == 11
     assert sg.area_id(bytes(savgam)) == 0
 
@@ -2040,7 +2039,7 @@ def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
 ])
 def test_an_area_with_no_legal_answer_is_named_rather_than_guessed(area,
                                                                    wanted):
-    assert wanted in dos.retarget_reason(area)
+    assert wanted in dos_codec.retarget_reason(area)
 
 
 def test_the_areas_with_a_legal_answer_are_not_refused():
@@ -2052,7 +2051,7 @@ def test_the_areas_with_a_legal_answer_are_not_refused():
     outdoor write path is held to what an engine-written overland save holds.
     """
     for area in (0, 20, 21, 25, 26, 27):
-        assert dos.retarget_reason(area) is None
+        assert dos_codec.retarget_reason(area) is None
 
 
 # --- the character who carries nothing (#62) ---------------------------------
@@ -2060,7 +2059,7 @@ def test_the_areas_with_a_legal_answer_are_not_refused():
 def _item_region(rec: bytes) -> dict[str, bytes]:
     """The three fields the sheet's weapon, damage, THAC0 and encumbrance
     lines are computed from."""
-    return {n: rec[dos_layout.FIELDS_BY_NAME[n].span]
+    return {n: rec[dos_port.FIELDS_BY_NAME[n].span]
             for n in ("item_count", "item_chain", "hands_used")}
 
 
@@ -2077,7 +2076,7 @@ def test_a_character_who_carries_nothing_matches_the_engines_own_record():
     """
     char = _filled()
     char.set("inventory", [], "made up: a character carrying nothing")
-    rec, itm, _, _ = dos.write(char)
+    rec, itm, _, _ = dos_codec.write(char)
     assert itm == b""
     assert _item_region(rec) == {"item_count": b"\x00",
                                  "item_chain": bytes(56),
@@ -2098,9 +2097,9 @@ def test_a_character_who_carries_nothing_gets_no_itm_file(tmp_path):
     """
     save0, save1 = _fixture_payloads()
     stale = tmp_path / "CHRDATA1.ITM"
-    stale.write_bytes(b"\x00" * dos_layout.ITEM_SIZE)
-    dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
-    party = dos.read_party(tmp_path, "A")
+    stale.write_bytes(b"\x00" * dos_port.ITEM_SIZE)
+    dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    party = dos_codec.read_party(tmp_path, "A")
     assert party[0].get("item_count") == 0
     # Not present, and not merely empty -- and a stale one from an earlier
     # write is removed, the way the stale `.SPC` already was.
@@ -2121,8 +2120,8 @@ def test_a_slot_that_is_not_one_letter_is_refused(slot, tmp_path):
     while the files on disk take `slot` verbatim.
     """
     save0, save1 = _fixture_payloads()
-    with pytest.raises(dos.DosRecordError) as caught:
-        dos.write_dos_save(save0, save1, tmp_path, tmp_path / "out", slot)
+    with pytest.raises(dos_codec.DosRecordError) as caught:
+        dos_codec.write_dos_save(save0, save1, tmp_path, tmp_path / "out", slot)
     assert "single letter" in str(caught.value)
 
 
@@ -2138,20 +2137,20 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
     Everything is converted before anything is unlinked.
     """
     save0, save1 = _fixture_payloads()
-    dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert before, "the first conversion must have written something"
 
     def boom(char, portraits=None, icon=None):
-        raise dos.DosRecordError("this character will not encode")
+        raise dos_codec.DosRecordError("this character will not encode")
 
     # The codec rather than the `goldbox/dos.py` shim: since `#470`'s
     # stage 8 the shim holds its own binding for every re-exported
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
     monkeypatch.setattr(dos_codec, "write", boom)
-    with pytest.raises(dos.DosRecordError):
-        dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
     after = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert after == before
 
@@ -2170,17 +2169,17 @@ def test_the_script_scratch_is_the_c64s_and_not_the_templates(tmp_path):
     save0, save1 = _fixture_payloads()
     save0 = bytearray(save0)
     before = {a: sg.word((_save_dir() / "SAVGAMA.DAT").read_bytes(), a)
-              for a in dos.SHARED_SCRATCH}
-    for n, addr in enumerate(dos.SHARED_SCRATCH):
-        save0[addr - dos.SAVE0_BASE] = (n * 7 + 3) & 0xFF
-    dos.write_dos_save(bytes(save0), save1, _save_dir(), tmp_path, "A")
+              for a in dos_codec.SHARED_SCRATCH}
+    for n, addr in enumerate(dos_codec.SHARED_SCRATCH):
+        save0[addr - dos_codec.SAVE0_BASE] = (n * 7 + 3) & 0xFF
+    dos_codec.write_dos_save(bytes(save0), save1, _save_dir(), tmp_path, "A")
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
-    for n, addr in enumerate(dos.SHARED_SCRATCH):
+    for n, addr in enumerate(dos_codec.SHARED_SCRATCH):
         assert sg.word(savgam, addr) == (n * 7 + 3) & 0xFF, hex(addr)
     # And the template did not already hold them, so this cannot pass by
     # accident: at least one address moved.
-    assert any(sg.word(savgam, a) != before[a] for a in dos.SHARED_SCRATCH)
-    assert len(dos.SHARED_SCRATCH) == 33     # $49EB plus the 32-word window
+    assert any(sg.word(savgam, a) != before[a] for a in dos_codec.SHARED_SCRATCH)
+    assert len(dos_codec.SHARED_SCRATCH) == 33     # $49EB plus the 32-word window
 
 
 # --- the whole saved game, from nothing (#26) --------------------------------
@@ -2199,17 +2198,17 @@ def test_the_script_scratch_is_the_c64s_and_not_the_templates(tmp_path):
 def test_a_saved_game_built_from_nothing_accounts_for_every_byte(tmp_path):
     """`unwritten` empty is what "no template" means, checkably."""
     save0, save1 = _fixture_payloads()
-    report = dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    report = dos_codec.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
     assert report.unwritten == []
     assert len(report.sources) == report.total == sg.SAVGAM_SIZE
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     # And it is the party's own save rather than a plausible-looking one.
     assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 7)]
     assert sg.party_size(savgam) == 1
-    assert sg.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]
+    assert sg.area_id(savgam) == save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE]
     for i in range(sg.CLOCK_DIGITS):
         assert sg.word(savgam, sg.CLOCK + i) == \
-            save0[sg.CLOCK + i - dos.SAVE0_BASE], i
+            save0[sg.CLOCK + i - dos_codec.SAVE0_BASE], i
 
 
 @needs_dos_saves
@@ -2220,7 +2219,7 @@ def test_a_saved_game_built_on_a_template_counts_what_it_took_from_it(
     about.  A template that supplied a byte in silence is what the count
     exists to prevent."""
     save0, save1 = _fixture_payloads()
-    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A",
+    report = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A",
                                 game=_game_dir())
     assert report.unwritten, "a template save is not written byte for byte"
     # `sources` covers every offset after the backfill loop, so
@@ -2231,7 +2230,7 @@ def test_a_saved_game_built_on_a_template_counts_what_it_took_from_it(
     # written from nothing owes a stranger no bytes at all.
     assert len(report.sources) == sg.SAVGAM_SIZE
     scratch = tmp_path / "nothing"
-    fresh = dos.new_dos_save(save0, save1, scratch, "A", _game_dir())
+    fresh = dos_codec.new_dos_save(save0, save1, scratch, "A", _game_dir())
     assert not fresh.unwritten
     assert len(report.unwritten) > len(fresh.unwritten), (
         "converting onto a template took no more from it than converting "
@@ -2256,8 +2255,8 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
     monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
-    with pytest.raises(dos.DosRecordError) as e:
-        dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    with pytest.raises(dos_codec.DosRecordError) as e:
+        dos_codec.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
     assert "no source" in str(e.value)
 
 
@@ -2285,8 +2284,8 @@ def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
     monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
-    with pytest.raises(dos.DosRecordError):
-        dos.new_dos_save(save0, save1, out, "A", _game_dir())
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.new_dos_save(save0, save1, out, "A", _game_dir())
 
     assert not (out / "SAVGAMA.DAT").exists(), \
         "the saved game it refused was written anyway"
@@ -2306,16 +2305,16 @@ def test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared():
     Measured over every genuine Pool of Radiance container in the player's
     own DOS save directory.
     """
-    written = set(range(dos.FLAGS_FIRST, dos.FLAGS_LAST + 1))
-    written |= set(dos.SHARED_SCRATCH)
+    written = set(range(dos_codec.FLAGS_FIRST, dos_codec.FLAGS_LAST + 1))
+    written |= set(dos_codec.SHARED_SCRATCH)
     written |= set(range(sg.CLOCK, sg.CLOCK + sg.CLOCK_DIGITS))
     written |= {sg.AREA, sg.SCRIPT, sg.DISK, sg.INDOORS, sg.PARTY_SIZE,
                 sg.TRAVEL_X, sg.TRAVEL_Y}
     written |= set(range(sg.WALLSET, sg.WALLSET + 3))
     written |= set(range(sg.WALLMAP, sg.WALLMAP + 3))
     written |= {a for a, _, _ in sg.SAVGAM_CONSTANTS}
-    written |= {a for a, _, _ in dos.SAVGAM_MEASURED}
-    declared = {a + i for a, n, _ in dos.SAVGAM_UNSOURCED for i in range(n)}
+    written |= {a for a, _, _ in dos_codec.SAVGAM_MEASURED}
+    declared = {a + i for a, n, _ in dos_codec.SAVGAM_UNSOURCED for i in range(n)}
 
     saves = sorted(_save_dir().glob("SAVGAM?.DAT"))
     assert saves, "the save directory holds no SAVGAM<slot>.DAT"
@@ -2337,7 +2336,7 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
     """A table that names the same word twice, or one outside the array, is a
     table whose count is wrong -- and the count is the claim."""
     seen = set()
-    for address, words, why in dos.SAVGAM_UNSOURCED:
+    for address, words, why in dos_codec.SAVGAM_UNSOURCED:
         assert why.strip(), hex(address)
         for a in range(address, address + words):
             assert sg.VAR_BASE <= a <= sg.VAR_LAST, hex(a)
@@ -2364,7 +2363,7 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
 
 def _writer_drops(char) -> list[str]:
     """Every line `dos.write` puts in front of a person for this character."""
-    return list(dos.write(char)[3].dropped)
+    return list(dos_codec.write(char)[3].dropped)
 
 
 def test_a_field_both_engines_work_out_for_themselves_is_not_reported():
@@ -2408,8 +2407,8 @@ def test_write_unreported_drops_and_silencing_writer_are_gone():
     lost, because a silencing list keeps them out of the count that decides
     it): the mechanism that faked a name as consumed without ever measuring
     the destination is deleted, not renamed."""
-    assert not hasattr(dos, "WRITE_UNREPORTED_DROPS")
-    assert not hasattr(dos, "SilencingWriter")
+    assert not hasattr(dos_codec, "WRITE_UNREPORTED_DROPS")
+    assert not hasattr(dos_codec, "SilencingWriter")
 
 
 def test_turn_power_infravision_and_encumbrance_reach_no_report_line():
@@ -2445,7 +2444,7 @@ def test_which_write_dropped_lines_a_c64_or_amiga_source_reaches_today():
     so the closing sweep never sees it, and a source with none writes zeroes
     in silence.
     """
-    assert {n for n, _ in dos.WRITE_NO_SUCH_FIELD} == {"turn_power",
+    assert {n for n, _ in dos_codec.WRITE_NO_SUCH_FIELD} == {"turn_power",
                                                        "infravision"}
     char = _filled()
     del char.fields["spells_castable"]
@@ -2475,7 +2474,7 @@ def test_the_two_ports_memorised_regions_are_the_engines_own(
     16 bytes at `0x01C`, where the engine indexes 21 from `0x017` (#508).
     """
     assert c64_codec.memorised_span(key)[1] == c64_slots
-    f = dos_layout.FIELDS_BY_NAME_FOR[key]["spells_memorised"]
+    f = dos_port.FIELDS_BY_NAME_FOR[key]["spells_memorised"]
     assert f.size == dos_slots
 
 
@@ -2493,10 +2492,10 @@ def test_a_full_memorised_list_crosses_to_dos_and_back_intact(
     `21 spells memorised and Pool of Radiance has 16 slots; the rest dropped`
     on the report a player reads.
     """
-    from goldbox import games
+    from goldbox import c64_port
     from goldbox.record import CharacterRecord
 
-    game = games.by_key(key)
+    game = c64_port.by_key(key)
     ids = list(range(min(c64_slots, dos_slots), 0, -1))
 
     char = neutral.NeutralCharacter("CEILING", source="made up", game=game)
@@ -2506,9 +2505,9 @@ def test_a_full_memorised_list_crosses_to_dos_and_back_intact(
     from_c64 = c64_codec.read(CharacterRecord(bytes(c64)), game=game)
     assert from_c64.get("spells_memorised") == ids
 
-    record, _itm, _spc, out = dos.write(from_c64)
-    deltas = dos_layout.shape_for(key)
-    from_dos = dos.to_neutral(dos.DosCharacter(record, deltas=deltas))
+    record, _itm, _spc, out = dos_codec.write(from_c64)
+    deltas = dos_port.deltas_for(key)
+    from_dos = dos_codec.to_neutral(dos_codec.DosCharacter(record, deltas=deltas))
     assert from_dos.get("spells_memorised") == ids
 
     again, back = c64_codec.write(from_dos)
@@ -2527,12 +2526,12 @@ def test_every_id_a_c64_book_can_hold_crosses_to_dos_and_back():
     has a bit for, and every one of them lands in the DOS book and comes home
     again with nothing on any report.
     """
-    from goldbox import games, spells
+    from goldbox import c64_port, spells
     from goldbox.record import CharacterRecord
 
     for key in ("pool-of-radiance", "curse-of-the-azure-bonds",
                 "secret-of-the-silver-blades"):
-        game = games.by_key(key)
+        game = c64_port.by_key(key)
         table = spells.for_game(game)
         ids = [i for i in range(1, table.last_spellbook_spell + 1)]
 
@@ -2543,9 +2542,9 @@ def test_every_id_a_c64_book_can_hold_crosses_to_dos_and_back():
         from_c64 = c64_codec.read(CharacterRecord(bytes(c64)), game=game)
         assert from_c64.get("spells_known") == ids, key
 
-        record, _itm, _spc, out = dos.write(from_c64)
-        deltas = dos_layout.shape_for(key)
-        from_dos = dos.to_neutral(dos.DosCharacter(record, deltas=deltas))
+        record, _itm, _spc, out = dos_codec.write(from_c64)
+        deltas = dos_port.deltas_for(key)
+        from_dos = dos_codec.to_neutral(dos_codec.DosCharacter(record, deltas=deltas))
         assert from_dos.get("spells_known") == ids, key
 
         again, back = c64_codec.write(from_dos)
@@ -2560,13 +2559,13 @@ def test_every_id_a_dos_book_can_hold_survives_the_dos_writer():
     """
     for key in ("pool-of-radiance", "curse-of-the-azure-bonds",
                 "secret-of-the-silver-blades", "pools-of-darkness"):
-        deltas = dos_layout.shape_for(key)
-        book = dos_layout.FIELDS_BY_NAME_FOR[key]["spellbook"]
+        deltas = dos_port.deltas_for(key)
+        book = dos_port.FIELDS_BY_NAME_FOR[key]["spellbook"]
         ids = list(range(1, book.size + 1))
 
         char = neutral.NeutralCharacter("BOOK", source="made up", game=key)
         char.set("spells_known", ids, "made up: every byte of the book")
-        record, _itm, _spc, rep = dos.write(char)
+        record, _itm, _spc, rep = dos_codec.write(char)
 
-        assert dos.DosCharacter(record, deltas=deltas).spells_known == ids, key
+        assert dos_codec.DosCharacter(record, deltas=deltas).spells_known == ids, key
         assert rep.warnings == [], key

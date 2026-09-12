@@ -17,7 +17,7 @@ whoever made the icon -- `IconParts.dos_icon_from_c64` for a C64 source and
 from gamedata import game_file
 from test_neutral import _filled
 
-from goldbox import dos, dos_layout
+from goldbox import dos_codec, dos_port
 from goldbox.iconparts import IconParts, c64_icon_tables
 
 
@@ -31,16 +31,16 @@ def _synthetic_dos_char(head: int, body: int, colours: bytes, size: int = 2):
     read_por_slot`'s own list), so handing it one built directly exercises
     the same code `amiga_combat_icon` runs without needing an Amiga `.adf`.
     """
-    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
-    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
-    f_colours = dos_layout.FIELDS_BY_NAME["icon_colours"]
-    f_size = dos_layout.FIELDS_BY_NAME["size"]
-    raw = bytearray(dos_layout.RECORD_SIZE)
+    f_head = dos_port.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_port.FIELDS_BY_NAME["icon_body"]
+    f_colours = dos_port.FIELDS_BY_NAME["icon_colours"]
+    f_size = dos_port.FIELDS_BY_NAME["size"]
+    raw = bytearray(dos_port.RECORD_SIZE)
     raw[f_head.offset] = head
     raw[f_body.offset] = body
     raw[f_size.offset] = size
     raw[f_colours.offset:f_colours.end] = colours
-    return dos.DosCharacter(bytes(raw))
+    return dos_codec.DosCharacter(bytes(raw))
 
 
 def test_an_amiga_sourced_icon_report_names_no_c64_mechanism():
@@ -51,9 +51,9 @@ def test_an_amiga_sourced_icon_report_names_no_c64_mechanism():
     icon = amiga_combat_icon(
         _synthetic_dos_char(head=5, body=9, colours=bytes.fromhex(
             "11223344e6f7")))
-    rec, _, _, rep = dos.write(_filled(), icon=icon)
-    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
-    f_colours = dos_layout.FIELDS_BY_NAME["icon_colours"]
+    rec, _, _, rep = dos_codec.write(_filled(), icon=icon)
+    f_head = dos_port.FIELDS_BY_NAME["icon_head"]
+    f_colours = dos_port.FIELDS_BY_NAME["icon_colours"]
     assert rec[f_head.offset] == 5
 
     head_line = rep.sources[f_head.offset]
@@ -76,10 +76,10 @@ def test_a_c64_sourced_icon_report_is_unchanged():
     icon36 = parts.compose("large", 7, 4) + bytes.fromhex(
         "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e")
     icon = parts.dos_icon_from_c64(icon36, c64_icon_tables())
-    rec, _, _, rep = dos.write(_filled(), icon=icon)
-    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
-    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
-    f_colours = dos_layout.FIELDS_BY_NAME["icon_colours"]
+    rec, _, _, rep = dos_codec.write(_filled(), icon=icon)
+    f_head = dos_port.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_port.FIELDS_BY_NAME["icon_body"]
+    f_colours = dos_port.FIELDS_BY_NAME["icon_colours"]
 
     head_line = rep.sources[f_head.offset]
     body_line = rep.sources[f_body.offset]
@@ -106,14 +106,14 @@ def test_written_bytes_are_the_icon_numbers_either_way():
     """The prose changed; the bytes did not, for either source."""
     from editor.convert import amiga_combat_icon
 
-    f_head = dos_layout.FIELDS_BY_NAME["icon_head"]
-    f_body = dos_layout.FIELDS_BY_NAME["icon_body"]
-    f_colours = dos_layout.FIELDS_BY_NAME["icon_colours"]
+    f_head = dos_port.FIELDS_BY_NAME["icon_head"]
+    f_body = dos_port.FIELDS_BY_NAME["icon_body"]
+    f_colours = dos_port.FIELDS_BY_NAME["icon_colours"]
 
     amiga_icon = amiga_combat_icon(
         _synthetic_dos_char(head=5, body=9, colours=bytes.fromhex(
             "11223344e6f7")))
-    rec, _, _, _ = dos.write(_filled(), icon=amiga_icon)
+    rec, _, _, _ = dos_codec.write(_filled(), icon=amiga_icon)
     assert rec[f_head.offset] == 5
     assert rec[f_body.offset] == 9
     assert rec[f_colours.offset:f_colours.end] == bytes.fromhex(
@@ -123,7 +123,7 @@ def test_written_bytes_are_the_icon_numbers_either_way():
     icon36 = parts.compose("large", 7, 4) + bytes.fromhex(
         "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e")
     c64_icon = parts.dos_icon_from_c64(icon36, c64_icon_tables())
-    rec2, _, _, _ = dos.write(_filled(), icon=c64_icon)
+    rec2, _, _, _ = dos_codec.write(_filled(), icon=c64_icon)
     assert rec2[f_head.offset] == c64_icon.head
     assert rec2[f_body.offset] == c64_icon.body
     assert rec2[f_colours.offset:f_colours.end] == c64_icon.colours

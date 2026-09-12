@@ -28,11 +28,11 @@ import pytest
 from automap import c64
 from automap.area import RESIDENT_GEO, Fingerprint, ResidentGeo
 from automap.target import PARTY_X, party_fix
-from goldbox import games, geo
+from goldbox import c64_port, geo
 from goldbox.d64 import D64
 from tests import gamedata
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 # --- what the live run measured ---------------------------------------------
 # Each of these was found by searching RAM for a value read off the save,

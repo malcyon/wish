@@ -17,10 +17,10 @@ import os
 import pytest
 
 from automap import paths
-from goldbox import games
+from goldbox import c64_port
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-POOL = games.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+POOL = c64_port.POOL_OF_RADIANCE
 
 
 def disks(where, *names):
@@ -131,7 +131,7 @@ def test_load_maps_without_a_title_takes_what_the_directory_holds(tmp_path,
     _no_geo_reading(monkeypatch, seen)
     from wish.window import load_maps_titled
     _, game = load_maps_titled(str(tmp_path))
-    assert game is games.SECRET_OF_THE_SILVER_BLADES
+    assert game is c64_port.SECRET_OF_THE_SILVER_BLADES
     assert len(seen) == 1
 
 
@@ -196,7 +196,7 @@ def test_the_window_hands_the_title_to_the_automapper():
     try:
         assert win.mapper.state.title == "Curse of the Azure Bonds"
         # The point of carrying it: GEO15 is Sokol Keep in one game only.
-        assert win.mapper.state.title != games.DEFAULT.title
+        assert win.mapper.state.title != c64_port.DEFAULT.title
     finally:
         win.session.close()
 

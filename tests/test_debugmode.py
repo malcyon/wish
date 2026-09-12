@@ -29,7 +29,7 @@ import pytest
 
 from automap import actionbar, actions, c64
 from automap.target import MemoryTarget
-from goldbox import games
+from goldbox import c64_port
 from wish import debugmode
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
@@ -693,8 +693,8 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     from automap.config import Settings
 
     row = bar(app, machine(area=13), settings=Settings(),
-              title=games.CHAMPIONS_OF_KRYNN.title,
-              game=games.CHAMPIONS_OF_KRYNN)
+              title=c64_port.CHAMPIONS_OF_KRYNN.title,
+              game=c64_port.CHAMPIONS_OF_KRYNN)
     assert row.all_rows == () and row.rows == ()
     assert not row.has_areas
     assert not row.combo.isEnabled()
@@ -705,19 +705,19 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     assert row.run() is None
     # And the ticks are not Pool of Radiance's either: nothing is ticked for a
     # title with no table to tick.
-    assert row.settings.chosen_areas(games.CHAMPIONS_OF_KRYNN) == ()
+    assert row.settings.chosen_areas(c64_port.CHAMPIONS_OF_KRYNN) == ()
 
 
 def test_the_row_follows_the_title_when_the_disks_change(app):
     """The one place the title moves under a live row: `set_maps`."""
     from automap.config import Settings
 
-    row = bar(app, settings=Settings(), title=games.POOL_OF_RADIANCE.title,
-              game=games.POOL_OF_RADIANCE)
+    row = bar(app, settings=Settings(), title=c64_port.POOL_OF_RADIANCE.title,
+              game=c64_port.POOL_OF_RADIANCE)
     assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
                                           "The Slums"]
-    row.set_title(games.SECRET_OF_THE_SILVER_BLADES.title,
-                  games.SECRET_OF_THE_SILVER_BLADES)
+    row.set_title(c64_port.SECRET_OF_THE_SILVER_BLADES.title,
+                  c64_port.SECRET_OF_THE_SILVER_BLADES)
     # Silver Blades has a table now -- twenty-two areas, fourteen of them
     # driven into on a running machine (`#20 (Build an area table for Silver
     # Blades)`) -- and `automap/config.py` gives it no default ticks, so the
@@ -726,7 +726,7 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
     assert row.rows == ()
     assert len(row.all_rows) == 22
     assert "No areas ticked" in row.combo.itemText(0)
-    row.set_title(games.POOL_OF_RADIANCE.title, games.POOL_OF_RADIANCE)
+    row.set_title(c64_port.POOL_OF_RADIANCE.title, c64_port.POOL_OF_RADIANCE)
     assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
                                           "The Slums"]
 

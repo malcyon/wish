@@ -35,10 +35,10 @@ import pytest
 
 from goldbox import (
     c64_codec,
+    c64_port,
     c64_save,
-    dos,
-    dos_layout,
-    games,
+    dos_codec,
+    dos_port,
     neutral,
     savegame,
     world_state,
@@ -46,8 +46,8 @@ from goldbox import (
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 
-CURSE = dos_layout.CURSE_OF_THE_AZURE_BONDS
-CURSE_GAME = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
+CURSE_GAME = c64_port.CURSE_OF_THE_AZURE_BONDS
 WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
 SPECIMENS = WORK / "issue32" / "specimens"
 
@@ -62,7 +62,7 @@ def curse_record(**values) -> bytes:
     is what an ability pair holds in all 406 pairs measured.
     """
     rec = bytearray(CURSE.record_size)
-    table = dos_layout.FIELDS_BY_NAME_FOR[CURSE.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[CURSE.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -72,7 +72,7 @@ def curse_record(**values) -> bytes:
 
 
 def neutral_curse(**values):
-    return dos.to_neutral(dos.DosCharacter(curse_record(**values)))
+    return dos_codec.to_neutral(dos_codec.DosCharacter(curse_record(**values)))
 
 
 # --- the record: the abilities are a pair -----------------------------------
@@ -224,15 +224,15 @@ def test_pool_of_radiance_still_writes_its_spell_slots():
 
 
 # --- the tables -------------------------------------------------------------
-@pytest.mark.parametrize("shape", dos_layout.SHAPES,
-                         ids=[s.key for s in dos_layout.SHAPES])
+@pytest.mark.parametrize("shape", dos_port.DELTAS,
+                         ids=[s.key for s in dos_port.DELTAS])
 def test_every_declared_field_has_a_disposition_in_every_title(shape):
     """The disposition is asked per title, because the four tables are not the
     same table: Curse and Silver Blades declare fields Pool of Radiance has
     never heard of, and Pools of Darkness is missing nine of its."""
-    declared = {f.name for f in dos_layout.LAYOUTS[shape.key]
+    declared = {f.name for f in dos_port.LAYOUTS[shape.key]
                 if not f.name.startswith("gap_")}
-    table = dos.field_disposition(shape)
+    table = dos_codec.field_disposition(shape)
     assert declared - set(table) == set()
     assert set(table) - declared == set()
 
@@ -252,12 +252,12 @@ def test_the_conversion_no_longer_refuses_curse():
     DOS and the Amiga)`). So **every DOS shape this project reads now
     converts**, and what this asserts is that -- with a title the DOS reader
     has no shape for at all standing in for the refusal."""
-    assert CURSE in dos.CONVERTS
-    dos.to_neutral(dos.DosCharacter(curse_record()))     # does not raise
-    assert [s.key for s in dos.CONVERTS] == \
-        [s.key for s in dos_layout.SHAPES]
-    with pytest.raises(dos_layout.DosShapeError):
-        dos.write_shape(neutral.NeutralCharacter(
+    assert CURSE in dos_codec.CONVERTS
+    dos_codec.to_neutral(dos_codec.DosCharacter(curse_record()))     # does not raise
+    assert [s.key for s in dos_codec.CONVERTS] == \
+        [s.key for s in dos_port.DELTAS]
+    with pytest.raises(dos_port.DosDeltasError):
+        dos_codec.write_shape(neutral.NeutralCharacter(
             "test", source="made up", game="champions-of-krynn"))
 
 
@@ -280,16 +280,16 @@ def test_a_curse_address_is_not_a_variable_address():
 def test_the_pool_of_radiance_container_is_the_geometry_dos_py_had():
     """The table did not move anything while it was being written down."""
     c = c64_save.POOL_OF_RADIANCE
-    assert c.slot_area == dos.SLOT_AREA - dos.SAVE0_BASE
-    assert c.item_area == dos.ITEM_AREA - dos.SAVE0_BASE
-    assert c.icon_table == dos.ICON_TABLE - dos.SAVE0_BASE
-    assert c.cache == (dos.FILE_CACHE[0] - dos.SAVE0_BASE, dos.FILE_CACHE[1])
-    assert c.disk_hint == dos.DISK_HINT - dos.SAVE0_BASE
-    assert c.record_pages == dos.SLOT_TOTAL
-    assert c.party_slots == dos.SLOT_COUNT
+    assert c.slot_area == dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE
+    assert c.item_area == dos_codec.ITEM_AREA - dos_codec.SAVE0_BASE
+    assert c.icon_table == dos_codec.ICON_TABLE - dos_codec.SAVE0_BASE
+    assert c.cache == (dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE, dos_codec.FILE_CACHE[1])
+    assert c.disk_hint == dos_codec.DISK_HINT - dos_codec.SAVE0_BASE
+    assert c.record_pages == dos_codec.SLOT_TOTAL
+    assert c.party_slots == dos_codec.SLOT_COUNT
     assert not c.roster_in_payload and c.name_table is None
-    assert [(a + dos.SAVE0_BASE, n) for a, n, _ in c.zeroed] \
-        == list(dos.HEADER_ZEROED)
+    assert [(a + dos_codec.SAVE0_BASE, n) for a, n, _ in c.zeroed] \
+        == list(dos_codec.HEADER_ZEROED)
 
 
 def test_the_curse_container_is_one_file_with_a_name_table():
@@ -318,7 +318,7 @@ def test_the_flag_window_runs_to_the_end_of_the_page():
     assert (first, first + size - 1) == (0x120, 0x1FF)
     #: Pool of Radiance stops short, because `+$1FA` and `+$1FD` are its own
     #: wallset and wallmap triples.
-    first, size = c64_save.container_for(games.POOL_OF_RADIANCE).quest_flags
+    first, size = c64_save.container_for(c64_port.POOL_OF_RADIANCE).quest_flags
     assert (first, first + size - 1) == (0x120, 0x1F8)
 
 
@@ -338,7 +338,7 @@ def test_the_last_flag_word_reaches_the_c64_payload():
     state = world_state.from_dos(bytes(savgam), shape)
     save0 = bytearray(c64_save.CURSE_OF_THE_AZURE_BONDS.payload_size)
     window = c64_save.CURSE_OF_THE_AZURE_BONDS.quest_flags
-    dos.apply_quest_flags(save0, state, window)
+    dos_codec.apply_quest_flags(save0, state, window)
     assert save0[0x1FE] == 0xFF
 
 
@@ -455,7 +455,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     for line in conversion.report.dropped:
         assert "portrait" not in line.lower(), line
         assert "identity" not in line.lower(), line
-    assert set(conversion.report.dropped) <= set(dos.DROPPED_PLAYER_TEXT.values())
+    assert set(conversion.report.dropped) <= set(dos_codec.DROPPED_PLAYER_TEXT.values())
 
 
 def test_a_curse_save_is_written_whole():
@@ -466,7 +466,7 @@ def test_a_curse_save_is_written_whole():
     clock at 0:06, and every one of those reads back through the project's
     own `SaveGame0`.
     """
-    save0, save1, report = dos.new_save(
+    save0, save1, report = dos_codec.new_save(
         _dos_save(), _DOS_SLOT, icon=bytes(36), animate=bytes(852),
         game=CURSE_GAME)
     assert len(save0) == 0x1D00 and not save1
@@ -489,15 +489,15 @@ def test_a_curse_save_is_written_whole():
 def test_the_written_cache_names_the_area_with_bit_seven_set():
     """Curse ORs bit 7 on the **save** path and copies raw on load, the
     reverse of Pool of Radiance, so a converted save has to set it itself."""
-    save0, _, _ = dos.new_save(_dos_save(), _DOS_SLOT, icon=bytes(36),
+    save0, _, _ = dos_codec.new_save(_dos_save(), _DOS_SLOT, icon=bytes(36),
                                animate=bytes(852), game=CURSE_GAME)
     at, slots = c64_save.CURSE_OF_THE_AZURE_BONDS.cache
     cache = list(save0[at:at + slots])
-    assert cache[dos.CACHE_GEO] == 0x80 | 1        # GEO01
-    assert cache[dos.CACHE_ECL] == 0x80 | 1        # ECL01
-    assert cache[dos.CACHE_ANIMATE] == 0x80 | 0    # ANIMATE00
+    assert cache[dos_codec.CACHE_GEO] == 0x80 | 1        # GEO01
+    assert cache[dos_codec.CACHE_ECL] == 0x80 | 1        # ECL01
+    assert cache[dos_codec.CACHE_ANIMATE] == 0x80 | 0    # ANIMATE00
     assert [b for n, b in enumerate(cache)
-            if n not in (dos.CACHE_GEO, dos.CACHE_ECL, dos.CACHE_ANIMATE)] \
+            if n not in (dos_codec.CACHE_GEO, dos_codec.CACHE_ECL, dos_codec.CACHE_ANIMATE)] \
         == [0xFF] * (slots - 3)
     assert save0[c64_save.CURSE_OF_THE_AZURE_BONDS.disk_hint] == 2
     assert save0[0xEA] == 0
@@ -518,7 +518,7 @@ def test_the_script_scratch_is_copied_and_the_picture_buffer_is_not():
     which is a measured zero rather than an inherited one.
     """
     folder = _dos_save()
-    save0, _, _ = dos.new_save(folder, _DOS_SLOT, icon=bytes(36),
+    save0, _, _ = dos_codec.new_save(folder, _DOS_SLOT, icon=bytes(36),
                                animate=bytes(852), game=CURSE_GAME)
     savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
     shape = sg.save_shape_for(len(savgam))
@@ -533,9 +533,9 @@ def test_the_disk_carries_one_file():
     """Pool of Radiance writes `SAVEDGAME0` and `SAVEDGAME1`; every later
     title writes one file, and `save_disk` no longer writes a roster file for
     a title that has no roster file."""
-    save0, save1, _ = dos.new_save(_dos_save(), _DOS_SLOT, icon=bytes(36),
+    save0, save1, _ = dos_codec.new_save(_dos_save(), _DOS_SLOT, icon=bytes(36),
                                    animate=bytes(852), game=CURSE_GAME)
-    disk = dos.save_disk(bytes(save0), bytes(save1), CURSE_GAME)
+    disk = dos_codec.save_disk(bytes(save0), bytes(save1), CURSE_GAME)
     assert [e.display_name for e in disk.directory()] == ["SAVEAZURE"]
     load, payload = split_load_address(disk.read_file(b"SAVEAZURE"))
     assert load == 0x4B00 and payload == bytes(save0)
@@ -604,11 +604,11 @@ def curse_reachable(curse_parts):
 
 def _curse_figure(parts, head, body, size):
     """One Curse record's own combat figure, by the path `convert_save` takes."""
-    char = dos.DosCharacter(curse_record(
+    char = dos_codec.DosCharacter(curse_record(
         icon_head=head, icon_body=body, size=size,
         icon_colours=DEFAULT_ICON_COLOURS))
-    icon = dos._icon_for(char, parts)
-    rec, _report = dos.to_c64_record(char, icon=icon)
+    icon = dos_codec._icon_for(char, parts)
+    rec, _report = dos_codec.to_c64_record(char, icon=icon)
     return icon, rec.get_raw("region_220")
 
 
@@ -675,8 +675,8 @@ def _expect_the_start_of_area_1(save0: bytearray) -> None:
     `areas.STARTS` holds for this title."""
     cont = c64_save.container_for(CURSE_GAME)
     at = cont.cache[0]
-    assert save0[at + dos.CACHE_ECL] == 0x01 | dos.FILE_CACHE_RELOAD
-    assert save0[at + dos.CACHE_GEO] == 0x01 | dos.FILE_CACHE_RELOAD
+    assert save0[at + dos_codec.CACHE_ECL] == 0x01 | dos_codec.FILE_CACHE_RELOAD
+    assert save0[at + dos_codec.CACHE_GEO] == 0x01 | dos_codec.FILE_CACHE_RELOAD
     assert save0[cont.current_script] == 1
     assert save0[cont.current_geo] == 1
     assert save0[cont.disk_hint] == 2
@@ -692,13 +692,13 @@ def test_a_curse_party_that_has_not_set_out_converts_to_the_start_of_area_1():
     (#301)."""
     savgam = _never_adventured_curse()
     assert sg.current_area(savgam) == 0
-    assert dos.never_adventured(savgam)
+    assert dos_codec.never_adventured(savgam)
     state = world_state.from_dos(savgam, sg.SAVE_CURSE_OF_THE_AZURE_BONDS)
     cont = c64_save.container_for(CURSE_GAME)
     save0 = bytearray(cont.payload_size)
-    line = dos.apply_file_cache(save0, state, cont)
+    line = dos_codec.apply_file_cache(save0, state, cont)
     assert "had not set out" in line
-    dos.apply_position(save0, state)
+    dos_codec.apply_position(save0, state)
     _expect_the_start_of_area_1(save0)
 
 
@@ -713,13 +713,13 @@ def test_a_real_curse_party_saved_at_the_menu_converts_and_the_player_is_told():
     folder = gamedata.specimen("curse-234-party-dualclassed")
     savgam = (folder / "SAVGAMD.DAT").read_bytes()
     assert sg.current_area(savgam) == 0
-    assert dos.never_adventured(savgam)
-    assert sg.word(savgam, dos.LATER_BEGUN_WORD) == 0
+    assert dos_codec.never_adventured(savgam)
+    assert sg.word(savgam, dos_codec.LATER_BEGUN_WORD) == 0
     cont = c64_save.container_for(CURSE_GAME)
     save0 = bytearray(cont.payload_size)
-    report = dos.convert_save(folder, "D", save0, game=CURSE_GAME)
+    report = dos_codec.convert_save(folder, "D", save0, game=CURSE_GAME)
     _expect_the_start_of_area_1(save0)
-    assert report.messages == [dos.NOT_SET_OUT]
+    assert report.messages == [dos_codec.NOT_SET_OUT]
     assert report.unaccounted == []
 
 
@@ -734,9 +734,9 @@ def test_a_curse_party_standing_in_area_1_is_not_moved_to_its_start():
     folder = gamedata.specimen("curse-131-dualclassed-in-area-1")
     slot = next(p.name[6] for p in sorted(folder.glob("SAVGAM?.DAT")))
     savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
-    assert not dos.never_adventured(savgam)
+    assert not dos_codec.never_adventured(savgam)
     cont = c64_save.container_for(CURSE_GAME)
     save0 = bytearray(cont.payload_size)
-    report = dos.convert_save(folder, slot, save0, game=CURSE_GAME)
+    report = dos_codec.convert_save(folder, slot, save0, game=CURSE_GAME)
     assert tuple(save0[cont.position:cont.position + 3]) == sg.position(savgam)
     assert report.messages == []

@@ -384,7 +384,7 @@ def test_the_shipped_table_reads_the_base_rows_for_every_title_but_its_own():
     """
     import sys
 
-    from goldbox.games import GAMES
+    from goldbox.c64_port import GAMES
     from goldbox.iconparts import dos_icon_tables
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
@@ -635,11 +635,11 @@ def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
     independently from the literal C64 option, so a pass means the figure
     itself holds nothing rather than that a table says it should.
     """
-    from goldbox import dos, dos_layout
+    from goldbox import dos_codec, dos_port
     from goldbox.iconparts import dos_icon_tables
 
-    shape = dos_layout.SECRET_OF_THE_SILVER_BLADES
-    fields = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    shape = dos_port.SECRET_OF_THE_SILVER_BLADES
+    fields = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     for size_byte, which in ((1, "small"), (2, "large")):
         record = bytearray(shape.record_size)
         for name, value in (("icon_head", 0), ("icon_body", 11),
@@ -647,7 +647,7 @@ def test_the_body_eleven_row_reaches_a_converted_silver_blades_dwarf(parts):
             record[fields[name].span] = bytes([value] * fields[name].size)
         record[fields["icon_colours"].span] = bytes.fromhex("616263646566")
         tables = dos_icon_tables(title=shape.key, size=which)
-        icon = dos._icon_for(dos.DosCharacter(bytes(record)), parts, tables)
+        icon = dos_codec._icon_for(dos_codec.DosCharacter(bytes(record)), parts, tables)
 
         weapon, head = tables.weapons[11], tables.heads[0]
         expected = parts.apply(bytes([SPACE] * 18),
@@ -715,10 +715,10 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
     """
     import shutil
 
-    from goldbox import c64_save, dos, dos_layout, games
+    from goldbox import c64_port, c64_save, dos_codec, dos_port
 
     specimen = gamedata.specimen("ssb-299-engine-resave")
-    fields = dos_layout.FIELDS_BY_NAME_FOR["secret-of-the-silver-blades"]
+    fields = dos_port.FIELDS_BY_NAME_FOR["secret-of-the-silver-blades"]
     folder = tmp_path / "party"
     folder.mkdir()
     for path in specimen.iterdir():
@@ -734,19 +734,19 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
             raw[fields[name].span] = bytes([value] * fields[name].size)
         record.write_bytes(bytes(raw))
 
-    game = games.SECRET_OF_THE_SILVER_BLADES
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
              else bytearray(container.game.roster_size))
-    dos.convert_save(folder, "D", save0, save1 or None,
+    dos_codec.convert_save(folder, "D", save0, save1 or None,
                      icon=silver_blades_parts, game=game)
 
-    party = dos.read_party(folder, "D")
+    party = dos_codec.read_party(folder, "D")
     assert any(char.get("size") == 1 for char in party), (
         "this specimen's one small character is what the row is about")
     for index, char in enumerate(party):
-        at = container.icon(dos.marching_slot(index, len(party)))
+        at = container.icon(dos_codec.marching_slot(index, len(party)))
         drawn = _draws_shape(silver_blades_parts,
                              bytes(save0[at:at + 18]))
         small = char.get("size") == 1
@@ -855,7 +855,7 @@ def test_the_shipped_reverse_table_gives_silver_blades_its_own_two_rows():
     the row that tracks `tools/iconproposal.yaml`'s own, Donald's since
     2026-09-08 (`6e3b305`). Every other row, and every other title, reads
     the base table."""
-    from goldbox.games import GAMES
+    from goldbox.c64_port import GAMES
     from goldbox.iconparts import c64_icon_tables
 
     base = c64_icon_tables()
@@ -975,9 +975,9 @@ def test_c64_party_reads_a_converted_silver_blades_figure_home_as_itself(
         into, "D", "secret-of-the-silver-blades", icon_parts)
     assert len(rows) == 6
 
-    from goldbox import dos
+    from goldbox import dos_codec
 
-    _characters, icons = dos.c64_party(
+    _characters, icons = dos_codec.c64_party(
         save0, save1, "secret-of-the-silver-blades", icon_parts=icon_parts)
     assert len(icons) == 6
     for icon in icons:

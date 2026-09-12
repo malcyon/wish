@@ -15,10 +15,10 @@ one field changed, which is what makes it run with no game disks present.
 
 from __future__ import annotations
 
-from goldbox import c64_codec, games, neutral
+from goldbox import c64_codec, c64_port, neutral
 from goldbox.record import CharacterRecord
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 #: Seven distinct bytes, so a scrambled order would fail rather than agree by
 #: coincidence with a symmetrical one.

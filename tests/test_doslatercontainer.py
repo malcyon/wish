@@ -22,7 +22,7 @@ import pathlib
 import pytest
 from gamedata import specimen_root
 
-from goldbox import areas, dos, dos_codec, dos_layout
+from goldbox import areas, dos_codec, dos_port
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
@@ -69,7 +69,7 @@ def _payloads(shape):
 def _built(shape, tmp_path, slot="D"):
     """A whole DOS save of this title from its C64 specimen, and its report."""
     game, save0, save1 = _payloads(shape)
-    report = dos.new_dos_save(save0, save1, tmp_path, slot,
+    report = dos_codec.new_dos_save(save0, save1, tmp_path, slot,
                               _game_dir(SOURCES[shape][1]), title=game)
     return game, save0, report, (tmp_path / f"SAVGAM{slot}.DAT").read_bytes()
 
@@ -175,15 +175,15 @@ def test_the_later_tail_is_written_zero_and_pool_of_radiances_is_not(shape):
 def test_a_7424_byte_payload_is_refused_without_a_title():
     """Curse and Silver Blades are the same size on the C64 and different
     files on DOS, so guessing would build a save the wrong engine loads."""
-    with pytest.raises(dos.DosRecordError) as e:
-        dos.c64_title(bytes(7424))
+    with pytest.raises(dos_codec.DosRecordError) as e:
+        dos_codec.c64_title(bytes(7424))
     assert "Curse of the Azure Bonds" in str(e.value)
     assert "Secret of the Silver Blades" in str(e.value)
-    assert dos.c64_title(bytes(7168)).key == "pool-of-radiance"
-    assert dos.c64_title(bytes(7424), "curse-of-the-azure-bonds").key == \
+    assert dos_codec.c64_title(bytes(7168)).key == "pool-of-radiance"
+    assert dos_codec.c64_title(bytes(7424), "curse-of-the-azure-bonds").key == \
         "curse-of-the-azure-bonds"
-    with pytest.raises(dos.DosRecordError):
-        dos.c64_title(bytes(7168), "curse-of-the-azure-bonds")
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.c64_title(bytes(7168), "curse-of-the-azure-bonds")
 
 
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
@@ -192,13 +192,13 @@ def test_the_per_title_account_names_addresses_once_each(shape):
     a table whose count is wrong -- the same check `tests/test_doswriter.py`
     makes of Pool of Radiance's."""
     seen = set()
-    for address, words, why in dos.savgam_unsourced(shape):
+    for address, words, why in dos_codec.savgam_unsourced(shape):
         assert why.strip(), hex(address)
         for a in range(address, address + words):
             assert sg.VAR_BASE <= a <= sg.VAR_LAST, hex(a)
             assert a not in seen, hex(a)
             seen.add(a)
-    for address, value, why in dos.savgam_constants(shape):
+    for address, value, why in dos_codec.savgam_constants(shape):
         assert why.strip() and 0 <= value <= 0xFFFF
         assert sg.VAR_BASE <= address <= sg.VAR_LAST, hex(address)
         assert address not in seen, hex(address)
@@ -223,7 +223,7 @@ def test_the_dax_number_is_the_dos_file_that_holds_the_block(
     """Silver Blades packs six C64 sides into three DOS containers, so its
     area table's side is not the container number: area `$40` is on C64
     side 4 and in `ECL2.DAX` (#299)."""
-    assert dos.dos_dax_number(_game_dir(stem), area) == want
+    assert dos_codec.dos_dax_number(_game_dir(stem), area) == want
 
 
 def test_the_area_tables_side_is_the_dax_number_for_two_titles_and_not_the_third():
@@ -236,7 +236,7 @@ def test_the_area_tables_side_is_the_dax_number_for_two_titles_and_not_the_third
         game = _game_dir(stem)
         checked = 0
         for row in areas.areas_for(title):
-            n = dos.dos_dax_number(game, row.id)
+            n = dos_codec.dos_dax_number(game, row.id)
             if n is None:
                 continue
             assert n == row.disk, (stem, hex(row.id), n, row.disk)
@@ -245,14 +245,14 @@ def test_the_area_tables_side_is_the_dax_number_for_two_titles_and_not_the_third
     game = _game_dir("SECRET")
     differs = [row.id for row in areas.areas_for(
         areas.SECRET_OF_THE_SILVER_BLADES)
-        if dos.dos_dax_number(game, row.id) not in (None, row.disk)]
+        if dos_codec.dos_dax_number(game, row.id) not in (None, row.disk)]
     assert len(differs) == 20, [hex(i) for i in differs]
 
 
 def test_a_missing_block_is_none_rather_than_a_guess(tmp_path):
-    assert dos.dos_dax_number(tmp_path, 1) is None
-    assert dos.dos_dax_number(None, 1) is None
-    assert dos.dos_dax_number(_game_dir("CURSE"), 0x1E) is None
+    assert dos_codec.dos_dax_number(tmp_path, 1) is None
+    assert dos_codec.dos_dax_number(None, 1) is None
+    assert dos_codec.dos_dax_number(_game_dir("CURSE"), 0x1E) is None
 
 
 # --- a whole save from nothing, per title -----------------------------------
@@ -288,7 +288,7 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
     # The wall block is the C64 cache's slots 15-17, bit 7 masked, with the
     # index map beside it; the variable-array triples stay zero.
     wallset, wallmap = sg.wall_block(savgam)
-    assert wallset == dos.c64_wall_triple(save0, c)
+    assert wallset == dos_codec.c64_wall_triple(save0, c)
     assert wallmap == sg.wall_map(wallset)
     assert all(sg.word(savgam, sg.WALLSET + i) == 0 for i in range(3))
     # The whole flag page, to `$4AFF`, and the three per-area bytes.
@@ -298,9 +298,9 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
     for i in range(3):
         assert sg.word(savgam, 0x49E7 + i) == save0[0xE7 + i]
     # The engine's own initialiser values, and the party the DOS reader sees.
-    assert sg.word(savgam, dos.LATER_MODE_WORD) == 4
-    assert sg.word(savgam, dos.LATER_FLAGS_WORD) == 3
-    party = dos.read_party(tmp_path, "D")
+    assert sg.word(savgam, dos_codec.LATER_MODE_WORD) == 4
+    assert sg.word(savgam, dos_codec.LATER_FLAGS_WORD) == 3
+    party = dos_codec.read_party(tmp_path, "D")
     assert len(party) == 6
     assert {p.shape.key for p in party} == {shape.key}
 
@@ -326,7 +326,7 @@ def test_a_silver_blades_save_stages_no_script_and_names_the_dax(tmp_path):
     _game, _save0, report, savgam = _built(SSB, tmp_path)
     assert SSB.script_buffer is None
     assert savgam[0] == sg.word(savgam, sg.DISK) == \
-        dos.dos_dax_number(_game_dir("SECRET"), sg.current_area(savgam))
+        dos_codec.dos_dax_number(_game_dir("SECRET"), sg.current_area(savgam))
     assert any("not staged" in line for line in report.converted)
 
 
@@ -341,8 +341,8 @@ def test_the_gate_can_fail_for_the_later_titles_too(shape, tmp_path,
     # name, so rebinding one there leaves the codec's own global --
     # the one this code reads -- untouched.
     monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *a, **k: None)
-    with pytest.raises(dos.DosRecordError) as e:
-        dos.new_dos_save(save0, save1, tmp_path, "D",
+    with pytest.raises(dos_codec.DosRecordError) as e:
+        dos_codec.new_dos_save(save0, save1, tmp_path, "D",
                          _game_dir(SOURCES[shape][1]), title=game)
     assert "no source" in str(e.value)
     assert not (tmp_path / "SAVGAMD.DAT").exists()
@@ -355,8 +355,8 @@ def test_a_character_carrying_nothing_gets_no_item_file_in_the_titles_suffix(
     the engine says "one item, from whatever the heap held", so a character
     with nothing gets no `.SWG`/`.STF` at all."""
     _game, _save0, _report, _savgam = _built(shape, tmp_path)
-    record_shape = dos_layout.SHAPES_BY_KEY[shape.key]
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    record_shape = dos_port.DELTAS_BY_KEY[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     empty = carrying = 0
     for n in range(1, 7):
         rec = (tmp_path / f"CHRDATD{n}.SAV").read_bytes()
@@ -376,13 +376,13 @@ def test_a_character_carrying_nothing_gets_no_item_file_in_the_titles_suffix(
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
 def test_a_stale_slot_in_the_titles_suffixes_is_cleared(shape, tmp_path):
     game, save0, save1 = _payloads(shape)
-    record_shape = dos_layout.SHAPES_BY_KEY[shape.key]
+    record_shape = dos_port.DELTAS_BY_KEY[shape.key]
     for n in range(1, 7):
         for suffix in (".SAV", record_shape.item_suffix,
                        record_shape.effect_suffix):
             (tmp_path / f"CHRDATD{n}{suffix}").write_bytes(b"stale")
     (tmp_path / "MINE.TXT").write_bytes(b"the user's")
-    dos.new_dos_save(save0, save1, tmp_path, "D",
+    dos_codec.new_dos_save(save0, save1, tmp_path, "D",
                      _game_dir(SOURCES[shape][1]), title=game)
     assert (tmp_path / "MINE.TXT").read_bytes() == b"the user's"
     for path in tmp_path.glob("CHRDATD*"):
@@ -393,8 +393,8 @@ def test_a_later_title_needs_the_game_directory(tmp_path):
     """Silver Blades stages no script, but the DOS `ECL` files are still
     where the container number comes from (`dos_dax_number`)."""
     game, save0, save1 = _payloads(SSB)
-    with pytest.raises(dos.DosRecordError) as e:
-        dos.write_dos_save(save0, save1, None, tmp_path, "D", title=game)
+    with pytest.raises(dos_codec.DosRecordError) as e:
+        dos_codec.write_dos_save(save0, save1, None, tmp_path, "D", title=game)
     assert "game directory" in str(e.value)
     assert not (tmp_path / "SAVGAMD.DAT").exists()
 
@@ -413,14 +413,14 @@ def test_every_nonzero_word_a_later_titles_container_holds_is_written_or_declare
     c = c64_save.container_for(shape.key)
     written = set(range(sg.VAR_BASE + c.quest_flags[0],
                         sg.VAR_BASE + c.quest_flags[0] + c.quest_flags[1]))
-    written |= set(dos.SHARED_SCRATCH)
-    written |= {sg.VAR_BASE + dos.LATER_HEADER_COPIED[0] + i
-                for i in range(dos.LATER_HEADER_COPIED[1])}
+    written |= set(dos_codec.SHARED_SCRATCH)
+    written |= {sg.VAR_BASE + dos_codec.LATER_HEADER_COPIED[0] + i
+                for i in range(dos_codec.LATER_HEADER_COPIED[1])}
     written |= set(range(sg.CLOCK, sg.CLOCK + sg.CLOCK_DIGITS))
     written |= {sg.AREA, sg.SCRIPT, sg.DISK, sg.INDOORS, sg.PARTY_SIZE,
                 sg.TRAVEL_X, sg.TRAVEL_Y}
-    written |= {a for a, _, _ in dos.savgam_constants(shape)}
-    declared = {a + i for a, n, _ in dos.savgam_unsourced(shape)
+    written |= {a for a, _, _ in dos_codec.savgam_constants(shape)}
+    declared = {a + i for a, n, _ in dos_codec.savgam_unsourced(shape)
                 for i in range(n)}
     containers = _later_containers(shape)
     assert len(containers) >= 2, f"only {len(containers)} {shape.title} " \

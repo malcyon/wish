@@ -25,7 +25,7 @@ import hashlib
 
 import pytest
 
-from goldbox import amiga, amiga_dax
+from goldbox import amiga_dax, amiga_por
 from goldbox.amiga_adf import AmigaDisk
 from tests import gamedata
 
@@ -65,7 +65,7 @@ def _saved_games() -> list[tuple[str, bytes]]:
             if "savgam" not in path.lower():
                 continue
             data = disk.read_file(path)
-            if len(data) != amiga.POR_SAVEGAME_SIZE:
+            if len(data) != amiga_por.POR_SAVEGAME_SIZE:
                 continue                  # Curse's is 15221, not this title
             found.setdefault(hashlib.md5(data).hexdigest(),
                              (f"{image.parent.name}{path}", data))
@@ -100,7 +100,7 @@ def ecl_dax() -> bytes:
 def test_every_saved_game_here_is_the_documented_length(corpus):
     """13,141, which is DOS's 13,137 less a container byte and plus five."""
     wrong = [name for name, data in corpus
-             if len(data) != amiga.POR_SAVEGAME_SIZE]
+             if len(data) != amiga_por.POR_SAVEGAME_SIZE]
     assert not wrong, f"{len(wrong)} of {len(corpus)}: {wrong}"
 
 
@@ -114,13 +114,13 @@ def test_the_name_table_starts_where_the_map_says(corpus):
     four-byte difference.
     """
     misplaced = [(name, data.find(b"CHRDAT")) for name, data in corpus
-                 if data.find(b"CHRDAT") != amiga.POR_CHARACTER_TABLE]
+                 if data.find(b"CHRDAT") != amiga_por.POR_CHARACTER_TABLE]
     assert not misplaced, f"{len(misplaced)} of {len(corpus)}: {misplaced}"
 
 
 def test_the_five_bytes_nothing_reads_are_zero(corpus):
     """12805-12809: two the square struct pads to, three of wallset entry 0."""
-    start, end = amiga.POR_SQUARE_PAD
+    start, end = amiga_por.POR_SQUARE_PAD
     dirty = [(name, data[start:end].hex()) for name, data in corpus
              if set(data[start:end]) - {0}]
     assert not dirty, f"{len(dirty)} of {len(corpus)}: {dirty}"
@@ -128,11 +128,11 @@ def test_the_five_bytes_nothing_reads_are_zero(corpus):
 
 def test_the_count_byte_and_the_arrays_own_word_agree(corpus):
     """Byte 12812 against `$503E`, which is `por_word_offset` arithmetic."""
-    offset = amiga.por_word_offset(0x503E)
+    offset = amiga_por.por_word_offset(0x503E)
     disagree = [(name, data[offset] << 8 | data[offset + 1],
-                 data[amiga.POR_PARTY_SIZE_BYTE]) for name, data in corpus
+                 data[amiga_por.POR_PARTY_SIZE_BYTE]) for name, data in corpus
                 if (data[offset] << 8 | data[offset + 1])
-                != data[amiga.POR_PARTY_SIZE_BYTE]]
+                != data[amiga_por.POR_PARTY_SIZE_BYTE]]
     assert not disagree, f"{len(disagree)} of {len(corpus)}: {disagree}"
 
 
@@ -147,7 +147,7 @@ def test_the_variable_arrays_documented_constants_are_where_they_should_be(
     wrong = []
     for name, data in corpus:
         for address, value in expected.items():
-            offset = amiga.por_word_offset(address)
+            offset = amiga_por.por_word_offset(address)
             got = data[offset] << 8 | data[offset + 1]
             if got != value:
                 wrong.append((name, f"${address:04X}", got, value))
@@ -166,8 +166,8 @@ def test_the_script_buffer_holds_an_unpacked_ecl_dax_block(corpus, ecl_dax):
     """
     unpacked = {block_id: amiga_dax.block(ecl_dax, block_id)
                 for block_id in amiga_dax.block_ids(ecl_dax)}
-    start, end = amiga.POR_ECL_BUFFER
-    head = amiga.POR_ECL_HEADER
+    start, end = amiga_por.POR_ECL_BUFFER
+    head = amiga_por.POR_ECL_HEADER
     unmatched, tails = [], []
     for name, data in corpus:
         probe = data[start:start + 64]
@@ -213,10 +213,10 @@ def test_the_amiga_does_not_keep_doss_three_way_copy_of_the_square_byte():
     data = where.read_bytes()
 
     def word(address: int) -> int:
-        offset = amiga.por_word_offset(address)
+        offset = amiga_por.por_word_offset(address)
         return data[offset] << 8 | data[offset + 1]
 
-    attribute = data[amiga.POR_SQUARE_PROPERTY]
+    attribute = data[amiga_por.POR_SQUARE_PROPERTY]
     assert attribute == 1
     assert word(0x5200) == attribute        # these two do agree here
     assert word(0x5082) == 0                # and this one does not follow
@@ -231,13 +231,13 @@ def test_neither_of_the_two_words_is_written_from_anything(corpus, ecl_dax):
     Amiga's own engine never writes.
     """
     declared = {address for address, _words, _why
-                in amiga.POR_SAVGAM_UNSOURCED}
+                in amiga_por.POR_SAVGAM_UNSOURCED}
     assert {0x5082, 0x5200} <= declared
 
-    state = amiga.por_state_from_amiga(corpus[0][1], corpus[0][0])
-    built, _report = amiga.new_por_savegame(state, "B", 1, ecl_dax)
+    state = amiga_por.por_state_from_amiga(corpus[0][1], corpus[0][0])
+    built, _report = amiga_por.new_por_savegame(state, "B", 1, ecl_dax)
     for address in (0x5082, 0x5200):
-        offset = amiga.por_word_offset(address)
+        offset = amiga_por.por_word_offset(address)
         assert built[offset] << 8 | built[offset + 1] == 0
 
 
@@ -257,15 +257,15 @@ def test_a_build_that_declines_a_word_says_so_rather_than_claiming_it_is_zero_ev
     """
     from goldbox import dos_savegame
 
-    state = amiga.por_state_from_amiga(corpus[0][1], corpus[0][0])
+    state = amiga_por.por_state_from_amiga(corpus[0][1], corpus[0][0])
     assert state.outdoors is False        # the indoor half of the gate
 
-    built, report = amiga.new_por_savegame(state, "B", 1, ecl_dax,
+    built, report = amiga_por.new_por_savegame(state, "B", 1, ecl_dax,
                                            portraits=False)
 
-    portrait_offset = amiga.por_word_offset(0x49FF)
+    portrait_offset = amiga_por.por_word_offset(0x49FF)
     assert built[portrait_offset] << 8 | built[portrait_offset + 1] == 0
-    travel_offset = amiga.por_word_offset(dos_savegame.TRAVEL_X)
+    travel_offset = amiga_por.por_word_offset(dos_savegame.TRAVEL_X)
     assert built[travel_offset:travel_offset + 4] == b"\x00\x00\x00\x00"
 
     for offset in (portrait_offset, travel_offset):
@@ -288,7 +288,7 @@ def _poolsave_disk(tmp_path, names=("savgamB.dat", "savgamC.dat")):
     """
     disk = AmigaDisk.blank("POOLSAVE")
     for name in names:
-        disk.write_file(f"/{name}", bytes(amiga.POR_SAVEGAME_SIZE))
+        disk.write_file(f"/{name}", bytes(amiga_por.POR_SAVEGAME_SIZE))
     where = tmp_path / "poolsave.adf"
     disk.save(where)
     return where
@@ -316,7 +316,7 @@ def test_a_game_disks_save_drawer_is_still_found(tmp_path):
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("/save")
-    disk.write_file("/save/savgamA.dat", bytes(amiga.POR_SAVEGAME_SIZE))
+    disk.write_file("/save/savgamA.dat", bytes(amiga_por.POR_SAVEGAME_SIZE))
     disk.write_file("/ecl.dax", b"not a saved game")
     where = tmp_path / "poolgame.adf"
     disk.save(where)

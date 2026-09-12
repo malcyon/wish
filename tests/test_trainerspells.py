@@ -17,13 +17,13 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import games, levelup, spells  # noqa: E402
+from goldbox import c64_port, levelup, spells  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from tools import gamedisks, trainerspells  # noqa: E402
 
-POOL = games.POOL_OF_RADIANCE
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SSB = games.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 KEYS = {"pool": "pool-of-radiance", "curse": "curse-of-the-azure-bonds",
         "ssb": "secret-of-the-silver-blades"}

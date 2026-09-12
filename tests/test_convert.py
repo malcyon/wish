@@ -42,7 +42,7 @@ from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert, dosimport
 from editor.window import EditorBinding
-from goldbox import dos, dos_codec, dos_layout, dos_savegame, games, titles
+from goldbox import c64_port, dos_codec, dos_port, dos_savegame, titles
 from goldbox.savegame import SaveGame0, SaveGame1
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
@@ -111,14 +111,14 @@ def test_source_detect_reads_a_c64_save_disk(tmp_path):
     `editor/exports.py`'s `Source.from_disk` already did before this moved
     the class here."""
     save0, save1 = _fixture_payloads()
-    disk = dos.save_disk(save0, save1)
+    disk = dos_codec.save_disk(save0, save1)
     path = tmp_path / "PORSAVE.D64"
     path.write_bytes(disk.to_bytes())
 
     source = convert.Source.detect(path)
 
     assert source.port == "c64"
-    assert source.title is games.POOL_OF_RADIANCE
+    assert source.title is c64_port.POOL_OF_RADIANCE
     assert source.key == "pool-of-radiance"
     assert source.save0 == save0
     assert source.save1 == save1
@@ -140,7 +140,7 @@ def test_source_detect_refuses_a_path_that_is_neither(tmp_path):
         convert.Source.detect(tmp_path / "nowhere")
 
 
-@pytest.mark.parametrize("shape", dos_layout.SHAPES, ids=lambda s: s.key)
+@pytest.mark.parametrize("shape", dos_port.DELTAS, ids=lambda s: s.key)
 def test_source_detect_identifies_each_dos_shape(tmp_path, shape):
     """Every one of the four titles' record sizes names its own shape --
     including Pools of Darkness, whose container is `SAVGAM?.PTY` rather
@@ -176,7 +176,7 @@ def test_source_detect_takes_the_open_partys_bytes_over_the_disk(tmp_path):
     note): the disk on `path` is the original save, and `party` carries an
     edited copy that has never been written back."""
     save0, save1 = _fixture_payloads()
-    disk_bytes = dos.save_disk(save0, save1).to_bytes()
+    disk_bytes = dos_codec.save_disk(save0, save1).to_bytes()
     path = tmp_path / "PORSAVE.D64"
     path.write_bytes(disk_bytes)
 
@@ -185,7 +185,7 @@ def test_source_detect_takes_the_open_partys_bytes_over_the_disk(tmp_path):
     edited = bytes(edited)
     assert edited != save0
 
-    party = _fake_party(path, games.POOL_OF_RADIANCE, edited, save1,
+    party = _fake_party(path, c64_port.POOL_OF_RADIANCE, edited, save1,
                         disk_bytes)
     source = convert.Source.detect(path, party=party)
 
@@ -196,11 +196,11 @@ def test_source_detect_takes_the_open_partys_bytes_over_the_disk(tmp_path):
 def test_source_detect_ignores_a_party_at_a_different_path(tmp_path):
     """A `party` open on a different file must not shadow the one asked for."""
     save0, save1 = _fixture_payloads()
-    disk_bytes = dos.save_disk(save0, save1).to_bytes()
+    disk_bytes = dos_codec.save_disk(save0, save1).to_bytes()
     path = tmp_path / "PORSAVE.D64"
     path.write_bytes(disk_bytes)
 
-    other = _fake_party(tmp_path / "OTHER.D64", games.POOL_OF_RADIANCE,
+    other = _fake_party(tmp_path / "OTHER.D64", c64_port.POOL_OF_RADIANCE,
                         b"\xff" * len(save0), save1, disk_bytes)
     source = convert.Source.detect(path, party=other)
 
@@ -212,7 +212,7 @@ def test_source_detect_refuses_a_matching_party_with_nothing_open(tmp_path):
     from_party`'s own refusal, carried over."""
     path = tmp_path / "ROSTER.D64"
     path.write_bytes(b"\x00")
-    party = _fake_party(path, games.POOL_OF_RADIANCE, None)
+    party = _fake_party(path, c64_port.POOL_OF_RADIANCE, None)
     with pytest.raises(convert.ConvertError):
         convert.Source.detect(path, party=party)
 
@@ -228,22 +228,22 @@ def test_destinations_for_lists_pool_of_radiances_registered_directions():
     standing)`), so its two sources each answer two directions rather than
     one -- DOS still first for a DOS source, C64 still first for a C64
     source."""
-    dos_source = convert.Source(port="dos", title=dos_layout.POOL_OF_RADIANCE,
+    dos_source = convert.Source(port="dos", title=dos_port.POOL_OF_RADIANCE,
                                 path=pathlib.Path("."))
     assert [type(d) for d in convert.destinations_for(dos_source)] == \
         [convert.DosToC64, convert.DosToAmiga]
 
-    c64_source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    c64_source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                                 path=pathlib.Path("."))
     directions = convert.destinations_for(c64_source)
     assert [type(d) for d in directions] == \
         [convert.C64ToDos, convert.C64ToAmiga]
-    assert directions[0].destination_game is dos_layout.POOL_OF_RADIANCE
-    assert directions[1].destination_game is dos_layout.POOL_OF_RADIANCE
+    assert directions[0].destination_game is dos_port.POOL_OF_RADIANCE
+    assert directions[1].destination_game is dos_port.POOL_OF_RADIANCE
 
 
-@pytest.mark.parametrize("shape", [dos_layout.CURSE_OF_THE_AZURE_BONDS,
-                                   dos_layout.SECRET_OF_THE_SILVER_BLADES],
+@pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+                                   dos_port.SECRET_OF_THE_SILVER_BLADES],
                         ids=lambda s: s.key)
 def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
         shape):
@@ -253,7 +253,7 @@ def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
     with no edit to this module beyond the derivation itself -- the same
     shape `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
     already proves for the other direction."""
-    c64_source = convert.Source(port="c64", title=games.by_key(shape.key),
+    c64_source = convert.Source(port="c64", title=c64_port.by_key(shape.key),
                                 path=pathlib.Path("."))
     directions = convert.destinations_for(c64_source)
     assert [type(d) for d in directions] == [convert.C64ToDos]
@@ -304,11 +304,11 @@ def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
     from `CONVERTS` rather than listing it -- so it is offered with no edit
     to `editor/convert.py` beyond the derivation itself."""
     curse_source = convert.Source(port="dos",
-                                  title=dos_layout.CURSE_OF_THE_AZURE_BONDS,
+                                  title=dos_port.CURSE_OF_THE_AZURE_BONDS,
                                   path=pathlib.Path("."))
     directions = convert.destinations_for(curse_source)
     assert [type(d) for d in directions] == [convert.DosToC64]
-    assert directions[0].destination_game is games.CURSE_OF_THE_AZURE_BONDS
+    assert directions[0].destination_game is c64_port.CURSE_OF_THE_AZURE_BONDS
 
 
 def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
@@ -327,10 +327,10 @@ def test_destinations_for_an_unregistered_source_is_empty(tmp_path):
     folder.mkdir()
     (folder / "SAVGAMA.DAT").write_bytes(b"\x00")
     (folder / "CHRDATA1.SAV").write_bytes(
-        b"\x00" * dos_layout.POOLS_OF_DARKNESS.record_size)
+        b"\x00" * dos_port.POOLS_OF_DARKNESS.record_size)
 
     source = convert.Source.detect(folder)
-    assert source.key == dos_layout.POOLS_OF_DARKNESS.key
+    assert source.key == dos_port.POOLS_OF_DARKNESS.key
     assert convert.destinations_for(source) == []
 
 
@@ -357,8 +357,8 @@ def test_every_converts_entry_has_a_dos_to_c64_name():
     # seven-title registry is the one that would answer the first question
     # and get this one wrong -- see
     # `test_the_c64_guard_is_the_port_registry_not_the_title_one` below.
-    assert [s.key for s in dos.CONVERTS if s not in convert.C64_PAIRED] == \
-        [dos_layout.POOLS_OF_DARKNESS.key]
+    assert [s.key for s in dos_codec.CONVERTS if s not in convert.C64_PAIRED] == \
+        [dos_port.POOLS_OF_DARKNESS.key]
 
 
 def test_the_c64_guard_is_the_port_registry_not_the_title_one():
@@ -375,8 +375,8 @@ def test_the_c64_guard_is_the_port_registry_not_the_title_one():
     So this pins the one fact that makes `games.BY_KEY` the right guard and
     `titles.BY_KEY` the wrong one: a title can be known without having a C64
     port, and Pools of Darkness is the permanent example."""
-    assert dos_layout.POOLS_OF_DARKNESS.key not in games.BY_KEY
-    assert dos_layout.POOLS_OF_DARKNESS.key in titles.BY_KEY
+    assert dos_port.POOLS_OF_DARKNESS.key not in c64_port.BY_KEY
+    assert dos_port.POOLS_OF_DARKNESS.key in titles.BY_KEY
 
 
 def test_a_converts_entry_missing_its_name_fails_at_construction():
@@ -395,7 +395,7 @@ def test_a_converts_entry_missing_its_name_fails_at_construction():
     the same thing it always did. Champions of Krynn is the key to borrow:
     `goldbox/games.py` knows it, so `games.by_key` succeeds and the failure
     can only come from the name lookup, which is the point."""
-    unnamed = dataclasses.replace(dos_layout.SECRET_OF_THE_SILVER_BLADES,
+    unnamed = dataclasses.replace(dos_port.SECRET_OF_THE_SILVER_BLADES,
                                   key="champions-of-krynn")
     assert unnamed.key not in convert.DOS_TO_C64_NAMES
     with pytest.raises(convert.UnnamedConversionError):
@@ -447,7 +447,7 @@ def game_files():
             pass
         try:
             if animate is None:
-                animate = load_payload(str(disk), dos.ANIMATE_FILE)
+                animate = load_payload(str(disk), dos_codec.ANIMATE_FILE)
         except Exception:
             pass
     if icon is None or animate is None:
@@ -469,11 +469,11 @@ def game_files():
 @needs_disks
 def test_dos_to_c64_direction_rehearses_with_no_write(game_files, tmp_path):
     folder = _save_dir()
-    slot = dos.slots_available(folder)[0]
+    slot = dos_codec.slots_available(folder)[0]
     source = convert.Source.detect(folder)
     before = sorted(folder.iterdir())
 
-    direction = convert.DosToC64(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.DosToC64(dos_port.POOL_OF_RADIANCE)
     direction.rehearse(source, slot, game_files)
 
     assert sorted(folder.iterdir()) == before
@@ -485,10 +485,10 @@ def test_dos_to_c64_direction_rehearses_with_no_write(game_files, tmp_path):
 def test_dos_to_c64_direction_writes_only_into_its_own_folder(game_files,
                                                               tmp_path):
     folder = _save_dir()
-    slot = dos.slots_available(folder)[0]
+    slot = dos_codec.slots_available(folder)[0]
     source = convert.Source.detect(folder)
 
-    direction = convert.DosToC64(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.DosToC64(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_files)
 
     outside = tmp_path / "elsewhere.txt"
@@ -509,10 +509,10 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
     the same slot -- so `#119 (Play a converted DOS save in VICE, off a disk
     Wish built from nothing)`'s VICE proof stands for this path too."""
     folder = _save_dir()
-    slot = dos.slots_available(folder)[0]
+    slot = dos_codec.slots_available(folder)[0]
     source = convert.Source.detect(folder)
 
-    direction = convert.DosToC64(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.DosToC64(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_files)
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
@@ -521,10 +521,10 @@ def test_dos_to_c64_direction_is_the_transfer_test(game_files, tmp_path):
     #: which needs the import working for all three C64 titles)` -- the
     #: reference call has to be given what the direction gives itself, or it
     #: refuses where the direction does not and the two cannot be compared.
-    ref_save0, ref_save1, _ = dos.new_save(folder, slot, game_files.icon,
+    ref_save0, ref_save1, _ = dos_codec.new_save(folder, slot, game_files.icon,
                                           game_files.animate,
                                           portraits=game_files.portraits)
-    reference = dos.save_disk(bytes(ref_save0), bytes(ref_save1))
+    reference = dos_codec.save_disk(bytes(ref_save0), bytes(ref_save1))
     assert (destination / f"PORSAVE{slot}.D64").read_bytes() == \
         reference.to_bytes()
 
@@ -547,22 +547,22 @@ def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
     icon, animate = bytes(36), bytes(852)
     game_files = dosimport.GameFiles(icon=icon, animate=animate)
     source = convert.Source.detect(folder)
-    assert source.key == dos_layout.CURSE_OF_THE_AZURE_BONDS.key
+    assert source.key == dos_port.CURSE_OF_THE_AZURE_BONDS.key
 
     directions = convert.destinations_for(source)
     assert len(directions) == 1
     direction = directions[0]
-    assert direction.destination_game is games.CURSE_OF_THE_AZURE_BONDS
+    assert direction.destination_game is c64_port.CURSE_OF_THE_AZURE_BONDS
 
     rehearsal = direction.rehearse(source, slot, game_files)
     destination = tmp_path / "out"
     written = direction.write(rehearsal, destination)
     assert [p.name for p in written] == [f"CURSE{slot}.D64"]
 
-    ref_save0, ref_save1, _ = dos.new_save(
-        folder, slot, icon, animate, game=games.CURSE_OF_THE_AZURE_BONDS)
-    reference = dos.save_disk(bytes(ref_save0), bytes(ref_save1),
-                              games.CURSE_OF_THE_AZURE_BONDS)
+    ref_save0, ref_save1, _ = dos_codec.new_save(
+        folder, slot, icon, animate, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    reference = dos_codec.save_disk(bytes(ref_save0), bytes(ref_save1),
+                              c64_port.CURSE_OF_THE_AZURE_BONDS)
     assert (destination / f"CURSE{slot}.D64").read_bytes() == \
         reference.to_bytes()
 
@@ -574,9 +574,9 @@ def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
 @needs_dos_saves
 def test_c64_to_dos_direction_rehearses_with_no_write(tmp_path):
     save0, save1 = _fixture_payloads()
-    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
-    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToDos(dos_port.POOL_OF_RADIANCE)
 
     direction.rehearse(source, "Z", _game_dir())
 
@@ -586,9 +586,9 @@ def test_c64_to_dos_direction_rehearses_with_no_write(tmp_path):
 @needs_dos_saves
 def test_c64_to_dos_direction_writes_only_into_its_own_folder(tmp_path):
     save0, save1 = _fixture_payloads()
-    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
-    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToDos(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, "Z", _game_dir())
 
     outside = tmp_path / "elsewhere.txt"
@@ -611,16 +611,16 @@ def test_c64_to_dos_direction_is_the_transfer_test(tmp_path):
     save0, save1 = _fixture_payloads()
     game_dir = _game_dir()
     slot = "Z"
-    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
 
-    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToDos(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_dir)
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
 
     reference = tmp_path / "reference"
-    dos.new_dos_save(save0, save1, reference, slot, game_dir)
+    dos_codec.new_dos_save(save0, save1, reference, slot, game_dir)
 
     written_names = {p.name for p in destination.iterdir()}
     reference_names = {p.name for p in reference.iterdir()}
@@ -688,10 +688,10 @@ def test_c64_to_dos_direction_recognises_the_sources_own_combat_icon(
     save0, save1, parts = _six_icon_party()
     game_dir = _game_dir()
     slot = "Z"
-    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                             path=pathlib.Path("."), save0=save0, save1=save1)
 
-    direction = convert.C64ToDos(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToDos(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, slot, game_dir, icon_parts=parts)
     assert not any("figure is not set" in d for d in rehearsal.report.dropped), \
         rehearsal.report.dropped
@@ -699,7 +699,7 @@ def test_c64_to_dos_direction_recognises_the_sources_own_combat_icon(
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
 
-    party = dos.read_party(destination, slot)
+    party = dos_codec.read_party(destination, slot)
     assert len(party) == 6
     pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
     assert len(set(pairs)) == 6, pairs
@@ -733,7 +733,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
     where = disk_dir()
 
     def game_files_for(game):
-        if game.key != games.POOL_OF_RADIANCE.key:
+        if game.key != c64_port.POOL_OF_RADIANCE.key:
             return None
         icon = animate = None
         for disk in sorted(where.glob("POOL*.[dD]64")):
@@ -744,7 +744,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
                     pass
             if animate is None:
                 try:
-                    animate = load_payload(str(disk), dos.ANIMATE_FILE)
+                    animate = load_payload(str(disk), dos_codec.ANIMATE_FILE)
                 except Exception:
                     pass
         if icon is None or animate is None:
@@ -753,7 +753,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
 
     save0, save1, _ = _six_icon_party()
     disk_path = tmp_path / "SIX.D64"
-    disk_path.write_bytes(dos.save_disk(save0, save1).to_bytes())
+    disk_path.write_bytes(dos_codec.save_disk(save0, save1).to_bytes())
 
     destination = tmp_path / "out"
     dialog = convert.ConvertDialog(str(disk_path), None, game_files_for,
@@ -770,7 +770,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_the_conversion(
     finally:
         dialog.close()
 
-    party = dos.read_party(final, slot)
+    party = dos_codec.read_party(final, slot)
     assert len(party) == 6
     pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
     assert len(set(pairs)) == 6, pairs
@@ -883,19 +883,19 @@ def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_r
     disk = _dual_classed_curse_disk()
     source = convert.Source.detect(disk)
     assert source.port == "c64"
-    assert source.key == games.CURSE_OF_THE_AZURE_BONDS.key
+    assert source.key == c64_port.CURSE_OF_THE_AZURE_BONDS.key
 
     directions = convert.destinations_for(source)
     assert len(directions) == 1
     direction = directions[0]
     assert type(direction) is convert.C64ToDos
-    assert direction.destination_game is dos_layout.CURSE_OF_THE_AZURE_BONDS
+    assert direction.destination_game is dos_port.CURSE_OF_THE_AZURE_BONDS
 
     rehearsal = direction.rehearse(source, "Z", _curse_game_dir())
     destination = tmp_path / "out"
     direction.write(rehearsal, destination)
 
-    records = [dos.read_character(p)
+    records = [dos_codec.read_character(p)
               for p in sorted(destination.glob("CHRDATZ?.SAV"))]
     philippe = next(c for c in records if c.name == "PHILIPPE")
 
@@ -985,7 +985,7 @@ def _synthetic_dos_folder(tmp_path, shape, slot="A", suffix="DAT",
 def _por_c64_disk(tmp_path, name="PORSAVEA.D64"):
     """A real, readable Pool of Radiance C64 save disk."""
     save0, save1 = _fixture_payloads()
-    disk = dos.save_disk(save0, save1)
+    disk = dos_codec.save_disk(save0, save1)
     path = tmp_path / name
     path.write_bytes(disk.to_bytes())
     return path
@@ -1000,7 +1000,7 @@ def _later_c64_disk(tmp_path, game):
     party, only names the title off the disk's own directory, and a slice of
     a real save would be the copy `AGENTS.md` bans as a fixture.
     """
-    disk = dos.save_disk(bytes(game.save_size), bytes(game.roster_size),
+    disk = dos_codec.save_disk(bytes(game.save_size), bytes(game.roster_size),
                          game=game)
     path = tmp_path / f"{game.key}.d64"
     path.write_bytes(disk.to_bytes())
@@ -1046,8 +1046,8 @@ def test_a_pool_of_radiance_d64_lists_dos(tmp_path):
         dialog.close()
 
 
-@pytest.mark.parametrize("game", [games.CURSE_OF_THE_AZURE_BONDS,
-                                  games.SECRET_OF_THE_SILVER_BLADES],
+@pytest.mark.parametrize("game", [c64_port.CURSE_OF_THE_AZURE_BONDS,
+                                  c64_port.SECRET_OF_THE_SILVER_BLADES],
                          ids=lambda g: g.key)
 def test_a_curse_or_silver_blades_d64_lists_dos(tmp_path, game):
     """The other half of the flag's second condition, which nothing drove
@@ -1085,7 +1085,7 @@ def test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot(
     anywhere in the dialog (`work/reports/52-plan.md`, step B: "one file
     picker ... so there is no slot row"), and since `#316` offers the
     registered DOS -> Amiga row too."""
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE,
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
                                    slot="B")
     dialog = convert.ConvertDialog(
         str(folder / "SAVGAMB.DAT"), None, _no_disks)
@@ -1100,8 +1100,8 @@ def test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot(
         dialog.close()
 
 
-@pytest.mark.parametrize("shape", [dos_layout.CURSE_OF_THE_AZURE_BONDS,
-                                   dos_layout.SECRET_OF_THE_SILVER_BLADES],
+@pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
+                                   dos_port.SECRET_OF_THE_SILVER_BLADES],
                         ids=lambda s: s.key)
 def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
     """Both later titles convert now (`goldbox.dos.CONVERTS`), so the
@@ -1121,7 +1121,7 @@ def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
     """The one title with no C64 port: the pane names the approved refusal
     and the button never becomes pressable, with no destination offered and
     then refused."""
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOLS_OF_DARKNESS,
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOLS_OF_DARKNESS,
                                    suffix="PTY")
     dialog = convert.ConvertDialog(
         str(folder / "SAVGAMA.PTY"), None, _no_disks)
@@ -1151,7 +1151,7 @@ def test_the_game_files_row_is_shown_for_every_destination_with_its_own_label(
     finally:
         dialog.close()
 
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE,
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE,
                                    slot="C", name="dos2")
     dialog2 = convert.ConvertDialog(
         str(folder / "SAVGAMC.DAT"), None, _no_disks)
@@ -1169,7 +1169,7 @@ def test_the_c64_disks_are_looked_up_by_the_destination_title(tmp_path):
     `editor.window.EditorBinding.game_files_for`'s whole reason to exist
     over `game_files_for_import`, which only ever asked for the open
     party's title."""
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.CURSE_OF_THE_AZURE_BONDS)
+    folder = _synthetic_dos_folder(tmp_path, dos_port.CURSE_OF_THE_AZURE_BONDS)
     seen = []
 
     def fake_lookup(game):
@@ -1179,7 +1179,7 @@ def test_the_c64_disks_are_looked_up_by_the_destination_title(tmp_path):
     dialog = convert.ConvertDialog(
         str(folder / "SAVGAMA.DAT"), None, fake_lookup)
     try:
-        assert seen == [games.CURSE_OF_THE_AZURE_BONDS.key]
+        assert seen == [c64_port.CURSE_OF_THE_AZURE_BONDS.key]
         assert dialog._blocked == (convert.NO_DISKS_TITLE, convert.NO_DISKS)
     finally:
         dialog.close()
@@ -1198,10 +1198,10 @@ def test_disk_candidates_picks_the_destination_pattern_not_the_open_partys(
 
     window = EditorBinding(_make_root(), disks=str(disks))
     try:
-        assert window._disk_candidates(games.POOL_OF_RADIANCE.disk_glob) == \
+        assert window._disk_candidates(c64_port.POOL_OF_RADIANCE.disk_glob) == \
             [str(disks / "POOL1.D64")]
         assert window._disk_candidates(
-            games.CURSE_OF_THE_AZURE_BONDS.disk_glob) == \
+            c64_port.CURSE_OF_THE_AZURE_BONDS.disk_glob) == \
             [str(disks / "CURSE1.D64")]
     finally:
         window.close()
@@ -1223,11 +1223,11 @@ def test_disk_candidates_prefers_a_titles_own_preferences_folder(tmp_path):
     (curse_folder / "CURSE1.D64").write_bytes(b"curse")
 
     window = EditorBinding(_make_root(), disks=str(shared), game_folders={
-        games.CURSE_OF_THE_AZURE_BONDS.key: str(curse_folder)})
+        c64_port.CURSE_OF_THE_AZURE_BONDS.key: str(curse_folder)})
     try:
         assert window._disk_candidates(
-            games.CURSE_OF_THE_AZURE_BONDS.disk_glob,
-            games.CURSE_OF_THE_AZURE_BONDS) == \
+            c64_port.CURSE_OF_THE_AZURE_BONDS.disk_glob,
+            c64_port.CURSE_OF_THE_AZURE_BONDS) == \
             [str(curse_folder / "CURSE1.D64")]
     finally:
         window.close()
@@ -1245,7 +1245,7 @@ def test_disk_candidates_with_no_per_title_folder_still_uses_the_shared_one(
     window = EditorBinding(_make_root(), disks=str(shared))
     try:
         assert window._disk_candidates(
-            games.POOL_OF_RADIANCE.disk_glob, games.POOL_OF_RADIANCE) == \
+            c64_port.POOL_OF_RADIANCE.disk_glob, c64_port.POOL_OF_RADIANCE) == \
             [str(shared / "POOL1.D64")]
     finally:
         window.close()
@@ -1491,7 +1491,7 @@ def test_an_edit_typed_on_the_sheet_and_never_saved_still_converts(
                   game=str(game_dir))
 
     written = next(destination.glob("wish-*/CHRDATA1.SAV"))
-    assert dos.read_character(written).money["gold"] == 9999
+    assert dos_codec.read_character(written).money["gold"] == 9999
 
 
 @needs_dos_saves
@@ -1520,7 +1520,7 @@ def test_a_c64_destinations_result_is_the_party_on_screen_afterwards(
         pass
 
     assert window.party is not None and window.party.is_save
-    assert window.party.game is games.POOL_OF_RADIANCE
+    assert window.party.game is c64_port.POOL_OF_RADIANCE
     assert len(opened) == 1
     window.close()
 
@@ -1576,7 +1576,7 @@ def test_no_string_reachable_in_the_pane_contains_a_hex_offset(tmp_path):
 
     states = []
 
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOLS_OF_DARKNESS,
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOLS_OF_DARKNESS,
                                    suffix="PTY", name="pod")
     d1 = convert.ConvertDialog(str(folder / "SAVGAMA.PTY"), None, _no_disks)
     states.append(d1.ui.convert_destination_line.text())
@@ -2022,7 +2022,7 @@ def test_a_writer_that_fails_partway_leaves_no_folder_behind(tmp_path,
     destination = tmp_path / "out"
     destination.mkdir()
 
-    real = dos.new_dos_save
+    real = dos_codec.new_dos_save
 
     def half_a_write(save0, save1, folder, *args, **kwargs):
         #: The rehearsal calls this too, into a temporary directory of its
@@ -2122,7 +2122,7 @@ def test_a_name_too_long_for_dos_pops_a_warning_and_nothing_else_does(
     `editor.dosimport.name_warnings` to `return list(report.losses)`, then
     the fix put back.
     """
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     destination = tmp_path / "out"
     destination.mkdir()
 
@@ -2368,7 +2368,7 @@ def test_an_adf_is_detected_as_an_amiga_source_at_its_first_slot(amiga_adf):
     standing in the Slums on the Amiga arrives there in VICE)`)."""
     source = convert.Source.detect(amiga_adf)
     assert source.port == "amiga"
-    assert source.key == dos_layout.POOL_OF_RADIANCE.key
+    assert source.key == dos_port.POOL_OF_RADIANCE.key
     assert source.slot == "A"
     # A disk, not a folder and not a C64 save: nothing was read into memory.
     assert source.save0 is None and source.disk is None
@@ -2389,9 +2389,9 @@ def test_an_adf_source_is_offered_the_commodore_64_and_dos(amiga_adf):
     directions = convert.destinations_for(source)
     assert [type(d) for d in directions] == [convert.AmigaToC64,
                                              convert.AmigaToDos]
-    assert directions[0].destination_game is games.POOL_OF_RADIANCE
+    assert directions[0].destination_game is c64_port.POOL_OF_RADIANCE
     assert directions[0].destination_port == "c64"
-    assert directions[1].destination_game is dos_layout.POOL_OF_RADIANCE
+    assert directions[1].destination_game is dos_port.POOL_OF_RADIANCE
     assert directions[1].destination_port == "dos"
     assert convert.DESTINATION_LABELS["c64"] == "Commodore 64"
     assert convert.DESTINATION_LABELS["dos"] == "DOS"
@@ -2428,7 +2428,8 @@ def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
 
     `icon`/`animate` are zero-filled: this is a round trip of our own code
     for one input, not a claim about what the player's C64 disks hold."""
-    from goldbox import amiga
+    from goldbox import amiga_por
+    from goldbox.amiga_adf import AmigaDisk
 
     icon, animate = bytes(36), bytes(852)
     files = dosimport.GameFiles(icon=icon, animate=animate)
@@ -2440,11 +2441,11 @@ def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     written = direction.write(rehearsal, destination)
     assert [p.name for p in written] == [f"PORSAVE{source.slot}.D64"]
 
-    disk = amiga.AmigaDisk.open(str(amiga_adf))
-    party, savgam = amiga.read_por_slot(disk, source.slot)
-    state = amiga.read_por_state(savgam, str(amiga_adf))
-    ref0, ref1, report = dos.new_save_from(state, party, icon, animate)
-    reference = dos.save_disk(bytes(ref0), bytes(ref1))
+    disk = AmigaDisk.open(str(amiga_adf))
+    party, savgam = amiga_por.read_por_slot(disk, source.slot)
+    state = amiga_por.read_por_state(savgam, str(amiga_adf))
+    ref0, ref1, report = dos_codec.new_save_from(state, party, icon, animate)
+    reference = dos_codec.save_disk(bytes(ref0), bytes(ref1))
     assert (destination / f"PORSAVE{source.slot}.D64").read_bytes() == \
         reference.to_bytes()
     assert report.unwritten == []
@@ -2537,7 +2538,8 @@ def test_choosing_a_slot_converts_that_partys_own_place_not_the_first(
     container, so this is the written save agreeing with the source rather
     than one number compared with itself.
     """
-    from goldbox import amiga, world_state
+    from goldbox import amiga_por, world_state
+    from goldbox.amiga_adf import AmigaDisk
 
     path = _outdoor_amiga_disk(tmp_path)
     dialog = convert.ConvertDialog(str(path), None, _no_disks)
@@ -2554,11 +2556,11 @@ def test_choosing_a_slot_converts_that_partys_own_place_not_the_first(
                                        files)
         written = direction.write(rehearsal, tmp_path / "out")
 
-        disk = amiga.AmigaDisk.open(str(path))
-        party, savgam = amiga.read_por_slot(disk, "C")
-        state = amiga.read_por_state(savgam, str(path))
-        ref0, ref1, report = dos.new_save_from(state, party, icon, animate)
-        reference = dos.save_disk(bytes(ref0), bytes(ref1))
+        disk = AmigaDisk.open(str(path))
+        party, savgam = amiga_por.read_por_slot(disk, "C")
+        state = amiga_por.read_por_state(savgam, str(path))
+        ref0, ref1, report = dos_codec.new_save_from(state, party, icon, animate)
+        reference = dos_codec.save_disk(bytes(ref0), bytes(ref1))
         assert written[0].read_bytes() == reference.to_bytes()
         assert report.unwritten == []
 
@@ -2577,7 +2579,8 @@ def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
     `AmigaToDos` takes `source.slot` directly (`AmigaToDos.rehearse`'s own
     docstring: "Two slots, and they are not the same letter"), so this is
     the other direction reading the row rather than a second mechanism."""
-    from goldbox import amiga
+    from goldbox import amiga_por
+    from goldbox.amiga_adf import AmigaDisk
 
     path = _outdoor_amiga_disk(tmp_path)
     dialog = convert.ConvertDialog(str(path), None, _no_disks)
@@ -2592,8 +2595,8 @@ def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
                          if d.destination_port == "dos")
         rehearsal = direction.rehearse(dialog.source, "A", _game_dir())
 
-        disk = amiga.AmigaDisk.open(str(path))
-        party, _savgam = amiga.read_por_slot(disk, "C")
+        disk = AmigaDisk.open(str(path))
+        party, _savgam = amiga_por.read_por_slot(disk, "C")
         assert [c.fields["name"].value for c in rehearsal.characters] == \
             [c.name for c in party]
     finally:
@@ -2635,11 +2638,11 @@ def test_a_curse_c64_source_is_offered_no_amiga_row():
     the registered C64 -> DOS row, the same way
     `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
     already proves for the reverse direction."""
-    from goldbox import amiga
+    from goldbox import amiga_shared
 
-    assert amiga.WRITES == (dos_layout.POOL_OF_RADIANCE,)
+    assert amiga_shared.WRITES == (dos_port.POOL_OF_RADIANCE,)
 
-    curse_source = convert.Source(port="c64", title=games.CURSE_OF_THE_AZURE_BONDS,
+    curse_source = convert.Source(port="c64", title=c64_port.CURSE_OF_THE_AZURE_BONDS,
                                   path=pathlib.Path("."))
     directions = convert.destinations_for(curse_source)
     assert [type(d) for d in directions] == [convert.C64ToDos]
@@ -2690,7 +2693,7 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
     """
     from test_toamigapor import _c64_specimen
 
-    from goldbox import amiga
+    from goldbox.amiga_adf import AmigaDisk
 
     disk2 = _por_amiga_disk_2(tmp_path)
     c64_path = _c64_specimen("por-party-twin-pair")
@@ -2711,7 +2714,7 @@ def test_the_dialog_writes_an_adf_when_a_disk_and_folder_are_given(tmp_path):
         written = dialog.direction.write(dialog.rehearsal, fresh)
         assert [p.name for p in written] == [convert.POOLSAVE_FILENAME]
         # Opens clean, or `AmigaDiskError` raises and the test fails.
-        amiga.AmigaDisk.open(str(fresh / convert.POOLSAVE_FILENAME))
+        AmigaDisk.open(str(fresh / convert.POOLSAVE_FILENAME))
     finally:
         dialog.close()
 
@@ -2737,7 +2740,7 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
     wiring, not about the combat icon."""
     from test_toamigapor import _c64_specimen
 
-    from goldbox import amiga
+    from goldbox.amiga_adf import AmigaDisk
 
     disk2 = _por_amiga_disk_2(tmp_path)
     c64_path = _c64_specimen("por-party-twin-pair")
@@ -2760,7 +2763,7 @@ def test_window_convert_writes_an_amiga_disk_and_reports_the_load_letter(
     assert list(fresh.iterdir()) == [written]
     assert note == convert.CONVERTED_AMIGA.format(slot="A", folder=fresh)
     # Opens clean and the slot is readable, or this raises.
-    disk = amiga.AmigaDisk.open(str(written))
+    disk = AmigaDisk.open(str(written))
     assert disk.read_file("/save") is not None
 
 
@@ -2772,14 +2775,14 @@ def test_window_convert_reports_the_amiga_status_line_with_no_real_disk(
     or the C64 `self.load()` branch -- on a hand-built
     `_synthetic_amiga_rehearsal()`, the same rehearsal
     `test_write_puts_one_adf_in_its_own_folder` proves `Direction.write` with."""
-    from goldbox import dos_layout
+    from goldbox import dos_port
 
     window = EditorBinding(_make_root())
     destination = tmp_path / "out"
     destination.mkdir()
 
     rehearsal = _synthetic_amiga_rehearsal()
-    direction = convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToAmiga(dos_port.POOL_OF_RADIANCE)
 
     class _FakeDialog:
         def __init__(self, *args, **kwargs):
@@ -2816,14 +2819,14 @@ def test_a_successful_amiga_conversion_pops_the_confirmation_alongside_the_statu
     still carries the load-game letter Donald's new sentence does not name,
     so both fire on the one write. CI-safe, the same
     `_synthetic_amiga_rehearsal()` plumbing as the status-line test above."""
-    from goldbox import dos_layout
+    from goldbox import dos_port
 
     window = EditorBinding(_make_root())
     destination = tmp_path / "out"
     destination.mkdir()
 
     rehearsal = _synthetic_amiga_rehearsal()
-    direction = convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToAmiga(dos_port.POOL_OF_RADIANCE)
 
     class _FakeDialog:
         def __init__(self, *args, **kwargs):
@@ -2995,8 +2998,8 @@ def test_write_puts_one_adf_in_its_own_folder(tmp_path):
     outside = tmp_path / "elsewhere.txt"
     outside.write_text("untouched")
 
-    for direction in (convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE),
-                      convert.DosToAmiga(dos_layout.POOL_OF_RADIANCE)):
+    for direction in (convert.C64ToAmiga(dos_port.POOL_OF_RADIANCE),
+                      convert.DosToAmiga(dos_port.POOL_OF_RADIANCE)):
         destination = tmp_path / "out" / type(direction).__name__
         written = direction.write(rehearsal, destination)
         assert [p.name for p in written] == [convert.POOLSAVE_FILENAME]
@@ -3037,7 +3040,8 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     """
     from test_toamigapor import _c64_specimen
 
-    from goldbox import amiga
+    from goldbox import amiga_por
+    from goldbox.amiga_adf import AmigaDisk
 
     disk2 = _por_amiga_disk_2(tmp_path)
     c64_path = _c64_specimen("por-party-twin-pair")
@@ -3052,24 +3056,24 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     written = direction.write(rehearsal, out_dir)
     assert [p.name for p in written] == [convert.POOLSAVE_FILENAME]
 
-    ecl = amiga.AmigaDisk.open(str(disk2)).read_file("/ecl.dax")
-    party, _icons = dos.c64_party(source.save0, source.save1,
-                                  game=games.by_key(dos_layout.POOL_OF_RADIANCE.key))
-    state = amiga.por_state_from_c64(source.save0, str(source.path))
-    savegame, report = amiga.new_por_savegame(
+    ecl = AmigaDisk.open(str(disk2)).read_file("/ecl.dax")
+    party, _icons = dos_codec.c64_party(source.save0, source.save1,
+                                  game=c64_port.by_key(dos_port.POOL_OF_RADIANCE.key))
+    state = amiga_por.por_state_from_c64(source.save0, str(source.path))
+    savegame, report = amiga_por.new_por_savegame(
         state, "A", len(party), ecl,
         portraits=any("portrait_head" in c for c in party))
-    reference = amiga.make_por_save_disk("A", party, savegame)
+    reference = amiga_por.make_por_save_disk("A", party, savegame)
     assert report.unwritten == []
 
-    out_disk = amiga.AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
+    out_disk = AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
     written_paths = sorted(p for p, e in out_disk.walk() if not e.is_dir)
     reference_paths = sorted(p for p, e in reference.walk() if not e.is_dir)
     assert written_paths == reference_paths
     for path in written_paths:
         assert out_disk.read_file(path) == reference.read_file(path), path
 
-    slot_party, _savgam = amiga.read_por_slot(out_disk, "A")
+    slot_party, _savgam = amiga_por.read_por_slot(out_disk, "A")
     names = [c.name for c in slot_party]
     assert names[0] == "BRUTUS"
     assert names[-1] == "MALCYON"
@@ -3082,7 +3086,8 @@ def test_dos_to_amiga_direction_is_the_transfer_test(tmp_path):
     letter -- D, not A -- and the built saved game carries THRENDER GRONE's
     own square and clock rather than SSI's, `#316`'s whole point at the
     level a player would notice it."""
-    from goldbox import amiga
+    from goldbox import amiga_por
+    from goldbox.amiga_adf import AmigaDisk
 
     disk2 = _por_amiga_disk_2(tmp_path)
     folder = gamedata.specimen("por-item-granted")
@@ -3097,14 +3102,14 @@ def test_dos_to_amiga_direction_is_the_transfer_test(tmp_path):
     out_dir = tmp_path / "out"
     direction.write(rehearsal, out_dir)
 
-    out_disk = amiga.AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
-    assert amiga.read_slot_list(out_disk, drawer="") == ["D"]
+    out_disk = AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
+    assert amiga_por.read_slot_list(out_disk, drawer="") == ["D"]
 
     savgam_path = folder / "SAVGAMD.DAT"
-    state = amiga.por_state_from_dos(savgam_path.read_bytes(), str(savgam_path))
+    state = amiga_por.por_state_from_dos(savgam_path.read_bytes(), str(savgam_path))
     built = out_disk.read_file("/savgamD.dat")
-    assert (built[amiga.POR_POS_X], built[amiga.POR_POS_Y],
-           built[amiga.POR_POS_FACING]) == (state.x, state.y, state.facing * 2)
+    assert (built[amiga_por.POR_POS_X], built[amiga_por.POR_POS_Y],
+           built[amiga_por.POR_POS_FACING]) == (state.x, state.y, state.facing * 2)
 
 
 # ---------------------------------------------------------------------------
@@ -3135,7 +3140,7 @@ def test_the_form_holds_four_rows_for_every_dos_or_c64_destination(tmp_path):
     that used to appear and vanish (`_settle_game_row`/`_settle_disk_row`,
     before this issue) is the third one here, in the same place regardless
     of which of the three platforms is the destination."""
-    dos_folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
+    dos_folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     c64_path = _por_c64_disk(tmp_path)
     cases = [
         (dos_folder / "SAVGAMA.DAT", "c64", convert.LABEL_C64),
@@ -3209,12 +3214,12 @@ def test_the_c64_row_is_prefilled_from_preferences_and_editing_it_holds_only_for
     Preferences' own search."""
     prefs_folder = tmp_path / "prefs-folder"
     prefs_folder.mkdir()
-    preferences = {games.POOL_OF_RADIANCE.key: str(prefs_folder)}
+    preferences = {c64_port.POOL_OF_RADIANCE.key: str(prefs_folder)}
 
     def game_folder(game):
         return preferences.get(game.key)
 
-    folder = _synthetic_dos_folder(tmp_path, dos_layout.POOL_OF_RADIANCE)
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
     dialog = convert.ConvertDialog(
         str(folder / "SAVGAMA.DAT"), None, _no_disks,
         destination="c64", game_folder=game_folder)
@@ -3232,7 +3237,7 @@ def test_the_c64_row_is_prefilled_from_preferences_and_editing_it_holds_only_for
         # Preferences itself never moved -- nothing in this module can
         # write to it, and this is the behavioural proof rather than an
         # inspection of the source for an import that is not there.
-        assert preferences[games.POOL_OF_RADIANCE.key] == str(prefs_folder)
+        assert preferences[c64_port.POOL_OF_RADIANCE.key] == str(prefs_folder)
 
         # A later `replan()` -- what changing the `To` combo and changing
         # it back would trigger -- does not overwrite the player's own

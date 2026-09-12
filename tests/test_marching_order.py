@@ -14,8 +14,8 @@ still be wrong.
 
 from automap import live
 from editor.roster import Party
+from goldbox.c64_port import POOL_OF_RADIANCE
 from goldbox.d64 import D64, attach_load_address
-from goldbox.games import POOL_OF_RADIANCE
 from goldbox.record import CharacterRecord
 from goldbox.savegame import SaveGame0
 

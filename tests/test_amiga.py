@@ -21,13 +21,17 @@ import tempfile
 
 import pytest
 
-from goldbox import amiga, dos_layout
-from goldbox.amiga import (
+from goldbox import (
+    amiga_later,
+    amiga_pod,
+    amiga_por,
+    amiga_port,
+    amiga_shared,
+    dos_port,
+)
+from goldbox.amiga_pod import (
     ABILITIES,
     ALIGNMENTS,
-    AMIGA_POR_NAME_SIZE,
-    AMIGA_POR_RECORD_SIZE,
-    AMIGA_POR_UNPLACED,
     ARMOUR_CLASS,
     ARMOUR_CLASS_CURRENT,
     CLASS_LEVEL_COUNT,
@@ -39,12 +43,17 @@ from goldbox.amiga import (
     PORTRAIT_HEAD,
     RACES,
     RECORD_LENGTH,
-    AmigaPorCharacter,
-    AmigaRecordError,
     PodCharacter,
     PodWriter,
+)
+from goldbox.amiga_por import (
+    AMIGA_POR_NAME_SIZE,
+    AMIGA_POR_RECORD_SIZE,
+    AMIGA_POR_UNPLACED,
+    AmigaPorCharacter,
     amiga_por_offset,
 )
+from goldbox.amiga_port import AmigaRecordError
 
 RECORD = 582            # the C64 export PoD accepts, load address included
 
@@ -379,7 +388,7 @@ def test_a_real_record_carries_the_class_bit_the_converter_writes():
     """1 magic-user, 2 cleric, 4 thief, 8 fighter -- the C64's own numbering
     for the four base classes -- but **64 for the paladin and the ranger
     alike**, where the C64 gives them 0x40 and 0x80 separately."""
-    from goldbox.amiga import CLASS_BIT, CLASS_LEVEL_SLOT
+    from goldbox.amiga_pod import CLASS_BIT, CLASS_LEVEL_SLOT
     by_pod_name = {CLASS_LEVEL_SLOT[c64]: bit for c64, bit in CLASS_BIT.items()}
     for path in real_records():
         pc = PodCharacter.from_bytes(path.read_bytes())
@@ -393,7 +402,7 @@ def test_a_real_record_carries_the_class_bit_the_converter_writes():
 
 def test_the_disk_names_its_files_the_way_the_converter_would():
     """`MAGIC JHONSON` is `MAGICJHO.pc`; `TRIPEL TURBO` is `TRIPELTU.pc`."""
-    from goldbox.amiga import pc_filename
+    from goldbox.amiga_pod import pc_filename
     for path in real_records():
         pc = PodCharacter.from_bytes(path.read_bytes())
         assert pc_filename(pc.name).lower() == path.name.split("_")[-1].lower()
@@ -434,7 +443,7 @@ def test_every_neutral_field_has_a_disposition():
     from goldbox import neutral
 
     unaccounted, unknown = neutral.undeclared(
-        neutral.FIELDS, amiga.pod_write_field_disposition())
+        neutral.FIELDS, amiga_pod.pod_write_field_disposition())
     assert unaccounted == set(), "no disposition for these"
     assert unknown == set(), "a disposition for a field the vocabulary lacks"
 
@@ -443,27 +452,27 @@ def test_the_c64_reader_supplies_what_the_amiga_writer_takes():
     """The other half: a neutral name the writer takes and the C64 reader
     never sets is a value that would arrive as nothing on every conversion
     off a C64 save."""
-    taken = ({n for n, _ in amiga.POD_WRITE_DIRECT}
-             | {n for n, _ in amiga.POD_WRITE_TRANSFORMED})
+    taken = ({n for n, _ in amiga_pod.POD_WRITE_DIRECT}
+             | {n for n, _ in amiga_pod.POD_WRITE_TRANSFORMED})
     for char in neutral_party():
         assert taken - set(char.keys()) == set()
 
 
 def test_a_converted_character_reads_back_as_the_neutral_one():
     for char in neutral_party():
-        record, _ = amiga.to_pc(char)
+        record, _ = amiga_pod.to_pc(char)
         pc = PodCharacter.from_bytes(record)
         assert pc.name == char.get("name")[:15]
         assert pc.sex == char.get("sex")
         assert pc.alignment == char.get("alignment")
-        assert pc.abilities == [char.get(k) for k in amiga.ABILITY_KEYS]
+        assert pc.abilities == [char.get(k) for k in amiga_shared.ABILITY_KEYS]
         assert pc.experience == char.get("experience")
         assert pc.age == char.get("age")
         assert pc.platinum == char.get("platinum")
         assert pc.hit_points_max == char.get("hp_max")
         assert pc.hit_points_current == char.get("hp_current")
-        assert pc.saving_throws == [char.get(k) for k in amiga.SAVE_KEYS]
-        assert pc.thief_skills == [char.get(k) for k in amiga.THIEF_KEYS]
+        assert pc.saving_throws == [char.get(k) for k in amiga_shared.SAVE_KEYS]
+        assert pc.thief_skills == [char.get(k) for k in amiga_shared.THIEF_KEYS]
 
 
 def test_the_conversion_credits_every_non_zero_byte():
@@ -471,22 +480,22 @@ def test_the_conversion_credits_every_non_zero_byte():
     A byte of the output is a field a probe put on the character sheet, or it
     is zero."""
     for char in neutral_party():
-        record, rep = amiga.to_pc(char)
+        record, rep = amiga_pod.to_pc(char)
         assert len(record) == RECORD_LENGTH
         assert rep.unaccounted(record) == []
 
 
 def test_the_class_level_lands_in_the_slot_pods_own_code_names():
-    from goldbox.games import class_table
+    from goldbox.c64_port import class_table
 
     for char in neutral_party():
-        record, _ = amiga.to_pc(char)
+        record, _ = amiga_pod.to_pc(char)
         pc = PodCharacter.from_bytes(record)
         bits = char.get("class_bits")
         for bit, name in class_table(char.game):
             if not bits & bit:
                 continue
-            slot = CLASSES.index(amiga.CLASS_LEVEL_SLOT[name])
+            slot = CLASSES.index(amiga_pod.CLASS_LEVEL_SLOT[name])
             assert pc.class_levels[slot] == char.get("levels")[name], (
                 name, pc.class_levels)
 
@@ -531,7 +540,7 @@ def test_the_probe_that_loaded_in_the_game_is_what_the_converter_emits():
     """P3 in `docs/124-amiga-port.md` sec 2.4: PoD drew `FEMALE 33 YEARS`,
     `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 7`, `EXPERIENCE 10000`,
     `PLATINUM 200 GEMS 11 JEWELRY 22`, `MOVEMENT 12`."""
-    record, _ = amiga.to_pc(sample())
+    record, _ = amiga_pod.to_pc(sample())
     pc = PodCharacter.from_bytes(record)
     assert (pc.sex_name, pc.age) == ("FEMALE", 33)
     assert pc.alignment_name == "CHAOTIC EVIL"
@@ -545,21 +554,21 @@ def test_the_probe_that_loaded_in_the_game_is_what_the_converter_emits():
 
 
 def test_a_race_pools_of_darkness_lacks_is_substituted_and_said_out_loud():
-    record, rep = amiga.to_pc(sample(race=6))       # half-orc
+    record, rep = amiga_pod.to_pc(sample(race=6))       # half-orc
     assert PodCharacter.from_bytes(record).race_name == "HUMAN"
     assert any("half-orc" in w for w in rep.warnings), rep.warnings
 
 
 def test_a_knight_arrives_as_a_fighter_and_says_so():
     """The Knight of Solamnia is Krynn's and has no Realms slot."""
-    from goldbox.games import by_key
+    from goldbox.c64_port import by_key
 
     levels = {"knight": 9, "thief": 0, "fighter": 0, "cleric": 0,
               "magic-user": 0, "paladin": 0, "ranger": 0}
     char = sample(class_bits=0x10, levels=levels, level=9)
     char.game = by_key("champions-of-krynn")
     char.set("race", 5, "a built specimen's race")       # human on Krynn
-    record, rep = amiga.to_pc(char)
+    record, rep = amiga_pod.to_pc(char)
     pc = PodCharacter.from_bytes(record)
     assert pc.class_name == "FIGHTER"
     assert pc.class_levels[CLASSES.index("FIGHTER")] == 9
@@ -568,12 +577,12 @@ def test_a_knight_arrives_as_a_fighter_and_says_so():
 
 def test_the_lighter_coins_are_reported_rather_than_vanishing():
     """Only platinum, gems and jewelry have a located home in the `.pc`."""
-    _, rep = amiga.to_pc(sample(gold=900, silver=10, copper=7))
+    _, rep = amiga_pod.to_pc(sample(gold=900, silver=10, copper=7))
     assert any("917" in w for w in rep.warnings), rep.warnings
 
 
 def test_hit_points_over_the_amiga_byte_are_clamped_and_reported():
-    record, rep = amiga.to_pc(sample(hp_max=300))
+    record, rep = amiga_pod.to_pc(sample(hp_max=300))
     assert PodCharacter.from_bytes(record).hit_points_max == 255
     assert any("300" in w for w in rep.warnings), rep.warnings
 
@@ -581,8 +590,8 @@ def test_hit_points_over_the_amiga_byte_are_clamped_and_reported():
 def test_a_class_pools_of_darkness_cannot_express_is_refused():
     """A combination with no code is refused rather than written as another
     one, which is `yaml_io.class_code_for`'s rule in the other direction."""
-    with pytest.raises(amiga.ConversionError):
-        amiga.to_pc(sample(class_bits=2 | 4 | 8,
+    with pytest.raises(amiga_pod.ConversionError):
+        amiga_pod.to_pc(sample(class_bits=2 | 4 | 8,
                            levels={"cleric": 3, "thief": 3, "fighter": 3,
                                    "magic-user": 0, "knight": 0,
                                    "paladin": 0, "ranger": 0}))
@@ -595,13 +604,13 @@ def test_a_field_graded_below_the_floor_is_refused_rather_than_guessed():
 
     char = sample()
     char.set("age", 99, "a value nobody measured", Confidence.UNKNOWN)
-    record, rep = amiga.to_pc(char)
+    record, rep = amiga_pod.to_pc(char)
     assert PodCharacter.from_bytes(record).age == 0
     assert any("age" in d and "UNKNOWN" in d for d in rep.dropped), rep.dropped
 
 
 def test_the_items_and_the_portraits_are_named_as_losses():
-    _, rep = amiga.to_pc(sample())
+    _, rep = amiga_pod.to_pc(sample())
     named = " ".join(rep.dropped)
     for what in ("inventory", "portrait_head", "portrait_body",
                  "spells_memorised", "copper"):
@@ -609,29 +618,29 @@ def test_the_items_and_the_portraits_are_named_as_losses():
 
 
 def test_a_built_filename_is_uppercase_and_eight_characters():
-    assert amiga.pc_filename("MAGIC JHONSON") == "MAGICJHO.pc"
-    assert amiga.pc_filename("TRIPEL TURBO") == "TRIPELTU.pc"
-    assert amiga.pc_filename("?T") == "T.pc"
+    assert amiga_pod.pc_filename("MAGIC JHONSON") == "MAGICJHO.pc"
+    assert amiga_pod.pc_filename("TRIPEL TURBO") == "TRIPELTU.pc"
+    assert amiga_pod.pc_filename("?T") == "T.pc"
 
 
 def test_a_repeated_stem_gets_a_trailing_digit_rather_than_overwriting():
     """LADY KATHERINE and LADY KATHRYN both give `LADYKATH.pc` (#79); the
     second one claimed keeps the length `pc_filename` promises."""
-    from goldbox.amiga import _unique_pc_filename
+    from goldbox.amiga_pod import _unique_pc_filename
 
     used: set[str] = set()
-    first = _unique_pc_filename(amiga.pc_filename("LADY KATHERINE"), used)
+    first = _unique_pc_filename(amiga_pod.pc_filename("LADY KATHERINE"), used)
     used.add(first)
-    second = _unique_pc_filename(amiga.pc_filename("LADY KATHRYN"), used)
+    second = _unique_pc_filename(amiga_pod.pc_filename("LADY KATHRYN"), used)
 
     assert first == "LADYKATH.pc"
     assert second == "LADYKAT2.pc"
-    assert len(second) == len(".pc") + amiga.FILENAME_LENGTH
+    assert len(second) == len(".pc") + amiga_pod.FILENAME_LENGTH
 
 
 def test_a_name_already_used_is_left_alone():
     used = {"LADYKATH.pc"}
-    assert amiga._unique_pc_filename("BJORK.pc", used) == "BJORK.pc"
+    assert amiga_pod._unique_pc_filename("BJORK.pc", used) == "BJORK.pc"
 
 
 def _six_identical_names_disk(tmp_path) -> pathlib.Path:
@@ -645,7 +654,7 @@ def _six_identical_names_disk(tmp_path) -> pathlib.Path:
     """
     import gamedata
 
-    from goldbox import games
+    from goldbox import c64_port
     from goldbox.d64 import attach_load_address
     from goldbox.encoding import COMBAT_BIAS
     from goldbox.layout import NAME_SIZE
@@ -661,7 +670,7 @@ def _six_identical_names_disk(tmp_path) -> pathlib.Path:
         SLOT_STRIDE,
     )
 
-    game = games.POOL_OF_RADIANCE
+    game = c64_port.POOL_OF_RADIANCE
     record = CharacterRecord.blank()
     record.set("name", "W" * NAME_SIZE)
     for ability in ("strength", "intelligence", "wisdom", "dexterity",
@@ -698,7 +707,7 @@ def test_export_party_disambiguates_a_six_way_collision(tmp_path):
     """Before the fix, `export_party` returned six `(path, Report)` pairs
     that all pointed at the one file the last write left behind; only one
     `.pc` ever reached disk."""
-    from goldbox.amiga import export_party
+    from goldbox.amiga_pod import export_party
 
     save = _six_identical_names_disk(tmp_path)
     out_dir = tmp_path / "out"
@@ -750,7 +759,7 @@ def test_the_unplaced_window_refuses_rather_than_guessing():
 
 def test_the_record_size_is_the_dos_record_plus_three():
     """285 + one pad at 0x07F + one in the unplaced window + one trailing."""
-    assert AMIGA_POR_RECORD_SIZE == dos_layout.RECORD_SIZE + 3
+    assert AMIGA_POR_RECORD_SIZE == dos_port.RECORD_SIZE + 3
 
 
 @pytest.mark.parametrize("length", [285, 287, 289, 428, 484])
@@ -824,7 +833,7 @@ def test_every_specimen_decodes_to_a_coherent_character():
         assert all(3 <= a <= 19 for a in c.abilities), (path, c.abilities)
         assert c.get("movement") == 12, path
         assert 1 <= c.get("level") <= 9, path
-        assert c.get("race") < len(dos_layout.RACE_NUMBERS), path
+        assert c.get("race") < len(dos_port.RACE_NUMBERS), path
         if c.get("level") == 1:
             # Not "zero": the party shipped on disk 1 is level 1 with 17
             # experience apiece, having fought something. The invariant is
@@ -846,7 +855,7 @@ def test_exceptional_strength_appears_only_on_an_eighteen_strength_fighter():
 def test_the_class_bitmask_decomposes_to_the_class_byte():
     for path in amiga_por_records():
         c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
-        name = dos_layout.CLASS_NUMBERS[c.get("char_class")]
+        name = dos_port.CLASS_NUMBERS[c.get("char_class")]
         bits = c.get("class_bits")
         wanted = {"mage": 1, "cleric": 2, "thief": 4, "fighter": 8}
         expected = sum(wanted[part] for part in name.split("/") if part in wanted)
@@ -944,7 +953,7 @@ def amiga_por_with_items() -> list[pathlib.Path]:
 def test_the_item_file_is_a_whole_number_of_sixty_five_byte_nodes():
     for path in amiga_por_with_items():
         size = path.with_suffix(".itm").stat().st_size
-        assert size % amiga.AMIGA_POR_ITEM_SIZE == 0, (path, size)
+        assert size % amiga_por.AMIGA_POR_ITEM_SIZE == 0, (path, size)
 
 
 def test_the_record_item_count_matches_the_item_file_length():
@@ -957,7 +966,7 @@ def test_the_record_item_count_matches_the_item_file_length():
     for path in amiga_por_with_items():
         c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
         size = path.with_suffix(".itm").stat().st_size
-        assert c.get("item_count") == size // amiga.AMIGA_POR_ITEM_SIZE, path
+        assert c.get("item_count") == size // amiga_por.AMIGA_POR_ITEM_SIZE, path
 
 
 def test_the_encumbrance_identity_balances_for_every_specimen():
@@ -974,7 +983,7 @@ def test_the_encumbrance_identity_balances_for_every_specimen():
     and this fails on the first character.
     """
     for path in amiga_por_with_items():
-        c = amiga.read_amiga_por(path)
+        c = amiga_por.read_amiga_por(path)
         total = sum(c.money.values())
         for it in c.items:
             total += it.get("weight") * (it.get("quantity") or 1)
@@ -984,7 +993,7 @@ def test_the_encumbrance_identity_balances_for_every_specimen():
 def test_the_item_chain_ends_null_and_ascends():
     """A `next` read little-endian gives a wild address and fails this."""
     for path in amiga_por_with_items():
-        c = amiga.read_amiga_por(path)
+        c = amiga_por.read_amiga_por(path)
         pointers = [it.next_node for it in c.items]
         assert pointers[-1] == 0, (path, pointers)
         for p in pointers[:-1]:
@@ -1012,7 +1021,7 @@ AMIGA_POR_ITEMS = {
 def test_every_item_weighs_and_costs_what_the_game_says_it_does():
     seen = set()
     for path in amiga_por_with_items():
-        c = amiga.read_amiga_por(path)
+        c = amiga_por.read_amiga_por(path)
         for it in c.items:
             kind = it.get("type_index")
             want = AMIGA_POR_ITEMS.get(kind)
@@ -1030,7 +1039,7 @@ def test_the_readied_flag_is_the_one_the_display_line_agrees_with():
     readied.  Here the darts are not: they read 0 and draw ` No `."""
     seen = 0
     for path in amiga_por_with_items():
-        for it in amiga.read_amiga_por(path).items:
+        for it in amiga_por.read_amiga_por(path).items:
             line = it.display_line
             if line.startswith(" Yes"):
                 assert it.get("readied") == 1, (path, line)
@@ -1043,20 +1052,20 @@ def test_the_readied_flag_is_the_one_the_display_line_agrees_with():
 
 def test_an_item_of_the_wrong_length_is_refused_by_name():
     with pytest.raises(AmigaRecordError):
-        amiga.AmigaPorItem.from_bytes(bytes(dos_layout.ITEM_SIZE))
+        amiga_por.AmigaPorItem.from_bytes(bytes(dos_port.ITEM_SIZE))
     with pytest.raises(AmigaRecordError):
-        amiga.AmigaPorItem.from_bytes(bytes(66))
+        amiga_por.AmigaPorItem.from_bytes(bytes(66))
 
 
 def test_the_effect_node_transposes_onto_the_dos_payload():
     """`goldbox/dos.py`'s `INNATE_PAYLOAD` is `00 00 FF 00` for a permanent
     effect; the Amiga writes the same four bytes one later, behind the pad
     at offset 1.  So a transposed node has to reproduce it exactly."""
-    from goldbox.dos import EFFECT_NEXT_NULL, INNATE_PAYLOAD
+    from goldbox.dos_codec import EFFECT_NEXT_NULL, INNATE_PAYLOAD
 
     node = bytes((107, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xC5, 0x7C, 0x0C))
-    out = amiga.amiga_por_effect_to_dos(node)
-    assert len(out) == dos_layout.EFFECT_SIZE
+    out = amiga_por.amiga_por_effect_to_dos(node)
+    assert len(out) == dos_port.EFFECT_SIZE
     assert out[0] == 107
     assert out[1:5] == INNATE_PAYLOAD
     assert out[5:] == EFFECT_NEXT_NULL
@@ -1064,7 +1073,7 @@ def test_the_effect_node_transposes_onto_the_dos_payload():
 
 def test_an_effect_node_of_the_wrong_length_is_refused():
     with pytest.raises(AmigaRecordError):
-        amiga.amiga_por_effect_to_dos(bytes(dos_layout.EFFECT_SIZE))
+        amiga_por.amiga_por_effect_to_dos(bytes(dos_port.EFFECT_SIZE))
 
 
 #: The fields `to_dos_record` deliberately does not carry across, each with
@@ -1087,12 +1096,12 @@ def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
     Amiga bytes, the other reads a DOS record straight -- so this fails if
     the re-cut loses a field, mis-orders a `u16`, or drifts by a byte.
     """
-    from goldbox.dos import DosCharacter
+    from goldbox.dos_codec import DosCharacter
 
     for path in amiga_por_records():
         a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
-        d = DosCharacter(amiga.to_dos_record(a))
-        for f in dos_layout.LAYOUT:
+        d = DosCharacter(amiga_por.to_dos_record(a))
+        for f in dos_port.LAYOUT:
             if f.name in NOT_TRANSPOSED:
                 continue
             assert d.get(f.name) == a.get(f.name), (path, f.name)
@@ -1108,15 +1117,15 @@ def test_the_recut_refuses_to_invent_the_unplaced_window():
     says so."""
     for path in amiga_por_records():
         a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
-        record = amiga.to_dos_record(a)
-        window = dos_layout.FIELDS_BY_NAME["field_83_87"]
+        record = amiga_por.to_dos_record(a)
+        window = dos_port.FIELDS_BY_NAME["field_83_87"]
         assert record[window.span] == bytes(window.size), path
 
 
 def test_the_neutral_record_carries_the_amiga_port_and_its_items():
     for path in amiga_por_with_items():
-        c = amiga.read_amiga_por(path)
-        n = amiga.to_neutral(c)
+        c = amiga_por.read_amiga_por(path)
+        n = amiga_por.to_neutral(c)
         assert n.port == "Amiga"
         assert n.source == str(path)
         assert len(n.get("inventory")) == len(c.items)
@@ -1132,10 +1141,10 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
     other side of it.  Not the reader agreeing with itself -- the neutral
     record agreeing with a photograph."""
     for path in amiga_por_with_items():
-        c = amiga.read_amiga_por(path)
+        c = amiga_por.read_amiga_por(path)
         if c.name != "GARWAN":
             continue
-        n = amiga.to_neutral(c)
+        n = amiga_por.to_neutral(c)
         assert n.get("name") == "GARWAN"
         assert n.get("hp_max") == 14
         assert 60 - n.get("armour_class") == 1
@@ -1166,13 +1175,13 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
 
 
 def dos_unreported_drops() -> frozenset:
-    from goldbox import dos
-    return dos.UNREPORTED_DROPS
+    from goldbox import dos_codec
+    return dos_codec.UNREPORTED_DROPS
 
 
 def dos_field_disposition() -> dict:
-    from goldbox import dos
-    return dos.field_disposition()
+    from goldbox import dos_codec
+    return dos_codec.field_disposition()
 
 
 def test_the_innate_effects_reach_the_neutral_record():
@@ -1184,17 +1193,17 @@ def test_the_innate_effects_reach_the_neutral_record():
     entirely racial and cross whole, and the other three are
     `test_an_effect_the_neutral_record_cannot_hold_is_reported`'s business.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     seen = 0
     for path in amiga_por_records():
-        c = amiga.read_amiga_por(path)
+        c = amiga_por.read_amiga_por(path)
         if not c.effects:
             continue
         seen += 1
-        n = amiga.to_neutral(c)
+        n = amiga_por.to_neutral(c)
         assert n.get("innate_effects") == [
-            e[0] for e in c.effects if e[0] in dos.INNATE_EFFECTS], path
+            e[0] for e in c.effects if e[0] in dos_codec.INNATE_EFFECTS], path
     if not seen:
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
 
@@ -1223,16 +1232,16 @@ def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
     (`d68c307`) removed that line in favour of actually writing the slot, and
     this test was not updated to match until now.
     """
-    from goldbox import c64_codec, dos, traits
+    from goldbox import c64_codec, dos_codec, traits
 
     seen = 0
     for path in amiga_por_records():
-        c = amiga.read_amiga_por(path)
-        lost = [e[0] for e in c.effects if e[0] not in dos.INNATE_EFFECTS]
+        c = amiga_por.read_amiga_por(path)
+        lost = [e[0] for e in c.effects if e[0] not in dos_codec.INNATE_EFFECTS]
         if not lost:
             continue
         seen += 1
-        n = amiga.to_neutral(c)
+        n = amiga_por.to_neutral(c)
         rec, c64rep = c64_codec.write(n)
         slots = [b for b in rec.get_raw("item_effects") if b]
         for eid in lost:
@@ -1247,8 +1256,8 @@ def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
             assert not [d for d in c64rep.dropped if said in d], \
                 (path, eid, c64rep.dropped)
         # And the Amiga really keeps it, so the silence is not a second loss.
-        _, _, spc, _ = amiga.write_por(n)
-        assert len(spc) == amiga.AMIGA_POR_EFFECT_SIZE * len(c.effects), path
+        _, _, spc, _ = amiga_por.write_por(n)
+        assert len(spc) == amiga_port.AMIGA_POR_EFFECT_SIZE * len(c.effects), path
     if not seen:
         pytest.skip("no specimen carries a non-innate effect")
 
@@ -1274,30 +1283,30 @@ def por_write_mask() -> set[int]:
     fields for everything the DOS writer already says it does not carry.  Masking by the diff
     instead would make the test agree with the code by construction.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     mask: set[int] = set()
-    for first, size, _ in amiga.POR_WRITE_UNSOURCED:
+    for first, size, _ in amiga_por.POR_WRITE_UNSOURCED:
         mask |= set(range(first, first + size))
 
     def field(name: str) -> set[int]:
         # A name only a later title declares has no Pool of Radiance offset
         # to mask -- `unnamed_1a4` and `unnamed_1e0` are Pools of Darkness'
         # (#194) -- and this mask is over the 285-byte record.
-        f = dos_layout.FIELDS_BY_NAME.get(name)
+        f = dos_port.FIELDS_BY_NAME.get(name)
         if f is None:
             return set()
         return {amiga_por_offset(o)
                 for o in range(f.offset, f.offset + f.size)
                 if o not in AMIGA_POR_UNPLACED}
 
-    for name, _ in dos.WRITE_UNSOURCED:
+    for name, _ in dos_codec.WRITE_UNSOURCED:
         mask |= field(name)
-    for name, _, _ in dos.WRITE_CONSTANTS:
+    for name, _, _ in dos_codec.WRITE_CONSTANTS:
         mask |= field(name)
-    for name, _, _, _ in dos.WRITE_DEFAULTS:
+    for name, _, _, _ in dos_codec.WRITE_DEFAULTS:
         mask |= field(name)
-    for name, _ in dos.WRITE_DERIVED:
+    for name, _ in dos_codec.WRITE_DERIVED:
         mask |= field(name)
     # Computed rather than copied, and `goldbox.dos.WRITE_TARGETS` says so.
     mask |= field("encumbrance") | field("item_count")
@@ -1306,7 +1315,7 @@ def por_write_mask() -> set[int]:
     # from the end, so the positions do not survive -- #110.
     mask |= field("spells_memorised")
     # The gaps, which the DOS writer zeroes and names in its own report.
-    for f in dos_layout.LAYOUT:
+    for f in dos_port.LAYOUT:
         if f.name.startswith("gap_"):
             mask |= field(f.name)
     return mask
@@ -1320,18 +1329,18 @@ def test_every_masked_field_is_one_the_declared_tables_name():
     or in the short computed/repacked list above -- so a new difference in a
     field nobody declared fails the round trip instead of being absorbed.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
-    named = {name for name, _ in dos.WRITE_UNSOURCED}
-    named |= {name for name, _, _ in dos.WRITE_CONSTANTS}
-    named |= {name for name, _, _, _ in dos.WRITE_DEFAULTS}
-    named |= {name for name, _ in dos.WRITE_DERIVED}
+    named = {name for name, _ in dos_codec.WRITE_UNSOURCED}
+    named |= {name for name, _, _ in dos_codec.WRITE_CONSTANTS}
+    named |= {name for name, _, _, _ in dos_codec.WRITE_DEFAULTS}
+    named |= {name for name, _ in dos_codec.WRITE_DERIVED}
     named |= {"encumbrance", "item_count", "spells_memorised"}
-    named |= {f.name for f in dos_layout.LAYOUT if f.name.startswith("gap_")}
-    declared = {o for first, size, _ in amiga.POR_WRITE_UNSOURCED
+    named |= {f.name for f in dos_port.LAYOUT if f.name.startswith("gap_")}
+    declared = {o for first, size, _ in amiga_por.POR_WRITE_UNSOURCED
                 for o in range(first, first + size)}
     for offset in por_write_mask() - declared:
-        hit = [f.name for f in dos_layout.LAYOUT
+        hit = [f.name for f in dos_port.LAYOUT
                if f.offset not in AMIGA_POR_UNPLACED
                and amiga_por_offset(f.offset) <= offset
                < amiga_por_offset(f.offset) + f.size]
@@ -1345,13 +1354,13 @@ def test_the_record_writer_is_the_readers_exact_inverse():
     dropped or derived on the way through.  A wrong byte order, a wrong shift
     or a mis-cut name fails it on the first specimen.
     """
-    declared = {o for first, size, _ in amiga.POR_WRITE_UNSOURCED
+    declared = {o for first, size, _ in amiga_por.POR_WRITE_UNSOURCED
                 for o in range(first, first + size)}
     seen = 0
     for path in amiga_por_records():
         raw = path.read_bytes()
         c = AmigaPorCharacter.from_bytes(raw, str(path))
-        back = amiga.from_dos_record(amiga.to_dos_record(c))
+        back = amiga_por.from_dos_record(amiga_por.to_dos_record(c))
         assert len(back) == AMIGA_POR_RECORD_SIZE
         differ = [i for i in range(AMIGA_POR_RECORD_SIZE)
                   if back[i] != raw[i] and i not in declared]
@@ -1369,8 +1378,8 @@ def test_a_specimen_round_trips_through_the_neutral_record():
     mask = por_write_mask()
     seen = 0
     for path in amiga_por_records():
-        c = amiga.read_amiga_por(path)
-        record, _, _, rep = amiga.write_por(amiga.to_neutral(c))
+        c = amiga_por.read_amiga_por(path)
+        record, _, _, rep = amiga_por.write_por(amiga_por.to_neutral(c))
         assert not rep.unaccounted, (path, rep.unaccounted[:8])
         differ = [i for i in range(AMIGA_POR_RECORD_SIZE)
                   if record[i] != c.raw[i] and i not in mask]
@@ -1388,12 +1397,12 @@ def test_the_item_nodes_round_trip_past_their_cached_line():
     """
     nodes = 0
     for path in amiga_por_with_items():
-        c = amiga.read_amiga_por(path)
-        _, itm, _, _ = amiga.write_por(amiga.to_neutral(c))
-        assert len(itm) == len(c.items) * amiga.AMIGA_POR_ITEM_SIZE, path
+        c = amiga_por.read_amiga_por(path)
+        _, itm, _, _ = amiga_por.write_por(amiga_por.to_neutral(c))
+        assert len(itm) == len(c.items) * amiga_por.AMIGA_POR_ITEM_SIZE, path
         for n, item in enumerate(c.items):
-            written = itm[n * amiga.AMIGA_POR_ITEM_SIZE:
-                          (n + 1) * amiga.AMIGA_POR_ITEM_SIZE]
+            written = itm[n * amiga_por.AMIGA_POR_ITEM_SIZE:
+                          (n + 1) * amiga_por.AMIGA_POR_ITEM_SIZE]
             assert written[0x02E:] == item.raw[0x02E:], (path, n)
             assert written[:0x02E] == bytes(0x02E), (path, n)
             nodes += 1
@@ -1414,27 +1423,27 @@ def test_the_effect_nodes_round_trip_past_their_next_pointer():
     live Amiga heap address the engine rebuilds on load, and three of the
     twelve files hold a non-NULL one.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     nodes = files = whole = 0
     for path in amiga_por_records():
-        c = amiga.read_amiga_por(path)
+        c = amiga_por.read_amiga_por(path)
         if not c.effects:
             continue
         files += 1
         # Written innate first, then what an item granted -- the engine finds
         # a node by walking the chain for its id, so the order is ours.
-        innate = [e for e in c.effects if e[0] in dos.INNATE_EFFECTS]
+        innate = [e for e in c.effects if e[0] in dos_codec.INNATE_EFFECTS]
         kept = innate + [e for e in c.effects
-                         if e[0] not in dos.INNATE_EFFECTS
+                         if e[0] not in dos_codec.INNATE_EFFECTS
                          and int.from_bytes(e[2:4], "big") == 0]
-        _, _, spc, _ = amiga.write_por(amiga.to_neutral(c))
-        assert len(spc) == len(kept) * amiga.AMIGA_POR_EFFECT_SIZE, path
+        _, _, spc, _ = amiga_por.write_por(amiga_por.to_neutral(c))
+        assert len(spc) == len(kept) * amiga_port.AMIGA_POR_EFFECT_SIZE, path
         if len(kept) == len(c.effects):
             whole += 1
         for n, node in enumerate(kept):
-            written = spc[n * amiga.AMIGA_POR_EFFECT_SIZE:
-                          (n + 1) * amiga.AMIGA_POR_EFFECT_SIZE]
+            written = spc[n * amiga_port.AMIGA_POR_EFFECT_SIZE:
+                          (n + 1) * amiga_port.AMIGA_POR_EFFECT_SIZE]
             assert written[:6] == node[:6], (path, n)
             assert written[6:] == bytes(4), (path, n)
             nodes += 1
@@ -1448,7 +1457,7 @@ def test_the_effect_nodes_round_trip_past_their_next_pointer():
 
 
 def test_every_byte_of_a_written_record_is_accounted_for():
-    record, itm, spc, rep = amiga.write_por(sample())
+    record, itm, spc, rep = amiga_por.write_por(sample())
     assert len(record) == AMIGA_POR_RECORD_SIZE
     assert rep.total == AMIGA_POR_RECORD_SIZE + len(itm) + len(spc)
     assert rep.unaccounted == []
@@ -1460,16 +1469,16 @@ def test_the_name_is_sixteen_nul_padded_bytes_with_no_count():
     A writer that copied DOS's count byte through would put a `07` in front
     of the name and the game would draw it.
     """
-    record, _, _, _ = amiga.write_por(sample())
+    record, _, _, _ = amiga_por.write_por(sample())
     assert record[:16] == b"AELFRIC".ljust(16, b"\0")
     assert AmigaPorCharacter.from_bytes(record).name == "AELFRIC"
 
 
 def test_multi_byte_fields_are_written_big_endian():
     """A 68000 record. Little-endian here draws 51200 platinum, not 200."""
-    record, _, _, _ = amiga.write_por(sample(platinum=200, age=33))
+    record, _, _, _ = amiga_por.write_por(sample(platinum=200, age=33))
     assert record[amiga_por_offset(
-        dos_layout.FIELDS_BY_NAME["platinum"].offset):][:2] == b"\x00\xc8"
+        dos_port.FIELDS_BY_NAME["platinum"].offset):][:2] == b"\x00\xc8"
     c = AmigaPorCharacter.from_bytes(record)
     assert c.money["platinum"] == 200
     assert c.get("age") == 33
@@ -1483,17 +1492,17 @@ def test_experience_is_one_big_endian_longword_across_dos_gap_0af():
     through it can put anything in the fourth -- #111.  A writer that
     swapped only three would put a large total's bytes in the wrong order.
     """
-    record = bytearray(dos_layout.RECORD_SIZE)
-    at = dos_layout.FIELDS_BY_NAME["experience"].offset
+    record = bytearray(dos_port.RECORD_SIZE)
+    at = dos_port.FIELDS_BY_NAME["experience"].offset
     record[at:at + 4] = b"\x04\x03\x02\x01"       # 0x01020304, little-endian
-    out = amiga.from_dos_record(bytes(record))
-    assert out[amiga.AMIGA_POR_EXPERIENCE:
-               amiga.AMIGA_POR_EXPERIENCE + 4] == b"\x01\x02\x03\x04"
+    out = amiga_por.from_dos_record(bytes(record))
+    assert out[amiga_por.AMIGA_POR_EXPERIENCE:
+               amiga_por.AMIGA_POR_EXPERIENCE + 4] == b"\x01\x02\x03\x04"
     assert AmigaPorCharacter.from_bytes(out).experience == 0x01020304
 
 
 def test_a_written_experience_total_survives_the_round_trip():
-    record, _, _, _ = amiga.write_por(sample(experience=123456))
+    record, _, _, _ = amiga_por.write_por(sample(experience=123456))
     assert AmigaPorCharacter.from_bytes(record).experience == 123456
 
 
@@ -1504,13 +1513,13 @@ def test_the_effect_chain_is_written_null():
     already zeroes its own field: going through `write_por` alone would pass
     whether or not this writer nulled anything, and did.
     """
-    record = bytearray(dos_layout.RECORD_SIZE)
-    at = dos_layout.FIELDS_BY_NAME["effect_chain"].offset
+    record = bytearray(dos_port.RECORD_SIZE)
+    at = dos_port.FIELDS_BY_NAME["effect_chain"].offset
     record[at:at + 4] = b"\x9f\xe0\xc6\x00"       # a genuine Amiga heap value
-    out = amiga.from_dos_record(bytes(record))
+    out = amiga_por.from_dos_record(bytes(record))
     assert out[0x080:0x084] == bytes(4)
     assert AmigaPorCharacter.from_bytes(out).effect_chain == 0
-    written, _, _, _ = amiga.write_por(sample())
+    written, _, _, _ = amiga_por.write_por(sample())
     assert AmigaPorCharacter.from_bytes(written).effect_chain == 0
 
 
@@ -1521,17 +1530,17 @@ def test_the_three_insertions_hold_what_the_specimens_hold():
     Radiance itself wrote on disk 1 holds -- DOS's `field_83_87` constant
     under the `+1` shift, with the second insertion after it.
     """
-    record, _, _, _ = amiga.write_por(sample())
-    assert record[amiga.AMIGA_POR_PAD] == 0
-    assert record[amiga.AMIGA_POR_TAIL_PAD] == 0
-    at = amiga.AMIGA_POR_FIELD_83_87_AT
+    record, _, _, _ = amiga_por.write_por(sample())
+    assert record[amiga_por.AMIGA_POR_PAD] == 0
+    assert record[amiga_por.AMIGA_POR_TAIL_PAD] == 0
+    at = amiga_por.AMIGA_POR_FIELD_83_87_AT
     assert record[at:at + 6] == b"\x00\x00\x01\x00\x00\x00"
     # The `01` lands two bytes into the window, which is where DOS's own
     # sits under the `+1` shift -- and that is what narrows the second
     # insertion to the three bytes after it rather than the three before.
-    assert at + 2 == amiga.AMIGA_POR_INSERTION_AFTER
-    assert all(o > amiga.AMIGA_POR_INSERTION_AFTER
-               for o in amiga.AMIGA_POR_INSERTION_CANDIDATES)
+    assert at + 2 == amiga_por.AMIGA_POR_INSERTION_AFTER
+    assert all(o > amiga_por.AMIGA_POR_INSERTION_AFTER
+               for o in amiga_por.AMIGA_POR_INSERTION_CANDIDATES)
 
 
 def test_write_por_gives_a_character_his_own_menu_position():
@@ -1544,11 +1553,11 @@ def test_write_por_gives_a_character_his_own_menu_position():
     """
     from goldbox.portraits import neutral_menu
 
-    menu = neutral_menu(dos_layout.POOL_OF_RADIANCE.key)
+    menu = neutral_menu(dos_port.POOL_OF_RADIANCE.key)
     char = sample(portrait_head=0x08, portrait_body=0x04)
-    record, _, _, rep = amiga.write_por(char)
-    head_at = amiga_por_offset(dos_layout.FIELDS_BY_NAME["portrait_head"].offset)
-    body_at = amiga_por_offset(dos_layout.FIELDS_BY_NAME["portrait_body"].offset)
+    record, _, _, rep = amiga_por.write_por(char)
+    head_at = amiga_por_offset(dos_port.FIELDS_BY_NAME["portrait_head"].offset)
+    body_at = amiga_por_offset(dos_port.FIELDS_BY_NAME["portrait_body"].offset)
     assert record[head_at] == menu.head_position(0x08)
     assert record[body_at] == menu.body_position(0x04)
     assert not any("portrait" in d for d in rep.dropped), rep.dropped
@@ -1570,8 +1579,8 @@ def test_write_por_writes_the_menu_position_for_the_body_the_two_ports_number_di
     `portrait_body: ... does not offer it` on the drop list.
     """
     char = sample(portrait_head=0x08, portrait_body=0x18)
-    record, _, _, rep = amiga.write_por(char)
-    body_at = amiga_por_offset(dos_layout.FIELDS_BY_NAME["portrait_body"].offset)
+    record, _, _, rep = amiga_por.write_por(char)
+    body_at = amiga_por_offset(dos_port.FIELDS_BY_NAME["portrait_body"].offset)
     assert record[body_at] == 8
     assert not any("portrait" in d for d in rep.dropped), rep.dropped
 
@@ -1582,8 +1591,8 @@ def test_write_por_and_read_it_back_give_the_character_his_own_face():
     position on every port, so this isolates #479's own fix.
     """
     char = sample(portrait_head=0x08, portrait_body=0x04)
-    record, itm, spc, _ = amiga.write_por(char)
-    back = amiga.to_neutral(amiga.por_character(record, itm, spc))
+    record, itm, spc, _ = amiga_por.write_por(char)
+    back = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
     assert back.get("portrait_head") == 0x08
     assert back.get("portrait_body") == 0x04
 
@@ -1598,14 +1607,14 @@ def test_the_eighth_body_survives_a_round_trip_through_an_amiga_record():
     the player picked.
     """
     char = sample(portrait_head=0x08, portrait_body=0x18)
-    record, itm, spc, _ = amiga.write_por(char)
-    back = amiga.to_neutral(amiga.por_character(record, itm, spc))
+    record, itm, spc, _ = amiga_por.write_por(char)
+    back = amiga_por.to_neutral(amiga_por.por_character(record, itm, spc))
     assert back.get("portrait_body") == 0x18
 
 
 def test_a_character_carrying_nothing_gets_no_item_file():
     """`b""` is not an empty file: #62 is what a zero-length one did."""
-    _, itm, spc, _ = amiga.write_por(sample())
+    _, itm, spc, _ = amiga_por.write_por(sample())
     assert itm == b""
     assert spc == b""
 
@@ -1613,8 +1622,8 @@ def test_a_character_carrying_nothing_gets_no_item_file():
 def test_a_written_record_reads_back_as_the_character_that_was_written():
     """The end-to-end check: what the reader makes of what the writer made."""
     char = sample()
-    record, _, _, _ = amiga.write_por(char)
-    back = amiga.to_neutral(AmigaPorCharacter.from_bytes(record))
+    record, _, _, _ = amiga_por.write_por(char)
+    back = amiga_por.to_neutral(AmigaPorCharacter.from_bytes(record))
     for name in ("name", "strength", "intelligence", "wisdom", "dexterity",
                  "constitution", "charisma", "age", "experience", "level",
                  "hp_max", "platinum", "gems", "jewelry", "movement"):
@@ -1624,26 +1633,26 @@ def test_a_written_record_reads_back_as_the_character_that_was_written():
 @pytest.mark.parametrize("length", [284, 286, 288, 428, 484])
 def test_a_dos_record_of_the_wrong_length_is_refused_by_name(length):
     with pytest.raises(AmigaRecordError):
-        amiga.from_dos_record(bytes(length))
+        amiga_por.from_dos_record(bytes(length))
 
 
 @pytest.mark.parametrize("length", [62, 64, 65, 66])
 def test_a_dos_item_of_the_wrong_length_is_refused_by_name(length):
     with pytest.raises(AmigaRecordError):
-        amiga.amiga_por_item_from_dos(bytes(length))
+        amiga_por.amiga_por_item_from_dos(bytes(length))
 
 
 @pytest.mark.parametrize("length", [8, 10])
 def test_a_dos_effect_of_the_wrong_length_is_refused_by_name(length):
     with pytest.raises(AmigaRecordError):
-        amiga.amiga_por_effect_from_dos(bytes(length))
+        amiga_por.amiga_por_effect_from_dos(bytes(length))
 
 
 @pytest.mark.parametrize("slot,index", [("AB", 1), ("1", 1), ("A", 0),
                                         ("A", 7), ("", 1)])
 def test_a_save_file_name_outside_the_scheme_is_refused(slot, index):
     with pytest.raises(AmigaRecordError):
-        amiga.por_filename(slot, index)
+        amiga_por.por_filename(slot, index)
 
 
 def c64_parties():
@@ -1696,21 +1705,21 @@ def test_a_c64_party_converts_to_a_coherent_amiga_record():
     """
     seen = 0
     for char in c64_parties():
-        record, itm, spc, rep = amiga.write_por(char)
+        record, itm, spc, rep = amiga_por.write_por(char)
         assert len(record) == AMIGA_POR_RECORD_SIZE, char.get("name")
         assert rep.unaccounted == [], char.get("name")
-        assert len(itm) % amiga.AMIGA_POR_ITEM_SIZE == 0
-        assert len(spc) % amiga.AMIGA_POR_EFFECT_SIZE == 0
+        assert len(itm) % amiga_por.AMIGA_POR_ITEM_SIZE == 0
+        assert len(spc) % amiga_port.AMIGA_POR_EFFECT_SIZE == 0
 
         back = AmigaPorCharacter.from_bytes(record)
         assert back.name == str(char.get("name"))[:AMIGA_POR_NAME_SIZE]
-        assert back.get("item_count") == len(itm) // amiga.AMIGA_POR_ITEM_SIZE
+        assert back.get("item_count") == len(itm) // amiga_por.AMIGA_POR_ITEM_SIZE
 
         carried = 0
-        for n in range(len(itm) // amiga.AMIGA_POR_ITEM_SIZE):
-            node = amiga.AmigaPorItem.from_bytes(
-                itm[n * amiga.AMIGA_POR_ITEM_SIZE:
-                    (n + 1) * amiga.AMIGA_POR_ITEM_SIZE])
+        for n in range(len(itm) // amiga_por.AMIGA_POR_ITEM_SIZE):
+            node = amiga_por.AmigaPorItem.from_bytes(
+                itm[n * amiga_por.AMIGA_POR_ITEM_SIZE:
+                    (n + 1) * amiga_por.AMIGA_POR_ITEM_SIZE])
             carried += node.get("weight") * max(1, node.get("quantity"))
         assert back.get("encumbrance") == sum(back.money.values()) + carried, \
             (char.get("name"), back.get("encumbrance"))
@@ -1727,15 +1736,15 @@ def test_a_c64_name_too_long_for_the_amiga_field_is_not_silently_cut():
     the way in.  Written here so the writer's behaviour is pinned rather than
     assumed: fifteen is the most that can arrive, and it still terminates.
     """
-    record, _, _, _ = amiga.write_por(sample(name="ABCDEFGHIJKLMNO"))
+    record, _, _, _ = amiga_por.write_por(sample(name="ABCDEFGHIJKLMNO"))
     assert record[:AMIGA_POR_NAME_SIZE] == b"ABCDEFGHIJKLMNO\0"
     assert AmigaPorCharacter.from_bytes(record).name == "ABCDEFGHIJKLMNO"
 
 
 def test_the_save_file_names_are_the_ones_on_the_shipped_disk():
-    assert amiga.por_filename("A", 1) == "CHRDATA1.sav"
-    assert amiga.por_filename("a", 6, ".itm") == "CHRDATA6.itm"
-    assert amiga.por_filename("B", 3, ".spc") == "CHRDATB3.spc"
+    assert amiga_por.por_filename("A", 1) == "CHRDATA1.sav"
+    assert amiga_por.por_filename("a", 6, ".itm") == "CHRDATA6.itm"
+    assert amiga_por.por_filename("B", 3, ".spc") == "CHRDATB3.spc"
 
 
 # ---------------------------------------------------------------------------
@@ -1754,9 +1763,9 @@ def synthetic_savegame(slot: str = "A") -> bytes:
     `CHRDAT<slot><n>` as eight plain bytes. `docs/124-amiga-port.md` §1.9a has
     the region map the rest of the file would follow.
     """
-    save = bytearray(amiga.POR_SAVEGAME_SIZE)
-    for n in range(amiga.POR_PARTY_MAX):
-        at = amiga.POR_CHARACTER_TABLE + n * amiga.POR_CHARACTER_TABLE_STRIDE
+    save = bytearray(amiga_por.POR_SAVEGAME_SIZE)
+    for n in range(amiga_por.POR_PARTY_MAX):
+        at = amiga_por.POR_CHARACTER_TABLE + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
         save[at:at + 8] = f"CHRDAT{slot.upper()}{n + 1}".encode("ascii")
     return bytes(save)
 
@@ -1767,7 +1776,7 @@ def save_disk_with(slots: str = "A"):
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
-    disk.write_file(amiga.POR_SLOT_LIST, amiga.slot_list_bytes(list(slots)))
+    disk.write_file(amiga_por.POR_SLOT_LIST, amiga_por.slot_list_bytes(list(slots)))
     return disk
 
 
@@ -1778,19 +1787,19 @@ def test_a_slot_written_onto_a_disk_is_offered_by_the_picker():
     the thing a player would see rather than that a function was called.
     """
     disk = save_disk_with("A")
-    written = amiga.write_por_slot(disk, "B", [sample()],
+    written = amiga_por.write_por_slot(disk, "B", [sample()],
                                    savegame=synthetic_savegame())
-    assert amiga.read_slot_list(disk) == ["A", "B"]
-    assert disk.read_file(amiga.POR_SLOT_LIST) == b"AB        "
+    assert amiga_por.read_slot_list(disk) == ["A", "B"]
+    assert disk.read_file(amiga_por.POR_SLOT_LIST) == b"AB        "
     assert "/save/CHRDATB1.sav" in written
-    assert amiga.POR_SLOT_LIST in written
+    assert amiga_por.POR_SLOT_LIST in written
     assert disk.verify() == []
 
 
 def test_the_slot_list_is_ten_bytes_and_space_padded():
     """`"A         "` is what the shipped disk holds; ten bytes, not one."""
-    assert amiga.slot_list_bytes(["A"]) == b"A         "
-    assert len(amiga.slot_list_bytes(list("ABCDEFGHIJ"))) == 10
+    assert amiga_por.slot_list_bytes(["A"]) == b"A         "
+    assert len(amiga_por.slot_list_bytes(list("ABCDEFGHIJ"))) == 10
 
 
 def test_each_slot_letter_sits_in_its_own_byte_and_a_gap_stays_a_gap():
@@ -1803,9 +1812,9 @@ def test_each_slot_letter_sits_in_its_own_byte_and_a_gap_stays_a_gap():
     gap. The order the letters are handed over cannot matter, so `D` first
     gives the same bytes.
     """
-    assert amiga.slot_list_bytes(["A", "B", "D"]) == b"AB D      "
-    assert amiga.slot_list_bytes(["D", "B", "A"]) == b"AB D      "
-    assert amiga.slot_list_bytes(list("ABCDEFGHIJ")) == b"ABCDEFGHIJ"
+    assert amiga_por.slot_list_bytes(["A", "B", "D"]) == b"AB D      "
+    assert amiga_por.slot_list_bytes(["D", "B", "A"]) == b"AB D      "
+    assert amiga_por.slot_list_bytes(list("ABCDEFGHIJ")) == b"ABCDEFGHIJ"
 
 
 def test_a_new_slot_does_not_take_another_slots_byte():
@@ -1817,10 +1826,10 @@ def test_a_new_slot_does_not_take_another_slots_byte():
     than reasoned about.
     """
     disk = save_disk_with("A")
-    disk.write_file(amiga.POR_SLOT_LIST, b"AB D      ")
-    amiga.write_por_slot(disk, "F", [sample()],
+    disk.write_file(amiga_por.POR_SLOT_LIST, b"AB D      ")
+    amiga_por.write_por_slot(disk, "F", [sample()],
                          savegame=synthetic_savegame())
-    assert disk.read_file(amiga.POR_SLOT_LIST) == b"AB D F    "
+    assert disk.read_file(amiga_por.POR_SLOT_LIST) == b"AB D F    "
 
 
 def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
@@ -1833,7 +1842,7 @@ def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
     disk = save_disk_with("A")
     before = disk.to_bytes()
     with pytest.raises(AmigaRecordError):
-        amiga.write_por_slot(disk, "K", [sample()],
+        amiga_por.write_por_slot(disk, "K", [sample()],
                              savegame=synthetic_savegame())
     assert disk.to_bytes() == before
 
@@ -1843,7 +1852,7 @@ def test_a_slot_with_no_saved_game_is_refused():
     disk = save_disk_with("A")
     before = disk.to_bytes()
     with pytest.raises(AmigaRecordError):
-        amiga.write_por_slot(disk, "B", [sample()])
+        amiga_por.write_por_slot(disk, "B", [sample()])
     assert disk.to_bytes() == before
 
 
@@ -1855,28 +1864,28 @@ def test_a_saved_game_moved_to_another_slot_is_retargeted():
     without this loads the party it came from.
     """
     disk = save_disk_with("A")
-    amiga.write_por_slot(disk, "B", [sample()],
+    amiga_por.write_por_slot(disk, "B", [sample()],
                          savegame=synthetic_savegame("A"))
     save = disk.read_file("/save/savgamB.dat")
-    for n in range(amiga.POR_PARTY_MAX):
-        at = amiga.POR_CHARACTER_TABLE + n * amiga.POR_CHARACTER_TABLE_STRIDE
+    for n in range(amiga_por.POR_PARTY_MAX):
+        at = amiga_por.POR_CHARACTER_TABLE + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
         assert save[at:at + 8] == f"CHRDATB{n + 1}".encode()
 
 
 def test_a_saved_game_that_is_not_one_is_refused_by_name():
     with pytest.raises(AmigaRecordError):
-        amiga.retarget_savegame(bytes(amiga.POR_SAVEGAME_SIZE), "B")
+        amiga_por.retarget_savegame(bytes(amiga_por.POR_SAVEGAME_SIZE), "B")
     with pytest.raises(AmigaRecordError):
-        amiga.retarget_savegame(bytes(13137), "B")
+        amiga_por.retarget_savegame(bytes(13137), "B")
 
 
 def test_a_shorter_party_does_not_leave_the_old_ones_files_behind():
     """Six characters then four must not leave slots five and six loadable."""
     disk = save_disk_with("A")
-    amiga.write_por_slot(disk, "B", [sample()] * 6,
+    amiga_por.write_por_slot(disk, "B", [sample()] * 6,
                          savegame=synthetic_savegame())
     assert disk.lookup("/save/CHRDATB6.sav")
-    amiga.write_por_slot(disk, "B", [sample()] * 4,
+    amiga_por.write_por_slot(disk, "B", [sample()] * 4,
                          savegame=synthetic_savegame())
     for n in (5, 6):
         with pytest.raises(Exception):
@@ -1891,7 +1900,7 @@ def test_a_disk_with_no_slot_list_lists_nothing():
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
-    assert amiga.read_slot_list(disk) == []
+    assert amiga_por.read_slot_list(disk) == []
 
 
 def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
@@ -1902,25 +1911,25 @@ def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
     what lets the next write put all three in their proper bytes.
     """
     disk = save_disk_with("A")
-    disk.write_file(amiga.POR_SLOT_LIST, b"ADB       ")
-    assert amiga.read_slot_list(disk) == ["A", "D", "B"]
-    disk.write_file(amiga.POR_SLOT_LIST, b"AB D      ")
-    assert amiga.read_slot_list(disk) == ["A", "B", "D"]
+    disk.write_file(amiga_por.POR_SLOT_LIST, b"ADB       ")
+    assert amiga_por.read_slot_list(disk) == ["A", "D", "B"]
+    disk.write_file(amiga_por.POR_SLOT_LIST, b"AB D      ")
+    assert amiga_por.read_slot_list(disk) == ["A", "B", "D"]
 
 
 @pytest.mark.parametrize("party", [[], [1] * 7])
 def test_a_party_that_is_not_one_to_six_is_refused(party):
     disk = save_disk_with("A")
     with pytest.raises(AmigaRecordError):
-        amiga.write_por_slot(disk, "B", [sample()] * len(party),
+        amiga_por.write_por_slot(disk, "B", [sample()] * len(party),
                              savegame=synthetic_savegame())
 
 
 def test_the_saved_game_file_name_is_the_shipped_one():
-    assert amiga.por_savegame_filename("A") == "savgamA.dat"
-    assert amiga.por_savegame_filename("b") == "savgamB.dat"
+    assert amiga_por.por_savegame_filename("A") == "savgamA.dat"
+    assert amiga_por.por_savegame_filename("b") == "savgamB.dat"
     with pytest.raises(AmigaRecordError):
-        amiga.por_savegame_filename("K")
+        amiga_por.por_savegame_filename("K")
 
 
 def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case():
@@ -1932,19 +1941,19 @@ def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case()
     nowhere, silently.
     """
     covered: set[int] = set()
-    for f in dos_layout.LAYOUT:
-        if amiga._por_special(f):
+    for f in dos_port.LAYOUT:
+        if amiga_por._por_special(f):
             continue
         at = amiga_por_offset(f.offset)
         assert at + f.size <= AMIGA_POR_RECORD_SIZE, f.name
         covered |= set(range(at, at + f.size))
-    special = set(range(amiga.AMIGA_POR_NAME_SIZE))
-    special |= set(range(amiga.AMIGA_POR_EXPERIENCE,
-                         amiga.AMIGA_POR_EXPERIENCE + 4))
-    special |= set(range(amiga.AMIGA_POR_FIELD_83_87_AT,
-                         amiga.AMIGA_POR_FIELD_83_87_AT
-                         + len(amiga.AMIGA_POR_FIELD_83_87)))
-    special |= {amiga.AMIGA_POR_PAD, amiga.AMIGA_POR_TAIL_PAD}
+    special = set(range(amiga_por.AMIGA_POR_NAME_SIZE))
+    special |= set(range(amiga_por.AMIGA_POR_EXPERIENCE,
+                         amiga_por.AMIGA_POR_EXPERIENCE + 4))
+    special |= set(range(amiga_por.AMIGA_POR_FIELD_83_87_AT,
+                         amiga_por.AMIGA_POR_FIELD_83_87_AT
+                         + len(amiga_por.AMIGA_POR_FIELD_83_87)))
+    special |= {amiga_por.AMIGA_POR_PAD, amiga_por.AMIGA_POR_TAIL_PAD}
     assert covered | special == set(range(AMIGA_POR_RECORD_SIZE))
 
 
@@ -1961,10 +1970,10 @@ def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
     # 48 blocks fits the six records and stops on the saved game.
     disk = AmigaDisk.blank("poolgame", blocks=48)
     disk.make_dir("save")
-    disk.write_file(amiga.POR_SLOT_LIST, amiga.slot_list_bytes(["A"]))
+    disk.write_file(amiga_por.POR_SLOT_LIST, amiga_por.slot_list_bytes(["A"]))
     before = disk.to_bytes()
     with pytest.raises(Exception):
-        amiga.write_por_slot(disk, "B", [sample()] * 6,
+        amiga_por.write_por_slot(disk, "B", [sample()] * 6,
                              savegame=synthetic_savegame())
     assert disk.to_bytes() == before
     assert disk.verify() == []
@@ -2014,10 +2023,10 @@ def curse_characters():
     out = []
     for path in _later_files():
         if path.suffix == ".guy":
-            out.append(amiga.read_amiga_guy(path))
+            out.append(amiga_later.read_amiga_guy(path))
         elif path.name.startswith("CurseA-savgam"):
-            out.extend(amiga.party_in_savegame(path.read_bytes(),
-                                               amiga.CURSE_DELTAS))
+            out.extend(amiga_later.party_in_savegame(path.read_bytes(),
+                                               amiga_port.CURSE_DELTAS))
     if not out:
         pytest.skip("no Amiga Curse records among the specimens")
     return out
@@ -2028,8 +2037,8 @@ def silver_blades_characters():
     out = []
     for path in _later_files():
         if path.name.startswith("Secret1-savgam"):
-            out.extend(amiga.party_in_savegame(path.read_bytes(),
-                                               amiga.SILVER_BLADES_DELTAS))
+            out.extend(amiga_later.party_in_savegame(path.read_bytes(),
+                                               amiga_port.SILVER_BLADES_DELTAS))
     if not out:
         pytest.skip("no Amiga Silver Blades records among the specimens")
     return out
@@ -2099,7 +2108,7 @@ def test_the_curse_shift_map_is_the_one_the_game_s_own_unpacker_writes():
     the routine copies them as one flat run and lands two of the three in the
     wrong bytes, which is the game's defect rather than this map's.
     """
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     rows = _unpacker_rows(shape, UNPACKERS)
     assert len(rows) > 200
     for dos_offset, amiga_offset in sorted(rows.items()):
@@ -2123,7 +2132,7 @@ def test_the_curse_monster_loader_misplaces_two_of_the_slot_arrays():
     characters all read `goldbox/spells.py`'s Curse table at `0x13A`, which
     only the indexed reading puts there.
     """
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     rows = _unpacker_rows(shape, UNPACKERS)
     for dos_offset in range(0x12D, 0x132):          # the cleric array
         assert rows[dos_offset] == shape.offset(dos_offset)
@@ -2141,7 +2150,7 @@ def test_the_silver_blades_shift_map_is_the_one_its_unpacker_writes():
     into 15 bytes of bitmask rather than copying, and which `shape.offset`
     refuses for that reason.
     """
-    shape = amiga.SILVER_BLADES_DELTAS
+    shape = amiga_port.SILVER_BLADES_DELTAS
     book = shape.dos_field("spellbook")
     rows = _unpacker_rows(shape, UNPACKERS)
     assert len(rows) > 150
@@ -2159,10 +2168,10 @@ def test_both_item_shift_maps_are_what_their_unpackers_write(key):
     Silver Blades' fourth pointer, so the same assertion covers both and the
     66-byte node is the 70-byte one without its last field.
     """
-    shape = amiga.AMIGA_DELTAS_BY_SIZE[
+    shape = amiga_port.AMIGA_DELTAS_BY_SIZE[
         428 if key == "curse-of-the-azure-bonds" else 340]
     rows = _unpacker_rows(shape, ITEM_UNPACKERS)
-    text = dos_layout.ITEM_FIELDS_BY_NAME["text"]
+    text = dos_port.ITEM_FIELDS_BY_NAME["text"]
     for dos_offset, amiga_offset in sorted(rows.items()):
         if dos_offset < text.offset + text.size:
             continue
@@ -2173,10 +2182,10 @@ def test_both_item_shift_maps_are_what_their_unpackers_write(key):
 
 def test_the_record_size_names_the_amiga_title():
     """Three sizes, three titles, and a fourth is refused rather than read."""
-    assert amiga.AMIGA_DELTAS_BY_SIZE[428] is amiga.CURSE_DELTAS
-    assert amiga.AMIGA_DELTAS_BY_SIZE[340] is amiga.SILVER_BLADES_DELTAS
+    assert amiga_port.AMIGA_DELTAS_BY_SIZE[428] is amiga_port.CURSE_DELTAS
+    assert amiga_port.AMIGA_DELTAS_BY_SIZE[340] is amiga_port.SILVER_BLADES_DELTAS
     with pytest.raises(AmigaRecordError):
-        amiga.AmigaCharacter.from_bytes(bytes(288))
+        amiga_later.AmigaCharacter.from_bytes(bytes(288))
 
 
 def test_every_curse_insertion_is_placed_to_the_byte():
@@ -2195,7 +2204,7 @@ def test_every_curse_insertion_is_placed_to_the_byte():
     * `sex` and `alignment`, which no character sheet could place, are at
       `0x11A` and `0x11C`.
     """
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     assert shape.unplaced == ()
     placed = {
         0x0F2: 0x0F2,        # the effect chain
@@ -2238,7 +2247,7 @@ def test_the_placed_field_83_87_reads_the_constant_dos_holds():
 
 def test_the_silver_blades_spellbook_has_no_one_to_one_offset():
     """It is 15 bytes of bitmask where DOS spends 117, so there is none."""
-    shape = amiga.SILVER_BLADES_DELTAS
+    shape = amiga_port.SILVER_BLADES_DELTAS
     assert shape.offset(0x070) == 0x070            # hp_max, just before it
     with pytest.raises(AmigaRecordError):
         shape.offset(0x071)
@@ -2258,11 +2267,11 @@ def test_every_curse_specimen_decodes_to_a_coherent_character():
     bits = {"cleric": 2, "fighter": 8, "mage": 1, "thief": 4, "paladin": 64,
             "ranger": 16, "druid": 32}
     for char in chars:
-        classes = dos_layout.CLASS_NUMBERS[char.get("char_class")].split("/")
+        classes = dos_port.CLASS_NUMBERS[char.get("char_class")].split("/")
         assert char.get("class_bits") == sum(bits[c] for c in classes)
         levels = char.get("class_levels")
         slots = {i for i, v in enumerate(levels) if v}
-        assert slots == {dos_layout.CLASS_NUMBERS.index(c) for c in classes}
+        assert slots == {dos_port.CLASS_NUMBERS.index(c) for c in classes}
         assert all(3 <= a <= 25 for a in char.abilities)
         assert char.experience == 25000 // len(classes)
         assert 1 <= char.get("level") <= max(levels)
@@ -2278,7 +2287,7 @@ def test_the_curse_pregens_carry_the_racial_effects_their_race_names():
     expected = {"elf": 107, "half-elf": 124, "dwarf": 97, "gnome": 97}
     seen = 0
     for char in curse_characters():
-        race = dos_layout.RACE_NUMBERS[char.get("race")]
+        race = dos_port.RACE_NUMBERS[char.get("race")]
         if race not in expected or not char.effects:
             continue
         assert expected[race] in {node[0] for node in char.effects}, char.name
@@ -2314,7 +2323,7 @@ def test_the_item_node_reads_the_fields_the_constructor_writes():
     `0x3E` look like `charges`; the constructor says both are padding, and a
     Chain Mail with 47 charges was never a plausible reading.
     """
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     assert shape.item_offset(0x03C) == 0x03F        # charges
     assert shape.item_offset(0x02F) == 0x030        # name1, past the pad
     items = [i for c in curse_characters() for i in c.items]
@@ -2336,13 +2345,13 @@ def test_the_silver_blades_item_node_is_seventy_bytes():
     `0x42` that Curse's 66-byte node has no room for.  So the two nodes are
     the same layout for `0x00`-`0x41` and Silver Blades has one more field.
     """
-    ssb, curse = amiga.SILVER_BLADES_DELTAS, amiga.CURSE_DELTAS
+    ssb, curse = amiga_port.SILVER_BLADES_DELTAS, amiga_port.CURSE_DELTAS
     assert ssb.item_size == 70 and curse.item_size == 66
     assert ssb.item_size - curse.item_size == 4
-    assert amiga.AMIGA_SSB_SCROLL_CHAIN == 0x042
-    for dos_offset in range(0x02A, dos_layout.ITEM_SIZE):
+    assert amiga_port.AMIGA_SSB_SCROLL_CHAIN == 0x042
+    for dos_offset in range(0x02A, dos_port.ITEM_SIZE):
         assert ssb.item_offset(dos_offset) == curse.item_offset(dos_offset)
-    assert curse.item_offset(dos_layout.ITEM_SIZE - 1) + 1 == curse.item_size
+    assert curse.item_offset(dos_port.ITEM_SIZE - 1) + 1 == curse.item_size
 
 
 def test_curse_encumbrance_is_money_plus_the_weight_of_what_is_carried():
@@ -2372,9 +2381,9 @@ def test_the_curse_shift_map_agrees_with_dos_on_every_shared_constant():
     if not dos:
         pytest.skip("needs the DOS Curse party; set $FR_ARCHIVES")
     chars = curse_characters()
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     checked = 0
-    for f in dos_layout.layout_for(shape.dos):
+    for f in dos_port.layout_for(shape.dos):
         if f.name in ("name_length", "name_text"):
             continue
         try:
@@ -2386,7 +2395,7 @@ def test_the_curse_shift_map_agrees_with_dos_on_every_shared_constant():
         if len(want) != 1 or len(got) != 1:
             continue
         one = want.pop()
-        if f.kind in (dos_layout.Kind.U16LE, dos_layout.Kind.UINT_LE):
+        if f.kind in (dos_port.Kind.U16LE, dos_port.Kind.UINT_LE):
             one = one[::-1]
         assert got.pop() == one, f.name
         checked += 1
@@ -2413,8 +2422,8 @@ def test_every_silver_blades_field_decodes_to_what_its_dos_twin_holds():
                ("pick_pockets", "open_locks", "find_traps", "move_silently",
                 "hide_in_shadows", "hear_noise", "climb_walls",
                 "read_languages")}
-    shape = amiga.SILVER_BLADES_DELTAS
-    fields = [f for f in dos_layout.layout_for(shape.dos)
+    shape = amiga_port.SILVER_BLADES_DELTAS
+    fields = [f for f in dos_port.layout_for(shape.dos)
               if f.name not in ("name_length", "name_text", "spellbook")]
     compared = differing = 0
     chars = silver_blades_characters()
@@ -2424,11 +2433,11 @@ def test_every_silver_blades_field_decodes_to_what_its_dos_twin_holds():
         assert twin is not None, char.name
         for f in fields:
             want = twin[f.offset:f.offset + f.size]
-            if f.kind in (dos_layout.Kind.U16LE, dos_layout.Kind.UINT_LE):
+            if f.kind in (dos_port.Kind.U16LE, dos_port.Kind.UINT_LE):
                 want = int.from_bytes(want, "little")
-            elif f.kind is dos_layout.Kind.I8:
+            elif f.kind is dos_port.Kind.I8:
                 want = int.from_bytes(want, "little", signed=True)
-            elif f.kind is dos_layout.Kind.U8:
+            elif f.kind is dos_port.Kind.U8:
                 want = want[0]
             got = char.get(f.name)
             compared += 1
@@ -2453,11 +2462,11 @@ def test_the_silver_blades_spellbook_is_a_bitmask_lsb_first():
            for r in _dos_records("SECRET", 439).values()}
     if not dos:
         pytest.skip("needs the DOS Silver Blades party; set $FR_ARCHIVES")
-    book = amiga.SILVER_BLADES_DELTAS.dos_field("spellbook")
+    book = amiga_port.SILVER_BLADES_DELTAS.dos_field("spellbook")
     total = wrong_way = 0
     for char in silver_blades_characters():
         twin = dos[char.name][book.offset:book.offset + book.size]
-        want = [i + dos_layout.SPELLBOOK_FIRST_ID
+        want = [i + dos_port.SPELLBOOK_FIRST_ID
                 for i, v in enumerate(twin) if v]
         assert char.spellbook == want, char.name
         mask = char.raw[book.offset:book.offset + 15]
@@ -2476,7 +2485,7 @@ def test_the_curse_spellbook_is_still_one_byte_a_spell():
     is being read the right way: the cleric holds 1-8, 22-28 and 37-44, and
     every magic-user holds 10, 11, 12, 15, 18 and 21.
     """
-    assert amiga.CURSE_DELTAS.spellbook_bytes is None
+    assert amiga_port.CURSE_DELTAS.spellbook_bytes is None
     books = {c.name: c.spellbook for c in curse_characters()}
     assert books["KAROLYN"] == ([1, 2, 3, 4, 5, 6, 7, 8]
                                 + [22, 23, 24, 25, 26, 27, 28]
@@ -2496,11 +2505,11 @@ def test_the_record_signature_finds_the_party_and_nothing_else():
         if not path.name.endswith((".dat", ".sav")):
             continue
         data = path.read_bytes()
-        shape = (amiga.CURSE_DELTAS if path.name.startswith("CurseA")
-                 else amiga.SILVER_BLADES_DELTAS)
+        shape = (amiga_port.CURSE_DELTAS if path.name.startswith("CurseA")
+                 else amiga_port.SILVER_BLADES_DELTAS)
         hits = [at for at in range(len(data) - shape.record_size + 1)
-                if amiga.looks_like_amiga_record(data, at, shape)]
-        assert len(hits) == len(amiga.party_in_savegame(data, shape))
+                if amiga_later.looks_like_amiga_record(data, at, shape)]
+        assert len(hits) == len(amiga_later.party_in_savegame(data, shape))
         assert len(hits) in (4, 6)
 
 
@@ -2538,8 +2547,8 @@ def test_the_curse_magic_user_slots_are_the_game_s_own_table():
     non-casters hold five zeros.  At `0x139` or `0x13B` none of them would.
     """
     from goldbox.spells import _CLERIC_CURSE, _MAGIC_USER_CURSE
-    mage = dos_layout.CLASS_NUMBERS.index("mage")
-    cleric = dos_layout.CLASS_NUMBERS.index("cleric")
+    mage = dos_port.CLASS_NUMBERS.index("mage")
+    cleric = dos_port.CLASS_NUMBERS.index("cleric")
     casters = 0
     for char in curse_characters():
         levels = char.get("class_levels")
@@ -2567,11 +2576,11 @@ def test_the_curse_size_byte_is_one_for_the_small_races():
     four Amiga specimens that are not carrying a custom icon.
     """
     small = {"dwarf", "gnome", "halfling"}
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     assert shape.offset(0x144) == 0x148
     assert shape.offset(0x145) == 0x149
     for char in curse_characters():
-        race = dos_layout.RACE_NUMBERS[char.get("race")]
+        race = dos_port.RACE_NUMBERS[char.get("race")]
         assert char.get("size") == (1 if race in small else 2), char.name
         assert char.get("icon_dimension") == 1
     stock = bytes((145, 162, 179, 196, 230, 247))
@@ -2693,7 +2702,7 @@ def test_every_later_specimen_reads_into_the_neutral_record():
     from goldbox import neutral
     seen = 0
     for char in _later_parties():
-        out = amiga.to_neutral(char)
+        out = amiga_por.to_neutral(char)
         assert out.port == "Amiga"
         assert out.get("name") == char.name
         assert out.get("status") in neutral.STATUS_NAMES
@@ -2715,10 +2724,10 @@ def test_every_declared_field_of_a_later_title_has_a_disposition():
     forbids.  Both directions: a name the table does not declare fails too.
     """
     from goldbox import neutral
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
-        declared = [f.name for f in dos_layout.layout_for(shape.dos)]
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        declared = [f.name for f in dos_port.layout_for(shape.dos)]
         unaccounted, unknown = neutral.undeclared(
-            declared, amiga.later_field_disposition(shape))
+            declared, amiga_later.later_field_disposition(shape))
         assert not unaccounted, (shape.key, sorted(unaccounted))
         assert not unknown, (shape.key, sorted(unknown))
 
@@ -2741,7 +2750,7 @@ def _later_record(shape, class_bits: int, slot: int | None, level: int = 8):
     raw[shape.offset(shape.dos_field("class_bits").offset)] = class_bits
     if slot is not None:
         raw[shape.offset(shape.dos_field("class_levels").offset) + slot] = level
-    return amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
 
 
 def test_a_later_amiga_read_sets_the_class_mask_at_all():
@@ -2753,11 +2762,11 @@ def test_a_later_amiga_read_sets_the_class_mask_at_all():
     character converted to the C64 got the blank record's `0` for its class
     and nothing said so (#292).
     """
-    from goldbox import dos
-    assert "class_bits" not in [n for n, _ in dos.DIRECT]
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
+    from goldbox import dos_codec
+    assert "class_bits" not in [n for n, _ in dos_codec.DIRECT]
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
         char = _later_record(shape, 0x08, slot=5)     # a plain fighter
-        out = amiga.to_neutral_later(char)
+        out = amiga_later.to_neutral_later(char)
         assert "class_bits" in out.fields, shape.key
         assert out.get("class_bits") == 0x08, shape.key
 
@@ -2769,23 +2778,23 @@ def test_a_later_amiga_ranger_gets_the_shared_orders_own_bit():
     Amiga stores the field the same way: bit 6 for both classes, and the
     level array is the only thing that says which.
     """
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
         ranger = _later_record(shape, 0x40, RANGER_SLOT)
         paladin = _later_record(shape, 0x40, PALADIN_SLOT)
-        assert amiga.to_neutral_later(ranger).get("class_bits") == 0x80
-        assert amiga.to_neutral_later(paladin).get("class_bits") == 0x40
+        assert amiga_later.to_neutral_later(ranger).get("class_bits") == 0x80
+        assert amiga_later.to_neutral_later(paladin).get("class_bits") == 0x40
 
 
 def test_only_the_shared_bit_of_a_later_amiga_mask_is_reread():
     """Every other bit is the byte the game wrote, and a record with bit 6
     and neither level slot filled keeps bit 6 -- there is nothing to read it
     as. A dual-classed fighter/ranger keeps its fighter bit alongside."""
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
-        assert amiga.to_neutral_later(
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        assert amiga_later.to_neutral_later(
             _later_record(shape, 0x40, None)).get("class_bits") == 0x40
-        assert amiga.to_neutral_later(
+        assert amiga_later.to_neutral_later(
             _later_record(shape, 0x48, RANGER_SLOT)).get("class_bits") == 0x88
-        assert amiga.to_neutral_later(
+        assert amiga_later.to_neutral_later(
             _later_record(shape, 0x01, 0)).get("class_bits") == 0x01
 
 
@@ -2799,16 +2808,16 @@ def test_every_later_specimen_sets_a_class_mask_its_levels_agree_with():
     three ports and the C64 record SSI wrote for PAINE reads `$80`, which is
     what says the reread is right rather than merely consistent.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
     seen = moved = 0
     for char in _later_parties():
         stored = char.get("class_bits")
         implied = 0
         for slot, value in enumerate(char.get("class_levels")):
             if value:
-                implied |= dos.CLASS_BIT_FOR_SLOT.get(slot, 0)
+                implied |= dos_codec.CLASS_BIT_FOR_SLOT.get(slot, 0)
         assert stored == implied, (char.name, hex(stored), hex(implied))
-        got = amiga.to_neutral(char).get("class_bits")
+        got = amiga_por.to_neutral(char).get("class_bits")
         levels = char.get("class_levels")
         if levels[RANGER_SLOT]:
             assert got == (stored & ~0x40) | 0x80, char.name
@@ -2833,7 +2842,7 @@ def _ability_record(shape, name: str, first: int, second: int):
     at = shape.offset(shape.dos_field(name).offset)
     raw[at] = first
     raw[at + 1] = second
-    return amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
 
 
 def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
@@ -2846,9 +2855,9 @@ def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
     names the way the DOS reader's own loop does.
     """
     from goldbox import c64_codec
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
         char = _ability_record(shape, "strength", 0x12, 0x12)
-        out = amiga.to_neutral_later(char)
+        out = amiga_later.to_neutral_later(char)
         assert isinstance(out.get("strength"), int), shape.key
         assert out.get("strength") == 0x12, shape.key
         c64_codec.write(out)          # raised ValueError before the fix
@@ -2870,14 +2879,14 @@ def test_a_later_amiga_ability_pair_splits_permanent_and_in_force_byte():
     what this test asserted before.  Exceptional strength keeps the old
     order, because its percentile pair runs the other way on both ports.
     """
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
         char = _ability_record(shape, "dexterity", 0x0A, 0x0B)
-        out = amiga.to_neutral_later(char)
+        out = amiga_later.to_neutral_later(char)
         assert out.get("dexterity") == 0x0B, shape.key
         assert out.get("abilities_second")["dexterity"] == 0x0A, shape.key
 
         pct = _ability_record(shape, "exceptional_strength", 0x64, 0x00)
-        out = amiga.to_neutral_later(pct)
+        out = amiga_later.to_neutral_later(pct)
         assert out.get("exceptional_strength") == 0x64, shape.key
         assert out.get("abilities_second")["exceptional_strength"] == 0x00, \
             shape.key
@@ -2895,7 +2904,7 @@ def _control_byte_record(shape, control: int):
     f = shape.dos_field("field_83_87")
     index = 1 if f.size == 5 else 0
     raw[shape.offset(f.offset) + index] = control
-    return amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
+    return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
 
 
 def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
@@ -2908,14 +2917,14 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
     `goldbox.dos.to_neutral` computes (#303), and the four-byte alignment is
     the one nothing had exercised before this test.
     """
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
         companion = _control_byte_record(shape, 0x93)   # bit 7 + morale 0x13
-        out = amiga.to_neutral_later(companion)
+        out = amiga_later.to_neutral_later(companion)
         assert out.get("npc") is True, shape.key
         assert out.get("npc_control_byte") == 0x93, shape.key
 
         player = _control_byte_record(shape, 0x00)
-        out = amiga.to_neutral_later(player)
+        out = amiga_later.to_neutral_later(player)
         assert out.get("npc") is False, shape.key
         assert "npc_control_byte" not in out.fields, shape.key
 
@@ -2925,12 +2934,12 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
         # tests the bit (`bool(control & 0x80)`), so this pins that rather
         # than finding a live bug.
         edge = _control_byte_record(shape, 0x80)
-        out = amiga.to_neutral_later(edge)
+        out = amiga_later.to_neutral_later(edge)
         assert out.get("npc") is True, shape.key
         assert out.get("npc_control_byte") == 0x80, shape.key
 
         full = _control_byte_record(shape, 0xFF)
-        out = amiga.to_neutral_later(full)
+        out = amiga_later.to_neutral_later(full)
         assert out.get("npc") is True, shape.key
         assert out.get("npc_control_byte") == 0xFF, shape.key
 
@@ -2956,7 +2965,7 @@ def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
     from goldbox import c64_codec
     seen = 0
     for char in _later_parties():
-        out = amiga.to_neutral(char)
+        out = amiga_por.to_neutral(char)
         for name in ("strength", "intelligence", "wisdom", "dexterity",
                      "constitution", "charisma"):
             score = out.get(name)
@@ -2989,9 +2998,9 @@ def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
     from goldbox import dos_codec as _dos
     monkeypatch.setattr(_dos, "DIRECT", _dos.DIRECT + (("spellbook",
                                                          "spellbook"),))
-    char = _ability_record(amiga.CURSE_DELTAS, "strength", 0x12, 0x12)
+    char = _ability_record(amiga_port.CURSE_DELTAS, "strength", 0x12, 0x12)
     with pytest.raises(AmigaRecordError, match="spellbook"):
-        amiga.to_neutral_later(char)
+        amiga_later.to_neutral_later(char)
 
 
 def test_no_drop_line_of_a_later_read_carries_developer_detail():
@@ -3004,12 +3013,12 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
     import re
     hex_offset = re.compile(r"0[xX][0-9A-Fa-f]+|\$[0-9A-Fa-f]+")
     bare_issue = re.compile(r"#\d+")
-    for name, text in amiga.LATER_DROPPED_PLAYER_TEXT.items():
+    for name, text in amiga_later.LATER_DROPPED_PLAYER_TEXT.items():
         assert not hex_offset.search(text), (name, text)
         assert not bare_issue.search(text), (name, text)
     seen = 0
     for char in _later_parties():
-        out = amiga.to_neutral(char)
+        out = amiga_por.to_neutral(char)
         assert out.dropped, char.name
         for line in out.dropped + out.warnings:
             assert not hex_offset.search(line), (char.name, line)
@@ -3028,11 +3037,11 @@ def test_no_drop_line_of_a_later_read_says_a_field_was_carried():
     for developer detail: the table itself, and the lines a real read
     composes from it.
     """
-    for name, text in amiga.LATER_DROPPED_PLAYER_TEXT.items():
+    for name, text in amiga_later.LATER_DROPPED_PLAYER_TEXT.items():
         assert "carr" not in text.lower(), (name, text)
     seen = 0
     for char in _later_parties():
-        out = amiga.to_neutral(char)
+        out = amiga_por.to_neutral(char)
         for line in out.dropped:
             assert "carr" not in line.lower(), (char.name, line)
         seen += 1
@@ -3053,7 +3062,7 @@ def test_the_spell_slot_arrays_are_read_at_the_amiga_width():
         assert set(char.spell_slots) == {"cleric", "druid", "magic-user",
                                          "unattributed"}
         assert all(len(v) == 7 for v in char.spell_slots.values())
-        assert "unattributed" not in amiga.to_neutral(char).get(
+        assert "unattributed" not in amiga_por.to_neutral(char).get(
             "spells_castable")
 
 
@@ -3104,8 +3113,8 @@ def test_taking_the_items_away_clears_the_head_the_loader_tests():
     from dataclasses import replace
     bare = replace(char, items=(), effects=())
     block = bare.block_bytes()
-    assert len(block) == amiga.CURSE_DELTAS.record_size
-    stripped = amiga.AmigaCharacter.from_bytes(block, amiga.CURSE_DELTAS)
+    assert len(block) == amiga_port.CURSE_DELTAS.record_size
+    stripped = amiga_later.AmigaCharacter.from_bytes(block, amiga_port.CURSE_DELTAS)
     assert stripped.item_chain == 0
     assert stripped.effect_chain == 0
     assert stripped.get("item_count") == 0

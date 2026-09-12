@@ -19,13 +19,13 @@ import pytest
 
 from automap import actions, c64, fasttravel
 from automap.target import MemoryTarget
-from goldbox import games
+from goldbox import c64_port
 
 WORLD = 1                               # the mode flag: DUNGEON is resident
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SILVER = games.SECRET_OF_THE_SILVER_BLADES
-POOL = games.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
 
 
 class Machine(MemoryTarget):
@@ -81,7 +81,7 @@ def test_three_titles_have_addresses_and_three_do_not():
     assert set(fasttravel.ADDRESSES) == {
         "pool-of-radiance", "curse-of-the-azure-bonds",
         "secret-of-the-silver-blades"}
-    for game in games.GAMES:
+    for game in c64_port.GAMES:
         assert fasttravel.supported(game) == (game.key in fasttravel.ADDRESSES)
 
 
@@ -281,7 +281,7 @@ def test_a_title_nobody_has_read_is_refused_rather_than_written_to():
     """Champions of Krynn has a mode flag nobody has found and a `NEWECL`
     nobody has located, so there is no tail to jump to. The refusal is the
     sentence every other action already gives for an unmeasured address."""
-    krynn = games.CHAMPIONS_OF_KRYNN
+    krynn = c64_port.CHAMPIONS_OF_KRYNN
     assert fasttravel.addresses_for(krynn) is None
     ft = actions.FastTravel(krynn)
     target = Machine({}, pc=0x10C2)
@@ -302,7 +302,7 @@ def test_the_dropdown_is_offered_nothing_for_a_title_with_no_addresses():
     is `#14`'s corruption with the two halves swapped.
     """
     assert actions.area_rows("Champions of Krynn") == ()
-    assert actions.area_rows(games.POOL_OF_RADIANCE.title)
+    assert actions.area_rows(c64_port.POOL_OF_RADIANCE.title)
 
 
 def test_the_way_back_is_looked_up_in_the_title_being_travelled_in():

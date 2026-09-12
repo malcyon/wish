@@ -36,7 +36,7 @@ import shutil
 
 import pytest
 
-from goldbox import c64_save, games
+from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from tests import gamedata
 from tools import pursecheck
@@ -100,7 +100,7 @@ def _copy(path, tmp_path) -> str:
 
 def _payload(path) -> bytes:
     disk = D64.open(str(path))
-    game = games.detect(disk)
+    game = c64_port.detect(disk)
     _addr, payload = split_load_address(disk.read_file(game.save_file))
     return bytes(payload)
 
@@ -226,7 +226,7 @@ def test_an_edit_moves_no_byte_outside_that_characters_save_slot(
     pursecheck.stage(base, out, who, dict(STAGED))
     before, after = _payload(base), _payload(out)
     assert len(before) == len(after)
-    game = games.detect(D64.open(out))
+    game = c64_port.detect(D64.open(out))
     page = c64_save.CONTAINERS[game.key].slot(slot)
     moved = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
     assert moved, "the edit wrote nothing at all"

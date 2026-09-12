@@ -26,7 +26,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tests import gamedata  # noqa: E402
 from tools import dosbox, dualclassdos, dualclassregain  # noqa: E402
 
@@ -168,7 +168,7 @@ def test_the_engine_leaves_the_old_class_slot_at_zero():
     Both fields went into the run holding the answer that would refute this,
     so a pass is the engine's doing and not the staging's.
     """
-    char = dos.read_character(_specimen() / "CHRDATJ1.SAV")
+    char = dos_codec.read_character(_specimen() / "CHRDATJ1.SAV")
     assert char.name.strip() == "MATHEW"
     assert list(char.raw("class_levels")) == [0, 0, 0, 0, 0, 6, 0, 0]
     assert list(char.raw("former_class_levels")) == [0, 0, 0, 5, 0, 0, 0, 0]
@@ -186,7 +186,7 @@ def test_the_single_classed_control_from_the_same_boot():
     former array, so `thac0_base` 41 against MATHEW's 44 is the regain and
     nothing else.
     """
-    char = dos.read_character(_specimen() / "CHRDATJ6.SAV")
+    char = dos_codec.read_character(_specimen() / "CHRDATJ6.SAV")
     assert char.name.strip() == "PHILIPPE"
     assert list(char.raw("class_levels")) == [0, 0, 0, 0, 0, 6, 0, 0]
     assert not any(char.raw("former_class_levels"))
@@ -198,7 +198,7 @@ def test_every_record_in_the_specimen_reproduces_from_the_rule():
     folder = _specimen()
     seen = 0
     for path in sorted(folder.glob("CHRDAT*.SAV")):
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         assert char.get("class_bits") == dualclassregain.predict_bits(char), \
             f"{path.name} does not reproduce"
         seen += 1

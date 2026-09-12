@@ -17,9 +17,9 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga, amiga_dax
-from goldbox.amiga import AmigaRecordError
+from goldbox import amiga_dax, amiga_por
 from goldbox.amiga_adf import AmigaDisk
+from goldbox.amiga_port import AmigaRecordError
 from tests import gamedata
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -66,7 +66,7 @@ def shipped() -> bytes:
             continue
         # The Curse save disk carries a `save/savgamA.dat` too, and it is
         # 15221 bytes where this title's is 13141.
-        if len(save) == amiga.POR_SAVEGAME_SIZE:
+        if len(save) == amiga_por.POR_SAVEGAME_SIZE:
             return save
     pytest.skip("no Amiga Pool of Radiance disk 1 here")
 
@@ -104,14 +104,14 @@ def _amiga_outdoor_specimen(name: str) -> bytes:
     return where.read_bytes()
 
 
-def _c64_state(name: str) -> amiga.PorSaveState:
-    from goldbox import games
+def _c64_state(name: str) -> amiga_por.PorSaveState:
+    from goldbox import c64_port
     from goldbox.d64 import load_payload
 
     disk = _c64_specimen(name)
     payload = load_payload(str(disk),
-                           games.by_key("pool-of-radiance").save_file)
-    return amiga.por_state_from_c64(payload, str(disk))
+                           c64_port.by_key("pool-of-radiance").save_file)
+    return amiga_por.por_state_from_c64(payload, str(disk))
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +148,9 @@ def test_the_shipped_saved_game_carries_its_own_areas_ecl_block(
     `ECL<n>.DAX`.  If this holds, the buffer this conversion stages is the
     buffer the engine would have staged.
     """
-    area = amiga.por_word(shipped, 0x49F2)
-    body = amiga_dax.block(ecl_dax, area, "ecl.dax")[amiga.POR_ECL_HEADER:]
-    start, end = amiga.POR_ECL_BUFFER
+    area = amiga_por.por_word(shipped, 0x49F2)
+    body = amiga_dax.block(ecl_dax, area, "ecl.dax")[amiga_por.POR_ECL_HEADER:]
+    start, end = amiga_por.POR_ECL_BUFFER
     assert shipped[start:start + len(body)] == body
     assert shipped[start + len(body):end] == bytes(end - start - len(body))
 
@@ -172,9 +172,9 @@ def test_a_c64_party_builds_a_saved_game_that_owes_nothing_to_anybody(
         ecl_dax, specimen):
     """13141 of 13141 bytes with a source, and none left to a template."""
     state = _c64_state(specimen)
-    save, report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
-    assert len(save) == amiga.POR_SAVEGAME_SIZE
-    assert len(report.sources) == amiga.POR_SAVEGAME_SIZE
+    save, report = amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
+    assert len(save) == amiga_por.POR_SAVEGAME_SIZE
+    assert len(report.sources) == amiga_por.POR_SAVEGAME_SIZE
     assert report.unwritten == []
 
 
@@ -183,13 +183,13 @@ def test_a_dos_party_builds_one_too(ecl_dax):
     from goldbox import dos_savegame
 
     savgam = (folder / "SAVGAMD.DAT").read_bytes()
-    state = amiga.por_state_from_dos(savgam, "SAVGAMD.DAT")
-    save, report = amiga.new_por_savegame(state, "D", 1, ecl_dax)
+    state = amiga_por.por_state_from_dos(savgam, "SAVGAMD.DAT")
+    save, report = amiga_por.new_por_savegame(state, "D", 1, ecl_dax)
     assert report.unwritten == []
     # The place is the DOS save's own, read two ways.
     x, y, facing = dos_savegame.position(savgam)
-    assert (save[amiga.POR_POS_X], save[amiga.POR_POS_Y]) == (x, y)
-    assert save[amiga.POR_POS_FACING] == facing * dos_savegame.FACING_SCALE
+    assert (save[amiga_por.POR_POS_X], save[amiga_por.POR_POS_Y]) == (x, y)
+    assert save[amiga_por.POR_POS_FACING] == facing * dos_savegame.FACING_SCALE
 
 
 def test_the_party_stands_where_the_source_save_says(ecl_dax):
@@ -197,16 +197,16 @@ def test_the_party_stands_where_the_source_save_says(ecl_dax):
     from goldbox import dos_savegame
 
     state = _c64_state("porunconscious1")
-    save, _report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
-    assert save[amiga.POR_POS_X] == state.x
-    assert save[amiga.POR_POS_Y] == state.y
-    assert save[amiga.POR_POS_FACING] == state.facing * 2
+    save, _report = amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
+    assert save[amiga_por.POR_POS_X] == state.x
+    assert save[amiga_por.POR_POS_Y] == state.y
+    assert save[amiga_por.POR_POS_FACING] == state.facing * 2
     for i, digit in enumerate(state.clock):
-        assert amiga.por_word(save, dos_savegame.CLOCK + i) == digit
-    assert amiga.por_word(save, dos_savegame.SCRIPT) == state.area
-    assert amiga.por_word(save, dos_savegame.AREA) == state.geo
-    assert save[amiga.POR_PARTY_SIZE_BYTE] == 6
-    assert amiga.por_word(save, dos_savegame.PARTY_SIZE) == 6
+        assert amiga_por.por_word(save, dos_savegame.CLOCK + i) == digit
+    assert amiga_por.por_word(save, dos_savegame.SCRIPT) == state.area
+    assert amiga_por.por_word(save, dos_savegame.AREA) == state.geo
+    assert save[amiga_por.POR_PARTY_SIZE_BYTE] == 6
+    assert amiga_por.por_word(save, dos_savegame.PARTY_SIZE) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +229,8 @@ def test_the_shipped_saved_game_round_trips_except_where_it_is_declared(
     bytes the step routine recomputes.  A new difference anywhere else fails
     this, which is the point: the mask is the declared list.
     """
-    state = amiga.por_state_from_amiga(shipped, "the shipped slot A")
-    built, report = amiga.new_por_savegame(state, "A", 6, ecl_dax,
+    state = amiga_por.por_state_from_amiga(shipped, "the shipped slot A")
+    built, report = amiga_por.new_por_savegame(state, "A", 6, ecl_dax,
                                            portraits=True)
     unexplained = []
     for i, (was, now) in enumerate(zip(shipped, built)):
@@ -250,17 +250,17 @@ def test_the_regions_a_player_would_notice_round_trip_byte_for_byte(
     about: a difference here is a party in the wrong place, and it should not
     be possible to hide one inside a wider "declared" list.
     """
-    state = amiga.por_state_from_amiga(shipped, "the shipped slot A")
-    built, _report = amiga.new_por_savegame(state, "A", 6, ecl_dax,
+    state = amiga_por.por_state_from_amiga(shipped, "the shipped slot A")
+    built, _report = amiga_por.new_por_savegame(state, "A", 6, ecl_dax,
                                             portraits=True)
-    start, end = amiga.POR_ECL_BUFFER
+    start, end = amiga_por.POR_ECL_BUFFER
     assert built[start:end] == shipped[start:end]
-    assert built[amiga.POR_POS_X:amiga.POR_POS_FACING + 1] == \
-        shipped[amiga.POR_POS_X:amiga.POR_POS_FACING + 1]
-    assert built[amiga.POR_VIEW_TYPE:amiga.POR_PARTY_SIZE_BYTE + 1] == \
-        shipped[amiga.POR_VIEW_TYPE:amiga.POR_PARTY_SIZE_BYTE + 1]
+    assert built[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1] == \
+        shipped[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1]
+    assert built[amiga_por.POR_VIEW_TYPE:amiga_por.POR_PARTY_SIZE_BYTE + 1] == \
+        shipped[amiga_por.POR_VIEW_TYPE:amiga_por.POR_PARTY_SIZE_BYTE + 1]
     for n in range(6):
-        at = amiga.POR_CHARACTER_TABLE + n * amiga.POR_CHARACTER_TABLE_STRIDE
+        at = amiga_por.POR_CHARACTER_TABLE + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
         assert built[at:at + 8] == shipped[at:at + 8]
 
 
@@ -268,7 +268,7 @@ def test_the_regions_a_player_would_notice_round_trip_byte_for_byte(
 # What it refuses
 # ---------------------------------------------------------------------------
 
-def _outdoor_dos_state() -> amiga.PorSaveState:
+def _outdoor_dos_state() -> amiga_por.PorSaveState:
     """A DOS saved game of a party on the west travel window, built here.
 
     Built rather than read off a specimen so this never skips: the values
@@ -287,7 +287,7 @@ def _outdoor_dos_state() -> amiga.PorSaveState:
     savgam[start] = 0x01
     savgam = bytes(savgam)
     assert dos_savegame.outdoors(savgam)
-    return amiga.por_state_from_dos(savgam)
+    return amiga_por.por_state_from_dos(savgam)
 
 
 def test_a_party_on_the_travel_grid_gets_the_bytes_the_engine_writes(ecl_dax):
@@ -305,16 +305,16 @@ def test_a_party_on_the_travel_grid_gets_the_bytes_the_engine_writes(ecl_dax):
 
     state = _outdoor_dos_state()
     assert state.outdoors is True
-    save, report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
+    save, report = amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
 
-    assert save[amiga.POR_VIEW_TYPE] == amiga.POR_VIEW_TYPE_OVERLAND == 3
-    assert save[amiga.POR_WALL_BYTE] == amiga.POR_WALL_OUTDOORS == 14
-    assert amiga.por_word(save, dos_savegame.INDOORS) == 0
-    assert amiga.por_word(save, dos_savegame.AREA) == 0
-    assert amiga.por_word(save, dos_savegame.SCRIPT) == 26
-    assert (amiga.por_word(save, dos_savegame.TRAVEL_X),
-            amiga.por_word(save, dos_savegame.TRAVEL_Y)) == (7, 29)
-    assert amiga.por_word(save, dos_savegame.DISK) == 7
+    assert save[amiga_por.POR_VIEW_TYPE] == amiga_por.POR_VIEW_TYPE_OVERLAND == 3
+    assert save[amiga_por.POR_WALL_BYTE] == amiga_por.POR_WALL_OUTDOORS == 14
+    assert amiga_por.por_word(save, dos_savegame.INDOORS) == 0
+    assert amiga_por.por_word(save, dos_savegame.AREA) == 0
+    assert amiga_por.por_word(save, dos_savegame.SCRIPT) == 26
+    assert (amiga_por.por_word(save, dos_savegame.TRAVEL_X),
+            amiga_por.por_word(save, dos_savegame.TRAVEL_Y)) == (7, 29)
+    assert amiga_por.por_word(save, dos_savegame.DISK) == 7
     assert report.unwritten == []
 
 
@@ -329,12 +329,12 @@ def test_an_indoor_party_still_gets_the_indoor_pair(ecl_dax):
 
     state = _c64_state("por-party-twin-pair")
     assert state.outdoors is False
-    save, _report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
-    assert save[amiga.POR_VIEW_TYPE] == amiga.POR_VIEW_TYPE_3D == 1
-    assert save[amiga.POR_WALL_BYTE] == 0
-    assert amiga.por_word(save, dos_savegame.INDOORS) == 1
-    assert amiga.por_word(save, dos_savegame.TRAVEL_X) == 0
-    assert amiga.por_word(save, dos_savegame.TRAVEL_Y) == 0
+    save, _report = amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
+    assert save[amiga_por.POR_VIEW_TYPE] == amiga_por.POR_VIEW_TYPE_3D == 1
+    assert save[amiga_por.POR_WALL_BYTE] == 0
+    assert amiga_por.por_word(save, dos_savegame.INDOORS) == 1
+    assert amiga_por.por_word(save, dos_savegame.TRAVEL_X) == 0
+    assert amiga_por.por_word(save, dos_savegame.TRAVEL_Y) == 0
 
 
 def test_the_engines_own_outdoor_saved_game_round_trips(ecl_dax):
@@ -346,11 +346,11 @@ def test_the_engines_own_outdoor_saved_game_round_trips(ecl_dax):
     (7, 29) in the file, area 26, six characters.
     """
     savgam = _amiga_outdoor_specimen("savgamB.dat")
-    state = amiga.por_state_from_amiga(savgam, "WISH-SPEC-por-amiga-outdoor B")
+    state = amiga_por.por_state_from_amiga(savgam, "WISH-SPEC-por-amiga-outdoor B")
     assert state.outdoors is True
     assert state.travel == (7, 29)
     assert state.area == 26
-    built, report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
+    built, report = amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
     unexplained = []
     for i, (was, now) in enumerate(zip(savgam, built)):
         if was == now:
@@ -359,33 +359,33 @@ def test_the_engines_own_outdoor_saved_game_round_trips(ecl_dax):
         if not why.startswith(DECLARED):
             unexplained.append((i, report.address(i), why))
     assert unexplained == []
-    start, end = amiga.POR_ECL_BUFFER
+    start, end = amiga_por.POR_ECL_BUFFER
     assert built[start:end] == savgam[start:end]
-    assert built[amiga.POR_POS_X:amiga.POR_POS_FACING + 1] == \
-        savgam[amiga.POR_POS_X:amiga.POR_POS_FACING + 1]
-    assert built[amiga.POR_VIEW_TYPE] == savgam[amiga.POR_VIEW_TYPE]
-    assert built[amiga.POR_WALL_BYTE] == savgam[amiga.POR_WALL_BYTE]
+    assert built[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1] == \
+        savgam[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1]
+    assert built[amiga_por.POR_VIEW_TYPE] == savgam[amiga_por.POR_VIEW_TYPE]
+    assert built[amiga_por.POR_WALL_BYTE] == savgam[amiga_por.POR_WALL_BYTE]
 
 
 def test_an_area_the_amiga_has_no_script_for_is_refused(ecl_dax):
     """`ecl.dax` holds 29 blocks and the C64 has 30; area 30 is the missing
     one, so a party standing there has no script to stage."""
     assert 30 not in amiga_dax.block_ids(ecl_dax)
-    state = amiga.PorSaveState(title="Pool of Radiance", area=30, geo=30,
+    state = amiga_por.PorSaveState(title="Pool of Radiance", area=30, geo=30,
                                x=1, y=1, facing=0,
                                clock=(0,) * 6, wallset=(0xFFFF,) * 3,
                                flags=(0,) * 217, scratch={},
                                outdoors=False, travel=(0, 0), set_out=True,
                                header={})
     with pytest.raises(AmigaRecordError):
-        amiga.new_por_savegame(state, "B", 6, ecl_dax)
+        amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
 
 
 def test_a_party_of_nobody_or_of_seven_is_refused(ecl_dax):
     state = _c64_state("por-party-twin-pair")
     for count in (0, 7):
         with pytest.raises(AmigaRecordError):
-            amiga.new_por_savegame(state, "B", count, ecl_dax)
+            amiga_por.new_por_savegame(state, "B", count, ecl_dax)
 
 
 # ---------------------------------------------------------------------------
@@ -401,10 +401,10 @@ def test_only_as_many_names_are_written_as_the_party_has(ecl_dax):
     writing something the engine does not.
     """
     state = _c64_state("por-party-twin-pair")
-    save, _report = amiga.new_por_savegame(state, "C", 2, ecl_dax)
-    assert save[amiga.POR_PARTY_SIZE_BYTE] == 2
-    for n in range(amiga.POR_NAME_SLOTS):
-        at = amiga.POR_CHARACTER_TABLE + n * amiga.POR_CHARACTER_TABLE_STRIDE
+    save, _report = amiga_por.new_por_savegame(state, "C", 2, ecl_dax)
+    assert save[amiga_por.POR_PARTY_SIZE_BYTE] == 2
+    for n in range(amiga_por.POR_NAME_SLOTS):
+        at = amiga_por.POR_CHARACTER_TABLE + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
         want = f"CHRDATC{n + 1}".encode("ascii") if n < 2 else bytes(8)
         assert save[at:at + 8] == want, n
 
@@ -419,17 +419,17 @@ def test_a_saved_game_naming_one_character_can_be_pointed_at_another_slot(
     knows how to point at another slot".
     """
     state = _c64_state("por-party-twin-pair")
-    save, _report = amiga.new_por_savegame(state, "B", 1, ecl_dax)
-    moved = amiga.retarget_savegame(save, "F")
-    at = amiga.POR_CHARACTER_TABLE
+    save, _report = amiga_por.new_por_savegame(state, "B", 1, ecl_dax)
+    moved = amiga_por.retarget_savegame(save, "F")
+    at = amiga_por.POR_CHARACTER_TABLE
     assert moved[at:at + 8] == b"CHRDATF1"
-    assert moved[at + amiga.POR_CHARACTER_TABLE_STRIDE:
-                 at + amiga.POR_CHARACTER_TABLE_STRIDE + 8] == bytes(8)
+    assert moved[at + amiga_por.POR_CHARACTER_TABLE_STRIDE:
+                 at + amiga_por.POR_CHARACTER_TABLE_STRIDE + 8] == bytes(8)
 
 
 def test_a_file_with_no_names_at_all_is_still_refused():
     with pytest.raises(AmigaRecordError):
-        amiga.retarget_savegame(bytes(amiga.POR_SAVEGAME_SIZE), "B")
+        amiga_por.retarget_savegame(bytes(amiga_por.POR_SAVEGAME_SIZE), "B")
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +447,7 @@ def test_the_saved_game_parser_reads_a_built_one_and_every_check_passes(
     from tools import amigasavegame
 
     state = _c64_state("porunconscious1")
-    save, _report = amiga.new_por_savegame(state, "B", 6, ecl_dax)
+    save, _report = amiga_por.new_por_savegame(state, "B", 6, ecl_dax)
     parsed = amigasavegame.parse(save, source="built")
     assert parsed.shape is amigasavegame.POOL_OF_RADIANCE
     assert parsed.count == 6

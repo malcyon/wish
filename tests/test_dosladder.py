@@ -169,7 +169,7 @@ RUNGS = [f"por-party-ladder-rung{n}" for n in range(9)] + [LADDER]
 
 def _ladder_records():
     """Every single-class record across every rung, as (specimen, path)."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     out = []
     for name in RUNGS:
@@ -177,7 +177,7 @@ def _ladder_records():
             continue
         where = gamedata.specimen(name)
         for path in sorted(where.glob("CHRDAT*.SAV")):
-            record = dos.read_character(path)
+            record = dos_codec.read_character(path)
             if len(record.class_levels) == 1:
                 out.append((name, path.name, record))
     return out

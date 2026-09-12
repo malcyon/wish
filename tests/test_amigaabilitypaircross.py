@@ -39,10 +39,10 @@ from test_amiga import (  # noqa: E402
     silver_blades_characters,
 )
 
-from goldbox import amiga  # noqa: E402
-from goldbox import dos as _dos
+from goldbox import amiga_later, amiga_port  # noqa: E402
+from goldbox import dos_codec as _dos
 
-SHAPES = (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS)
+SHAPES = (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS)
 SIX_SCORES = tuple(n for n in _dos.ABILITY_ORDER if n != "exceptional_strength")
 
 
@@ -74,7 +74,7 @@ def test_a_crossed_six_ability_pair_lands_in_force_at_the_second_byte():
     for shape in SHAPES:
         for name in SIX_SCORES:
             char = _ability_record(shape, name, 0x12, 0x09)
-            out = amiga.to_neutral_later(char)
+            out = amiga_later.to_neutral_later(char)
             assert out.get(name) == 0x09, (shape.key, name)
             assert out.get("abilities_second")[name] == 0x12, (shape.key, name)
             seen += 1
@@ -89,7 +89,7 @@ def test_a_crossed_exceptional_strength_lands_in_force_at_the_first_byte():
     """
     for shape in SHAPES:
         char = _ability_record(shape, "exceptional_strength", 0x64, 0x00)
-        out = amiga.to_neutral_later(char)
+        out = amiga_later.to_neutral_later(char)
         assert out.get("exceptional_strength") == 0x64, shape.key
         assert out.get("abilities_second")["exceptional_strength"] == 0x00, \
             shape.key
@@ -104,6 +104,6 @@ def test_an_agreeing_pair_converts_exactly_as_before():
     for shape in SHAPES:
         for name in _dos.ABILITY_ORDER:
             char = _ability_record(shape, name, 0x0F, 0x0F)
-            out = amiga.to_neutral_later(char)
+            out = amiga_later.to_neutral_later(char)
             assert out.get(name) == 0x0F, (shape.key, name)
             assert out.get("abilities_second")[name] == 0x0F, (shape.key, name)

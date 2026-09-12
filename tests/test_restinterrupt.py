@@ -63,10 +63,10 @@ def test_no_overlay_ever_stores_a_non_zero_interval():
     If one did not, a script's word would not be final and the census below
     would mean nothing. Swept over every distinct file of the eight sides.
     """
-    from goldbox import games
+    from goldbox import c64_port
     from tools import absrefsweep
 
-    game = next(g for g in games.GAMES if g.key == "pool-of-radiance")
+    game = next(g for g in c64_port.GAMES if g.key == "pool-of-radiance")
     _, hits = absrefsweep.sweep(_root(), game, R.INTERVAL, R.INTERVAL)
     code = [h for h in hits if not absrefsweep.is_art(h.file)]
     assert code, "no file names $6DD2 at all, so the sweep found nothing"

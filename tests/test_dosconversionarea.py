@@ -26,7 +26,7 @@ import pathlib
 
 import pytest
 
-from goldbox import dos
+from goldbox import dos_codec
 from goldbox import dos_savegame as sg
 from goldbox.savegame import SaveGame0
 
@@ -85,10 +85,10 @@ def _c64_in_the_training_hall() -> bytes:
     """
     save0 = bytearray(SaveGame0.from_prg(
         (FIXTURES / "party6_savedgame0.bin").read_bytes()).to_bytes())
-    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = TRAINING_HALL
-    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = HALL_GEO
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_WALLSET
-    save0[at:at + dos.CACHE_WALLSET_PIECES] = bytes((1, 5, 9))
+    save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] = TRAINING_HALL
+    save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] = HALL_GEO
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE + dos_codec.CACHE_WALLSET
+    save0[at:at + dos_codec.CACHE_WALLSET_PIECES] = bytes((1, 5, 9))
     return bytes(save0)
 
 
@@ -108,26 +108,26 @@ def test_a_conversion_is_not_refused_an_area_whose_script_loads_no_map():
     and is why this test moved rather than the code.
     """
     for area in (3, 5, 8, TRAINING_HALL, 19):
-        assert dos.retarget_reason(area) is not None, area
-        assert dos.conversion_reason(area) is None, area
+        assert dos_codec.retarget_reason(area) is not None, area
+        assert dos_codec.conversion_reason(area) is None, area
     # The area that left the list, asserted rather than merely absent.
-    assert dos.retarget_reason(30) is None
-    assert dos.conversion_reason(30) is None
+    assert dos_codec.retarget_reason(30) is None
+    assert dos_codec.conversion_reason(30) is None
 
 
 def test_a_conversion_still_refuses_an_area_with_no_row():
     """The one refusal the save cannot answer: there is no `ECL<n>.DAX` to
     lift a script out of and no disk number to write."""
-    assert "not an area" in dos.conversion_reason(31)
-    assert dos.conversion_reason(0) is None
+    assert "not an area" in dos_codec.conversion_reason(31)
+    assert dos_codec.conversion_reason(0) is None
 
 
 def test_the_retarget_rule_is_unchanged():
     """A retarget names an area the party has never been in, so the area table
     really is the only source there is and its six refusals stand."""
-    assert dos.UNSUPPORTED_LOCATION in dos.retarget_reason(TRAINING_HALL)
-    assert dos.UNSUPPORTED_LOCATION in dos.retarget_reason(3)
-    assert dos.retarget_reason(20) is None
+    assert dos_codec.UNSUPPORTED_LOCATION in dos_codec.retarget_reason(TRAINING_HALL)
+    assert dos_codec.UNSUPPORTED_LOCATION in dos_codec.retarget_reason(3)
+    assert dos_codec.retarget_reason(20) is None
 
 
 @needs_dos_game
@@ -140,7 +140,7 @@ def test_a_party_in_the_training_hall_converts_and_keeps_its_own_map(tmp_path):
     before the fix -- names `GEO0B`, and the game exits to DOS.
     """
     save0 = _c64_in_the_training_hall()
-    dos.write_dos_save(save0, None, None, tmp_path, "A",
+    dos_codec.write_dos_save(save0, None, None, tmp_path, "A",
                        game=_save_dir().parent)
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     assert sg.geo_block(savgam) == HALL_GEO

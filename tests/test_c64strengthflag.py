@@ -25,26 +25,26 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import c64_codec, dos, dos_layout
+from goldbox import c64_codec, dos_codec, dos_port
 from tests import gamedata
 
-STR_BONUS = dos_layout.FIELDS_BY_NAME["strength_bonus"]
-STRENGTH = dos_layout.FIELDS_BY_NAME["strength"]
-EXCEPTIONAL = dos_layout.FIELDS_BY_NAME["exceptional_strength"]
+STR_BONUS = dos_port.FIELDS_BY_NAME["strength_bonus"]
+STRENGTH = dos_port.FIELDS_BY_NAME["strength"]
+EXCEPTIONAL = dos_port.FIELDS_BY_NAME["exceptional_strength"]
 
 
 def _dos_record(strength: int = 18, percentile: int = 75,
-                flag: int = 1) -> dos.DosCharacter:
+                flag: int = 1) -> dos_codec.DosCharacter:
     """A Pool of Radiance DOS record that is zero but for its strength."""
-    raw = bytearray(dos_layout.RECORD_SIZE)
+    raw = bytearray(dos_port.RECORD_SIZE)
     raw[STRENGTH.offset] = strength
     raw[EXCEPTIONAL.offset] = percentile
     raw[STR_BONUS.offset] = flag
-    return dos.DosCharacter(bytes(raw))
+    return dos_codec.DosCharacter(bytes(raw))
 
 
 def _converted(**kw):
-    return c64_codec.write(dos.to_neutral(_dos_record(**kw)))
+    return c64_codec.write(dos_codec.to_neutral(_dos_record(**kw)))
 
 
 def test_a_converted_character_has_the_strength_gate_open():
@@ -117,10 +117,10 @@ def test_the_rolled_eighteen_seventyfive_fighter_converts_with_the_gate_open():
     say the same thing in its own byte.
     """
     where = gamedata.specimen("elf6")
-    char = dos.read_character(where / "party-ELF6.CHA")
+    char = dos_codec.read_character(where / "party-ELF6.CHA")
     assert char.get("strength") == 18
     assert char.get("exceptional_strength") == 75
     assert char.get("strength_bonus") == 1
-    rec, _ = c64_codec.write(dos.to_neutral(char))
+    rec, _ = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("strength_index") == 20
     assert rec.get("strength_bonus_flag") == 1

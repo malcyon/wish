@@ -19,12 +19,12 @@ import gamedata
 import pytest
 
 from goldbox import c64_codec
-from goldbox.d64 import D64
-from goldbox.games import (
+from goldbox.c64_port import (
     CURSE_OF_THE_AZURE_BONDS,
     POOL_OF_RADIANCE,
     SECRET_OF_THE_SILVER_BLADES,
 )
+from goldbox.d64 import D64
 from goldbox.neutral import Provenance
 from goldbox.record import CharacterRecord
 from goldbox.savegame import load_save

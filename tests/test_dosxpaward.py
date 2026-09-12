@@ -35,7 +35,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from goldbox import layout as c64_layout  # noqa: E402
 from tools import dosxpaward as xp  # noqa: E402
 
@@ -59,7 +59,7 @@ def _record(size: int, name: str = "GOBLIN", base: int = 0,
     struct.pack_into("<H", data, base_off, base)
     if rate_off is not None:
         data[rate_off] = per_hp
-    fields = {f.name: f for f in dos_layout.layout_for(size)}
+    fields = {f.name: f for f in dos_port.layout_for(size)}
     data[fields["hp_rolled"].offset] = hp
     return bytes(data)
 
@@ -142,7 +142,7 @@ def test_every_dispatcher_id_that_names_a_c64_field_agrees_with_it(stem):
     is why the count is asserted across the family below rather than here.
     """
     c64 = {f.offset: f for f in c64_layout.LAYOUT}
-    ours = {f.offset: f for f in dos_layout.layout_for(xp.GAMES[stem])}
+    ours = {f.offset: f for f in dos_port.layout_for(xp.GAMES[stem])}
     for _, ident, disp, _ in xp.setter_sites(_overlay(stem)):
         theirs = c64.get(ident)
         if theirs is None or theirs.name.startswith("gap_"):
@@ -159,7 +159,7 @@ def test_the_family_agrees_on_all_seventeen_of_them():
     c64 = {f.offset: f for f in c64_layout.LAYOUT}
     agreed = 0
     for stem in ("POOLRAD", "CURSE", "GATEWAY", "SECRET"):
-        ours = {f.offset: f for f in dos_layout.layout_for(xp.GAMES[stem])}
+        ours = {f.offset: f for f in dos_port.layout_for(xp.GAMES[stem])}
         for _, ident, disp, _ in xp.setter_sites(_overlay(stem)):
             theirs = c64.get(ident)
             if theirs is None or theirs.name.startswith("gap_"):

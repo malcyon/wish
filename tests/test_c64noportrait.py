@@ -18,7 +18,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from editor import convert
-from goldbox import amiga_por, c64_codec, dos, neutral
+from goldbox import amiga_por, c64_codec, dos_codec, neutral
 from goldbox.neutral import NeutralCharacter
 from goldbox.portraits import PortraitTables
 from goldbox.record import CharacterRecord
@@ -76,11 +76,11 @@ def test_a_c64_character_with_no_portrait_converts_to_dos_with_no_drop():
     """
     neutral_char = c64_codec.read(_c64_record(0x00, 0x00),
                                   game="pool-of-radiance")
-    rec, _itm, _spc, rep = dos.write(neutral_char, portraits=MENU)
+    rec, _itm, _spc, rep = dos_codec.write(neutral_char, portraits=MENU)
     assert not [d for d in rep.dropped if "portrait" in d.lower()], \
         rep.dropped
-    head_field = dos.FIELDS_BY_NAME["portrait_head"]
-    body_field = dos.FIELDS_BY_NAME["portrait_body"]
+    head_field = dos_codec.FIELDS_BY_NAME["portrait_head"]
+    body_field = dos_codec.FIELDS_BY_NAME["portrait_body"]
     assert rec[head_field.offset] == 0, "wrote a menu position for a face " \
         "the character never chose"
     assert rec[body_field.offset] == 0
@@ -93,11 +93,11 @@ def test_a_c64_character_with_a_real_first_head_still_converts_to_position_one()
     menu's first entry."""
     neutral_char = c64_codec.read(_c64_record(0x00, 0x04),
                                   game="pool-of-radiance")
-    rec, _itm, _spc, rep = dos.write(neutral_char, portraits=MENU)
+    rec, _itm, _spc, rep = dos_codec.write(neutral_char, portraits=MENU)
     assert not [d for d in rep.dropped if "portrait" in d.lower()], \
         rep.dropped
-    head_field = dos.FIELDS_BY_NAME["portrait_head"]
-    body_field = dos.FIELDS_BY_NAME["portrait_body"]
+    head_field = dos_codec.FIELDS_BY_NAME["portrait_head"]
+    body_field = dos_codec.FIELDS_BY_NAME["portrait_body"]
     assert rec[head_field.offset] == 1
     assert rec[body_field.offset] == 4
 

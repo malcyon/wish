@@ -34,14 +34,14 @@ from conftest import load_tools_module
 
 coldread = load_tools_module("coldread")
 
-from goldbox import games, items, traits  # noqa: E402
+from goldbox import c64_port, items, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tests import gamedata  # noqa: E402
 from tests.test_silverblades import ssb_dir  # noqa: E402
 
-POOL = games.POOL_OF_RADIANCE
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SSB = games.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 BASE = coldread.GEN_BASE
 

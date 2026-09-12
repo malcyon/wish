@@ -242,7 +242,7 @@ def test_icon_for_uses_the_tables_it_is_given(monkeypatch):
     `tables`: this asserts the object handed in is the object composed
     with.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
     from goldbox.iconparts import IconParts
 
     seen = {}
@@ -261,5 +261,5 @@ def test_icon_for_uses_the_tables_it_is_given(monkeypatch):
                     "icon_colours": bytes(6)}[name]
 
     sentinel = object()
-    assert dos._icon_for(Char(), Spy(), sentinel) == bytes(36)
+    assert dos_codec._icon_for(Char(), Spy(), sentinel) == bytes(36)
     assert seen["tables"] is sentinel

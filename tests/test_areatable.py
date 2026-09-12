@@ -21,13 +21,13 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import areas, games
+from goldbox import areas, c64_port
 from tools import areatable, gamedisks
 
 TITLES = {
-    games.POOL_OF_RADIANCE: areas.POOL_OF_RADIANCE,
-    games.CURSE_OF_THE_AZURE_BONDS: areas.CURSE_OF_THE_AZURE_BONDS,
-    games.SECRET_OF_THE_SILVER_BLADES: areas.SECRET_OF_THE_SILVER_BLADES,
+    c64_port.POOL_OF_RADIANCE: areas.POOL_OF_RADIANCE,
+    c64_port.CURSE_OF_THE_AZURE_BONDS: areas.CURSE_OF_THE_AZURE_BONDS,
+    c64_port.SECRET_OF_THE_SILVER_BLADES: areas.SECRET_OF_THE_SILVER_BLADES,
 }
 
 
@@ -42,17 +42,17 @@ def _derive(game):
 
 @pytest.fixture(scope="module")
 def pool():
-    return _derive(games.POOL_OF_RADIANCE)
+    return _derive(c64_port.POOL_OF_RADIANCE)
 
 
 @pytest.fixture(scope="module")
 def curse():
-    return _derive(games.CURSE_OF_THE_AZURE_BONDS)
+    return _derive(c64_port.CURSE_OF_THE_AZURE_BONDS)
 
 
 @pytest.fixture(scope="module")
 def silver():
-    return _derive(games.SECRET_OF_THE_SILVER_BLADES)
+    return _derive(c64_port.SECRET_OF_THE_SILVER_BLADES)
 
 
 def _table(game):
@@ -72,7 +72,7 @@ def test_curses_twenty_five_rows_are_what_the_disks_say(curse):
     This is the whole of that table: it carries no name and no arrival square,
     so id, side and maps is everything a diff can compare, and 25 of 25 agree.
     """
-    table = _table(games.CURSE_OF_THE_AZURE_BONDS)
+    table = _table(c64_port.CURSE_OF_THE_AZURE_BONDS)
     assert set(curse) == set(table)
     assert len(table) == 25
     assert {id: (r.side, r.maps, r.sqrdata) for id, r in curse.items()} == \
@@ -86,7 +86,7 @@ def test_silver_blades_twenty_two_rows_are_what_the_disks_say(silver):
     twelve of the rows have one. All twelve come back the same, which is what
     makes this the stronger of the two later-title checks.
     """
-    table = _table(games.SECRET_OF_THE_SILVER_BLADES)
+    table = _table(c64_port.SECRET_OF_THE_SILVER_BLADES)
     assert set(silver) == set(table)
     assert len(table) == 22
     assert {id: (r.side, r.maps, r.square) for id, r in silver.items()} == \
@@ -103,7 +103,7 @@ def test_pool_of_radiance_sides_and_square_data_all_agree(pool):
     corroborated in the running game, so it is what says whether the
     derivation is any good rather than the other way round.
     """
-    table = _table(games.POOL_OF_RADIANCE)
+    table = _table(c64_port.POOL_OF_RADIANCE)
     assert set(pool) == set(table)
     assert {id: r.side for id, r in pool.items()} == \
         {id: a.disk for id, a in table.items()}
@@ -124,7 +124,7 @@ def test_the_maps_agree_apart_from_three_rows_that_are_understood(pool):
 
     Written as an exact set so that a *fourth* difference fails the test.
     """
-    table = _table(games.POOL_OF_RADIANCE)
+    table = _table(c64_port.POOL_OF_RADIANCE)
     differ = {id: (pool[id].maps, tuple(a.geos))
               for id, a in table.items() if pool[id].maps != tuple(a.geos)}
     assert differ == {
@@ -171,7 +171,7 @@ def test_a_derived_arrival_square_is_right_ten_times_in_eleven(pool):
     That one miss is why a derived square is PROBABLE and never better, and it
     is asserted here rather than left as a sentence in a comment.
     """
-    table = _table(games.POOL_OF_RADIANCE)
+    table = _table(c64_port.POOL_OF_RADIANCE)
     both = {id: (pool[id].square, _square(a)) for id, a in table.items()
             if a.arrival is not None and pool[id].square is not None}
     assert len(both) == 11
@@ -187,7 +187,7 @@ def test_the_walk_abstains_rather_than_guessing(pool):
     table declines to place a party in is better than one it places a party in
     wrongly, and this pins that the abstention is deliberate.
     """
-    table = _table(games.POOL_OF_RADIANCE)
+    table = _table(c64_port.POOL_OF_RADIANCE)
     abstained = {id for id, a in table.items()
                  if a.arrival is not None and pool[id].square is None}
     assert abstained == {0x00, 0x0A, 0x0D, 0x0E, 0x17}

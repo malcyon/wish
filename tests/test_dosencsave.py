@@ -24,7 +24,7 @@ from __future__ import annotations
 import gamedata
 import pytest
 
-from goldbox import dos
+from goldbox import dos_codec
 
 MENU = "por-enc-spoiled-menusave"
 CAMP = "por-enc-spoiled-campsave"
@@ -44,7 +44,7 @@ def _records(name: str, letter: str):
     if not gamedata.have_specimen(name):
         pytest.skip(f"needs specimen WISH-SPEC-{name}")
     folder = gamedata.specimen(name)
-    return [dos.read_character(folder / f"CHRDAT{letter}{n}.SAV")
+    return [dos_codec.read_character(folder / f"CHRDAT{letter}{n}.SAV")
             for n in range(1, 7)]
 
 
@@ -97,7 +97,7 @@ def test_the_training_ladder_agrees_once_the_restaging_is_taken_out():
         # is F where the rest are E -- so the first roster slot is found by
         # position rather than by a letter that changes under the test.
         first = sorted(folder.glob("CHRDAT?1.SAV"))[0]
-        who = dos.read_character(first)
+        who = dos_codec.read_character(first)
         assert who.name == "WISHFTR"
         seen.append((sum(who.money.values()), who.get("encumbrance")))
     for (coins, stored), (_, nxt) in zip(seen, seen[1:]):

@@ -23,7 +23,7 @@ from __future__ import annotations
 import pytest
 from gamedata import specimen_root
 
-from goldbox import amiga, dos_layout
+from goldbox import amiga_later, amiga_port, dos_port
 from tools import amigalaterproof as proof
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -83,23 +83,23 @@ def test_a_name_nobody_in_the_party_has_is_refused_rather_than_ignored():
 # The mask
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("shape", amiga.AMIGA_DELTAS, ids=lambda s: s.key)
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
 def test_every_unsourced_byte_the_writer_declares_is_in_the_mask(shape):
     """`LATER_WRITE_UNSOURCED` is the list of Amiga offsets no DOS field
     reaches, so a resave is entitled to differ there and the diff must not
     report one."""
     mask = proof.declared_record_mask(shape)
-    for at, size, _why in amiga.LATER_WRITE_UNSOURCED[shape.key]:
+    for at, size, _why in amiga_later.LATER_WRITE_UNSOURCED[shape.key]:
         assert set(range(at, at + size)) <= mask, hex(at)
 
 
-@pytest.mark.parametrize("shape", amiga.AMIGA_DELTAS, ids=lambda s: s.key)
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
 def test_the_mask_is_the_declared_lists_and_not_everything(shape):
     """The half that matters: a field the writer claims to convert has to be
     outside the mask, or the diff proves nothing.  Hit points, armour class
     and the seven abilities are what a player reads off the sheet."""
     mask = proof.declared_record_mask(shape)
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.dos.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
     for name in ("hp_max", "armour_class", "strength", "intelligence",
                  "wisdom", "dexterity", "constitution", "charisma",
                  "race", "char_class", "class_levels"):
@@ -108,13 +108,13 @@ def test_the_mask_is_the_declared_lists_and_not_everything(shape):
         assert not (set(range(at, at + field.size)) & mask), name
 
 
-@pytest.mark.parametrize("shape", amiga.AMIGA_DELTAS, ids=lambda s: s.key)
+@pytest.mark.parametrize("shape", amiga_port.AMIGA_DELTAS, ids=lambda s: s.key)
 def test_the_live_heap_pointers_the_engine_fills_in_are_masked(shape):
     """`effect_chain` and `item_chain` come back as real Amiga addresses in
     the engine's own resave -- measured on both titles, 2026-09-07 -- and
     `goldbox.dos.WRITE_UNSOURCED` is where the writer says so."""
     mask = proof.declared_record_mask(shape)
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.dos.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
     for name in ("effect_chain", "item_chain"):
         field = table[name]
         at = shape.offset(field.offset)
@@ -126,13 +126,13 @@ def test_the_derived_bytes_the_engine_recomputes_are_masked():
     load, and no declared list says so)`: the two Curse offsets in
     `LATER_WRITE_DERIVED` are exactly `thac0_current` and the sixth byte of
     `roster_tail`, computed from the shift map rather than typed twice."""
-    shape = amiga.CURSE_DELTAS
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.dos.key]
+    shape = amiga_port.CURSE_DELTAS
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]
     want = {shape.offset(table["thac0_current"].offset),
             shape.offset(table["roster_tail"].offset) + 5}
     mask = proof.declared_record_mask(shape)
     assert want <= mask
-    got = {at for at, _size, _why in amiga.LATER_WRITE_DERIVED[shape.key]}
+    got = {at for at, _size, _why in amiga_later.LATER_WRITE_DERIVED[shape.key]}
     assert got == want
 
 
@@ -140,7 +140,7 @@ def test_silver_blades_has_no_derived_bytes_declared():
     """UNMEASURED, not confirmed absent (`#402`): Silver Blades' converted
     party happened to agree with the engine's resave, which proves nothing,
     so nothing is masked there yet."""
-    assert amiga.LATER_WRITE_DERIVED[amiga.SILVER_BLADES_DELTAS.key] == ()
+    assert amiga_later.LATER_WRITE_DERIVED[amiga_port.SILVER_BLADES_DELTAS.key] == ()
 
 
 def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
@@ -190,8 +190,8 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
 # ---------------------------------------------------------------------------
 
 def test_an_offset_in_the_record_is_named_by_its_field():
-    shape = amiga.SILVER_BLADES_DELTAS
-    at = shape.offset(dos_layout.FIELDS_BY_NAME_FOR[shape.dos.key]["hp_max"]
+    shape = amiga_port.SILVER_BLADES_DELTAS
+    at = shape.offset(dos_port.FIELDS_BY_NAME_FOR[shape.dos.key]["hp_max"]
                       .offset)
     assert proof.field_at(shape, at) == "hp_max+0"
 
@@ -199,6 +199,6 @@ def test_an_offset_in_the_record_is_named_by_its_field():
 def test_silver_blades_names_its_re_encoded_spellbook():
     """The one region with no DOS field behind it: 117 flag bytes packed into
     15 of mask, which `AmigaDeltas.offset` cannot map."""
-    shape = amiga.SILVER_BLADES_DELTAS
-    assert proof.field_at(shape, amiga.AMIGA_SSB_SPELLBOOK_AT + 3) \
+    shape = amiga_port.SILVER_BLADES_DELTAS
+    assert proof.field_at(shape, amiga_later.AMIGA_SSB_SPELLBOOK_AT + 3) \
         == "spellbook+3"

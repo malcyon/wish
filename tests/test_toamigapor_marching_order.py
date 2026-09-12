@@ -55,8 +55,8 @@ def _hide_all_but(disk_path: pathlib.Path, keep_index: int,
     what "a party of one" means for this test: a real character, with every
     other real character removed from view.
     """
+    from goldbox.c64_port import by_key
     from goldbox.d64 import D64, attach_load_address, split_load_address
-    from goldbox.games import by_key
     from goldbox.savegame import HEADER_SIZE, SLOT_STRIDE
 
     game = by_key("pool-of-radiance")

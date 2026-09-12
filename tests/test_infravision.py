@@ -26,7 +26,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import c64_codec, dos, dos_layout, games, savegame  # noqa: E402
+from goldbox import c64_codec, c64_port, dos_codec, dos_port, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tests import gamedata  # noqa: E402
 from tools import infravision  # noqa: E402
@@ -50,7 +50,7 @@ def _rolled_records():
         where = gamedata.specimen(name, "dos")
         cha = sorted(where.glob("*.CHA"))
         assert cha, f"WISH-SPEC-{name} has no .CHA"
-        out[name] = dos.read_character(cha[0])
+        out[name] = dos_codec.read_character(cha[0])
     return out
 
 
@@ -58,9 +58,9 @@ def _race_split(records):
     """Offsets where every human agrees, every demi-human agrees, and the two
     groups differ.  An infravision byte would be exactly one of these."""
     humans = [r.to_bytes() for r in records
-              if dos_layout.RACE_NUMBERS[r.get("race")] == "human"]
+              if dos_port.RACE_NUMBERS[r.get("race")] == "human"]
     demis = [r.to_bytes() for r in records
-             if dos_layout.RACE_NUMBERS[r.get("race")] != "human"]
+             if dos_port.RACE_NUMBERS[r.get("race")] != "human"]
     assert humans and demis
     out = []
     for offset in range(len(humans[0])):
@@ -72,7 +72,7 @@ def _race_split(records):
 
 
 def _field_at(offset: int) -> str:
-    for f in dos_layout.LAYOUT:
+    for f in dos_port.LAYOUT:
         if f.offset <= offset < f.offset + f.size:
             return f.name
     return "?"
@@ -128,8 +128,8 @@ def test_the_c64_writer_gives_every_race_the_number_the_generator_writes():
         table = infravision.race_table("pool-of-radiance")
     except SystemExit as e:
         pytest.skip(str(e))
-    from goldbox import games
-    names = games.race_table(games.POOL_OF_RADIANCE)
+    from goldbox import c64_port
+    names = c64_port.race_table(c64_port.POOL_OF_RADIANCE)
     wrong = {names[code]: (c64_codec.INFRAVISION[names[code]], table[code - 1])
              for code in range(1, 8)
              if code in names
@@ -161,7 +161,7 @@ def test_every_unattributed_dos_byte_is_zero_in_all_eight():
     """The other half of the same claim: the byte cannot be hiding in a gap,
     because no gap holds anything at all."""
     records = _rolled_records()
-    unattributed = [f for f in dos_layout.LAYOUT
+    unattributed = [f for f in dos_port.LAYOUT
                     if f.name.startswith("gap_") or f.name == "field_83_87"]
     assert unattributed, "the DOS layout has no gaps left to check"
     for name, record in records.items():
@@ -178,7 +178,7 @@ def test_the_dos_engines_own_resave_puts_back_nothing_race_shaped():
     demi-humans in what the engine wrote, and it is the pointer to the
     effect list, which is where DOS keeps a race's innate abilities."""
     where = gamedata.specimen("por-52-dialog-converted-resave", "dos")
-    party = dos.read_party(where, "D")
+    party = dos_codec.read_party(where, "D")
     assert len(party) == 6
     split = _race_split(party)
     assert [_field_at(o) for o in split] == ["effect_chain"], (
@@ -190,9 +190,9 @@ def test_no_dos_effect_id_a_race_is_born_with_means_infravision():
     record, and the ids the engine writes for a race are named."""
     from goldbox import traits
     born_with = set()
-    for ids in dos.RACE_COMBAT_EFFECTS.values():
+    for ids in dos_codec.RACE_COMBAT_EFFECTS.values():
         born_with |= set(ids)
-    for ids in dos.RACE_COMBAT_EFFECTS_SILVER_BLADES.values():
+    for ids in dos_codec.RACE_COMBAT_EFFECTS_SILVER_BLADES.values():
         born_with |= set(ids)
     assert born_with, "no racial effect ids are declared"
     for code in sorted(born_with):
@@ -209,7 +209,7 @@ def test_the_writers_accounting_calls_infravision_derived_not_dropped():
     lost, because a silencing list keeps them out of the count that decides
     it) it says so honestly: `derived:` rather than a `dropped:` line a
     now-deleted silencing list kept out of the report."""
-    said = dos.write_field_disposition()
+    said = dos_codec.write_field_disposition()
     assert said["infravision"].startswith("derived:")
 
 
@@ -222,7 +222,7 @@ def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
 
     char = _filled()
     char.set("infravision", 6, "made up: a C64 source's own byte")
-    _, _, _, rep = dos.write(char)
+    _, _, _, rep = dos_codec.write(char)
     assert not [d for d in rep.dropped if "infravision" in d]
 
 
@@ -231,7 +231,7 @@ def test_a_c64_party_converted_to_dos_is_not_told_about_infravision():
 def _synthetic_save_disk(path: pathlib.Path) -> pathlib.Path:
     """A `D64` carrying an empty Pool of Radiance save -- no game bytes, just
     the format `goldbox.savegame` and `goldbox.games` already describe."""
-    game = games.POOL_OF_RADIANCE
+    game = c64_port.POOL_OF_RADIANCE
     disk = D64.blank()
     sg0 = savegame.SaveGame0.from_bytes(bytes(game.save_size), game)
     sg1 = savegame.SaveGame1(bytes(game.roster_size), game)

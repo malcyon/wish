@@ -36,15 +36,15 @@ import statistics
 import pytest
 import yaml
 
-from goldbox import games, geo
+from goldbox import c64_port, geo
 from goldbox import spells as por_spells
 from goldbox.d64 import D64, split_load_address
 from goldbox.savegame import SaveGameError, load_save
 from goldbox.yaml_io import ValueError_, export_save, import_into, to_yaml
 from tests import gamedata
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-POOL = games.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+POOL = c64_port.POOL_OF_RADIANCE
 
 
 # --- finding the player's disks ---------------------------------------------
@@ -104,19 +104,19 @@ def _copy(path, tmp_path) -> str:
 
 def test_the_family_shares_one_payload_shape():
     """Five titles, one 7426-byte file; Pool of Radiance is the outlier."""
-    later = [g for g in games.GAMES if g is not POOL]
+    later = [g for g in c64_port.GAMES if g is not POOL]
     assert all(g.save_prg_size == 7426 for g in later)
     assert all(g.roster_in_payload for g in later)
     assert POOL.roster_file == b"SAVEDGAME1" and not POOL.roster_in_payload
 
 
 @pytest.mark.parametrize("game,slots,items,roster", [
-    (games.POOL_OF_RADIANCE, 0x4D00, 0x5900, 0x8300),
-    (games.CURSE_OF_THE_AZURE_BONDS, 0x4F00, 0x5B00, 0x6700),
-    (games.SECRET_OF_THE_SILVER_BLADES, 0x4F00, 0x5B00, 0x6700),
-    (games.CHAMPIONS_OF_KRYNN, 0x4400, 0x5000, 0x5C00),
-    (games.DEATH_KNIGHTS_OF_KRYNN, 0x4400, 0x5000, 0x5C00),
-    (games.GATEWAY_TO_THE_SAVAGE_FRONTIER, 0x4F00, 0x5B00, 0x6700),
+    (c64_port.POOL_OF_RADIANCE, 0x4D00, 0x5900, 0x8300),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, 0x4F00, 0x5B00, 0x6700),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, 0x4F00, 0x5B00, 0x6700),
+    (c64_port.CHAMPIONS_OF_KRYNN, 0x4400, 0x5000, 0x5C00),
+    (c64_port.DEATH_KNIGHTS_OF_KRYNN, 0x4400, 0x5000, 0x5C00),
+    (c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER, 0x4F00, 0x5B00, 0x6700),
 ])
 def test_the_addresses_are_the_ones_measured(game, slots, items, roster):
     """The table in `work/reports/goldbox-inventory.md`, as an assertion."""
@@ -126,30 +126,30 @@ def test_the_addresses_are_the_ones_measured(game, slots, items, roster):
 
 def test_every_title_has_its_own_save_file_name():
     """The discriminator only works if no two titles share a name."""
-    assert len({g.save_file for g in games.GAMES}) == len(games.GAMES)
+    assert len({g.save_file for g in c64_port.GAMES}) == len(c64_port.GAMES)
 
 
 def test_a_bad_key_names_the_ones_that_work():
-    with pytest.raises(games.UnknownGameError) as exc:
-        games.by_key("pool-of-radiance-2")
+    with pytest.raises(c64_port.UnknownGameError) as exc:
+        c64_port.by_key("pool-of-radiance-2")
     assert "curse-of-the-azure-bonds" in str(exc.value)
 
 
 # --- detection --------------------------------------------------------------
 
 def test_a_curse_disk_identifies_itself():
-    assert games.detect(D64.open(_curse_save_disk())) is CURSE
+    assert c64_port.detect(D64.open(_curse_save_disk())) is CURSE
 
 
 def test_a_pool_of_radiance_disk_identifies_itself():
     path = gamedata.save_disk("PORSAVE11")
-    assert games.detect(D64.open(str(path))) is POOL
+    assert c64_port.detect(D64.open(str(path))) is POOL
 
 
 def test_a_roster_disk_identifies_no_title():
     """`PORSAVE10.D64` holds character files and no save game."""
     path = gamedata.save_disk("PORSAVE10")
-    assert games.detect(D64.open(str(path))) is None
+    assert c64_port.detect(D64.open(str(path))) is None
 
 
 # --- reading ----------------------------------------------------------------
@@ -799,7 +799,7 @@ def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
             break
     if payload is None:              # side B's SAVEAZURE is a 2032-byte stub
         pytest.skip("no Curse side here carries a whole SAVEAZURE")
-    base = games.ICON_TABLE_OFFSET
+    base = c64_port.ICON_TABLE_OFFSET
     unmade = [payload[base + i * ICON_SIZE:][:18].hex()
               for i in range(ICON_COUNT)
               if any(payload[base + i * ICON_SIZE:][:18])

@@ -53,7 +53,7 @@ from gamedata import specimen_root
 from PyQt6.QtWidgets import QApplication
 
 from editor import convert, dosimport
-from goldbox import dos, dos_layout, games
+from goldbox import c64_port, dos_codec, dos_port
 from goldbox.d64 import load_payload
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitError, tables_from_disks
@@ -92,7 +92,7 @@ def _c64_specimen(name: str) -> pathlib.Path | None:
     return found[0] if found else None
 
 
-def _c64_game_files(game: "games.Game") -> "dosimport.GameFiles | None":
+def _c64_game_files(game: "c64_port.Game") -> "dosimport.GameFiles | None":
     """The icon, `ANIMATE00` and the creation menu off `game`'s own C64
     disks, found through `tools/gamedisks.py` -- the project's own registry
     for a test or tool that needs the player's disks, never a path typed into
@@ -113,13 +113,13 @@ def _c64_game_files(game: "games.Game") -> "dosimport.GameFiles | None":
                 pass
         if animate is None:
             try:
-                animate = load_payload(str(disk), dos.ANIMATE_FILE)
+                animate = load_payload(str(disk), dos_codec.ANIMATE_FILE)
             except Exception:
                 pass
     if icon is None or animate is None:
         return None
     portraits = None
-    if game.key == games.POOL_OF_RADIANCE.key:
+    if game.key == c64_port.POOL_OF_RADIANCE.key:
         try:
             portraits = tables_from_disks(where)
         except (PortraitError, OSError):
@@ -145,13 +145,13 @@ def _fixture_payloads() -> tuple[bytes, bytes]:
 # ---------------------------------------------------------------------------
 
 DOS_TO_C64_CASES = [
-    pytest.param("por-party-l1-intown", None, games.POOL_OF_RADIANCE,
+    pytest.param("por-party-l1-intown", None, c64_port.POOL_OF_RADIANCE,
                 id="pool-of-radiance"),
     pytest.param("curse-131-dualclassed-in-area-1", None,
-                games.CURSE_OF_THE_AZURE_BONDS,
+                c64_port.CURSE_OF_THE_AZURE_BONDS,
                 id="curse-of-the-azure-bonds"),
     pytest.param("ssb-234-party-pair", "SAVGAMC.DAT",
-                games.SECRET_OF_THE_SILVER_BLADES,
+                c64_port.SECRET_OF_THE_SILVER_BLADES,
                 id="secret-of-the-silver-blades"),
 ]
 
@@ -202,10 +202,10 @@ def test_dos_to_c64_matches_the_library_for_every_title(
     finally:
         dialog.close()
 
-    ref_save0, ref_save1, ref_report = dos.new_save(
+    ref_save0, ref_save1, ref_report = dos_codec.new_save(
         folder, slot, game_files.icon, game_files.animate,
         portraits=game_files.portraits, game=game)
-    reference = dos.save_disk(bytes(ref_save0), bytes(ref_save1), game)
+    reference = dos_codec.save_disk(bytes(ref_save0), bytes(ref_save1), game)
 
     assert len(written) == 1
     assert written[0].read_bytes() == reference.to_bytes()
@@ -228,11 +228,11 @@ def test_dos_to_c64_matches_the_library_for_every_title(
 # ---------------------------------------------------------------------------
 
 C64_TO_DOS_CASES = [
-    pytest.param(None, games.POOL_OF_RADIANCE, "POOLRAD",
+    pytest.param(None, c64_port.POOL_OF_RADIANCE, "POOLRAD",
                 id="pool-of-radiance"),
-    pytest.param("curse-h-engine-resave", games.CURSE_OF_THE_AZURE_BONDS,
+    pytest.param("curse-h-engine-resave", c64_port.CURSE_OF_THE_AZURE_BONDS,
                 "CURSE", id="curse-of-the-azure-bonds"),
-    pytest.param("ssb-d-engine-resave", games.SECRET_OF_THE_SILVER_BLADES,
+    pytest.param("ssb-d-engine-resave", c64_port.SECRET_OF_THE_SILVER_BLADES,
                 "SECRET", id="secret-of-the-silver-blades"),
 ]
 
@@ -255,7 +255,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
     if specimen_name is None:
         save0, save1 = _fixture_payloads()
         disk_path = tmp_path / "PORSAVE.D64"
-        disk_path.write_bytes(dos.save_disk(save0, save1).to_bytes())
+        disk_path.write_bytes(dos_codec.save_disk(save0, save1).to_bytes())
     else:
         disk_path = _c64_specimen(specimen_name)
         if disk_path is None:
@@ -264,7 +264,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         source = convert.Source.detect(disk_path)
         save0, save1 = source.save0, source.save1
 
-    shape = dos_layout.SHAPES_BY_KEY[game.key]
+    shape = dos_port.DELTAS_BY_KEY[game.key]
     out = tmp_path / "out"
     # An `icon=None` game-files stand-in -- no C64 disks handed to the
     # dialog for the source's own combat icon (`#383 (The live Convert
@@ -301,7 +301,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         dialog.close()
 
     reference_dir = tmp_path / "reference"
-    ref_report = dos.new_dos_save(save0, save1, reference_dir, "A", game_dir,
+    ref_report = dos_codec.new_dos_save(save0, save1, reference_dir, "A", game_dir,
                                   title=game)
 
     written_names = {p.name for p in written}

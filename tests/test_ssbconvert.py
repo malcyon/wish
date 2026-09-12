@@ -41,14 +41,22 @@ import gamedata
 import pytest
 from test_neutral import _filled
 
-from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame, world_state
+from goldbox import (
+    c64_codec,
+    c64_port,
+    c64_save,
+    dos_codec,
+    dos_port,
+    savegame,
+    world_state,
+)
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 from goldbox.iconparts import SPACE, dos_icon_tables
 
-SSB = dos_layout.SECRET_OF_THE_SILVER_BLADES
-SSB_GAME = games.SECRET_OF_THE_SILVER_BLADES
-CURSE_GAME = games.CURSE_OF_THE_AZURE_BONDS
+SSB = dos_port.SECRET_OF_THE_SILVER_BLADES
+SSB_GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
+CURSE_GAME = c64_port.CURSE_OF_THE_AZURE_BONDS
 WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
 
 #: DOS level-array slots, `goldbox.dos.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
@@ -63,8 +71,8 @@ def converts_ssb(monkeypatch):
     until a converted party has been read off the running game and the three
     wires `#193` step 4 names are in.  This fixture comes out with it.
     """
-    if SSB not in dos.CONVERTS:
-        monkeypatch.setattr(dos, "CONVERTS", dos.CONVERTS + (SSB,))
+    if SSB not in dos_codec.CONVERTS:
+        monkeypatch.setattr(dos_codec, "CONVERTS", dos_codec.CONVERTS + (SSB,))
 
 
 def _dos_record(shape, **values) -> bytes:
@@ -74,7 +82,7 @@ def _dos_record(shape, **values) -> bytes:
     anybody's save, so it carries no game data and needs no disks.
     """
     rec = bytearray(shape.record_size)
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -103,23 +111,23 @@ def test_a_lowercase_name_is_folded_to_capitals():
     Without the fold the party panel read `G59 $% V!,/)3`, watched on the
     running machine -- `u` is screen code `5`, `y` is `9`, `d` is `$`.
     """
-    assert dos.c64_name("Guy de Valois ") == "GUY DE VALOIS"
+    assert dos_codec.c64_name("Guy de Valois ") == "GUY DE VALOIS"
 
 
 def test_a_converted_record_carries_the_folded_name(converts_ssb):
     raw = bytearray(ssb_record(name_length=14))
-    table = dos_layout.FIELDS_BY_NAME_FOR[SSB.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[SSB.key]
     at = table["name_text"].offset
     raw[at:at + 14] = b"Guy de Valois "
-    rec, _ = dos.to_c64_record(dos.DosCharacter(bytes(raw)))
+    rec, _ = dos_codec.to_c64_record(dos_codec.DosCharacter(bytes(raw)))
     assert rec.get("name") == "GUY DE VALOIS"
     assert rec.to_bytes()[:20] == b"GUY DE VALOIS" + bytes(7)
 
 
 def test_only_the_case_and_the_trailing_blanks_move():
     """Everything else about a name crosses untouched, punctuation included."""
-    assert dos.c64_name("O'MALLEY") == "O'MALLEY"
-    assert dos.c64_name("ABC-123") == "ABC-123"
+    assert dos_codec.c64_name("O'MALLEY") == "O'MALLEY"
+    assert dos_codec.c64_name("ABC-123") == "ABC-123"
 
 
 # --- the class mask: DOS gives paladin and ranger one bit --------------------
@@ -131,19 +139,19 @@ def test_a_dos_ranger_converts_to_the_c64_ranger_bit(converts_ssb):
     is a combination no C64 save of either title holds -- and the sheet read
     `PALADIN`.
     """
-    ranger = dos.DosCharacter(ssb_record(
+    ranger = dos_codec.DosCharacter(ssb_record(
         class_bits=0x40, char_class=4, class_levels=levels(**{str(RANGER): 8})))
-    rec, _ = dos.to_c64_record(ranger)
+    rec, _ = dos_codec.to_c64_record(ranger)
     assert rec.get("class_bits") == 0x80
     assert rec.get("level_ranger") == 8
     assert rec.get("level_paladin") == 0
 
 
 def test_a_dos_paladin_keeps_bit_six(converts_ssb):
-    paladin = dos.DosCharacter(ssb_record(
+    paladin = dos_codec.DosCharacter(ssb_record(
         class_bits=0x40, char_class=3,
         class_levels=levels(**{str(PALADIN): 8})))
-    rec, _ = dos.to_c64_record(paladin)
+    rec, _ = dos_codec.to_c64_record(paladin)
     assert rec.get("class_bits") == 0x40
     assert rec.get("level_paladin") == 8
 
@@ -151,17 +159,17 @@ def test_a_dos_paladin_keeps_bit_six(converts_ssb):
 def test_every_other_class_bit_is_the_records_own(converts_ssb):
     """Only bit 6 is reread; a stored mask that disagrees with the level
     array for some other reason is left as the record has it."""
-    odd = dos.DosCharacter(ssb_record(class_bits=0x08, char_class=14,
+    odd = dos_codec.DosCharacter(ssb_record(class_bits=0x08, char_class=14,
                                       class_levels=levels(**{"2": 7, "6": 8})))
-    assert dos.neutral_class_bits(odd) == 0x08
+    assert dos_codec.neutral_class_bits(odd) == 0x08
 
 
 def test_the_ranger_bit_folds_back_onto_dos_bit_six():
-    assert dos.dos_class_bits(0x80) == 0x40
-    assert dos.dos_class_bits(0x40) == 0x40
-    assert dos.dos_class_bits(0x0C) == 0x0C
+    assert dos_codec.dos_class_bits(0x80) == 0x40
+    assert dos_codec.dos_class_bits(0x40) == 0x40
+    assert dos_codec.dos_class_bits(0x0C) == 0x0C
     #: A record that somehow holds both keeps the one bit DOS has for them.
-    assert dos.dos_class_bits(0xC0) == 0x40
+    assert dos_codec.dos_class_bits(0xC0) == 0x40
 
 
 def test_a_ranger_round_trips_through_the_c64_record(converts_ssb):
@@ -174,16 +182,16 @@ def test_a_ranger_round_trips_through_the_c64_record(converts_ssb):
     Pool of Radiance's 285.  The fold itself is the same one whichever title
     the record is for.
     """
-    ranger = dos.DosCharacter(ssb_record(
+    ranger = dos_codec.DosCharacter(ssb_record(
         class_bits=0x40, char_class=4,
         class_levels=levels(**{str(RANGER): 8})))
-    rec, _ = dos.to_c64_record(ranger)
+    rec, _ = dos_codec.to_c64_record(ranger)
     back = c64_codec.read(rec, game=SSB_GAME)
     assert back.fields["class_bits"].value == 0x80
-    out, _itm, _spc, _report = dos.write(back)
-    assert len(out) == dos_layout.SECRET_OF_THE_SILVER_BLADES.record_size
-    at = dos_layout.FIELDS_BY_NAME_FOR[
-        dos_layout.SECRET_OF_THE_SILVER_BLADES.key]["class_bits"].offset
+    out, _itm, _spc, _report = dos_codec.write(back)
+    assert len(out) == dos_port.SECRET_OF_THE_SILVER_BLADES.record_size
+    at = dos_port.FIELDS_BY_NAME_FOR[
+        dos_port.SECRET_OF_THE_SILVER_BLADES.key]["class_bits"].offset
     assert out[at] == 0x40
 
 
@@ -192,44 +200,44 @@ def test_a_silver_blades_human_has_no_infravision(converts_ssb):
     """`race=6` is Silver Blades' human -- and the half-orc's slot in Pool of
     Radiance's numbering, `#287`'s bug: every converted human read 6 at
     `0x0D5` where all six shipped C64 records read 0."""
-    human = dos.DosCharacter(ssb_record(race=6))
-    rec, _ = dos.to_c64_record(human)
+    human = dos_codec.DosCharacter(ssb_record(race=6))
+    rec, _ = dos_codec.to_c64_record(human)
     assert rec.get("infravision") == 0
 
 
 def test_a_silver_blades_dwarf_has_infravision(converts_ssb):
     """`race=3` is Silver Blades' dwarf -- Pool of Radiance's gnome slot."""
-    dwarf = dos.DosCharacter(ssb_record(race=3))
-    rec, _ = dos.to_c64_record(dwarf)
+    dwarf = dos_codec.DosCharacter(ssb_record(race=3))
+    rec, _ = dos_codec.to_c64_record(dwarf)
     assert rec.get("infravision") == 6
 
 
 def test_a_pool_of_radiance_human_still_has_no_infravision():
     """The title this table was built from must not move: `race=7` is human
     in Pool of Radiance's own numbering."""
-    human = dos.DosCharacter(_dos_record(dos_layout.POOL_OF_RADIANCE, race=7))
-    rec, _ = dos.to_c64_record(human)
+    human = dos_codec.DosCharacter(_dos_record(dos_port.POOL_OF_RADIANCE, race=7))
+    rec, _ = dos_codec.to_c64_record(human)
     assert rec.get("infravision") == 0
 
 
 def test_a_pool_of_radiance_dwarf_still_has_infravision():
-    dwarf = dos.DosCharacter(_dos_record(dos_layout.POOL_OF_RADIANCE, race=1))
-    rec, _ = dos.to_c64_record(dwarf)
+    dwarf = dos_codec.DosCharacter(_dos_record(dos_port.POOL_OF_RADIANCE, race=1))
+    rec, _ = dos_codec.to_c64_record(dwarf)
     assert rec.get("infravision") == 6
 
 
 def test_a_curse_human_still_has_no_infravision():
     """Curse shares Pool of Radiance's race numbering (`race=7` human)."""
-    human = dos.DosCharacter(_dos_record(dos_layout.CURSE_OF_THE_AZURE_BONDS,
+    human = dos_codec.DosCharacter(_dos_record(dos_port.CURSE_OF_THE_AZURE_BONDS,
                                          race=7))
-    rec, _ = dos.to_c64_record(human)
+    rec, _ = dos_codec.to_c64_record(human)
     assert rec.get("infravision") == 0
 
 
 def test_a_curse_dwarf_still_has_infravision():
-    dwarf = dos.DosCharacter(_dos_record(dos_layout.CURSE_OF_THE_AZURE_BONDS,
+    dwarf = dos_codec.DosCharacter(_dos_record(dos_port.CURSE_OF_THE_AZURE_BONDS,
                                          race=1))
-    rec, _ = dos.to_c64_record(dwarf)
+    rec, _ = dos_codec.to_c64_record(dwarf)
     assert rec.get("infravision") == 6
 
 
@@ -247,18 +255,18 @@ def test_a_curse_dwarf_still_has_infravision():
 # gnome -- race 4, no entry at all -- nothing.
 def _spc_ids(spc: bytes) -> list[int]:
     """The effect ids of a `.SPC` payload, one per nine-byte record."""
-    assert len(spc) % dos.EFFECT_SIZE == 0
-    return [spc[n] for n in range(0, len(spc), dos.EFFECT_SIZE)]
+    assert len(spc) % dos_codec.EFFECT_SIZE == 0
+    return [spc[n] for n in range(0, len(spc), dos_codec.EFFECT_SIZE)]
 
 
 def test_a_silver_blades_elf_carries_his_own_effect_not_the_dwarfs():
     """`race=1` is Silver Blades' elf -- Pool of Radiance's dwarf slot.
     `goldbox/traits.py`'s `NAMES_SILVER_BLADES` seed table gives this title's
     elf 95 alone, not the dwarf's 90, 97, 26 and 47."""
-    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char = _filled(game=c64_port.SECRET_OF_THE_SILVER_BLADES)
     char.set("race", 1, "made up: elf")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [95]
 
 
@@ -272,10 +280,10 @@ def test_a_silver_blades_dwarf_carries_his_own_effects_not_the_gnomes():
     writer's table is Pool of Radiance's or the C64's rather than that
     title's own), where the table used to be read off the C64's seed table
     and was short the 97 the DOS switch also pushes."""
-    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char = _filled(game=c64_port.SECRET_OF_THE_SILVER_BLADES)
     char.set("race", 3, "made up: dwarf")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [47, 26, 97]
 
 
@@ -285,10 +293,10 @@ def test_a_silver_blades_gnome_carries_his_own_effects():
 
     48, 7 and 97, in that order, are the engine's own race switch (#490); the
     C64-derived table this used to read was short the same 97 as the dwarf's."""
-    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char = _filled(game=c64_port.SECRET_OF_THE_SILVER_BLADES)
     char.set("race", 4, "made up: gnome")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [48, 7, 97]
 
 
@@ -296,18 +304,18 @@ def test_a_silver_blades_half_elf_and_halfling_carry_their_own_effect():
     """The halfling used to get 92, the C64's own id for the same bonus; the
     DOS engine's own switch pushes 97 (#490)."""
     for race, expect in ((2, [18]), (5, [97])):
-        char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+        char = _filled(game=c64_port.SECRET_OF_THE_SILVER_BLADES)
         char.set("race", race, "made up")
         char.set("innate_effects", [], "made up: nothing in the trait slots")
-        _, _, spc, _ = dos.write(char)
+        _, _, spc, _ = dos_codec.write(char)
         assert _spc_ids(spc) == expect, race
 
 
 def test_a_silver_blades_human_carries_no_innate_effect():
-    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char = _filled(game=c64_port.SECRET_OF_THE_SILVER_BLADES)
     char.set("race", 6, "made up: human")
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert spc == b""
 
 
@@ -316,7 +324,7 @@ def test_a_pool_of_radiance_dwarf_is_unmoved_by_the_silver_blades_split():
     own race 1, still the dwarf, still carries all four."""
     char = _filled()                        # game=None, race 1, dwarf
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [90, 97, 26, 47]
 
 
@@ -327,9 +335,9 @@ def test_a_curse_dwarf_carries_his_own_three_not_pool_of_radiances_four():
     anybody -- `#490 (A converted dwarf, gnome or halfling gets the wrong
     racial effect records in DOS, because the writer's table is Pool of
     Radiance's or the C64's rather than that title's own)`."""
-    char = _filled(game=games.CURSE_OF_THE_AZURE_BONDS)
+    char = _filled(game=c64_port.CURSE_OF_THE_AZURE_BONDS)
     char.set("innate_effects", [], "made up: nothing in the trait slots")
-    _, _, spc, _ = dos.write(char)
+    _, _, spc, _ = dos_codec.write(char)
     assert _spc_ids(spc) == [97, 26, 47]
     assert 90 not in _spc_ids(spc)
 
@@ -338,10 +346,10 @@ def test_a_curse_gnome_and_halfling_carry_their_own_effects():
     """The gnome's set is unchanged from Pool of Radiance's; the halfling
     loses the 90 the dwarf also loses (#490)."""
     for race, expect in ((3, [97, 18, 47, 48]), (5, [97])):
-        char = _filled(game=games.CURSE_OF_THE_AZURE_BONDS)
+        char = _filled(game=c64_port.CURSE_OF_THE_AZURE_BONDS)
         char.set("race", race, "made up")
         char.set("innate_effects", [], "made up: nothing in the trait slots")
-        _, _, spc, _ = dos.write(char)
+        _, _, spc, _ = dos_codec.write(char)
         assert _spc_ids(spc) == expect, race
 
 
@@ -349,10 +357,10 @@ def test_a_curse_gnome_and_halfling_carry_their_own_effects():
 def test_a_sixty_seven_byte_item_converts():
     """`item_to_c64` demanded 63 and refused every Silver Blades item."""
     item = bytearray(SSB.item_size)
-    table = dos_layout.ITEM_FIELDS_BY_NAME
+    table = dos_port.ITEM_FIELDS_BY_NAME
     item[table["type_index"].offset] = 39
     item[table["quantity"].offset] = 30
-    out = dos.item_to_c64(bytes(item))
+    out = dos_codec.item_to_c64(bytes(item))
     assert len(out) == c64_codec.ITEM_SIZE
     assert out[0] == 39
 
@@ -361,14 +369,14 @@ def test_an_item_whose_four_extra_bytes_are_used_is_refused():
     """Nothing is attributed to `0x03F`-`0x042`; they read zero in 48 of 48
     driven records, so a non-zero one is a byte with nowhere to go."""
     item = bytearray(SSB.item_size)
-    item[dos.ITEM_TAIL[0]] = 1
-    with pytest.raises(dos.DosRecordError) as e:
-        dos.item_to_c64(bytes(item))
+    item[dos_codec.ITEM_TAIL[0]] = 1
+    with pytest.raises(dos_codec.DosRecordError) as e:
+        dos_codec.item_to_c64(bytes(item))
     assert "0x03F" in str(e.value)
 
 
 def test_pool_of_radiances_sixty_three_still_converts():
-    assert len(dos.item_to_c64(bytes(dos_layout.ITEM_SIZE))) == 16
+    assert len(dos_codec.item_to_c64(bytes(dos_port.ITEM_SIZE))) == 16
 
 
 # --- the container -----------------------------------------------------------
@@ -403,7 +411,7 @@ def test_the_flag_window_runs_to_the_end_of_the_page():
     assert (first, first + size - 1) == (0x120, 0x1FF)
     #: Pool of Radiance stops short, because `+$1FA` and `+$1FD` are its own
     #: wallset and wallmap triples.
-    first, size = c64_save.container_for(games.POOL_OF_RADIANCE).quest_flags
+    first, size = c64_save.container_for(c64_port.POOL_OF_RADIANCE).quest_flags
     assert (first, first + size - 1) == (0x120, 0x1F8)
 
 
@@ -448,7 +456,7 @@ def _dos_save():
 
 
 def test_a_whole_save_is_written_with_nothing_left_to_the_payload(converts_ssb):
-    save0, save1, report = dos.new_save(_dos_save(), _DOS_SLOT, bytes(36),
+    save0, save1, report = dos_codec.new_save(_dos_save(), _DOS_SLOT, bytes(36),
                                         animate=None, game=SSB_GAME)
     assert report.unwritten == []
     assert len(save0) == 0x1D00
@@ -457,7 +465,7 @@ def test_a_whole_save_is_written_with_nothing_left_to_the_payload(converts_ssb):
 
 def test_the_payload_reads_back_as_the_dos_party(converts_ssb):
     folder = _dos_save()
-    save0, _save1, _r = dos.new_save(folder, _DOS_SLOT, bytes(36),
+    save0, _save1, _r = dos_codec.new_save(folder, _DOS_SLOT, bytes(36),
                                      animate=None, game=SSB_GAME)
     payload = bytes(save0)
     savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
@@ -474,7 +482,7 @@ def test_the_payload_reads_back_as_the_dos_party(converts_ssb):
 
 
 def test_the_name_table_reads_in_marching_order(converts_ssb):
-    save0, _s1, _r = dos.new_save(_dos_save(), _DOS_SLOT, bytes(36),
+    save0, _s1, _r = dos_codec.new_save(_dos_save(), _DOS_SLOT, bytes(36),
                                   animate=None, game=SSB_GAME)
     table = [bytes(save0[0xC00 + i * 16:0xC00 + i * 16 + 16]).split(b"\0")[0]
              for i in range(6)]
@@ -487,7 +495,7 @@ def test_the_twelve_items_land_on_the_head_of_the_party(converts_ssb):
     anything.  Read off the running game as twelve named lines, and the
     804-byte `CHRDATE1.STF` the engine wrote is twelve of this title's
     67-byte items."""
-    save0, _s1, _r = dos.new_save(_dos_save(), _DOS_SLOT, bytes(36),
+    save0, _s1, _r = dos_codec.new_save(_dos_save(), _DOS_SLOT, bytes(36),
                                   animate=None, game=SSB_GAME)
     page = bytes(save0[0x1000 + 5 * 0x100:0x1000 + 6 * 0x100])
     filled = sum(1 for n in range(16) if any(page[n * 16:(n + 1) * 16]))
@@ -556,7 +564,7 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
     for line in conversion.report.dropped:
         assert "portrait" not in line.lower(), line
         assert "identity" not in line.lower(), line
-    assert set(conversion.report.dropped) <= set(dos.DROPPED_PLAYER_TEXT.values())
+    assert set(conversion.report.dropped) <= set(dos_codec.DROPPED_PLAYER_TEXT.values())
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------
@@ -673,11 +681,11 @@ def ssb_reachable(ssb_parts):
 
 def _ssb_figure(parts, head, body, size):
     """One record's own combat figure, by the path `convert_save` takes."""
-    char = dos.DosCharacter(ssb_record(
+    char = dos_codec.DosCharacter(ssb_record(
         icon_head=head, icon_body=body, size=size,
         icon_colours=DEFAULT_ICON_COLOURS))
-    icon = dos._icon_for(char, parts)
-    rec, _report = dos.to_c64_record(char, icon=icon)
+    icon = dos_codec._icon_for(char, parts)
+    rec, _report = dos_codec.to_c64_record(char, icon=icon)
     return icon, rec.get_raw("region_220")
 
 
@@ -741,10 +749,10 @@ def test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion(
         tables = dos_icon_tables(
             title="secret-of-the-silver-blades", size=which)
         weapon = tables.weapons[body]
-        char = dos.DosCharacter(ssb_record(
+        char = dos_codec.DosCharacter(ssb_record(
             icon_head=10, icon_body=body, size=size,
             icon_colours=DEFAULT_ICON_COLOURS))
-        icon = dos._icon_for(char, ssb_parts, tables)
+        icon = dos_codec._icon_for(char, ssb_parts, tables)
         expected = ssb_parts.apply(
             bytes([SPACE] * 18),
             ssb_parts.size_for(which, "weapon", weapon), "weapon", weapon)
@@ -770,30 +778,30 @@ def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
     savgam = bytearray(shape.size)
     sg.put_word(savgam, sg.INDOORS, 1, shape)
     sg.put_position(savgam, 7, 13, 0, shape)
-    assert dos.never_adventured(bytes(savgam))
+    assert dos_codec.never_adventured(bytes(savgam))
     # The refusal used to be `apply_file_cache`'s and `apply_position`'s own,
     # each independently calling `never_adventured`; both checks are
     # `world_state.from_dos`'s `_resolve_dos_place` now, so building `state`
     # is where it fires -- once, rather than twice.
-    with pytest.raises(dos.NotSetOutError) as raised:
+    with pytest.raises(dos_codec.NotSetOutError) as raised:
         world_state.from_dos(bytes(savgam), shape)
     assert raised.value.player_message == (
         "This save has never been played yet. Wish does not yet support "
         "converting these saves.")
-    assert raised.value.player_message == dos.NOT_SET_OUT_UNPLACED
+    assert raised.value.player_message == dos_codec.NOT_SET_OUT_UNPLACED
     assert "NOT APPROVED" not in raised.value.player_message
     assert "$" not in raised.value.player_message
 
     # The same container one keypress later -- `$4FE1` written, a real area
     # -- is a party in the world and is placed where it stands.
-    sg.put_word(savgam, dos.LATER_BEGUN_WORD, 255, shape)
+    sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255, shape)
     sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
     sg.put_word(savgam, sg.AREA, 0x10, shape)
-    assert not dos.never_adventured(bytes(savgam))
+    assert not dos_codec.never_adventured(bytes(savgam))
     state = world_state.from_dos(bytes(savgam), shape)
     cont = c64_save.container_for(SSB_GAME)
     save0 = bytearray(cont.payload_size)
-    dos.apply_file_cache(save0, state, cont)
+    dos_codec.apply_file_cache(save0, state, cont)
     assert save0[cont.current_script] == 0x10
     assert save0[cont.disk_hint] == 1
 
@@ -814,6 +822,6 @@ def test_the_archives_shipped_silver_blades_party_is_one_that_has_not_set_out():
     here only to show what the refusal says about it."""
     savgam = _shipped_silver_blades_save().read_bytes()
     assert sg.current_area(savgam) == 0
-    assert dos.never_adventured(savgam)
-    with pytest.raises(dos.NotSetOutError):
+    assert dos_codec.never_adventured(savgam)
+    with pytest.raises(dos_codec.NotSetOutError):
         world_state.from_dos(savgam)

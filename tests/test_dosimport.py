@@ -32,7 +32,7 @@ import pytest
 from gamedata import disk_dir, game_disk
 from test_dossave import _save_dir, needs_dos_saves
 
-from goldbox import dos, dos_savegame
+from goldbox import dos_codec, dos_savegame
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
@@ -78,7 +78,7 @@ def files():
             pass
         try:
             if animate is None:
-                animate = load_payload(str(disk), dos.ANIMATE_FILE)
+                animate = load_payload(str(disk), dos_codec.ANIMATE_FILE)
         except Exception:
             pass
     if icon is None or animate is None:
@@ -136,7 +136,7 @@ def test_the_converted_disk_carries_the_two_files_and_nothing_else(
     game, sg0, _sg1 = load_save(conversion.disk)
     assert game.key == conversion.game.key
     read_back = [s.record.name for s in sg0.slots if s.occupied]
-    assert read_back == [c.name for c in dos.read_party(dos_save, "A")][::-1]
+    assert read_back == [c.name for c in dos_codec.read_party(dos_save, "A")][::-1]
 
 
 @needs_dos_saves
@@ -200,7 +200,7 @@ def test_the_pane_shows_what_the_conversion_did_and_never_a_dropped_field(
     from PyQt6.QtWidgets import QDialogButtonBox
 
     from editor.dosimport import DROPPED_HEADING
-    from goldbox.dos import NOT_SET_OUT, C64SaveReport
+    from goldbox.dos_codec import NOT_SET_OUT, C64SaveReport
 
     #: A sentence of its own rather than one taken out of
     #: `DROPPED_PLAYER_TEXT`. This test is about where the pane puts a drop
@@ -228,7 +228,7 @@ def test_a_conversion_with_nothing_to_say_leaves_the_pane_empty(
     dropped a field -- `report.dropped` never reaches this pane at all
     (2026-09-08 ruling, the test above) -- and a genuine platform ceiling on
     `report.losses` shows that line alone."""
-    from goldbox.dos import C64SaveReport
+    from goldbox.dos_codec import C64SaveReport
 
     report = C64SaveReport(save0_size=0x1C00)
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
@@ -257,7 +257,7 @@ def test_pane_text_is_the_messages_and_never_the_drops():
     `test_pane_text_is_the_messages_then_the_drops` and asserted the
     opposite -- that `report.dropped` was joined on after a blank line."""
     from editor.dosimport import pane_text
-    from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
+    from goldbox.dos_codec import NOT_SET_OUT, C64SaveReport, Report
 
     report = C64SaveReport(save0_size=0x1C00)
     report.messages.extend([NOT_SET_OUT, "Second line."])
@@ -277,7 +277,7 @@ def test_pane_text_puts_a_loss_after_the_messages_and_never_a_drop():
     blank-line rule -- and `report.dropped` joins neither, on the same
     2026-09-08 ruling as the test above."""
     from editor.dosimport import pane_text
-    from goldbox.dos import NOT_SET_OUT, C64SaveReport, Report
+    from goldbox.dos_codec import NOT_SET_OUT, C64SaveReport, Report
 
     report = C64SaveReport(save0_size=0x1C00)
     report.losses.append("WISHFTR: 20 items and the C64 has sixteen slots; "
@@ -303,7 +303,7 @@ def test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane():
     Donald's ruling of 2026-09-08). Proven by turning the log on for real
     and reading the file it wrote, not by mocking the logger."""
     from editor.dosimport import pane_text
-    from goldbox.dos import Report
+    from goldbox.dos_codec import Report
     from wish import debuglog
 
     debuglog.start()
@@ -340,7 +340,7 @@ def test_name_warnings_keeps_only_the_truncated_name():
     then the fix put back.
     """
     from editor.dosimport import name_warnings
-    from goldbox.dos import C64SaveReport
+    from goldbox.dos_codec import C64SaveReport
 
     report = C64SaveReport(save0_size=0x1C00)
     report.losses.extend([
@@ -367,7 +367,7 @@ def test_log_unshown_losses_keeps_the_evidence_out_of_the_players_way():
     above uses.
     """
     from editor.dosimport import log_unshown_losses
-    from goldbox.dos import C64SaveReport
+    from goldbox.dos_codec import C64SaveReport
     from wish import debuglog
 
     report = C64SaveReport(save0_size=0x1C00)
@@ -408,7 +408,7 @@ def test_a_real_conversion_that_truncates_items_shows_nothing_in_the_pane():
 
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
-    report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
+    report = dos_codec.convert_save(gamedata.specimen("por-item-twenty"), "G",
                               save0, save1)
     text = pane_text(report)
     assert "carry only sixteen" not in text
@@ -427,7 +427,7 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
 
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
-    report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
+    report = dos_codec.convert_save(gamedata.specimen("por-party-l1"), "C",
                               save0, save1)
     text = pane_text(report)
     assert "do not fit" not in text
@@ -449,7 +449,7 @@ def test_the_pane_is_headed_conversion_info_and_is_half_the_height_it_was(
     that fits eleven lines or more at the base font has grown back.
     """
     from editor.dosimport import PANE_HEADING
-    from goldbox.dos import C64SaveReport
+    from goldbox.dos_codec import C64SaveReport
 
     dialog = _dialog_showing(app, tmp_path, monkeypatch,
                              C64SaveReport(save0_size=0x1C00))
@@ -479,7 +479,7 @@ def test_a_conversion_that_drops_nothing_gets_no_heading():
     lists none): a heading over no lines told a player something was lost
     with nothing to name, which is worse than saying nothing."""
     from editor.dosimport import dropped_text
-    from goldbox.dos import Report
+    from goldbox.dos_codec import Report
 
     assert dropped_text(Report()) == ""
 
@@ -535,8 +535,8 @@ def test_a_pool_of_radiance_import_with_no_creation_tables_converts_with_its_own
     menu = stored_tables(None)
     dialog = DosImportDialog(dos_save, GameFiles(icon=bytes(36),
                                                  animate=bytes(852)))
-    for slot in dos.slots_available(dos_save):
-        party = dos.read_party(dos_save, slot)
+    for slot in dos_codec.slots_available(dos_save):
+        party = dos_codec.read_party(dos_save, slot)
         if all(menu.head_art(c.get("portrait_head")) is not None
                and menu.body_art(c.get("portrait_body")) is not None
                for c in party):
@@ -549,10 +549,10 @@ def test_a_pool_of_radiance_import_with_no_creation_tables_converts_with_its_own
         QDialogButtonBox.StandardButton.Ok).isEnabled()
     assert "portrait" not in dialog.report_pane.toPlainText().lower()
     save0 = dialog.conversion.save0.to_bytes()
-    assert save0[dos.PORTRAIT_SWITCH - dos.SAVE0_BASE] == dos.PORTRAIT_ON
+    assert save0[dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE] == dos_codec.PORTRAIT_ON
     for index, char in enumerate(party):
-        place = dos.marching_slot(index, len(party))
-        rec_at = dos.SLOT_AREA - dos.SAVE0_BASE + place * dos.SLOT_STRIDE
+        place = dos_codec.marching_slot(index, len(party))
+        rec_at = dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE + place * dos_codec.SLOT_STRIDE
         assert save0[rec_at + 0x0FE] == \
             menu.head_art(char.get("portrait_head")), char.name
         assert save0[rec_at + 0x0FF] == \
@@ -570,17 +570,17 @@ def test_the_save_points_at_the_area_the_dos_party_is_in(app, dos_save, files):
     dialog = DosImportDialog(dos_save, files)
     assert dialog.conversion is not None
     payload = dialog.conversion.save0.to_bytes()
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
     there = dos_savegame.area_id(
         (dos_save / f"SAVGAM{dialog.slot}.DAT").read_bytes())
-    want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
-    want[dos.CACHE_GEO] = want[dos.CACHE_ECL] = there
+    want = bytearray(b"\xFF" * dos_codec.FILE_CACHE[1])
+    want[dos_codec.CACHE_GEO] = want[dos_codec.CACHE_ECL] = there
     # Slot 11: the save carries `ANIMATE00` in `SAVEDGAME1`'s tail, so the
     # cache has to say it is resident or the party cannot walk into an area
     # (#102). The literal 11 and 0, not the module's names, so this fails on a
     # renumbering rather than following it.
     want[11] = 0
-    assert payload[at:at + dos.FILE_CACHE[1]] == bytes(want)
+    assert payload[at:at + dos_codec.FILE_CACHE[1]] == bytes(want)
 
 
 @needs_dos_saves
@@ -590,7 +590,7 @@ def test_changing_the_slot_re_rehearses(app, dos_save, files):
     conversion other than the one the button would commit."""
     from editor.dosimport import DosImportDialog
 
-    offered = dos.slots_available(dos_save)
+    offered = dos_codec.slots_available(dos_save)
     if len(offered) < 2:
         pytest.skip("needs a DOS save folder holding two slots")
     dialog = DosImportDialog(dos_save, files)
@@ -609,7 +609,7 @@ def test_the_slots_offered_are_the_ones_the_folder_holds(app, dos_save, files):
 
     dialog = DosImportDialog(dos_save, files)
     offered = [dialog.slots.itemText(i) for i in range(dialog.slots.count())]
-    assert offered == dos.slots_available(dos_save)
+    assert offered == dos_codec.slots_available(dos_save)
 
 
 # --- the refusal when the game disks are missing (#118) ----------------------
@@ -737,7 +737,7 @@ def test_the_game_files_an_import_needs_are_the_icon_and_animate(app, tmp_path):
     default = found.icon.default_icon()
     assert len(default) == 36 and any(default)
     assert len(found.animate) == 852 and any(found.animate)
-    assert len(found.animate) == dos.ANIMATE_SIZE
+    assert len(found.animate) == dos_codec.ANIMATE_SIZE
     window.close()
 
 
@@ -786,9 +786,9 @@ def test_an_import_started_from_the_window_carries_its_own_faces(app, tmp_path):
 
     where = _save_dir()
     slot = None
-    for candidate in dos.slots_available(where):
-        party = dos.read_party(where, candidate)
-        neutral = [dos.to_neutral(c, portraits=game_files.portraits)
+    for candidate in dos_codec.slots_available(where):
+        party = dos_codec.read_party(where, candidate)
+        neutral = [dos_codec.to_neutral(c, portraits=game_files.portraits)
                   for c in party]
         if all("portrait_head" in n and "portrait_body" in n
                for n in neutral):
@@ -798,8 +798,8 @@ def test_an_import_started_from_the_window_carries_its_own_faces(app, tmp_path):
         pytest.skip("no DOS slot here has every character in the menu")
 
     conversion = rehearse(where, slot, game_files)
-    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
-    assert conversion.save0.to_bytes()[at] == dos.PORTRAIT_ON
+    at = dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE
+    assert conversion.save0.to_bytes()[at] == dos_codec.PORTRAIT_ON
     window.close()
 
 
@@ -827,7 +827,7 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
     # occupied slot first (`#160`) -- so the window's own order is DOS's,
     # not its reverse.
     names = [m.name for m in window.party.members if m.name]
-    assert names == [c.name for c in dos.read_party(dos_save, "A")]
+    assert names == [c.name for c in dos_codec.read_party(dos_save, "A")]
     assert "slot A" in note or "A" in note
 
     out = tmp_path / "NEW.D64"
@@ -936,7 +936,7 @@ def test_the_suggested_name_changes_with_the_slot(app, dos_save, files,
     their mind about must not leave the previous slot's name behind it."""
     from editor.dosimport import DosImportDialog
 
-    offered = dos.slots_available(dos_save)
+    offered = dos_codec.slots_available(dos_save)
     if len(offered) < 2:
         pytest.skip("needs a DOS save folder holding two slots")
     dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
@@ -955,7 +955,7 @@ def test_a_path_the_user_typed_survives_a_change_of_slot(app, dos_save, files,
 
     from editor.dosimport import DosImportDialog
 
-    offered = dos.slots_available(dos_save)
+    offered = dos_codec.slots_available(dos_save)
     if len(offered) < 2:
         pytest.skip("needs a DOS save folder holding two slots")
     dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
@@ -1019,7 +1019,7 @@ def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
     opened = []
     window.opened.connect(opened.append)
 
-    slot = dos.slots_available(dos_save)[0]
+    slot = dos_codec.slots_available(dos_save)[0]
     game_files = window.game_files_for_import()
     note = window.import_dos_save(folder=str(dos_save))
     out = tmp_path / f"PORSAVE{slot}.D64"
@@ -1184,7 +1184,7 @@ def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
     """
     import re
 
-    exc = dos.WrongTitleError(
+    exc = dos_codec.WrongTitleError(
         "Curse of the Azure Bonds records read, but only Pool of Radiance "
         "converts: no other pair of ports has been measured against each "
         "other (#53)",
@@ -1210,7 +1210,7 @@ def test_the_pane_shows_the_players_sentence_and_not_the_exception(
     from editor import dosimport
 
     def refuse(*_args, **_kwargs):
-        raise dos.WrongTitleError(
+        raise dos_codec.WrongTitleError(
             "Curse of the Azure Bonds records read, but only Pool of "
             "Radiance converts: no other pair of ports has been measured "
             "against each other (#53)",
@@ -1234,7 +1234,7 @@ def test_a_refusal_cannot_be_raised_without_naming_the_title():
     found; this is what keeps it that way.
     """
     with pytest.raises(TypeError):
-        dos.WrongTitleError("the developer's reason")
+        dos_codec.WrongTitleError("the developer's reason")
 
 
 # --- every other refusal a player reads (#195) ------------------------------
@@ -1287,7 +1287,7 @@ def test_the_pane_shows_the_fallback_and_not_the_developers_sentence(
     from editor import dosimport
 
     def refuse(*_args, **_kwargs):
-        raise dos.DosRecordError(message)
+        raise dos_codec.DosRecordError(message)
 
     folder = _fake_dos_dir(tmp_path)
     dialog = dosimport.DosImportDialog(folder, _fake_files())

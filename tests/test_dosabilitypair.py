@@ -37,7 +37,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosabilitypair as ap  # noqa: E402
 
 #: Long enough for the 422-byte Curse shape, which is the smallest of the three
@@ -71,7 +71,7 @@ def test_the_pair_offsets_are_the_ones_the_layout_declares():
     a record offset.
     """
     layout = {f.name: f for f in
-              dos_layout.layout_for(dos_layout.CURSE_OF_THE_AZURE_BONDS)}
+              dos_port.layout_for(dos_port.CURSE_OF_THE_AZURE_BONDS)}
     declared = {"str": "strength", "int": "intelligence", "wis": "wisdom",
                 "dex": "dexterity", "con": "constitution", "cha": "charisma",
                 "exstr": "exceptional_strength"}
@@ -81,13 +81,13 @@ def test_the_pair_offsets_are_the_ones_the_layout_declares():
 
 
 @pytest.mark.parametrize("shape", [
-    dos_layout.CURSE_OF_THE_AZURE_BONDS,
-    dos_layout.SECRET_OF_THE_SILVER_BLADES,
-    dos_layout.POOLS_OF_DARKNESS])
+    dos_port.CURSE_OF_THE_AZURE_BONDS,
+    dos_port.SECRET_OF_THE_SILVER_BLADES,
+    dos_port.POOLS_OF_DARKNESS])
 def test_every_later_shape_puts_the_pairs_at_the_same_offsets(shape):
     """The three later record sizes differ everywhere after the abilities and
     nowhere before them, so one set of offsets answers for all three."""
-    layout = {f.name: f for f in dos_layout.layout_for(shape)}
+    layout = {f.name: f for f in dos_port.layout_for(shape)}
     assert layout["strength"].offset == 0x010
     assert layout["exceptional_strength"].offset == 0x01C
 
@@ -95,7 +95,7 @@ def test_every_later_shape_puts_the_pairs_at_the_same_offsets(shape):
 def test_pool_of_radiance_keeps_one_byte_and_so_has_no_pairs():
     """The negative control for the whole finding."""
     layout = {f.name: f for f in
-              dos_layout.layout_for(dos_layout.POOL_OF_RADIANCE)}
+              dos_port.layout_for(dos_port.POOL_OF_RADIANCE)}
     assert layout["strength"].size == 1
     assert layout["exceptional_strength"].size == 1
 

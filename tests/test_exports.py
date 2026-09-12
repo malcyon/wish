@@ -42,7 +42,7 @@ import pytest
 from gamedata import disk_path
 from test_dossave import _save_dir, needs_dos_saves
 
-from goldbox import dos, games
+from goldbox import c64_port, dos_codec
 
 SAVE_DISK = "PORSAVE11"
 
@@ -69,7 +69,7 @@ def _source(fixture: str, save1: str | None = None, game=None):
     from goldbox.savegame import SaveGame0, SaveGame1
 
     return Source(
-        game or games.POOL_OF_RADIANCE,
+        game or c64_port.POOL_OF_RADIANCE,
         SaveGame0.from_prg((FIXTURES / fixture).read_bytes()).to_bytes(),
         SaveGame1.from_prg((FIXTURES / save1).read_bytes()).to_bytes()
         if save1 else None,
@@ -154,7 +154,7 @@ def test_a_second_export_names_the_first_partys_leftovers_before_writing(
     from editor.exports import REMOVES_HEADING, DosPlan
 
     DosPlan(six, tmp_path, dos_template, "B").write()
-    assert len(dos.read_party(tmp_path, "B")) == 6
+    assert len(dos_codec.read_party(tmp_path, "B")) == 6
 
     plan = DosPlan(one, tmp_path, dos_template, "B")
     # The elf, the half-elf and the dwarf of the six-party each left a `.SPC`
@@ -170,7 +170,7 @@ def test_a_second_export_names_the_first_partys_leftovers_before_writing(
         assert (tmp_path / name).exists()      # still there, nothing written
 
     plan.write()
-    assert [c.name for c in dos.read_party(tmp_path, "B")] == ["BRUTUS"]
+    assert [c.name for c in dos_codec.read_party(tmp_path, "B")] == ["BRUTUS"]
 
 
 @needs_dos_saves
@@ -200,7 +200,7 @@ def test_the_write_puts_a_readable_party_where_it_said_it_would(
     plan = DosPlan(one, out, dos_template, "A")
     note = plan.write()
     assert sorted(p.name for p in out.iterdir()) == plan.files
-    assert [c.name for c in dos.read_party(out, "A")] == ["BRUTUS"]
+    assert [c.name for c in dos_codec.read_party(out, "A")] == ["BRUTUS"]
     assert "A" in note and str(out) in note
 
 
@@ -287,7 +287,7 @@ def test_choosing_a_template_fills_the_slots_and_replans(app, one,
     assert dialog.report_pane.toPlainText() == NO_TEMPLATE
     dialog.set_template(dos_template)
     offered = [dialog.slots.itemText(i) for i in range(dialog.slots.count())]
-    assert offered == dos.slots_available(dos_template)
+    assert offered == dos_codec.slots_available(dos_template)
     assert dialog.report_pane.toPlainText().startswith(DROPPED_HEADING)
     assert dialog.plan is not None
     assert dialog.buttons.button(
@@ -304,11 +304,11 @@ def test_a_later_title_cannot_be_exported_to_dos(app, dos_template, tmp_path):
     from editor.exports import DosExportDialog
 
     curse = _source("savedgame0.bin", "savedgame1.bin",
-                    game=games.CURSE_OF_THE_AZURE_BONDS)
+                    game=c64_port.CURSE_OF_THE_AZURE_BONDS)
     dialog = DosExportDialog(curse, template=dos_template,
                              destination=tmp_path)
     text = dialog.report_pane.toPlainText()
-    assert games.CURSE_OF_THE_AZURE_BONDS.title in text
+    assert c64_port.CURSE_OF_THE_AZURE_BONDS.title in text
     assert "Traceback" not in text
     assert dialog.plan is None
     assert not dialog.buttons.button(

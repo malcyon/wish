@@ -26,7 +26,7 @@ import pytest
 from conftest import load_tools_module
 from test_dossave import _save_dir, needs_dos_saves
 
-from goldbox import c64_codec, dos, items, savegame
+from goldbox import c64_codec, dos_codec, items, savegame
 from goldbox import dos_savegame as sg
 from goldbox import portraits as portraits_mod
 from goldbox.d64 import D64
@@ -92,7 +92,7 @@ def _game_files():
             pass
         try:
             animate = animate if animate is not None else \
-                load_payload(str(disk), dos.ANIMATE_FILE)
+                load_payload(str(disk), dos_codec.ANIMATE_FILE)
         except Exception:
             pass
     if icon is None or animate is None:
@@ -109,9 +109,9 @@ def _built(slot: str, tmp_path):
     from.  The game reads the file.
     """
     icon, animate = _game_files()
-    save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate)
+    save0, save1, report = dos_codec.new_save(_save_dir(), slot, icon, animate)
     path = tmp_path / f"NEW{slot}.D64"
-    path.write_bytes(bytes(dos.save_disk(bytes(save0), bytes(save1)).data))
+    path.write_bytes(bytes(dos_codec.save_disk(bytes(save0), bytes(save1)).data))
     return D64.open(path), report
 
 
@@ -140,7 +140,7 @@ def _slots():
     where = _save_dir()
     if where is None:
         pytest.skip("needs a DOS save; set FR_ARCHIVES to the archives")
-    found = dos.slots_available(where)
+    found = dos_codec.slots_available(where)
     if not found:
         pytest.skip("no DOS Pool of Radiance slot here")
     return found
@@ -162,12 +162,12 @@ def test_every_sheet_number_on_the_built_disk_is_the_dos_partys_own(tmp_path):
     """
     checked = 0
     for slot in _slots():
-        party = dos.read_party(_save_dir(), slot)
+        party = dos_codec.read_party(_save_dir(), slot)
         disk, _report = _built(slot, tmp_path)
         _sg0, back = _read_back(disk)
         assert sorted(back) == sorted(c.name for c in party), slot
         for source in party:
-            want = dos.to_neutral(source).fields
+            want = dos_codec.to_neutral(source).fields
             _place, got = back[source.name]
             for field in SHEET_FIELDS:
                 if field not in want:
@@ -218,7 +218,7 @@ def test_the_built_disk_lists_the_dos_party_and_nobody_else(tmp_path):
     breaking it.
     """
     for slot in _slots():
-        party = [c.name for c in dos.read_party(_save_dir(), slot)]
+        party = [c.name for c in dos_codec.read_party(_save_dir(), slot)]
         disk, _report = _built(slot, tmp_path)
         _game, sg0, sg1 = savegame.load_save(disk)
         listed = [s.record.name for s in sg0.slots if s.occupied]
@@ -269,7 +269,7 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
 
     icon, _animate = _game_files()
     for slot in _slots():
-        party = dos.read_party(_save_dir(), slot)
+        party = dos_codec.read_party(_save_dir(), slot)
         disk, _report = _built(slot, tmp_path)
         _game, sg0, _sg1 = savegame.load_save(disk)
         payload = sg0.to_bytes()
@@ -278,7 +278,7 @@ def test_no_character_on_the_built_disk_would_draw_as_black_hooks(tmp_path):
             if place < len(party):
                 assert drawn == icon, (slot, place)
                 assert any(drawn), f"{slot} slot {place} draws as black hooks"
-            elif place in dos.NPC_ICON_SLOTS:
+            elif place in dos_codec.NPC_ICON_SLOTS:
                 # The two slots a DOS party can never fill, but the C64
                 # player can -- he recruits an NPC into one. The engine
                 # seeds them at creation and this conversion now does the
@@ -319,9 +319,9 @@ def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
 
     save_dir = _save_dir()
     slot = None
-    for candidate in dos.slots_available(save_dir):
-        party = dos.read_party(save_dir, candidate)
-        neutral = [dos.to_neutral(c, portraits=tables) for c in party]
+    for candidate in dos_codec.slots_available(save_dir):
+        party = dos_codec.read_party(save_dir, candidate)
+        neutral = [dos_codec.to_neutral(c, portraits=tables) for c in party]
         if all("portrait_head" in n and "portrait_body" in n
                for n in neutral):
             slot = candidate
@@ -333,8 +333,8 @@ def test_build_wires_the_creation_menu_into_the_disk_it_writes(tmp_path):
     dosdisk.build(save_dir, slot, where, out)
     _game, sg0, _sg1 = savegame.load_save(D64.open(out))
     payload = sg0.to_bytes()
-    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
-    assert payload[at] == dos.PORTRAIT_ON
+    at = dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE
+    assert payload[at] == dos_codec.PORTRAIT_ON
 
 
 @needs_dos_saves

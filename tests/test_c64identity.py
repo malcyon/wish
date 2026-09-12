@@ -15,17 +15,17 @@ disks present.
 
 from __future__ import annotations
 
-from goldbox import c64_codec, dos, dos_layout, neutral
+from goldbox import c64_codec, dos_codec, dos_port, neutral
 from goldbox.record import CharacterRecord
 
-IDENT = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+IDENT = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
 
 
-def _dos_record(identity: int = 0x42) -> dos.DosCharacter:
+def _dos_record(identity: int = 0x42) -> dos_codec.DosCharacter:
     """A Pool of Radiance record that is zero but for the identity byte."""
-    raw = bytearray(dos_layout.RECORD_SIZE)
+    raw = bytearray(dos_port.RECORD_SIZE)
     raw[IDENT.offset] = identity
-    return dos.DosCharacter(bytes(raw))
+    return dos_codec.DosCharacter(bytes(raw))
 
 
 def _c64_record(identity: int | None = None, second: int = 0) -> CharacterRecord:
@@ -41,7 +41,7 @@ def test_the_dos_identity_byte_crosses_into_the_c64_identity_pair():
     """DOS 0x0AB, whole, into the first byte of the C64's identity_pair --
     the mechanism #258's specification names."""
     char = _dos_record(0x42)
-    rec, rep = c64_codec.write(dos.to_neutral(char))
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get_raw("identity_pair") == b"\x42\x00"
     assert "identity_pair" in rep.sources[0x0E6]
 
@@ -50,7 +50,7 @@ def test_the_second_byte_of_the_pair_is_always_zero():
     """The C64 draws two bytes and nothing reads either one back; DOS has
     only ever had one, so the second is written zero rather than guessed."""
     for identity in (0x00, 0x01, 0xFF):
-        rec, _ = c64_codec.write(dos.to_neutral(_dos_record(identity)))
+        rec, _ = c64_codec.write(dos_codec.to_neutral(_dos_record(identity)))
         assert rec.get_raw("identity_pair")[1] == 0
 
 
@@ -58,9 +58,9 @@ def test_the_identity_pair_no_longer_shows_as_dropped():
     """The whole point of naming C64 record 0x0E6: `unnamed_0ab` comes off
     the drop list entirely, both in the table and in what a real conversion
     reports."""
-    assert "unnamed_0ab" not in dict(dos.DROPPED)
-    assert "unnamed_0ab" not in dos.DROPPED_PLAYER_TEXT
-    rec, report = dos.to_c64_record(_dos_record(0x99))
+    assert "unnamed_0ab" not in dict(dos_codec.DROPPED)
+    assert "unnamed_0ab" not in dos_codec.DROPPED_PLAYER_TEXT
+    rec, report = dos_codec.to_c64_record(_dos_record(0x99))
     assert not [d for d in report.dropped if "identity" in d.lower()]
     assert rec.get_raw("identity_pair") == b"\x99\x00"
 
@@ -88,7 +88,7 @@ def test_a_pool_of_radiance_c64_record_gives_dos_the_pair_back():
     """The other half of the round trip: a value that came from the C64's
     own identity pair is written straight to DOS 0x0AB, not digested."""
     out = c64_codec.read(_c64_record(0x57, 0xD1), game="pool-of-radiance")
-    rec, _, _, rep = dos.write(out)
+    rec, _, _, rep = dos_codec.write(out)
     assert rec[IDENT.offset] == 0x57
     assert "0x57" in rep.sources[IDENT.offset]
     assert "identity pair" in rep.sources[IDENT.offset]
@@ -105,13 +105,13 @@ def test_a_curse_or_silver_blades_source_still_gets_the_digest():
     assert isinstance(one, NeutralCharacter)
     one.set("experience", 1, "made up")
     two.set("experience", 2, "made up")
-    first, _, _, _ = dos.write(one)
-    second, _, _, _ = dos.write(two)
+    first, _, _, _ = dos_codec.write(one)
+    second, _, _, _ = dos_codec.write(two)
     # A Curse source builds Curse's 422 bytes since #299, and Curse keeps
     # this byte at 0x126 rather than Pool of Radiance's 0x0AB.
-    at = dos_layout.FIELDS_BY_NAME_FOR[
+    at = dos_port.FIELDS_BY_NAME_FOR[
         "curse-of-the-azure-bonds"]["unnamed_0ab"].offset
-    assert len(first) == dos_layout.CURSE_OF_THE_AZURE_BONDS.record_size
+    assert len(first) == dos_port.CURSE_OF_THE_AZURE_BONDS.record_size
     assert first[at] != second[at]
 
 
@@ -120,9 +120,9 @@ def test_a_dos_record_round_trips_its_own_identity_through_the_c64():
     and back to the same DOS byte -- the exact defect #258 describes,
     fixed."""
     char = _dos_record(0x99)
-    c64, _ = c64_codec.write(dos.to_neutral(char))
+    c64, _ = c64_codec.write(dos_codec.to_neutral(char))
     assert c64.get_raw("identity_pair")[0] == 0x99
-    rec, _, _, _ = dos.write(c64_codec.read(c64, game="pool-of-radiance"))
+    rec, _, _, _ = dos_codec.write(c64_codec.read(c64, game="pool-of-radiance"))
     assert rec[IDENT.offset] == 0x99
 
 
@@ -133,10 +133,10 @@ def test_a_pure_dos_round_trip_still_derives_the_digest():
     the *same* DOS byte, because the digest excludes that offset -- the
     passthrough this test would catch is one that copied the original
     byte instead."""
-    one, _, _, _ = dos.write(dos.to_neutral(_dos_record(0x11)))
-    two, _, _, _ = dos.write(dos.to_neutral(_dos_record(0x22)))
+    one, _, _, _ = dos_codec.write(dos_codec.to_neutral(_dos_record(0x11)))
+    two, _, _, _ = dos_codec.write(dos_codec.to_neutral(_dos_record(0x22)))
     assert one[IDENT.offset] == two[IDENT.offset]
-    assert one[IDENT.offset] == dos.identity_byte(one)
+    assert one[IDENT.offset] == dos_codec.identity_byte(one)
 
 
 # --- the vocabulary and the tables agree -------------------------------------

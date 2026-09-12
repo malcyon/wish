@@ -476,7 +476,7 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     strings it holds.
     """
     from editor.enums import class_bit_names
-    from goldbox import games
+    from goldbox import c64_port
     from goldbox.d64 import attach_load_address
     from goldbox.encoding import COMBAT_BIAS
     from goldbox.layout import NAME_SIZE
@@ -493,8 +493,8 @@ def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     )
     from goldbox.traits import SLOTS as TRAIT_SLOTS
 
-    game = game or games.POOL_OF_RADIANCE
-    races = games.race_table(game)
+    game = game or c64_port.POOL_OF_RADIANCE
+    races = c64_port.race_table(game)
     race_label = _widest(races.values())
     classes = class_bit_names(game)
     mask = _widest(classes.values())

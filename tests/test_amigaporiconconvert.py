@@ -30,8 +30,8 @@ from test_convert import _six_icon_party
 from test_toamigapor import _por_disk_2
 
 from editor import convert, dosimport
-from goldbox import dos, dos_layout, games
-from goldbox.amiga import AmigaPorCharacter, write_por
+from goldbox import c64_port, dos_codec, dos_port
+from goldbox.amiga_por import AmigaPorCharacter, write_por
 from goldbox.iconparts import DosIcon
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -101,15 +101,16 @@ def test_c64_to_amiga_direction_recognises_the_sources_own_combat_icon(
     and discard one, every character's `(icon_head, icon_body)` read back
     `(0, 0)` because `write_por` had no `icon` parameter to hand it to.
     """
-    from goldbox.amiga import AmigaDisk, read_por_slot
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_por import read_por_slot
 
     save0, save1, parts = _six_icon_party()
     disk2 = _por_disk_2(tmp_path)
-    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                             path=pathlib.Path("SIX.D64"),
                             save0=save0, save1=save1)
 
-    direction = convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToAmiga(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, "A", disk2, icon_parts=parts)
     assert not any(FIGURE_NOT_SET in d for d in rehearsal.report.dropped), \
         rehearsal.report.dropped
@@ -128,15 +129,16 @@ def test_c64_to_amiga_direction_with_no_icon_parts_still_converts(tmp_path):
     disk `IconParts.load` cannot read -- still writes a complete Amiga save;
     every figure is the game's own default and the drop line names it, as
     `C64ToDos`'s own fallback already documents for the DOS destination."""
-    from goldbox.amiga import AmigaDisk, read_por_slot
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_por import read_por_slot
 
     save0, save1, _parts = _six_icon_party()
     disk2 = _por_disk_2(tmp_path)
-    source = convert.Source(port="c64", title=games.POOL_OF_RADIANCE,
+    source = convert.Source(port="c64", title=c64_port.POOL_OF_RADIANCE,
                             path=pathlib.Path("SIX.D64"),
                             save0=save0, save1=save1)
 
-    direction = convert.C64ToAmiga(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.C64ToAmiga(dos_port.POOL_OF_RADIANCE)
     rehearsal = direction.rehearse(source, "A", disk2)  # no icon_parts
     assert any(FIGURE_NOT_SET in d for d in rehearsal.report.dropped), \
         rehearsal.report.dropped
@@ -172,16 +174,17 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     back off the written disk, for a specimen that carries its own flail and
     banded mail -- the measurement `#424`'s own issue body cites.
     """
-    from goldbox.amiga import AmigaDisk, read_por_slot
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_por import read_por_slot
 
     disk2 = _por_disk_2(tmp_path)
     folder = gamedata.specimen("por-item-granted")
 
     source = convert.Source.detect(folder / "SAVGAMD.DAT")
     assert source.port == "dos" and source.slot == "D"
-    direction = convert.DosToAmiga(dos_layout.POOL_OF_RADIANCE)
+    direction = convert.DosToAmiga(dos_port.POOL_OF_RADIANCE)
 
-    raw_party = dos.read_party(folder, "D")
+    raw_party = dos_codec.read_party(folder, "D")
     expected = [(c.get("icon_head"), c.get("icon_body")) for c in raw_party]
     assert expected != [(0, 0)] * len(expected), \
         "the specimen itself carries no combat icon -- pick a different one"
@@ -212,13 +215,14 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_an_amiga_convert(
     *source*'s own title (Pool of Radiance) exactly as `#383`'s own dialog
     test asks it for the DOS direction.
     """
-    from goldbox.amiga import AmigaDisk, read_por_slot
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_por import read_por_slot
     from goldbox.iconparts import IconParts
 
     where = gamedata.disk_dir()
 
     def game_files_for(game):
-        if game.key != games.POOL_OF_RADIANCE.key:
+        if game.key != c64_port.POOL_OF_RADIANCE.key:
             return None
         icon = None
         for disk in sorted(where.glob("POOL*.[dD]64")):
@@ -233,7 +237,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_an_amiga_convert(
 
     save0, save1, _parts = _six_icon_party()
     disk_path = tmp_path / "SIX.D64"
-    disk_path.write_bytes(dos.save_disk(save0, save1).to_bytes())
+    disk_path.write_bytes(dos_codec.save_disk(save0, save1).to_bytes())
     disk2 = _por_disk_2(tmp_path)
 
     destination = tmp_path / "out"

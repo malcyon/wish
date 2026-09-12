@@ -14,7 +14,7 @@ rather than guessed at.
 import pytest
 from test_dossave import _save_dir, needs_dos_saves
 
-from goldbox import amiga, c64_codec, derive, dos, dos_layout, games, neutral
+from goldbox import amiga_pod, c64_codec, c64_port, derive, dos_codec, dos_port, neutral
 from goldbox import levels as level_tables
 from goldbox.encoding import combat_value
 from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
@@ -55,11 +55,11 @@ def test_the_dos_reader_and_the_neutral_vocabulary_agree_on_combat_figure():
     rather than to this neutral field -- so `c64_codec.DIRECT` still maps
     the *neutral* `combat_figure` onto the *C64* `party_order`.
     """
-    assert dict(dos.DIRECT)["combat_figure"] == "combat_figure"
+    assert dict(dos_codec.DIRECT)["combat_figure"] == "combat_figure"
     assert "combat_figure" in neutral.FIELDS
-    assert "combat_figure" in dos_layout.FIELDS_BY_NAME
+    assert "combat_figure" in dos_port.FIELDS_BY_NAME
     assert "party_order" not in neutral.FIELDS
-    assert "party_order" not in dos_layout.FIELDS_BY_NAME
+    assert "party_order" not in dos_port.FIELDS_BY_NAME
     assert dict(c64_codec.DIRECT)["combat_figure"] == "party_order"
     assert "party_order" in C64_FIELDS
 
@@ -68,10 +68,10 @@ def test_a_synthetic_dos_record_reads_its_combat_figure_byte_as_neutral():
     """The round trip the table check above cannot see: a DOS record built
     from zero bytes but for `combat_figure` (0x0BF, #305) comes back out of
     `dos.to_neutral` under that name, not under the old `party_order`."""
-    raw = bytearray(dos_layout.RECORD_SIZE)
-    field = dos_layout.FIELDS_BY_NAME["combat_figure"]
+    raw = bytearray(dos_port.RECORD_SIZE)
+    field = dos_port.FIELDS_BY_NAME["combat_figure"]
     raw[field.offset] = 4
-    char = dos.to_neutral(dos.DosCharacter(bytes(raw)))
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw)))
     assert char.get("combat_figure") == 4
     assert char.get("party_order") is None    # not a neutral field any more
 
@@ -79,28 +79,28 @@ def test_a_synthetic_dos_record_reads_its_combat_figure_byte_as_neutral():
 def test_the_two_ports_share_one_report_shape():
     """Step 2 of #25: every direction reports what it dropped the same way."""
     assert issubclass(c64_codec.Report, neutral.Report)
-    assert issubclass(amiga.Report, neutral.Report)
+    assert issubclass(amiga_pod.Report, neutral.Report)
     # And one builder makes both disposition tables.
-    assert dos.field_disposition() == neutral.disposition(
-        dos.DIRECT, dos.TRANSFORMED, dos.DROPPED, "the C64's",
-        derived=tuple((n, w) for n, w, _run in dos.DERIVED),
-        constants=dos.CONSTANTS)
+    assert dos_codec.field_disposition() == neutral.disposition(
+        dos_codec.DIRECT, dos_codec.TRANSFORMED, dos_codec.DROPPED, "the C64's",
+        derived=tuple((n, w) for n, w, _run in dos_codec.DERIVED),
+        constants=dos_codec.CONSTANTS)
     # Spelled `POD_WRITE_*` since #470's stage 10 split the Amiga codec by
     # title: these four are the Pools of Darkness writer's own tables and
     # were named as though they were the whole port's.
-    assert amiga.pod_write_field_disposition() == neutral.disposition(
-        amiga.POD_WRITE_DIRECT, amiga.POD_WRITE_TRANSFORMED,
-        amiga.POD_WRITE_DROPPED, "the Amiga's")
+    assert amiga_pod.pod_write_field_disposition() == neutral.disposition(
+        amiga_pod.POD_WRITE_DIRECT, amiga_pod.POD_WRITE_TRANSFORMED,
+        amiga_pod.POD_WRITE_DROPPED, "the Amiga's")
 
 
 def test_undeclared_finds_a_field_no_disposition_names():
     """The shared form of `test_every_declared_field_has_a_disposition`."""
-    declared = {f.name for f in dos_layout.LAYOUT
+    declared = {f.name for f in dos_port.LAYOUT
                 if not f.name.startswith("gap_")}
-    assert neutral.undeclared(declared, dos.field_disposition()) == \
+    assert neutral.undeclared(declared, dos_codec.field_disposition()) == \
         (set(), set())
     # Take one away and it is named, rather than lost.
-    short = dict(dos.field_disposition())
+    short = dict(dos_codec.field_disposition())
     del short["strength"]
     assert neutral.undeclared(declared, short) == ({"strength"}, set())
 
@@ -400,9 +400,9 @@ def test_the_dos_reader_sets_nothing_the_c64_writer_leaves_behind():
     the writer takes.  A field appearing here would be one to build the C64
     side out for, or one to say out loud in `DROPPED`."""
     for path in sorted(_save_dir().glob("*.SAV")):
-        if path.stat().st_size != dos_layout.RECORD_SIZE:
+        if path.stat().st_size != dos_port.RECORD_SIZE:
             continue
-        char = dos.to_neutral(dos.read_character(path))
+        char = dos_codec.to_neutral(dos_codec.read_character(path))
         assert char.port == "DOS"
         _, rep = c64_codec.write(char)
         assert not [d for d in rep.dropped if "takes nothing from it" in d]
@@ -413,8 +413,8 @@ def test_the_reader_grades_every_value_it_carries():
     """A value with no grade cannot be refused, so every one carries the grade
     `goldbox/dos_layout.py` gives the field it was read from."""
     path = next(p for p in sorted(_save_dir().glob("*.SAV"))
-                if p.stat().st_size == dos_layout.RECORD_SIZE)
-    char = dos.to_neutral(dos.read_character(path))
+                if p.stat().st_size == dos_port.RECORD_SIZE)
+    char = dos_codec.to_neutral(dos_codec.read_character(path))
     assert char.fields
     for name in char.keys():
         assert isinstance(char.value(name).confidence, Confidence)
@@ -438,7 +438,7 @@ def test_every_neutral_field_has_a_disposition_in_every_writer():
     `goldbox.dos`'s table and `later_field_disposition(deltas)`.
     """
     tables = ((c64_codec, c64_codec.field_disposition()),
-              (amiga, amiga.pod_write_field_disposition()))
+              (amiga_pod, amiga_pod.pod_write_field_disposition()))
     for writer, table in tables:
         unaccounted, unknown = neutral.undeclared(neutral.FIELDS, table)
         assert unaccounted == set(), (writer.__name__, "no disposition")
@@ -585,7 +585,7 @@ def test_record_shape_refuses_a_title_it_has_not_measured():
     """Champions of Krynn has a `Game` but no `RecordShape` row (#274): asking
     for its shape must not hand back Pool of Radiance's silently."""
     with pytest.raises(KeyError):
-        c64_codec.record_shape(games.BY_KEY["champions-of-krynn"])
+        c64_codec.record_shape(c64_port.BY_KEY["champions-of-krynn"])
     with pytest.raises(KeyError):
         c64_codec.record_shape("champions-of-krynn")
 

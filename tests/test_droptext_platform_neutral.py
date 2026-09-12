@@ -56,7 +56,7 @@ from test_amiga import amiga_por_records
 from test_amigalaterwrite import engine_written_parties
 from test_doslatertitles import _c64_disk, _c64_party
 
-from goldbox import amiga, c64_codec, dos, dos_layout
+from goldbox import amiga_later, amiga_por, c64_codec, dos_codec, dos_port
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -83,8 +83,8 @@ def test_the_c64_combat_icon_drop_names_no_file_or_byte_count():
     and count screen codes and colours in front of a player."""
     seen = 0
     for path in amiga_por_records():
-        c = amiga.read_amiga_por(path)
-        n = amiga.to_neutral(c)
+        c = amiga_por.read_amiga_por(path)
+        n = amiga_por.to_neutral(c)
         _rec, rep = c64_codec.write(n)
         lines = [d for d in rep.dropped if d.lower().startswith("combat icon")]
         assert lines, (path, rep.dropped)
@@ -110,7 +110,7 @@ def test_a_c64_party_converted_to_the_amiga_names_no_platform():
     assert len(party) == 6
     checked = 0
     for char in party:
-        _built, report = amiga.write_later(char)
+        _built, report = amiga_later.write_later(char)
         for line in report.dropped:
             assert not NAMES_DOS.search(line), (char.get("name"), line)
             assert "CHARPIC00" not in line, (char.get("name"), line)
@@ -140,8 +140,8 @@ def test_an_amiga_pool_of_radiance_source_names_no_platform():
                     "tools/gamedisks.py")
     checked = 0
     for path in paths:
-        char = amiga.read_amiga_por(path)
-        neutral = amiga.to_neutral(char)
+        char = amiga_por.read_amiga_por(path)
+        neutral = amiga_por.to_neutral(char)
         lines = [d for d in neutral.dropped if "0x11F" in d]
         assert lines, (path, neutral.dropped)
         for line in lines:
@@ -168,10 +168,10 @@ def test_a_dos_portrait_the_menu_cannot_answer_for_names_no_platform():
     tables = PortraitTables(heads=tuple(range(1, 15)),
                              bodies=tuple(range(1, 13)),
                              source="synthetic, for this test")
-    raw = bytearray(bytes(dos.POOL_OF_RADIANCE.record_size))
-    raw[dos_layout.FIELDS_BY_NAME["portrait_body"].offset] = 13  # outside
-    odd = dos.DosCharacter(bytes(raw))                            # the menu
-    neutral = dos.to_neutral(odd, portraits=tables)
+    raw = bytearray(bytes(dos_codec.POOL_OF_RADIANCE.record_size))
+    raw[dos_port.FIELDS_BY_NAME["portrait_body"].offset] = 13  # outside
+    odd = dos_codec.DosCharacter(bytes(raw))                            # the menu
+    neutral = dos_codec.to_neutral(odd, portraits=tables)
     lines = [d for d in neutral.dropped if "portrait (body)" in d.lower()]
     assert lines, neutral.dropped
     for line in lines:
@@ -207,7 +207,7 @@ def test_a_c64_pool_of_radiance_party_converted_to_the_amiga_names_no_platform()
         char.set("portrait_head", 0xFF,
                   "forced past the menu, so the drop this test needs fires "
                   "regardless of #479's fix")
-        _record, _itm, _spc, report = amiga.write_por(char)
+        _record, _itm, _spc, report = amiga_por.write_por(char)
         portrait_lines = [d for d in report.dropped
                           if d.startswith("portrait_")]
         assert portrait_lines, (char.get("name"), report.dropped)
@@ -234,9 +234,9 @@ def test_an_amiga_source_character_converted_to_the_amiga_names_no_platform():
         pytest.skip("needs the specimen tree; see tools/specimens.py")
     checked = 0
     for label, char in parties:
-        neutral_char = amiga.to_neutral_later(char)
+        neutral_char = amiga_later.to_neutral_later(char)
         assert "encumbrance" in neutral_char, (label, char.name)
-        _built, report = amiga.write_later(neutral_char)
+        _built, report = amiga_later.write_later(neutral_char)
         for line in report.dropped:
             assert not NAMES_DOS.search(line), (label, char.name, line)
         checked += 1

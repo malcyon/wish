@@ -30,7 +30,7 @@ sys.path.insert(0, str(REPO))
 #: dependency the same way.
 pytest.importorskip("capstone")
 
-from goldbox import dos, levels  # noqa: E402
+from goldbox import dos_codec, levels  # noqa: E402
 from tools import dosracialseed  # noqa: E402
 
 INNATE = bytes((0x31, 0xC0, 0x50,          # xor ax, ax / push ax   (duration 0)
@@ -111,8 +111,8 @@ def test_creation_writes_every_racial_id_by_race_alone(engine):
     ids = {race: tuple(c[0] for c in calls) for race, calls in table.items()}
     assert ids[2] == (107,) and ids[4] == (124,)
     for race, name in ((1, "dwarf"), (3, "gnome"), (5, "halfling")):
-        assert ids[race] == dos.RACE_COMBAT_EFFECTS[name], name
-    assert {e for row in ids.values() for e in row} == set(dos.INNATE_EFFECTS)
+        assert ids[race] == dos_codec.RACE_COMBAT_EFFECTS[name], name
+    assert {e for row in ids.values() for e in row} == set(dos_codec.INNATE_EFFECTS)
 
 
 def test_97_adds_the_constitution_band_on_the_wand_and_spell_columns(engine):

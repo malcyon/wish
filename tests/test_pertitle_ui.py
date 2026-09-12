@@ -31,16 +31,16 @@ import pytest
 
 from automap import live
 from editor.enums import class_bit_names, race_names, tables_for
-from goldbox import games
+from goldbox import c64_port
 
-POOL = games.POOL_OF_RADIANCE
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-SSB = games.SECRET_OF_THE_SILVER_BLADES
-KRYNN = games.CHAMPIONS_OF_KRYNN
+POOL = c64_port.POOL_OF_RADIANCE
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
+KRYNN = c64_port.CHAMPIONS_OF_KRYNN
 
 #: A title whose race and class lists we do not have. `None` there means "we do
 #: not know", and the editor must show the raw number rather than invent one.
-UNTABLED = games.Game(key="untabled", title="Untabled", save_file=b"SAVEX",
+UNTABLED = c64_port.Game(key="untabled", title="Untabled", save_file=b"SAVEX",
                       save_load_address=0x4B00, save_size=0x1D00)
 
 
@@ -420,7 +420,7 @@ def test_a_silver_blades_save_shows_its_own_races(app, tmp_path):
         assert _label(window._widgets["class_bits"], code)
 
 
-def _is_save(path: pathlib.Path, game: games.Game) -> bool:
+def _is_save(path: pathlib.Path, game: c64_port.Game) -> bool:
     """Does this disk carry a whole save of that title?
 
     Curse's side B has a truncated `SAVEAZURE` demo party under the same name,
@@ -449,7 +449,7 @@ def test_synthetic_party_builds_a_save_for_every_title():
     from goldbox.savegame import load_save
     from tests.gamedata import synthetic_party
 
-    for game in games.GAMES:
+    for game in c64_port.GAMES:
         disk = D64.from_bytes(synthetic_party(game))
         found, sg0, sg1 = load_save(disk)
         assert found is game, game.title

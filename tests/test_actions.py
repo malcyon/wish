@@ -19,7 +19,7 @@ import pytest
 
 from automap import actions, c64, live
 from automap.target import MemoryTarget
-from goldbox import c64_codec, games, levelup
+from goldbox import c64_codec, c64_port, levelup
 from goldbox import items as por_items
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import ROSTER_HP_CURRENT
@@ -187,7 +187,7 @@ def party_of(entries: list[tuple[str, int, int]]) -> MemoryTarget:
     fields is his, copied into as many slots as there are entries."""
     from goldbox.savegame import ROSTER_SLOT_INDEX, ROSTER_STRIDE
     save0, save1 = captured()
-    rec_base = games.POOL_OF_RADIANCE.slot_area_base - 0x4900
+    rec_base = c64_port.POOL_OF_RADIANCE.slot_area_base - 0x4900
     template_record = bytes(save0[rec_base:rec_base + 0x100])
     template_roster = bytes(save1[:ROSTER_STRIDE])
     for i, (name, hp, hp_max) in enumerate(entries):
@@ -358,7 +358,7 @@ def test_identifying_asks_first():
 def with_experience(points: int) -> MemoryTarget:
     """The captured party with BRUTUS given enough to train. 0x0E8, 24-bit."""
     save0, save1 = captured()
-    at = games.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
+    at = c64_port.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
     save0[at:at + 3] = points.to_bytes(3, "little")
     return MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
                          0x6E11: bytes([WORLD])})
@@ -403,7 +403,7 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     class the same wrong way plan would have, blocking Curse's trainer)`. A
     Curse fighter genuinely levels now; see
     `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured`."""
-    from goldbox import games
+    from goldbox import c64_port
 
     # A Silver Blades-shaped machine, so the refusal is the trainer's and not
     # an accident of reading its addresses on Pool of Radiance's memory. Since
@@ -411,15 +411,15 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     # through and the gate that stops it is `level_up_blockers`, which is the
     # right one.
     save0, roster = captured()
-    at = games.SECRET_OF_THE_SILVER_BLADES.slot_area_base - 0x4B00 + 0x0E8
+    at = c64_port.SECRET_OF_THE_SILVER_BLADES.slot_area_base - 0x4B00 + 0x0E8
     save0[at:at + 3] = (2001).to_bytes(3, "little")
     target = MemoryTarget({
-        games.SECRET_OF_THE_SILVER_BLADES.save_load_address:
+        c64_port.SECRET_OF_THE_SILVER_BLADES.save_load_address:
             bytes(save0 + roster),
         c64.MACHINES["secret-of-the-silver-blades"].mode_flag:
             bytes([WORLD])})
     before = dict(target.memory)
-    outcome = actions.LevelUp(games.SECRET_OF_THE_SILVER_BLADES).apply(
+    outcome = actions.LevelUp(c64_port.SECRET_OF_THE_SILVER_BLADES).apply(
         target, slot=0)
     assert not outcome.ok and outcome.writes == ()
     assert target.memory == before
@@ -442,13 +442,13 @@ def test_every_title_but_pool_of_radiance_and_curse_is_refused_by_name(game):
     falls back to Pool of Radiance's. Either way `trainer_measured` refuses
     every one of them, which is exactly the silent wrong answer the blocker
     is here to stop."""
-    from goldbox import games
+    from goldbox import c64_port
 
-    blockers = actions.level_up_blockers(None, games.by_key(game))
-    assert blockers and games.by_key(game).title in blockers[0]
-    assert actions.level_up_blockers(None, games.POOL_OF_RADIANCE) == ()
+    blockers = actions.level_up_blockers(None, c64_port.by_key(game))
+    assert blockers and c64_port.by_key(game).title in blockers[0]
+    assert actions.level_up_blockers(None, c64_port.POOL_OF_RADIANCE) == ()
     assert actions.level_up_blockers(
-        None, games.CURSE_OF_THE_AZURE_BONDS) == ()
+        None, c64_port.CURSE_OF_THE_AZURE_BONDS) == ()
 
 
 def test_levelling_writes_what_the_trainer_writes():
@@ -456,7 +456,7 @@ def test_levelling_writes_what_the_trainer_writes():
     outcome = find("level-up").apply(target, slot=0)
     assert outcome.ok, outcome.message
     written = dict(outcome.writes)
-    base = games.POOL_OF_RADIANCE.slot_area_base
+    base = c64_port.POOL_OF_RADIANCE.slot_area_base
     # fighter 2: THAC0 19 (stored 60 - 19), the per-class entry, the level
     # byte, attack_level, and experience -- which the clamp only ever lowers,
     # so 2001 stays 2001.
@@ -481,7 +481,7 @@ def test_no_money_moves():
     not: that is what a school costs, not what a level costs."""
     outcome = find("level-up").apply(with_experience(2001), slot=0)
     assert outcome.ok
-    slot0 = games.POOL_OF_RADIANCE.slot_area_base
+    slot0 = c64_port.POOL_OF_RADIANCE.slot_area_base
     coin = range(slot0 + 0x0BB, slot0 + 0x0C9)
     assert not [a for a, _ in outcome.writes if a in coin]
 
@@ -491,7 +491,7 @@ def test_a_character_at_zero_is_refused_rather_than_healed():
     not say which. A corpse at full hit points is a state the game never has."""
     save0, save1 = captured()
     save1[ROSTER_HP_CURRENT] = 0
-    at = games.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
+    at = c64_port.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
     save0[at:at + 3] = (2001).to_bytes(3, "little")
     target = MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
                            0x6E11: bytes([WORLD])})
@@ -508,7 +508,7 @@ def multi_class(points: int, **levels_) -> MemoryTarget:
     test that shortcut that would not exercise the write.
     """
     save0, save1 = captured()
-    at = games.POOL_OF_RADIANCE.slot_area_base - 0x4900
+    at = c64_port.POOL_OF_RADIANCE.slot_area_base - 0x4900
     record = CharacterRecord.from_bytes(
         bytes(save0[at:at + 0x100]).ljust(RECORD_SIZE, b"\x00"))
     bits = {"magic-user": 1, "cleric": 2, "thief": 4, "fighter": 8}
@@ -784,7 +784,7 @@ def test_nothing_writes_a_disk():
 # action reads and writes, and Curse's payload is Pool of Radiance's with the
 # roster page folded on, so the shape is exactly right for that question.
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 
 def curse_machine(mode: int | None = None, hp: int | None = None
@@ -822,7 +822,7 @@ def test_every_address_a_curse_action_would_write_is_curses_own():
     assert (member.record_base, member.item_base, member.roster_base) == (
         0x4F00, 0x5B00, 0x6700)
     assert member.field_address("spells_memorised") == 0x4F00 + 0x020
-    pool = actions.read_party(machine(), games.POOL_OF_RADIANCE).by_slot(0)
+    pool = actions.read_party(machine(), c64_port.POOL_OF_RADIANCE).by_slot(0)
     assert (pool.record_base, pool.item_base, pool.roster_base) == (
         0x4D00, 0x5900, 0x8300)
 
@@ -845,7 +845,7 @@ def test_a_title_with_no_measured_mode_flag_writes_nothing():
     A wounded party is used deliberately: on Pool of Radiance's machine this
     same call heals, so what is asserted is the refusal and not an empty one.
     """
-    krynn = games.CHAMPIONS_OF_KRYNN
+    krynn = c64_port.CHAMPIONS_OF_KRYNN
     assert c64.machine_for(krynn).mode_flag is None
     save0, roster = captured()
     roster[ROSTER_HP_CURRENT] = 1

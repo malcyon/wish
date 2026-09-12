@@ -32,9 +32,9 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga, c64_codec, dos, games, world_state
-from goldbox.amiga import AmigaRecordError
+from goldbox import amiga_por, amiga_shared, c64_codec, c64_port, dos_codec, world_state
 from goldbox.amiga_adf import AmigaDisk
+from goldbox.amiga_port import AmigaRecordError
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -99,7 +99,7 @@ def _pool_of_radiance_disk_1() -> AmigaDisk:
             disk.lookup("/save/savgamA.dat")
         except Exception:
             continue
-        if len(record) == amiga.AMIGA_POR_RECORD_SIZE:
+        if len(record) == amiga_por.AMIGA_POR_RECORD_SIZE:
             return disk
     pytest.skip("no Amiga Pool of Radiance disk 1 here")
 
@@ -148,10 +148,10 @@ def test_the_two_shapes_of_save_disk_are_told_apart_by_their_save_entry(
     On disk 1 `/save` is a drawer holding the slot-list file `/save/save`;
     on a save disk `/save` **is** the slot-list file.
     """
-    assert amiga.por_save_drawer(shipped_disk) == amiga.POR_SAVE_DRAWER
-    assert amiga.por_save_drawer(engine_disk) == ""
-    assert amiga.por_save_path("savgamA.dat", "save") == "/save/savgamA.dat"
-    assert amiga.por_save_path("savgamA.dat", "") == "/savgamA.dat"
+    assert amiga_por.por_save_drawer(shipped_disk) == amiga_por.POR_SAVE_DRAWER
+    assert amiga_por.por_save_drawer(engine_disk) == ""
+    assert amiga_por.por_save_path("savgamA.dat", "save") == "/save/savgamA.dat"
+    assert amiga_por.por_save_path("savgamA.dat", "") == "/savgamA.dat"
 
 
 def test_a_disk_with_no_save_entry_at_all_is_refused(tmp_path):
@@ -160,7 +160,7 @@ def test_a_disk_with_no_save_entry_at_all_is_refused(tmp_path):
     root of an unrelated volume."""
     blank = AmigaDisk.blank("EMPTY")
     with pytest.raises(AmigaRecordError) as raised:
-        amiga.por_save_drawer(blank)
+        amiga_por.por_save_drawer(blank)
     assert "save" in str(raised.value)
 
 
@@ -172,12 +172,12 @@ def test_the_shipped_slot_reads_six_characters_and_its_saved_game(
     The names are read back off the records rather than pinned to a list,
     because what is under test is that the disk's blocks were read at all.
     """
-    party, savgam = amiga.read_por_slot(shipped_disk, "A")
-    assert len(party) == amiga.POR_PARTY_MAX
-    assert all(isinstance(c, dos.DosCharacter) for c in party)
-    assert all(c.shape.key == games.POOL_OF_RADIANCE.key for c in party)
+    party, savgam = amiga_por.read_por_slot(shipped_disk, "A")
+    assert len(party) == amiga_por.POR_PARTY_MAX
+    assert all(isinstance(c, dos_codec.DosCharacter) for c in party)
+    assert all(c.shape.key == c64_port.POOL_OF_RADIANCE.key for c in party)
     assert all(c.name for c in party)
-    assert len(savgam) == amiga.POR_SAVEGAME_SIZE
+    assert len(savgam) == amiga_por.POR_SAVEGAME_SIZE
     # The shipped party carries gear, so the `.itm` was read too -- which a
     # reader that opened only the `.sav` would pass every other assertion
     # here without.
@@ -190,8 +190,8 @@ def test_reading_off_the_disk_gives_what_reading_off_a_path_gives(
     because `read_amiga_por` wanted a path.  `read_por_slot` reads the blocks
     directly, and this is the check that the two ways in agree -- otherwise
     a second reader has quietly appeared to drift from the first."""
-    for index in range(1, amiga.POR_PARTY_MAX + 1):
-        stem = f"/save/{amiga.por_filename('A', index, '')}"
+    for index in range(1, amiga_por.POR_PARTY_MAX + 1):
+        stem = f"/save/{amiga_por.por_filename('A', index, '')}"
         here = tmp_path / f"A{index}.sav"
         here.write_bytes(shipped_disk.read_file(stem + ".sav"))
         for suffix in (".itm", ".spc"):
@@ -200,10 +200,10 @@ def test_reading_off_the_disk_gives_what_reading_off_a_path_gives(
                     shipped_disk.read_file(stem + suffix))
             except Exception:
                 pass
-    party, _ = amiga.read_por_slot(shipped_disk, "A")
+    party, _ = amiga_por.read_por_slot(shipped_disk, "A")
     for index, char in enumerate(party, start=1):
-        by_path = amiga.read_amiga_por(tmp_path / f"A{index}.sav")
-        assert amiga.to_dos_character(by_path).to_bytes() == char.to_bytes()
+        by_path = amiga_por.read_amiga_por(tmp_path / f"A{index}.sav")
+        assert amiga_por.to_dos_character(by_path).to_bytes() == char.to_bytes()
         assert len(by_path.items) == len(char.items)
         assert len(by_path.effects) == len(char.effects)
 
@@ -212,9 +212,9 @@ def test_a_slot_the_disk_has_no_files_for_is_refused_by_name(shipped_disk):
     """Disk 1 ships slot A alone, so every other letter has no records --
     and the sentence names the file it looked for rather than raising a
     `KeyError` several calls down."""
-    assert amiga.por_slots_present(shipped_disk) == ["A"]
+    assert amiga_por.por_slots_present(shipped_disk) == ["A"]
     with pytest.raises(AmigaRecordError) as raised:
-        amiga.read_por_slot(shipped_disk, "F")
+        amiga_por.read_por_slot(shipped_disk, "F")
     assert "CHRDATF1" in str(raised.value)
 
 
@@ -223,19 +223,19 @@ def test_a_one_character_slot_reads_one_character(engine_disk):
     party goes, so a party of one is a real case rather than a broken disk
     -- `read_por_slot` stops at the first missing `.sav` instead of
     demanding six."""
-    party, _ = amiga.read_por_slot(engine_disk, ENGINE_SLOT)
-    assert 1 <= len(party) <= amiga.POR_PARTY_MAX
+    party, _ = amiga_por.read_por_slot(engine_disk, ENGINE_SLOT)
+    assert 1 <= len(party) <= amiga_por.POR_PARTY_MAX
 
 
 def test_the_three_amiga_record_sizes_name_their_own_titles():
     """288, 428 and 340 bytes, and no two are the same -- so a reader handed
     an `.adf` with nothing else to go on can say what is on it, which is what
     `editor.convert.Source.detect` rests on."""
-    assert amiga.amiga_shape_for(288).key == "pool-of-radiance"
-    assert amiga.amiga_shape_for(428).key == "curse-of-the-azure-bonds"
-    assert amiga.amiga_shape_for(340).key == "secret-of-the-silver-blades"
+    assert amiga_shared.amiga_shape_for(288).key == "pool-of-radiance"
+    assert amiga_shared.amiga_shape_for(428).key == "curse-of-the-azure-bonds"
+    assert amiga_shared.amiga_shape_for(340).key == "secret-of-the-silver-blades"
     with pytest.raises(AmigaRecordError) as raised:
-        amiga.amiga_shape_for(285)          # the DOS Pool of Radiance record
+        amiga_shared.amiga_shape_for(285)          # the DOS Pool of Radiance record
     assert "285" in str(raised.value)
 
 
@@ -248,8 +248,8 @@ def test_an_indoor_party_still_reads_as_indoors(shipped_disk):
     travel grid still cannot be converted to the C64 or DOS, because the
     reader refuses one)`, so it cannot be a tautology: an indoor party is
     unaffected by an outdoor one no longer being refused."""
-    _party, savgam = amiga.read_por_slot(shipped_disk, "A")
-    state = amiga.read_por_state(savgam, "the shipped slot A")
+    _party, savgam = amiga_por.read_por_slot(shipped_disk, "A")
+    state = amiga_por.read_por_state(savgam, "the shipped slot A")
     assert state.outdoors is False
 
 
@@ -271,8 +271,8 @@ def test_a_party_on_the_travel_grid_reads_the_travel_square(outdoor_disk):
     for slot, travel, hour, minute, facing in (
             ("B", (7, 29), 5, 53, 1),      # east
             ("C", (7, 28), 17, 53, 0)):    # north
-        _party, savgam = amiga.read_por_slot(outdoor_disk, slot)
-        state = amiga.read_por_state(savgam, f"slot {slot}")
+        _party, savgam = amiga_por.read_por_slot(outdoor_disk, slot)
+        state = amiga_por.read_por_state(savgam, f"slot {slot}")
         assert state.outdoors is True
         assert state.travel == travel
         assert state.area == 26
@@ -307,12 +307,12 @@ def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
     limit of the C64 container itself, the same one `#321`'s own comment
     found in the other direction, and not something this reader can supply.
     """
-    party, savgam = amiga.read_por_slot(outdoor_disk, "B")
-    source = amiga.read_por_state(savgam, "slot B")
+    party, savgam = amiga_por.read_por_slot(outdoor_disk, "B")
+    source = amiga_por.read_por_state(savgam, "slot B")
     assert source.outdoors is True
     assert source.geo == 5
 
-    save0, _save1, report = dos.new_save_from(
+    save0, _save1, report = dos_codec.new_save_from(
         source, party, BLANK_ICON, BLANK_ANIMATE)
     landed = world_state.from_c64(bytes(save0))
 
@@ -328,8 +328,8 @@ def test_a_saved_game_of_the_wrong_length_is_refused(shipped_disk):
     """A `savgam<letter>.dat` is 13,141 bytes and the reader says so, rather
     than reading a word off the end of a short one."""
     with pytest.raises(AmigaRecordError) as raised:
-        amiga.read_por_state(bytes(100))
-    assert str(amiga.POR_SAVEGAME_SIZE) in str(raised.value)
+        amiga_por.read_por_state(bytes(100))
+    assert str(amiga_por.POR_SAVEGAME_SIZE) in str(raised.value)
 
 
 def test_the_converted_save_stands_the_party_where_the_amiga_save_did(
@@ -343,9 +343,9 @@ def test_the_converted_save_stands_the_party_where_the_amiga_save_did(
     reader over a different container -- so this is the two ports agreeing
     rather than one number compared with itself.
     """
-    party, savgam = amiga.read_por_slot(engine_disk, ENGINE_SLOT)
-    source = amiga.read_por_state(savgam, "slot C")
-    save0, _save1, _report = dos.new_save_from(
+    party, savgam = amiga_por.read_por_slot(engine_disk, ENGINE_SLOT)
+    source = amiga_por.read_por_state(savgam, "slot C")
+    save0, _save1, _report = dos_codec.new_save_from(
         source, party, BLANK_ICON, BLANK_ANIMATE)
     landed = world_state.from_c64(bytes(save0))
 
@@ -382,8 +382,8 @@ def test_the_engine_written_amiga_slot_is_in_the_slums_at_21_22(engine_disk):
     """
     from goldbox import areas
 
-    _party, savgam = amiga.read_por_slot(engine_disk, ENGINE_SLOT)
-    state = amiga.read_por_state(savgam, "slot C")
+    _party, savgam = amiga_por.read_por_slot(engine_disk, ENGINE_SLOT)
+    state = amiga_por.read_por_state(savgam, "slot C")
     assert areas.area_in(state.area, state.title).name == "The Slums"
     hour = state.clock[3]
     minute = state.clock[2] * 10 + state.clock[1]
@@ -405,17 +405,17 @@ def test_the_converted_party_is_the_amiga_partys_own_fields(shipped_disk):
     classes between them, one multi-classed, and every one carrying gear and
     a portrait, so the comparison has something to be wrong about.
     """
-    party, savgam = amiga.read_por_slot(shipped_disk, "A")
-    state = amiga.read_por_state(savgam, "the shipped slot A")
-    save0, save1, _report = dos.new_save_from(
+    party, savgam = amiga_por.read_por_slot(shipped_disk, "A")
+    state = amiga_por.read_por_state(savgam, "the shipped slot A")
+    save0, save1, _report = dos_codec.new_save_from(
         state, party, BLANK_ICON, BLANK_ANIMATE)
 
     from goldbox.savegame import SaveGame0, SaveGame1
 
-    sg0 = SaveGame0.from_bytes(bytes(save0), games.POOL_OF_RADIANCE)
-    sg1 = SaveGame1(bytes(save1), games.POOL_OF_RADIANCE)
+    sg0 = SaveGame0.from_bytes(bytes(save0), c64_port.POOL_OF_RADIANCE)
+    sg1 = SaveGame1(bytes(save1), c64_port.POOL_OF_RADIANCE)
     landed = [c64_codec.read(slot.record, roster=sg1.roster(slot.index),
-                             game=games.POOL_OF_RADIANCE)
+                             game=c64_port.POOL_OF_RADIANCE)
               for slot in sg0.characters]
     assert len(landed) == len(party)
 
@@ -439,7 +439,7 @@ def test_the_converted_party_is_the_amiga_partys_own_fields(shipped_disk):
             "race", "sex", "alignment", "age", "class_bits",
             "hp_max", "hp_current", "experience", "armour_class")
     for c64, amiga_char in zip(landed, party):
-        source = dos.to_neutral(amiga_char)
+        source = dos_codec.to_neutral(amiga_char)
         for name in same:
             assert c64.fields[name].value == source.fields[name].value, \
                 f"{source.fields['name'].value}: {name}"
@@ -453,9 +453,9 @@ def test_the_converted_party_is_the_amiga_partys_own_fields(shipped_disk):
     from goldbox.items import items_for_slot
 
     for index, amiga_char in enumerate(party):
-        place = dos.marching_slot(index, len(party))
+        place = dos_codec.marching_slot(index, len(party))
         assert len(items_for_slot(bytes(save0), place,
-                                  games.POOL_OF_RADIANCE)) == \
+                                  c64_port.POOL_OF_RADIANCE)) == \
             len(amiga_char.items), amiga_char.name
 
 
@@ -464,9 +464,9 @@ def test_every_byte_of_the_converted_save_has_a_source(shipped_disk):
     from an Amiga slot owes nothing to anybody else's, and
     `goldbox.dos.new_save_from` raises rather than hand one back with a byte
     in it nobody wrote."""
-    party, savgam = amiga.read_por_slot(shipped_disk, "A")
-    state = amiga.read_por_state(savgam, "the shipped slot A")
-    save0, save1, report = dos.new_save_from(
+    party, savgam = amiga_por.read_por_slot(shipped_disk, "A")
+    state = amiga_por.read_por_state(savgam, "the shipped slot A")
+    save0, save1, report = dos_codec.new_save_from(
         state, party, BLANK_ICON, BLANK_ANIMATE)
     assert report.unwritten == []
     assert len(report.sources) == report.total == len(save0) + len(save1)
@@ -501,18 +501,18 @@ def test_the_amiga_party_arrives_with_its_own_combat_figures(shipped_disk):
     if parts is None:
         pytest.skip("no C64 disk here carries the icon option tables")
 
-    party, savgam = amiga.read_por_slot(shipped_disk, "A")
-    state = amiga.read_por_state(savgam, "the shipped slot A")
-    save0, _save1, _report = dos.new_save_from(
+    party, savgam = amiga_por.read_por_slot(shipped_disk, "A")
+    state = amiga_por.read_por_state(savgam, "the shipped slot A")
+    save0, _save1, _report = dos_codec.new_save_from(
         state, party, parts, BLANK_ANIMATE)
 
     from goldbox import c64_save
 
-    container = c64_save.container_for(games.POOL_OF_RADIANCE)
+    container = c64_save.container_for(c64_port.POOL_OF_RADIANCE)
     figures = []
     for index in range(len(party)):
-        at = container.icon(dos.marching_slot(index, len(party)))
-        figures.append(bytes(save0[at:at + dos.ICON_SIZE]))
+        at = container.icon(dos_codec.marching_slot(index, len(party)))
+        figures.append(bytes(save0[at:at + dos_codec.ICON_SIZE]))
     # The shipped six name five distinct heads and five distinct bodies
     # between them, so their figures cannot all be one figure -- and six
     # identical ones is exactly what a converter with no route to the figure

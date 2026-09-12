@@ -36,9 +36,9 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga, dos, dos_layout, neutral
+from goldbox import amiga_pod, dos_codec, dos_port, neutral
 
-POD = dos_layout.POOLS_OF_DARKNESS
+POD = dos_port.POOLS_OF_DARKNESS
 
 #: The names the reader fills and the two the writer drops but it does not.
 READ_ONLY = ("armour_class", "armour_class_base")
@@ -118,7 +118,7 @@ def test_the_race_numbering_is_the_same_on_both_ports():
     it has none, and its default is Pool of Radiance's numbering, under which
     race 5 is a halfling rather than the human it is here.
     """
-    ours = tuple(name.lower() for name in amiga.RACES)
+    ours = tuple(name.lower() for name in amiga_pod.RACES)
     theirs = tuple(POD.race_numbers)
     assert ours == theirs[:len(ours)]
     assert theirs[len(ours):] == ("monster",)
@@ -133,18 +133,18 @@ def test_the_class_codes_and_level_slots_are_the_same_on_both_ports():
     tuples side by side: every DOS record's class code, looked up in the
     Amiga table, has to agree with the classes its own level array holds.
     """
-    assert tuple(n.lower() for n in amiga.CLASS_LEVEL_SLOTS) == \
-        tuple(name for _n, name, _f in dos.CLASS_LEVEL_SLOTS[:7])
+    assert tuple(n.lower() for n in amiga_pod.CLASS_LEVEL_SLOTS) == \
+        tuple(name for _n, name, _f in dos_codec.CLASS_LEVEL_SLOTS[:7])
     seen = 0
     for path in dos_records():
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         code = char.get("char_class")
-        assert 0 <= code < len(amiga.CLASSES), (path.name, code)
-        held = {name for n, name, _f in dos.CLASS_LEVEL_SLOTS
+        assert 0 <= code < len(amiga_pod.CLASSES), (path.name, code)
+        held = {name for n, name, _f in dos_codec.CLASS_LEVEL_SLOTS
                 if n < len(char.raw("class_levels"))
                 and char.raw("class_levels")[n]}
         named = {p.strip().lower() for p in
-                 amiga.CLASSES[code].replace("M-U", "MAGIC-USER").split("/")}
+                 amiga_pod.CLASSES[code].replace("M-U", "MAGIC-USER").split("/")}
         # A dual-classed character's code names what he *is*, so his old
         # class is in neither set: compare what he currently holds.
         assert held <= named or named <= held, (path.name, held, named)
@@ -158,12 +158,12 @@ def test_a_paladin_is_lawful_good_on_both_ports():
     the one alignment AD&D allows one."""
     paladins = 0
     for path in dos_records():
-        char = dos.read_character(path)
-        if amiga.CLASSES[char.get("char_class")] == "PALADIN":
+        char = dos_codec.read_character(path)
+        if amiga_pod.CLASSES[char.get("char_class")] == "PALADIN":
             assert char.get("alignment") == 0, path.name
             paladins += 1
     for name, raw in pc_records():
-        c = amiga.PodCharacter.from_bytes(raw)
+        c = amiga_pod.PodCharacter.from_bytes(raw)
         if c.class_name == "PALADIN":
             assert c.alignment == 0, name
             paladins += 1
@@ -176,7 +176,7 @@ def test_every_neutral_field_has_a_reader_disposition():
     """A field `goldbox/neutral.py` declares and `pod_field_disposition`
     names nowhere would be one dropped in silence."""
     assert neutral.undeclared(neutral.FIELDS,
-                              amiga.pod_field_disposition()) == (set(), set())
+                              amiga_pod.pod_field_disposition()) == (set(), set())
 
 
 def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
@@ -191,11 +191,11 @@ def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     -- because that would be a field this module claims to convert in a
     direction it cannot even read.
     """
-    writer = {n for n, _ in amiga.POD_WRITE_DROPPED}
-    reader = {n for n, _ in amiga.pod_read_dropped()}
+    writer = {n for n, _ in amiga_pod.POD_WRITE_DROPPED}
+    reader = {n for n, _ in amiga_pod.pod_read_dropped()}
     assert reader < writer
     for name in READ_ONLY:
-        assert amiga.pod_field_disposition()[name].startswith("copied")
+        assert amiga_pod.pod_field_disposition()[name].startswith("copied")
 
 
 def test_every_genuine_record_reads_to_a_coherent_character():
@@ -207,7 +207,7 @@ def test_every_genuine_record_reads_to_a_coherent_character():
     """
     seen = 0
     for name, raw in pc_records():
-        out = amiga.pod_to_neutral(raw)
+        out = amiga_pod.pod_to_neutral(raw)
         assert out.get("name"), name
         assert str(out.get("name")).isprintable(), name
         levels = {k: v for k, v in out.get("levels").items() if v}
@@ -217,9 +217,9 @@ def test_every_genuine_record_reads_to_a_coherent_character():
             if ability == "exceptional_strength":
                 continue
             assert 3 <= out.get(ability) <= 25, (name, ability)
-        assert 0 <= out.get("alignment") < len(amiga.ALIGNMENTS), name
+        assert 0 <= out.get("alignment") < len(amiga_pod.ALIGNMENTS), name
         assert out.get("sex") in (0, 1), name
-        assert 0 <= out.get("race") < len(amiga.RACES), name
+        assert 0 <= out.get("race") < len(amiga_pod.RACES), name
         seen += 1
     assert seen >= 12
 
@@ -233,8 +233,8 @@ def test_the_ranger_gets_the_neutral_bit_and_the_paladin_keeps_dos_bit_six():
     """
     rangers = paladins = 0
     for name, raw in pc_records():
-        c = amiga.PodCharacter.from_bytes(raw)
-        out = amiga.pod_to_neutral(raw)
+        c = amiga_pod.PodCharacter.from_bytes(raw)
+        out = amiga_pod.pod_to_neutral(raw)
         if c.class_name == "RANGER":
             assert c.class_bits == 0x40, name
             assert out.get("class_bits") & 0x80, name
@@ -265,20 +265,20 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
     empty here.
     """
     spans = {
-        "experience": (amiga.EXPERIENCE, 4),
-        "platinum": (amiga.PLATINUM, 2),
-        "gems": (amiga.GEMS, 2),
-        "jewelry": (amiga.JEWELRY, 2),
-        "age": (amiga.AGE, 2),
-        "race": (amiga.RACE, 1),
-        "char_class": (amiga.CLASS, 1),
-        "sex": (amiga.SEX, 1),
-        "alignment": (amiga.ALIGNMENT, 1),
-        "abilities": (amiga.ABILITIES, 2 * amiga.ABILITY_COUNT),
-        "exceptional_strength": (amiga.EXCEPTIONAL_STRENGTH, 2),
-        "hp_max": (amiga.HP_MAX, 1),
-        "movement": (amiga.MOVEMENT, 1),
-        "class_levels": (amiga.CLASS_LEVELS, amiga.CLASS_LEVEL_COUNT),
+        "experience": (amiga_pod.EXPERIENCE, 4),
+        "platinum": (amiga_pod.PLATINUM, 2),
+        "gems": (amiga_pod.GEMS, 2),
+        "jewelry": (amiga_pod.JEWELRY, 2),
+        "age": (amiga_pod.AGE, 2),
+        "race": (amiga_pod.RACE, 1),
+        "char_class": (amiga_pod.CLASS, 1),
+        "sex": (amiga_pod.SEX, 1),
+        "alignment": (amiga_pod.ALIGNMENT, 1),
+        "abilities": (amiga_pod.ABILITIES, 2 * amiga_pod.ABILITY_COUNT),
+        "exceptional_strength": (amiga_pod.EXCEPTIONAL_STRENGTH, 2),
+        "hp_max": (amiga_pod.HP_MAX, 1),
+        "movement": (amiga_pod.MOVEMENT, 1),
+        "class_levels": (amiga_pod.CLASS_LEVELS, amiga_pod.CLASS_LEVEL_COUNT),
         # `0x0B3` is `armour_class_base` since #462, not `armour_class` --
         # the neutral `armour_class` is read from `ARMOUR_CLASS_CURRENT`
         # (`0x187`) now. The span passed under the old name only because
@@ -286,18 +286,18 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         # source holds, so both sides of the comparison were the same number
         # and a wrong name could not show. There is no `armour_class_current`
         # span to sit beside it until the writer fills `0x187` -- #475.
-        "armour_class_base": (amiga.ARMOUR_CLASS, 1),
-        "hp_current": (amiga.HP_CURRENT, 1),
-        "saving_throws": (amiga.SAVING_THROWS, amiga.SAVING_THROW_COUNT),
-        "level": (amiga.LEVEL, 1),
-        "thief_skills": (amiga.THIEF_SKILLS, amiga.THIEF_SKILL_COUNT),
-        "class_bits": (amiga.CLASS_BITS, 1),
-        "name": (amiga.NAME, amiga.NAME_LENGTH),
+        "armour_class_base": (amiga_pod.ARMOUR_CLASS, 1),
+        "hp_current": (amiga_pod.HP_CURRENT, 1),
+        "saving_throws": (amiga_pod.SAVING_THROWS, amiga_pod.SAVING_THROW_COUNT),
+        "level": (amiga_pod.LEVEL, 1),
+        "thief_skills": (amiga_pod.THIEF_SKILLS, amiga_pod.THIEF_SKILL_COUNT),
+        "class_bits": (amiga_pod.CLASS_BITS, 1),
+        "name": (amiga_pod.NAME, amiga_pod.NAME_LENGTH),
     }
     seen = clean = 0
     exceptions: list[str] = []
     for name, raw in pc_records():
-        out, report = amiga.to_pc(amiga.pod_to_neutral(raw))
+        out, report = amiga_pod.to_pc(amiga_pod.pod_to_neutral(raw))
         assert report.unaccounted(out) == [], name
         differs = sorted(field for field, (at, size) in spans.items()
                          if out[at:at + size] != raw[at:at + size])
@@ -308,8 +308,8 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         assert differs == ["name"], (name, differs)
         # The name matches up to and including its terminator; what follows
         # is the engine's leftover.
-        stem = raw[amiga.NAME:amiga.NAME + amiga.NAME_LENGTH].split(b"\0")[0]
-        assert out[amiga.NAME:amiga.NAME + len(stem)] == stem, name
+        stem = raw[amiga_pod.NAME:amiga_pod.NAME + amiga_pod.NAME_LENGTH].split(b"\0")[0]
+        assert out[amiga_pod.NAME:amiga_pod.NAME + len(stem)] == stem, name
         exceptions.append(name)
     assert seen >= 12
     assert clean == seen - len(exceptions)
@@ -326,15 +326,15 @@ def test_every_dos_record_converts_into_a_pc():
     """
     seen = 0
     for path in dos_records():
-        char = dos.read_character(path)
-        out = dos.to_neutral(char)
-        pc, report = amiga.to_pc(out)
-        assert len(pc) == amiga.RECORD_LENGTH, path.name
+        char = dos_codec.read_character(path)
+        out = dos_codec.to_neutral(char)
+        pc, report = amiga_pod.to_pc(out)
+        assert len(pc) == amiga_pod.RECORD_LENGTH, path.name
         assert report.unaccounted(pc) == [], path.name
-        back = amiga.PodCharacter.from_bytes(pc)
+        back = amiga_pod.PodCharacter.from_bytes(pc)
         # The writer cuts trailing blanks, which DOS counts into its own
         # length byte: Guy de Valois is stored `Guy de Valois ` there.
-        assert back.name == char.name[:amiga.NAME_LENGTH].rstrip(), path.name
+        assert back.name == char.name[:amiga_pod.NAME_LENGTH].rstrip(), path.name
         assert back.race == char.get("race"), path.name
         assert back.sex == char.get("sex"), path.name
         assert back.alignment == char.get("alignment"), path.name
@@ -368,15 +368,15 @@ def test_a_dual_classed_character_arrives_as_the_class_he_is():
     """
     seen = 0
     for path in dos_records():
-        char = dos.read_character(path)
-        out = dos.to_neutral(char)
+        char = dos_codec.read_character(path)
+        out = dos_codec.to_neutral(char)
         former = {k: v for k, v in (out.get("former_levels") or {}).items()
                   if v}
-        pc, report = amiga.to_pc(out)
-        back = amiga.PodCharacter.from_bytes(pc)
+        pc, report = amiga_pod.to_pc(out)
+        back = amiga_pod.PodCharacter.from_bytes(pc)
         held = {k for k, v in out.get("levels").items() if v}
         named = {p.strip().lower() for p in
-                 amiga.CLASSES[back.character_class]
+                 amiga_pod.CLASSES[back.character_class]
                  .replace("M-U", "MAGIC-USER").split("/")}
         assert named == held, (path.name, named, held)
         if former:
@@ -405,11 +405,11 @@ def test_a_caster_read_out_of_a_pc_reaches_dos_with_his_spellbook():
     """
     seen = casters = 0
     for name, raw in pc_records():
-        out = amiga.pod_to_neutral(raw)
-        rec, itm, spc, _report = dos.write(out)
+        out = amiga_pod.pod_to_neutral(raw)
+        rec, itm, spc, _report = dos_codec.write(out)
         assert len(rec) == POD.record_size, name
         assert itm == b"" and spc == b"", name
-        back = dos.DosCharacter(rec)
+        back = dos_codec.DosCharacter(rec)
         assert back.spells_known == out.get("spells_known"), name
         assert back.get("thac0_base") == out.get("thac0_base"), name
         # Still true, and still the reason nothing offers this direction:
@@ -434,12 +434,12 @@ def test_the_amiga_spellbook_is_the_dos_spellbook_for_the_same_character():
     """
     peers: dict[tuple, set] = {}
     for path in dos_records():
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         key = (char.get("char_class"), tuple(char.raw("class_levels")))
         peers.setdefault(key, set()).add(frozenset(char.spells_known))
     exact = extra = 0
     for name, raw in pc_records():
-        pc = amiga.PodCharacter.from_bytes(raw)
+        pc = amiga_pod.PodCharacter.from_bytes(raw)
         key = (pc.character_class, tuple(pc.class_levels))
         if key not in peers:
             continue
@@ -466,10 +466,10 @@ def test_the_reader_says_out_loud_what_it_could_not_read():
     without his spells is the silence `.claude/rules/conversions.md`
     forbids.
     """
-    dropped = amiga.pod_read_dropped()
+    dropped = amiga_pod.pod_read_dropped()
     assert len(dropped) == 13, len(dropped)
     for name, raw in pc_records():
-        out = amiga.pod_to_neutral(raw)
+        out = amiga_pod.pod_to_neutral(raw)
         said = [w for w in out.warnings if "(NOT APPROVED)" in w]
         assert len(said) == 1, name
         assert "possessions" in said[0], name
@@ -489,9 +489,9 @@ def test_the_reader_fills_sixty_one_of_the_neutral_records_fields():
     than dropped, exactly as it is absent from a DOS one.
     """
     for _name, raw in pc_records():
-        out = amiga.pod_to_neutral(raw)
+        out = amiga_pod.pod_to_neutral(raw)
         assert len(out.fields) == 61, sorted(out.fields)
-        named = set(out.fields) | {n for n, _ in amiga.pod_read_dropped()}
+        named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == {"npc_control_byte"}
         break
 

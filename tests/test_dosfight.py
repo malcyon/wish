@@ -43,7 +43,7 @@ def test_the_record_offsets_are_the_layouts_and_not_a_second_copy():
     the map's units, so a reader who fixed one side would never have found the
     other. These three are read raw for speed and are pinned to the table.
     """
-    from goldbox.dos_layout import FIELDS_BY_NAME
+    from goldbox.dos_port import FIELDS_BY_NAME
 
     assert FIELDS_BY_NAME["experience"].offset == dosfightrun.XP
     assert FIELDS_BY_NAME["experience"].size == 3
@@ -58,7 +58,7 @@ def test_the_quickfight_byte_is_0x10f_not_0x10e():
     three `QUICK`-driven fights while its neighbours moved. `0x10F` is
     CONFIRMED: `tools/dosquickprobe.py` staged it and a fight ran to
     completion with zero combat command bars and `q` never pressed."""
-    from goldbox.dos_layout import FIELDS_BY_NAME
+    from goldbox.dos_port import FIELDS_BY_NAME
 
     assert dosfightrun.QUICKFIGHT_BYTE == 0x10F
     f = FIELDS_BY_NAME["field_10c_10f"]

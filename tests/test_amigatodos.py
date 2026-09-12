@@ -35,7 +35,7 @@ import pytest
 from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert
-from goldbox import amiga, dos, dos_layout, dos_savegame, world_state
+from goldbox import amiga_por, dos_codec, dos_port, dos_savegame, world_state
 from goldbox.amiga_adf import AmigaDisk
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -82,7 +82,7 @@ def one_character_adf(tmp_path) -> pathlib.Path:
 
 
 def _direction() -> convert.AmigaToDos:
-    return convert.AmigaToDos(dos_layout.POOL_OF_RADIANCE)
+    return convert.AmigaToDos(dos_port.POOL_OF_RADIANCE)
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def test_an_amiga_source_offers_dos_as_well_as_the_commodore_64(shipped_adf):
     directions = convert.destinations_for(source)
     assert [d.destination_port for d in directions] == ["c64", "dos"]
     assert type(directions[1]) is convert.AmigaToDos
-    assert directions[1].destination_game is dos_layout.POOL_OF_RADIANCE
+    assert directions[1].destination_game is dos_port.POOL_OF_RADIANCE
 
 
 def test_the_amiga_to_dos_row_takes_the_c64_to_dos_constructor():
@@ -110,7 +110,7 @@ def test_the_amiga_to_dos_row_takes_the_c64_to_dos_constructor():
     assert convert.AmigaToDos.write is not convert.C64ToDos.write
     direction = _direction()
     assert direction.source_port == "amiga"
-    assert direction.source_key == dos_layout.POOL_OF_RADIANCE.key
+    assert direction.source_key == dos_port.POOL_OF_RADIANCE.key
 
 
 def test_a_source_with_no_amiga_slot_is_refused_rather_than_guessed_at(
@@ -118,7 +118,7 @@ def test_a_source_with_no_amiga_slot_is_refused_rather_than_guessed_at(
     """Unreachable through the dialog, whose `.adf` branch always names a
     slot -- but a caller building a `Source` by hand must be refused rather
     than have a slot letter invented for it."""
-    source = convert.Source(port="amiga", title=dos_layout.POOL_OF_RADIANCE,
+    source = convert.Source(port="amiga", title=dos_port.POOL_OF_RADIANCE,
                             path=shipped_adf, slot=None)
     with pytest.raises(convert.ConvertError):
         _direction().rehearse(source, "A", _game_dir())
@@ -176,9 +176,9 @@ def test_the_dos_slot_written_is_not_the_amiga_slot_read(one_character_adf,
         "CHRDATA1.ITM", "CHRDATA1.SAV", "CHRDATA1.SPC", "SAVGAMA.DAT"]
     # Slot E's own party, not slot D's: one character, and the name written
     # is his.
-    party, _ = amiga.read_por_slot(AmigaDisk.open(str(one_character_adf)), "E")
+    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(one_character_adf)), "E")
     assert len(party) == 1
-    written_name = dos.DosCharacter(
+    written_name = dos_codec.DosCharacter(
         (tmp_path / "out" / "CHRDATA1.SAV").read_bytes()).name
     assert written_name == party[0].name
 
@@ -273,8 +273,8 @@ def test_the_place_and_the_clock_are_the_amiga_saved_game_s(shipped_adf,
     direction.write(rehearsal, tmp_path / "out")
 
     disk = AmigaDisk.open(str(shipped_adf))
-    _, savgam = amiga.read_por_slot(disk, source.slot)
-    want = amiga.read_por_state(savgam, source=str(shipped_adf))
+    _, savgam = amiga_por.read_por_slot(disk, source.slot)
+    want = amiga_por.read_por_state(savgam, source=str(shipped_adf))
     got = world_state.from_dos(
         (tmp_path / "out" / "SAVGAMA.DAT").read_bytes(), source="written")
 
@@ -314,13 +314,13 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
 
     allowed = {"field_83_87", "unnamed_0ab", "item_chain", "hands_used",
                "heap_104"}
-    party, _ = amiga.read_por_slot(AmigaDisk.open(str(shipped_adf)),
+    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
     assert len(party) == 6
     for n, char in enumerate(party, 1):
         want = char.to_bytes()
         got = (tmp_path / "out" / f"CHRDATA{n}.SAV").read_bytes()
-        assert len(want) == len(got) == dos_layout.POOL_OF_RADIANCE.record_size
+        assert len(want) == len(got) == dos_port.POOL_OF_RADIANCE.record_size
         differing = {_field_at(i) for i in range(len(got))
                      if want[i] != got[i]}
         assert differing <= allowed, (char.name, sorted(differing - allowed))
@@ -328,7 +328,7 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
 
 def _field_at(offset: int) -> str:
     """Which Pool of Radiance record field covers `offset`."""
-    for name, field in dos_layout.FIELDS_BY_NAME.items():
+    for name, field in dos_port.FIELDS_BY_NAME.items():
         if field.offset <= offset < field.offset + field.size:
             return name
     return f"unnamed byte {offset:#05x}"
@@ -357,11 +357,11 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
     rehearsal = direction.rehearse(source, "A", _game_dir())
     direction.write(rehearsal, tmp_path / "out")
 
-    party, _ = amiga.read_por_slot(AmigaDisk.open(str(shipped_adf)),
+    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
     heads, bodies = set(), set()
     for n, char in enumerate(party, 1):
-        record = dos.DosCharacter(
+        record = dos_codec.DosCharacter(
             (tmp_path / "out" / f"CHRDATA{n}.SAV").read_bytes())
         assert record.get("icon_head") == char.get("icon_head"), char.name
         assert record.get("icon_body") == char.get("icon_body"), char.name
@@ -387,9 +387,9 @@ def test_the_party_is_written_in_the_amiga_s_own_order(shipped_adf, tmp_path):
     rehearsal = direction.rehearse(source, "A", _game_dir())
     direction.write(rehearsal, tmp_path / "out")
 
-    party, _ = amiga.read_por_slot(AmigaDisk.open(str(shipped_adf)),
+    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
-    written = [dos.DosCharacter(
+    written = [dos_codec.DosCharacter(
         (tmp_path / "out" / f"CHRDATA{n}.SAV").read_bytes()).name
         for n in range(1, len(party) + 1)]
     assert written == [c.name for c in party]

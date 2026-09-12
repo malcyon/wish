@@ -27,7 +27,7 @@ import pathlib
 import pytest
 
 from goldbox import c64_codec, layout
-from goldbox import dos_layout as dl
+from goldbox import dos_port as dl
 from tools import dostailcensus, enccensus
 
 ENCUMBRANCE = dl.FIELDS_BY_NAME["encumbrance"].offset

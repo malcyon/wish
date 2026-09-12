@@ -29,7 +29,7 @@ from __future__ import annotations
 import gamedata
 import pytest
 
-from goldbox import dos
+from goldbox import dos_codec
 from goldbox import geo as geolib
 from tools import dosbox, dosshop
 
@@ -122,7 +122,7 @@ def test_the_arm_table_is_the_twenty_eight_the_dispatch_declares(dos_game):
 
 
 def _record(name, filename):
-    return dos.read_character(gamedata.specimen(name) / filename)
+    return dos_codec.read_character(gamedata.specimen(name) / filename)
 
 
 def test_the_shopped_character_carries_what_the_shop_sold_him():
@@ -255,7 +255,7 @@ def test_the_training_ladder_kept_a_stale_value_through_the_same_engine():
     if not gamedata.have_specimen("por-party-ladder-rung1"):
         pytest.skip("needs specimen WISH-SPEC-por-party-ladder-rung1")
         return
-    who = dos.read_character(
+    who = dos_codec.read_character(
         gamedata.specimen("por-party-ladder-rung1") / "CHRDATE1.SAV")
     assert who.get("encumbrance") == 21000
     assert who.expected_encumbrance() == 19000

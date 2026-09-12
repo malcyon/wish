@@ -38,7 +38,7 @@ import pytest
 import wish  # noqa: F401
 from automap import c64, fasttravel
 from automap.actions import KEY_FETCH, KEY_WAIT, NEWECL_TAIL
-from goldbox import games
+from goldbox import c64_port
 from tools import gamedisks
 
 TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
@@ -93,7 +93,7 @@ def test_the_shipped_pool_of_radiance_addresses_are_what_the_disk_says(newecl):
     samples of an idle party; this reaches the same two windows from the
     static side, which is the corroboration that measurement never had.
     """
-    at, tail, wait, fetch, _ = _read(newecl, games.POOL_OF_RADIANCE)
+    at, tail, wait, fetch, _ = _read(newecl, c64_port.POOL_OF_RADIANCE)
     assert at == 0x2011                      # `docs/118-debug-mode.md` §3
     assert tail == NEWECL_TAIL
     assert wait == KEY_WAIT
@@ -113,7 +113,7 @@ def test_the_handler_is_the_routine_the_writes_were_copied_from(newecl):
         FASTTRAVEL_SCRATCH,
         FASTTRAVEL_SLOT,
     )
-    _, _, _, _, lines = _read(newecl, games.POOL_OF_RADIANCE)
+    _, _, _, _, lines = _read(newecl, c64_port.POOL_OF_RADIANCE)
     text = [t for _, _, t in lines]
     assert text[0] == f"LDA ${FASTTRAVEL_SLOT:04X}"
     assert text[1] == "AND #$7F"
@@ -134,7 +134,7 @@ def test_the_later_titles_have_the_same_mechanism(newecl, key, handler, tail):
     mechanism Pool of Radiance's alone?)`, pinned. A change in either address
     is a change in what that ticket concluded.
     """
-    game = next(g for g in games.GAMES if g.key == key)
+    game = next(g for g in c64_port.GAMES if g.key == key)
     at, got, wait, fetch, lines = _read(newecl, game)
     assert (at, got) == (handler, tail)
     assert wait[0] < wait[1]
@@ -164,7 +164,7 @@ def test_every_shipped_row_is_what_that_titles_disks_say(newecl, key):
     `NEWECL`'s own, they are Pool of Radiance measurements from `#156` and
     `#178`, and the derivation has nothing to compare them against.
     """
-    game = next(g for g in games.GAMES if g.key == key)
+    game = next(g for g in c64_port.GAMES if g.key == key)
     got = newecl.derive(game, _disks(game))
     row = fasttravel.ADDRESSES[key]
     for field in ("title", "handler", "tail", "slot", "disk", "came_from",
@@ -185,8 +185,8 @@ def test_silver_blades_is_the_one_title_with_a_sixth_write(newecl):
     coordinates hidden in the four Silver Blades areas whose own script never
     touches the byte.
     """
-    rows = {k: newecl.derive(next(g for g in games.GAMES if g.key == k),
-                             _disks(next(g for g in games.GAMES if g.key == k)))
+    rows = {k: newecl.derive(next(g for g in c64_port.GAMES if g.key == k),
+                             _disks(next(g for g in c64_port.GAMES if g.key == k)))
             for k in fasttravel.ADDRESSES}
     assert rows["secret-of-the-silver-blades"]["zeroed"] == (0x4BFB,)
     assert rows["pool-of-radiance"]["zeroed"] == ()

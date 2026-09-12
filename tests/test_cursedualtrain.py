@@ -35,13 +35,13 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import games, levels, levelup
+from goldbox import c64_port, levels, levelup
 from goldbox.d64 import D64
 from goldbox.record import CharacterRecord
 from goldbox.savegame import load_save
 from tests import gamedata
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 #: What was poked into `0x0E8` before each press. Enough for the fighter's
 #: seventh level (125,001) and short of its ninth (250,001), so the seven

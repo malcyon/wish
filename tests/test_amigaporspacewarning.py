@@ -26,24 +26,24 @@ sys.path.insert(0, str(ROOT))
 
 from test_amiga import sample  # noqa: E402
 
-from goldbox import amiga  # noqa: E402
+from goldbox import amiga_por  # noqa: E402
 
 WARNING = "WARNING: Spaces in names are dropped on the Amiga. "
 
 
 def test_a_name_with_a_space_gets_donalds_warning():
-    _, _, _, rep = amiga.write_por(sample(name="LADY KATHERINE"))
+    _, _, _, rep = amiga_por.write_por(sample(name="LADY KATHERINE"))
     assert WARNING + "LADY KATHERINE will become LADYKATHERINE." \
         in rep.warnings
 
 
 def test_two_spaces_are_both_dropped():
-    _, _, _, rep = amiga.write_por(sample(name="MARY SUE FOX"))
+    _, _, _, rep = amiga_por.write_por(sample(name="MARY SUE FOX"))
     assert WARNING + "MARY SUE FOX will become MARYSUEFOX." in rep.warnings
 
 
 def test_a_name_with_no_space_gets_no_warning():
     """MAGNUS, one of the same party's characters, converted with his name
     unchanged in `#308`'s own run -- the control the ruling is about."""
-    _, _, _, rep = amiga.write_por(sample(name="MAGNUS"))
+    _, _, _, rep = amiga_por.write_por(sample(name="MAGNUS"))
     assert not any("dropped on the Amiga" in w for w in rep.warnings)

@@ -19,10 +19,10 @@ import pathlib
 
 import pytest
 
-from goldbox import games, items, yaml_io
+from goldbox import c64_port, items, yaml_io
 from goldbox.d64 import D64, split_load_address
 
-KEYS = [g.key for g in games.GAMES]
+KEYS = [g.key for g in c64_port.GAMES]
 
 
 # --- finding the player's disks ---------------------------------------------
@@ -56,7 +56,7 @@ def disks_for(key: str) -> tuple[pathlib.Path, ...]:
     `Death Knights of Krynn Monitor [the sir].d64` and the real disks a
     directory below, and stopping at the first match found only the monitor.
     """
-    glob = games.by_key(key).disk_glob
+    glob = c64_port.by_key(key).disk_glob
     out: list[pathlib.Path] = []
     for root in _roots():
         try:
@@ -102,7 +102,7 @@ def test_every_title_names_its_races_and_classes():
     """All six are known. A title whose list we could not derive would carry
     None here and the editor would show the raw number -- that is the designed
     failure, and there is currently no title in it."""
-    for game in games.GAMES:
+    for game in c64_port.GAMES:
         assert game.races is not None, game.key
         assert game.class_bits is not None, game.key
         assert game.item_names_load_address is not None, game.key
@@ -114,13 +114,13 @@ def test_race_names_are_unique_within_a_title(key):
     the YAML carries the name, and `_encode` returns the first code that
     matches. This is why Curse's 6 is left unnamed rather than called `human`
     alongside 7."""
-    names = [n for _, n in games.by_key(key).races]
+    names = [n for _, n in c64_port.by_key(key).races]
     assert len(names) == len(set(names))
 
 
 @pytest.mark.parametrize("key", KEYS)
 def test_every_race_code_survives_the_yaml_round_trip(key):
-    game = games.by_key(key)
+    game = c64_port.by_key(key)
     table = yaml_io.race_table(game)
     for code in table:
         text = yaml_io._decode(table, code, "race")
@@ -129,7 +129,7 @@ def test_every_race_code_survives_the_yaml_round_trip(key):
 
 @pytest.mark.parametrize("key", KEYS)
 def test_class_bits_are_single_bits_with_distinct_names(key):
-    game = games.by_key(key)
+    game = c64_port.by_key(key)
     seen = set()
     for bit, name in game.class_bits:
         assert bit and not bit & (bit - 1), f"{name} is not one bit"
@@ -141,13 +141,13 @@ def test_the_module_level_tables_are_pool_of_radiances():
     """`editor/enums.py` and `editor/roster.py` import `RACES` and `CLASS_BITS`
     from `yaml_io` and have no game in hand. They must keep getting the table
     they always got."""
-    assert yaml_io.RACES == games.POOL_OF_RADIANCE.race_names
-    assert yaml_io.CLASS_BITS == list(games.POOL_OF_RADIANCE.class_bits)
+    assert yaml_io.RACES == c64_port.POOL_OF_RADIANCE.race_names
+    assert yaml_io.CLASS_BITS == list(c64_port.POOL_OF_RADIANCE.class_bits)
     assert yaml_io.RACES[7] == "human" and yaml_io.RACES[6] == "half-orc"
 
 
 def test_silver_blades_moves_human_from_seven_to_six():
-    ssb = games.SECRET_OF_THE_SILVER_BLADES.race_names
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES.race_names
     assert ssb[6] == "human"
     # `LIBRARY $306A` folds race 7 and above to MONSTER, and 50 of this
     # title's 71 C64 `MON*` records read 7 -- so this was a missing entry
@@ -161,7 +161,7 @@ def test_silver_blades_moves_human_from_seven_to_six():
 def test_the_krynn_titles_number_their_races_from_zero():
     """Death Knights' CELESTE is race 0, and 0 is a Silvanesti elf there --
     not the `monster` it means in the Realms titles."""
-    for game in (games.CHAMPIONS_OF_KRYNN, games.DEATH_KNIGHTS_OF_KRYNN):
+    for game in (c64_port.CHAMPIONS_OF_KRYNN, c64_port.DEATH_KNIGHTS_OF_KRYNN):
         table = game.race_names
         assert table[0] == "silvanesti elf"
         assert table[5] == "kender"
@@ -173,15 +173,15 @@ def test_curse_leaves_race_six_unnamed():
     """Curse's own label table points both 6 and 7 at HUMAN. Naming 6
     `half-orc` would contradict what the game prints and naming it `human`
     would break the round trip, so it stays a number."""
-    table = games.CURSE_OF_THE_AZURE_BONDS.race_names
+    table = c64_port.CURSE_OF_THE_AZURE_BONDS.race_names
     assert 6 not in table
     assert table[7] == "human"
     assert yaml_io._decode(table, 6, "race") == 6
 
 
 def test_gateway_keeps_pool_of_radiances_race_list():
-    assert (games.GATEWAY_TO_THE_SAVAGE_FRONTIER.races
-            == games.POOL_OF_RADIANCE.races)
+    assert (c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER.races
+            == c64_port.POOL_OF_RADIANCE.races)
 
 
 @pytest.mark.parametrize("key, bits, expected", [
@@ -193,19 +193,19 @@ def test_gateway_keeps_pool_of_radiances_race_list():
     ("death-knights-of-krynn", 0x82, ["cleric", "ranger"]),
 ])
 def test_classes_to_names_is_per_title(key, bits, expected):
-    assert yaml_io.classes_to_names(bits, games.by_key(key)) == expected
+    assert yaml_io.classes_to_names(bits, c64_port.by_key(key)) == expected
 
 
 def test_names_to_classes_refuses_a_class_the_title_lacks():
     with pytest.raises(yaml_io.ValueError_):
-        yaml_io.names_to_classes(["paladin"], games.POOL_OF_RADIANCE)
+        yaml_io.names_to_classes(["paladin"], c64_port.POOL_OF_RADIANCE)
     assert yaml_io.names_to_classes(
-        ["paladin"], games.CURSE_OF_THE_AZURE_BONDS) == 0x40
+        ["paladin"], c64_port.CURSE_OF_THE_AZURE_BONDS) == 0x40
 
 
 def test_an_unknown_table_degrades_to_the_raw_number():
     """The designed failure: no names at all, rather than wrong ones."""
-    blank = dataclasses.replace(games.POOL_OF_RADIANCE, races=None,
+    blank = dataclasses.replace(c64_port.POOL_OF_RADIANCE, races=None,
                                 class_bits=None)
     assert blank.race_names is None and blank.class_bit_names is None
     assert yaml_io.race_table(blank) == {}
@@ -214,28 +214,28 @@ def test_an_unknown_table_degrades_to_the_raw_number():
 
 
 def test_the_yaml_comment_lists_the_title_that_wrote_the_file():
-    pool = yaml_io.comments_for(games.POOL_OF_RADIANCE)
-    krynn = yaml_io.comments_for(games.CHAMPIONS_OF_KRYNN)
+    pool = yaml_io.comments_for(c64_port.POOL_OF_RADIANCE)
+    krynn = yaml_io.comments_for(c64_port.CHAMPIONS_OF_KRYNN)
     assert "half-orc" in pool["race"] and "kender" not in pool["race"]
     assert "kender" in krynn["race"] and "half-orc" not in krynn["race"]
     assert "knight" in krynn["classes"] and "knight" not in pool["classes"]
-    blank = dataclasses.replace(games.POOL_OF_RADIANCE, races=None,
+    blank = dataclasses.replace(c64_port.POOL_OF_RADIANCE, races=None,
                                 class_bits=None)
     assert "not known" in yaml_io.comments_for(blank)["race"]
 
 
 def test_a_game_descriptor_is_still_hashable():
     """The tables are pairs rather than dicts for exactly this reason."""
-    assert len({g for g in games.GAMES}) == len(games.GAMES)
+    assert len({g for g in c64_port.GAMES}) == len(c64_port.GAMES)
 
 
 # --- item names -------------------------------------------------------------
 
 def test_pool_of_radiance_is_the_only_title_at_the_old_address():
-    assert games.POOL_OF_RADIANCE.item_names_load_address == 0x6F00
+    assert c64_port.POOL_OF_RADIANCE.item_names_load_address == 0x6F00
     assert items.NAMES_LOAD_ADDRESS == 0x6F00
-    for game in games.GAMES:
-        if game is games.POOL_OF_RADIANCE:
+    for game in c64_port.GAMES:
+        if game is c64_port.POOL_OF_RADIANCE:
             continue
         assert game.item_names_load_address == 0x9E00, game.key
 
@@ -243,7 +243,7 @@ def test_pool_of_radiance_is_the_only_title_at_the_old_address():
 def test_no_address_means_no_names_and_no_disk_read():
     """The path is nonsense on purpose: an unknown address must not even open
     the disk, let alone name items after Pool of Radiance's table."""
-    blank = dataclasses.replace(games.CURSE_OF_THE_AZURE_BONDS,
+    blank = dataclasses.replace(c64_port.CURSE_OF_THE_AZURE_BONDS,
                                 item_names_load_address=None)
     assert items.load_item_names("/no/such/disk.d64", blank) == {}
 
@@ -269,7 +269,7 @@ def test_item_names_decode_on_every_title_whose_disks_are_here(key):
     """Entry 1 is BATTLE AXE in all six, at payload offset $201. That single
     string is what fixes the load address: at any other base it comes out
     truncated or as rubbish."""
-    names = items.load_item_names(item_names_disk(key), games.by_key(key))
+    names = items.load_item_names(item_names_disk(key), c64_port.by_key(key))
     assert names[1] == "BATTLE AXE"
     assert names[2] == "HAND AXE"
     assert len(names) > 100, f"{key} decoded only {len(names)} names"
@@ -280,9 +280,9 @@ def test_curse_item_names_used_to_come_out_as_indices():
     every pointer below the base, so every name is dropped and the editor shows
     a number. The descriptor's $9E00 is what makes them words."""
     disk = item_names_disk("curse-of-the-azure-bonds")
-    assert items.load_item_names(disk, games.CURSE_OF_THE_AZURE_BONDS)[1] \
+    assert items.load_item_names(disk, c64_port.CURSE_OF_THE_AZURE_BONDS)[1] \
         == "BATTLE AXE"
-    assert items.load_item_names(disk, games.POOL_OF_RADIANCE) == {}
+    assert items.load_item_names(disk, c64_port.POOL_OF_RADIANCE) == {}
 
 
 # --- the shipped parties ----------------------------------------------------
@@ -297,15 +297,15 @@ def _characters(key: str) -> list[bytes]:
     Every save, because a title's shipped party can sit on any side and a
     cracked directory can name a truncated one the same thing.
     """
-    game = games.by_key(key)
+    game = c64_port.by_key(key)
     need(key, game.save_file)
     out = []
     for payload in payloads(key, game.save_file):
         if len(payload) != game.save_size:
             continue
         for slot in range(game.slot_count):
-            base = games.HEADER_SIZE + slot * games.SLOT_STRIDE
-            record = payload[base:base + games.SLOT_STRIDE]
+            base = c64_port.HEADER_SIZE + slot * c64_port.SLOT_STRIDE
+            record = payload[base:base + c64_port.SLOT_STRIDE]
             if record[0] and record[0] != 0xFF:
                 out.append(record)
     if not out:
@@ -342,12 +342,12 @@ def test_class_bits_are_one_bit_per_non_zero_level_slot(key):
 def test_a_titles_extra_classes_get_their_own_level(key, cls, field):
     """They have a slot each, so the YAML must expose one each -- not fold
     them into the single `level` byte."""
-    assert yaml_io.level_fields(games.by_key(key)).get(cls) == field
+    assert yaml_io.level_fields(c64_port.by_key(key)).get(cls) == field
 
 
 @pytest.mark.parametrize("key", KEYS)
 def test_the_shipped_party_uses_races_the_title_names(key):
-    table = games.by_key(key).race_names
+    table = c64_port.by_key(key).race_names
     party = _characters(key)
     assert party, f"{key} ships no party"
     unnamed = {r[RACE_BYTE] for r in party} - set(table)
@@ -356,7 +356,7 @@ def test_the_shipped_party_uses_races_the_title_names(key):
 
 @pytest.mark.parametrize("key", KEYS)
 def test_the_shipped_party_uses_class_bits_the_title_names(key):
-    game = games.by_key(key)
+    game = c64_port.by_key(key)
     known = 0
     for bit, _ in game.class_bits:
         known |= bit
@@ -380,7 +380,7 @@ def test_the_shipped_party_uses_class_bits_the_title_names(key):
     ("curse-of-the-azure-bonds", b"MALE ELF MAGE", "elf"),        # says so
 ])
 def test_the_named_specimens_that_pin_each_table_down(key, name, race):
-    table = games.by_key(key).race_names
+    table = c64_port.by_key(key).race_names
     for record in _characters(key):
         if record[:len(name)] == name:
             assert table[record[RACE_BYTE]] == race

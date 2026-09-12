@@ -23,20 +23,20 @@ from __future__ import annotations
 import gamedata
 import pytest
 
-from goldbox import amiga, dos, dos_layout, neutral
+from goldbox import amiga_later, amiga_port, dos_codec, dos_port, neutral
 
-CURSE = dos_layout.CURSE_OF_THE_AZURE_BONDS
-SILVER_BLADES = dos_layout.SECRET_OF_THE_SILVER_BLADES
-POOLS_OF_DARKNESS = dos_layout.POOLS_OF_DARKNESS
-POOL_OF_RADIANCE = dos_layout.POOL_OF_RADIANCE
+CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
+SILVER_BLADES = dos_port.SECRET_OF_THE_SILVER_BLADES
+POOLS_OF_DARKNESS = dos_port.POOLS_OF_DARKNESS
+POOL_OF_RADIANCE = dos_port.POOL_OF_RADIANCE
 
 
 # --- helpers ------------------------------------------------------------
-def dos_record(shape: dos_layout.DosShape, **values) -> bytes:
+def dos_record(shape: dos_port.DosDeltas, **values) -> bytes:
     """A record of the given shape with the named fields set, built from
     `goldbox/dos_layout.py`'s own table -- no game data, runs anywhere."""
     rec = bytearray(shape.record_size)
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -45,17 +45,17 @@ def dos_record(shape: dos_layout.DosShape, **values) -> bytes:
     return bytes(rec)
 
 
-def neutral_of(shape: dos_layout.DosShape, **values):
-    return dos.to_neutral(dos.DosCharacter(dos_record(shape, **values),
+def neutral_of(shape: dos_port.DosDeltas, **values):
+    return dos_codec.to_neutral(dos_codec.DosCharacter(dos_record(shape, **values),
                                            deltas=shape))
 
 
-def _former_class_levels(shape: dos_layout.DosShape, **slots: int) -> bytes:
+def _former_class_levels(shape: dos_port.DosDeltas, **slots: int) -> bytes:
     """The former-class array for one shape, by class name."""
-    size = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["former_class_levels"].size
+    size = dos_port.FIELDS_BY_NAME_FOR[shape.key]["former_class_levels"].size
     arr = bytearray(size)
     for name, level in slots.items():
-        arr[dos._DOS_CLASS_SLOT[name]] = level
+        arr[dos_codec._DOS_CLASS_SLOT[name]] = level
     return bytes(arr)
 
 
@@ -64,23 +64,23 @@ def test_former_level_is_named_at_the_measured_offset_in_the_three_shapes():
     """`0x0E6`, `0x0EF`, `0x139` -- the byte right after `level` in Curse,
     Silver Blades and Pools of Darkness, and absent from Pool of Radiance,
     which has no such array either."""
-    assert dos_layout.FIELDS_BY_NAME_FOR[CURSE.key]["former_level"].offset \
+    assert dos_port.FIELDS_BY_NAME_FOR[CURSE.key]["former_level"].offset \
         == 0x0E6
-    assert dos_layout.FIELDS_BY_NAME_FOR[SILVER_BLADES.key][
+    assert dos_port.FIELDS_BY_NAME_FOR[SILVER_BLADES.key][
         "former_level"].offset == 0x0EF
-    assert dos_layout.FIELDS_BY_NAME_FOR[POOLS_OF_DARKNESS.key][
+    assert dos_port.FIELDS_BY_NAME_FOR[POOLS_OF_DARKNESS.key][
         "former_level"].offset == 0x139
-    assert "former_level" not in dos_layout.FIELDS_BY_NAME_FOR[
+    assert "former_level" not in dos_port.FIELDS_BY_NAME_FOR[
         POOL_OF_RADIANCE.key]
-    assert "former_level" not in dos_layout.FIELDS_BY_NAME
+    assert "former_level" not in dos_port.FIELDS_BY_NAME
 
 
 def test_former_level_is_confirmed_not_a_gap():
     """It used to be `gap_0e6`/`gap_0ef`/`gap_139`, UNKNOWN. Naming it moves
     it to CONFIRMED, on the two watched training-hall transitions below."""
     for shape in (CURSE, SILVER_BLADES, POOLS_OF_DARKNESS):
-        f = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["former_level"]
-        assert f.confidence == dos_layout.Confidence.CONFIRMED
+        f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["former_level"]
+        assert f.confidence == dos_port.Confidence.CONFIRMED
 
 
 # --- the reader: the non-zero convention -----------------------------------
@@ -126,20 +126,20 @@ def test_pool_of_radiance_has_no_former_levels_field_at_all():
 def test_former_level_has_a_disposition_in_every_later_shape(shape):
     """A field the table declares and `field_disposition` names nowhere is a
     field dropped in silence -- the mechanism that makes the row mandatory."""
-    table = dos.field_disposition(shape)
+    table = dos_codec.field_disposition(shape)
     assert "former_level" in table
     assert "former_class_levels" in table
 
 
 def test_former_level_has_a_disposition_in_the_amiga_reader():
-    for shape in (amiga.CURSE_DELTAS, amiga.SILVER_BLADES_DELTAS):
-        declared = [f.name for f in dos_layout.layout_for(shape.dos)]
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        declared = [f.name for f in dos_port.layout_for(shape.dos)]
         unaccounted, unknown = neutral.undeclared(
-            declared, amiga.later_field_disposition(shape))
+            declared, amiga_later.later_field_disposition(shape))
         assert not unaccounted, (shape.key, sorted(unaccounted))
         assert not unknown, (shape.key, sorted(unknown))
-        assert "former_level" in amiga.later_field_disposition(shape)
-        assert "former_class_levels" in amiga.later_field_disposition(shape)
+        assert "former_level" in amiga_later.later_field_disposition(shape)
+        assert "former_class_levels" in amiga_later.later_field_disposition(shape)
 
 
 # --- the Amiga reader: carried, not dropped ---------------------------------
@@ -148,25 +148,25 @@ def test_amiga_reads_former_levels_with_no_drop_line():
     there was nowhere to put it -- stale since `former_levels` landed. A fake
     record with the array set now reaches the neutral record and the report
     says nothing about a drop."""
-    shape = amiga.CURSE_DELTAS
+    shape = amiga_port.CURSE_DELTAS
     f = shape.dos_field("former_class_levels")
     raw = bytearray(shape.record_size)
     for i in range(6):
         raw[0x10 + 2 * i] = raw[0x11 + 2 * i] = 12   # a legal ability pair
     arr = bytearray(f.size)
-    arr[dos._DOS_CLASS_SLOT["paladin"]] = 5
+    arr[dos_codec._DOS_CLASS_SLOT["paladin"]] = 5
     at = shape.offset(f.offset)
     raw[at:at + f.size] = arr
-    char = amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
-    n = amiga.to_neutral_later(char)
+    char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+    n = amiga_later.to_neutral_later(char)
     assert n.get("former_levels") == {"paladin": 5}
     assert not any("former" in d.lower() for d in n.dropped)
 
 
 # --- specimens: the two watched training-hall transitions -------------------
-def _read(name: str, filename: str) -> dos.DosCharacter:
+def _read(name: str, filename: str) -> dos_codec.DosCharacter:
     where = gamedata.specimen(name)
-    return dos.read_character(where / filename)
+    return dos_codec.read_character(where / filename)
 
 
 @pytest.mark.skipif(not gamedata.have_specimen("curse-234-before"),
@@ -174,8 +174,8 @@ def _read(name: str, filename: str) -> dos.DosCharacter:
 def test_curse_specimen_before_and_after_the_training_hall():
     """DEMELTINA, human paladin 5, one action through Curse's HUMAN CHANGE
     CLASSES: paladin 5 -> cleric 1. `#234`'s own worked example."""
-    before = dos.to_neutral(_read("curse-234-before", "CHRDATC1.SAV"))
-    after = dos.to_neutral(_read("curse-234-dualclassed", "CHRDATD1.SAV"))
+    before = dos_codec.to_neutral(_read("curse-234-before", "CHRDATC1.SAV"))
+    after = dos_codec.to_neutral(_read("curse-234-dualclassed", "CHRDATD1.SAV"))
 
     assert before.get("former_levels") == {}
     assert before.warnings == []
@@ -200,9 +200,9 @@ def test_silver_blades_specimen_before_and_after_the_training_hall(monkeypatch):
     former-class reader this file is about, so `CONVERTS` is widened for the
     one call rather than for the module.
     """
-    monkeypatch.setattr(dos, "CONVERTS", dos.CONVERTS + (SILVER_BLADES,))
-    before = dos.to_neutral(_read("ssb-234-before", "CHRDATC2.SAV"))
-    after = dos.to_neutral(_read("ssb-234-dualclassed", "CHRDATD2.SAV"))
+    monkeypatch.setattr(dos_codec, "CONVERTS", dos_codec.CONVERTS + (SILVER_BLADES,))
+    before = dos_codec.to_neutral(_read("ssb-234-before", "CHRDATC2.SAV"))
+    after = dos_codec.to_neutral(_read("ssb-234-dualclassed", "CHRDATD2.SAV"))
 
     assert before.get("former_levels") == {}
     assert before.warnings == []

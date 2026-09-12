@@ -423,20 +423,20 @@ def test_the_two_dynamic_areas_are_flagged_as_such(scripts):
         assert f"LOADFILES {id}, " not in text
 
 
-# -- the seam with goldbox/games.py ----------------------------------------------
+# -- the seam with goldbox/c64_port.py ---------------------------------------
 
 
 def test_the_title_strings_match_the_per_game_descriptor():
     """`goldbox/areas.py` takes a title as a plain string on purpose, so that it
     does not have to import the descriptor. This is the one place the two have
     to agree: `areas.GEO_NAMES[game.title]` is how a caller with a `Game` looks
-    a name up. Skipped while `goldbox/games.py` does not yet exist."""
-    games = pytest.importorskip("goldbox.games")
+    a name up."""
+    from goldbox import c64_port
     for attr, title in (("POOL_OF_RADIANCE", POOL_OF_RADIANCE),
                         ("CURSE_OF_THE_AZURE_BONDS", CURSE_OF_THE_AZURE_BONDS)):
-        game = getattr(games, attr, None)
+        game = getattr(c64_port, attr, None)
         if game is None or not hasattr(game, "title"):
-            pytest.skip(f"goldbox.games has no {attr}.title yet")
+            pytest.skip(f"goldbox.c64_port has no {attr}.title yet")
         assert game.title == title
         assert game.title in areas.GEO_NAMES
 
@@ -495,8 +495,8 @@ def ssb_table():
 
 
 def games_module():
-    from goldbox import games
-    return games
+    from goldbox import c64_port
+    return c64_port
 
 
 def test_the_silver_blades_table_has_a_row_per_script_on_the_disks(ssb_table):

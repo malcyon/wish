@@ -21,7 +21,7 @@ things that are new -- the drop lines and the two composition directions.
 import pytest
 from test_amiga import curse_characters, silver_blades_characters
 
-from goldbox import amiga
+from goldbox import amiga_later, amiga_port
 from goldbox.iconparts import IconParts, dos_icon_tables, dos_size
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -61,7 +61,7 @@ def test_the_four_combat_icon_drop_lines_are_gone():
     """
     seen = 0
     for label, char in _all_characters():
-        neutral = amiga.to_neutral_later(char)
+        neutral = amiga_later.to_neutral_later(char)
         lowered = [d.lower() for d in neutral.dropped]
         for phrase in _OLD_ICON_DROP_PHRASES:
             assert not any(phrase in d for d in lowered), (
@@ -75,7 +75,7 @@ def test_the_pane_still_reports_something_else():
     is not proof of anything. Every specimen still carries at least one
     unrelated drop line, such as the sheet portrait or the treasure share."""
     for label, char in _all_characters():
-        neutral = amiga.to_neutral_later(char)
+        neutral = amiga_later.to_neutral_later(char)
         assert neutral.dropped, (label, char.name)
 
 
@@ -83,15 +83,15 @@ def test_icon_head_body_and_colours_are_named_transformed_not_dropped():
     """The bookkeeping table itself: `later_field_disposition` is the test
     that every declared field is named in exactly one of direct, transformed
     or dropped, so this just points at where the three names live now."""
-    transformed = {n for n, _ in amiga.LATER_TRANSFORMED}
-    dropped = {n for n, _ in amiga.LATER_DROPPED}
+    transformed = {n for n, _ in amiga_later.LATER_TRANSFORMED}
+    dropped = {n for n, _ in amiga_later.LATER_DROPPED}
     for name in ("icon_head", "icon_body", "icon_colours"):
         assert name in transformed, name
         assert name not in dropped, name
     # icon_dimension stays dropped, and carries no player-facing line --
     # Donald's ruling on the identical DOS line, 2026-09-06.
     assert "icon_dimension" in dropped
-    assert "icon_dimension" not in amiga.LATER_DROPPED_PLAYER_TEXT
+    assert "icon_dimension" not in amiga_later.LATER_DROPPED_PLAYER_TEXT
 
 
 # ---------------------------------------------------------------------------
@@ -157,15 +157,15 @@ def test_amiga_combat_icon_written_through_dos_write_matches_the_source():
     two real ones.
     """
     from editor.convert import amiga_combat_icon
-    from goldbox import dos
+    from goldbox import dos_codec
 
     for label, chars in (("Curse", curse_characters()),
                         ("Silver Blades", silver_blades_characters())):
         char = chars[0]
         icon = amiga_combat_icon(char)
-        neutral_char = amiga.to_neutral_later(char)
-        record, _itm, _spc, rep = dos.write(neutral_char, icon=icon)
-        shape = amiga.later_write_shape(neutral_char)
+        neutral_char = amiga_later.to_neutral_later(char)
+        record, _itm, _spc, rep = dos_codec.write(neutral_char, icon=icon)
+        shape = amiga_later.later_write_shape(neutral_char)
         f_head = shape.dos_field("icon_head")
         f_body = shape.dos_field("icon_body")
         f_colours = shape.dos_field("icon_colours")
@@ -246,11 +246,11 @@ def test_write_later_writes_zero_and_the_default_with_no_icon():
     from goldbox import c64_port, neutral
 
     char = neutral.NeutralCharacter(
-        "test", game=c64_port.by_key(amiga.CURSE_DELTAS.key))
+        "test", game=c64_port.by_key(amiga_port.CURSE_DELTAS.key))
     char.set("name", "TESTER", "a test name")
     for ability in neutral.ABILITIES:
         char.set(ability, 12, "a test score")
-    built, _rep = amiga.write_later(char)
+    built, _rep = amiga_later.write_later(char)
     assert built.get("icon_head") == 0
     assert built.get("icon_body") == 0
     assert bytes(built.get("icon_colours")) == bytes.fromhex("91a2b3c4e6f7")
@@ -266,11 +266,11 @@ def test_write_later_writes_a_given_icon_straight():
     icon = DosIcon(head=5, body=9, colours=bytes.fromhex("11223344e6f7"),
                   figure_source="test", colours_source="test")
     char = neutral.NeutralCharacter(
-        "test", game=c64_port.by_key(amiga.SILVER_BLADES_DELTAS.key))
+        "test", game=c64_port.by_key(amiga_port.SILVER_BLADES_DELTAS.key))
     char.set("name", "TESTER", "a test name")
     for ability in neutral.ABILITIES:
         char.set(ability, 12, "a test score")
-    built, _rep = amiga.write_later(char, icon=icon)
+    built, _rep = amiga_later.write_later(char, icon=icon)
     assert built.get("icon_head") == 5
     assert built.get("icon_body") == 9
     assert bytes(built.get("icon_colours")) == bytes.fromhex("11223344e6f7")

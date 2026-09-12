@@ -18,7 +18,7 @@ import pathlib
 
 import pytest
 
-from goldbox import dos_layout as dl
+from goldbox import dos_port as dl
 from tools import dostailcensus
 
 

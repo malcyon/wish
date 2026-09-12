@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import controlbyte  # noqa: E402
 
 #: Where each engine's own `cmp ..., 80h` reaches, measured per title.
@@ -34,7 +34,7 @@ MEASURED = {
 
 @pytest.mark.parametrize("key,offset", sorted(MEASURED.items()))
 def test_the_control_byte_lands_where_the_engine_compares_it(key, offset):
-    shape = dl.SHAPES_BY_KEY[key]
+    shape = dl.DELTAS_BY_KEY[key]
     control, share = controlbyte.dos_offsets(shape)
     assert control == offset
     assert share == offset + 1
@@ -48,7 +48,7 @@ def test_the_control_byte_is_inside_the_run_it_is_derived_from():
     end of the run in every title.  A shape that shrank the run at the other
     end would still pass the offsets above by luck; this says which end.
     """
-    for shape in dl.SHAPES:
+    for shape in dl.DELTAS:
         run = dl.FIELDS_BY_NAME_FOR[shape.key]["field_83_87"]
         control, share = controlbyte.dos_offsets(shape)
         assert run.offset <= control < run.offset + run.size

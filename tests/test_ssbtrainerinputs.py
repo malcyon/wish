@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import games, levels
+from goldbox import c64_port, levels
 from tools import ssbtrainerinputs as T
 
 CURSE = levels.CURSE_OF_THE_AZURE_BONDS
@@ -185,8 +185,8 @@ def test_the_racial_rows_are_curses_five_in_silver_blades_own_race_order(thief):
     re-ordered -- so the table is a permutation and not a new measurement.
     """
     curse_by_name = {name: thief["curse_race"][code - 1]
-                     for code, name in games.RACES_CURSE if code <= 6}
-    for code, name in games.RACES_SILVER_BLADES:
+                     for code, name in c64_port.RACES_CURSE if code <= 6}
+    for code, name in c64_port.RACES_SILVER_BLADES:
         if code > 5:
             continue
         assert thief["race_table"][code - 1] == curse_by_name[name], name

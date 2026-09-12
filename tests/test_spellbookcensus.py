@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import dos_layout as dl
+from goldbox import dos_port as dl
 from goldbox import spells
 from tests import gamedata
 from tools import spellbookcensus as census

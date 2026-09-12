@@ -24,7 +24,7 @@ row 24 it did not expect.
 
 from conftest import load_tools_module
 
-from goldbox import games as G
+from goldbox import c64_port as G
 
 S = load_tools_module("session")
 

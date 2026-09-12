@@ -35,7 +35,7 @@ import pathlib
 
 import pytest
 
-from goldbox import c64_codec, dos, items
+from goldbox import c64_codec, dos_codec, items
 from goldbox.d64 import D64
 from goldbox.savegame import load_save
 
@@ -65,7 +65,7 @@ def _c64_disk(name: str) -> pathlib.Path:
     return path
 
 
-def _philippe(name: str) -> "dos.NeutralCharacter":  # type: ignore[name-defined]
+def _philippe(name: str) -> "dos_codec.NeutralCharacter":  # type: ignore[name-defined]
     """PHILIPPE, read into the neutral record, off one named C64 disk."""
     disk = _c64_disk(name)
     game, sg0, sg1 = load_save(D64.open(str(disk)))
@@ -79,7 +79,7 @@ def _philippe(name: str) -> "dos.NeutralCharacter":  # type: ignore[name-defined
     pytest.fail(f"{disk.name} has no PHILIPPE")
 
 
-def _mathew() -> dos.DosCharacter:
+def _mathew() -> dos_codec.DosCharacter:
     """MATHEW, the DOS engine's own regained dual-classed record."""
     root = _specimen_root()
     if root is None:
@@ -88,7 +88,7 @@ def _mathew() -> dos.DosCharacter:
         "coab-dos/WISH-SPEC-curse-408-regained-paladin/CHRDATJ1.SAV"))
     if not found:
         pytest.skip("needs specimen WISH-SPEC-curse-408-regained-paladin")
-    return dos.read_character(found[0])
+    return dos_codec.read_character(found[0])
 
 
 def test_the_engine_written_specimen_has_the_target_shape():
@@ -99,7 +99,7 @@ def test_the_engine_written_specimen_has_the_target_shape():
     mathew = _mathew()
     assert mathew.class_levels == {"magic-user": 6}
     assert dict(zip(
-        (n for _, n, _ in dos.CLASS_LEVEL_SLOTS),
+        (n for _, n, _ in dos_codec.CLASS_LEVEL_SLOTS),
         mathew.raw("former_class_levels")))["paladin"] == 5
     assert mathew.get("char_class") == 5
     assert mathew.get("class_bits") == 0x41
@@ -116,15 +116,15 @@ def test_a_regained_character_converts_to_dos_in_the_engines_own_shape():
     dual-classed shape DOS itself ever writes.
     """
     neutral = _philippe("curse-dualclass-trained")
-    rec, _itm, _spc, rep = dos.write(neutral, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
-    char = dos.DosCharacter(rec, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
+    rec, _itm, _spc, rep = dos_codec.write(neutral, deltas=dos_codec.CURSE_OF_THE_AZURE_BONDS)
+    char = dos_codec.DosCharacter(rec, deltas=dos_codec.CURSE_OF_THE_AZURE_BONDS)
 
     assert char.class_levels == {"fighter": 8}
     assert list(char.raw("class_levels")) == [0, 0, 8, 0, 0, 0, 0, 0]
     assert list(char.raw("former_class_levels")) == [0, 0, 0, 0, 0, 6, 0, 0]
     assert char.get("char_class") == 2   # fighter alone, not 13
     assert char.get("class_bits") == 0x09
-    assert dos.class_bits_for(char) == char.get("class_bits")
+    assert dos_codec.class_bits_for(char) == char.get("class_bits")
 
     lines = "\n".join(set(rep.sources.values()))
     assert "magic-user zeroed here" in lines
@@ -137,14 +137,14 @@ def test_an_unregained_dual_classed_character_is_unchanged():
     `class_levels` carries the new class alone before conversion as well as
     after, so nothing here has anything to zero."""
     neutral = _philippe("curse-dual-classed")
-    rec, _itm, _spc, rep = dos.write(neutral, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
-    char = dos.DosCharacter(rec, deltas=dos.CURSE_OF_THE_AZURE_BONDS)
+    rec, _itm, _spc, rep = dos_codec.write(neutral, deltas=dos_codec.CURSE_OF_THE_AZURE_BONDS)
+    char = dos_codec.DosCharacter(rec, deltas=dos_codec.CURSE_OF_THE_AZURE_BONDS)
 
     assert char.class_levels == {"fighter": 1}
     assert list(char.raw("former_class_levels")) == [0, 0, 0, 0, 0, 6, 0, 0]
     assert char.get("char_class") == 2
     assert char.get("class_bits") == 0x08
-    assert dos.class_bits_for(char) == char.get("class_bits")
+    assert dos_codec.class_bits_for(char) == char.get("class_bits")
 
     lines = "\n".join(set(rep.sources.values()))
     assert "zeroed here" not in lines

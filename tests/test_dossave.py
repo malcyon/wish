@@ -949,22 +949,22 @@ def test_the_later_titles_store_each_ability_twice():
 
 def _synthetic_curse_character(items: int) -> bytearray:
     """A 422-byte Curse record carrying nothing but a name and an item count."""
-    from goldbox import dos_layout
+    from goldbox import dos_port
 
-    record = bytearray(dos_layout.CURSE_OF_THE_AZURE_BONDS.record_size)
+    record = bytearray(dos_port.CURSE_OF_THE_AZURE_BONDS.record_size)
     name = b"SHOPPER"
     record[0] = len(name)
     record[1:1 + len(name)] = name
-    fields = {f.name: f for f in dos_layout.layout_for("curse-of-the-azure-bonds")}
+    fields = {f.name: f for f in dos_port.layout_for("curse-of-the-azure-bonds")}
     record[fields["item_count"].offset] = items
     return record
 
 
 def _synthetic_battle_axe() -> bytearray:
     """One 63-byte item record: type 1, 7.5 lb, 5 gold, nothing else set."""
-    from goldbox import dos_layout
+    from goldbox import dos_port
 
-    item = bytearray(dos_layout.ITEM_SIZE)
+    item = bytearray(dos_port.ITEM_SIZE)
     line = b"Battle Axe "
     item[0] = len(line)
     item[1:1 + len(line)] = line
@@ -982,13 +982,13 @@ def test_a_curse_character_keeps_its_items_in_a_swg_file(tmp_path):
     whose record says three items reads back as carrying none -- exactly
     what every shipped pregen looks like.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(1))
     (tmp_path / "CHRDATC1.SWG").write_bytes(_synthetic_battle_axe())
 
-    character = dos.read_character(record)
+    character = dos_codec.read_character(record)
     assert character.get("item_count") == 1
     assert len(character.items) == 1, "the .SWG file was not read"
     assert character.items[0].get("type_index") == 1
@@ -1003,13 +1003,13 @@ def test_a_curse_item_file_under_the_old_name_is_not_read(tmp_path):
     the first test passes and this one fails, so the pair pins the direction
     rather than merely the fact that some suffix works.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(1))
     (tmp_path / "CHRDATC1.ITM").write_bytes(_synthetic_battle_axe())
 
-    character = dos.read_character(record)
+    character = dos_codec.read_character(record)
     assert character.get("item_count") == 1
     assert not character.items, "an .ITM beside a Curse record was read"
 
@@ -1023,14 +1023,14 @@ SILVER_BLADES_ITEM_SIZE = 67
 
 
 def _synthetic_silver_blades_character(items: int) -> bytearray:
-    from goldbox import dos_layout
+    from goldbox import dos_port
 
-    record = bytearray(dos_layout.SECRET_OF_THE_SILVER_BLADES.record_size)
+    record = bytearray(dos_port.SECRET_OF_THE_SILVER_BLADES.record_size)
     name = b"TAKER"
     record[0] = len(name)
     record[1:1 + len(name)] = name
     fields = {f.name: f
-              for f in dos_layout.layout_for("secret-of-the-silver-blades")}
+              for f in dos_port.layout_for("secret-of-the-silver-blades")}
     record[fields["item_count"].offset] = items
     return record
 
@@ -1059,13 +1059,13 @@ def _synthetic_silver_blades_items() -> bytearray:
 
 def test_silver_blades_items_are_67_bytes_in_a_stf_file(tmp_path):
     """`.STF`, stride 67, and every field still at Pool of Radiance's offset."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_silver_blades_character(2))
     (tmp_path / "CHRDATC1.STF").write_bytes(_synthetic_silver_blades_items())
 
-    character = dos.read_character(record)
+    character = dos_codec.read_character(record)
     assert len(character.items) == 2, "the .STF file was not read"
     first, second = character.items
     assert first.get("type_index") == 18 and first.get("value") == 2000
@@ -1114,15 +1114,15 @@ def test_a_joined_scroll_bundle_is_refused_by_name(tmp_path):
     """Reading the first `item_count` records would hand back the bundle's
     own spell nodes as items and drop the plate mail off the end -- refused
     instead, naming the file (#432)."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_silver_blades_character(2))
     (tmp_path / "CHRDATC1.STF").write_bytes(_synthetic_joined_scroll_bundle())
 
-    with pytest.raises(dos.DosRecordError,
+    with pytest.raises(dos_codec.DosRecordError,
                         match=r"CHRDATC1\.STF.*joined scroll bundle"):
-        dos.read_character(record)
+        dos_codec.read_character(record)
 
 
 # --- an item file present and the wrong shape is a defect, not a gap (#221) ----
@@ -1133,7 +1133,7 @@ def test_a_joined_scroll_bundle_is_refused_by_name(tmp_path):
 
 def test_an_item_file_short_of_a_whole_number_of_items_is_refused(tmp_path):
     """63 x 1 - 1 = 62 bytes: not a whole number of 63-byte items."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(1))
@@ -1141,8 +1141,8 @@ def test_an_item_file_short_of_a_whole_number_of_items_is_refused(tmp_path):
     assert len(truncated) == 62
     (tmp_path / "CHRDATC1.SWG").write_bytes(truncated)
 
-    with pytest.raises(dos.DosRecordError, match=r"CHRDATC1\.SWG.*62.*63"):
-        dos.read_character(record)
+    with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.SWG.*62.*63"):
+        dos_codec.read_character(record)
 
 
 def test_an_item_file_that_is_present_and_empty_is_refused(tmp_path):
@@ -1153,35 +1153,35 @@ def test_an_item_file_that_is_present_and_empty_is_refused(tmp_path):
     shape", and a zero-byte file is the one that looks like both.  `_sibling`
     handed back `b""` for either, which is why the check had to move out of it.
     """
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(1))
     (tmp_path / "CHRDATC1.SWG").write_bytes(b"")
 
-    with pytest.raises(dos.DosRecordError, match=r"CHRDATC1\.SWG.*0.*1"):
-        dos.read_character(record)
+    with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.SWG.*0.*1"):
+        dos_codec.read_character(record)
 
 
 def test_an_item_file_short_of_the_records_own_count_is_refused(tmp_path):
     """The record claims two items; the sibling file only holds one."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(2))
     (tmp_path / "CHRDATC1.SWG").write_bytes(_synthetic_battle_axe())
 
-    with pytest.raises(dos.DosRecordError, match=r"CHRDATC1\.SWG.*1.*2"):
-        dos.read_character(record)
+    with pytest.raises(dos_codec.DosRecordError, match=r"CHRDATC1\.SWG.*1.*2"):
+        dos_codec.read_character(record)
 
 
 def test_an_absent_item_file_is_still_read_quietly(tmp_path):
     """No sibling at all is the documented, deliberate case: an export."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     record = tmp_path / "CHRDATC1.SAV"
     record.write_bytes(_synthetic_curse_character(1))
 
-    character = dos.read_character(record)
+    character = dos_codec.read_character(record)
     assert character.get("item_count") == 1
     assert not character.items

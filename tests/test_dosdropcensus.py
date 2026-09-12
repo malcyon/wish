@@ -10,18 +10,18 @@ from __future__ import annotations
 
 import pathlib
 
-from goldbox import dos_layout
+from goldbox import dos_port
 from tools import dosdropcensus, dostailcensus
 
-CURSE = dos_layout.CURSE_OF_THE_AZURE_BONDS
-POR = dos_layout.POOL_OF_RADIANCE
+CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
+POR = dos_port.POOL_OF_RADIANCE
 
 
 def record(shape, **values) -> bytes:
     """A record in `shape` with the named fields set, built from the table
     rather than sliced out of anybody's save."""
     rec = bytearray(shape.record_size)
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     for name, value in values.items():
         f = table[name]
         raw = bytes([value] * f.size) if isinstance(value, int) else value
@@ -42,6 +42,6 @@ def test_the_0x0e6_column_reports_a_non_zero_former_level():
 
 def test_the_0x0e6_column_reports_a_dash_when_the_shape_has_no_such_field():
     """Pool of Radiance has no `former_level` field at all."""
-    assert "former_level" not in dos_layout.FIELDS_BY_NAME_FOR[POR.key]
+    assert "former_level" not in dos_port.FIELDS_BY_NAME_FOR[POR.key]
     spec = specimen(POR)
     assert dosdropcensus.columns(spec)["0x0E6"] == "-"

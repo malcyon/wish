@@ -32,13 +32,13 @@ import shutil
 import pytest
 import yaml
 
-from goldbox import c64_save, games
+from goldbox import c64_port, c64_save
 from goldbox.d64 import D64, split_load_address
 from goldbox.savegame import load_save
 from goldbox.yaml_io import ValueError_, export_save, import_into, to_yaml
 from tests import gamedata
 
-SSB = games.SECRET_OF_THE_SILVER_BLADES
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 #: The engine-written Silver Blades save every test here reads.
 SPECIMEN = "ssb-d-engine-resave"
@@ -115,7 +115,7 @@ def test_the_specimen_is_a_silver_blades_save_the_engine_wrote(tmp_path):
     `_specimen_disk` is what says nobody has touched it since.
     """
     disk = _copy(_specimen_disk(), tmp_path)
-    assert games.detect(D64.open(disk)) is SSB
+    assert c64_port.detect(D64.open(disk)) is SSB
     _game, sg0, _sg1 = load_save(D64.open(disk))
     assert [s.record.name for s in sg0.characters] == [
         "MORGAINE", "DOMINIC", "MALACHITE", "EPONA", "PAINE", "Guy de Valois"]
@@ -281,8 +281,8 @@ def test_the_container_knows_where_each_titles_name_table_is_indexed(tmp_path):
     Curse's is in slot order and Silver Blades' in marching order, which is
     why a fix has to ask `name_index` rather than assume.
     """
-    pool = c64_save.CONTAINERS[games.POOL_OF_RADIANCE.key]
-    curse = c64_save.CONTAINERS[games.CURSE_OF_THE_AZURE_BONDS.key]
+    pool = c64_save.CONTAINERS[c64_port.POOL_OF_RADIANCE.key]
+    curse = c64_save.CONTAINERS[c64_port.CURSE_OF_THE_AZURE_BONDS.key]
     ssb = c64_save.CONTAINERS[SSB.key]
     assert pool.name_table is None
     assert curse.name_table == 0xC00 and ssb.name_table == 0xC00

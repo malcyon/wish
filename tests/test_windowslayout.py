@@ -522,7 +522,7 @@ def _ordinary_party(tmp_path) -> str:
     """
     import gamedata
 
-    from goldbox import games
+    from goldbox import c64_port
     from goldbox.d64 import attach_load_address
     from goldbox.encoding import COMBAT_BIAS
     from goldbox.record import CharacterRecord
@@ -537,7 +537,7 @@ def _ordinary_party(tmp_path) -> str:
         SLOT_STRIDE,
     )
 
-    game = games.POOL_OF_RADIANCE
+    game = c64_port.POOL_OF_RADIANCE
     record = CharacterRecord.blank()
     record.set("name", "Grix")
     for ability in ("strength", "intelligence", "wisdom", "dexterity",

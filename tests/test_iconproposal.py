@@ -24,7 +24,7 @@ import pytest
 import yaml
 from gamedata import disk_dir
 
-from goldbox import games
+from goldbox import c64_port
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 
@@ -569,7 +569,7 @@ def test_each_title_resolves_a_disk_of_its_own_carrying_the_icon_files(title):
     for wanted in ip.C64_ICON_FILES:
         assert wanted in names, (disk.name, wanted)
     #: And the side is one of that title's own, not another game's.
-    assert disk.match(games.by_key(title).disk_glob), disk
+    assert disk.match(c64_port.by_key(title).disk_glob), disk
 
 
 def test_curse_draws_every_c64_option_exactly_as_pool_of_radiance_does():

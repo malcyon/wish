@@ -862,13 +862,13 @@ def test_the_eighth_body_reaches_an_amiga_record_and_comes_back_unchanged():
     """
     from test_amiga import sample
 
-    from goldbox import amiga, dos
+    from goldbox import amiga_por, dos_codec
 
     char = sample(portrait_head=0x08, portrait_body=0x18)
-    record, _itm, _spc, report = amiga.write_por(char)
+    record, _itm, _spc, report = amiga_por.write_por(char)
 
     assert not any("portrait" in line for line in report.dropped), report.dropped
-    back = dos.to_neutral(amiga.to_dos_character(
-        amiga.AmigaPorCharacter.from_bytes(record)))
+    back = dos_codec.to_neutral(amiga_por.to_dos_character(
+        amiga_por.AmigaPorCharacter.from_bytes(record)))
     assert back.get("portrait_body") == 0x18
     assert back.get("portrait_head") == 0x08

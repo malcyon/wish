@@ -38,7 +38,7 @@ import struct
 
 import pytest
 
-from goldbox import areas, dos
+from goldbox import areas, dos_codec
 from goldbox import dos_savegame as sg
 from goldbox.savegame import SaveGame0
 
@@ -108,34 +108,34 @@ def _c64_on_the_travel_grid(x: int = TRAVEL_X, y: int = TRAVEL_Y,
 
 def _c64_on_the_travel_grid_raw(x: int, y: int, facing: int) -> bytearray:
     save0 = _fixture_save0()
-    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = WINDOW
-    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = \
+    save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] = WINDOW
+    save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] = \
         int(areas.area(WINDOW).sqrdata[len("SQRDATA"):], 16)
-    save0[dos.INDOORS - dos.SAVE0_BASE] = 0
-    save0[sg.TRAVEL_X - dos.SAVE0_BASE] = x
-    save0[sg.TRAVEL_Y - dos.SAVE0_BASE] = y
-    save0[dos.PARTY_X - dos.SAVE0_BASE] = 15      # the pier, frozen
-    save0[dos.PARTY_Y - dos.SAVE0_BASE] = 4
-    save0[dos.PARTY_FACING - dos.SAVE0_BASE] = facing
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_WALLSET
-    save0[at:at + dos.CACHE_WALLSET_PIECES] = \
-        bytes([dos.FILE_CACHE_EMPTY]) * dos.CACHE_WALLSET_PIECES
+    save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] = 0
+    save0[sg.TRAVEL_X - dos_codec.SAVE0_BASE] = x
+    save0[sg.TRAVEL_Y - dos_codec.SAVE0_BASE] = y
+    save0[dos_codec.PARTY_X - dos_codec.SAVE0_BASE] = 15      # the pier, frozen
+    save0[dos_codec.PARTY_Y - dos_codec.SAVE0_BASE] = 4
+    save0[dos_codec.PARTY_FACING - dos_codec.SAVE0_BASE] = facing
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE + dos_codec.CACHE_WALLSET
+    save0[at:at + dos_codec.CACHE_WALLSET_PIECES] = \
+        bytes([dos_codec.FILE_CACHE_EMPTY]) * dos_codec.CACHE_WALLSET_PIECES
     return save0
 
 
 def _c64_in_the_slums() -> bytes:
     """The same fixture party indoors, as the control."""
     save0 = _fixture_save0()
-    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = 20
-    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = 20
-    save0[dos.INDOORS - dos.SAVE0_BASE] = 1
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_WALLSET
-    save0[at:at + dos.CACHE_WALLSET_PIECES] = bytes((2, 4, 1))
+    save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] = 20
+    save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] = 20
+    save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] = 1
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE + dos_codec.CACHE_WALLSET
+    save0[at:at + dos_codec.CACHE_WALLSET_PIECES] = bytes((2, 4, 1))
     return bytes(save0)
 
 
-def _write(save0: bytes, tmp_path, game_dir) -> tuple[bytes, "dos.SaveReport"]:
-    report = dos.new_dos_save(save0, None, tmp_path / "out", "A", game_dir)
+def _write(save0: bytes, tmp_path, game_dir) -> tuple[bytes, "dos_codec.SaveReport"]:
+    report = dos_codec.new_dos_save(save0, None, tmp_path / "out", "A", game_dir)
     return (tmp_path / "out" / "SAVGAMA.DAT").read_bytes(), report
 
 
@@ -145,10 +145,10 @@ def test_the_travel_grid_is_no_longer_a_refusal():
     """It was refused because no outdoor DOS retarget had been driven; one
     has been now, so the reason is gone.  The other two refusals stay."""
     for window in (25, 26, 27):
-        assert dos.retarget_reason(window) is None, window
-    assert "not supported" in dos.retarget_reason(3)      # dynamic_geo
-    assert "not supported" in dos.retarget_reason(8)      # loads no map
-    assert "not an area" in dos.retarget_reason(31)
+        assert dos_codec.retarget_reason(window) is None, window
+    assert "not supported" in dos_codec.retarget_reason(3)      # dynamic_geo
+    assert "not supported" in dos_codec.retarget_reason(8)      # loads no map
+    assert "not an area" in dos_codec.retarget_reason(31)
 
 
 def test_a_retarget_onto_a_travel_window_names_no_geo():
@@ -206,7 +206,7 @@ def test_each_of_the_three_windows_carries_its_own_container(window, dax,
     `dax_block`.  A conversion that named the wrong one would stage a
     stranger's script, which is what kills the load in `Load3DMap` (#60)."""
     save0 = bytearray(_c64_on_the_travel_grid())
-    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = window
+    save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] = window
     savgam, _ = _write(bytes(save0), tmp_path, game_dir)
     assert sg.dax_number(savgam) == dax == sg.word(savgam, sg.DISK)
     assert sg.current_area(savgam) == window
@@ -222,7 +222,7 @@ def test_the_outdoor_wallset_is_the_engines_own_not_the_c64s_empty_cache(
     specimens hold it, one of them seeded with Sokol Keep's `(1, 5, 9)` and
     resaved by the engine three times."""
     save0 = _c64_on_the_travel_grid()
-    assert dos.c64_wall_triple(save0) == (sg.EMPTY, sg.EMPTY, sg.EMPTY)
+    assert dos_codec.c64_wall_triple(save0) == (sg.EMPTY, sg.EMPTY, sg.EMPTY)
     savgam, _ = _write(save0, tmp_path, game_dir)
     assert sg.wall_triple(savgam) == sg.OUTDOOR_WALLSET == (0, sg.EMPTY,
                                                             sg.EMPTY)
@@ -273,6 +273,6 @@ def test_an_indoor_party_is_still_written_the_indoor_way(tmp_path, game_dir):
     assert sg.word(savgam, sg.AREA) == 20 == sg.word(savgam, sg.SCRIPT)
     assert sg.wall_triple(savgam) == (2, 4, 1)
     assert sg.position(savgam)[:2] == (
-        _c64_in_the_slums()[dos.PARTY_X - dos.SAVE0_BASE],
-        _c64_in_the_slums()[dos.PARTY_Y - dos.SAVE0_BASE])
+        _c64_in_the_slums()[dos_codec.PARTY_X - dos_codec.SAVE0_BASE],
+        _c64_in_the_slums()[dos_codec.PARTY_Y - dos_codec.SAVE0_BASE])
     assert savgam[sg.VIEW_MODE_BYTE] == sg.VIEW_MODE_INDOORS

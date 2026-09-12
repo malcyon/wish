@@ -27,7 +27,7 @@ import statistics
 
 import pytest
 
-from goldbox import games
+from goldbox import c64_port
 from goldbox.d64 import D64, split_load_address
 from goldbox.savegame import load_save
 from tests import gamedata
@@ -52,8 +52,8 @@ from tests.test_curse import (
     _swap_art_planes,
 )
 
-SSB = games.SECRET_OF_THE_SILVER_BLADES
-POOL = games.POOL_OF_RADIANCE
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
+POOL = c64_port.POOL_OF_RADIANCE
 
 SSB_ENV = "SSB_DISKS"
 SSB_KEY = "secret-of-the-silver-blades"
@@ -238,13 +238,13 @@ def test_the_save_file_is_curses_geometry_under_a_different_name():
     `$6700` -- byte for byte Curse's numbers.
     """
     disk = D64.open(str(_save_disk()))
-    assert games.detect(disk) is SSB
+    assert c64_port.detect(disk) is SSB
     prg = disk.read_file(SSB.save_file)
     assert len(prg) == 7426 == SSB.save_prg_size
     assert split_load_address(prg)[0] == 0x4B00
     assert (SSB.slot_area_base, SSB.item_area_base, SSB.roster_base) == (
         0x4F00, 0x5B00, 0x6700)
-    curse = games.CURSE_OF_THE_AZURE_BONDS
+    curse = c64_port.CURSE_OF_THE_AZURE_BONDS
     assert SSB.save_load_address == curse.save_load_address
     assert SSB.save_size == curse.save_size
 
@@ -263,7 +263,7 @@ def test_every_slot_round_trips_byte_identically():
     """The 256 bytes the save stores survive decode and re-encode unchanged."""
     sg0, _ = _party()
     for slot in sg0.characters:
-        assert slot.record.to_bytes()[:games.SLOT_STRIDE] == slot.record_bytes
+        assert slot.record.to_bytes()[:c64_port.SLOT_STRIDE] == slot.record_bytes
     assert len(sg0.to_bytes()) == SSB.save_size
 
 
@@ -497,7 +497,7 @@ def test_every_shipped_icon_is_a_weapon_and_a_head_from_the_editors_lists():
                         (weapon_size, w, head_size, h))
 
     payload = D64.open(str(_save_disk())).read_file(SSB.save_file)[2:]
-    base = games.ICON_TABLE_OFFSET
+    base = c64_port.ICON_TABLE_OFFSET
     shapes = [bytes(payload[base + i * ICON_SIZE:][:18]) for i in range(ICON_COUNT)]
     unmade = [s.hex() for s in shapes if any(s) and s not in reachable]
     assert not unmade, unmade
@@ -706,7 +706,7 @@ def test_castable_per_level_is_blank_rather_than_pool_of_radiances_numbers():
     from goldbox.spells import capacity
 
     assert capacity(0x02, 9, 18, SSB) == {}
-    assert capacity(0x02, 9, 18, games.POOL_OF_RADIANCE)["cleric"]
+    assert capacity(0x02, 9, 18, c64_port.POOL_OF_RADIANCE)["cleric"]
 
 
 # --- the spellbook, and how wide it is --------------------------------------
@@ -978,9 +978,9 @@ def test_the_menus_castable_level_is_the_titles_own():
     for level in (11, 13, 15):
         assert levelup.menu_spell_level(level, 18, SSB) != (level + 1) // 2
         assert levelup.menu_spell_level(
-            level, 18, games.POOL_OF_RADIANCE) == (level + 1) // 2
+            level, 18, c64_port.POOL_OF_RADIANCE) == (level + 1) // 2
         assert levelup.menu_spell_level(
-            level, 18, games.CURSE_OF_THE_AZURE_BONDS) == (level + 1) // 2
+            level, 18, c64_port.CURSE_OF_THE_AZURE_BONDS) == (level + 1) // 2
 
 
 def test_the_spellbook_mask_is_sixteen_bytes_and_gen_says_so():

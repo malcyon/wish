@@ -36,11 +36,11 @@ import pathlib
 import pytest
 from test_dossave import _game_dirs
 
-from goldbox import dos, dos_layout, neutral
+from goldbox import dos_codec, dos_port, neutral
 
-POD = dos_layout.POOLS_OF_DARKNESS
-POOL = dos_layout.POOL_OF_RADIANCE
-SSB = dos_layout.SECRET_OF_THE_SILVER_BLADES
+POD = dos_port.POOLS_OF_DARKNESS
+POOL = dos_port.POOL_OF_RADIANCE
+SSB = dos_port.SECRET_OF_THE_SILVER_BLADES
 
 #: Every neutral field the 510-byte record has no byte for at all.
 ABSENT = ("copper", "silver", "electrum", "gold", "levels_drained",
@@ -73,12 +73,12 @@ def _mask(original: bytes) -> set[int]:
     count byte goes in too: the neutral record carries a *name*, not the
     bytes the engine left after it.
     """
-    table = dos_layout.FIELDS_BY_NAME_FOR[POD.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[POD.key]
     out: set[int] = set()
-    named = ([n for n, _ in dos.WRITE_UNSOURCED + dos.WRITE_UNSOURCED_LATER]
-             + [n for n, _, _, _ in dos.WRITE_DEFAULTS
+    named = ([n for n, _ in dos_codec.WRITE_UNSOURCED + dos_codec.WRITE_UNSOURCED_LATER]
+             + [n for n, _, _, _ in dos_codec.WRITE_DEFAULTS
                 if n != "field_10c_10f"]
-             + [n for n, _ in dos.WRITE_DERIVED])
+             + [n for n, _ in dos_codec.WRITE_DERIVED])
     for name in named:
         if name in table:
             out.update(range(table[name].offset, table[name].end))
@@ -93,9 +93,9 @@ def _mask(original: bytes) -> set[int]:
 def test_the_title_reads_and_writes_now_that_it_has_a_second_port():
     """`to_neutral` and `write` both refused this title by name until the
     Amiga became its destination."""
-    assert POD in dos.CONVERTS
-    assert POD in dos.WRITES
-    rec, _itm, _spc, _rep = dos.write(
+    assert POD in dos_codec.CONVERTS
+    assert POD in dos_codec.WRITES
+    rec, _itm, _spc, _rep = dos_codec.write(
         neutral.NeutralCharacter("test", source="made up", game=POD.key))
     assert len(rec) == POD.record_size
 
@@ -119,8 +119,8 @@ def test_every_shipped_record_round_trips_outside_the_declared_mask():
     """
     seen = clean = share = book = 0
     for path in _records():
-        char = dos.read_character(path)
-        rec, itm, spc, _rep = dos.write(dos.to_neutral(char))
+        char = dos_codec.read_character(path)
+        rec, itm, spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
         assert len(rec) == POD.record_size
         assert len(itm) == len(char.items) * POD.item_size
         original = char.to_bytes()
@@ -130,7 +130,7 @@ def test_every_shipped_record_round_trips_outside_the_declared_mask():
         if not differs:
             clean += 1
             continue
-        fields = {f.name for f in dos_layout.LAYOUTS[POD.key]
+        fields = {f.name for f in dos_port.LAYOUTS[POD.key]
                   for i in differs if f.offset <= i < f.end}
         assert fields <= {"field_83_87", "spellbook"}, (path.name,
                                                         sorted(fields))
@@ -153,8 +153,8 @@ def test_the_effect_file_comes_back_byte_for_byte():
     """
     seen = exact = withfile = 0
     for path in _records():
-        char = dos.read_character(path)
-        _rec, _itm, spc, _rep = dos.write(dos.to_neutral(char))
+        char = dos_codec.read_character(path)
+        _rec, _itm, spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
         efx = path.with_suffix(POD.effect_suffix)
         original = efx.read_bytes() if efx.exists() else b""
         seen += 1
@@ -177,8 +177,8 @@ def test_the_item_records_come_back_past_their_text():
     """
     seen = 0
     for path in _records():
-        char = dos.read_character(path)
-        _rec, itm, _spc, _rep = dos.write(dos.to_neutral(char))
+        char = dos_codec.read_character(path)
+        _rec, itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
         for n, item in enumerate(char.items):
             ours = itm[n * POD.item_size:(n + 1) * POD.item_size]
             assert ours[0x02E:] == item.to_bytes()[0x02E:], (path.name, n)
@@ -191,14 +191,14 @@ def test_the_item_records_come_back_past_their_text():
 def test_the_two_unnamed_runs_are_declared_rather_than_left_as_gaps():
     """A `gap_` is written zero, and no Pools of Darkness record holds zero
     at `0x1A4`. Naming them is what puts them in front of the writer."""
-    table = dos_layout.FIELDS_BY_NAME_FOR[POD.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[POD.key]
     assert table["unnamed_1a4"].offset == 0x1A4
     assert table["unnamed_1a4"].size == 2
     assert table["unnamed_1e0"].offset == 0x1E0
     assert table["unnamed_1e0"].size == 1
     # Only this title has either, so no other title's record moves.
-    for shape in (POOL, dos_layout.CURSE_OF_THE_AZURE_BONDS, SSB):
-        other = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
+        other = dos_port.FIELDS_BY_NAME_FOR[shape.key]
         assert "unnamed_1a4" not in other
         assert "unnamed_1e0" not in other
 
@@ -212,19 +212,19 @@ def test_the_pair_at_0x1a4_is_the_measured_constant_in_every_record():
     `size` byte is 1 rather than 2, and she holds `02 02` like everybody
     else.
     """
-    f = dos_layout.FIELDS_BY_NAME_FOR[POD.key]["unnamed_1a4"]
+    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]["unnamed_1a4"]
     small = 0
     for path in _records():
         raw = path.read_bytes()
         assert raw[f.span] == b"\x02\x02", path.name
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         if char.get("size") == 1:
             small += 1
-            _rec, _itm, _spc, _rep = dos.write(dos.to_neutral(char))
+            _rec, _itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
     assert small, "no small character here, so the size reading is untested"
     assert ("unnamed_1a4", b"\x02\x02") in [
-        (n, v) for n, v, _ in dos.write_constants(POD)]
-    assert "unnamed_1a4" not in [n for n, _, _ in dos.write_constants(POOL)]
+        (n, v) for n, v, _ in dos_codec.write_constants(POD)]
+    assert "unnamed_1a4" not in [n for n, _, _ in dos_codec.write_constants(POOL)]
 
 
 def test_the_byte_at_0x1e0_is_written_at_the_value_twenty_of_them_hold():
@@ -233,16 +233,16 @@ def test_the_byte_at_0x1e0_is_written_at_the_value_twenty_of_them_hold():
     than a constant -- and a default is masked out of the round trip, which
     is why the two who hold 2 do not show up as a failure above.
     """
-    f = dos_layout.FIELDS_BY_NAME_FOR[POD.key]["unnamed_1e0"]
+    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]["unnamed_1e0"]
     held: dict[str, set[int]] = {}
     for path in _records():
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         held.setdefault(char.name, set()).add(path.read_bytes()[f.offset])
     values = {v for s in held.values() for v in s}
     assert values <= {0, 2}, sorted(values)
     assert {n for n, s in held.items() if s != {0}} == {"ABAGAIL", "BRYTWYN"}
     assert ("unnamed_1e0", b"\x00") in [
-        (n, v) for n, v, _, _ in dos.WRITE_DEFAULTS]
+        (n, v) for n, v, _, _ in dos_codec.WRITE_DEFAULTS]
 
 
 # --- the race table this title never had -------------------------------------
@@ -266,17 +266,17 @@ def test_the_race_is_read_through_the_titles_own_numbering():
     its `races` tuple being built from that very table. This is `#293`'s bug
     one title along.
     """
-    from goldbox import games
-    assert games.BY_KEY.get(POD.key) is None
+    from goldbox import c64_port
+    assert c64_port.BY_KEY.get(POD.key) is None
     # Correct without a shape now: titles.py knows this title's race 5 is
     # the human, who gets nothing.
-    assert dos._race_combat_effects(POD.key, 5) == ()
-    assert dos._race_combat_effects(POD.key, 5, POD) == ()
+    assert dos_codec._race_combat_effects(POD.key, 5) == ()
+    assert dos_codec._race_combat_effects(POD.key, 5, POD) == ()
     # And the change is inert for the three titles `games` does know.
-    for shape in (POOL, dos_layout.CURSE_OF_THE_AZURE_BONDS, SSB):
+    for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
         for race in range(len(shape.race_numbers)):
-            assert dos._race_combat_effects(shape.key, race, shape) == \
-                dos._race_combat_effects(shape.key, race), (shape.key, race)
+            assert dos_codec._race_combat_effects(shape.key, race, shape) == \
+                dos_codec._race_combat_effects(shape.key, race), (shape.key, race)
 
 
 def test_no_racial_record_is_invented_for_this_title():
@@ -291,9 +291,9 @@ def test_no_racial_record_is_invented_for_this_title():
     table is `#84`'s experiment run against this title -- roll one character
     of each race in its own creation screens and read the `.EFX`.
     """
-    assert dos.RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS == {}
+    assert dos_codec.RACE_COMBAT_EFFECTS_POOLS_OF_DARKNESS == {}
     for race in range(len(POD.race_numbers)):
-        assert dos._race_combat_effects(POD.key, race, POD) == ()
+        assert dos_codec._race_combat_effects(POD.key, race, POD) == ()
 
 
 def test_the_innate_ids_are_the_later_engines_and_not_pool_of_radiances():
@@ -302,22 +302,22 @@ def test_the_innate_ids_are_the_later_engines_and_not_pool_of_radiances():
     shipped records with no chain of custody, one elf and one half-elf
     between them.
     """
-    ours = dos._innate_effects(POD.key)
+    ours = dos_codec._innate_effects(POD.key)
     assert {8, 95, 105} <= ours
-    assert dos.INNATE_EFFECTS <= ours
-    assert 95 not in dos.INNATE_EFFECTS
+    assert dos_codec.INNATE_EFFECTS <= ours
+    assert 95 not in dos_codec.INNATE_EFFECTS
     seen: set[int] = set()
     for path in _records():
         efx = path.with_suffix(POD.effect_suffix)
         if not efx.exists():
             continue
         raw = efx.read_bytes()
-        assert len(raw) % dos_layout.EFFECT_SIZE == 0, path.name
-        for at in range(0, len(raw), dos_layout.EFFECT_SIZE):
+        assert len(raw) % dos_port.EFFECT_SIZE == 0, path.name
+        for at in range(0, len(raw), dos_port.EFFECT_SIZE):
             seen.add(raw[at])
             # Every one is the innate payload, which is what lets the writer
             # put the record back from an id alone.
-            assert raw[at + 1:at + 5] == dos.INNATE_PAYLOAD, path.name
+            assert raw[at + 1:at + 5] == dos_codec.INNATE_PAYLOAD, path.name
     assert seen == {8, 95, 105}, sorted(seen)
 
 
@@ -330,13 +330,13 @@ def test_the_record_has_no_field_for_seven_neutral_names():
     three keep seven, keeps no drained-level pair, and drops the creature's
     experience-per-hit-point rate.
     """
-    absent = dict(dos.write_absent(POD))
+    absent = dict(dos_codec.write_absent(POD))
     assert set(absent) == set(ABSENT)
     for name, why in absent.items():
         assert why.startswith(POD.title), name
     # Nothing is absent from the three titles that declare everything.
-    for shape in (POOL, dos_layout.CURSE_OF_THE_AZURE_BONDS, SSB):
-        assert dos.write_absent(shape) == ()
+    for shape in (POOL, dos_port.CURSE_OF_THE_AZURE_BONDS, SSB):
+        assert dos_codec.write_absent(shape) == ()
 
 
 def test_an_absent_field_is_reported_as_dropped_and_never_copied():
@@ -354,14 +354,14 @@ def test_an_absent_field_is_reported_as_dropped_and_never_copied():
     char.set("name", "TESTER", "made up")
     for name in ABSENT:
         char.set(name, 7, "made up")
-    rec, _itm, _spc, rep = dos.write(char)
+    rec, _itm, _spc, rep = dos_codec.write(char)
     assert len(rec) == POD.record_size
     for name in ABSENT:
         assert any(line.startswith(f"{name}:") for line in rep.dropped), name
-    disposition = dos.write_field_disposition(POD)
+    disposition = dos_codec.write_field_disposition(POD)
     for name in ABSENT:
         assert disposition[name].startswith("dropped:"), name
-        assert dos.write_field_disposition(POOL)[name].startswith("copied")
+        assert dos_codec.write_field_disposition(POOL)[name].startswith("copied")
 
 
 def test_every_field_and_every_neutral_name_is_accounted_for():
@@ -369,13 +369,13 @@ def test_every_field_and_every_neutral_name_is_accounted_for():
     a DOS field named nowhere would be a byte written in silence, and a
     neutral field named nowhere would be one dropped in silence.
     """
-    declared = {f.name for f in dos_layout.LAYOUTS[POD.key]
+    declared = {f.name for f in dos_port.LAYOUTS[POD.key]
                 if not f.name.startswith("gap_")}
-    assert declared - set(dos.write_targets(POD)) == set()
-    assert declared - set(dos.field_disposition(POD)) == set()
-    assert set(dos.field_disposition(POD)) - declared == set()
+    assert declared - set(dos_codec.write_targets(POD)) == set()
+    assert declared - set(dos_codec.field_disposition(POD)) == set()
+    assert set(dos_codec.field_disposition(POD)) - declared == set()
     assert neutral.undeclared(neutral.FIELDS,
-                              dos.write_field_disposition(POD)) == (set(),
+                              dos_codec.write_field_disposition(POD)) == (set(),
                                                                     set())
 
 
@@ -388,10 +388,10 @@ def test_no_sheet_portrait_is_reported_for_a_title_that_has_none():
     So a converted character must not be told a portrait could not be
     matched, which is a sentence about a feature the game does not have.
     """
-    table = dos_layout.FIELDS_BY_NAME_FOR[POD.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[POD.key]
     assert "portrait_head" not in table
     assert "portrait_body" not in table
     for path in _records():
-        out = dos.to_neutral(dos.read_character(path))
+        out = dos_codec.to_neutral(dos_codec.read_character(path))
         assert not any("portrait" in line.lower() for line in out.dropped), \
             path.name

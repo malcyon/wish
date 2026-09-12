@@ -31,7 +31,7 @@ import pytest
 # and red on both Linux jobs, 2026-09-09.
 pytest.importorskip("capstone")
 
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import dosencrecompute as der  # noqa: E402
 
 #: The three titles `#323` asks about.  Pools of Darkness is left out because

@@ -32,7 +32,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from test_neutral import _filled  # noqa: E402
 
-from goldbox import c64_codec, dos, dos_layout  # noqa: E402
+from goldbox import c64_codec, dos_codec, dos_port  # noqa: E402
 from goldbox import levels as level_tables  # noqa: E402
 from tools import cursethiefskills as cts  # noqa: E402
 from tools import thiefskillcensus as census  # noqa: E402
@@ -190,8 +190,8 @@ def test_a_c64_curse_thief_converted_to_dos_gets_the_same_clean_sum():
     stored = tuple(char.get(field) for field, _ in c64_codec._THIEF_SKILL_COLUMNS)
     assert want != stored, "the test's made-up row already matches the table"
 
-    rec, _, _, _ = dos.write(char)
-    table = dos_layout.FIELDS_BY_NAME_FOR[CURSE]
+    rec, _, _, _ = dos_codec.write(char)
+    table = dos_port.FIELDS_BY_NAME_FOR[CURSE]
     got = tuple(rec[table[dos_name].offset]
                 for _, dos_name in c64_codec._THIEF_SKILL_COLUMNS)
     # The raw stored byte, unsigned -- a negative column (a race's

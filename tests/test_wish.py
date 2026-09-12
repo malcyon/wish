@@ -112,7 +112,7 @@ def test_a_target_that_answers_for_itself_is_believed():
 # than none: the marker jumped there, facing south, and fed the explored set
 # and the fingerprint.
 
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 
 
 def test_the_outdoor_word_no_longer_reads_as_a_south_facing_indoors():
@@ -170,8 +170,8 @@ def test_the_memory_fallback_is_off_for_a_title_with_no_travel_grid():
     `$C04B`'s bytes are not a plausible indoor square for it either."""
     m = machine("PRESS ANY KEY", memory_xy=(0x4C, 0x2F, 0xC5), indoors=False)
     m.memory[0x49C3] = bytes([7, 29])
-    assert games.CURSE_OF_THE_AZURE_BONDS.indoors_flag_base is None
-    assert party_fix(m.read, games.CURSE_OF_THE_AZURE_BONDS) is None
+    assert c64_port.CURSE_OF_THE_AZURE_BONDS.indoors_flag_base is None
+    assert party_fix(m.read, c64_port.CURSE_OF_THE_AZURE_BONDS) is None
 
 
 @pytest.mark.parametrize("text", ["OUTDOORS", "NORTHWEST", "GATEHOUSE"])

@@ -34,12 +34,12 @@ from gamedata import disk_dir, needs_disks, synthetic_save
 
 from automap import paths
 from automap.config import Settings, clamp_to_screen, restore_geometry
-from goldbox import games
+from goldbox import c64_port
 from wish import backends as bk
 from wish import preferences
 from wish.preferences import PreferencesDialog, report
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 
 @pytest.fixture
@@ -99,13 +99,13 @@ def test_the_flag_beats_the_preference_which_beats_the_environment(
     saved = disks(tmp_path / "saved", "POOL1.D64")
     env = disks(tmp_path / "env", "POOL1.D64")
     settings = Settings(
-        game_folders={games.POOL_OF_RADIANCE.key: str(saved)})
+        game_folders={c64_port.POOL_OF_RADIANCE.key: str(saved)})
     monkeypatch.setenv("POR_DISKS", str(env))
 
     assert paths.resolve_disks(flag=str(flag), settings=settings,
-                               game=games.POOL_OF_RADIANCE) == (flag, paths.FLAG)
+                               game=c64_port.POOL_OF_RADIANCE) == (flag, paths.FLAG)
     assert paths.resolve_disks(settings=settings,
-                               game=games.POOL_OF_RADIANCE) == (
+                               game=c64_port.POOL_OF_RADIANCE) == (
         saved, paths.GAME_PREFERENCE)
     assert paths.resolve_disks(settings=Settings()) == (env, paths.ENVIRONMENT)
 
@@ -140,9 +140,9 @@ def test_a_folder_that_holds_no_disks_is_still_the_answer(tmp_path,
     empty = tmp_path / "typo"
     empty.mkdir()
     settings = Settings(
-        game_folders={games.POOL_OF_RADIANCE.key: str(empty)})
+        game_folders={c64_port.POOL_OF_RADIANCE.key: str(empty)})
     where, source = paths.resolve_disks(settings=settings,
-                                        game=games.POOL_OF_RADIANCE)
+                                        game=c64_port.POOL_OF_RADIANCE)
     assert (where, source) == (empty, paths.GAME_PREFERENCE)
 
 
@@ -257,7 +257,7 @@ def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
 # a folder for it could search against -- a finding left on #22 rather than
 # guessed at here.
 
-SILVER_BLADES = games.SECRET_OF_THE_SILVER_BLADES
+SILVER_BLADES = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 
 def test_the_dialog_has_a_row_per_title_that_writes_its_own_folder(
@@ -277,9 +277,9 @@ def test_the_dialog_has_a_row_per_title_that_writes_its_own_folder(
 
         # A second title's row is independent of the first's.
         pool_folder = tmp_path / "my pool disks"
-        dialog.set_game_folder(games.POOL_OF_RADIANCE, str(pool_folder))
+        dialog.set_game_folder(c64_port.POOL_OF_RADIANCE, str(pool_folder))
         assert win.settings.game_folders == {
-            CURSE.key: str(mine), games.POOL_OF_RADIANCE.key: str(pool_folder)}
+            CURSE.key: str(mine), c64_port.POOL_OF_RADIANCE.key: str(pool_folder)}
     finally:
         win.close()
 
@@ -373,7 +373,7 @@ def test_the_report_names_the_folder_and_the_titles(tmp_path, monkeypatch):
     shelf = disks(tmp_path / "Desktop" / "porgame",
                   "POOL1.D64", "POOL2.D64", "POOL3.D64", "CURSE1.D64")
     settings = Settings(
-        game_folders={games.POOL_OF_RADIANCE.key: str(shelf)})
+        game_folders={c64_port.POOL_OF_RADIANCE.key: str(shelf)})
     rows = dict(report(settings))
     assert rows["In use"] == str(shelf)
     assert "Pool of Radiance (3 disks)" in rows["Titles"]
@@ -386,7 +386,7 @@ def test_the_report_states_each_failure_in_its_own_slot(tmp_path, monkeypatch):
     empty = tmp_path / "nothing here"
     empty.mkdir()
     settings = Settings(
-        game_folders={games.POOL_OF_RADIANCE.key: str(empty)})
+        game_folders={c64_port.POOL_OF_RADIANCE.key: str(empty)})
     rows = dict(report(settings))
     assert "POOL*.D64" in rows["Titles"] and rows["Titles"].startswith("none")
     assert rows["In use"] == str(empty)
@@ -400,7 +400,7 @@ def test_the_report_prints_two_lines_and_not_six(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     shelf = disks(tmp_path / "porgame", "POOL1.D64")
     configured = Settings(
-        game_folders={games.POOL_OF_RADIANCE.key: str(shelf)})
+        game_folders={c64_port.POOL_OF_RADIANCE.key: str(shelf)})
     for settings in (configured, Settings()):
         assert [name for name, _ in report(settings)] == ["In use", "Titles"]
 
@@ -416,7 +416,7 @@ def test_a_flag_beats_the_preference_in_the_report(tmp_path, monkeypatch):
     saved = disks(tmp_path / "saved", "POOL1.D64")
     flag = disks(tmp_path / "third place", "POOL1.D64")
     settings = Settings(
-        game_folders={games.POOL_OF_RADIANCE.key: str(saved)})
+        game_folders={c64_port.POOL_OF_RADIANCE.key: str(saved)})
     rows = dict(report(settings, flag=str(flag)))
     assert rows["In use"] == str(flag)
 
@@ -792,7 +792,7 @@ def test_the_folder_box_is_wide_enough_to_read_its_own_placeholder(
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
-        box = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
+        box = dialog.game_folder_edits[c64_port.POOL_OF_RADIANCE.key]
         placeholder = box.placeholderText()
         assert box.minimumWidth() >= box.fontMetrics().horizontalAdvance(
             placeholder)
@@ -844,12 +844,12 @@ def test_changing_the_folder_updates_the_report_with_no_ok_pressed(
     assert dict(rows(dialog))["In use"] == "nothing found"
 
     shelf = disks(tmp_path / "Desktop" / "porgame", "POOL1.D64", "POOL2.D64")
-    dialog.set_game_folder(games.POOL_OF_RADIANCE, str(shelf))
+    dialog.set_game_folder(c64_port.POOL_OF_RADIANCE, str(shelf))
     printed = dict(rows(dialog))
     assert printed["In use"] == str(shelf)
     assert "Pool of Radiance (2 disks)" in printed["Titles"]
     assert Settings.load().game_folders == {
-        games.POOL_OF_RADIANCE.key: str(shelf)}
+        c64_port.POOL_OF_RADIANCE.key: str(shelf)}
 
 
 def rows(dialog) -> list[tuple[str, str]]:
@@ -861,8 +861,8 @@ def test_clearing_the_folder_goes_back_to_searching(app, tmp_path, monkeypatch):
     shelf = disks(tmp_path / "porgame", "POOL1.D64")
     win = window(app)
     dialog = PreferencesDialog(win)
-    dialog.set_game_folder(games.POOL_OF_RADIANCE, str(shelf))
-    dialog.set_game_folder(games.POOL_OF_RADIANCE, "")
+    dialog.set_game_folder(c64_port.POOL_OF_RADIANCE, str(shelf))
+    dialog.set_game_folder(c64_port.POOL_OF_RADIANCE, "")
     assert Settings.load().game_folders == {}
     assert dict(rows(dialog))["In use"] == "nothing found"
 
@@ -1166,7 +1166,7 @@ def test_a_title_with_no_area_table_gets_an_empty_table_and_a_sentence(
     Blades did under `#20 (Build an area table for Silver Blades)`.
     """
     nowhere(tmp_path, monkeypatch)
-    win = window(app, title=games.CHAMPIONS_OF_KRYNN.title)
+    win = window(app, title=c64_port.CHAMPIONS_OF_KRYNN.title)
     dialog = PreferencesDialog(win)
     assert dialog.travel_rows == []
     assert dialog.travel_table.rowCount() == 0
@@ -1245,9 +1245,9 @@ def test_a_config_already_keyed_by_title_is_read_as_it_stands(app, tmp_path,
                                  "curse-of-the-azure-bonds": []}}))
 
     kept = Settings.load()
-    assert kept.chosen_areas(games.POOL_OF_RADIANCE) == (13,)
-    assert kept.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == ()
-    assert kept.chosen_areas(games.SECRET_OF_THE_SILVER_BLADES) == ()
+    assert kept.chosen_areas(c64_port.POOL_OF_RADIANCE) == (13,)
+    assert kept.chosen_areas(c64_port.CURSE_OF_THE_AZURE_BONDS) == ()
+    assert kept.chosen_areas(c64_port.SECRET_OF_THE_SILVER_BLADES) == ()
     kept.save()
     assert written_config(tmp_path)["fast_travel_targets"] == {
         "pool-of-radiance": [13], "curse-of-the-azure-bonds": []}
@@ -1268,7 +1268,7 @@ def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
     monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
-    folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
+    folder = dialog.game_folder_edits[c64_port.POOL_OF_RADIANCE.key]
     needed = {
         "folder": room_for(folder, folder.placeholderText()),
         "host": room_for(dialog.host, dialog.host.placeholderText()),
@@ -1303,7 +1303,7 @@ def test_three_tabs_and_it_opens_on_general_every_time(app, tmp_path,
         "General", "Game disks", "Fast travel"]
     assert dialog.tabs.currentIndex() == 0
     # The disks tab holds the folder boxes; General no longer does.
-    folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
+    folder = dialog.game_folder_edits[c64_port.POOL_OF_RADIANCE.key]
     disks_tab = dialog.tabs.widget(1)
     assert disks_tab.isAncestorOf(folder)
     assert not dialog.tabs.widget(0).isAncestorOf(folder)
@@ -1337,7 +1337,7 @@ def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
     try:
         assert dialog.host.height() >= dialog.host.sizeHint().height()
         assert dialog.interval.height() >= dialog.interval.sizeHint().height()
-        folder = dialog.game_folder_edits[games.POOL_OF_RADIANCE.key]
+        folder = dialog.game_folder_edits[c64_port.POOL_OF_RADIANCE.key]
         assert folder.height() >= folder.sizeHint().height()
         # Given the height it asks for, General does not scroll. Asserted this
         # way round because the dialog caps itself to the screen: CI's offscreen
@@ -1554,7 +1554,7 @@ def test_one_folder_gets_item_names_and_a_map_without_a_restart(
         assert win.map.no_maps is True
 
         dialog = PreferencesDialog(win)
-        dialog.set_game_folder(games.POOL_OF_RADIANCE, str(shelf))
+        dialog.set_game_folder(c64_port.POOL_OF_RADIANCE, str(shelf))
 
         printed = dict(rows(dialog))
         assert "Pool of Radiance" in printed["Titles"]

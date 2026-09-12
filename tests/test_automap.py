@@ -47,7 +47,7 @@ from automap.render import (
 from automap.state import Automapper, AutomapState, Exploration, title_dir
 from automap.state import data_dir as state_data_dir
 from automap.target import Fix, MemoryTarget, ReplayTarget
-from goldbox import games
+from goldbox import c64_port
 from goldbox.geo import (
     ATTRIBUTES,
     BARRIERS,
@@ -510,17 +510,17 @@ def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
     from automap.config import Settings
-    from goldbox import games
+    from goldbox import c64_port
 
     fresh = Settings()
-    assert fresh.chosen_areas(games.POOL_OF_RADIANCE) == (0, 20, 21)
-    assert fresh.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == ()
-    assert fresh.chosen_areas(games.SECRET_OF_THE_SILVER_BLADES) == ()
+    assert fresh.chosen_areas(c64_port.POOL_OF_RADIANCE) == (0, 20, 21)
+    assert fresh.chosen_areas(c64_port.CURSE_OF_THE_AZURE_BONDS) == ()
+    assert fresh.chosen_areas(c64_port.SECRET_OF_THE_SILVER_BLADES) == ()
 
-    fresh.set_chosen_areas([13], games.CURSE_OF_THE_AZURE_BONDS)
-    assert fresh.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == (13,)
+    fresh.set_chosen_areas([13], c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert fresh.chosen_areas(c64_port.CURSE_OF_THE_AZURE_BONDS) == (13,)
     # Pool of Radiance's list is untouched, and is still the default.
-    assert fresh.chosen_areas(games.POOL_OF_RADIANCE) == (0, 20, 21)
+    assert fresh.chosen_areas(c64_port.POOL_OF_RADIANCE) == (0, 20, 21)
     assert "pool-of-radiance" not in fresh.fast_travel_targets
 
 
@@ -736,7 +736,7 @@ def fresh_boot(position=(0, 0, 0)) -> MemoryTarget:
     return MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x15]),
                          0xDD00: bytes([0x17]),
                          c64.DEFAULT.live_position: bytes(position),
-                         games.DEFAULT.indoors_flag_base: bytes([1])})
+                         c64_port.DEFAULT.indoors_flag_base: bytes([1])})
 
 
 def test_a_machine_with_no_game_on_it_records_nothing(tmp_path, monkeypatch):
@@ -968,8 +968,8 @@ from automap.state import migrate_flat_notes  # noqa: E402
 from automap.target import party_fix  # noqa: E402
 from goldbox.record import FieldNotStored  # noqa: E402
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
-CHAMPIONS = games.CHAMPIONS_OF_KRYNN
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+CHAMPIONS = c64_port.CHAMPIONS_OF_KRYNN
 
 
 @pytest.fixture
@@ -1144,8 +1144,8 @@ def test_the_memory_fallback_reads_the_engines_own_triple():
     """`$C04B`, measured on three titles and on no others. Pool of Radiance's
     `$49C0` is the save image's copy and lags a move, so it is not what the
     fallback reads on any title now."""
-    for game in (games.POOL_OF_RADIANCE, CURSE,
-                 games.SECRET_OF_THE_SILVER_BLADES):
+    for game in (c64_port.POOL_OF_RADIANCE, CURSE,
+                 c64_port.SECRET_OF_THE_SILVER_BLADES):
         assert c64.machine_for(game).live_position == 0xC04B
         mem = {0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
               0xDD00: bytes([0x00]),
@@ -1927,8 +1927,8 @@ def test_a_note_on_one_titles_geo15_is_absent_from_anothers(tmp_path,
     # every title we claim, not just the two above: three distinct paths for
     # one map id, so nothing any of them writes can reach the others.
     paths = set()
-    for game in (games.POOL_OF_RADIANCE, CURSE,
-                 games.SECRET_OF_THE_SILVER_BLADES):
+    for game in (c64_port.POOL_OF_RADIANCE, CURSE,
+                 c64_port.SECRET_OF_THE_SILVER_BLADES):
         state = AutomapState(title=game.title)
         state.area = "GEO15"
         paths.add(state.notes_path())
@@ -3354,7 +3354,7 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     from automap.actionbar import ActionBar
 
     bar = ActionBar(make_root())
-    assert all(a.game is games.POOL_OF_RADIANCE for a in bar.actions)
+    assert all(a.game is c64_port.POOL_OF_RADIANCE for a in bar.actions)
     bar.set_game(CURSE)
     assert all(a.game is CURSE for a in bar.actions)
     assert bar.watcher.game is CURSE
@@ -3373,7 +3373,7 @@ def test_a_title_whose_loader_has_never_been_read_refuses_every_button(app):
     from automap import actions
     from automap.actionbar import ActionBar
 
-    krynn = games.CHAMPIONS_OF_KRYNN
+    krynn = c64_port.CHAMPIONS_OF_KRYNN
     assert c64.machine_for(krynn).mode_flag is None
     bar = ActionBar(make_root())
     bar.set_game(krynn)

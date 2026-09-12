@@ -1128,9 +1128,9 @@ def test_race_zero_is_named_rather_than_left_blank():
     whole window (#41, #43).
     """
     from editor.enums import race_names
-    from goldbox import games
+    from goldbox import c64_port
 
-    race = race_names(games.POOL_OF_RADIANCE)
+    race = race_names(c64_port.POOL_OF_RADIANCE)
     assert race[0] == "MONSTER" and race[8] == "MONSTER"
 
 
@@ -3183,18 +3183,18 @@ def _curse_window(app, tmp_path):
     from gamedata import curse_dir
 
     from editor.window import EditorBinding
-    from goldbox import games
+    from goldbox import c64_port
     save = _title_save(curse_dir(), "CURSE*.[dD]64",
-                       games.CURSE_OF_THE_AZURE_BONDS, tmp_path)
+                       c64_port.CURSE_OF_THE_AZURE_BONDS, tmp_path)
     return EditorBinding(make_root(), str(save))
 
 
 def _silver_blades_window(app, tmp_path):
     from editor.window import EditorBinding
-    from goldbox import games
+    from goldbox import c64_port
     ssb_dir = pytest.importorskip("tests.test_silverblades").ssb_dir
     save = _title_save(ssb_dir(), "SILVER*.[dD]64",
-                       games.SECRET_OF_THE_SILVER_BLADES, tmp_path)
+                       c64_port.SECRET_OF_THE_SILVER_BLADES, tmp_path)
     return EditorBinding(make_root(), str(save))
 
 
@@ -3212,9 +3212,9 @@ def test_a_curse_spellbook_names_its_spells_rather_than_numbering_them(
     for the wrong file raised, the exception was logged and swallowed, and an
     empty name table looks exactly like a missing game disk.
     """
-    from goldbox import games
+    from goldbox import c64_port
     window = _curse_window(app, tmp_path)
-    assert window.party.game is games.CURSE_OF_THE_AZURE_BONDS
+    assert window.party.game is c64_port.CURSE_OF_THE_AZURE_BONDS
     assert window.spell_names, "no spell names off a Curse disk"
 
     book, _ = window._spell_widgets()
@@ -3228,9 +3228,9 @@ def test_a_silver_blades_spellbook_names_its_spells_too(app, tmp_path):
     """#80, third title. Silver Blades moves two of the fifty-six -- 36 is
     `HEAL` where Pool of Radiance has `ANIMATE DEAD` -- so a spellbook read
     against the wrong table would be wrong even where it was not blank."""
-    from goldbox import games
+    from goldbox import c64_port
     window = _silver_blades_window(app, tmp_path)
-    assert window.party.game is games.SECRET_OF_THE_SILVER_BLADES
+    assert window.party.game is c64_port.SECRET_OF_THE_SILVER_BLADES
     rows = _rows(window._spell_widgets()[0])
     assert rows[20].startswith("SHOCKING GRASP")
     assert rows[36].startswith("HEAL")

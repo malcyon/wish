@@ -14,7 +14,7 @@ import dataclasses
 
 import pytest
 
-from goldbox import games, levels, levelup
+from goldbox import c64_port, levels, levelup
 from goldbox.record import CharacterRecord
 from tools import laterthac0
 
@@ -170,7 +170,7 @@ def test_silver_blades_is_among_the_titles_a_race_with_no_bonus_covers():
     Blades for free. This is the version of that check that lives beside the
     new title's own tests."""
     assert SSB in levels.TITLES
-    assert games.SECRET_OF_THE_SILVER_BLADES.key == SSB.key
+    assert c64_port.SECRET_OF_THE_SILVER_BLADES.key == SSB.key
 
 
 #: What Silver Blades' own trainer wrote at `0x09A`-`0x09E` for MALACHITE --
@@ -208,7 +208,7 @@ def test_the_trainer_gave_the_bonus_to_the_dwarf_and_to_nobody_else():
     # table that gave everybody the bonus, or nobody, cannot pass.
     assert MALACHITE_PRESSES[0][1] != MALACHITE_PRESSES[1][1]
     assert levels.racial_save_bonus_measured(SSB)
-    assert levels.racial_save_bonus_measured(games.SECRET_OF_THE_SILVER_BLADES)
+    assert levels.racial_save_bonus_measured(c64_port.SECRET_OF_THE_SILVER_BLADES)
 
 
 # --- `#89`'s trainer inputs -------------------------------------------------

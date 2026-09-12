@@ -25,14 +25,14 @@ from __future__ import annotations
 
 import pytest
 
-from goldbox import dos_layout, games, titles
+from goldbox import c64_port, dos_port, titles
 
 # --- the seven titles, and the C64 title Pools of Darkness never had -------
 
 def test_seven_titles_including_pools_of_darkness_with_no_c64_row():
     assert len(titles.TITLES) == 7
     assert titles.by_key("pools-of-darkness").title == "Pools of Darkness"
-    assert games.BY_KEY.get("pools-of-darkness") is None
+    assert c64_port.BY_KEY.get("pools-of-darkness") is None
 
 
 def test_by_key_raises_for_an_unknown_key():
@@ -42,7 +42,7 @@ def test_by_key_raises_for_an_unknown_key():
 
 def test_games_unknown_game_error_is_the_titles_error():
     """`games.UnknownGameError` is an alias, not a second class."""
-    assert games.UnknownGameError is titles.UnknownTitleError
+    assert c64_port.UnknownGameError is titles.UnknownTitleError
 
 
 # --- the six C64 titles: titles.py and games.py must agree ------------------
@@ -56,18 +56,18 @@ C64_KEYS = (
 
 @pytest.mark.parametrize("key", C64_KEYS)
 def test_race_and_class_tables_agree_with_the_c64_port(key):
-    game = games.by_key(key)
-    assert titles.race_table(key) == games.race_table(game)
-    assert titles.class_table(key) == games.class_table(game)
+    game = c64_port.by_key(key)
+    assert titles.race_table(key) == c64_port.race_table(game)
+    assert titles.class_table(key) == c64_port.class_table(game)
 
 
 @pytest.mark.parametrize("game, title", [
-    (games.POOL_OF_RADIANCE, titles.POOL_OF_RADIANCE),
-    (games.CURSE_OF_THE_AZURE_BONDS, titles.CURSE_OF_THE_AZURE_BONDS),
-    (games.SECRET_OF_THE_SILVER_BLADES, titles.SECRET_OF_THE_SILVER_BLADES),
-    (games.CHAMPIONS_OF_KRYNN, titles.CHAMPIONS_OF_KRYNN),
-    (games.DEATH_KNIGHTS_OF_KRYNN, titles.DEATH_KNIGHTS_OF_KRYNN),
-    (games.GATEWAY_TO_THE_SAVAGE_FRONTIER,
+    (c64_port.POOL_OF_RADIANCE, titles.POOL_OF_RADIANCE),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, titles.CURSE_OF_THE_AZURE_BONDS),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, titles.SECRET_OF_THE_SILVER_BLADES),
+    (c64_port.CHAMPIONS_OF_KRYNN, titles.CHAMPIONS_OF_KRYNN),
+    (c64_port.DEATH_KNIGHTS_OF_KRYNN, titles.DEATH_KNIGHTS_OF_KRYNN),
+    (c64_port.GATEWAY_TO_THE_SAVAGE_FRONTIER,
      titles.GATEWAY_TO_THE_SAVAGE_FRONTIER),
 ])
 def test_a_games_races_and_class_bits_are_its_titles_own_object(game, title):
@@ -146,7 +146,7 @@ DOS_TITLE_KEYS = (
 @pytest.mark.parametrize("key", DOS_TITLE_KEYS)
 def test_titles_and_dos_race_tables_agree_except_the_documented_exceptions(
         key):
-    shape = dos_layout.shape_for(key)
+    shape = dos_port.deltas_for(key)
     race_names = titles.by_key(key).race_names or {}
     exceptions = RACE_TABLE_EXCEPTIONS.get(key, {})
     for code, dos_name in enumerate(shape.race_numbers):

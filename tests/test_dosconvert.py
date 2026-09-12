@@ -30,9 +30,9 @@ from test_dossave import _game_dirs, _save_dir, needs_dos_saves
 from goldbox import (
     areas,
     c64_codec,
-    dos,
-    dos_layout,
-    games,
+    c64_port,
+    dos_codec,
+    dos_port,
     levels,
     levelup,
     neutral,
@@ -49,9 +49,9 @@ def test_the_layout_tiles_the_record():
     """Every one of the 285 bytes belongs to exactly one entry, and every one
     of the item record's 63 likewise. `_build` raises on an overlap, so this
     is the other half: nothing falls out of the bottom."""
-    assert sum(f.size for f in dos_layout.LAYOUT) == dos_layout.RECORD_SIZE
-    assert sum(f.size for f in dos_layout.ITEM_LAYOUT) == dos_layout.ITEM_SIZE
-    offsets = [f.offset for f in dos_layout.LAYOUT]
+    assert sum(f.size for f in dos_port.LAYOUT) == dos_port.RECORD_SIZE
+    assert sum(f.size for f in dos_port.ITEM_LAYOUT) == dos_port.ITEM_SIZE
+    offsets = [f.offset for f in dos_port.LAYOUT]
     assert offsets == sorted(offsets)
 
 
@@ -62,10 +62,10 @@ def test_every_declared_field_has_a_disposition():
     `TRANSFORMED` or `DROPPED` would be one dropped in silence, which is the
     failure this test exists to make impossible.
     """
-    declared = {f.name for f in dos_layout.LAYOUT
+    declared = {f.name for f in dos_port.LAYOUT
                 if not f.name.startswith("gap_")}
-    assert declared - set(dos.field_disposition()) == set()
-    assert set(dos.field_disposition()) - declared == set()
+    assert declared - set(dos_codec.field_disposition()) == set()
+    assert set(dos_codec.field_disposition()) - declared == set()
 
 
 def test_the_spell_id_space_is_shared():
@@ -75,7 +75,7 @@ def test_the_spell_id_space_is_shared():
     bounds = [(lo, hi) for lo, hi, _, _ in spells.SPELL_GROUPS]
     assert bounds == [(1, 8), (9, 21), (22, 28), (29, 35), (36, 44), (45, 55)]
     # 56 DOS bytes hold ids 1..56; the C64's seven bytes hold bits 1..55.
-    assert dos_layout.SPELLBOOK_SPELLS == 56
+    assert dos_port.SPELLBOOK_SPELLS == 56
     assert spells.LAST_SPELLBOOK_SPELL == 55
 
 
@@ -211,10 +211,10 @@ def test_a_curse_thief_gets_the_table_row_rather_than_what_dos_stored():
 def test_the_class_level_permutation_covers_every_c64_slot():
     """DOS indexes its eight level slots by class *number*, the C64 by class
     *bit*. Druid and monk have no C64 slot; nothing else is lost."""
-    fields = [f for _, _, f in dos.CLASS_LEVEL_SLOTS if f]
+    fields = [f for _, _, f in dos_codec.CLASS_LEVEL_SLOTS if f]
     assert set(fields) == {"level_cleric", "level_fighter", "level_paladin",
                            "level_ranger", "level_magic_user", "level_thief"}
-    assert [n for n, _, f in dos.CLASS_LEVEL_SLOTS if f is None] == [1, 7]
+    assert [n for n, _, f in dos_codec.CLASS_LEVEL_SLOTS if f is None] == [1, 7]
 
 
 def test_item_to_c64_is_the_harness_projection():
@@ -223,7 +223,7 @@ def test_item_to_c64_is_the_harness_projection():
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
                            / "tools"))
     import dosbox
-    assert dosbox.item_to_c64 is dos.item_to_c64
+    assert dosbox.item_to_c64 is dos_codec.item_to_c64
 
 
 # --- the record, against real files -----------------------------------------
@@ -232,9 +232,9 @@ def _records():
     where = _save_dir()
     if where is None:
         pytest.skip("needs a DOS save; set FR_ARCHIVES to the archives")
-    out = [dos.read_character(p) for p in
+    out = [dos_codec.read_character(p) for p in
            sorted(where.glob("*.SAV")) + sorted(where.glob("*.CHA"))
-           if p.stat().st_size == dos_layout.RECORD_SIZE]
+           if p.stat().st_size == dos_port.RECORD_SIZE]
     if not out:
         pytest.skip("no DOS Pool of Radiance character records here")
     return out
@@ -251,9 +251,9 @@ def test_a_record_is_handed_back_unchanged():
     where = _save_dir()
     checked = 0
     for path in sorted(where.glob("*.SAV")) + sorted(where.glob("*.CHA")):
-        if path.stat().st_size != dos_layout.RECORD_SIZE:
+        if path.stat().st_size != dos_port.RECORD_SIZE:
             continue
-        assert dos.read_character(path).to_bytes() == path.read_bytes()
+        assert dos_codec.read_character(path).to_bytes() == path.read_bytes()
         checked += 1
     assert checked >= 24
 
@@ -278,11 +278,11 @@ def test_the_encumbrance_identity_balances():
     known_misses = {"CHRDATA4.SAV", "CHRDATA5.SAV"}
     where = _save_dir()
     paths = [p for p in sorted(where.glob("*.SAV")) + sorted(where.glob("*.CHA"))
-             if p.stat().st_size == dos_layout.RECORD_SIZE]
+             if p.stat().st_size == dos_port.RECORD_SIZE]
     assert len(paths) >= 24
     unexplained = []
     for path in paths:
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         if char.get("encumbrance") != char.expected_encumbrance() \
                 and path.name not in known_misses:
             unexplained.append((path.name, char.name))
@@ -298,7 +298,7 @@ def test_an_export_carries_no_items():
     where = _save_dir()
     checked = 0
     for path in sorted(where.glob("*.CHA")):
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         assert char.items == ()
         assert char.get("encumbrance") == char.expected_encumbrance()
         checked += 1
@@ -350,7 +350,7 @@ def test_conversion_accounts_for_every_byte():
     """`docs/117` makes this the test that replaces a round trip: for any
     offset in the output, say where that byte came from."""
     for char in _records():
-        rec, report = dos.to_c64_record(char)
+        rec, report = dos_codec.to_c64_record(char)
         assert len(rec.to_bytes()) == C64_RECORD_SIZE
         assert report.unaccounted == [], (char.name, report.unaccounted[:8])
         assert report.dropped
@@ -360,7 +360,7 @@ def test_conversion_accounts_for_every_byte():
 def test_the_converted_record_says_what_the_dos_one_said():
     """Field for field, on everything the two ports encode the same way."""
     for char in _records():
-        rec, _ = dos.to_c64_record(char)
+        rec, _ = dos_codec.to_c64_record(char)
         assert rec.name == char.name
         assert rec.strength == char.get("strength")
         assert rec.exceptional_strength == char.get("exceptional_strength")
@@ -385,7 +385,7 @@ def test_the_converted_record_says_what_the_dos_one_said():
         assert [b for b in rec.get_raw("spells_memorised") if b] \
             == char.spells_memorised
         # The per-class levels, permuted.
-        for _, name, field in dos.CLASS_LEVEL_SLOTS:
+        for _, name, field in dos_codec.CLASS_LEVEL_SLOTS:
             if field:
                 assert rec.get(field) == char.class_levels.get(name, 0)
 
@@ -397,7 +397,7 @@ def test_the_converted_items_are_the_dos_items():
 
     converted = 0
     for char in _records():
-        rec, _ = dos.to_c64_record(char)
+        rec, _ = dos_codec.to_c64_record(char)
         inv = rec.get_raw("inventory")
         for n, item in enumerate(char.items[:16]):
             assert inv[n * C64_ITEM_SIZE:(n + 1) * C64_ITEM_SIZE] \
@@ -414,7 +414,7 @@ def test_a_character_with_no_thief_level_carries_no_thief_skills():
     """A cheap sanity check on the eight-byte block, and on the permutation
     that puts the thief level where the C64 keeps it."""
     for char in _records():
-        rec, _ = dos.to_c64_record(char)
+        rec, _ = dos_codec.to_c64_record(char)
         if rec.get("level_thief"):
             continue
         assert all(rec.get(f) == 0 for f in
@@ -449,12 +449,12 @@ def test_innate_and_granted_effects_reach_a_trait_slot_and_running_ones_do_not()
     """
     innate = running = granted = 0
     for char in _records():
-        rec, report = dos.to_c64_record(char)
+        rec, report = dos_codec.to_c64_record(char)
         slots = [b for b in rec.get_raw("item_effects") if b]
         for e in char.effects:
             eid = e[0]
             duration = int.from_bytes(e[1:3], "little")
-            if eid in dos.INNATE_EFFECTS:
+            if eid in dos_codec.INNATE_EFFECTS:
                 assert eid in slots, (char.name, eid)
                 innate += 1
             elif duration != 0:
@@ -491,8 +491,8 @@ def test_an_item_granted_effect_reaches_a_c64_trait_slot():
     if path is None:
         pytest.skip("no por-item-granted specimen; "
                     "tools/dosspcexpiry.py ready makes one")
-    char = dos.read_character(path)
-    rec, rep = dos.to_c64_record(char)
+    char = dos_codec.read_character(path)
+    rec, rep = dos_codec.to_c64_record(char)
     slots = [b for b in rec.get_raw("item_effects") if b]
     assert sorted(slots) == sorted([90, 97, 26, 47, 61]), slots
     said = traits.describe(61)
@@ -530,16 +530,16 @@ def test_every_dropped_field_reaches_the_player_unless_the_c64_derives_it():
     so `field_disposition` still accounts for it and
     `test_every_declared_field_has_a_disposition` still holds.
     """
-    assert not hasattr(dos, "UNREPORTED_DROPS")
-    silent = ({name for name, *_ in dos.DERIVED}
-              | {name for name, _ in dos.CONSTANTS})
-    assert silent.isdisjoint(dict(dos.DROPPED))
+    assert not hasattr(dos_codec, "UNREPORTED_DROPS")
+    silent = ({name for name, *_ in dos_codec.DERIVED}
+              | {name for name, _ in dos_codec.CONSTANTS})
+    assert silent.isdisjoint(dict(dos_codec.DROPPED))
 
     seen = 0
     for char in _records():
-        _rec, report = dos.to_c64_record(char)
-        for name, _why in dos.DROPPED:
-            sentence = dos.DROPPED_PLAYER_TEXT.get(name)
+        _rec, report = dos_codec.to_c64_record(char)
+        for name, _why in dos_codec.DROPPED:
+            sentence = dos_codec.DROPPED_PLAYER_TEXT.get(name)
             if sentence:
                 assert sentence in report.dropped, (char.name, name)
             else:
@@ -576,10 +576,10 @@ def test_no_dropped_reason_carries_developer_detail():
 
     hex_offset = re.compile(r"0[xX][0-9A-Fa-f]+|\$[0-9A-Fa-f]+")
     bare_issue = re.compile(r"#\d+")
-    for name, why in dos.DROPPED:
+    for name, why in dos_codec.DROPPED:
         assert not hex_offset.search(why), (name, why)
         assert not bare_issue.search(why), (name, why)
-    for name, why in dos.WRITE_DROPPED:
+    for name, why in dos_codec.WRITE_DROPPED:
         assert not hex_offset.search(why), (name, why)
         assert not bare_issue.search(why), (name, why)
 
@@ -597,7 +597,7 @@ def test_no_composed_dropped_line_carries_developer_detail():
     bare_issue = re.compile(r"#\d+")
     seen = 0
     for char in _records():
-        _rec, report = dos.to_c64_record(char)
+        _rec, report = dos_codec.to_c64_record(char)
         for line in report.dropped:
             assert not hex_offset.search(line), (char.name, line)
             assert not bare_issue.search(line), (char.name, line)
@@ -622,8 +622,8 @@ def test_every_dropped_name_has_player_text():
     behind it is text nobody can ever read; a field with no sentence is a
     deliberate silence, and the block above the dict says why for each.
     """
-    assert set(dos.DROPPED_PLAYER_TEXT) <= set(dict(dos.DROPPED))
-    for text in dos.DROPPED_PLAYER_TEXT.values():
+    assert set(dos_codec.DROPPED_PLAYER_TEXT) <= set(dict(dos_codec.DROPPED))
+    for text in dos_codec.DROPPED_PLAYER_TEXT.values():
         assert text[:1].isupper(), text
 
 
@@ -633,13 +633,13 @@ def test_the_portrait_is_transformed_and_not_dropped_in_any_title():
     pair's disposition is a rule rather than a loss.  Curse and Silver
     Blades draw no sheet portrait (#300), and theirs says so in the same
     row rather than calling a face nobody draws a drop."""
-    for title in (dos.POOL_OF_RADIANCE, dos.CURSE_OF_THE_AZURE_BONDS):
-        disposition = dos.field_disposition(title)
+    for title in (dos_codec.POOL_OF_RADIANCE, dos_codec.CURSE_OF_THE_AZURE_BONDS):
+        disposition = dos_codec.field_disposition(title)
         for name in ("portrait_head", "portrait_body"):
             assert not disposition[name].startswith("dropped:"), \
                 (title, name, disposition[name])
-    assert "portrait_head" not in dict(dos.DROPPED)
-    assert "portrait_head" in dict(dos.TRANSFORMED)
+    assert "portrait_head" not in dict(dos_codec.DROPPED)
+    assert "portrait_head" in dict(dos_codec.TRANSFORMED)
 
 
 def test_a_character_with_no_portrait_is_not_reported_as_having_lost_one():
@@ -659,17 +659,17 @@ def test_a_character_with_no_portrait_is_not_reported_as_having_lost_one():
     tables = PortraitTables(heads=tuple(range(1, 15)),
                             bodies=tuple(range(1, 13)),
                             source="synthetic, for this test")
-    blank = dos.DosCharacter(bytes(dos.POOL_OF_RADIANCE.record_size))
-    neutral = dos.to_neutral(blank, portraits=tables)
+    blank = dos_codec.DosCharacter(bytes(dos_codec.POOL_OF_RADIANCE.record_size))
+    neutral = dos_codec.to_neutral(blank, portraits=tables)
     assert not [d for d in neutral.dropped if "portrait" in d.lower()], \
         neutral.dropped
 
     # A position the menu genuinely cannot answer for -- not zero -- still
     # gets the line: only "no face chosen" is silent.
-    raw = bytearray(bytes(dos.POOL_OF_RADIANCE.record_size))
-    raw[dos_layout.FIELDS_BY_NAME["portrait_body"].offset] = 13  # outside
-    odd = dos.DosCharacter(bytes(raw))                            # the menu
-    neutral = dos.to_neutral(odd, portraits=tables)
+    raw = bytearray(bytes(dos_codec.POOL_OF_RADIANCE.record_size))
+    raw[dos_port.FIELDS_BY_NAME["portrait_body"].offset] = 13  # outside
+    odd = dos_codec.DosCharacter(bytes(raw))                            # the menu
+    neutral = dos_codec.to_neutral(odd, portraits=tables)
     assert [d for d in neutral.dropped if "portrait (body)" in d.lower()], \
         neutral.dropped
 
@@ -680,7 +680,7 @@ def test_every_derived_field_carries_the_run_that_demonstrated_it():
     is the evidence that moved a name off `DROPPED`, and a row with nothing
     there is a row nobody has earned yet.
     """
-    for name, why, run in dos.DERIVED:
+    for name, why, run in dos_codec.DERIVED:
         assert why.strip(), name
         assert run.strip(), name
 
@@ -710,7 +710,7 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
             pass
         try:
             animate = animate if animate is not None else \
-                load_payload(str(disk), dos.ANIMATE_FILE)
+                load_payload(str(disk), dos_codec.ANIMATE_FILE)
         except Exception:
             pass
     if icon is None or animate is None:
@@ -724,7 +724,7 @@ def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
         for keyword in keywords:
             assert keyword not in lowered, line
     assert sorted(conversion.report.dropped) == \
-        sorted(dos.DROPPED_PLAYER_TEXT.values()), conversion.report.dropped
+        sorted(dos_codec.DROPPED_PLAYER_TEXT.values()), conversion.report.dropped
 
 
 def test_no_player_text_says_something_was_not_carried():
@@ -738,11 +738,11 @@ def test_no_player_text_says_something_was_not_carried():
     player-facing drop sentence this way, rather than only through one
     conversion's own output.
     """
-    from goldbox import amiga, c64_codec
+    from goldbox import amiga_later, c64_codec
 
-    tables = (dos.DROPPED_PLAYER_TEXT.values(),
+    tables = (dos_codec.DROPPED_PLAYER_TEXT.values(),
              c64_codec.NO_C64_STATUS.values(),
-             amiga.LATER_DROPPED_PLAYER_TEXT.values())
+             amiga_later.LATER_DROPPED_PLAYER_TEXT.values())
     for values in tables:
         for text in values:
             assert "not carried" not in text, text
@@ -773,12 +773,12 @@ def test_the_identity_byte_is_written_for_all_three_c64_titles():
     title's 580-byte layout and nothing reads it back in any of them, so
     `goldbox.c64_codec.write` puts it there for Curse of the Azure Bonds and
     Secret of the Silver Blades too, and says nothing about it either way."""
-    from goldbox import c64_codec, games
+    from goldbox import c64_codec, c64_port
     from goldbox.layout import Confidence
     from goldbox.neutral import NeutralCharacter
 
-    for game in (games.POOL_OF_RADIANCE, games.CURSE_OF_THE_AZURE_BONDS,
-                games.SECRET_OF_THE_SILVER_BLADES):
+    for game in (c64_port.POOL_OF_RADIANCE, c64_port.CURSE_OF_THE_AZURE_BONDS,
+                c64_port.SECRET_OF_THE_SILVER_BLADES):
         char = NeutralCharacter("test", game=game)
         char.set("unnamed_0ab", 0x57, "made up", Confidence.CONFIRMED)
         rec, rep = c64_codec.write(char)
@@ -811,12 +811,12 @@ def test_the_quest_flags_narrow_to_bytes():
     counts = {}
     for slot in "JBA":
         save = _savgam(slot)
-        flags = dos.quest_flags(save)
-        assert len(flags) == dos.FLAGS_LAST - dos.FLAGS_FIRST + 1
-        for addr in range(dos.FLAGS_FIRST, dos.FLAGS_LAST + 1):
+        flags = dos_codec.quest_flags(save)
+        assert len(flags) == dos_codec.FLAGS_LAST - dos_codec.FLAGS_FIRST + 1
+        for addr in range(dos_codec.FLAGS_FIRST, dos_codec.FLAGS_LAST + 1):
             word = sg.word(save, addr)
             assert word <= 0xFF, (slot, hex(addr), word)
-        counts[slot] = flags[0x4AC1 - dos.FLAGS_FIRST]
+        counts[slot] = flags[0x4AC1 - dos_codec.FLAGS_FIRST]
     assert counts["J"] < counts["B"] < counts["A"]
 
 
@@ -859,9 +859,9 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     save = _savgam("A")
     state = world_state.from_dos(save)
     payload = bytearray(0x1C00)
-    changed = dos.apply_quest_flags(payload, state)
-    assert changed == sum(1 for b in dos.quest_flags(save) if b)
-    dos.apply_position(payload, state)
+    changed = dos_codec.apply_quest_flags(payload, state)
+    assert changed == sum(1 for b in dos_codec.quest_flags(save) if b)
+    dos_codec.apply_position(payload, state)
     x, y, facing = sg.position(save)
     assert payload[0x49C0 - 0x4900] == x
     assert payload[0x49C1 - 0x4900] == y
@@ -869,9 +869,9 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     # The area is not written here: `$4BC2` is slot 2 of the loaded-files
     # cache, so it belongs to `apply_file_cache` with the other twenty-four.
     payload[0x4BC2 - 0x4900] = 0xFF
-    dos.apply_position(payload, state)
+    dos_codec.apply_position(payload, state)
     assert payload[0x4BC2 - 0x4900] == 0xFF
-    dos.apply_file_cache(payload, state)
+    dos_codec.apply_file_cache(payload, state)
     assert payload[0x4BC2 - 0x4900] == sg.geo_block(save)   # slot 2, the map
     # Nothing outside the two regions was touched.
     assert payload[:0x49C0 - 0x4900] == bytes(0xC0)
@@ -885,7 +885,7 @@ def test_a_dos_party_exports_as_the_same_yaml_a_c64_party_does():
     set of field names, one renderer."""
     from goldbox.yaml_io import to_yaml
 
-    data = dos.export_party(_save_dir(), "A")
+    data = dos_codec.export_party(_save_dir(), "A")
     assert data["port"] == "dos"
     assert len(data["party"]) == 6
     text = to_yaml(data)
@@ -913,14 +913,14 @@ def test_convert_save_accounts_for_the_whole_payload():
     """
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
-    report = dos.convert_save(_save_dir(), "A", save0, save1)
+    report = dos_codec.convert_save(_save_dir(), "A", save0, save1)
     assert report.total == len(save0) + len(save1)
     assert report.unaccounted == []
     assert any("quest-flag" in w for w in report.warnings)
     # The six roster blocks the conversion writes are named, and named as
     # being in the other file -- `0x0100` means two different things now.
     for place in range(6):
-        at = len(save0) + place * dos.ROSTER_STRIDE
+        at = len(save0) + place * dos_codec.ROSTER_STRIDE
         assert "SAVEDGAME1" in report.sources[at]
         assert "roster" in report.sources[at]
 
@@ -930,7 +930,7 @@ def test_convert_save_accounts_for_save0_alone_when_there_is_no_save1():
     """`save1` is optional, and with none given the report covers exactly the
     one file it was handed."""
     save0 = bytearray(0x1C00)
-    report = dos.convert_save(_save_dir(), "A", save0)
+    report = dos_codec.convert_save(_save_dir(), "A", save0)
     assert report.total == len(save0)
     assert report.unaccounted == []
 
@@ -950,7 +950,7 @@ def test_a_character_with_more_items_than_the_c64_holds_truncates_silently():
     """
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
-    report = dos.convert_save(gamedata.specimen("por-item-twenty"), "G",
+    report = dos_codec.convert_save(gamedata.specimen("por-item-twenty"), "G",
                               save0, save1)
     assert not any("carry only sixteen" in w for w in report.losses)
     assert not any("carry only sixteen" in w for w in report.warnings)
@@ -965,7 +965,7 @@ def test_a_conversion_that_truncates_nothing_reports_no_loss():
     that names no actual loss."""
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
-    report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
+    report = dos_codec.convert_save(gamedata.specimen("por-party-l1"), "C",
                               save0, save1)
     assert report.losses == []
 
@@ -981,7 +981,7 @@ def test_the_partys_own_bookkeeping_never_reaches_losses():
     `losses`, which is the list `editor.dosimport.pane_text` reads (#399)."""
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
-    report = dos.convert_save(gamedata.specimen("por-party-l1"), "C",
+    report = dos_codec.convert_save(gamedata.specimen("por-party-l1"), "C",
                               save0, save1)
     assert any("quest-flag" in w for w in report.warnings)
     assert any("emptied" in w for w in report.warnings)
@@ -1005,19 +1005,19 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
     there = sg.current_area(savgam)
     where = areas.area(there)
     save0 = bytearray(0x1C00)
-    save0[0x4BC2 - dos.SAVE0_BASE] = (there + 1) & 0x7F
-    dos.convert_save(_save_dir(), "A", save0)
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    cache = bytes(save0[at:at + dos.FILE_CACHE[1]])
-    want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
-    want[dos.CACHE_GEO] = sg.geo_block(savgam)
-    want[dos.CACHE_ECL] = there
+    save0[0x4BC2 - dos_codec.SAVE0_BASE] = (there + 1) & 0x7F
+    dos_codec.convert_save(_save_dir(), "A", save0)
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
+    cache = bytes(save0[at:at + dos_codec.FILE_CACHE[1]])
+    want = bytearray(b"\xFF" * dos_codec.FILE_CACHE[1])
+    want[dos_codec.CACHE_GEO] = sg.geo_block(savgam)
+    want[dos_codec.CACHE_ECL] = there
     want[11] = 0                 # ANIMATE00, and see below
     assert cache == bytes(want)
-    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == where.disk
-    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == want[dos.CACHE_GEO]
-    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == there
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    assert save0[dos_codec.DISK_HINT - dos_codec.SAVE0_BASE] == where.disk
+    assert save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] == want[dos_codec.CACHE_GEO]
+    assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == there
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 1
 
 
 @needs_dos_saves
@@ -1038,22 +1038,22 @@ def test_a_template_already_in_the_area_is_retargeted_like_any_other():
     there = sg.current_area(savgam)
     where = areas.area(there)
     save0 = bytearray(0x1C00)
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    save0[at:at + dos.FILE_CACHE[1]] = bytes(range(0x20, 0x39))
-    save0[at + dos.CACHE_GEO] = there | dos.FILE_CACHE_RELOAD
-    dos.convert_save(_save_dir(), "A", save0)
-    want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
-    want[dos.CACHE_GEO] = sg.geo_block(savgam)
-    want[dos.CACHE_ECL] = there
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
+    save0[at:at + dos_codec.FILE_CACHE[1]] = bytes(range(0x20, 0x39))
+    save0[at + dos_codec.CACHE_GEO] = there | dos_codec.FILE_CACHE_RELOAD
+    dos_codec.convert_save(_save_dir(), "A", save0)
+    want = bytearray(b"\xFF" * dos_codec.FILE_CACHE[1])
+    want[dos_codec.CACHE_GEO] = sg.geo_block(savgam)
+    want[dos_codec.CACHE_ECL] = there
     want[11] = 0                 # ANIMATE00, as in the other-area case
-    assert bytes(save0[at:at + dos.FILE_CACHE[1]]) == bytes(want)
+    assert bytes(save0[at:at + dos_codec.FILE_CACHE[1]]) == bytes(want)
     # The four bytes outside the cache are written too. They used to be
     # skipped on this branch, which is how $49EA -- the side the loader asks
     # for -- kept the template's value.
-    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == where.disk
-    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == want[dos.CACHE_GEO]
-    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == there
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    assert save0[dos_codec.DISK_HINT - dos_codec.SAVE0_BASE] == where.disk
+    assert save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] == want[dos_codec.CACHE_GEO]
+    assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == there
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 1
 
 
 @needs_dos_saves
@@ -1071,7 +1071,7 @@ def test_an_area_that_names_no_map_takes_the_one_the_save_names():
     """
     savgam = bytearray(_savgam("A"))
     save0 = bytearray(0x1C00)
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
     for id in (3, 8):
         # `$49F2`, not `$49C5`: the area is the script word, and area 8 is one
         # of the places that proves it, since its script loads no map and
@@ -1079,11 +1079,11 @@ def test_an_area_that_names_no_map_takes_the_one_the_save_names():
         sg.put_word(savgam, sg.SCRIPT, id)
         assert sg.current_area(bytes(savgam)) == id
         state = world_state.from_dos(bytes(savgam))
-        dos.apply_file_cache(save0, state)
-        assert save0[at + dos.CACHE_ECL] == id
-        assert save0[at + dos.CACHE_GEO] == sg.geo_block(bytes(savgam)) == 0
-        assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
-        assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == id
+        dos_codec.apply_file_cache(save0, state)
+        assert save0[at + dos_codec.CACHE_ECL] == id
+        assert save0[at + dos_codec.CACHE_GEO] == sg.geo_block(bytes(savgam)) == 0
+        assert save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] == 0
+        assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == id
 
 
 @needs_dos_saves
@@ -1097,7 +1097,7 @@ def test_a_resident_map_no_area_loads_is_refused():
     sg.put_word(savgam, sg.AREA, 0x0C)
     # The check now runs while `state` is built, before `apply_file_cache`
     # is ever reached (`world_state.from_dos`'s own `_resident_geo` read).
-    with pytest.raises(dos.DosRecordError, match="GEO0C"):
+    with pytest.raises(dos_codec.DosRecordError, match="GEO0C"):
         world_state.from_dos(bytes(savgam))
 
 
@@ -1112,7 +1112,7 @@ def test_a_resident_map_that_contradicts_the_area_is_refused():
     savgam = bytearray(_savgam("A"))
     sg.put_word(savgam, sg.SCRIPT, 20)
     sg.put_word(savgam, sg.AREA, 21)
-    with pytest.raises(dos.DosRecordError, match="GEO15"):
+    with pytest.raises(dos_codec.DosRecordError, match="GEO15"):
         world_state.from_dos(bytes(savgam))
 
 
@@ -1138,15 +1138,15 @@ def test_a_training_hall_save_converts_into_the_hall_on_new_phlans_map():
 
     save0 = bytearray(0x1C00)
     state = world_state.from_dos(savgam)
-    dos.apply_file_cache(save0, state)
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    assert save0[at + dos.CACHE_ECL] == 11          # the hall's script
-    assert save0[at + dos.CACHE_GEO] == 0           # on New Phlan's map
-    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 11
-    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+    dos_codec.apply_file_cache(save0, state)
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
+    assert save0[at + dos_codec.CACHE_ECL] == 11          # the hall's script
+    assert save0[at + dos_codec.CACHE_GEO] == 0           # on New Phlan's map
+    assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 11
+    assert save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] == 0
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 1
     # POOL3 carries both `ECL0B` and `GEO00`, so one hint answers for both.
-    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == areas.area(11).disk == 3
+    assert save0[dos_codec.DISK_HINT - dos_codec.SAVE0_BASE] == areas.area(11).disk == 3
 
 
 def _outdoor_savgam(script: int = 26) -> bytes:
@@ -1181,22 +1181,22 @@ def test_an_overland_save_writes_the_outdoor_cache_recipe(script, sqrdata, disk)
     savgam = _outdoor_savgam(script)
     state = world_state.from_dos(savgam)
     save0 = bytearray(0x1C00)
-    line = dos.apply_file_cache(save0, state)
+    line = dos_codec.apply_file_cache(save0, state)
     assert f"SQRDATA0{sqrdata}" in line
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    assert save0[at + dos.CACHE_SQRDATA] == sqrdata
-    assert save0[at + dos.CACHE_ECL] == script
-    assert save0[at + dos.CACHE_GEO] == dos.FILE_CACHE_EMPTY
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
+    assert save0[at + dos_codec.CACHE_SQRDATA] == sqrdata
+    assert save0[at + dos_codec.CACHE_ECL] == script
+    assert save0[at + dos_codec.CACHE_GEO] == dos_codec.FILE_CACHE_EMPTY
     # Slot 11 goes with them: `SAVEDGAME1`'s tail *is* `ANIMATE00`, and a save
     # that leaves the slot empty cannot walk into an area (#102). Written as
     # the literal 11 and 0 rather than through the module's own names, so a
     # constant renumbered by hand fails here instead of following the change:
     # `ANIMATE00` is the only `ANIMATE` file in the game, on all eight sides.
     assert save0[at + 11] == 0
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 0
-    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == sqrdata
-    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == script
-    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == disk
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 0
+    assert save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] == sqrdata
+    assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == script
+    assert save0[dos_codec.DISK_HINT - dos_codec.SAVE0_BASE] == disk
 
 
 @needs_dos_saves
@@ -1209,7 +1209,7 @@ def test_an_overland_save_places_the_party_on_the_travel_pair(script):
     state = world_state.from_dos(savgam)
     save0 = bytearray(0x1C00)
     save0[0x49C0 - 0x4900:0x49C3 - 0x4900] = b"\x11\x22\x33"
-    notes = dos.apply_position(save0, state)
+    notes = dos_codec.apply_position(save0, state)
     assert save0[0x49C3 - 0x4900] == 7
     assert save0[0x49C4 - 0x4900] == 29
     assert bytes(save0[0x49C0 - 0x4900:0x49C3 - 0x4900]) == b"\x11\x22\x33"
@@ -1258,7 +1258,7 @@ def test_an_outdoor_bit_with_an_indoor_script_id_is_refused():
     savgam = _mismatched_savgam(indoors_word=0, area=0, script=1)
     assert sg.outdoors(savgam) is True
     assert areas.area(sg.current_area(savgam)).outdoors is False
-    with pytest.raises(dos.DosRecordError):
+    with pytest.raises(dos_codec.DosRecordError):
         world_state.from_dos(savgam)
 
 
@@ -1269,7 +1269,7 @@ def test_an_indoor_bit_with_an_outdoor_script_id_is_refused():
     savgam = _mismatched_savgam(indoors_word=1, area=0, script=26)
     assert sg.outdoors(savgam) is False
     assert areas.area(sg.current_area(savgam)).outdoors is True
-    with pytest.raises(dos.DosRecordError):
+    with pytest.raises(dos_codec.DosRecordError):
         world_state.from_dos(savgam)
 
 
@@ -1286,7 +1286,7 @@ def test_the_roster_tail_comes_from_the_dos_combat_tail():
     `tests/test_c64thac0.py` covers directly.
     """
     for char in _records():
-        rec, _ = dos.to_c64_record(char)
+        rec, _ = dos_codec.to_c64_record(char)
         assert rec.get("armour_class") == char.get("armour_class")
         assert rec.get_raw("roster_tail") == char.raw("roster_tail")
         assert rec.get("roster_movement") == char.get("movement_current")
@@ -1306,9 +1306,9 @@ def test_the_converted_clock_is_the_dos_partys_and_not_the_templates():
     for slot in "JBA":
         savgam = _savgam(slot)
         save0 = bytearray(0x1C00)
-        at = sg.CLOCK - dos.SAVE0_BASE
+        at = sg.CLOCK - dos_codec.SAVE0_BASE
         save0[at:at + sg.CLOCK_DIGITS] = sentinel
-        dos.convert_save(_save_dir(), slot, save0)
+        dos_codec.convert_save(_save_dir(), slot, save0)
         want = bytes(sg.word(savgam, sg.CLOCK + i)
                      for i in range(sg.CLOCK_DIGITS))
         assert bytes(save0[at:at + sg.CLOCK_DIGITS]) == want, slot
@@ -1329,10 +1329,10 @@ def test_a_clock_digit_too_large_for_its_field_is_reported():
     sg.put_word(savgam, sg.CLOCK + 3, 300)      # the hour digit, limit 24
     state = world_state.from_dos(bytes(savgam))
     save0 = bytearray(0x1C00)
-    note, complaints = dos.apply_clock(save0, state)
+    note, complaints = dos_codec.apply_clock(save0, state)
     assert "the clock" in note
     assert len(complaints) == 1 and "clock digit 3" in complaints[0]
-    assert save0[sg.CLOCK + 3 - dos.SAVE0_BASE] == 300 & 0xFF
+    assert save0[sg.CLOCK + 3 - dos_codec.SAVE0_BASE] == 300 & 0xFF
 
 
 @needs_dos_saves
@@ -1347,11 +1347,11 @@ def test_the_converted_party_marches_in_the_dos_order():
     put the DOS party's front-rank fighter at the back.
     """
     for slot in "JBA":
-        party = [c.name for c in dos.read_party(_save_dir(), slot)]
+        party = [c.name for c in dos_codec.read_party(_save_dir(), slot)]
         assert len(party) == 6
         save0 = bytearray(0x1C00)
         save1 = bytearray(0x0800)
-        dos.convert_save(_save_dir(), slot, save0, save1)
+        dos_codec.convert_save(_save_dir(), slot, save0, save1)
         sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
         by_slot = {s.index: s.record.name for s in sg0.slots if s.occupied}
         # Highest slot first is the C64's marching order; it must be the DOS
@@ -1374,10 +1374,10 @@ def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
     # Keyed by name, not by index: reading the expected count back through
     # `marching_slot` would make the test agree with the code by construction.
     want = {c.name: c.get("item_count")
-            for c in dos.read_party(_save_dir(), slot)}
+            for c in dos_codec.read_party(_save_dir(), slot)}
     assert len(want) == 6 and any(want.values())
     save0 = bytearray(0x1C00)
-    dos.convert_save(_save_dir(), slot, save0)
+    dos_codec.convert_save(_save_dir(), slot, save0)
     sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
     for place in [s.index for s in sg0.slots if s.occupied]:
         who = sg0.slots[place].record.name
@@ -1407,7 +1407,7 @@ def _title_records(shape):
     where = _game_dirs().get(_TITLE_FOLDER[shape.key])
     if where is None:
         pytest.skip(f"no DOS {shape.title} here; set FR_ARCHIVES")
-    out = [dos.read_character(p) for p in sorted(where.glob("CHRDAT*.SAV"))
+    out = [dos_codec.read_character(p) for p in sorted(where.glob("CHRDAT*.SAV"))
            if p.stat().st_size == shape.record_size]
     if not out:
         pytest.skip(f"no DOS {shape.title} records here")
@@ -1416,35 +1416,35 @@ def _title_records(shape):
 
 def _all_titles():
     return pytest.mark.parametrize(
-        "shape", dos_layout.SHAPES, ids=[s.key for s in dos_layout.SHAPES])
+        "shape", dos_port.DELTAS, ids=[s.key for s in dos_port.DELTAS])
 
 
 def test_each_shape_tiles_its_own_record():
     """Every byte of all four records belongs to exactly one entry, and the
     widths add up to the size the file actually is.  `layout_for` raises on a
     shape that does not, so this is the other half."""
-    for shape in dos_layout.SHAPES:
-        table = dos_layout.layout_for(shape)
+    for shape in dos_port.DELTAS:
+        table = dos_port.layout_for(shape)
         assert sum(f.size for f in table) == shape.record_size, shape.key
         assert [f.offset for f in table] == sorted(f.offset for f in table)
     # No two titles are the same length, which is what lets a record name its
     # own title with nothing else to go on.
-    assert len(dos_layout.SHAPES_BY_SIZE) == len(dos_layout.SHAPES)
+    assert len(dos_port.DELTAS_BY_SIZE) == len(dos_port.DELTAS)
 
 
 def test_the_pool_of_radiance_shape_is_the_table_it_was_read_from():
     """The generator must reproduce the hand-written table exactly -- offsets,
     widths, kinds and notes.  Without this the other three shapes would be
     free to drift the one that is measured against 24 specimens."""
-    assert dos_layout.layout_for(dos_layout.POOL_OF_RADIANCE) \
-        == dos_layout.LAYOUT
+    assert dos_port.layout_for(dos_port.POOL_OF_RADIANCE) \
+        == dos_port.LAYOUT
 
 
 def test_a_record_of_an_unknown_length_is_refused():
     """A file that is not one of the four sizes names no title, and guessing
     is how a reader hands back rubbish that looks like a character."""
-    with pytest.raises(dos.DosRecordError):
-        dos.DosCharacter(bytes(300))
+    with pytest.raises(dos_codec.DosRecordError):
+        dos_codec.DosCharacter(bytes(300))
 
 
 @_all_titles()
@@ -1483,10 +1483,10 @@ def test_the_level_array_is_indexed_by_class_number_in_every_title(shape):
     byte out moves this array and the check fails."""
     for char in _title_records(shape):
         number = char.get("char_class")
-        assert number in dos.CLASS_SLOTS_FOR_CLASS, (shape.key, char.name,
+        assert number in dos_codec.CLASS_SLOTS_FOR_CLASS, (shape.key, char.name,
                                                     number)
         levels = char.raw("class_levels")
-        want = {n for n in dos.CLASS_SLOTS_FOR_CLASS[number]
+        want = {n for n in dos_codec.CLASS_SLOTS_FOR_CLASS[number]
                 if n < len(levels)}
         assert {n for n, v in enumerate(levels) if v} == want, \
             (shape.key, char.name, char.get("char_class"), list(levels))
@@ -1506,11 +1506,11 @@ def test_only_the_proven_titles_convert(shape):
     Curse's or Pool of Radiance's offsets out of a 439-byte record, so it
     still raises instead."""
     char = _title_records(shape)[0]
-    if shape in dos.CONVERTS:
-        dos.to_neutral(char)
+    if shape in dos_codec.CONVERTS:
+        dos_codec.to_neutral(char)
         return
-    with pytest.raises(dos.WrongTitleError):
-        dos.to_neutral(char)
+    with pytest.raises(dos_codec.WrongTitleError):
+        dos_codec.to_neutral(char)
 
 
 @_all_titles()
@@ -1522,7 +1522,7 @@ def test_the_class_bitmask_is_what_the_level_arrays_imply(shape):
     54 of 54 shipped records across the four titles.
     """
     for char in _title_records(shape):
-        assert char.get("class_bits") == dos.class_bits_for(char), \
+        assert char.get("class_bits") == dos_codec.class_bits_for(char), \
             (shape.key, char.name, hex(char.get("class_bits")))
 
 
@@ -1573,7 +1573,7 @@ def test_a_dual_classed_character_carries_the_class_it_was():
     """Pools of Darkness keeps a second level array for the class a
     dual-classed character left behind, indexed the same way: ABAGAIL is a
     magic-user 12 who was a cleric 11, and her class bitmask carries both."""
-    shape = dos_layout.SHAPES_BY_SIZE[510]
+    shape = dos_port.DELTAS_BY_SIZE[510]
     by_name = {c.name: c for c in _title_records(shape)}
     abagail = by_name.get("ABAGAIL")
     if abagail is None:
@@ -1598,8 +1598,8 @@ def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
     from `SpellTable.groups` and a pair of spell levels now, so this asks the
     derivation rather than a copy of the answer (#89).
     """
-    shape = dos_layout.SHAPES_BY_SIZE[439]
-    want = set(levelup._ranger_spell_ids(8, games.SECRET_OF_THE_SILVER_BLADES))
+    shape = dos_port.DELTAS_BY_SIZE[439]
+    want = set(levelup._ranger_spell_ids(8, c64_port.SECRET_OF_THE_SILVER_BLADES))
     rangers = [c for c in _title_records(shape) if c.get("char_class") == 4]
     assert len(rangers) == 3
     for char in rangers:
@@ -1609,7 +1609,7 @@ def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
 def test_the_silver_blades_clerics_hold_the_cleric_grant_levels():
     """The level-8 clerics know cleric levels 1-4 and nothing else, which is
     `goldbox/spells.py`'s Silver Blades groups 1-8, 22-28, 37-44, {58, 66-70}."""
-    shape = dos_layout.SHAPES_BY_SIZE[439]
+    shape = dos_port.DELTAS_BY_SIZE[439]
     want = (set(range(1, 9)) | set(range(22, 29)) | set(range(37, 45))
             | {58} | set(range(66, 71)))
     clerics = [c for c in _title_records(shape) if c.get("char_class") == 0]
@@ -1659,8 +1659,8 @@ def test_no_spare_character_survives_a_conversion():
     assert [s.index for s in planted.slots if s.occupied] == [6, 7], \
         "the synthetic template must start out holding those two"
 
-    party = dos.read_party(_save_dir(), "A")
-    report = dos.convert_save(_save_dir(), "A", save0, save1)
+    party = dos_codec.read_party(_save_dir(), "A")
+    report = dos_codec.convert_save(_save_dir(), "A", save0, save1)
     sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
     filled = {s.index for s in sg0.slots if s.occupied}
     assert filled == set(range(len(party))), sorted(filled)
@@ -1673,15 +1673,15 @@ def test_no_spare_character_survives_a_conversion():
     assert report.unaccounted == []
     # And nothing of XYZZY is left behind it: not the name, not the abilities
     # `_plant` wrote at +0x14, not the item block, not the icon.
-    for place in range(len(party), dos.SLOT_TOTAL):
-        for base in (savegame.SLOT_AREA_BASE, dos.ITEM_AREA):
-            at = base - savegame.SAVE0_LOAD_ADDRESS + place * dos.SLOT_STRIDE
-            assert bytes(save0[at:at + dos.SLOT_STRIDE]) == \
-                bytes(dos.SLOT_STRIDE), f"slot {place} at ${base:04X}"
+    for place in range(len(party), dos_codec.SLOT_TOTAL):
+        for base in (savegame.SLOT_AREA_BASE, dos_codec.ITEM_AREA):
+            at = base - savegame.SAVE0_LOAD_ADDRESS + place * dos_codec.SLOT_STRIDE
+            assert bytes(save0[at:at + dos_codec.SLOT_STRIDE]) == \
+                bytes(dos_codec.SLOT_STRIDE), f"slot {place} at ${base:04X}"
     for place in range(len(party), savegame.SLOT_COUNT):
-        at = dos.ICON_TABLE - savegame.SAVE0_LOAD_ADDRESS \
-            + place * dos.ICON_SIZE
-        assert bytes(save0[at:at + dos.ICON_SIZE]) == bytes(dos.ICON_SIZE)
+        at = dos_codec.ICON_TABLE - savegame.SAVE0_LOAD_ADDRESS \
+            + place * dos_codec.ICON_SIZE
+        assert bytes(save0[at:at + dos_codec.ICON_SIZE]) == bytes(dos_codec.ICON_SIZE)
         at = place * savegame.ROSTER_STRIDE
         assert bytes(save1[at:at + savegame.ROSTER_STRIDE]) == \
             bytes(savegame.ROSTER_STRIDE)
@@ -1716,7 +1716,7 @@ def _game_files():
             pass
         try:
             animate = animate if animate is not None else \
-                load_payload(str(disk), dos.ANIMATE_FILE)
+                load_payload(str(disk), dos_codec.ANIMATE_FILE)
         except Exception:
             pass
     if icon is None or animate is None:
@@ -1735,10 +1735,10 @@ def test_a_save_built_from_nothing_accounts_for_every_byte():
     goes red with 5405 entries.
     """
     icon, animate = _game_files()
-    slots = dos.slots_available(_save_dir())
+    slots = dos_codec.slots_available(_save_dir())
     assert slots, "the DOS save folder has to hold at least one slot"
     for slot in slots:
-        save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate)
+        save0, save1, report = dos_codec.new_save(_save_dir(), slot, icon, animate)
         assert report.unwritten == [], slot
         assert report.unaccounted == [], slot
         assert len(save0) + len(save1) == report.total == 9216
@@ -1758,16 +1758,16 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     combat-icon slots instead of the engine's own seeded default)`).
     """
     icon, animate = _game_files()
-    party = dos.read_party(_save_dir(), "A")
-    save0, _save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    party = dos_codec.read_party(_save_dir(), "A")
+    save0, _save1, _report = dos_codec.new_save(_save_dir(), "A", icon, animate)
     for place in range(savegame.SLOT_COUNT):
-        at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
-        got = bytes(save0[at:at + dos.ICON_SIZE])
+        at = dos_codec.ICON_TABLE - dos_codec.SAVE0_BASE + place * dos_codec.ICON_SIZE
+        got = bytes(save0[at:at + dos_codec.ICON_SIZE])
         occupied = place < len(party)
-        want = icon if occupied or place in dos.NPC_ICON_SLOTS \
-            else bytes(dos.ICON_SIZE)
+        want = icon if occupied or place in dos_codec.NPC_ICON_SLOTS \
+            else bytes(dos_codec.ICON_SIZE)
         assert got == want, place
-        if occupied or place in dos.NPC_ICON_SLOTS:
+        if occupied or place in dos_codec.NPC_ICON_SLOTS:
             assert any(got), f"slot {place} would draw as black hooks"
 
 
@@ -1799,20 +1799,20 @@ def test_a_converted_party_keeps_its_own_combat_figures():
 
     parts = _icon_parts()
     _icon, animate = _game_files()
-    slot = next((s for s in dos.slots_available(_save_dir())
+    slot = next((s for s in dos_codec.slots_available(_save_dir())
                 if len({(c.get("icon_head"), c.get("icon_body"))
-                        for c in dos.read_party(_save_dir(), s)}) > 1),
+                        for c in dos_codec.read_party(_save_dir(), s)}) > 1),
                None)
     if slot is None:
         pytest.skip("needs a DOS party whose combat figures are not all "
                     "the same")
-    party = dos.read_party(_save_dir(), slot)
-    save0, _save1, _report = dos.new_save(_save_dir(), slot, parts, animate)
+    party = dos_codec.read_party(_save_dir(), slot)
+    save0, _save1, _report = dos_codec.new_save(_save_dir(), slot, parts, animate)
     icons = {}
     for index, char in enumerate(party):
-        place = dos.marching_slot(index, len(party))
-        at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
-        icons[place] = bytes(save0[at:at + dos.ICON_SIZE])
+        place = dos_codec.marching_slot(index, len(party))
+        at = dos_codec.ICON_TABLE - dos_codec.SAVE0_BASE + place * dos_codec.ICON_SIZE
+        icons[place] = bytes(save0[at:at + dos_codec.ICON_SIZE])
         want = parts.dos_icon(char.get("icon_head"), char.get("icon_body"),
                               dos_size(char.get("size")),
                               bytes(char.get("icon_colours")))
@@ -1863,9 +1863,9 @@ def test_an_imported_party_carries_its_own_faces_and_switches_the_portrait_on():
     icon, animate = _game_files()
     where = _save_dir()
     slot = party = None
-    for candidate in dos.slots_available(where):
-        candidate_party = dos.read_party(where, candidate)
-        neutral = [dos.to_neutral(c, portraits=tables) for c in candidate_party]
+    for candidate in dos_codec.slots_available(where):
+        candidate_party = dos_codec.read_party(where, candidate)
+        neutral = [dos_codec.to_neutral(c, portraits=tables) for c in candidate_party]
         if all("portrait_head" in n and "portrait_body" in n
                for n in neutral):
             slot, party = candidate, candidate_party
@@ -1873,17 +1873,17 @@ def test_an_imported_party_carries_its_own_faces_and_switches_the_portrait_on():
     if slot is None:
         pytest.skip("no DOS slot here has every character in the menu")
 
-    save0, _save1, _report = dos.new_save(where, slot, icon, animate,
+    save0, _save1, _report = dos_codec.new_save(where, slot, icon, animate,
                                           portraits=tables)
-    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
-    assert save0[at] == dos.PORTRAIT_ON
+    at = dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE
+    assert save0[at] == dos_codec.PORTRAIT_ON
 
     seen = 0
     for index, char in enumerate(party):
-        place = dos.marching_slot(index, len(party))
+        place = dos_codec.marching_slot(index, len(party))
         head_want = tables.head_art(char.get("portrait_head"))
         body_want = tables.body_art(char.get("portrait_body"))
-        rec_at = dos.SLOT_AREA - dos.SAVE0_BASE + place * dos.SLOT_STRIDE
+        rec_at = dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE + place * dos_codec.SLOT_STRIDE
         assert save0[rec_at + 0x0FE] == head_want, char.name
         assert save0[rec_at + 0x0FF] == body_want, char.name
         seen += 1
@@ -1909,7 +1909,7 @@ def test_a_party_missing_one_face_leaves_the_portrait_switched_off(tmp_path):
     icon, animate = _game_files()
     where = _save_dir()
     slot = None
-    for candidate in dos.slots_available(where):
+    for candidate in dos_codec.slots_available(where):
         if len(list(where.glob(f"CHRDAT{candidate}?.SAV"))) >= 2:
             slot = candidate
             break
@@ -1922,13 +1922,13 @@ def test_a_party_missing_one_face_leaves_the_portrait_switched_off(tmp_path):
 
     first = sorted(tmp_path.glob(f"CHRDAT{slot}?.SAV"))[0]
     raw = bytearray(first.read_bytes())
-    raw[dos_layout.FIELDS_BY_NAME["portrait_head"].offset] = 99  # outside
+    raw[dos_port.FIELDS_BY_NAME["portrait_head"].offset] = 99  # outside
     first.write_bytes(bytes(raw))                                # the menu
 
-    save0, _save1, _report = dos.new_save(tmp_path, slot, icon, animate,
+    save0, _save1, _report = dos_codec.new_save(tmp_path, slot, icon, animate,
                                           portraits=tables)
-    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
-    assert save0[at] == dos.PORTRAIT_OFF
+    at = dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE
+    assert save0[at] == dos_codec.PORTRAIT_OFF
 
 
 #: `(disk, NPC slot)` known not to carry the engine's own seeded default, and
@@ -2020,18 +2020,18 @@ def test_animate00_is_written_where_the_cache_says_it_is():
     is zero, which is what makes the split checkable rather than asserted.
     """
     icon, animate = _game_files()
-    assert len(animate) == dos.ANIMATE_SIZE
-    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
-    at = dos.ANIMATE_AT - dos.SAVE1_BASE
+    assert len(animate) == dos_codec.ANIMATE_SIZE
+    save0, save1, _report = dos_codec.new_save(_save_dir(), "A", icon, animate)
+    at = dos_codec.ANIMATE_AT - dos_codec.SAVE1_BASE
     assert bytes(save1[at:at + len(animate)]) == animate
     end = at + len(animate)
-    assert dos.SAVE1_BASE + end == dos.BITMAP_BUFFER[0]
+    assert dos_codec.SAVE1_BASE + end == dos_codec.BITMAP_BUFFER[0]
     assert bytes(save1[end:]) == bytes(len(save1) - end)
     # The two halves of the claim, in one place: the cache says the file is
     # resident, and the bytes it points at are the file. Asserting only the
     # first is how a save came to say `ANIMATE00` was in memory over a page
     # of zeros (#122).
-    slot11 = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_ANIMATE
+    slot11 = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE + dos_codec.CACHE_ANIMATE
     assert save0[slot11] == 0x00, "the file number, and ANIMATE00 is the only one"
 
 
@@ -2048,13 +2048,13 @@ def test_convert_save_with_no_animate_reports_the_region_as_inherited():
     a well-meant "just zero it" here would put the assertion back over a page
     of zeros with nothing left to notice.
     """
-    save0 = bytearray(dos.SAVE0_SIZE)
-    save1 = bytearray(dos.SAVE1_SIZE)
-    report = dos.convert_save(_save_dir(), "A", save0, save1)
-    at = len(save0) + dos.ANIMATE_AT - dos.SAVE1_BASE
+    save0 = bytearray(dos_codec.SAVE0_SIZE)
+    save1 = bytearray(dos_codec.SAVE1_SIZE)
+    report = dos_codec.convert_save(_save_dir(), "A", save0, save1)
+    at = len(save0) + dos_codec.ANIMATE_AT - dos_codec.SAVE1_BASE
     inherited = set(report.unwritten)
-    assert set(range(at, at + dos.ANIMATE_SIZE)) <= inherited
-    slot11 = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_ANIMATE
+    assert set(range(at, at + dos_codec.ANIMATE_SIZE)) <= inherited
+    slot11 = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE + dos_codec.CACHE_ANIMATE
     assert save0[slot11] == 0x00, "the file number, and ANIMATE00 is the only one"
 
 
@@ -2071,8 +2071,8 @@ def test_a_wrong_sized_animate_is_refused_rather_than_written():
     """
     icon, animate = _game_files()
     for wrong in (animate[:-1], animate + b"\x00"):
-        with pytest.raises(dos.DosRecordError):
-            dos.new_save(_save_dir(), "A", icon, wrong)
+        with pytest.raises(dos_codec.DosRecordError):
+            dos_codec.new_save(_save_dir(), "A", icon, wrong)
 
 
 @needs_dos_saves
@@ -2083,8 +2083,8 @@ def test_the_built_disk_is_the_two_files_a_save_disk_needs():
     from goldbox.savegame import load_save
 
     icon, animate = _game_files()
-    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
-    disk = dos.save_disk(bytes(save0), bytes(save1))
+    save0, save1, _report = dos_codec.new_save(_save_dir(), "A", icon, animate)
+    disk = dos_codec.save_disk(bytes(save0), bytes(save1))
     assert [bytes(e.name) for e in disk.directory()] == \
         [b"SAVEDGAME1", b"SAVEDGAME0"]
     _game, sg0, sg1 = load_save(disk)
@@ -2131,17 +2131,17 @@ def test_an_outdoor_dos_save_builds_a_whole_c64_save(tmp_path):
     """
     icon, animate = _game_files()
     folder = _outdoor_folder(tmp_path)
-    save0, save1, report = dos.new_save(folder, "A", icon, animate)
+    save0, save1, report = dos_codec.new_save(folder, "A", icon, animate)
     assert report.unwritten == []
     assert report.unaccounted == []
     assert len(save0) + len(save1) == report.total == 9216
-    at = dos.DUNGEON_SQUARE[0] - dos.SAVE0_BASE
-    assert bytes(save0[at:at + dos.DUNGEON_SQUARE[1]]) == bytes(3)
+    at = dos_codec.DUNGEON_SQUARE[0] - dos_codec.SAVE0_BASE
+    assert bytes(save0[at:at + dos_codec.DUNGEON_SQUARE[1]]) == bytes(3)
     # The travel pair is the square the party is actually standing on, and it
     # is the one thing that would be lost by zeroing the whole run at once.
-    assert [save0[sg.TRAVEL_X - dos.SAVE0_BASE],
-            save0[sg.TRAVEL_Y - dos.SAVE0_BASE]] == [7, 29]
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 0
+    assert [save0[sg.TRAVEL_X - dos_codec.SAVE0_BASE],
+            save0[sg.TRAVEL_Y - dos_codec.SAVE0_BASE]] == [7, 29]
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 0
 
 
 @needs_dos_saves
@@ -2154,9 +2154,9 @@ def test_an_indoor_dos_save_still_carries_its_own_dungeon_square():
     own bytes rather than against a square written down here.
     """
     icon, animate = _game_files()
-    slot = dos.slots_available(_save_dir())[0]
-    save0, _save1, _report = dos.new_save(_save_dir(), slot, icon, animate)
-    at = dos.DUNGEON_SQUARE[0] - dos.SAVE0_BASE
+    slot = dos_codec.slots_available(_save_dir())[0]
+    save0, _save1, _report = dos_codec.new_save(_save_dir(), slot, icon, animate)
+    at = dos_codec.DUNGEON_SQUARE[0] - dos_codec.SAVE0_BASE
     want = sg.position(_savgam(slot))
     assert not sg.outdoors(_savgam(slot)), \
         "this test needs an indoor slot; all three archives saves are indoors"
@@ -2225,7 +2225,7 @@ def _stage_a_script(savgam: bytearray) -> None:
     two readings `dos.never_adventured` takes."""
     start, _ = sg.SAVE_POOL_OF_RADIANCE.script_buffer
     savgam[start] = 0x01
-    sg.put_word(savgam, dos.LATER_BEGUN_WORD, 255)
+    sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255)
 
 
 def _never_adventured_savgam() -> bytes:
@@ -2263,11 +2263,11 @@ def test_a_party_that_has_not_set_out_is_read_off_the_container_not_the_area_wor
     standing = _new_phlan_savgam()
     assert sg.current_area(fresh) == sg.current_area(standing) == 0
     assert sg.geo_block(fresh) == sg.geo_block(standing) == 0
-    assert dos.never_adventured(fresh)
-    assert not dos.never_adventured(standing)
+    assert dos_codec.never_adventured(fresh)
+    assert not dos_codec.never_adventured(standing)
     # The word on its own tells the same story, for the title with no buffer.
-    assert sg.word(fresh, dos.LATER_BEGUN_WORD) == 0
-    assert sg.word(standing, dos.LATER_BEGUN_WORD) == 255
+    assert sg.word(fresh, dos_codec.LATER_BEGUN_WORD) == 0
+    assert sg.word(standing, dos_codec.LATER_BEGUN_WORD) == 255
 
 
 def test_a_pool_of_radiance_party_that_has_not_set_out_converts_to_new_phlan():
@@ -2280,16 +2280,16 @@ def test_a_pool_of_radiance_party_that_has_not_set_out_converts_to_new_phlan():
     assert sg.outdoors(savgam), "the initialiser's $49E6 reads as outdoors"
     state = world_state.from_dos(savgam)
     save0 = bytearray(0x1C00)
-    line = dos.apply_file_cache(save0, state)
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    assert save0[at + dos.CACHE_ECL] == 0
-    assert save0[at + dos.CACHE_GEO] == 0
-    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 0
-    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 0
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
-    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == areas.area(0).disk == 3
+    line = dos_codec.apply_file_cache(save0, state)
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
+    assert save0[at + dos_codec.CACHE_ECL] == 0
+    assert save0[at + dos_codec.CACHE_GEO] == 0
+    assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 0
+    assert save0[dos_codec.CURRENT_GEO - dos_codec.SAVE0_BASE] == 0
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 1
+    assert save0[dos_codec.DISK_HINT - dos_codec.SAVE0_BASE] == areas.area(0).disk == 3
     assert "had not set out" in line
-    dos.apply_position(save0, state)
+    dos_codec.apply_position(save0, state)
     assert tuple(save0[0xC0:0xC3]) == (15, 1, 3)
 
 
@@ -2302,14 +2302,14 @@ def test_a_party_standing_in_new_phlan_is_left_exactly_where_it_is():
     savgam = _new_phlan_savgam()
     state = world_state.from_dos(savgam)
     save0 = bytearray(0x1C00)
-    line = dos.apply_file_cache(save0, state)
+    line = dos_codec.apply_file_cache(save0, state)
     assert "had not set out" not in line
-    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    assert save0[at + dos.CACHE_ECL] == 0 and save0[at + dos.CACHE_GEO] == 0
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
-    dos.apply_position(save0, state)
+    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
+    assert save0[at + dos_codec.CACHE_ECL] == 0 and save0[at + dos_codec.CACHE_GEO] == 0
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 1
+    dos_codec.apply_position(save0, state)
     assert tuple(save0[0xC0:0xC3]) == (3, 9, 2)
-    note, _ = dos.apply_clock(save0, state)
+    note, _ = dos_codec.apply_clock(save0, state)
     assert "16:58" in note
 
 
@@ -2342,15 +2342,15 @@ def test_a_conversion_with_no_disks_at_all_gives_every_character_his_own_face(
 
     for name in ("tables_from_disks", "tables_from_c64", "tables_from_dos"):
         monkeypatch.setattr(portraits, name, never)
-    monkeypatch.setattr(dos, "tables_from_dos", never)
-    assert not hasattr(dos, "NoPortraitTablesError")
-    assert not hasattr(dos, "NO_PORTRAIT_TABLES")
+    monkeypatch.setattr(dos_codec, "tables_from_dos", never)
+    assert not hasattr(dos_codec, "NoPortraitTablesError")
+    assert not hasattr(dos_codec, "NO_PORTRAIT_TABLES")
 
     menu = portraits.stored_tables(None)
     where = _save_dir()
     slot = party = None
-    for candidate in dos.slots_available(where):
-        candidate_party = dos.read_party(where, candidate)
+    for candidate in dos_codec.slots_available(where):
+        candidate_party = dos_codec.read_party(where, candidate)
         if all(menu.head_art(c.get("portrait_head")) is not None
                and menu.body_art(c.get("portrait_body")) is not None
                for c in candidate_party):
@@ -2359,12 +2359,12 @@ def test_a_conversion_with_no_disks_at_all_gives_every_character_his_own_face(
     if slot is None:
         pytest.skip("no DOS slot here has every character in the menu")
 
-    save0, _save1, report = dos.new_save(where, slot, bytes(36), bytes(852))
-    assert save0[dos.PORTRAIT_SWITCH - dos.SAVE0_BASE] == dos.PORTRAIT_ON
+    save0, _save1, report = dos_codec.new_save(where, slot, bytes(36), bytes(852))
+    assert save0[dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE] == dos_codec.PORTRAIT_ON
     seen = 0
     for index, char in enumerate(party):
-        place = dos.marching_slot(index, len(party))
-        rec_at = dos.SLOT_AREA - dos.SAVE0_BASE + place * dos.SLOT_STRIDE
+        place = dos_codec.marching_slot(index, len(party))
+        rec_at = dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE + place * dos_codec.SLOT_STRIDE
         assert save0[rec_at + 0x0FE] == \
             menu.head_art(char.get("portrait_head")), char.name
         assert save0[rec_at + 0x0FF] == \
@@ -2386,9 +2386,9 @@ def test_a_real_new_phlan_party_converts_where_it_stood():
     where = gamedata.specimen("por-party-l1-intown")
     savgam = (where / "SAVGAME.DAT").read_bytes()
     assert sg.current_area(savgam) == 0
-    assert not dos.never_adventured(savgam)
+    assert not dos_codec.never_adventured(savgam)
     save0 = bytearray(0x1C00)
-    report = dos.convert_save(where, "E", save0)
+    report = dos_codec.convert_save(where, "E", save0)
     assert tuple(save0[0xC0:0xC3]) == sg.position(savgam) == (0, 4, 3)
     assert report.messages == []
 
@@ -2404,13 +2404,13 @@ def test_a_real_never_adventured_party_converts_and_the_player_is_told():
     the report for the messages pane."""
     where = gamedata.specimen("por-304-modify-exited")
     savgam = (where / "SAVGAMC.DAT").read_bytes()
-    assert dos.never_adventured(savgam)
-    assert sg.word(savgam, dos.LATER_BEGUN_WORD) == 0
+    assert dos_codec.never_adventured(savgam)
+    assert sg.word(savgam, dos_codec.LATER_BEGUN_WORD) == 0
     save0 = bytearray(0x1C00)
-    report = dos.convert_save(where, "C", save0)
+    report = dos_codec.convert_save(where, "C", save0)
     assert tuple(save0[0xC0:0xC3]) == (15, 1, 3)
-    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
-    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 0
-    assert report.messages == [dos.NOT_SET_OUT]
-    assert dos.NOT_SET_OUT in report.summary()
+    assert save0[dos_codec.INDOORS - dos_codec.SAVE0_BASE] == 1
+    assert save0[dos_codec.CURRENT_SCRIPT - dos_codec.SAVE0_BASE] == 0
+    assert report.messages == [dos_codec.NOT_SET_OUT]
+    assert dos_codec.NOT_SET_OUT in report.summary()
     assert report.unaccounted == []

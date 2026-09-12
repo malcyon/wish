@@ -30,8 +30,8 @@ import pytest
 # and again here.
 pytest.importorskip("capstone")
 
-from goldbox import dos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import innateids  # noqa: E402
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -242,7 +242,7 @@ def test_curse_seeds_its_own_race_table_not_pool_of_radiances():
     for _, by_race in race:                    # Curse keeps two copies (#395)
         for num, name in ((1, "dwarf"), (3, "gnome"), (5, "halfling")):
             ids = tuple(c[0] for c in by_race[num])
-            assert ids == dos.RACE_COMBAT_EFFECTS_CURSE[name], name
+            assert ids == dos_codec.RACE_COMBAT_EFFECTS_CURSE[name], name
             assert 90 not in ids, name
 
 
@@ -258,5 +258,5 @@ def test_silver_blades_seeds_its_own_race_table_not_the_c64s():
     names = {1: "elf", 2: "half-elf", 3: "dwarf", 4: "gnome", 5: "halfling"}
     for num, name in names.items():
         ids = tuple(c[0] for c in by_race[num])
-        assert ids == dos.RACE_COMBAT_EFFECTS_SILVER_BLADES[name], name
+        assert ids == dos_codec.RACE_COMBAT_EFFECTS_SILVER_BLADES[name], name
     assert 92 not in (c[0] for c in by_race[5])   # the C64's own halfling id

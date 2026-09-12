@@ -23,7 +23,7 @@ import pathlib
 
 import pytest
 
-from goldbox import games, items
+from goldbox import c64_port, items
 from goldbox.d64 import (
     D64,
     ERROR_OK,
@@ -284,7 +284,7 @@ def test_champions_item_names_read_off_a_forty_track_side():
     disk = D64.open(path)
     if disk.find(b"ITEMNAMES") is None:
         pytest.skip("the 40-track image here carries no ITEMNAMES")
-    names = items.load_item_names(str(path), games.CHAMPIONS_OF_KRYNN)
+    names = items.load_item_names(str(path), c64_port.CHAMPIONS_OF_KRYNN)
     assert names[1] == "BATTLE AXE"
     assert names[2] == "HAND AXE"
     assert len(names) > 100

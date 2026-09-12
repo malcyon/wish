@@ -23,8 +23,8 @@ import re
 
 import pytest
 
-from goldbox import c64_codec, dos, dos_layout, neutral
-from goldbox.games import POOL_OF_RADIANCE
+from goldbox import c64_codec, dos_codec, dos_port, neutral
+from goldbox.c64_port import POOL_OF_RADIANCE
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter
 from goldbox.record import CharacterRecord
@@ -40,17 +40,17 @@ ENGINE_WRITES = {
     0x85: "unconscious", 0x86: "running", 0x87: "stoned",
 }
 
-TAIL = dos_layout.FIELDS_BY_NAME["field_10c_10f"]
-CONSTANT = dos_layout.FIELDS_BY_NAME["field_83_87"]
+TAIL = dos_port.FIELDS_BY_NAME["field_10c_10f"]
+CONSTANT = dos_port.FIELDS_BY_NAME["field_83_87"]
 
 
 def _dos_record(tail: bytes = b"\x00\x01\x00\x00",
-                constant: bytes = b"\x00\x00\x01\x00\x00") -> dos.DosCharacter:
+                constant: bytes = b"\x00\x00\x01\x00\x00") -> dos_codec.DosCharacter:
     """A Pool of Radiance record that is zero but for the two #235 runs."""
-    raw = bytearray(dos_layout.RECORD_SIZE)
+    raw = bytearray(dos_port.RECORD_SIZE)
     raw[TAIL.offset:TAIL.end] = tail
     raw[CONSTANT.offset:CONSTANT.end] = constant
-    return dos.DosCharacter(bytes(raw))
+    return dos_codec.DosCharacter(bytes(raw))
 
 
 def _c64_record(status: int) -> CharacterRecord:
@@ -74,7 +74,7 @@ def test_a_dos_character_the_game_knocked_out_arrives_unconscious():
     Before the carry this wrote `$01`, OK, and the character arrived well.
     """
     char = _dos_record(b"\x04\x00\x00\x00")
-    rec, rep = c64_codec.write(dos.to_neutral(char))
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("roster_in_use") == 0x85
     # And the report says where it came from rather than calling it a
     # constant, which is what it used to say.
@@ -84,7 +84,7 @@ def test_a_dos_character_the_game_knocked_out_arrives_unconscious():
 def test_a_dos_character_still_standing_arrives_ok_and_in_play():
     """The control for the test above: the same conversion, one byte apart."""
     char = _dos_record(b"\x00\x01\x00\x00")
-    rec, _ = c64_codec.write(dos.to_neutral(char))
+    rec, _ = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("roster_in_use") == 0x01
 
 
@@ -107,7 +107,7 @@ def test_every_dos_status_with_a_c64_value_crosses_to_it(number, expected):
     """
     active = 1 if number == 0 else 0
     char = _dos_record(bytes([number, active, 0, 0]))
-    rec, _ = c64_codec.write(dos.to_neutral(char))
+    rec, _ = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("roster_in_use") == expected
 
 
@@ -122,8 +122,8 @@ def test_a_dos_state_the_c64_does_not_have_is_reported(number, name):
     same routine marks as not a player character -- so it is not the same
     thing and is not used."""
     char = _dos_record(bytes([number, 1, 0, 0]))
-    assert dos.to_neutral(char).get("status") == name
-    rec, rep = c64_codec.write(dos.to_neutral(char))
+    assert dos_codec.to_neutral(char).get("status") == name
+    rec, rep = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("roster_in_use") == 0x01
     assert c64_codec.NO_C64_STATUS[name] in rep.dropped, rep.dropped
 
@@ -132,7 +132,7 @@ def test_a_dos_status_past_the_end_of_the_table_is_reported_not_guessed():
     """The game has nine states and a save holding a tenth is not one of
     them, so the reader says so rather than picking the nearest."""
     char = _dos_record(bytes([len(neutral.STATUS_NAMES), 1, 0, 0]))
-    out = dos.to_neutral(char)
+    out = dos_codec.to_neutral(char)
     assert "status" not in out
     assert any("status" in line for line in out.dropped), out.dropped
 
@@ -179,7 +179,7 @@ def test_a_c64_character_the_game_marked_dead_writes_the_dos_number_back():
     copy: the C64's DEAD is 3 and DOS's is 6.  Writing the C64 byte straight
     into the DOS record would make a dead character a running one."""
     out = c64_codec.read(_c64_record(0x83))
-    rec, _, _, rep = dos.write(out)
+    rec, _, _, rep = dos_codec.write(out)
     assert rec[TAIL.offset] == 6
     assert rec[TAIL.offset + 1] == 0        # the active flag, DOS polarity
     assert "dead" in rep.sources[TAIL.offset]
@@ -196,7 +196,7 @@ def test_every_c64_status_writes_the_dos_number_for_the_same_word(byte, number):
     Running in DOS, 6 is RUNNING on the C64 and Dead in DOS.  A conversion
     that copied the low three bits would swap those two silently.
     """
-    rec, _, _, _ = dos.write(c64_codec.read(_c64_record(byte)))
+    rec, _, _, _ = dos_codec.write(c64_codec.read(_c64_record(byte)))
     assert rec[TAIL.offset] == number
     assert rec[TAIL.offset + 1] == (1 if byte == 0x01 else 0)
 
@@ -206,9 +206,9 @@ def test_a_dos_record_at_status_four_round_trips_through_the_c64_and_back():
     character it knocked out, to the C64 byte the C64 engine writes for the
     same thing, and back to the DOS bytes it started from."""
     char = _dos_record(b"\x04\x00\x00\x00")
-    c64, _ = c64_codec.write(dos.to_neutral(char))
+    c64, _ = c64_codec.write(dos_codec.to_neutral(char))
     assert c64.get("roster_in_use") == 0x85
-    rec, _, _, _ = dos.write(c64_codec.read(c64))
+    rec, _, _, _ = dos_codec.write(c64_codec.read(c64))
     assert bytes(rec[TAIL.offset:TAIL.offset + 2]) == b"\x04\x00"
 
 
@@ -221,10 +221,10 @@ def test_the_combat_side_and_quickfight_now_carry_across_and_back():
     a source that quick-fought lost it going to the C64 and gained it coming
     back, unconditionally."""
     quick = _dos_record(b"\x00\x01\x00\x01")
-    assert dos.to_neutral(quick).get("status") == "okay"
-    c64, _ = c64_codec.write(dos.to_neutral(quick))
+    assert dos_codec.to_neutral(quick).get("status") == "okay"
+    c64, _ = c64_codec.write(dos_codec.to_neutral(quick))
     assert c64.get("combat_side") == 0x80
-    rec, _, _, _ = dos.write(c64_codec.read(c64))
+    rec, _, _, _ = dos_codec.write(c64_codec.read(c64))
     assert bytes(rec[TAIL.offset + 2:TAIL.end]) == b"\x00\x01"
 
 
@@ -242,7 +242,7 @@ def test_dos_hostile_and_quickfight_pack_into_one_c64_byte(
     (docs/169-dos-combat-side.md): `0x81` if the side bit is set, `0x80` if
     only quickfight is, else 0."""
     char = _dos_record(bytes([0, 1, hostile, quickfight]))
-    rec, _ = c64_codec.write(dos.to_neutral(char))
+    rec, _ = c64_codec.write(dos_codec.to_neutral(char))
     assert rec.get("combat_side") == byte
 
 
@@ -260,7 +260,7 @@ def test_the_c64_byte_unpacks_into_dos_hostile_and_quickfight(
     out = c64_codec.read(rec)
     assert out.get("hostile") is bool(hostile)
     assert out.get("quickfight") is bool(quickfight)
-    written, _, _, _ = dos.write(out)
+    written, _, _, _ = dos_codec.write(out)
     assert written[TAIL.offset + 2] == hostile
     assert written[TAIL.offset + 3] == quickfight
 
@@ -278,7 +278,7 @@ def test_the_whole_combat_tail_round_trips_through_dos(
     pair -- not just the two #235 first converted."""
     tail = bytes([status, active, hostile, quickfight])
     char = _dos_record(tail)
-    rec, _, _, _ = dos.write(dos.to_neutral(char))
+    rec, _, _, _ = dos_codec.write(dos_codec.to_neutral(char))
     assert bytes(rec[TAIL.offset:TAIL.end]) == tail
 
 
@@ -286,12 +286,12 @@ def test_field_10c_10f_no_longer_shows_as_dropped():
     """The whole point of naming C64 record 0x10C: `field_10c_10f` comes off
     the drop list entirely, both in the table and in what a real conversion
     reports."""
-    assert "field_10c_10f" not in dict(dos.DROPPED)
-    disposition = dos.field_disposition()
+    assert "field_10c_10f" not in dict(dos_codec.DROPPED)
+    disposition = dos_codec.field_disposition()
     assert not disposition["field_10c_10f"].startswith("dropped:")
 
     char = _dos_record(b"\x00\x01\x01\x01")
-    _rec, report = dos.to_c64_record(char)
+    _rec, report = dos_codec.to_c64_record(char)
     assert not [d for d in report.dropped if "field_10c_10f" in d]
     assert not [d for d in report.dropped if "quickfight" in d.lower()]
 
@@ -322,12 +322,12 @@ def test_the_two_ports_hold_the_flag_at_opposite_polarities():
     for one that is not.  Both draw the name red in the party panel, which is
     what says they are the same flag -- so a conversion that copied the bit
     instead of converting it would invert every character."""
-    active = dos.to_neutral(_dos_record(b"\x00\x01\x00\x00"))
+    active = dos_codec.to_neutral(_dos_record(b"\x00\x01\x00\x00"))
     assert active.get("active") is True
     rec, _ = c64_codec.write(active)
     assert not rec.get("roster_in_use") & 0x80
 
-    inactive = dos.to_neutral(_dos_record(b"\x00\x00\x00\x00"))
+    inactive = dos_codec.to_neutral(_dos_record(b"\x00\x00\x00\x00"))
     assert inactive.get("active") is False
     rec, _ = c64_codec.write(inactive)
     assert rec.get("roster_in_use") & 0x80
@@ -364,14 +364,14 @@ def test_the_five_bytes_at_0x083_still_reach_nothing_in_the_c64_record():
     the status byte have to convert to different ones, which is what says
     this test is comparing something that can move.
     """
-    one, _ = c64_codec.write(dos.to_neutral(
+    one, _ = c64_codec.write(dos_codec.to_neutral(
         _dos_record(constant=b"\x00\x00\x01\x00\x00")))
-    two, _ = c64_codec.write(dos.to_neutral(
+    two, _ = c64_codec.write(dos_codec.to_neutral(
         _dos_record(constant=b"\x11\x22\x33\x44\x55")))
     assert one.to_bytes() == two.to_bytes()
 
-    well, _ = c64_codec.write(dos.to_neutral(_dos_record(b"\x00\x01\x00\x00")))
-    hurt, _ = c64_codec.write(dos.to_neutral(_dos_record(b"\x04\x00\x00\x00")))
+    well, _ = c64_codec.write(dos_codec.to_neutral(_dos_record(b"\x00\x01\x00\x00")))
+    hurt, _ = c64_codec.write(dos_codec.to_neutral(_dos_record(b"\x04\x00\x00\x00")))
     assert well.to_bytes() != hurt.to_bytes()
 
 
@@ -391,8 +391,8 @@ def test_a_c64_companions_control_byte_crosses_to_dos():
     char = c64_codec.read(rec, game="pool-of-radiance")
     assert char.get("npc") is True
     assert char.get("npc_control_byte") == 0xB2
-    out, _itm, _spc, _rep = dos.write(char)
-    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    out, _itm, _spc, _rep = dos_codec.write(char)
+    f = dos_port.FIELDS_BY_NAME["field_83_87"]
     assert out[f.offset + 1] == 0xB2
 
 
@@ -408,15 +408,15 @@ def test_a_c64_trainer_bit_does_not_reach_dos_as_a_control_byte():
     rec.set("flags_0b8", 0x01)
     char = c64_codec.read(rec, game="pool-of-radiance")
     assert char.get("npc") is False
-    out, _itm, _spc, _rep = dos.write(char)
-    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    out, _itm, _spc, _rep = dos_codec.write(char)
+    f = dos_port.FIELDS_BY_NAME["field_83_87"]
     assert out[f.offset + 1] == 0x00
 
 
 def test_a_dos_companions_control_byte_crosses_to_the_c64():
     """The other direction: a companion's control byte, read out of DOS's
     `field_83_87`, crosses to the C64's `0x0B8` unchanged."""
-    char = dos.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
+    char = dos_codec.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
     assert char.get("npc") is True
     assert char.get("npc_control_byte") == 0xB2
     rec, _ = c64_codec.write(char)
@@ -427,15 +427,15 @@ def test_npc_is_off_the_dos_writers_drop_list():
     """Before #303 gave it a home, `npc` was on `dos.WRITE_DROPPED`
     unconditionally -- a C64 companion converted to DOS arrived an ordinary
     player character with no line saying so."""
-    assert "npc" not in dict(dos.WRITE_DROPPED)
+    assert "npc" not in dict(dos_codec.WRITE_DROPPED)
 
 
 def test_a_dos_source_supplies_npc_rather_than_dropping_it_in_silence():
     """Before #303, `field_83_87` sat on `dos.CONSTANTS`, silent, and
     `to_neutral` never set neutral `npc` at all -- a DOS companion imported
     with nothing said about it anywhere, on either side of the pane."""
-    plain = dos.to_neutral(_dos_record(constant=b"\x00\x00\x01\x00\x00"))
-    companion = dos.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
+    plain = dos_codec.to_neutral(_dos_record(constant=b"\x00\x00\x01\x00\x00"))
+    companion = dos_codec.to_neutral(_dos_record(constant=b"\x00\xB2\x01\x00\x00"))
     assert plain.get("npc") is False
     assert companion.get("npc") is True
 
@@ -458,7 +458,7 @@ def test_no_c64_status_drop_line_carries_developer_detail():
 
     for number in (1, 2):
         _, rep = c64_codec.write(
-            dos.to_neutral(_dos_record(bytes([number, 1, 0, 0]))))
+            dos_codec.to_neutral(_dos_record(bytes([number, 1, 0, 0]))))
         for line in rep.dropped:
             assert not bare_issue.search(line), line
 
@@ -510,7 +510,7 @@ def test_the_byte_the_engine_wrote_reads_as_unconscious_and_out_of_play():
     assert out.get("status") == "unconscious"
     assert out.get("active") is False
     # And the DOS numbers a conversion of him would write.
-    rec, _, _, _ = dos.write(out)
+    rec, _, _, _ = dos_codec.write(out)
     assert bytes(rec[TAIL.offset:TAIL.offset + 2]) == b"\x04\x00"
 
 
@@ -533,7 +533,7 @@ def test_the_dos_reader_grades_the_two_bytes_above_the_field_they_sit_in():
     evidence, independent of whatever `field_10c_10f`'s own grade is (now
     CONFIRMED too, since all four bytes are understood -- #235,
     docs/169-dos-combat-side.md)."""
-    out = dos.to_neutral(_dos_record(b"\x04\x00\x00\x00"))
+    out = dos_codec.to_neutral(_dos_record(b"\x04\x00\x00\x00"))
     assert out.value("status").confidence is Confidence.CONFIRMED
     assert out.value("active").confidence is Confidence.CONFIRMED
 
@@ -608,7 +608,7 @@ def test_a_dead_quick_fought_character_reads_and_converts_correctly_through_slot
     assert out.get("hostile") is True
     assert out.get("quickfight") is True
 
-    rec, _, _, _ = dos.write(out)
+    rec, _, _, _ = dos_codec.write(out)
     assert rec[TAIL.offset] == 6           # DOS's own number for Dead
     assert rec[TAIL.offset + 1] == 0       # not active
 
@@ -630,8 +630,8 @@ def test_a_companion_with_no_morale_at_all_still_arrives_a_companion():
     char = c64_codec.read(rec, game="pool-of-radiance")
     assert char.get("npc") is True
     assert char.get("npc_control_byte") == 0x80
-    out, _itm, _spc, _rep = dos.write(char)
-    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    out, _itm, _spc, _rep = dos_codec.write(char)
+    f = dos_port.FIELDS_BY_NAME["field_83_87"]
     assert out[f.offset + 1] == 0x80
 
 
@@ -643,8 +643,8 @@ def test_a_companion_at_the_top_of_the_byte_crosses_whole():
     char = c64_codec.read(rec, game="pool-of-radiance")
     assert char.get("npc") is True
     assert char.get("npc_control_byte") == 0xFF
-    out, _itm, _spc, _rep = dos.write(char)
-    f = dos_layout.FIELDS_BY_NAME["field_83_87"]
+    out, _itm, _spc, _rep = dos_codec.write(char)
+    f = dos_port.FIELDS_BY_NAME["field_83_87"]
     assert out[f.offset + 1] == 0xFF
 
 
@@ -665,10 +665,10 @@ def test_the_control_byte_lands_at_each_titles_own_index(key, size, index):
     rec = CharacterRecord.blank()
     rec.set("flags_0b8", 0xB2)
     char = c64_codec.read(rec, game="pool-of-radiance")
-    out, _itm, _spc, _rep = dos.write(char, deltas=key)
-    f = dos.FIELDS_BY_NAME_FOR[key]["field_83_87"]
+    out, _itm, _spc, _rep = dos_codec.write(char, deltas=key)
+    f = dos_codec.FIELDS_BY_NAME_FOR[key]["field_83_87"]
     assert f.size == size
     assert out[f.offset + index] == 0xB2
     rest = [out[f.offset + i] for i in range(f.size) if i != index]
-    assert rest == list(dos.FIELD_83_87[size][:index]
-                        + dos.FIELD_83_87[size][index + 1:])
+    assert rest == list(dos_codec.FIELD_83_87[size][:index]
+                        + dos_codec.FIELD_83_87[size][index + 1:])

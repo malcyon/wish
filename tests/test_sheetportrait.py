@@ -20,7 +20,7 @@ import functools
 
 import pytest
 
-from goldbox import games, portraits
+from goldbox import c64_port, portraits
 from tools import gamedisks, portraitdraw
 
 #: Loader slots 13 and 14 are `BODY<xx>` and `HEAD<xx>`
@@ -60,10 +60,10 @@ def _library_asks(key: str):
 
 # -- the fact, as the conversion will read it -------------------------------
 def test_pool_of_radiance_is_the_one_title_that_draws_a_sheet_portrait():
-    assert portraits.draws_sheet_portrait(games.POOL_OF_RADIANCE)
-    assert not portraits.draws_sheet_portrait(games.CURSE_OF_THE_AZURE_BONDS)
+    assert portraits.draws_sheet_portrait(c64_port.POOL_OF_RADIANCE)
+    assert not portraits.draws_sheet_portrait(c64_port.CURSE_OF_THE_AZURE_BONDS)
     assert not portraits.draws_sheet_portrait(
-        games.SECRET_OF_THE_SILVER_BLADES)
+        c64_port.SECRET_OF_THE_SILVER_BLADES)
 
 
 def test_the_predicate_takes_a_key_as_well_as_a_game():
