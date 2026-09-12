@@ -259,7 +259,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     Pool of Radiance is the only Amiga container this project reads a party
     out of, so `title` is always its own and `header` is read but empty of
     meaning -- Pool of Radiance's own `c64_save.Container.copied` is empty.
-    Generalises `goldbox.amiga.por_state_from_amiga`, which is now a
+    Generalises `goldbox.amiga_por.por_state_from_amiga`, which is now a
     one-line wrapper that checks the file length and nothing else -- it
     refused an outdoor save until 2026-09-07, when the two bytes one holds
     were measured and `#321 (An Amiga Pool of Radiance conversion refuses a
@@ -285,7 +285,7 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     DOS save)` -- holds 5 in that slot for the same area 26 this reads 0
     for.  So this takes the same substitution `_resolve_dos_place` does.
     """
-    from . import amiga_codec as _amiga
+    from . import amiga_por as _amiga
     from . import c64_port
     from . import dos_codec as _dos
 

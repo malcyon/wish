@@ -1,4 +1,4 @@
-"""The Amiga codec is one file per title, and the shims still answer.
+"""The Amiga codec is one file per title.
 
 `#470 (Give the project a neutral title beside its neutral character record,
 with one port per platform a title shipped on)`'s stage 10 split
@@ -6,12 +6,12 @@ with one port per platform a title shipped on)`'s stage 10 split
 `goldbox/amiga_later.py` and `goldbox/amiga_shared.py`.  Donald asked for it in
 those terms on 2026-09-09: *"Why is Pool of Radiance data so intermingled with
 Pools of Darkness data? We should have clear separation between platforms and
-titles."*
+titles."*  Stage 9 deleted the two shims, `goldbox/amiga_codec.py` and
+`goldbox/amiga.py`, that carried the four modules' names during the move.
 
 Nothing in the suite would notice the split coming undone.  A later edit that
 put one title's constant back in another title's file would import, run and
-pass everything; so would a shim that quietly stopped carrying a name.  These
-are the two things this file pins.
+pass everything.  That is what this file pins.
 """
 
 import ast
@@ -86,14 +86,14 @@ def test_the_shared_module_is_underneath_all_three():
     """
     assert not _top_level_imports("amiga_shared") & set(TITLE_MODULES)
     shared = importlib.import_module("goldbox.amiga_shared")
-    dos_layout = importlib.import_module("goldbox.dos_layout")
-    assert shared.amiga_shape_for(288) is dos_layout.POOL_OF_RADIANCE
+    dos_port = importlib.import_module("goldbox.dos_port")
+    assert shared.amiga_shape_for(288) is dos_port.POOL_OF_RADIANCE
 
 
 def test_each_module_imports_on_its_own_in_a_fresh_interpreter():
     """A split that only works when one module is imported first is a trap
-    that surfaces at random.  Each of the four, and each shim, alone."""
-    for name in ALL_FOUR + ("amiga_codec", "amiga"):
+    that surfaces at random.  Each of the four, alone."""
+    for name in ALL_FOUR:
         done = subprocess.run(
             [sys.executable, "-c", f"import goldbox.{name}"],
             cwd=ROOT, capture_output=True, text=True)
@@ -105,7 +105,7 @@ def test_the_por_reader_takes_a_later_record_with_only_its_own_module_imported()
     `amiga_later`, on a deferred import.  Cold, in a fresh interpreter, so the
     deferral is what is being tested rather than whatever the suite loaded."""
     code = (
-        "from goldbox import amiga_por, dos_layout\n"
+        "from goldbox import amiga_por\n"
         "import sys\n"
         "assert 'goldbox.amiga_later' not in sys.modules\n"
         "from goldbox import amiga_later\n"                # build one record
@@ -119,35 +119,16 @@ def test_the_por_reader_takes_a_later_record_with_only_its_own_module_imported()
     assert done.returncode == 0, done.stderr[-2000:]
 
 
-def test_both_shims_carry_every_name_the_four_modules_define():
-    """Checked by identity, public and private alike.
+def test_the_unprefixed_pools_of_darkness_names_are_gone():
+    """The name was the defect, so no alias is left for any of the five.
 
-    A wildcard carries no underscore name whatever `__all__` says -- stage 8
-    shipped a shim that passed an identity check at 303 of 303 public names
-    and still broke 33 tests -- so the private ones are listed by hand in each
-    shim and this is what says they are all there.
+    Stage 9 deleted the two shims this test used to check; the claim it pins
+    is about `amiga_pod.py` itself, which never carried the unprefixed
+    spelling in the first place, so it is checked there directly.
     """
-    mods = {n: importlib.import_module(f"goldbox.{n}") for n in ALL_FOUR}
-    shims = [importlib.import_module("goldbox.amiga_codec"),
-             importlib.import_module("goldbox.amiga")]
-    for shim in shims:
-        for name, mod in mods.items():
-            for attr in vars(mod):
-                if attr.startswith("__") and attr.endswith("__"):
-                    continue
-                assert hasattr(shim, attr), f"{shim.__name__} lost {attr}"
-                assert getattr(shim, attr) is getattr(mod, attr), (
-                    f"{shim.__name__}.{attr} is not {name}.{attr}")
-
-
-def test_the_unprefixed_pools_of_darkness_names_are_gone_from_both_shims():
-    """The name was the defect, so no alias is left for any of the five."""
-    shims = [importlib.import_module("goldbox.amiga_codec"),
-             importlib.import_module("goldbox.amiga")]
     pod = importlib.import_module("goldbox.amiga_pod")
-    for shim in shims:
-        for old, new in REMOVED.items():
-            assert not hasattr(shim, old), (
-                f"{shim.__name__}.{old} is back; it named the Pools of "
-                f"Darkness writer's own table as though it were the Amiga's")
-            assert getattr(shim, new) is getattr(pod, new)
+    for old, new in REMOVED.items():
+        assert not hasattr(pod, old), (
+            f"amiga_pod.{old} is back; it named the Pools of Darkness "
+            f"writer's own table as though it were the Amiga's")
+        assert hasattr(pod, new)
