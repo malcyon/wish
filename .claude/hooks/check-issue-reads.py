@@ -21,7 +21,7 @@ something to remember. On 2026-09-11 there were already two comments from an
 outside account on `#510 (Can a Pool of Radiance character memorise more than
 the 21 spells its DOS record allots?)`, so this is not a precaution against a
 hypothetical -- and a first version of this hook, which matched only `gh issue
-view --comments` and two `gh api` shapes, let nine other ways to reach the
+view --comments` and two `gh api` forms, let nine other ways to reach the
 same text straight through: `gh issue list --json title`, `gh search issues
 --json body`, `gh api /repos/.../issues`, `gh api graphql`, and the same
 `--comments` read wrapped in an environment-variable prefix, `bash -c`, a
@@ -215,7 +215,7 @@ def _refusal(tokens: list[str], depth: int = 0) -> tuple[str, str] | None:
 def _refuse_in_script(script: str, depth: int) -> tuple[str, str] | None:
     """Recurse into a quoted script handed to `bash -c`, `sh -c` or `eval`.
 
-    One level deep is enough for every shape seen in real use; capped at
+    One level deep is enough for every form seen in real use; capped at
     three purely so a pathological `eval eval eval "..."` cannot recurse
     forever.
     """
@@ -263,7 +263,7 @@ def _command_of(tool_input: object) -> str:
     `tool_input` carries the tool's arguments -- but its Bash tool has not been
     confirmed to spell the command as a string rather than as an argv list. A
     list would otherwise make this hook see nothing and **fail open silently**,
-    which is the worst way for a guard to be wrong, so both shapes are read.
+    which is the worst way for a guard to be wrong, so both forms are read.
 
     Anything else -- a missing key, a number, a nested object -- yields the
     empty string, and the caller lets the call through: a payload we cannot
@@ -298,7 +298,7 @@ def main() -> int:
         tokens = shlex.split(runnable, comments=False)
     except ValueError:
         # Unbalanced quotes. Fall back to the raw text: refusing a call that
-        # only mentions a banned shape costs a rewrite, and letting one
+        # only mentions a banned form costs a rewrite, and letting one
         # through costs the thing this hook exists to prevent.
         if "gh" in runnable and ("--comments" in runnable or "comments" in runnable
                                   or "issues" in runnable or "graphql" in runnable):

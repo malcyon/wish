@@ -21,7 +21,7 @@ def test_is_trusted_for_repository_owner():
 # route -- measured live against malcyon/wish on 2026-09-11, with a real
 # issue opened and commented on by the `wish-agent` App installation. The
 # first version of `is_trusted` recognised only the first of these, so it
-# trusted none of the shapes `gh` actually hands back.
+# trusted none of the spellings `gh` actually hands back.
 
 
 def test_is_trusted_for_the_bots_rest_api_spelling():

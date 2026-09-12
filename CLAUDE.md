@@ -28,6 +28,7 @@ agent's work will not itself touch a file that loads it.
 | **elide** | truncate, shorten, cut off with an ellipsis |
 | **obviate** | it cannot happen any more, the fix is no longer needed |
 | **retarget** | move the party to where it actually was, point the save at the right map |
+| **shape**, for anything but a fix or a piece of work -- "the payload shape", "the argv shape", "Codex's schema is Claude Code's shape", "the same shape as the loophole" | say which one you mean: **structure**, **format**, **form**, **kind**, **design**. It reads as precise and is not, which is the whole reason this table exists. **Two senses survive**, because the rules already use them: `.claude/rules/issues.md`'s *"an issue carrying the shape of the fix stays true"*, and `.claude/rules/delegating.md`'s *"when the shape of the work is the hard part"*. Everything else is a substitute for a word that would have said more. Donald, 2026-09-11, after a test landed in the tree named `test_both_harnesses_payload_shapes`: *"Yes, ban the word shape."* |
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
 | **"bites"** -- a test, a bug, a case | say what happens: the test fails without the fix; the conversion drops a figure |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |

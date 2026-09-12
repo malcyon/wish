@@ -39,7 +39,7 @@ import re
 #:
 #: `is_trusted` strips those two wrappers before comparing, rather than
 #: listing every spelling -- the first version of this file listed only
-#: `wish-agent[bot]` and so trusted none of the three shapes `gh` actually
+#: `wish-agent[bot]` and so trusted none of the three spellings `gh` actually
 #: emits.
 _OWNER = "malcyon"
 _BOT = "wish-agent"
@@ -138,7 +138,7 @@ def flatten(text) -> str:
 
 
 def scrub_body(text) -> str:
-    """Make a trusted body or comment safe to paste into context, keeping its shape.
+    """Make a trusted body or comment safe to paste into context, keeping its lines.
 
     Every C0 control character except `\\n` becomes a space -- `\\t`
     included, so a tab does not survive any more than any other control

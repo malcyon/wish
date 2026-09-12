@@ -156,7 +156,7 @@ def test_a_malformed_payload_never_blocks(monkeypatch):
     ({}, 0),
     (None, 0),
 ])
-def test_both_harnesses_payload_shapes(tool_input, expected, monkeypatch):
+def test_both_harnesses_payload_formats(tool_input, expected, monkeypatch):
     """Codex sends the same two fields but may spell Bash's command as argv.
 
     An unread command makes the hook see nothing and fail open silently, which

@@ -3,7 +3,7 @@
 The hook is the enforcement half of `tools/issueread.py`: without it the
 filtered reader is a convention somebody has to remember, and
 `.claude/rules/sessions.md` tells every fresh session to run the unfiltered
-form. So what matters is both halves of the list -- that it refuses each shape
+form. So what matters is both halves of the list -- that it refuses each form
 that would print a comment body, and that it lets through the ordinary reads
 this project makes all day. A hook that refused `gh issue list` would be turned
 off within the hour, and then it would be guarding nothing.
@@ -91,7 +91,7 @@ ALLOWED = [
 
 #: A heredoc body is data being written to a file, and it is how this project
 #: writes every document and every issue body -- so its text quotes commands
-#: constantly. These are the shapes that were refused in real use.
+#: constantly. These are the forms that were refused in real use.
 HEREDOCS = [
     """cat > docs/x.md <<'EOF'
 Read an issue like this:
@@ -262,12 +262,12 @@ def test_the_hook_runs_under_the_system_interpreter():
     (None, 0),
     ("not a dict at all", 0),
 ])
-def test_both_harnesses_payload_shapes(tool_input, expected, monkeypatch):
+def test_both_harnesses_payload_formats(tool_input, expected, monkeypatch):
     """Codex sends `tool_name`/`tool_input` too, but may spell Bash's command
     as an argv list rather than a string.
 
     An unread command makes this hook see nothing and fail open **silently**,
-    which is the worst way for a guard to be wrong -- so both shapes are read,
+    which is the worst way for a guard to be wrong -- so both forms are read,
     and anything unreadable is let through rather than guessed at.
     """
     mod = _module()

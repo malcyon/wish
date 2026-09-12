@@ -219,7 +219,7 @@ OUTSIDE = "someuser"
 
 def _act(number, *, author="malcyon", labels=None,
          updated="2026-09-01T00:00:00Z", title=None):
-    """An issue shaped the way `outside_activity` reads them."""
+    """An issue in the form `outside_activity` reads."""
     issue = _issue(number, title or f"Title {number}",
                    author=author, labels=labels)
     issue["updatedAt"] = updated
