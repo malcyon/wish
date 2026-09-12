@@ -4,6 +4,7 @@ test replaces `wishagent._request`, the single function that would.
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -131,7 +132,7 @@ def test_missing_key_is_refused_naming_the_path(monkeypatch, tmp_path):
     monkeypatch.setenv("WISH_AGENT_KEY", str(path))
     monkeypatch.setenv("WISH_AGENT_APP_ID", "1")
 
-    with pytest.raises(wishagent.ConfigError, match=str(path)):
+    with pytest.raises(wishagent.ConfigError, match=re.escape(str(path))):
         wishagent.make_jwt()
 
 
@@ -302,7 +303,7 @@ def test_malformed_config_json_raises_config_error_naming_the_path(monkeypatch, 
     bad.write_text("{not valid json")
     monkeypatch.setattr(wishagent, "CONFIG_PATH", str(bad))
 
-    with pytest.raises(wishagent.ConfigError, match=str(bad)):
+    with pytest.raises(wishagent.ConfigError, match=re.escape(str(bad))):
         wishagent._config_json()
 
 
