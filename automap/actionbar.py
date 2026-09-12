@@ -406,7 +406,7 @@ class FastTravelBar(QObject):
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
         #: Which title this session is, as `AutomapState.title` spells it, and
-        #: the `goldbox.games.Game` that names for the settings key. **None is
+        #: the `goldbox.c64_port.Game` that names for the settings key. **None is
         #: Pool of Radiance**, which is what a row built without a window means
         #: and what every caller written before there was a second title meant.
         self.title = title

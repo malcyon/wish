@@ -206,7 +206,7 @@ class AutomapState:
     geo: Geo | None = None
     area: str | None = None
     #: Which game's map names to use. A plain string, deliberately: the
-    #: per-game descriptor lives in `goldbox/games.py` and this module only needs
+    #: per-game descriptor lives in `goldbox/c64_port.py` and this module only needs
     #: its title. An unrecognised one is not an error -- `area_label` falls
     #: back to "area 21" rather than naming a Pool of Radiance place.
     title: str | None = POOL_OF_RADIANCE

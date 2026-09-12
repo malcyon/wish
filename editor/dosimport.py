@@ -1,6 +1,6 @@
 """Turning a DOS save into a C64 one, with what happened on screen first.
 
-`goldbox/dos.py` does the conversion and this is the window over it. The one
+`goldbox/dos_codec.py` does the conversion and this is the window over it. The one
 thing this file exists for is the order of events: the conversion is
 **rehearsed** in memory, what it did to the player's own save is put on
 screen -- `C64SaveReport.messages`, a party that had not set out being
@@ -46,13 +46,13 @@ it is this project's own bookkeeping (a quest-flag byte count, a party's
 roster slots left empty), which fires on every conversion and is not a fact
 about anything the player owns.  `losses` is the hand-picked subset
 `write_c64_save` already knows is the player's own loss; see its docstring
-in `goldbox/dos.py` for which lines those are -- and `name_warnings` below
+in `goldbox/dos_codec.py` for which lines those are -- and `name_warnings` below
 for the one kind of those Donald ruled real.
 
 **There is no template any more** (#118). The dialog used to make the user
 pick an existing `.d64` to convert *onto*, and every byte the conversion did
 not explicitly set kept the value it had in somebody else's saved game -- a
-different party, in a different place, at a different time. `goldbox.dos`
+different party, in a different place, at a different time. `goldbox.dos_codec`
 now writes all 9216 bytes of both payloads and `D64.blank()` carries them, so
 what the user gets is theirs and nothing else's.
 
@@ -200,7 +200,7 @@ class GameFiles:
     #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
     animate: bytes
     #: The creation menu's two tables (#57) read off the player's own disks,
-    #: or `None` -- and `None` costs nobody a face: `goldbox.dos.to_neutral`
+    #: or `None` -- and `None` costs nobody a face: `goldbox.dos_codec.to_neutral`
     #: uses the stored menu for a title that draws one (Pool of Radiance),
     #: and Curse and Silver Blades draw none (#300).  So this is the one
     #: field here without which a conversion still goes ahead.
@@ -211,7 +211,7 @@ class GameFiles:
 class Conversion:
     """A converted save, held in memory. Nothing here has been written."""
 
-    #: A `.d64` built by `goldbox.dos.save_disk` and carrying nothing but the
+    #: A `.d64` built by `goldbox.dos_codec.save_disk` and carrying nothing but the
     #: two files this conversion wrote -- so `disk.to_bytes()` is what a save
     #: would write, and every byte of it is this party's.
     disk: Any
@@ -229,11 +229,11 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
     The DOS files are read, the game files in `files` were read before this
     was called, and the result exists only as the returned `Conversion`.
-    Anything `goldbox.dos.new_save` refuses raises from in here, which is what
+    Anything `goldbox.dos_codec.new_save` refuses raises from in here, which is what
     the dialog turns into a sentence.
 
     **The title comes from the save itself, not from an assumption.** A
-    character's own record length names its shape (`goldbox.dos.shape_for`),
+    character's own record length names its shape (`goldbox.dos_port.deltas_for`),
     so a Curse or Silver Blades folder converts into its own title rather than
     being written out as a Pool of Radiance save it never was (#192). A
     Curse save has no separate roster file -- its roster lives inside the one
@@ -244,7 +244,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     try:
         game = c64_port.by_key(party[0].shape.key)
     except c64_port.UnknownGameError:
-        # Pools of Darkness is the one title this reads and `goldbox/games.py`
+        # Pools of Darkness is the one title this reads and `goldbox/c64_port.py`
         # does not list, because there is no C64 port to convert it to. Before
         # the title came from the save, that folder ran on into `to_neutral`
         # and got Donald's own sentence for exactly this case (#176). Without
@@ -253,7 +253,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
         # told less than we know.
         raise dos_codec.WrongTitleError(
             f"{party[0].shape.title} has no C64 port to convert to, so "
-            f"goldbox/games.py has no entry for it (#176)",
+            f"goldbox/c64_port.py has no entry for it (#176)",
             party[0].shape.title) from None
     payload0, payload1, report = dos_codec.new_save(folder, slot,
                                               files.icon, files.animate,
@@ -274,7 +274,7 @@ def pane_text(report: dos_codec.Report) -> str:
     **Still called by `editor/convert.py`, for `report.dropped`'s own
     logging below, even though nothing there reads the string it returns
     any more.** Every field the conversion did not convert, in the words
-    `goldbox.dos.DROPPED_PLAYER_TEXT` gives each, is the accounting a route
+    `goldbox.dos_codec.DROPPED_PLAYER_TEXT` gives each, is the accounting a route
     is judged perfect or not by, and it stays that: a test reads it and
     every driven tool still prints it with `--report`. `editor/convert.py`'s
     dialog has never shown it to a player; `_log` carries it to
@@ -299,7 +299,7 @@ def pane_text(report: dos_codec.Report) -> str:
 
 #: The one substring of a `C64SaveReport.losses` line Donald ruled real,
 #: 2026-09-10: a name DOS's own fifteen-character field could not hold in
-#: full. `goldbox.dos.write`'s own words, kept verbatim rather than
+#: full. `goldbox.dos_codec.write`'s own words, kept verbatim rather than
 #: reworded here -- *"do not 'improve' either of the two warning
 #: strings"* governs this one too, even though it is the one that is shown.
 NAME_TRUNCATED_MARKER = "is longer than the DOS "
@@ -313,7 +313,7 @@ def name_warnings(report: dos_codec.Report) -> list[str]:
     than the destination title's own slots, a spell id outside the
     destination's own book -- is a bug (#508, #509) rather than a platform
     limit, so it is not returned here; `log_unshown_losses` below is where
-    it goes instead. Matched by substring because `goldbox.dos.write`
+    it goes instead. Matched by substring because `goldbox.dos_codec.write`
     appends all three kinds to the one list, `rep.warnings`, with no marker
     of which is which beyond the sentence itself, and that sentence is not
     this function's to reword (`.claude/rules/conversions.md`, 2026-09-10:

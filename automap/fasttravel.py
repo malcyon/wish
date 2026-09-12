@@ -75,10 +75,10 @@ class FastTravelAddresses:
     the ones a later title turned out not to have.
     """
 
-    #: `goldbox.games.Game.key`, so a row cannot be matched to the wrong title
+    #: `goldbox.c64_port.Game.key`, so a row cannot be matched to the wrong title
     #: by a display string.
     key: str
-    #: `goldbox.games.Game.title`, which is how `automap.actions.area_rows` and
+    #: `goldbox.c64_port.Game.title`, which is how `automap.actions.area_rows` and
     #: `goldbox/areas.py` spell a title. Kept here so the lookup takes either.
     title: str
 
@@ -280,7 +280,7 @@ _BY_TITLE: Mapping[str, FastTravelAddresses] = MappingProxyType(
 def addresses_for(game=None) -> FastTravelAddresses | None:
     """This title's fast-travel addresses, or None if nobody has read it.
 
-    Takes whatever the caller is holding: a `goldbox.games.Game`, a `Game.key`,
+    Takes whatever the caller is holding: a `goldbox.c64_port.Game`, a `Game.key`,
     a `Game.title` -- which is how `goldbox/areas.py` spells a title -- or
     None, which means Pool of Radiance the way it does everywhere else in the
     program.

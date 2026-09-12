@@ -1441,7 +1441,7 @@ class AmigaTarget:
         """Where the party is, from the engine's own bytes.
 
         `game` is accepted and ignored: `read_fix` passes it, and the C64
-        addresses in a `goldbox.games.Game` mean nothing on a 68000. What
+        addresses in a `goldbox.c64_port.Game` mean nothing on a 68000. What
         decides the addresses here is `self.layout`.
 
         Returns None when the reading cannot be true -- x or y outside the

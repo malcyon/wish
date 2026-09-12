@@ -10,15 +10,15 @@ whole, owing nothing to another save -- `.claude/rules/conversions.md`'s
 rule against a template. Today that is:
 
 * DOS save folder → C64, one row per entry of `C64_PAIRED`, which is
-  `goldbox.dos.CONVERTS` cut to the titles with a C64 port to convert to --
+  `goldbox.dos_codec.CONVERTS` cut to the titles with a C64 port to convert to --
   Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades
-  (`goldbox.dos.new_save`; Pool of Radiance proven in VICE by
+  (`goldbox.dos_codec.new_save`; Pool of Radiance proven in VICE by
   `#119 (Play a converted DOS save in VICE, off a disk Wish built from
   nothing)`, Curse of the Azure Bonds by `#192 (Convert a Curse of the Azure
   Bonds DOS save into a C64 one, which the importer refuses today)`, Secret
   of the Silver Blades by `docs/175-silver-blades-save-conversion.md`);
 * C64 `.D64` → DOS save folder, one row per entry of the same `C64_PAIRED` --
-  the same three titles (`goldbox.dos.new_dos_save`; Pool of Radiance proven
+  the same three titles (`goldbox.dos_codec.new_dos_save`; Pool of Radiance proven
   in DOSBox by `tools/dosnewsave.py` under `#26 (Write a DOS save, not just
   read one)`, Curse of the Azure Bonds and Secret of the Silver Blades by
   `#299 (goldbox.dos.write builds only Pool of Radiance's record, so nothing
@@ -26,20 +26,20 @@ rule against a template. Today that is:
   registry was waiting on, and `#234 (A dual-classed Curse or Silver Blades
   character converted to DOS loses the class he trained out of)`, whose own
   dual-classed Curse character loaded from a save this direction writes);
-* Amiga `.adf` → C64, one row per entry of `goldbox.amiga.CONVERTS` -- Pool
-  of Radiance alone (`goldbox.amiga.read_por_slot` then
-  `goldbox.dos.new_save_from`, proven in VICE by
+* Amiga `.adf` → C64, one row per entry of `goldbox.amiga_shared.CONVERTS` -- Pool
+  of Radiance alone (`goldbox.amiga_por.read_por_slot` then
+  `goldbox.dos_codec.new_save_from`, proven in VICE by
   `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
   standing in the Slums on the Amiga arrives there in VICE)`);
 * Amiga `.adf` → DOS save folder, one row per entry of
-  `goldbox.amiga.CONVERTS` -- Pool of Radiance alone
-  (`goldbox.amiga.read_por_slot` then `goldbox.dos.new_dos_save_from`,
+  `goldbox.amiga_shared.CONVERTS` -- Pool of Radiance alone
+  (`goldbox.amiga_por.read_por_slot` then `goldbox.dos_codec.new_dos_save_from`,
   proven in DOSBox by
   `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing
   in the Slums on the Amiga arrives there under DOSBox)`);
 * C64 `.D64` → Amiga save disk, and DOS save folder → Amiga save disk, one
-  row each per entry of `goldbox.amiga.WRITES` -- Pool of Radiance alone
-  (`goldbox.amiga.new_por_savegame` and `goldbox.amiga.make_por_save_disk`,
+  row each per entry of `goldbox.amiga_shared.WRITES` -- Pool of Radiance alone
+  (`goldbox.amiga_por.new_por_savegame` and `goldbox.amiga_por.make_por_save_disk`,
   which build the whole `POOLSAVE.ADF` from the source save with no
   template, proven in two WinUAE runs by
   `#316 (Write the Amiga Pool of Radiance saved game from the source save,
@@ -49,8 +49,8 @@ rule against a template. Today that is:
   to.
 
 **This registry derives every row from a library tuple rather than listing
-them, which is the point:** DOS → C64 from `goldbox.dos.CONVERTS`, C64 → DOS
-from `goldbox.dos.WRITES`, both Amiga rows from `goldbox.amiga.CONVERTS`; a
+them, which is the point:** DOS → C64 from `goldbox.dos_codec.CONVERTS`, C64 → DOS
+from `goldbox.dos_codec.WRITES`, both Amiga rows from `goldbox.amiga_shared.CONVERTS`; a
 title joins one of those tuples when its writer exists, and it appears here
 with no edit to this module. `DOS_TO_C64_NAMES` below is the one thing
 `CONVERTS` does not carry -- the `.D64` file name each title's DOS → C64
@@ -145,8 +145,8 @@ def _same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
 class Source:
     """One save, read off a path -- never off what a window happens to hold.
 
-    `title` is a `goldbox.games.Game` for a C64 source or a
-    `goldbox.dos_layout.DosShape` for a DOS or an Amiga one; both carry
+    `title` is a `goldbox.c64_port.Game` for a C64 source or a
+    `goldbox.dos_port.DosDeltas` for a DOS or an Amiga one; both carry
     `.key`, which is what `Direction.source_key` matches against.
     `save0`/`save1`/`disk` are set only for a C64 source -- a DOS source is a
     folder and an Amiga source is an `.adf`, each read fresh by whichever
@@ -236,7 +236,7 @@ class Source:
         Step 1 tests) takes the first one `_dos_slots` finds, and a
         `SAVGAM<slot>.DAT`/`.PTY` file picked directly -- the dialog's own
         save picker -- names its own. Either way the title comes off
-        `CHRDAT<slot>1.SAV`'s own size (`goldbox.dos_layout.shape_for`),
+        `CHRDAT<slot>1.SAV`'s own size (`goldbox.dos_port.deltas_for`),
         never assumed.
         """
         record = folder / f"CHRDAT{slot}1.SAV"
@@ -263,7 +263,7 @@ class Source:
         a sentence about a C64 disk over a floppy that is plainly an Amiga
         one.
 
-        `goldbox.amiga.por_slots_present` asks which slots have files rather
+        `goldbox.amiga_por.por_slots_present` asks which slots have files rather
         than which the game's own picker offers, since a slot the picker
         lists and the disk has lost the files for is not one this can
         convert. Every slot it finds is kept as `available_slots`, which is
@@ -278,7 +278,7 @@ class Source:
         caller other than the dialog hands in a stale letter.
 
         The title comes off the chosen slot's own character record length
-        (`goldbox.amiga.amiga_shape_for`), never assumed -- so an Amiga
+        (`goldbox.amiga_shared.amiga_shape_for`), never assumed -- so an Amiga
         Curse or Silver Blades disk is detected as itself and simply has no
         registered destination yet, rather than being read as a Pool of
         Radiance save it never was.
@@ -333,7 +333,7 @@ AMIGA_SUFFIX = ".adf"
 def _dos_slots(folder: pathlib.Path) -> list[str]:
     """Slot letters present, from either save-container suffix.
 
-    `goldbox.dos.slots_available` only globs `SAVGAM?.DAT`, which finds every
+    `goldbox.dos_codec.slots_available` only globs `SAVGAM?.DAT`, which finds every
     title but Pools of Darkness -- its container is `SAVGAM?.PTY`
     (`goldbox/dos_savegame.py`'s `SAVE_POOLS_OF_DARKNESS`). Detecting a
     folder as DOS does not depend on which title it is, so both suffixes are
@@ -365,8 +365,8 @@ class Rehearsal:
 class Direction:
     """One writable conversion, registered only when it needs no template.
 
-    `source_key` and `destination_game.key` are `goldbox.games.Game.key` or
-    `goldbox.dos_layout.DosShape.key`, whichever port they name -- the two
+    `source_key` and `destination_game.key` are `goldbox.c64_port.Game.key` or
+    `goldbox.dos_port.DosDeltas.key`, whichever port they name -- the two
     key spaces share the string `"pool-of-radiance"`, which is what lets
     `destinations_for` match a `Source` against a `Direction` without caring
     which module minted the key.
@@ -386,7 +386,7 @@ class Direction:
 
 
 class UnnamedConversionError(Exception):
-    """A `goldbox.dos.CONVERTS` entry with no row in `DOS_TO_C64_NAMES`.
+    """A `goldbox.dos_codec.CONVERTS` entry with no row in `DOS_TO_C64_NAMES`.
 
     Raised while `DIRECTIONS` is being built, at import time -- never while a
     player is looking at a pane. A title the library can write and this
@@ -396,7 +396,7 @@ class UnnamedConversionError(Exception):
 
 
 #: The `.D64` file name each DOS → C64 direction writes, keyed by
-#: `goldbox.dos_layout.DosShape.key`. The one thing `goldbox.dos.CONVERTS`
+#: `goldbox.dos_port.DosDeltas.key`. The one thing `goldbox.dos_codec.CONVERTS`
 #: does not carry, so it stays a table here rather than a property on the
 #: shape itself, which knows nothing about C64 file names.
 DOS_TO_C64_NAMES: dict[str, str] = {
@@ -411,7 +411,7 @@ DOS_TO_C64_NAMES: dict[str, str] = {
 
 class DosToC64(Direction):
     """A DOS save folder becomes a C64 `.d64`, for any title in
-    `goldbox.dos.CONVERTS` (#118, #119, #192).
+    `goldbox.dos_codec.CONVERTS` (#118, #119, #192).
 
     One instance per entry of `CONVERTS` -- see `DIRECTIONS` below -- so a
     title joining that tuple (`#193 (Convert a Secret of the Silver Blades
@@ -420,7 +420,7 @@ class DosToC64(Direction):
 
     `rehearse` is `editor.dosimport.rehearse` exactly as `File ▸ Import`
     calls it today -- the whole conversion happens in memory and reads the
-    title off the record itself (`goldbox.dos.shape_for`), not off `shape`
+    title off the record itself (`goldbox.dos_port.deltas_for`), not off `shape`
     here, so `write` only has to put the bytes it already built on disk.
     `shape` decides only which source this instance answers for and what
     the output is named.
@@ -437,7 +437,7 @@ class DosToC64(Direction):
             self._name = DOS_TO_C64_NAMES[deltas.key]
         except KeyError:
             raise UnnamedConversionError(
-                f"{deltas.title} is in goldbox.dos.CONVERTS but "
+                f"{deltas.title} is in goldbox.dos_codec.CONVERTS but "
                 f"editor.convert.DOS_TO_C64_NAMES names no .D64 file for "
                 f"it") from None
 
@@ -461,17 +461,17 @@ class DosToC64(Direction):
 
 class AmigaToC64(DosToC64):
     """An Amiga `.adf` becomes a C64 `.d64`, for any title in
-    `goldbox.amiga.CONVERTS` (#353).
+    `goldbox.amiga_shared.CONVERTS` (#353).
 
     You save on the Amiga standing in the Slums at 21:22 with half the
     quests done, and the party arrives in the Slums at 21:22 with the same
     quests done. The six characters have crossed since 2026-08-26
-    (`goldbox.amiga.to_neutral` then `goldbox.c64_codec.write`, 90 of 90
+    (`goldbox.amiga_por.to_neutral` then `goldbox.c64_codec.write`, 90 of 90
     sheet fields); what this adds is the game around them.
 
     **Everything but `rehearse` is `DosToC64`'s**, and deliberately: the
     destination is the same `.d64` written by the same engine
-    (`goldbox.dos.write_c64_save`) to the same file name, so `__init__`'s
+    (`goldbox.dos_codec.write_c64_save`) to the same file name, so `__init__`'s
     `DOS_TO_C64_NAMES` lookup and `write`'s put-the-bytes-down are one
     implementation rather than two that have to be kept saying the same
     thing. What differs is where the party and the place are read from, and
@@ -505,7 +505,7 @@ class AmigaToC64(DosToC64):
 class DosWriteRehearsal(Rehearsal):
     """What `C64ToDos.write` needs to run the conversion again.
 
-    `goldbox.dos.new_dos_save` writes real files, so the rehearsal itself
+    `goldbox.dos_codec.new_dos_save` writes real files, so the rehearsal itself
     runs into a scratch directory and `write` calls it a second time straight
     into the folder the player chose -- the same order `editor/exports.py`'s
     `DosPlan` already follows, and the reason `files` is measured from the
@@ -525,20 +525,20 @@ class DosWriteRehearsal(Rehearsal):
 
 class C64ToDos(Direction):
     """A C64 save becomes a DOS save folder, for any title in
-    `goldbox.dos.WRITES` (#26, #299, #234).
+    `goldbox.dos_codec.WRITES` (#26, #299, #234).
 
     One instance per entry of `WRITES` -- see `DIRECTIONS` below -- so a
-    title joining that tuple needs no edit to this class.  `goldbox.dos.
+    title joining that tuple needs no edit to this class.  `goldbox.dos_codec.
     new_dos_save` is the no-template call for every title alike; `title=`
     is what tells it which one, since Curse of the Azure Bonds and Secret
     of the Silver Blades write the same 7424-byte C64 payload and only the
-    title says which DOS container it becomes (`goldbox.dos.c64_title`).
+    title says which DOS container it becomes (`goldbox.dos_codec.c64_title`).
     `options` is the DOS game directory `ECL<n>.DAX` lives in -- mandatory,
     since a Curse party's own area script has to be staged or the game
     exits to DOS on load; Silver Blades stages none and Pool of Radiance's
     own area machinery is unchanged.
 
-    `icon_parts` is `goldbox.dos.new_dos_save`'s own argument -- the source
+    `icon_parts` is `goldbox.dos_codec.new_dos_save`'s own argument -- the source
     title's own `SPELLE64`/`SPELLN64`, read into a `goldbox.iconparts.
     IconParts` -- which turns each character's own combat icon into a DOS
     figure (`#320 (A C64 party converted to DOS arrives with no combat
@@ -592,25 +592,25 @@ def amiga_combat_icon(char: Any) -> Any:
 
     Any of the three Amiga Gold Box titles keeps `icon_head`, `icon_body`
     and the six `icon_colours` bytes at the same DOS offsets its own
-    `.get()` reads through -- `goldbox.amiga.AmigaPorCharacter` re-cuts a
-    Pool of Radiance record into the DOS one (`goldbox.amiga.to_dos_record`,
-    #354) and `goldbox.amiga.AmigaCharacter` reads a Curse or Silver Blades
+    `.get()` reads through -- `goldbox.amiga_por.AmigaPorCharacter` re-cuts a
+    Pool of Radiance record into the DOS one (`goldbox.amiga_por.to_dos_record`,
+    #354) and `goldbox.amiga_later.AmigaCharacter` reads a Curse or Silver Blades
     one through its own shift map (#396, docs/199-amiga-combat-icons.md) --
     so the figure a player drew on the Amiga is already the number DOS
     stores, in all three titles: nothing is recognised, composed or looked
-    up. `char` is duck-typed to either -- and to `goldbox.dos.DosCharacter`,
+    up. `char` is duck-typed to either -- and to `goldbox.dos_codec.DosCharacter`,
     which shares the same `.get()`.  What it is **not** is a neutral field:
-    `goldbox.dos.to_neutral` and `goldbox.amiga.to_neutral_later` both have
+    `goldbox.dos_codec.to_neutral` and `goldbox.amiga_later.to_neutral_later` both have
     nowhere to put it, since the C64 stores drawn cells rather than an
     index, so a party read into neutral records and written back out would
     arrive with six identical default figures.  That is `#130 (A converted
     DOS party arrives with six identical combat figures, not its own)` in
-    this direction, and this is what stops it: `goldbox.dos.write`'s own
+    this direction, and this is what stops it: `goldbox.dos_codec.write`'s own
     `icon` argument, which bypasses the neutral vocabulary for exactly this
-    reason, and which `goldbox.amiga.write_later` now takes as well.
+    reason, and which `goldbox.amiga_later.write_later` now takes as well.
 
     **`figure_source` and `colours_source` say so**, rather than the sentence
-    `goldbox.dos.write` used to build unconditionally around any `DosIcon`,
+    `goldbox.dos_codec.write` used to build unconditionally around any `DosIcon`,
     which claimed every figure was recognised off eighteen C64 screen codes
     -- true for `IconParts.dos_icon_from_c64`'s own `DosIcon` and false for
     this one. `#379 (The DOS writer's byte accounting says an Amiga party's
@@ -629,11 +629,11 @@ def amiga_combat_icon(char: Any) -> Any:
     figure_source = (
         "the Amiga source record's own combat icon, already stored as "
         "these DOS icon_head/icon_body numbers and copied across unchanged "
-        "(#354, #396, goldbox.amiga)")
+        "(#354, #396, the goldbox.amiga_* codecs)")
     colours_source = (
         "the Amiga source record's own combat icon colours, already "
         "stored as these DOS icon_colours pairs and copied across "
-        "unchanged (#354, #396, goldbox.amiga)")
+        "unchanged (#354, #396, the goldbox.amiga_* codecs)")
     # `.get()`, not `.raw()`: a `DosCharacter`'s two methods return the same
     # bytes for a RAW-kind field like `icon_colours`, but `AmigaCharacter`
     # (Curse and Silver Blades, #396) has no `.raw(name)` method -- its own
@@ -649,7 +649,7 @@ def amiga_combat_icon(char: Any) -> Any:
 class AmigaDosRehearsal(Rehearsal):
     """What `AmigaToDos.write` needs to run the conversion again.
 
-    `DosWriteRehearsal`'s sibling, and for the same reason: `goldbox.dos.
+    `DosWriteRehearsal`'s sibling, and for the same reason: `goldbox.dos_codec.
     new_dos_save_from` writes real files, so the rehearsal runs into a
     scratch directory and `write` runs it a second time into the folder the
     player chose.  What it carries is the place and the party rather than a
@@ -667,7 +667,7 @@ class AmigaDosRehearsal(Rehearsal):
 
 class AmigaToDos(C64ToDos):
     """An Amiga `.adf` becomes a DOS save folder, for any title in
-    `goldbox.amiga.CONVERTS` (#354).
+    `goldbox.amiga_shared.CONVERTS` (#354).
 
     You save on the Amiga standing in the Slums at 21:22 with half the
     quests done, and the party arrives in the Slums at 21:22 with the same
@@ -681,7 +681,7 @@ class AmigaToDos(C64ToDos):
     `c64_port.by_key` check that fails loudly at import time are one
     implementation rather than two.  What differs is where the party and
     the place are read from, which is `rehearse`, and that
-    `goldbox.dos.new_dos_save_from` takes them directly where
+    `goldbox.dos_codec.new_dos_save_from` takes them directly where
     `new_dos_save` reads them out of a C64 payload first.
 
     **Two slots, and they are not the same letter.**  `slot` is the DOS
@@ -714,7 +714,7 @@ class AmigaToDos(C64ToDos):
         state = amiga_por.read_por_state(
             savgam, source=f"{source.path} slot {source.slot}")
         # The Amiga file order **is** the DOS file order (`docs/165-amiga-
-        # savegame.md`), so there is no reversal here; `goldbox.dos.
+        # savegame.md`), so there is no reversal here; `goldbox.dos_codec.
         # marching_slot` and `c64_party`'s own `reverse()` are the C64's
         # business and `#101`'s.
         characters = [dos_codec.to_neutral(c) for c in party]
@@ -768,7 +768,7 @@ class AmigaWriteRehearsal(Rehearsal):
     """What either Amiga-destination direction needs to write again.
 
     Unlike `DosWriteRehearsal` and `AmigaDosRehearsal`, `write` does not run
-    the conversion a second time: `goldbox.amiga.make_por_save_disk` writes
+    the conversion a second time: `goldbox.amiga_por.make_por_save_disk` writes
     into an in-memory `AmigaDisk` rather than onto a filesystem, so `files`
     already holds the exact bytes a second run would produce and `write`
     only has to put them down.
@@ -789,9 +789,9 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
 
     `report.dropped` is the union of each character's own reader-side drops
     -- a C64 record's combat-icon screen codes, a DOS record's field with no
-    Amiga home -- and `goldbox.amiga.write_por`'s own drops for the same
+    Amiga home -- and `goldbox.amiga_por.write_por`'s own drops for the same
     character, which is what `write_por`'s report already carries by way of
-    `goldbox.dos.write`'s own use of `neutral.Writer.finish` (`goldbox/neutral.py`).
+    `goldbox.dos_codec.write`'s own use of `neutral.Writer.finish` (`goldbox/neutral.py`).
     `report.warnings` gets the same, plus `PorSaveReport.converted` -- the
     place, the clock and the quest-flag count `tools/toamigapor.py` already
     prints -- so a player reading the pane sees where the party has arrived.
@@ -835,7 +835,7 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
 
 class C64ToAmiga(Direction):
     """A C64 save becomes an Amiga save disk, for any title in
-    `goldbox.amiga.WRITES` (#316, #36).
+    `goldbox.amiga_shared.WRITES` (#316, #36).
 
     One instance per entry of `WRITES` -- see `DIRECTIONS` below -- so a
     title joining that tuple needs no edit to this class. `options` is the
@@ -845,7 +845,7 @@ class C64ToAmiga(Direction):
     slot `A` -- the same rule `C64ToDos.rehearse` follows for a fresh DOS
     folder.
 
-    `icon_parts` is `goldbox.dos.c64_party`'s own argument -- the source
+    `icon_parts` is `goldbox.dos_codec.c64_party`'s own argument -- the source
     title's own `SPELLE64`/`SPELLN64`, read into a `goldbox.iconparts.
     IconParts` -- which turns each character's own C64 combat icon into an
     Amiga figure, mirroring `C64ToDos`'s own parameter (#422 (A C64 party
@@ -890,7 +890,7 @@ class C64ToAmiga(Direction):
 
 class DosToAmiga(Direction):
     """A DOS save becomes an Amiga save disk, for any title in
-    `goldbox.amiga.WRITES` (#316, #36).
+    `goldbox.amiga_shared.WRITES` (#316, #36).
 
     One instance per entry of `WRITES` -- see `DIRECTIONS` below. `options`
     is the path to the player's own Amiga disk 2, exactly as `C64ToAmiga`
@@ -926,7 +926,7 @@ class DosToAmiga(Direction):
         ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
         raw_party = dos_codec.read_party(source.path, letter)
         party = [dos_codec.to_neutral(c) for c in raw_party]
-        # `amiga_combat_icon` is duck-typed to `goldbox.dos.DosCharacter`
+        # `amiga_combat_icon` is duck-typed to `goldbox.dos_codec.DosCharacter`
         # too (its own docstring) and reads the icon straight off the raw
         # record, before `dos_codec.to_neutral` discards it -- the same shape
         # `AmigaToDos.rehearse` already uses for an Amiga source (#424,
@@ -951,8 +951,8 @@ class DosToAmiga(Direction):
 #: -- today Pool of Radiance, Curse of the Azure Bonds and Secret of the
 #: Silver Blades, both ways -- one
 #: Amiga → C64 row and one Amiga → DOS row per entry of
-#: `goldbox.amiga.CONVERTS`, and one C64 → Amiga row and one DOS → Amiga row
-#: per entry of `goldbox.amiga.WRITES` -- Pool of Radiance alone for every
+#: `goldbox.amiga_shared.CONVERTS`, and one C64 → Amiga row and one DOS → Amiga row
+#: per entry of `goldbox.amiga_shared.WRITES` -- Pool of Radiance alone for every
 #: Amiga tuple. See the module docstring for what would extend this and the
 #: issues it waits on.
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
@@ -960,10 +960,10 @@ class DosToAmiga(Direction):
 #: the same for `WRITES` and a title with no C64 game at all.
 #: The DOS shapes with a C64 port on the other side.
 #:
-#: **`goldbox.dos.CONVERTS` stopped being that list on 2026-09-08**, when
+#: **`goldbox.dos_codec.CONVERTS` stopped being that list on 2026-09-08**, when
 #: Pools of Darkness joined it (`#194 (Import and export a Pools of Darkness
 #: save between DOS and the Amiga)`).  That tuple says which DOS records
-#: `goldbox.dos.to_neutral` will read, and its newest entry is there for its
+#: `goldbox.dos_codec.to_neutral` will read, and its newest entry is there for its
 #: **Amiga** pairing: the title never shipped on the C64, so a DOS-to-C64 row
 #: has no destination and a C64-to-DOS row has no source.
 #:
@@ -1129,7 +1129,7 @@ def fresh_folder(destination: str | pathlib.Path,
 #:
 #: So this flag now waits on decoding rather than on wiring, and the distance
 #: is not small. Today: `goldbox.c64_codec` drops **2** of its 75 fields and
-#: `goldbox.dos` drops **2** of 77, so DOS to C64 both ways is close -- and
+#: `goldbox.dos_codec` drops **2** of 77, so DOS to C64 both ways is close -- and
 #: `goldbox.amiga_later.LATER_DROPPED` is **14**, fields with no established
 #: home in that record rather than fields somebody forgot to wire.
 #:
@@ -1141,7 +1141,7 @@ def fresh_folder(destination: str | pathlib.Path,
 #: port per platform a title shipped on)`'s stage 10 split the Amiga codec by
 #: title. No registered direction reaches it: there is no Pools of Darkness
 #: direction at all. What the **Pool of Radiance** writer reports is
-#: `goldbox.dos.WRITE_DROPPED`, **2**, because `write_por` copies the DOS
+#: `goldbox.dos_codec.WRITE_DROPPED`, **2**, because `write_por` copies the DOS
 #: writer's report verbatim -- which is its own defect, since a drop list is a
 #: claim about what the *destination* cannot hold, and is how the sheet
 #: portrait's loss hid behind a DOS reason.
@@ -1288,7 +1288,7 @@ DISK_FILTER = "Amiga disks (*.adf *.ADF);;All files (*)"
 #: `destinations_for` never offers two directions of the same port for one
 #: source (`.claude/rules/conversions.md`: a conversion never crosses a
 #: title). Approved 2026-09-05; `"amiga"` approved 2026-09-07 on `#316`'s
-#: mock-up, once `goldbox.amiga.WRITES` gave it something to build
+#: mock-up, once `goldbox.amiga_shared.WRITES` gave it something to build
 #: (`#36`'s comment of 2026-09-07).
 DESTINATION_LABELS: dict[str, str] = {
     "c64": "Commodore 64",
@@ -1316,7 +1316,7 @@ NO_DISK = "Choose Amiga game disk 2."
 #: he had touched anything past the source row. Silent since `#52`'s fix of
 #: 2026-09-10, for the same reason as `NO_GAME_FOLDER` above.
 NO_FOLDER = "Choose where to write."
-#: `goldbox.dos.CANNOT_CONVERT`, approved under `#195 (The import pane shows
+#: `goldbox.dos_codec.CANNOT_CONVERT`, approved under `#195 (The import pane shows
 #: a player a memory address when the conversion refuses for any reason but
 #: the wrong title)` on 2026-09-02 -- reused rather than a second sentence
 #: meaning the same thing, for a source with no registered destination, for

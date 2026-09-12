@@ -123,7 +123,7 @@ class _NoClassCode(int):
     show it, tells the two apart.
 
     `label` carries what the record's own classes actually are, already
-    named from `class_bits` by `goldbox.games.classes_to_names` -- the save
+    named from `class_bits` by `goldbox.titles.classes_to_names` -- the save
     is correct and holds two classes; the stored byte is merely not one of
     them, so `_select` shows the classes rather than the byte.
     """
@@ -182,7 +182,7 @@ def _char_class_shown(raw, record, game):
     stores 6, THIEF's code; MARK, cleric 6/paladin 5, stores 5, MAGIC-USER's.
     The mask itself is never in doubt, so the `_NoClassCode` carries both
     classes' names, read the same way the C64's own sheet draws them --
-    `goldbox.games.classes_to_names` off `class_bits`, joined "/" -- rather
+    `goldbox.titles.classes_to_names` off `class_bits`, joined "/" -- rather
     than the byte, which was never a class code for this character.
 
     **Gated on `goldbox.c64_codec.record_shape(game).class_code_repairable`,
@@ -1169,7 +1169,7 @@ class EditorBinding(QObject):
         directory, through `goldbox.portraits.tables_from_disks`. Unlike the
         icon and `ANIMATE00`, a conversion needs no disk for them: a
         directory with no side carrying `GEN` leaves `portraits` `None`, and
-        `goldbox.dos.to_neutral` falls back to the stored menu -- twenty-six
+        `goldbox.dos_codec.to_neutral` falls back to the stored menu -- twenty-six
         numbers read out of `GEN` once and committed, so every character
         still arrives with his own face. Reading the player's own disks is
         kept because it is the check that the stored numbers are still

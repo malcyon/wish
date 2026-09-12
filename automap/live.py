@@ -9,7 +9,7 @@ Radiance those are:
 
 **and in no other title.** Curse and Silver Blades load the save at `$4B00` and
 keep the roster inside it at `$6700`, which is one read rather than two. Every
-address here therefore comes from the `goldbox.games.Game` descriptor -- see
+address here therefore comes from the `goldbox.c64_port.Game` descriptor -- see
 `memory_blocks` -- and not from a constant, so a new title costs a table row.
 `automap/actions.py` reads through the same `read_blocks`, so the write side
 cannot come to disagree with the read side about where a title lives.
@@ -198,7 +198,7 @@ BADGE_TABLES: dict[str, tuple[tuple[str, tuple[int, ...]], ...]] = {
 def condition_badges(game=None) -> tuple[tuple[str, tuple[int, ...]], ...]:
     """The badge groups for a title, or Pool of Radiance's.
 
-    Takes a `goldbox.games.Game`, a game key, or None -- duck-typed on `.key`
+    Takes a `goldbox.c64_port.Game`, a game key, or None -- duck-typed on `.key`
     the way `goldbox/traits.py:for_game` is, so a caller holding a
     `levels.LevelTables` or nothing at all still gets an answer.
     """

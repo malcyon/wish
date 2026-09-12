@@ -12,7 +12,7 @@ character record. They live nowhere else in a save.
 Which title a disk belongs to is detected from its directory and kept as
 `Party.game`; no filename is spelled out here any more. Pool of Radiance writes
 `SAVEDGAME0` plus `SAVEDGAME1`, Curse of the Azure Bonds writes `SAVEAZURE`
-alone, and `goldbox/games.py` is the only place that knows the difference.
+alone, and `goldbox/c64_port.py` is the only place that knows the difference.
 """
 
 from __future__ import annotations

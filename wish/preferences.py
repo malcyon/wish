@@ -166,14 +166,14 @@ def _pretty(glob: str) -> str:
 
 
 #: The titles a per-title disk folder can be set for today (#22). Every one
-#: of these carries a real Commodore 64 `disk_glob` in `goldbox.games.GAMES`,
+#: of these carries a real Commodore 64 `disk_glob` in `goldbox.c64_port.GAMES`,
 #: which is what this search machinery needs. Champions of Krynn, Death
 #: Knights of Krynn and Gateway to the Savage Frontier are left off by
 #: Donald's own ruling on #22 (2026-09-04): a row here is a promise that the
 #: title works, and this project does not support those yet.
 #:
 #: **Pools of Darkness is left off for a different reason.** It has no entry
-#: in `goldbox.games.GAMES` at all, and it never shipped on the Commodore 64
+#: in `goldbox.c64_port.GAMES` at all, and it never shipped on the Commodore 64
 #: this whole module searches for -- DOS and the Amiga are its only two ports
 #: (`#194`). There is no `disk_glob` a folder for it could search against, and
 #: inventing one would be exactly the fabricated data `.claude/rules/

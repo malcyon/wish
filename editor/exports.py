@@ -17,7 +17,7 @@ write, and the only files it removes at all are the ones the destination
 format makes it responsible for -- for DOS, the eighteen `CHRDAT<slot><n>`
 names the engine loads the party from, which is #68: convert a party of six
 into a folder, convert a party of one into the same folder, and DOS reads back
-one character and five strangers. `goldbox.dos.write_dos_save` clears the slot
+one character and five strangers. `goldbox.dos_codec.write_dos_save` clears the slot
 itself; this file's job is to say so first.
 
 The rehearsal is a real conversion into a scratch directory that is thrown
@@ -124,7 +124,7 @@ WRITES_HEADING = "This writes:"
 REPLACES_HEADING = "It replaces these, already there:"
 REMOVES_HEADING = "It removes these, left by an earlier export:"
 
-#: Defensive: `goldbox.amiga.export_party` disambiguates a repeated eight-character
+#: Defensive: `goldbox.amiga_pod.export_party` disambiguates a repeated eight-character
 #: stem itself since #79, so this should never fire from that caller any more.
 #: Kept because `_amiga_losses` takes any `(path, Report)` list, not only
 #: `export_party`'s, and a character that does not arrive would be worse
@@ -147,8 +147,8 @@ FAILED_TITLE = "Cannot export"
 #: be a sentence in the interface.
 #:
 #: What the flag was holding back was never the conversion.
-#: `goldbox.dos.write_dos_save` is proven in the emulator and
-#: `goldbox.amiga.export_party` is what `tools/toamiga.py` has been
+#: `goldbox.dos_codec.write_dos_save` is proven in the emulator and
+#: `goldbox.amiga_pod.export_party` is what `tools/toamiga.py` has been
 #: driving.
 #:
 #: **This paragraph used to say every word above was an agent's
@@ -197,9 +197,9 @@ FAILED_TITLE = "Cannot export"
 #: The **conversion** underneath is not going anywhere -- but it is not
 #: literally this file's writers that Convert calls, and an earlier
 #: version of this paragraph said it was. `C64ToDos.write` calls
-#: `goldbox.dos.new_dos_save`, where `DosExport.write` below calls
-#: `goldbox.dos.write_dos_save`, and nothing in `editor/convert.py`
-#: calls `goldbox.amiga.export_party` at all.
+#: `goldbox.dos_codec.new_dos_save`, where `DosExport.write` below calls
+#: `goldbox.dos_codec.write_dos_save`, and nothing in `editor/convert.py`
+#: calls `goldbox.amiga_pod.export_party` at all.
 #:
 #: **The difference is the destination, and it is why this file needs a
 #: remove list and Convert does not.** `write_dos_save` clears the slot
@@ -261,7 +261,7 @@ class Source:
         """The open party, with whatever `_write_back` has pushed into it."""
         # A roster disk has characters and no saved game, and neither
         # direction can export one: the DOS writer converts the
-        # `SAVEDGAME0`/`SAVEDGAME1` payloads and `goldbox.amiga.export_party`
+        # `SAVEDGAME0`/`SAVEDGAME1` payloads and `goldbox.amiga_pod.export_party`
         # opens the disk with `load_save`. It gets the same sentence, which is
         # close enough to true and is one fewer string for Donald to rule on.
         if party is None or party.save0 is None:
@@ -349,7 +349,7 @@ def _block(heading: str, lines) -> str:
 
 
 class DosPlan(Plan):
-    """C64 to a DOS save directory, through `goldbox.dos.write_dos_save`."""
+    """C64 to a DOS save directory, through `goldbox.dos_codec.write_dos_save`."""
 
     def __init__(self, source, destination, template, slot, game_dir=None):
         # Before the rehearsal, which reads it: `Plan.__init__` runs last
@@ -413,7 +413,7 @@ def _amiga_losses(written) -> str:
     """One `.pc` file's losses per line, its name in front.
 
     Six characters have six reports and the pane has to say which is which;
-    the lines themselves are `goldbox/amiga.py`'s, so a report shown in a menu and
+    the lines themselves are `goldbox/amiga_pod.py`'s, so a report shown in a menu and
     a report printed by `tools/toamiga.py` cannot become two accounts of the
     same conversion.
 
@@ -438,7 +438,7 @@ def _amiga_losses(written) -> str:
 
 
 def _dos_slot_names(slot: str) -> list[str]:
-    """The eighteen names `goldbox.dos.write_dos_save` clears for a slot (#68).
+    """The eighteen names `goldbox.dos_codec.write_dos_save` clears for a slot (#68).
 
     Enumerated rather than globbed, and enumerated here as well as there so
     the pane can name them before the write rather than in the report after
@@ -548,7 +548,7 @@ class DosExportDialog(ExportDialog):
     attributed and is never written; the game folder is where `ECL<n>.DAX`
     lives, and without it a party standing somewhere the template's party does
     not keeps the template's square -- which the report says, in
-    `goldbox/dos.py`'s own words.
+    `goldbox/dos_codec.py`'s own words.
     """
 
     TITLE = DOS_TITLE

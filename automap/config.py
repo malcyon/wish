@@ -27,7 +27,7 @@ _log = logging.getLogger("wish.automap.config")
 #: **A Pool of Radiance fact**, which is why it is keyed like one below.
 DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
 
-#: `goldbox.games.Game.key` for the one title with an area table. Spelled out
+#: `goldbox.c64_port.Game.key` for the one title with an area table. Spelled out
 #: rather than imported: this module is the settings file and has no other
 #: business with the game descriptors.
 POOL_OF_RADIANCE = "pool-of-radiance"
@@ -44,7 +44,7 @@ DEFAULT_FAST_TRAVEL_BY_GAME: dict[str, tuple[int, ...]] = {
 def game_key(game=None) -> str:
     """The key to file a fast-travel choice under.
 
-    Takes a `goldbox.games.Game`, a key string, or None -- and None is Pool of
+    Takes a `goldbox.c64_port.Game`, a key string, or None -- and None is Pool of
     Radiance, because every choice made before this setting was keyed at all
     was Pool of Radiance's. A `Game.title` is **not** accepted: the file is
     keyed by the stable identifier, never by display text.
@@ -226,7 +226,7 @@ class Settings:
     # heights means nobody has dragged anything.
     editor_rows: list[int] | None = None
     # Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id, and
-    # **keyed by `goldbox.games.Game.key`** -- an area id means nothing without a
+    # **keyed by `goldbox.c64_port.Game.key`** -- an area id means nothing without a
     # title, and fasttraveling on Pool of Radiance's ids in another game's machine is
     # what issue #14 was.
     #

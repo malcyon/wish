@@ -113,7 +113,7 @@ UNKNOWN = "unknown"
 #: machine, and adding that title to the automapper would force this constant
 #: to 8 -- barely over the 6 bytes of port drift it has to reach, with the two
 #: bounds nearly meeting. It cannot reach a candidate set today because
-#: `goldbox.games` does not know the title, so nothing here is wrong yet, and
+#: `goldbox.c64_port` does not know the title, so nothing here is wrong yet, and
 #: the collision wants solving before the title arrives rather than after.
 #: Treasures of the Savage Frontier is the next nearest at 99, which is
 #: outside 64 and would not move this at all.

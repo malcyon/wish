@@ -58,7 +58,7 @@ def amiga_shape_for(size: int) -> "dos_port.DosDeltas":
 
     The Amiga three are 288, 428 and 340 bytes and no two are the same, so a
     record names its own title the way the DOS four do
-    (`goldbox.dos_port.shape_for`) -- which is what lets a reader handed an
+    (`goldbox.dos_port.deltas_for`) -- which is what lets a reader handed an
     `.adf` with no other clue say what is on it.  Pool of Radiance is not in
     :data:`AMIGA_DELTAS` because it has no `AmigaDeltas` of its own: it is
     read straight through the DOS field table (:func:`to_dos_record`).
