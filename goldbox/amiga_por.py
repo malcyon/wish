@@ -196,7 +196,7 @@ def read_amiga_por(path) -> AmigaPorCharacter:
     The sibling `.itm` and `.spc` are read too where they are there.  The
     record's own `item_count` is what says how many of the `.itm` belong to
     this character -- an export zeroes it, and a stale `.itm` left beside one
-    would otherwise hand it somebody else's gear.  `goldbox/dos.py` reads the DOS
+    would otherwise hand it somebody else's gear.  `goldbox/dos_codec.py` reads the DOS
     files the same way and for the same reason.
     """
     import pathlib
@@ -329,7 +329,7 @@ class AmigaPorItem:
         Stale by construction on both ports: the buffer is written over in
         place, so `Chain Mail\\0Mail\\0` is a short name sitting on the tail of
         a longer one, and the ` Yes `/` No ` column appears only on the items
-        the ITEMS screen last painted it onto.  `goldbox/dos.py` records the same
+        the ITEMS screen last painted it onto.  `goldbox/dos_codec.py` records the same
         of the DOS buffer, where a stack of darts reads `11 Darts` over a
         quantity of 8.
         """
@@ -346,7 +346,7 @@ class AmigaPorItem:
 
         The `next` far pointer is written NULL rather than converted: it is a
         live Amiga heap address, and the DOS engine rebuilds its own chain
-        from the file's length regardless (`goldbox/dos.py`, `EFFECT_NEXT_NULL`
+        from the file's length regardless (`goldbox/dos_codec.py`, `EFFECT_NEXT_NULL`
         records the same measurement for the effect chain).
         """
         out = bytearray(dos_port.ITEM_SIZE)
@@ -380,7 +380,7 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
     The duration is a `u16` big-endian at 2 where DOS keeps it little-endian
     at 1, and the four-byte next pointer is written NULL: it is a live heap
     address, and the DOS engine rebuilds the chain from the file's length --
-    measured three ways under DOSBox-X, `goldbox/dos.py`'s `EFFECT_NEXT_NULL`.
+    measured three ways under DOSBox-X, `goldbox/dos_codec.py`'s `EFFECT_NEXT_NULL`.
     """
     if len(node) != AMIGA_POR_EFFECT_SIZE:
         raise AmigaRecordError(
@@ -394,8 +394,8 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 #
 # The reader's last mile, and it is a transposition rather than a second
-# codec.  `to_dos_record` re-cuts the 288 bytes into the 285 `goldbox/dos.py`
-# already knows how to read, and `goldbox.dos.to_neutral` does the rest -- so
+# codec.  `to_dos_record` re-cuts the 288 bytes into the 285 `goldbox/dos_codec.py`
+# already knows how to read, and `goldbox.dos_codec.to_neutral` does the rest -- so
 # every grade, every drop and every provenance line the DOS side earned on 24
 # specimens carries over, and there is no second neutral bridge to drift.
 #
@@ -418,7 +418,7 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 #     read in 11 of the 14 that could show anything.  DOS's own specimens
 #     hold `00 00 01 00 00` in 24 of 24, and copying that constant in would
 #     be putting a DOS value into a record built from an Amiga one --
-#     inheriting rather than measuring.  `goldbox/dos.py` drops the field anyway;
+#     inheriting rather than measuring.  `goldbox/dos_codec.py` drops the field anyway;
 #   * the Amiga's trailing byte at `0x11F`, which DOS does not have.
 DOS_RECORD_SIZE = dos_port.RECORD_SIZE
 
@@ -435,7 +435,7 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     """The 288-byte Amiga record re-cut as the 285-byte DOS one.
 
     Not a conversion between games -- the same record in the other port's
-    shape, so that `goldbox/dos.py` can read it.  Every byte written came from a
+    shape, so that `goldbox/dos_codec.py` can read it.  Every byte written came from a
     named Amiga field or is a documented zero; see the note above this
     function for the four rules and the two regions left blank.
     """
@@ -463,7 +463,7 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
 
 
 def to_dos_character(char: AmigaPorCharacter):
-    """The whole Amiga character as the `goldbox.dos.DosCharacter` the C64
+    """The whole Amiga character as the `goldbox.dos_codec.DosCharacter` the C64
     and DOS container writers take -- record, items and effects together.
 
     :func:`to_dos_record` re-cuts the 288 bytes; this is that plus the two
@@ -472,14 +472,14 @@ def to_dos_character(char: AmigaPorCharacter):
     node and a 10-byte effect node.  It is not a conversion between games --
     the same character in the other port's shape.
 
-    `goldbox.dos.write_c64_save` takes a `list[DosCharacter]` rather than a
+    `goldbox.dos_codec.write_c64_save` takes a `list[DosCharacter]` rather than a
     list of neutral records, because the combat figure crosses through
     `icon_head`, `icon_body`, `icon_colours` and `size`, which a neutral
     record has no field for; so this, and not :func:`to_neutral`, is what
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` hands it.
     """
-    # Deferred: `goldbox.dos` is the heavier module, and this and
+    # Deferred: `goldbox.dos_codec` is the heavier module, and this and
     # :func:`to_neutral` are its only callers here.
     from . import dos_codec as _dos
 
@@ -494,7 +494,7 @@ def to_neutral(char) -> NeutralCharacter:
     """One Amiga character in the neutral record, whichever title wrote it.
 
     The Amiga third of `goldbox/neutral.py`'s reader set, beside
-    `goldbox.c64_codec.read` and `goldbox.dos.to_neutral`.  It reports what it could
+    `goldbox.c64_codec.read` and `goldbox.dos_codec.to_neutral`.  It reports what it could
     not convert rather than filling it in: an item file the record's own count
     disagrees with, a name that fills all sixteen bytes, and the unplaced
     window.
@@ -502,11 +502,11 @@ def to_neutral(char) -> NeutralCharacter:
     An `AmigaCharacter` -- Curse or Silver Blades -- goes to
     :func:`to_neutral_later`, which reads its own title's field table.  The
     rest of this function is Pool of Radiance's, and re-cuts the record into
-    the DOS one so that `goldbox.dos.to_neutral` does the reading.
+    the DOS one so that `goldbox.dos_codec.to_neutral` does the reading.
 
     **That includes the sheet portrait, and the table it uses is the right
     one.** The Amiga record stores the creation menu's position exactly as
-    DOS does, `goldbox.dos.to_neutral` falls back to
+    DOS does, `goldbox.dos_codec.to_neutral` falls back to
     `goldbox.portraits.neutral_menu`, and that is what the neutral record
     spells a position with on every port.  Passing the Amiga's own table in
     here would resolve the position against the Amiga's art numbering and
@@ -518,7 +518,7 @@ def to_neutral(char) -> NeutralCharacter:
 
     if isinstance(char, amiga_later.AmigaCharacter):
         return amiga_later.to_neutral_later(char)
-    # Deferred: `goldbox.dos` is the heavier module and this is its only caller.
+    # Deferred: `goldbox.dos_codec` is the heavier module and this is its only caller.
     from . import dos_codec as _dos
 
     out = _dos.to_neutral(to_dos_character(char))
@@ -578,14 +578,14 @@ def describe_unconverted_effect(node: bytes) -> str:
 
     A node with rounds left never reaches here at all.  It was going to
     expire anyway, and Donald ruled on 2026-08-27 that those need no report;
-    `goldbox.dos.to_neutral` is where that line is drawn, on the duration.
+    `goldbox.dos_codec.to_neutral` is where that line is drawn, on the duration.
 
     **What it says, and what it deliberately does not.** Donald's wording,
     2026-09-04: what the character had, and what it means for them. No
     effect id, no module name, no issue number -- `AGENTS.md` says anything
     a user reads in the interface carries no address or offset, and the
     lines already in this list had been carrying both. He was shown the
-    longer form that named `goldbox.dos.INNATE_EFFECTS` and `#232 (An
+    longer form that named `goldbox.dos_codec.INNATE_EFFECTS` and `#232 (An
     item-granted effect is dropped on the way through the neutral record,
     with no report)` and took this one instead; finding the code from the
     effect's name is one grep, and the player is not the one who should be
@@ -607,7 +607,7 @@ def describe_unconverted_effect(node: bytes) -> str:
 # ---------------------------------------------------------------------------
 #
 # The writing half of the reader above, and the same transposition run
-# backwards: `goldbox.dos.write` builds the 285-byte DOS record, its `.ITM` and
+# backwards: `goldbox.dos_codec.write` builds the 285-byte DOS record, its `.ITM` and
 # its `.SPC` out of the neutral character, and everything here re-cuts those
 # three into the Amiga's 288, 65 and 10.  There is no second field table and
 # no second set of conversion rules -- a field DOS drops is dropped here for
@@ -663,7 +663,7 @@ AMIGA_POR_INSERTION_CANDIDATES = (0x087, 0x088, 0x089)
 AMIGA_POR_EXPERIENCE = 0x0AE
 
 #: Amiga record bytes with no DOS source: the three insertions and the live
-#: heap pointer.  The round-trip test masks **this list** plus `goldbox.dos`'s own
+#: heap pointer.  The round-trip test masks **this list** plus `goldbox.dos_codec`'s own
 #: `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields, rather than
 #: whatever happens to differ -- so a new difference fails instead of being
 #: absorbed.  `(first offset, size, why)`.
@@ -674,7 +674,7 @@ POR_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
     (0x080, 4,
      "the effect chain: a live Amiga heap address. The engine allocates a "
      "node per .spc record on load and writes the head itself, which is what "
-     "goldbox.dos.WRITE_UNSOURCED records for the DOS field it maps onto"),
+     "goldbox.dos_codec.WRITE_UNSOURCED records for the DOS field it maps onto"),
     (AMIGA_POR_FIELD_83_87_AT, len(AMIGA_POR_FIELD_83_87),
      "DOS's field_83_87 plus the second insertion, written as the six bytes "
      "all six of the game's own disk-1 records hold; twelve of the fourteen "
@@ -733,7 +733,7 @@ class PorWriteReport(neutral.Report):
     `AMIGA_POR_RECORD_SIZE` and up are the `.itm` payload and then the `.spc`.
     **Every** byte has to be explained, not only the non-zero ones -- which is
     where this differs from `Report` above and agrees with
-    `goldbox.dos.WriteReport`, because unlike the Pools of Darkness `.pc` this
+    `goldbox.dos_codec.WriteReport`, because unlike the Pools of Darkness `.pc` this
     record's zeroes are fields rather than untouched heap.
     """
 
@@ -857,22 +857,22 @@ def write_por(char: NeutralCharacter,
                                                       PorWriteReport]:
     """Build an Amiga Pool of Radiance record and its `.itm` and `.spc`.
 
-    Returns `(record, itm, spc, report)`, the same shape `goldbox.dos.write`
-    returns -- and it is `goldbox.dos.write` that does the conversion, because
+    Returns `(record, itm, spc, report)`, the same shape `goldbox.dos_codec.write`
+    returns -- and it is `goldbox.dos_codec.write` that does the conversion, because
     the Amiga record *is* the DOS record in another shape.  So every drop,
     every warning and every provenance line this report carries was earned on
     the DOS side against 24 DOS specimens, and the only lines added here are
     the three bytes the Amiga has and DOS does not.
 
     **A character carrying nothing gets no `.itm` file**, and an empty file is
-    not the same thing as no file: `goldbox.dos.ITM_OMITTED_WHEN_EMPTY` records
+    not the same thing as no file: `goldbox.dos_codec.ITM_OMITTED_WHEN_EMPTY` records
     what handing the DOS engine a zero-length one did (#62).  The caller sees
     `b""` and must not write a file for it.
 
     `icon` is this character's own combat figure -- `icon_head`, `icon_body`
     and the six `icon_colours` bytes -- passed straight through to
-    `goldbox.dos.write`'s own `icon` argument, the same bypass
-    `goldbox.amiga.write_later` takes for Curse and Silver Blades (#396,
+    `goldbox.dos_codec.write`'s own `icon` argument, the same bypass
+    `goldbox.amiga_later.write_later` takes for Curse and Silver Blades (#396,
     #319, docs/199-amiga-combat-icons.md).  Build one with
     `editor.convert.amiga_combat_icon` for an Amiga or DOS source, or with
     `goldbox.iconparts.IconParts.dos_icon_from_c64` for a C64 source
@@ -917,7 +917,7 @@ def write_por(char: NeutralCharacter,
     rep.warnings = list(dosrep.warnings)
     rep.warnings.append(
         "Written as a 288-byte Amiga Pool of Radiance record by re-cutting "
-        "the 285-byte DOS one built by goldbox.dos.write; the provenance lines "
+        "the 285-byte DOS one built by goldbox.dos_codec.write; the provenance lines "
         "name the DOS field each byte was transposed from, which is the "
         "field table both ports share")
     # `#308 (Does Amiga Pool of Radiance drop the space out of a character's
@@ -1287,8 +1287,8 @@ def _por_slot_file(disk, letter: str, index: int, suffix: str,
 def read_por_slot(disk, slot: str, drawer: str | None = None):
     """One Amiga save slot: its party, and the saved game around it.
 
-    `(list[goldbox.dos.DosCharacter], savgam_bytes)` -- the pair
-    `goldbox.dos.write_c64_save` and `goldbox.dos.new_dos_save_from` take,
+    `(list[goldbox.dos_codec.DosCharacter], savgam_bytes)` -- the pair
+    `goldbox.dos_codec.write_c64_save` and `goldbox.dos_codec.new_dos_save_from` take,
     once `goldbox.world_state.from_amiga` has turned the second into a
     place and a clock.  This is the Amiga end of
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
@@ -1544,7 +1544,7 @@ def make_por_save_disk(slot: str, characters: Sequence[NeutralCharacter],
 # `$49FE` = 10 is `ECL00`'s own constant, `$4FD2`/`$4FD3` = (1, 101) is New
 # Phlan's rest pair, `$4AFA`-`$4AFC` = (0, $FFFF, $FFFF) is New Phlan's
 # wallset triple, `$5012` = 3 is New Phlan's container, and `$5082` = `$5200`
-# = tail byte 12804 exactly as the DOS page says.  So this is `goldbox.dos`'s
+# = tail byte 12804 exactly as the DOS page says.  So this is `goldbox.dos_codec`'s
 # `savgam_writes` in another endianness rather than a second map.
 #
 # **The four bytes between the two files** (13141 against DOS's 13137): the
@@ -1728,7 +1728,7 @@ POR_NO_AMIGA_SCRIPT = ("area {area} has no script in the Amiga game's own "
 def por_conversion_reason(area: int) -> "str | None":
     """Why this area cannot be converted to the Amiga, or `None` if it can.
 
-    The mirror of `goldbox.dos.conversion_reason`.  An area with no row has no
+    The mirror of `goldbox.dos_codec.conversion_reason`.  An area with no row has no
     disk number and no script.  **The three travel windows are no longer
     refused**: areas 25, 26 and 27 have blocks in `ecl.dax` and the two bytes
     that stopped this were measured (`#321 (An Amiga Pool of Radiance
@@ -1780,7 +1780,7 @@ POR_ENCOUNTER_STATE = (
 
 #: Words of `$4900`-`$52FF` no source save can answer for, written **zero**
 #: with the reason each is nobody's.  The Amiga counterpart of
-#: `goldbox.dos.SAVGAM_UNSOURCED`, and it is that list address for address --
+#: `goldbox.dos_codec.SAVGAM_UNSOURCED`, and it is that list address for address --
 #: which is a finding rather than a convenience.  **Every one of the 92
 #: distinct nonzero words the ten Amiga saved games on this machine hold is
 #: either written by :func:`por_savegame_writes` or named here**, with nothing

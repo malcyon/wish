@@ -8,7 +8,7 @@ map, quest flags and script scratch. Donald named the concept on
 "Having world.py and world_state.py is fine. I can tell the difference."
 
 The lift `#352 (Handle world state for Amiga saves)` asks for:
-`goldbox.amiga.PorSaveState` proved the shape for a Pool of Radiance party
+`goldbox.amiga_por.PorSaveState` proved the shape for a Pool of Radiance party
 standing indoors, and this module is that shape generalised over every
 title and every direction, so the C64 and DOS container writers no longer
 have to read their source straight out of the other port's file.
@@ -57,7 +57,7 @@ class WorldState:
     `facing` is the C64's 0-3.  Both DOS and the Amiga store it doubled and
     both writers do the doubling, so a caller never sees the doubled form.
 
-    Lifted from `goldbox.amiga.PorSaveState`, which held everything below
+    Lifted from `goldbox.amiga_por.PorSaveState`, which held everything below
     but `title`, `outdoors`, `travel`, `set_out` and `header` -- the five
     fields the DOS <-> C64 pair already needed and the Amiga writer never
     had to ask for, because `#316 (Write the Amiga Pool of Radiance saved
@@ -97,7 +97,7 @@ class WorldState:
     outdoors: bool
     #: The travel-grid square.  Meaningful only when `outdoors` is true --
     #: every writer leaves the destination's travel pair zero rather than
-    #: read this when it is false, the way `goldbox.dos.HEADER_ZEROED`
+    #: read this when it is false, the way `goldbox.dos_codec.HEADER_ZEROED`
     #: already does for the C64 side.
     travel: "tuple[int, int]"
     #: Has this party pressed `BEGIN ADVENTURING` at all?  False for a save
@@ -108,7 +108,7 @@ class WorldState:
     set_out: bool
     #: The later titles' own copied header words, by address: `+$E7`-`+$E9`
     #: and `+$FD`-`+$FE` off `$4900` (`c64_save.Container.copied`,
-    #: `dos.LATER_HEADER_COPIED`).  Pool of Radiance copies none of them and
+    #: `dos_codec.LATER_HEADER_COPIED`).  Pool of Radiance copies none of them and
     #: they are read anyway, so one shape answers for every title.
     header: "dict[int, int]"
     #: Where this was read from, for the report.
@@ -116,7 +116,7 @@ class WorldState:
 
 
 #: The later titles' own copied header words, both runs
-#: `c64_save.Container.copied` and `goldbox.dos.LATER_HEADER_COPIED` name --
+#: `c64_save.Container.copied` and `goldbox.dos_codec.LATER_HEADER_COPIED` name --
 #: `+$E7`-`+$E9` and `+$FD`-`+$FE` off `$4900`.  Curse of the Azure Bonds
 #: copies `+$E7`-`+$E8`; Secret of the Silver Blades copies all five; Pool of
 #: Radiance copies none.  Read for every title regardless, so a
@@ -127,11 +127,11 @@ HEADER_ADDRESSES: "tuple[int, ...]" = (0x49E7, 0x49E8, 0x49E9, 0x49FD, 0x49FE)
 def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosSaveShape"):
     """`(area, geo, x, y, facing, outdoors, fresh)` for a DOS save.
 
-    Generalises `goldbox.dos._where_the_party_is`, `._resident_geo` and the
+    Generalises `goldbox.dos_codec._where_the_party_is`, `._resident_geo` and the
     shared "has this party set out" logic `.apply_position` and
     `.apply_file_cache` each used to re-derive on their own -- one read
     rather than three functions agreeing with each other by construction.
-    Raises the same `goldbox.dos.DosRecordError` either of those did, on the
+    Raises the same `goldbox.dos_codec.DosRecordError` either of those did, on the
     same two contradictions: an area no row of this title names, and a
     save whose own indoors byte disagrees with its area's row.
     """
@@ -168,10 +168,10 @@ def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosSaveShape"):
 def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
     """A C64 `SAVEDGAME0` payload, as a place and a clock.
 
-    `SAVEDGAME0` is a memory image based at `goldbox.dos.SAVE0_BASE`, so
+    `SAVEDGAME0` is a memory image based at `goldbox.dos_codec.SAVE0_BASE`, so
     every ECL address :class:`WorldState` names is one payload offset away,
     and `c64_save.container_for` says which title's own quest-flag width and
-    header offsets apply.  Generalises `goldbox.amiga.por_state_from_c64`
+    header offsets apply.  Generalises `goldbox.amiga_por.por_state_from_c64`
     (now a one-line wrapper of this) beyond Pool of Radiance's own 217-byte
     flag window, and reads an outdoor party rather than refusing one.  **The
     wrapper refuses nothing either**, as it did until 2026-09-07: the two
@@ -216,7 +216,7 @@ def from_dos(savgam: bytes,
 
     The DOS container is the same array of the same words in the other
     endianness, so most of this is a straight read through
-    `goldbox.dos_savegame` -- generalises `goldbox.amiga.por_state_from_dos`
+    `goldbox.dos_savegame` -- generalises `goldbox.amiga_por.por_state_from_dos`
     (now a one-line wrapper of this) over every title `save_shape_for`
     knows, rather than assuming Pool of Radiance's own flag width, and over
     a party that has never adventured, which `_resolve_dos_place` places at
@@ -224,7 +224,7 @@ def from_dos(savgam: bytes,
 
     Reads an outdoor party rather than refusing one, because the C64 side
     already has a travel square to write it into, and
-    `goldbox.amiga.por_state_from_dos` refuses nothing either -- for the
+    `goldbox.amiga_por.por_state_from_dos` refuses nothing either -- for the
     same reason `from_c64`'s wrapper stopped, on 2026-09-07.
     """
     from . import dos_codec as _dos

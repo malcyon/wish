@@ -222,7 +222,7 @@ class AmigaItem:
 
         **Never a source.**  It is whatever the ITEMS screen last painted --
         one specimen reads `" Yes  Shield "` with the READY column baked in
-        and the other eight do not -- and `goldbox/dos.py` says the same of
+        and the other eight do not -- and `goldbox/dos_codec.py` says the same of
         the DOS buffer, which goes stale the same way.
         """
         return self.raw[:self.deltas.item_text].split(b"\0")[0].decode("latin1")
@@ -614,12 +614,12 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 # ---------------------------------------------------------------------------
 #
 # The third and fourth readers in `goldbox/neutral.py`'s set, beside
-# `goldbox.c64_codec.read`, `goldbox.dos.to_neutral` and `to_neutral` above.
+# `goldbox.c64_codec.read`, `goldbox.dos_codec.to_neutral` and `to_neutral` above.
 #
-# **It does not go through `goldbox.dos.to_neutral` the way the Amiga Pool of
+# **It does not go through `goldbox.dos_codec.to_neutral` the way the Amiga Pool of
 # Radiance reader does, and that is not a choice.**  That reader re-cuts its
 # record into the 285-byte DOS one and hands it over, so every grade and every
-# provenance line the DOS side earned carries across.  `goldbox.dos.to_neutral`
+# provenance line the DOS side earned carries across.  `goldbox.dos_codec.to_neutral`
 # raises `WrongTitleError` for anything but Pool of Radiance -- no other pair
 # of ports has been measured against each other yet (#53) -- so there is
 # nothing here to hand a Curse record to.  What this reader shares with it
@@ -640,11 +640,11 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 #     `AMIGA_LATER_STATUS_FIELD` above for the two string tables.
 #
 #: Fields of the title's DOS table with a neutral home of the same name.
-#: Taken from `goldbox.dos.DIRECT` at call time rather than copied, because a
+#: Taken from `goldbox.dos_codec.DIRECT` at call time rather than copied, because a
 #: field that changes meaning there must not go on meaning the old thing here.
 #: Every one of the forty-seven is in both later titles' tables.
 #:
-#: **A field leaving `goldbox.dos.DIRECT` leaves this reader too, in silence**,
+#: **A field leaving `goldbox.dos_codec.DIRECT` leaves this reader too, in silence**,
 #: which is how `class_bits` came to be dropped (#292); the two tests that
 #: `later_field_disposition` backs are what catch it, so keep them.
 #:
@@ -660,16 +660,16 @@ def party_in_savegame(data: bytes, deltas: AmigaDeltas) -> list[AmigaCharacter]:
 #: omission.** `icon_head`, `icon_body` and `icon_colours` are TRANSFORMED
 #: below -- and `icon_dimension` stays DROPPED -- but none of the three is
 #: ever set on the `NeutralCharacter` this function returns, the same way
-#: `goldbox.dos.to_neutral` neither sets nor drops them for a DOS source
+#: `goldbox.dos_codec.to_neutral` neither sets nor drops them for a DOS source
 #: (watched: a synthetic DOS record with a chosen figure comes back from
-#: `goldbox.dos.to_neutral` with no `icon_head` field and nothing in
+#: `goldbox.dos_codec.to_neutral` with no `icon_head` field and nothing in
 #: `dropped`). The neutral vocabulary has nowhere to put a combat figure --
 #: the C64 stores drawn cells, not an index -- so both readers leave these
 #: three silent and the actual conversion is a raw-record bypass:
 #: `editor.convert.amiga_combat_icon` reads them straight off this
 #: `AmigaCharacter` (or off a `DosCharacter`, for Pool of Radiance) and hands
-#: the result to `goldbox.dos.write`'s own `icon` argument, which
-#: `goldbox.amiga.write_later` now takes too (#396, #319,
+#: the result to `goldbox.dos_codec.write`'s own `icon` argument, which
+#: `write_later` below now takes too (#396, #319,
 #: docs/199-amiga-combat-icons.md).
 LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "reread from the level array into the shared bit order, "
@@ -708,7 +708,7 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("icon_head", "the combat icon's head: DOS's own CHEAD.DAX index, read "
                   "by the same routine at the same offset both Amiga "
                   "binaries carry (#396, docs/199-amiga-combat-icons.md). "
-                  "Converted the way `goldbox.dos`'s own icon_head is -- "
+                  "Converted the way `goldbox.dos_codec`'s own icon_head is -- "
                   "the caller who has a raw record in hand builds a "
                   "`goldbox.iconparts.DosIcon` from it (`editor.convert."
                   "amiga_combat_icon`) rather than through this reader's "
@@ -761,7 +761,7 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                     "2026-09-07: the four played Curse characters in "
                     "SAVE/savgamA.dat hold 00 00 01 00 00 and five of the "
                     "six Silver Blades ones hold 00 01 00 00, which is "
-                    "`goldbox.dos.FIELD_83_87` byte for byte. The eleven "
+                    "`goldbox.dos_codec.FIELD_83_87` byte for byte. The eleven "
                     ".guy pregens and Silver Blades' MALACHITE hold zeros, "
                     "and they were what the old reading rested on. The "
                     "reader still drops the whole run and `write_later` "
@@ -773,7 +773,7 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                     "byte 1 of Curse's run, byte 0 of Silver Blades' -- is "
                     "no longer one of them: `to_neutral_later` reads it into "
                     "`npc` and `npc_control_byte` itself now, the same index "
-                    "`goldbox.dos.to_neutral` computes (#386, closed "
+                    "`goldbox.dos_codec.to_neutral` computes (#386, closed "
                     "2026-09-07)"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
                                      "array, which no character of either "
@@ -804,7 +804,7 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
 #: composes its report from this table and never from those.  A name with no
 #: entry here is a drop the report stays silent about; only the fields whose
 #: loss a player could notice have one, which is the same line
-#: `goldbox/dos.py` draws with `UNREPORTED_DROPS`.
+#: `goldbox/dos_codec.py` draws with `UNREPORTED_DROPS`.
 LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "item_chain": "Item list bookkeeping: the list's own internal links, "
                   "which the game rebuilds when it loads the party",
@@ -845,7 +845,7 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
 #: The one thing the neutral record cannot say about these two titles, and it
 #: is a classification rather than a byte: which effect records are **innate**
 #: -- a property of the race or the class -- and which an item granted.
-#: `goldbox.dos.INNATE_EFFECTS` is Pool of Radiance's id space and must not be
+#: `goldbox.dos_codec.INNATE_EFFECTS` is Pool of Radiance's id space and must not be
 #: applied here: 107 is an elf in Curse where Silver Blades' PAINE carries 105
 #: for a ranger, so the two titles do not even share one namespace with each
 #: other.  Everything at duration zero therefore goes into `granted_effects`
@@ -861,7 +861,7 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     """Every field of this title's DOS table, and what the read does with it.
 
     The test that keeps the reader honest, and the same shape
-    `goldbox.dos.field_disposition` returns: a field the table declares and
+    `goldbox.dos_codec.field_disposition` returns: a field the table declares and
     this names nowhere would be a field dropped in silence.  `gap_` fields are
     the bytes no field of the DOS table claims and are accounted for here as a
     group rather than one at a time.
@@ -926,7 +926,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f.confidence)
 
     # -- the abilities, a DOS-shaped pair carrying the same asymmetry --------
-    # `goldbox.dos.DIRECT` hands every name in `ABILITY_ORDER` back as a
+    # `goldbox.dos_codec.DIRECT` hands every name in `ABILITY_ORDER` back as a
     # two-byte `RAW` chunk rather than a number (`goldbox/dos_port.py`'s
     # `sizes` widen every one of the seven), so the loop above would
     # otherwise pass the pair whole into a field the neutral record and
@@ -954,7 +954,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     # either binary (character creation's roll), the same shape `#401` found
     # in five DOS engines.  So for the six ability scores byte 1 is the
     # score in force and byte 0 is `abilities_second`'s permanent copy,
-    # exactly `goldbox.dos._PERMANENT_FIRST`'s asymmetry; exceptional
+    # exactly `goldbox.dos_codec._PERMANENT_FIRST`'s asymmetry; exceptional
     # strength runs the other way and keeps its existing order.
     second: dict[str, int] = {}
     for name in _dos.ABILITY_ORDER:
@@ -982,7 +982,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     # slot and GUY DE VALOIS reads `$40` with 8 in the paladin's, so the byte
     # alone does not say which class it is and the level array is what
     # settles it.  Copying it would make an Amiga ranger a C64 paladin, the
-    # defect `goldbox.dos.neutral_class_bits` exists to stop; and after
+    # defect `goldbox.dos_codec.neutral_class_bits` exists to stop; and after
     # `class_bits` left `_dos.DIRECT` the loop above stopped setting the
     # field at all, which left the C64 record with no class bit set (#292).
     f = table["class_bits"]
@@ -1090,7 +1090,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 
     # -- the NPC control byte: bit 7 says the engine drives this character --
     # The second byte of `field_83_87`'s five-byte run in Curse, the first of
-    # Silver Blades' four -- `goldbox.dos.to_neutral` computes the same index
+    # Silver Blades' four -- `goldbox.dos_codec.to_neutral` computes the same index
     # the same way (#303), and this reader used to leave the whole run on
     # `LATER_DROPPED` without ever taking the one byte that has a home
     # (`#386 (An Amiga Curse or Silver Blades companion converts to an
@@ -1104,7 +1104,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     out.set("npc", bool(control & 0x80),
             f"bit 7 of Amiga {deltas.title} field_83_87 "
             f"@{control_offset:#05x}, the same control byte "
-            f"`goldbox.dos.to_neutral` reads",
+            f"`goldbox.dos_codec.to_neutral` reads",
             Confidence.CONFIRMED)
     if control & 0x80:
         out.set("npc_control_byte", control,
@@ -1125,7 +1125,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 # ---------------------------------------------------------------------------
 #
 # The third Amiga writer, and it is built the way :func:`write_por` is rather
-# than as a new invention: `goldbox.dos.write` does the conversion, because
+# than as a new invention: `goldbox.dos_codec.write` does the conversion, because
 # **the Amiga record is the title's DOS record in another shape**, and what
 # is here is the re-cut plus the handful of bytes the Amiga has and DOS does
 # not.  Every grade and every provenance line the DOS side earned crosses
@@ -1139,11 +1139,11 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 #      why this returns an `AmigaCharacter` rather than loose bytes -- the
 #      party goes to `tools/amigasavegame.py`'s `rebuild` as blocks.
 #   2. **Silver Blades' spellbook is packed into bits**, LSB first.
-#   3. **The effect chain is not `goldbox.dos.write`'s `.SPC` payload.**  See
+#   3. **The effect chain is not `goldbox.dos_codec.write`'s `.SPC` payload.**  See
 #      :func:`_later_effect_nodes` for the measurement that says why.
 
 #: Amiga record bytes with no DOS counterpart, per title: `(offset, size,
-#: why)`.  The round trip masks **this list** plus `goldbox.dos`'s own
+#: why)`.  The round trip masks **this list** plus `goldbox.dos_codec`'s own
 #: `WRITE_UNSOURCED`, `WRITE_UNSOURCED_LATER`, `WRITE_CONSTANTS`,
 #: `WRITE_DEFAULTS` and `WRITE_DERIVED`, rather than whatever happens to
 #: differ, so a new difference fails instead of being absorbed.
@@ -1335,7 +1335,7 @@ def later_write_shape(char: NeutralCharacter,
     """Which Amiga record :func:`write_later` will build for this character.
 
     **The title is the character's, not the caller's**, exactly as
-    `goldbox.dos.write_shape` decides it: a conversion is between two ports
+    `goldbox.dos_codec.write_shape` decides it: a conversion is between two ports
     of the same title and never between titles
     (`.claude/rules/conversions.md`).  `deltas` overrides it for a caller
     that has already resolved the title.
@@ -1405,7 +1405,7 @@ def from_dos_record_later(record: bytes, deltas: AmigaDeltas) -> bytes:
     port sources; :data:`LATER_WRITE_UNSOURCED` says what happens to the
     six (Curse) or three (Silver Blades) the Amiga has and DOS does not.
 
-    **The chain fields are left as `goldbox.dos.write` wrote them, which is
+    **The chain fields are left as `goldbox.dos_codec.write` wrote them, which is
     zero**, and :meth:`AmigaCharacter.block_bytes` sets them to match what
     actually follows.  Writing them here would be writing a value the loader
     tests without knowing what it will be tested against.
@@ -1472,12 +1472,12 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
 
 
 #: Why the effect chain is built here rather than taken from
-#: `goldbox.dos.write`'s `.SPC` payload, and it is a measurement rather than
+#: `goldbox.dos_codec.write`'s `.SPC` payload, and it is a measurement rather than
 #: a preference.
 #:
 #: `to_neutral_later` cannot tell an innate effect from an item's grant in
 #: these two titles (:data:`LATER_EFFECT_SPLIT_UNKNOWN`), so it puts every
-#: node at duration zero into `granted_effects`.  `goldbox.dos.write` then
+#: node at duration zero into `granted_effects`.  `goldbox.dos_codec.write` then
 #: adds the racial ids **again**, from its own table, and writes both: run
 #: over the 21 specimens, the three Curse dwarves and gnomes come back with
 #: 7, 7 and 8 effect records where the game wrote 3, 3 and 4, and Silver
@@ -1491,7 +1491,7 @@ def amiga_later_item_from_dos(item: bytes, deltas: AmigaDeltas) -> bytes:
 #: Amiga source reproduces exactly, a C64 source brings the ten trait slots
 #: `goldbox.c64_codec` reads into `innate_effects`, and a DOS source brings
 #: both halves of its own `.SPC` file.  **Nothing is derived from a race
-#: table**, which is `#293`'s shape: `goldbox.dos.RACE_COMBAT_EFFECTS` is
+#: table**, which is `#293`'s shape: `goldbox.dos_codec.RACE_COMBAT_EFFECTS` is
 #: Pool of Radiance's, and Curse's own BJORN DARKSTONE, HOLLAND and SUNDRA
 #: contradict it -- 3 of 3 carry the ids that table names bar one it adds.
 LATER_EFFECTS_FROM_NEUTRAL = (
@@ -1503,13 +1503,13 @@ def _later_effect_nodes(char: NeutralCharacter) -> list[bytes]:
     """The Amiga effect chain for this character, one 10-byte node each.
 
     :data:`LATER_EFFECTS_FROM_NEUTRAL` says why this reads the neutral
-    record instead of `goldbox.dos.write`'s `.SPC` payload.
+    record instead of `goldbox.dos_codec.write`'s `.SPC` payload.
 
     **The id check below is a guard against an invariant held elsewhere, and
     it has never fired.**  Every reader in the tree fills these two lists as
     disjoint sets: `c64_codec.read_c64` puts every trait-slot id in
     `innate_effects` and sets `granted_effects` never;
-    `goldbox.dos.to_neutral` partitions on `INNATE_EFFECTS` by construction;
+    `goldbox.dos_codec.to_neutral` partitions on `INNATE_EFFECTS` by construction;
     `to_neutral_later` puts everything in `granted_effects`.  So no id has
     ever been in both, and the `continue` has never dropped a node.  It is
     here because a reader that stopped holding that invariant would otherwise
@@ -1549,13 +1549,13 @@ def write_later(char: NeutralCharacter,
     `item_count` and the two chain heads set to match what actually follows,
     which is the thing `write_por` must *not* do and this must.
 
-    `goldbox.dos.write` does the conversion, so every drop, every warning
+    `goldbox.dos_codec.write` does the conversion, so every drop, every warning
     and every provenance line comes from the DOS side and the lines added
     here are the pads, the re-encoded spellbook and the effect chain.
 
     `icon` is this character's own combat figure -- `icon_head`, `icon_body`
     and the six `icon_colours` bytes -- passed straight through to
-    `goldbox.dos.write`'s own `icon` argument, which is where it is actually
+    `goldbox.dos_codec.write`'s own `icon` argument, which is where it is actually
     written: the neutral vocabulary has nowhere to put a combat figure, so
     `LATER_TRANSFORMED`'s entries for these three names describe this
     bypass rather than anything this function's own body does with `char`.
@@ -1573,7 +1573,7 @@ def write_later(char: NeutralCharacter,
     deltas = later_write_shape(char, deltas)
     # `recompute_thief_skills=False`: the DOS record here is a stepping
     # stone to an Amiga one, and the two thief-skill recomputes in
-    # `goldbox.dos.write` rest on DOS's and the C64's own routines (#431,
+    # `goldbox.dos_codec.write` rest on DOS's and the C64's own routines (#431,
     # #440). Nobody has read Amiga Curse's, so this record keeps the source's
     # bytes rather than carrying another port's answer into an Amiga save.
     # `into="Amiga"` (#389, A conversion to the Amiga tells the player what
@@ -1617,7 +1617,7 @@ def write_later(char: NeutralCharacter,
     rep.warnings.append(
         f"Written as a {deltas.record_size}-byte Amiga {deltas.title} record "
         f"by re-cutting the {deltas.dos.record_size}-byte DOS one built by "
-        f"goldbox.dos.write; the provenance lines name the DOS field each "
+        f"goldbox.dos_codec.write; the provenance lines name the DOS field each "
         f"byte was transposed from, which is the field table both ports "
         f"share")
     rep.warnings.append(LATER_EFFECTS_FROM_NEUTRAL)

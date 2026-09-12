@@ -308,7 +308,7 @@ class C64Container:
     #: stops at `+$1F8` because `+$1FA` and `+$1FD` are its wallset and
     #: wallmap triples; Curse of the Azure Bonds and Secret of the Silver
     #: Blades keep their wall triples elsewhere and their scripts use the
-    #: page to the end -- see `goldbox.dos.quest_flags`.
+    #: page to the end -- see `goldbox.dos_codec.quest_flags`.
     position: int = POSITION_OFFSET
     travel_position: int = TRAVEL_POSITION_OFFSET
     clock: int = 0xC6
@@ -410,7 +410,7 @@ class C64Container:
 
         `party` is how many characters the party has, because a marching-order
         table is indexed from the top slot down and the top slot is
-        `party - 1` -- the same arithmetic `goldbox.dos.marching_slot` does
+        `party - 1` -- the same arithmetic `goldbox.dos_codec.marching_slot` does
         in the other direction.
         """
         return (party - 1 - slot) if self.names_in_marching_order else slot

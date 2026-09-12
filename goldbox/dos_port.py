@@ -4,7 +4,7 @@
 `Confidence`, same rule that every byte of the record belongs to exactly one
 entry so an overlap cannot be introduced silently.  What differs is the
 record.  The DOS one is **285 bytes** to the C64's 580, and it is *rearranged
-rather than translated*.  Both directions read this table now: `goldbox/dos.py`
+rather than translated*.  Both directions read this table now: `goldbox/dos_codec.py`
 decodes a DOS record through it and, since #26, encodes one too -- the
 player's own files are still never written to.
 
@@ -30,7 +30,7 @@ Three things to know before reading the table
   *bits*.  The ordering turns out to be identical -- see `SPELLBOOK`.
 * **The per-class level array is indexed by the class number**, where the
   C64's eight slots are indexed by the class *bit*.  Same width, different
-  meaning per slot; `goldbox/dos.py` carries the permutation.
+  meaning per slot; `goldbox/dos_codec.py` carries the permutation.
 
 Live-only state
 ---------------
@@ -44,10 +44,10 @@ Renamed from `dos_layout.py`, and `DosShape` from `DosDeltas`
 -------------------------------------------------------------
 `#470 (Give the project a neutral title beside its neutral character record,
 with one port per platform a title shipped on)`'s stage 3: the DOS port's own
-module, alongside `goldbox/c64_codec.py`.  `goldbox/dos_layout.py` still
-exists, as a shim re-exporting everything here under both its old names and
-its new ones, so nothing importing it has to change before stage 9 takes the
-callers off and deletes it.  `DosDeltas` is `DosShape` renamed for the same
+module, alongside `goldbox/c64_codec.py`.  `goldbox/dos_layout.py` existed as
+a shim, re-exporting everything here under both its old names and its new
+ones, so nothing importing it had to change before stage 9 took the callers
+off and deleted it.  `DosDeltas` is `DosShape` renamed for the same
 reason -- see its own docstring for what the word means and why it changed.
 """
 
@@ -71,10 +71,10 @@ __all__ = [
     "layout_for",
     "DosDeltasError",
     # Pre-#470 names, kept as aliases so nothing importing this module by its
-    # old spelling has to change -- `goldbox/dos_layout.py` re-exports these
+    # old spelling has to change -- `goldbox/dos_layout.py` re-exported these
     # too, as a shim (`#470 (Give the project a neutral title beside its
     # neutral character record, with one port per platform a title shipped
-    # on)`, stage 3, and stage 3b for the two below). Gone in stage 9, with
+    # on)`, stage 3, and stage 3b for the two below), until stage 9 deleted
     # the shim.
     "NAME_SIZE",
     "ITEM_SIZE",
@@ -164,7 +164,7 @@ RACE_NUMBERS = (
 #: 6 by nine characters including the paladins DEMELTINA and Guy de Valois,
 #: which is human-only.  The other five rest on the two sources above.
 #:
-#: **The C64 side of this repository already knew.**  `goldbox/games.py`'s
+#: **The C64 side of this repository already knew.**  `goldbox/titles.py`'s
 #: `RACES_SILVER_BLADES` is 1 elf, 2 half-elf, 3 dwarf, 4 gnome, 5 halfling,
 #: 6 human -- the same numbering, read out of the C64 `GEN` and confirmed on
 #: the shipped pre-generated characters -- and `goldbox/levels.py` reaches the
@@ -189,7 +189,7 @@ SILVER_BLADES_RACE_NUMBERS = (
 #: paladins read 5, and only a human may be a paladin.
 #:
 #: **Index 2 is confirmed in a running game**, on the other port: the Amiga
-#: Pools of Darkness table in `goldbox/amiga.py` is the same six names in the
+#: Pools of Darkness table in `goldbox/amiga_pod.py` is the same six names in the
 #: same order, and `HALF-ELF` and `DWARF` are two of the indices a probe there
 #: put on screen.  The Amiga tuple stops at `human`, having no `monster` entry
 #: to name.
@@ -659,8 +659,8 @@ _DECLARED: Sequence[Field] = (
        "into its 0x141, 0x142 and 0x144 and **skips 0x0BF**, which is what "
        "a field the loader reallocates looks like.\n"
        "**Renamed from `party_order` to `combat_figure`** across this table, "
-       "the *neutral* record and `goldbox.dos.DIRECT`, which requires the "
-       "two to be spelled the same, and across `goldbox/amiga.py`, "
+       "the *neutral* record and `goldbox.dos_codec.DIRECT`, which requires the "
+       "two to be spelled the same, and across `goldbox/amiga_pod.py`, "
        "`goldbox/c64_codec.py` and `goldbox/yaml_io.py`.  The window's "
        "`field_party_order` spinbox is a different field -- the C64's own "
        "0-7 slot index at `goldbox/layout.py` 0x10D, wired to that table "
@@ -699,7 +699,7 @@ _DECLARED: Sequence[Field] = (
        "reads as not being there. Measured over three fights, 4 zeroed icons "
        "against 9 default ones; a box round a zeroed figure holds two "
        "colours where the same box round a default one holds fourteen. "
-       "`goldbox.dos.WRITE_DEFAULTS` writes the shipped set instead"),
+       "`goldbox.dos_codec.WRITE_DEFAULTS` writes the shipped set instead"),
     _f(0x0C7, 1, _U8, "item_count", "Item count", _OK,
        "24 of 24: count x 63 is the exact size of the sibling `.ITM` file. "
        "**Always 0 in an export**, which is the one systematic difference "
@@ -965,10 +965,6 @@ class DosDeltas:
         default_factory=dict)
 
 
-#: The pre-#470 name, kept as an alias -- see `goldbox/dos_layout.py`'s own
-#: shim docstring, which is where a caller reading only that module meets it.
-
-
 #: Shared by three titles, so it is written once.
 _FORMER_NOTE = (
     "the per-class level array again, indexed by class number the same way, "
@@ -1122,7 +1118,7 @@ POOL_OF_RADIANCE = DosDeltas(
 #: carries nothing, so no `.ITM` was ever missing from a directory anybody
 #: had; the first character to buy a battle axe got `CHRDATI1.SWG` beside
 #: `CHRDATI1.SAV`, 63 bytes, and no `.ITM` appeared at any point.  This said
-#: `.ITM` until then, which made `goldbox.dos.read_character` hand back an
+#: `.ITM` until then, which made `goldbox.dos_codec.read_character` hand back an
 #: item count of three and an empty item list -- silently, because a sibling
 #: that is not there reads as empty.  It corroborates `#55`: Gateway to the
 #: Savage Frontier's 422-byte `.GUY` exports read through this table and keep
@@ -1248,16 +1244,9 @@ DELTAS_BY_KEY: dict[str, DosDeltas] = {s.key: s for s in DELTAS}
 #: The record size identifies the title on its own: 285, 422, 439, 510.
 DELTAS_BY_SIZE: dict[int, DosDeltas] = {s.record_size: s for s in DELTAS}
 
-#: The pre-#470 names, kept as aliases -- see `goldbox/dos_layout.py`'s own
-#: shim docstring, which is where a caller reading only that module meets
-#: them.
-
 
 class DosDeltasError(ValueError):
     """A record size or title key that names no DOS Gold Box record."""
-
-
-#: The pre-#470 name, kept as an alias.
 
 
 def deltas_for(what: "int | str | DosDeltas") -> DosDeltas:
@@ -1294,9 +1283,6 @@ def deltas_for(what: "int | str | DosDeltas") -> DosDeltas:
         return DELTAS_BY_KEY[what]
     except KeyError:
         raise DosDeltasError(f"no DOS title keyed {what!r}") from None
-
-
-#: The pre-#470 name, kept as an alias.
 
 
 def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:

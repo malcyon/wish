@@ -616,7 +616,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: before pressing `BEGIN ADVENTURING`, and 0 is the initialiser's value
 #: rather than a place: no `ECL00` is on any of the six sides and no `ECL`
 #: container holds a block 0, and the same goes for `GEO00`.  Adding a row
-#: would move `goldbox.dos`'s refusal from `area_in` to `_resident_geo`
+#: would move `goldbox.dos_codec`'s refusal from `area_in` to `_resident_geo`
 #: rather than remove it, and a C64 save naming area 0 sends the loader
 #: after `GEO00` -- measured, `$B7`/`$BB` at the disk prompt -- which it can
 #: never find.  `#301 (A DOS Curse save standing in area 0 is refused by the

@@ -23,8 +23,8 @@ from __future__ import annotations
 
 # The save container's geometry, its payload map and the offsets they share
 # now live in `goldbox/c64_save.py`. Every name below is re-exported so that
-# nothing importing it from here -- or from the `goldbox/games.py` shim, which
-# wildcards this module -- has to change before stage 9.
+# nothing importing it from here has to change; the `goldbox/games.py` shim
+# that used to wildcard this module was deleted once every caller had moved.
 from .c64_save import (  # noqa: F401
     CHAMPIONS_OF_KRYNN,
     CLOCK_OFFSET,

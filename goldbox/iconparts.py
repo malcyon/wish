@@ -243,7 +243,7 @@ def dos_icon_tables(path: "pathlib.Path | str | None" = None,
     given, neither size section is applied, which keeps `dos_icon_tables()`
     with no arguments meaning exactly what it has always meant.
 
-    **The conversion passes both.** `goldbox.dos.write_c64_save` builds
+    **The conversion passes both.** `goldbox.dos_codec.write_c64_save` builds
     `dos_icon_tables(title=container.game.key, size=which)` once per size
     and threads it through `_icon_for` into :meth:`IconParts.dos_icon`, so
     a converted character reaches the rows his own title and size name:
@@ -339,7 +339,7 @@ def c64_icon_tables(path: "pathlib.Path | str | None" = None,
     override, because there never is one in the base table either.
 
     With no `title`, this is exactly the base table every reader before
-    `#452` used. `goldbox.dos.c64_party` now passes `title=c64.key` -- the
+    `#452` used. `goldbox.dos_codec.c64_party` now passes `title=c64.key` -- the
     C64 title being read, `c64_save.container_for(game).game.key`, the
     mirror of `write_c64_save`'s own `container.game.key` -- so a Silver
     Blades character converted to the C64 and home again comes back reading
@@ -393,7 +393,7 @@ class DosIcon:
     (#320) and by `editor.convert.amiga_combat_icon` for an Amiga one, whose
     record already stores these bytes and has no C64 icon behind it (#379).
 
-    `figure_source` and `colours_source` are what `goldbox.dos.write`'s
+    `figure_source` and `colours_source` are what `goldbox.dos_codec.write`'s
     report quotes next to `icon_head`/`icon_body` and `icon_colours`
     respectively -- one sentence fragment each, following "`icon_head: 10 --
     `". `write` no longer builds that sentence itself, and no longer assumes

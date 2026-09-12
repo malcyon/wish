@@ -2,9 +2,11 @@
 
 `#470 (Give the project a neutral title beside its neutral character record,
 with one port per platform a title shipped on)`'s stage 4b moved this out of
-`goldbox/amiga.py`, which is the Amiga *codec* -- the code that reads and
+`goldbox/amiga.py`, which was the Amiga *codec* -- the code that reads and
 writes the bytes -- and left it re-exporting every name here under both its
-old spelling and its new one.  The four roles this project names, and the
+old spelling and its new one; that codec has since been renamed and split
+into `amiga_por.py`, `amiga_later.py`, `amiga_pod.py` and `amiga_shared.py`.
+The four roles this project names, and the
 convention that the platform is the prefix and the role is the noun:
 
 * the **title** -- the rules a Gold Box game plays by, on any machine
@@ -17,11 +19,12 @@ convention that the platform is the prefix and the role is the noun:
 * the **machine** -- a live, running game's addresses (`automap/amiga.py`'s
   `AmigaMachine`).
 
-`AmigaShape` was the class's name before that stage, and `goldbox/amiga.py`
+`AmigaShape` was the class's name before that stage, and `goldbox/amiga_later.py`
 still answers to it and to `CURSE_SHAPE`, `SILVER_BLADES_SHAPE`,
 `AMIGA_SHAPES` and `AMIGA_SHAPES_BY_SIZE`.
 
-**Nothing here imports `goldbox.amiga`.**  The dependency runs one way --
+**Nothing here imports `amiga_por`, `amiga_later`, `amiga_pod` or
+`amiga_shared`.**  The dependency runs one way --
 codec on port, never back -- so that a reader wanting to know what an Amiga
 record looks like never has to load the 6,000 lines that read one.
 """
@@ -42,7 +45,7 @@ class AmigaRecordError(ValueError):
 # ---------------------------------------------------------------------------
 #: One `.spc` node.  `#55` located the extra byte at offset 1, on 62 records;
 #: the party shipped on Amiga disk 1 agrees on 6 more, and its payload bytes
-#: 2-5 read `00 00 FF 00` -- `goldbox/dos.py`'s `INNATE_PAYLOAD` exactly, which is
+#: 2-5 read `00 00 FF 00` -- `goldbox/dos_codec.py`'s `INNATE_PAYLOAD` exactly, which is
 #: DOS's bytes 1-4.  So the pad is at 1 and everything after it is DOS's four
 #: payload bytes and four pointer bytes in order.
 AMIGA_POR_EFFECT_SIZE = 10
@@ -55,7 +58,7 @@ AMIGA_POR_EFFECT_PAD = 1
 #
 # Two more ports of the same record, and neither is a second field table:
 # each reads `goldbox/dos_port.py`'s own field table for its title through a
-# shift map, big-endian, exactly as `goldbox/amiga.py`'s Amiga Pool of
+# shift map, big-endian, exactly as `goldbox/amiga_por.py`'s Amiga Pool of
 # Radiance reader does.
 # `AmigaDeltas` is that map as data, so a third title is a row rather than a
 # module.
@@ -104,7 +107,7 @@ AMIGA_POR_EFFECT_PAD = 1
 #      odd and the record is 428; Silver Blades' 340 is even and there is no
 #      trailing byte.  Pool of Radiance's 285 + 2 = 287 pads to 288.
 #   5. **Silver Blades, and only Silver Blades, packs the spellbook into
-#      bits** -- see `goldbox/amiga.py`'s `AMIGA_SSB_SPELLBOOK_BYTES`.
+#      bits** -- see `goldbox/amiga_later.py`'s `AMIGA_SSB_SPELLBOOK_BYTES`.
 #
 #: The name field, all three titles: 16 bytes, NUL-padded, no count byte.
 AMIGA_NAME_SIZE = 16

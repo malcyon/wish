@@ -87,7 +87,7 @@ from .titles import class_table, classes_to_names, race_table
 # `race_table`, `class_table` and `classes_to_names` used to live here, then
 # in `goldbox/games.py`, and now in `goldbox/titles.py`, a title's own rules
 # rather than the C64 disk's -- imported back so every name still resolves.
-# They moved because `goldbox/amiga.py` needs them too, and a codec reaching
+# They moved because the Amiga codecs need them too, and a codec reaching
 # into another codec for a table is the pairwise web
 # `docs/117-save-conversion.md` exists to prevent -- a per-title table
 # belongs beside the per-title data.
@@ -283,7 +283,7 @@ def class_code_for(bits: int, game: C64Container | None = None) -> int:
     write a code that means something else.
 
     Delegates to `goldbox.classcode.code_for` (#310), which is the mask-only
-    case of the same rule `goldbox.dos.write` and `goldbox.c64_codec.read`
+    case of the same rule `goldbox.dos_codec.write` and `goldbox.c64_codec.read`
     both repair a stale code with. `game` picks the title's own table --
     `None` means Pool of Radiance's, the table this function has always used.
     """

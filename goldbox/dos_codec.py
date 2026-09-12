@@ -889,7 +889,7 @@ CLASS_BIT_FOR_SLOT: dict[int, int] = {0: 0x02, 2: 0x08, 3: 0x40, 4: 0x40,
 #: defect and it shipped, because the party `#192` proved the conversion on
 #: had two paladins and no ranger.
 #:
-#: `goldbox/amiga.py`'s own `CLASS_BIT` had already recorded the same thing
+#: `goldbox/amiga_pod.py`'s own `CLASS_BIT` had already recorded the same thing
 #: from the other side -- *"64 for both the paladin and the ranger, where the
 #: C64 gives them 0x40 and 0x80 separately. So the mask is not the neutral
 #: `class_bits` byte and must not be copied across"* -- and the Amiga codec
@@ -1414,7 +1414,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("name_text", "re-padded into the C64's 20-byte name, and folded to "
                   "capitals with its trailing blanks cut: the C64 draws its "
                   "text in the uppercase/graphics character set, where a "
-                  "lower-case letter is a punctuation mark (goldbox.dos."
+                  "lower-case letter is a punctuation mark (goldbox.dos_codec."
                   "c64_name)"),
     ("spellbook", "56 bytes packed into 56 bits; the ids are identical"),
     ("spells_memorised", "reversed: DOS fills from the end, the C64 from the "
@@ -1781,7 +1781,7 @@ def to_neutral(dos: DosCharacter,
     alone without a line.
 
     **An Amiga Pool of Radiance record reads through here too**, because
-    `goldbox.amiga.read_por_slot` re-cuts it into a `DosCharacter` first, and
+    `goldbox.amiga_por.read_por_slot` re-cuts it into a `DosCharacter` first, and
     the Amiga stores the same menu position DOS does.  So the fallback above
     is the right table for an Amiga source as well: what crosses is the menu
     position, and `goldbox.portraits.neutral_menu` is what spells it (#480).
@@ -2555,7 +2555,7 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #: **No conversion can reach these lines today**, and that is the honest
 #: statement rather than a claim they are safe: a conversion is between two
 #: ports of one title, the only other Pools of Darkness port is the Amiga,
-#: and `goldbox.amiga.PodCharacter` reads only platinum, gems and jewelry
+#: and `goldbox.amiga_pod.PodCharacter` reads only platinum, gems and jewelry
 #: too.  A source holding gold in this title would have to be a fourth port
 #: nobody has.
 _ABSENT_WHY: dict[str, str] = {
@@ -2906,7 +2906,7 @@ _THIEF_SKILL_NAMES: frozenset[str] = frozenset(n for n, _ in _THIEF_SKILL_COLUMN
 #: applies and the C64 build never reads.  Nobody has measured DOS's table
 #: against Amiga's, so an Amiga source keeps its own bytes here the same as
 #: a native DOS one does, the same reasoning `_THAC0_RECOMPUTE_FROM_PORTS`
-#: gives -- `goldbox.amiga.write_later` reuses this writer as its own
+#: gives -- `goldbox.amiga_later.write_later` reuses this writer as its own
 #: stepping stone, so a broader gate would recompute an Amiga round trip
 #: too.  A port added to this set needs its own measurement first.
 _THIEF_SKILL_RECOMPUTE_FROM_PORTS = ("C64",)
@@ -3259,7 +3259,7 @@ def write(char: NeutralCharacter,
     this function still composes itself -- `neutral.Writer.finish`'s "the
     neutral record carries it and the {into} conversion takes nothing from
     it".  Every other caller writes straight to a DOS save and leaves this at
-    its default; `goldbox.amiga.write_por` and `write_later` build an Amiga
+    its default; `goldbox.amiga_por.write_por` and `write_later` build an Amiga
     record out of this one and pass `into="Amiga"`, so a field this function
     cannot place is never blamed on DOS when the player never chose DOS
     (#389, A conversion to the Amiga tells the player what DOS does with
@@ -3588,7 +3588,7 @@ def write(char: NeutralCharacter,
     # wrong for exactly one measured source -- see
     # `_THAC0_RECOMPUTE_FROM_PORTS`'s own note for why it is a list of
     # measured ports rather than "everything but DOS": that broader gate
-    # let an *Amiga* source through too, because `goldbox.amiga.write_later`
+    # let an *Amiga* source through too, because `goldbox.amiga_later.write_later`
     # reuses this writer as its own stepping stone and repacks the
     # DOS-shaped bytes it gets back into an Amiga record, so a native Amiga
     # round trip hit this recompute and broke
@@ -3654,7 +3654,7 @@ def write(char: NeutralCharacter,
     #
     # **And `recompute_thief_skills=False` turns both branches off for a
     # caller writing this record on the way to somewhere else.**
-    # `goldbox.amiga.write_later` builds an Amiga record by writing a DOS one
+    # `goldbox.amiga_later.write_later` builds an Amiga record by writing a DOS one
     # and converting it, so a recompute here would put a number into an Amiga
     # save on the strength of a DOS engine that record will never be read by.
     # Nobody has read Amiga Curse's own thief routine, so the honest thing

@@ -2,15 +2,15 @@
 
 Every Gold Box character record says its class twice: a bitmask and a single
 code.  `docs/187-the-class-code-byte.md` has the full reading; this module
-holds the part both `goldbox/c64_codec.py` and `goldbox/dos.py` need alike --
+holds the part both `goldbox/c64_codec.py` and `goldbox/dos_codec.py` need alike --
 the per-title table a class bitmask's code comes from, and the rule that says
 what the code *should* be from a record's own classes.
 
-`goldbox/c64_codec.py` cannot import `goldbox/dos.py` and `goldbox/dos.py`
-imports `goldbox/c64_codec.py` -- neither may import the other, `goldbox/dos.py`
+`goldbox/c64_codec.py` cannot import `goldbox/dos_codec.py` and `goldbox/dos_codec.py`
+imports `goldbox/c64_codec.py` -- neither may import the other, `goldbox/dos_codec.py`
 says so beside `WRITES` -- so this table lives in the middle, where both
-codecs can reach it.  `goldbox.dos.CLASS_CODE_TABLE` and
-`goldbox.dos.CLASS_CODE_FOR_BITS` re-export the two tables below, and
+codecs can reach it.  `goldbox.dos_codec.CLASS_CODE_TABLE` and
+`goldbox.dos_codec.CLASS_CODE_FOR_BITS` re-export the two tables below, and
 `goldbox.yaml_io.CLASS_CODES` re-exports :data:`POOL_OF_RADIANCE_CLASS_CODES`,
 so nothing that already imports them by name has to change.
 """

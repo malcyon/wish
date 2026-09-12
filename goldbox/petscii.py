@@ -88,7 +88,7 @@ def encode_record_name(text: str, size: int = RECORD_NAME_SIZE) -> bytes:
     found this on Secret of the Silver Blades' own DOS pregen, `Guy de
     Valois `, which drew in the party panel as `G59 $% V!,/)3`.
 
-    That fix (`goldbox.dos.c64_name`) only reached the DOS-to-C64 path.
+    That fix (`goldbox.dos_codec.c64_name`) only reached the DOS-to-C64 path.
     `#290 (A character named in lower case draws as punctuation on the C64,
     and only the DOS import folds the name)` moves the fold here instead,
     because this is the one function every route into a C64 record's name

@@ -11,7 +11,7 @@ differently:
 * **DOS** keeps the **menu position**, one-based -- `portrait_head` at `0x0BB`
   is 1 to 14 and `portrait_body` at `0x0BC` is 1 to 12;
 * the **Amiga** keeps the menu position too: its record is the DOS one with
-  three insertions (`goldbox.amiga.AMIGA_POR_SHIFTS`), so the same pair is at
+  three insertions (`goldbox.amiga_por.AMIGA_POR_SHIFTS`), so the same pair is at
   `0x0BD` and `0x0BE`, and the six records in `save/` on the Amiga's own disk
   1 hold 1-14 and 1-12 there.
 
@@ -236,7 +236,7 @@ def tables_from_dos(game: str | pathlib.Path) -> PortraitTables:
     """The menu tables out of the DOS game directory's own executable.
 
     `game` is the directory holding `START.EXE` and the `HEAD<n>.DAX` files
-    -- the one `goldbox.dos.write_dos_save` already takes so the party's own
+    -- the one `goldbox.dos_codec.write_dos_save` already takes so the party's own
     area script can be staged.
     """
     game = pathlib.Path(game)
@@ -339,7 +339,7 @@ def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
     The **import** direction -- a DOS save becoming a `.d64` -- needs the
     tables to turn the DOS record's menu position into the art id the C64
     record stores, and the thing it has in its hand is the directory this
-    title's sides live in -- the one `goldbox.dos.write_dos_save` already
+    title's sides live in -- the one `goldbox.dos_codec.write_dos_save` already
     reads the combat icon and `ANIMATE00` out of.  `tables_from_c64` wants
     the one side that carries `GEN`; this finds it, for whichever of the
     three importable titles the directory turns out to hold (#300).
@@ -523,7 +523,7 @@ def tables_from_amiga_disks(disks: str | pathlib.Path) -> PortraitTables:
 #: `docs/188-the-sheet-portrait-per-title.md` and the screenshots on `#300`.
 #:
 #: Kept here rather than in the conversion so both directions read one fact:
-#: `goldbox.dos` decides today with `shape is POOL_OF_RADIANCE` in the
+#: `goldbox.dos_codec` decides today with `shape is POOL_OF_RADIANCE` in the
 #: C64-to-DOS direction and does not decide at all in the other, which is
 #: why a Curse import reports a portrait it never could have written.
 #: Spelled out rather than imported from `goldbox.c64_port`: `goldbox.traits`
@@ -705,7 +705,7 @@ def stored_tables(game=None, port: str | None = None
     key itself, and `None` means Pool of Radiance for the same reason
     :func:`draws_sheet_portrait` says it does.  This is what a conversion
     falls back to when nobody handed it tables read off the player's own
-    disks: `goldbox.dos.to_neutral` asks here before it gives up on the
+    disks: `goldbox.dos_codec.to_neutral` asks here before it gives up on the
     portrait, so a DOS Pool of Radiance party converts with every face its
     own whether or not a `POOL<n>.D64` is anywhere in reach.  Reading the
     player's disks (:func:`tables_from_disks`, :func:`tables_from_amiga_disks`)
@@ -746,10 +746,10 @@ def neutral_menu(game=None) -> PortraitTables | None:
     it is the same table on every port:
 
     * a **C64** record already stores that id, so its codec copies the byte;
-    * a **DOS** record stores the position, and `goldbox.dos.to_neutral` and
-      `goldbox.dos.write` cross it with `body_art` and `body_position` here;
-    * an **Amiga** record stores the position too, and `goldbox.amiga`'s
-      writer crosses it with the same two methods and the same table.
+    * a **DOS** record stores the position, and `goldbox.dos_codec.to_neutral` and
+      `goldbox.dos_codec.write` cross it with `body_art` and `body_position` here;
+    * an **Amiga** record stores the position too, and `amiga_por.py` and
+      `amiga_later.py`'s writers cross it with the same two methods and the same table.
 
     **The Amiga's own table is not used for this and must not be.** The
     twelve slots correspond across all seven ports of Pool of Radiance and

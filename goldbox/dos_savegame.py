@@ -1,6 +1,6 @@
 """The DOS ``SAVGAM<slot>.DAT`` saved game, mapped field by field (#59).
 
-`goldbox/dos.py` decodes the DOS *character record*; this module is the map of
+`goldbox/dos_codec.py` decodes the DOS *character record*; this module is the map of
 the saved game around it, the DOS counterpart of `docs/30-savegame-layout.md`.
 Everything here was established by differential analysis in DOSBox: twelve
 specimens -- Donald's own slots A, B and J, four saves taken one action
@@ -62,8 +62,8 @@ import struct
 class DosSaveError(ValueError):
     """A buffer that is not a DOS saved game, or an address outside it.
 
-    Its own class rather than `goldbox.dos.DosRecordError` because this module is
-    the layer *under* `goldbox/dos.py` -- importing it the other way would invert
+    Its own class rather than `goldbox.dos_codec.DosRecordError` because this module is
+    the layer *under* `goldbox/dos_codec.py` -- importing it the other way would invert
     the edge the module graph in `docs/117-save-conversion.md` exists to keep
     honest.  Both derive from `ValueError`, so a caller that catches that
     catches either.
@@ -73,7 +73,7 @@ class DosSaveError(ValueError):
 class DaxError(DosSaveError):
     """A `.DAX` block does not decode -- truncated, or not this container.
 
-    A subclass so that `goldbox.dos.write_dos_save`, which catches `DosSaveError`
+    A subclass so that `goldbox.dos_codec.write_dos_save`, which catches `DosSaveError`
     around the block it lifts the target area's script out of, keeps catching
     it.
     """
@@ -1026,7 +1026,7 @@ def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
     block's -- and all three used to be silent (#65).  A run whose operand is
     past the end of the block raised `IndexError` from the subscript, and a
     block that ran out before `raw_size` returned a plausible prefix and left
-    the caller to notice.  `goldbox.dos.write_dos_save` catches `DosSaveError` and
+    the caller to notice.  `goldbox.dos_codec.write_dos_save` catches `DosSaveError` and
     keeps the template's square; an `IndexError` took the whole conversion down
     with a traceback instead.
     """
@@ -1319,7 +1319,7 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset,
     if container.unnamed:
         # Curse and Silver Blades keep the triples inside the square block
         # and hold `$4AFA`/`$4AFD` at zero in all 121 containers (#253); in
-        # both, `$4AFD` is a quest flag the scripts use (`goldbox.dos.
+        # both, `$4AFD` is a quest flag the scripts use (`goldbox.dos_codec.
         # quest_flags`), so writing a wallmap there would overwrite one.
         put_wall_block(save, wallset, container)
     else:

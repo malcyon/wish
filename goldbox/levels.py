@@ -943,7 +943,7 @@ class LevelTables:
     #: -- Curse ships the same 56 racial bytes on both ports, and Silver
     #: Blades' agreement is unmeasured, so neither sets this. Consulted only
     #: by :meth:`dos_thief_skill_row`, which nothing in this codebase calls
-    #: yet: the DOS write path that would (`goldbox/dos.py`) has not been
+    #: yet: the DOS write path that would (`goldbox/dos_codec.py`) has not been
     #: wired up.
     dos_thief_skill_race: tuple[tuple[int, ...], ...] = ()
     dos_thief_skill_dexterity: tuple[tuple[int, ...], ...] = ()

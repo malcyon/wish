@@ -153,7 +153,7 @@ DIRECT: tuple[tuple[str, str], ...] = (
     # A creature's own field, CONFIRMED (#254): zero in every player export,
     # and declared unconditionally at `0x0F7`/`0x0F9` in every C64 title's
     # layout.  Copied straight across rather than dropped, for the same
-    # reason `goldbox.dos.DIRECT` copies its own pair -- both ports hold the
+    # reason `goldbox.dos_codec.DIRECT` copies its own pair -- both ports hold the
     # field and a player who somehow carries a non-zero value keeps it.
     ("experience_award", "experience_award"),
     ("experience_per_hit_point", "experience_per_hit_point"),
@@ -193,7 +193,7 @@ class C64Deltas:
     a neutral title beside its neutral character record, with one port per
     platform a title shipped on)`: it holds none of the record's form, which
     is `goldbox/layout.py`'s and which every title shares.  `DosDeltas` in
-    `goldbox/dos_port.py` and `AmigaDeltas` in `goldbox/amiga.py` are the same
+    `goldbox/dos_port.py` and `AmigaDeltas` in `goldbox/amiga_port.py` are the same
     role on the other two ports, and the three names now agree.
     """
 
@@ -381,8 +381,9 @@ def deltas_for(game=None) -> C64Deltas:
 record_shape = deltas_for
 
 
-#: Pre-#470 spelling of the class. `goldbox.dos_port.DosShape` and
-#: `goldbox.amiga.AmigaShape` are the same alias on the other two ports.
+#: Pre-#470 spelling of the class. `goldbox.amiga_later.AmigaShape` is the
+#: same alias on the Amiga port; the DOS rename kept no such alias, so there
+#: is no `DosShape` to compare it to.
 RecordShape = C64Deltas
 
 
@@ -1220,7 +1221,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # correct, the way one of their own engine's own would (#329).
     #
     # And `port == "DOS"` -- every caller today -- already owns the sentence:
-    # `goldbox.dos.to_neutral` puts its own line on `rep.dropped` whenever it
+    # `goldbox.dos_codec.to_neutral` puts its own line on `rep.dropped` whenever it
     # cannot supply this field, naming why (no game disks, or a menu position
     # the disk's own creation menu does not offer), whenever the destination
     # would otherwise have drawn a face.  Adding this one too read as the
@@ -1451,7 +1452,7 @@ DROPPED: tuple[tuple[str, str], ...] = (
 def field_disposition() -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
 
-    The neutral-vocabulary twin of `goldbox.dos.field_disposition`, which asks the
+    The neutral-vocabulary twin of `goldbox.dos_codec.field_disposition`, which asks the
     same question of the DOS layout.  `Writer.finish` catches a value no
     writer took one character at a time; this catches a *name* the writer has
     never been taught, which is the failure that rots silently -- a field
@@ -1472,7 +1473,7 @@ def field_disposition() -> dict[str, str]:
 #: C64 fields this reader deliberately leaves behind, and why.  Kept short
 #: on purpose: **every** name here that reaches a player does so through
 #: :data:`READ_DROPPED_PLAYER_TEXT` -- the C64 read side's twin of
-#: `goldbox.dos.DROPPED` and `goldbox.dos.DROPPED_PLAYER_TEXT` -- and a name
+#: `goldbox.dos_codec.DROPPED` and `goldbox.dos_codec.DROPPED_PLAYER_TEXT` -- and a name
 #: with no entry there is shown nothing.  A field the C64 or the DOS engine
 #: recomputes rather than one truly lost belongs on :data:`READ_DERIVED`
 #: instead, never here with a shortened line
@@ -1501,7 +1502,7 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
 )
 
 #: What a player reads for each name in :data:`READ_DROPPED` -- the read
-#: side's twin of `goldbox.dos.DROPPED_PLAYER_TEXT`.  A name with no entry
+#: side's twin of `goldbox.dos_codec.DROPPED_PLAYER_TEXT`.  A name with no entry
 #: here is shown nothing; `READ_DROPPED`'s own `(name, why)` pairs are
 #: untouched and still carry the byte-level account for whoever is reading
 #: the source.  Every sentence below is a draft: `.claude/rules/gui-text.md`
@@ -1530,9 +1531,9 @@ READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
 }
 
 #: C64 fields the reader leaves behind because the value is recomputed
-#: rather than genuinely lost -- the read side's twin of `goldbox.dos.
+#: rather than genuinely lost -- the read side's twin of `goldbox.dos_codec.
 #: DERIVED`.  `(name, why, the run that demonstrated it)`; never shown to a
-#: player, on the same terms as `goldbox.dos.DERIVED`
+#: player, on the same terms as `goldbox.dos_codec.DERIVED`
 #: (#355, A C64 party converted to DOS is shown nine developer notes, with
 #: memory addresses, overlay names and issue numbers in them).
 READ_DERIVED: tuple[tuple[str, str, str], ...] = (
@@ -1544,7 +1545,7 @@ READ_DERIVED: tuple[tuple[str, str, str], ...] = (
                             "the same rule rather than from a source value, "
                             "and a C64 record read here and written back "
                             "keeps it",
-     "the sibling DOS-side entry in goldbox.dos.DERIVED, closed as #277 "
+     "the sibling DOS-side entry in goldbox.dos_codec.DERIVED, closed as #277 "
      "(A DOS character converted to the C64 loses the strength bonus to "
      "hit and damage, because 0x0E3 is written zero)"),
     ("turn_class", "zero for every player character -- the undead's row, not "
@@ -1933,7 +1934,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # restoring one (#310's own census: Pool of Radiance agrees 24 of 24,
     # Curse disagrees 8 of 30, all after a training or a class change).
     #
-    # Repairing it here, rather than only in `goldbox.dos.write`, is what
+    # Repairing it here, rather than only in `goldbox.dos_codec.write`, is what
     # makes a C64-to-C64 round trip through `goldbox/yaml_io.py` stop writing
     # the stale byte back, and what a future writer sees without re-deriving
     # the same rule.  `editor/roster.py` reads `class_bits` and never this
@@ -1992,7 +1993,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     # A name in `READ_DROPPED` is reported **only where
     # `READ_DROPPED_PLAYER_TEXT` has a sentence for it**, the same rule
-    # `goldbox.dos.to_neutral` follows for `DROPPED_PLAYER_TEXT` -- and only
+    # `goldbox.dos_codec.to_neutral` follows for `DROPPED_PLAYER_TEXT` -- and only
     # when this read did not actually set it.  `abilities_second` is in both
     # halves at once for Curse of the Azure Bonds and Secret of the Silver
     # Blades, which keep a real second ability array and had it set above;

@@ -93,7 +93,7 @@ ENCUMBRANCE = 0x056          # u16, and see DERIVED: the game recomputes it
 RACE = 0x058
 CLASS = 0x059
 #: The row of the turning matrix, which is a property of what is *being*
-#: turned rather than of the cleric. `goldbox.dos.to_neutral` deliberately
+#: turned rather than of the cleric. `goldbox.dos_codec.to_neutral` deliberately
 #: reads nothing from DOS's own copy (#297) and neither does this module.
 TURN_CLASS = 0x05A
 #: `field_83_87`'s third byte. The first, at 0x093, is the NPC control byte.
@@ -538,7 +538,7 @@ class PodCharacter:
     def abilities_permanent(self) -> list[int]:
         """The first byte of each ability pair -- the permanent score.
 
-        `goldbox.dos._ability_pair` read the asymmetry out of the shipped
+        `goldbox.dos_codec._ability_pair` read the asymmetry out of the shipped
         overlay for `#401`: byte 0 of an ability pair is the permanent score
         and byte 1 is the one in force, and exceptional strength is the other
         way round.  The importer copies both halves of both shapes across, so
@@ -630,7 +630,7 @@ class PodCharacter:
         """Spell ids the sixteen-byte mask at 0x159 has set, ascending.
 
         Bit `i` of byte `i >> 3` is DOS array index `i`, which is spell id
-        `i + 1` -- the same numbering `goldbox.dos.DosCharacter.spells_known`
+        `i + 1` -- the same numbering `goldbox.dos_codec.DosCharacter.spells_known`
         hands back, so the two ports' lists compare directly.
         """
         mask = self.raw[SPELLBOOK:SPELLBOOK + SPELLBOOK_BYTES]
@@ -800,7 +800,7 @@ class PodWriter:
 # ---------------------------------------------------------------------------
 # Anything -> Amiga: the writing half of the pair `goldbox/neutral.py` describes
 # ---------------------------------------------------------------------------
-# The middle is a `NeutralCharacter`, the same record `goldbox/dos.py` reads into
+# The middle is a `NeutralCharacter`, the same record `goldbox/dos_codec.py` reads into
 # and `goldbox/c64_codec.py` writes out of. Nothing here reads a `CharacterRecord`
 # and nothing here reads another codec's output: this module is one writer, it
 # names neutral fields, and what produced them is somebody else's business.
@@ -1270,7 +1270,7 @@ POD_READ_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #:   nothing to lose;
 #: * **neither port stores it.**  `turn_power` is the cleric's own turning
 #:   strength, which both engines work out from the class levels when the
-#:   command is pressed; `goldbox.dos.to_neutral` deliberately reads nothing
+#:   command is pressed; `goldbox.dos_codec.to_neutral` deliberately reads nothing
 #:   from DOS's `turn_class` for the same reason (#297), and this record's own
 #:   copy is at 0x05A;
 #: * **one field is genuinely still unlocated**, and it is `attack_level`.
@@ -1344,8 +1344,8 @@ def pod_field_disposition() -> dict[str, str]:
 def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     """One Amiga Pools of Darkness `.pc` in the neutral record.
 
-    The caller `PodCharacter` did not have until 2026-09-08: `goldbox.amiga
-    .write` has always turned a neutral character into a `.pc`, and nothing
+    The caller `PodCharacter` did not have until 2026-09-08: `write_pod`
+    has always turned a neutral character into a `.pc`, and nothing
     turned a `.pc` back into one, so the Amiga end of
     `#194 (Import and export a Pools of Darkness save between DOS and the
     Amiga)` had one direction of two.
@@ -1439,7 +1439,7 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # The ranger and the paladin share bit 6 in this byte, exactly as they do
     # in the DOS record -- the two ports store the same mask -- so the same
     # disambiguation applies, out of the level array (#292 for the later
-    # titles, and `goldbox.dos.neutral_class_bits_from` is where it lives).
+    # titles, and `goldbox.dos_codec.neutral_class_bits_from` is where it lives).
     out.set("class_bits",
             _dos.neutral_class_bits_from(char.class_bits, char.class_levels),
             f"Amiga .pc class mask @{CLASS_BITS:#05x}, with bit 6 reread "
@@ -1507,7 +1507,7 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # -- how the character is, and whether the game is still playing them ----
     # A status past the end of the table is not a state the engine can draw,
     # so it is reported rather than turned into the nearest name -- the same
-    # rule `goldbox.dos.to_neutral` follows.
+    # rule `goldbox.dos_codec.to_neutral` follows.
     if char.status < len(neutral.STATUS_NAMES):
         out.set("status", neutral.STATUS_NAMES[char.status],
                 f"Amiga .pc status @{STATUS:#05x} = {char.status}, the "
@@ -1556,7 +1556,7 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
         "(NOT APPROVED)")
 
     # **No `out.drop` line here, and that is deliberate rather than an
-    # omission.**  `goldbox.dos.to_neutral` and `goldbox.c64_codec.read` each
+    # omission.**  `goldbox.dos_codec.to_neutral` and `goldbox.c64_codec.read` each
     # keep a second table -- `DROPPED_PLAYER_TEXT`, `READ_DROPPED_PLAYER_TEXT`
     # -- of the sentences a *person* reads, and a name with no sentence in it
     # is shown nothing.  This reader has 37 names and no such table: every
@@ -1681,7 +1681,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     named = _class_names(char, bits.value if bits else 0)
     # **A class the character only *was* is not one this record can hold.**
     # The neutral mask carries a dual-classed character's old class as well
-    # as his current one -- `goldbox.dos.neutral_class_bits_from` unions the
+    # as his current one -- `goldbox.dos_codec.neutral_class_bits_from` unions the
     # former level array in, because the C64 needs it -- and `former_levels`
     # is on `POD_WRITE_DROPPED` here, so the `.pc` keeps the class he *is*.
     #
