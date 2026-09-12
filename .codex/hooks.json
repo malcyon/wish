@@ -3,6 +3,9 @@
     "PreToolUse": [
       {
         "command": ".claude/hooks/check-issue-reads.py"
+      },
+      {
+        "command": ".claude/hooks/check-issue-writes.py"
       }
     ]
   }

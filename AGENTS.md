@@ -93,8 +93,21 @@ Three rules follow, and they are the whole of the practice:
   outside the project opened it or is talking in it. Read it, work it if
   Donald asks, and say what you found in your reply to him.
 
-**Claude Code enforces the first of those with a hook and Codex does not**, so
-under Codex it is a rule you keep rather than one the harness keeps for you.
+**The first two have hooks behind them**, because neither held as a rule alone:
+`.claude/hooks/check-issue-reads.py` refuses the unfiltered reads, and
+`.claude/hooks/check-issue-writes.py` refuses a `gh` write that would go out
+under Donald's name. The second was written on 2026-09-11 after a subagent
+posted its findings with `gh issue comment` hours after the rule was added --
+the rule had reached it, and every older document shows `gh`.
+
+**Both are tripwires rather than boundaries.** They read one Bash call as a
+shell would; anything going through another interpreter or another route walks
+past them. `tools/issueread.py` is what actually filters, and the third rule --
+leaving a `human` thread alone -- has nothing behind it but this paragraph.
+
+Codex is wired to the same two scripts in `.codex/hooks.json`, but a Codex hook
+does nothing until it is trusted with `/hooks`, so under Codex these may still
+be rules you keep rather than ones the harness keeps for you.
 `docs/218-the-wish-agent-bot.md` is the whole design, what was measured, and
 what it does and does not buy.
 
