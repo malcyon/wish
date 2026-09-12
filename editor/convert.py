@@ -112,7 +112,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import amiga_codec, c64_port, dos_codec, dos_port, neutral
+from goldbox import amiga_por, amiga_shared, c64_port, dos_codec, dos_port, neutral
+
+# By name rather than as a module: `amiga_port` and `amiga_por` differ by one
+# letter, and only one of them belongs in the line above.
+from goldbox.amiga_port import AmigaRecordError
 
 from . import dosimport
 
@@ -283,17 +287,17 @@ class Source:
 
         try:
             disk = AmigaDisk.open(str(path))
-            slots = amiga_codec.por_slots_present(disk)
-        except (AmigaDiskError, amiga_codec.AmigaRecordError, OSError) as exc:
+            slots = amiga_por.por_slots_present(disk)
+        except (AmigaDiskError, AmigaRecordError, OSError) as exc:
             raise ConvertError(str(exc)) from exc
         if not slots:
             raise ConvertError(f"{path} holds no Amiga saved game")
         chosen = slot if slot in slots else slots[0]
         try:
-            record = disk.read_file(amiga_codec.por_save_path(
-                amiga_codec.por_filename(chosen, 1), amiga_codec.por_save_drawer(disk)))
-            shape = amiga_codec.amiga_shape_for(len(record))
-        except (AmigaDiskError, amiga_codec.AmigaRecordError) as exc:
+            record = disk.read_file(amiga_por.por_save_path(
+                amiga_por.por_filename(chosen, 1), amiga_por.por_save_drawer(disk)))
+            shape = amiga_shared.amiga_shape_for(len(record))
+        except (AmigaDiskError, AmigaRecordError) as exc:
             raise ConvertError(str(exc)) from exc
         return cls(port="amiga", title=shape, path=path, slot=chosen,
                   available_slots=slots)
@@ -485,8 +489,8 @@ class AmigaToC64(DosToC64):
         from goldbox.amiga_adf import AmigaDisk
 
         disk = AmigaDisk.open(str(source.path))
-        party, savgam = amiga_codec.read_por_slot(disk, slot)
-        state = amiga_codec.read_por_state(
+        party, savgam = amiga_por.read_por_slot(disk, slot)
+        state = amiga_por.read_por_state(
             savgam, source=f"{source.path} slot {slot}")
         save0, save1, report = dos_codec.new_save_from(
             state, party, options.icon, options.animate,
@@ -706,8 +710,8 @@ class AmigaToDos(C64ToDos):
             raise ConvertError(f"{source.path} names no Amiga save slot")
         game_dir = pathlib.Path(options)
         disk = AmigaDisk.open(str(source.path))
-        party, savgam = amiga_codec.read_por_slot(disk, source.slot)
-        state = amiga_codec.read_por_state(
+        party, savgam = amiga_por.read_por_slot(disk, source.slot)
+        state = amiga_por.read_por_state(
             savgam, source=f"{source.path} slot {source.slot}")
         # The Amiga file order **is** the DOS file order (`docs/165-amiga-
         # savegame.md`), so there is no reversal here; `goldbox.dos.
@@ -808,18 +812,18 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
     # menu's first head), fixed there by leaving both fields unset for a
     # portrait-less character rather than by the value either one holds.
     portraits = any("portrait_head" in c for c in party)
-    savegame, save_report = amiga_codec.new_por_savegame(
+    savegame, save_report = amiga_por.new_por_savegame(
         state, slot, len(party), ecl_dax, portraits=portraits)
-    disk = amiga_codec.make_por_save_disk(slot, party, savegame, icons=icons)
+    disk = amiga_por.make_por_save_disk(slot, party, savegame, icons=icons)
     problems = disk.verify()
     if problems:
-        raise amiga_codec.AmigaRecordError(
+        raise AmigaRecordError(
             "the disk this conversion built does not verify:\n  "
             + "\n  ".join(problems))
 
     report = neutral.Report()
     for char, icon in zip(party, icons):
-        _, _, _, char_report = amiga_codec.write_por(char, icon=icon)
+        _, _, _, char_report = amiga_por.write_por(char, icon=icon)
         report.dropped.extend(char_report.dropped)
         report.warnings.extend(char_report.warnings)
     report.warnings.extend(save_report.converted)
@@ -872,7 +876,7 @@ class C64ToAmiga(Direction):
         ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
-        state = amiga_codec.por_state_from_c64(source.save0, str(source.path))
+        state = amiga_por.por_state_from_c64(source.save0, str(source.path))
         return _rehearse_por_savegame(state, "A", party, ecl_dax, icons=icons)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
@@ -929,7 +933,7 @@ class DosToAmiga(Direction):
         # mirroring #422's fix for a C64 source).
         icons = [amiga_combat_icon(c) for c in raw_party]
         savgam_path = pathlib.Path(source.path) / f"SAVGAM{letter}.DAT"
-        state = amiga_codec.por_state_from_dos(savgam_path.read_bytes(),
+        state = amiga_por.por_state_from_dos(savgam_path.read_bytes(),
                                          str(savgam_path))
         return _rehearse_por_savegame(state, letter, party, ecl_dax,
                                       icons=icons)
@@ -990,13 +994,13 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 ) + tuple(
     C64ToDos(shape) for shape in C64_PAIRED
 ) + tuple(
-    AmigaToC64(shape) for shape in amiga_codec.CONVERTS
+    AmigaToC64(shape) for shape in amiga_shared.CONVERTS
 ) + tuple(
-    AmigaToDos(shape) for shape in amiga_codec.CONVERTS
+    AmigaToDos(shape) for shape in amiga_shared.CONVERTS
 ) + tuple(
-    C64ToAmiga(shape) for shape in amiga_codec.WRITES
+    C64ToAmiga(shape) for shape in amiga_shared.WRITES
 ) + tuple(
-    DosToAmiga(shape) for shape in amiga_codec.WRITES
+    DosToAmiga(shape) for shape in amiga_shared.WRITES
 )
 
 
