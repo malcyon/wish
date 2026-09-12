@@ -12,7 +12,18 @@ license-files = ["LICENSE"]
 dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-xdist>=3.5", "pyjwt[crypto]"]
+# `capstone`, `pillow` and `numpy` are not the suite's own needs -- they are
+# what the tools under test import, and a test that exercises one of those
+# tools fails without them. All three were installed by hand in the
+# `.venv` and never declared, so rebuilding the environment from this file
+# gave seven failures nobody could explain (2026-09-11). `capstone`
+# disassembles for `tools/amiga68k.py` and `tools/dosdis16.py`; `pillow`
+# draws for `tools/iconproposal.py` and fifteen others; `numpy` is
+# `tools/amigacursewheel.py`'s, and is what `#458 (The journal answerer
+# cannot run under the project's own virtual environment, because the
+# private screen reader needs numpy)` is about.
+dev = ["pytest>=8.0", "pytest-xdist>=3.5", "pyjwt[crypto]",
+       "capstone", "pillow", "numpy"]
 gui = ["PyQt6>=6.6"]
 # The live automapper reads a running VICE; it needs the GUI extra.
 automap = ["PyQt6>=6.6"]
