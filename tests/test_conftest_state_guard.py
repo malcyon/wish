@@ -24,6 +24,26 @@ import textwrap
 import uuid
 from pathlib import Path
 
+import pytest
+
+# Both tests here write a uniquely-named probe **into `tests/`** and delete it
+# again, on the assumption that only one is doing so at a time. Under
+# `-n auto` that assumption is false: neither carried a group, so
+# `--dist loadgroup` scheduled them on separate workers and their probes
+# coexisted on disk for 296-356 ms in 20 of 20 runs measured on 2026-09-12.
+#
+# That overlap is what `#522` was: a child `pytest` given one file to collect
+# still enumerates the whole directory first, and on Windows
+# `_pytest/main.py` falls back to `samefile_nofollow` for every sibling whose
+# path does not match -- which `lstat()`s a file the *other* test has just
+# deleted and raises `WinError 2`. Linux never reaches that branch, which is
+# why it only ever failed on the Windows job. One group, 0 of 20 overlaps.
+#
+# The same reasoning as `tests/test_instance.py`'s `emulator-pool` group: a
+# test claiming a shared resource has to land in one worker. The resource
+# here is the `tests/` directory during a child's collection.
+pytestmark = pytest.mark.xdist_group(name="conftest-guard-probe")
+
 TESTS_DIR = Path(__file__).resolve().parent
 
 
