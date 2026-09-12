@@ -60,7 +60,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
 from tools.dosshop import ENCUMBRANCE_AT, stage_encumbrance  # noqa: E402
@@ -76,7 +76,7 @@ def read(folder: pathlib.Path, letter: str | None = None
     pat = f"CHRDAT{letter.upper()}?.SAV" if letter else "CHRDAT*.SAV"
     out = []
     for p in sorted(folder.glob(pat)):
-        c = dos.read_character(p)
+        c = dos_codec.read_character(p)
         out.append((p.name, c.name.strip(), sum(c.money.values()),
                     c.get("encumbrance"), c.expected_encumbrance(),
                     c.get("item_count")))

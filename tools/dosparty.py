@@ -75,7 +75,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 #: The race list, in the order CREATE NEW CHARACTER draws it.  Read off the
@@ -280,7 +280,7 @@ def check_records(save_dir: pathlib.Path, slot_letter: str,
             lines.append(f"{n} {spec.name}: MISSING {path.name}")
             ok = False
             continue
-        c = dos.read_character(path)
+        c = dos_codec.read_character(path)
         want_race = RACE_CODE[spec.race]
         got = {
             "name": c.name,

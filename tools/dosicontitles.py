@@ -53,7 +53,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from goldbox.dos_savegame import DaxError, dax_index, dax_unpack  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
@@ -215,7 +215,7 @@ def _disp(value: int) -> bytes:
 
 def icon_fields(key: str) -> dict[str, int]:
     """This title's `icon_head`, `icon_body` and `size` record offsets."""
-    table = dos_layout.FIELDS_BY_NAME_FOR[key]
+    table = dos_port.FIELDS_BY_NAME_FOR[key]
     return {n: table[n].offset for n in ("icon_head", "icon_body", "size")}
 
 

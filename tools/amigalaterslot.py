@@ -45,7 +45,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga  # noqa: E402
+from goldbox import amiga_later, amiga_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools import amigasavegame  # noqa: E402
 
@@ -69,7 +69,7 @@ def slot_path(disk: AmigaDisk, letter: str) -> str:
         f"no /{SAVE_DRAWER}/savgam{letter}{{{'|'.join(SUFFIXES)}}} on the disk")
 
 
-def rename(char: amiga.AmigaCharacter, name: str) -> amiga.AmigaCharacter:
+def rename(char: amiga_later.AmigaCharacter, name: str) -> amiga_later.AmigaCharacter:
     """The same character under a new name, NUL-padded to the sixteen bytes.
 
     The Amiga name field is sixteen bytes terminated and padded with NUL
@@ -77,12 +77,12 @@ def rename(char: amiga.AmigaCharacter, name: str) -> amiga.AmigaCharacter:
     what was under it -- otherwise the panel draws the tail of the old one.
     """
     encoded = name.encode("latin1")
-    if len(encoded) >= amiga.AMIGA_NAME_SIZE:
+    if len(encoded) >= amiga_port.AMIGA_NAME_SIZE:
         raise SystemExit(
             f"'{name}' needs {len(encoded)} bytes and the Amiga name field is "
-            f"{amiga.AMIGA_NAME_SIZE} including its terminator")
+            f"{amiga_port.AMIGA_NAME_SIZE} including its terminator")
     raw = bytearray(char.raw)
-    raw[:amiga.AMIGA_NAME_SIZE] = encoded.ljust(amiga.AMIGA_NAME_SIZE, b"\0")
+    raw[:amiga_port.AMIGA_NAME_SIZE] = encoded.ljust(amiga_port.AMIGA_NAME_SIZE, b"\0")
     return dataclasses.replace(char, raw=bytes(raw))
 
 

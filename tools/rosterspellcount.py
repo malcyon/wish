@@ -33,7 +33,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from automap.paths import disk_globs, find_disks  # noqa: E402
-from goldbox import c64_codec, games, savegame  # noqa: E402
+from goldbox import c64_codec, c64_port, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 
 #: `COM.PREP $1751`: `LDA #$01 / CPX #$16 / ADC #$00 / CPX #$24 / ADC #$00 /
@@ -138,7 +138,7 @@ def main(argv=None) -> int:
                         help="totals only, no per-character rows")
     args = parser.parse_args(argv)
 
-    game = games.by_key("pool-of-radiance")
+    game = c64_port.by_key("pool-of-radiance")
     roots = args.disks or [os.environ.get("POR_DISKS") or str(find_disks())]
 
     rows: list[Row] = []

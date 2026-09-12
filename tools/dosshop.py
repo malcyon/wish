@@ -59,7 +59,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from automap import maps  # noqa: E402
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox.dos_savegame import dax_block  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
 from tools import dosbox  # noqa: E402
@@ -287,7 +287,7 @@ def identity(folder: pathlib.Path) -> list[str]:
     """
     lines = []
     for path in sorted(folder.glob("CHRDAT*.SAV")):
-        c = dos.read_character(path)
+        c = dos_codec.read_character(path)
         stored, want = c.get("encumbrance"), c.expected_encumbrance()
         mark = "ok" if stored == want else f"{stored - want:+d}"
         purse = " ".join(f"{k}={v}" for k, v in c.money.items() if v)

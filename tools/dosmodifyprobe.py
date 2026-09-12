@@ -47,12 +47,12 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosbox, dosparty  # noqa: E402
 
 #: The byte under test: the third of `field_83_87`, which the Curse
 #: decompilation calls `npcTreasureShareCount`.
-SHARE = dos_layout.FIELDS_BY_NAME["field_83_87"].offset + 2
+SHARE = dos_port.FIELDS_BY_NAME["field_83_87"].offset + 2
 
 #: Two characters, both human fighters so nothing about the roll differs
 #: between them.  Menu positions, not record codes -- `tools/dosparty.py` has
@@ -69,7 +69,7 @@ def shares(save_dir: pathlib.Path, letter: str) -> dict[str, int]:
     out = {}
     for path in sorted(save_dir.glob(f"CHRDAT{letter.upper()}?.SAV")):
         data = path.read_bytes()
-        if len(data) == dos_layout.RECORD_SIZE:
+        if len(data) == dos_port.RECORD_SIZE:
             out[path.name] = data[SHARE]
     return out
 

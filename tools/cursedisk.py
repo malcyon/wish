@@ -41,12 +41,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import areas, dos, dos_layout, games  # noqa: E402
+from goldbox import areas, c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
-CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 U = areas.Confidence.UNKNOWN
 
 #: Curse's twenty-five areas: id, disk side, and the maps the script loads.
@@ -90,9 +90,9 @@ def enable_curse() -> None:
     Radiance's, which is right, because `areas.area()` is the C64-to-DOS
     direction and is not this tool's.
     """
-    if dos_layout.CURSE_OF_THE_AZURE_BONDS not in dos.CONVERTS:
-        dos.CONVERTS = tuple(dos.CONVERTS) + (
-            dos_layout.CURSE_OF_THE_AZURE_BONDS,)
+    if dos_port.CURSE_OF_THE_AZURE_BONDS not in dos_codec.CONVERTS:
+        dos_codec.CONVERTS = tuple(dos_codec.CONVERTS) + (
+            dos_port.CURSE_OF_THE_AZURE_BONDS,)
     if not areas.areas_for(CURSE.title):
         table = dict(areas.TABLES)
         table[CURSE.title] = CURSE_AREAS
@@ -140,7 +140,7 @@ def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
                 pass
         if animate is None:
             try:
-                animate = load_payload(str(path), dos.ANIMATE_FILE)
+                animate = load_payload(str(path), dos_codec.ANIMATE_FILE)
             except Exception:
                 pass
         if icon is not None and animate is not None:
@@ -155,9 +155,9 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
           out: pathlib.Path):
     """Write `out` and return the report.  Nothing else is touched."""
     icon, animate = game_files(disks)
-    save0, save1, report = dos.new_save(folder, slot, icon, animate,
+    save0, save1, report = dos_codec.new_save(folder, slot, icon, animate,
                                         game=CURSE)
-    disk: D64 = dos.save_disk(bytes(save0), bytes(save1), game=CURSE)
+    disk: D64 = dos_codec.save_disk(bytes(save0), bytes(save1), game=CURSE)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(disk.data)
     return save0, report
@@ -186,7 +186,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     worth carrying to the memorise screen.
     """
     from goldbox import dos_savegame
-    from goldbox.games import classes_to_names
+    from goldbox.c64_port import classes_to_names
 
     savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
     where = dos_savegame.position(savgam)
@@ -197,8 +197,8 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
              f"clock {clock[0]:02d}:{clock[1]:02d}, "
              f"area ${dos_savegame.current_area(savgam):02X}, "
              f"GEO{dos_savegame.geo_block(savgam):02X}"]
-    for index, char in enumerate(dos.read_party(folder, slot)):
-        n = dos.to_neutral(char).fields
+    for index, char in enumerate(dos_codec.read_party(folder, slot)):
+        n = dos_codec.to_neutral(char).fields
 
         def v(name, default=0):
             return n[name].value if name in n else default
@@ -274,7 +274,7 @@ def main(argv=None) -> int:
     out = pathlib.Path(args.out) if args.out else (
         ROOT / "work" / "issue192" / f"CURSE{args.slot}.D64")
     save0, report = build(folder, args.slot, disks, out)
-    party = dos.read_party(folder, args.slot)
+    party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "
           + ", ".join(c.name for c in party))
     print(f"Wrote {out} ({out.stat().st_size} bytes), "

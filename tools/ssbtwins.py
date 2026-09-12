@@ -39,13 +39,13 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos, dos_layout, games, layout  # noqa: E402
+from goldbox import c64_port, dos_codec, dos_port, layout  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0, SaveGame1  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
-GAME = games.SECRET_OF_THE_SILVER_BLADES
+GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
 SHIPPED_SIDE = "SILVER-6.D64"
 SHIPPED_DOS = ("Forgotten Realms The Archives - Collection Two/games/SECRET/"
                "Default files/Saves")
@@ -142,17 +142,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # In this process only: the refusal in goldbox/dos.py stands until a run
     # in the running game has earned its removal (#193 step 3).
-    if dos_layout.SECRET_OF_THE_SILVER_BLADES not in dos.CONVERTS:
-        dos.CONVERTS = dos.CONVERTS + (dos_layout.SECRET_OF_THE_SILVER_BLADES,)
+    if dos_port.SECRET_OF_THE_SILVER_BLADES not in dos_codec.CONVERTS:
+        dos_codec.CONVERTS = dos_codec.CONVERTS + (dos_port.SECRET_OF_THE_SILVER_BLADES,)
 
     twins = c64_twins(shipped_c64(pathlib.Path(disks) if disks else None))
-    party = dos.read_party(folder, args.slot)
+    party = dos_codec.read_party(folder, args.slot)
     print(f"{len(party)} DOS records from {folder} slot {args.slot}")
     print(f"{len(twins)} C64 records from the shipped {GAME.save_file.decode()}")
     print()
     total = 0
     for char in party:
-        rec, _report = dos.to_c64_record(char, icon=bytes(36))
+        rec, _report = dos_codec.to_c64_record(char, icon=bytes(36))
         name = char.name.upper().strip()
         twin = twins.get(name)
         if twin is None:

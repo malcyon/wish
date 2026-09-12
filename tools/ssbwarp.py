@@ -67,7 +67,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.actions import pc_register  # noqa: E402
-from goldbox import areas, games  # noqa: E402
+from goldbox import areas, c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import newecl  # noqa: E402
 from tools import session as por  # noqa: E402
@@ -131,7 +131,7 @@ class Addresses:
     it runs at `$0800`.
     """
 
-    def __init__(self, game: games.Game, disks: str, base: int = 0x0800):
+    def __init__(self, game: c64_port.C64Container, disks: str, base: int = 0x0800):
         _, body = newecl.load("DUNGEON", disks, game)
         self.base, self.body = base, body
         call, lo_t, hi_t, opcode_at = newecl.dispatch_tables(body, base)
@@ -261,7 +261,7 @@ class SSBSession(por.Session):
     #: reads Pool of Radiance's indoors flag)`, `#426 (The session driver will
     #: not walk a Silver Blades party, because SSBSession never says which
     #: title it is)`).
-    game = games.SECRET_OF_THE_SILVER_BLADES
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
 
     def handle_prompt(self, s=None) -> bool:
         if time.time() - self._last_prompt < 2.0:
@@ -920,7 +920,7 @@ def verdict_of(state: dict, row, spoiled: bool = False) -> dict:
 
 
 def run(args) -> int:
-    game = games.SECRET_OF_THE_SILVER_BLADES
+    game = c64_port.SECRET_OF_THE_SILVER_BLADES
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 

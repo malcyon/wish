@@ -58,8 +58,8 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos as gdos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_codec as gdos  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
 #: Suffixes a DOS character record is stored under.  `.GUY` is Gateway's
@@ -143,7 +143,7 @@ class Specimen:
     def __init__(self, path: pathlib.Path, data: bytes) -> None:
         self.path = path
         self.data = data
-        self.shape = dl.shape_for(len(data))
+        self.shape = dl.deltas_for(len(data))
         self.built = is_built(path)
         self.digest = hashlib.sha256(data).hexdigest()[:12]
         self.paths = [path]
@@ -195,7 +195,7 @@ def collect(roots, want_built: bool,
                 size = path.stat().st_size
             except OSError:                              # pragma: no cover
                 continue
-            if size not in dl.SHAPES_BY_SIZE:
+            if size not in dl.DELTAS_BY_SIZE:
                 continue
             other = foreign_title(path)
             if other and not want_foreign:
@@ -245,7 +245,7 @@ def show(specs: list[Specimen], field: str, per_title: bool,
     for key in sorted(keyed):
         f = dl.FIELDS_BY_NAME_FOR[key].get(field)
         where = f"0x{f.offset:03X}+{f.size}" if f else "not in this shape"
-        print(f"\n  {dl.SHAPES_BY_KEY[key].title} -- {field} {where}")
+        print(f"\n  {dl.DELTAS_BY_KEY[key].title} -- {field} {where}")
         _partition(keyed[key], field, examples, indent="    ")
 
 
@@ -306,7 +306,7 @@ def main(argv=None) -> int:
     for r in roots:
         print(f"  {r}")
     for key, n in sorted(by_title.items()):
-        print(f"  {dl.SHAPES_BY_KEY[key].title:32s} {n}")
+        print(f"  {dl.DELTAS_BY_KEY[key].title:32s} {n}")
     for other, n in sorted(skipped.items()):
         print(f"  skipped {n} record(s) under {other}: the same record "
               f"size as a title read here, and not the same id space")

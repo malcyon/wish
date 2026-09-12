@@ -56,7 +56,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout, dos_savegame  # noqa: E402
+from goldbox import dos_port, dos_savegame  # noqa: E402
 from goldbox import layout as c64_layout  # noqa: E402
 from tools import dosbox, dosfieldrefs  # noqa: E402
 
@@ -110,7 +110,7 @@ def award_offsets(size: int) -> tuple[int, int | None]:
     three bytes in the four earlier titles, two in the two later ones, which
     have no per-hit-point rate and no portrait either.
     """
-    fields = dos_layout.layout_for(size)
+    fields = dos_port.layout_for(size)
     by_name = {f.name: f for f in fields}
     if "experience_award" in by_name:
         base = by_name["experience_award"]
@@ -134,7 +134,7 @@ def award(record: bytes, size: int | None = None, hp: int | None = None) -> int:
     """
     size = size or len(record)
     base_off, rate_off = award_offsets(size)
-    by_name = {f.name: f for f in dos_layout.layout_for(size)}
+    by_name = {f.name: f for f in dos_port.layout_for(size)}
     base = struct.unpack_from("<H", record, base_off)[0]
     if rate_off is None:
         return base
@@ -167,7 +167,7 @@ def monsters(game: pathlib.Path, size: int):
     Yields `(file, block id, name, base, per hit point, hp_rolled)`.  A block
     that is not one whole record is skipped: the containers hold other things.
     """
-    by_name = {f.name: f for f in dos_layout.layout_for(size)}
+    by_name = {f.name: f for f in dos_port.layout_for(size)}
     base_off, rate_off = award_offsets(size)
     hp_off = by_name["hp_rolled"].offset
     for path in sorted(game.iterdir()):
@@ -215,7 +215,7 @@ def cmd_sites(args) -> int:
     ovr = (game / "GAME.OVR").read_bytes()
     base_off, rate_off = award_offsets(size)
     c64 = {f.offset: f for f in c64_layout.LAYOUT}
-    fields = {f.offset: f for f in dos_layout.layout_for(size)}
+    fields = {f.offset: f for f in dos_port.layout_for(size)}
     print(f"=== {game.name}, a {size}-byte record")
     print(f"    award base {base_off:#05x}, per hit point "
           f"{rate_off:#05x}" if rate_off is not None else

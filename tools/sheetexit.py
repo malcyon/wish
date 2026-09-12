@@ -49,7 +49,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import portraitdraw  # noqa: E402
 from tools.savecheck import Log, catch_signals  # noqa: E402
@@ -499,7 +499,7 @@ def run(save: str, out: str, who: list[str], how: str, pool: int | None,
     from tools import gamedisks
     from tools import session as por
 
-    game = games.detect(D64.open(save))
+    game = c64_port.detect(D64.open(save))
     if game is None or game.key not in DRIVERS:
         raise SystemExit(f"{save}: no Curse or Silver Blades save on this disk "
                          f"({game.title if game else 'nothing detected'})")

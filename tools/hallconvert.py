@@ -41,7 +41,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import areas, dos  # noqa: E402
+from goldbox import areas, dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools import dosdisk  # noqa: E402
 
@@ -83,7 +83,7 @@ def convert(folder: pathlib.Path, slot: str, disks: pathlib.Path,
         name = f"{name} on {borrow}"
     try:
         dosdisk.build(folder, slot, disks, out)
-    except dos.DosRecordError as e:
+    except dos_codec.DosRecordError as e:
         return there, f"{name}: REFUSED -- {e}"
     finally:
         sg.current_area, areas.area_in = was, was_area

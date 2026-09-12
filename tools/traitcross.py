@@ -42,7 +42,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_codec, dos, items  # noqa: E402
+from goldbox import c64_codec, dos_codec, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
@@ -71,8 +71,8 @@ def dos_folders(root: pathlib.Path):
 def cross_one(path: pathlib.Path) -> tuple[str, list[int], list[int],
                                            list[int], list[int], list[str]]:
     """`(name, source ids, innate, granted, slots, lost)` for one record."""
-    char = dos.read_character(path)
-    neutral = dos.to_neutral(char)
+    char = dos_codec.read_character(path)
+    neutral = dos_codec.to_neutral(char)
     rec, rep = c64_codec.write(neutral)
     raw = bytes(rec.to_bytes())
     slots = list(raw[TRAIT_SLOTS:TRAIT_SLOTS + TRAIT_COUNT])

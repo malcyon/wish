@@ -97,7 +97,7 @@ def per_option(game: pathlib.Path, size: str = "large") -> None:
 
 def records(folder: pathlib.Path) -> None:
     """How often the two nibbles land on different C64 colours at all."""
-    from goldbox import dos
+    from goldbox import dos_codec
 
     ega = dos_icon_tables().ega_to_c64
     agree = disagree = 0
@@ -106,7 +106,7 @@ def records(folder: pathlib.Path) -> None:
         if path.suffix.upper() not in (".SAV", ".CHA"):
             continue
         try:
-            colours = bytes(dos.read_character(path).get("icon_colours"))
+            colours = bytes(dos_codec.read_character(path).get("icon_colours"))
         except Exception:
             continue
         differs = False

@@ -47,7 +47,7 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from goldbox import games, levels  # noqa: E402
+from goldbox import c64_port, levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import gamedisks  # noqa: E402
@@ -209,14 +209,14 @@ def predicted_hp_max(con: dict, record) -> int | None:
 
 def _party(path: pathlib.Path):
     game, sg0, _ = load_save(D64.open(str(path)))
-    if game is not games.SECRET_OF_THE_SILVER_BLADES:
+    if game is not c64_port.SECRET_OF_THE_SILVER_BLADES:
         raise SystemExit(f"ssbtrainerinputs.py: {path} is not a Silver Blades save")
     return [slot.record for slot in sg0.characters]
 
 
 def shipped_party():
     """The party SSI ships, off whichever side carries a whole `SAVEDBASH`."""
-    ssb = games.SECRET_OF_THE_SILVER_BLADES
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
     where = gamedisks.find(ssb.key)
     if where is None:
         return []
@@ -295,13 +295,13 @@ def report(check: bool = False, rows_only: bool = False) -> int:
     print(f"    Curse's $10A4: {'the same 136 bytes' if th['dexterity'] == _rows(th['curse_dexterity'], 0, 0, 17, signed=True) else 'DIFFERENT'}")
 
     print("\n  racial rows -- GEN $12F5, read at race * 8 with no decrement")
-    order = dict(games.RACES_SILVER_BLADES)
+    order = dict(c64_port.RACES_SILVER_BLADES)
     for n, row in enumerate(th["race_table"]):
         label = ("the dexterity table's first row" if n == 5
                  else f"laid out for {order.get(n + 1, '?')}")
         print(f"    row {n}  " + " ".join(f"{v:4d}" for v in row) + f"   {label}")
     print("  what each race code actually gets, which is the effective table:")
-    for race, name in games.RACES_SILVER_BLADES:
+    for race, name in c64_port.RACES_SILVER_BLADES:
         row = th["effective"].get(race)
         print(f"    {race} {name:10s} " +
               (" ".join(f"{v:4d}" for v in row) if row else "no adjustment"))

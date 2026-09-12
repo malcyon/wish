@@ -50,7 +50,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import disk_globs  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
 from tools import newecl  # noqa: E402
@@ -108,7 +108,7 @@ OPCODE_NAMES = {
 
 # -- the files ---------------------------------------------------------------
 
-def c64_sides(root: str, game: games.Game) -> list[tuple[int, str]]:
+def c64_sides(root: str, game: c64_port.C64Container) -> list[tuple[int, str]]:
     """`(side number, path)` for every side of this title under `root`."""
     seen: dict[str, str] = {}
     for pattern in disk_globs(game):
@@ -129,7 +129,7 @@ def c64_sides(root: str, game: games.Game) -> list[tuple[int, str]]:
     return sorted(out)
 
 
-def c64_file(root: str, game: games.Game, name: str) -> tuple[int, bytes] | None:
+def c64_file(root: str, game: c64_port.C64Container, name: str) -> tuple[int, bytes] | None:
     """`(side, body without its two-byte header)` for a game file."""
     for number, path in c64_sides(root, game):
         try:
@@ -142,7 +142,7 @@ def c64_file(root: str, game: games.Game, name: str) -> tuple[int, bytes] | None
     return None
 
 
-def c64_scripts(root: str, game: games.Game) -> dict[str, tuple[int, bytes]]:
+def c64_scripts(root: str, game: c64_port.C64Container) -> dict[str, tuple[int, bytes]]:
     """Every `ECL<hex>` on the sides, by name, with its side and its body."""
     out: dict[str, tuple[int, bytes]] = {}
     for number, path in c64_sides(root, game):
@@ -392,7 +392,7 @@ def walked_loads(machine: "Machine", body: bytes, base: int
 
 # -- reporting ---------------------------------------------------------------
 
-def load_port(root: str, game: games.Game, dos: str | None):
+def load_port(root: str, game: c64_port.C64Container, dos: str | None):
     """`(machine, base, {name: body}, {name: side})` for one port."""
     got = c64_file(root, game, "DUNGEON")
     if got is None:
@@ -451,7 +451,7 @@ def cmd(argv=None) -> int:
     args = parser.parse_args(argv)
 
     game = None
-    for candidate in games.GAMES:
+    for candidate in c64_port.GAMES:
         if candidate.key == args.title or candidate.title == args.title:
             game = candidate
     if game is None:

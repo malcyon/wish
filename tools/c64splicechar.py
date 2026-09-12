@@ -43,9 +43,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.savegame import SaveGame0, SaveGame1  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -84,15 +84,15 @@ def default_icon() -> bytes:
 def splice(cha: pathlib.Path, disk: pathlib.Path, slot: int,
            out: pathlib.Path, icon: str = "keep") -> dict:
     """Write the DOS character at `cha` into `slot` of a copy of `disk`."""
-    if not 0 <= slot < dos.SLOT_COUNT:
-        raise SystemExit(f"a C64 save has slots 0..{dos.SLOT_COUNT - 1}")
+    if not 0 <= slot < dos_codec.SLOT_COUNT:
+        raise SystemExit(f"a C64 save has slots 0..{dos_codec.SLOT_COUNT - 1}")
     image = D64.from_bytes(disk.read_bytes())
     load0, save0 = split_load_address(image.read_file(GAME.save_file))
     load1, save1 = split_load_address(image.read_file(GAME.roster_file))
     save0, save1 = bytearray(save0), bytearray(save1)
 
-    char = dos.read_character(cha)
-    rec, report = dos.to_c64_record(
+    char = dos_codec.read_character(cha)
+    rec, report = dos_codec.to_c64_record(
         char, icon=default_icon() if icon == "default" else None)
     # `party_order` in a C64 record is the slot the record lands in, not the
     # marching position -- `goldbox/layout.py` 0x10D, identity in every
@@ -103,15 +103,15 @@ def splice(cha: pathlib.Path, disk: pathlib.Path, slot: int,
     before = SaveGame0.from_bytes(bytes(save0), GAME).slot(slot)
     was = before.record.name if before.occupied else None
 
-    at = dos.SLOT_AREA - dos.SAVE0_BASE + slot * dos.SLOT_STRIDE
-    save0[at:at + dos.SLOT_STRIDE] = raw[:dos.SLOT_STRIDE]
-    at = dos.ITEM_AREA - dos.SAVE0_BASE + slot * dos.SLOT_STRIDE
-    save0[at:at + dos.SLOT_STRIDE] = raw[0x120:0x220]
+    at = dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE + slot * dos_codec.SLOT_STRIDE
+    save0[at:at + dos_codec.SLOT_STRIDE] = raw[:dos_codec.SLOT_STRIDE]
+    at = dos_codec.ITEM_AREA - dos_codec.SAVE0_BASE + slot * dos_codec.SLOT_STRIDE
+    save0[at:at + dos_codec.SLOT_STRIDE] = raw[0x120:0x220]
     if icon == "default":
-        at = dos.ICON_TABLE - dos.SAVE0_BASE + slot * dos.ICON_SIZE
-        save0[at:at + dos.ICON_SIZE] = raw[0x220:0x244]
-    at = slot * dos.ROSTER_STRIDE
-    save1[at:at + dos.ROSTER_STRIDE] = raw[0x100:0x120]
+        at = dos_codec.ICON_TABLE - dos_codec.SAVE0_BASE + slot * dos_codec.ICON_SIZE
+        save0[at:at + dos_codec.ICON_SIZE] = raw[0x220:0x244]
+    at = slot * dos_codec.ROSTER_STRIDE
+    save1[at:at + dos_codec.ROSTER_STRIDE] = raw[0x100:0x120]
 
     image.write_file_inplace(GAME.save_file,
                              attach_load_address(load0, bytes(save0)))

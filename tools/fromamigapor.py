@@ -69,7 +69,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import amiga, dos, games  # noqa: E402
+from goldbox import amiga_por, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools import dosdisk  # noqa: E402
@@ -85,8 +85,8 @@ def read_slot(disk, slot: str):
     blocks and `read_por_state` the place and the clock.  Both destinations
     below start here, which is the whole of what they share.
     """
-    party, savgam = amiga.read_por_slot(disk, slot)
-    state = amiga.read_por_state(
+    party, savgam = amiga_por.read_por_slot(disk, slot)
+    state = amiga_por.read_por_state(
         savgam, source=f"{disk.volume_name} slot {slot.upper()}")
     return party, state
 
@@ -110,12 +110,12 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
         portraits = tables_from_disks(disks)
     except PortraitError:
         portraits = None
-    save0, save1, report = dos.new_save_from(
+    save0, save1, report = dos_codec.new_save_from(
         state, party, icon, animate, portraits=portraits,
-        game=games.POOL_OF_RADIANCE)
+        game=c64_port.POOL_OF_RADIANCE)
     if out is not None:
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(dos.save_disk(bytes(save0), bytes(save1)).data)
+        out.write_bytes(dos_codec.save_disk(bytes(save0), bytes(save1)).data)
     return party, state, report
 
 
@@ -144,17 +144,17 @@ def build_dos(disk, slot: str, game: pathlib.Path,
     from editor.convert import amiga_combat_icon
 
     party, state = read_slot(disk, slot)
-    characters = [dos.to_neutral(c) for c in party]
+    characters = [dos_codec.to_neutral(c) for c in party]
     icons = [amiga_combat_icon(c) for c in party]
     if out is None:
         import tempfile
 
         with tempfile.TemporaryDirectory(prefix="fromamigapor-") as scratch:
-            report = dos.new_dos_save_from(state, characters,
+            report = dos_codec.new_dos_save_from(state, characters,
                                            pathlib.Path(scratch), dos_slot,
                                            game, icons=icons)
         return party, state, report
-    report = dos.new_dos_save_from(state, characters, out, dos_slot, game,
+    report = dos_codec.new_dos_save_from(state, characters, out, dos_slot, game,
                                    icons=icons)
     return party, state, report
 
@@ -179,7 +179,7 @@ def sheet(party, state) -> list[str]:
     `goldbox.amiga.to_dos_character`, so the same reader and the same three
     display constants serve, imported from there rather than copied.
     """
-    from goldbox.games import classes_to_names
+    from goldbox.c64_port import classes_to_names
 
     hour, minute = state.clock[3], state.clock[2] * 10 + state.clock[1]
     out = [f"Amiga {state.title}: "
@@ -188,7 +188,7 @@ def sheet(party, state) -> list[str]:
              f"square {state.x},{state.y} facing {state.facing}, "
              f"clock {hour:02d}:{minute:02d}"]
     for index, char in enumerate(party):
-        n = dos.to_neutral(char).fields
+        n = dos_codec.to_neutral(char).fields
 
         def v(name, default=0):
             return n[name].value if name in n else default
@@ -285,7 +285,7 @@ def compare_sheets(party, events) -> "tuple[int, list[str]]":
 
     compared, wrong = 0, []
     for char in party:
-        fields = dos.to_neutral(char).fields
+        fields = dos_codec.to_neutral(char).fields
         name = fields["name"].value
         left = sheets.get(name)
         if left is None:
@@ -352,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     disk = AmigaDisk.open(args.adf)
-    present = amiga.por_slots_present(disk)
+    present = amiga_por.por_slots_present(disk)
     if not present:
         raise SystemExit(f"{args.adf} holds no Pool of Radiance save slot")
     slot = (args.slot or present[0]).upper()

@@ -266,9 +266,9 @@ def check_saves(after: CharacterRecord) -> tuple[int, int]:
 
 
 def compare(args) -> int:
-    from goldbox import games, levels, levelup  # noqa: PLC0415
+    from goldbox import c64_port, levels, levelup  # noqa: PLC0415
 
-    ssb = games.SECRET_OF_THE_SILVER_BLADES
+    ssb = c64_port.SECRET_OF_THE_SILVER_BLADES
     before, after = _record(args.before), _record(args.after)
     print(f"{before.name} -> {after.name}")
     for off, width, name in WATCH:

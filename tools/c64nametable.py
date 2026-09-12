@@ -42,7 +42,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_save, games  # noqa: E402
+from goldbox import c64_port, c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
@@ -92,14 +92,14 @@ SITE_KINDS = {
 
 # --- reading a disk ----------------------------------------------------------
 
-def table_entries(disk: D64) -> tuple[games.Game, int, list[bytes]]:
+def table_entries(disk: D64) -> tuple[c64_port.C64Container, int, list[bytes]]:
     """The 16 raw entries of the stored table, and where they live in memory.
 
     Sixteen, not the eight the container models: the compare loop counts down
     from `#$0F` with a sixteen-byte stride, so the block the game clears and
     fills is the whole `$5700`-`$57FF` page.
     """
-    game = games.detect(disk)
+    game = c64_port.detect(disk)
     if game is None:
         raise SystemExit("no Gold Box save on this disk")
     container = c64_save.CONTAINERS.get(game.key)

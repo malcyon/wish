@@ -103,7 +103,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import games, traits  # noqa: E402
+from goldbox import c64_port, traits  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
 from tools.absrefsweep import files, is_art  # noqa: E402
 
@@ -121,7 +121,7 @@ TRAIT_SLOT = 0x0AD
 LOOKBACK = 24
 
 
-def staging(game: games.Game) -> int:
+def staging(game: c64_port.C64Container) -> int:
     return STAGING.get(game.key, STAGING_LATER)
 
 
@@ -186,7 +186,7 @@ def immediate_before(body: bytes, at: int) -> set[int]:
     return found
 
 
-def call_sites(root: str, game: games.Game, target: int):
+def call_sites(root: str, game: c64_port.C64Container, target: int):
     """`(file, offset, kind, ids)` for every `JSR`/`JMP` to one address."""
     lo, hi = target & 0xFF, target >> 8
     for _disk, name, body in files(root, game):
@@ -214,7 +214,7 @@ def call_sites(root: str, game: games.Game, target: int):
 # from the predicate outwards and then finding the block the walker indexes.
 
 
-def bodies(root: str, game: games.Game) -> dict[str, bytes]:
+def bodies(root: str, game: c64_port.C64Container) -> dict[str, bytes]:
     """Every non-art file once, so a multi-pass search reads the disks once."""
     out: dict[str, bytes] = {}
     for _disk, name, body in files(root, game):
@@ -453,7 +453,7 @@ def flags_tail(lists: list[list[int]]) -> bool:
     return bool(lists) and len(set(lists[-1])) <= 2 and len(lists[-1]) >= 6
 
 
-def report_lists(root: str, game: games.Game, entry: int,
+def report_lists(root: str, game: c64_port.C64Container, entry: int,
                  literal: set[int]) -> int:
     """Print the check lists, and the ids they add to the literal census."""
     body_map = bodies(root, game)
@@ -567,7 +567,7 @@ def report_lists(root: str, game: games.Game, entry: int,
     return 0
 
 
-def describe(game: games.Game, code: int) -> str:
+def describe(game: c64_port.C64Container, code: int) -> str:
     return traits.describe(code, game.key)
 
 
@@ -583,7 +583,7 @@ def main(argv=None) -> int:
                         help="also read the combat check lists off the disks")
     args = parser.parse_args(argv)
 
-    game = next((g for g in games.GAMES
+    game = next((g for g in c64_port.GAMES
                  if g.key == args.title or g.title == args.title), None)
     if game is None:
         raise SystemExit(f"No such title: {args.title}")

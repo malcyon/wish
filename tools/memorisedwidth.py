@@ -38,7 +38,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox.games import GAMES  # noqa: E402
+from goldbox.c64_port import GAMES  # noqa: E402
 from tools import gamedisks  # noqa: E402
 from tools.coldread import GEN_BASE, overlay, staging  # noqa: E402
 

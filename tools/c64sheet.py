@@ -28,8 +28,8 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_codec  # noqa: E402
+from goldbox.c64_port import classes_to_names, race_table  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from goldbox.games import classes_to_names, race_table  # noqa: E402
 from goldbox.items import items_for_slot, load_item_names  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import gamedisks  # noqa: E402

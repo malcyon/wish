@@ -33,7 +33,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, dos_layout  # noqa: E402
+from goldbox import amiga_pod, amiga_port, dos_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools import amiga68k, amigasaves  # noqa: E402
 
@@ -96,12 +96,12 @@ def _silver_blades_field(offset: int) -> tuple[str, int]:
     sits where DOS puts it, immediately after `hp_max`, and the shape's own
     `spellbook_bytes` says how wide it is.
     """
-    shape = amiga.SILVER_BLADES_DELTAS
-    fields = {f.name: f for f in dos_layout.layout_for(shape.dos)}
+    shape = amiga_port.SILVER_BLADES_DELTAS
+    fields = {f.name: f for f in dos_port.layout_for(shape.dos)}
     book = shape.offset(fields["hp_max"].offset) + 1
     if book <= offset < book + shape.spellbook_bytes:
         return "spellbook", offset - book
-    for field in dos_layout.layout_for(shape.dos):
+    for field in dos_port.layout_for(shape.dos):
         if not field.size or field.name == "spellbook":
             continue
         at = shape.offset(field.offset)
@@ -229,7 +229,7 @@ def check(found: list[dict]) -> int:
         field, index, *rest = row
         back = rest[0] if rest else 0
         key = (field, index)
-        want = getattr(amiga, constant, None)
+        want = getattr(amiga_pod, constant, None)
         got = by_source.get(key)
         if got is not None:
             got -= back

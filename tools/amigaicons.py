@@ -354,7 +354,7 @@ def _compare(out, key, volume, name, amiga, dos, colour) -> int:
 
 def report_census(out) -> int:
     """Every specimen's icon fields, against the art that is on the disks."""
-    from goldbox import amiga as amiga_mod
+    from goldbox import amiga_later, amiga_port
     from tools import amigarecords
     art = find_art()
     if not art:
@@ -371,14 +371,14 @@ def report_census(out) -> int:
     with tempfile.TemporaryDirectory(prefix="amigaicons-") as tmp:
         for path in amigarecords.extract(pathlib.Path(tmp)):
             if path.suffix == ".guy":
-                records.append((amiga_mod.read_amiga_guy(path), path.name))
+                records.append((amiga_later.read_amiga_guy(path), path.name))
             elif path.name.startswith("CurseA-savgam"):
-                for c in amiga_mod.party_in_savegame(path.read_bytes(),
-                                                     amiga_mod.CURSE_DELTAS):
+                for c in amiga_later.party_in_savegame(path.read_bytes(),
+                                                     amiga_port.CURSE_DELTAS):
                     records.append((c, path.name))
             elif path.name.startswith("Secret1-savgam"):
-                shape = amiga_mod.SILVER_BLADES_DELTAS
-                for c in amiga_mod.party_in_savegame(path.read_bytes(), shape):
+                shape = amiga_port.SILVER_BLADES_DELTAS
+                for c in amiga_later.party_in_savegame(path.read_bytes(), shape):
                     records.append((c, path.name))
     if not records:
         out("no Amiga Curse or Silver Blades specimens; set $AMIGA_DISKS")

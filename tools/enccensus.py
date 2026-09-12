@@ -53,9 +53,9 @@ from dataclasses import dataclass, field
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga  # noqa: E402
-from goldbox import dos as gdos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import amiga_later, amiga_por, amiga_port  # noqa: E402
+from goldbox import dos_codec as gdos  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import (  # noqa: E402
     amigarecords,
     amigasavegame,
@@ -185,7 +185,7 @@ def dos_rows(roots=None, want_built: bool = True):
             if any(d in path.as_posix() for d in dostailcensus.SCRATCH_DIRS):
                 continue
             try:
-                if path.stat().st_size not in dl.SHAPES_BY_SIZE:
+                if path.stat().st_size not in dl.DELTAS_BY_SIZE:
                     continue
             except OSError:                              # pragma: no cover
                 continue
@@ -237,7 +237,7 @@ def amiga_rows():
             continue
         seen.add(key)
         try:
-            char = amiga.por_character(record, itm, b"", source=label)
+            char = amiga_por.por_character(record, itm, b"", source=label)
         except Exception:                                # pragma: no cover
             continue
         rows.append(Row(port="amiga", title="pool-of-radiance",
@@ -279,15 +279,15 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
     rubbish rather than an error.  Copied from `tools/spellbookcensus.py`.
     """
     if what == "record":
-        shape = amiga.AMIGA_DELTAS_BY_SIZE.get(len(data))
+        shape = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
         if shape is None:                                # pragma: no cover
-            for candidate in amiga.AMIGA_DELTAS:
-                if amiga.looks_like_amiga_record(data, 0, candidate):
+            for candidate in amiga_port.AMIGA_DELTAS:
+                if amiga_later.looks_like_amiga_record(data, 0, candidate):
                     shape = candidate
                     break
         if shape is None:                                # pragma: no cover
             return
-        yield amiga.AmigaCharacter.from_bytes(data[:shape.record_size], shape,
+        yield amiga_later.AmigaCharacter.from_bytes(data[:shape.record_size], shape,
                                               source=label)
         return
     try:
@@ -354,7 +354,7 @@ def stacks(rows_source=None) -> list[Stack]:
         if not itm:
             continue
         try:
-            char = amiga.por_character(record, itm, b"", source=label)
+            char = amiga_por.por_character(record, itm, b"", source=label)
         except Exception:                                # pragma: no cover
             continue
         for it in getattr(char, "items", ()) or ():

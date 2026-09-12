@@ -50,8 +50,8 @@ import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox.amiga import AMIGA_POR_RECORD_SIZE, POR_SAVE_DRAWER  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
+from goldbox.amiga_por import AMIGA_POR_RECORD_SIZE, POR_SAVE_DRAWER  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
 #: The siblings a record is read with. `read_amiga_por` needs the `.itm` to

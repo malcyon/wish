@@ -36,7 +36,7 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import c64_codec, dos, dos_layout, items  # noqa: E402
+from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import dostailcensus  # noqa: E402
@@ -124,7 +124,7 @@ def dos_records(root: pathlib.Path):
     """
     paths = sorted(root.rglob("*")) if root.is_dir() else [root]
     for path in paths:
-        if not path.is_file() or path.stat().st_size not in dos_layout.SHAPES_BY_SIZE:
+        if not path.is_file() or path.stat().st_size not in dos_port.DELTAS_BY_SIZE:
             continue
         other = dostailcensus.foreign_title(path)
         if other:
@@ -132,12 +132,12 @@ def dos_records(root: pathlib.Path):
                   f"{other}, the same record size and not the same id space")
             continue
         try:
-            char = dos.read_character(path)
-            bits = dos.neutral_class_bits(char)
+            char = dos_codec.read_character(path)
+            bits = dos_codec.neutral_class_bits(char)
         except Exception:  # noqa: BLE001
             continue
         raw = char.raw("class_levels")
-        levels = {name: raw[n] for n, name in dos.CLASS_BY_SLOT.items()
+        levels = {name: raw[n] for n, name in dos_codec.CLASS_BY_SLOT.items()
                   if n < len(raw)}
         yield (f"{path.parent.name}/{path.name}", char.shape.title,
                bits_from_levels(levels), bits, char.get("char_class"))

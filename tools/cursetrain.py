@@ -327,9 +327,9 @@ def compare(args) -> int:
     whole point is to find out whether the module reproduces the trainer
     before the key that trusts it is added.
     """
-    from goldbox import games, levels, levelup  # noqa: PLC0415
+    from goldbox import c64_port, levels, levelup  # noqa: PLC0415
 
-    curse = games.CURSE_OF_THE_AZURE_BONDS
+    curse = c64_port.CURSE_OF_THE_AZURE_BONDS
     before, after = _record(args.before), _record(args.after)
     print(f"{before.name} -> {after.name}")
     for off, width, name in WATCH:

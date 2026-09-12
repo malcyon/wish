@@ -45,7 +45,7 @@ from typing import NamedTuple
 TOOLS = str(pathlib.Path(__file__).resolve().parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
-from goldbox import games as G  # noqa: E402
+from goldbox import c64_port as G  # noqa: E402
 from tools import instance  # noqa: E402
 from tools.drive import (  # noqa: E402
     Keyboard,

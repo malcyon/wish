@@ -47,7 +47,7 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import games, icons  # noqa: E402
+from goldbox import c64_port, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts, dos_icon_tables  # noqa: E402
 from tools import gamedisks  # noqa: E402
@@ -343,7 +343,7 @@ def markdown(parts: IconParts, charset: bytes, game: pathlib.Path,
     """The proposal as a document, generated fresh from the YAML (#320)."""
     comments = _comments(TABLE_PATH.read_text())
     img = out.parent / "img"
-    display = games.by_key(title).title
+    display = c64_port.by_key(title).title
     cover = coverage(tables)
     lines = [
         f"# The proposed combat-figure table for a {display} save leaving "
@@ -554,14 +554,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.census:
         disk = c64_disk(args.title, args.disk)
         if disk is None:
-            raise SystemExit(f"no {games.by_key(args.title).title} C64 disk "
+            raise SystemExit(f"no {c64_port.by_key(args.title).title} C64 disk "
                              f"carrying the icon files; pass --disk")
         print_census(census(IconParts.load(str(disk)), save_folders()))
         return 0
     if args.png or args.markdown:
         disk = c64_disk(args.title, args.disk)
         if disk is None:
-            raise SystemExit(f"no {games.by_key(args.title).title} C64 disk "
+            raise SystemExit(f"no {c64_port.by_key(args.title).title} C64 disk "
                              f"carrying the icon files; pass --disk")
         parts = IconParts.load(str(disk))
         charset = icons.load_icon_charset(str(disk))

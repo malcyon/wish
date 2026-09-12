@@ -41,7 +41,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos, levels  # noqa: E402
+from goldbox import dos_codec, levels  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
@@ -257,7 +257,7 @@ def dos_records(title: str = "pool-of-radiance", extra: list[str] = ()):
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.CHA", recursive=True)
     for path in sorted(set(files)):
         try:
-            char = dos.read_character(path)
+            char = dos_codec.read_character(path)
         except Exception:
             continue
         if DOS_TITLE_BY_KEY.get(char.shape.key) != title:

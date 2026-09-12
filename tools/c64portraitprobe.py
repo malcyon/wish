@@ -48,7 +48,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from automap.paths import find_disks  # noqa: E402
 from automap.vice import MonitorError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from goldbox.dos import SAVE0_BASE, SLOT_AREA, SLOT_STRIDE  # noqa: E402
+from goldbox.dos_codec import SAVE0_BASE, SLOT_AREA, SLOT_STRIDE  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: The loaded-files cache while the game runs, and the two slots that hold a

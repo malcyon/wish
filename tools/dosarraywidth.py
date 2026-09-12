@@ -49,7 +49,7 @@ import capstone
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 #: The `find_game` stem for each title whose DOS overlays are on this machine,
@@ -148,7 +148,7 @@ def report(title: str, field: str | None, displacement: int,
     data = overlay.read_bytes()
     print(f"{title}  ({overlay.name}, {len(data)} bytes)")
     if field is not None:
-        f = dos_layout.FIELDS_BY_NAME_FOR[title][field]
+        f = dos_port.FIELDS_BY_NAME_FOR[title][field]
         print(f"  our table   {field} @{f.offset:#05x}, {f.size} bytes")
     print(f"  scanning    es:[reg + {displacement:#04x}]")
     tally = measure(data, displacement, show_sites)
@@ -202,7 +202,7 @@ def main(argv=None) -> int:
     for n, title in enumerate(titles):
         if n:
             print()
-        table = dos_layout.FIELDS_BY_NAME_FOR.get(title, {})
+        table = dos_port.FIELDS_BY_NAME_FOR.get(title, {})
         if args.displacement is not None:
             at = args.displacement
         elif args.field in table:

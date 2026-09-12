@@ -48,7 +48,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, dos, dos_layout  # noqa: E402
+from goldbox import amiga_later, amiga_port, dos_codec, dos_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools import amigalaterwrite, amigasavegame  # noqa: E402
 
@@ -67,61 +67,61 @@ _DOS_TABLES = ("WRITE_UNSOURCED", "WRITE_UNSOURCED_LATER", "WRITE_DERIVED",
                "WRITE_DERIVED_LATER", "WRITE_CONSTANTS", "WRITE_DEFAULTS")
 
 
-def declared_record_mask(shape: amiga.AmigaDeltas) -> set[int]:
+def declared_record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
     """Amiga record offsets the two sides are allowed to disagree in."""
     names: set[str] = set()
     for table in _DOS_TABLES:
-        for row in getattr(dos, table):
+        for row in getattr(dos_codec, table):
             names.add(row[0])
     out: set[int] = set()
-    for field in dos_layout.layout_for(shape.dos):
+    for field in dos_port.layout_for(shape.dos):
         if field.name not in names:
             continue
         try:
             at = shape.offset(field.offset)
-        except amiga.AmigaRecordError:
+        except amiga_port.AmigaRecordError:
             continue
         out.update(range(at, at + field.size))
-    for at, size, _why in amiga.LATER_WRITE_UNSOURCED[shape.key]:
+    for at, size, _why in amiga_later.LATER_WRITE_UNSOURCED[shape.key]:
         out.update(range(at, at + size))
-    for at, size, _why in amiga.LATER_WRITE_DERIVED[shape.key]:
+    for at, size, _why in amiga_later.LATER_WRITE_DERIVED[shape.key]:
         out.update(range(at, at + size))
     return out
 
 
-def declared_block_mask(char: amiga.AmigaCharacter) -> set[int]:
+def declared_block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
     """The same over a whole block: record, then item nodes, then effects."""
     shape = char.shape
     out = declared_record_mask(shape)
     at = shape.record_size
     for _ in char.items:
-        for offset, size, _why in amiga.LATER_ITEM_WRITE_UNSOURCED:
+        for offset, size, _why in amiga_later.LATER_ITEM_WRITE_UNSOURCED:
             out.update(range(at + offset, at + offset + size))
         at += shape.item_size
     for _ in char.effects:
-        for offset, size, _why in amiga.LATER_EFFECT_WRITE_UNSOURCED:
+        for offset, size, _why in amiga_later.LATER_EFFECT_WRITE_UNSOURCED:
             out.update(range(at + offset, at + offset + size))
         at += shape.effect_size
     return out
 
 
-def field_at(shape: amiga.AmigaDeltas, offset: int) -> str:
+def field_at(shape: amiga_port.AmigaDeltas, offset: int) -> str:
     """Which field of the record an Amiga offset lands in, for a diff line."""
-    for field in dos_layout.layout_for(shape.dos):
+    for field in dos_port.layout_for(shape.dos):
         try:
             at = shape.offset(field.offset)
-        except amiga.AmigaRecordError:
+        except amiga_port.AmigaRecordError:
             continue
         if at <= offset < at + field.size:
             return f"{field.name}+{offset - at}"
     if shape.spellbook_bytes is not None:
-        book = amiga.AMIGA_SSB_SPELLBOOK_AT
+        book = amiga_later.AMIGA_SSB_SPELLBOOK_AT
         if book <= offset < book + shape.spellbook_bytes:
             return f"spellbook+{offset - book}"
     return "-"
 
 
-def part_at(char: amiga.AmigaCharacter, offset: int) -> str:
+def part_at(char: amiga_later.AmigaCharacter, offset: int) -> str:
     """Which part of a block an offset is in: the record, a node, or past it."""
     shape = char.shape
     if offset < shape.record_size:
@@ -170,12 +170,12 @@ def slot_bytes(path: pathlib.Path, letter: str | None) -> tuple[bytes, str]:
     raise SystemExit(f"{path}: no savgam{letter or '*'} in /{SAVE_DRAWER}")
 
 
-def party_of(data: bytes, source: str) -> list[amiga.AmigaCharacter]:
+def party_of(data: bytes, source: str) -> list[amiga_later.AmigaCharacter]:
     save = amigasavegame.parse(data, source=source)
     if save.shape.record_shape is None:
         raise SystemExit(f"{source}: {save.shape.title} keeps its party in "
                          f"files beside the saved game")
-    return list(amiga.party_in_savegame(data, save.shape.record_shape))
+    return list(amiga_later.party_in_savegame(data, save.shape.record_shape))
 
 
 # ---------------------------------------------------------------------------

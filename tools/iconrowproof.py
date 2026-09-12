@@ -60,7 +60,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_save, dos, dos_layout, games  # noqa: E402
+from goldbox import c64_port, c64_save, dos_codec, dos_port  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
     PART_CLASSES,
     SPACE,
@@ -85,7 +85,7 @@ def stage(source: pathlib.Path, into: pathlib.Path, slot: str, title: str,
     it and what it held before.  The copy is writable even when the source
     is not: a specimen directory is read-only on purpose.
     """
-    fields = dos_layout.FIELDS_BY_NAME_FOR[title]
+    fields = dos_port.FIELDS_BY_NAME_FOR[title]
     into.mkdir(parents=True, exist_ok=True)
     for path in sorted(source.iterdir()):
         if path.is_file() and path.name != "provenance.toml":
@@ -100,7 +100,7 @@ def stage(source: pathlib.Path, into: pathlib.Path, slot: str, title: str,
         path = into / f"CHRDAT{slot}{n}.SAV"
         if not path.exists():
             continue
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         which = "small" if char.get("size") == 1 else "large"
         row = {"file": path.name, "name": char.name, "size": which,
                "was": (char.get("icon_head"), char.get("icon_body"))}
@@ -126,16 +126,16 @@ def arrivals(folder: pathlib.Path, slot: str, title: str,
     `goldbox.dos.c64_party` itself rather than through a reimplementation of
     what that function does.
     """
-    game = games.by_key(title)
+    game = c64_port.by_key(title)
     container = c64_save.container_for(game)
     save0 = bytearray(container.payload_size)
     save1 = (bytearray() if container.roster_in_payload
              else bytearray(container.game.roster_size))
-    dos.convert_save(folder, slot, save0, save1 or None, icon=parts, game=game)
+    dos_codec.convert_save(folder, slot, save0, save1 or None, icon=parts, game=game)
     out = []
-    party = dos.read_party(folder, slot)
+    party = dos_codec.read_party(folder, slot)
     for index, char in enumerate(party):
-        place = dos.marching_slot(index, len(party))
+        place = dos_codec.marching_slot(index, len(party))
         at = container.icon(place)
         icon = bytes(save0[at:at + 36])
         choice = parts.recognise(icon[:18])
@@ -166,8 +166,8 @@ def homecoming(rows: list[dict], save0: bytes, save1: bytes | None,
     whose staged pair still differs from the *wired* reading is a row that
     YAML file does not yet have.
     """
-    game = games.by_key(title)
-    _chars, wired_icons = dos.c64_party(save0, save1, game, icon_parts=parts)
+    game = c64_port.by_key(title)
+    _chars, wired_icons = dos_codec.c64_party(save0, save1, game, icon_parts=parts)
     untitled = c64_icon_tables()
     out = []
     for row, wired in zip(rows, wired_icons):
@@ -261,10 +261,10 @@ def main(argv: list[str] | None = None) -> int:
 
     disk = ip.title_c64_disk(args.title, args.disk)
     if disk is None:
-        raise SystemExit(f"no {games.by_key(args.title).title} C64 disk here; "
+        raise SystemExit(f"no {c64_port.by_key(args.title).title} C64 disk here; "
                          f"pass --disk")
     parts = IconParts.load(str(disk))
-    print(f"{into}  <-  {games.by_key(args.title).title}, {disk.name}")
+    print(f"{into}  <-  {c64_port.by_key(args.title).title}, {disk.name}")
     arrived, save0, save1 = arrivals(into, args.slot, args.title, parts)
     report(arrived, "the table as it stands:")
     if args.home:

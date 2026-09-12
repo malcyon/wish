@@ -41,10 +41,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox import portraits as portrait_tables  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools import portraitshot as shot  # noqa: E402
 
@@ -76,8 +76,8 @@ def records(save_dir: pathlib.Path, slot: str) -> list[dict]:
     wrote the art id straight into the DOS byte would produce a legal-looking
     record that draws the wrong face.
     """
-    head = dos.FIELDS_BY_NAME["portrait_head"].offset
-    body = dos.FIELDS_BY_NAME["portrait_body"].offset
+    head = dos_codec.FIELDS_BY_NAME["portrait_head"].offset
+    body = dos_codec.FIELDS_BY_NAME["portrait_body"].offset
     out = []
     for n in range(1, 7):
         path = save_dir / f"CHRDAT{slot}{n}.SAV"
@@ -217,7 +217,7 @@ def run(*, c64: pathlib.Path | None, slot: str, out: pathlib.Path,
                                          POOL_OF_RADIANCE.roster_file)
                 except Exception:
                     save1 = None
-                written = dos.new_dos_save(save0, save1, s.save_dir, slot,
+                written = dos_codec.new_dos_save(save0, save1, s.save_dir, slot,
                                            s.game_dir)
                 report["unwritten"] = len(written.unwritten)
                 report["warnings"] = list(written.warnings)

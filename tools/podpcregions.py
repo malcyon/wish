@@ -24,7 +24,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, dos_layout  # noqa: E402
+from goldbox import amiga_later, amiga_pod, amiga_port, dos_port  # noqa: E402
 
 RECORD = 404          # what the loader reads into the character record
 ITEM_FILE_SIZE = 20   # one item, as the file holds it
@@ -56,9 +56,9 @@ def pc_files() -> dict[str, bytes]:
 
 def item_fields(node20: bytes) -> dict[str, int]:
     """The twenty file bytes read as the later-Amiga item node's fields."""
-    shape = amiga.SILVER_BLADES_DELTAS          # the shifts, not the title
+    shape = amiga_port.SILVER_BLADES_DELTAS          # the shifts, not the title
     out: dict[str, int] = {}
-    for f in dos_layout.ITEM_LAYOUT:
+    for f in dos_port.ITEM_LAYOUT:
         if f.offset < ITEM_NODE_BASE:
             continue                            # display text and `next`
         at = shape.item_offset(f.offset) - ITEM_NODE_BASE
@@ -71,7 +71,7 @@ def item_fields(node20: bytes) -> dict[str, int]:
 def item_pads(node20: bytes) -> dict[str, int]:
     """The three bytes no DOS item field maps onto."""
     return {f"pad_{off:#04x}": node20[off - ITEM_NODE_BASE]
-            for off in amiga.AMIGA_LATER_ITEM_PADS}
+            for off in amiga_later.AMIGA_LATER_ITEM_PADS}
 
 
 def read_pc(name: str, data: bytes) -> dict:
@@ -90,7 +90,7 @@ def read_pc(name: str, data: bytes) -> dict:
     while at + EFFECT_FILE_SIZE <= len(tail):
         effects.append(list(tail[at:at + EFFECT_FILE_SIZE]))
         at += EFFECT_FILE_SIZE
-    char = amiga.PodCharacter.from_bytes(data)
+    char = amiga_pod.PodCharacter.from_bytes(data)
     return {"file": name, "name": char.name, "size": len(data),
             "item_count": count, "effect_chain": chain,
             "tail_bytes": len(tail), "items": items, "effects": effects,

@@ -48,7 +48,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox.iconparts import dos_icon_tables  # noqa: E402
 
 ICON_HEAD = 0x0BD
@@ -88,7 +88,7 @@ def census(roots=CORPORA, tables=None) -> tuple[int, list[dict]]:
             if not path.is_file() or path.suffix.upper() not in (".SAV", ".CHA"):
                 continue
             try:
-                char = dos.read_character(path)
+                char = dos_codec.read_character(path)
                 head, body = char.get("icon_head"), char.get("icon_body")
                 size = char.get("size")
             except Exception:
@@ -118,13 +118,13 @@ def stage(source: pathlib.Path, slot: str, into: pathlib.Path,
     written, n = [], 0
     for path in sorted(into.glob(f"CHRDAT{slot}?.SAV")):
         data = bytearray(path.read_bytes())
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         if char.get("size") != 1:
             continue
         data[ICON_BODY] = bodies[n % len(bodies)]
         data[ICON_HEAD] = heads[n % len(heads)]
         path.write_bytes(bytes(data))
-        after = dos.read_character(path)
+        after = dos_codec.read_character(path)
         written.append({"file": path.name, "name": after.name,
                         "icon_head": after.get("icon_head"),
                         "icon_body": after.get("icon_body"),

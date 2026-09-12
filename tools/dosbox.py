@@ -97,7 +97,7 @@ ARCHIVES = (Path(_fr_archives_env) if _fr_archives_env else
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
 
-from goldbox import dos as _por_dos  # noqa: E402
+from goldbox import dos_codec as _por_dos  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
 
 

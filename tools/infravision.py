@@ -39,7 +39,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import games, savegame  # noqa: E402
+from goldbox import c64_port, savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
 from tools.session import stage_writable  # noqa: E402
@@ -88,7 +88,7 @@ def race_table(key: str = "pool-of-radiance") -> list[int]:
 
 def show_table() -> None:
     for key, (disks_key, image, name, table, site) in GENERATORS.items():
-        game = games.BY_KEY[key]
+        game = c64_port.BY_KEY[key]
         where = gamedisks.find(disks_key)
         if where is None:
             print(f"{game.title}: no disks ({disks_key})")
@@ -97,7 +97,7 @@ def show_table() -> None:
         print(f"== {game.title}: {image}:{name}, table ${table:04X}")
         for line in d6502.lines(payload, OVERLAY_BASE, site - 3, 4):
             print("   ", line)
-        names = games.race_table(game)
+        names = c64_port.race_table(game)
         for code in range(1, 8):
             value = payload[table - OVERLAY_BASE + code]
             print(f"    race {code} {names.get(code, '?'):9s} "
@@ -109,7 +109,7 @@ def show(disk: pathlib.Path) -> list[tuple[int, str, int, int]]:
     """One row per occupied slot: index, name, race code, stored byte."""
     image = D64.open(disk)
     game, sg0, _ = savegame.load_save(image)
-    names = games.race_table(game)
+    names = c64_port.race_table(game)
     table = race_table(game.key) if game.key in GENERATORS else None
     rows = []
     print(f"== {disk.name} ({game.title})")

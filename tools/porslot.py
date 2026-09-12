@@ -28,7 +28,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, dos  # noqa: E402
+from goldbox import amiga_por, amiga_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 
 
@@ -43,8 +43,8 @@ def read_slot(disk: AmigaDisk, slot: str):
     characters, and for one with characters and no saved game.
     """
     letter = slot.upper()
-    characters, savegame = amiga.read_por_slot(disk, letter)
-    return [dos.to_neutral(c) for c in characters], savegame
+    characters, savegame = amiga_por.read_por_slot(disk, letter)
+    return [dos_codec.to_neutral(c) for c in characters], savegame
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,12 +69,12 @@ def main(argv: list[str] | None = None) -> int:
 
     disk = AmigaDisk.open(args.disk)
     print(f"Slot list before: "
-          f"{disk.read_file(amiga.POR_SLOT_LIST)!r} "
-          f"{amiga.read_slot_list(disk)}")
+          f"{disk.read_file(amiga_por.POR_SLOT_LIST)!r} "
+          f"{amiga_por.read_slot_list(disk)}")
 
     try:
         neutral, savegame = read_slot(disk, args.source)
-    except amiga.AmigaRecordError as ex:
+    except amiga_port.AmigaRecordError as ex:
         raise SystemExit(str(ex)) from None
     for record in neutral:
         for line in list(record.warnings) + list(record.dropped):
@@ -82,13 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Read {len(neutral)} characters from slot {args.source.upper()}: "
           f"{', '.join(c.get('name') for c in neutral)}")
 
-    written = amiga.write_por_slot(disk, args.target, neutral, savegame)
+    written = amiga_por.write_por_slot(disk, args.target, neutral, savegame)
     print(f"Wrote {len(written)} files:")
     for path in written:
         print(f"  {path}")
     print(f"Slot list after:  "
-          f"{disk.read_file(amiga.POR_SLOT_LIST)!r} "
-          f"{amiga.read_slot_list(disk)}")
+          f"{disk.read_file(amiga_por.POR_SLOT_LIST)!r} "
+          f"{amiga_por.read_slot_list(disk)}")
     problems = disk.verify()
     if problems:
         raise SystemExit("The disk does not verify:\n  "

@@ -36,7 +36,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import disk_globs  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
 
@@ -94,7 +94,7 @@ def is_art(name: str) -> bool:
     return name.startswith(ART_PREFIXES) or is_script(name)
 
 
-def disks(root: str, game: games.Game) -> list[str]:
+def disks(root: str, game: c64_port.C64Container) -> list[str]:
     seen: dict[str, str] = {}
     for pattern in disk_globs(game):
         for path in sorted(pathlib.Path(root).glob(pattern)):
@@ -102,7 +102,7 @@ def disks(root: str, game: games.Game) -> list[str]:
     return sorted(seen.values())
 
 
-def files(root: str, game: games.Game):
+def files(root: str, game: c64_port.C64Container):
     """`(disk, name, body)` for every file on every side, each name once."""
     seen: set[str] = set()
     for path in disks(root, game):
@@ -131,7 +131,7 @@ class Hit:
         self.op, self.address = op, address
 
 
-def sweep(root: str, game: games.Game, lo: int, hi: int):
+def sweep(root: str, game: c64_port.C64Container, lo: int, hi: int):
     hits: list[Hit] = []
     scanned = 0
     for disk, name, body in files(root, game):
@@ -158,7 +158,7 @@ def main(argv=None) -> int:
                         help="count art files in the per-address rows")
     args = parser.parse_args(argv)
 
-    game = next((g for g in games.GAMES
+    game = next((g for g in c64_port.GAMES
                  if g.key == args.title or g.title == args.title), None)
     if game is None:
         raise SystemExit(f"No such title: {args.title}")

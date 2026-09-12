@@ -62,7 +62,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
@@ -83,7 +83,7 @@ def report(folder: pathlib.Path) -> list[str]:
     """One line per character record in a snapshot."""
     lines = []
     for p in sorted(folder.glob("CHRDAT*.SAV")):
-        c = dos.read_character(p)
+        c = dos_codec.read_character(p)
         lines.append(
             f"{p.name} {c.name:8s} lvl={c.get('level'):2d} "
             f"classes={c.class_levels} xp={c.get('experience'):7d} "

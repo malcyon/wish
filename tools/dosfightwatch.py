@@ -66,10 +66,10 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
 from tools import dosbox, dosboxx  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -108,7 +108,7 @@ def unsourced_fields() -> list[tuple[str, int, int]]:
     anybody remembering to edit a second list.
     """
     return [(n, dl.FIELDS_BY_NAME[n].offset, dl.FIELDS_BY_NAME[n].size)
-            for n, _ in dos.WRITE_UNSOURCED]
+            for n, _ in dos_codec.WRITE_UNSOURCED]
 
 
 def find_c64_save(name: str | None) -> pathlib.Path:
@@ -444,7 +444,7 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
         s = dosboxx.XSession(claimed, game)
         try:
             s.stage(fresh=True)
-            written = dos.new_dos_save(save0, save1, s.save_dir, slot,
+            written = dos_codec.new_dos_save(save0, save1, s.save_dir, slot,
                                        s.game_dir)
             report["accounted"] = f"{len(written.sources)}/{written.total}"
             report["warnings"] = written.warnings
@@ -645,7 +645,7 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
         s = dosboxx.XSession(claimed, game)
         try:
             s.stage(fresh=True)
-            written = dos.new_dos_save(save0, save1, s.save_dir, slot,
+            written = dos_codec.new_dos_save(save0, save1, s.save_dir, slot,
                                        s.game_dir)
             report["accounted"] = f"{len(written.sources)}/{written.total}"
             built = records(s.save_dir, slot)

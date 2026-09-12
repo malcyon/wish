@@ -23,7 +23,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
@@ -34,8 +34,8 @@ PETSCII = WORD.encode("ascii")
 SCREEN_CODE = bytes(ord(c) - 64 for c in WORD)
 
 TITLES = {
-    "curse-of-the-azure-bonds": games.CURSE_OF_THE_AZURE_BONDS,
-    "secret-of-the-silver-blades": games.SECRET_OF_THE_SILVER_BLADES,
+    "curse-of-the-azure-bonds": c64_port.CURSE_OF_THE_AZURE_BONDS,
+    "secret-of-the-silver-blades": c64_port.SECRET_OF_THE_SILVER_BLADES,
 }
 
 

@@ -65,8 +65,8 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
-from goldbox.games import CURSE_OF_THE_AZURE_BONDS as GAME  # noqa: E402
 from tools import gamedisks  # noqa: E402
 from tools import session as S  # noqa: E402
 

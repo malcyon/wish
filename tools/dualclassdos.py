@@ -61,7 +61,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos, dos_layout  # noqa: E402
+from goldbox import dos_codec, dos_port  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dosfieldrefs import references  # noqa: E402
 
@@ -73,7 +73,7 @@ SUFFIXES = (".SAV", ".CHA", ".GUY")
 #: Class number -> name, which is how *both* level arrays are indexed on DOS.
 #: The C64 indexes its own eight slots by the class *bit* instead, which is
 #: the permutation `goldbox/dos.py` already carries.
-CLASS_NAMES = dos_layout.CLASS_NUMBERS
+CLASS_NAMES = dos_port.CLASS_NUMBERS
 
 
 #: The directory stem each title's game tree carries, and its name.  A record
@@ -135,7 +135,7 @@ def read_records(extra: list[str], archives: bool = True):
     copies them again, so the same record turns up a dozen times.  One entry
     per distinct byte string, with every path it was found at.
     """
-    by_size = {s.record_size: s for s in dos_layout.SHAPES}
+    by_size = {s.record_size: s for s in dos_port.DELTAS}
     seen: dict[str, list] = {}
     for path in record_paths(extra, archives):
         shape = by_size.get(path.stat().st_size)
@@ -147,7 +147,7 @@ def read_records(extra: list[str], archives: bool = True):
             seen[key][2].append(path)
             continue
         try:
-            char = dos.DosCharacter(data, deltas=shape)
+            char = dos_codec.DosCharacter(data, deltas=shape)
             char.name                                  # raises on a non-record
         except Exception:
             continue
@@ -187,7 +187,7 @@ def census(args: argparse.Namespace) -> int:
     by_title = collections.defaultdict(list)
     for shape, char, paths in records:
         by_title[shape.key].append((char, paths))
-    for shape in dos_layout.SHAPES:
+    for shape in dos_port.DELTAS:
         rows = by_title.get(shape.key)
         if not rows:
             continue
@@ -298,7 +298,7 @@ def code(args: argparse.Namespace) -> int:
             print(f"{key}: no GAME.OVR here")
             continue
         image = path.read_bytes()
-        fields = {f.name: f for f in dos_layout.layout_for(shape_key)}
+        fields = {f.name: f for f in dos_port.layout_for(shape_key)}
         borrowed = "" if shape_key == key else f", read as {shape_key}"
         print(f"=== {key}  {path.name}, {len(image)} bytes{borrowed}")
         write_site = None

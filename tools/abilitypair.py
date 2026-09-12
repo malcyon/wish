@@ -41,7 +41,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import absrefsweep, gamedisks  # noqa: E402
 
@@ -227,7 +227,7 @@ def census(root: str, game, lo: int, hi: int):
 
 
 def refs(args) -> int:
-    game = next((g for g in games.GAMES
+    game = next((g for g in c64_port.GAMES
                  if g.key == args.title or g.title == args.title), None)
     if game is None:
         raise SystemExit(f"No such title: {args.title}")

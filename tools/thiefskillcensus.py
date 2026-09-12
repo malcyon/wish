@@ -53,7 +53,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos, games  # noqa: E402
+from goldbox import c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
@@ -271,7 +271,7 @@ def c64_records(title: str = "pool-of-radiance"):
         # A disk of another title reads as plausible rubbish against this
         # one's tables, so ask the disk what it is rather than sweeping
         # everything the tree holds.
-        found = games.detect(disk)
+        found = c64_port.detect(disk)
         if found is not None and found.key != title:
             continue
         records = []
@@ -318,7 +318,7 @@ def dos_records(title: str = "pool-of-radiance", extra=()):
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.CHA", recursive=True)
     for path in sorted(set(files)):
         try:
-            char = dos.read_character(path)
+            char = dos_codec.read_character(path)
         except Exception:
             continue
         if char.shape.key != title:
@@ -342,9 +342,9 @@ def _race_names(title: str) -> list[str]:
     an earlier draft of this tool did -- is how a reader ends up comparing
     two different races and calling it a difference between the ports.
     """
-    from goldbox import games
+    from goldbox import c64_port
 
-    table = games.race_table(games.by_key(title))
+    table = c64_port.race_table(c64_port.by_key(title))
     top = max(table) if table else 0
     return [table.get(i + 1, f"row {i}") for i in range(top)]
 

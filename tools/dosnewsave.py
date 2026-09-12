@@ -48,10 +48,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -123,7 +123,7 @@ def make(*, c64: pathlib.Path, slot: str = "A", steps: int = 2,
         s = dosbox.Session(claimed, game)
         try:
             s.stage(fresh=True)
-            written = dos.new_dos_save(save0, save1, s.save_dir, slot,
+            written = dos_codec.new_dos_save(save0, save1, s.save_dir, slot,
                                        s.game_dir)
             report["accounted"] = f"{len(written.sources)}/{written.total}"
             report["unwritten"] = len(written.unwritten)

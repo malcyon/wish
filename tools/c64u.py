@@ -66,7 +66,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from automap.live import memory_blocks  # noqa: E402
 from automap.paths import disk_globs  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
 #: Exit code for "no C64 Ultimate answered", distinct from a failed check.
@@ -317,7 +317,7 @@ class Ultimate:
 
     # -- the automapper's own read ----------------------------------------
 
-    def poll(self, game: games.Game | None = None) -> list[bytes]:
+    def poll(self, game: c64_port.C64Container | None = None) -> list[bytes]:
         """Read exactly what one `automap` poll reads, in the same ranges.
 
         For Pool of Radiance that is two blocks: the `$4900` payload and the
@@ -327,7 +327,7 @@ class Ultimate:
         return [self.read_mem(addr, length)
                 for addr, length in memory_blocks(game)]
 
-    def time_reads(self, count: int = 100, game: games.Game | None = None,
+    def time_reads(self, count: int = 100, game: c64_port.C64Container | None = None,
                    length: int | None = None) -> dict:
         """How long a poll takes, `count` times over.
 
@@ -429,7 +429,7 @@ class Ultimate:
 # -- where the disks are ----------------------------------------------------
 
 
-def disk_dir(game: games.Game | None = None) -> str:
+def disk_dir(game: c64_port.C64Container | None = None) -> str:
     """`$POR_DISKS`, then `tools/gamedisks.py`'s registry for this title.
 
     `automap.paths.find_disks` is the player's own search and looks for a
@@ -441,10 +441,10 @@ def disk_dir(game: games.Game | None = None) -> str:
     env = os.environ.get("POR_DISKS")
     if env:
         return env
-    return str(gamedisks.find((game or games.DEFAULT).key) or "")
+    return str(gamedisks.find((game or c64_port.DEFAULT).key) or "")
 
 
-def game_disks(game: games.Game | None = None, root: str | None = None) -> list[str]:
+def game_disks(game: c64_port.C64Container | None = None, root: str | None = None) -> list[str]:
     """Every disk image of one title, each of them once.
 
     `disk_globs` gives an upper- and a lower-cased pattern, and on a
@@ -460,7 +460,7 @@ def game_disks(game: games.Game | None = None, root: str | None = None) -> list[
     return sorted(seen.values())
 
 
-def boot_disk(game: games.Game | None = None, number: int = 1,
+def boot_disk(game: c64_port.C64Container | None = None, number: int = 1,
               root: str | None = None) -> str:
     """Disk `number` of the title, the one VICE boots from.
 
@@ -475,7 +475,7 @@ def boot_disk(game: games.Game | None = None, number: int = 1,
     order puts `POOL1.D64` first among Pool of Radiance's disks, so this picks
     the same image.
     """
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     disks = game_disks(game, root)
     if 1 <= number <= len(disks):
         return disks[number - 1]
@@ -568,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--settle", type=float, default=0.5)
 
     args = ap.parse_args(argv)
-    game = games.by_key(args.game) if args.game else None
+    game = c64_port.by_key(args.game) if args.game else None
     dev = _device(args)
 
     try:

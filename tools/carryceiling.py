@@ -62,7 +62,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos, dos_layout, games  # noqa: E402
+from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox import items as c64items  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import gamedisks  # noqa: E402
@@ -76,9 +76,9 @@ GRANT_ID_AT = 14
 
 #: The C64 titles with a disk glob in the registry, and their registry keys.
 C64_TITLES = (
-    (games.POOL_OF_RADIANCE, "pool-of-radiance"),
-    (games.CURSE_OF_THE_AZURE_BONDS, "curse-of-the-azure-bonds"),
-    (games.SECRET_OF_THE_SILVER_BLADES, "secret-of-the-silver-blades"),
+    (c64_port.POOL_OF_RADIANCE, "pool-of-radiance"),
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, "curse-of-the-azure-bonds"),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, "secret-of-the-silver-blades"),
 )
 
 
@@ -389,8 +389,8 @@ def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
                         f"record size as a title read here, and not the same "
                         f"id space (#400)")
     for spec in specs:
-        innate_ids = dos._innate_effects(spec.shape.key)
-        count = spec.data[dos_layout.FIELDS_BY_NAME_FOR[
+        innate_ids = dos_codec._innate_effects(spec.shape.key)
+        count = spec.data[dos_port.FIELDS_BY_NAME_FOR[
             spec.shape.key]["item_count"].offset]
         # The same record's copies can differ in what sits *beside* them: a
         # `.SAV` copied into a report directory without its `.SPC` reads as a
@@ -399,7 +399,7 @@ def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
         splits = []
         for path in spec.paths:
             try:
-                char = dos.read_character(path)
+                char = dos_codec.read_character(path)
             except Exception as exc:
                 problems.append(f"{path.name}: {type(exc).__name__}: {exc}")
                 continue
@@ -424,7 +424,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
     so an Amiga Curse character's inventory is counted from the block rather
     than from a sibling file.
     """
-    from goldbox import amiga
+    from goldbox import amiga_por
     from tools import amigarecords, amigasaves
     seen: set[bytes] = set()
     for label, volume, name, files in amigasaves.specimens():
@@ -433,14 +433,14 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
             continue
         seen.add(record)
         try:
-            char = amiga.por_character(record, files.get(".itm", b""),
+            char = amiga_por.por_character(record, files.get(".itm", b""),
                                        files.get(".spc", b""), source=label)
         except Exception as exc:
             problems.append(f"{volume}:{name}: {type(exc).__name__}: {exc}")
             continue
         innate, granted, running = _split_effects(
             [bytes(node) for node in char.effects],
-            dos.INNATE_EFFECTS, pad=1)
+            dos_codec.INNATE_EFFECTS, pad=1)
         yield Carried(port="amiga", title="pool-of-radiance", grade="found",
                       where=f"{volume}:{name}", who=char.name,
                       items=char.get("item_count"), innate=innate,
@@ -451,7 +451,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
             key = _amiga_key(char.deltas)
             innate, granted, running = _split_effects(
                 [bytes(node) for node in char.effects],
-                dos._innate_effects(key), pad=1)
+                dos_codec._innate_effects(key), pad=1)
             yield Carried(port="amiga", title=key, grade="found",
                           where=f"{volume}:{name}", who=char.name,
                           items=len(char.items), innate=innate,
@@ -468,16 +468,16 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
 
 def _amiga_specimen(path, specimen_grades, problems):
     """One Amiga file out of the specimen tree, whatever shape it is."""
-    from goldbox import amiga
+    from goldbox import amiga_later, amiga_por
     from tools import amigasavegame
     data = path.read_bytes()
     grade = _grade(path, specimen_grades)
-    if len(data) == amiga.AMIGA_POR_RECORD_SIZE:
-        char = amiga.por_character(
+    if len(data) == amiga_por.AMIGA_POR_RECORD_SIZE:
+        char = amiga_por.por_character(
             data, _sibling(path, ".itm"), _sibling(path, ".spc"),
             source=str(path))
         innate, granted, running = _split_effects(
-            [bytes(n) for n in char.effects], dos.INNATE_EFFECTS, pad=1)
+            [bytes(n) for n in char.effects], dos_codec.INNATE_EFFECTS, pad=1)
         yield Carried(port="amiga", title="pool-of-radiance", grade=grade,
                       where=path.name, who=char.name,
                       items=char.get("item_count"), innate=innate,
@@ -490,14 +490,14 @@ def _amiga_specimen(path, specimen_grades, problems):
     if shape.record_shape is None:
         return                            # Pool of Radiance: party is filenames
     try:
-        party = amiga.party_in_savegame(data, shape.record_shape)
+        party = amiga_later.party_in_savegame(data, shape.record_shape)
     except Exception as exc:
         problems.append(f"{path.name}: {type(exc).__name__}: {exc}")
         return
     key = _amiga_key(shape.record_shape)
     for char in party:
         innate, granted, running = _split_effects(
-            [bytes(n) for n in char.effects], dos._innate_effects(key), pad=1)
+            [bytes(n) for n in char.effects], dos_codec._innate_effects(key), pad=1)
         yield Carried(port="amiga", title=key, grade=grade, where=path.name,
                       who=char.name, items=len(char.items), innate=innate,
                       granted=granted, running=running, sources=(str(path),))
@@ -543,7 +543,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     wrong offset, on the first run of this sweep.  `detect` tells them apart by
     where the header ends: 12825 bytes for Curse, 5143 for Silver Blades.
     """
-    from goldbox import amiga
+    from goldbox import amiga_later, amiga_port
     from tools import amigasavegame
     if what != "record":
         try:
@@ -554,17 +554,17 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
         if shape is None:                # Pool of Radiance: party is filenames
             return
         try:
-            yield from amiga.party_in_savegame(data, shape)
+            yield from amiga_later.party_in_savegame(data, shape)
         except Exception as exc:                         # pragma: no cover
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
         return
-    for shape in amiga.AMIGA_DELTAS:
+    for shape in amiga_port.AMIGA_DELTAS:
         if len(data) < shape.record_size:
             continue
-        if not amiga.looks_like_amiga_record(data, 0, shape):
+        if not amiga_later.looks_like_amiga_record(data, 0, shape):
             continue
         try:
-            char, end = amiga._amiga_block(data, 0, shape, label)
+            char, end = amiga_later._amiga_block(data, 0, shape, label)
         except Exception:
             continue                     # the tail does not fit this shape
         if end == len(data):             # only this shape accounts for it all

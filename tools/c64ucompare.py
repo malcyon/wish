@@ -51,7 +51,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from automap.screen import codes_to_text, screen_address  # noqa: E402
 from automap.target import party_fix  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from tools.c64u import NO_DEVICE, NotReachable, Ultimate  # noqa: E402
 
 #: One region of the address space, read identically on both machines.
@@ -113,7 +113,7 @@ def mask_byte(addr: int, value: int) -> int:
 
 
 def take(read, out: pathlib.Path, source: str, note: str = "",
-         game: games.Game | None = None) -> dict:
+         game: c64_port.C64Container | None = None) -> dict:
     """Read every region through `read(addr, length)` and write it out.
 
     The screen's address is *computed* on each machine rather than assumed:
@@ -121,7 +121,7 @@ def take(read, out: pathlib.Path, source: str, note: str = "",
     the address the other machine used would be reading whatever used to be
     the screen.
     """
-    game = game or games.DEFAULT
+    game = game or c64_port.DEFAULT
     out.mkdir(parents=True, exist_ok=True)
     screen_at = screen_address(read)
     record = {
@@ -244,7 +244,7 @@ def print_report(report: dict) -> None:
 
 
 def hardware(out: pathlib.Path, host: str | None, note: str,
-             game: games.Game | None) -> dict:
+             game: c64_port.C64Container | None) -> dict:
     dev = Ultimate(host=host)
     if not dev.available():
         raise NotReachable(
@@ -343,7 +343,7 @@ def walk_to(sess, x: int, y: int, facing: int, clock: int | None = None,
 
 
 def in_vice(out: pathlib.Path, save: str, note: str,
-            game: games.Game | None, keep: bool,
+            game: c64_port.C64Container | None, keep: bool,
             to: str | None = None, clock: str | None = None,
             move_mode: bool = False) -> dict:
     """Boot Pool of Radiance in a pooled VICE, load `save`, and read.
@@ -429,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--out", default=None, help="write the report as JSON")
 
     args = ap.parse_args(argv)
-    game = games.by_key(args.game) if args.game else None
+    game = c64_port.by_key(args.game) if args.game else None
     try:
         if args.cmd == "hw":
             record = hardware(pathlib.Path(args.out), args.host, args.note, game)

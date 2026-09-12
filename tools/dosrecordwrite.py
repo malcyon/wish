@@ -48,7 +48,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import c64_codec, dos, dos_layout, items  # noqa: E402
+from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
@@ -93,7 +93,7 @@ def stale_reason(path: pathlib.Path) -> str | None:
                  if name in parts), None)
 
 
-def masked(shape: dos_layout.DosShape) -> set[int]:
+def masked(shape: dos_port.DosDeltas) -> set[int]:
     """The offsets the writer itself says it does not take from the source.
 
     The round trip's mask comes from the writer's own declarations --
@@ -114,19 +114,19 @@ def masked(shape: dos_layout.DosShape) -> set[int]:
     the split `#304` measured and closed -- the share is 1 for a character
     the player has taken through MODIFY and 0 for one he has not.
     """
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     out: set[int] = set()
-    named = ([n for n, _ in dos.WRITE_UNSOURCED + dos.WRITE_UNSOURCED_LATER]
-             + [n for n, _, _, _ in dos.WRITE_DEFAULTS
+    named = ([n for n, _ in dos_codec.WRITE_UNSOURCED + dos_codec.WRITE_UNSOURCED_LATER]
+             + [n for n, _, _, _ in dos_codec.WRITE_DEFAULTS
                 if n != "field_10c_10f"]
-             + [n for n, _ in dos.WRITE_DERIVED])
+             + [n for n, _ in dos_codec.WRITE_DERIVED])
     for name in named:
         if name in table:
             out.update(range(table[name].offset, table[name].end))
     return out
 
 
-def name_padding(shape: dos_layout.DosShape, original: bytes) -> set[int]:
+def name_padding(shape: dos_port.DosDeltas, original: bytes) -> set[int]:
     """The name bytes past the count byte, which the writer zeroes.
 
     The neutral record carries a *name*, so what the engine happened to leave
@@ -134,20 +134,20 @@ def name_padding(shape: dos_layout.DosShape, original: bytes) -> set[int]:
     space at the seventh byte over a count of six.  Masking only the bytes
     past the count keeps every byte of the name itself under test.
     """
-    table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+    table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
     text = table["name_text"]
     count = original[table["name_length"].offset]
     return set(range(text.offset + count, text.end))
 
 
-def field_at(shape: dos_layout.DosShape, offset: int) -> str:
-    for f in dos_layout.LAYOUTS[shape.key]:
+def field_at(shape: dos_port.DosDeltas, offset: int) -> str:
+    for f in dos_port.LAYOUTS[shape.key]:
         if f.offset <= offset < f.end:
             return f.name
     return "?"
 
 
-def compare(shape: dos_layout.DosShape, original: bytes, written: bytes,
+def compare(shape: dos_port.DosDeltas, original: bytes, written: bytes,
             skip_name_padding: bool = True) -> dict[str, list[int]]:
     """Offsets that differ, grouped by the field they land in, after the
     writer's own mask."""
@@ -166,7 +166,7 @@ def _records_under(root: pathlib.Path):
     for path in sorted(root.rglob("*") if root.is_dir() else [root]):
         if not path.is_file():
             continue
-        if path.stat().st_size in dos_layout.SHAPES_BY_SIZE:
+        if path.stat().st_size in dos_port.DELTAS_BY_SIZE:
             yield path
 
 
@@ -187,17 +187,17 @@ def roundtrip(root: pathlib.Path) -> int:
     stale_by_key: collections.Counter = collections.Counter()
     for path in _records_under(root):
         try:
-            char = dos.read_character(path)
-        except dos.DosRecordError as exc:
+            char = dos_codec.read_character(path)
+        except dos_codec.DosRecordError as exc:
             print(f"  unreadable {path}: {exc}")
             continue
-        if char.shape not in dos.WRITES:
+        if char.shape not in dos_codec.WRITES:
             continue
         key = char.shape.key
         totals[key][1] += 1
         try:
-            rec, itm, spc, _report = dos.write(dos.to_neutral(char))
-        except (dos.DosRecordError, ValueError) as exc:
+            rec, itm, spc, _report = dos_codec.write(dos_codec.to_neutral(char))
+        except (dos_codec.DosRecordError, ValueError) as exc:
             faults[key][f"{type(exc).__name__}"] += 1
             named[key].append(f"{char.name}: {exc}")
             continue
@@ -218,7 +218,7 @@ def roundtrip(root: pathlib.Path) -> int:
         want = len(char.items) * char.shape.item_size
         if len(itm) != want:
             faults[key]["item file length"] += 1
-        if len(spc) % dos_layout.EFFECT_SIZE:
+        if len(spc) % dos_port.EFFECT_SIZE:
             faults[key]["effect file length"] += 1
     bad = 0
     for key in sorted(totals):
@@ -278,14 +278,14 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
     if not force and any(out.glob("CHRDAT*")):
         print(f"{out} already holds CHRDAT files; pass --force to replace")
         return 1
-    shape = dos.write_shape(party[0])
+    shape = dos_codec.write_shape(party[0])
     # DOS lists the party from the other end: the C64 shows the highest slot
     # first and DOS shows CHRDAT<slot>1 first, so the file order is the
     # reverse of the slot order -- the same reversal `write_dos_save` makes.
     party = list(reversed(party))
-    order = dos_layout.FIELDS_BY_NAME_FOR[shape.key]["combat_figure"].offset
+    order = dos_port.FIELDS_BY_NAME_FOR[shape.key]["combat_figure"].offset
     for n, char in enumerate(party, start=1):
-        rec, itm, spc, report = dos.write(char)
+        rec, itm, spc, report = dos_codec.write(char)
         rec = bytearray(rec)
         rec[order] = n - 1
         stem = out / f"CHRDAT{slot}{n}"
@@ -308,7 +308,7 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
     """The full loop: DOS records, out to the C64, back from the C64 save the
     engine wrote, and compared with where they started."""
     game, party = _c64_party(disk)
-    shape = dos.write_shape(party[0])
+    shape = dos_codec.write_shape(party[0])
     party = list(reversed(party))
     print(f"{disk.name}: {shape.title}, {len(party)} characters")
     bad = 0
@@ -318,13 +318,13 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
             print(f"  CHRDAT{slot}{n}.SAV is not in {folder}")
             bad += 1
             continue
-        original = dos.read_character(source)
-        rec, _itm, _spc, _report = dos.write(char)
+        original = dos_codec.read_character(source)
+        rec, _itm, _spc, _report = dos_codec.write(char)
         differs = compare(shape, original.to_bytes(), rec)
         # `combat_figure` -- the combat-icon slot, #305 -- is renumbered by
         # the file position on the way out, which is the reversal above and
         # not a loss; the DOS loader re-allocates it in file order anyway.
-        table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
+        table = dos_port.FIELDS_BY_NAME_FOR[shape.key]
         rec = bytearray(rec)
         rec[table["combat_figure"].offset] = original.get("combat_figure")
         differs = compare(shape, original.to_bytes(), bytes(rec))

@@ -60,7 +60,7 @@ from automap.maps import load_maps  # noqa: E402
 from automap.state import Automapper  # noqa: E402
 from automap.target import party_fix  # noqa: E402
 from automap.vice import banked  # noqa: E402
-from goldbox import games, items, savegame  # noqa: E402
+from goldbox import c64_port, items, savegame  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import gamedisks  # noqa: E402
 from tools import session as por  # noqa: E402
@@ -230,7 +230,7 @@ class Title:
 
     @property
     def game(self):
-        return games.by_key(self.key)
+        return c64_port.by_key(self.key)
 
     def disks(self, given: str = "") -> str:
         found = given or str(gamedisks.find(self.registry) or "")

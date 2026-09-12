@@ -52,12 +52,12 @@ def _load(tree: pathlib.Path | None):
     root = pathlib.Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(tree.resolve() if tree else root))
     from editor import convert, dosimport
-    from goldbox import dos, games
+    from goldbox import c64_port, dos_codec
     from goldbox import portraits as portraits_mod
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
     from tools import dosbox, gamedisks
-    return dict(convert=convert, dosimport=dosimport, dos=dos, games=games,
+    return dict(convert=convert, dosimport=dosimport, dos=dos_codec, games=c64_port,
                 load_payload=load_payload, IconParts=IconParts,
                 portraits=portraits_mod, dosbox=dosbox, gamedisks=gamedisks)
 
@@ -89,7 +89,7 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
         only: str | None = None, pick: str | None = None) -> dict:
     mod = _load(tree)
     convert, dosimport = mod["convert"], mod["dosimport"]
-    dos, games = mod["dos"], mod["games"]
+    dos_codec, c64_port = mod["dos"], mod["games"]
     from goldbox.amiga_adf import AmigaDisk
 
     cache: dict = {}
@@ -111,12 +111,12 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                 if animate is None:
                     try:
                         animate = mod["load_payload"](str(disk),
-                                                      dos.ANIMATE_FILE)
+                                                      dos_codec.ANIMATE_FILE)
                     except Exception:
                         pass
             if icon is not None and animate is not None:
                 portraits = None
-                if game.key == games.POOL_OF_RADIANCE.key:
+                if game.key == c64_port.POOL_OF_RADIANCE.key:
                     try:
                         portraits = mod["portraits"].tables_from_disks(where)
                     except Exception:

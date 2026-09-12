@@ -48,7 +48,7 @@ ROOT = TOOLS.parent
 # object the tests patch rather than a second copy of it.
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 #: Entry 0 of the alignment table, as a counted string.  The race table ends
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
 
     bad = 0
     for key, (path, offset, stride, read) in found.items():
-        shape = dos_layout.shape_for(key)
+        shape = dos_port.deltas_for(key)
         lower = tuple(n.lower() for n in read)
         print(f"{shape.title}  ({path.name}, entry 0 at 0x{offset:06x}, "
               f"stride {stride}, {len(read)} entries)")

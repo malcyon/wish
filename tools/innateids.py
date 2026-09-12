@@ -67,13 +67,13 @@ import capstone
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos as gdos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_codec as gdos  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import dostailcensus, specimens  # noqa: E402
 
 #: The four titles' effect-file suffixes, from each shape.  Named here so the
 #: sweep can find a record's effects without opening every file twice.
-EFFECT_SUFFIXES = tuple(sorted({s.effect_suffix for s in dl.SHAPES_BY_SIZE.values()}))
+EFFECT_SUFFIXES = tuple(sorted({s.effect_suffix for s in dl.DELTAS_BY_SIZE.values()}))
 
 #: Bytes 1-4 of an innate effect's record.  `goldbox/dos.py`'s own constant;
 #: a record matching it in those four bytes is in "the innate payload shape",
@@ -113,7 +113,7 @@ class Record:
         self.path = path
         self.data = data
         self.spc = spc
-        self.shape = dl.shape_for(len(data))
+        self.shape = dl.deltas_for(len(data))
         self.char = gdos.DosCharacter(data, deltas=self.shape)
         self.effects = [spc[i:i + dl.EFFECT_SIZE]
                         for i in range(0, len(spc), dl.EFFECT_SIZE)
@@ -216,13 +216,13 @@ def collect(roots, want_ours: bool, title: str | None,
                 size = path.stat().st_size
             except OSError:                              # pragma: no cover
                 continue
-            if size not in dl.SHAPES_BY_SIZE:
+            if size not in dl.DELTAS_BY_SIZE:
                 continue
             other = foreign_title(path)
             if other and not foreign:
                 skipped[other] += 1
                 continue
-            shape = dl.SHAPES_BY_SIZE[size]
+            shape = dl.DELTAS_BY_SIZE[size]
             if title and title.lower() not in shape.key:
                 continue
             spc_path = path.with_suffix(shape.effect_suffix)
@@ -468,7 +468,7 @@ def _shape_for_game(game: pathlib.Path):
     if key is None:
         raise ValueError(f"{game.name} is not a directory this reads a layout "
                          f"for -- one of {sorted(by_dir)}")
-    return dl.SHAPES_BY_KEY[key]
+    return dl.DELTAS_BY_KEY[key]
 
 
 def _game_dir(args) -> pathlib.Path:

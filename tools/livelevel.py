@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import actions  # noqa: E402
 from automap.target import ViceTarget  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.layout import field_by_name  # noqa: E402
 
 #: Above every threshold in `goldbox/levels.py`, so one write covers any level
@@ -96,7 +96,7 @@ def main(argv: list[str]) -> int:
 
     target = ViceTarget(host="127.0.0.1", port=args.port)
     try:
-        party = actions.read_party(target, games.DEFAULT)
+        party = actions.read_party(target, c64_port.DEFAULT)
         if party is None:
             print("The machine had no party in it.")
             return 1
@@ -108,7 +108,7 @@ def main(argv: list[str]) -> int:
             print("Say which character with --name.")
             return 2
         for round_ in range(args.levels):
-            party = actions.read_party(target, games.DEFAULT)
+            party = actions.read_party(target, c64_port.DEFAULT)
             wanted = [m for m in party.members
                       if m.name.strip().upper() == args.name.strip().upper()]
             if not wanted:
@@ -125,7 +125,7 @@ def main(argv: list[str]) -> int:
             if not outcome.ok:
                 return 1
         print("After:")
-        show(actions.read_party(target, games.DEFAULT))
+        show(actions.read_party(target, c64_port.DEFAULT))
     finally:
         target.close()
     return 0

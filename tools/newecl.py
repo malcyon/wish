@@ -54,7 +54,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import disk_globs  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
 
@@ -73,7 +73,7 @@ KEY_WAIT_SIG = bytes.fromhex("ADCB03C9FF")
 KEY_FETCH_SIG = bytes.fromhex("AD00DC")
 
 
-def game_disks(root: str, game: games.Game) -> list[str]:
+def game_disks(root: str, game: c64_port.C64Container) -> list[str]:
     """Every one of this title's disk images under `root`, each of them once."""
     seen: dict[str, str] = {}
     for pattern in disk_globs(game):
@@ -82,7 +82,7 @@ def game_disks(root: str, game: games.Game) -> list[str]:
     return sorted(seen.values())
 
 
-def load(name: str, root: str, game: games.Game) -> tuple[int, bytes]:
+def load(name: str, root: str, game: c64_port.C64Container) -> tuple[int, bytes]:
     """The named file's declared load address and its bytes, off any side."""
     for path in game_disks(root, game):
         try:
@@ -358,7 +358,7 @@ def one_reference(body: bytes, base: int, opcode: int, addr: int,
     return hits[0] if len(hits) == 1 else None
 
 
-def derive(game: games.Game, root: str, base: int = LINKER_BASE) -> dict:
+def derive(game: c64_port.C64Container, root: str, base: int = LINKER_BASE) -> dict:
     """Every fast-travel address for a title, out of its own overlays.
 
     The same chain the report prints, as data rather than as lines, so that
@@ -435,8 +435,8 @@ def derive(game: games.Game, root: str, base: int = LINKER_BASE) -> dict:
     }
 
 
-def report(game: games.Game, root: str, base: int,
-           against: games.Game | None) -> int:
+def report(game: c64_port.C64Container, root: str, base: int,
+           against: c64_port.C64Container | None) -> int:
     decl, body = load("DUNGEON", root, game)
     top = base + len(body) - 1
     print(f"{game.title}")
@@ -535,7 +535,7 @@ def report(game: games.Game, root: str, base: int,
 
 
 def main(argv: list[str]) -> int:
-    keys = [g.key for g in games.GAMES]
+    keys = [g.key for g in c64_port.GAMES]
     ap = argparse.ArgumentParser(
         description="Find a title's NEWECL handler and the addresses a fast "
                     "travel needs, from its own overlays.")
@@ -553,13 +553,13 @@ def main(argv: list[str]) -> int:
                          "instruction for instruction")
     args = ap.parse_args(argv[1:])
 
-    game = next(g for g in games.GAMES if g.key == args.game)
+    game = next(g for g in c64_port.GAMES if g.key == args.game)
     root = args.disks or str(gamedisks.find(game.key) or "")
     if not root or not os.path.isdir(root):
         print(f"No {game.title} disks. Set $POR_DISKS or pass --disks.",
               file=sys.stderr)
         return 2
-    against = (next(g for g in games.GAMES if g.key == args.against)
+    against = (next(g for g in c64_port.GAMES if g.key == args.against)
                if args.against else None)
     return report(game, root, int(args.base, 0), against)
 

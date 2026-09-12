@@ -101,10 +101,10 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import (  # noqa: E402
     c64_codec,
+    c64_port,
     classcode,
     derive,
     encoding,
-    games,
     levels,
     levelup,
     portraits,
@@ -719,7 +719,7 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
     `docs/119-test-party.md` §2 calls (b): write `0x0E8` past the threshold
     and let the school do the arithmetic.
     """
-    game = game or games.by_key("pool-of-radiance")
+    game = game or c64_port.by_key("pool-of-radiance")
     rng = rolls_for(rolls, seed)
     record, report = level_one(spec, game, rng)
     out = Built(spec=spec, record=record,
@@ -789,7 +789,7 @@ def build(spec: Spec, game=None, rolls: str = "max", seed: int = 0,
 def party(game=None, rolls: str = "max", seed: int = 0,
           specs: "tuple[Spec, ...]" = PARTY, tables=None) -> list[Built]:
     """The whole party, in marching order."""
-    game = game or games.by_key("pool-of-radiance")
+    game = game or c64_port.by_key("pool-of-radiance")
     built = [build(spec, game, rolls, seed, tables) for spec in specs]
     for position, one in enumerate(built):
         one.record.set("party_order", position)

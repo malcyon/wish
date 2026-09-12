@@ -44,7 +44,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox.amiga import ConversionError, export_party  # noqa: E402
+from goldbox.amiga_pod import ConversionError, export_party  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:

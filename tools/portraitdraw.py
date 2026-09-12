@@ -182,8 +182,8 @@ def sides_of(key: str, disks: str | None) -> list[pathlib.Path]:
     where = pathlib.Path(disks) if disks else gamedisks.find(key)
     if where is None:
         return []
-    from goldbox import games
-    game = games.by_key(key)
+    from goldbox import c64_port
+    game = c64_port.by_key(key)
     return sorted(where.glob(game.disk_glob))
 
 

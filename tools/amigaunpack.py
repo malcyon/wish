@@ -43,7 +43,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools.amiga68k import Executable, disassemble, load  # noqa: E402
 
 #: `move.w #$N, -(a7)` -- a length, or the value of a `setmem`.
@@ -150,17 +150,17 @@ def gaps(rows: list[Row], size: int | None) -> list[Row]:
     return out
 
 
-SHAPES = {s.key: s for s in (dos_layout.CURSE_OF_THE_AZURE_BONDS,
-                             dos_layout.SECRET_OF_THE_SILVER_BLADES,
-                             dos_layout.POOL_OF_RADIANCE,
-                             dos_layout.POOLS_OF_DARKNESS)}
+SHAPES = {s.key: s for s in (dos_port.CURSE_OF_THE_AZURE_BONDS,
+                             dos_port.SECRET_OF_THE_SILVER_BLADES,
+                             dos_port.POOL_OF_RADIANCE,
+                             dos_port.POOLS_OF_DARKNESS)}
 
 
 def _fields(shape_key: str | None, items: bool):
     if shape_key is None:
         return {}
     shape = SHAPES[shape_key]
-    layout = dos_layout.ITEM_LAYOUT if items else dos_layout.layout_for(shape)
+    layout = dos_port.ITEM_LAYOUT if items else dos_port.layout_for(shape)
     return {f.offset: f.name for f in layout}
 
 

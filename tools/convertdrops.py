@@ -53,7 +53,7 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from editor import convert, dosimport  # noqa: E402
-from goldbox import c64_codec, dos, games  # noqa: E402
+from goldbox import c64_codec, c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
@@ -70,9 +70,9 @@ def specimen_root() -> pathlib.Path:
 #: own report verbatim, so its declared list is the DOS writer's.
 WRITER_DROPS = {
     "c64": ("goldbox.c64_codec.DROPPED", c64_codec.DROPPED),
-    "dos": ("goldbox.dos.WRITE_DROPPED", dos.WRITE_DROPPED),
+    "dos": ("goldbox.dos.WRITE_DROPPED", dos_codec.WRITE_DROPPED),
     "amiga": ("goldbox.dos.WRITE_DROPPED, via goldbox.amiga.write_por",
-              dos.WRITE_DROPPED),
+              dos_codec.WRITE_DROPPED),
 }
 
 #: The DOS archive directory stem per title, for `tools/dosbox.find_game`.
@@ -103,12 +103,12 @@ def game_files(game):
                     pass
             if animate is None:
                 try:
-                    animate = load_payload(str(disk), dos.ANIMATE_FILE)
+                    animate = load_payload(str(disk), dos_codec.ANIMATE_FILE)
                 except Exception:
                     pass
         if icon is not None and animate is not None:
             portraits = None
-            if game.key == games.POOL_OF_RADIANCE.key:
+            if game.key == c64_port.POOL_OF_RADIANCE.key:
                 try:
                     portraits = tables_from_disks(where)
                 except (PortraitError, OSError):
@@ -231,7 +231,7 @@ def sweep() -> int:
 
 def reach() -> int:
     """Which declared drop-list entry any registered direction can reach."""
-    from goldbox import amiga
+    from goldbox import amiga_por
     from goldbox.amiga_adf import AmigaDisk
 
     root = specimen_root()
@@ -239,15 +239,15 @@ def reach() -> int:
 
     def fields(source):
         if source.port == "dos":
-            party = [dos.to_neutral(c)
-                     for c in dos.read_party(source.path, source.slot)]
+            party = [dos_codec.to_neutral(c)
+                     for c in dos_codec.read_party(source.path, source.slot)]
         elif source.port == "c64":
-            party, _icons = dos.c64_party(source.save0, source.save1,
-                                          game=games.by_key(source.key))
+            party, _icons = dos_codec.c64_party(source.save0, source.save1,
+                                          game=c64_port.by_key(source.key))
         else:
-            raw, _savgam = amiga.read_por_slot(
+            raw, _savgam = amiga_por.read_por_slot(
                 AmigaDisk.open(str(source.path)), source.slot)
-            party = [dos.to_neutral(c) for c in raw]
+            party = [dos_codec.to_neutral(c) for c in raw]
         out: set = set()
         for char in party:
             out |= set(char.keys())
@@ -264,8 +264,8 @@ def reach() -> int:
     for key in sorted(carried):
         print(f"  {key[0]:6} {key[1]:30} {len(carried[key])} fields")
     print()
-    derived = {n for n, _ in dos.WRITE_NO_SUCH_FIELD} | {n for n, _ in
-                                                         dos.WRITE_DERIVED}
+    derived = {n for n, _ in dos_codec.WRITE_NO_SUCH_FIELD} | {n for n, _ in
+                                                         dos_codec.WRITE_DERIVED}
     for direction in convert.DIRECTIONS:
         label, drops = WRITER_DROPS[direction.destination_port]
         have = carried.get((direction.source_port, direction.source_key), set())

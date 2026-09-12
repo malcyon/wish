@@ -44,7 +44,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import games as G  # noqa: E402
+from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import ROSTER_HP_CURRENT, ROSTER_STRIDE  # noqa: E402
 from tools import cursethac0, gamedisks, latercombat  # noqa: E402
 from tools import session as S  # noqa: E402

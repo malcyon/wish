@@ -58,7 +58,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import dosbox, dosfieldrefs, dosovrmap, unexepack  # noqa: E402
 
 #: Turbo Pascal's frame setup.  `tools/dosovrmap.py` says why it is this and
@@ -377,7 +377,7 @@ def bag_rows() -> tuple[list[dict], dict[str, int]]:
 
 def _dos_characters():
     """`(path, character)` for every DOS record `enccensus` would count."""
-    from goldbox import dos as gdos  # noqa: PLC0415
+    from goldbox import dos_codec as gdos  # noqa: PLC0415
     from tools import dostailcensus, enccensus  # noqa: PLC0415
     for root in enccensus.dos_roots():
         if not root.exists():
@@ -390,7 +390,7 @@ def _dos_characters():
                            for d in dostailcensus.SCRATCH_DIRS)):
                 continue
             try:
-                if path.stat().st_size not in dl.SHAPES_BY_SIZE:
+                if path.stat().st_size not in dl.DELTAS_BY_SIZE:
                     continue
                 if dostailcensus.foreign_title(path):
                     continue

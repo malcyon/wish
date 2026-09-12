@@ -74,7 +74,7 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import games, icons  # noqa: E402
+from goldbox import c64_port, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
     EDITOR_FILE,
@@ -346,7 +346,7 @@ def title_c64_disk(title: str, given: str | None) -> pathlib.Path | None:
     folder = gamedisks.find(title)
     if folder is None:
         return None
-    for path in sorted(folder.glob(games.by_key(title).disk_glob)):
+    for path in sorted(folder.glob(c64_port.by_key(title).disk_glob)):
         try:
             names = {entry.name for entry in D64.open(str(path)).directory()}
         except Exception:
@@ -412,7 +412,7 @@ def compare_c64(disks: dict[str, pathlib.Path | None],
     icon_colours = DEFAULT_COLOURS if icon_colours is None else icon_colours
     reference = disks.get(DOS_TITLES[0])
     for title, disk in disks.items():
-        name = games.by_key(title).title
+        name = c64_port.by_key(title).title
         if disk is None:
             print(f"{name}: no C64 disks on this machine")
             continue
@@ -553,7 +553,7 @@ def markdown(game: pathlib.Path, disk: pathlib.Path | None, size: str,
     none.
     """
     weapons, heads = tables_for_title(title, size=size)
-    display_title = games.by_key(title).title
+    display_title = c64_port.by_key(title).title
     compare = reference_game is not None and reference_game != game
     parts = IconParts.load(str(disk)) if disk else None
     charset = icons.load_icon_charset(str(disk)) if disk else None
@@ -889,7 +889,7 @@ def main(argv: list[str] | None = None) -> int:
         disk = title_c64_disk(args.title, args.disk)
         if disk is None:
             raise SystemExit(
-                f"no {games.by_key(args.title).title} C64 disk carrying "
+                f"no {c64_port.by_key(args.title).title} C64 disk carrying "
                 f"{', '.join(f.decode() for f in C64_ICON_FILES)}; pass "
                 f"--disk, or set the title's variable in gamedisks.toml")
         sheet(title_dos_game(args.title, args.dos, args.archives),

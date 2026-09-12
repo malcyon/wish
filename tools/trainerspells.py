@@ -507,11 +507,11 @@ def rows(title: str) -> None:
 
 def check(title: str) -> list[str]:
     """Diff the game's own steps against `goldbox/levelup.py`. Empty is good."""
-    from goldbox import games, levels, levelup, spells
+    from goldbox import c64_port, levels, levelup, spells
 
-    game = {"pool": games.POOL_OF_RADIANCE,
-            "curse": games.CURSE_OF_THE_AZURE_BONDS,
-            "ssb": games.SECRET_OF_THE_SILVER_BLADES}[title]
+    game = {"pool": c64_port.POOL_OF_RADIANCE,
+            "curse": c64_port.CURSE_OF_THE_AZURE_BONDS,
+            "ssb": c64_port.SECRET_OF_THE_SILVER_BLADES}[title]
     ceiling = dict((n, len(r)) for n, r in levels.for_game(game).classes)
     steps = read(title)
     bad = []

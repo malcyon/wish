@@ -47,7 +47,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import disk_globs  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import newecl  # noqa: E402
 
@@ -119,7 +119,7 @@ ENTRY_NAMES = ["a step", "a step or LOOK", "before camping",
 
 # -- the disks ---------------------------------------------------------------
 
-def sides(root: str, game: games.Game) -> list[tuple[int, str]]:
+def sides(root: str, game: c64_port.C64Container) -> list[tuple[int, str]]:
     """`(side number, path)` for every side of this title under `root`.
 
     The number is the digit in the file name, which is what the loader prompts
@@ -146,7 +146,7 @@ def sides(root: str, game: games.Game) -> list[tuple[int, str]]:
     return sorted(out)
 
 
-def catalogue(root: str, game: games.Game) -> dict[str, list[int]]:
+def catalogue(root: str, game: c64_port.C64Container) -> dict[str, list[int]]:
     """Every file on every side, and which sides carry it."""
     out: dict[str, list[int]] = {}
     for number, path in sides(root, game):
@@ -160,7 +160,7 @@ def catalogue(root: str, game: games.Game) -> dict[str, list[int]]:
     return out
 
 
-def read(root: str, game: games.Game, name: str) -> tuple[int, bytes] | None:
+def read(root: str, game: c64_port.C64Container, name: str) -> tuple[int, bytes] | None:
     """`(side, body)` for a game file, off the lowest-numbered side with it."""
     for number, path in sides(root, game):
         try:
@@ -173,7 +173,7 @@ def read(root: str, game: games.Game, name: str) -> tuple[int, bytes] | None:
     return None
 
 
-def script_names(root: str, game: games.Game) -> dict[str, int]:
+def script_names(root: str, game: c64_port.C64Container) -> dict[str, int]:
     """Every `ECL<hex>` on the disks, and the side it is on.
 
     `ECL64` and `ECL65` are on every side of Silver Blades and on Pool of
@@ -199,7 +199,7 @@ def script_names(root: str, game: games.Game) -> dict[str, int]:
 class Machine:
     """This title's opcode tables, read out of its own `DUNGEON`."""
 
-    def __init__(self, root: str, game: games.Game):
+    def __init__(self, root: str, game: c64_port.C64Container):
         got = read(root, game, "DUNGEON")
         if got is None:
             raise SystemExit(f"No DUNGEON on any {game.title} side "
@@ -670,7 +670,7 @@ def verify(machine: Machine, control: Machine) -> list[str]:
     return out
 
 
-def load_scripts(root: str, game: games.Game, machine: Machine
+def load_scripts(root: str, game: c64_port.C64Container, machine: Machine
                  ) -> tuple[int, dict[str, Script]]:
     bodies: dict[str, bytes] = {}
     where: dict[str, int] = {}
@@ -744,7 +744,7 @@ class Row:
         return any(OWN_ENTRY_4 in by for by in self.votes.values())
 
 
-def derive(root: str, game: games.Game):
+def derive(root: str, game: c64_port.C64Container):
     """`(machine, base, scripts, rows)`: everything one run reads off the disks.
 
     Split out of `report` so that `--python`, `--check` and the table all
@@ -770,7 +770,7 @@ def derive(root: str, game: games.Game):
     return machine, base, scripts, rows
 
 
-def report(game: games.Game, root: str, control: games.Game | None,
+def report(game: c64_port.C64Container, root: str, control: c64_port.C64Container | None,
            as_python: bool) -> int:
     catalogue_ = catalogue(root, game)
     machine, base, scripts, derived = derive(root, game)
@@ -900,7 +900,7 @@ def _square(sq: tuple | None) -> str:
                          if facing is not None and facing < 4 else "")
 
 
-def check(game: games.Game, root: str) -> int:
+def check(game: c64_port.C64Container, root: str) -> int:
     """Diff a fresh derivation against the table `goldbox/areas.py` ships.
 
     A copied table nothing re-derives is a table that quietly goes stale, and
@@ -1052,7 +1052,7 @@ def registry(key: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    keys = [g.key for g in games.GAMES]
+    keys = [g.key for g in c64_port.GAMES]
     ap = argparse.ArgumentParser(
         description="Build a title's area table from its own ECL scripts.")
     ap.add_argument("game", choices=keys)
@@ -1066,7 +1066,7 @@ def main(argv: list[str]) -> int:
                     help="diff the derivation against goldbox/areas.py")
     args = ap.parse_args(argv[1:])
 
-    game = next(g for g in games.GAMES if g.key == args.game)
+    game = next(g for g in c64_port.GAMES if g.key == args.game)
     root = args.disks or registry(game.key)
     if not root or not os.path.isdir(root):
         print(f"No {game.title} disks. Set $POR_DISKS or pass --disks.",
@@ -1074,7 +1074,7 @@ def main(argv: list[str]) -> int:
         return 2
     if args.check:
         return check(game, root)
-    control = (next(g for g in games.GAMES if g.key == args.against)
+    control = (next(g for g in c64_port.GAMES if g.key == args.against)
                if args.against else None)
     return report(game, root, control, args.python)
 

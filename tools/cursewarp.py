@@ -56,7 +56,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.actions import pc_register  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import curserun, newecl  # noqa: E402
 from tools import session as por  # noqa: E402
@@ -82,7 +82,7 @@ class Addresses:
     are checked against the operands `NEWECL` itself uses.
     """
 
-    def __init__(self, game: games.Game, disks: str, base: int = 0x0800):
+    def __init__(self, game: c64_port.C64Container, disks: str, base: int = 0x0800):
         _, body = newecl.load("DUNGEON", disks, game)
         self.base, self.body = base, body
         call, lo_t, hi_t, opcode_at = newecl.dispatch_tables(body, base)
@@ -549,7 +549,7 @@ def warp_via_actions(sess, target, to: int, disk: int, square) -> dict:
     """
     from automap import actions
 
-    ft = actions.FastTravel(games.CURSE_OF_THE_AZURE_BONDS)
+    ft = actions.FastTravel(c64_port.CURSE_OF_THE_AZURE_BONDS)
     row = Row(to, disk, arrival=tuple(square) if square else None)
     verdict = ft.legality(target, row)
     out = {"legal": bool(verdict), "reason": verdict.reason,
@@ -565,7 +565,7 @@ def warp_via_actions(sess, target, to: int, disk: int, square) -> dict:
 
 
 def run(args) -> int:
-    game = games.CURSE_OF_THE_AZURE_BONDS
+    game = c64_port.CURSE_OF_THE_AZURE_BONDS
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 

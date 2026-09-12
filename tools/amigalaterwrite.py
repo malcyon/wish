@@ -48,7 +48,14 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, c64_codec, dos, items, neutral  # noqa: E402
+from goldbox import (  # noqa: E402
+    amiga_later,
+    amiga_port,
+    c64_codec,
+    dos_codec,
+    items,
+    neutral,
+)
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
@@ -89,7 +96,7 @@ def dos_party(folder: pathlib.Path) -> list:
     """Every `CHRDAT*.SAV` in a DOS save directory, as neutral records."""
     out = []
     for path in sorted(folder.glob("CHRDAT*.SAV")):
-        out.append(dos.to_neutral(dos.read_character(path)))
+        out.append(dos_codec.to_neutral(dos_codec.read_character(path)))
     return out
 
 
@@ -120,7 +127,7 @@ def amiga_records(where: pathlib.Path) -> dict:
             paths.extend(sorted(where.glob(f"savgam*{suffix}")))
     else:
         paths.append(where)
-    out: dict[str, amiga.AmigaCharacter] = {}
+    out: dict[str, amiga_later.AmigaCharacter] = {}
     for path in paths:
         data = path.read_bytes()
         if path.suffix.lower() == ".adf":
@@ -156,7 +163,7 @@ def _records_in(data: bytes) -> dict:
         return {}
     if shape.record_shape is None:
         return {}
-    party = amiga.party_in_savegame(data, shape.record_shape)
+    party = amiga_later.party_in_savegame(data, shape.record_shape)
     return {c.name.strip().upper(): c for c in party}
 
 
@@ -164,12 +171,12 @@ def convert(party) -> list:
     """`(neutral, AmigaCharacter, report)` for every character."""
     out = []
     for char in party:
-        built, report = amiga.write_later(char)
+        built, report = amiga_later.write_later(char)
         out.append((char, built, report))
     return out
 
 
-def describe(built: amiga.AmigaCharacter, report) -> str:
+def describe(built: amiga_later.AmigaCharacter, report) -> str:
     block = built.block_bytes()
     return (f"{built.name:<16} {built.shape.title[:12]:<12} "
             f"{len(block):>5} bytes  items {len(built.items):>2}  "
@@ -180,14 +187,14 @@ def describe(built: amiga.AmigaCharacter, report) -> str:
             f"drops {len(report.dropped)}")
 
 
-def compare(built: amiga.AmigaCharacter,
-            twin: amiga.AmigaCharacter) -> list[str]:
+def compare(built: amiga_later.AmigaCharacter,
+            twin: amiga_later.AmigaCharacter) -> list[str]:
     """The sheet fields where a converted record and a real one disagree."""
     lines = []
     for field in SHEET_FIELDS:
         try:
             ours, theirs = built.get(field), twin.get(field)
-        except amiga.AmigaRecordError:
+        except amiga_port.AmigaRecordError:
             continue
         if ours != theirs:
             lines.append(f"    {field:<24} ours {ours!r}  theirs {theirs!r}")

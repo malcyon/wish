@@ -30,7 +30,7 @@ from typing import Sequence
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga  # noqa: E402
+from goldbox import amiga_later, amiga_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 #: The three heap blocks the variable array is written from, as one run.
@@ -110,7 +110,7 @@ class SaveShape:
     #: `records` when the party is embedded, `filenames` for the 8 x 41 table.
     party: str
     #: The record shape for an embedded party, `None` for filenames.
-    record_shape: amiga.AmigaDeltas | None = None
+    record_shape: amiga_port.AmigaDeltas | None = None
     #: The file's fixed length when the party is filenames, else `None`.
     fixed_size: int | None = None
 
@@ -175,7 +175,7 @@ CURSE = SaveShape(
             SquareField("square_property", 1, _PROPERTY),
             SquareField("pad", 1, _PAD)),
     first_mode_byte="mode before", wallset_table=True, count_bytes=2,
-    party="records", record_shape=amiga.CURSE_DELTAS)
+    party="records", record_shape=amiga_port.CURSE_DELTAS)
 
 SILVER_BLADES = SaveShape(
     title="Secret of the Silver Blades",
@@ -185,7 +185,7 @@ SILVER_BLADES = SaveShape(
             SquareField("square_property", 1, _PROPERTY),
             SquareField("pad", 1, _PAD)),
     first_mode_byte="mode before", wallset_table=True, count_bytes=2,
-    party="records", record_shape=amiga.SILVER_BLADES_DELTAS)
+    party="records", record_shape=amiga_port.SILVER_BLADES_DELTAS)
 
 POOL_OF_RADIANCE = SaveShape(
     title="Pool of Radiance",
@@ -226,7 +226,7 @@ class AmigaSavegame:
     wallset: tuple[tuple[int, int], ...]
     count: int
     #: Embedded characters, in file order; empty for Pool of Radiance.
-    characters: tuple[amiga.AmigaCharacter, ...]
+    characters: tuple[amiga_later.AmigaCharacter, ...]
     #: `(offset, end)` of each character block, in file order.
     blocks: tuple[tuple[int, int], ...]
     #: The eight name slots, NUL-stripped; empty for Curse and Silver Blades.
@@ -272,7 +272,7 @@ def detect(data: bytes) -> SaveShape:
     if len(data) == POOL_OF_RADIANCE.fixed_size:
         return POOL_OF_RADIANCE
     for shape in (CURSE, SILVER_BLADES):
-        if amiga.looks_like_amiga_record(data, shape.party_at,
+        if amiga_later.looks_like_amiga_record(data, shape.party_at,
                                          shape.record_shape):
             return shape
     raise AmigaSaveError(
@@ -306,7 +306,7 @@ def parse(data: bytes, shape: SaveShape | None = None,
             for i in range(WALLSET_ENTRIES))
     count = int.from_bytes(data[shape.count_at:shape.party_at], "big")
 
-    characters: list[amiga.AmigaCharacter] = []
+    characters: list[amiga_later.AmigaCharacter] = []
     blocks: list[tuple[int, int]] = []
     names: list[str] = []
     at = shape.party_at
@@ -314,7 +314,7 @@ def parse(data: bytes, shape: SaveShape | None = None,
         for _ in range(count):
             # The loader allocates a record and reads a block this way, once
             # per count; _amiga_block is the reader's own walk of one block.
-            char, end = amiga._amiga_block(data, at, shape.record_shape,
+            char, end = amiga_later._amiga_block(data, at, shape.record_shape,
                                            source)
             characters.append(char)
             blocks.append((at, end))
@@ -380,7 +380,7 @@ def with_square(save: AmigaSavegame, **fields: int) -> bytes:
 
 
 def rebuild(save: AmigaSavegame,
-            characters: "Sequence[amiga.AmigaCharacter] | None" = None
+            characters: "Sequence[amiga_later.AmigaCharacter] | None" = None
             ) -> bytes:
     """A saved game with a new party in it, and everything else untouched.
 
@@ -421,7 +421,7 @@ def rebuild(save: AmigaSavegame,
     head[at:at + 2] = len(party).to_bytes(2, "big")
     return (bytes(head)
             + len(party).to_bytes(s.count_bytes, "big")
-            + amiga.party_block_bytes(party))
+            + amiga_later.party_block_bytes(party))
 
 
 def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
@@ -438,7 +438,7 @@ def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
                 f"{save.word(0x503E)} against {save.count}"))
     if s.party == "records":
         scan = [c for c in range(len(save.data))
-                if amiga.looks_like_amiga_record(save.data, c, s.record_shape)]
+                if amiga_later.looks_like_amiga_record(save.data, c, s.record_shape)]
         starts = [b[0] for b in save.blocks]
         out.append(("every block starts where the scan finds a record",
                     scan == starts,
@@ -603,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
     for label, data in todo:
         try:
             save = parse(data, source=label)
-        except (AmigaSaveError, amiga.AmigaRecordError) as ex:
+        except (AmigaSaveError, amiga_port.AmigaRecordError) as ex:
             print(f"{label}: {ex}")
             failed += 1
             continue

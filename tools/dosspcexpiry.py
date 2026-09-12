@@ -41,7 +41,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos as pordos  # noqa: E402
+from goldbox import dos_codec as pordos  # noqa: E402
 from tools import dosbox, dosboxx  # noqa: E402
 
 #: Where a DOS character record keeps the far pointer to its first effect node.

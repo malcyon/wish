@@ -33,7 +33,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 
 ICON_HEAD = 0x0BD
 ICON_BODY = 0x0BE
@@ -68,7 +68,7 @@ def stage(folder: pathlib.Path, slot: str, figures=FIGURES) -> list[dict]:
         data[ICON_BODY] = body
         data[ICON_COLOURS:ICON_COLOURS + 6] = bytes.fromhex(colours)
         path.write_bytes(bytes(data))
-        char = dos.read_character(path)
+        char = dos_codec.read_character(path)
         written.append({"file": path.name, "name": char.name,
                         "icon_head": char.get("icon_head"),
                         "icon_body": char.get("icon_body"),

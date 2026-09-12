@@ -38,7 +38,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
     DosIconTables,
@@ -84,7 +84,7 @@ def figures(folder: pathlib.Path, slot: str, parts: IconParts,
     for where a DOS marching position lands on the C64.
     """
     tables = dos_icon_tables()
-    party = dos.read_party(folder, slot)
+    party = dos_codec.read_party(folder, slot)
     rows = []
     for index, char in enumerate(party):
         head = char.get("icon_head")
@@ -95,7 +95,7 @@ def figures(folder: pathlib.Path, slot: str, parts: IconParts,
         rows.append({
             "name": char.name,
             "marching": index,
-            "slot": dos.marching_slot(index, len(party)),
+            "slot": dos_codec.marching_slot(index, len(party)),
             "dos_head": head,
             "dos_body": body,
             "dos_size": size,
@@ -123,7 +123,7 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
         portraits = tables_from_disks(disks)
     except PortraitError:
         portraits = None
-    save0, save1, _report = dos.new_save(
+    save0, save1, _report = dos_codec.new_save(
         folder, slot, parts, dosdisk_animate(disks), portraits=portraits)
     for row in rows:
         at = (ICON_TABLE_BASE - SAVE0_LOAD_ADDRESS + row["slot"] * ICON_SIZE)
@@ -131,7 +131,7 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
         row["written"] = written.hex()
         row["agrees"] = written == (bytes.fromhex(row["codes"])
                                     + bytes.fromhex(row["colours"]))
-    disk: D64 = dos.save_disk(bytes(save0), bytes(save1))
+    disk: D64 = dos_codec.save_disk(bytes(save0), bytes(save1))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(disk.data)
     return rows

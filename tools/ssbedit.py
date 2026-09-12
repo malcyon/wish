@@ -61,7 +61,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_save, games  # noqa: E402
+from goldbox import c64_port, c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
@@ -79,7 +79,7 @@ def name_table(path: str | pathlib.Path) -> list[bytes]:
     writer, because the question this answers is whether a writer touched it.
     """
     disk = D64.open(str(path))
-    game = games.detect(disk)
+    game = c64_port.detect(disk)
     if game is None:
         raise SystemExit(f"{path}: no Gold Box save on this disk")
     container = c64_save.CONTAINERS.get(game.key)
@@ -109,7 +109,7 @@ def table_index(path: str | pathlib.Path, slot: int) -> int | None:
     place that knows which.
     """
     disk = D64.open(str(path))
-    game = games.detect(disk)
+    game = c64_port.detect(disk)
     container = c64_save.CONTAINERS.get(game.key) if game else None
     if container is None or container.name_table is None:
         return None

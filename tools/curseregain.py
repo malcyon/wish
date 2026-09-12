@@ -57,7 +57,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dualclassagain import install  # noqa: E402
 
@@ -75,7 +75,7 @@ WATCH = ("char_class", "level", "former_level", "class_bits", "thac0_base",
 
 def describe(path: pathlib.Path) -> dict:
     """One character record, as the fields `#408` turns on."""
-    c = dos.read_character(path)
+    c = dos_codec.read_character(path)
     out = {"file": path.name, "name": c.name,
            "class_levels": list(c.raw("class_levels"))}
     if "former_class_levels" in c.fields:
@@ -96,7 +96,7 @@ def stage_record(path: pathlib.Path, set_level: int | None,
     live class, or more than one, is refused rather than guessed at: this run
     is about a dual-classed character, who has exactly one.
     """
-    c = dos.read_character(path)
+    c = dos_codec.read_character(path)
     data = bytearray(path.read_bytes())
     levels = c.fields["class_levels"]
     live = [n for n, v in enumerate(c.raw("class_levels")) if v]

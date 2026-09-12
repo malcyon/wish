@@ -49,7 +49,7 @@ from automap.combat import (  # noqa: E402
     helpless_indices,
     shape_from_params,
 )
-from goldbox import games as G  # noqa: E402
+from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import (  # noqa: E402
     HEADER_SIZE,
     RECORD_SLOT_COUNT,

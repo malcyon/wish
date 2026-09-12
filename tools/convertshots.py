@@ -45,7 +45,7 @@ import tempfile  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from editor import convert  # noqa: E402
-from goldbox import dos, dos_layout, games  # noqa: E402
+from goldbox import c64_port, dos_codec, dos_port  # noqa: E402
 
 
 def _dos_folder(root: pathlib.Path, shape, slot: str = "A",
@@ -64,9 +64,9 @@ def _por_disk(root: pathlib.Path) -> pathlib.Path:
     """A real, readable -- but entirely zeroed -- Pool of Radiance C64
     save disk. Enough for `Source.detect` and the "no game folder yet"
     state; not enough for a rehearsal to succeed."""
-    save0 = bytes(games.POOL_OF_RADIANCE.save_size)
-    save1 = bytes(games.POOL_OF_RADIANCE.roster_size)
-    disk = dos.save_disk(save0, save1)
+    save0 = bytes(c64_port.POOL_OF_RADIANCE.save_size)
+    save1 = bytes(c64_port.POOL_OF_RADIANCE.roster_size)
+    disk = dos_codec.save_disk(save0, save1)
     path = root / "PORSAVEA.D64"
     path.write_bytes(disk.to_bytes())
     return path
@@ -88,11 +88,11 @@ def _synthetic_states(root: pathlib.Path):
     """
     empty = convert.ConvertDialog("", None, _no_disks)
 
-    pod_folder = _dos_folder(root, dos_layout.POOLS_OF_DARKNESS, suffix="PTY")
+    pod_folder = _dos_folder(root, dos_port.POOLS_OF_DARKNESS, suffix="PTY")
     refused = convert.ConvertDialog(
         str(pod_folder / "SAVGAMA.PTY"), None, _no_disks)
 
-    dos_folder = _dos_folder(root, dos_layout.POOL_OF_RADIANCE)
+    dos_folder = _dos_folder(root, dos_port.POOL_OF_RADIANCE)
     no_disks_state = convert.ConvertDialog(
         str(dos_folder / "SAVGAMA.DAT"), None, _no_disks, folder=str(root))
 

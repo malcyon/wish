@@ -57,9 +57,9 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.d64 import D64, attach_load_address, split_load_address  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE as GAME  # noqa: E402
 from goldbox.layout import NAME_SIZE  # noqa: E402
 from tools import gamedisks  # noqa: E402
 from tools import session as S  # noqa: E402
@@ -99,7 +99,7 @@ RE_DAMAGE = re.compile(r"DAMAGE\s+(\S+)")
 
 def build(cha: pathlib.Path, save: pathlib.Path, log) -> list[dict]:
     """Put each variant into its own slot of the staged save copy."""
-    char = dos.read_character(cha)
+    char = dos_codec.read_character(cha)
     image = D64.from_bytes(save.read_bytes())
     load0, save0 = split_load_address(image.read_file(GAME.save_file))
     load1, save1 = split_load_address(image.read_file(GAME.roster_file))
@@ -107,7 +107,7 @@ def build(cha: pathlib.Path, save: pathlib.Path, log) -> list[dict]:
 
     made = []
     for name, slot, flag, spoil in VARIANTS:
-        rec, _ = dos.to_c64_record(char)
+        rec, _ = dos_codec.to_c64_record(char)
         rec.set("party_order", slot)
         raw = bytearray(rec.to_bytes())
         raw[:NAME_SIZE] = name.encode("ascii").ljust(NAME_SIZE, b"\0")
@@ -117,12 +117,12 @@ def build(cha: pathlib.Path, save: pathlib.Path, log) -> list[dict]:
             raw[0x100 + ROSTER_THAC0] = SPOIL_THAC0
             raw[0x100 + ROSTER_DAMAGE_BONUS] = SPOIL_DAMAGE
 
-        at = dos.SLOT_AREA - dos.SAVE0_BASE + slot * dos.SLOT_STRIDE
-        save0[at:at + dos.SLOT_STRIDE] = raw[:dos.SLOT_STRIDE]
-        at = dos.ITEM_AREA - dos.SAVE0_BASE + slot * dos.SLOT_STRIDE
-        save0[at:at + dos.SLOT_STRIDE] = raw[0x120:0x220]
-        at = slot * dos.ROSTER_STRIDE
-        save1[at:at + dos.ROSTER_STRIDE] = raw[0x100:0x120]
+        at = dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE + slot * dos_codec.SLOT_STRIDE
+        save0[at:at + dos_codec.SLOT_STRIDE] = raw[:dos_codec.SLOT_STRIDE]
+        at = dos_codec.ITEM_AREA - dos_codec.SAVE0_BASE + slot * dos_codec.SLOT_STRIDE
+        save0[at:at + dos_codec.SLOT_STRIDE] = raw[0x120:0x220]
+        at = slot * dos_codec.ROSTER_STRIDE
+        save1[at:at + dos_codec.ROSTER_STRIDE] = raw[0x100:0x120]
 
         made.append({"name": name, "slot": slot,
                      "flag_0e3": raw[0x0E3], "forced": flag,

@@ -57,7 +57,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos, dos_layout  # noqa: E402
+from goldbox import dos_codec, dos_port  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dualclassdos import (  # noqa: E402
     OVERLAYS,
@@ -96,7 +96,7 @@ def derive_sites(image: bytes, shape_key: str) -> list[dict]:
     sound is that the site that answers True is the *only* one in each
     overlay, and `--window` disassembles it for a reader to check.
     """
-    fields = {f.name: f for f in dos_layout.layout_for(shape_key)}
+    fields = {f.name: f for f in dos_port.layout_for(shape_key)}
     bits = fields["class_bits"].offset
     former = fields.get("former_class_levels")
     level = fields["level"].offset
@@ -138,7 +138,7 @@ def predict_bits(char) -> int:
     slots |= set(regained(char))
     bits = 0
     for slot in slots:
-        bits |= dos.CLASS_BIT_FOR_SLOT.get(slot, 0)
+        bits |= dos_codec.CLASS_BIT_FOR_SLOT.get(slot, 0)
     return bits
 
 

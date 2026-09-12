@@ -44,7 +44,7 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
@@ -171,7 +171,7 @@ def self_refs(body: bytes, base: int) -> int:
 
 
 def report(key: str) -> None:
-    game = next((g for g in games.GAMES if g.key == key), None)
+    game = next((g for g in c64_port.GAMES if g.key == key), None)
     print(f"== {getattr(game, 'title', key)}")
     combat = None
     for name, body in files(key):

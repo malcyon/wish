@@ -41,11 +41,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from goldbox import portraits as portrait_tables  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -130,8 +130,8 @@ def find(pixels: list[list[int]], image: tuple[int, int, list],
 
 def patch(save_dir: pathlib.Path, slot: str, heads, bodies) -> list[dict]:
     """Set each character's portrait pair, and say what each record now holds."""
-    head = dos.FIELDS_BY_NAME["portrait_head"].offset
-    body = dos.FIELDS_BY_NAME["portrait_body"].offset
+    head = dos_codec.FIELDS_BY_NAME["portrait_head"].offset
+    body = dos_codec.FIELDS_BY_NAME["portrait_body"].offset
     out = []
     for n in range(1, 7):
         path = save_dir / f"CHRDAT{slot}{n}.SAV"
@@ -163,8 +163,8 @@ def rewrite(save_dir: pathlib.Path, game: pathlib.Path, slot: str) -> list[str]:
         path = save_dir / f"CHRDAT{slot}{n}.SAV"
         if not path.exists():
             continue
-        char = dos.read_character(path)
-        rec, itm, spc, _ = dos.write(dos.to_neutral(char, portraits=tables),
+        char = dos_codec.read_character(path)
+        rec, itm, spc, _ = dos_codec.write(dos_codec.to_neutral(char, portraits=tables),
                                      portraits=tables)
         path.write_bytes(rec)
         done.append(path.name)
@@ -222,10 +222,10 @@ def make(*, c64: pathlib.Path | None, slot: str, heads: list[int],
                     keep = s.save_dir.parent / "SAVE-AS-TEMPLATE"
                     shutil.rmtree(keep, ignore_errors=True)
                     shutil.copytree(s.save_dir, keep)
-                    dos.write_dos_save(save0, save1, keep, s.save_dir,
+                    dos_codec.write_dos_save(save0, save1, keep, s.save_dir,
                                        slot, game=s.game_dir)
                 else:
-                    dos.new_dos_save(save0, save1, s.save_dir, slot,
+                    dos_codec.new_dos_save(save0, save1, s.save_dir, slot,
                                      s.game_dir)
                 report["c64"] = str(c64)
                 report["templated"] = templated

@@ -55,7 +55,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from automap import maps  # noqa: E402
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dosparty import wipe_roster  # noqa: E402
@@ -145,7 +145,7 @@ def direction(a: tuple[int, int], b: tuple[int, int]) -> int:
 
 
 def read_party(folder: pathlib.Path, letter: str | None = None
-               ) -> list[dos.DosCharacter]:
+               ) -> list[dos_codec.DosCharacter]:
     """Every `CHRDAT<letter><n>.SAV` in a folder, in slot order.
 
     A snapshot of `SAVE/` after a rung holds **several** parties -- the slot
@@ -155,7 +155,7 @@ def read_party(folder: pathlib.Path, letter: str | None = None
     """
     pat = f"CHRDAT{letter.upper()}?.SAV" if letter else "CHRDAT*.SAV"
     files = sorted(folder.glob(pat), key=lambda p: p.name[7:8])
-    return [dos.read_character(p) for p in files]
+    return [dos_codec.read_character(p) for p in files]
 
 
 def source_letter(party: pathlib.Path) -> str:
@@ -185,14 +185,14 @@ def extract(snap: pathlib.Path, letter: str, dest: pathlib.Path) -> pathlib.Path
     return dest
 
 
-def line(c: dos.DosCharacter) -> str:
+def line(c: dos_codec.DosCharacter) -> str:
     return (f"{c.name:8s} lvl={c.get('level'):2d} {c.class_levels} "
             f"xp={c.get('experience'):7d} hp={c.get('hp_max'):3d} "
             f"rolled={c.get('hp_rolled'):3d} thac0={c.get('thac0_base'):3d} "
             f"gold={c.get('gold'):6d}")
 
 
-def plan(party: list[dos.DosCharacter]) -> dict[str, list[int]]:
+def plan(party: list[dos_codec.DosCharacter]) -> dict[str, list[int]]:
     """Which roster positions to train at which school, one class each.
 
     A character with more than one class trains **the class it is furthest
@@ -212,7 +212,7 @@ def plan(party: list[dos.DosCharacter]) -> dict[str, list[int]]:
 
 
 def stage_experience(save_dir: pathlib.Path, letter: str,
-                     party: list[dos.DosCharacter], want: dict[str, list[int]],
+                     party: list[dos_codec.DosCharacter], want: dict[str, list[int]],
                      flat: int, margin: int) -> dict[str, int]:
     """Write each record the experience for **one** level and no more.
 
@@ -674,7 +674,7 @@ def audit(root: pathlib.Path) -> list[str]:
         # last alphabetically and it is the untouched copy the rung began
         # with, so an audit that sorts by letter reports that nothing changed.
         # `run.jsonl` records the order, which is the only place it exists.
-        ends: dict[str, dos.DosCharacter] = {}
+        ends: dict[str, dos_codec.DosCharacter] = {}
         for letter in save_order(out / "run.jsonl"):
             for now in read_party(out / "after", letter):
                 ends[now.name] = now

@@ -74,7 +74,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 #: The name both test characters carry inside their records.  Deliberately not
@@ -103,14 +103,14 @@ def converted(src: Path, name: str, ident: int | None) -> tuple[bytes, bytes]:
     writer's own byte alone, which is how the run measures the writer rather
     than the engine.
     """
-    neutral = dos.to_neutral(dos.read_character(src))
+    neutral = dos_codec.to_neutral(dos_codec.read_character(src))
     neutral.fields["name"] = dataclasses.replace(
         neutral.fields["name"], value=name)
-    record, itm, _spc, _report = dos.write(neutral)
+    record, itm, _spc, _report = dos_codec.write(neutral)
     if ident is None:
         return record, itm
     record = bytearray(record)
-    record[dos.FIELDS_BY_NAME["unnamed_0ab"].offset] = ident
+    record[dos_codec.FIELDS_BY_NAME["unnamed_0ab"].offset] = ident
     return bytes(record), itm
 
 
@@ -131,7 +131,7 @@ def stage_characters(save_dir: Path, ident: int | None) -> dict[str, str]:
         if itm:
             (save_dir / f"{entry}.ITM").write_bytes(itm)
         made[entry] = (f"{source} as {NAME}, 0x0AB="
-                       f"{record[dos.FIELDS_BY_NAME['unnamed_0ab'].offset]:#04x}")
+                       f"{record[dos_codec.FIELDS_BY_NAME['unnamed_0ab'].offset]:#04x}")
     save_dir.joinpath("CHARLIST.TXT").write_bytes(
         b"".join(f"{entry}\r\n".encode() for entry, _ in SOURCES))
     return made
@@ -208,10 +208,10 @@ def run(ident: int | None, keep: bool = False) -> dict:
         written = sorted(p.name for p in session.save_dir.glob("CHRDATC*.SAV"))
         result["party_files"] = written
         result["party"] = [
-            dos.read_character(session.save_dir / n).name for n in written]
+            dos_codec.read_character(session.save_dir / n).name for n in written]
         result["party_idents"] = [
             (session.save_dir / n).read_bytes()[
-                dos.FIELDS_BY_NAME["unnamed_0ab"].offset] for n in written]
+                dos_codec.FIELDS_BY_NAME["unnamed_0ab"].offset] for n in written]
 
         for png in sorted((session.dir / "shots").glob("*.png")):
             shutil.copy(png, shots / png.name)

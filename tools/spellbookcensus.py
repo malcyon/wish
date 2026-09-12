@@ -51,8 +51,8 @@ ROOT = TOOLS.parent
 # below come through the package instead.
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga, games, spells  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import amiga_later, amiga_por, amiga_port, c64_port, spells  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import (  # noqa: E402
@@ -333,7 +333,7 @@ def dos_rows(want_built: bool = True):
 
 def _table_for_key(key: str):
     try:
-        return spells.for_game(games.by_key(key))
+        return spells.for_game(c64_port.by_key(key))
     except Exception:
         return None
 
@@ -355,7 +355,7 @@ def amiga_rows():
         if record in seen:
             continue
         seen.add(record)
-        char = amiga.AmigaPorCharacter.from_bytes(record, source=label)
+        char = amiga_por.AmigaPorCharacter.from_bytes(record, source=label)
         raw = char.get("spellbook")
         yield Row(port="amiga", title="pool-of-radiance",
                   where=f"{volume}:{name}", who=char.name,
@@ -400,15 +400,15 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
     distinct between the two.
     """
     if what == "record":
-        shape = amiga.AMIGA_DELTAS_BY_SIZE.get(len(data))
+        shape = amiga_port.AMIGA_DELTAS_BY_SIZE.get(len(data))
         if shape is None:
-            for candidate in amiga.AMIGA_DELTAS:
-                if amiga.looks_like_amiga_record(data, 0, candidate):
+            for candidate in amiga_port.AMIGA_DELTAS:
+                if amiga_later.looks_like_amiga_record(data, 0, candidate):
                     shape = candidate
                     break
         if shape is None:                                # pragma: no cover
             return
-        yield amiga.AmigaCharacter.from_bytes(data[:shape.record_size], shape,
+        yield amiga_later.AmigaCharacter.from_bytes(data[:shape.record_size], shape,
                                               source=label)
         return
     try:
@@ -446,7 +446,7 @@ def control_sweep(roots=None) -> tuple[int, list[tuple[pathlib.Path, str]]]:
                 size = path.stat().st_size
             except OSError:                              # pragma: no cover
                 continue
-            shape = dl.SHAPES_BY_SIZE.get(size)
+            shape = dl.DELTAS_BY_SIZE.get(size)
             if shape is None:
                 continue
             book = dl.FIELDS_BY_NAME_FOR[shape.key].get("spellbook")

@@ -40,7 +40,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import dosbox  # noqa: E402
 from tools.dosquickprobe import LADDER, walk_to_encounter  # noqa: E402
 

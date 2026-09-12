@@ -40,7 +40,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from automap.paths import disk_globs  # noqa: E402
-from goldbox import games  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
@@ -75,13 +75,13 @@ OPCODES = {0xAD: "LDA", 0x8D: "STA", 0xBD: "LDA ,X", 0x9D: "STA ,X",
            0xFE: "INC ,X", 0xDE: "DEC ,X"}
 
 
-def staging(game: games.Game) -> int:
+def staging(game: c64_port.C64Container) -> int:
     return STAGING.get(game.key, STAGING_LATER)
 
 
 # --- getting at the bytes ----------------------------------------------------
 
-def disks(game: games.Game, root: str | None) -> list[D64]:
+def disks(game: c64_port.C64Container, root: str | None) -> list[D64]:
     """Every readable side of this title's, from `root` or wherever it lives.
 
     `root` comes from `--disks`; failing that this asks `tools/gamedisks.py`'s
@@ -115,7 +115,7 @@ def disks(game: games.Game, root: str | None) -> list[D64]:
     return out
 
 
-def overlay(game: games.Game, name: bytes, root: str | None) -> bytes:
+def overlay(game: c64_port.C64Container, name: bytes, root: str | None) -> bytes:
     """One overlay's payload, longest copy across the sides.
 
     Longest because the sides disagree: a truncated demo copy of a file is a
@@ -137,7 +137,7 @@ def overlay(game: games.Game, name: bytes, root: str | None) -> bytes:
     return best[2:]
 
 
-def every_file(game: games.Game, root: str | None) -> dict[str, bytes]:
+def every_file(game: c64_port.C64Container, root: str | None) -> dict[str, bytes]:
     """Every distinct file on the title's sides, by name, payload only."""
     out: dict[str, bytes] = {}
     for image in disks(game, root):
@@ -176,7 +176,7 @@ def table(body: bytes, base: int, address: int, count: int) -> list[int]:
 
 # --- the four questions ------------------------------------------------------
 
-def trait_seeds(gen: bytes, game: games.Game, base: int
+def trait_seeds(gen: bytes, game: c64_port.C64Container, base: int
                 ) -> tuple[int | None, list[int]]:
     """Where `GEN` seeds the trait slots from, found by the read that does it.
 
@@ -203,7 +203,7 @@ def trait_seeds(gen: bytes, game: games.Game, base: int
     return None, []
 
 
-def class_seeds(gen: bytes, game: games.Game, base: int) -> list[tuple[str, int]]:
+def class_seeds(gen: bytes, game: c64_port.C64Container, base: int) -> list[tuple[str, int]]:
     """The trait a paladin or a ranger is given for its class.
 
     `LDA <paladin level> / BEQ over / … / LDA #code / …` -- the code is an
@@ -233,7 +233,7 @@ def class_seeds(gen: bytes, game: games.Game, base: int) -> list[tuple[str, int]
     return out
 
 
-def class_ceilings(gen: bytes, game: games.Game, base: int) -> int | None:
+def class_ceilings(gen: bytes, game: c64_port.C64Container, base: int) -> int | None:
     """The per-class level cap, found beside the array it caps.
 
     `LDA <record 0x0C9>,X / CMP <table>,X` ties the table to the exact eight
@@ -255,7 +255,7 @@ def class_ceilings(gen: bytes, game: games.Game, base: int) -> int | None:
     return None
 
 
-def racial_limits(gen: bytes, game: games.Game, base: int
+def racial_limits(gen: bytes, game: c64_port.C64Container, base: int
                   ) -> tuple[int | None, int | None]:
     """The per-race class limit rows, eight bytes a race, and how many rows.
 
@@ -280,7 +280,7 @@ def racial_limits(gen: bytes, game: games.Game, base: int
     return None, None
 
 
-def _guard(gen: bytes, game: games.Game, base: int) -> int | None:
+def _guard(gen: bytes, game: c64_port.C64Container, base: int) -> int | None:
     """The race the limit check gives up at: `LDA <race> / CMP #n / BCS`."""
     page = staging(game) >> 8
     for at in sites(gen, bytes([0xAD, RACE, page, 0xC9]), base):
@@ -289,7 +289,7 @@ def _guard(gen: bytes, game: games.Game, base: int) -> int | None:
     return None
 
 
-def fighter_thac0_is_computed(gen: bytes, game: games.Game, base: int) -> bool:
+def fighter_thac0_is_computed(gen: bytes, game: c64_port.C64Container, base: int) -> bool:
     """Does this title compute the fighter group's THAC0 instead of tabulating?
 
     `LDA <fighting level> / CLC / ADC #$27 / STA <THAC0>` is `THAC0 = 21 -
@@ -300,7 +300,7 @@ def fighter_thac0_is_computed(gen: bytes, game: games.Game, base: int) -> bool:
                                   0x8D, THAC0, page]), base))
 
 
-def effect_users(game: games.Game, root: str | None) -> dict[str, list[str]]:
+def effect_users(game: c64_port.C64Container, root: str | None) -> dict[str, list[str]]:
     """Which overlays touch each effect array, at this title's own base.
 
     The array addresses are `save_load_address` plus a payload offset, so this
@@ -400,7 +400,7 @@ def main(argv: list[str]) -> int:
                     help="where this title's disks are")
     args = ap.parse_args(argv[1:])
 
-    game = games.by_key(args.title)
+    game = c64_port.by_key(args.title)
     base = int(args.base, 0)
     gen = overlay(game, b"GEN", args.disks)
 

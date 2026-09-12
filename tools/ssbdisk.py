@@ -43,12 +43,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import areas, dos, dos_layout, games  # noqa: E402
+from goldbox import areas, c64_port, dos_codec, dos_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
-SSB = games.SECRET_OF_THE_SILVER_BLADES
+SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
 
 
 def enable_ssb() -> None:
@@ -57,9 +57,9 @@ def enable_ssb() -> None:
     Guarded on "is this already true", so it is a no-op on a checkout where
     `#193` step 4 has landed and a copy of this file still runs there.
     """
-    if dos_layout.SECRET_OF_THE_SILVER_BLADES not in dos.CONVERTS:
-        dos.CONVERTS = tuple(dos.CONVERTS) + (
-            dos_layout.SECRET_OF_THE_SILVER_BLADES,)
+    if dos_port.SECRET_OF_THE_SILVER_BLADES not in dos_codec.CONVERTS:
+        dos_codec.CONVERTS = tuple(dos_codec.CONVERTS) + (
+            dos_port.SECRET_OF_THE_SILVER_BLADES,)
 
 
 def check_areas(disks: pathlib.Path) -> list[str]:
@@ -107,9 +107,9 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
           out: pathlib.Path):
     """Write `out` and return `(payload, report)`.  Nothing else is touched."""
     icon = combat_icon(disks)
-    save0, save1, report = dos.new_save(folder, slot, icon, animate=None,
+    save0, save1, report = dos_codec.new_save(folder, slot, icon, animate=None,
                                         game=SSB)
-    disk: D64 = dos.save_disk(bytes(save0), bytes(save1), game=SSB)
+    disk: D64 = dos_codec.save_disk(bytes(save0), bytes(save1), game=SSB)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(disk.data)
     return save0, report
@@ -135,7 +135,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     holding is a number to carry to the memorise screen.
     """
     from goldbox import dos_savegame
-    from goldbox.games import classes_to_names
+    from goldbox.c64_port import classes_to_names
 
     shape = dos_savegame.save_shape_for(SSB.key)
     savgam = (folder / f"SAVGAM{slot}{shape.suffix}").read_bytes()
@@ -147,8 +147,8 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
              f"clock {clock[0]:02d}:{clock[1]:02d}, "
              f"area ${dos_savegame.current_area(savgam):02X}, "
              f"GEO{dos_savegame.geo_block(savgam):02X}"]
-    for index, char in enumerate(dos.read_party(folder, slot)):
-        n = dos.to_neutral(char).fields
+    for index, char in enumerate(dos_codec.read_party(folder, slot)):
+        n = dos_codec.to_neutral(char).fields
 
         def v(name, default=0):
             return n[name].value if name in n else default
@@ -225,7 +225,7 @@ def main(argv=None) -> int:
     out = pathlib.Path(args.out) if args.out else (
         ROOT / "work" / "193" / f"SSB{args.slot}.D64")
     save0, report = build(folder, args.slot, disks, out)
-    party = dos.read_party(folder, args.slot)
+    party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "
           + ", ".join(c.name for c in party))
     print(f"Wrote {out} ({out.stat().st_size} bytes), "

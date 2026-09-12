@@ -48,7 +48,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
@@ -85,7 +85,7 @@ def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
                 pass
         if animate is None:
             try:
-                animate = load_payload(str(path), dos.ANIMATE_FILE)
+                animate = load_payload(str(path), dos_codec.ANIMATE_FILE)
             except Exception:
                 pass
         if icon is not None and animate is not None:
@@ -97,7 +97,7 @@ def game_files(disks: pathlib.Path) -> tuple[IconParts, bytes]:
 
 
 def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
-          out: pathlib.Path) -> dos.C64SaveReport:
+          out: pathlib.Path) -> dos_codec.C64SaveReport:
     """Write `out` and return the report.  Nothing else is touched.
 
     The creation menu's two tables (#57) come off the same `disks` directory
@@ -113,9 +113,9 @@ def build(folder: pathlib.Path, slot: str, disks: pathlib.Path,
         portraits = tables_from_disks(disks)
     except PortraitError:
         portraits = None
-    save0, save1, report = dos.new_save(folder, slot, icon, animate,
+    save0, save1, report = dos_codec.new_save(folder, slot, icon, animate,
                                         portraits=portraits)
-    disk: D64 = dos.save_disk(bytes(save0), bytes(save1))
+    disk: D64 = dos_codec.save_disk(bytes(save0), bytes(save1))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(disk.data)
     return report
@@ -146,7 +146,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     money and experience are printed unrounded.
     """
     from goldbox import dos_savegame
-    from goldbox.games import classes_to_names
+    from goldbox.c64_port import classes_to_names
 
     savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
     where = dos_savegame.position(savgam)
@@ -155,8 +155,8 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
            + ("outdoors" if dos_savegame.outdoors(savgam) else "indoors")
            + f", square {where[0]},{where[1]} facing {where[2]}, "
              f"clock {clock[0]:02d}:{clock[1]:02d}"]
-    for index, char in enumerate(dos.read_party(folder, slot)):
-        n = dos.to_neutral(char).fields
+    for index, char in enumerate(dos_codec.read_party(folder, slot)):
+        n = dos_codec.to_neutral(char).fields
 
         def v(name, default=0):
             return n[name].value if name in n else default
@@ -216,7 +216,7 @@ def main(argv=None) -> int:
     out = pathlib.Path(args.out) if args.out else (
         ROOT / "work" / "dosdisk" / f"NEW{args.slot}.D64")
     report = build(folder, args.slot, pathlib.Path(args.disks), out)
-    party = dos.read_party(folder, args.slot)
+    party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "
           + ", ".join(c.name for c in party))
     print(f"Wrote {out} ({out.stat().st_size} bytes)")

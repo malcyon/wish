@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, dos_layout  # noqa: E402
+from goldbox import amiga_por, amiga_port, dos_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 
@@ -38,23 +38,23 @@ def field_at(offset: int) -> str:
     writer's provenance lines and `goldbox.dos`'s declared tables use -- which
     is the point: a difference is worth reading only if it can be looked up.
     """
-    for f in dos_layout.LAYOUT:
+    for f in dos_port.LAYOUT:
         try:
-            at = amiga.amiga_por_offset(f.offset)
-        except amiga.AmigaRecordError:
+            at = amiga_por.amiga_por_offset(f.offset)
+        except amiga_port.AmigaRecordError:
             continue
         if at <= offset < at + f.size:
             return f.name
-    if offset == amiga.AMIGA_POR_PAD:
+    if offset == amiga_por.AMIGA_POR_PAD:
         return "pad 0x07F"
-    if offset == amiga.AMIGA_POR_TAIL_PAD:
+    if offset == amiga_por.AMIGA_POR_TAIL_PAD:
         return "pad 0x11F"
     return f"unmapped {offset:#05x}"
 
 
 def slot_files(disk: AmigaDisk, slot: str, index: int,
-               drawer: str = amiga.POR_SAVE_DRAWER) -> dict[str, bytes]:
-    stem = amiga.por_save_path(amiga.por_filename(slot, index, ""), drawer)
+               drawer: str = amiga_por.POR_SAVE_DRAWER) -> dict[str, bytes]:
+    stem = amiga_por.por_save_path(amiga_por.por_filename(slot, index, ""), drawer)
     out = {}
     for suffix in (".sav", ".itm", ".spc"):
         try:
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="the slot letter to compare from")
     parser.add_argument("--to", dest="right", required=True,
                         help="the slot letter to compare to")
-    parser.add_argument("--drawer", default=amiga.POR_SAVE_DRAWER,
+    parser.add_argument("--drawer", default=amiga_por.POR_SAVE_DRAWER,
                         help="the drawer the slots sit in: 'save' on a game "
                              "disk, and empty for the root of a POOLSAVE save "
                              "disk (#36)")
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     # `write_por` leaves all 42 bytes NUL because the line is a cached render,
     # and whether the engine fills it in is a question about the engine.
     blank_left = blank_right = item_nodes = 0
-    for index in range(1, amiga.POR_PARTY_MAX + 1):
+    for index in range(1, amiga_por.POR_PARTY_MAX + 1):
         left = slot_files(disk, args.left, index, args.drawer)
         right = slot_files(disk, args.right, index, args.drawer)
         if not left or not right:
@@ -98,8 +98,8 @@ def main(argv: list[str] | None = None) -> int:
               + (f" -- {', '.join(names)}" if names else ""))
         for i in differ:
             counts[field_at(i)] += 1
-        for suffix, size in ((".itm", amiga.AMIGA_POR_ITEM_SIZE),
-                             (".spc", amiga.AMIGA_POR_EFFECT_SIZE)):
+        for suffix, size in ((".itm", amiga_por.AMIGA_POR_ITEM_SIZE),
+                             (".spc", amiga_port.AMIGA_POR_EFFECT_SIZE)):
             x, y = left.get(suffix), right.get(suffix)
             if x is None or y is None:
                 continue
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                 p, q = x[n * size:(n + 1) * size], y[n * size:(n + 1) * size]
                 if suffix == ".itm":
                     item_nodes += 1
-                    text = amiga.AMIGA_POR_ITEM_TEXT
+                    text = amiga_por.AMIGA_POR_ITEM_TEXT
                     blank_left += p[:text] == bytes(text)
                     blank_right += q[:text] == bytes(text)
                 if p == q:

@@ -54,8 +54,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 
 #: Segment override prefixes, by opcode byte.
 SEGMENT_PREFIX = {0x26: "es", 0x2E: "cs", 0x36: "ss", 0x3E: "ds"}
@@ -203,7 +203,7 @@ def references(image: bytes, offset: int, *,
 def unsourced_fields() -> list[tuple[str, int, int]]:
     """`(name, offset, size)` for every field `goldbox.dos.write` zeroes."""
     return [(n, dl.FIELDS_BY_NAME[n].offset, dl.FIELDS_BY_NAME[n].size)
-            for n, _ in dos.WRITE_UNSOURCED]
+            for n, _ in dos_codec.WRITE_UNSOURCED]
 
 
 def main(argv: list[str] | None = None) -> int:

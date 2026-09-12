@@ -53,7 +53,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga, games  # noqa: E402
+from goldbox import amiga_por, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 
@@ -293,8 +293,8 @@ def build(payload: bytes, source: str, ecl_dax: bytes, slot: str,
           count: int) -> tuple[bytes, object]:
     """The container `goldbox.amiga` builds for this save. The thing under
     test, and the only call into it."""
-    state = amiga.por_state_from_c64(payload, source)
-    return amiga.new_por_savegame(state, slot, count, ecl_dax)
+    state = amiga_por.por_state_from_c64(payload, source)
+    return amiga_por.new_por_savegame(state, slot, count, ecl_dax)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +329,7 @@ def report(saves, ecl_dax: bytes, shipped: bytes | None, slot: str,
     ok = True
     checked = 0
     ship = container_fields(shipped) if shipped else None
-    save_file = games.by_key("pool-of-radiance").save_file
+    save_file = c64_port.by_key("pool-of-radiance").save_file
     for path in saves:
         try:
             payload = load_payload(str(path), save_file)

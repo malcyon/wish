@@ -60,7 +60,7 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS.parent))
 
-from goldbox import dos_layout, levels  # noqa: E402
+from goldbox import dos_port, levels  # noqa: E402
 from tools import thac0census  # noqa: E402
 
 #: The DOS class numbers, in the order `class_levels` stores them and the
@@ -84,7 +84,7 @@ LOW, HIGH = 30, 70
 
 def _field(title: str, name: str):
     """One field of a title's DOS record, by name."""
-    for field in dos_layout.layout_for(title):
+    for field in dos_port.layout_for(title):
         if field.name == name:
             return field
     raise KeyError(f"{title} has no {name}")
@@ -276,7 +276,7 @@ def records(title: str):
     import glob
     import os
 
-    from goldbox import dos
+    from goldbox import dos_codec
 
     tree = pathlib.Path(os.environ.get(
         "WISH_SPECIMENS", pathlib.Path.home() / "wish-specimens"))
@@ -291,14 +291,14 @@ def records(title: str):
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.CHA", recursive=True)
     for path in sorted(set(files)):
         try:
-            char = dos.read_character(path)
+            char = dos_codec.read_character(path)
         except Exception:
             continue
         if char.shape.key != title:
             continue
         raw = char.raw("class_levels")
         held = {name: raw[slot]
-                for slot, name, _ in dos.CLASS_LEVEL_SLOTS
+                for slot, name, _ in dos_codec.CLASS_LEVEL_SLOTS
                 if slot < len(raw) and raw[slot]}
         here = pathlib.Path(path)
         yield (f"{here.parent.name}/{here.name}", char.name, held,
@@ -361,8 +361,8 @@ def _print_compare(title: str) -> None:
     rows = disagreements(title)
     print(f"{title}: {len(rows)} level(s) where the DOS table and the C64 "
           "rules differ")
-    for name, level, dos, c64 in rows:
-        print(f"  {name:<12} level {level:<3} DOS {dos:2d}  C64 {c64:2d}")
+    for name, level, dos_codec, c64 in rows:
+        print(f"  {name:<12} level {level:<3} DOS {dos_codec:2d}  C64 {c64:2d}")
 
 
 def _print_records(title: str, quiet: bool) -> int:

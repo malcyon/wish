@@ -67,7 +67,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_save, games  # noqa: E402
+from goldbox import c64_port, c64_save  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.items import ITEM_SIZE, ITEMS_PER_CHARACTER  # noqa: E402
 
@@ -90,7 +90,7 @@ def item_block(path: str | pathlib.Path, slot: int) -> list[bytes]:
     bytes where the game reads them.
     """
     disk = D64.open(str(path))
-    game = games.detect(disk)
+    game = c64_port.detect(disk)
     if game is None:
         raise SystemExit(f"{path}: no Gold Box save on this disk")
     container = c64_save.CONTAINERS[game.key]
@@ -485,7 +485,7 @@ def run(save: str, out: str, who: str, pool: int | None,
     from tools import gamedisks
     from tools import session as por
 
-    game = games.detect(D64.open(save))
+    game = c64_port.detect(D64.open(save))
     if game is None or game.key not in DRIVERS:
         raise SystemExit(f"{save}: no later-title save on this disk "
                          f"({game.title if game else 'nothing detected'})")

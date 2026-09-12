@@ -60,10 +60,10 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import areas, dos, world_state  # noqa: E402
+from goldbox import areas, dos_codec, world_state  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
+from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
-from goldbox.games import POOL_OF_RADIANCE  # noqa: E402
 from tools import session as S  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read only, and found the way every
@@ -98,7 +98,7 @@ def outdoor_request(area: int, x: int, y: int) -> "world_state.WorldState":
     req = bytearray(sg.SAVGAM_SIZE)
     start, _ = sg.SAVE_POOL_OF_RADIANCE.script_buffer
     req[start] = 0x01
-    sg.put_word(req, dos.LATER_BEGUN_WORD, 255)
+    sg.put_word(req, dos_codec.LATER_BEGUN_WORD, 255)
     sg.put_word(req, sg.SCRIPT, area)
     sg.put_word(req, sg.INDOORS, 0)
     sg.put_travel_square(req, x, y)
@@ -117,9 +117,9 @@ def seed_disk(source: pathlib.Path, out: pathlib.Path, *, area: int,
     if where is None or not where.outdoors:
         raise SystemExit(f"area {area} is not one of the travel windows")
     state = outdoor_request(area, x, y)
-    line = dos.apply_file_cache(save0, state)
-    dos.apply_position(save0, state)
-    out.write_bytes(dos.save_disk(bytes(save0), bytes(save1)).data)
+    line = dos_codec.apply_file_cache(save0, state)
+    dos_codec.apply_position(save0, state)
+    out.write_bytes(dos_codec.save_disk(bytes(save0), bytes(save1)).data)
     return {"from": str(source), "cache": line,
             "area": area, "square": [x, y]}
 

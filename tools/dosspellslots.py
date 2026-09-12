@@ -47,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 
 import capstone  # noqa: E402
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosbox, dosfieldrefs, unexepack  # noqa: E402
 
 #: The title's record size, by game directory stem, for `dos_layout`.
@@ -91,7 +91,7 @@ def data_segment(image: bytes) -> int:
 
 def block_of(size: int) -> tuple[int, int]:
     """`(offset, width)` of the slot block in a record of `size` bytes."""
-    fields = {f.name: f for f in dos_layout.layout_for(size)}
+    fields = {f.name: f for f in dos_port.layout_for(size)}
     cleric = fields["spells_castable_cleric"]
     return cleric.offset, cleric.size
 
@@ -187,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     game = pathlib.Path(a.path) if a.path else dosbox.find_game(a.game)
     size = a.record or RECORD_SIZE[a.game]
     if a.spells is None:
-        a.spells = dos_layout.shape_for(size).spellbook_spells
+        a.spells = dos_port.deltas_for(size).spellbook_spells
     ovr = (game / "GAME.OVR").read_bytes()
     image = image_of(game, a.exe)
     block, width = block_of(size)

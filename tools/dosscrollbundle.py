@@ -49,7 +49,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_layout  # noqa: E402
+from goldbox import dos_port  # noqa: E402
 from tools import dosbox, dosfieldrefs  # noqa: E402
 
 #: The item type whose `0x03F` pointer is a chain: a bundle of scrolls.  The
@@ -78,7 +78,7 @@ DISPLACEMENTS = {0x02A: "next item, the main chain",
 
 
 def item_size(record_size: int) -> int:
-    return dos_layout.shape_for(record_size).item_size
+    return dos_port.deltas_for(record_size).item_size
 
 
 def walk(items: bytes, stride: int) -> list[dict]:
@@ -134,7 +134,7 @@ def spells_of(items: bytes, stride: int, entry: dict) -> list[int]:
 
 
 def item_count(record: bytes) -> int:
-    fields = {f.name: f for f in dos_layout.layout_for(len(record))}
+    fields = {f.name: f for f in dos_port.layout_for(len(record))}
     return record[fields["item_count"].offset]
 
 
@@ -151,7 +151,7 @@ def siblings(root: pathlib.Path):
             continue
         if len(record) not in sizes:
             continue
-        shape = dos_layout.shape_for(len(record))
+        shape = dos_port.deltas_for(len(record))
         item_path = path.with_suffix(shape.item_suffix)
         if not item_path.is_file():
             continue
@@ -206,7 +206,7 @@ def cmd_read(args) -> int:
     for name in args.roots:
         path = pathlib.Path(name)
         record = path.read_bytes()
-        shape = dos_layout.shape_for(len(record))
+        shape = dos_port.deltas_for(len(record))
         items = path.with_suffix(shape.item_suffix).read_bytes()
         stride = shape.item_size
         print(f"=== {path.name}: {len(items)} bytes at {stride}, "

@@ -46,8 +46,8 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from goldbox import dos  # noqa: E402
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from tools import dosbox  # noqa: E402
 
 #: Where a run's report and frames land.  Under `work/`, gitignored, because
@@ -103,7 +103,7 @@ def stage_pattern(save_dir: pathlib.Path, letter: str, field: str,
         staged.append({
             "slot": index + 1,
             "file": path.name,
-            "name": dos.read_character(path).name,
+            "name": dos_codec.read_character(path).name,
             "before": before.hex(),
             "staged": raw.hex(),
             "hp_current": data[dl.FIELDS_BY_NAME["hp_current"].offset],
@@ -123,7 +123,7 @@ def read_back(save_dir: pathlib.Path, letter: str, field: str) -> list[dict]:
         out.append({
             "slot": n,
             "file": path.name,
-            "name": dos.read_character(path).name,
+            "name": dos_codec.read_character(path).name,
             "value": data[f.offset:f.offset + f.size].hex(),
             "hp_current": data[dl.FIELDS_BY_NAME["hp_current"].offset],
         })

@@ -50,7 +50,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from editor.window import _char_class_shown  # noqa: E402
-from goldbox import c64_codec, dos, dos_layout, games, items  # noqa: E402
+from goldbox import c64_codec, c64_port, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 
@@ -122,17 +122,17 @@ def dos_rows(root: pathlib.Path):
     for path in paths:
         if not path.is_file():
             continue
-        if path.stat().st_size not in dos_layout.SHAPES_BY_SIZE:
+        if path.stat().st_size not in dos_port.DELTAS_BY_SIZE:
             continue
         if not path.name.upper().startswith("CHRDAT"):
             continue
         try:
-            char = dos.read_character(path)
-            imported, _rep = c64_codec.write(dos.to_neutral(char))
+            char = dos_codec.read_character(path)
+            imported, _rep = c64_codec.write(dos_codec.to_neutral(char))
         except Exception as exc:                      # noqa: BLE001
             print(f"  skipped {path.parent.name}/{path.name}: {exc}")
             continue
-        game = games.by_title(char.shape.title)
+        game = c64_port.by_title(char.shape.title)
         back = c64_codec.read(imported, game=game, source=path.name)
         stored = imported.get("char_class")
         bits = imported.get("class_bits") or 0

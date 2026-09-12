@@ -63,7 +63,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga, amiga_dax, games  # noqa: E402
+from goldbox import amiga_dax, amiga_por, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools import amigasaves, eclcensus, gamedisks  # noqa: E402
 
@@ -146,7 +146,7 @@ def amiga_corpus() -> "list[tuple[str, bytes]]":
             if "savgam" not in path.lower():
                 continue
             data = disk.read_file(path)
-            if len(data) != amiga.POR_SAVEGAME_SIZE:
+            if len(data) != amiga_por.POR_SAVEGAME_SIZE:
                 continue
             found.setdefault(hashlib.md5(data).hexdigest(),
                              (f"{image.parent.name}{path}", data))
@@ -223,7 +223,7 @@ class Census:
     """Which areas' scripts name each word of the variable array."""
 
     def __init__(self, bodies: "dict[int, bytes]"):
-        game = games.by_key("pool-of-radiance")
+        game = c64_port.by_key("pool-of-radiance")
         root = gamedisks.find("pool-of-radiance")
         if root is None:
             raise SystemExit("No Pool of Radiance disks; see tools/gamedisks.py")
@@ -368,9 +368,9 @@ def live_words(saves: "list[tuple[str, bytes]]", *, at: int, big: bool) -> set:
 
 def catch_all_words(source: bytes, label: str, ecl: bytes) -> "tuple[list, dict]":
     """The words a build of this source save leaves to the catch-all sweep."""
-    state = amiga.por_state_from_amiga(source, label)
-    count = source[amiga.POR_PARTY_SIZE_BYTE] or 1
-    _built, report = amiga.new_por_savegame(state, "A", count, ecl)
+    state = amiga_por.por_state_from_amiga(source, label)
+    count = source[amiga_por.POR_PARTY_SIZE_BYTE] or 1
+    _built, report = amiga_por.new_por_savegame(state, "A", count, ecl)
     words = sorted({i // 2 for i, why in report.sources.items()
                     if i < 2 * 2560 and why.startswith(CATCH_ALL)})
     classes: dict = collections.Counter()
@@ -405,8 +405,8 @@ def main(argv=None) -> int:
     if not saves:
         raise SystemExit("No Amiga saved game in the specimen tree")
     for _label, data in saves:
-        CORPUS_AREAS.add(amiga.por_word(data, 0x49F2))
-    amiga_live = live_words(saves, at=amiga.POR_VAR_OFFSET, big=True)
+        CORPUS_AREAS.add(amiga_por.por_word(data, 0x49F2))
+    amiga_live = live_words(saves, at=amiga_por.POR_VAR_OFFSET, big=True)
     dos = dos_corpus(args.dos)
     dos_live = live_words(dos, at=1, big=False)
     dos_areas = {int.from_bytes(d[1 + 2 * (0x49F2 - 0x4900):][:2], "little")

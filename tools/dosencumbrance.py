@@ -41,35 +41,35 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 
 
-def characters(folder: pathlib.Path) -> list[tuple[str, dos.DosCharacter]]:
+def characters(folder: pathlib.Path) -> list[tuple[str, dos_codec.DosCharacter]]:
     """Every readable `CHRDAT<slot><n>.SAV` in one directory, in name order."""
     out = []
     for path in sorted(folder.glob("CHRDAT*.SAV")):
         try:
-            out.append((path.name, dos.read_character(path)))
-        except dos.DosRecordError as e:
+            out.append((path.name, dos_codec.read_character(path)))
+        except dos_codec.DosRecordError as e:
             print(f"  {path.name}: {e}", file=sys.stderr)
     return out
 
 
-def carried(char: dos.DosCharacter) -> int:
+def carried(char: dos_codec.DosCharacter) -> int:
     """The item half of the identity: sum(weight x quantity or 1)."""
     return sum(it.get("weight") * (it.get("quantity") or 1) for it in char.items)
 
 
-def coins(char: dos.DosCharacter) -> int:
+def coins(char: dos_codec.DosCharacter) -> int:
     return sum(char.money.values())
 
 
-def delta(char: dos.DosCharacter) -> int:
+def delta(char: dos_codec.DosCharacter) -> int:
     """Stored encumbrance minus what the record's own parts add up to."""
     return char.get("encumbrance") - coins(char) - carried(char)
 
 
-def report(name: str, char: dos.DosCharacter, verbose: bool = True) -> None:
+def report(name: str, char: dos_codec.DosCharacter, verbose: bool = True) -> None:
     d = delta(char)
     print(f"{name:14s} {char.name:10s} enc={char.get('encumbrance'):6d} "
           f"coins={coins(char):5d} items={carried(char):5d} "
@@ -111,8 +111,8 @@ def census(roots: list[pathlib.Path]) -> None:
             if path.suffix.upper() not in (".SAV", ".CHA") or not path.is_file():
                 continue
             try:
-                char = dos.read_character(path)
-            except (dos.DosRecordError, OSError, ValueError):
+                char = dos_codec.read_character(path)
+            except (dos_codec.DosRecordError, OSError, ValueError):
                 continue
             key = bytes(char) + b"".join(bytes(it) for it in char.items)
             if key in seen:
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         census(census_roots() + [p for p in args.paths if p.is_dir()])
         return 0
     for path in args.paths:
-        pairs = ([(path.name, dos.read_character(path))] if path.is_file()
+        pairs = ([(path.name, dos_codec.read_character(path))] if path.is_file()
                  else characters(path))
         print(f"== {path}")
         for name, char in pairs:

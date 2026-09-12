@@ -52,7 +52,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import areas, dos  # noqa: E402
+from goldbox import areas, dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools import dossavcensus  # noqa: E402
 
@@ -103,7 +103,7 @@ def never_adventured(save: bytes, shape: sg.DosSaveShape,
     script buffer -- so a caller cannot mistake "cannot tell" for "no".
     """
     if by == "rule":
-        return dos.never_adventured(save, shape)
+        return dos_codec.never_adventured(save, shape)
     if by == "word":
         return sg.word(save, NEVER_ADVENTURED_WORD, shape) == 0
     span = shape.script_buffer

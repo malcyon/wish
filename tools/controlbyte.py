@@ -37,7 +37,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos_layout as dl  # noqa: E402
+from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import dostailcensus, gamedisks  # noqa: E402

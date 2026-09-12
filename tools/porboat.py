@@ -62,7 +62,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from goldbox import amiga  # noqa: E402
+from goldbox import amiga_por  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 
 #: The square south of the harbour master, and the facing that steps onto him.
@@ -92,17 +92,17 @@ SQUARE_PROPERTY_WORD = 0x5200
 
 def report(save: bytes) -> list[str]:
     """The values this tool reads or writes, as they stand."""
-    x, y, facing = (save[amiga.POR_POS_X], save[amiga.POR_POS_Y],
-                    save[amiga.POR_POS_FACING])
+    x, y, facing = (save[amiga_por.POR_POS_X], save[amiga_por.POR_POS_Y],
+                    save[amiga_por.POR_POS_FACING])
     return [
         f"square           ({x},{y}) facing {facing} (doubled)",
-        f"wall in front    {save[amiga.POR_WALL_BYTE]}",
-        f"square property  {save[amiga.POR_SQUARE_PROPERTY]}",
-        f"view type        {save[amiga.POR_VIEW_TYPE]}",
-        f"$4AA7            {amiga.por_word(save, HARBOUR_OFFERS)}",
-        f"$4A01            {amiga.por_word(save, HARBOUR_SPOKEN)}",
-        f"$4AC4            {amiga.por_word(save, PASSAGE)}",
-        f"$5200            {amiga.por_word(save, SQUARE_PROPERTY_WORD)}",
+        f"wall in front    {save[amiga_por.POR_WALL_BYTE]}",
+        f"square property  {save[amiga_por.POR_SQUARE_PROPERTY]}",
+        f"view type        {save[amiga_por.POR_VIEW_TYPE]}",
+        f"$4AA7            {amiga_por.por_word(save, HARBOUR_OFFERS)}",
+        f"$4A01            {amiga_por.por_word(save, HARBOUR_SPOKEN)}",
+        f"$4AC4            {amiga_por.por_word(save, PASSAGE)}",
+        f"$5200            {amiga_por.por_word(save, SQUARE_PROPERTY_WORD)}",
     ]
 
 
@@ -110,16 +110,16 @@ def stage(save: bytes,
           square: tuple[int, int] = HARBOUR_APPROACH,
           facing: int = FACING_NORTH) -> bytes:
     """The same saved game, with the party about to meet the harbour master."""
-    if len(save) != amiga.POR_SAVEGAME_SIZE:
+    if len(save) != amiga_por.POR_SAVEGAME_SIZE:
         raise SystemExit(f"an Amiga Pool of Radiance saved game is "
-                         f"{amiga.POR_SAVEGAME_SIZE} bytes, got {len(save)}")
+                         f"{amiga_por.POR_SAVEGAME_SIZE} bytes, got {len(save)}")
     out = bytearray(save)
-    out[amiga.POR_POS_X], out[amiga.POR_POS_Y] = square
-    out[amiga.POR_POS_FACING] = facing * 2
-    out[amiga.POR_WALL_BYTE] = 0
-    out[amiga.POR_SQUARE_PROPERTY] = 0
-    amiga.por_put_word(out, SQUARE_PROPERTY_WORD, 0)
-    amiga.por_put_word(out, HARBOUR_OFFERS, HARBOUR_OFFERS_SET)
+    out[amiga_por.POR_POS_X], out[amiga_por.POR_POS_Y] = square
+    out[amiga_por.POR_POS_FACING] = facing * 2
+    out[amiga_por.POR_WALL_BYTE] = 0
+    out[amiga_por.POR_SQUARE_PROPERTY] = 0
+    amiga_por.por_put_word(out, SQUARE_PROPERTY_WORD, 0)
+    amiga_por.por_put_word(out, HARBOUR_OFFERS, HARBOUR_OFFERS_SET)
     return bytes(out)
 
 
@@ -135,9 +135,9 @@ def main(argv: "list[str] | None" = None) -> int:
     args = parser.parse_args(argv)
 
     disk = AmigaDisk(pathlib.Path(args.disk).read_bytes())
-    drawer = amiga.por_save_drawer(disk)
-    path = amiga.por_save_path(
-        amiga.por_savegame_filename(args.slot.upper()), drawer)
+    drawer = amiga_por.por_save_drawer(disk)
+    path = amiga_por.por_save_path(
+        amiga_por.por_savegame_filename(args.slot.upper()), drawer)
     save = disk.read_file(path)
 
     print(f"{args.disk} {disk.volume_name!r} {path}")

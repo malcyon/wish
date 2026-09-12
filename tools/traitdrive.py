@@ -49,7 +49,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import games, traits  # noqa: E402
+from goldbox import c64_port, traits  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import gamedisks  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
@@ -69,7 +69,7 @@ SLOT_STRIDE = 0x100
 
 #: `$6B00`, the page an overlay copies the working character into. The trait
 #: scan reads it and not the save slot, so this is what the predicate saw.
-STAGING_PAGE = staging(next(g for g in games.GAMES
+STAGING_PAGE = staging(next(g for g in c64_port.GAMES
                             if g.key == "pool-of-radiance"))
 
 #: Where the surprise check leaves its answers while `DUNGEON` is resident:
@@ -137,7 +137,7 @@ def trait_blocks(path: pathlib.Path) -> dict[int, list[int]]:
 
 def predicate_for(title: str, disks: str):
     """The three addresses this run watches, read off the title's own disks."""
-    game = next(g for g in games.GAMES if g.key == title)
+    game = next(g for g in c64_port.GAMES if g.key == title)
     for _disk, name, body in files(disks, game):
         if name != "LIBRARY":
             continue

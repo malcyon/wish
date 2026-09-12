@@ -49,7 +49,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos  # noqa: E402
+from goldbox import dos_codec  # noqa: E402
 from tools import thiefskillcensus as census  # noqa: E402
 
 #: `push bp / mov bp, sp / sub sp, imm8` -- a Borland C far function's prologue.
@@ -74,7 +74,7 @@ def _skill_base(title: str) -> int:
     The loop counts skills 1 to 8 and adds the counter to the record pointer,
     so every access is written `es:[di + <pick pockets - 1>]`.
     """
-    for field in dos.LAYOUTS[title]:
+    for field in dos_codec.LAYOUTS[title]:
         if getattr(field, "name", "") == "thief_pick_pockets":
             return field.offset - 1
     raise SystemExit(f"{title}: no thief_pick_pockets in the layout")
