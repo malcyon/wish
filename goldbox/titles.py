@@ -12,8 +12,8 @@ entry, so every lookup answers with Pool of Radiance's tables for it)`).
 `goldbox/c64_port.py` still holds the six C64 titles' save-container geometry --
 `BY_KEY` there stays six entries, and `c64_port.BY_KEY.get("pools-of-darkness")`
 is `None` on purpose, because Pools of Darkness has no C64 container -- but
-each `Game` row now takes its `races` and `class_bits` from here, so the
-tuple is defined once and a `Game`'s is the very same object as its `Title`'s.
+each `C64Container` row now takes its `races` and `class_bits` from here, so the
+tuple is defined once and a `C64Container`'s is the very same object as its `Title`'s.
 
 Building this module is `#470 (Give the project a neutral title beside its
 neutral character record, with one port per platform a title shipped on)`,

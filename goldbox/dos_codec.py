@@ -87,8 +87,8 @@ from .dos_port import (
     RECORD_SIZE,
     SECRET_OF_THE_SILVER_BLADES,
     DosDeltas,
-    DosShapeError,
-    shape_for,
+    DosDeltasError,
+    deltas_for,
 )
 from .encoding import combat_byte
 from .iconparts import (
@@ -1029,8 +1029,8 @@ class DosCharacter(_Fielded):
                  effects: Sequence[bytes] = (), source: str | None = None,
                  deltas: "int | str | DosDeltas | None" = None):
         try:
-            self.deltas = shape_for(len(data) if deltas is None else deltas)
-        except DosShapeError as e:
+            self.deltas = deltas_for(len(data) if deltas is None else deltas)
+        except DosDeltasError as e:
             raise DosRecordError(str(e)) from None
         super().__init__(data, self.deltas.record_size, "character record",
                          FIELDS_BY_NAME_FOR[self.deltas.key])
@@ -1180,8 +1180,8 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     path = pathlib.Path(path)
     data = path.read_bytes()
     try:
-        shape = shape_for(len(data))
-    except DosShapeError as e:
+        shape = deltas_for(len(data))
+    except DosDeltasError as e:
         raise DosRecordError(f"{path.name}: {e}") from None
     item_path = path.with_suffix(shape.item_suffix)
     item_file_present = item_path.exists()
@@ -1612,7 +1612,7 @@ def field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     of Radiance's.  Answering with Pool of Radiance's disposition for all four
     is what let `former_class_levels` sit unnamed.
     """
-    deltas = shape_for(deltas)
+    deltas = deltas_for(deltas)
     declared = set(FIELDS_BY_NAME_FOR[deltas.key])
     paired = {n for n in ABILITY_ORDER
               if n in declared and FIELDS_BY_NAME_FOR[deltas.key][n].size > 1}
@@ -2583,8 +2583,8 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     gains or loses a field cannot leave a stale row behind: a name in
     :data:`WRITE_DIRECT` whose DOS field is not declared has nowhere to go.
     """
-    table = FIELDS_BY_NAME_FOR[shape_for(deltas).key]
-    title = shape_for(deltas).title
+    table = FIELDS_BY_NAME_FOR[deltas_for(deltas).key]
+    title = deltas_for(deltas).title
     return tuple((n, f"{title} {_ABSENT_WHY[n]}")
                  for n, dos_name in WRITE_DIRECT if dos_name not in table)
 
@@ -2933,7 +2933,7 @@ def identity_byte(record: bytes | bytearray,
     used on a Curse record would digest the wrong 421 bytes and blank a byte
     of the money block.
     """
-    deltas = shape_for(len(record) if deltas is None else deltas)
+    deltas = deltas_for(len(record) if deltas is None else deltas)
     f = FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
     body = bytearray(record)
     body[f.offset:f.end] = bytes(f.size)
@@ -3141,7 +3141,7 @@ def write_constants(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     all -- `goldbox/dos_port.py` gives it a width of zero -- so there is
     nothing for the constant to be written into (#194).
     """
-    table = FIELDS_BY_NAME_FOR[shape_for(deltas).key]
+    table = FIELDS_BY_NAME_FOR[deltas_for(deltas).key]
     out = []
     for name, data, why in WRITE_CONSTANTS:
         if name not in table:
@@ -3164,7 +3164,7 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     is a field written or zeroed in silence, the thing this table exists to
     make impossible.
     """
-    deltas = shape_for(deltas)
+    deltas = deltas_for(deltas)
     declared = set(FIELDS_BY_NAME_FOR[deltas.key])
     out = dict(WRITE_TARGETS)
     out |= {name: f"constant: {why}"
@@ -3224,15 +3224,15 @@ def write_deltas(char: NeutralCharacter,
     is what decides the deltas.  `deltas` overrides it, for a caller that has
     already resolved the title.
 
-    A title with no DOS record raises `DosShapeError`; a DOS record nobody
+    A title with no DOS record raises `DosDeltasError`; a DOS record nobody
     has written raises `WrongTitleError`, which is the same refusal
     :func:`to_neutral` makes in the other direction.
     """
     if deltas is None:
         game = char.game
-        deltas = shape_for(getattr(game, "key", game) or POOL_OF_RADIANCE)
+        deltas = deltas_for(getattr(game, "key", game) or POOL_OF_RADIANCE)
     else:
-        deltas = shape_for(deltas)
+        deltas = deltas_for(deltas)
     if deltas not in WRITES:
         raise WrongTitleError(
             f"{deltas.title} records read, but only "
@@ -4190,7 +4190,7 @@ def write_field_disposition(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
     character left -- so a Pool of Radiance answer given for a Curse record
     would call a conversion a loss.
     """
-    deltas = shape_for(deltas)
+    deltas = deltas_for(deltas)
     absent = write_absent(deltas)
     gone = {n for n, _ in absent}
     direct = tuple((n, d) for n, d in WRITE_DIRECT if n not in gone)
@@ -6638,7 +6638,7 @@ def write_dos_save_from(state: "world_state.WorldState",
             f"no character's sheet portrait crossed, because {why_not}")
 
     record_shape = (write_shape(characters[0]) if characters
-                    else shape_for(c64.key))
+                    else deltas_for(c64.key))
     suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
     order = FIELDS_BY_NAME_FOR[record_shape.key]["combat_figure"].offset
 
@@ -6889,7 +6889,7 @@ def new_dos_save_from(state: "world_state.WorldState",
         # ever saw the empty staging directory.  Same enumeration, same
         # reason (#68), in the title's own suffixes.
         c64 = c64_port.by_title(state.title) or c64_port.POOL_OF_RADIANCE
-        record_shape = shape_for(c64.key)
+        record_shape = deltas_for(c64.key)
         cleared = _clear_slot(
             out, slot, (".SAV", record_shape.item_suffix,
                         record_shape.effect_suffix))

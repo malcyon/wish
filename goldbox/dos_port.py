@@ -76,11 +76,6 @@ __all__ = [
     # neutral character record, with one port per platform a title shipped
     # on)`, stage 3, and stage 3b for the two below). Gone in stage 9, with
     # the shim.
-    "DosShape",
-    "DosShapeError",
-    "shape_for",
-    "SHAPES",
-    "SHAPES_BY_SIZE",
     "NAME_SIZE",
     "ITEM_SIZE",
     "EFFECT_SIZE",
@@ -972,7 +967,6 @@ class DosDeltas:
 
 #: The pre-#470 name, kept as an alias -- see `goldbox/dos_layout.py`'s own
 #: shim docstring, which is where a caller reading only that module meets it.
-DosShape = DosDeltas
 
 
 #: Shared by three titles, so it is written once.
@@ -1257,9 +1251,6 @@ DELTAS_BY_SIZE: dict[int, DosDeltas] = {s.record_size: s for s in DELTAS}
 #: The pre-#470 names, kept as aliases -- see `goldbox/dos_layout.py`'s own
 #: shim docstring, which is where a caller reading only that module meets
 #: them.
-SHAPES = DELTAS
-SHAPES_BY_KEY = DELTAS_BY_KEY
-SHAPES_BY_SIZE = DELTAS_BY_SIZE
 
 
 class DosDeltasError(ValueError):
@@ -1267,7 +1258,6 @@ class DosDeltasError(ValueError):
 
 
 #: The pre-#470 name, kept as an alias.
-DosShapeError = DosDeltasError
 
 
 def deltas_for(what: "int | str | DosDeltas") -> DosDeltas:
@@ -1307,7 +1297,6 @@ def deltas_for(what: "int | str | DosDeltas") -> DosDeltas:
 
 
 #: The pre-#470 name, kept as an alias.
-shape_for = deltas_for
 
 
 def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:

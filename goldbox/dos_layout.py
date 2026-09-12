@@ -18,12 +18,23 @@ an eighty-second.
 from __future__ import annotations
 
 from .dos_port import *  # noqa: F401,F403
+
+# The pre-#470 spellings, under the names the 85 importers of this shim
+# still use. They live here rather than in `goldbox/dos_port.py` because
+# this file is the one that exists to be deleted, and the old names
+# should go with it rather than be left in a permanent module nothing
+# asks them of.
+from .dos_port import DELTAS as SHAPES  # noqa: F401
 from .dos_port import (  # noqa: F401
     DELTAS_BY_KEY,
     FIELDS_BY_NAME_FOR,
     LAYOUTS,
-    SHAPES_BY_KEY,
     Confidence,
     Field,
     Kind,
 )
+from .dos_port import DELTAS_BY_KEY as SHAPES_BY_KEY  # noqa: F401
+from .dos_port import DELTAS_BY_SIZE as SHAPES_BY_SIZE  # noqa: F401
+from .dos_port import DosDeltas as DosShape  # noqa: F401
+from .dos_port import DosDeltasError as DosShapeError  # noqa: F401
+from .dos_port import deltas_for as shape_for  # noqa: F401

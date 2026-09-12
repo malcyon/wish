@@ -182,7 +182,6 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     DosDeltas,
     DosIcon,
     DosIconTables,
-    DosShapeError,
     Field,
     IconParts,
     Iterable,
@@ -242,7 +241,6 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
     savgam_unsourced,
     savgam_writes,
     savgam_zeroes,
-    shape_for,
     shutil,
     tables_from_dos,
     tempfile,
@@ -257,3 +255,5 @@ from .dos_codec import (  # noqa: F401  everything the wildcard cannot carry
 )
 from .dos_codec import DELTAS as SHAPES  # noqa: F401
 from .dos_codec import DosDeltas as DosShape  # noqa: F401
+from .dos_codec import DosDeltasError as DosShapeError  # noqa: F401
+from .dos_codec import deltas_for as shape_for  # noqa: F401
