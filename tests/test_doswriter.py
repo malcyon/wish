@@ -725,6 +725,30 @@ def _diff_against(char, rec: bytes) -> tuple[set[int], bool]:
     return differs - mask - set(range(ENC.offset, ENC.end)), enc
 
 
+def _attack_level_allowance(char, rec: bytes) -> set[int]:
+    """The one offset a round trip may lose, and only for a record whose own
+    byte is not one its engine ever wrote (#527).
+
+    `attack_level` is written from the destination title's own rule rather
+    than copied -- the constant 1 in Pool of Radiance, whose engine stores 1
+    for a fighter 8 as readily as for a magic-user.  So a record the DOS
+    engine wrote comes back byte for byte and a record somebody edited
+    outside the game does not.
+
+    **Checked rather than masked.**  The written byte is asserted against the
+    rule for every record, so this excuses exactly the records whose stored
+    byte disagrees with their own engine and nothing else: on this machine's
+    archives that is six of twenty-four -- BRUTUS, MAGNUS and SILAS in slots
+    A and B, whose `0x06B` Gold Box Companion set to the fighter's level.
+    """
+    f = dos_port.FIELDS_BY_NAME_FOR[char.shape.key]["attack_level"]
+    written = char.shape.attack_level_stored(char.class_levels)
+    stored = char.get("attack_level")
+    assert rec[f.offset] == (stored if written is None else written), \
+        (char.name, rec[f.offset], written)
+    return set() if written is None or stored == written else {f.offset}
+
+
 # --- the sheet portrait (#57) ------------------------------------------------
 #
 # The pair at 0x0BB is a **menu position** where the C64 record holds the
@@ -1338,29 +1362,46 @@ def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
     two: a party of six converted characters has to be six characters to the
     "already in the party" test.
 
-    **Distinct within a party, which is the only scope the engine compares
-    in.** Across all 24 shipped records two pairs collide -- SILAS with
-    RHIANNON and BRUTUS with BROTHER SEAN -- and both pairs are in different
-    parties, which the "already in the party" test never puts side by side.
-    Asserting global distinctness would be asserting something the fix does
-    not claim and does not need.
+    **Distinct within a party for two characters of the same name, which is
+    the only pair the engine ever compares.** `ADD A CHARACTER: ADD EXIT`
+    compares the two length-prefixed names at `131A:0C10` and branches away
+    on `jne` before it reads `es:[di+0xab]` at all (`docs/50-experiments.md`,
+    "Two same-named characters and one byte"), so two party members with
+    different names are two characters to it whatever this byte holds.
+
+    **The party-wide version of this assertion was luck and it ran out**
+    (#527).  A one-byte digest over six records collides about one party in
+    eighteen, nothing in `identity_byte` prevents it, and changing one byte
+    of the record re-rolls every digest: writing `attack_level` as the DOS
+    engine's own constant moved SILAS onto GILES's 240 in the archives'
+    party A.  Neither is refused by the engine, because `GILES` and `SILAS`
+    part company at the name.  What is still asserted is the entropy the
+    fix does rest on -- a digest that collapsed to a constant or to a
+    handful of values fails the distinct-value count below, as `return 0`
+    fails the nonzero check.
     """
     f = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
     where = _save_dir()
     parties: dict[str, dict[int, list[str]]] = {}
+    values: list[int] = []
     for path in sorted(where.glob("CHRDAT*.SAV")):
         if path.stat().st_size != dos_port.RECORD_SIZE:
             continue
         char = dos_codec.read_character(path)
         rec, _, _, _ = dos_codec.write(dos_codec.to_neutral(char))
         assert rec[f.offset] != 0, path.name
+        values.append(rec[f.offset])
         # `CHRDAT<slot><n>.SAV`: the slot letter is the party.
         parties.setdefault(path.name[6], {}).setdefault(
-            rec[f.offset], []).append(char.name)
+            rec[f.offset], []).append(str(char.name))
     assert parties, "no CHRDAT records to check"
     for slot, seen in sorted(parties.items()):
-        clash = {v: n for v, n in seen.items() if len(n) > 1}
-        assert not clash, f"party {slot}: {clash}"
+        clash = {v: n for v, n in seen.items() if len(n) != len(set(n))}
+        assert not clash, f"party {slot}, two of one name on one byte: {clash}"
+    # The entropy the fix rests on, which no party-wide assertion can stand
+    # in for: a digest that collapsed would fail here long before it could
+    # put two same-named characters on one byte.
+    assert len(set(values)) >= len(values) - 2, sorted(values)
 
 
 #: The Amiga disk 1 slot A party's own `0x0AB` byte, the "Amiga record
@@ -1441,6 +1482,128 @@ def test_a_pure_dos_source_still_gets_the_digest_not_its_own_byte():
     assert "DOS" not in dos_codec.IDENTITY_HELD_PORTS
 
 
+# --- the fighting level, going out (#527) ------------------------------------
+
+def _c64_source(levels_map: dict, stored: int):
+    """A neutral character read back off a real C64 record, so the export
+    starts where `editor/convert.py` starts."""
+    char = _filled()
+    made_up = "made up: #527's fighting level"
+    char.set("levels", levels_map, made_up)
+    char.set("attack_level", stored, made_up)
+    rec, _ = c64_codec.write(char)
+    assert rec.get("attack_level") == stored
+    return c64_codec.read(rec, source="made up: a C64 record")
+
+
+def test_a_c64_fighter_reaches_dos_with_the_byte_dos_writes_for_a_fighter():
+    """A C64 fighter 8 exported to DOS Pool of Radiance gets **1**, because
+    that is what the DOS engine stores for its own fighter 8 (#527).
+
+    The byte used to be copied, so a C64 caster's 0 went into the DOS record
+    -- and 0 appears in no engine-written DOS record of any of the three
+    titles that have a rule, in 398 of them.  The rule is per title:
+    `goldbox.dos_port.DosDeltas.attack_level_classes`.
+    """
+    f = dos_port.FIELDS_BY_NAME["attack_level"]
+    fighter = _c64_source({"fighter": 8}, 8)
+    caster = _c64_source({"magic-user": 8}, 0)
+    for char in (fighter, caster):
+        rec, _, _, _ = dos_codec.write(char)
+        assert rec[f.offset] == 1, char.get("levels")
+
+
+@pytest.mark.parametrize("key,levels_map,stored,expected", [
+    ("curse-of-the-azure-bonds", {"fighter": 5}, 5, 5),
+    ("curse-of-the-azure-bonds", {"paladin": 5}, 5, 1),
+    ("curse-of-the-azure-bonds", {"cleric": 5}, 0, 1),
+    ("secret-of-the-silver-blades", {"fighter": 8}, 8, 8),
+    ("secret-of-the-silver-blades", {"ranger": 8}, 8, 8),
+    ("secret-of-the-silver-blades", {"cleric": 8}, 0, 1),
+])
+def test_a_later_title_gets_the_byte_its_own_engine_writes(
+        key, levels_map, stored, expected):
+    """Curse takes the fighter alone and Silver Blades takes all three, which
+    is measured on each title's own records rather than assumed from the
+    other's: 53 Curse records with no fighter level hold 1, paladins 5 and
+    rangers 5 among them, where 28 Silver Blades records with no fighter
+    level hold 8, every one a paladin 8 or a ranger 8.
+    """
+    deltas = dos_port.deltas_for(key)
+    char = _c64_source(levels_map, stored)
+    char.game = key
+    rec, _, _, _ = dos_codec.write(char, deltas=deltas)
+    f = dos_port.FIELDS_BY_NAME_FOR[key]["attack_level"]
+    assert rec[f.offset] == expected
+
+
+def test_a_dual_classed_character_keeps_the_level_he_fought_at():
+    """Silver Blades' engine does not recompute the byte at a class change:
+    PAINE is a magic-user 1 with a former ranger 8 and still reads 8, in the
+    two specimens that watched the change happen
+    (`WISH-SPEC-ssb-234-dualclassed`, `WISH-SPEC-ssb-234-party-pair`).
+
+    So the writer takes the best of the current array and the former one.
+    Without the former term PAINE would go out holding 1 and
+    `tests/test_doslatertitles.py::test_every_engine_written_record_of_a_
+    later_title_round_trips` would fail on him.
+    """
+    key = "secret-of-the-silver-blades"
+    char = _c64_source({"magic-user": 1}, 8)
+    char.game = key
+    char.set("former_levels", {"ranger": 8},
+             "made up: PAINE after HUMAN CHANGE CLASSES")
+    rec, _, _, _ = dos_codec.write(char, deltas=dos_port.deltas_for(key))
+    f = dos_port.FIELDS_BY_NAME_FOR[key]["attack_level"]
+    assert rec[f.offset] == 8
+
+
+def test_the_amiga_port_of_pool_of_radiance_keeps_a_fighting_level():
+    """The one place a *port* disagrees with its own title's DOS engine
+    (#527), and the reason `write` asks
+    `goldbox.dos_codec._ATTACK_LEVEL_CLASSES_BY_PORT` before it asks the
+    title.
+
+    DOS Pool of Radiance stores 1 for a fighter 8 -- the ladder rungs 0 to 8,
+    driven through the game's own schools.  The Amiga port stores the
+    fighting level: `max(fighter, 1)` fits 38 of 38 Amiga records nobody here
+    wrote, and the three that decide it are ADDERLY and CONAN, fighters 8
+    holding 8, and ROSALIND, a cleric 5 / fighter 6 holding 6.  With the
+    constant written into an Amiga record instead,
+    `tests/test_amiga.py::test_a_specimen_round_trips_through_the_neutral_record`
+    loses ADDERLY's `0x06B`, which is what found this.
+    """
+    f = dos_port.FIELDS_BY_NAME["attack_level"]
+    fighter = _c64_source({"fighter": 8}, 8)
+    assert dos_codec.write(fighter)[0][f.offset] == 1
+    assert dos_codec.write(fighter, into="Amiga")[0][f.offset] == 8
+    # A caster gets the floor on both ports: no Amiga record holds 0 either.
+    caster = _c64_source({"magic-user": 8}, 0)
+    assert dos_codec.write(caster)[0][f.offset] == 1
+    assert dos_codec.write(caster, into="Amiga")[0][f.offset] == 1
+
+
+def test_the_fighting_level_survives_c64_to_dos_and_back():
+    """The round trip a player makes: a C64 party exported to DOS and
+    imported again.
+
+    The DOS byte carries none of it -- it is the constant 1 either way -- so
+    what has to survive is the *character*, and it does, because both ends
+    read the fighting level off the class levels the record does carry
+    (#527).  A caster comes back to 0 rather than to DOS's 1, which is what
+    the C64 engine writes for him.
+    """
+    for levels_map, stored, back in (({"fighter": 8}, 8, 8),
+                                     ({"magic-user": 8}, 0, 0),
+                                     ({"fighter": 1}, 0, 0)):
+        char = _c64_source(levels_map, stored)
+        rec, _, _, _ = dos_codec.write(char)
+        again = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(rec)))
+        assert again.get("attack_level") == back, levels_map
+        c64_again, _ = c64_codec.write(again)
+        assert c64_again.get("attack_level") == back, levels_map
+
+
 @needs_dos_saves
 def test_a_record_round_trips_through_the_neutral_middle():
     """DOS -> to_neutral -> write, against the original bytes.  Everything
@@ -1459,11 +1622,18 @@ def test_a_record_round_trips_through_the_neutral_middle():
     Before #232 (An item-granted effect is dropped on the way through the
     neutral record, with no report) the assertion here was the innate records
     alone.
+
+    **`attack_level` is the one field checked against a rule instead of
+    against the original byte** (#527, `_attack_level_allowance`): the writer
+    puts the destination title's own engine value there rather than the
+    source's, and six of these twenty-four records carry a `0x06B` no Pool of
+    Radiance engine ever wrote.
     """
     total = enc_misses = granted = 0
     for char in _records():
         rec, itm, spc, _ = dos_codec.write(dos_codec.to_neutral(char))
         outside, enc = _diff_against(char, rec)
+        outside -= _attack_level_allowance(char, rec)
         assert outside == set(), (char.name, sorted(hex(i) for i in outside))
         enc_misses += enc
         total += 1
@@ -1535,7 +1705,9 @@ def test_a_record_round_trips_through_the_c64_record():
     `_save_throw_offsets`), pinned against `goldbox.levels.saving_throws`
     instead of against DOS's own bytes.  `thac0_current` is the other
     (`_THAC0_CURRENT_OFFSETS`, #405), pinned against the C64 record's own
-    recomputed byte instead."""
+    recomputed byte instead.  `attack_level` is the third (#527,
+    `_attack_level_allowance`), pinned against the destination title's own
+    engine rule."""
     total = 0
     mask = _save_throw_offsets() | _THAC0_CURRENT_OFFSETS
     for char in _records():
@@ -1544,6 +1716,7 @@ def test_a_record_round_trips_through_the_c64_record():
         back = c64_codec.read(c64_rec, source="round trip")
         rec, _, _, _ = dos_codec.write(back)
         outside, _ = _diff_against(char, rec)
+        outside -= _attack_level_allowance(char, rec)
         assert outside - mask == set(), \
             (char.name, sorted(hex(i) for i in outside))
         assert level_tables.racial_save_bonus_measured(neutral_char.game)

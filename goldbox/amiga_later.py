@@ -871,6 +871,12 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     declared = {f.name for f in dos_port.layout_for(deltas.dos)}
     direct = [(n, n) for n, _ in _dos.DIRECT
               if n in declared and n not in _dos.ABILITY_ORDER]
+    # `attack_level` is a copy for both titles this reader serves though it
+    # is no longer on the DOS reader's own `DIRECT` (#527): see the block in
+    # `to_neutral_later`, which refuses rather than copies for a title whose
+    # engine keeps no fighting level there.
+    if "attack_level" in declared:
+        direct.append(("attack_level", "attack_level"))
     transformed = [(n, why) for n, why in LATER_TRANSFORMED if n in declared]
     dropped = [(n, why) for n, why in LATER_DROPPED if n in declared]
     dropped += [(n, "bytes no field of the DOS table for this title claims")
@@ -985,6 +991,28 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     # defect `goldbox.dos_codec.neutral_class_bits` exists to stop; and after
     # `class_bits` left `_dos.DIRECT` the loop above stopped setting the
     # field at all, which left the C64 record with no class bit set (#292).
+    # `attack_level` left `_dos.DIRECT` the same way and for the same kind of
+    # reason (#527): DOS Pool of Radiance stores the constant 1 there rather
+    # than a fighting level, so its reader derives the value instead of
+    # copying the byte.  **Both titles this reader serves do keep a real
+    # fighting level in it** -- `max(fighter, 1)` in Curse and
+    # `max(fighter, paladin, ranger, 1)` in Silver Blades, which is what
+    # `DosDeltas.attack_level_classes` records -- so the byte is copied here
+    # exactly as the DOS reader of the same title copies it.  A title whose
+    # engine takes the byte from no class at all would need the derivation,
+    # and says so rather than being copied in silence.
+    if deltas.dos.attack_level_classes == ():
+        raise AmigaRecordError(
+            f"{deltas.title} stores no fighting level in attack_level, so "
+            f"this reader must derive it from the class levels the way "
+            f"goldbox.dos_codec.to_neutral does, not copy the byte (#527)")
+    f = table["attack_level"]
+    out.set("attack_level", char.get("attack_level"),
+            f"Amiga {deltas.title} attack_level "
+            f"@{deltas.offset(f.offset):#05x} ({f.confidence}), which this "
+            f"title's engine keeps as a fighting level",
+            f.confidence)
+
     f = table["class_bits"]
     former = char.get("former_class_levels") if (
         "former_class_levels" in table) else b""

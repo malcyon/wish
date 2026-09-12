@@ -131,6 +131,16 @@ CLASS_NUMBERS = (
     "fighter/mage/thief", "mage/thief", "monster",
 )
 
+#: The three classes whose level is a *fighting* level -- the ones every
+#: engine in the family reads `attack_level` off, where it reads it off
+#: anything.  The C64's `GEN $2342` writes `max(fighter, paladin, ranger)`
+#: into its own `0x098` at every training visit, which is the expression
+#: `goldbox/levelup.py`'s `plan` already carries; DOS Secret of the Silver
+#: Blades writes the same three into `0x0E6`, floored at 1.  Pool of Radiance
+#: instantiates none of the other two, so its C64 engine's rule and "the
+#: fighter's level" are the same sentence there.
+FIGHTING_CLASSES: tuple[str, str, str] = ("fighter", "paladin", "ranger")
+
 #: Race codes for **Pool of Radiance and Curse only**, shared with the C64 --
 #: except that the C64 table is 1-based on the same names with `monster` at 0
 #: on both.  The two later titles renumber the races and this is not their
@@ -957,12 +967,46 @@ class DosDeltas:
     #: entry from the front (#237).  Look a race up through this, never
     #: through the module-level default.
     race_numbers: Sequence[str] = RACE_NUMBERS
+    #: Which class levels this title's own DOS engine takes `attack_level`
+    #: from -- `0x06B` in Pool of Radiance and `0x0E6` in Silver Blades --
+    #: with `None` where nobody has measured it.  **An empty tuple is not an
+    #: empty rule**: it says the engine takes the byte from no class at all,
+    #: and with the floor below that makes it the constant 1.  What the *C64*
+    #: means by the same field is a different question and
+    #: `goldbox.dos_codec.fighting_level` is where it is answered.
+    attack_level_classes: "Sequence[str] | None" = ()
     sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
     #: A count of undecoded bytes, or a sequence that may mix `Field`s with
     #: counts -- `(paladin_cures, 3)` is one named byte and three nobody has
     #: attributed.
     inserts: "Mapping[str, int | Sequence[Field | int]]" = dataclasses.field(
         default_factory=dict)
+
+    def attack_level_stored(self, class_levels: Mapping[str, int],
+                            former_levels: "Mapping[str, int] | None" = None
+                            ) -> int | None:
+        """What this title's own DOS engine keeps in `attack_level`, or
+        `None` where that has not been measured.
+
+        `class_levels` and `former_levels` are class name -> level, the
+        neutral vocabulary's own spelling, and the former array counts
+        because **the engine does not recompute the byte when a character
+        changes class**: Silver Blades' PAINE is a magic-user 1 with a former
+        ranger 8 and still reads 8, in the two specimens that watched the
+        transition happen.
+
+        **The floor of 1 is measured in all three titles that have a rule**
+        and is not a guard against a zero: DOS Pool of Radiance stores 1 for
+        every character it ever wrote, Curse stores 1 for a paladin 5 and for
+        a cleric alike, and Silver Blades stores 1 for its clerics and
+        magic-users.  No DOS record of any of the three holds 0 except the
+        ones this project wrote, which is the defect #527 is about.
+        """
+        if self.attack_level_classes is None:
+            return None
+        return max([1] + [int(levels.get(name, 0) or 0)
+                          for levels in (class_levels, former_levels or {})
+                          for name in self.attack_level_classes])
 
 
 #: Shared by three titles, so it is written once.
@@ -1101,8 +1145,19 @@ _UNNAMED_1E0_NOTE = (
 
 #: Pool of Radiance itself: the table above, unchanged.  Present so callers
 #: can treat all four alike.
+#:
+#: **`attack_level_classes=()` is a measurement, not a default**: no class
+#: feeds this title's byte, so its engine writes the constant 1 for everybody
+#: (#527).  220 of 238 DOS records hold 1, and the 18 that do not were
+#: written by this project or edited by Gold Box Companion; the decisive
+#: sample is `WISH-SPEC-por-party-ladder-rung0` to `rung8`, one party taken
+#: up through the game's own training schools, where the fighter holds 1 at
+#: every level from 2 to 8.  The Amiga port agrees: 24 of 24 records the
+#: Amiga engine wrote -- `WISH-SPEC-por-amiga-outdoor` slots A, B and C and
+#: `WISH-SPEC-por-amiga-name-spaces` slot A -- hold 1, casters included.
 POOL_OF_RADIANCE = DosDeltas(
-    key="pool-of-radiance", title="Pool of Radiance", record_size=285)
+    key="pool-of-radiance", title="Pool of Radiance", record_size=285,
+    attack_level_classes=())
 
 #: Curse of the Azure Bonds, 422 bytes.  Three things move it: every ability
 #: becomes a (base, current) pair, the memorised-spell region grows from 21
@@ -1123,10 +1178,19 @@ POOL_OF_RADIANCE = DosDeltas(
 #: that is not there reads as empty.  It corroborates `#55`: Gateway to the
 #: Savage Frontier's 422-byte `.GUY` exports read through this table and keep
 #: their items in `.SWG` too.
+#:
+#: **`attack_level` is the fighter's level alone here, floored at 1** (#527),
+#: which is the one title of the three that does not follow
+#: :data:`FIGHTING_CLASSES`: 82 of 82 engine-written records match
+#: `max(fighter, 1)`, and 53 of those are characters with no fighter level at
+#: all holding 1 -- MATHEW and DEMELTINA, paladins 5, and ARGORA and RWELLYN,
+#: rangers 5, among them.  The four records in the corpus that miss are this
+#: project's own output (`WISH-SPEC-curse-234-converted-party` and
+#: `WISH-SPEC-curse-299-built-from-nothing`), which is the defect #527 fixed.
 CURSE_OF_THE_AZURE_BONDS = DosDeltas(
     key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
     record_size=422, item_suffix=".SWG", effect_suffix=".FX",
-    spellbook_spells=100,
+    spellbook_spells=100, attack_level_classes=("fighter",),
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 84, "spellbook": 100,
@@ -1158,10 +1222,20 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
 #: is 30 on the line reading `30 Arrows`, and a `MAGE SCROLL 3 SPELLS` carries
 #: three ids inside this title's 1..117 space in the three special bytes -- so
 #: the four extra bytes are `0x03F`-`0x042` and are zero in 12 of 12.
+#:
+#: **`attack_level` takes all three fighting classes here**, floored at 1
+#: (#527): 72 of 74 records match `max(fighter, paladin, ranger, 1)`,
+#: including 28 that have no fighter level and hold 8 -- Guy de Valois and
+#: DEMELTINA, paladins 8, and PAINE, ARGORA and RWELLYN, rangers 8.  The two
+#: that miss are PAINE after `HUMAN CHANGE CLASSES`, a magic-user 1 with a
+#: former ranger 8 still holding 8 (`WISH-SPEC-ssb-234-dualclassed` and
+#: `WISH-SPEC-ssb-234-party-pair`), which is why the former array counts too
+#: -- see :meth:`DosDeltas.attack_level_stored`.
 SECRET_OF_THE_SILVER_BLADES = DosDeltas(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
     record_size=439, item_suffix=".STF", item_size=67, effect_suffix=".SFX",
     spellbook_spells=117, race_numbers=SILVER_BLADES_RACE_NUMBERS,
+    attack_level_classes=FIGHTING_CLASSES,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 75, "spellbook": 117,
@@ -1202,10 +1276,23 @@ SECRET_OF_THE_SILVER_BLADES = DosDeltas(
 #: machine; two of Pools of Darkness' do not, so they are named here rather
 #: than left as gaps a writer would silently zero: :data:`_UNNAMED_1A4_NOTE`
 #: at `0x1A4` and :data:`_UNNAMED_1E0_NOTE` at `0x1E0`.
+#:
+#: **`attack_level_classes=None`: nobody has measured this title's rule, and
+#: the likeliest reading of the corpus is that the field is not where this
+#: table puts it** (#527).  All 52 records read 0 at `0x130`, a ranger 13 and
+#: a paladin 12 among them, where every earlier engine stores at least 1 for
+#: everybody; `goldbox/amiga_pod.py` already calls `attack_level` the one
+#: field of this title's record still unlocated (#462).  So the conversion
+#: copies the byte across untouched, exactly as it did before #527, rather
+#: than writing a number derived from a rule invented for it.  The
+#: experiment that would settle it is `tools/dosfieldrefs.py` over this
+#: title's own `GAME.OVR` for each candidate displacement: the offset the
+#: engine's own combat code reads is the field.
 POOLS_OF_DARKNESS = DosDeltas(
     key="pools-of-darkness", title="Pools of Darkness", record_size=510,
     item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=125,
     race_numbers=POOLS_OF_DARKNESS_RACE_NUMBERS,
+    attack_level_classes=None,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 141, "spellbook": 125,

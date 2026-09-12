@@ -201,6 +201,165 @@ def test_the_empty_slots_are_what_used_to_move_the_row():
     assert rows[0] == rows[1] == (13, 14, 15, 16, 16)
 
 
+# --- the fighting level, #527's last open byte -------------------------------
+#
+# `attack_level` at C64 `0x098` is the count of attacks `COMBAT $1550` gives a
+# character against two or more creatures of level 0 -- kobolds, goblin
+# guards, bandits, guards, eleven of Pool of Radiance's monster templates.
+# DOS Pool of Radiance stores the constant 1 there whatever the character's
+# fighting level, so copying the byte cost a converted fighter 8 seven
+# attacks a round.  The ladder specimens are the evidence: one party taken up
+# through the game's own training schools, whose fighter holds 1 at every
+# level from 2 to 8.
+
+#: `WISH-SPEC-por-party-ladder-rung<n>`, and the fighter's level on each rung.
+#: WISHFTR is the single-class fighter of the `#249` party; the rungs are the
+#: states the game's own trainer left him in.
+_LADDER_RUNGS = tuple(f"por-party-ladder-rung{n}" for n in range(9))
+
+
+def _ladder_records():
+    """Every 285-byte record on every ladder rung, as `DosCharacter`s."""
+    out = []
+    for name in _LADDER_RUNGS:
+        if not gamedata.have_specimen(name):
+            continue
+        for path in sorted(gamedata.specimen(name).glob("CHRDAT*.SAV")):
+            if path.stat().st_size == dos_port.RECORD_SIZE:
+                out.append(dos_codec.read_character(path))
+    if not out:
+        pytest.skip("needs the ladder specimens; see tools/specimens.py")
+    return out
+
+
+def test_a_dos_fighter_arrives_on_the_c64_with_his_own_fighting_level():
+    """`#527`: a DOS fighter of level 2 and above reaches the C64 record
+    holding the level his sweep attack is counted in, not DOS's constant 1.
+
+    The records are the game's own: `WISH-SPEC-por-party-ladder-rung0` to
+    `rung8`, a party this project watched being created and then trained in
+    Pool of Radiance's own schools.  **Every one of them stores 1** at DOS
+    `0x06B`, at fighter 2, 3, 4, 5, 6, 7 and 8 alike, which is why the byte
+    cannot be copied; `GEN $2342` and `goldbox/levelup.py` both say the C64
+    keeps `max(fighter, paladin, ranger)` there, and the game's own monster
+    templates label it -- `MON55`, `8TH LVL FIGHTER`, stores 8.
+    """
+    seen = 0
+    for char in _ladder_records():
+        want = max((char.class_levels.get(n, 0)
+                    for n in dos_port.FIGHTING_CLASSES), default=0)
+        if want < 2:
+            continue
+        assert char.get("attack_level") == 1, char.source
+        rec, _ = c64_codec.write(dos_codec.to_neutral(char))
+        assert rec.get("attack_level") == want, (char.name, char.source)
+        seen += 1
+    assert seen >= 7, f"{seen} fighters of level 2 or better on the ladder"
+
+
+def test_a_dos_caster_arrives_on_the_c64_with_no_fighting_level():
+    """The control on the test above, and the half of the corpus that says
+    the conversion is not simply copying a number that happens to match.
+
+    A cleric, a magic-user or a thief has no fighting level, and the C64
+    engine writes 0 for him: 76 of 76 engine-written C64 records of a
+    character with no fighter, paladin or ranger level read 0 at `0x098`.
+    DOS stores 1 for the same character, which is what used to arrive.
+    """
+    seen = 0
+    for char in _ladder_records():
+        if any(char.class_levels.get(n) for n in dos_port.FIGHTING_CLASSES):
+            continue
+        assert char.get("attack_level") == 1, char.source
+        rec, _ = c64_codec.write(dos_codec.to_neutral(char))
+        assert rec.get("attack_level") == 0, (char.name, char.source)
+        seen += 1
+    assert seen >= 3, f"{seen} characters with no fighting level"
+
+
+def test_a_fighter_1_arrives_with_the_zero_his_own_engine_leaves():
+    """Below level 2 the C64 byte is 0, and that is measured rather than
+    clamped: the engine writes it only when a character trains, so a fighter
+    1 holds what creation left.  54 of 54 engine-written C64 records of a
+    fighter 1 read 0, and **1 occurs in none of the 156 engine-written
+    records nor in any of the 116 monster templates** -- every C64 record on
+    this machine holding 1 came out of this conversion before #527.
+
+    Both values are one attack in play, since `COMBAT $1550`'s compare is
+    unsigned and never takes the branch at 0.  What the choice buys is a
+    converted record a census cannot tell from a played one.
+
+    **The ladder has no fighter 1 -- its first rung is already a fighter 2**
+    -- so the records here are the party the rungs were climbed from:
+    `por-party-l1` as the game saved it at the roster, `por-party-l1-intown`
+    after the New Phlan tour, and the six loose `.CHA` files that existed for
+    one moment between CREATE NEW CHARACTER and ADD CHARACTER TO PARTY.
+    """
+    seen = 0
+    for name in ("por-party-l1", "por-party-l1-intown", "por-party-l1-rolled"):
+        if not gamedata.have_specimen(name):
+            continue
+        where = gamedata.specimen(name)
+        for path in sorted(list(where.glob("*.SAV")) + list(where.glob("*.CHA"))):
+            if path.stat().st_size != dos_port.RECORD_SIZE:
+                continue
+            char = dos_codec.read_character(path)
+            if char.class_levels.get("fighter") != 1:
+                continue
+            assert char.get("attack_level") == 1, char.source
+            rec, _ = c64_codec.write(dos_codec.to_neutral(char))
+            assert rec.get("attack_level") == 0, (char.name, char.source)
+            seen += 1
+    if not seen:
+        pytest.skip("needs the level-one party; see tools/specimens.py")
+    assert seen >= 6, f"{seen} records of a fighter 1"
+
+
+@pytest.mark.parametrize("key,levels_map,expected", [
+    # Curse takes the fighter alone: MATHEW and DEMELTINA, paladins 5, and
+    # ARGORA and RWELLYN, rangers 5, all store 1 in their own engine's
+    # records, where a fighter 4 stores 4 and a fighter 5 stores 5.
+    ("curse-of-the-azure-bonds", {"fighter": 4}, 4),
+    ("curse-of-the-azure-bonds", {"paladin": 5}, 1),
+    ("curse-of-the-azure-bonds", {"cleric": 5}, 1),
+    # Silver Blades takes all three: 28 of its records have no fighter level
+    # and store 8, every one a paladin 8 or a ranger 8.
+    ("secret-of-the-silver-blades", {"fighter": 8}, 8),
+    ("secret-of-the-silver-blades", {"paladin": 8}, 8),
+    ("secret-of-the-silver-blades", {"ranger": 8}, 8),
+    ("secret-of-the-silver-blades", {"cleric": 8}, 1),
+    # Pool of Radiance's engine takes none, which is the constant 1.
+    ("pool-of-radiance", {"fighter": 8}, 1),
+    ("pool-of-radiance", {"magic-user": 3}, 1),
+])
+def test_each_titles_dos_engine_keeps_its_own_fighting_level(
+        key, levels_map, expected):
+    """The per-title rule, stated as the census found it.
+
+    `goldbox.dos_port.DosDeltas.attack_level_classes` is the whole of the
+    difference between the four titles, and the numbers behind each row are
+    on that field: 220 of 238 Pool of Radiance records, 82 of 82 engine-
+    written Curse ones, 72 of 74 Silver Blades ones.
+    """
+    deltas = dos_port.deltas_for(key)
+    assert deltas.attack_level_stored(levels_map) == expected
+
+
+def test_pools_of_darkness_is_left_exactly_as_it_was():
+    """Nobody has measured that title's rule, and the corpus reads like our
+    own offset rather than like the engine: all 52 records hold 0 at
+    `0x130`, a ranger 13 and a paladin 12 among them, where every earlier
+    engine stores at least 1 for everybody.  `goldbox/amiga_pod.py` already
+    calls `attack_level` the one field of that record still unlocated.
+
+    So the conversion copies the byte, and this test is what goes red if
+    somebody gives the title a rule without taking the measurement.
+    """
+    deltas = dos_port.deltas_for("pools-of-darkness")
+    assert deltas.attack_level_classes is None
+    assert deltas.attack_level_stored({"ranger": 13}) is None
+
+
 _THIEF_SKILL_FIELDS = (
     "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
     "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",

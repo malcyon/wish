@@ -56,7 +56,7 @@ import logging
 import pathlib
 import shutil
 import tempfile
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from . import (
     areas,
@@ -79,6 +79,7 @@ from .dos_port import (
     EFFECT_SIZE,
     FIELDS_BY_NAME,
     FIELDS_BY_NAME_FOR,
+    FIGHTING_CLASSES,
     ITEM_FIELDS_BY_NAME,
     ITEM_SIZE,
     LAYOUTS,
@@ -1269,7 +1270,6 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("char_class", "char_class"),
     ("age", "age"),
     ("hp_max", "hp_max"),
-    ("attack_level", "attack_level"),
     ("save_paralysis", "save_paralysis"),
     ("save_petrification", "save_petrification"),
     ("save_wands", "save_wands"),
@@ -1410,6 +1410,16 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                    "DOS gives the paladin and the ranger one bit between "
                    "them and the C64 gives the ranger a bit of its own, so "
                    "copying the byte made a converted ranger a paladin"),
+    ("attack_level", "read as the fighting level the C64 keeps rather than "
+                     "as the byte DOS stores, for a title whose DOS engine "
+                     "stores no fighting level in it. DOS Pool of Radiance "
+                     "writes the constant 1 for a fighter 8 and for a "
+                     "magic-user alike, so copying it cost a converted "
+                     "fighter his sweep attack; Curse of the Azure Bonds "
+                     "and Secret of the Silver Blades do maintain the byte "
+                     "and it is copied from those two "
+                     "(goldbox.dos_port.DosDeltas.attack_level_classes, "
+                     "#527)"),
     ("name_length", "folded into the C64's 20-byte NUL-padded name"),
     ("name_text", "re-padded into the C64's 20-byte name, and folded to "
                   "capitals with its trailing blanks cut: the C64 draws its "
@@ -1712,6 +1722,41 @@ ABILITY_ORDER = neutral.ABILITIES
 CLASS_BY_SLOT: dict[int, str] = {n: name for n, name, _ in CLASS_LEVEL_SLOTS}
 
 
+def fighting_level(class_levels: "Mapping[str, int]") -> int:
+    """The fighting level the **C64** record keeps, from the class levels.
+
+    `goldbox/layout.py`'s `attack_level` at `0x098`, which has exactly one
+    reader in the C64 build -- `COMBAT $088D`, `LDA $6B98` / `STA $A5C0,X` --
+    and gates the AD&D sweep attack at `COMBAT $1550`: against two or more
+    targets whose own `level` at `0x0A0` is 0, a character makes this many
+    attacks in a round.  Eleven of Pool of Radiance's monster templates are
+    level 0 -- KOBOLD, GOBLIN GUARD, BANDIT, GUARD among them -- so it is
+    ordinary play rather than an edge of the rules (#527).
+
+    `max(fighter, paladin, ranger)` is `GEN $2342`, the expression
+    `goldbox/levelup.py`'s `plan` writes at every training visit, and the
+    game's own data labels it: 22 of the 23 `MON<hex>` templates carrying a
+    non-zero value hold their own level with SSI's name beside it, so a file
+    called `8TH LVL FIGHTER` stores 8.
+
+    **Below 2 the answer is 0, and that is measured rather than clamped.**
+    The C64 engine writes this byte only when a character trains, so a
+    fighter 1 has never had one written and holds what creation left: 0 in
+    all 54 engine-written C64 records of a fighter 1, 0 in all 76 of a
+    character with no fighting level, and exactly the fighting level in all
+    26 at fighter 2 and above -- 156 of 156.  **1 does not occur at all**,
+    in those 156 nor in any of the 116 monster templates; every C64 record on
+    this machine holding 1 came out of this conversion before #527.  A sweep
+    of one attack and a sweep the compare never takes are the same round of
+    combat, so nothing about play rests on the choice, and writing the value
+    the engine writes is what keeps a converted record indistinguishable
+    from a played one.
+    """
+    best = max((int(class_levels.get(name, 0) or 0)
+                for name in FIGHTING_CLASSES), default=0)
+    return best if best >= 2 else 0
+
+
 #: Ability names whose DOS pair runs `(permanent, in force)` -- byte 0 is the
 #: rolled score and byte 1 is what play has left it at.  Every ability in
 #: :data:`ABILITY_ORDER` is one of these **except** `exceptional_strength`,
@@ -1831,6 +1876,32 @@ def to_neutral(dos: DosCharacter,
             f"the level array because DOS gives the paladin and the ranger "
             f"one bit between them",
             f.confidence, Provenance.RESHAPED)
+
+    # -- the fighting level, which is not the DOS byte in every title -------
+    # `attack_level` is the C64's sweep-attack count and the C64 stores the
+    # character's fighting level in it.  **DOS Pool of Radiance stores the
+    # constant 1** -- 220 of 238 records, and a party taken through the
+    # game's own training schools holds 1 at fighter 2, 3, 4, 5, 6, 7 and 8
+    # -- so copying that byte handed a converted fighter 8 one attack where
+    # the C64 engine would give him eight (#527).  Curse of the Azure Bonds
+    # and Secret of the Silver Blades keep a real fighting level there and
+    # their byte is copied; Pools of Darkness reads 0 for a ranger 13, which
+    # is likelier this table's offset than the engine, so it is copied too
+    # and left exactly as it was.  `DosDeltas.attack_level_classes` carries
+    # each title's evidence.
+    f = dos.fields["attack_level"]
+    if dos.shape.attack_level_classes == ():
+        out.set("attack_level", fighting_level(dos.class_levels),
+                f"derived from the class levels: DOS {dos.shape.title} "
+                f"stores the constant 1 at attack_level @{f.offset:#05x} "
+                f"whatever the character's fighting level, so the byte says "
+                f"nothing and GEN $2342's own rule is read instead",
+                Confidence.CONFIRMED, Provenance.RESHAPED)
+    else:
+        out.set("attack_level", dos.get("attack_level"),
+                f"DOS attack_level @{f.offset:#05x} ({f.confidence}), which "
+                f"this title's engine keeps as a fighting level",
+                f.confidence)
 
     # -- the abilities, which are a pair after Pool of Radiance --------------
     # The neutral ability is the score in force, and `abilities_second` is
@@ -2386,7 +2457,6 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("char_class", "char_class"),
     ("age", "age"),
     ("hp_max", "hp_max"),
-    ("attack_level", "attack_level"),
     ("save_paralysis", "save_paralysis"),
     ("save_petrification", "save_petrification"),
     ("save_wands", "save_wands"),
@@ -2437,6 +2507,15 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "folded back into DOS's own order, where the paladin and "
                    "the ranger share bit 6 and the class number and the "
                    "level array are what tell them apart"),
+    ("attack_level", "written as the engine at the far end writes it, from "
+                     "the class levels and the former ones: the constant 1 "
+                     "in DOS Pool of Radiance, max(fighter, 1) in Curse of "
+                     "the Azure Bonds and in the Amiga port of Pool of "
+                     "Radiance, and max(fighter, paladin, ranger, 1) in "
+                     "Secret of the Silver Blades. The source's own value "
+                     "goes nowhere near the byte, because no engine of any "
+                     "title or port stores a 0 there and a C64 caster's is 0 "
+                     "(goldbox.dos_codec.attack_level_written, #527)"),
     ("thac0_base", "recomputed from the class levels through this title's "
                    "own DOS table where it is known -- Pool of Radiance "
                    "only, since Curse of the Azure Bonds' and Secret of "
@@ -2912,6 +2991,60 @@ _THIEF_SKILL_NAMES: frozenset[str] = frozenset(n for n, _ in _THIEF_SKILL_COLUMN
 _THIEF_SKILL_RECOMPUTE_FROM_PORTS = ("C64",)
 
 
+#: Where a *port* keeps `attack_level` differently from the DOS engine of the
+#: same title -- `into` (the destination port) -> title key -> the classes
+#: that engine takes the byte from.  :func:`write` asks this first and
+#: `goldbox.dos_port.DosDeltas.attack_level_classes` second.
+#:
+#: **One entry, and it is measured** (#527).  DOS Pool of Radiance stores the
+#: constant 1 whatever the fighting level -- 220 of 238 records, and a party
+#: this project drove through the game's own schools holds 1 at fighter 2 to
+#: 8.  **The Amiga port of the same title does not**: `max(fighter, 1)` fits
+#: **38 of 38 Amiga Pool of Radiance records nobody here wrote**, and three of
+#: them settle it because they are above level 1 -- ADDERLY and CONAN,
+#: fighters 8 holding 8, and ROSALIND, a cleric 5 / fighter 6 holding 6, the
+#: `.cha` exports on the Amiga Curse of the Azure Bonds save disk.  The other
+#: 35 are level-1 characters and the six-record party on disk 1, where the
+#: two rules agree.  The C64 build keeps a fighting level too, so **DOS Pool
+#: of Radiance is the one port of the one title that leaves this byte at its
+#: creation value**.
+#:
+#: **The floor is CONFIRMED from the Amiga engine's own hand**, not from a
+#: found record: a converted party written with 0 here was re-saved by the
+#: running game and MALCYON, a magic-user 1, came back holding **1**
+#: (`docs/182-amiga-por-in-the-running-game.md` §4 and
+#: `docs/191-the-amiga-save-disk.md` §5, the same byte on both routes).  That
+#: is the engine writing over a value this conversion used to produce, which
+#: is the defect this entry ends.
+#:
+#: **The fighting-level half is PROBABLE**: the three records that carry it
+#: were found on a game disk and nobody watched them being written
+#: (`.claude/rules/testing.md`).  The experiment that would settle it is the
+#: ladder's, run on the Amiga: take a party to fighter 2 in Amiga Pool of
+#: Radiance and read `0x06B` of its record.  2 confirms this table; 1 refutes
+#: it and makes the three records somebody's editing.
+_ATTACK_LEVEL_CLASSES_BY_PORT: dict[str, dict[str, tuple[str, ...]]] = {
+    "Amiga": {POOL_OF_RADIANCE.key: ("fighter",)},
+}
+
+
+def attack_level_written(deltas: DosDeltas, class_levels: Mapping[str, int],
+                         former_levels: "Mapping[str, int] | None" = None,
+                         into: str = "DOS") -> int | None:
+    """What the engine at the far end of a write keeps in `attack_level`.
+
+    `goldbox.dos_port.DosDeltas.attack_level_stored` answers for the title's
+    DOS engine; this asks :data:`_ATTACK_LEVEL_CLASSES_BY_PORT` first, so a
+    port that keeps the field differently from its own DOS twin gets its own
+    answer.  `None` means nobody has measured that title, and then the
+    writer copies the source's byte rather than inventing one.
+    """
+    classes = _ATTACK_LEVEL_CLASSES_BY_PORT.get(into, {}).get(deltas.key)
+    if classes is not None:
+        deltas = dataclasses.replace(deltas, attack_level_classes=classes)
+    return deltas.attack_level_stored(class_levels, former_levels)
+
+
 def identity_byte(record: bytes | bytearray,
                   deltas: "int | str | DosDeltas | None" = None) -> int:
     """The `unnamed_0ab` byte for a record, derived from the rest of it.
@@ -3104,6 +3237,12 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
                      "folded onto DOS's bit 6",
        "char_class": "from neutral char_class, recomputed from the class "
                      "mask when the source record contradicts itself (#310)",
+       "attack_level": "from neutral levels, through the destination's own "
+                       "rule: the constant 1 in DOS Pool of Radiance, and "
+                       "the best fighting level floored at 1 everywhere the "
+                       "engine keeps one -- including the Amiga port of Pool "
+                       "of Radiance, which does where its DOS twin does not "
+                       "(#527)",
        "thac0_base": "from neutral thac0_base, recomputed from the class "
                      "levels through this title's own DOS table where it "
                      "is known -- Pool of Radiance only (#366)",
@@ -3620,6 +3759,60 @@ def write(char: NeutralCharacter,
                 "own DOS table: the two ports' magic-user and thief rows "
                 "disagree at low level (#366)",
                 value=combat_byte(derived))
+
+    # -- attack_level: what the destination's own engine stores --------------
+    # **Not the neutral value, for any source port** -- and this is the one
+    # recompute here that is not gated on where the record came from,
+    # because the reason is not that one port's table disagrees with
+    # another's.  It is that the byte is not the same field at both ends.
+    # The C64 keeps the fighting level and gates its sweep attack on it,
+    # while DOS Pool of Radiance keeps the constant 1 for every character
+    # its engine has ever written, a fighter 8 included.  A copied C64
+    # caster's 0 was therefore a value **no engine of any title or port
+    # writes**: 0 occurs in this project's own output and nowhere else, in
+    # 398 DOS records of the three titles that have a rule and in 38 Amiga
+    # Pool of Radiance ones.  The destination decides, so `into` is asked
+    # before the title -- the Amiga port of Pool of Radiance keeps a real
+    # fighting level where its DOS twin does not
+    # (`_ATTACK_LEVEL_CLASSES_BY_PORT`).
+    #
+    # `_dos_levels` rather than `w.get("levels")`, so the byte agrees with
+    # the array actually written -- a dual-classed character's regained slot
+    # is zeroed there (#408) -- and `_former_for_regain` alongside it,
+    # because the engine does not recompute this byte at a class change:
+    # Silver Blades' PAINE is a magic-user 1 with a former ranger 8 and
+    # still reads 8 in the two specimens that watched the change happen.
+    #
+    # Pools of Darkness has no measured rule and `attack_level_stored`
+    # answers None for it, so its byte is copied exactly as before (#527).
+    level_byte = use("attack_level")
+    if "attack_level" in table:
+        written = attack_level_written(deltas, _dos_levels,
+                                       _former_for_regain, into)
+        classes = _ATTACK_LEVEL_CLASSES_BY_PORT.get(into, {}).get(
+            deltas.key, deltas.attack_level_classes)
+        if written is None:
+            why = ""
+        elif classes:
+            why = (f", the value {into} {deltas.title} keeps there: the best "
+                   f"of {', '.join(classes)}, current or former, floored "
+                   f"at 1 (#527)")
+        else:
+            why = (f", the constant {into} {deltas.title} stores for every "
+                   f"character, whatever his fighting level (#527)")
+        if level_byte is not None:
+            put(level_byte, "attack_level", why,
+                value=level_byte.value if written is None else written)
+        elif written is not None:
+            # No source value at all -- a partial neutral record.  The byte
+            # is still this title's own constant or its own rule, so it is
+            # written and accounted for rather than left a zero the engine
+            # never writes.
+            f = table["attack_level"]
+            _encode(f, rec, written)
+            rep.note(f.offset, f.size,
+                     f"attack_level: {written} -- no neutral value to take "
+                     f"it from{why}")
 
     # -- thief skills: recomputed for the port measured to disagree, and for
     # a title whose own DOS engine is confirmed to store a number no table
