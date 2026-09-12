@@ -2027,9 +2027,9 @@ graph LR
   amiga_later --> amiga_por
   amiga_later --> amiga_port
   amiga_later --> amiga_shared
+  amiga_later --> c64_port
   amiga_later -.->|deferred| dos_codec
-  amiga_later --> dos_layout
-  amiga_later --> games
+  amiga_later --> dos_port
   amiga_later --> iconparts
   amiga_later --> layout
   amiga_later --> neutral
@@ -2038,7 +2038,7 @@ graph LR
   amiga_pod -.->|deferred| c64_codec
   amiga_pod -.->|deferred| d64
   amiga_pod -.->|deferred| dos_codec
-  amiga_pod --> dos_layout
+  amiga_pod --> dos_port
   amiga_pod --> layout
   amiga_pod --> neutral
   amiga_pod -.->|deferred| savegame
@@ -2049,7 +2049,7 @@ graph LR
   amiga_por --> amiga_port
   amiga_por --> areas
   amiga_por -.->|deferred| dos_codec
-  amiga_por --> dos_layout
+  amiga_por --> dos_port
   amiga_por --> dos_savegame
   amiga_por --> iconparts
   amiga_por --> layout
@@ -2060,7 +2060,7 @@ graph LR
   amiga_port --> dos_port
   amiga_shared -.->|deferred| amiga_por
   amiga_shared --> amiga_port
-  amiga_shared --> dos_layout
+  amiga_shared --> dos_port
   areas -.->|deferred| geo
   areas --> layout
   c64_codec --> classcode
@@ -2079,16 +2079,17 @@ graph LR
   classcode --> titles
   derive --> items
   derive -.->|deferred| levels
+  dos --> c64_port
   dos --> dos_codec
   dos_codec --> areas
   dos_codec --> c64_codec
+  dos_codec --> c64_port
   dos_codec --> c64_save
   dos_codec --> classcode
   dos_codec -.->|deferred| d64
-  dos_codec --> dos_layout
+  dos_codec --> dos_port
   dos_codec --> dos_savegame
   dos_codec --> encoding
-  dos_codec --> games
   dos_codec --> iconparts
   dos_codec -.->|deferred| icons
   dos_codec -.->|deferred| items
@@ -2123,15 +2124,15 @@ graph LR
   neutral --> layout
   portraits -.->|deferred| amiga_adf
   portraits -.->|deferred| amiga_dax
+  portraits -.->|deferred| c64_port
   portraits -.->|deferred| d64
   portraits --> dos_savegame
-  portraits -.->|deferred| games
   record --> encoding
   record --> layout
   record --> petscii
+  savegame --> c64_port
   savegame --> d64
   savegame --> encoding
-  savegame --> games
   savegame --> record
   spells --> d64
   spells --> levels
@@ -2142,15 +2143,15 @@ graph LR
   world --> d64
   world_state -.->|deferred| amiga_codec
   world_state --> areas
+  world_state -.->|deferred| c64_port
   world_state --> c64_save
   world_state -.->|deferred| dos_codec
   world_state --> dos_savegame
-  world_state -.->|deferred| games
   yaml_io --> c64_codec
+  yaml_io --> c64_port
   yaml_io --> classcode
   yaml_io --> d64
   yaml_io --> derive
-  yaml_io --> games
   yaml_io --> icons
   yaml_io --> items
   yaml_io --> layout
