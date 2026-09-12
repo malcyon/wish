@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-"""`goldbox.amiga` against the offsets the character sheet actually drew.
+"""The Amiga character record against the offsets the character sheet actually
+drew.
 
 Two probe shapes did the work and both are rebuilt here. The **ramp** -- a
 `.pc` whose byte at every offset is that offset -- makes a number the sheet

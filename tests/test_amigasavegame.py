@@ -326,7 +326,7 @@ def test_a_specimen_saved_game_rebuilds_byte_for_byte(specimens):
     They are **found** files rather than ones we watched being written, so
     this tests our reader and writer against each other and establishes
     nothing about the format; what establishes the format is the loader,
-    read in `goldbox/amiga.py`.
+    read in `tools/amigasavegame.py`.
     """
     seen = 0
     for label, data in specimens:

@@ -170,7 +170,7 @@ def test_an_id_the_destination_book_has_no_byte_for_never_reaches_the_player(
     `Spell id 100 is outside the Pool of Radiance book's ids 1-56` to
     `rep.warnings`, which `editor/convert.py` puts in front of the player.
     """
-    with caplog.at_level("WARNING", logger="wish.goldbox.dos"):
+    with caplog.at_level("WARNING", logger="wish.goldbox.dos_codec"):
         _rec, _, _, rep = dos_codec.write(_neutral(POOL.key, spells_known=[1, 100]))
     assert rep.warnings == []
     assert any("id 100 is outside the Pool of Radiance book" in r.getMessage()
@@ -228,7 +228,7 @@ def test_a_character_memorised_to_the_titles_ceiling_loses_nothing(caplog):
     for shape, slots in ((POOL, 21), (CURSE, 84), (SSB, 75)):
         f = dos_port.FIELDS_BY_NAME_FOR[shape.key]["spells_memorised"]
         ids = list(range(slots, 0, -1))
-        with caplog.at_level("WARNING", logger="wish.goldbox.dos"):
+        with caplog.at_level("WARNING", logger="wish.goldbox.dos_codec"):
             rec, _, _, rep = dos_codec.write(
                 _neutral(shape.key, spells_memorised=ids))
         assert rep.warnings == []
@@ -245,7 +245,7 @@ def test_a_list_past_the_engines_own_slots_is_logged_and_not_shown(caplog):
     Fails before the fix: the line went to `rep.warnings`.
     """
     f = dos_port.FIELDS_BY_NAME_FOR[POOL.key]["spells_memorised"]
-    with caplog.at_level("WARNING", logger="wish.goldbox.dos"):
+    with caplog.at_level("WARNING", logger="wish.goldbox.dos_codec"):
         _rec, _, _, rep = dos_codec.write(
             _neutral(POOL.key, spells_memorised=list(range(f.size + 3, 0, -1))))
     assert rep.warnings == []

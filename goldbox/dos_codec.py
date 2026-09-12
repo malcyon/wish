@@ -116,7 +116,7 @@ from .record import CharacterRecord
 #: `.claude/rules/conversions.md`: a conversion never explains itself to the
 #: player in place of being fixed, and the evidence still has to land
 #: somewhere.  `automap/state.py` names its own logger the same way.
-_log = logging.getLogger("wish.goldbox.dos")
+_log = logging.getLogger("wish.goldbox.dos_codec")
 
 __all__ = [
     "DosRecordError",

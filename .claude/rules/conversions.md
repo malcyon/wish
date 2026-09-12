@@ -168,8 +168,9 @@ it."*
 
 Two things that are **not** drops and must not be counted as though they were:
 a field the destination recomputes on load, and a constant of the format. Both
-have their own lists (`dos.DERIVED`, `dos.CONSTANTS`, `dos.WRITE_DERIVED`,
-`dos.WRITE_CONSTANTS`) and each row carries the run that demonstrated it. When
+have their own lists (`dos_codec.DERIVED`, `dos_codec.CONSTANTS`,
+`dos_codec.WRITE_DERIVED`, `dos_codec.WRITE_CONSTANTS`) and each row carries
+the run that demonstrated it. When
 a long drop list is read against this rule, sort it before costing it -- most
 of what sat on the import list was never a loss.
 
@@ -231,7 +232,7 @@ game. Show others for now. I will refine them as we go."*
 player to EVER see a message saying any field was dropped. The conversion needs
 to be perfect."* That sentence was made when the list held fourteen entries,
 nine of which turned out not to be losses at all. With those nine moved to
-`goldbox.dos.DERIVED` and `CONSTANTS`, what is left is short enough for him to
+`goldbox.dos_codec.DERIVED` and `CONSTANTS`, what is left is short enough for him to
 read and rule on one at a time -- and hiding it put an agent's judgement
 between him and his own program.
 

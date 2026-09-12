@@ -548,8 +548,11 @@ def test_the_dos_reader_grades_the_two_bytes_above_the_field_they_sit_in():
 # save actually reaches `c64_codec.read` as a `goldbox.savegame.Slot.record`,
 # whose `stored_size` is 256 -- both fields end past that, so `is_stored` was
 # False unconditionally and neither was ever set.  These build the save the
-# way `goldbox/dos_codec.py` and `goldbox/amiga.py` do, through `SaveGame0.slot`
-# and `SaveGame1.roster`.
+# way `goldbox/dos_codec.py`'s own C64 reader does, through `SaveGame0.slot`
+# and `SaveGame1.roster` -- no `goldbox/amiga_*.py` module ever references
+# `SaveGame0`; the Amiga-to-C64 writer (`tools/fromamigapor.py` through
+# `dos_codec.new_save_from`) writes the two payloads directly rather than
+# through that object model.
 
 def _occupied_save() -> SaveGame0:
     """A synthetic `SAVEDGAME0` with one character in slot 0, built from the
