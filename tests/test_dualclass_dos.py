@@ -163,6 +163,50 @@ def test_amiga_reads_former_levels_with_no_drop_line():
     assert not any("former" in d.lower() for d in n.dropped)
 
 
+# --- the Amiga reader: attack_level survives a real dual class (#527) ------
+def test_the_amiga_curse_engine_resave_keeps_attack_level_through_dual_class():
+    """MATHEW, in `coab-amiga/WISH-SPEC-coab-amiga-converted-resave`: a
+    former paladin 5 who is now a magic-user 1, resaved by the Amiga engine
+    itself through `ENCAMP > SAVE` (`docs/203-a-converted-later-amiga-party-
+    in-the-running-game.md`).  Curse's rule for `attack_level` counts only
+    `fighter` (`DosDeltas.attack_level_classes`), and MATHEW has never been
+    one -- neither the paladin he trained out of nor the magic-user he
+    became feeds it -- so the engine's own floor of 1 is what the byte
+    holds, and this pins that `to_neutral_later` still reads it.
+
+    `#527`'s fix moved `attack_level` off `dos_codec.DIRECT`, which is what
+    `to_neutral_later`'s copy loop iterates by name at call time
+    (`later_field_disposition`, `to_neutral_later`). Without the explicit
+    read this test exercises, the field is never set at all -- the same
+    defect `#292` left in `class_bits` -- rather than merely holding a wrong
+    value, so this is also the only test that reads a real, engine-written
+    Amiga record through `to_neutral_later` end to end for this field.
+    """
+    root = gamedata.specimen_root()
+    if root is None:
+        pytest.skip("no $WISH_SPECIMENS; see tools/specimens.py")
+    where = (root / "coab-amiga" /
+             "WISH-SPEC-coab-amiga-converted-resave" / "savgamC.dat")
+    if not where.is_file():
+        pytest.skip("needs WISH-SPEC-coab-amiga-converted-resave")
+
+    data = where.read_bytes()
+    chars = amiga_later.party_in_savegame(data, amiga_port.CURSE_DELTAS)
+    mathew = next(c for c in chars if c.name.strip() == "MATHEW")
+
+    # The byte itself, read independently of the code under test.
+    f = dos_port.FIELDS_BY_NAME_FOR[CURSE.key]["attack_level"]
+    stored = mathew.raw[amiga_port.CURSE_DELTAS.offset(f.offset)]
+    assert stored == 1, "MATHEW's own record no longer holds the byte this " \
+        "test was written against"
+
+    out = amiga_later.to_neutral_later(mathew)
+    assert out.get("former_levels") == {"paladin": 5}
+    assert out.get("levels")["magic-user"] == 1
+    assert out.get("attack_level") == stored == \
+        CURSE.attack_level_stored(out.get("levels"), out.get("former_levels"))
+
+
 # --- specimens: the two watched training-hall transitions -------------------
 def _read(name: str, filename: str) -> dos_codec.DosCharacter:
     where = gamedata.specimen(name)
