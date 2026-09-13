@@ -25,7 +25,7 @@ class FakeMonitor:
 
 class FakeSession(C.CurseSession):
     def __init__(self, side: int, attached: str = str(SLOT / "SIDE0.D64")):
-        self.here = SLOT
+        self.here = str(SLOT)
         self.attached = attached
         self.side = side
         self.reads: list[tuple[int, int]] = []
@@ -40,8 +40,9 @@ class FakeSession(C.CurseSession):
         self.events.append(("log", message))
 
     def attach(self, path: str) -> None:
+        path = os.path.abspath(path)
         self.events.append(("attach", path))
-        self.attached = os.path.abspath(path)
+        self.attached = path
 
     def press_kernal(self, code: int, timeout: float = 3.0) -> bool:
         self.events.append(("kernal", code))
