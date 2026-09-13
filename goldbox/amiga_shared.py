@@ -89,17 +89,15 @@ def amiga_shape_for(size: int) -> "dos_port.DosDeltas":
 #: The titles an Amiga save slot can be **converted from** today, as the DOS
 #: shapes whose `key` `editor/convert.py` registers a direction against.
 #:
-#: Pool of Radiance alone, and the two that are missing are missing for one
-#: reason each rather than for want of a row here.  Curse of the Azure Bonds
-#: and Secret of the Silver Blades have their records read
-#: (:data:`AMIGA_DELTAS`) and their save disks read
-#: (`goldbox/amiga_later.py`), and what neither has is a saved-game reader:
-#: `goldbox.world_state.from_amiga` is Pool of Radiance's own container, and
-#: `#55`'s work stopped at the records.  Converting a party without the game
-#: around it is the thing `#353 (Convert an Amiga Pool of Radiance save to
-#: the C64, so a party standing in the Slums on the Amiga arrives there in
-#: VICE)` exists to stop.
-CONVERTS: "tuple[dos_port.DosDeltas, ...]" = (dos_port.POOL_OF_RADIANCE,)
+#: Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver
+#: Blades.  `goldbox.amiga_savegame` reads the later titles' whole containers
+#: around the character blocks, the counterpart of `goldbox.amiga_por`'s
+#: Pool of Radiance reader.
+CONVERTS: "tuple[dos_port.DosDeltas, ...]" = (
+    dos_port.POOL_OF_RADIANCE,
+    dos_port.CURSE_OF_THE_AZURE_BONDS,
+    dos_port.SECRET_OF_THE_SILVER_BLADES,
+)
 
 #: The titles a C64 or DOS save can be **converted to** an Amiga save disk
 #: today, as the DOS shapes whose `key` `editor/convert.py` registers a
@@ -107,16 +105,14 @@ CONVERTS: "tuple[dos_port.DosDeltas, ...]" = (dos_port.POOL_OF_RADIANCE,)
 #: for the same reason: what the *destination* can be written from nothing,
 #: not what the source happens to be.
 #:
-#: Pool of Radiance alone (`#316 (Write the Amiga Pool of Radiance saved
+#: Pool of Radiance (`#316 (Write the Amiga Pool of Radiance saved
 #: game from the source save, so a converted party arrives where it was
 #: standing)`): `new_por_savegame` and `make_por_save_disk` build the whole
 #: 13,141-byte `savgam<letter>.dat` and the disk around it with no template,
 #: proven in two WinUAE runs, one from a C64 source and one from a DOS one.
-#: Curse of the Azure Bonds and Secret of the Silver Blades have no such
-#: writer -- `#359 (Bring the Amiga into every permutation: C64 ↔ Amiga and
-#: DOS ↔ Amiga)`'s step 6 -- so they stay off this tuple until one exists,
-#: the same way they are missing from `CONVERTS` above.
-WRITES: "tuple[dos_port.DosDeltas, ...]" = (dos_port.POOL_OF_RADIANCE,)
+#: `goldbox.amiga_savegame.new_savegame` and `make_save_disk` now do the same
+#: from zeroes for Curse and Silver Blades.
+WRITES: "tuple[dos_port.DosDeltas, ...]" = CONVERTS
 
 #: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**
 #: within each byte, where DOS spends one byte per spell for ids 1..117.

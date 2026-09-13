@@ -53,7 +53,7 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from editor import convert, dosimport  # noqa: E402
-from goldbox import c64_codec, c64_port, dos_codec  # noqa: E402
+from goldbox import amiga_savegame, c64_codec, c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
@@ -66,12 +66,12 @@ def specimen_root() -> pathlib.Path:
 
 
 #: Each destination port's writer, and the list it declares.  All three Amiga
-#: rows go through `goldbox.amiga_por.write_por`, which copies `goldbox.dos_codec.write`'s
-#: own report verbatim, so its declared list is the DOS writer's.
+#: title writers convert their embedded records through the DOS writer, so the
+#: declared list is the DOS writer's.
 WRITER_DROPS = {
     "c64": ("goldbox.c64_codec.DROPPED", c64_codec.DROPPED),
     "dos": ("goldbox.dos_codec.WRITE_DROPPED", dos_codec.WRITE_DROPPED),
-    "amiga": ("goldbox.dos_codec.WRITE_DROPPED, via goldbox.amiga_por.write_por",
+    "amiga": ("goldbox.dos_codec.WRITE_DROPPED, via the Amiga title writer",
               dos_codec.WRITE_DROPPED),
 }
 
@@ -119,7 +119,7 @@ def game_files(game):
     return out
 
 
-def sources(root: pathlib.Path):
+def sources(root: pathlib.Path, scratch: pathlib.Path):
     """Every specimen path `editor.convert.Source.detect` accepts."""
     out = []
     for folder in sorted(root.glob("*-dos/WISH-SPEC-*")):
@@ -127,23 +127,56 @@ def sources(root: pathlib.Path):
             out.extend(sorted(folder.glob("SAVGAM?.DAT")))
     out.extend(sorted(root.glob("*-c64/WISH-SPEC-*.[dD]64")))
     out.extend(sorted(root.glob("*-amiga/WISH-SPEC-*/*.adf")))
+    # The later-title specimens are engine-written containers rather than
+    # images.  Put each into a fresh disk so Source.detect and Direction.read
+    # see exactly the ADF path the dialog sees, without altering the specimen.
+    later = (list(root.glob("coab-amiga/WISH-SPEC-*/savgam?.dat"))
+             + list(root.glob("ssb-amiga/WISH-SPEC-*/savgam?.sav")))
+    for index, path in enumerate(sorted(later)):
+        shape = amiga_savegame.detect(path.read_bytes())
+        slot = path.stem[-1]
+        disk = amiga_savegame.make_save_disk(shape, slot, path.read_bytes())
+        image = scratch / f"later-amiga-{index:02d}-{path.parent.name}.adf"
+        image.write_bytes(disk.to_bytes())
+        out.append(image)
     return out
 
 
-def ecl_disk(scratch: pathlib.Path):
-    """A path to an Amiga image carrying `/ecl.dax` -- Pool of Radiance disk
-    2, the `POOLDATA` volume, which both Amiga destinations need."""
+def amiga_game_disks(scratch: pathlib.Path) -> dict[str, pathlib.Path]:
+    """One read-only game-data image for each Amiga destination title."""
     from goldbox.amiga_adf import AmigaDisk
     from tools import amigasaves
+    out: dict[str, pathlib.Path] = {}
+    first: bytes | None = None
     for _label, data in amigasaves.images():
+        if first is None:
+            first = data
         try:
-            AmigaDisk(bytearray(data)).read_file("/ecl.dax")
+            disk = AmigaDisk(bytearray(data))
+            disk.read_file("/ecl.dax")
         except Exception:
-            continue
-        path = scratch / "amiga-disk-2.adf"
-        path.write_bytes(data)
-        return path
-    return None
+            pass
+        else:
+            path = scratch / "pool-amiga-game-data.adf"
+            path.write_bytes(data)
+            out[c64_port.POOL_OF_RADIANCE.key] = path
+        try:
+            disk = AmigaDisk(bytearray(data))
+            disk.read_file("/DISKB/ECL.GLB")
+        except Exception:
+            pass
+        else:
+            path = scratch / "curse-amiga-game-data.adf"
+            path.write_bytes(data)
+            out[c64_port.CURSE_OF_THE_AZURE_BONDS.key] = path
+    # Silver Blades stages no script, but the dialog still requires the
+    # player's game-disk row.  Any discovered image is sufficient to exercise
+    # the writer because it deliberately does not read one.
+    if first is not None:
+        path = scratch / "silver-blades-amiga-game-data.adf"
+        path.write_bytes(first)
+        out[c64_port.SECRET_OF_THE_SILVER_BLADES.key] = path
+    return out
 
 
 def generalise(line: str) -> str:
@@ -160,8 +193,8 @@ def sweep() -> int:
 
     with tempfile.TemporaryDirectory(prefix="convertdrops-") as tmp:
         scratch = pathlib.Path(tmp)
-        disk2 = ecl_disk(scratch)
-        for path in sources(root):
+        amiga_disks = amiga_game_disks(scratch)
+        for path in sources(root, scratch):
             try:
                 source = convert.Source.detect(path)
             except Exception as exc:
@@ -176,7 +209,8 @@ def sweep() -> int:
                     slot = source.slot
                     options = game_files(direction.destination_game)
                 elif direction.destination_port == "amiga":
-                    slot, options = source.slot or "A", disk2
+                    slot = source.slot or "A"
+                    options = amiga_disks.get(direction.destination_game.key)
                 else:
                     slot = "A"
                     stem = DOS_DIRS.get(direction.destination_game.key)
@@ -231,7 +265,7 @@ def sweep() -> int:
 
 def reach() -> int:
     """Which declared drop-list entry any registered direction can reach."""
-    from goldbox import amiga_por
+    from goldbox import amiga_later, amiga_por
     from goldbox.amiga_adf import AmigaDisk
 
     root = specimen_root()
@@ -245,20 +279,26 @@ def reach() -> int:
             party, _icons = dos_codec.c64_party(source.save0, source.save1,
                                           game=c64_port.by_key(source.key))
         else:
-            raw, _savgam = amiga_por.read_por_slot(
-                AmigaDisk.open(str(source.path)), source.slot)
-            party = [dos_codec.to_neutral(c) for c in raw]
+            disk = AmigaDisk.open(str(source.path))
+            if source.key == c64_port.POOL_OF_RADIANCE.key:
+                raw, _savgam = amiga_por.read_por_slot(disk, source.slot)
+                party = [dos_codec.to_neutral(c) for c in raw]
+            else:
+                save = amiga_savegame.read_slot(disk, source.slot, source.key)
+                party = [amiga_later.to_neutral_later(c)
+                         for c in save.characters]
         out: set = set()
         for char in party:
             out |= set(char.keys())
         return out
 
-    for path in sources(root):
-        try:
-            source = convert.Source.detect(path)
-            carried[(source.port, source.key)] |= fields(source)
-        except Exception:
-            continue
+    with tempfile.TemporaryDirectory(prefix="convertdrops-reach-") as tmp:
+        for path in sources(root, pathlib.Path(tmp)):
+            try:
+                source = convert.Source.detect(path)
+                carried[(source.port, source.key)] |= fields(source)
+            except Exception:
+                continue
 
     print("Neutral fields each source port and title was measured to set:")
     for key in sorted(carried):

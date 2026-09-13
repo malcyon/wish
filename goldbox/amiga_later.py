@@ -728,9 +728,10 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     for name in neutral.ABILITIES
 )
 
-#: Fields the read leaves behind, and why.  Every one is reported: a drop that
-#: nobody names is what `docs/117-save-conversion.md` forbids.
-LATER_DROPPED: tuple[tuple[str, str], ...] = (
+#: Fields that need an explicit disposition beyond the copies and transforms
+#: above.  The categories below separate values rebuilt by the destination
+#: from measured constants; neither is a player-data loss.
+LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
     ("item_chain", "live heap state: the head of the Amiga's item list, "
                    "which the loader overwrites with the address it "
                    "allocates. The items themselves are converted"),
@@ -792,6 +793,26 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                       "derives it from the class instead (#299)"),
 )
 
+_LATER_ACCOUNT = dict(LATER_ACCOUNTED)
+
+#: Loader/runtime bookkeeping reconstructed from converted character data.
+LATER_DERIVED: tuple[tuple[str, str], ...] = tuple(
+    (name, _LATER_ACCOUNT[name]) for name in (
+        "item_chain", "item_count", "effect_chain", "heap_104",
+        "hands_used", "strength_bonus", "paladin_cures"))
+
+#: Values measured as fixed across the 70 engine-written character instances
+#: audited for #512.  `field_83_87`'s NPC control byte is converted separately;
+#: the rest of the run is the engine's measured default.
+LATER_CONSTANTS: tuple[tuple[str, str], ...] = tuple(
+    (name, _LATER_ACCOUNT[name]) for name in (
+        "icon_dimension", "portrait_head", "portrait_body", "field_83_87",
+        "spells_castable_unattributed", "turn_class"))
+
+#: There is no remaining player-visible loss.  `unnamed_0ab` now has the
+#: neutral field that already serves DOS and the C64.
+LATER_DROPPED: tuple[tuple[str, str], ...] = ()
+
 #: The plain-English half of `LATER_DROPPED`, and the only one that reaches
 #: the report.  It is read in the debug log and in a `--report` printout
 #: rather than in a pane: Donald ruled on 2026-09-08 that a drop list is this
@@ -805,42 +826,7 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
 #: entry here is a drop the report stays silent about; only the fields whose
 #: loss a player could notice have one, which is the same line
 #: `goldbox/dos_codec.py` draws with `UNREPORTED_DROPS`.
-LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
-    "item_chain": "Item list bookkeeping: the list's own internal links, "
-                  "which the game rebuilds when it loads the party",
-    "effect_chain": "The running-effects list's own internal link; the "
-                    "effects themselves are kept separately",
-    "heap_104": "Internal game state kept only while the game is running, "
-                "not shown to the player",
-    "hands_used": "Which hand is holding a weapon right now; set again the "
-                  "next time the character fights",
-    "unnamed_0ab": "One byte in the character record nobody has identified "
-                   "yet",
-    # icon_head, icon_body and icon_colours came off this table on
-    # 2026-09-07 (#396, #319): the combat icon is DOS's own art, DOS's own
-    # numbering and DOS's own colour pairs, and converts rather than drops.
-    # icon_dimension stays on `LATER_DROPPED` -- the C64 has one size byte
-    # where the Amiga keeps two -- but carries no line here, matching
-    # Donald's ruling on the identical DOS line, 2026-09-06: "All PCs are
-    # the same size, so it doesn't matter. Just leave that line out during
-    # conversions."
-    "portrait_head": "Character portrait (head): the character-creation art "
-                     "this game chooses portraits from has not been read, so "
-                     "the portrait cannot be matched",
-    "portrait_body": "Character portrait (body): the character-creation art "
-                     "this game chooses portraits from has not been read, so "
-                     "the portrait cannot be matched",
-    # No marker on the line below: every entry in this table becomes a drop
-    # line, and a drop line goes to `wish/debuglog.py` rather than to a pane
-    # since Donald's ruling of 2026-09-08 (`.claude/rules/conversions.md`,
-    # *"a drop line is therefore never a string Donald words"*).
-    "field_83_87": "Treasure share: how this character's cut of the "
-                   "party's loot is set has not been converted yet, so it "
-                   "resets to the game's own default",
-    "spells_castable_unattributed": "A fourth list of spell slots that no "
-                                    "character of this game uses and no "
-                                    "class has been shown to own",
-}
+LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {}
 
 #: The one thing the neutral record cannot say about these two titles, and it
 #: is a classification rather than a byte: which effect records are **innate**
@@ -877,11 +863,16 @@ def later_field_disposition(deltas: AmigaDeltas) -> dict[str, str]:
     # engine keeps no fighting level there.
     if "attack_level" in declared:
         direct.append(("attack_level", "attack_level"))
+    if "unnamed_0ab" in declared:
+        direct.append(("unnamed_0ab", "unnamed_0ab"))
     transformed = [(n, why) for n, why in LATER_TRANSFORMED if n in declared]
     dropped = [(n, why) for n, why in LATER_DROPPED if n in declared]
     dropped += [(n, "bytes no field of the DOS table for this title claims")
                 for n in sorted(declared) if n.startswith("gap_")]
-    return neutral.disposition(direct, transformed, dropped, "the neutral")
+    derived = [(n, why) for n, why in LATER_DERIVED if n in declared]
+    constants = [(n, why) for n, why in LATER_CONSTANTS if n in declared]
+    return neutral.disposition(direct, transformed, dropped, "the neutral",
+                               derived=derived, constants=constants)
 
 
 def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
@@ -907,6 +898,13 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     out.set("name", char.name,
             f"the Amiga {AMIGA_NAME_SIZE}-byte NUL-padded name at 0x000",
             grade("name_text"), neutral.Provenance.RESHAPED)
+
+    identity = table["unnamed_0ab"]
+    out.set("unnamed_0ab", char.get("unnamed_0ab"),
+            f"Amiga {deltas.title} unnamed_0ab "
+            f"@{deltas.offset(identity.offset):#05x} "
+            f"({identity.confidence})",
+            identity.confidence)
 
     for name, _ in _dos.DIRECT:
         if name in _dos.ABILITY_ORDER:

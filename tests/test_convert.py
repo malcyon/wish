@@ -245,7 +245,7 @@ def test_destinations_for_lists_pool_of_radiances_registered_directions():
 @pytest.mark.parametrize("shape", [dos_port.CURSE_OF_THE_AZURE_BONDS,
                                    dos_port.SECRET_OF_THE_SILVER_BLADES],
                         ids=lambda s: s.key)
-def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
+def test_destinations_for_a_curse_or_ssb_c64_source_answers_both_directions(
         shape):
     """`#299 (goldbox.dos.write builds only Pool of Radiance's record, so
     nothing can be converted to DOS for the later titles)`'s container
@@ -256,23 +256,25 @@ def test_destinations_for_a_curse_or_ssb_c64_source_answers_the_dos_direction(
     c64_source = convert.Source(port="c64", title=c64_port.by_key(shape.key),
                                 path=pathlib.Path("."))
     directions = convert.destinations_for(c64_source)
-    assert [type(d) for d in directions] == [convert.C64ToDos]
+    assert [type(d) for d in directions] == [convert.C64ToDos,
+                                             convert.C64ToAmiga]
     assert directions[0].destination_game is shape
+    assert directions[1].destination_game is shape
 
 
-def test_directions_holds_ten_rows_derived_from_four_library_tuples():
+def test_directions_holds_eighteen_rows_derived_from_four_library_tuples():
     """Three titles read DOS → C64 (`goldbox.dos_codec.CONVERTS`) and the same
-    three write C64 → DOS (`goldbox.dos_codec.WRITES`, as of `#299`); Pool of
-    Radiance alone reads Amiga → C64 and Amiga → DOS
+    three write C64 → DOS (`goldbox.dos_codec.WRITES`, as of `#299`); all
+    three read Amiga → C64 and Amiga → DOS
     (`goldbox.amiga_shared.CONVERTS`, as of
     `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
     standing in the Slums on the Amiga arrives there in VICE)` and
     `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party
     standing in the Slums on the Amiga arrives there under DOSBox)`), and
-    Pool of Radiance alone writes C64 → Amiga and DOS → Amiga
+    all three write C64 → Amiga and DOS → Amiga
     (`goldbox.amiga_shared.WRITES`, `#316 (Write the Amiga Pool of Radiance saved
     game from the source save, so a converted party arrives where it was
-    standing)`), so the registry holds ten rows -- up from four before
+    standing)`), so the registry holds eighteen rows -- up from four before
     `#299`'s container writer, six before `#353`'s Amiga reader, and eight
     before `#316`'s Amiga saved-game writer.
 
@@ -282,19 +284,19 @@ def test_directions_holds_ten_rows_derived_from_four_library_tuples():
     count would read an Amiga row as a DOS one and pass while the Amiga row
     was missing entirely. `C64ToAmiga` and `DosToAmiga` derive from
     `Direction` directly, so they need no such care."""
-    assert len(convert.DIRECTIONS) == 10
+    assert len(convert.DIRECTIONS) == 18
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.DosToC64) == 3
     assert sum(1 for d in convert.DIRECTIONS
               if type(d) is convert.C64ToDos) == 3
     assert sum(1 for d in convert.DIRECTIONS
-              if type(d) is convert.AmigaToC64) == 1
+              if type(d) is convert.AmigaToC64) == 3
     assert sum(1 for d in convert.DIRECTIONS
-              if type(d) is convert.AmigaToDos) == 1
+              if type(d) is convert.AmigaToDos) == 3
     assert sum(1 for d in convert.DIRECTIONS
-              if type(d) is convert.C64ToAmiga) == 1
+              if type(d) is convert.C64ToAmiga) == 3
     assert sum(1 for d in convert.DIRECTIONS
-              if type(d) is convert.DosToAmiga) == 1
+              if type(d) is convert.DosToAmiga) == 3
 
 
 def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
@@ -307,7 +309,8 @@ def test_destinations_for_a_curse_source_answers_the_curse_c64_direction():
                                   title=dos_port.CURSE_OF_THE_AZURE_BONDS,
                                   path=pathlib.Path("."))
     directions = convert.destinations_for(curse_source)
-    assert [type(d) for d in directions] == [convert.DosToC64]
+    assert [type(d) for d in directions] == [convert.DosToC64,
+                                             convert.DosToAmiga]
     assert directions[0].destination_game is c64_port.CURSE_OF_THE_AZURE_BONDS
 
 
@@ -550,7 +553,8 @@ def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
     assert source.key == dos_port.CURSE_OF_THE_AZURE_BONDS.key
 
     directions = convert.destinations_for(source)
-    assert len(directions) == 1
+    assert [type(direction) for direction in directions] == [
+        convert.DosToC64, convert.DosToAmiga]
     direction = directions[0]
     assert direction.destination_game is c64_port.CURSE_OF_THE_AZURE_BONDS
 
@@ -886,7 +890,8 @@ def test_234_a_dual_classed_curse_character_keeps_his_former_class_through_the_r
     assert source.key == c64_port.CURSE_OF_THE_AZURE_BONDS.key
 
     directions = convert.destinations_for(source)
-    assert len(directions) == 1
+    assert [type(direction) for direction in directions] == [
+        convert.C64ToDos, convert.C64ToAmiga]
     direction = directions[0]
     assert type(direction) is convert.C64ToDos
     assert direction.destination_game is dos_port.CURSE_OF_THE_AZURE_BONDS
@@ -1072,7 +1077,7 @@ def test_a_curse_or_silver_blades_d64_lists_dos(tmp_path, game):
         assert dialog.source.key == game.key
         labels = [dialog.ui.convert_destination.itemData(i)
                  for i in range(dialog.ui.convert_destination.count())]
-        assert labels == ["dos"]
+        assert labels == ["dos", "amiga"]
         assert dialog.ui.convert_destination.currentText() == \
             convert.DESTINATION_LABELS["dos"]
     finally:
@@ -1112,7 +1117,7 @@ def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
     try:
         labels = [dialog.ui.convert_destination.itemData(i)
                  for i in range(dialog.ui.convert_destination.count())]
-        assert labels == ["c64"]
+        assert labels == ["c64", "amiga"]
     finally:
         dialog.close()
 
@@ -2633,21 +2638,21 @@ def test_the_report_pane_carries_no_label_and_no_box(tmp_path):
 # Amiga disk image, not just the character files)`)
 # ---------------------------------------------------------------------------
 
-def test_a_curse_c64_source_is_offered_no_amiga_row():
-    """`goldbox.amiga_shared.WRITES` holds Pool of Radiance alone -- no Amiga
-    saved-game writer exists yet for Curse of the Azure Bonds or Secret of
-    the Silver Blades (`#359`'s step 6) -- so a Curse source is offered only
-    the registered C64 -> DOS row, the same way
-    `test_destinations_for_a_curse_source_answers_the_curse_c64_direction`
-    already proves for the reverse direction."""
+def test_a_curse_c64_source_is_offered_an_amiga_row():
+    """The later-title writer adds Amiga without displacing DOS."""
     from goldbox import amiga_shared
 
-    assert amiga_shared.WRITES == (dos_port.POOL_OF_RADIANCE,)
+    assert amiga_shared.WRITES == (
+        dos_port.POOL_OF_RADIANCE,
+        dos_port.CURSE_OF_THE_AZURE_BONDS,
+        dos_port.SECRET_OF_THE_SILVER_BLADES,
+    )
 
     curse_source = convert.Source(port="c64", title=c64_port.CURSE_OF_THE_AZURE_BONDS,
                                   path=pathlib.Path("."))
     directions = convert.destinations_for(curse_source)
-    assert [type(d) for d in directions] == [convert.C64ToDos]
+    assert [type(d) for d in directions] == [convert.C64ToDos,
+                                             convert.C64ToAmiga]
 
 
 def test_the_files_row_relabels_itself_for_an_amiga_destination(tmp_path):

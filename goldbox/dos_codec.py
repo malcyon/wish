@@ -146,6 +146,7 @@ __all__ = [
     "slots_available",
     "c64_name",
     "to_c64_record",
+    "neutral_to_c64_record",
     "export_party",
     "quest_flags",
     "SHARED_SCRATCH",
@@ -161,6 +162,7 @@ __all__ = [
     "write_c64_save",
     "convert_save",
     "new_save_from",
+    "new_save_from_neutral",
     "new_save",
     "save_disk",
     "WriteReport",
@@ -2262,6 +2264,19 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
                          tables=tables)
 
 
+def _neutral_icon_for(char: NeutralCharacter, source: DosIcon | None,
+                      icon: "bytes | IconParts | None",
+                      tables: "DosIconTables | None" = None) -> bytes | None:
+    """Compose a non-DOS source's already decoded DOS-shaped combat icon."""
+    if not isinstance(icon, IconParts):
+        return icon
+    if source is None:
+        return icon.default_icon()
+    size = "large" if char.get("size_small") else "small"
+    return icon.dos_icon(source.head, source.body, size, source.colours,
+                         tables=tables)
+
+
 def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   portraits: PortraitTables | None = None,
                   ) -> tuple[CharacterRecord, Report]:
@@ -2284,6 +2299,21 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     :func:`c64_name`.
     """
     out = to_neutral(dos, portraits=portraits)
+    return neutral_to_c64_record(out, icon=icon)
+
+
+def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None,
+                          ) -> tuple[CharacterRecord, Report]:
+    """Build one C64 record from an already decoded neutral character.
+
+    This is the core entry point for a non-DOS source.  The copy keeps the
+    destination's name folding local without changing the neutral character
+    that another destination may consume.
+    """
+    out = NeutralCharacter(char.port, source=char.source, game=char.game)
+    out.fields = dict(char.fields)
+    out.dropped = list(char.dropped)
+    out.warnings = list(char.warnings)
     field = out.fields.get("name")
     if field is not None:
         out.set("name", c64_name(str(field.value)),
@@ -5342,10 +5372,11 @@ class C64SaveReport(Report):
 
 def write_c64_save(save0: bytearray, save1: bytearray | None,
                    state: "world_state.WorldState",
-                   party: "list[DosCharacter]",
+                   party: "list[DosCharacter] | list[NeutralCharacter]",
                    icon: "bytes | IconParts | None" = None,
                    animate: bytes | None = None,
                    portraits: PortraitTables | None = None,
+                   neutral_icons: "Sequence[DosIcon | None] | None" = None,
                    game=None) -> C64SaveReport:
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
@@ -5444,18 +5475,28 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     all_faced = True
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
-        rec, one = to_c64_record(
-            char,
-            icon=_icon_for(char, icon,
-                           icon_tables.get(dos_size(char.get("size")))),
-            portraits=portraits)
+        if isinstance(char, NeutralCharacter):
+            source_icon = (neutral_icons[index]
+                           if neutral_icons is not None else None)
+            size = "large" if char.get("size_small") else "small"
+            rec, one = neutral_to_c64_record(
+                char, icon=_neutral_icon_for(
+                    char, source_icon, icon, icon_tables.get(size)))
+            name = str(char.get("name", ""))
+        else:
+            rec, one = to_c64_record(
+                char,
+                icon=_icon_for(char, icon,
+                               icon_tables.get(dos_size(char.get("size")))),
+                portraits=portraits)
+            name = char.name
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
         # engine-written save read.  It follows the slot the record lands in.
         rec.set("party_order", place)
         raw = rec.to_bytes()
-        who = f"slot {place}: {char.name}, {index + 1} in the DOS marching order"
+        who = f"slot {place}: {name}, {index + 1} in the source marching order"
         at = container.slot(place)
         save0[at:at + SLOT_STRIDE] = raw[:SLOT_STRIDE]
         report.note(at, SLOT_STRIDE, f"{who} -- the converted record")
@@ -5502,7 +5543,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         # a ceiling this character's own data hit -- never bookkeeping about
         # the party as a whole -- so every line here is copied to `losses` as
         # well as `warnings` (#399).
-        named = [f"{char.name}: {w}" for w in one.warnings]
+        named = [f"{name}: {w}" for w in one.warnings]
         report.warnings.extend(named)
         report.losses.extend(named)
 
@@ -5715,6 +5756,31 @@ def new_save_from(state: "world_state.WorldState",
     report = write_c64_save(save0, save1 or None, state, party,
                             icon=icon, animate=animate, portraits=portraits,
                             game=container)
+    if report.unwritten:
+        raise DosRecordError(
+            f"{len(report.unwritten)} bytes of the save have no source and "
+            f"were left zero by accident rather than by measurement; the "
+            f"first is {report.address(report.unwritten[0])}")
+    return save0, save1, report
+
+
+def new_save_from_neutral(
+        state: "world_state.WorldState", party: "list[NeutralCharacter]",
+        party_icons: "Sequence[DosIcon | None]", icon: "bytes | IconParts",
+        animate: bytes, game=None,
+        ) -> tuple[bytearray, bytearray, C64SaveReport]:
+    """A whole C64 save from a neutral party and its source combat icons."""
+    if len(party_icons) != len(party):
+        raise DosRecordError(
+            f"the neutral party has {len(party)} characters but "
+            f"{len(party_icons)} combat icons")
+    container = c64_save.container_for(game)
+    save0 = bytearray(container.payload_size)
+    save1 = (bytearray() if container.roster_in_payload
+             else bytearray(container.game.roster_size))
+    report = write_c64_save(
+        save0, save1 or None, state, party, icon=icon, animate=animate,
+        neutral_icons=party_icons, game=container)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "

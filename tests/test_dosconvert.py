@@ -79,6 +79,28 @@ def test_the_spell_id_space_is_shared():
     assert spells.LAST_SPELLBOOK_SPELL == 55
 
 
+def test_an_already_neutral_amiga_character_writes_a_c64_record():
+    """A non-DOS source does not get sent back through the DOS reader."""
+    from goldbox.layout import Confidence
+
+    char = neutral.NeutralCharacter(
+        "Amiga", game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    char.set("name", "Aria", "synthetic Amiga name", Confidence.CONFIRMED)
+    char.set("size_small", 0, "synthetic Amiga size", Confidence.CONFIRMED)
+    char.set("unnamed_0ab", 0x6D, "synthetic Amiga identity",
+             Confidence.CONFIRMED)
+    char.set("encumbrance", 123, "synthetic Amiga encumbrance",
+             Confidence.CONFIRMED)
+
+    rec, report = dos_codec.neutral_to_c64_record(char, icon=bytes(36))
+
+    assert rec.name == "ARIA"
+    assert rec.get_raw("identity_pair") == bytes((0x6D, 0))
+    assert not any("unnamed_0ab" in line for line in report.dropped)
+    assert not any("encumbrance" in line for line in report.dropped)
+    assert dos_codec.field_disposition()["encumbrance"].startswith("derived:")
+
+
 def _plain_row_character(race: int, constitution: int = 13,
                          game: str = "pool-of-radiance"
                          ) -> neutral.NeutralCharacter:

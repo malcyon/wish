@@ -26,22 +26,24 @@ rule against a template. Today that is:
   registry was waiting on, and `#234 (A dual-classed Curse or Silver Blades
   character converted to DOS loses the class he trained out of)`, whose own
   dual-classed Curse character loaded from a save this direction writes);
-* Amiga `.adf` → C64, one row per entry of `goldbox.amiga_shared.CONVERTS` -- Pool
-  of Radiance alone (`goldbox.amiga_por.read_por_slot` then
-  `goldbox.dos_codec.new_save_from`, proven in VICE by
+* Amiga `.adf` → C64, one row per entry of `goldbox.amiga_shared.CONVERTS` --
+  Pool of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades
+  (`goldbox.amiga_por.read_por_slot` or `goldbox.amiga_savegame.read_slot`,
+  then `goldbox.dos_codec.new_save_from`; Pool of Radiance proven in VICE by
   `#353 (Convert an Amiga Pool of Radiance save to the C64, so a party
   standing in the Slums on the Amiga arrives there in VICE)`);
 * Amiga `.adf` → DOS save folder, one row per entry of
-  `goldbox.amiga_shared.CONVERTS` -- Pool of Radiance alone
-  (`goldbox.amiga_por.read_por_slot` then `goldbox.dos_codec.new_dos_save_from`,
-  proven in DOSBox by
+  `goldbox.amiga_shared.CONVERTS` -- the same three titles
+  (`goldbox.amiga_por.read_por_slot` or `goldbox.amiga_savegame.read_slot`,
+  then `goldbox.dos_codec.new_dos_save_from`; Pool of Radiance proven in DOSBox by
   `#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing
   in the Slums on the Amiga arrives there under DOSBox)`);
 * C64 `.D64` → Amiga save disk, and DOS save folder → Amiga save disk, one
-  row each per entry of `goldbox.amiga_shared.WRITES` -- Pool of Radiance alone
-  (`goldbox.amiga_por.new_por_savegame` and `goldbox.amiga_por.make_por_save_disk`,
-  which build the whole `POOLSAVE.ADF` from the source save with no
-  template, proven in two WinUAE runs by
+  row each per entry of `goldbox.amiga_shared.WRITES` -- the same three titles
+  (`goldbox.amiga_por.new_por_savegame` or
+  `goldbox.amiga_savegame.new_savegame`, each building the whole
+  `POOLSAVE.ADF` from the source save with no template; Pool of Radiance
+  proven in two WinUAE runs by
   `#316 (Write the Amiga Pool of Radiance saved game from the source save,
   so a converted party arrives where it was standing)`). The disk this
   writes carries the party; the area's own script comes off the player's own
@@ -112,7 +114,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from goldbox import amiga_por, amiga_shared, c64_port, dos_codec, dos_port, neutral
+from goldbox import (
+    amiga_later,
+    amiga_por,
+    amiga_savegame,
+    amiga_shared,
+    c64_port,
+    dos_codec,
+    dos_port,
+    dos_savegame,
+    neutral,
+    world_state,
+)
 
 # By name rather than as a module: `amiga_port` and `amiga_por` differ by one
 # letter, and only one of them belongs in the line above.
@@ -287,17 +300,26 @@ class Source:
 
         try:
             disk = AmigaDisk.open(str(path))
-            slots = amiga_por.por_slots_present(disk)
-        except (AmigaDiskError, AmigaRecordError, OSError) as exc:
+            por_slots = amiga_por.por_slots_present(disk)
+            later_slots = amiga_savegame.slots_present(disk)
+        except (AmigaDiskError, AmigaRecordError,
+                amiga_savegame.AmigaSaveError, OSError) as exc:
             raise ConvertError(str(exc)) from exc
+        slots = sorted(set(por_slots + later_slots))
         if not slots:
             raise ConvertError(f"{path} holds no Amiga saved game")
         chosen = slot if slot in slots else slots[0]
         try:
-            record = disk.read_file(amiga_por.por_save_path(
-                amiga_por.por_filename(chosen, 1), amiga_por.por_save_drawer(disk)))
-            shape = amiga_shared.amiga_shape_for(len(record))
-        except (AmigaDiskError, AmigaRecordError) as exc:
+            if chosen in later_slots:
+                shape = amiga_savegame.read_slot(
+                    disk, chosen).shape.deltas.dos
+            else:
+                record = disk.read_file(amiga_por.por_save_path(
+                    amiga_por.por_filename(chosen, 1),
+                    amiga_por.por_save_drawer(disk)))
+                shape = amiga_shared.amiga_shape_for(len(record))
+        except (AmigaDiskError, AmigaRecordError,
+                amiga_savegame.AmigaSaveError) as exc:
             raise ConvertError(str(exc)) from exc
         return cls(port="amiga", title=shape, path=path, slot=chosen,
                   available_slots=slots)
@@ -489,12 +511,26 @@ class AmigaToC64(DosToC64):
         from goldbox.amiga_adf import AmigaDisk
 
         disk = AmigaDisk.open(str(source.path))
-        party, savgam = amiga_por.read_por_slot(disk, slot)
-        state = amiga_por.read_por_state(
-            savgam, source=f"{source.path} slot {slot}")
-        save0, save1, report = dos_codec.new_save_from(
-            state, party, options.icon, options.animate,
-            portraits=options.portraits, game=self.destination_game)
+        if self.shape is dos_port.POOL_OF_RADIANCE:
+            party, savgam = amiga_por.read_por_slot(disk, slot)
+            state = amiga_por.read_por_state(
+                savgam, source=f"{source.path} slot {slot}")
+            characters = party
+            party_icons = None
+        else:
+            save = amiga_savegame.read_slot(disk, slot, self.shape.key)
+            state = amiga_savegame.state_from_savegame(save)
+            characters = [amiga_later.to_neutral_later(c)
+                          for c in save.characters]
+            party_icons = [amiga_combat_icon(c) for c in save.characters]
+        if party_icons is None:
+            save0, save1, report = dos_codec.new_save_from(
+                state, characters, options.icon, options.animate,
+                portraits=options.portraits, game=self.destination_game)
+        else:
+            save0, save1, report = dos_codec.new_save_from_neutral(
+                state, characters, party_icons, options.icon, options.animate,
+                game=self.destination_game)
         image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
@@ -710,14 +746,20 @@ class AmigaToDos(C64ToDos):
             raise ConvertError(f"{source.path} names no Amiga save slot")
         game_dir = pathlib.Path(options)
         disk = AmigaDisk.open(str(source.path))
-        party, savgam = amiga_por.read_por_slot(disk, source.slot)
-        state = amiga_por.read_por_state(
-            savgam, source=f"{source.path} slot {source.slot}")
+        if self.shape is dos_port.POOL_OF_RADIANCE:
+            party, savgam = amiga_por.read_por_slot(disk, source.slot)
+            state = amiga_por.read_por_state(
+                savgam, source=f"{source.path} slot {source.slot}")
+            characters = [dos_codec.to_neutral(c) for c in party]
+        else:
+            save = amiga_savegame.read_slot(disk, source.slot, self.shape.key)
+            state = amiga_savegame.state_from_savegame(save)
+            party = list(save.characters)
+            characters = [amiga_later.to_neutral_later(c) for c in party]
         # The Amiga file order **is** the DOS file order (`docs/165-amiga-
         # savegame.md`), so there is no reversal here; `goldbox.dos_codec.
         # marching_slot` and `c64_party`'s own `reverse()` are the C64's
         # business and `#101`'s.
-        characters = [dos_codec.to_neutral(c) for c in party]
         icons = [amiga_combat_icon(c) for c in party]
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
@@ -761,6 +803,7 @@ POOLSAVE_FILENAME = "POOLSAVE.ADF"
 #: on disk 2, the `POOLDATA` volume. `tools/toamigapor.py`'s own `ECL_DAX`,
 #: repeated here because that module is a script this one must not import.
 _ECL_DAX_PATH = "/ecl.dax"
+_ECL_GLB_PATH = "/DISKB/ECL.GLB"
 
 
 @dataclasses.dataclass
@@ -833,6 +876,46 @@ def _rehearse_por_savegame(state: Any, slot: str, party: list,
         savegame)
 
 
+def _rehearse_later_savegame(state: Any, shape: dos_port.DosDeltas,
+                             slot: str, party: list,
+                             ecl_glb: bytes | None,
+                             icons: "list | None" = None,
+                             ) -> AmigaWriteRehearsal:
+    """Build a fresh Curse or Silver Blades saved game and disk."""
+    savegame, report = amiga_savegame.new_savegame(
+        state, party, slot, ecl_glb=ecl_glb, icons=icons)
+    disk = amiga_savegame.make_save_disk(shape.key, slot, savegame)
+    return AmigaWriteRehearsal(
+        report, {POOLSAVE_FILENAME: disk.to_bytes()}, party, state, slot,
+        savegame)
+
+
+def _amiga_destination_data(shape: dos_port.DosDeltas,
+                            options: "str | pathlib.Path") -> bytes | None:
+    """The one game-data file a fresh save needs, when it needs one."""
+    if shape is dos_port.SECRET_OF_THE_SILVER_BLADES:
+        return None
+    from goldbox.amiga_adf import AmigaDisk
+
+    path = (_ECL_DAX_PATH if shape is dos_port.POOL_OF_RADIANCE
+            else _ECL_GLB_PATH)
+    return AmigaDisk.open(str(options)).read_file(path)
+
+
+def _rehearse_amiga_savegame(state: Any, shape: dos_port.DosDeltas,
+                             slot: str, party: list,
+                             game_data: bytes | None,
+                             icons: "list | None" = None,
+                             ) -> AmigaWriteRehearsal:
+    if shape is dos_port.POOL_OF_RADIANCE:
+        if game_data is None:
+            raise AmigaRecordError("Amiga Pool of Radiance needs ecl.dax")
+        return _rehearse_por_savegame(
+            state, slot, party, game_data, icons=icons)
+    return _rehearse_later_savegame(
+        state, shape, slot, party, game_data, icons=icons)
+
+
 class C64ToAmiga(Direction):
     """A C64 save becomes an Amiga save disk, for any title in
     `goldbox.amiga_shared.WRITES` (#316, #36).
@@ -871,13 +954,13 @@ class C64ToAmiga(Direction):
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None) -> AmigaWriteRehearsal:
-        from goldbox.amiga_adf import AmigaDisk
-
-        ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
+        game_data = _amiga_destination_data(self.shape, options)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
                                      game=self.title, icon_parts=icon_parts)
-        state = amiga_por.por_state_from_c64(source.save0, str(source.path))
-        return _rehearse_por_savegame(state, "A", party, ecl_dax, icons=icons)
+        state = world_state.from_c64(
+            source.save0, game=self.title, source=str(source.path))
+        return _rehearse_amiga_savegame(
+            state, self.shape, "A", party, game_data, icons=icons)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
@@ -915,15 +998,13 @@ class DosToAmiga(Direction):
 
     def rehearse(self, source: Source, slot: str,
                 options: "str | pathlib.Path") -> AmigaWriteRehearsal:
-        from goldbox.amiga_adf import AmigaDisk
-
         if not source.slot:
             # Unreachable through `Source.detect`, whose DOS branches always
             # name a slot; only a caller building a `Source` by hand can get
             # here, mirroring `AmigaToDos.rehearse`'s own guard.
             raise ConvertError(f"{source.path} names no DOS save slot")
         letter = source.slot
-        ecl_dax = AmigaDisk.open(str(options)).read_file(_ECL_DAX_PATH)
+        game_data = _amiga_destination_data(self.shape, options)
         raw_party = dos_codec.read_party(source.path, letter)
         party = [dos_codec.to_neutral(c) for c in raw_party]
         # `amiga_combat_icon` is duck-typed to `goldbox.dos_codec.DosCharacter`
@@ -932,11 +1013,13 @@ class DosToAmiga(Direction):
         # `AmigaToDos.rehearse` already uses for an Amiga source (#424,
         # mirroring #422's fix for a C64 source).
         icons = [amiga_combat_icon(c) for c in raw_party]
-        savgam_path = pathlib.Path(source.path) / f"SAVGAM{letter}.DAT"
-        state = amiga_por.por_state_from_dos(savgam_path.read_bytes(),
-                                         str(savgam_path))
-        return _rehearse_por_savegame(state, letter, party, ecl_dax,
-                                      icons=icons)
+        container = dos_savegame.container_for(self.shape.key)
+        savgam_path = pathlib.Path(source.path) / (
+            f"SAVGAM{letter}{container.suffix}")
+        state = world_state.from_dos(
+            savgam_path.read_bytes(), container, source=str(savgam_path))
+        return _rehearse_amiga_savegame(
+            state, self.shape, letter, party, game_data, icons=icons)
 
     def write(self, rehearsal: AmigaWriteRehearsal,
              folder: str | pathlib.Path) -> list[pathlib.Path]:
@@ -952,9 +1035,8 @@ class DosToAmiga(Direction):
 #: Silver Blades, both ways -- one
 #: Amiga → C64 row and one Amiga → DOS row per entry of
 #: `goldbox.amiga_shared.CONVERTS`, and one C64 → Amiga row and one DOS → Amiga row
-#: per entry of `goldbox.amiga_shared.WRITES` -- Pool of Radiance alone for every
-#: Amiga tuple. See the module docstring for what would extend this and the
-#: issues it waits on.
+#: per entry of `goldbox.amiga_shared.WRITES` -- Pool of Radiance, Curse of
+#: the Azure Bonds and Secret of the Silver Blades for every Amiga tuple.
 #: `UnnamedConversionError` fires here, at import time, if `CONVERTS` ever
 #: names a title `DOS_TO_C64_NAMES` does not; `c64_port.UnknownGameError` does
 #: the same for `WRITES` and a title with no C64 game at all.
@@ -1007,9 +1089,8 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 def destinations_for(source: Source) -> list[Direction]:
     """Every registered direction this source can be converted to.
 
-    Empty for anything not in `DIRECTIONS` -- an Amiga Curse or Silver
-    Blades disk, a C64 save with no Amiga writer registered -- which is the
-    whole point: an unready direction is never offered and never refused.
+    Empty for anything not in `DIRECTIONS`. An unready direction is never
+    offered and never refused.
     """
     return [d for d in DIRECTIONS
            if d.source_port == source.port and d.source_key == source.key]
@@ -1098,8 +1179,9 @@ def fresh_folder(destination: str | pathlib.Path,
 #: outstanding: the earlier ten walks spanned different trees, and Donald
 #: ruled on 2026-09-10 that all ten must be repeated at one commit. `#512
 #: (Convert an Amiga Curse or Silver Blades save in either direction, since
-#: the dialog refuses both titles and blames the player's file)` adds four
-#: directions, so the final walk is fourteen directions after it lands.
+#: the dialog refuses both titles and blames the player's file)` adds eight
+#: directions -- four per title -- so the final walk is eighteen directions
+#: after it lands.
 #: `tools/convertbytes.py --tree <commit>` is the re-check; (6) `File ▸
 #: Convert…` opens the Convert window directly, with no file picker in
 #: front of it -- met 2026-09-07 (`1616a53`),
@@ -1131,7 +1213,7 @@ def fresh_folder(destination: str | pathlib.Path,
 #: ten registered directions.
 #:
 #: **(9) The dialog converts Pool of Radiance, Curse of the Azure Bonds and
-#: Secret of the Silver Blades on every platform it offers.** The four Amiga
+#: Secret of the Silver Blades on every platform it offers.** The eight Amiga
 #: Curse and Silver Blades directions are outstanding in `#512 (Convert an
 #: Amiga Curse or Silver Blades save in either direction, since the dialog
 #: refuses both titles and blames the player's file)`. Pools of Darkness has

@@ -716,6 +716,11 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set(c64_name, v.value)
         emit(v, c64_name, dst.offset, dst.size)
 
+    # The C64 stores no encumbrance total.  Its own runtime recomputes what
+    # it needs from the inventory, so consuming the source value here records
+    # a derived disposition without turning bookkeeping into a reported loss.
+    use("encumbrance")
+
     # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
     # -----------------------------------------------------------------------
     # DOS and Amiga store the plain class row and apply the constitution
@@ -1444,8 +1449,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
 DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "the C64 computes its own from race, so a source's value "
                     "is recomputed rather than copied"),
-    ("encumbrance", "derived -- the C64 has no such field and recomputes what "
-                    "it needs"),
+)
+
+DERIVED: tuple[tuple[str, str], ...] = (
+    ("encumbrance", "the C64 has no stored total and recomputes what it needs "
+                    "from the inventory"),
 )
 
 
@@ -1459,7 +1467,7 @@ def field_disposition() -> dict[str, str]:
     added to `goldbox/neutral.py`'s `FIELDS` and never wired up here.
     """
     return neutral.disposition(DIRECT, TRANSFORMED, DROPPED,
-                               "the C64 record's")
+                               "the C64 record's", derived=DERIVED)
 
 
 # ---------------------------------------------------------------------------

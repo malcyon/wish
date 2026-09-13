@@ -2939,17 +2939,23 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
         assert out.get("npc") is True, shape.key
         assert out.get("npc_control_byte") == 0xFF, shape.key
 
-        # The player-facing `field_83_87` line used to say the whole run
-        # "makes no difference to the character sheet", which stopped being
-        # true the moment the control byte above started reaching `npc` --
-        # `editor/window.py` and `editor/roster.py` draw a companion
-        # differently.  It still fires, for the one byte that remains
-        # genuinely unconverted (the treasure share), and must not claim the
-        # control byte is among the bytes that make no difference.
-        f83_lines = [d for d in out.dropped if d.startswith("Treasure share")]
-        assert f83_lines, (shape.key, out.dropped)
-        assert "make no difference" not in f83_lines[0]
-        assert "control" not in f83_lines[0].lower()
+        # The other bytes are the engine's measured default, so the reader
+        # reports no loss for this run after extracting the control byte.
+        assert not [d for d in out.dropped if "Treasure share" in d]
+
+
+def test_a_later_amiga_identity_byte_reaches_the_neutral_record():
+    """The 0x0AB identity byte varies per character and has an existing
+    neutral home, so both later Amiga readers copy it rather than report it
+    lost."""
+    for shape in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        raw = bytearray(shape.record_size)
+        raw[:6] = b"TESTER"
+        f = shape.dos_field("unnamed_0ab")
+        raw[shape.offset(f.offset)] = 0x6D
+        char = amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
+        out = amiga_later.to_neutral_later(char)
+        assert out.get("unnamed_0ab") == 0x6D, shape.key
 
 
 def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
@@ -3015,7 +3021,7 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
     seen = 0
     for char in _later_parties():
         out = amiga_por.to_neutral(char)
-        assert out.dropped, char.name
+        assert not out.dropped, (char.name, out.dropped)
         for line in out.dropped + out.warnings:
             assert not hex_offset.search(line), (char.name, line)
             assert not bare_issue.search(line), (char.name, line)
