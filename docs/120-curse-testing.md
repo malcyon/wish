@@ -273,23 +273,31 @@ north, clock `3:41`, area byte `$01`, against a status line reading
 it settles the area byte this document left PROBABLE for want of a boundary
 crossing.
 
-### 3.2 The disk prompt cannot be answered by this harness
+### 3.2 Initial entry avoids the disk prompt; a raised prompt still loops
 
-**`INSERT SIDE # 2, AND PRESS ANY KEY.` loops forever with side 2 in the
-drive.** The routine at `$453B` leaves only by a key the game reads out of the
-KERNAL buffer (`$C6`/`$0277`, through `$2FD7`), by the joystick fire button
-(`$DC00 & $1F == $0F`), and then only if `$406C` -- send `I` on the drive's
-command channel, read the error channel back through `$401E` -- answers `00`.
-`$03F1` held `$3E`, DOS error 62 FILE NOT FOUND, continuously. Three
-explanations were measured and all three are **negative**: the game's own
-fastloader left on, a stock VICE kernal and 1541-II DOS instead of JiffyDOS,
-and a rip whose six sides are all one version.
+**CONFIRMED: `INSERT SIDE # 2, AND PRESS ANY KEY.` keeps looping after the
+harness attaches side 2 and supplies a KERNAL-buffer Space.** A breakpoint at
+`$4567`, immediately after the prompt's `JSR $2FD7`, read A=`$20`, `$C6`=`$00`
+and `$03CB`=`$20`: the key reaches and passes the first gate, contrary to the
+earlier account. The routine then calls the drive command/status path at
+`$459C` and branches back at `$459F`; `$03F1` remained `$3E`. The second gate
+is the **PROBABLE** remaining block because its precise post-call return value
+has not been traced. The game's own fastloader, stock VICE kernal and 1541-II
+DOS, and a rip whose six sides are all one version were each tested and did not
+make an already-raised prompt leave.
 
-`CurseSession.patch_disk_prompt` in `tools/curserun.py` `NOP`s the two loop-back
-branches at `$459A` and `$459F`, checking the original bytes first, so the
-routine falls through to its retry -- which succeeds as soon as `handle_prompt`
-has attached the side the prompt named. It is a disk-swap confirmation and not
-the release's start-up check.
+**CONFIRMED for one clean engine-written specimen: the initial entry needs no
+prompt patch.** Its loaded save held `$02` at `$4BEE` -- save base `$4B00` plus
+Curse's disk-hint offset `$EE`. `CurseSession.begin_adventuring` now mounts
+`SIDE2.D64` before selecting `BEGIN ADVENTURING`; the driven command reached
+the world bar and live position with the original `$459A = D0 A9` and
+`$459F = D0 A4` branches intact. This confirms the initial party-menu path,
+not later side transitions.
+
+`CurseSession.patch_disk_prompt` remains the checked fallback for a prompt
+that has already been raised: it `NOP`s those two loop-back branches so the
+routine falls through to its retry after `handle_prompt` attaches the named
+side. Later side transitions have not been proven without that patch.
 
 **Curse asks for a disk in three wordings and Pool of Radiance's needle matches
 only one.** `INSERT SIDE # n, AND PRESS ANY KEY.`, `INSERT CURSE SAVE DISK,

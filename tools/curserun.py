@@ -131,16 +131,19 @@ def stage(slot, disks: str, save: str = "") -> str:
 #:
 #: The routine at `$453B` draws the prompt and then loops, leaving only two
 #: ways out: a key the game reads out of the KERNAL buffer at `$C6`/`$0277`
-#: (`$2FD7`), or the joystick fire button (`$DC00 & $1F == $0F`).  Neither
-#: reaches it here -- an XTEST keypress lands in `$0277`, and the loop still
-#: does not take its exit -- so the game asks for a disk that is already in
-#: the drive for as long as anybody is willing to watch.
+#: (`$2FD7`), or the joystick fire button (`$DC00 & $1F == $0F`).  An XTEST
+#: Space did not leave this loop.  A KERNAL-buffer Space does reach its key
+#: path: a breakpoint at `$4567`, immediately after `$2FD7`, read A=`$20` and
+#: `$C6`=`$00`.  The prompt still looped, with the live error byte at `$03F1`
+#: holding `$3E`; the second gate is therefore the probable remaining block.
 #:
 #: `$459A` is `BNE $4545`, the loop back when no key arrived; `$459F` is
 #: `BNE $4545`, the loop back when the drive's error channel is not `00`.
 #: With both `NOP`ped the routine falls through to the retry every pass, and
 #: the retry succeeds as soon as the harness has attached the side the prompt
-#: named -- which `handle_prompt` does the moment it sees it.
+#: named -- which `handle_prompt` does the moment it sees it.  A loaded party's
+#: first entry avoids this prompt instead: `begin_adventuring` mounts the side
+#: named by the save before the game attempts the file lookup.
 #:
 #: This is a disk-swap confirmation, not the release's start-up check, and it
 #: is applied to RAM in a driven session only.
@@ -461,6 +464,26 @@ class CurseSession(por.Session):
         self.log("disk prompt patched at $459A and $459F")
         return True
 
+    def begin_adventuring(self) -> bool:
+        """Put the saved area's side in the drive before asking to enter it.
+
+        Curse copies the save's disk hint into the loaded save page before it
+        redraws the party menu.  Inserting that side here avoids the failed
+        first lookup that raises the title's unanswerable disk-swap prompt;
+        the prompt patch remains available to tools that cross sides later.
+        """
+        container = self.machine.container
+        if container is not None:
+            address = self.machine.save_load_address + container.disk_hint
+            with self.mon(5) as m:
+                side = m.read(address, 1)[0]
+            if 1 <= side <= len(SIDES):
+                want = f"{self.here}/SIDE{side}.D64"
+                if os.path.abspath(want) != self.attached:
+                    self.log(f"  saved disk hint -> {os.path.basename(want)}")
+                    self.attach(want)
+        return super().begin_adventuring()
+
     def handle_prompt(self, s=None) -> bool:
         if time.time() - self._last_prompt < 2.0:
             return False
@@ -483,7 +506,7 @@ class CurseSession(por.Session):
         if os.path.abspath(want) != self.attached:
             self.log(f"  prompt -> {os.path.basename(want)}")
             self.attach(want)
-        self.kbd.key("space")
+        self.press_kernal(0x20)
         return True
 
     def boot(self) -> bool:
