@@ -3076,7 +3076,8 @@ def attack_level_written(deltas: DosDeltas, class_levels: Mapping[str, int],
 
 
 def identity_byte(record: bytes | bytearray,
-                  deltas: "int | str | DosDeltas | None" = None) -> int:
+                  deltas: "int | str | DosDeltas | None" = None,
+                  counter: int = 0) -> int:
     """The `unnamed_0ab` byte for a record, derived from the rest of it.
 
     The engine draws this at random when it creates a character, and uses it
@@ -3100,7 +3101,41 @@ def identity_byte(record: bytes | bytearray,
     f = FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
     body = bytearray(record)
     body[f.offset:f.end] = bytes(f.size)
+    if counter:
+        # Party writers use this only after finding the same name and digest
+        # together.  Folding their stable position into this otherwise pure
+        # input keeps a second conversion byte-for-byte identical.
+        body.extend(counter.to_bytes(1, "little"))
     return hashlib.blake2b(bytes(body), digest_size=1).digest()[0]
+
+
+def _deduplicate_party_identities(
+        built: "Sequence[tuple[NeutralCharacter, bytes, bytes, bytes, WriteReport]]",
+        deltas: DosDeltas
+        ) -> "list[tuple[NeutralCharacter, bytes, bytes, bytes, WriteReport]]":
+    """Give same-named party members different identity bytes.
+
+    The DOS engine only compares this byte after the names already agree, so
+    different names deliberately share the one-byte digest's collision space.
+    A source-held identity remains untouched unless it is the later half of a
+    colliding same-named pair; then the party's usable identity wins.
+    """
+    field = FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
+    used: dict[str, set[int]] = {}
+    result = []
+    for char, rec, itm, spc, report in built:
+        record = bytearray(rec)
+        name = str(char.get("name", ""))
+        identities = used.setdefault(name, set())
+        identity = record[field.offset]
+        counter = 0
+        while identity in identities:
+            counter += 1
+            identity = identity_byte(record, deltas, counter)
+        record[field.offset] = identity
+        identities.add(identity)
+        result.append((char, bytes(record), itm, spc, report))
+    return result
 
 
 #: The DOS shapes :func:`write` will build a record for -- the same three
@@ -6912,6 +6947,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         record = bytearray(rec)
         record[order] = position
         built.append((char, bytes(record), itm, spc, one))
+    built = _deduplicate_party_identities(built, record_shape)
 
     # The unit a conversion overwrites is the *slot*, not the characters this
     # party happens to fill.  Converting one character into a directory that

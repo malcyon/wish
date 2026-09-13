@@ -1346,6 +1346,88 @@ def test_the_identity_byte_is_the_same_on_a_second_write():
     assert first[f.offset:f.end] == second[f.offset:f.end]
 
 
+def test_same_named_party_members_get_stable_distinct_identity_bytes():
+    """Two imports of one character cannot become one roster entry.
+
+    The records are deliberately identical, the collision a one-byte digest
+    cannot avoid alone.  A different name with the same staged byte is the
+    control: the engine never compares that pair, so the party pass must not
+    alter it.
+    """
+    field = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
+    made_up = "made up: #528's duplicate import"
+    first = _filled()
+    second = _filled()
+    first.set("name", "DUPLICO", made_up)
+    second.set("name", "DUPLICO", made_up)
+    first_record, first_itm, first_spc, first_report = dos_codec.write(first)
+    second_record, second_itm, second_spc, second_report = dos_codec.write(second)
+    assert first_record == second_record
+
+    built = [(first, first_record, first_itm, first_spc, first_report),
+             (second, second_record, second_itm, second_spc, second_report)]
+    adjusted = dos_codec._deduplicate_party_identities(
+        built, dos_port.POOL_OF_RADIANCE)
+    repeated = dos_codec._deduplicate_party_identities(
+        built, dos_port.POOL_OF_RADIANCE)
+    identities = [record[field.offset] for _, record, *_ in adjusted]
+    assert len(set(identities)) == 2
+    assert adjusted == repeated
+
+    control = _filled()
+    control.set("name", "NOT DUPLICO", made_up)
+    control_record, control_itm, control_spc, control_report = dos_codec.write(control)
+    staged = bytearray(control_record)
+    staged[field.offset] = identities[0]
+    separate_names = dos_codec._deduplicate_party_identities(
+        [(first, first_record, first_itm, first_spc, first_report),
+         (control, bytes(staged), control_itm, control_spc, control_report)],
+        dos_port.POOL_OF_RADIANCE)
+    assert [record[field.offset] for _, record, *_ in separate_names] == \
+        [identities[0], identities[0]]
+
+
+def test_the_party_writer_de_duplicates_same_named_identities(tmp_path,
+                                                               monkeypatch):
+    """The shared party path changes only a same-named collision.
+
+    `write_dos_save` and `new_dos_save` both reach `write_dos_save_from`, so
+    its synthetic save is enough to exercise both public C64 entry points
+    without a player's game files.  The container writes are outside this
+    record-only regression and are stubbed rather than imitated.
+    """
+    from goldbox import areas
+
+    field = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
+    made_up = "made up: #528's duplicate import"
+    first = _filled()
+    second = _filled()
+    first.set("name", "DUPLICO", made_up)
+    second.set("name", "DUPLICO", made_up)
+    state = world_state.WorldState(
+        title=areas.POOL_OF_RADIANCE, area=0, geo=0, x=0, y=0, facing=0,
+        clock=(0,) * 6, wallset=(0, 0, 0), flags=(), scratch={},
+        outdoors=False, travel=(0, 0), set_out=True, header={})
+    where = areas.area_in(0, areas.POOL_OF_RADIANCE)
+    assert where is not None
+    monkeypatch.setattr(dos_codec, "_area_dax", lambda *args: (where, 1))
+    monkeypatch.setattr(dos_codec, "_area_script", lambda *args: b"")
+    monkeypatch.setattr(dos_codec, "portrait_tables", lambda *args: (None, ""))
+    monkeypatch.setattr(dos_codec, "savgam_writes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *args: None)
+
+    def written(out):
+        dos_codec.write_dos_save_from(state, [first, second], None, out, "A")
+        return [(out / f"CHRDATA{number}.SAV").read_bytes()
+                for number in (1, 2)]
+
+    first_run = written(tmp_path / "first")
+    second_run = written(tmp_path / "second")
+    assert [record[field.offset] for record in first_run] == \
+        [record[field.offset] for record in second_run]
+    assert len({record[field.offset] for record in first_run}) == 2
+
+
 @needs_dos_saves
 def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
     """On the real specimens, and distinct within each party.
