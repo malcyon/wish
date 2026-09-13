@@ -66,7 +66,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [130-preferences.md](130-preferences.md) | `File > Preferences…` (`Ctrl+,`): where the game disks are, which live backend, the debug log — built |
 | [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — measured; it does not |
 | [132-logo.md](132-logo.md) | the app icon: game-icons.net's `pointy-hat` (Lorc), generated from `ui/icons.py` — `hat-wizard` was the original stand-in and is superseded, `#167 (Replace the remaining Font Awesome icons with game-icons.net ones)` — built and wired |
-| [133-active-effects.md](133-active-effects.md) | editing active effects: the `SAVEDGAME0` arrays distinct from the record's traits, and what the UI to edit them would need — planned |
+| [133-active-effects.md](133-active-effects.md) | the built Character Traits editor and read-only save-wide active-effects panel: distinct record and `SAVEDGAME0` arrays, their shared id table, and the remaining duration and magnitude measurements |
 | [134-commissions.md](134-commissions.md) | the council's ledger, its progress markers, the offer board and the byte two scripts share |
 | [135-levelling.md](135-levelling.md) | what the training hall writes, routine by routine, and the button that does it without walking there |
 | [136-condition-badges.md](136-condition-badges.md) | the nine condition badges — drawn on a roster card for a spell that landed on one character and on the automapper's bottom strip for one that landed on the whole party — which effect ids each covers, and what all ten game-icons.net glyphs measure at 13 px, including the one that draws nothing there |

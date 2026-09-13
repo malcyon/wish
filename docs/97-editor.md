@@ -13,19 +13,19 @@ and it is why the live automapper is a separate `automap/` package.
 
 ## The `.ui` file is the layout, and it is meant to be edited
 
-The form is `editor/character.ui`, a Qt Designer file **compiled to Python** by
+The form is `wish/window.ui`, a Qt Designer file **compiled to Python** by
 `tools/genui.py`, which wraps `pyuic6`:
 
 ```
-editor/character.ui   --pyuic6-->   editor/ui_character.py
+wish/window.ui   --pyuic6-->   wish/ui_window.py
 ```
 
 That matches how everything else generated in this repo works — `gendocs.py`,
 `genitems.py`, `genspells.py`, `genmaps.py` — and it means the generated module
 can be read, and gives autocompletion for every widget on the form.
 
-**The loop is: open `character.ui` in Designer, drag fields around, save,
-restart the editor.** `editor/window.py` compares mtimes at startup and
+**The loop is: open `wish/window.ui` in Designer, drag fields around, save,
+restart Wish.** `tools.genui.ensure_current()` compares mtimes at startup and
 regenerates when the `.ui` is newer than the `.py`, so there is no separate
 build step to forget and no way to run a stale form. `tools/genui.py` exists for
 CI and for building a wheel, where `pyuic6` should not be a runtime dependency.
@@ -484,10 +484,11 @@ editor/
   spellwidget.py    the spellbook and the memorised list, promoted
   enums.py          race/class/alignment/sex, per title, from goldbox/yaml_io.py
   changes.py        what a save would write, in --dry-run's form
-  character.ui      the form -- EDIT THIS in Qt Designer
-  ui_character.py   generated from it; do not edit
   palette.py        the sixteen C64 colours as QColor
-tools/genui.py      character.ui -> ui_character.py
+wish/
+  window.ui         the form -- EDIT THIS in Qt Designer
+  ui_window.py      generated from it; do not edit
+tools/genui.py      window.ui -> ui_window.py
 ```
 
 `goldbox/` gains nothing except the shared-colour constants once they are measured.
@@ -506,7 +507,7 @@ The editor is a consumer of the library, not an extension of it.
 3. `roster.py` -- the party model, headless-testable: open each of the three
    file kinds, list who is in them, and report AC and HP where a `SAVEDGAME1`
    exists. `PORSAVE10.D64` is the specimen that proves the roster-disk path.
-4. `character.ui` with a first pass at the sheet, `tools/genui.py`, and
+4. `wish/window.ui` with a first pass at the sheet, `tools/genui.py`, and
    `window.py` to build and bind it. **Prove the rearrange-in-Designer loop
    works before adding more fields** — move one field in Designer, save,
    restart, confirm it still binds and is still read-only or editable as
@@ -531,13 +532,13 @@ The editor is a consumer of the library, not an extension of it.
 * `pytest tests/test_editor_binding.py` — the binding and read-only rules, run
   headless. `QT_QPA_PLATFORM=offscreen` makes widget tests work in CI too; the
   automapper's window is already smoke-tested that way.
-* Open `character.ui` in Qt Designer, move a field to a different group box,
+* Open `wish/window.ui` in Qt Designer, move a field to a different group box,
   save, restart: the field must still bind and still be editable or read-only
   as before, with no code edited and no command run in between. That is the
   requirement this design exists to meet.
   `tests/test_editor.py::test_moving_a_box_in_designer_needs_no_code_change`
   does the same thing to a whole box, in a copy of the form.
-* `git status` must be clean after a rebuild — if `ui_character.py` differs, the
+* `git status` must be clean after a rebuild — if `ui_window.py` differs, the
   committed copy was stale.
 * Render every icon on `PORSAVE11.D64` and compare against a screenshot of the
   party in combat. The icons must match pixel for pixel; if the shared colours

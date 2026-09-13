@@ -93,7 +93,7 @@ differs on every machine. The drift worth catching is in the widgets.
 are actual errors, and import ordering. Deliberately **not** `E501` —
 `goldbox/layout.py` is the field documentation and its notes are meant to be read,
 not wrapped to 88 columns; enabling it wanted 60 rewraps across files whose
-prose is the point. `editor/ui_character.py` is excluded outright: pyuic6 writes
+prose is the point. `wish/ui_window.py` is excluded outright: pyuic6 writes
 it.
 
 Nothing else is on yet. `ruff format` and mypy on `goldbox/` remain the next
@@ -159,8 +159,8 @@ console to borrow and nothing inherited.
 `tests/test_packaging.py` covers the choice; the Windows half of it is
 **unverified**, because nothing here runs Windows.
 
-**No data files.** `editor/character.ui` is compiled ahead of time into
-`editor/ui_character.py`, and `wish/__main__.py` now skips the Designer
+**No data files.** `wish/window.ui` is compiled ahead of time into
+`wish/ui_window.py`, and `wish/__main__.py` now skips the Designer
 recompile when `tools.genui` is not importable — which it is not in a frozen
 build, and which used to be an unconditional `ImportError` in an installed wheel
 too. Settings and map notes live in the user's own directories
