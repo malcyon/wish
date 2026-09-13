@@ -7335,3 +7335,65 @@ are neither reproducible nor observations. Curse's DOS record allots 84 slots
 and never 6, and Pool of Radiance's book is 56 ids and never 64. They are
 illustrative strings, written to show the shape of the two lines; the tickets
 are about the conditions, and the conditions are above.
+
+## Dirten inherits a legacy import's zero combat icon
+
+[`#533 (A joined NPC has no combat icon, and the editor draws the absence as a
+black rectangle)`](https://github.com/malcyon/wish/issues/533) and
+[`#363 (A DOS-to-C64 conversion writes zero into the two NPC-only combat-icon
+slots instead of the engine's own seeded default)`](https://github.com/malcyon/wish/issues/363).
+
+**The source and the related save are different evidence.** The supplied
+`TEST_DOS_IMPORT.D64` is 174848 bytes, SHA-256
+`c5519e83247373675bcf78383b19901ac84b62ad677192f04c4b74919c9a5ffc`.
+Its six player characters occupy slots 0-5; slots 6 and 7 are empty and both
+36-byte NPC-only icon entries are zero. It does not contain DIRTEN. A stable
+read-only snapshot matched that hash before and after copying.
+
+The explicitly related `TEST_DOS_IMPORT6.D64`, SHA-256
+`9217a34736c8e0cff8ba11b51116a345ba8091bbfe4ce499935413bde3bdce53`,
+does contain DIRTEN in slot 7. Its roster status is `$83E0 = $01`, its
+slot-index byte is `$83ED = $07`, and its icon is 36 zero bytes at
+`SAVEDGAME0` address `$4CDC-$4CFF`, payload `+$3DC-+$3FF`. The whole
+288-byte icon table is byte-identical in the six related saves
+`TEST_DOS_IMPORT.D64`, `TEST_DOS_IMPORT2.D64`, `TEST_DOS_IMPORT3.D64`,
+`TEST_DOS_IMPORT4.D64`, `TEST_DOS_IMPORT5.D64` and
+`TEST_DOS_IMPORT6.D64`, SHA-256
+`bcbf82f2014c22849e8ace903af03178e6915a9df11cc7f5fe87bd3936fc39a3`.
+**These on-disk facts are CONFIRMED.** The icon table is unchanged between
+these related saves, including the one containing DIRTEN; recruitment itself
+was not observed. They do not by themselves say which save was mounted for a
+later screenshot.
+
+**The photographed shape is CONFIRMED.** Screenshot
+`Screenshot_2026-09-13_15-11-51.png`, SHA-256
+`925c9dde712b8dc469e05a96fd783cd169c8084ae7a4abca45f6d24a0fcd5004`,
+shows the eight rows of `CHARPIC00` glyph 0 repeated across a 3x3 pose. At the
+screenshot's 3x4 scale, its black-versus-grey pixels match the expected glyph
+in **576 of 576 logical pixels**. Zero screen codes select that real glyph and
+zero colour bytes draw it black; this is not evidence of a damaged shared
+charset or an invalid colour nibble.
+
+**That the photographed figure was drawn from this exact slot-7 save entry is
+PROBABLE, not CONFIRMED.** Donald confirmed that `TEST_DOS_IMPORT6.D64` was
+mounted and identified the affected NPC as DIRTEN; the photographed shape
+matches the zero icon exactly, and that disk persists DIRTEN over the zero
+entry. The bytes loaded at the screenshot instant and persistence across a
+reload were not observed. Reloading that exact image and entering one fight
+would confirm the link if the hooks recur and refute persistence if they do
+not. No emulator was launched for this experiment, so it makes no general
+claim about how the engine treats every NPC or every icon-table state.
+
+**The legacy-conversion origin is PROBABLE.** The related files' byte pattern
+matches the old writer, which zeroed empty icon slots. Commit `93ece77` changed
+the DOS-to-C64 writer to put the measured creation default in slots 6 and 7 on
+2026-09-07. `TEST_DOS_IMPORT.D64`'s mtime is 2026-09-06 00:08:40 CDT, but an
+mtime is not a creation time and does not establish provenance by itself. The
+matching old output, the six-character imported party and the unchanged icon
+table across its related saves are the evidence for the grade.
+
+**The absence of a retroactive repair is CONFIRMED from the current code.**
+`goldbox/dos_codec.py` seeds the NPC-only entries only while its conversion
+writer builds a save. Opening an existing disk reads the icon table unchanged,
+and the editor's treatment of an NPC preserves its stored bytes. Therefore the
+current fix protects new imports but does not alter this existing lineage.
