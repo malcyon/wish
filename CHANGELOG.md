@@ -11,12 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Character Traits can now be edited, and the editor shows the active effects currently running on a save. ([#13](https://github.com/malcyon/wish/issues/13))
 - Combat squares now show a health bar instead of a hit-point number. ([#345](https://github.com/malcyon/wish/issues/345))
+- Level Up now supports Curse of the Azure Bonds, including training every eligible class together. ([#18](https://github.com/malcyon/wish/issues/18), [#415](https://github.com/malcyon/wish/issues/415))
 
 ### Changed
 
 - The Quest Log puts completed commissions and side quests under Completed, below active quests. ([#530](https://github.com/malcyon/wish/issues/530))
 - Character editor lists known races, classes and alignments by name, without their stored code in front. ([#531](https://github.com/malcyon/wish/issues/531))
-- Level Up offers every class ready for training, instead of choosing only one. ([#415](https://github.com/malcyon/wish/issues/415))
 - Backup settings now explain how to use one folder for all save backups or a folder beside each save.
 
 ### Fixed
