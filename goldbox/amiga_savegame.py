@@ -268,7 +268,7 @@ def parse(data: bytes, container: AmigaContainer | str | None = None,
                                  container.wallset_at + 4 * i + 4], "big"))
             for i in range(3))
     count = int.from_bytes(data[container.count_at:container.party_at], "big")
-    if validate and container.party == "records" and not 1 <= count <= PARTY_MAX:
+    if validate and not 1 <= count <= PARTY_MAX:
         raise AmigaSaveError(
             f"a {container.title} party is 1 to {PARTY_MAX} characters; got {count}")
     characters = []

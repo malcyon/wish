@@ -112,10 +112,11 @@ def synthetic_pool_of_radiance(slot="A", count=6) -> bytes:
     out += bytes([1, 2, count])
     table = bytearray(amiga_savegame.POR_NAME_SLOTS
                       * amiga_savegame.POR_CHARACTER_TABLE_STRIDE)
-    for i in range(count):
+    for i in range(min(count, amiga_savegame.POR_NAME_SLOTS)):
         table[i * 41:i * 41 + 8] = f"CHRDAT{slot}{i + 1}".encode()
     # the two slots the party does not fill hold stack junk in a real save
-    table[6 * 41:6 * 41 + 4] = b"\x0a\xd0 E"
+    if count <= 6:
+        table[6 * 41:6 * 41 + 4] = b"\x0a\xd0 E"
     out += table
     return bytes(out)
 
@@ -154,6 +155,18 @@ def test_a_synthetic_pool_of_radiance_save_reads_back_through_the_map():
     assert (save.first_mode, save.mode, save.count) == (1, 2, 6)
     assert save.names[:6] == tuple(f"CHRDATB{i}" for i in range(1, 7))
     assert all(ok for _, ok, _ in check(save)), check(save)
+
+
+@pytest.mark.parametrize("count", [0, 7, 8, 9])
+def test_strict_pool_parsing_rejects_party_sizes_outside_the_writer_limit(count):
+    data = synthetic_pool_of_radiance(count=count)
+
+    save = parse(data, POOL_OF_RADIANCE, validate=False)
+    assert save.count == count
+    assert save.names[:min(count, amiga_savegame.POR_NAME_SLOTS)] == tuple(
+        f"CHRDATA{i}" for i in range(1, min(count, amiga_savegame.POR_NAME_SLOTS) + 1))
+    with pytest.raises(AmigaSaveError, match="party is 1 to 6"):
+        parse(data, POOL_OF_RADIANCE)
 
 
 def test_the_count_word_is_the_table_of_contents_not_the_scan():
