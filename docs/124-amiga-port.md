@@ -2057,8 +2057,8 @@ fills that block itself:
 a string in the game binary's `LBI` library-reader code, beside
 `LBIBase: Invalid Library File` and the `GLIB` magic it checks. The two numbers
 are a library item index and the library's item count, and **`Disk3_CHEAD.TLB`,
-the portrait heads, holds exactly 29 items**. So R1's ramp made PoD ask
-`CHEAD.TLB` for item −1: `0x0B6`–`0x0C7` holds a portrait selector, not
+the combat-icon heads, holds exactly 29 items**. So R1's ramp made PoD ask
+`CHEAD.TLB` for item −1: `0x0B6`–`0x0C7` includes combat-icon data, not
 inventory. **Zero there is accepted** — every payload that loaded had
 zeros from `0x0B9` up, including the 484-byte written one.
 
@@ -2105,10 +2105,10 @@ Notes for whoever runs the next one:
 ---
 
 **What is still missing**, and none of it blocks the writer: the five saving
-throws at `0x083`, the eight thief skills at `0x08B`, the class bitmask at
-`0x0B7` and the portrait body index at `0x0B8` are all PROBABLE from the twelve
-specimens and none appears on the character sheet, so no probe can promote
-them; the appended item data that takes a record from 484 to 524 bytes is
+throws at `0x083`, the eight thief skills at `0x08B`, and the class bitmask at
+`0x0B7` are all PROBABLE from the twelve specimens and none appears on the
+character sheet, so no probe can promote them; the appended item data that
+takes a record from 484 to 524 bytes is
 undecoded; and spells are untouched.
 
 ### 2.5 End to end: a C64 character in the Amiga party
@@ -2216,11 +2216,11 @@ that is mostly empty, and filling it is the project.
 | thief skills ×8 | `0x0A5`–`0x0AC` — CONFIRMED | UNKNOWN | UNKNOWN | `0x08B`–`0x092` — PROBABLE; non-zero in exactly the two specimens with a thief level |
 | spells known / memorised | `0x078`, 7 / `0x020`, 16 — CONFIRMED / PROBABLE | UNKNOWN | UNKNOWN | UNKNOWN |
 | alignment, sex | `0x0D8`, `0x0D6` — CONFIRMED | UNKNOWN | UNKNOWN | alignment `0x05D`, `law × 3 + morality` — CONFIRMED (`CHAOTIC EVIL`, `LAWFUL GOOD`); sex `0x05C`, 0 male — CONFIRMED |
-| portrait head/body | `0x0FE`/`0x0FF` — CONFIRMED | UNKNOWN | UNKNOWN | different art set — see §7 |
+| portrait head/body | `0x0FE`/`0x0FF` — CONFIRMED | UNKNOWN | UNKNOWN | `0x0B9`/`0x0BA`, unused: PoD draws no sheet portrait |
 | armour class | roster `0x10F` — PROBABLE | `0x02D`-adjacent — PROBABLE | — | `0x0B3`, stored `60 - AC` — CONFIRMED. It is the **base**: all twelve read 10, and the sheet's number is that adjusted for dexterity and equipment (§2.4) |
 | unarmed damage | — | — | — | count `0x0AD`, sides `0x0AF`, bonus `0x0B1` — CONFIRMED (`173D175-79`); all twelve read 1d2 |
 | movement | roster `+0x11` — PROBABLE | UNKNOWN | UNKNOWN | `0x088` — CONFIRMED (`MOVEMENT 136`, and `12` when `0x192` said 99); all twelve read 12 |
-| inventory | `0x120`, 16 × 16 bytes — CONFIRMED | separate `.ITM`, 63 B/item | separate `.itm`, 65 B/item | appended past 484 bytes; UNKNOWN and **not** the writer's blocker. `0x0B6`–`0x0C7` is a portrait selector, and `ERROR: INVALID ITEM` is the graphics library's (§2.4) |
+| inventory | `0x120`, 16 × 16 bytes — CONFIRMED | separate `.ITM`, 63 B/item | separate `.itm`, 65 B/item | appended past 484 bytes; UNKNOWN and **not** the writer's blocker. `0x0B6`–`0x0C7` includes combat-icon data, and `ERROR: INVALID ITEM` is the graphics library's (§2.4) |
 | combat icon | `0x220`, 36 — CONFIRMED | none | none | none — see §7 |
 | live heap pointers | none | DOS far pointers embedded (`44 D7 46 12` at `0x1D7` of DOS PoD's record) | present | `0x000`–`0x05F`, 4–8 of them — CONFIRMED they are addresses |
 
@@ -2286,7 +2286,7 @@ So nobody is surprised, and nobody tries.
 | thing | why it cannot cross | what to do instead |
 |---|---|---|
 | **The combat icon** | C64 `0x220`–`0x243`: 18 screen codes into `CHARPIC00` plus 18 colours. It is a C64 character set. Neither DOS nor the Amiga has anything of the kind. | drop it; PoD draws its own |
-| **Portraits** | C64 `0x0FE`/`0x0FF` name `HEADnn`/`BODYnn` files on the C64 disks. PoD's Amiga art is `CHEAD.TLB` / `CBODY.TLB`, a different set with different numbering. | re-choose, do not copy the index. A copied index is a wrong picture, silently. |
+| **Portraits** | C64 `0x0FE`/`0x0FF` name `HEADnn`/`BODYnn` files on the C64 disks. PoD has no character-sheet portrait on either port; `CHEAD.TLB` / `CBODY.TLB` are combat-icon art. | drop it: the target has no sheet face. |
 | **Derived combat values** | The C64 roster block (`0x10E` THAC0, `0x10F` AC, `0x119` current hp) is a **cache**, and its update rule is not "on load" — armour class refreshes only when equipment changes, so it can be stale even in a healthy save. | recompute for the target from base values, always |
 | **Items** | The C64 stores 16 bytes per item, an id into that title's `ITEMNAMES`. DOS and Amiga store 63–65 bytes per item **carrying the name as text**. And a Silver Blades item id and a Pools of Darkness item id are two different games' tables. | re-encode from named fields, and **check the tables agree before assuming any id means the same thing** |
 | **Memorised spells** | C64 spell ids run 1–56. Pools of Darkness has cleric spells to level 7 and mage spells to level 9, so its id space is larger and the mapping is certainly not identity. | map by name, or drop and let the player re-memorise |
@@ -2330,7 +2330,7 @@ So nobody is surprised, and nobody tries.
    party: it reads its 404 bytes and never looks at the 80 after them. The
    extra bytes are the item lists, still undecoded, and a converted character
    simply arrives carrying nothing. `ERROR: INVALID ITEM (-1/29)` was never about
-   items: it is the `GLIB` library reader asking `CHEAD.TLB` — 29 portrait
+   items: it is the `GLIB` library reader asking `CHEAD.TLB` — 29 combat-icon
    heads — for item −1 (§2.4).
 5. ~~**All twelve specimens are a maxed party.**~~ **Answered, and by a cheaper
    route than manufacturing saves.** Every ability is still 18 and the variation
