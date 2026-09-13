@@ -1,9 +1,9 @@
-"""`goldbox.world_state.WorldState`, the lift of `goldbox.amiga_por.PorSaveState`
+"""`goldbox.world_state.WorldState`, the lift of `goldbox.amiga_savegame.PorSaveState`
 into one shape every port's saved-game reader fills
 (`#352 (Handle world state for Amiga saves)`).
 
 `tests/test_amigaporsavegame.py` and `tests/test_toamigapor.py` keep the
-Amiga-specific coverage of the three `goldbox.amiga_por.por_state_from_*`
+Amiga-specific coverage of the three `goldbox.amiga_savegame.por_state_from_*`
 wrappers; what belongs here is the general reader itself -- that it agrees
 with a title's own C64 and DOS specimens, and the five fields it added
 against `PorSaveState`.
@@ -168,11 +168,10 @@ def test_a_party_standing_in_the_world_is_left_where_it_is():
 
 
 # ---------------------------------------------------------------------------
-# `PorSaveState` is `WorldState`, and the Amiga wrappers still refuse an
-# outdoor party
+# Pool's state compatibility alias is `WorldState`
 # ---------------------------------------------------------------------------
 
-def test_por_save_state_is_world_state():
-    from goldbox import amiga_por
+def test_amiga_savegame_por_state_is_world_state():
+    from goldbox import amiga_savegame
 
-    assert amiga_por.PorSaveState is world_state.WorldState
+    assert amiga_savegame.PorSaveState is world_state.WorldState

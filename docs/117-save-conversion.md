@@ -2042,23 +2042,20 @@ graph LR
   amiga_pod --> neutral
   amiga_pod -.->|deferred| savegame
   amiga_pod --> titles
-  amiga_por --> amiga_adf
-  amiga_por -.->|deferred| amiga_dax
   amiga_por -.->|deferred| amiga_later
   amiga_por --> amiga_port
-  amiga_por --> areas
   amiga_por -.->|deferred| dos_codec
   amiga_por --> dos_port
-  amiga_por --> dos_savegame
   amiga_por --> iconparts
   amiga_por --> layout
   amiga_por --> neutral
   amiga_por --> portraits
   amiga_por -.->|deferred| traits
-  amiga_por --> world_state
   amiga_port --> dos_port
   amiga_savegame --> amiga_adf
+  amiga_savegame -.->|deferred| amiga_dax
   amiga_savegame --> amiga_later
+  amiga_savegame -.->|deferred| amiga_por
   amiga_savegame --> amiga_port
   amiga_savegame --> areas
   amiga_savegame --> c64_port
@@ -2145,7 +2142,7 @@ graph LR
   strength --> savegame
   titles --> dos_port
   world --> d64
-  world_state -.->|deferred| amiga_por
+  world_state -.->|deferred| amiga_savegame
   world_state --> areas
   world_state -.->|deferred| c64_port
   world_state --> c64_save
