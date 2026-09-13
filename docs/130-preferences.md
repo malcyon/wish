@@ -272,8 +272,10 @@ implies it does change before, which is the automatic state.
   into an argument about backups.
 * **The note says which state it is in**, because the path cannot:
   `/somewhere/backups` looks identical whether it is following the open save or
-  was typed in and is never moving again. Each note is one line at the width
-  `fit` opens — two would be 17 px of a dialog that has to fit 662 (§14).
+  was typed in and is never moving again. Donald approved the chosen-folder
+  wording on 2026-09-13: *"Use this folder for all backups. Clear it to use a
+  “backups” folder beside each save."* It wraps to two lines at the width
+  `fit` opens and fits the dialog (§14).
 * **The wiring.** `EditorWindow.opened` is emitted by `load` and by `save_as`;
   `WishWindow.follow_save` listens and is the only thing that moves the folder,
   and its only branch is *has the user chosen one*. The editor is handed the
