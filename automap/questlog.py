@@ -385,8 +385,8 @@ def commission_rows(flags) -> list[tuple]:
 # *"You can keep track of commissions separately on the backend. Just display
 # them together? The player will not care about the difference."*  So the
 # merge is display only. `side_quest_rows()` stays its own function, and
-# `update_from` appends its rows to the commissions `Group` rather than
-# building one of their own. `SIDE_QUEST_HEADING` is gone rather than merely
+# `update_from` combines its rows with commissions before splitting active
+# and completed work (#530). `SIDE_QUEST_HEADING` is gone rather than merely
 # unused, because it was the only thing on screen that told the two kinds of
 # row apart -- which is exactly what the second instruction gave up. The
 # distinction still exists in the code, in this function and this table; it
@@ -458,9 +458,9 @@ def side_quest_rows(flags) -> list[tuple]:
     Donald's decision of 2026-09-04 is that the log shows nothing between
     accepting an errand and holding what it asked for.
 
-    `update_from` appends these after `commission_rows`' own, into the same
-    `Group` -- the merge is display only (#158). The two stay separate here
-    and separate in `goldbox/commissions.py`; only where the rows land moved.
+    `update_from` combines these with `commission_rows` before splitting
+    active and completed work (#530). The merge is display only (#158): the
+    two readers remain separate here and in `goldbox/commissions.py`.
     """
     rows = []
     for state in book.side_quests(flags):
