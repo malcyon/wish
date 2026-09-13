@@ -33,7 +33,7 @@ an *unarmed* character holds `30 00 00 01 00 02 00 bb 00` in the roster tail --
 armour bonus `48 + 0`, one blow, **`1d2`**, then the strength damage bonus --
 and the generator was writing nine zeros with the bonus dropped in. The game
 was printing our own bytes back. Fixed, and
-`test_an_unarmed_tail_is_the_shape_the_three_exports_hold` pins it.
+`test_an_unarmed_tail_is_the_byte_pattern_the_three_exports_hold` pins it.
 
 **What the generator still cannot make**: no combat icon, which is `#130 (A
 converted DOS party arrives with six identical combat figures, not its own)`'s
