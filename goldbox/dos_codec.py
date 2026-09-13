@@ -5441,9 +5441,10 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
     own game disk, `goldbox.iconparts.IconParts.default_icon` -- or an
     `IconParts` itself, in which case each character's own `icon_head`,
     `icon_body` and `icon_colours` become his own figure instead (#130,
-    :func:`_icon_for`).  Either way, :data:`NPC_ICON_SLOTS` -- the two
-    icon-table slots no DOS party can ever fill -- gets the same default
-    figure creation seeds every slot with, rather than zero (#363).
+    :func:`_icon_for`). In Pool of Radiance every unoccupied party slot gets
+    the native default: INIT seeds all eight, and ADDNPC preserves whichever
+    free slot it fills, including slots below six (#533). Later titles keep
+    the existing :data:`NPC_ICON_SLOTS` policy (#363).
     `animate` is `ANIMATE00`'s 852-byte payload off the same disks, which
     goes at `$8400`.  Leave either out and that region keeps whatever the
     payload already held, which is only ever right when the payload came
@@ -5505,7 +5506,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         which: dos_icon_tables(title=container.game.key, size=which)
         for which in ("small", "large")
     } if isinstance(icon, IconParts) else {}
-    #: What :data:`NPC_ICON_SLOTS` gets, below -- the same 36 bytes creation
+    #: What an unoccupied future NPC slot gets -- the same 36 bytes creation
     #: gives every new character, `IconParts.default_icon` itself when `icon`
     #: is the option tables, or `icon` unchanged when it is already those
     #: composed bytes.  `None` when no icon source was given at all, which is
@@ -5628,13 +5629,18 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
         if place >= container.party_slots:
             continue
         at = container.icon(place)
-        if place in NPC_ICON_SLOTS and npc_icon is not None:
+        if npc_icon is not None and (
+                container.key == c64_save.POOL_OF_RADIANCE.key
+                or place in NPC_ICON_SLOTS):
             save0[at:at + ICON_SIZE] = npc_icon
             report.note(at, ICON_SIZE,
                         f"slot {place}: the combat icon the game's own "
-                        f"character creation seeds every slot with -- no "
-                        f"DOS party can ever fill this NPC-only slot, so "
-                        f"nothing else here writes it (#363)")
+                        + ("initialization seeds for a later recruit; the "
+                           "joined NPC inherits this unoccupied slot's icon "
+                           "(#363, #533)"
+                           if container.key == c64_save.POOL_OF_RADIANCE.key
+                           else "character creation seeds every slot with -- "
+                           "no DOS party can fill this NPC-only slot (#363)"))
         else:
             save0[at:at + ICON_SIZE] = bytes(ICON_SIZE)
             report.note(at, ICON_SIZE,

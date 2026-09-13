@@ -1975,6 +1975,49 @@ def _game_files():
     return icon, animate
 
 
+@pytest.mark.parametrize("count", range(1, 7))
+def test_every_empty_pool_party_slot_has_an_icon_for_a_later_recruit(count):
+    """INIT seeds all eight slots; ADDNPC can fill any of them (#533).
+
+    These are generated writer inputs, not specimens of native recruitment.
+    The five smaller parties used to leave 5+4+3+2+1 future icons zero.
+    """
+    from goldbox import c64_save
+
+    container = c64_save.POOL_OF_RADIANCE
+    seed = bytes(range(1, container.icon_size + 1))
+    state = world_state.from_c64(bytes(container.payload_size))
+    party = [_plain_row_character(5) for _ in range(count)]
+    for index, char in enumerate(party):
+        char.set("name", f"Generated{index}", "Generated for this test")
+    p0, p1, report = dos_codec.new_save_from_neutral(
+        state, party, [None] * count, seed, bytes(dos_codec.ANIMATE_SIZE))
+
+    for index, char in enumerate(party):
+        place = dos_codec.marching_slot(index, count)
+        record, _one = dos_codec.neutral_to_c64_record(char, icon=seed)
+        record.set("party_order", place)
+        raw = record.to_bytes()
+        at = container.slot(place)
+        assert p0[at:at + container.slot_stride] == raw[:0x100]
+        at = container.items(place)
+        assert p0[at:at + container.slot_stride] == raw[0x120:0x220]
+        at = place * dos_codec.ROSTER_STRIDE
+        assert p1[at:at + dos_codec.ROSTER_STRIDE] == raw[0x100:0x120]
+    for place in range(count, container.party_slots):
+        at = container.icon(place)
+        assert p0[at:at + container.icon_size] == seed, place
+        assert all(report.sources[i] for i in range(at, at + len(seed)))
+    for place in range(count, container.record_pages):
+        for at in (container.slot(place), container.items(place)):
+            assert p0[at:at + container.slot_stride] == bytes(container.slot_stride)
+    for place in range(count, container.party_slots):
+        at = place * dos_codec.ROSTER_STRIDE
+        assert p1[at:at + dos_codec.ROSTER_STRIDE] == bytes(dos_codec.ROSTER_STRIDE)
+    assert len(p0) == container.payload_size
+    assert report.unwritten == report.unaccounted == []
+
+
 @needs_dos_saves
 def test_a_save_built_from_nothing_accounts_for_every_byte():
     """`new_save` returns a report whose `unwritten` is empty, for every slot
@@ -2001,25 +2044,17 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
     glyph, so a zeroed 36-byte icon draws as a 3x3 block of black hooks on the
     combat floor rather than as nothing.
 
-    So every occupied slot carries the icon the game's own character creation
-    writes, every empty *player* slot carries zero -- nothing draws an icon
-    for a slot with no character in it -- and the two NPC-only slots no DOS
-    party can ever fill carry that same creation default rather than zero
-    (`#363 (A DOS-to-C64 conversion writes zero into the two NPC-only
-    combat-icon slots instead of the engine's own seeded default)`).
+    With the explicit default-icon argument, every slot carries that default.
+    INIT seeds all eight; ADDNPC preserves any free party slot it fills, not
+    only slots six and seven (#533).
     """
     icon, animate = _game_files()
-    party = dos_codec.read_party(_save_dir(), "A")
     save0, _save1, _report = dos_codec.new_save(_save_dir(), "A", icon, animate)
     for place in range(savegame.SLOT_COUNT):
         at = dos_codec.ICON_TABLE - dos_codec.SAVE0_BASE + place * dos_codec.ICON_SIZE
         got = bytes(save0[at:at + dos_codec.ICON_SIZE])
-        occupied = place < len(party)
-        want = icon if occupied or place in dos_codec.NPC_ICON_SLOTS \
-            else bytes(dos_codec.ICON_SIZE)
-        assert got == want, place
-        if occupied or place in dos_codec.NPC_ICON_SLOTS:
-            assert any(got), f"slot {place} would draw as black hooks"
+        assert got == icon, place
+        assert any(got), f"slot {place} would draw as black hooks"
 
 
 def _icon_parts():
@@ -2035,6 +2070,70 @@ def _icon_parts():
         except Exception:
             pass
     pytest.skip("no POOL disk here carries SPELLE64/SPELLN64")
+
+
+@needs_disks
+@pytest.mark.parametrize("count", range(1, 7))
+def test_empty_pool_icons_are_seeded_without_replacing_converted_figures(count):
+    from goldbox import c64_save
+    from goldbox.iconparts import DosIcon
+
+    container = c64_save.POOL_OF_RADIANCE
+    parts = _icon_parts()
+    party = [_plain_row_character(5) for _ in range(count)]
+    source_icons = [DosIcon(0, 1, bytes([index + 1] * 6),
+                            "Generated figure", "Generated colours")
+                    for index in range(count)]
+    state = world_state.from_c64(bytes(container.payload_size))
+    p0, _p1, report = dos_codec.new_save_from_neutral(
+        state, party, source_icons, parts, bytes(dos_codec.ANIMATE_SIZE))
+    default = parts.default_icon()
+    for index, source in enumerate(source_icons):
+        at = container.icon(dos_codec.marching_slot(index, count))
+        wanted = parts.dos_icon(
+            source.head, source.body, "small", source.colours,
+            tables=dos_codec.dos_icon_tables(title=container.key, size="small"))
+        assert wanted != default, "The preservation control must differ from the seed"
+        assert p0[at:at + container.icon_size] == wanted
+        assert "this character's own DOS record" in report.sources[at]
+    for place in range(count, container.party_slots):
+        at = container.icon(place)
+        assert p0[at:at + container.icon_size] == default
+        assert "later recruit" in report.sources[at]
+    assert report.unwritten == report.unaccounted == []
+
+
+@needs_disks
+def test_the_pool_init_seed_matches_the_runtime_icon_parts():
+    """Primary engine evidence, independent of any player's saved party."""
+    from goldbox.d64 import D64
+
+    init = D64.open(gamedata.game_disk("POOL1")).read_file("INIT")
+    # The PRG header is $1000; the overlay loader runs this payload at $0800.
+    assert int.from_bytes(init[:2], "little") == 0x1000
+    assert init[2 + 0x32D:2 + 0x351] == _icon_parts().default_icon()
+
+
+@pytest.mark.parametrize("title", ("curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"))
+def test_the_pool_recruitment_fix_does_not_change_later_title_empty_icons(title):
+    from goldbox import c64_save
+
+    container = c64_save.container_for(title)
+    payload = bytearray(container.payload_size)
+    where = areas.areas_for_title(container.title)[0]
+    payload[container.current_script] = where.id
+    payload[container.current_geo] = areas.geo_number(where.geo)
+    state = world_state.from_c64(bytes(payload), game=container)
+    seed = bytes(range(1, container.icon_size + 1))
+    party = [_plain_row_character(5, game=title)]
+    p0, _p1, report = dos_codec.new_save_from_neutral(
+        state, party, [None], seed, bytes(dos_codec.ANIMATE_SIZE), game=container)
+    for place in range(1, container.party_slots):
+        at = container.icon(place)
+        wanted = seed if place in (6, 7) else bytes(container.icon_size)
+        assert p0[at:at + container.icon_size] == wanted
+    assert report.unwritten == report.unaccounted == []
 
 
 @needs_dos_saves
