@@ -364,8 +364,8 @@ def versions() -> str:
             f"{platform.system()} {platform.release()} {platform.machine()}")
 
 
-def save_shape(party, file: str | os.PathLike | None = None) -> str:
-    """The shape of an open save file: never a byte of its contents.
+def save_summary(party, file: str | os.PathLike | None = None) -> str:
+    """A summary of an open save file: never a byte of its contents.
 
     Size, blocks, how many characters and which area -- enough to tell a save
     disk from a roster disk and to reproduce a load, and nothing that says who
@@ -392,7 +392,7 @@ def save_shape(party, file: str | os.PathLike | None = None) -> str:
     return ", ".join(bits) or "unreadable"
 
 
-def area_shape(state) -> str:
+def area_summary(state) -> str:
     """What the map thinks it is drawing, and how sure it is."""
     area = state.area or "unidentified"
     candidates = state.candidates

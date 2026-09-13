@@ -51,7 +51,7 @@ PARAMS_LEN = 0x14
 P_MAP = 0x02              # the combat map, one byte a square
 P_POSITIONS = 0x04        # the combatant table
 P_COUNT = 0x06            # how many combatants the table holds
-P_STRIDE = 0x07           # NOT the row stride -- see `Shape` below
+P_STRIDE = 0x07           # NOT the row stride -- see `MapGeometry` below
 P_MAX_X = 0x12            # last square, not the width
 P_MAX_Y = 0x13
 
@@ -132,7 +132,7 @@ BAR_MARGIN_FRACTION = 0.08
 
 
 @dataclass(frozen=True)
-class Shape:
+class MapGeometry:
     """The map's geometry, as the `$0600` block gives it."""
 
     map_base: int
@@ -154,8 +154,8 @@ class Shape:
         return 0 <= x < self.width and 0 <= y < self.height
 
 
-def shape_from_params(block: bytes) -> Shape | None:
-    """The shape, or None if these bytes cannot be a parameter block.
+def geometry_from_params(block: bytes) -> MapGeometry | None:
+    """The map geometry, or None if these bytes cannot be a parameter block.
 
     Validate before trust: `$0600` is ordinary RAM and holds something else
     entirely between fights -- in a captured world snapshot it reads
@@ -169,7 +169,7 @@ def shape_from_params(block: bytes) -> Shape | None:
     # square. In a fight the two agree at 56 and the difference never shows;
     # on the overland map `$0607` is 20 against a true 18, and reading it there
     # shears every row two squares further along than the one before.
-    shape = Shape(map_base=word(P_MAP), stride=block[P_MAX_X] + 1,
+    shape = MapGeometry(map_base=word(P_MAP), stride=block[P_MAX_X] + 1,
                   width=block[P_MAX_X] + 1, height=block[P_MAX_Y] + 1,
                   positions=word(P_POSITIONS), count=block[P_COUNT])
     if not (shape.map_base and shape.positions and shape.count):
@@ -317,7 +317,7 @@ class Combatant:
 class Battle:
     """One reading of a fight in progress."""
 
-    shape: Shape
+    shape: MapGeometry
     terrain: bytes
     combatants: tuple[Combatant, ...]
     camera: tuple[int, int]
@@ -390,7 +390,7 @@ def helpless_indices(save_head: bytes) -> dict[int, frozenset[int]]:
 
 
 def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
-               initiative: bytes, shape: Shape, previous: Battle | None,
+               initiative: bytes, shape: MapGeometry, previous: Battle | None,
                helpless: dict[int, frozenset[int]] | None = None
                ) -> Combatant | None:
     helpless = helpless or {}
@@ -458,7 +458,7 @@ def read_battle(target, previous: Battle | None = None) -> Battle | None:
                                             (CAMERA, 2)))
     if not mode or mode[0] != COMBAT:
         return None
-    shape = shape_from_params(params)
+    shape = geometry_from_params(params)
     if shape is None:
         return None
     terrain, roster, positions, initiative, save_head = _blocks(target, (

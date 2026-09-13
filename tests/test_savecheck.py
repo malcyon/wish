@@ -26,9 +26,9 @@ savecheck = load_tools_module("savecheck")
 roll_call = savecheck.roll_call
 undrawn = savecheck.undrawn
 
-from automap.combat import VIEW, Battle, Combatant, Shape  # noqa: E402
+from automap.combat import VIEW, Battle, Combatant, MapGeometry  # noqa: E402
 
-SHAPE = Shape(map_base=0x8C00, stride=56, width=56, height=26,
+SHAPE = MapGeometry(map_base=0x8C00, stride=56, width=56, height=26,
               positions=0x8B00, count=16)
 
 

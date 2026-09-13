@@ -96,7 +96,7 @@ The pruner globs `wish-*.log*`, not `wish-*.log`: a rotated part is
 * **No file paths.** `scrub()` rewrites every absolute path to its last
   component, so a save disk appears as `PORSAVE11.D64` and a frame as
   `File ".../session.py"`.
-* **No character names, and no save contents.** `save_shape()` reports size,
+* **No character names, and no save contents.** `save_summary()` reports size,
   blocks, kind, character count and area id, and reads no record.
 * **No environment dump, no process list, no network state.**
 * **Nothing about any process but ours.**

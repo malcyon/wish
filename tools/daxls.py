@@ -49,7 +49,7 @@ EGA = ("#000000", "#0000AA", "#00AA00", "#00AAAA", "#AA0000", "#AA00AA",
        "#FF5555", "#FF55FF", "#FFFF55", "#FFFFFF")
 
 
-def image_shape(block: bytes) -> tuple[int, int] | None:
+def image_dimensions(block: bytes) -> tuple[int, int] | None:
     """`(rows, width)` in pixels if the block is an image block, else None.
 
     The test is the one every image block in the game passes: its length is
@@ -65,7 +65,7 @@ def image_shape(block: bytes) -> tuple[int, int] | None:
 
 def pixels(block: bytes) -> list[list[int]]:
     """An image block's 4-bit values, `[y][x]`, high nibble first."""
-    shape = image_shape(block)
+    shape = image_dimensions(block)
     if shape is None:
         raise DaxError("not an image block")
     rows, width = shape
@@ -86,7 +86,7 @@ def listing(data: bytes, name: str) -> list[str]:
     for bid, off, raw, packed in index:
         try:
             block = dax_unpack(data[base + off:base + off + packed], raw)
-            shape = image_shape(block)
+            shape = image_dimensions(block)
             extra = (f"image {shape[1]}x{shape[0]}  header "
                      f"{block[8:IMAGE_HEADER].hex(' ')}" if shape else "")
         except DaxError as e:

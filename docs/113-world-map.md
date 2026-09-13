@@ -46,8 +46,8 @@ is why they are fully roofed with no doors.
 
 The stride comes from `$0612 + 1`, not `$0607`. For combat both are 56 and
 nothing is broken; for the overland map `$0607` is 20 against a true stride of
-18, so `automap/combat.py`'s `shape_from_params` would shear it. **Done**:
-`shape_from_params` reads `block[P_MAX_X] + 1`, and `goldbox/world.py`'s own
+18, so `automap/combat.py`'s `geometry_from_params` would shear it. **Done**:
+`geometry_from_params` reads `block[P_MAX_X] + 1`, and `goldbox/world.py`'s own
 `STRIDE = 18` is asserted against the disks in `tests/test_world.py`.
 
 ---
@@ -166,7 +166,7 @@ answers unknown 2 on its own.
 
 ## The work, in order
 
-1. ~~Fix the stride in `automap/combat.py`.~~ **Done**: `shape_from_params`
+1. ~~Fix the stride in `automap/combat.py`.~~ **Done**: `geometry_from_params`
    reads `block[P_MAX_X] + 1`, with the corrected note beside it; the doc had
    fallen behind the code.
 2. **`goldbox/world.py`**, transport-free -- **now exists**, covering the part

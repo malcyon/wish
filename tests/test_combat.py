@@ -66,12 +66,12 @@ def test_a_parameter_block_that_cannot_be_one_is_refused():
     assert combat.read_battle(machine) is None
 
 
-def test_the_shape_is_read_and_never_assumed():
+def test_the_geometry_is_read_and_never_assumed():
     """`SQRPACI00` bounds 17 x 35, so hard-coding 56 x 26 would be wrong."""
     block = bytearray(synthetic_arena()[combat.PARAMS])
     block[combat.P_STRIDE] = 20
     block[combat.P_MAX_X], block[combat.P_MAX_Y] = 17, 35
-    shape = combat.shape_from_params(bytes(block))
+    shape = combat.geometry_from_params(bytes(block))
     assert (shape.stride, shape.width, shape.height) == (18, 18, 36)
     assert shape.length == 18 * 36
     assert shape.index(3, 2) == 39
@@ -89,7 +89,7 @@ def test_the_stride_comes_from_the_bounds_not_from_0607():
     block = bytearray(synthetic_arena()[combat.PARAMS])
     block[combat.P_STRIDE] = 99                 # nonsense, and ignored
     block[combat.P_MAX_X], block[combat.P_MAX_Y] = 17, 35
-    assert combat.shape_from_params(bytes(block)).stride == 18
+    assert combat.geometry_from_params(bytes(block)).stride == 18
 
 
 # --- what the fight holds ---------------------------------------------------
@@ -310,7 +310,7 @@ def test_a_bar_never_rounds_a_survivor_away_to_nothing():
 def test_the_battlefield_draws_a_bar_for_a_wounded_combatant():
     """A combatant below full health draws a `Bar` sized to match, against
     the geometry `bar_for` itself computes -- not a number read off one run."""
-    shape = combat.Shape(map_base=0, stride=10, width=10, height=10,
+    shape = combat.MapGeometry(map_base=0, stride=10, width=10, height=10,
                         positions=0, count=1)
     hurt = combat.Battle(
         shape=shape, terrain=bytes(shape.length), camera=(0, 0),

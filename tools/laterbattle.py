@@ -142,7 +142,7 @@ class Battle(cursethac0.Run):
         """
         where = latercombat.memory_for(self.sess.game)
         params = self.peek(latercombat.PARAMS, latercombat.PARAMS_LEN)
-        shape = latercombat.shape_from_params(params)
+        shape = latercombat.geometry_from_params(params)
         out: dict = {
             "stage": stage,
             "mode_at": f"${where.mode:04X}",

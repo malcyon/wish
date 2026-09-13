@@ -676,7 +676,7 @@ class WishWindow(QMainWindow):
         """The shape of the open file: size, blocks, characters, area."""
         if not debuglog.is_on() or self.editor.party is None:
             return
-        shape = debuglog.save_shape(self.editor.party, self.editor.path)
+        shape = debuglog.save_summary(self.editor.party, self.editor.path)
         if shape != self._logged_save:
             self._logged_save = shape
             debuglog.note("save file: %s", shape)
@@ -685,7 +685,7 @@ class WishWindow(QMainWindow):
         """Which map is being drawn, and how sure the fingerprint is."""
         if not debuglog.is_on():
             return
-        shape = debuglog.area_shape(self.mapper.state)
+        shape = debuglog.area_summary(self.mapper.state)
         if shape != self._logged_area:
             self._logged_area = shape
             debuglog.note("map area: %s", shape)

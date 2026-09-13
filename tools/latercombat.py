@@ -46,8 +46,8 @@ from automap.combat import (  # noqa: E402
     Battle,
     _blocks,
     _combatant,
+    geometry_from_params,
     helpless_indices,
-    shape_from_params,
 )
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.savegame import (  # noqa: E402
@@ -56,7 +56,7 @@ from goldbox.savegame import (  # noqa: E402
     SLOT_STRIDE,
 )
 
-#: The `SQRPACI` parameter block, and how much of it `shape_from_params` wants.
+#: The `SQRPACI` parameter block, and how much of it `geometry_from_params` wants.
 #: **The same address in all three titles** -- see the module docstring.
 PARAMS = 0x0600
 PARAMS_LEN = 0x14
@@ -174,7 +174,7 @@ def read_battle(target, game=None, previous: Battle | None = None):
                                             (CAMERA, 2)))
     if not mode or mode[0] != COMBAT:
         return None
-    shape = shape_from_params(params)
+    shape = geometry_from_params(params)
     if shape is None:
         return None
     terrain, roster, positions, initiative, save_head = _blocks(target, (

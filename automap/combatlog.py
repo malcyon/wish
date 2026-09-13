@@ -171,7 +171,7 @@ def plausible_window(block: bytes) -> tuple[int, int, int, int] | None:
     """The four window bytes, or None if they cannot be a window.
 
     `$03F2`-`$03F5` are ordinary RAM and hold whatever the last overlay left
-    there. Validate before trust, the same rule `shape_from_params` follows.
+    there. Validate before trust, the same rule `geometry_from_params` follows.
     """
     if len(block) < WINDOW_LEN:
         return None

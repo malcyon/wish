@@ -170,7 +170,7 @@ class Record:
     def ids(self) -> list[int]:
         return [e[0] for e in self.effects]
 
-    def shape_of(self, effect: bytes) -> str:
+    def effect_payload_text(self, effect: bytes) -> str:
         """`innate` when bytes 1-4 are `INNATE_PAYLOAD`, else the four bytes."""
         return ("innate" if effect[1:5] == INNATE_PAYLOAD
                 else " ".join(f"{b:02X}" for b in effect[1:5]))
@@ -245,7 +245,7 @@ def collect(roots, want_ours: bool, title: str | None,
 def by_record(records: list[Record]) -> None:
     for rec in sorted(records, key=lambda r: (r.shape.key, r.name)):
         effects = ", ".join(
-            f"{e[0]} [{rec.shape_of(e)}]" for e in rec.effects) or "-"
+            f"{e[0]} [{rec.effect_payload_text(e)}]" for e in rec.effects) or "-"
         print(f"  {rec.grade:5s} {rec.who} items{rec.char.get('item_count'):<3d}"
               f" {effects}")
         if rec.former:
@@ -266,7 +266,7 @@ def by_id(records: list[Record]) -> None:
         print(f"  classes: {dict(classes)}")
         print(f"  races:   {dict(races)}")
         for rec, e in sorted(rows, key=lambda t: t[0].name):
-            print(f"    {rec.grade:5s} {rec.who} [{rec.shape_of(e)}] "
+            print(f"    {rec.grade:5s} {rec.who} [{rec.effect_payload_text(e)}] "
                   f"{rec.specimen or rec.path.parent.name}/{rec.path.name}")
 
 
@@ -422,7 +422,7 @@ def constant_sites(ovr: bytes, target: tuple[int, int],
 
 def seed(game: pathlib.Path, ids: list[int]) -> int:
     ovr = (game / "GAME.OVR").read_bytes()
-    shape = _shape_for_game(game)
+    shape = _deltas_for_game(game)
     fields = dl.FIELDS_BY_NAME_FOR[shape.key]
     target = add_affect(ovr, fields["race"].offset)
     print(f"{game}")
@@ -455,7 +455,7 @@ def seed(game: pathlib.Path, ids: list[int]) -> int:
     return 0
 
 
-def _shape_for_game(game: pathlib.Path):
+def _deltas_for_game(game: pathlib.Path):
     """Which title's record layout this game directory holds.
 
     Named by the directory, and checked against the overlay: a title whose

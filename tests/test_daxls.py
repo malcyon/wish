@@ -45,9 +45,9 @@ def _image(rows: int, eights: int, value: int) -> bytes:
 
 def test_an_image_block_is_recognised_by_its_exact_length():
     block = _image(rows=3, eights=2, value=0xA)
-    assert daxls.image_shape(block) == (3, 16)
-    assert daxls.image_shape(block + b"\0") is None
-    assert daxls.image_shape(bytes(10)) is None
+    assert daxls.image_dimensions(block) == (3, 16)
+    assert daxls.image_dimensions(block + b"\0") is None
+    assert daxls.image_dimensions(bytes(10)) is None
 
 
 def test_pixels_come_out_high_nibble_first():
@@ -55,7 +55,7 @@ def test_pixels_come_out_high_nibble_first():
     assert daxls.pixels(block) == [[1, 2, 3, 4, 5, 6, 7, 8]]
 
 
-def test_the_listing_names_every_block_and_its_shape():
+def test_the_listing_names_every_block_and_its_dimensions():
     data = _dax({7: _image(2, 3, 1), 200: b"not an image at all"})
     lines = daxls.listing(data, "T.DAX")
     assert lines[0].startswith("T.DAX: ") and "2 blocks" in lines[0]

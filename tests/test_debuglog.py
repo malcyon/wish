@@ -271,8 +271,8 @@ class FakeParty:
         return len(self.members)
 
 
-def test_a_save_is_described_by_its_shape(logs):
-    shape = debuglog.save_shape(FakeParty(), "/home/ada/saves/PORSAVE11.D64")
+def test_a_save_summary_contains_only_metadata(logs):
+    shape = debuglog.save_summary(FakeParty(), "/home/ada/saves/PORSAVE11.D64")
     assert shape == ("PORSAVE11.D64, 174848 bytes, 6 blocks, save disk, "
                      "2 characters, area GEO01")
     assert "Malcyon" not in shape
@@ -281,7 +281,7 @@ def test_a_save_is_described_by_its_shape(logs):
 def test_an_unreadable_party_is_not_an_error(logs):
     class Broken:
         pass
-    assert debuglog.save_shape(Broken()) == "unreadable"
+    assert debuglog.save_summary(Broken()) == "unreadable"
 
 
 def test_the_map_says_which_area_and_how_sure(logs):
@@ -290,10 +290,10 @@ def test_the_map_says_which_area_and_how_sure(logs):
 
     state = AutomapState(area="GEO00",
                          candidates=Candidates(["GEO00"], "resident", True))
-    assert debuglog.area_shape(state) == "GEO00 (from resident, certain)"
+    assert debuglog.area_summary(state) == "GEO00 (from resident, certain)"
 
     guessing = AutomapState(candidates=Candidates(["GEO00", "GEO04"], "fingerprint"))
-    assert debuglog.area_shape(guessing) == \
+    assert debuglog.area_summary(guessing) == \
         "unidentified (from fingerprint, 2 candidates)"
 
 
@@ -434,7 +434,7 @@ def test_the_same_failure_is_not_written_every_tick(live, logs):
 
 
 @game_disks
-def test_an_open_save_is_logged_as_a_shape_and_nothing_else(app, logs, tmp_path):
+def test_an_open_save_logs_only_its_metadata(app, logs, tmp_path):
     """The whole privacy claim, against a real file: no path, no name, no byte.
 
     Its own window, because it is the one that must have a save open."""

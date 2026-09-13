@@ -223,7 +223,7 @@ class Machine:
     def operands(self, op: int) -> int:
         return self.corrections.get(op, self.table_operands[op])
 
-    def shape(self, op: int, limit: int = 24) -> list[str]:
+    def handler_signature(self, op: int, limit: int = 24) -> list[str]:
         """The handler's instructions with every address blanked."""
         out = []
         for _, _, text in newecl.instructions(self.body, self.base,
@@ -657,13 +657,14 @@ def verify(machine: Machine, control: Machine) -> list[str]:
     out = []
     shared = min(machine.count, control.count)
     same = sum(1 for op in range(shared)
-               if machine.shape(op) == control.shape(op))
+               if machine.handler_signature(op) == control.handler_signature(op))
     out.append(f"  handlers identical bar their operands: {same} of {shared} "
                f"opcodes ({machine.count} here, {control.count} there)")
     for op in sorted(set(COUNTED) | set(HANDLER_OPERANDS.get("pool-of-radiance", {}))):
         if op >= shared:
             continue
-        agree = "same" if machine.shape(op) == control.shape(op) else "DIFFERS"
+        agree = ("same" if machine.handler_signature(op)
+                 == control.handler_signature(op) else "DIFFERS")
         out.append(f"    ${op:02X} {NAMES.get(op, ''):10s} "
                    f"table says {machine.table_operands[op]} here, "
                    f"{control.table_operands[op]} there; handler {agree}")
