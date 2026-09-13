@@ -179,6 +179,21 @@ def test_every_neutral_field_has_a_reader_disposition():
                               amiga_pod.pod_field_disposition()) == (set(), set())
 
 
+@pytest.mark.parametrize("share", (0, 255))
+def test_the_pod_treasure_share_is_a_raw_byte_in_both_directions(share):
+    """The SSB importer gives PoD an exact byte, including explicit zero."""
+    raw = bytearray(amiga_pod.RECORD_LENGTH)
+    raw[amiga_pod.FIELD_83_87_SECOND] = share
+    character = amiga_pod.PodCharacter.from_bytes(raw)
+    assert character.treasure_share == share
+    assert amiga_pod.pod_to_neutral(character).get("treasure_share") == share
+
+    writer = amiga_pod.PodWriter(name="TEST", treasure_share=share)
+    written = writer.to_bytes()
+    assert written[amiga_pod.FIELD_83_87_SECOND] == share
+    assert writer.provenance()[amiga_pod.FIELD_83_87_SECOND] == "treasure_share"
+
+
 def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     """The reader's list was computed from the writer's until `#462` and is
     its own now, so this is what stops the two drifting apart the wrong way.
@@ -279,6 +294,7 @@ def test_a_record_written_back_keeps_every_field_the_reader_read():
         "hp_max": (amiga_pod.HP_MAX, 1),
         "movement": (amiga_pod.MOVEMENT, 1),
         "class_levels": (amiga_pod.CLASS_LEVELS, amiga_pod.CLASS_LEVEL_COUNT),
+        "treasure_share": (amiga_pod.FIELD_83_87_SECOND, 1),
         # `0x0B3` is `armour_class_base` since #462, not `armour_class` --
         # the neutral `armour_class` is read from `ARMOUR_CLASS_CURRENT`
         # (`0x187`) now. The span passed under the old name only because
@@ -476,21 +492,21 @@ def test_the_reader_says_out_loud_what_it_could_not_read():
         break
 
 
-def test_the_reader_fills_sixty_one_of_the_neutral_records_fields():
+def test_the_reader_fills_sixty_two_of_the_neutral_records_fields():
     """The count that says how far the Amiga decode has got, pinned so it
     moves when somebody decodes another region rather than drifting.
 
-    **38 until `#462` and 61 now**, of 75. Thirteen of the fourteen it does
+    **38 until `#462` and 62 now**, of 75. Twelve of the thirteen it does
     not fill are named in `POD_READ_DROPPED` -- nine of them fields this
     *title* has on neither port, three the item and effect regions this
     reader does not walk yet, and one, `attack_level`, the only field in the
-    record still unlocated. The fourteenth is `npc_control_byte`, which is
+    record still unlocated. The thirteenth is `npc_control_byte`, which is
     set only for a companion and so is absent from a player character rather
     than dropped, exactly as it is absent from a DOS one.
     """
     for _name, raw in pc_records():
         out = amiga_pod.pod_to_neutral(raw)
-        assert len(out.fields) == 61, sorted(out.fields)
+        assert len(out.fields) == 62, sorted(out.fields)
         named = set(out.fields) | {n for n, _ in amiga_pod.pod_read_dropped()}
         assert set(neutral.FIELDS) - named == {"npc_control_byte"}
         break

@@ -346,33 +346,35 @@ def test_a_source_with_a_status_and_no_active_flag_takes_bit_seven_from_it():
     assert "computed from the status" in rep.sources[0x100]
 
 
-# --- the run at 0x083 stays a constant, except its own control byte ---------
+# --- treasure share: raw, including zero, crosses where it can -------------
 
-def test_the_five_bytes_at_0x083_still_reach_nothing_in_the_c64_record():
-    """The other half of #235, kept from drifting: `field_83_87` is
-    `00 00 01 00 00` in 101 of 101 engine-written Pool of Radiance records
-    and the character sheet is pixel-identical whatever it holds, so it is a
-    documented constant and **not** converted -- with one exception since
-    #303: the second byte, the control byte, crosses when its own bit 7 is
-    set.  Both windows compared below hold that bit clear (`0x00` and
-    `0x22`), so this test still isolates the four bytes that stay inert;
-    `test_a_dos_companions_control_byte_crosses_to_the_c64` is the case
-    where the second byte moves.
+@pytest.mark.parametrize("share", (0, 3))
+def test_a_dos_share_reaches_the_c64_and_round_trips_exactly(share):
+    """The raw share, not just its masked effective value, crosses both ways."""
+    source = _dos_record(constant=bytes((0, 0, share, 0, 0)))
+    c64, _ = c64_codec.write(dos_codec.to_neutral(source))
+    assert c64.get("treasure_share") == share
+    back, _itm, _spc, _ = dos_codec.write(c64_codec.read(c64))
+    assert back[CONSTANT.offset + 2] == share
 
-    Two records differing only in those five bytes have to convert to the
-    same C64 record.  The pair below it is the control: two differing only in
-    the status byte have to convert to different ones, which is what says
-    this test is comparing something that can move.
-    """
-    one, _ = c64_codec.write(dos_codec.to_neutral(
-        _dos_record(constant=b"\x00\x00\x01\x00\x00")))
-    two, _ = c64_codec.write(dos_codec.to_neutral(
-        _dos_record(constant=b"\x11\x22\x33\x44\x55")))
-    assert one.to_bytes() == two.to_bytes()
 
-    well, _ = c64_codec.write(dos_codec.to_neutral(_dos_record(b"\x00\x01\x00\x00")))
-    hurt, _ = c64_codec.write(dos_codec.to_neutral(_dos_record(b"\x04\x00\x00\x00")))
-    assert well.to_bytes() != hurt.to_bytes()
+@pytest.mark.parametrize("share", (4, 7))
+def test_a_three_bit_share_refuses_a_c64_destination(share):
+    """No C64 byte preserves both a three-bit raw share and its effect."""
+    source = _dos_record(constant=bytes((0, 0, share, 0, 0)))
+    with pytest.raises(ValueError, match="treasure share"):
+        c64_codec.write(dos_codec.to_neutral(source))
+
+
+def test_a_c64_three_bit_share_refuses_dos_but_round_trips_to_c64():
+    """A malformed-but-preservable C64 raw byte cannot cross families."""
+    record = CharacterRecord.blank()
+    record.set("treasure_share", 4)
+    character = c64_codec.read(record)
+    with pytest.raises(ValueError, match="treasure share"):
+        dos_codec.write(character)
+    copied, _ = c64_codec.write(character)
+    assert copied.get("treasure_share") == 4
 
 
 # --- #303: the control byte itself, both directions --------------------------
@@ -673,5 +675,6 @@ def test_the_control_byte_lands_at_each_titles_own_index(key, size, index):
     assert f.size == size
     assert out[f.offset + index] == 0xB2
     rest = [out[f.offset + i] for i in range(f.size) if i != index]
-    assert rest == list(dos_codec.FIELD_83_87[size][:index]
-                        + dos_codec.FIELD_83_87[size][index + 1:])
+    expected = bytearray(dos_codec.FIELD_83_87[size])
+    expected[index + 1] = 0
+    assert rest == [value for n, value in enumerate(expected) if n != index]

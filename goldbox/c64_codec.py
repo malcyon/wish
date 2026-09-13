@@ -724,6 +724,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # for a number the destination computes better than we could copy it.
     use("encumbrance")
 
+    share = use("treasure_share")
+    if share is not None:
+        if char.port != "C64" and int(share.value) & 0x04:
+            raise ValueError(
+                f"treasure share {int(share.value):#04x} has bit 2 set; "
+                "a C64 record masks shares with 3")
+        rec.set("treasure_share", int(share.value) & 0xFF)
+        emit(share, "treasure_share", 0x0FA, 1)
+
     # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
     # -----------------------------------------------------------------------
     # DOS and Amiga store the plain class row and apply the constitution
@@ -1423,6 +1432,8 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("npc_control_byte", "written unchanged to 0x0B8 when npc is true -- "
                          "bit 7 plus the low seven bits of morale, stored "
                          "halved; nothing to write when npc is false (#303)"),
+    ("treasure_share", "written unchanged to 0x0FA; a DOS or Amiga raw "
+                       "value with bit 2 set refuses because C64 masks with 3"),
     ("status", "the name indexed into the C64's own seven-value table, into "
                "the low three bits of record 0x100; a state the C64 does not "
                "have is reported and the character arrives OK"),
@@ -1644,6 +1655,7 @@ READ_TARGETS: dict[str, str] = (
        "flags_0b8": "bit 7 read as neutral npc, and the whole byte read "
                     "again as neutral npc_control_byte when it is set "
                     "(#303)",
+       "treasure_share": "read unchanged as neutral treasure_share",
        "attack_forms": "read as neutral attack_forms",
        "infravision": "read as neutral infravision",
        "turn_power": "read as neutral turn_power",
@@ -1793,6 +1805,10 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("npc_control_byte", rec.get("flags_0b8"),
                 "the C64's own 0x0B8, unchanged: bit 7 plus the low seven "
                 "bits of morale, stored halved", grade("flags_0b8"))
+
+    out.set("treasure_share", rec.get("treasure_share"),
+            "the C64's raw treasure-share byte at 0x0FA",
+            grade("treasure_share"))
 
     # -- the status byte, unpacked into the two things it holds --------------
     # Zero is not a state: it is an **empty roster slot**, which is what DROP

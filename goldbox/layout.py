@@ -949,6 +949,11 @@ _DECLARED: Sequence[Field] = (
            "Experience per hit point", _OK,
            "the multiplier `experience_award`'s note describes: GOBLIN GUARD "
            "1, HOBGOBLIN 2, OGRE 5, the published AD&D 1st edition rate"),
+    _field(0x0FA, 1, _U8, "treasure_share", "Treasure share", _OK,
+           "the raw share byte POST.COM reads for an engine-driven character: "
+           "zero skips the split and the low two bits choose the share. DOS "
+           "and Amiga use the corresponding byte after field_83_87's control "
+           "byte with a three-bit mask; see docs/195"),
     _field(0x0FE, 1, _U8, "portrait_head", "Portrait head", _OK,
            "index into the HEAD* files on the game disks, in hex: 0x2D is "
            "HEAD2D. All eleven values across our exports name a file that "

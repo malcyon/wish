@@ -2903,7 +2903,7 @@ def _control_byte_record(shape, control: int):
     return amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape)
 
 
-def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
+def test_a_later_amiga_control_and_treasure_share_reach_neutral():
     """`#386 (An Amiga Curse or Silver Blades companion converts to an
     ordinary character, because the later-titles reader never looks at the
     control byte)`.
@@ -2939,24 +2939,18 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
         assert out.get("npc") is True, shape.key
         assert out.get("npc_control_byte") == 0xFF, shape.key
 
-        # The player-facing `field_83_87` line used to say the whole run
-        # "makes no difference to the character sheet", which stopped being
-        # true the moment the control byte above started reaching `npc` --
-        # `editor/window.py` and `editor/roster.py` draw a companion
-        # differently.  It still fires, for the one byte that remains
-        # genuinely unconverted (the treasure share), and must not claim the
-        # control byte is among the bytes that make no difference.
-        #
-        # Deleted on 2026-09-13 when the whole run was reclassified a
-        # constant, and restored the same day: the run is not constant --
-        # 21 Amiga records hold four different values of it, and MALACHITE's
-        # share byte is measured turning from 0 into 1 on the way to a DOS
-        # record.  `.claude/rules/conversions.md`: "an entry leaves a drop
-        # list when the field converts, never when it stops being counted."
-        f83_lines = [d for d in out.dropped if d.startswith("Treasure share")]
-        assert f83_lines, (shape.key, out.dropped)
-        assert "make no difference" not in f83_lines[0]
-        assert "control" not in f83_lines[0].lower()
+        f = shape.dos_field("field_83_87")
+        control_index = 1 if f.size == 5 else 0
+        share_index = control_index + 1
+        for share in (0, 3):
+            raw = bytearray(_control_byte_record(shape, 0).raw)
+            raw[shape.offset(f.offset) + share_index] = share
+            out = amiga_later.to_neutral_later(
+                amiga_later.AmigaCharacter.from_bytes(bytes(raw), shape))
+            assert out.get("treasure_share") == share, shape.key
+            written, _ = amiga_later.write_later(out, deltas=shape)
+            assert written.raw[shape.offset(f.offset) + share_index] == share
+            assert not any("Treasure share" in line for line in out.dropped)
 
 
 def test_a_later_amiga_identity_byte_reaches_the_neutral_record():
@@ -3036,7 +3030,6 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
     seen = 0
     for char in _later_parties():
         out = amiga_por.to_neutral(char)
-        assert out.dropped, char.name
         for line in out.dropped + out.warnings:
             assert not hex_offset.search(line), (char.name, line)
             assert not bare_issue.search(line), (char.name, line)

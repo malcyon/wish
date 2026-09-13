@@ -249,6 +249,11 @@ FIELDS: dict[str, str] = {
                         "Neither port decodes it -- a converter copies it "
                         "unchanged -- and it is set only when npc is true; "
                         "a player character has no morale to carry (#303)",
+    "treasure_share": "the raw byte choosing this character's share of "
+                      "party treasure. C64 keeps it at 0x0FA masked with 3; "
+                      "DOS and Amiga keep it at field_83_87's byte after the "
+                      "control byte, masked with 7. Zero is meaningful: the "
+                      "engines test it before masking",
     "hostile": "true for a combatant on the enemy's side. Never true for a "
               "character the engine saved into a party: both ports write 0 "
               "for every player character, and it is here because both "

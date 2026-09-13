@@ -270,60 +270,22 @@ AND #$03                 ; DOS masks with 7 here
 ... added to two running totals
 ```
 
-`tools/recordsweep.py --game pool --offset 0xFA` finds **one** reference to it
-in 589 Pool of Radiance files, and that is it. So the C64 does not keep the
-share next to the control byte the way DOS does, and `goldbox/layout.py` has no
-field there yet. PROBABLE: one reference, and no record on this machine holds a
-non-zero value -- 0 in all five C64 companions and in all 297 records.
+The engines' own consumers settle the port boundary: C64 masks `0x0FA` with
+`3`; DOS and Amiga mask their aligned byte with `7`. Every engine tests the raw
+byte for zero before applying its mask. `goldbox.layout` names the C64 field
+and the neutral record preserves the raw byte, including explicit zero.
 
 ## What the conversion does with them, and what it still cannot
 
-`goldbox.dos_codec.WRITE_CONSTANTS` writes `00 00 01 00 00` into the five-byte run
-(`00 01 00 00` in the four-byte titles). **1 is a choice, and the note now says
-so**: the byte is inert for a player character, 1 is the only value any engine
-writes, and 0 is the one value the split treats specially, so a converted
-companion written with 0 would silently get nothing. It stays in
-`WRITE_CONSTANTS` rather than moving to `WRITE_DEFAULTS`, because a default is
-masked out of the round trip and moving it would hide MALACHITE's real
-difference instead of converting it.
+`goldbox.dos_codec.WRITE_CONSTANTS` supplies the destination's `1` only when a
+source has no neutral treasure share. A present field overwrites it, including
+`0`; the C64 writer likewise writes only a present field.
 
-**The neutral `npc` flag now has a DOS home that nobody has wired up**: bit 7
-of the control byte, in all four titles, against bit 7 of `0x0B8` on the C64
-(`goldbox/record.py`'s `is_npc`). `goldbox.dos_codec.WRITE_DROPPED`'s reason -- "no
-attributed DOS field holds it" -- is wrong as of this page.
+The control byte remains separate: bit 7 and the low seven morale bits cross
+through `npc` and `npc_control_byte` as before.
 
-**And the value is settled too**, by the section above: the two ports keep the
-same byte in the same encoding, so the converter has nothing to invent. What
-each side of the conversion has to do:
-
-* **C64 to DOS.** Write the source's own `0x0B8` into the destination's
-  control byte when bit 7 is set, and `0x00` when it is clear. Copying the
-  byte unconditionally would be wrong in one case a player can reach: a C64
-  character whose trainer bit is set holds `0x01`, and a DOS record at `0x01`
-  is neither `0` nor `0xB3`, which is the test at `0x0251B7` that decides
-  whose coins go into the party's pooled money -- so his gold would stop
-  being counted. The trainer bit has its own DOS home in the share byte and
-  the constant `1` already written there.
-* **DOS to C64.** The reverse, with the same rule. It drops today for a
-  second reason as well: `field_83_87` is on `goldbox.dos_codec.CONSTANTS`, which is
-  silent, so a DOS companion imports as a player character with the flag lost
-  and nothing said about it in the reader's own list. `goldbox/c64_codec.py`'s
-  `DROPPED` does report it from the writer's side.
-* **The morale needs somewhere neutral to live.** `npc` is a boolean, so a
-  conversion through it keeps bit 7 and loses the other seven bits -- a
-  companion arrives with morale 0, which DOS's own load-time guard at
-  `0x00D976` treats as out of range. A neutral byte-wide field beside `npc`,
-  or `npc` widened to a byte, is what would convert it.
-
-Two things still block the wiring, and neither is a measurement:
-
-* splitting `field_83_87` into named bytes needs `goldbox/amiga_later.py`, which
-  names the whole run in its own drop table;
-* the C64 side drops the flag in the other direction too, in
-  `goldbox/c64_codec.py`.
-
-**Still UNKNOWN, and it costs nothing:** what a *Curse* or *Silver Blades*
-companion's morale actually is, since the only companions in any corpus here
-are Pool of Radiance's five and OUGO. The producer is the area script in every
-title, so the answer is per companion rather than per title, and a converter
-copying the source's byte never needs it.
+Values `0` through `3` preserve the raw byte and engine behaviour across all
+three ports. DOS and Amiga preserve `4` through `7` between themselves. A
+value with bit 2 set refuses before output when crossing the C64 two-bit family
+and the DOS/Amiga three-bit family: masking, clamping or defaulting would lose
+the raw-zero condition or change the engine-effective share.

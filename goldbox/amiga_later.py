@@ -703,6 +703,9 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("field_10c_10f", "its first byte becomes the neutral status, by name, "
                       "and its second the active flag; the last two are not "
                       "converted"),
+    ("field_83_87", "the control byte becomes neutral npc and "
+                      "npc_control_byte, and the next byte becomes the raw "
+                      "neutral treasure_share"),
     ("encumbrance", "copied, and it is money plus item weight -- a writer "
                     "that recomputes it should"),
     ("icon_head", "the combat icon's head: DOS's own CHEAD.DAX index, read "
@@ -761,42 +764,6 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                       "creation menu to convert a position through"),
     ("portrait_body", "see portrait_head; the body half of the same pair, "
                       "0 in the same 21 of 21"),
-    ("field_83_87", "five bytes in Curse and four in Silver Blades that DOS "
-                    "calls unknown, one of which is the share of treasure a "
-                    "character takes. **Not zero in a record the Amiga "
-                    "engine wrote**, which this line claimed until "
-                    "2026-09-07: the four played Curse characters in "
-                    "SAVE/savgamA.dat hold 00 00 01 00 00 and five of the "
-                    "six Silver Blades ones hold 00 01 00 00, which is "
-                    "`goldbox.dos_codec.FIELD_83_87` byte for byte. The eleven "
-                    ".guy pregens and Silver Blades' MALACHITE hold zeros, "
-                    "and they were what the old reading rested on. **Nor is "
-                    "the run a constant**, which this table claimed for one "
-                    "day on 2026-09-13: over the 21 Amiga records on this "
-                    "machine the share byte -- index 2 of Curse's run, index "
-                    "1 of Silver Blades' -- is 1 in 9 and 0 in 12, and "
-                    "MALACHITE holds 0 in the same engine-written saved game "
-                    "in which his five party-mates hold 1. `write_later` "
-                    "reaches `goldbox.dos_codec.write`, whose `write_constants` "
-                    "puts `FIELD_83_87` back whatever the source held, so "
-                    "MALACHITE converts to 00 01 00 00 and his own 0 is gone: "
-                    "measured 2026-09-13, source 00 00 00 00 in and 00 01 00 "
-                    "00 out. The DOS side says the same of itself and keeps "
-                    "the byte off `WRITE_DEFAULTS` on purpose, because "
-                    "masking it *\"would hide MALACHITE\'s real difference "
-                    "rather than convert it\"*. **So one byte of the run is "
-                    "genuinely homeless**: the neutral record has no field "
-                    "for a treasure share. The control byte -- index 1 of "
-                    "Curse's run, index 0 of Silver Blades' -- is not that "
-                    "byte: `to_neutral_later` reads it into `npc` and "
-                    "`npc_control_byte` itself now, the same index "
-                    "`goldbox.dos_codec.to_neutral` computes (#386, closed "
-                    "2026-09-07). What would remove this entry: a neutral "
-                    "field for the share, taken from that one index and "
-                    "written back by all three destination writers -- the "
-                    "C64's own home for it is 0x0FA, PROBABLE, "
-                    "docs/195-three-dos-record-bytes-named-from-the-"
-                    "overlays.md -- which is #529"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
                                      "array, which no character of either "
                                      "port sets a byte of and no class has "
@@ -848,7 +815,7 @@ LATER_CONSTANTS: tuple[tuple[str, str], ...] = tuple(
 #: being counted here and saying nothing to a reader are different questions.
 LATER_DROPPED: tuple[tuple[str, str], ...] = tuple(
     (name, _LATER_ACCOUNT[name]) for name in (
-        "icon_dimension", "field_83_87", "turn_class"))
+        "icon_dimension", "turn_class"))
 
 #: The plain-English half of `LATER_DROPPED`, and the only one that reaches
 #: the report.  It is read in the debug log and in a `--report` printout
@@ -879,9 +846,6 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
     # line, and a drop line goes to `wish/debuglog.py` rather than to a pane
     # since Donald's ruling of 2026-09-08 (`.claude/rules/conversions.md`,
     # *"a drop line is therefore never a string Donald words"*).
-    "field_83_87": "Treasure share: how this character's cut of the "
-                   "party's loot is set has not been converted yet, so it "
-                   "resets to the game's own default",
 }
 
 #: The one thing the neutral record cannot say about these two titles, and it
@@ -1194,6 +1158,11 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
                 f"unchanged -- bit 7 plus the low seven bits of morale, "
                 f"stored halved",
                 Confidence.PROBABLE)
+    share_index = control_index + 1
+    share_offset = deltas.offset(f83.offset) + share_index
+    out.set("treasure_share", control_raw[share_index],
+            f"Amiga {deltas.title} field_83_87 @{share_offset:#05x}, the raw "
+            "treasure share", Confidence.CONFIRMED)
 
     declared = {f.name for f in dos_port.layout_for(deltas.dos)}
     for name, _why in LATER_DROPPED:

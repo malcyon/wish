@@ -1444,6 +1444,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "neutral status, 0x10D into active, 0x10E into "
                       "hostile and 0x10F into quickfight (#235, "
                       "docs/169-dos-combat-side.md)"),
+    ("field_83_87", "the control byte becomes neutral npc and "
+                      "npc_control_byte, and the next byte becomes the raw "
+                      "neutral treasure_share"),
     ("unnamed_0ab", "the identity draw the C64's add screen never needs, "
                     "given a home instead of a digest: written into the "
                     "C64's identity_pair at 0x0E6, with 0x0E7 left zero "
@@ -1573,22 +1576,7 @@ DERIVED: tuple[tuple[str, str, str], ...] = (
 #:
 #: #324 (The import pane tells a player nine fields could not be converted
 #: that the C64 recomputes for itself).
-CONSTANTS: tuple[tuple[str, str], ...] = (
-    # The byte-level evidence is in `docs/141-dos-savegame.md`, under
-    # "0x083-0x087: a constant, and what that rests on": 00 00 01 00 00 in
-    # 101 of 101 engine-written Pool of Radiance records -- 20 characters,
-    # eight classes, levels 1-4, before a fight and after one, and on a
-    # character the engine knocked unconscious -- and the sheet is
-    # pixel-identical whatever it holds (#235, #304).
-    ("field_83_87", "always the same five bytes for a player character, "
-                    "and the character sheet looks identical whichever "
-                    "value the other four hold, so nothing here is a loss "
-                    "a player would notice. The control byte -- bit 7 plus "
-                    "a companion's morale -- is not silent: `to_neutral` "
-                    "reads it into the neutral npc and npc_control_byte "
-                    "fields before this table's constant applies to what "
-                    "is left (#303)"),
-)
+CONSTANTS: tuple[tuple[str, str], ...] = ()
 
 #: The same, for a field only a later title declares -- split off the way
 #: :data:`LATER_TITLE_DROPPED` is split off :data:`DROPPED`, so that
@@ -2041,6 +2029,11 @@ def to_neutral(dos: DosCharacter,
                 f"DOS field_83_87 @{control_offset:#05x}, unchanged -- bit "
                 f"7 plus the low seven bits of morale, stored halved",
                 Confidence.PROBABLE)
+    share_index = control_index + 1
+    share_offset = f83.offset + share_index
+    out.set("treasure_share", control_raw[share_index],
+            f"DOS field_83_87 @{share_offset:#05x}, the raw treasure share",
+            Confidence.CONFIRMED)
 
     # -- the combat tail: how the character is, and which side it fights on --
     # `field_10c_10f` is four bytes and all four are a character's own state
@@ -2619,6 +2612,9 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                          "byte when npc is true -- bit 7 plus the low "
                          "seven bits of morale, stored halved; nothing to "
                          "write when npc is false (#303)"),
+    ("treasure_share", "written over field_83_87's destination default at "
+                       "the byte after its control byte; explicit zero is "
+                       "preserved"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -4279,6 +4275,17 @@ def write(char: NeutralCharacter,
     f83 = table["field_83_87"]
     control_index = 1 if f83.size == 5 else 0
     control_offset = f83.offset + control_index
+    share_index = control_index + 1
+    share_offset = f83.offset + share_index
+    share = use("treasure_share")
+    if share is not None:
+        if char.port == "C64" and int(share.value) & 0x04:
+            raise ValueError(
+                f"treasure share {int(share.value):#04x} has bit 2 set; "
+                "DOS and Amiga records mask shares with 7")
+        rec[share_offset] = int(share.value) & 0xFF
+        emit(share, "field_83_87", share_offset, 1,
+             " -- raw treasure share, unchanged")
     npc = use("npc")
     control = use("npc_control_byte")
     if npc is not None and npc.value:

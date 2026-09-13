@@ -450,6 +450,11 @@ class PodCharacter:
         return self.raw[MOVEMENT]
 
     @property
+    def treasure_share(self) -> int:
+        """The raw byte the Silver Blades importer copies from 0x09B."""
+        return self.raw[FIELD_83_87_SECOND]
+
+    @property
     def level(self) -> int:
         return self.raw[LEVEL]
 
@@ -695,6 +700,7 @@ class PodWriter:
     saving_throws: tuple[int, ...] | None = None
     thief_skills: tuple[int, ...] | None = None
     class_bits: int | None = None
+    treasure_share: int | None = None
 
     def _check(self) -> None:
         if not 0 <= self.race < len(RACES):
@@ -711,6 +717,9 @@ class PodWriter:
             raise ValueError(f"{CLASS_LEVEL_COUNT} class levels")
         if self.armour_class > COMBAT_BIAS:
             raise ValueError("armour class is stored as 60 - AC; 60 is the cap")
+        if (self.treasure_share is not None
+                and not 0 <= self.treasure_share <= 0xFF):
+            raise ValueError("treasure share does not fit in one byte")
 
     def provenance(self) -> dict[int, str]:
         """Every non-zero byte of the output, and the field that put it there.
@@ -753,6 +762,8 @@ class PodWriter:
             plan.append((THIEF_SKILLS, THIEF_SKILL_COUNT, "thief_skills"))
         if self.class_bits is not None:
             plan.append((CLASS_BITS, 1, "class_bits"))
+        if self.treasure_share is not None:
+            plan.append((FIELD_83_87_SECOND, 1, "treasure_share"))
         return plan
 
     def to_bytes(self) -> bytes:
@@ -794,6 +805,8 @@ class PodWriter:
                 self.thief_skills)
         if self.class_bits is not None:
             out[CLASS_BITS] = self.class_bits
+        if self.treasure_share is not None:
+            out[FIELD_83_87_SECOND] = self.treasure_share
         return bytes(out)
 
 
@@ -952,6 +965,7 @@ POD_WRITE_DIRECT: tuple[tuple[str, str], ...] = (
     ("platinum", "platinum"),
     ("gems", "gems"),
     ("jewelry", "jewelry"),
+    ("treasure_share", "treasure_share"),
     ("exceptional_strength", "exceptional_strength"),
     ("level", "level"),
     ("sex", "sex"),
@@ -1173,6 +1187,7 @@ POD_READ_DIRECT: tuple[tuple[str, str], ...] = (
     ("alignment", "alignment, the .pc's own byte at 0x05D"),
     ("age", "age, the .pc's big-endian word at 0x052"),
     ("level", "level, the .pc's byte at 0x089"),
+    ("treasure_share", "treasure_share, the .pc's byte at 0x094"),
     ("experience", "experience, the .pc's big-endian longword at 0x044"),
     ("platinum", "platinum, the .pc's big-endian word at 0x04C"),
     ("gems", "gems, the .pc's big-endian word at 0x04E"),
@@ -1384,6 +1399,8 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
         "platinum": (char.platinum, PLATINUM, "platinum"),
         "gems": (char.gems, GEMS, "gems"),
         "jewelry": (char.jewelry, JEWELRY, "jewelry"),
+        "treasure_share": (char.treasure_share, FIELD_83_87_SECOND,
+                           "treasure_share"),
         "movement": (char.movement, MOVEMENT, "movement"),
         "hp_max": (char.hit_points_max, HP_MAX, "hit_points_max"),
         "hp_current": (char.hit_points_current, HP_CURRENT,
@@ -1773,6 +1790,8 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     else:
         hp_current = min(int(current.value), hp_max)
 
+    treasure_share = w.use("treasure_share")
+
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),
@@ -1796,6 +1815,8 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         saving_throws=tuple(num(k) for k in SAVE_KEYS),
         thief_skills=tuple(num(k) for k in THIEF_KEYS),
         class_bits=sum(CLASS_BIT[c] for c in set(classes)),
+        treasure_share=(None if treasure_share is None
+                        else int(treasure_share.value)),
     )
     w.finish()
     return writer, rep
@@ -1871,6 +1892,7 @@ _SOURCE_OF: dict[str, str] = {
     "saving_throws": "save_paralysis..save_spell",
     "thief_skills": "thief_pick_pockets..thief_read_languages",
     "class_bits": "class_bits",
+    "treasure_share": "treasure_share",
 }
 
 
@@ -1915,4 +1937,3 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
         path.write_bytes(record)
         out.append((path, rep))
     return out
-
