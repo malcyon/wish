@@ -18,20 +18,20 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_later, amiga_port  # noqa: E402
+from goldbox import amiga_later, amiga_port, amiga_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-from tools import amigarecords, amigasaves  # noqa: E402
-from tools import amigasavecheck as amigasavegame  # noqa: E402
-from tools.amigasavecheck import (  # noqa: E402
+from goldbox.amiga_savegame import (  # noqa: E402
     CURSE,
     POOL_OF_RADIANCE,
     SILVER_BLADES,
     AmigaSaveError,
-    check,
     detect,
     parse,
-    report,
+    rebuild,
+    with_square,
 )
+from tools import amigarecords, amigasaves  # noqa: E402
+from tools.amigasavecheck import check, main, report, savegames_on  # noqa: E402
 
 # -- the map's own arithmetic ------------------------------------------------
 
@@ -70,7 +70,7 @@ def fake_record(shape: amiga_port.AmigaDeltas, name: str) -> bytes:
 
 
 def vm_with(shape, **words) -> bytearray:
-    vm = bytearray(amigasavegame.VM_BYTES)
+    vm = bytearray(amiga_savegame.VM_BYTES)
     for name, value in words.items():
         at = shape.vm_offset(int(name, 16)) - shape.vm_at
         vm[at:at + 2] = value.to_bytes(2, "big")
@@ -81,7 +81,7 @@ def synthetic_curse(names=("ALPHA", "BETA")) -> bytes:
     out = bytearray([2])
     out += vm_with(CURSE, **{"0x5012": 2, "0x503E": len(names),
                              "0x49C9": 1, "0x49C8": 1, "0x49C7": 5})
-    out += bytes(amigasavegame.ECL_BYTES)
+    out += bytes(amiga_savegame.ECL_BYTES)
     out += (3).to_bytes(2, "big") + (14).to_bytes(2, "big") + bytes([2, 0, 0, 0])
     out += bytes([4, 2])
     for block, slot in ((1, 1), (2, 2), (3, 3)):
@@ -107,10 +107,11 @@ def synthetic_silver_blades(names=("GAMMA",)) -> bytes:
 def synthetic_pool_of_radiance(slot="A", count=6) -> bytes:
     out = bytearray()
     out += vm_with(POOL_OF_RADIANCE, **{"0x503E": count, "0x5012": 3})
-    out += bytes(amigasavegame.ECL_BYTES)
+    out += bytes(amiga_savegame.ECL_BYTES)
     out += bytes([0, 4, 6, 1, 25, 0, 0, 0, 0, 0])
     out += bytes([1, 2, count])
-    table = bytearray(amigasavegame.NAME_SLOTS * amigasavegame.NAME_SLOT_BYTES)
+    table = bytearray(amiga_savegame.POR_NAME_SLOTS
+                      * amiga_savegame.POR_CHARACTER_TABLE_STRIDE)
     for i in range(count):
         table[i * 41:i * 41 + 8] = f"CHRDAT{slot}{i + 1}".encode()
     # the two slots the party does not fill hold stack junk in a real save
@@ -121,7 +122,7 @@ def synthetic_pool_of_radiance(slot="A", count=6) -> bytes:
 
 def test_a_synthetic_curse_save_reads_back_through_the_map():
     save = parse(synthetic_curse())
-    assert save.shape is CURSE
+    assert save.container is CURSE
     assert save.header_byte == 2
     assert save.square == {"x": 3, "y": 14, "facing": 2, "wall_ahead": 0,
                            "square_property": 0, "pad": 0}
@@ -136,7 +137,7 @@ def test_a_synthetic_curse_save_reads_back_through_the_map():
 
 def test_a_synthetic_silver_blades_save_reads_back_through_the_map():
     save = parse(synthetic_silver_blades())
-    assert save.shape is SILVER_BLADES
+    assert save.container is SILVER_BLADES
     assert save.square["x"] == 7 and save.square["y"] == 13
     assert save.wallset == ((0, 1), (0xFFFF, 0xFFFF), (0xFFFF, 0xFFFF))
     assert save.blocks == ((0x1417, 0x1417 + 340),)
@@ -145,7 +146,7 @@ def test_a_synthetic_silver_blades_save_reads_back_through_the_map():
 
 def test_a_synthetic_pool_of_radiance_save_reads_back_through_the_map():
     save = parse(synthetic_pool_of_radiance("B"))
-    assert save.shape is POOL_OF_RADIANCE
+    assert save.container is POOL_OF_RADIANCE
     assert save.header_byte is None
     assert save.square["x"] == 0 and save.square["y"] == 4
     assert save.square["facing"] == 6
@@ -160,11 +161,62 @@ def test_the_count_word_is_the_table_of_contents_not_the_scan():
     # so does the parser -- and the check reports the disagreement.
     data = bytearray(synthetic_curse())
     data[CURSE.count_at:CURSE.party_at] = (1).to_bytes(2, "big")
-    save = parse(bytes(data))
+    save = parse(bytes(data), validate=False)
+    with pytest.raises(AmigaSaveError):
+        parse(bytes(data))
     assert save.count == 1 and len(save.characters) == 1
     failed = [claim for claim, ok, _ in check(save) if not ok]
     assert "every block starts where the scan finds a record" in failed
     assert "the last block ends at the end of the file" in failed
+
+
+@pytest.mark.parametrize("names", [(), tuple(f"CHARACTER{i}" for i in range(7))])
+def test_diagnostic_parsing_reports_party_sizes_the_writer_rejects(names):
+    data = synthetic_curse(names)
+    save = parse(data, CURSE, validate=False)
+
+    assert save.count == len(names)
+    assert any(claim == "the party count is 1 to 6" and not ok
+               for claim, ok, _ in check(save))
+    assert "[FAIL] the party count is 1 to 6" in report(save)
+    with pytest.raises(AmigaSaveError):
+        parse(data, CURSE)
+    with pytest.raises(AmigaSaveError):
+        rebuild(save)
+
+
+def test_diagnostic_cli_reports_an_oversized_party(tmp_path, capsys):
+    path = tmp_path / "oversized.dat"
+    path.write_bytes(synthetic_curse(tuple(f"CHARACTER{i}" for i in range(7))))
+
+    assert main([str(path)]) == 1
+    assert "[FAIL] the party count is 1 to 6" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda data: data.__setitem__(slice(CURSE.vm_offset(0x503E),
+                                         CURSE.vm_offset(0x503E) + 2), b"\0\3"),
+    lambda data: data.__setitem__(0, 1),
+])
+def test_diagnostic_parsing_reports_word_contradictions(mutate):
+    data = bytearray(synthetic_curse(("ALPHA",)))
+    mutate(data)
+
+    save = parse(data, CURSE, validate=False)
+    assert any(not ok for _, ok, _ in check(save))
+    with pytest.raises(AmigaSaveError):
+        parse(data, CURSE)
+
+
+def test_diagnostic_parsing_retains_trailing_bytes_for_the_checker():
+    data = synthetic_curse(("ALPHA",)) + b"\0"
+
+    save = parse(data, CURSE, validate=False)
+    assert save.data == data
+    assert any(claim == "the last block ends at the end of the file" and not ok
+               for claim, ok, _ in check(save))
+    with pytest.raises(AmigaSaveError):
+        parse(data, CURSE)
 
 
 def test_a_file_that_fits_no_map_is_refused():
@@ -203,7 +255,7 @@ def pool_of_radiance_savegames() -> tuple[tuple[str, bytes], ...]:
             disk = AmigaDisk(image)
             if disk.volume_name.lower() != "poolgame":
                 continue
-            for path, data in amigasavegame.savegames_on(disk):
+            for path, data in savegames_on(disk):
                 found.append((f"{label}!{path}", data))
         except (AmigaDiskError, ValueError):
             continue
@@ -234,9 +286,9 @@ def test_the_embedded_party_is_the_signature_scans_party(specimens):
     seen = 0
     for label, data in specimens:
         save = parse(data, source=label)
-        if save.shape.party != "records":
+        if save.container.party != "records":
             continue
-        scanned = amiga_later.party_in_savegame(data, save.shape.deltas)
+        scanned = amiga_later.party_in_savegame(data, save.container.deltas)
         assert [c.name for c in save.characters] == [c.name for c in scanned]
         assert save.count == len(scanned) == save.word(0x503E)
         seen += 1
@@ -248,7 +300,7 @@ def test_a_pool_of_radiance_save_names_its_party_after_its_slot(specimens):
     seen = 0
     for label, data in specimens:
         save = parse(data, source=label)
-        if save.shape is not POOL_OF_RADIANCE:
+        if save.container is not POOL_OF_RADIANCE:
             continue
         slot = label.rsplit("savgam", 1)[-1][0].upper()
         assert save.names[:save.count] == tuple(
@@ -271,7 +323,7 @@ def test_a_synthetic_save_rebuilds_to_the_bytes_it_was_read_from():
     """
     for build in (synthetic_curse, synthetic_silver_blades):
         data = build()
-        assert amigasavegame.rebuild(parse(data)) == data
+        assert rebuild(parse(data)) == data
 
 
 def test_a_shorter_party_shortens_the_file_and_moves_nothing_else():
@@ -280,7 +332,7 @@ def test_a_shorter_party_shortens_the_file_and_moves_nothing_else():
     every byte in front of the count where it was."""
     data = synthetic_curse(("ALPHA", "BETA"))
     save = parse(data)
-    out = amigasavegame.rebuild(save, save.characters[:1])
+    out = rebuild(save, save.characters[:1])
     assert len(out) == len(data) - amiga_port.CURSE_DELTAS.record_size
     at = CURSE.vm_offset(0x503E)
     moved = [i for i in range(CURSE.count_at) if out[i] != data[i]]
@@ -296,7 +348,7 @@ def test_the_party_size_word_is_kept_truthful():
     never read -- but a saved game that says six in one place and one in
     another is a file that lies to the next reader, including `check`."""
     save = parse(synthetic_curse(("ALPHA", "BETA")))
-    out = parse(amigasavegame.rebuild(save, save.characters[:1]))
+    out = parse(rebuild(save, save.characters[:1]))
     assert out.word(0x503E) == out.count == 1
 
 
@@ -304,21 +356,21 @@ def test_a_party_from_the_wrong_title_is_refused():
     save = parse(synthetic_curse())
     other = parse(synthetic_silver_blades()).characters
     with pytest.raises(AmigaSaveError):
-        amigasavegame.rebuild(save, other)
+        rebuild(save, other)
 
 
 def test_an_empty_or_oversized_party_is_refused():
     save = parse(synthetic_curse())
     with pytest.raises(AmigaSaveError):
-        amigasavegame.rebuild(save, [])
+        rebuild(save, [])
     with pytest.raises(AmigaSaveError):
-        amigasavegame.rebuild(save, save.characters * 4)
+        rebuild(save, save.characters * 4)
 
 
 def test_pool_of_radiance_is_refused_because_its_party_is_not_in_the_file():
     save = parse(synthetic_pool_of_radiance())
     with pytest.raises(AmigaSaveError):
-        amigasavegame.rebuild(save)
+        rebuild(save)
 
 
 def test_a_specimen_saved_game_rebuilds_byte_for_byte(specimens):
@@ -332,9 +384,9 @@ def test_a_specimen_saved_game_rebuilds_byte_for_byte(specimens):
     seen = 0
     for label, data in specimens:
         save = parse(data, source=label)
-        if save.shape.party != "records":
+        if save.container.party != "records":
             continue
-        assert amigasavegame.rebuild(save) == data, label
+        assert rebuild(save) == data, label
         seen += 1
     if not seen:
         pytest.skip("no Curse or Silver Blades saved game on this machine")
@@ -352,7 +404,7 @@ def test_with_square_changes_three_bytes_and_no_others():
     """
     before = synthetic_silver_blades()
     save = parse(before)
-    after = amigasavegame.with_square(save, x=5, y=9, facing=6)
+    after = with_square(save, x=5, y=9, facing=6)
     moved = [i for i in range(len(before)) if before[i] != after[i]]
     at = SILVER_BLADES.square_at
     assert moved == [at, at + 1, at + 2]
@@ -364,7 +416,7 @@ def test_with_square_changes_three_bytes_and_no_others():
 def test_with_square_writes_curses_coordinates_as_words():
     """Curse keeps x and y as `u16be` where the other two keep bytes."""
     save = parse(synthetic_curse())
-    after = amigasavegame.with_square(save, x=0x0102, y=3)
+    after = with_square(save, x=0x0102, y=3)
     at = CURSE.square_at
     assert after[at:at + 5] == bytes([1, 2, 0, 3, 2])
     assert parse(after).square == {"x": 0x0102, "y": 3, "facing": 2,
@@ -375,10 +427,10 @@ def test_with_square_writes_curses_coordinates_as_words():
 def test_with_square_refuses_a_value_the_field_cannot_hold():
     save = parse(synthetic_silver_blades())
     with pytest.raises(AmigaSaveError):
-        amigasavegame.with_square(save, x=256)
+        with_square(save, x=256)
 
 
-def test_with_square_refuses_a_field_the_shape_has_not_got():
+def test_with_square_refuses_a_field_the_container_has_not_got():
     save = parse(synthetic_silver_blades())
     with pytest.raises(AmigaSaveError):
-        amigasavegame.with_square(save, wallset_entry_0=1)
+        with_square(save, wallset_entry_0=1)

@@ -38,11 +38,9 @@ __all__ = [
     "read",
     "READ_TARGETS",
     "C64Deltas",
-    "RecordShape",
     "DELTAS_BY_KEY",
     "RECORD_SHAPES",
     "deltas_for",
-    "record_shape",
     "span_of",
     "memorised_span",
     "get_memorised",
@@ -373,18 +371,6 @@ def deltas_for(game=None) -> C64Deltas:
             f"no C64 record deltas measured for {key!r}; "
             f"{', '.join(sorted(DELTAS_BY_KEY))} are the only titles this "
             f"project has read the overlays of") from None
-
-
-#: `deltas_for` under its pre-#470 name, kept until stage 9. `record_shape`
-#: is what `editor/roster.py`, `editor/window.py`, `goldbox/yaml_io.py` and
-#: eight tests still call.
-record_shape = deltas_for
-
-
-#: Pre-#470 spelling of the class. `goldbox.amiga_later.AmigaShape` is the
-#: same alias on the Amiga port; the DOS rename kept no such alias, so there
-#: is no `DosShape` to compare it to.
-RecordShape = C64Deltas
 
 
 def span_of(names: "tuple[str, ...]") -> tuple[int, int]:

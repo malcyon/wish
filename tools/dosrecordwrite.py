@@ -191,9 +191,9 @@ def roundtrip(root: pathlib.Path) -> int:
         except dos_codec.DosRecordError as exc:
             print(f"  unreadable {path}: {exc}")
             continue
-        if char.shape not in dos_codec.WRITES:
+        if char.deltas not in dos_codec.WRITES:
             continue
-        key = char.shape.key
+        key = char.deltas.key
         totals[key][1] += 1
         try:
             rec, itm, spc, _report = dos_codec.write(dos_codec.to_neutral(char))
@@ -201,7 +201,7 @@ def roundtrip(root: pathlib.Path) -> int:
             faults[key][f"{type(exc).__name__}"] += 1
             named[key].append(f"{char.name}: {exc}")
             continue
-        differs = compare(char.shape, char.to_bytes(), rec)
+        differs = compare(char.deltas, char.to_bytes(), rec)
         if not differs:
             totals[key][0] += 1
         why = stale_reason(path)
@@ -215,7 +215,7 @@ def roundtrip(root: pathlib.Path) -> int:
             faults[key][field] += 1
             named[key].append(
                 f"{char.name} ({path.name}): {field} {where}")
-        want = len(char.items) * char.shape.item_size
+        want = len(char.items) * char.deltas.item_size
         if len(itm) != want:
             faults[key]["item file length"] += 1
         if len(spc) % dos_port.EFFECT_SIZE:
@@ -278,7 +278,7 @@ def from_c64(disk: pathlib.Path, out: pathlib.Path, slot: str,
     if not force and any(out.glob("CHRDAT*")):
         print(f"{out} already holds CHRDAT files; pass --force to replace")
         return 1
-    shape = dos_codec.write_shape(party[0])
+    shape = dos_codec.write_deltas(party[0])
     # DOS lists the party from the other end: the C64 shows the highest slot
     # first and DOS shows CHRDAT<slot>1 first, so the file order is the
     # reverse of the slot order -- the same reversal `write_dos_save` makes.
@@ -308,7 +308,7 @@ def loop(disk: pathlib.Path, folder: pathlib.Path, slot: str) -> int:
     """The full loop: DOS records, out to the C64, back from the C64 save the
     engine wrote, and compared with where they started."""
     game, party = _c64_party(disk)
-    shape = dos_codec.write_shape(party[0])
+    shape = dos_codec.write_deltas(party[0])
     party = list(reversed(party))
     print(f"{disk.name}: {shape.title}, {len(party)} characters")
     bad = 0

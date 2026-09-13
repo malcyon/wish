@@ -118,14 +118,14 @@ class Member:
     def _former_class_text(self) -> str:
         """`(was <class> <level>)`, from the C64's own dual-class pair at
         0x0B9/0x0BA (#256) -- absent when the title has no such pair
-        (`RecordShape.dual_class` False, e.g. Pool of Radiance) and when the
+        (`C64Deltas.dual_class` False, e.g. Pool of Radiance) and when the
         pair holds the engine's own "never changed class" sentinel, which is
         `dual_class_level == 0` (`GEN $18EB`) rather than any particular slot.
         """
-        from goldbox.c64_codec import LEVEL_FIELDS, record_shape
+        from goldbox.c64_codec import LEVEL_FIELDS, deltas_for
         from goldbox.layout import FIELDS_BY_NAME
         try:
-            shape = record_shape(self.game)
+            shape = deltas_for(self.game)
         except KeyError as exc:
             _log.debug("no record shape for %s; dual class not shown: %s",
                        self.name, exc)

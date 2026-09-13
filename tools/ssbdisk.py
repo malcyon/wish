@@ -137,7 +137,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     from goldbox import dos_savegame
     from goldbox.c64_port import classes_to_names
 
-    shape = dos_savegame.save_shape_for(SSB.key)
+    shape = dos_savegame.container_for(SSB.key)
     savgam = (folder / f"SAVGAM{slot}{shape.suffix}").read_bytes()
     where = dos_savegame.position(savgam, shape)
     clock = dos_savegame.clock(savgam)
@@ -163,7 +163,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
             "",
             f"  {index + 1}. {v('name', '')}",
             f"     {SEXES[v('sex') & 1]} "
-            f"{char.shape.race_numbers[v('race')].upper()} AGE {v('age')}"
+            f"{char.deltas.race_numbers[v('race')].upper()} AGE {v('age')}"
             f"  {ALIGNMENTS[v('alignment')]}"
             f"  {'/'.join(classes_to_names(v('class_bits'), SSB)).upper()}",
             f"     STR {v('strength')}"

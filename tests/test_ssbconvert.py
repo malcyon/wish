@@ -469,7 +469,7 @@ def test_the_payload_reads_back_as_the_dos_party(converts_ssb):
                                      animate=None, game=SSB_GAME)
     payload = bytes(save0)
     savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
-    shape = sg.save_shape_for(SSB_GAME.key)
+    shape = sg.container_for(SSB_GAME.key)
     x, y, facing = sg.position(savgam, shape)
     assert (payload[0xC0], payload[0xC1], payload[0xC2]) == (x, y, facing)
     assert payload[0xC5] == sg.geo_block(savgam)

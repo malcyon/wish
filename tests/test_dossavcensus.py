@@ -34,7 +34,7 @@ from goldbox import dos_savegame as sg  # noqa: E402
 from tools import dossavcensus as census  # noqa: E402
 
 
-def _blank(shape: sg.DosSaveShape = sg.SAVE_POOL_OF_RADIANCE, **words) -> bytes:
+def _blank(shape: sg.DosContainer = sg.SAVE_POOL_OF_RADIANCE, **words) -> bytes:
     """A container of the right size, all zero but for the words named.
 
     Not a slice of anything: `bytearray(shape.size)` and then `put_word` at

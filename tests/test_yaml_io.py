@@ -818,7 +818,7 @@ def test_the_per_class_levels_survive_it_too(tmp_path):
 
 
 @live
-def test_an_npc_shaped_class_code_can_be_written_deliberately(tmp_path):
+def test_an_npc_class_code_can_be_written_deliberately(tmp_path):
     src = _disagreeing_save(tmp_path)
     data = export_save(str(src), GAME)
     next(e for e in data["party"] if e["slot"] == 2)["class_code"] = 9

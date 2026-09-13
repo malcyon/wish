@@ -10,7 +10,7 @@ engine derives or a field we got wrong, and there is no third kind.
     tools/porslotdiff.py work/109/por1-F-after-C.adf --from F --to C
 
 That run is `docs/124-amiga-port.md` §1.12a: slot `F` was written by
-`goldbox.amiga_por.write_por_slot` and slot `C` is the engine's own save of the
+`goldbox.amiga_savegame.write_por_slot` and slot `C` is the engine's own save of the
 same six characters in the same session.  The answer was `item_chain`,
 `heap_104`, `effect_chain` and five thief skills, and nothing else in 1728
 bytes of record.
@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_por, amiga_port, dos_port  # noqa: E402
+from goldbox import amiga_por, amiga_port, amiga_savegame, dos_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 
@@ -53,8 +53,8 @@ def field_at(offset: int) -> str:
 
 
 def slot_files(disk: AmigaDisk, slot: str, index: int,
-               drawer: str = amiga_por.POR_SAVE_DRAWER) -> dict[str, bytes]:
-    stem = amiga_por.por_save_path(amiga_por.por_filename(slot, index, ""), drawer)
+               drawer: str = amiga_savegame.POR_SAVE_DRAWER) -> dict[str, bytes]:
+    stem = amiga_savegame.por_save_path(amiga_por.por_filename(slot, index, ""), drawer)
     out = {}
     for suffix in (".sav", ".itm", ".spc"):
         try:
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="the slot letter to compare from")
     parser.add_argument("--to", dest="right", required=True,
                         help="the slot letter to compare to")
-    parser.add_argument("--drawer", default=amiga_por.POR_SAVE_DRAWER,
+    parser.add_argument("--drawer", default=amiga_savegame.POR_SAVE_DRAWER,
                         help="the drawer the slots sit in: 'save' on a game "
                              "disk, and empty for the root of a POOLSAVE save "
                              "disk (#36)")
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     # `write_por` leaves all 42 bytes NUL because the line is a cached render,
     # and whether the engine fills it in is a question about the engine.
     blank_left = blank_right = item_nodes = 0
-    for index in range(1, amiga_por.POR_PARTY_MAX + 1):
+    for index in range(1, amiga_savegame.POR_PARTY_MAX + 1):
         left = slot_files(disk, args.left, index, args.drawer)
         right = slot_files(disk, args.right, index, args.drawer)
         if not left or not right:

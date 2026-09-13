@@ -242,7 +242,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     """
     party = dos_codec.read_party(folder, slot)
     try:
-        game = c64_port.by_key(party[0].shape.key)
+        game = c64_port.by_key(party[0].deltas.key)
     except c64_port.UnknownGameError:
         # Pools of Darkness is the one title this reads and `goldbox/c64_port.py`
         # does not list, because there is no C64 port to convert it to. Before
@@ -252,9 +252,9 @@ def rehearse(folder: str | pathlib.Path, slot: str,
         # falls through to "This save cannot be converted." and the player is
         # told less than we know.
         raise dos_codec.WrongTitleError(
-            f"{party[0].shape.title} has no C64 port to convert to, so "
+            f"{party[0].deltas.title} has no C64 port to convert to, so "
             f"goldbox/c64_port.py has no entry for it (#176)",
-            party[0].shape.title) from None
+            party[0].deltas.title) from None
     payload0, payload1, report = dos_codec.new_save(folder, slot,
                                               files.icon, files.animate,
                                               portraits=files.portraits,

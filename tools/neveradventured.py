@@ -95,7 +95,7 @@ def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
     return [p if p.is_absolute() else repo / p for p in where]
 
 
-def never_adventured(save: bytes, shape: sg.DosSaveShape,
+def never_adventured(save: bytes, shape: sg.DosContainer,
                      by: str = "buffer") -> bool | None:
     """Was this container saved before the party began adventuring?
 
@@ -112,7 +112,7 @@ def never_adventured(save: bytes, shape: sg.DosSaveShape,
     return not any(save[span[0]:span[1]])
 
 
-def describe(path: pathlib.Path, shape: sg.DosSaveShape, by: str) -> dict:
+def describe(path: pathlib.Path, shape: sg.DosContainer, by: str) -> dict:
     save = path.read_bytes()
     span = shape.script_buffer
     return {
@@ -130,7 +130,7 @@ def describe(path: pathlib.Path, shape: sg.DosSaveShape, by: str) -> dict:
     }
 
 
-def sweep(shape: sg.DosSaveShape, extra: list[str] | None = None,
+def sweep(shape: sg.DosContainer, extra: list[str] | None = None,
           by: str = "buffer") -> list[dict]:
     paths = dossavcensus.find_saves([p for p in roots(extra) if p.exists()],
                                     shape=shape)
@@ -146,7 +146,7 @@ def _group(rows: list[dict]) -> dict:
     return groups
 
 
-def report(shape: sg.DosSaveShape, rows: list[dict], verbose: bool) -> None:
+def report(shape: sg.DosContainer, rows: list[dict], verbose: bool) -> None:
     place = areas.area_in(0, shape.title)
     print(f"=== {shape.title}: {len(rows)} distinct containers; "
           f"area 0 is {place.name if place else 'not an area of this title'}")

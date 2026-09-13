@@ -20,7 +20,7 @@ widths add up to one of `goldbox.dos_savegame`'s container sizes is the save
 routine, and a title whose chain does not add up prints nothing rather than
 a plausible map.
 
-`--check` compares the map against `DosSaveShape` and exits non-zero on a
+`--check` compares the map against `DosContainer` and exits non-zero on a
 disagreement, which is what `tests/test_dossavewritemap.py` runs.
 
 Prints file offsets, widths and the data-segment address each region is
@@ -181,13 +181,13 @@ def square_region(regions: list[Region]) -> "Region | None":
     return after[0] if after else None
 
 
-def title_of(regions: list[Region]) -> "sg.DosSaveShape | None":
+def title_of(regions: list[Region]) -> "sg.DosContainer | None":
     """The shape whose size the chain's widths add up to, or None."""
     total = sum(r.total for r in regions)
     return sg.SAVE_SHAPES_BY_SIZE.get(total)
 
 
-def save_chain(image: bytes) -> tuple[list[Region], "sg.DosSaveShape | None"]:
+def save_chain(image: bytes) -> tuple[list[Region], "sg.DosContainer | None"]:
     """The save routine's regions, picked out of every candidate chain."""
     best: list[Region] = []
     shape = None
@@ -202,7 +202,7 @@ def save_chain(image: bytes) -> tuple[list[Region], "sg.DosSaveShape | None"]:
 
 
 def report(name: str, regions: list[Region],
-           shape: "sg.DosSaveShape | None") -> list[str]:
+           shape: "sg.DosContainer | None") -> list[str]:
     """The printed map, and the lines a `--check` disagreement produces."""
     print(f"=== {name}")
     if not shape:

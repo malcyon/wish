@@ -79,7 +79,7 @@ def hand_built(path: pathlib.Path) -> bool:
 
 
 def find_saves(extra: list[pathlib.Path] | None = None,
-               shape: "sg.DosSaveShape | None" = None) -> list[pathlib.Path]:
+               shape: "sg.DosContainer | None" = None) -> list[pathlib.Path]:
     """Every saved game of one title's size, deduplicated on its bytes.
 
     **The size is the filter rather than the directory name.** Each title in
@@ -156,7 +156,7 @@ def _label(path: pathlib.Path) -> str:
     return f"{tag}:{kind}{slot}"
 
 
-def _buffer_zero(save: bytes, shape: sg.DosSaveShape) -> bool:
+def _buffer_zero(save: bytes, shape: sg.DosContainer) -> bool:
     """Is the staged ECL script all zeroes?  A title without one answers no."""
     span = shape.script_buffer
     if span is None:
@@ -165,7 +165,7 @@ def _buffer_zero(save: bytes, shape: sg.DosSaveShape) -> bool:
 
 
 def describe(path: pathlib.Path,
-             shape: "sg.DosSaveShape | None" = None) -> dict:
+             shape: "sg.DosContainer | None" = None) -> dict:
     """What a reader needs in order to tell one specimen from another.
 
     Every reading that a title does not have comes back `None` rather than
@@ -174,7 +174,7 @@ def describe(path: pathlib.Path,
     plausible-looking lie.
     """
     save = path.read_bytes()
-    shape = sg.save_shape_for(shape or len(save))
+    shape = sg.container_for(shape or len(save))
     x, y, facing = sg.position(save, shape)
     out = {
         "label": _label(path),
@@ -237,13 +237,13 @@ def describe(path: pathlib.Path,
     return out
 
 
-def words(save: bytes, shape: sg.DosSaveShape) -> list[int]:
+def words(save: bytes, shape: sg.DosContainer) -> list[int]:
     return [sg.word(save, sg.VAR_BASE + i, shape)
             for i in range(shape.var_words)]
 
 
 def census(specimens: list[dict], saves: list[bytes],
-           shape: sg.DosSaveShape) -> dict:
+           shape: sg.DosContainer) -> dict:
     """Per-word values across the corpus, and the zero-everywhere count.
 
     A title with no variable array needs no special case: `var_words` is 0,
@@ -291,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true", help="Machine-readable")
     args = ap.parse_args(argv)
 
-    shape = sg.save_shape_for(args.title)
+    shape = sg.container_for(args.title)
     paths = find_saves(args.extra, shape)
     if not paths:
         print(f"no {shape.title} saved games found", file=sys.stderr)

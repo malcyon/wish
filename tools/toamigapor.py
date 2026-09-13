@@ -106,7 +106,7 @@ def read_dos_party(folder: str, slot: str) -> list:
     from goldbox import dos_codec
 
     party = dos_codec.read_party(folder, slot)
-    shape = party[0].shape
+    shape = party[0].deltas
     if shape.key != "pool-of-radiance":
         raise SystemExit(
             f"{folder} slot {slot} is {shape.title}, and an Amiga Pool of "

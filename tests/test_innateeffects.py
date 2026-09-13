@@ -313,15 +313,15 @@ def test_the_paladin_and_ranger_specimens_round_trip_masked_by_the_declared_list
         where = specimen(name)
         for path in sorted(where.glob("CHRDAT*.SAV")):
             char = dos_codec.read_character(path)
-            if char.shape not in (CURSE, SSB):
+            if char.deltas not in (CURSE, SSB):
                 continue
             rec, _itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
             original = char.to_bytes()
-            mask = _mask(char.shape, original)
+            mask = _mask(char.deltas, original)
             differs = {i for i in range(len(original))
                       if original[i] != rec[i] and i not in mask}
             if differs:
-                fields = {f.name for f in dos_port.LAYOUTS[char.shape.key]
+                fields = {f.name for f in dos_port.LAYOUTS[char.deltas.key]
                           for i in differs if f.offset <= i < f.end}
                 assert fields == {"field_83_87"}, (char.name, path,
                                                     sorted(differs))

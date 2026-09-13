@@ -213,7 +213,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
             "",
             f"  {index + 1}. {v('name', '')}",
             f"     {SEXES[v('sex') & 1]} "
-            f"{char.shape.race_numbers[v('race')].upper()} AGE {v('age')}"
+            f"{char.deltas.race_numbers[v('race')].upper()} AGE {v('age')}"
             f"  {ALIGNMENTS[v('alignment')]}"
             f"  {'/'.join(classes_to_names(v('class_bits'), CURSE)).upper()}",
             f"     STR {v('strength')}"

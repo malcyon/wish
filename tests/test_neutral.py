@@ -76,7 +76,7 @@ def test_a_synthetic_dos_record_reads_its_combat_figure_byte_as_neutral():
     assert char.get("party_order") is None    # not a neutral field any more
 
 
-def test_the_two_ports_share_one_report_shape():
+def test_the_two_ports_share_one_report_type():
     """Step 2 of #25: every direction reports what it dropped the same way."""
     assert issubclass(c64_codec.Report, neutral.Report)
     assert issubclass(amiga_pod.Report, neutral.Report)
@@ -566,7 +566,7 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     provenance byte, so the reader cannot tell one from `innate_effects`
     (`docs/171-c64-trait-slots.md`).
 
-    And `former_levels` is a field in the two titles whose `RecordShape` has
+    And `former_levels` is a field in the two titles whose `C64Deltas` has
     `dual_class` -- Pool of Radiance never touches `0x0B9`/`0x0BA` (#224).
     `_filled` sets no former class, so this round trip stays at Curse and
     Silver Blades' own "empty" convention, `{}`, and Pool of Radiance's
@@ -583,31 +583,31 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     back = c64_codec.read(rec, game=game)
     taken = ({n for n, _ in c64_codec.DIRECT}
              | {n for n, _ in c64_codec.TRANSFORMED})
-    if not c64_codec.record_shape(game).second_abilities:
+    if not c64_codec.deltas_for(game).second_abilities:
         taken.discard("abilities_second")
-    if not c64_codec.record_shape(game).identity_pair:
+    if not c64_codec.deltas_for(game).identity_pair:
         taken.discard("unnamed_0ab")
-    if not c64_codec.record_shape(game).dual_class:
+    if not c64_codec.deltas_for(game).dual_class:
         taken.discard("former_levels")
     taken.discard("granted_effects")
     assert taken - set(back.keys()) == set()
 
 
-def test_record_shape_refuses_a_title_it_has_not_measured():
-    """Champions of Krynn has a `Game` but no `RecordShape` row (#274): asking
+def test_deltas_for_refuses_a_title_it_has_not_measured():
+    """Champions of Krynn has a `Game` but no `C64Deltas` row (#274): asking
     for its shape must not hand back Pool of Radiance's silently."""
     with pytest.raises(KeyError):
-        c64_codec.record_shape(c64_port.BY_KEY["champions-of-krynn"])
+        c64_codec.deltas_for(c64_port.BY_KEY["champions-of-krynn"])
     with pytest.raises(KeyError):
-        c64_codec.record_shape("champions-of-krynn")
+        c64_codec.deltas_for("champions-of-krynn")
 
 
-def test_record_shape_still_defaults_pool_of_radiance_for_no_title_at_all():
+def test_deltas_for_still_defaults_pool_of_radiance_for_no_title_at_all():
     """None means a caller with no title in hand at all, not an unmeasured
-    one, and every other test in this file calls `record_shape(None)`
+    one, and every other test in this file calls `deltas_for(None)`
     expecting Pool of Radiance back."""
-    assert c64_codec.record_shape(None) is c64_codec.POOL_OF_RADIANCE_RECORD
-    assert c64_codec.record_shape() is c64_codec.POOL_OF_RADIANCE_RECORD
+    assert c64_codec.deltas_for(None) is c64_codec.POOL_OF_RADIANCE_RECORD
+    assert c64_codec.deltas_for() is c64_codec.POOL_OF_RADIANCE_RECORD
 
 
 def test_the_c64_reader_grades_every_value_from_the_layout():

@@ -546,7 +546,7 @@ def draws_sheet_portrait(game=None) -> bool:
     **`None` means Pool of Radiance**, which is the answer every other
     resolver in this package gives -- `goldbox.spells.for_game`,
     `goldbox.levels.for_game`, `goldbox.traits.for_game`,
-    `goldbox.c64_save.container_for` and `goldbox.c64_codec.record_shape` all
+    `goldbox.c64_save.container_for` and `goldbox.c64_codec.deltas_for` all
     resolve it that way, because every caller that passes no title predates
     the second game and means the first.  Answering False for `None` here
     would have been the one predicate in the family that disagreed, and it

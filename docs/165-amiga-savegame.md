@@ -4,9 +4,10 @@
 here comes from the save and load routines in the three Amiga executables --
 `/Curse` on Curse disk A, `/Secret` on Silver Blades disk A, `/program` on
 Pool of Radiance disk 1 -- read with `tools/amiga68k.py` and proved by
-`tools/amigasavecheck.py`, which parses every saved game on the machine through
-this map and checks itself against the signature scan, the variable array and
-the file length. Seven specimens, all clean: the three found saves (`CurseA`,
+`goldbox.amiga_savegame`, whose parser reads every saved game through this map.
+`tools/amigasavecheck.py` is its diagnostic client: it checks the parsed save
+against the signature scan, the variable array and the file length. Seven
+specimens, all clean: the three found saves (`CurseA`,
 `Secret 1`, `poolgame` slot A) and the four Pool of Radiance slots WinUAE was
 watched writing for `#109 (A save slot written onto an Amiga disk is not
 offered by the game's picker)`.

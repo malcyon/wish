@@ -124,7 +124,7 @@ class WorldState:
 HEADER_ADDRESSES: "tuple[int, ...]" = (0x49E7, 0x49E8, 0x49E9, 0x49FD, 0x49FE)
 
 
-def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosSaveShape"):
+def _resolve_dos_place(savgam: bytes, shape: "dos_savegame.DosContainer"):
     """`(area, geo, x, y, facing, outdoors, fresh)` for a DOS save.
 
     Generalises `goldbox.dos_codec._where_the_party_is`, `._resident_geo` and the
@@ -210,14 +210,14 @@ def from_c64(save0: bytes, game=None, source: str = "") -> WorldState:
 
 
 def from_dos(savgam: bytes,
-            shape: "dos_savegame.DosSaveShape | int | str | None" = None,
+            shape: "dos_savegame.DosContainer | int | str | None" = None,
             source: str = "") -> WorldState:
     """A DOS `SAVGAM<slot>.DAT`, as a place and a clock.
 
     The DOS container is the same array of the same words in the other
     endianness, so most of this is a straight read through
     `goldbox.dos_savegame` -- generalises `goldbox.amiga_por.por_state_from_dos`
-    (now a one-line wrapper of this) over every title `save_shape_for`
+    (now a one-line wrapper of this) over every title `container_for`
     knows, rather than assuming Pool of Radiance's own flag width, and over
     a party that has never adventured, which `_resolve_dos_place` places at
     the start of the story rather than refusing.
@@ -229,7 +229,7 @@ def from_dos(savgam: bytes,
     """
     from . import dos_codec as _dos
 
-    shape = dos_savegame.save_shape_for(
+    shape = dos_savegame.container_for(
         shape if shape is not None else len(savgam))
     area_id, geo, x, y, facing, outdoors, fresh = _resolve_dos_place(
         savgam, shape)

@@ -82,7 +82,7 @@ def game_of(path: pathlib.Path) -> str:
 
 def describe(path: pathlib.Path, *, regions: bool, runs: bool) -> None:
     data = path.read_bytes()
-    shape = sg.save_shape_for(len(data))
+    shape = sg.container_for(len(data))
     names = sg.character_files(data, shape)
     # The shape is named by the size, and Treasures of the Savage Frontier
     # writes the same 1364-byte container Pools of Darkness does -- so print
@@ -173,7 +173,7 @@ def main() -> int:
         return 1
     for path in found:
         describe(path, regions=args.regions, runs=args.runs)
-    shapes = {sg.save_shape_for(p.stat().st_size).key for p in found}
+    shapes = {sg.container_for(p.stat().st_size).key for p in found}
     print(f"{len(found)} containers, {len(shapes)} shapes, "
           f"{len({game_of(p) for p in found})} game folders.")
     return 0

@@ -36,8 +36,8 @@ not install anything itself.
   would reach for it -- `goldbox/neutral.py`, `goldbox/c64_codec.py` and
   `goldbox/amiga_pod.py` each define a class called `Report`, and a whole-package
   run collapses all three into one Mermaid node.
-* **`-c` needs a fully qualified name.** `-c goldbox.amiga_later.AmigaShape` works;
-  `-c AmigaShape` produces no output and no error.
+* **`-c` needs a fully qualified name.** `-c goldbox.amiga_port.AmigaDeltas` works;
+  `-c AmigaDeltas` produces no output and no error.
 
 ## Pixels
 
@@ -271,7 +271,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--pyreverse-args", default="",
                          help="extra arguments passed straight to "
                               "pyreverse, e.g. "
-                              "'--no-standalone -k -c goldbox.amiga_later.AmigaShape'")
+                              "'--no-standalone -k -c goldbox.amiga_port.AmigaDeltas'")
     return parser.parse_args(argv)
 
 

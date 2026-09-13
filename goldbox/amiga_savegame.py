@@ -121,12 +121,10 @@ class AmigaContainer:
     def party_at(self) -> int:
         return self.count_at + self.count_bytes
 
-    def word_offset(self, address: int) -> int:
+    def vm_offset(self, address: int) -> int:
         if not VM_BASE <= address < VM_BASE + VM_BYTES // 2:
             raise AmigaSaveError(f"${address:04X} is outside the variable array")
         return self.header_bytes + 2 * (address - VM_BASE)
-
-    vm_offset = word_offset
 
 
 CURSE = AmigaContainer(
@@ -162,22 +160,51 @@ assert POOL_OF_RADIANCE.party_at == 12813
 class AmigaSavegame:
     container: AmigaContainer
     data: bytes
-    x: int
-    y: int
-    facing: int
+    square: dict[str, int]
     first_mode: int
     mode: int
     wallset: tuple[tuple[int, int], ...]
+    count: int
     characters: tuple[amiga_later.AmigaCharacter, ...]
-    names: tuple[str, ...] = ()
+    blocks: tuple[tuple[int, int], ...]
+    names: tuple[str, ...]
 
     @property
-    def count(self) -> int:
-        return len(self.characters)
+    def x(self) -> int:
+        return self.square["x"]
+
+    @property
+    def y(self) -> int:
+        return self.square["y"]
+
+    @property
+    def facing(self) -> int:
+        return self.square["facing"]
+
+    @property
+    def header_byte(self) -> int | None:
+        return self.data[0] if self.container.header_bytes else None
 
     def word(self, address: int) -> int:
-        at = self.container.word_offset(address)
-        return int.from_bytes(self.data[at:at + 2], "big")
+        return word(self.data, address, self.container)
+
+    @property
+    def clock(self) -> str:
+        return (f"{self.word(0x49C9):02d}:"
+                f"{self.word(0x49C8)}{self.word(0x49C7)}")
+
+    @property
+    def ecl(self) -> bytes:
+        container = self.container
+        return self.data[container.ecl_at:container.ecl_at + container.ecl_bytes]
+
+    @property
+    def end(self) -> int:
+        if self.blocks:
+            return self.blocks[-1][1]
+        if self.container.party == "records":
+            return self.container.party_at
+        return self.container.fixed_size
 
 
 def container_for(what: str | AmigaContainer | amiga_port.AmigaDeltas) -> AmigaContainer:
@@ -227,12 +254,11 @@ def parse(data: bytes, container: AmigaContainer | str | None = None,
     if len(data) < container.party_at:
         raise AmigaSaveError(
             f"{container.title} needs {container.party_at} header bytes; got {len(data)}")
+    square = {}
     at = container.square_at
-    x = int.from_bytes(data[at:at + container.x_bytes], "big")
-    at += container.x_bytes
-    y = int.from_bytes(data[at:at + container.x_bytes], "big")
-    at += container.x_bytes
-    facing = data[at]
+    for field in container.square:
+        square[field.name] = int.from_bytes(data[at:at + field.size], "big")
+        at += field.size
     wallset = ()
     if container.wallset_at is not None:
         wallset = tuple(
@@ -242,41 +268,113 @@ def parse(data: bytes, container: AmigaContainer | str | None = None,
                                  container.wallset_at + 4 * i + 4], "big"))
             for i in range(3))
     count = int.from_bytes(data[container.count_at:container.party_at], "big")
-    if validate and not 1 <= count <= PARTY_MAX:
+    if validate and container.party == "records" and not 1 <= count <= PARTY_MAX:
         raise AmigaSaveError(
             f"a {container.title} party is 1 to {PARTY_MAX} characters; got {count}")
     characters = []
+    blocks = []
     names = ()
     at = container.party_at
     if container.party == "records":
         assert container.deltas is not None
         for _ in range(count):
-            char, at = amiga_later._amiga_block(data, at, container.deltas, source)
+            char, end = amiga_later._amiga_block(data, at, container.deltas, source)
             characters.append(char)
+            blocks.append((at, end))
+            at = end
     else:
         if len(data) != container.fixed_size:
             raise AmigaSaveError(
                 f"{container.title} saves are {container.fixed_size} bytes; got {len(data)}")
-        names = tuple(data[at + 41 * i:at + 41 * i + 8].split(b"\0")[0].decode("latin1")
-                      for i in range(8))
+        names = tuple(
+            data[at + POR_CHARACTER_TABLE_STRIDE * i:
+                 at + POR_CHARACTER_TABLE_STRIDE * i + POR_CHARACTER_TABLE_NAME]
+            .split(b"\0")[0].decode("latin1")
+            for i in range(POR_NAME_SLOTS))
         at = len(data)
-    if at != len(data):
+    if validate and at != len(data):
         raise AmigaSaveError(
             f"the {count} character blocks end at {at:#x}; file ends at "
             f"{len(data):#x}")
-    save = AmigaSavegame(container, data, x, y, facing, data[container.first_mode_at],
-                    data[container.mode_at], wallset, tuple(characters), names)
+    save = AmigaSavegame(
+        container=container, data=data, square=square,
+        first_mode=data[container.first_mode_at], mode=data[container.mode_at],
+        wallset=wallset, count=count, characters=tuple(characters),
+        blocks=tuple(blocks), names=names)
     if container.party == "filenames":
+        if validate:
+            if save.word(dos_savegame.PARTY_SIZE) != count:
+                raise AmigaSaveError(
+                    f"$503E says {save.word(dos_savegame.PARTY_SIZE)} characters; "
+                    f"the saved-game count says {count}")
+            invalid = [name for name in names[:count]
+                       if len(name) != 8 or not name.startswith("CHRDAT")
+                       or not name[7].isdigit()]
+            if invalid:
+                raise AmigaSaveError(
+                    f"the first {count} Pool character-table entries are not "
+                    f"CHRDAT names: {invalid!r}")
         return save
-    if save.word(dos_savegame.PARTY_SIZE) != count:
+    if validate and save.word(dos_savegame.PARTY_SIZE) != count:
         raise AmigaSaveError(
             f"$503E says {save.word(dos_savegame.PARTY_SIZE)} characters; "
             f"the saved-game count says {count}")
-    if data[0] != save.word(dos_savegame.DISK):
+    if validate and data[0] != save.word(dos_savegame.DISK):
         raise AmigaSaveError(
             f"byte 0 says container {data[0]}; $5012 says "
             f"{save.word(dos_savegame.DISK)}")
     return save
+
+
+def with_square(save: AmigaSavegame, **fields: int) -> bytes:
+    """The same saved game with named square fields replaced."""
+    container = save.container
+    known = {field.name: field for field in container.square}
+    unknown = set(fields) - set(known)
+    if unknown:
+        raise AmigaSaveError(
+            f"{container.title}'s square has no {', '.join(sorted(unknown))}; "
+            f"it has {', '.join(known)}")
+    data = bytearray(save.data)
+    at = container.square_at
+    for field in container.square:
+        if field.name in fields:
+            value = fields[field.name]
+            top = 1 << (8 * field.size)
+            if not 0 <= value < top:
+                raise AmigaSaveError(
+                    f"{field.name} is {field.size} byte(s) in a "
+                    f"{container.title} saved game, so 0 to {top - 1}; "
+                    f"{value} given")
+            data[at:at + field.size] = value.to_bytes(field.size, "big")
+        at += field.size
+    return bytes(data)
+
+
+def rebuild(save: AmigaSavegame,
+            characters: Sequence[amiga_later.AmigaCharacter] | None = None
+            ) -> bytes:
+    """Return an embedded-party save with its party replaced."""
+    container = save.container
+    if container.party != "records":
+        raise AmigaSaveError(
+            f"{container.title} keeps its party in files beside the saved game, not "
+            f"in it; goldbox.amiga_savegame.write_por_slot writes that one")
+    party = save.characters if characters is None else tuple(characters)
+    if not 1 <= len(party) <= PARTY_MAX:
+        raise AmigaSaveError(
+            f"a {container.title} party is 1 to {PARTY_MAX} characters; "
+            f"{len(party)} given")
+    for number, character in enumerate(party):
+        if character.deltas is not container.deltas:
+            raise AmigaSaveError(
+                f"character {number} is a {character.deltas.title} record and this "
+                f"is a {container.title} saved game")
+    head = bytearray(save.data[:container.count_at])
+    at = container.vm_offset(dos_savegame.PARTY_SIZE)
+    head[at:at + 2] = len(party).to_bytes(2, "big")
+    return (bytes(head) + len(party).to_bytes(container.count_bytes, "big")
+            + amiga_later.party_block_bytes(party))
 
 
 def read_slot(disk: AmigaDisk, slot: str,
@@ -323,6 +421,13 @@ def _slot_present(disk: AmigaDisk, container: AmigaContainer, slot: str) -> bool
         parse(disk.read_file(path), container, path)
     except (AmigaDiskError, AmigaSaveError):
         return False
+    if container.party == "filenames":
+        from . import amiga_por
+        try:
+            disk.lookup(por_save_path(amiga_por.por_filename(slot, 1),
+                                      por_save_drawer(disk)))
+        except (AmigaDiskError, AmigaSaveError):
+            return False
     return True
 
 
@@ -1055,7 +1160,7 @@ POR_SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
                 "every Amiga and DOS saved game measured except our own "
                 "builds with no portrait crossed and their engine resaves, "
                 "which inherit that zero rather than choosing it -- re-run "
-                "`tools/amigasavegame.py --sweep` for a current count "
+                "`tools/amigasavecheck.py --sweep` for a current count "
                 "(#57, #441)"),
 )
 
@@ -1178,7 +1283,7 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                        "as reading zero in every Amiga saved game -- the "
                        "sweep finds these two words non-zero in the saved "
                        "games made on the travel grid; re-run "
-                       "`tools/amigasavegame.py --sweep` for a current "
+                       "`tools/amigasavecheck.py --sweep` for a current "
                        "count (#441)")
 
     save[POR_POS_X] = state.x
@@ -1287,7 +1392,7 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                            "every Amiga saved game -- the sweep finds it "
                            "non-zero in most of the saved games examined, "
                            "including the one SSI shipped; re-run "
-                           "`tools/amigasavegame.py --sweep` for a current "
+                           "`tools/amigasavecheck.py --sweep` for a current "
                            "count (#441)")
             continue
         por_put_word(save, address, value)
@@ -1305,7 +1410,7 @@ def por_savegame_zeroes(save: bytearray, report: PorSaveReport) -> None:
         report.sources[i] = (
             "zeroed: this word reads zero in every Amiga saved game swept "
             "so far, and nothing in a C64 or DOS save corresponds to it -- "
-            "run `tools/amigasavegame.py --sweep` to re-take the "
+            "run `tools/amigasavecheck.py --sweep` to re-take the "
             "measurement (docs/165-amiga-savegame.md, \"Still open\")")
 
 

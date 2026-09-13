@@ -138,8 +138,8 @@ def _silver_blades_savegame() -> bytes:
     and far too short for Curse's own party to be where `detect` looks for
     it -- which is the whole of what tells the two apart.
     """
-    from tools import amigasavecheck as amigasavegame
-    at = amigasavegame.SILVER_BLADES.party_at
+    from goldbox import amiga_savegame
+    at = amiga_savegame.SILVER_BLADES.party_at
     shape = amiga_port.SILVER_BLADES_DELTAS
     record = bytearray(shape.record_size)
     record[0:6] = b"MALACH"

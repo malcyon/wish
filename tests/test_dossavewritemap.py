@@ -4,7 +4,7 @@ Two halves. The synthetic one builds a `BlockWrite` chain byte by byte and
 runs in CI, because the parser -- the immediate that is decimal when small and
 hex when large, the counted loop whose body lands three times -- is where a
 map goes quietly wrong. The archive-backed one is the finding itself: three
-engines, three maps, and every one agreeing with its `DosSaveShape`. It skips
+engines, three maps, and every one agreeing with its `DosContainer`. It skips
 without the archives, so say in the commit that you ran it somewhere they are.
 """
 
@@ -118,7 +118,7 @@ ENGINES = pytest.mark.parametrize("stem,key", [
 
 
 @ENGINES
-def test_the_engine_writes_the_square_where_its_shape_says(stem, key):
+def test_the_engine_writes_the_square_where_its_container_says(stem, key):
     """#253. The square block's first byte is x, and the writer's own chain
     puts it at 12801 in Pool of Radiance and Curse alike and at 5121 in Silver
     Blades -- the first byte after the variable array and the staged script.
@@ -126,11 +126,11 @@ def test_the_engine_writes_the_square_where_its_shape_says(stem, key):
     This is the evidence a saved game cannot give: an editor changes what a
     field holds and never where the engine puts it, and none of the saved
     games on this machine has a chain of custody
-    (`.claude/rules/testing.md`). Reverting `DosSaveShape.square` to the
+    (`.claude/rules/testing.md`). Reverting `DosContainer.square` to the
     arithmetic it had before #253 makes the two later titles fail here by
     exactly twelve.
     """
-    shape = sg.save_shape_for(key)
+    shape = sg.container_for(key)
     regions, found = wm.save_chain(_overlay(stem))
     assert found is shape, f"the chain totals no {shape.title} container"
     assert wm.square_region(regions).at == shape.pos_x
@@ -138,11 +138,11 @@ def test_the_engine_writes_the_square_where_its_shape_says(stem, key):
 
 
 @ENGINES
-def test_the_engine_writes_the_party_size_and_table_where_the_shape_says(
+def test_the_engine_writes_the_party_size_and_table_where_the_container_says(
         stem, key):
     """The other end of the block, which #253 must not have moved: the count
     of character files is the last byte before the table in every title."""
-    shape = sg.save_shape_for(key)
+    shape = sg.container_for(key)
     regions, found = wm.save_chain(_overlay(stem))
     assert found is shape
     assert regions[-1].at == shape.party_table
@@ -155,7 +155,7 @@ def test_the_regions_tile_the_container_with_nothing_left_over(stem, key):
     """Every byte of the file comes from one `BlockWrite`, so the widths add
     up to the size exactly -- which is what identifies the chain as the save
     routine in the first place."""
-    shape = sg.save_shape_for(key)
+    shape = sg.container_for(key)
     regions, found = wm.save_chain(_overlay(stem))
     assert found is shape
     assert sum(r.total for r in regions) == shape.size
@@ -172,7 +172,7 @@ def test_the_twelve_extra_bytes_are_inside_the_block_not_in_front_of_it():
     titles that have them."""
     for stem, key in (("CURSE", "curse-of-the-azure-bonds"),
                       ("SECRET", "secret-of-the-silver-blades")):
-        shape = sg.save_shape_for(key)
+        shape = sg.container_for(key)
         regions, found = wm.save_chain(_overlay(stem))
         assert found is shape
         extra = [r for r in regions if r.total == shape.unnamed == 12]

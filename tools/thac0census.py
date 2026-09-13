@@ -260,7 +260,7 @@ def dos_records(title: str = "pool-of-radiance", extra: list[str] = ()):
             char = dos_codec.read_character(path)
         except Exception:
             continue
-        if DOS_TITLE_BY_KEY.get(char.shape.key) != title:
+        if DOS_TITLE_BY_KEY.get(char.deltas.key) != title:
             continue
         parent = pathlib.Path(path).parent.name
         yield (f"{parent}/{pathlib.Path(path).name}", char.name,

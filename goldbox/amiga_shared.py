@@ -12,10 +12,10 @@ none of them at the top.
 Nothing here carries a title fact.  The two byte readers and the enum-table
 helper are the machine's rather than any game's; the three key tuples name
 neutral fields, which every port spells the same way; and
-:func:`amiga_shape_for`, :data:`CONVERTS` and :data:`WRITES` are the registries
+:func:`deltas_for`, :data:`CONVERTS` and :data:`WRITES` are the registries
 that have to see all four titles at once to answer at all.
 
-**:func:`amiga_shape_for` imports Pool of Radiance's record length inside the
+**:func:`deltas_for` imports Pool of Radiance's record length inside the
 function.** That is deliberate: 288 is Pool of Radiance's own number and it
 stays in that title's module, so this one is reached by the titles rather than
 reaching for them.
@@ -53,7 +53,7 @@ THIEF_KEYS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
               "thief_read_languages")
 
 
-def amiga_shape_for(size: int) -> "dos_port.DosDeltas":
+def deltas_for(size: int) -> "dos_port.DosDeltas":
     """Which title an Amiga character record of this length belongs to.
 
     The Amiga three are 288, 428 and 340 bytes and no two are the same, so a

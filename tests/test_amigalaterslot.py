@@ -18,14 +18,14 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_later, amiga_port  # noqa: E402
+from goldbox import amiga_later, amiga_port, amiga_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tests.test_amigasavegame import (  # noqa: E402
     fake_record,
     synthetic_curse,
     synthetic_silver_blades,
 )
-from tools import amigalaterslot, amigasavegame  # noqa: E402
+from tools import amigalaterslot, amigasavecheck  # noqa: E402
 
 
 def disk_with(path: str, data: bytes) -> AmigaDisk:
@@ -50,7 +50,7 @@ def run(*argv: str) -> int:
 
 def slot(image, letter: str, suffix: str = ".dat"):
     disk = AmigaDisk.open(image)
-    return amigasavegame.parse(disk.read_file(f"/SAVE/savgam{letter}{suffix}"))
+    return amiga_savegame.parse(disk.read_file(f"/SAVE/savgam{letter}{suffix}"))
 
 
 # -- the name field ----------------------------------------------------------
@@ -85,7 +85,7 @@ def test_renaming_writes_a_slot_of_the_same_size(curse_disk, tmp_path):
     written = slot(out, "B")
     assert [c.name for c in written.characters] == ["ZEPHYRA", "BETA"]
     assert len(written.data) == len(slot(curse_disk, "A").data)
-    assert all(ok for _, ok, _ in amigasavegame.check(written))
+    assert all(ok for _, ok, _ in amigasavecheck.check(written))
 
 
 def test_the_slot_it_read_is_left_alone(curse_disk, tmp_path):
@@ -122,8 +122,8 @@ def test_stripping_items_zeroes_the_head_the_loader_tests(tmp_path):
     record[at] = 1
     char = amiga_later.AmigaCharacter.from_bytes(bytes(record), amiga_port.CURSE_DELTAS,
                                            items=(item,))
-    save = amigasavegame.parse(synthetic_curse(("ALPHA", "BETA")))
-    with_item = amigasavegame.rebuild(save, [char, save.characters[1]])
+    save = amiga_savegame.parse(synthetic_curse(("ALPHA", "BETA")))
+    with_item = amiga_savegame.rebuild(save, [char, save.characters[1]])
     disk = disk_with("/SAVE/savgamA.dat", with_item)
     image = tmp_path / "in.adf"
     disk.save(image)
@@ -182,10 +182,10 @@ def test_the_square_option_moves_three_bytes_and_nothing_else(tmp_path):
     written = AmigaDisk.open(out)
     before = written.read_file("/SAVE/savgamA.sav")
     after = written.read_file("/SAVE/savgamB.sav")
-    at = amigasavegame.SILVER_BLADES.square_at
+    at = amiga_savegame.SILVER_BLADES.square_at
     assert [i for i in range(len(before)) if before[i] != after[i]] == [
         at, at + 1, at + 2]
-    moved = amigasavegame.parse(after).square
+    moved = amiga_savegame.parse(after).square
     assert (moved["x"], moved["y"], moved["facing"]) == (5, 9, 6)
 
 

@@ -140,7 +140,7 @@ def dos_rows(field: str, title: str | None = "pool-of-radiance"):
             char = dos_codec.read_character(path)
         except Exception:
             continue
-        if title is not None and char.shape.key != title:
+        if title is not None and char.deltas.key != title:
             continue
         if field not in char.fields:
             continue

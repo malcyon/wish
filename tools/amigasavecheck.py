@@ -23,32 +23,14 @@ Everything is read; nothing is written.
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import pathlib
 import sys
 from typing import Sequence
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_later, amiga_port, amiga_savegame  # noqa: E402
+from goldbox import amiga_later, amiga_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-
-#: The three heap blocks the variable array is written from, as one run.
-#: The file names them `$4900`-`$52FF`; the second and third really live at
-#: `$6B00` and `$9700`, exactly as `docs/163-dos-vm-address-map.md` found on
-#: DOS.  2048 + 2048 + 1024.
-VM_BYTES = 5120
-VM_BASE = 0x4900
-#: The staged area script, absent on Silver Blades.
-ECL_BYTES = 7680
-#: Three (WALLDEF block, slot) `u16be` pairs -- entries 1 to 3 of a four-entry
-#: table whose entry 0 is never written.  `$FFFF` is an empty entry.
-WALLSET_ENTRIES = 3
-WALLSET_BYTES = 4 * WALLSET_ENTRIES
-#: Pool of Radiance names its party: eight 41-byte slots, six used.
-NAME_SLOTS = 8
-NAME_SLOT_BYTES = 41
-NAME_BYTES = 8
 
 #: The game-mode byte's values, from the code beside each write of it.  The
 #: same enumeration on all three titles.
@@ -83,233 +65,13 @@ NAMED_WORDS = {
 }
 
 
-CURSE = amiga_savegame.CURSE
-SILVER_BLADES = amiga_savegame.SILVER_BLADES
-POOL_OF_RADIANCE = amiga_savegame.POOL_OF_RADIANCE
-CONTAINERS = amiga_savegame.CONTAINERS
-
-
-class AmigaSaveError(ValueError):
-    pass
-
-
-@dataclasses.dataclass(frozen=True)
-class AmigaSavegame:
-    shape: amiga_savegame.AmigaContainer
-    data: bytes
-    #: `(x, y, facing, ...)` by the shape's square field names.
-    square: dict[str, int]
-    first_mode: int
-    mode: int
-    #: Entries 1 to 3 as `(block, slot)`, or `()` for Pool of Radiance.
-    wallset: tuple[tuple[int, int], ...]
-    count: int
-    #: Embedded characters, in file order; empty for Pool of Radiance.
-    characters: tuple[amiga_later.AmigaCharacter, ...]
-    #: `(offset, end)` of each character block, in file order.
-    blocks: tuple[tuple[int, int], ...]
-    #: The eight name slots, NUL-stripped; empty for Curse and Silver Blades.
-    names: tuple[str, ...]
-
-    @property
-    def header_byte(self) -> int | None:
-        return self.data[0] if self.shape.header_bytes else None
-
-    def word(self, address: int) -> int:
-        at = self.shape.vm_offset(address)
-        return int.from_bytes(self.data[at:at + 2], "big")
-
-    @property
-    def clock(self) -> str:
-        """`hh:mm` from the six digit words, `docs/141`'s layout."""
-        return (f"{self.word(0x49C9):02d}:"
-                f"{self.word(0x49C8)}{self.word(0x49C7)}")
-
-    @property
-    def ecl(self) -> bytes:
-        s = self.shape
-        return self.data[s.ecl_at:s.ecl_at + s.ecl_bytes]
-
-    @property
-    def end(self) -> int:
-        """Where the last thing the save wrote ends."""
-        if self.blocks:
-            return self.blocks[-1][1]
-        return self.shape.party_at + (NAME_SLOTS * NAME_SLOT_BYTES
-                                      if self.shape.party == "filenames"
-                                      else 0)
-
-
-def detect(data: bytes) -> amiga_savegame.AmigaContainer:
-    """Which title wrote this, from the file itself.
-
-    Pool of Radiance's is a fixed 13141 bytes with a name table at the end;
-    the other two are told apart by where a record signature lands -- the
-    Silver Blades header is 5143 bytes and Curse's 12825 -- so a file is
-    never read through a map it does not fit.
-    """
-    if len(data) == POOL_OF_RADIANCE.fixed_size:
-        return POOL_OF_RADIANCE
-    for shape in (CURSE, SILVER_BLADES):
-        if amiga_later.looks_like_amiga_record(data, shape.party_at,
-                                         shape.deltas):
-            return shape
-    raise AmigaSaveError(
-        f"{len(data)} bytes with no record at {CURSE.party_at:#x} (Curse) or "
-        f"{SILVER_BLADES.party_at:#x} (Silver Blades), and not Pool of "
-        f"Radiance's {POOL_OF_RADIANCE.fixed_size}")
-
-
-def parse(data: bytes, shape: amiga_savegame.AmigaContainer | None = None,
-          source: str = "") -> AmigaSavegame:
-    """Read a saved game in the order the game wrote it."""
-    data = bytes(data)
-    shape = shape or detect(data)
-    if len(data) < shape.party_at:
-        raise AmigaSaveError(
-            f"{shape.title} needs {shape.party_at} bytes of header; "
-            f"{len(data)} given")
-    square: dict[str, int] = {}
-    at = shape.square_at
-    for field in shape.square:
-        square[field.name] = int.from_bytes(data[at:at + field.size], "big")
-        at += field.size
-    first_mode = data[shape.first_mode_at]
-    mode = data[shape.mode_at]
-    wallset: tuple[tuple[int, int], ...] = ()
-    if shape.wallset_table:
-        at = shape.wallset_at
-        wallset = tuple(
-            (int.from_bytes(data[at + 4 * i:at + 4 * i + 2], "big"),
-             int.from_bytes(data[at + 4 * i + 2:at + 4 * i + 4], "big"))
-            for i in range(WALLSET_ENTRIES))
-    count = int.from_bytes(data[shape.count_at:shape.party_at], "big")
-
-    characters: list[amiga_later.AmigaCharacter] = []
-    blocks: list[tuple[int, int]] = []
-    names: list[str] = []
-    at = shape.party_at
-    if shape.party == "records":
-        for _ in range(count):
-            # The loader allocates a record and reads a block this way, once
-            # per count; _amiga_block is the reader's own walk of one block.
-            char, end = amiga_later._amiga_block(data, at, shape.deltas,
-                                           source)
-            characters.append(char)
-            blocks.append((at, end))
-            at = end
-    else:
-        if len(data) != shape.fixed_size:
-            raise AmigaSaveError(
-                f"{shape.title} saves are {shape.fixed_size} bytes; "
-                f"{len(data)} given")
-        for i in range(NAME_SLOTS):
-            slot = data[at + i * NAME_SLOT_BYTES:
-                        at + i * NAME_SLOT_BYTES + NAME_BYTES]
-            names.append(slot.split(b"\0")[0].decode("latin1"))
-    return AmigaSavegame(shape, data, square, first_mode, mode, wallset,
-                         count, tuple(characters), tuple(blocks), tuple(names))
-
-
-#: The most characters either later title's picker will put in a party.  The
-#: count is a `u16be` in the file and the loader trusts it with no bound of
-#: its own, so this is the game's rule rather than the format's.
-PARTY_MAX = 6
-
-
-def with_square(save: AmigaSavegame, **fields: int) -> bytes:
-    """The same saved game with the party standing somewhere else.
-
-    Every field of the square struct is writable by the name the shape gives
-    it -- `x`, `y`, `facing` -- at the width the save routine writes it, which
-    is a byte on Silver Blades and Pool of Radiance and a `u16be` on Curse.
-
-    This exists for one experiment: a saved game the game itself wrote, moved
-    one square by us and handed back, so that the status line says whether the
-    engine reads the square out of the file or recomputes it.  Nothing in the
-    library calls it, and a conversion must not -- a converted party's square
-    comes from its source save, not from here.
-
-    `wall_ahead` and `square_property` are deliberately writable too, and
-    deliberately not adjusted: both are `fn(x, y[, facing])` over the area's
-    own map and the engine rewrites them on the first step, so leaving them
-    stale is how one learns whether it also rewrites them on the way in.
-    """
-    names = {f.name: f for f in save.shape.square}
-    unknown = set(fields) - set(names)
-    if unknown:
-        raise AmigaSaveError(
-            f"{save.shape.title}'s square has no "
-            f"{', '.join(sorted(unknown))}; it has "
-            f"{', '.join(names)}")
-    data = bytearray(save.data)
-    at = save.shape.square_at
-    for field in save.shape.square:
-        if field.name in fields:
-            value = fields[field.name]
-            top = 1 << (8 * field.size)
-            if not 0 <= value < top:
-                raise AmigaSaveError(
-                    f"{field.name} is {field.size} byte(s) in a "
-                    f"{save.shape.title} saved game, so 0 to {top - 1}; "
-                    f"{value} given")
-            data[at:at + field.size] = value.to_bytes(field.size, "big")
-        at += field.size
-    return bytes(data)
-
-
-def rebuild(save: AmigaSavegame,
-            characters: "Sequence[amiga_later.AmigaCharacter] | None" = None
-            ) -> bytes:
-    """A saved game with a new party in it, and everything else untouched.
-
-    The party region is the **last** thing in a Curse or Silver Blades saved
-    game -- both specimens end exactly where the last block does -- so the
-    file is the header up to the count, the count as a `u16be`, and then the
-    blocks.  Nothing before the count moves, which is the point: the variable
-    array, the staged area script and the square block are the caller's own
-    save, and this changes only the region it can account for byte by byte.
-
-    `characters` defaults to the ones already in the file, which makes the
-    identity a test rather than a claim: `rebuild(parse(data)) == data` on
-    every specimen there is.
-
-    **What this cannot say** is whether the game will load the result.  The
-    format takes it -- the loader has no checksum, no length field and no
-    signature, and `goldbox.amiga_later.AmigaCharacter.block_bytes` sets the three
-    chain fields it does test -- but a save the engine has actually accepted
-    is an emulator's word and nobody has had one on screen.
-    """
-    s = save.shape
-    if s.party != "records":
-        raise AmigaSaveError(
-            f"{s.title} keeps its party in files beside the saved game, not "
-            f"in it; goldbox.amiga_por.write_por_slot writes that one")
-    party = save.characters if characters is None else tuple(characters)
-    if not 1 <= len(party) <= PARTY_MAX:
-        raise AmigaSaveError(
-            f"a {s.title} party is 1 to {PARTY_MAX} characters; "
-            f"{len(party)} given")
-    for n, char in enumerate(party):
-        if char.deltas is not s.deltas:
-            raise AmigaSaveError(
-                f"character {n} is a {char.deltas.title} record and this is a "
-                f"{s.title} saved game")
-    head = bytearray(save.data[:s.count_at])
-    at = s.vm_offset(0x503E)
-    head[at:at + 2] = len(party).to_bytes(2, "big")
-    return (bytes(head)
-            + len(party).to_bytes(s.count_bytes, "big")
-            + amiga_later.party_block_bytes(party))
-
-
-def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
+def check(save: amiga_savegame.AmigaSavegame) -> list[tuple[str, bool, str]]:
     """Every way the file can contradict the map, as `(claim, ok, detail)`.
 
     A claim is something the file says twice, once through the map and once
     through something the map does not use.
     """
-    s, out = save.shape, []
+    s, out = save.container, []
     if s.header_bytes:
         out.append(("byte 0 is $5012", save.header_byte == save.word(0x5012),
                     f"{save.header_byte} against {save.word(0x5012)}"))
@@ -332,14 +94,23 @@ def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
         used = list(save.names[:save.count])
         out.append(("the first count slots are CHRDAT plus a letter and a "
                     "digit",
-                    all(len(n) == NAME_BYTES and n.startswith("CHRDAT")
+                    all(len(n) == amiga_savegame.POR_CHARACTER_TABLE_NAME
+                        and n.startswith("CHRDAT")
                         and n[7].isdigit() for n in used), str(used)))
         out.append(("the count is at most the eight slots",
-                    save.count <= NAME_SLOTS, str(save.count)))
+                    save.count <= amiga_savegame.POR_NAME_SLOTS, str(save.count)))
     if s.party == "records":
-        out.append(("the party rebuilds to the bytes it was read from",
-                    rebuild(save) == save.data,
-                    f"{len(rebuild(save))} bytes against {len(save.data)}"))
+        try:
+            rebuilt = amiga_savegame.rebuild(save)
+        except (amiga_savegame.AmigaSaveError, amiga_savegame.AmigaRecordError) as error:
+            out.append(("the party rebuilds to the bytes it was read from", False,
+                        str(error)))
+        else:
+            out.append(("the party rebuilds to the bytes it was read from",
+                        rebuilt == save.data,
+                        f"{len(rebuilt)} bytes against {len(save.data)}"))
+    out.append(("the party count is 1 to 6",
+                1 <= save.count <= amiga_savegame.PARTY_MAX, str(save.count)))
     out.append(("facing is doubled: 0, 2, 4 or 6",
                 save.square["facing"] in (0, 2, 4, 6),
                 str(save.square["facing"])))
@@ -351,7 +122,7 @@ def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
     return out
 
 
-def sweep(saves: Sequence[tuple[str, AmigaSavegame]]) -> str:
+def sweep(saves: Sequence[tuple[str, amiga_savegame.AmigaSavegame]]) -> str:
     """Which variable words are ever non-zero, grouped by the place.
 
     The writers zero every word no source save answers for, on the argument
@@ -369,15 +140,15 @@ def sweep(saves: Sequence[tuple[str, AmigaSavegame]]) -> str:
     words = {}                       # container -> set of non-zero addresses
     counts = {}
     for _label, save in saves:
-        base = VM_BASE
+        base = amiga_savegame.VM_BASE
         here = words.setdefault(save.word(0x5012), set())
         counts[save.word(0x5012)] = counts.get(save.word(0x5012), 0) + 1
-        for address in range(base, base + VM_BYTES // 2):
+        for address in range(base, base + amiga_savegame.VM_BYTES // 2):
             if save.word(address):
                 here.add(address)
     everywhere = set().union(*words.values())
     lines = [f"{len(saves)} saved games, {len(words)} places, "
-             f"{len(everywhere)} of {VM_BYTES // 2} words ever non-zero",
+             f"{len(everywhere)} of {amiga_savegame.VM_BYTES // 2} words ever non-zero",
              "  $5012  files  non-zero  this one alone would have missed"]
     for container in sorted(words):
         lines.append(f"  {container:5d}  {counts[container]:5d}  "
@@ -386,12 +157,12 @@ def sweep(saves: Sequence[tuple[str, AmigaSavegame]]) -> str:
     return "\n".join(lines)
 
 
-def report(save: AmigaSavegame, label: str = "") -> str:
-    s = save.shape
+def report(save: amiga_savegame.AmigaSavegame, label: str = "") -> str:
+    s = save.container
     lines = [f"{label or 'saved game'}: {s.title}, {len(save.data)} bytes"]
     if s.header_bytes:
         lines.append(f"  byte 0: container number {save.header_byte}")
-    lines.append(f"  variable array at {s.vm_at}, {VM_BYTES} bytes; "
+    lines.append(f"  variable array at {s.vm_at}, {amiga_savegame.VM_BYTES} bytes; "
                  f"clock {save.clock}")
     for address, name in NAMED_WORDS.items():
         lines.append(f"    ${address:04X} {name}: {save.word(address)}")
@@ -481,8 +252,8 @@ def main(argv: list[str] | None = None) -> int:
     parsed = []
     for label, data in todo:
         try:
-            save = parse(data, source=label)
-        except (AmigaSaveError, amiga_port.AmigaRecordError) as ex:
+            save = amiga_savegame.parse(data, source=label, validate=False)
+        except (amiga_savegame.AmigaSaveError, amiga_savegame.AmigaRecordError) as ex:
             print(f"{label}: {ex}")
             failed += 1
             continue

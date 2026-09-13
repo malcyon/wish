@@ -257,7 +257,7 @@ def test_the_conversion_no_longer_refuses_curse():
     assert [s.key for s in dos_codec.CONVERTS] == \
         [s.key for s in dos_port.DELTAS]
     with pytest.raises(dos_port.DosDeltasError):
-        dos_codec.write_shape(neutral.NeutralCharacter(
+        dos_codec.write_deltas(neutral.NeutralCharacter(
             "test", source="made up", game="champions-of-krynn"))
 
 
@@ -270,7 +270,7 @@ def test_a_curse_address_is_not_a_variable_address():
     is why the module keeps naming words by Pool of Radiance's address and
     `pool_address` is what converts.
     """
-    shape = sg.save_shape_for(CURSE.key)
+    shape = sg.container_for(CURSE.key)
     assert shape.var_base == 0x4B00
     assert sg.pool_address(0x4C20, shape) == 0x4A20
     assert sg.word_offset(0x4C20, shape) - sg.word_offset(0x4A20, shape) == 1024
@@ -331,7 +331,7 @@ def test_the_last_flag_word_reaches_the_c64_payload():
     is what a Curse script would call it, and the two name the same word
     (`test_a_curse_address_is_not_a_variable_address` above).
     """
-    shape = sg.save_shape_for(CURSE.key)
+    shape = sg.container_for(CURSE.key)
     savgam = bytearray(shape.size)
     off = sg.word_offset(0x4AFE, shape)
     savgam[off], savgam[off + 1] = 0xFF, 0x00
@@ -521,7 +521,7 @@ def test_the_script_scratch_is_copied_and_the_picture_buffer_is_not():
     save0, _, _ = dos_codec.new_save(folder, _DOS_SLOT, icon=bytes(36),
                                animate=bytes(852), game=CURSE_GAME)
     savgam = (folder / f"SAVGAM{_DOS_SLOT}.DAT").read_bytes()
-    shape = sg.save_shape_for(len(savgam))
+    shape = sg.container_for(len(savgam))
     want = bytes(sg.word(savgam, 0x4A00 + i, shape) & 0xFF for i in range(0x20))
     assert bytes(save0[0x100:0x120]) == want
     assert any(want)                     # the copy is not a copy of nothing

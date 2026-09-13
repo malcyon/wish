@@ -51,6 +51,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from goldbox import (  # noqa: E402
     amiga_later,
     amiga_port,
+    amiga_savegame,
     c64_codec,
     dos_codec,
     items,
@@ -59,7 +60,6 @@ from goldbox import (  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import amigasavecheck as amigasavegame  # noqa: E402
 
 #: The drawer both later titles keep their saved games in, and the two names
 #: they use -- `tools/amigalaterslot.py`'s constants, not a second guess.
@@ -158,12 +158,12 @@ def _records_in(data: bytes) -> dict:
     this function exists to keep out of the comparison.
     """
     try:
-        shape = amigasavegame.detect(data)
-    except amigasavegame.AmigaSaveError:
+        container = amiga_savegame.detect(data)
+    except amiga_savegame.AmigaSaveError:
         return {}
-    if shape.record_shape is None:
+    if container.deltas is None:
         return {}
-    party = amiga_later.party_in_savegame(data, shape.record_shape)
+    party = amiga_later.party_in_savegame(data, container.deltas)
     return {c.name.strip().upper(): c for c in party}
 
 
@@ -178,7 +178,7 @@ def convert(party) -> list:
 
 def describe(built: amiga_later.AmigaCharacter, report) -> str:
     block = built.block_bytes()
-    return (f"{built.name:<16} {built.shape.title[:12]:<12} "
+    return (f"{built.name:<16} {built.deltas.title[:12]:<12} "
             f"{len(block):>5} bytes  items {len(built.items):>2}  "
             f"effects {len(built.effects)}  "
             f"chains {int(bool(built.item_chain))}/"
@@ -270,8 +270,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--out must not be --into")
         disk = AmigaDisk(bytearray(args.into.read_bytes()))
         source = _slot_path(disk, args.from_slot.upper())
-        save = amigasavegame.parse(disk.read_file(source), source=source)
-        rebuilt = amigasavegame.rebuild(
+        save = amiga_savegame.parse(disk.read_file(source), source=source)
+        rebuilt = amiga_savegame.rebuild(
             save, [character for _c, character, _r in built])
         letter = (args.to_slot or args.from_slot).upper()
         target = f"/{SAVE_DRAWER}/savgam{letter}{pathlib.Path(source).suffix}"

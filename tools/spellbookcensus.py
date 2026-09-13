@@ -51,13 +51,19 @@ ROOT = TOOLS.parent
 # below come through the package instead.
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga_later, amiga_por, amiga_port, c64_port, spells  # noqa: E402
+from goldbox import (  # noqa: E402
+    amiga_later,
+    amiga_por,
+    amiga_port,
+    amiga_savegame,
+    c64_port,
+    spells,
+)
 from goldbox import dos_port as dl  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import (  # noqa: E402
     amigarecords,
-    amigasavegame,
     amigasaves,
     dostailcensus,
     gamedisks,
@@ -372,8 +378,8 @@ def amiga_rows():
             if char.raw in seen:
                 continue
             seen.add(char.raw)
-            table = _table_for_key(_amiga_key(char.shape))
-            yield Row(port="amiga", title=_amiga_key(char.shape),
+            table = _table_for_key(_amiga_key(char.deltas))
+            yield Row(port="amiga", title=_amiga_key(char.deltas),
                       where=f"{volume}:{name}", who=char.name,
                       klass=_class_name_dos(char.get("char_class")),
                       known=tuple(char.spellbook),
@@ -412,7 +418,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
                                               source=label)
         return
     try:
-        save = amigasavegame.parse(data, source=label)
+        save = amiga_savegame.parse(data, source=label, validate=False)
     except Exception:                                    # pragma: no cover
         return
     yield from save.characters

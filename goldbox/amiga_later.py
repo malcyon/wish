@@ -62,9 +62,7 @@ if TYPE_CHECKING:          # avoided at runtime: goldbox.dos_codec is the
 # `goldbox/amiga_port.py` in #470's stage 4b, so the port's own module holds
 # what an Amiga record looks like and this one holds only the code that reads
 # and writes it.  Every name is imported at the head of this file and every
-# pre-#470 spelling still answers here, so `amiga.AmigaShape` and
-# `amiga.CURSE_SHAPE` keep working until stage 9 moves the callers off them.
-AmigaShape = AmigaDeltas
+# compatibility constants retain the port's established registry spellings.
 CURSE_SHAPE = CURSE_DELTAS
 SILVER_BLADES_SHAPE = SILVER_BLADES_DELTAS
 AMIGA_SHAPES = AMIGA_DELTAS
@@ -1380,12 +1378,12 @@ def later_unsourced_offsets(deltas: AmigaDeltas) -> tuple[int, ...]:
     return tuple(sorted(set(range(deltas.record_size)) - covered))
 
 
-def later_write_shape(char: NeutralCharacter,
+def later_write_deltas(char: NeutralCharacter,
                       deltas: "AmigaDeltas | str | None" = None) -> AmigaDeltas:
     """Which Amiga record :func:`write_later` will build for this character.
 
     **The title is the character's, not the caller's**, exactly as
-    `goldbox.dos_codec.write_shape` decides it: a conversion is between two ports
+    `goldbox.dos_codec.write_deltas` decides it: a conversion is between two ports
     of the same title and never between titles
     (`.claude/rules/conversions.md`).  `deltas` overrides it for a caller
     that has already resolved the title.
@@ -1620,7 +1618,7 @@ def write_later(char: NeutralCharacter,
     """
     from . import dos_codec as _dos
 
-    deltas = later_write_shape(char, deltas)
+    deltas = later_write_deltas(char, deltas)
     # `recompute_thief_skills=False`: the DOS record here is a stepping
     # stone to an Amiga one, and the two thief-skill recomputes in
     # `goldbox.dos_codec.write` rest on DOS's and the C64's own routines (#431,

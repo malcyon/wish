@@ -1042,14 +1042,8 @@ class DosCharacter(_Fielded):
         self.source = source
 
     @property
-    def shape(self) -> DosDeltas:
-        """`.deltas` under its pre-#470 name, for every external reader that
-        never went through the constructor's own `deltas` parameter."""
-        return self.deltas
-
-    @property
     def is_pool_of_radiance(self) -> bool:
-        return self.shape is POOL_OF_RADIANCE
+        return self.deltas is POOL_OF_RADIANCE
 
     def rebuild(self) -> bytes:
         """Re-encode every field from its decoded value.
@@ -1822,14 +1816,14 @@ def to_neutral(dos: DosCharacter,
     position, and `goldbox.portraits.neutral_menu` is what spells it (#480).
     """
     if portraits is None:
-        portraits = neutral_menu(dos.shape.key)
-    if dos.shape not in CONVERTS:
+        portraits = neutral_menu(dos.deltas.key)
+    if dos.deltas not in CONVERTS:
         raise WrongTitleError(
-            f"{dos.shape.title} records read, but only "
+            f"{dos.deltas.title} records read, but only "
             f"{', '.join(s.title for s in CONVERTS)} converts: no other pair "
             f"of ports has been measured against each other (#53)",
-            title=dos.shape.title)
-    out = NeutralCharacter("DOS", source=dos.source, game=dos.shape.key)
+            title=dos.deltas.title)
+    out = NeutralCharacter("DOS", source=dos.source, game=dos.deltas.key)
 
     # -- the name: a count byte and fifteen characters -----------------------
     out.set("name", dos.name, "the DOS count byte and text at 0x000",
@@ -1880,9 +1874,9 @@ def to_neutral(dos: DosCharacter,
     # and left exactly as it was.  `DosDeltas.attack_level_classes` carries
     # each title's evidence.
     f = dos.fields["attack_level"]
-    if dos.shape.attack_level_classes == ():
+    if dos.deltas.attack_level_classes == ():
         out.set("attack_level", fighting_level(dos.class_levels),
-                f"derived from the class levels: DOS {dos.shape.title} "
+                f"derived from the class levels: DOS {dos.deltas.title} "
                 f"stores the constant 1 at attack_level @{f.offset:#05x} "
                 f"whatever the character's fighting level, so the byte says "
                 f"nothing and GEN $2342's own rule is read instead",
@@ -1910,7 +1904,7 @@ def to_neutral(dos: DosCharacter,
         second[dos_name] = permanent
     if any(dos.fields[n].size > 1 for n in ABILITY_ORDER):
         out.set("abilities_second", second,
-                f"DOS {dos.shape.title} keeps every ability twice; these are "
+                f"DOS {dos.deltas.title} keeps every ability twice; these are "
                 f"the permanent score behind it",
                 Confidence.CONFIRMED, Provenance.RESHAPED)
 
@@ -2092,7 +2086,7 @@ def to_neutral(dos: DosCharacter,
     # effect on the way to DOS, because the writer filters through Pool of
     # Radiance's id list), since a paladin's Protection from Evil and a
     # ranger's own id are not in Pool of Radiance's.
-    innate_ids = _innate_effects(dos.shape.key)
+    innate_ids = _innate_effects(dos.deltas.key)
     out.set("innate_effects",
             [e for e in dos.effect_ids if e in innate_ids],
             "the innate ids of the DOS .SPC file; the two ports share one "
@@ -2163,7 +2157,7 @@ def to_neutral(dos: DosCharacter,
     # said: the conversion is still attempted where the tables allow it,
     # because a byte converted costs nothing, but a title whose engine draws
     # no portrait gets no line whatever happens.
-    draws_portrait = draws_sheet_portrait(dos.shape.key)
+    draws_portrait = draws_sheet_portrait(dos.deltas.key)
     for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
                                ("portrait_body", "body_art", "BODY")):
         if portraits is None or name not in dos.fields:
@@ -2747,7 +2741,7 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 #: it as the second entry, and this writer composes no line for it: it is
 #: `use`\\ d on every path, so the closing sweep never sees it, and a neutral
 #: record with no `spells_castable` at all -- which is what a C64 Curse or
-#: Silver Blades source produces, `RecordShape.spell_slots` being `False` for
+#: Silver Blades source produces, `C64Deltas.spell_slots` being `False` for
 #: both -- writes zeroes and reports nothing.  `goldbox.c64_codec.
 #: NO_SPELL_SLOTS`, the `spells_castable` line on the DOS-to-C64 direction,
 #: went the same way for the same reason (#324): #192 step 3 and #193 step 3
@@ -3450,9 +3444,6 @@ def write_deltas(char: NeutralCharacter,
     return deltas
 
 
-write_shape = write_deltas
-
-
 def write(char: NeutralCharacter,
           portraits: PortraitTables | None = None,
           deltas: "int | str | DosDeltas | None" = None,
@@ -3486,7 +3477,7 @@ def write(char: NeutralCharacter,
     Every width comes off `goldbox/dos_port.py`'s table for the title and
     none of them is a constant here: that is what `#113 (Play DOS Curse far
     enough to save a party with items)` closed and what a second writer would
-    have reopened.  :func:`write_shape` says how the title is chosen.
+    have reopened.  :func:`write_deltas` says how the title is chosen.
 
     `icon` is this character's own combat figure -- `icon_head`, `icon_body`
     and the six `icon_colours` bytes -- when the source is a C64 record and
@@ -5116,7 +5107,7 @@ def never_adventured(savgam: bytes,
 
     `container` defaults to whatever the buffer's own length names.
     """
-    container = dos_savegame.save_shape_for(container or len(savgam))
+    container = dos_savegame.container_for(container or len(savgam))
     span = container.script_buffer
     if span is not None:
         return not any(savgam[span[0]:span[1]])
@@ -5778,7 +5769,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     `tools/`, the whole of `tests/test_dosconvert.py` -- already gives it.
     """
     container = c64_save.container_for(game)
-    shape = dos_savegame.save_shape_for(container.game.key)
+    shape = dos_savegame.container_for(container.game.key)
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
         f"SAVGAM{slot}{shape.suffix}")
@@ -5866,7 +5857,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
     container = c64_save.container_for(game)
-    shape = dos_savegame.save_shape_for(container.game.key)
+    shape = dos_savegame.container_for(container.game.key)
     party = read_party(folder, slot)
     savgam_path = pathlib.Path(folder).joinpath(
         f"SAVGAM{slot}{shape.suffix}")
@@ -6490,7 +6481,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
 
     **`game` is the C64 title** (`goldbox.c64_port.C64Container`, or None for Pool of
     Radiance), and it chooses both ends of the join (#299): the DOS side
-    comes from `dos_savegame.save_shape_for(game.key)`, whose size `savgam`
+    comes from `dos_savegame.container_for(game.key)`, whose size `savgam`
     must already be.  `dax` is the DOS `ECL<n>.DAX` number holding the
     area, from `_area_dax`; with none the area table's side stands in,
     which is right for Pool of Radiance and Curse and wrong for Silver
@@ -6519,7 +6510,7 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
     game = c64_port.by_key(getattr(game, "key", game)) if game else \
         c64_port.POOL_OF_RADIANCE
     container = c64_save.container_for(game)
-    shape = dos_savegame.save_shape_for(game.key)
+    shape = dos_savegame.container_for(game.key)
     later = shape is not dos_savegame.SAVE_POOL_OF_RADIANCE
     if len(savgam) != shape.size:
         raise DosRecordError(
@@ -6711,7 +6702,7 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport",
     the variable space, which reads zero in every genuine specimen of the
     title.
     """
-    container = dos_savegame.save_shape_for(
+    container = dos_savegame.container_for(
         len(savgam) if container is None else container)
     for address, words, why in savgam_unsourced(container):
         _note_word(report, address, words, f"zeroed -- {why}", container)
@@ -6905,7 +6896,7 @@ def write_dos_save_from(state: "world_state.WorldState",
             f"a save slot is a single letter, not {slot!r}")
 
     c64 = c64_port.by_title(state.title) or c64_port.POOL_OF_RADIANCE
-    shape = dos_savegame.save_shape_for(c64.key)
+    shape = dos_savegame.container_for(c64.key)
     characters = list(characters)
     if len(characters) > 6:
         raise DosRecordError(
@@ -6946,7 +6937,7 @@ def write_dos_save_from(state: "world_state.WorldState",
         report.warnings.append(
             f"no character's sheet portrait crossed, because {why_not}")
 
-    record_shape = (write_shape(characters[0]) if characters
+    record_shape = (write_deltas(characters[0]) if characters
                     else deltas_for(c64.key))
     suffixes = (".SAV", record_shape.item_suffix, record_shape.effect_suffix)
     order = FIELDS_BY_NAME_FOR[record_shape.key]["combat_figure"].offset
@@ -7063,7 +7054,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     **`title` is the C64 title** -- a `goldbox.c64_port.C64Container`, its key, or
     None for Pool of Radiance -- and it chooses both ends of the join
     (#299): the payload is read through `c64_save.container_for(title)`
-    and the DOS file is built to `dos_savegame.save_shape_for(title)`, so a
+    and the DOS file is built to `dos_savegame.container_for(title)`, so a
     Curse party comes out as a 13149-byte `SAVGAM<slot>.DAT` with its
     script staged and a Silver Blades one as 5469 bytes with none.  A
     7424-byte payload is refused without it, because Curse and Silver

@@ -26,7 +26,7 @@ def _synthetic(shape, names=("ALPHA", "BETA")) -> bytes:
     for address, value in ((dos_savegame.DISK, out[0]),
                            (dos_savegame.PARTY_SIZE, len(names)),
                            (dos_savegame.SCRIPT, 1)):
-        at = shape.word_offset(address) - 1
+        at = shape.vm_offset(address) - 1
         vm[at:at + 2] = value.to_bytes(2, "big")
     out += vm
     out += bytes(shape.ecl_bytes)
@@ -61,9 +61,27 @@ def test_pool_container_uses_its_independent_fixed_party_table_offset():
     assert container.party_at == 12813
     data = bytearray(container.fixed_size)
     data[container.count_at] = 1
+    at = container.vm_offset(dos_savegame.PARTY_SIZE)
+    data[at:at + 2] = (1).to_bytes(2, "big")
     data[container.party_at:container.party_at + 8] = b"CHRDATA1"
     parsed = amiga_savegame.parse(data, container)
     assert parsed.names[:2] == ("CHRDATA1", "")
+
+
+def test_strict_pool_parse_rejects_a_count_word_or_filename_table_that_disagrees():
+    container = amiga_savegame.POOL_OF_RADIANCE
+    data = bytearray(container.fixed_size)
+    data[container.count_at] = 1
+    data[container.party_at:container.party_at + 8] = b"CHRDATA1"
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="\\$503E"):
+        amiga_savegame.parse(data, container)
+    assert amiga_savegame.parse(data, container, validate=False).names[0] == "CHRDATA1"
+
+    at = container.vm_offset(dos_savegame.PARTY_SIZE)
+    data[at:at + 2] = (1).to_bytes(2, "big")
+    data[container.party_at:container.party_at + 8] = b"NOTANAME"
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="CHRDAT"):
+        amiga_savegame.parse(data, container)
 
 
 def test_a_fresh_disk_has_only_the_save_drawer_and_slot():
@@ -130,14 +148,25 @@ def test_an_engine_written_save_round_trips_square_clock_and_order(
     assert landed_state.wallset == state.wallset
 
 
-def test_the_diagnostic_tool_imports_the_library_containers():
-    """The checker uses the production map, while its parse evidence stays separate."""
+def test_the_diagnostic_tool_parses_through_the_library(tmp_path, monkeypatch):
+    """The checker requests tolerant parsing from the one library parser."""
     from tools import amigasavecheck as tool
 
-    assert amiga_savegame.VM_BYTES == tool.VM_BYTES
-    assert amiga_savegame.VM_BASE == tool.VM_BASE
-    assert amiga_savegame.ECL_BYTES == tool.ECL_BYTES
-    assert tool.CONTAINERS is amiga_savegame.CONTAINERS
-    assert tool.CURSE is amiga_savegame.CURSE
-    assert tool.SILVER_BLADES is amiga_savegame.SILVER_BLADES
-    assert tool.POOL_OF_RADIANCE is amiga_savegame.POOL_OF_RADIANCE
+    path = tmp_path / "synthetic.dat"
+    path.write_bytes(_synthetic(amiga_savegame.CURSE, ("ALPHA",)))
+    original = amiga_savegame.parse
+    calls = []
+    reported = []
+
+    def parse(data, container=None, source="", validate=True):
+        calls.append((source, validate))
+        return original(data, container, source, validate)
+
+    monkeypatch.setattr(amiga_savegame, "parse", parse)
+    monkeypatch.setattr(tool, "report",
+                        lambda save, label="": reported.append(save) or "report")
+
+    assert tool.main([str(path)]) == 0
+    assert calls == [(str(path), False)]
+    assert len(reported) == 1
+    assert isinstance(reported[0], amiga_savegame.AmigaSavegame)

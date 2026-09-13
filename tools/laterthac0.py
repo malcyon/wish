@@ -294,7 +294,7 @@ def records(title: str):
             char = dos_codec.read_character(path)
         except Exception:
             continue
-        if char.shape.key != title:
+        if char.deltas.key != title:
             continue
         raw = char.raw("class_levels")
         held = {name: raw[slot]

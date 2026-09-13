@@ -444,16 +444,17 @@ def test_the_saved_game_parser_reads_a_built_one_and_every_check_passes(
     file)` against the engine's own files and knows nothing about this
     writer, so it agreeing is a second opinion rather than a restatement.
     """
-    from tools import amigasavecheck as amigasavegame
+    from goldbox import amiga_savegame
+    from tools import amigasavecheck
 
     state = _c64_state("porunconscious1")
     save, _report = amiga_savegame.new_por_savegame(state, "B", 6, ecl_dax)
-    parsed = amigasavegame.parse(save, source="built")
-    assert parsed.shape is amigasavegame.POOL_OF_RADIANCE
+    parsed = amiga_savegame.parse(save, source="built")
+    assert parsed.container is amiga_savegame.POOL_OF_RADIANCE
     assert parsed.count == 6
     assert parsed.square["x"] == state.x
     assert parsed.square["y"] == state.y
     assert parsed.square["facing"] == state.facing * 2
     assert parsed.names[:6] == tuple(f"CHRDATB{n + 1}" for n in range(6))
-    assert [claim for claim, ok, _detail in amigasavegame.check(parsed)
+    assert [claim for claim, ok, _detail in amigasavecheck.check(parsed)
             if not ok] == []

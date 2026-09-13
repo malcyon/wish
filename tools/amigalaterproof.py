@@ -48,10 +48,15 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_later, amiga_port, dos_codec, dos_port  # noqa: E402
+from goldbox import (  # noqa: E402
+    amiga_later,
+    amiga_port,
+    amiga_savegame,
+    dos_codec,
+    dos_port,
+)
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from tools import amigalaterwrite  # noqa: E402
-from tools import amigasavecheck as amigasavegame  # noqa: E402
 
 SAVE_DRAWER = amigalaterwrite.SAVE_DRAWER
 SUFFIXES = amigalaterwrite.SUFFIXES
@@ -92,7 +97,7 @@ def declared_record_mask(shape: amiga_port.AmigaDeltas) -> set[int]:
 
 def declared_block_mask(char: amiga_later.AmigaCharacter) -> set[int]:
     """The same over a whole block: record, then item nodes, then effects."""
-    shape = char.shape
+    shape = char.deltas
     out = declared_record_mask(shape)
     at = shape.record_size
     for _ in char.items:
@@ -124,7 +129,7 @@ def field_at(shape: amiga_port.AmigaDeltas, offset: int) -> str:
 
 def part_at(char: amiga_later.AmigaCharacter, offset: int) -> str:
     """Which part of a block an offset is in: the record, a node, or past it."""
-    shape = char.shape
+    shape = char.deltas
     if offset < shape.record_size:
         return f"record {field_at(shape, offset)}"
     at = offset - shape.record_size
@@ -172,11 +177,11 @@ def slot_bytes(path: pathlib.Path, letter: str | None) -> tuple[bytes, str]:
 
 
 def party_of(data: bytes, source: str) -> list[amiga_later.AmigaCharacter]:
-    save = amigasavegame.parse(data, source=source)
-    if save.shape.record_shape is None:
-        raise SystemExit(f"{source}: {save.shape.title} keeps its party in "
+    save = amiga_savegame.parse(data, source=source)
+    if save.container.party != "records":
+        raise SystemExit(f"{source}: {save.container.title} keeps its party in "
                          f"files beside the saved game")
-    return list(amiga_later.party_in_savegame(data, save.shape.record_shape))
+    return list(save.characters)
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +215,8 @@ def do_build(args) -> int:
         raise SystemExit("--out must not be --into; the input is read-only")
     disk = AmigaDisk(bytearray(args.into.read_bytes()))
     source = slot_path(disk, args.from_slot.upper())
-    save = amigasavegame.parse(disk.read_file(source), source=source)
-    rebuilt = amigasavegame.rebuild(
+    save = amiga_savegame.parse(disk.read_file(source), source=source)
+    rebuilt = amiga_savegame.rebuild(
         save, [character for _c, character, _r in built])
     letter = (args.to_slot or args.from_slot).upper()
     target = f"/{SAVE_DRAWER}/savgam{letter}{pathlib.Path(source).suffix}"

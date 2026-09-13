@@ -2,7 +2,7 @@
 """Which words a converted Amiga saved game zeroes could an unvisited area fill?
 
 `#446 (The Amiga saved game's zero argument rests on three of the game's
-twenty-nine areas)` is the ticket.  `goldbox.amiga_por.por_savegame_zeroes` ends
+twenty-nine areas)` is the ticket.  `goldbox.amiga_savegame.por_savegame_zeroes` ends
 by sweeping every offset of the 5120-byte variable array no earlier writer
 claimed and declaring all of them zero on the strength of "this word reads
 zero in every Amiga saved game swept so far" -- and every Amiga saved game on
@@ -14,7 +14,7 @@ This says how many of those bytes an unvisited area could plausibly fill, and
 which saved game would settle each.  It reads seven things, none of them
 committed and none of them ours:
 
-1. **The build.** A container built by `goldbox.amiga_por.new_por_savegame` from a
+1. **The build.** A container built by `goldbox.amiga_savegame.new_por_savegame` from a
    real source save, so the catch-all count is the writer's own rather than a
    number quoted from a document.
 2. **The game's own scripts**, `ecl.dax` off Amiga disk 2, every block walked
@@ -63,7 +63,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga_dax, amiga_por, c64_port  # noqa: E402
+from goldbox import amiga_dax, amiga_por, amiga_savegame, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools import amigasaves, eclcensus, gamedisks  # noqa: E402
 
@@ -368,9 +368,9 @@ def live_words(saves: "list[tuple[str, bytes]]", *, at: int, big: bool) -> set:
 
 def catch_all_words(source: bytes, label: str, ecl: bytes) -> "tuple[list, dict]":
     """The words a build of this source save leaves to the catch-all sweep."""
-    state = amiga_por.por_state_from_amiga(source, label)
-    count = source[amiga_por.POR_PARTY_SIZE_BYTE] or 1
-    _built, report = amiga_por.new_por_savegame(state, "A", count, ecl)
+    state = amiga_savegame.por_state_from_amiga(source, label)
+    count = source[amiga_savegame.POR_PARTY_SIZE_BYTE] or 1
+    _built, report = amiga_savegame.new_por_savegame(state, "A", count, ecl)
     words = sorted({i // 2 for i, why in report.sources.items()
                     if i < 2 * 2560 and why.startswith(CATCH_ALL)})
     classes: dict = collections.Counter()
@@ -405,8 +405,8 @@ def main(argv=None) -> int:
     if not saves:
         raise SystemExit("No Amiga saved game in the specimen tree")
     for _label, data in saves:
-        CORPUS_AREAS.add(amiga_por.por_word(data, 0x49F2))
-    amiga_live = live_words(saves, at=amiga_por.POR_VAR_OFFSET, big=True)
+        CORPUS_AREAS.add(amiga_savegame.por_word(data, 0x49F2))
+    amiga_live = live_words(saves, at=amiga_savegame.POR_VAR_OFFSET, big=True)
     dos = dos_corpus(args.dos)
     dos_live = live_words(dos, at=1, big=False)
     dos_areas = {int.from_bytes(d[1 + 2 * (0x49F2 - 0x4900):][:2], "little")

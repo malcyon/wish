@@ -204,7 +204,7 @@ def test_the_writer_refuses_a_title_it_has_no_record_for():
     with pytest.raises(amiga_port.AmigaRecordError, match="write_por"):
         amiga_later.write_later(por)
     with pytest.raises(amiga_port.AmigaRecordError, match="has been decoded"):
-        amiga_later.later_write_shape(neutral.NeutralCharacter("test"),
+        amiga_later.later_write_deltas(neutral.NeutralCharacter("test"),
                                 deltas="krynn")
 
 
@@ -213,7 +213,7 @@ def test_the_title_is_the_characters_own():
     titles, so the shape comes off the character rather than the caller."""
     for shape in amiga_port.AMIGA_DELTAS:
         char = neutral.NeutralCharacter("test", game=c64_port.by_key(shape.key))
-        assert amiga_later.later_write_shape(char) is shape
+        assert amiga_later.later_write_deltas(char) is shape
 
 
 def test_the_silver_blades_spellbook_packs_the_way_the_reader_unpacks_it():

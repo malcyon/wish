@@ -45,9 +45,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_later, amiga_port  # noqa: E402
+from goldbox import amiga_later, amiga_port, amiga_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-from tools import amigasavecheck as amigasavegame  # noqa: E402
+from tools import amigasavecheck  # noqa: E402
 
 #: The drawer both later titles keep their saved games in, and the two names
 #: they use.  Curse writes `savgam<letter>.dat` and Silver Blades
@@ -118,8 +118,8 @@ def main(argv: list[str] | None = None) -> int:
 
     disk = AmigaDisk.open(args.image)
     path = slot_path(disk, args.source)
-    save = amigasavegame.parse(disk.read_file(path), source=path)
-    print(f"{args.image}!{path}: {save.shape.title}, {len(save.data)} bytes, "
+    save = amiga_savegame.parse(disk.read_file(path), source=path)
+    print(f"{args.image}!{path}: {save.container.title}, {len(save.data)} bytes, "
           f"{save.count} characters")
 
     party = list(save.characters)
@@ -131,20 +131,20 @@ def main(argv: list[str] | None = None) -> int:
         index, _, name = spec.partition("=")
         party[int(index)] = rename(party[int(index)], name)
 
-    data = amigasavegame.rebuild(save, party)
+    data = amiga_savegame.rebuild(save, party)
     if args.square:
         parts = args.square.split(",")
         if len(parts) != 3:
             raise SystemExit("--square takes X,Y,FACING")
-        moved = amigasavegame.parse(data, save.shape, source="rebuilt")
+        moved = amiga_savegame.parse(data, save.container, source="rebuilt")
         x, y, facing = (int(p) for p in parts)
-        data = amigasavegame.with_square(moved, x=x, y=y, facing=facing)
+        data = amiga_savegame.with_square(moved, x=x, y=y, facing=facing)
         print(f"  square {moved.square['x']},{moved.square['y']} "
               f"facing {moved.square['facing']} -> {x},{y} facing {facing}")
-    out = amigasavegame.parse(data, save.shape, source="rebuilt")
-    for claim, ok, detail in amigasavegame.check(out):
+    out = amiga_savegame.parse(data, save.container, source="rebuilt")
+    for claim, ok, detail in amigasavecheck.check(out):
         print(f"  [{'ok' if ok else 'NO'}] {claim}: {detail}")
-    bad = [claim for claim, ok, _ in amigasavegame.check(out) if not ok]
+    bad = [claim for claim, ok, _ in amigasavecheck.check(out) if not ok]
 
     target = f"/{SAVE_DRAWER}/savgam{args.to}{path[-4:]}"
     try:

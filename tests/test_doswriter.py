@@ -741,8 +741,8 @@ def _attack_level_allowance(char, rec: bytes) -> set[int]:
     archives that is six of twenty-four -- BRUTUS, MAGNUS and SILAS in slots
     A and B, whose `0x06B` Gold Box Companion set to the fighter's level.
     """
-    f = dos_port.FIELDS_BY_NAME_FOR[char.shape.key]["attack_level"]
-    written = char.shape.attack_level_stored(char.class_levels)
+    f = dos_port.FIELDS_BY_NAME_FOR[char.deltas.key]["attack_level"]
+    written = char.deltas.attack_level_stored(char.class_levels)
     stored = char.get("attack_level")
     assert rec[f.offset] == (stored if written is None else written), \
         (char.name, rec[f.offset], written)

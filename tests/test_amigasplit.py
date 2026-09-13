@@ -82,12 +82,12 @@ def test_the_shared_module_is_underneath_all_three():
     """`amiga_shared` imports no title at the top, so nothing can cycle.
 
     It reaches `amiga_por` for Pool of Radiance's record length inside
-    `amiga_shape_for`, which is why that reach is deferred rather than absent.
+    `deltas_for`, which is why that reach is deferred rather than absent.
     """
     assert not _top_level_imports("amiga_shared") & set(TITLE_MODULES)
     shared = importlib.import_module("goldbox.amiga_shared")
     dos_port = importlib.import_module("goldbox.dos_port")
-    assert shared.amiga_shape_for(288) is dos_port.POOL_OF_RADIANCE
+    assert shared.deltas_for(288) is dos_port.POOL_OF_RADIANCE
 
 
 def test_each_module_imports_on_its_own_in_a_fresh_interpreter():

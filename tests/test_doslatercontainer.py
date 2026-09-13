@@ -118,7 +118,7 @@ def test_pool_of_radiance_has_no_wall_block():
 
 
 @pytest.mark.parametrize("shape", sg.SAVE_SHAPES[:3], ids=lambda s: s.key)
-def test_the_party_size_and_names_land_at_the_shapes_own_offsets(shape):
+def test_the_party_size_and_names_land_at_the_containers_own_offsets(shape):
     save = bytearray(shape.size)
     sg.put_party_size(save, 4, shape)
     sg.put_character_files(save, "j", shape)
@@ -260,14 +260,14 @@ def test_a_missing_block_is_none_rather_than_a_guess(tmp_path):
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
 def test_a_whole_save_from_nothing_is_the_titles_own_size_and_accounted(
         shape, tmp_path):
-    """`save_shape_for` sizes the buffer -- 5469 for Silver Blades, 13149 for
+    """`container_for` sizes the buffer -- 5469 for Silver Blades, 13149 for
     Curse -- and every byte has a source.  Before #299 the writer built
     13137 bytes whatever it was handed, and refused a 7424-byte payload."""
     _game, _save0, report, savgam = _built(shape, tmp_path)
     assert len(savgam) == shape.size
     assert report.unwritten == []
     assert len(report.sources) == report.total == shape.size
-    assert sg.save_shape_for(len(savgam)) is shape
+    assert sg.container_for(len(savgam)) is shape
 
 
 @pytest.mark.parametrize("shape", LATER, ids=lambda s: s.key)
@@ -302,7 +302,7 @@ def test_the_written_container_reads_back_as_the_party_we_put_in(
     assert sg.word(savgam, dos_codec.LATER_FLAGS_WORD) == 3
     party = dos_codec.read_party(tmp_path, "D")
     assert len(party) == 6
-    assert {p.shape.key for p in party} == {shape.key}
+    assert {p.deltas.key for p in party} == {shape.key}
 
 
 def test_a_curse_save_stages_its_areas_own_script(tmp_path):

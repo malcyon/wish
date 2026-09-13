@@ -300,7 +300,7 @@ titles. Each engine saves with one Turbo Pascal `BlockWrite` per region, in
 file order, in one basic block, so the file map is the chain: the first call
 starts at offset 0 and each one after it starts where the last ended.
 `tools/dossavewritemap.py` finds the chain and prints it, and
-`tools/dossavewritemap.py --check` fails if a map and a `DosSaveShape`
+`tools/dossavewritemap.py --check` fails if a map and a `DosContainer`
 disagree.
 
 The chain is found by its shape rather than by an address. A save-side

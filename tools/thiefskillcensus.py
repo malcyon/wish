@@ -321,7 +321,7 @@ def dos_records(title: str = "pool-of-radiance", extra=()):
             char = dos_codec.read_character(path)
         except Exception:
             continue
-        if char.shape.key != title:
+        if char.deltas.key != title:
             continue
         level = dict(char.class_levels or {}).get("thief") or 0
         if not level:

@@ -2991,7 +2991,7 @@ def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
     assert seen == 21, seen
 
 
-def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
+def test_a_byte_pair_field_raises_rather_than_copies_bytes(
         monkeypatch):
     """The guard the fix for `#294` adds: a name that reaches
     `to_neutral_later`'s `DIRECT` loop and reads back as raw bytes -- the

@@ -119,7 +119,7 @@ def test_no_title_means_pool_of_radiance_like_every_other_resolver():
     Every other resolver in this package treats a missing title as Pool of
     Radiance -- `goldbox.spells.for_game`, `goldbox.levels.for_game`,
     `goldbox.traits.for_game`, `goldbox.c64_save.container_for` and
-    `goldbox.c64_codec.record_shape` -- because every caller that passes none
+    `goldbox.c64_codec.deltas_for` -- because every caller that passes none
     predates the second game and means the first. A predicate that answered
     False here would be the one in the family that disagreed, and it would
     disagree in the direction that drops a portrait Pool of Radiance really

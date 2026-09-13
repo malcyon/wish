@@ -132,7 +132,7 @@ def dos_rows(root: pathlib.Path):
         except Exception as exc:                      # noqa: BLE001
             print(f"  skipped {path.parent.name}/{path.name}: {exc}")
             continue
-        game = c64_port.by_title(char.shape.title)
+        game = c64_port.by_title(char.deltas.title)
         back = c64_codec.read(imported, game=game, source=path.name)
         stored = imported.get("char_class")
         bits = imported.get("class_bits") or 0
@@ -140,7 +140,7 @@ def dos_rows(root: pathlib.Path):
         former = {k: v for k, v in (back.get("former_levels") or {}).items()
                   if v}
         yield {"where": f"{path.parent.name}/{path.name}",
-               "who": imported.name.strip(), "title": char.shape.title,
+               "who": imported.name.strip(), "title": char.deltas.title,
                "port": "dos->c64", "stored": stored, "bits": bits,
                "level_bits": bits_from_levels(levels),
                "levels": levels, "former": former,

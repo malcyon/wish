@@ -185,15 +185,15 @@ def _char_class_shown(raw, record, game):
     `goldbox.titles.classes_to_names` off `class_bits`, joined "/" -- rather
     than the byte, which was never a class code for this character.
 
-    **Gated on `goldbox.c64_codec.record_shape(game).class_code_repairable`,
+    **Gated on `goldbox.c64_codec.deltas_for(game).class_code_repairable`,
     Curse only** -- the same gate the neutral reader uses. Pool of Radiance's
     own disagreements between the two fields are not this bug (a DWARVEN
     FIGHTER-shaped mismatch is legitimate, `docs/50-experiments.md`), and a
-    title nobody has measured the overlays of raises out of `record_shape`
+    title nobody has measured the overlays of raises out of `deltas_for`
     rather than guessing, so that is read as "no known repair" too.
     """
     try:
-        repairable = c64_codec.record_shape(game).class_code_repairable
+        repairable = c64_codec.deltas_for(game).class_code_repairable
     except KeyError:
         # A title whose overlays nobody has measured. Logged rather than
         # swallowed, because every other handler in this file logs and a

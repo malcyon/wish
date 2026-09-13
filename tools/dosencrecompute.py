@@ -367,7 +367,7 @@ def bag_rows() -> tuple[list[dict], dict[str, int]]:
             if HOLDING not in words:
                 continue
             out.append({"path": path, "who": char.name or "(unnamed)",
-                        "title": char.shape.key, "slot": slot,
+                        "title": char.deltas.key, "slot": slot,
                         "readied": bool(item.get("readied")),
                         "line": item.get("text"),
                         "stored": char.get("encumbrance"),

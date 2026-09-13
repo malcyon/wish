@@ -468,8 +468,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
 
 def _amiga_specimen(path, specimen_grades, problems):
     """One Amiga file out of the specimen tree, whatever shape it is."""
-    from goldbox import amiga_later, amiga_por
-    from tools import amigasavecheck as amigasavegame
+    from goldbox import amiga_later, amiga_por, amiga_savegame
     data = path.read_bytes()
     grade = _grade(path, specimen_grades)
     if len(data) == amiga_por.AMIGA_POR_RECORD_SIZE:
@@ -484,17 +483,17 @@ def _amiga_specimen(path, specimen_grades, problems):
                       granted=granted, running=running, sources=(str(path),))
         return
     try:
-        shape = amigasavegame.detect(data)
+        shape = amiga_savegame.detect(data)
     except Exception:
         return                            # not a saved game: nothing to read
-    if shape.record_shape is None:
+    if shape.deltas is None:
         return                            # Pool of Radiance: party is filenames
     try:
-        party = amiga_later.party_in_savegame(data, shape.record_shape)
+        party = amiga_later.party_in_savegame(data, shape.deltas)
     except Exception as exc:
         problems.append(f"{path.name}: {type(exc).__name__}: {exc}")
         return
-    key = _amiga_key(shape.record_shape)
+    key = _amiga_key(shape.deltas)
     for char in party:
         innate, granted, running = _split_effects(
             [bytes(n) for n in char.effects], dos_codec._innate_effects(key), pad=1)
@@ -535,7 +534,7 @@ def _amiga_key(shape) -> str:
 def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     """The characters in a `.guy` file or a saved game, through its own shape.
 
-    **A saved game's title comes from `tools/amigasavegame.py`'s `detect`,
+    **A saved game's title comes from `tools/amigasavecheck.py`'s `detect`,
     never from trying each shape until one parses.**  `party_in_savegame`
     trusts whatever shape it is handed, and Curse's 428-byte record signature
     matches inside a Silver Blades saved game -- which read Silver Blades'
@@ -543,11 +542,10 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     wrong offset, on the first run of this sweep.  `detect` tells them apart by
     where the header ends: 12825 bytes for Curse, 5143 for Silver Blades.
     """
-    from goldbox import amiga_later, amiga_port
-    from tools import amigasavecheck as amigasavegame
+    from goldbox import amiga_later, amiga_port, amiga_savegame
     if what != "record":
         try:
-            shape = amigasavegame.detect(data).record_shape
+            shape = amiga_savegame.detect(data).deltas
         except Exception as exc:
             problems.append(f"{label}: {type(exc).__name__}: {exc}")
             return

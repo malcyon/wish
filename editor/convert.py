@@ -291,7 +291,7 @@ class Source:
         caller other than the dialog hands in a stale letter.
 
         The title comes off the chosen slot's own character record length
-        (`goldbox.amiga_shared.amiga_shape_for`), never assumed -- so an Amiga
+        (`goldbox.amiga_shared.deltas_for`), never assumed -- so an Amiga
         Curse or Silver Blades disk is detected as itself and simply has no
         registered destination yet, rather than being read as a Pool of
         Radiance save it never was.
@@ -310,15 +310,16 @@ class Source:
             raise ConvertError(f"{path} holds no Amiga saved game")
         chosen = slot if slot in slots else slots[0]
         try:
-            if chosen in later_slots and chosen not in por_slots:
-                container = amiga_savegame.read_slot(disk, chosen).container
-                assert container.deltas is not None
-                shape = container.deltas.dos
-            else:
+            if chosen in por_slots:
                 record = disk.read_file(amiga_savegame.por_save_path(
                     amiga_por.por_filename(chosen, 1),
                     amiga_savegame.por_save_drawer(disk)))
-                shape = amiga_shared.amiga_shape_for(len(record))
+                shape = amiga_shared.deltas_for(len(record))
+            else:
+                container = amiga_savegame.read_slot(disk, chosen).container
+                if container.party != "records" or container.deltas is None:
+                    raise ConvertError(f"slot {chosen} has no embedded party")
+                shape = container.deltas.dos
         except (AmigaDiskError, AmigaRecordError,
                 amiga_savegame.AmigaSaveError) as exc:
             raise ConvertError(str(exc)) from exc

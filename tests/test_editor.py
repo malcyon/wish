@@ -1326,8 +1326,8 @@ def test_the_roster_names_the_class_a_dual_classed_character_trained_out_of(app)
     """#256, Donald's decision of 2026-09-05: the class line reads the
     current class with the former one beside it. PHILIPPE trained from
     magic-user 6 to fighter, `dual_class_slot` 0 (magic-user's slot) and
-    `dual_class_level` 6 on the record -- `goldbox.c64_codec.record_shape`
-    confirms Curse keeps that pair (`RecordShape.dual_class`)."""
+    `dual_class_level` 6 on the record -- `goldbox.c64_codec.deltas_for`
+    confirms Curse keeps that pair (`C64Deltas.dual_class`)."""
     from editor.window import EditorBinding
 
     path = _curse_dual_classed_specimen()
@@ -2805,7 +2805,7 @@ def test_the_widest_value_comes_from_the_kind_and_the_byte_width():
     assert value_range(FIELDS_BY_NAME["experience"]) == (0, 0xFFFFFF)
 
 
-def test_a_combat_fields_range_is_the_sheet_shape_not_the_byte_shape():
+def test_a_combat_fields_range_uses_displayed_values():
     """`thac0_base` and the other three are U8 like `strength`, but stored as
     `60 - value` (#149), so their range is `combat_value` run over the byte's
     own 0-255 rather than 0-255 itself -- and armour class needs the negative
@@ -3024,7 +3024,7 @@ def test_a_no_op_save_writes_nothing_with_the_trait_buttons_built(app, save):
     assert not (save.parent / "backups").exists()
 
 
-def test_the_one_shape_on_the_disks_that_a_tidying_writer_would_move(
+def test_saving_preserves_effects_after_empty_slots(
         app, tmp_path):
     """The round trip above is a weak guard on `PORSAVE11.D64` and this is the
     disk where it is not.
@@ -3232,7 +3232,7 @@ def test_no_unapproved_word_is_on_screen_by_default(app, save):
 # --- the layout does not move ------------------------------------------------
 
 @game_disks
-def _test_the_sheet_keeps_its_shape_across_the_roster(editor):
+def _test_the_sheet_keeps_its_layout_across_the_roster(editor):
     """Donald: "The layout of the form should not change when we navigate the
     roster. It should stay the same, so people know where to look for things at
     all times."

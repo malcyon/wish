@@ -172,7 +172,7 @@ def test_amiga_combat_icon_written_through_dos_write_matches_the_source():
         icon = amiga_combat_icon(char)
         neutral_char = amiga_later.to_neutral_later(char)
         record, _itm, _spc, rep = dos_codec.write(neutral_char, icon=icon)
-        shape = amiga_later.later_write_shape(neutral_char)
+        shape = amiga_later.later_write_deltas(neutral_char)
         f_head = shape.dos_field("icon_head")
         f_body = shape.dos_field("icon_body")
         f_colours = shape.dos_field("icon_colours")

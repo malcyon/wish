@@ -118,7 +118,7 @@ def census(roots: list[pathlib.Path]) -> None:
             if key in seen:
                 continue
             seen.add(key)
-            rows.append((delta(char), char.shape.key, char.name,
+            rows.append((delta(char), char.deltas.key, char.name,
                          char.get("encumbrance"), coins(char), carried(char),
                          len(char.items), path))
     counts: dict[int, int] = {}

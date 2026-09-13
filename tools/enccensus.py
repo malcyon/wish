@@ -53,7 +53,7 @@ from dataclasses import dataclass, field
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga_later, amiga_por, amiga_port  # noqa: E402
+from goldbox import amiga_later, amiga_por, amiga_port, amiga_savegame  # noqa: E402
 from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from tools import (  # noqa: E402
@@ -61,7 +61,6 @@ from tools import (  # noqa: E402
     amigasaves,
     dostailcensus,
 )
-from tools import amigasavecheck as amigasavegame  # noqa: E402
 
 #: Where a DOS record might be, beyond the archives `dostailcensus` finds:
 #: this repository's `work/`, the specimen tree that outlives an emulator
@@ -204,7 +203,7 @@ def dos_rows(roots=None, want_built: bool = True):
             key = bytes(char) + b"".join(bytes(i) for i in char.items)
             row = seen.get(key)
             if row is None:
-                row = Row(port="dos", title=char.shape.key, where=path.name,
+                row = Row(port="dos", title=char.deltas.key, where=path.name,
                           who=char.name or "(unnamed)",
                           stored=char.get("encumbrance"),
                           coins=sum(char.money.values()),
@@ -254,7 +253,7 @@ def amiga_rows():
             if key in seen:
                 continue
             seen.add(key)
-            rows.append(Row(port="amiga", title=_amiga_key(char.shape),
+            rows.append(Row(port="amiga", title=_amiga_key(char.deltas),
                             where=f"{volume}:{name}", who=char.name,
                             stored=char.get("encumbrance"),
                             coins=sum(char.money.values()),
@@ -291,7 +290,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str):
                                               source=label)
         return
     try:
-        save = amigasavegame.parse(data, source=label)
+        save = amiga_savegame.parse(data, source=label, validate=False)
     except Exception:                                    # pragma: no cover
         return
     yield from save.characters

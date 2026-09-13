@@ -387,7 +387,7 @@ def report_census(out) -> int:
     out(f"{'name':<18} {'title':<28} {'head':>4} {'body':>4} {'size':>4} "
         f"{'dim':>3}  colours")
     for char, source in records:
-        key = char.shape.dos.key
+        key = char.deltas.dos.key
         head, body = char.get("icon_head"), char.get("icon_body")
         size, dim = char.get("size"), char.get("icon_dimension")
         colours = bytes(char.get("icon_colours"))

@@ -143,7 +143,7 @@ def test_a_title_with_no_dos_record_says_so():
         dos_codec.write(_neutral("champions-of-krynn", name="X"))
 
 
-def test_an_explicit_shape_overrides_the_characters_own():
+def test_explicit_deltas_override_the_characters_own():
     rec, _, _, _ = dos_codec.write(_neutral(None, name="X"), deltas=SSB)
     assert len(rec) == SSB.record_size
 
@@ -666,7 +666,7 @@ def test_the_shipped_records_of_the_later_titles_round_trip_too():
     for shape in LATER:
         for path in _records_of(shape, [roots[shape.key]]):
             char = dos_codec.read_character(path)
-            if char.shape is not shape:
+            if char.deltas is not shape:
                 continue
             rec, _itm, _spc, _rep = dos_codec.write(dos_codec.to_neutral(char))
             original = char.to_bytes()

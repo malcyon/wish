@@ -91,7 +91,7 @@ def _pool_of_radiance_disk_1() -> AmigaDisk:
     `save/CHRDATA1.sav` names, and a search that stops at the first disk
     carrying those picks up the Curse save disk on this machine and then
     fails several calls down with a 428-byte record. 288 bytes is Pool of
-    Radiance's own (`goldbox.amiga_shared.amiga_shape_for`).
+    Radiance's own (`goldbox.amiga_shared.deltas_for`).
     """
     from tools import amigasaves, gamedisks
 
@@ -147,7 +147,7 @@ def outdoor_disk() -> AmigaDisk:
 # Reading the slot off the disk
 # ---------------------------------------------------------------------------
 
-def test_the_two_shapes_of_save_disk_are_told_apart_by_their_save_entry(
+def test_the_two_arrangements_of_save_disk_are_told_apart_by_their_save_entry(
         shipped_disk, engine_disk):
     """A game disk keeps its saves in a `save` drawer and a `POOLSAVE` disk
     keeps them at the root, which is the whole of the difference and is read
@@ -183,7 +183,7 @@ def test_the_shipped_slot_reads_six_characters_and_its_saved_game(
     party, savgam = amiga_savegame.read_por_slot(shipped_disk, "A")
     assert len(party) == amiga_savegame.POR_PARTY_MAX
     assert all(isinstance(c, dos_codec.DosCharacter) for c in party)
-    assert all(c.shape.key == c64_port.POOL_OF_RADIANCE.key for c in party)
+    assert all(c.deltas.key == c64_port.POOL_OF_RADIANCE.key for c in party)
     assert all(c.name for c in party)
     assert len(savgam) == amiga_savegame.POR_SAVEGAME_SIZE
     # The shipped party carries gear, so the `.itm` was read too -- which a
@@ -239,11 +239,11 @@ def test_the_three_amiga_record_sizes_name_their_own_titles():
     """288, 428 and 340 bytes, and no two are the same -- so a reader handed
     an `.adf` with nothing else to go on can say what is on it, which is what
     `editor.convert.Source.detect` rests on."""
-    assert amiga_shared.amiga_shape_for(288).key == "pool-of-radiance"
-    assert amiga_shared.amiga_shape_for(428).key == "curse-of-the-azure-bonds"
-    assert amiga_shared.amiga_shape_for(340).key == "secret-of-the-silver-blades"
+    assert amiga_shared.deltas_for(288).key == "pool-of-radiance"
+    assert amiga_shared.deltas_for(428).key == "curse-of-the-azure-bonds"
+    assert amiga_shared.deltas_for(340).key == "secret-of-the-silver-blades"
     with pytest.raises(AmigaRecordError) as raised:
-        amiga_shared.amiga_shape_for(285)          # the DOS Pool of Radiance record
+        amiga_shared.deltas_for(285)          # the DOS Pool of Radiance record
     assert "285" in str(raised.value)
 
 

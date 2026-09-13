@@ -32,7 +32,7 @@ offer the direction, so no user could reach it; `goldbox/amiga_por.py`'s
 
 ## The shape decides, and the character decides the shape
 
-`goldbox.dos_codec.write_shape` takes the title off the neutral character --
+`goldbox.dos_codec.write_deltas` takes the title off the neutral character --
 `NeutralCharacter.game`, which a reader sets and which is a
 `goldbox.c64_port.Game`, its key, or `None` for Pool of Radiance -- and every
 width in the writer then comes off `goldbox/dos_port.py`'s table for that
@@ -323,7 +323,7 @@ Radiance's 13137 bytes until `#299 (goldbox.dos.write builds only Pool of
 Radiance's record, so nothing can be converted to DOS for the later titles)`
 made it shape-driven on both ends: it reads the C64 party through
 `c64_save.container_for(title)` and builds the DOS file to
-`dos_savegame.save_shape_for(title)`, so a Curse party comes out a 13149-byte
+`dos_savegame.container_for(title)`, so a Curse party comes out a 13149-byte
 `SAVGAMD.DAT` with its `ECL2.DAX` script staged and a Silver Blades one 5469
 bytes with none.
 

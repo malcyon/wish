@@ -139,7 +139,7 @@ def dos_records(root: pathlib.Path):
         raw = char.raw("class_levels")
         levels = {name: raw[n] for n, name in dos_codec.CLASS_BY_SLOT.items()
                   if n < len(raw)}
-        yield (f"{path.parent.name}/{path.name}", char.shape.title,
+        yield (f"{path.parent.name}/{path.name}", char.deltas.title,
                bits_from_levels(levels), bits, char.get("char_class"))
 
 

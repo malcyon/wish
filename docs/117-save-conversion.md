@@ -1983,7 +1983,7 @@ Darkness' `.pc`, `goldbox/amiga_por.py` is Pool of Radiance's record, save slot
 and disk, `goldbox/amiga_later.py` is Curse and Silver Blades, and
 `goldbox/amiga_shared.py` is what more than one of them needs with no title
 fact in it — the two byte readers, the three neutral key tuples,
-`amiga_shape_for` and the `CONVERTS`/`WRITES` registries. `goldbox/amiga_codec.py`
+`deltas_for` and the `CONVERTS`/`WRITES` registries. `goldbox/amiga_codec.py`
 stood as a shim at the old path until stage 9 deleted it, which is why the
 graph now shows four edges where it used to show one — `amiga_later`,
 `amiga_pod`, `amiga_por` and `amiga_shared` each importing `dos_port` on its

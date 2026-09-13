@@ -1108,7 +1108,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                         f"{', '.join(sorted(known_classes))}")
             given = dict(given_raw)
             if given != exported_former:
-                shape = c64_codec.record_shape(game)
+                shape = c64_codec.deltas_for(game)
                 if not shape.dual_class:
                     raise ValueError_(
                         f"slot {slot} {who}: {game.title} has no field for "

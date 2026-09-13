@@ -102,7 +102,7 @@ def _copy(path, tmp_path) -> str:
 
 # --- the descriptor ---------------------------------------------------------
 
-def test_the_family_shares_one_payload_shape():
+def test_the_family_shares_one_payload_layout():
     """Five titles, one 7426-byte file; Pool of Radiance is the outlier."""
     later = [g for g in c64_port.GAMES if g is not POOL]
     assert all(g.save_prg_size == 7426 for g in later)
