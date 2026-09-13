@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Imported DOS characters now keep their fighting level and saving throws. ([#527](https://github.com/malcyon/wish/issues/527))
 - Level Up restores one drained level for every training step. ([#526](https://github.com/malcyon/wish/issues/526))
 - Joined NPCs no longer appear as drained 255 levels, and show a plain white combat-icon preview with icon controls disabled. ([#532](https://github.com/malcyon/wish/issues/532), [#533](https://github.com/malcyon/wish/issues/533))
+- Pool of Radiance DOS imports now prepare empty party slots for companions, so DIRTEN receives a combat figure when he joins. ([#533](https://github.com/malcyon/wish/issues/533))
 - Imported Pool of Radiance DOS characters retain all 21 memorised spells. ([#508](https://github.com/malcyon/wish/issues/508), [#509](https://github.com/malcyon/wish/issues/509))
 
 ## [0.1.3] - 2026-09-06
