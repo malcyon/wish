@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-13
+
 ### Added
 
 - Character Traits can now be edited, and the editor shows the active effects currently running on a save. ([#13](https://github.com/malcyon/wish/issues/13))
-- Combat squares now show a health bar instead of a hit-point number. ([#345](https://github.com/malcyon/wish/issues/345))
 - Level Up now supports Curse of the Azure Bonds, including training every eligible class together. ([#18](https://github.com/malcyon/wish/issues/18), [#415](https://github.com/malcyon/wish/issues/415))
+- The roster now shows a human dual-class character's former class and level. ([#256](https://github.com/malcyon/wish/issues/256))
 
 ### Changed
 
+- Combat squares now show a health bar instead of a hit-point number. ([#345](https://github.com/malcyon/wish/issues/345))
 - The Quest Log puts completed commissions and side quests under Completed, below active quests. ([#530](https://github.com/malcyon/wish/issues/530))
 - Character editor lists known races, classes and alignments by name, without their stored code in front. ([#531](https://github.com/malcyon/wish/issues/531))
 - Backup settings now explain how to use one folder for all save backups or a folder beside each save.
@@ -26,9 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Imported DOS characters now keep their correct abilities and THAC0. ([#404](https://github.com/malcyon/wish/issues/404), [#405](https://github.com/malcyon/wish/issues/405))
 - Imported DOS characters now keep their fighting level and saving throws. ([#527](https://github.com/malcyon/wish/issues/527))
 - Level Up restores one drained level for every training step. ([#526](https://github.com/malcyon/wish/issues/526))
-- Joined NPCs no longer appear as drained 255 levels, and show a plain white combat-icon preview with icon controls disabled. ([#532](https://github.com/malcyon/wish/issues/532), [#533](https://github.com/malcyon/wish/issues/533))
+- Joined NPCs no longer appear as drained 255 levels. ([#532](https://github.com/malcyon/wish/issues/532))
 - Pool of Radiance DOS imports now prepare empty party slots for companions, so DIRTEN receives a combat figure when he joins. ([#533](https://github.com/malcyon/wish/issues/533))
 - Imported Pool of Radiance DOS characters retain all 21 memorised spells. ([#508](https://github.com/malcyon/wish/issues/508), [#509](https://github.com/malcyon/wish/issues/509))
+- DOS imports retain each character's treasure share. ([#529](https://github.com/malcyon/wish/issues/529))
+- A Curse character disk with a parked character no longer opens as empty. ([#456](https://github.com/malcyon/wish/issues/456))
+- Curse's Class list now shows the character's actual class, including regained dual-class combinations, instead of a stale or unrelated class. ([#356](https://github.com/malcyon/wish/issues/356), [#409](https://github.com/malcyon/wish/issues/409))
+- Character-sheet tooltips no longer expose technical save details. ([#419](https://github.com/malcyon/wish/issues/419))
+- The empty roster no longer leaves most of the editor header blank. ([#471](https://github.com/malcyon/wish/issues/471))
+- Combat messages follow the newest line, unless you scroll back to read earlier messages. ([#349](https://github.com/malcyon/wish/issues/349))
+- Combat messages now warn when the game's fastest combat speed makes the log incomplete. ([#425](https://github.com/malcyon/wish/issues/425))
 
 ## [0.1.3] - 2026-09-06
 
@@ -152,7 +162,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/malcyon/wish/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/malcyon/wish/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/malcyon/wish/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/malcyon/wish/compare/v0.1.0...v0.1.1
