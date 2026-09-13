@@ -6,6 +6,8 @@
 
 Inspection is the default. The only accepted repair is a unique joined NPC
 named DIRTEN whose entire icon is zero. No existing file is ever overwritten.
+Only a new output is opened for writing. It is verified before success is
+reported; a failed or replaced output is left for inspection, never deleted.
 Game data comes from POR_DISKS, then automap.paths.find_disks(); no art is
 embedded here. POOL3's composed default must match POOL1 INIT's native seed.
 
@@ -20,14 +22,13 @@ import os
 import pathlib
 import stat
 import sys
-import tempfile
 from dataclasses import dataclass
 from hashlib import sha256
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import c64_port, c64_save, savegame  # noqa: E402
+from goldbox import c64_codec, c64_port, c64_save, savegame  # noqa: E402
 from goldbox.d64 import (  # noqa: E402
     BAM_DOS_TYPE,
     D64,
@@ -161,7 +162,9 @@ def plan_repair(image: bytes, icon: bytes) -> RepairPlan:
         raise RepairError("Expected exactly one DIRTEN in the eight party slots")
     slot, record = matches[0]
     roster = sg1.roster(slot)
-    if not record.is_npc or not roster.roster_in_use or roster.slot_index != slot:
+    if (not record.is_npc or not roster.roster_in_use
+            or roster.roster_in_use & c64_codec.OUT_OF_PLAY
+            or roster.slot_index != slot):
         raise RepairError("DIRTEN is not a joined NPC with a matching active roster")
     prg = disk.read_file(entry)
     start = 2 + POOL.icon(slot)
@@ -197,27 +200,40 @@ def _check_output(source: pathlib.Path, output: pathlib.Path) -> None:
 
 
 def publish_copy(source: pathlib.Path, output: pathlib.Path, plan: RepairPlan) -> None:
-    """Publish a verified, complete copy atomically, with no overwrite path."""
+    """Exclusively create and verify a copy of the inspected input snapshot.
+
+    Only the newly created descriptor is written. The source rehash detects
+    drift before creation; it cannot lock out external writers. The output
+    can be visible while incomplete. Failures never unlink a pathname that
+    another process may now own, so a failed output is left for inspection.
+    """
     _check_output(source, output)
-    temporary = None
+    # A useful drift check, not a guarantee that no other process can change
+    # this path after the check. The plan's bytes and hashes name the snapshot.
+    if sha256(source.read_bytes()).hexdigest() != plan.source_sha256:
+        raise RepairError("The input changed since inspection; no output was created")
+    stream = None
     try:
-        with tempfile.NamedTemporaryFile(
-                prefix=".dirtenicon-", suffix=".tmp", dir=output.parent,
-                delete=False) as stream:
-            temporary = pathlib.Path(stream.name)
+        # Exclusive creation is the no-clobber boundary. An inode descriptor,
+        # not a replaceable temporary pathname, remains ours until verification.
+        with output.open("x+b") as stream:
+            identity = os.fstat(stream.fileno())
             stream.write(plan.output)
             stream.flush()
             os.fsync(stream.fileno())
-        if sha256(temporary.read_bytes()).hexdigest() != plan.output_sha256:
-            raise RepairError("The staged output failed its hash check")
-        if sha256(source.read_bytes()).hexdigest() != plan.source_sha256:
-            raise RepairError("The input changed during inspection; no copy was published")
-        # A link fails if *anything* appeared at the destination meanwhile.
-        # Unlike replace/rename, it never clobbers a file or dangling symlink.
-        os.link(temporary, output)
-    finally:
-        if temporary is not None:
-            temporary.unlink()
+            stream.seek(0)
+            if sha256(stream.read()).hexdigest() != plan.output_sha256:
+                raise RepairError("The output failed its hash check")
+            at_path = output.lstat()
+            if (not stat.S_ISREG(at_path.st_mode)
+                    or not os.path.samestat(identity, at_path)):
+                raise RepairError("The output path was replaced during the write")
+    except (OSError, RepairError) as exc:
+        if stream is None:  # Exclusive open failed; no output was ours.
+            raise
+        raise RepairError(
+            f"Output not verified: {output} may be incomplete or replaced; "
+            f"nothing was deleted. {exc}") from exc
 
 
 def main(argv=None) -> int:
@@ -233,18 +249,18 @@ def main(argv=None) -> int:
         original = args.save.read_bytes()
         default = native_default()
         plan = plan_repair(original, default.icon)
-        print(f"Input SHA-256: {plan.source_sha256}")
+        print(f"Input snapshot SHA-256: {plan.source_sha256}")
         for name, digest in default.sources:
             print(f"Game source {name} SHA-256: {digest}")
         print(f"Native default SHA-256: {sha256(default.icon).hexdigest()}")
         print(f"DIRTEN: Joined NPC in party slot {plan.slot}; icon is entirely zero")
-        print(f"Verified change: {plan.changed_bytes} disk bytes, only DIRTEN's icon")
-        print(f"Output SHA-256: {plan.output_sha256}")
+        print(f"Planned change: {plan.changed_bytes} disk bytes, only DIRTEN's icon")
+        print(f"Planned output SHA-256: {plan.output_sha256}")
         if args.out is None:
             print("Inspection only: No file written; use --out with a new .d64 path")
         else:
             publish_copy(args.save, args.out, plan)
-            print(f"Created: {args.out}; input unchanged")
+            print(f"Created and verified: {args.out}; source never opened for writing")
         return 0
     except (OSError, D64Error, ValueError, IndexError) as exc:
         print(f"Refused: {exc}", file=sys.stderr)

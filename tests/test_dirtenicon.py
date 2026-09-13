@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import pathlib
+import sys
 from hashlib import sha256
 from types import SimpleNamespace
 
@@ -97,6 +99,60 @@ def test_identity_and_existing_art_are_never_guessed(condition, message, seed):
     with pytest.raises(repair.RepairError, match=message):
         repair.plan_repair(original, seed)
     assert disk.to_bytes() == original
+
+
+@pytest.mark.parametrize("status", (0x80, 0x81))
+def test_out_of_play_dirten_is_not_an_active_repair_candidate(status, seed):
+    """Bit 7 is independent of the low status bits, not roster occupancy."""
+    disk = generated_disk()
+    replace_payload(disk, "SAVEDGAME1", 7 * 32, bytes([status]))
+    with pytest.raises(repair.RepairError, match="not a joined NPC"):
+        repair.plan_repair(disk.to_bytes(), seed)
+
+
+@pytest.mark.parametrize("status", (0x01, 0x05))
+def test_the_independent_low_status_bits_are_not_a_new_refusal_policy(status, seed):
+    disk = generated_disk()
+    replace_payload(disk, "SAVEDGAME1", 7 * 32, bytes([status]))
+    assert repair.plan_repair(disk.to_bytes(), seed).changed_bytes == 36
+
+
+@pytest.mark.parametrize("difference", ("free_count", "free_directory"))
+def test_unrelated_bam_bookkeeping_is_preserved_not_repaired(difference, seed):
+    """A same-size patch does not allocate; these do not change its target."""
+    disk = generated_disk()
+    bam = bytearray(disk.read_sector(18, 0))
+    if difference == "free_count":
+        bam[4] ^= 1  # Change track 1's count, without changing its bitmap.
+    else:
+        bam[4 + 17 * 4 + 1] |= 2  # Mark directory sector 18/1 free.
+    disk.write_sector(18, 0, bam)
+    original = disk.to_bytes()
+    plan = repair.plan_repair(original, seed)
+    assert plan.changed_bytes == 36
+    repaired = D64(plan.output)
+    assert repaired.read_sector(18, 0) == bytes(bam)
+    assert repaired.read_file("SAVEDGAME1") == disk.read_file("SAVEDGAME1")
+    replace_payload(repaired, "SAVEDGAME0", repair.POOL.icon(7), bytes(36))
+    assert repaired.to_bytes() == original
+
+
+def test_a_file_sharing_an_empty_directory_sector_is_refused(seed):
+    disk = generated_disk()
+    directory = bytearray(disk.read_sector(18, 1))
+    directory[:2] = bytes((18, 4))
+    entry = disk.entry("UNRELATED")
+    at = 2 + entry.slot * 32
+    directory[at + 1:at + 3] = bytes((18, 4))
+    disk.write_sector(18, 1, directory)
+    empty_directory = bytearray(256)
+    empty_directory[:2] = bytes((0, 255))
+    disk.write_sector(18, 4, empty_directory)
+    bam = bytearray(disk.read_sector(18, 0))
+    bam[4 + 17 * 4 + 1] &= ~(1 << 4)
+    disk.write_sector(18, 0, bam)
+    with pytest.raises(repair.RepairError, match="Cross-linked"):
+        repair.plan_repair(disk.to_bytes(), seed)
 
 
 @pytest.mark.parametrize("condition", [
@@ -230,13 +286,14 @@ def test_output_aliases_and_existing_files_are_never_overwritten(source, seed, k
 def test_a_destination_created_during_publication_is_not_clobbered(source, seed, monkeypatch):
     plan = repair.plan_repair(source.read_bytes(), seed)
     output = source.with_name("race.d64")
-    link = os.link
+    original_open = pathlib.Path.open
 
-    def raced_link(temporary, target):
-        target.write_bytes(b"A different process won")
-        link(temporary, target)
+    def raced_open(path, mode="r", *args, **kwargs):
+        if path == output and mode == "x+b":
+            path.write_bytes(b"A different process won")
+        return original_open(path, mode, *args, **kwargs)
 
-    monkeypatch.setattr(repair.os, "link", raced_link)
+    monkeypatch.setattr(pathlib.Path, "open", raced_open)
     with pytest.raises(FileExistsError):
         repair.publish_copy(source, output, plan)
     assert output.read_bytes() == b"A different process won"
@@ -244,14 +301,11 @@ def test_a_destination_created_during_publication_is_not_clobbered(source, seed,
     assert not list(source.parent.glob(".dirtenicon-*"))
 
 
-def test_a_changed_input_aborts_before_publication(source, seed, monkeypatch):
+def test_a_changed_input_aborts_before_creation(source, seed):
     plan = repair.plan_repair(source.read_bytes(), seed)
     output = source.with_name("stale.d64")
 
-    def source_changed(_fd):
-        source.write_bytes(b"Simulated external edit")
-
-    monkeypatch.setattr(repair.os, "fsync", source_changed)
+    source.write_bytes(b"Simulated external edit")
     with pytest.raises(repair.RepairError, match="input changed"):
         repair.publish_copy(source, output, plan)
     assert not output.exists()
@@ -259,35 +313,117 @@ def test_a_changed_input_aborts_before_publication(source, seed, monkeypatch):
     assert not list(source.parent.glob(".dirtenicon-*"))
 
 
-def test_failed_publication_leaves_no_partial_copy(source, seed, monkeypatch):
+def test_a_partial_write_is_reported_and_left_for_inspection(source, seed, monkeypatch):
     plan = repair.plan_repair(source.read_bytes(), seed)
     output = source.with_name("failed.d64")
 
-    def failed_link(*_args):
-        raise OSError("Generated link failure")
+    def partial_write(fd):
+        os.ftruncate(fd, 73)
+        raise OSError("Generated disk write failure")
 
-    monkeypatch.setattr(repair.os, "link", failed_link)
-    with pytest.raises(OSError, match="link failure"):
+    monkeypatch.setattr(repair.os, "fsync", partial_write)
+    with pytest.raises(repair.RepairError, match="may be incomplete or replaced"):
         repair.publish_copy(source, output, plan)
-    assert not output.exists()
+    assert output.read_bytes() == plan.output[:73]
     assert sha256(source.read_bytes()).hexdigest() == plan.source_sha256
     assert not list(source.parent.glob(".dirtenicon-*"))
 
 
-def test_a_staged_output_hash_mismatch_is_never_published(source, seed, monkeypatch):
+def test_an_output_hash_mismatch_is_not_reported_as_success(source, seed, monkeypatch):
     plan = repair.plan_repair(source.read_bytes(), seed)
     output = source.with_name("damaged.d64")
 
-    def damaged_stage(fd):
+    def damaged_output(fd):
         os.lseek(fd, 0, os.SEEK_SET)
         os.write(fd, b"Damaged during staging")
 
-    monkeypatch.setattr(repair.os, "fsync", damaged_stage)
-    with pytest.raises(repair.RepairError, match="staged output failed"):
+    monkeypatch.setattr(repair.os, "fsync", damaged_output)
+    with pytest.raises(repair.RepairError, match="output failed its hash check"):
         repair.publish_copy(source, output, plan)
-    assert not output.exists()
+    assert output.read_bytes() != plan.output
     assert sha256(source.read_bytes()).hexdigest() == plan.source_sha256
     assert not list(source.parent.glob(".dirtenicon-*"))
+
+
+@pytest.mark.parametrize("replacement", ("file", "symlink"))
+def test_another_process_replacing_the_write_path_is_detected_and_preserved(
+        source, seed, monkeypatch, replacement, capsys):
+    plan = repair.plan_repair(source.read_bytes(), seed)
+    output = source.with_name("replacement.d64")
+    replaced = []
+
+    def swap_path(_fd):
+        # Exercise the actual write path, whether staging or direct exclusive
+        # output. The inode held by the writer remains open across this swap.
+        path = output if output.exists() else next(source.parent.glob(".dirtenicon-*"))
+        try:
+            path.rename(source.with_name("held-by-writer"))
+        except PermissionError:
+            if sys.platform == "win32":
+                pytest.skip("The platform prevents renaming an open output")
+            raise
+        if replacement == "symlink":
+            try:
+                path.symlink_to(source)
+            except OSError:
+                pytest.skip("Symlinks are unavailable on this platform")
+        else:
+            path.write_bytes(b"Another process owns this replacement")
+        replaced.append(path)
+
+    monkeypatch.setattr(repair.os, "fsync", swap_path)
+    monkeypatch.setattr(repair, "native_default", lambda: repair.NativeDefault(seed, ()))
+    assert repair.main([str(source), "--out", str(output)]) == 1
+    messages = capsys.readouterr()
+    assert "Created" not in messages.out
+    assert "may be incomplete or replaced" in messages.err
+    assert replaced
+    path = replaced[0]
+    if replacement == "symlink":
+        assert path.is_symlink(), "Cleanup must not unlink somebody else's symlink"
+    else:
+        assert path.read_bytes() == b"Another process owns this replacement"
+    assert sha256(source.read_bytes()).hexdigest() == plan.source_sha256
+
+
+def test_a_late_external_source_edit_does_not_change_the_verified_snapshot_copy(
+        source, seed, monkeypatch, capsys):
+    original = source.read_bytes()
+    plan = repair.plan_repair(original, seed)
+    output = source.with_name("snapshot.d64")
+    monkeypatch.setattr(repair, "native_default", lambda: repair.NativeDefault(seed, ()))
+
+    def external_edit(_fd):
+        source.write_bytes(b"External edit after the drift check")
+
+    monkeypatch.setattr(repair.os, "fsync", external_edit)
+    assert repair.main([str(source), "--out", str(output)]) == 0
+    assert output.read_bytes() == plan.output
+    assert source.read_bytes() == b"External edit after the drift check"
+    message = capsys.readouterr().out
+    assert "Created and verified:" in message
+    assert "source never opened for writing" in message
+    assert "input unchanged" not in message
+
+
+def test_cli_write_failure_never_reports_success_or_deletes_the_partial_output(
+        source, seed, monkeypatch, capsys):
+    original = source.read_bytes()
+    output = source.with_name("partial.d64")
+    monkeypatch.setattr(repair, "native_default", lambda: repair.NativeDefault(seed, ()))
+
+    def partial_write(fd):
+        os.ftruncate(fd, 73)
+        raise OSError("Generated failure")
+
+    monkeypatch.setattr(repair.os, "fsync", partial_write)
+    assert repair.main([str(source), "--out", str(output)]) == 1
+    messages = capsys.readouterr()
+    assert "Created" not in messages.out
+    assert "may be incomplete or replaced" in messages.err
+    assert "nothing was deleted" in messages.err
+    assert output.stat().st_size == 73
+    assert source.read_bytes() == original
 
 
 @pytest.mark.parametrize("bad_icon", (bytes(36), bytes(35), bytes(37)))
