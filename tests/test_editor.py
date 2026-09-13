@@ -1060,6 +1060,60 @@ def _test_the_window_opens_inside_a_small_desktop(app, save):
 
 # --- the combat icon --------------------------------------------------------
 
+def test_an_npc_hides_its_stale_icon_and_cannot_edit_it(app, party):
+    """NPC icons stay hidden even when the slot contains nonzero stale bytes."""
+    from editor.window import EditorBinding
+    from goldbox.icons import ICON_SIZE, Icon
+
+    editor = EditorBinding(make_root(), str(party))
+    npc, pc = editor.party.member(0), editor.party.member(1)
+    stale = Icon(bytes(range(ICON_SIZE)))
+    npc.record.set_npc(True)
+    npc.icon = stale
+    editor.charset = bytes([0xFF]) * (256 * 8)
+    editor._populate()
+
+    icon = editor._widgets["icon"]
+    assert icon.icon is None
+    assert not icon.isEnabled()
+    assert not icon.btn_change.isEnabled()
+    assert not icon.part_combo.isEnabled()
+    assert not icon.color_combo.isEnabled()
+    before = npc.icon
+    icon.set_cell_colour(0, 7)
+    assert npc.icon == before
+    assert not editor.dirty
+    editor._flush()
+    assert npc.icon == stale
+
+    editor.roster.selectRow(1)
+    assert icon.isEnabled()
+    assert icon.icon == pc.icon
+    assert icon.btn_change.isEnabled()
+    assert icon.part_combo.isEnabled()
+    assert icon.color_combo.isEnabled()
+
+
+def test_an_all_zero_icon_is_a_white_empty_frame(app):
+    from editor.iconwidget import IconPreview
+    from goldbox.icons import ICON_SIZE, Icon
+
+    preview = IconPreview()
+    preview.resize(preview.minimumSize())
+    preview.set_icon(Icon(bytes(ICON_SIZE)), bytes([0xFF]) * (256 * 8))
+    image = preview.grab().toImage()
+    centre = image.pixelColor(image.width() // 2, image.height() // 2)
+    assert centre.name() == "#ffffff"
+
+
+def test_a_standalone_characters_icon_stays_read_only(app, tmp_path):
+    from editor.window import EditorBinding
+
+    editor = EditorBinding(make_root(), str(_standalone_disk(tmp_path)))
+    editor.roster.selectRow(0)
+    assert not editor._widgets["icon"].isEnabled()
+
+
 @game_disks
 def test_the_icon_picker_offers_the_game_s_own_two_lists(app, editor):
     """Not 253 glyphs a cell. `SPELLE64` says 35 weapons and 23 heads at this

@@ -418,7 +418,14 @@ experiments that promote them.
 
 ## The combat icon
 
-The requirement: editable, showing the real pixel art, with a colour picker.
+Player characters show their combat art with the existing editing controls.
+NPCs show a plain white frame with **Change the icon**, **Part**, and **Color**
+disabled. Donald approved this on 2026-09-13 because controls should not offer
+edits to an icon the editor does not display
+(#533 (A joined NPC has no combat icon, and the editor draws the absence as a black rectangle)).
+Selecting a player character restores the normal preview and controls, subject
+to the existing save-file editing restrictions. Hiding an NPC icon does not
+change its stored bytes.
 
 ### What is known
 
@@ -441,23 +448,16 @@ the art as a grid of colour indices.
 `IconEditor(QWidget)`, **promoted in Designer** so it can be placed and moved on
 the form like any other widget while living in `editor/iconwidget.py`.
 
-* Draws the 3×6 grid at a large integer zoom (8× gives 192×384), so pixels stay
-  crisp.
-* Click a cell → a 16-swatch C64 palette popup, using the names already in
-  `goldbox/icons.py`. Not `QColorDialog`: the C64 has sixteen colours and offering a
-  full colour wheel would let the user pick something the machine cannot show.
-* The glyph in a cell is changed from the same menu -- `Glyph 228…` above the
-  colours -- opening a scrollable grid of all 253 `CHARPIC00` glyphs, drawn in
-  the same multicolour scheme so what you pick is what you get. Changing the
-  shape half is what a real icon change does; the diffing showed both halves
-  move.
-* Emits `iconChanged` so the main window can mark the file dirty.
+The two poses are drawn side by side at integer zoom. **Change the icon** opens
+the parts picker; **Part** and **Color** recolour one part using the C64 palette.
+Changes emit `iconChanged` so the editor marks the file dirty. This describes
+the current `IconEditor`; the earlier per-cell glyph menu was replaced by the
+parts picker described below.
 
-Editing the icon is only meaningful for a `.chr` export, because the icon lives
-at `0x220` — beyond a save slot's 256 bytes. In a save the icons come from the
-shared table at `$4BE0`, which the editor writes directly. Both paths exist in
-`goldbox/` already (`icon_for_slot`, and `goldbox/yaml_io.py` writes the table), so the
-widget can be backed by either.
+The editor enables icon changes only for a save containing the shared icon
+table at `$4BE0`, and only for player characters. A standalone character file
+keeps its icon controls disabled; `EditorBinding._apply_read_only` enforces
+that restriction.
 
 ---
 
@@ -605,4 +605,3 @@ and `colour[cell] = C[class] | (8 if bit 7)` reproduces 103 of our 104 icon
 slots. `IconParts.colours_for` implements it and the picker keeps colours legal
 as the shape changes, but the right-click menu still sets a single cell. That
 is the remaining way to build something the game would not.
-

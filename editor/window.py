@@ -1888,10 +1888,13 @@ class EditorBinding(QObject):
         row = self.current_row if row is None else row
         if self.party is None or not 0 <= row < len(self.party):
             return []
-        record = self.party.member(row).record
+        member = self.party.member(row)
+        record = member.record
         icon_widget = self._widgets.get("icon")
-        if icon_widget is not None and getattr(icon_widget, "icon", None) is not None:
-            self.party.member(row).icon = icon_widget.icon
+        if (not member.is_npc and icon_widget is not None
+                and icon_widget.isEnabled()
+                and getattr(icon_widget, "icon", None) is not None):
+            member.icon = icon_widget.icon
         failures: list[str] = []
         for name, w in self._widgets.items():
             if name == "icon" or not w.isEnabled():
@@ -2042,7 +2045,8 @@ class EditorBinding(QObject):
         self._describe_inventory(member)
         icon_widget = self._widgets.get("icon")
         if icon_widget is not None:
-            icon_widget.set_icon(member.icon if self.charset else None,
+            icon_widget.setEnabled(self.party.save0 is not None and not member.is_npc)
+            icon_widget.set_icon(member.icon if self.charset and not member.is_npc else None,
                                  self.charset)
             size = "large" if (member.record.get("size_small") or 0) & 1 else "small"
             icon_widget.set_parts(getattr(self, "icon_parts", None), size)
@@ -2073,7 +2077,10 @@ class EditorBinding(QObject):
         rules = bindings(in_save=self.party.in_save)
         for name, w in self._widgets.items():
             if name == "icon":
-                w.setEnabled(self.party.save0 is not None)
+                member = (self.party.member(self.current_row)
+                          if 0 <= self.current_row < len(self.party) else None)
+                w.setEnabled(self.party.save0 is not None
+                             and (member is None or not member.is_npc))
                 continue
             if name == "name":
                 # Disabled in wish/window.ui and left alone here -- #145 made

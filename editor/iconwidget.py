@@ -78,7 +78,7 @@ class IconPreview(QWidget):
         self._rebuild()
 
     def _rebuild(self) -> None:
-        if self._icon is not None and self._charset:
+        if self._icon is not None and any(self._icon.raw) and self._charset:
             self._pixels = icon_pixels(self._icon, self._charset)
         else:
             self._pixels = []
@@ -114,12 +114,10 @@ class IconPreview(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
-        p.fillRect(self.rect(), colour(COMBAT_BORDER))
         if not self._pixels:
-            p.setPen(QPen(QColor("#ffffff")))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                       "no icon" if self._icon is None else "no game disk")
+            p.fillRect(self.rect(), QColor("#ffffff"))
             return
+        p.fillRect(self.rect(), colour(COMBAT_BORDER))
 
         scale, x0, y0 = self._geometry()
         for y, row in enumerate(self._pixels):
@@ -191,7 +189,7 @@ class IconEditor(QWidget):
         self._size = size
 
     def _update_color_combo(self):
-        if self._icon is None or self._parts is None:
+        if not self.isEnabled() or self._icon is None or self._parts is None:
             return
         part_idx = self.part_combo.currentIndex()
         if part_idx < 0:
@@ -221,7 +219,8 @@ class IconEditor(QWidget):
         self.set_shape(bytes(self._icon.shape), new_colours)
 
     def _pick_parts(self) -> None:
-        if not self._charset or self._parts is None or self._icon is None:
+        if (not self.isEnabled() or not self._charset or self._parts is None
+                or self._icon is None):
             return
         dialog = PartsPicker(self._parts, self._charset,
                              bytes(self._icon.shape),
@@ -231,7 +230,7 @@ class IconEditor(QWidget):
         self.set_shape(dialog.shape, dialog.colours)
 
     def set_shape(self, shape: bytes, colours: bytes) -> None:
-        if self._icon is None:
+        if not self.isEnabled() or self._icon is None:
             return
         self._icon = Icon(bytes(shape) + bytes(colours))
         self.preview.set_icon(self._icon, self._charset)
