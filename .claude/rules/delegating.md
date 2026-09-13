@@ -16,8 +16,8 @@ writing the brief costs more than doing the work.
 One definition, `.claude/agents/<name>.md`, drives both tools -- Claude Code
 reads it directly, and `tools/gencodex.py` generates Codex's
 `.codex/agents/<name>.toml` from it. Only the model differs, since a Claude
-model name has no Codex counterpart: the two columns below are Donald's own
-choice for each tool, not the same decision spelled two ways.
+model name has no Codex counterpart: the two columns below record each tool's
+configured model, not the same decision spelled two ways.
 
 | agent | Claude | Codex | when |
 |---|---|---|---|
