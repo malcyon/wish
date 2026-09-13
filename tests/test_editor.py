@@ -2655,6 +2655,7 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
             win.resize(win.width() + width, win.height())
             app.processEvents()
 
+        wide_window_width = win.width()
         header = view.horizontalHeader()
         assert view.width() == view.maximumWidth()
         assert view.width() > view.minimumWidth()
@@ -2676,7 +2677,7 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
         assert not view.horizontalScrollBar().isVisible()
         assert not view.verticalScrollBar().isVisible()
 
-        win.resize(floor.width() + view.maximumWidth(), floor.height())
+        win.resize(wide_window_width, floor.height())
         app.processEvents()
         assert [header.sectionSize(column)
                 for column in range(view.model().columnCount())] == wide
