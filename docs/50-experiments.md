@@ -7374,15 +7374,36 @@ in **576 of 576 logical pixels**. Zero screen codes select that real glyph and
 zero colour bytes draw it black; this is not evidence of a damaged shared
 charset or an invalid colour nibble.
 
-**That the photographed figure was drawn from this exact slot-7 save entry is
-PROBABLE, not CONFIRMED.** Donald confirmed that `TEST_DOS_IMPORT6.D64` was
-mounted and identified the affected NPC as DIRTEN; the photographed shape
-matches the zero icon exactly, and that disk persists DIRTEN over the zero
-entry. The bytes loaded at the screenshot instant and persistence across a
-reload were not observed. Reloading that exact image and entering one fight
-would confirm the link if the hooks recur and refute persistence if they do
-not. No emulator was launched for this experiment, so it makes no general
-claim about how the engine treats every NPC or every icon-table state.
+**The saved zero icon reproduces in the running game — CONFIRMED for this
+save.** A byte-identical copy of `TEST_DOS_IMPORT6.D64` was loaded in headless
+VICE. It began at `(14,4)`, entered combat after three forward steps, and the
+combatant table identified slot 7 as DIRTEN at `(25,10)`. While the right-hand
+panel named DIRTEN, the paused screen showed his outlined figure as the black
+patterned block. At that same instant `$4CDC-$4CFF` was 36 zero bytes and the
+live 288-byte table still had SHA-256
+`bcbf82f2014c22849e8ace903af03178e6915a9df11cc7f5fe87bd3936fc39a3`.
+The capture has SHA-256
+`84f6570cd86051d7e2bc82ce91ba3e556879094683097ea1727e8c71030f1cdb`.
+
+**Replacing only slot 7 with the creation default removes the block —
+CONFIRMED in one comparison run.** The disposable repair changed exactly 36
+disk-image bytes and exactly `SAVEDGAME0` payload `+$3DC-+$3FF`; `SAVEDGAME1`
+was byte-identical. The replacement was `IconParts.default_icon()` read from
+the player's `POOL3.D64`, 36 bytes with SHA-256
+`cbed0266b8dd190cbf9067193bc5321b1a85e7a6913bbfea0c3fc03c206575ad`.
+The repaired image had SHA-256
+`a49e2d071d21a46df5a7cd1e31c8dfc214e8b71bc9737526ecae6c2f0b26b64c`.
+After reload its live slot 7 matched that hash before combat, and a later frame
+whose panel named DIRTEN showed the outlined figure as a normal coloured
+humanoid. The later repaired frame and its live icon read were not captured at
+the same instant, so this run does not establish a general rule for every NPC
+or icon-table state.
+
+**The original screenshot's exact live bytes remain PROBABLE.** Donald
+identified DIRTEN and confirmed that `TEST_DOS_IMPORT6.D64` was mounted, and an
+unchanged copy of that exact image now reproduces the same shape from the same
+persisted entry after reload. The bytes in Donald's emulator at the original
+screenshot instant were not read.
 
 **The legacy-conversion origin is PROBABLE.** The related files' byte pattern
 matches the old writer, which zeroed empty icon slots. Commit `93ece77` changed
