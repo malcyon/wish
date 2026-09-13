@@ -2618,9 +2618,10 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
     """
     from math import ceil
 
+    from PyQt6.QtGui import QGuiApplication
     from PyQt6.QtWidgets import QHBoxLayout
 
-    from editor.rosterview import NAME_COLUMN
+    from editor.rosterview import NAME_COLUMN, NAME_MIN_WIDTH
     from wish.session import Session
     from wish.window import EDITOR_TAB, WishWindow
 
@@ -2674,8 +2675,41 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
         assert squeezed[:NAME_COLUMN] == wide[:NAME_COLUMN]
         assert squeezed[NAME_COLUMN + 1:] == wide[NAME_COLUMN + 1:]
         assert squeezed[NAME_COLUMN] < wide[NAME_COLUMN]
-        assert not view.horizontalScrollBar().isVisible()
+        horizontal = view.horizontalScrollBar()
+        vertical = view.verticalScrollBar()
+        viewport = view.viewport()
+        overflow = header.length() > viewport.width()
+        effective_name_minimum = max(NAME_MIN_WIDTH, header.minimumSectionSize())
+        rows = [(row, view.rowViewportPosition(row), view.rowHeight(row))
+                for row in range(view.model().rowCount())]
+        geometry = (
+            f"platform={QGuiApplication.platformName()!r}, "
+            f"font={app.font().pointSizeF()}pt, "
+            f"table={view.width()}px, minimum={view.minimumWidth()}px, "
+            f"maximum={view.maximumWidth()}px, viewport={viewport.width()}x"
+            f"{viewport.height()}px, header={header.length()}px, "
+            f"wide={wide}, squeezed={squeezed}, NAME_MIN_WIDTH="
+            f"{NAME_MIN_WIDTH}px, section minimum={header.minimumSectionSize()}px, "
+            f"horizontal=(visible={horizontal.isVisible()}, range="
+            f"{horizontal.minimum()}..{horizontal.maximum()}), vertical="
+            f"(visible={vertical.isVisible()}, range={vertical.minimum()}.."
+            f"{vertical.maximum()}), rows="
+            f"{[(row, top, top + height) for row, top, height in rows]}")
+
+        # The window floor is constant, but fixed columns and Qt's Name floor
+        # follow font metrics.  A bar is legitimate only after Name reaches it.
+        assert horizontal.isVisible() == overflow, geometry
+        assert (horizontal.maximum() > 0) == overflow, geometry
+        if overflow:
+            assert squeezed[NAME_COLUMN] == effective_name_minimum, geometry
+            fixed = sum(squeezed[:NAME_COLUMN]
+                        + squeezed[NAME_COLUMN + 1:])
+            assert fixed + effective_name_minimum > viewport.width(), geometry
+        for row, top, height in rows:
+            assert 0 <= top, geometry
+            assert top + height <= viewport.height(), geometry
         assert not view.verticalScrollBar().isVisible()
+        assert view.verticalScrollBar().maximum() == 0, geometry
 
         win.resize(wide_window_width, floor.height())
         app.processEvents()
