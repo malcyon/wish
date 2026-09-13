@@ -26,7 +26,7 @@ Four things it does, cheapest first:
   six people on the C64, DOS and the Amiga, so for Silver Blades this is the
   conversion marked against the answer;
 * `--into ... --out`, which rebuilds a saved game on a copy of an Amiga disk
-  with the converted party in it -- `tools/amigasavegame.py`'s `rebuild`,
+  with the converted party in it -- `goldbox.amiga_savegame.rebuild`,
   the same call `tools/amigalaterslot.py` makes when it edits a party that
   was already there.
 

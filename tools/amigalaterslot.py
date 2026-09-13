@@ -6,8 +6,8 @@
 titles keep the whole party **inside** the saved game -- record, item nodes and
 effect chain, one block a character, with nothing but the party-count word
 saying how many there are (`docs/165-amiga-savegame.md`) -- so putting a party
-in front of those games means rewriting the container itself, which is what
-`tools/amigasavegame.py`'s `rebuild` does and this puts on a disk.
+in front of those games means rewriting the container itself, which
+`goldbox.amiga_savegame.rebuild` does before this puts it on a disk.
 
 It exists because of the gap `#28 (Decode an Amiga saved game, not just a
 character file)` closed last: the format was read out of the save and load

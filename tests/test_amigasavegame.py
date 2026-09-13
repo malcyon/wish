@@ -1,4 +1,4 @@
-"""The Amiga saved-game map in `tools/amigasavegame.py`, against the code's numbers.
+"""The Amiga saved-game map in `goldbox.amiga_savegame`, against the code's numbers.
 
 `#28 (Decode an Amiga saved game, not just a character file)` read the map out
 of each title's own save routine.  The synthetic tests here build a saved game
@@ -391,8 +391,7 @@ def test_a_specimen_saved_game_rebuilds_byte_for_byte(specimens):
 
     They are **found** files rather than ones we watched being written, so
     this tests our reader and writer against each other and establishes
-    nothing about the format; what establishes the format is the loader,
-    read in `tools/amigasavegame.py`.
+    nothing about the format; what establishes the format is the loader.
     """
     seen = 0
     for label, data in specimens:

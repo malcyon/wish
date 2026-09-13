@@ -314,7 +314,7 @@ def test_a_character_carrying_everything_chains_every_node():
 
 
 def test_a_written_block_reads_back_as_the_party_it_is():
-    """The block the writer hands `tools/amigasavegame.py` has to be one the
+    """The block the writer hands `goldbox.amiga_savegame` has to be one the
     reader finds: a scan for the record signature and a walk of the counts."""
     for shape in amiga_port.AMIGA_DELTAS:
         built, _ = amiga_later.write_later(_loaded(shape))

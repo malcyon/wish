@@ -534,7 +534,7 @@ def _amiga_key(shape) -> str:
 def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     """The characters in a `.guy` file or a saved game, through its own shape.
 
-    **A saved game's title comes from `tools/amigasavecheck.py`'s `detect`,
+    **A saved game's title comes from `goldbox.amiga_savegame.detect`,
     never from trying each shape until one parses.**  `party_in_savegame`
     trusts whatever shape it is handed, and Curse's 428-byte record signature
     matches inside a Silver Blades saved game -- which read Silver Blades'

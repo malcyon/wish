@@ -438,7 +438,7 @@ def test_a_file_with_no_names_at_all_is_still_refused():
 
 def test_the_saved_game_parser_reads_a_built_one_and_every_check_passes(
         ecl_dax):
-    """`tools/amigasavegame.py` walks the file the way the game writes it.
+    """`goldbox.amiga_savegame` walks the file the way the game writes it.
 
     It was written for `#28 (Decode an Amiga saved game, not just a character
     file)` against the engine's own files and knows nothing about this

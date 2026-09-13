@@ -1175,7 +1175,7 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 #      nodes behind it must carry a non-zero head where `write_por` writes
 #      NULL.  :meth:`AmigaCharacter.block_bytes` already does that, which is
 #      why this returns an `AmigaCharacter` rather than loose bytes -- the
-#      party goes to `tools/amigasavegame.py`'s `rebuild` as blocks.
+#      party goes to `goldbox.amiga_savegame.rebuild` as blocks.
 #   2. **Silver Blades' spellbook is packed into bits**, LSB first.
 #   3. **The effect chain is not `goldbox.dos_codec.write`'s `.SPC` payload.**  See
 #      :func:`_later_effect_nodes` for the measurement that says why.
@@ -1582,7 +1582,7 @@ def write_later(char: NeutralCharacter,
     """Build an Amiga Curse or Silver Blades character block.
 
     Returns `(character, report)`.  The `AmigaCharacter` is what
-    `tools/amigasavegame.py`'s `rebuild` takes, and
+    `goldbox.amiga_savegame.rebuild` takes, and
     :meth:`AmigaCharacter.block_bytes` is the bytes the loader reads -- with
     `item_count` and the two chain heads set to match what actually follows,
     which is the thing `write_por` must *not* do and this must.

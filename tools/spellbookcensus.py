@@ -397,7 +397,7 @@ def _amiga_key(shape) -> str:
 def _amiga_later_characters(data: bytes, what: str, label: str):
     """The characters in one Curse or Silver Blades file, at its own shape.
 
-    A saved game's shape comes from `amigasavegame.detect`, never from trying
+    A saved game's shape comes from `goldbox.amiga_savegame.detect`, never from trying
     `party_in_savegame` with each shape in turn: the record signature it scans
     for is the name and the ability pairs, which sit at the same offsets in
     both titles, so a Silver Blades save handed the Curse shape yields six
