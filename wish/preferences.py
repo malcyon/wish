@@ -671,7 +671,7 @@ class PreferencesDialog(QDialog):
         if not self.backups.hasFocus():
             self.backups.setText(where)
         # Two lines of note is 17 px of a dialog that has to fit 662 of them
-        # (§14), so each of these is one line at the width `fit` opens.
+        # (§14), so this note has room to wrap at the width `fit` opens.
         if chosen_backup_folder(self.win.settings):
             why = ("Use this folder for all backups. Clear it to use a “backups” "
                    "folder beside each save.")
