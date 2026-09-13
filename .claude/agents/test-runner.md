@@ -143,16 +143,6 @@ push, rerun jobs, or diagnose or fix failures. Require matching runs and jobs
 with nonempty conclusions; report missing or pending jobs as such. Do not let a
 fixed `--limit 5` silently exclude the target.
 
-```sh
-SHA=$(git rev-parse "$TARGET_SHA")
-until [ "$(gh run list --limit 5 --json headSha,status \
-           -q "[.[] | select(.headSha==\"$SHA\")] | map(.status) | unique | join(\",\")")" \
-        = completed ]
-do sleep 15; done
-gh run list --limit 5 --json headSha,name,conclusion \
-  -q ".[] | select(.headSha==\"$SHA\") | \"\(.name)\t\(.conclusion)\""
-```
-
 A run whose `conclusion` is empty has not finished, however `completed` the
 list looks. `gh run view <id> --log-failed` says why one failed; report the
 failing job's name and the shortest decisive lines, and do not fix it.
