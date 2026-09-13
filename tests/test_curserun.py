@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import contextlib
 import os
+import pathlib
 from types import SimpleNamespace
 
 import pytest
 from conftest import load_tools_module
 
 C = load_tools_module("curserun")
+
+SLOT = pathlib.Path("/slot").resolve()
 
 
 class FakeMonitor:
@@ -21,14 +24,14 @@ class FakeMonitor:
 
 
 class FakeSession(C.CurseSession):
-    def __init__(self, side: int, attached: str = "/slot/SIDE0.D64"):
-        self.here = "/slot"
+    def __init__(self, side: int, attached: str = str(SLOT / "SIDE0.D64")):
+        self.here = SLOT
         self.attached = attached
         self.side = side
         self.reads: list[tuple[int, int]] = []
         self.events: list[tuple[str, str | int]] = []
         self._last_prompt = 0.0
-        self.save_disk = "/slot/SIDE0.D64"
+        self.save_disk = str(SLOT / "SIDE0.D64")
 
     def mon(self, timeout: float = 5.0):
         return contextlib.nullcontext(FakeMonitor(self.side, self.reads))
@@ -57,8 +60,8 @@ def test_begin_adventuring_mounts_the_saved_side_before_entering(monkeypatch):
     assert session.begin_adventuring()
 
     assert session.reads == [(0x4BEE, 1)]
-    assert ("attach", "/slot/SIDE2.D64") in session.events
-    assert session.events[-1] == ("begin", "/slot/SIDE2.D64")
+    assert ("attach", str(SLOT / "SIDE2.D64")) in session.events
+    assert session.events[-1] == ("begin", str(SLOT / "SIDE2.D64"))
 
 
 @pytest.mark.parametrize("side", [0, len(C.SIDES) + 1])
@@ -70,17 +73,17 @@ def test_begin_adventuring_leaves_an_invalid_saved_side_to_the_prompt(
     assert session.begin_adventuring()
 
     assert not [event for event in session.events if event[0] == "attach"]
-    assert session.events[-1] == ("begin", "/slot/SIDE0.D64")
+    assert session.events[-1] == ("begin", str(SLOT / "SIDE0.D64"))
 
 
 def test_begin_adventuring_does_not_remount_the_current_side(monkeypatch):
     monkeypatch.setattr(C.por.Session, "begin_adventuring", base_begin)
-    session = FakeSession(side=2, attached="/slot/SIDE2.D64")
+    session = FakeSession(side=2, attached=str(SLOT / "SIDE2.D64"))
 
     assert session.begin_adventuring()
 
     assert not [event for event in session.events if event[0] == "attach"]
-    assert session.events[-1] == ("begin", "/slot/SIDE2.D64")
+    assert session.events[-1] == ("begin", str(SLOT / "SIDE2.D64"))
 
 
 def test_disk_prompt_uses_the_key_path_the_game_reads():
@@ -89,5 +92,5 @@ def test_disk_prompt_uses_the_key_path_the_game_reads():
 
     assert session.handle_prompt(screen)
 
-    assert ("attach", "/slot/SIDE2.D64") in session.events
+    assert ("attach", str(SLOT / "SIDE2.D64")) in session.events
     assert session.events[-1] == ("kernal", 0x20)
