@@ -84,6 +84,74 @@ def test_strict_pool_parse_rejects_a_count_word_or_filename_table_that_disagrees
         amiga_savegame.parse(data, container)
 
 
+def _pool_save(*, count: int = 1, word_count: int | None = None,
+               name: bytes = b"CHRDATA1") -> bytes:
+    container = amiga_savegame.POOL_OF_RADIANCE
+    data = bytearray(container.fixed_size)
+    data[container.count_at] = count
+    at = container.vm_offset(dos_savegame.PARTY_SIZE)
+    data[at:at + 2] = (count if word_count is None else word_count).to_bytes(2, "big")
+    data[container.party_at:container.party_at + len(name)] = name
+    return bytes(data)
+
+
+class _PoolSlotDisk:
+    volume_name = "SYNTHETIC"
+
+    def __init__(self, save: bytes):
+        self.save = save
+
+    def read_file(self, path: str) -> bytes:
+        if path.endswith("CHRDATA1.sav"):
+            return b"character"
+        if path.endswith(("CHRDATA1.itm", "CHRDATA1.spc")):
+            return b""
+        if path.endswith("savgamA.dat"):
+            return self.save
+        raise amiga_savegame.AmigaDiskError(path)
+
+
+@pytest.mark.parametrize(("count", "word_count", "name"), [
+    (1, 2, b"CHRDATA1"),
+    (7, 7, b"CHRDATA1"),
+    (1, 1, b"NOTANAME"),
+], ids=("count-word-disagreement", "party-count-outside-one-to-six",
+        "non-chrdat-name"))
+def test_pool_conversion_readers_keep_their_pre_consolidation_acceptance(
+        count, word_count, name, monkeypatch):
+    """Pool conversion only used fixed-size validation before consolidation."""
+    from goldbox import amiga_por
+
+    save = _pool_save(count=count, word_count=word_count, name=name)
+    monkeypatch.setattr(amiga_por, "por_character", lambda *args, **kwargs: object())
+    monkeypatch.setattr(amiga_por, "to_dos_character", lambda character: character)
+
+    state = amiga_savegame.read_por_state(save, "synthetic save")
+    party, returned = amiga_savegame.read_por_slot(_PoolSlotDisk(save), "A", "SAVE")
+
+    assert state.source == "synthetic save"
+    assert len(party) == 1
+    assert returned == save
+
+
+@pytest.mark.parametrize("size", [
+    amiga_savegame.POR_SAVEGAME_SIZE - 1,
+    amiga_savegame.POR_SAVEGAME_SIZE + 1,
+], ids=("short", "long"))
+def test_pool_conversion_readers_still_refuse_a_non_fixed_size_save(size, monkeypatch):
+    """The pre-consolidation readers both retained the fixed-size boundary."""
+    from goldbox import amiga_por
+
+    save = bytes(size)
+    monkeypatch.setattr(amiga_por, "por_character", lambda *args, **kwargs: object())
+    monkeypatch.setattr(amiga_por, "to_dos_character", lambda character: character)
+
+    with pytest.raises(amiga_savegame.AmigaSaveError, match=str(amiga_savegame.POR_SAVEGAME_SIZE)):
+        amiga_savegame.read_por_state(save)
+    with pytest.raises(amiga_savegame.AmigaSaveError, match=str(amiga_savegame.POR_SAVEGAME_SIZE)):
+        amiga_savegame.read_por_slot(_PoolSlotDisk(save), "A", "SAVE")
+
+
 def test_a_fresh_disk_has_only_the_save_drawer_and_slot():
     data = _synthetic(amiga_savegame.CURSE, ("ALPHA",))
     disk = amiga_savegame.make_save_disk(amiga_savegame.CURSE, "D", data)

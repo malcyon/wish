@@ -470,7 +470,7 @@ def state_from_savegame(save: AmigaSavegame) -> world_state.WorldState:
 
 def read_por_state(data: bytes, source: str = "") -> world_state.WorldState:
     """Pool of Radiance's filename-party container as a world state."""
-    parsed = parse(data, POOL_OF_RADIANCE, source)
+    parsed = parse(data, POOL_OF_RADIANCE, source, validate=False)
     return dataclasses.replace(state_from_savegame(parsed), source=source)
 
 
@@ -754,7 +754,7 @@ def read_por_slot(disk: AmigaDisk, slot: str, drawer: str | None = None):
         save = disk.read_file(por_save_path(por_savegame_filename(letter), drawer))
     except AmigaDiskError:
         raise AmigaRecordError(f"slot {letter} has character files but no saved game") from None
-    parse(save, POOL_OF_RADIANCE, f"{disk.volume_name}:{letter}")
+    parse(save, POOL_OF_RADIANCE, f"{disk.volume_name}:{letter}", validate=False)
     return party, save
 
 
