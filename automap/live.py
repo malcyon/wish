@@ -285,6 +285,9 @@ class Character:
     #: `0x0A1`, CONFIRMED: how many levels undead have drained. One of the two
     #: conditions the record actually tells us; the other is hit points at 0.
     levels_drained: int = 0
+    #: A companion the game drives, rather than a player character.  Its
+    #: template's drain bytes are fill residue, not a condition.
+    npc: bool = False
     #: Roster block `+0x0C` bit 7, CONFIRMED. Not a condition: it is a setting
     #: the player made from the combat menu, so the card badges it apart from
     #: the conditions row rather than in the danger red beside the name.
@@ -326,7 +329,7 @@ class Character:
         out = []
         if self.down:
             out.append(("death-skull", ""))
-        if self.levels_drained:
+        if not self.npc and self.levels_drained:
             out.append(("oppression",
                         f"Drained {self.levels_drained} level"
                         f"{'s' if self.levels_drained != 1 else ''}"))
@@ -659,6 +662,7 @@ def characters(save0: SaveGame0, save1: SaveGame1,
             effects=tuple(e for e in effects if e.owner == slot.index),
             readied=readied(payload, slot.index, names),
             levels_drained=record.get("levels_drained") or 0,
+            npc=record.is_npc,
             quickfight=live and bool(block.raw[ROSTER_QUICKFIGHT]
                                      & QUICKFIGHT_BIT),
             game=save0.game,

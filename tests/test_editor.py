@@ -1070,6 +1070,8 @@ def test_an_npc_hides_its_stale_icon_and_cannot_edit_it(app, party):
     stale = Icon(bytes(range(ICON_SIZE)))
     npc.record.set_npc(True)
     npc.icon = stale
+    npc.record.set("levels_drained", 255)
+    npc.record.set("hp_lost_to_drain", 255)
     editor.charset = bytes([0xFF]) * (256 * 8)
     editor._populate()
 
@@ -1079,12 +1081,16 @@ def test_an_npc_hides_its_stale_icon_and_cannot_edit_it(app, party):
     assert not icon.btn_change.isEnabled()
     assert not icon.part_combo.isEnabled()
     assert not icon.color_combo.isEnabled()
+    assert editor._widgets["levels_drained"].value() == 0
+    assert editor._widgets["hp_lost_to_drain"].value() == 0
     before = npc.icon
     icon.set_cell_colour(0, 7)
     assert npc.icon == before
     assert not editor.dirty
     editor._flush()
     assert npc.icon == stale
+    assert npc.record.get("levels_drained") == 255
+    assert npc.record.get("hp_lost_to_drain") == 255
 
     editor.roster.selectRow(1)
     assert icon.isEnabled()

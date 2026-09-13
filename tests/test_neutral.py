@@ -615,3 +615,22 @@ def test_the_c64_reader_grades_every_value_from_the_layout():
     for name in back.keys():
         assert isinstance(back.value(name).confidence, Confidence)
         assert back.value(name).origin
+
+
+def test_an_npc_template_s_drain_fill_converts_to_zero():
+    """NPC templates use FF as fill where a player record stores a drain."""
+    rec = CharacterRecord.blank()
+    rec.set_npc(True)
+    rec.set("levels_drained", 255)
+    rec.set("hp_lost_to_drain", 255)
+
+    char = c64_codec.read(rec)
+    assert char.get("levels_drained") == 0
+    assert char.get("hp_lost_to_drain") == 0
+    written, _items, _effects, _report = dos_codec.write(char)
+    assert written[dos_port.FIELDS_BY_NAME["levels_drained"].offset] == 0
+    assert written[dos_port.FIELDS_BY_NAME["hp_lost_to_drain"].offset] == 0
+
+    rec.set_npc(False)
+    assert c64_codec.read(rec).get("levels_drained") == 255
+    assert c64_codec.read(rec).get("hp_lost_to_drain") == 255

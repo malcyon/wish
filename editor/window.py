@@ -1992,6 +1992,8 @@ class EditorBinding(QObject):
             except Exception as exc:
                 _log.debug("no %s on this record: %s", name, exc)
                 value = None
+            if member.is_npc and name in {"levels_drained", "hp_lost_to_drain"}:
+                value = 0
             if name == "char_class":
                 value = _char_class_shown(value, record, member.game)
             if isinstance(w, QSpinBox):

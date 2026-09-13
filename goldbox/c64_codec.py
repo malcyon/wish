@@ -1694,6 +1694,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     """
     out = NeutralCharacter("C64", source=source, game=game)
     deltas = deltas_for(game)
+    is_npc = rec.is_npc
 
     def grade(name: str) -> Confidence:
         return _field(name).confidence
@@ -1712,6 +1713,11 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             Provenance.RESHAPED)
 
     for neutral_name, c64_name in DIRECT:
+        if is_npc and neutral_name in {"levels_drained", "hp_lost_to_drain"}:
+            out.set(neutral_name, 0,
+                    "zero: the NPC template's drain bytes are fill residue",
+                    grade(c64_name), Provenance.COMPUTED)
+            continue
         copy(neutral_name, c64_name)
 
     # -- what a save slot stops short of, from the roster block --------------
@@ -1775,9 +1781,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         copy("portrait_head", "portrait_head")
         copy("portrait_body", "portrait_body")
 
-    out.set("npc", rec.is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
+    out.set("npc", is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
             "itself counts player characters with", grade("flags_0b8"))
-    if rec.is_npc:
+    if is_npc:
         # The low seven bits are meaningless for a player character -- bit 0
         # is the trainer flag `flags_0b8` also carries -- but for a character
         # the engine drives they are his morale, stored halved, and DOS keeps

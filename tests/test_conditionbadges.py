@@ -114,6 +114,12 @@ def test_the_two_record_conditions_still_come_first():
     assert "Drained 2 levels" in dict(who.conditions)["oppression"]
 
 
+def test_an_npc_template_s_drain_fill_does_not_become_a_badge():
+    """Only a player character's drain counter describes a condition."""
+    assert "oppression" not in _glyphs(_character(levels_drained=255, npc=True))
+    assert "oppression" in _glyphs(_character(levels_drained=2, npc=False))
+
+
 def test_no_probable_effect_is_badged_without_being_named_first():
     """`goldbox/traits.py` grades each name, and a PROBABLE name drawn as a
     picture reads as a fact -- so a PROBABLE id gets a badge only because
