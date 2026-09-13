@@ -1060,12 +1060,11 @@ def fresh_folder(destination: str | pathlib.Path,
 #: immediately opens a file picker dialog."* Two more conditions joined the
 #: five for that reason.
 #:
-#: **All seven now stand, as of 2026-09-08. Lifting it again is Donald's
-#: call, once he has used the dialog himself** -- he reversed the first lift
-#: the same night every condition looked met, so a second green checklist is
-#: not read here as permission to repeat that.
+#: **Seven conditions now stand. Lifting it remains Donald's call** -- he
+#: reversed the first lift the same night every condition looked met, so a
+#: green checklist is not permission to repeat that.
 #:
-#: **Comes off when, all seven:** (1) no string below carries the
+#: **Comes off when, all nine:** (1) no string below carries the
 #: `(NOT APPROVED)` marker -- met 2026-09-05, kept met by
 #: `test_no_string_the_player_reads_is_unapproved`; (2) a Pool of Radiance, a
 #: Curse and a Silver Blades DOS save each list the Commodore 64, and a Pools
@@ -1094,13 +1093,14 @@ def fresh_folder(destination: str | pathlib.Path,
 #: *"I will update the README, but don't wait on that to remove
 #: WISH_EXPERIMENTAL_CONVERT and close the related tickets. It is a simple
 #: interface, and people will figure it out."*; (5) each registered
-#: direction has been loaded and walked in its emulator from a save this
-#: dialog's own code path wrote -- **ten of ten**, met 2026-09-08: the eight
-#: non-Amiga-write directions by `#52`'s own 2026-09-07 comments, and the
-#: two Amiga write rows by two WinUAE runs on 2026-09-08, one from a C64
-#: source and one from a DOS source, each loading the dialog's own
-#: `POOLSAVE.ADF` with the right square, clock and party order and
-#: re-saving cleanly -- `#36`'s own 2026-09-08 06:56 comment; (6) `File ▸
+#: direction must be loaded and walked in its emulator from a save this
+#: dialog's own code path wrote, **at one named commit SHA**. This is
+#: outstanding: the earlier ten walks spanned different trees, and Donald
+#: ruled on 2026-09-10 that all ten must be repeated at one commit. `#512
+#: (Convert an Amiga Curse or Silver Blades save in either direction, since
+#: the dialog refuses both titles and blames the player's file)` adds four
+#: directions, so the final walk is fourteen directions after it lands.
+#: `tools/convertbytes.py --tree <commit>` is the re-check; (6) `File ▸
 #: Convert…` opens the Convert window directly, with no file picker in
 #: front of it -- met 2026-09-07 (`1616a53`),
 #: `#412 (File ▸ Convert demands a save in a file picker before it will show
@@ -1127,28 +1127,17 @@ def fresh_folder(destination: str | pathlib.Path,
 #: split the Amiga behind a second flag, he chose **all ten**: one release,
 #: nothing partial.
 #:
-#: So this flag now waits on decoding rather than on wiring, and the distance
-#: is not small. Today: `goldbox.c64_codec` drops **2** of its 75 fields and
-#: `goldbox.dos_codec` drops **2** of 77, so DOS to C64 both ways is close -- and
-#: `goldbox.amiga_later.LATER_DROPPED` is **14**, fields with no established
-#: home in that record rather than fields somebody forgot to wire.
+#: Met on 2026-09-10: `tools/convertdrops.py` reported nothing dropped in all
+#: ten registered directions.
 #:
-#: **The 39 this paragraph used to name here was the wrong writer's**, and the
-#: naming that made that possible is gone. It is
-#: `goldbox.amiga_pod.POD_WRITE_DROPPED`, the **Pools of Darkness** `.pc`
-#: writer's list, which was spelled `goldbox.amiga.DROPPED` until `#470 (Give
-#: the project a neutral title beside its neutral character record, with one
-#: port per platform a title shipped on)`'s stage 10 split the Amiga codec by
-#: title. No registered direction reaches it: there is no Pools of Darkness
-#: direction at all. What the **Pool of Radiance** writer reports is
-#: `goldbox.dos_codec.WRITE_DROPPED`, **2**, because `write_por` copies the DOS
-#: writer's report verbatim -- which is its own defect, since a drop list is a
-#: claim about what the *destination* cannot hold, and is how the sheet
-#: portrait's loss hid behind a DOS reason.
-#: `.claude/rules/conversions.md` has the standard and the reasoning; `#462
-#: (Decode the rest of the Amiga Pools of Darkness .pc: 37 of 75 neutral
-#: fields have no home in it, so a converted character loses his spells and
-#: possessions)` is the shape of the work that closes it.
+#: **(9) The dialog converts Pool of Radiance, Curse of the Azure Bonds and
+#: Secret of the Silver Blades on every platform it offers.** The four Amiga
+#: Curse and Silver Blades directions are outstanding in `#512 (Convert an
+#: Amiga Curse or Silver Blades save in either direction, since the dialog
+#: refuses both titles and blames the player's file)`. Pools of Darkness has
+#: no C64 port and remains unsupported; its distinct refusal is `#513 (A
+#: Pools of Darkness save is refused with the generic 'cannot be converted',
+#: which reads as though the player's file is broken)`.
 #:
 #: **Nothing tells a player about a drop.** The drop list is our accounting
 #: and goes to the debug log, which `.claude/rules/gui-text.md` exempts from
@@ -1318,11 +1307,12 @@ NO_DISK = "Choose Amiga game disk 2."
 NO_FOLDER = "Choose where to write."
 #: `goldbox.dos_codec.CANNOT_CONVERT`, approved under `#195 (The import pane shows
 #: a player a memory address when the conversion refuses for any reason but
-#: the wrong title)` on 2026-09-02 -- reused rather than a second sentence
-#: meaning the same thing, for a source with no registered destination, for
-#: `Source.detect` failing, and for anything `rehearse` raises that is not a
-#: `dos_codec.DosRecordError` with its own `player_message`.
+#: the wrong title)` on 2026-09-02. It names a source Wish cannot read, or a
+#: rehearsal failure that has no `dos_codec.DosRecordError.player_message`.
 CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
+#: Donald's approved wording for a readable Pools of Darkness save: it has no
+#: C64 port, so `destinations_for` correctly answers no direction.
+POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 #: `editor/dosimport.py`'s `NO_DISKS`/`NO_DISKS_TITLE`. The title is Donald's
 #: of 2026-08-27; the line is his of 2026-09-05, rewritten when
 #: `#342 (A Curse or Silver Blades save cannot be converted unless its C64
@@ -1754,7 +1744,10 @@ class ConvertDialog(QDialog):
         self._populate_destinations(options)
         self._populate_slots(self.source)
         if not options:
-            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            refusal = (POOLS_OF_DARKNESS_UNSUPPORTED
+                       if self.source.key == dos_port.POOLS_OF_DARKNESS.key
+                       else CANNOT_CONVERT)
+            self._blocked = (DIALOG_TITLE, refusal)
             self._settle_files_row()
             self._settle_button()
             self._maybe_warn()

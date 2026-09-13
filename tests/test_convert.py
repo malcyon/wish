@@ -1118,16 +1118,17 @@ def test_a_curse_or_silver_blades_savgam_file_lists_c64(tmp_path, shape):
 
 
 def test_a_pools_of_darkness_folder_lists_nothing(tmp_path):
-    """The one title with no C64 port: the pane names the approved refusal
-    and the button never becomes pressable, with no destination offered and
-    then refused."""
+    """A readable Pools of Darkness save has no C64 port, so it gets
+    Donald's approved unsupported-title refusal rather than the generic one
+    for an unreadable file."""
     folder = _synthetic_dos_folder(tmp_path, dos_port.POOLS_OF_DARKNESS,
                                    suffix="PTY")
     dialog = convert.ConvertDialog(
         str(folder / "SAVGAMA.PTY"), None, _no_disks)
     try:
         assert dialog.ui.convert_destination.count() == 0
-        assert dialog._blocked == (convert.DIALOG_TITLE, convert.CANNOT_CONVERT)
+        assert dialog._blocked == (
+            convert.DIALOG_TITLE, convert.POOLS_OF_DARKNESS_UNSUPPORTED)
         ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
         assert not ok.isEnabled()
     finally:
@@ -2327,6 +2328,7 @@ def test_an_unreadable_source_still_pops_a_modal(tmp_path):
             dialog.close()
 
     assert critical == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)], critical
+    assert convert.CANNOT_CONVERT != convert.POOLS_OF_DARKNESS_UNSUPPORTED
 
 
 # ---------------------------------------------------------------------------
