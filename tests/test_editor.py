@@ -2616,6 +2616,10 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
     natural width.  Otherwise deleting the dead vertical-scrollbar allowance
     makes the final column overflow by that header's width.
     """
+    from math import ceil
+
+    from PyQt6.QtWidgets import QHBoxLayout
+
     from editor.rosterview import NAME_COLUMN
     from wish.session import Session
     from wish.window import EDITOR_TAB, WishWindow
@@ -2630,6 +2634,26 @@ def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
         floor = win.minimumSizeHint()
         win.resize(floor.width() + view.maximumWidth(), floor.height())
         app.processEvents()
+
+        row = win.editor.root.findChild(QHBoxLayout, "header_row")
+        assert row is not None
+        stretches = [
+            (widget, row.stretch(index))
+            for index in range(row.count())
+            if row.stretch(index)
+            if isinstance(widget := row.itemAt(index).widget(), QWidget)
+            if widget.isVisible()
+        ]
+        total_stretch = sum(stretch for _, stretch in stretches)
+        roster_stretch = next(
+            stretch for widget, stretch in stretches if widget is view)
+        for _ in range(3):
+            shortfall = max(0, view.maximumWidth() - view.width())
+            if not shortfall:
+                break
+            width = ceil(shortfall * total_stretch / roster_stretch)
+            win.resize(win.width() + width, win.height())
+            app.processEvents()
 
         header = view.horizontalHeader()
         assert view.width() == view.maximumWidth()
