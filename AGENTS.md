@@ -229,7 +229,7 @@ the agent is not for stops and says so, because pressing on into a decision
 that was not its own costs more than the re-route.
 
 **What differs between the two tools is mechanism, not the practice above.**
-The nine agent definitions have one source, `.claude/agents/<name>.md`, which
+The agent definitions have one source, `.claude/agents/<name>.md`, which
 Claude Code reads directly and `tools/gencodex.py` generates into
 `.codex/agents/<name>.toml` for Codex -- `--check` fails if the two drift --
 and the two name different models, since a Claude model name (`sonnet`,

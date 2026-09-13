@@ -24,12 +24,8 @@ So, absolutely:
   review, not on any other, not "just to check".
 * **Never edit, move, truncate or delete a file in the repository**, by
   redirection, `sed -i`, `tee`, a heredoc or a script.
-* **To test whether removing a fix breaks something, copy the file aside and
-  copy it back** — `cp x /tmp/x.bak`, mutate, run, `cp /tmp/x.bak x`. Verify the
-  restore with `diff` before you move on. Better still, reason about the code
-  and say what you believe rather than mutating anything.
-* **The work you are reviewing will typically be in the latest commit**,
-  as developers are now instructed to commit before review. Any changes you request will be addressed in follow-up commits. However, you must still never alter the working tree or git history.
+* **Never mutate the shared tree to validate a finding.** If validation needs a
+  mutation, report it as unverified for the root to route.
 
 **You run in the shared working tree** -- the same checkout as every other
 agent, and the same one holding whatever the maintainer has not committed yet.
@@ -50,9 +46,17 @@ tree is not.
 
 ## Scope
 
-**Start with `git log -1 -p`** to find what changed in the most recent commit, or `git diff` if there are still uncommitted changes. Then read enough
-surrounding context to judge it: the whole function, the class it sits in, the
-module's docstring.
+**Use the commit SHA or range and explicit file scope supplied by the root.** Do
+not assume the latest commit or the entire dirty diff is the target. Then read
+enough surrounding context to judge it: the whole function, the class it sits
+in, the module's docstring.
+
+Before the technical passes, compare every behavior change with the
+user-approved request supplied by the root. Report concrete expansion,
+conflicting behavior, or missing approval evidence with the changed file and
+line plus the decision source. An agent plan or implementation cannot approve
+itself. Missing approval evidence does not prevent the rest of this read-only
+review.
 
 **Review the diff, not the whole codebase.** But **follow a changed function to
 its call sites** whenever the change could break a caller — a changed signature,

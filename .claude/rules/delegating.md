@@ -27,8 +27,10 @@ choice for each tool, not the same decision spelled two ways.
 | `junior-dev` | Sonnet | `gpt-5.6-terra` | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | unset -- inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | `gpt-5.6-terra` | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
+| `qt-ui-specialist` | Sonnet | `gpt-5.6-terra` | approved Qt repairs and platform layout diagnosis, with widget/state, exact strings, and acceptance criteria already supplied |
+| `emulator-runner` | Sonnet | `gpt-5.6-terra` | a bounded, specified emulator experiment through the instance pool; captures and preserves evidence without interpreting unknown fields |
 | `docs-reviewer` | Sonnet | `gpt-5.6-terra` | when documentation may have drifted from the code. Scope it to the files it owns |
-| `backlog-auditor` | Sonnet | `gpt-5.6-terra` | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**, including the banned-words sweep of titles, bodies and comments |
+| `backlog-auditor` | Sonnet | `gpt-5.6-terra` | before a refinement pass, or when the backlog has grown unwieldy; it reports audits and bounded briefs only |
 | `changelog-writer` | Sonnet | `gpt-5.6-terra` | after a batch of work lands, and before cutting a release |
 | `test-runner` | **Haiku** | `gpt-5.6-luna` | the whole suite before a push, or a scoped run on named files. **The one agent that may run everything**, because it exists so that one run does not block the window Donald is asking questions in. It reports and fixes nothing |
 
@@ -78,6 +80,16 @@ this.**
 
 ## Writing the brief
 
+**The root alone spawns agents.** A brief must stand without conversation
+history: give the actual approved scope or precise user-decision reference,
+task target, owned and excluded files, relevant evidence paths, chosen command
+or mechanism, acceptance criteria, and an escape hatch. A plan, issue, earlier
+report, or remembered convention is evidence, not fresh approval. Missing
+approval is a gap to report, never permission inferred. Workers return missing
+information or work for another role to the root, continue independent
+authorized work where possible, and return one compact report with evidence
+paths, the shortest decisive output, negative results, and limitations.
+
 **Give each agent its own files.** Several agents in one working tree will
 collide. Assign non-overlapping areas, and say which in the brief.
 
@@ -100,10 +112,9 @@ exists. Everything above still binds it: foreground, explicit timeout, never
 backgrounded. **Never start two.**
 
 **Say in the brief what `AGENTS.md` cannot say for you, because it does not
-know this task.** `AGENTS.md` and its six unscoped rule files already reach
-every subagent at launch, so retyping their prohibitions in the brief is pure
-drift -- an agent definition once told an agent to commit its own work,
-against the rule that subagents never commit. What a brief adds is specific to
+know this task.** Claude loads its six unscoped rule files into each subagent
+at launch. Codex agents must read applicable rules through `AGENTS.md`'s
+routing table. What a brief adds is specific to
 the task: which files the agent owns, any `paths:`-scoped rule it needs but
 will not itself touch a matching file for (`gui-text.md`, say, when the work is
 a decision rather than an edit), its emulator slot if it has one, and its
@@ -135,11 +146,10 @@ hours inside a problem is the worst possible judge of whether its own answer is
 right. This does not apply to a subagent that only wrote documentation or only
 ran experiments.
 
-**Scope a reviewer explicitly when more than one agent is in the tree.** A
-`code-reviewer` starts with `git diff`, and with three agents working that diff
-is three people's work. Name the files it owns and name the ones it must
-ignore, or it will report another agent's half-finished change as a finding
-against the one you are reviewing.
+**Scope a reviewer explicitly when more than one agent is in the tree.** Name
+the commit SHA or range, files it owns, and files it must ignore, or it will
+report another agent's half-finished change as a finding against the one under
+review.
 
 **Verify a finding before acting on it.** The reviewer is a reader, not an
 oracle -- it has reported a deliberate lever with a test and a docstring as

@@ -25,11 +25,14 @@ then a second one an hour later has cost two round trips for one report.
 
 Other agents are usually mid-edit in this tree, so a run in place tests their
 half-finished code and says nothing about the commits about to be pushed. A
-detached worktree at `HEAD` tests exactly what will land:
+detached worktree at the explicit target SHA supplied by the root tests exactly
+what will land. A full run requires that SHA; resolve it once before creating
+the worktree and use the resolved value throughout:
 
 ```sh
+SHA=$(git rev-parse "$TARGET_SHA")
 WT=$(mktemp -d)/wt
-git worktree add -q --detach "$WT" HEAD
+git worktree add -q --detach "$WT" "$SHA"
 ln -sfn "$PWD/work" "$WT/work"
 (cd "$WT" && /home/donald/src/wish/.venv/bin/python -m pytest -q)
 git worktree remove "$WT" --force
@@ -39,7 +42,10 @@ git worktree remove "$WT" --force
 omission.** `work/` is gitignored, so a bare worktree skips every test that
 reads a specimen out of it — the ones with real game data behind them.
 
-`ruff` and `genui.py --check` run in the main tree, not the worktree.
+`ruff` and `genui.py --check` run in the main tree, not the worktree. Record
+their locations separately: they are not evidence about the target SHA. For a
+scoped dirty-tree run, report the base SHA and dirty scope; do not call it an
+exact committed result.
 
 **Remove the worktree even when the run fails.** A worktree left behind is one
 the next run trips over.
@@ -58,6 +64,15 @@ never woken. Foreground, with an explicit timeout of 600000ms.
 that needs to be seen on its own.
 
 ## What to report
+
+Send a compact start record promptly, then material updates only. Use these
+fields: `Target` (full SHA, directory, scope), `Started` (time and command),
+`Live` (the actual session or process handle when the tool yields one, otherwise
+foreground/no handle), `Result` (exit status, counts/skips, decisive failures,
+each check and location), and `CI` (not requested/not started or exact SHA with
+run/job identifiers, state, conclusion and link). Reference the same run
+rather than duplicating logs. A yielded tool session remains a foreground run;
+never shell-background pytest.
 
 **Lead with the verdict in one line**, then the detail. `6724 passed, 39
 skipped` or `1 failed, 6723 passed`, then which.
@@ -116,12 +131,15 @@ started. Do not attach, probe or kill it. **Never kill a process by name.**
 
 ## Checking CI
 
-When the brief asks for it, match on the sha rather than taking the newest
-run: `--limit 1` answers whichever run is at the top, which during a push is
-usually the previous one, already green.
+When the brief asks for it, use the supplied SHA and match on it rather than
+taking the newest run: `--limit 1` answers whichever run is at the top, which
+during a push is usually the previous one, already green. Do not start CI,
+push, rerun jobs, or diagnose or fix failures. Require matching runs and jobs
+with nonempty conclusions; report missing or pending jobs as such. Do not let a
+fixed `--limit 5` silently exclude the target.
 
 ```sh
-SHA=$(git rev-parse HEAD)
+SHA=$(git rev-parse "$TARGET_SHA")
 until [ "$(gh run list --limit 5 --json headSha,status \
            -q "[.[] | select(.headSha==\"$SHA\")] | map(.status) | unique | join(\",\")")" \
         = completed ]

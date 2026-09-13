@@ -37,12 +37,8 @@ table and came out: "the docs reviewer also needs to be able to update
 documentation," so its Claude side gained `Write`/`Edit` in the same change
 (`.claude/agents/docs-reviewer.md`) and it runs unrestricted here to match.
 
-An agent not in `READ_ONLY_AGENTS` gets no `sandbox_mode` at all, because
-`workspace-write` is Codex's own documented default for local work
-(learn.chatgpt.com/codex/sandboxing: *"workspace-write: ... This is the
-default low-friction mode for local work"*) -- naming it would say nothing
-`sandbox_mode`'s absence does not already say. `backlog-auditor` is unrestricted
-for a separate, still-unsettled reason: see `NO_SANDBOX_RESTRICTION` below.
+An agent not in `READ_ONLY_AGENTS` gets no `sandbox_mode` at all and inherits
+its parent settings. The omission is not an independent permission grant.
 """
 
 from __future__ import annotations
@@ -71,6 +67,8 @@ CODEX_MODELS = {
     "backlog-auditor": ("gpt-5.6-terra", "medium"),
     "changelog-writer": ("gpt-5.6-terra", "medium"),
     "test-runner": ("gpt-5.6-luna", "low"),
+    "qt-ui-specialist": ("gpt-5.6-terra", "high"),
+    "emulator-runner": ("gpt-5.6-terra", "medium"),
 }
 
 #: `model_reasoning_effort` never names this level: every one of these agents
@@ -108,23 +106,6 @@ READ_ONLY_AGENTS = {
                       "them, so the reviewer itself never writes",
 }
 
-#: Agents left without `sandbox_mode` even though being unable to write
-#: might otherwise look like the point.
-#:
-#: `backlog-auditor` never edits a file, but its whole job is changing issue
-#: labels and posting comments through `gh`, which is a network-calling
-#: `Bash` invocation rather than a file write. UNKNOWN whether Codex's
-#: `read-only` sandbox mode -- documented as "can't edit files or run
-#: commands without approval" -- lets that through, blocks it outright, or
-#: merely routes it to an approval prompt an unattended subagent cannot
-#: answer. Settled by spawning it under `read-only` and watching whether a
-#: `gh issue comment` actually posts. Left unrestricted until then.
-NO_SANDBOX_RESTRICTION = frozenset({"backlog-auditor"})
-
-assert not (READ_ONLY_AGENTS.keys() & NO_SANDBOX_RESTRICTION), (
-    "an agent cannot be both read-only and a named unrestricted exception")
-
-
 def _toml_string(value: str) -> str:
     """A TOML basic (double-quoted) string for a single-line value."""
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -134,7 +115,7 @@ def _toml_string(value: str) -> str:
 def parse_frontmatter(text: str) -> dict[str, str]:
     """The `key: value` pairs from a `.claude/agents/*.md`'s YAML frontmatter.
 
-    Every field in these nine files is a single physical line -- confirmed by
+    Every field in these source files is a single physical line -- confirmed by
     inspection rather than assumed, since a folded YAML value would silently
     break the naive split below.
     """
@@ -152,7 +133,7 @@ def body_of(text: str) -> str:
     """The Markdown body: everything after the frontmatter's closing `---`.
 
     The file has exactly one blank line between the closing `---` and the
-    body's first real line, in all nine sources (confirmed, not assumed) --
+    body's first real line, in every source (confirmed, not assumed) --
     that is the single leading `\\n` stripped here, and nothing else about
     the body is touched.
     """
@@ -167,8 +148,7 @@ def sandbox_mode_for(name: str) -> str | None:
     whether `Write`/`Edit` appeared there, and `architect` proved that wrong:
     it has neither, but has `Bash`, and a `Bash` call writes files as freely
     as `Write` does. `None` leaves `sandbox_mode` unset, which is correct
-    both for an agent that can write and for `NO_SANDBOX_RESTRICTION`'s
-    unsettled exception -- the TOML does not need to tell those two apart.
+    for every other agent, which inherits its parent sandbox settings.
     """
     return "read-only" if name in READ_ONLY_AGENTS else None
 

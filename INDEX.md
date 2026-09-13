@@ -16,7 +16,8 @@ What each directory in this repository is for.
 | `assets/` | Shipped non-code files — the application icons, the `.desktop` entry, and the artist's own logo files under `assets/logo/`. |
 | `images/` | The screenshots the README links. |
 | `designer` | A launcher for Qt Designer, opening `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`) — `editor/character.ui` is gone, absorbed into it. |
-| `.claude/agents/` | The subagent definitions -- each one a model, a tool list and a system prompt for a kind of work this project keeps handing out. |
+| `.claude/agents/` | Source subagent definitions -- each one supplies Claude Code's model, tool list, and prompt; `tools/gencodex.py` generates the Codex profiles from them. |
+| `.codex/agents/` | Generated project subagent profiles for Codex. Do not edit them by hand; run `tools/gencodex.py`. |
 | `.claude/rules/` | The working standards, split out of `CLAUDE.md` under `#208 (Split CLAUDE.md into .claude/rules, so 21,800 tokens do not load before every task)`. A file carrying `paths:` frontmatter loads only when a file it names is read; one without loads at launch -- for the main window and for every subagent alike, observed directly on 2026-09-10. Only the seven `paths:`-scoped files are absent from a subagent until it touches a matching file, which is why `AGENTS.md`'s routing table names all thirteen. |
 | `.agents/rules/` | The same twelve files, as symlinks, because Antigravity reads `AGENTS.md` and `.agents/rules/` where Claude Code reads `CLAUDE.md` and `.claude/rules/`. One copy of the bytes, two sets of names. `AGENTS.md` holds the rules themselves; `CLAUDE.md` imports it with `@AGENTS.md` and adds only what is true of Claude Code alone. |
 | `.gemini/` | One file, `settings.json`, telling Gemini CLI to read `AGENTS.md` as its context file -- it takes a list of filenames, so it needs no symlink at all. Nothing else; `.gemini/agents/` was deleted, having been read by neither tool. |

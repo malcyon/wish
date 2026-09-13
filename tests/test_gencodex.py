@@ -22,6 +22,32 @@ CODEX_AGENTS = ROOT / ".codex" / "agents"
 
 VALID_EFFORTS = {"low", "medium", "high", "max"}
 VALID_MODELS = {"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
+EXPECTED_AGENTS = {
+    "architect",
+    "backlog-auditor",
+    "changelog-writer",
+    "code-reviewer",
+    "deep-research",
+    "docs-reviewer",
+    "emulator-runner",
+    "junior-dev",
+    "qt-ui-specialist",
+    "reverse-engineering",
+    "test-runner",
+}
+EXPECTED_MODELS = {
+    "architect": ("gpt-6-astra", "high"),
+    "backlog-auditor": ("gpt-5.6-terra", "medium"),
+    "changelog-writer": ("gpt-5.6-terra", "medium"),
+    "code-reviewer": ("gpt-5.6-terra", "high"),
+    "deep-research": ("gpt-6-astra", "max"),
+    "docs-reviewer": ("gpt-5.6-terra", "medium"),
+    "emulator-runner": ("gpt-5.6-terra", "medium"),
+    "junior-dev": ("gpt-5.6-terra", "medium"),
+    "qt-ui-specialist": ("gpt-5.6-terra", "high"),
+    "reverse-engineering": ("gpt-5.6-sol", "high"),
+    "test-runner": ("gpt-5.6-luna", "low"),
+}
 
 
 def test_generated_codex_agents_are_current():
@@ -43,7 +69,8 @@ def test_every_claude_agent_has_a_codex_counterpart_and_no_others_exist():
     """
     want = {md.stem for md in CLAUDE_AGENTS.glob("*.md")}
     have = {toml.stem for toml in CODEX_AGENTS.glob("*.toml")}
-    assert have == want
+    assert want == EXPECTED_AGENTS
+    assert have == EXPECTED_AGENTS
 
 
 def test_every_generated_toml_parses_and_carries_its_source_body():
@@ -55,6 +82,9 @@ def test_every_generated_toml_parses_and_carries_its_source_body():
         toml_path = CODEX_AGENTS / f"{md.stem}.toml"
         data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
         text = md.read_text(encoding="utf-8")
+        fields = gencodex.parse_frontmatter(text)
+        assert data["name"] == fields["name"]
+        assert data["description"] == fields["description"]
         assert data["developer_instructions"] == gencodex.body_of(text), (
             f"{toml_path.name}'s developer_instructions has drifted from "
             f"{md.name}'s body")
@@ -72,6 +102,21 @@ def test_every_model_and_effort_is_one_of_the_named_values():
             f"{toml_path.name} names an unrecognised effort "
             f"{data['model_reasoning_effort']!r}")
         assert data["model_reasoning_effort"] != "ultra"
+
+    assert gencodex.CODEX_MODELS == EXPECTED_MODELS
+
+
+def test_generated_profiles_have_only_native_codex_fields():
+    """Generated TOML carries Codex's schema, not Claude frontmatter."""
+    expected = {
+        "name", "description", "model", "model_reasoning_effort",
+        "developer_instructions",
+    }
+    for toml_path in sorted(CODEX_AGENTS.glob("*.toml")):
+        data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+        allowed = expected | ({"sandbox_mode"}
+                              if toml_path.stem == "code-reviewer" else set())
+        assert set(data) == allowed
 
 
 def test_sandbox_mode_matches_the_named_table():
