@@ -940,6 +940,7 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
         "hp_rolled": hp_rolled,
         "hp_max": hp_max,
         "experience": _experience(record, class_levels, game),
+        "levels_drained": max(0, (record.get("levels_drained") or 0) - 1),
         # `GEN $2342` writes the fighter's level; Curse's `$0DF1` writes the
         # best of fighter, paladin and ranger, and that byte is what feeds the
         # fighter group's THAC0 and its saving-throw column.

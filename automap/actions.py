@@ -704,6 +704,7 @@ class IdentifyItems(Action):
 #: guess is enough to make it one.
 LEVEL_UP_FIELDS: tuple[str, ...] = (
     "level", "thac0_base", "hp_max", "hp_rolled", "experience",
+    "levels_drained",
     "level_cleric", "level_fighter", "level_magic_user", "level_thief",
     "save_paralysis", "save_petrification", "save_wands", "save_breath",
     "save_spell", "spells_castable", "spells_known", "turn_power",

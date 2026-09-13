@@ -355,11 +355,15 @@ def test_identifying_asks_first():
 # --- levelling ---------------------------------------------------------------
 
 
-def with_experience(points: int) -> MemoryTarget:
-    """The captured party with BRUTUS given enough to train. 0x0E8, 24-bit."""
+def with_experience(points: int, levels_drained: int = 0) -> MemoryTarget:
+    """The captured party with BRUTUS given enough to train."""
     save0, save1 = captured()
-    at = c64_port.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
-    save0[at:at + 3] = points.to_bytes(3, "little")
+    at = c64_port.POOL_OF_RADIANCE.slot_area_base - 0x4900
+    record = CharacterRecord.from_bytes(
+        bytes(save0[at:at + 0x100]).ljust(RECORD_SIZE, b"\x00"))
+    record.set("experience", points)
+    record.set("levels_drained", levels_drained)
+    save0[at:at + 0x100] = bytes(record)[:0x100]
     return MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
                          0x6E11: bytes([WORLD])})
 
@@ -474,6 +478,37 @@ def test_levelling_writes_what_the_trainer_writes():
     # rose would heal to the old number.
     assert 0x8300 + 0x0E in written
     assert written[0x8300 + ROSTER_HP_CURRENT] == bytes([rolled + 4])
+
+
+def test_levelling_restores_one_drained_level():
+    """The trainer reduces a drain alongside the level it restores."""
+    target = with_experience(2001, levels_drained=2)
+    outcome = find("level-up").apply(target, slot=0)
+    assert outcome.ok, outcome.message
+    record = actions.read_party(target).by_slot(0).record
+    assert record.get("levels_drained") == 1
+    written = dict(outcome.writes)
+    base = c64_port.POOL_OF_RADIANCE.slot_area_base
+    assert written[base + 0x0A1] == bytes([1])
+
+
+def test_each_chained_training_step_restores_one_drained_level():
+    """Curse trains every ready class in one press, so the plans must chain."""
+    record = actions.read_party(with_experience(100000, levels_drained=2)) \
+        .by_slot(0).record
+    record.set("class_bits", 12)          # fighter and thief
+    record.set("level_fighter", 1)
+    record.set("level_thief", 1)
+    record.set("level", 1)
+    steps = levelup.plan_all(record, c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert [step.fields["levels_drained"] for step in steps] == [1, 0]
+
+
+def test_levelling_does_not_wrap_a_zero_drained_level():
+    plan = levelup.plan(
+        actions.read_party(with_experience(2001)).by_slot(0).record,
+        rolled=1)
+    assert plan.fields["levels_drained"] == 0
 
 
 def test_no_money_moves():
