@@ -58,16 +58,22 @@ once, at import, in `COMMISSIONS`: every board candidate paired with the ledger
 entries its gate settles, plus the six entries (0, 2, 11, 22, 24, 25) no
 candidate offers. A row appears when the party has met the commission — any
 non-zero ledger byte, or the clerk raising it on the next visit — and carries
-one state word:
+one state word while active:
 
 | word | when |
 |---|---|
 | offered | every entry untouched, and the clerk raises it next visit |
 | In progress | a marker, or some of a many-entry commission settled |
 | reward waiting | any entry at 254 — money sitting at the City Hall |
-| paid | every entry at 255 |
+| No status text; under Completed | every entry at 255 |
 
-Paid rows are drawn muted, so live work stands out of a late-game list.
+Paid commissions and finished side quests appear together under **Completed**
+at the bottom, with grey names and no status text. Quests awaiting rewards
+remain above with their status visible. Each section keeps the existing plot
+order; the completed heading is hidden when there are no completed rows.
+The top-level completion count is no longer displayed. Donald approved this
+on 2026-09-13 because the section itself communicates completion
+(#530 (Finished quests sit among the open ones in the Quest Log, told apart only by being grey)).
 
 ### The name is the clerk's, and which of his two names depends on the state
 
@@ -101,9 +107,10 @@ still arrives when the job is paid.
 
 ### What is on the face, and what is in the tooltip
 
-The face carries only facts about the party's game: the name, the state word,
-and the books' count. The raw marker value is not one — `marker 4` says a byte
-reads 4, and what 4 means is script-specific and undecoded — so it goes in the
+The face carries only facts about the party's game: the name, the active
+quest's state word, and the books' count. The raw marker value is not one —
+`marker 4` says a byte reads 4, and what 4 means is script-specific and
+undecoded — so it goes in the
 tooltip with everything else that is internal:
 
 ```
@@ -177,17 +184,16 @@ to show in that window. That makes the row a pure function of `$4A81`, which
 that already hands the panel a `SAVEDGAME0` image is the whole of what feeds
 it (`automap/window.py`'s `_refresh_roster`).
 
-**There is no second group.** Donald, 2026-09-04: *"I don't think we need a
-separate 'Side Quests' section. Just lump them all together."* A side quest
-whose `SideQuestState.durable_state` is not `QUEST_UNSEEN` gets a row appended
-to the *commissions* group, after the ledger's own rows and before the
-`Summoned to` group — `goldbox.commissions.side_quests()` reads the durable
-half only, `side_quest_rows()` in `automap/questlog.py` turns that into a row,
-and `update_from` does the appending, always. The join stays display-only: the
-two kinds of row are still kept apart in the code — `side_quest_rows()` is its
-own function — and the commissions group carries no heading either way. A
-finished side quest stays on the log, drawn muted, the way a paid commission
-does.
+**There is no separate side-quest group.** Donald, 2026-09-04: *"I don't think
+we need a separate 'Side Quests' section. Just lump them all together."* A side quest
+whose `SideQuestState.durable_state` is not `QUEST_UNSEEN` gets a row alongside
+the commissions: active side quests follow active commissions, and finished
+side quests follow paid commissions under **Completed**. Outstanding summonses
+remain above the completed section. `goldbox.commissions.side_quests()` reads
+the durable half only, `side_quest_rows()` turns that into a row, and
+`update_from` partitions the combined rows for display. The two kinds of quest
+remain separate in the decoder; Donald's 2026-09-13 decision changes their
+presentation only.
 
 **The words are shipped.** Donald approved all six on-screen strings from a
 screenshot on 2026-09-04, with one change applied everywhere: each opens with

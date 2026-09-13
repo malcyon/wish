@@ -287,10 +287,8 @@ def test_durable_state_on_real_saves_never_shows_accepted(stem, expected):
 def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn, dim):
     """Every save in `SAVE_STATES`, through the actual panel this time.
 
-    The side-quest row, when there is one, is appended to the commissions
-    group rather than drawn in a group of its own (#158) -- so the row is
-    whatever visible row comes after however many commission rows
-    `commission_rows` alone produces for this save.
+    The side-quest row joins the commissions group while it is active. Once
+    finished, it belongs in the completed section without a status word.
     """
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
@@ -310,6 +308,10 @@ def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn, dim):
     panel.update_from(payload)
     all_rows = panel.groups["commissions"].visible_rows()
     rows = all_rows[base_count:]
-    assert len(rows) == (1 if drawn else 0), stem
+    completed = panel.groups["completed"].visible_rows()
+    assert len(rows) == (1 if drawn and not dim else 0), stem
+    assert len(completed) == (1 if drawn and dim else 0), stem
     if drawn:
-        assert bool(rows[0].what.styleSheet()) == dim, stem
+        row = completed[0] if dim else rows[0]
+        assert bool(row.what.styleSheet()) == dim, stem
+        assert row.state.text() == ("" if dim else "In progress"), stem

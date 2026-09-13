@@ -295,6 +295,7 @@ class Row(QWidget):
         self.what.setText(what)
         self.what.setStyleSheet(f"color: {MUTED.name()}" if dim else "")
         self.state.setText(state)
+        self.state.setVisible(bool(state))
         self.note.setText(note)
         self.note.setVisible(bool(note))
         self.setToolTip(tip)
@@ -505,23 +506,15 @@ class QuestLogPanel(QObject):
             if self.scroll.widget() is not None:
                 self.scroll.widget().setStyleSheet(f"background: {CARD.name()};")
 
-        self.completed = root.findChild(QLabel, "questlog_completed")
-        if self.completed is not None:
-            self.completed.setStyleSheet(f"color: {MUTED.name()}")
-            self.completed.setToolTip(
-                "Bumped by the clerk for the ten commissions that count "
-                "as major")
-
         self.column = root.findChild(QVBoxLayout, "questlog_column")
         if self.column is None and self.scroll is not None and self.scroll.widget() is not None:
             self.column = self.scroll.widget().layout()
 
-        # One group for commissions and side quests together (#158): Donald,
-        # 2026-09-04, does not want a separate section, so there is no
-        # `self.groups["side_quests"]` to gate -- `update_from` decides
-        # whether `side_quest_rows()` contributes to this same group's rows.
+        # Commissions and side quests share the two display groups.  Their
+        # readers remain separate; only their completed rows move together.
         self.groups = {"commissions": Group()}
         self.groups["summons"] = Group("Summoned to")
+        self.groups["completed"] = Group("Completed")
         if self.column is not None:
             for group in self.groups.values():
                 self.column.addWidget(group)
@@ -544,13 +537,15 @@ class QuestLogPanel(QObject):
         self._flags = flags.to_bytes()
         state = book.read(flags)
         self.set_message("")
-        if self.completed is not None:
-            self.completed.setText(f"Quests completed: {state.completed}")
 
         rows = commission_rows(flags) + side_quest_rows(flags)
+        active_rows = [row for row in rows if not row[4]]
+        completed_rows = [(what, "", tip, note, dim)
+                          for what, _state, tip, note, dim in rows if dim]
         self.groups["commissions"].show_rows(
-            rows or [("The clerk has nothing on the books for this party", "", "")])
+            active_rows or ([] if rows else [
+                ("The clerk has nothing on the books for this party", "", "")]))
         self.groups["summons"].show_rows(
             [(_sentence(a.name), a.state, "")
              for a in state.outstanding])
-
+        self.groups["completed"].show_rows(completed_rows)

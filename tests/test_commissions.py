@@ -270,18 +270,18 @@ def tips(panel, group="commissions"):
     return [r.toolTip() for r in panel.groups[group].visible_rows()]
 
 
-@pytest.mark.parametrize("value, state", [
-    (0, "offered"),                     # the clerk has it on the board
-    (3, "In progress"),                 # the slums' own progress marker
-    (DONE, "reward waiting"),
-    (PAID_VALUE, "paid"),
+@pytest.mark.parametrize("value, group, state", [
+    (0, "commissions", "offered"),     # the clerk has it on the board
+    (3, "commissions", "In progress"), # the slums' own progress marker
+    (DONE, "commissions", "reward waiting"),
+    (PAID_VALUE, "completed", ""),
 ])
-def test_the_slums_is_one_row_whatever_its_byte_reads(app, value, state):
+def test_the_slums_is_one_row_whatever_its_byte_reads(app, value, group, state):
     """One byte, one row. The board gates candidate 0 on ledger 21 and the
     clerk pays on the same byte; showing the two ends separately made one
     commission look like two, which is the whole reason for this shape."""
     panel = panel_for(app, put_ledger(blank(), 21, value))
-    slums = [r for r in rows(panel) if r[0] in SLUMS]
+    slums = [r for r in rows(panel, group) if r[0] in SLUMS]
     assert len(slums) == 1
     assert slums[0][1] == state
 
@@ -292,7 +292,8 @@ def test_no_unfinished_row_is_labelled_with_the_clerk_s_completion_speech(app):
         assert "Slums cleared" not in [r[0] for r in rows(panel)]
     for value in (DONE, PAID_VALUE):
         panel = panel_for(app, put_ledger(blank(), 21, value))
-        assert "Slums cleared" in [r[0] for r in rows(panel)]
+        names = [r[0] for group in panel.groups for r in rows(panel, group)]
+        assert "Slums cleared" in names
 
 
 def test_a_commission_the_board_never_offers_still_gets_a_neutral_name(app):
@@ -350,17 +351,17 @@ def test_all_six_books_paid_is_one_paid_row_with_no_count(app):
     for index in range(4, 10):
         put_ledger(flags, index, PAID_VALUE)
     panel = panel_for(app, flags)
-    assert [r for r in rows(panel) if "books" in r[0]] == [
-        ("Bring back books, maps and tomes", "paid", "")]
+    assert [r for r in rows(panel, "completed") if "books" in r[0]] == [
+        ("Bring back books, maps and tomes", "", "")]
 
 
 def test_a_party_that_has_done_nothing_sees_the_opening_three(app):
     panel = panel_for(app, blank())
-    assert panel.completed.text() == "Quests completed: 0"
     assert rows(panel) == [
         ("Clear Sokal Keep", "offered", ""),
         ("Bring back books, maps and tomes", "offered", ""),
         ("Clear the Slums", "offered", "")]
+    assert not panel.groups["completed"].isVisibleTo(panel.root)
 
 
 def test_a_commission_the_party_has_not_met_is_not_shown(app):
@@ -370,24 +371,67 @@ def test_a_commission_the_party_has_not_met_is_not_shown(app):
     assert all("nomads" not in r[0] for r in rows(panel))
 
 
-def test_the_rows_run_in_the_ledger_s_order_which_is_roughly_the_plot_s(app):
+def test_completed_rows_follow_the_active_quests_and_keep_plot_order(app):
     flags = blank()
     put_ledger(flags, 11, DONE)                   # graveyard, money uncollected
     put_ledger(flags, 1, PAID_VALUE)
     put_ledger(flags, 10, PAID_VALUE)
+    put(flags, 0x4A81, 255)                       # Ohlo's potion delivered
     panel = panel_for(app, flags)
     assert [r[0] for r in rows(panel) if r[1] != "offered"] == [
-        "Sokal Keep cleared", "Podal Plaza auction", "Graveyard menace ended"]
+        "Graveyard menace ended"]
     assert [r[1] for r in rows(panel) if r[0] == "Graveyard menace ended"] == [
         "reward waiting"]
+    assert panel.groups["completed"].heading.text() == "Completed"
+    assert rows(panel, "completed") == [
+        ("Sokal Keep cleared", "", ""),
+        ("Podal Plaza auction", "", ""),
+        ("Ohlo's potion", "", ""),
+    ]
+    assert all(not row.state.isVisibleTo(panel.root)
+               for row in panel.groups["completed"].visible_rows())
 
 
 def test_a_paid_row_is_drawn_muted_so_live_work_stands_out(app):
     panel = panel_for(app, put_ledger(blank(), 1, PAID_VALUE))
     drawn = {r.what.text(): bool(r.what.styleSheet())
-             for r in panel.groups["commissions"].visible_rows()}
+             for r in panel.groups["completed"].visible_rows()}
     assert drawn["Sokal Keep cleared"]
-    assert not drawn["Clear the Slums"]
+    assert not any(r.what.text() == "Clear the Slums"
+                   for r in panel.groups["completed"].visible_rows())
+
+
+def test_an_all_completed_log_has_no_empty_active_message(app):
+    flags = blank()
+    for index in range(book.LEDGER_COUNT):
+        put_ledger(flags, index, PAID_VALUE)
+    panel = panel_for(app, flags)
+    assert rows(panel) == []
+    assert panel.groups["completed"].isVisibleTo(panel.root)
+    assert all("nothing on the books" not in row[0].lower()
+               for row in rows(panel, "completed"))
+
+
+def test_a_log_with_no_rows_keeps_its_existing_empty_message(app, monkeypatch):
+    from automap import questlog
+
+    monkeypatch.setattr(questlog, "commission_rows", lambda flags: [])
+    monkeypatch.setattr(questlog, "side_quest_rows", lambda flags: [])
+    panel = panel_for(app, blank())
+    assert rows(panel) == [
+        ("The clerk has nothing on the books for this party", "", "")]
+    assert not panel.groups["completed"].isVisibleTo(panel.root)
+
+
+def test_updates_move_a_finished_quest_between_sections(app):
+    panel = panel_for(app, _flags_4a81(250))
+    assert ("Ohlo's potion", "In progress", "") in rows(panel)
+    assert rows(panel, "completed") == []
+
+    panel.update_from(_flags_4a81(255))
+
+    assert ("Ohlo's potion", "In progress", "") not in rows(panel)
+    assert rows(panel, "completed") == [("Ohlo's potion", "", "")]
 
 
 def test_the_panel_lists_an_outstanding_summons(app):
@@ -550,9 +594,8 @@ def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, value,
     """`$4A81` alone decides the row: 0 draws nothing, 250 and 255 draw one.
 
     Donald's decision of 2026-09-04: the log shows the errand once the potion
-    is in hand, never merely for having talked to Ohlo. The row lands in the
-    commissions group, appended after the commission rows (#158), so this
-    also pins the order: the same commission rows come first, unchanged.
+    is in hand, never merely for having talked to Ohlo. A finished errand
+    joins the completed section, without its now-redundant status word.
     """
     flags = _flags_4a81(value)
     commissions_only = _commission_only_rows(flags)
@@ -563,9 +606,15 @@ def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, value,
     if not has_row:
         assert drawn == []
         return
-    assert len(drawn) == 1
-    assert drawn[0][1] == state
-    dimmed = panel.groups["commissions"].visible_rows()[len(commissions_only)]
+    if dim:
+        drawn = rows(panel, "completed")
+        assert len(drawn) == 1
+        assert drawn[0][1] == ""
+        dimmed = panel.groups["completed"].visible_rows()[0]
+    else:
+        assert len(drawn) == 1
+        assert drawn[0][1] == state
+        dimmed = panel.groups["commissions"].visible_rows()[len(commissions_only)]
     assert bool(dimmed.what.styleSheet()) == dim
 
 

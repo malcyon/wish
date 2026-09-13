@@ -43,3 +43,30 @@ def test_rows_mode_runs_with_no_quests_environment_variable(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert "groups" in out
     assert "gate" not in out
+
+
+def test_capture_reports_completed_rows_with_the_active_rows(
+        tmp_path, monkeypatch, capsys):
+    """A finished quest remains in the driver's terminal evidence."""
+    class Keyboard:
+        def screenshot(self, path):
+            pathlib.Path(path).write_bytes(b"")
+
+    class Session:
+        kbd = Keyboard()
+
+    monkeypatch.setattr(ohlowatch, "watched", lambda sess: {
+        "area": 20, "square": [0, 0, 0], "4A81": 255,
+        "4A04": 0, "4ABB": 0,
+    })
+    monkeypatch.setattr(ohlowatch, "live_window", lambda sess: b"window")
+    monkeypatch.setattr(ohlowatch, "render", lambda binp, png: {"groups": {
+        "commissions": [{"name": "Clear the Slums", "state": "offered"}],
+        "completed": [{"name": "Ohlo's potion", "state": ""}],
+    }})
+
+    ohlowatch.capture(Session(), tmp_path, "finished", "test")
+
+    out = capsys.readouterr().out
+    assert "Row: 'Clear the Slums' / 'offered'" in out
+    assert "Row: \"Ohlo's potion\" / ''" in out

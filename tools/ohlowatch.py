@@ -303,12 +303,13 @@ def capture(sess, out: pathlib.Path, label: str, note: str) -> dict:
     sess.kbd.screenshot(str(out / f"{label}.game.png"))
     meta["panel"] = render(binp, out / f"{label}.panel.png")
     (out / f"{label}.json").write_text(json.dumps(meta, indent=1))
-    rows = meta["panel"].get("groups", {}).get("commissions", [])
+    groups = meta["panel"].get("groups", {})
+    rows = [*groups.get("commissions", []), *groups.get("completed", [])]
     print(f"[{label}] area={meta['area']} square={meta['square']} "
           f"$4A81={meta['4A81']} $4A04={meta['4A04']} $4ABB={meta['4ABB']}",
           flush=True)
     for r in rows:
-        print(f"          row: {r['name']!r} / {r['state']!r}", flush=True)
+        print(f"          Row: {r['name']!r} / {r['state']!r}", flush=True)
     return meta
 
 
