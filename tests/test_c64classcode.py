@@ -57,7 +57,7 @@ def test_a_trained_curse_records_zeroed_code_reads_repaired():
     assert "recomputed from class_bits" in out.value("char_class").origin
 
 
-def test_silas_shape_reads_copied_and_unchanged():
+def test_silas_class_encoding_reads_copied_and_unchanged():
     """SILAS, shipped with Pool of Radiance: `char_class` 2 and `class_bits`
     `0x08`, both fighter, with a thief 1 in his level array that neither
     knows about. The mask is the source, so his code is not touched -- it

@@ -424,7 +424,7 @@ def test_no_table_is_found_when_a_side_has_gen_but_no_art_anywhere(
 # The stored menu (2026-09-06).  Donald: "Just pull them from each title so
 # you can cross reference them. Then you don't need the disks at all."
 # ---------------------------------------------------------------------------
-def test_the_stored_menu_has_the_shape_of_the_menu():
+def test_the_stored_menu_has_the_measured_counts_and_order():
     """No disks: the block in `goldbox/portraits.py` is fourteen heads and
     twelve bodies, each run strictly increasing the way both binaries keep
     it, and it answers for Pool of Radiance -- by key, by anything carrying
@@ -537,7 +537,7 @@ def amiga_wanted():
             portraits.AMIGA_BODY_DAX)
 
 
-def test_the_amiga_menu_is_found_by_its_shape_and_names_art_the_disk_holds():
+def test_the_amiga_menu_is_found_by_its_table_pattern_and_names_art_the_disk_holds():
     """The reading itself: a run found in a 459,028-byte executable.
 
     Nothing here names the offset the run was at -- the point of the finder

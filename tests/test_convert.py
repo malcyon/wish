@@ -141,7 +141,7 @@ def test_source_detect_refuses_a_path_that_is_neither(tmp_path):
 
 
 @pytest.mark.parametrize("shape", dos_port.DELTAS, ids=lambda s: s.key)
-def test_source_detect_identifies_each_dos_shape(tmp_path, shape):
+def test_source_detect_identifies_each_dos_title(tmp_path, shape):
     """Every one of the four titles' record sizes names its own shape --
     including Pools of Darkness, whose container is `SAVGAM?.PTY` rather
     than `SAVGAM?.DAT` (`goldbox/dos_savegame.py`'s `SAVE_POOLS_OF_DARKNESS`),

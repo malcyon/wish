@@ -253,7 +253,7 @@ def test_the_thief_racial_row_is_read_with_no_decrement():
     assert tuple(v & 0xFF for v in human_gets) == no_race_row
 
 
-def test_the_seven_trainer_shape_fields_are_curses_own():
+def test_the_seven_trainer_deltas_fields_are_curses_own():
     """`#89`'s 2026-09-05 comment on the issue reads all seven off Silver
     Blades' own `GEN` as instruction-for-instruction or byte-for-byte the
     same routine as Curse's -- the hit die (`$1808` = Curse's `$15E1`), its

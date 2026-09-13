@@ -15,7 +15,7 @@ They agree, and the reason is the engine rather than the two calls being the
 same: Curse's `GEN $20A3` writes the old class's level back into the level
 array and ORs its bit into `class_bits` in the same routine, under one test,
 so a C64 record is never caught with one done and not the other.
-`test_the_two_call_shapes_really_can_disagree` is what stops the rest of this
+`test_the_two_call_argument_sets_really_can_disagree` is what stops the rest of this
 file passing for the empty reason -- it hands the two calls a mask and a level
 array that contradict each other and watches them part company.
 
@@ -101,7 +101,7 @@ def _bits_from_levels(levels) -> int:
     return out
 
 
-def test_the_two_call_shapes_really_can_disagree():
+def test_the_two_call_argument_sets_really_can_disagree():
     """The guard on everything else here.
 
     Hand `classcode.repair` a mask that says fighter and a level array that

@@ -1394,7 +1394,7 @@ def layout_for(what: "int | str | DosDeltas") -> tuple[Field, ...]:
     **Those tests need the player's own archives and skip without them, so CI
     does not run them.**  On a machine with no `FR_ARCHIVES` the only thing
     standing behind Curse, Silver Blades and Pools of Darkness is this sum and
-    `test_each_shape_tiles_its_own_record`, which checks total width and that
+    `test_each_layout_tiles_its_own_record`, which checks total width and that
     offsets increase -- not that any field is in the right place.  So an edit
     to one of those three titles' deltas is only really tested where the
     archives are.  Say in the commit that you ran it somewhere they exist.

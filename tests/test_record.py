@@ -40,7 +40,7 @@ def brutus(record_bytes: bytes) -> CharacterRecord:
 # ---------------------------------------------------------------------------
 # 1. Decoding the specimen
 # ---------------------------------------------------------------------------
-def test_fixture_shape(prg_bytes: bytes) -> None:
+def test_fixture_size_and_load_address(prg_bytes: bytes) -> None:
     assert len(prg_bytes) == layout.PRG_SIZE == 582
     assert prg_bytes[0] | (prg_bytes[1] << 8) == layout.LOAD_ADDRESS == 0x6B00
 

@@ -60,7 +60,7 @@ def _former_class_levels(shape: dos_port.DosDeltas, **slots: int) -> bytes:
 
 
 # --- the field itself -----------------------------------------------------
-def test_former_level_is_named_at_the_measured_offset_in_the_three_shapes():
+def test_former_level_is_named_at_the_measured_offset_in_the_three_layouts():
     """`0x0E6`, `0x0EF`, `0x139` -- the byte right after `level` in Curse,
     Silver Blades and Pools of Darkness, and absent from Pool of Radiance,
     which has no such array either."""
@@ -123,7 +123,7 @@ def test_pool_of_radiance_has_no_former_levels_field_at_all():
 # --- the disposition tables: the mandatory row ------------------------------
 @pytest.mark.parametrize("shape", (CURSE, SILVER_BLADES, POOLS_OF_DARKNESS),
                          ids=lambda s: s.key)
-def test_former_level_has_a_disposition_in_every_later_shape(shape):
+def test_former_level_has_a_disposition_in_every_later_layout(shape):
     """A field the table declares and `field_disposition` names nowhere is a
     field dropped in silence -- the mechanism that makes the row mandatory."""
     table = dos_codec.field_disposition(shape)

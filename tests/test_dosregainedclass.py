@@ -91,7 +91,7 @@ def _mathew() -> dos_codec.DosCharacter:
     return dos_codec.read_character(found[0])
 
 
-def test_the_engine_written_specimen_has_the_target_shape():
+def test_the_engine_written_specimen_has_the_target_class_encoding():
     """`docs/209-the-regained-dual-class-on-dos.md`'s reading, off the bytes
     rather than the disassembly: the old class's `class_levels` slot is
     zero, the former array and `char_class` alone name it, `class_bits`
@@ -105,7 +105,7 @@ def test_the_engine_written_specimen_has_the_target_shape():
     assert mathew.get("class_bits") == 0x41
 
 
-def test_a_regained_character_converts_to_dos_in_the_engines_own_shape():
+def test_a_regained_character_converts_to_dos_in_the_engines_own_class_encoding():
     """PHILIPPE, trained past the level she left magic-user at, converts to
     a Curse DOS record shaped like MATHEW's: the old class's `class_levels`
     slot zero, `char_class` the new class alone, `class_bits` both bits.

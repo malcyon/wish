@@ -437,7 +437,7 @@ def test_the_armed_cache_agrees_with_what_the_rules_derive(armed):
             str(one.record.name)
 
 
-def test_an_unarmed_tail_is_the_shape_the_three_exports_hold():
+def test_an_unarmed_tail_is_the_byte_pattern_the_three_exports_hold():
     """`30 00 00 01 00 02 00 bb 00`, where `bb` is the strength damage bonus.
 
     BRUTUS, MALCYON and LADY KATHERINE -- the three `.chr` exports in

@@ -59,7 +59,7 @@ def _switch(branches: dict[int, list[int]]) -> bytes:
     return bytes(out)
 
 
-def test_the_reader_walks_a_switch_of_the_engines_shape():
+def test_the_reader_walks_a_switch_of_the_engines_instruction_pattern():
     """Six calls over two branches, read back per race and per argument."""
     blob = b"\x00" * 16 + _switch({5: [90, 97], 1: [90, 97, 26, 47]}) + b"\x00" * 16
     assert dosracialseed.creation_switch(blob) == 16

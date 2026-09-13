@@ -1670,7 +1670,7 @@ def _all_titles():
         "shape", dos_port.DELTAS, ids=[s.key for s in dos_port.DELTAS])
 
 
-def test_each_shape_tiles_its_own_record():
+def test_each_layout_tiles_its_own_record():
     """Every byte of all four records belongs to exactly one entry, and the
     widths add up to the size the file actually is.  `layout_for` raises on a
     shape that does not, so this is the other half."""
@@ -1683,7 +1683,7 @@ def test_each_shape_tiles_its_own_record():
     assert len(dos_port.DELTAS_BY_SIZE) == len(dos_port.DELTAS)
 
 
-def test_the_pool_of_radiance_shape_is_the_table_it_was_read_from():
+def test_the_pool_of_radiance_layout_is_the_table_it_was_read_from():
     """The generator must reproduce the hand-written table exactly -- offsets,
     widths, kinds and notes.  Without this the other three shapes would be
     free to drift the one that is measured against 24 specimens."""

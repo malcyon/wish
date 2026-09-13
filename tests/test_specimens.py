@@ -128,7 +128,7 @@ def test_add_refuses_a_name_that_is_not_a_plain_slug(tree, one_source):
                       title="x", issue="x", made_by="x", what="x")
 
 
-def test_add_accepts_amiga_and_builds_the_dos_shape(tree, one_source):
+def test_add_accepts_amiga_and_builds_a_directory_specimen(tree, one_source):
     """`#313 (The specimen tree has no Amiga platform, so an engine-written
     Amiga save disk cannot be kept)`, `#332 (The specimen tree cannot hold an
     Amiga saved game, so the first two engine-written Amiga parties sit
@@ -265,7 +265,7 @@ def test_check_on_an_empty_tree_finds_nothing_wrong(tree):
 # --- a platform directory holding both shapes at once (#450) -------------
 
 
-def _both_shapes(tree, tmp_path):
+def _mixed_specimens(tree, tmp_path):
     """`por-c64` as it actually stands: flat `.d64` specimens beside one
     directory of memory captures, which is what `#286` left there."""
     d64 = tmp_path / "party.d64"
@@ -293,7 +293,7 @@ def _both_shapes(tree, tmp_path):
 def test_a_directory_specimen_beside_the_flat_ones_is_listed(tree, tmp_path):
     """Both shapes at once. Until `#450` a non-empty flat list meant "stop
     here", and the directory specimen was listed by nothing."""
-    _both_shapes(tree, tmp_path)
+    _mixed_specimens(tree, tmp_path)
     names = sorted(e["name"] for e in specimens.list_specimens(tree))
     assert names == ["hang-captures", "p18party"]
 
@@ -302,7 +302,7 @@ def test_check_catches_an_edit_to_a_directory_specimen_beside_flat_ones(
         tree, tmp_path):
     """The silent half: `check` reported the tree clean while a file in that
     specimen could be rewritten by anything."""
-    dest = _both_shapes(tree, tmp_path)
+    dest = _mixed_specimens(tree, tmp_path)
     victim = dest / "hung-zp.bin"
     dest.chmod(stat.S_IRWXU)
     victim.chmod(stat.S_IRWXU)
@@ -314,7 +314,7 @@ def test_check_catches_an_edit_to_a_directory_specimen_beside_flat_ones(
 
 def test_check_flags_a_stray_file_in_a_directory_specimen_beside_flat_ones(
         tree, tmp_path):
-    dest = _both_shapes(tree, tmp_path)
+    dest = _mixed_specimens(tree, tmp_path)
     dest.chmod(stat.S_IRWXU)
     (dest / "stray.bin").write_bytes(b"dropped here later")
     problems = specimens.check_specimens(tree)

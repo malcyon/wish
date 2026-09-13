@@ -171,7 +171,7 @@ def test_every_unattributed_dos_byte_is_zero_in_all_eight():
                 f"{name}: {f.name} at 0x{f.offset:03X} is not zero")
 
 
-def test_the_dos_engines_own_resave_puts_back_nothing_race_shaped():
+def test_the_dos_engines_own_resave_adds_no_race_dependent_field_besides_the_effect_chain():
     """A converted party -- two humans, an elf, a half-elf, a halfling and a
     dwarf -- loaded in DOS Pool of Radiance, walked, and written back by the
     game's own ENCAMP ▸ SAVE.  One offset splits the humans from the

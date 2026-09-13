@@ -84,7 +84,7 @@ def test_the_pair_offsets_are_the_ones_the_layout_declares():
     dos_port.CURSE_OF_THE_AZURE_BONDS,
     dos_port.SECRET_OF_THE_SILVER_BLADES,
     dos_port.POOLS_OF_DARKNESS])
-def test_every_later_shape_puts_the_pairs_at_the_same_offsets(shape):
+def test_every_later_layout_puts_the_pairs_at_the_same_offsets(shape):
     """The three later record sizes differ everywhere after the abilities and
     nowhere before them, so one set of offsets answers for all three."""
     layout = {f.name: f for f in dos_port.layout_for(shape)}

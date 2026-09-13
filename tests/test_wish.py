@@ -795,7 +795,7 @@ def test_a_device_that_does_not_answer_is_simply_absent(monkeypatch):
     assert ultimate.present(timeout=0.2) is False
 
 
-def test_reading_memory_shapes_the_documented_request(monkeypatch,
+def test_reading_memory_builds_the_documented_request(monkeypatch,
                                                       ultimate_stub):
     host, port = ultimate_stub.server_address
     monkeypatch.setenv("POR_ULTIMATE", f"{host}:{port}")

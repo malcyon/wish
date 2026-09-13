@@ -40,7 +40,7 @@ def test_the_0x0e6_column_reports_a_non_zero_former_level():
     assert dosdropcensus.columns(spec)["0x0E6"] == "07"
 
 
-def test_the_0x0e6_column_reports_a_dash_when_the_shape_has_no_such_field():
+def test_the_0x0e6_column_reports_a_dash_when_the_layout_has_no_such_field():
     """Pool of Radiance has no `former_level` field at all."""
     assert "former_level" not in dos_port.FIELDS_BY_NAME_FOR[POR.key]
     spec = specimen(POR)

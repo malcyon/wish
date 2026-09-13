@@ -206,7 +206,7 @@ def test_the_digest_covers_only_the_rectangle_it_was_given():
     assert a.digest() != b.digest()
 
 
-def test_the_ink_digest_ignores_a_recolour_and_not_a_reshape():
+def test_the_ink_digest_ignores_recolouring_and_detects_moved_pixels():
     """The command bar is white for a frame and green after; same glyphs.
 
     That is the whole reason `ink` exists: `digest` calls those two frames
