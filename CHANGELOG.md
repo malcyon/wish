@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Character Traits can now be edited, and the editor shows the active effects currently running on a save. ([#13](https://github.com/malcyon/wish/issues/13))
+- Combat squares now show a health bar instead of a hit-point number. ([#345](https://github.com/malcyon/wish/issues/345))
+
+### Changed
+
+- The Quest Log puts completed commissions and side quests under Completed, below active quests. ([#530](https://github.com/malcyon/wish/issues/530))
+- Character editor lists known races, classes and alignments by name, without their stored code in front. ([#531](https://github.com/malcyon/wish/issues/531))
+- Level Up offers every class ready for training, instead of choosing only one. ([#415](https://github.com/malcyon/wish/issues/415))
+- Backup settings now explain how to use one folder for all save backups or a folder beside each save.
+
+### Fixed
+
+- Closing the character editor with unsaved edits now asks whether to save them. ([#489](https://github.com/malcyon/wish/issues/489))
+- Imported DOS parties now keep their location and clock. ([#352](https://github.com/malcyon/wish/issues/352))
+- Imported DOS characters now keep their correct abilities and THAC0. ([#404](https://github.com/malcyon/wish/issues/404), [#405](https://github.com/malcyon/wish/issues/405))
+- Imported DOS characters now keep their fighting level and saving throws. ([#527](https://github.com/malcyon/wish/issues/527))
+- Level Up restores one drained level for every training step. ([#526](https://github.com/malcyon/wish/issues/526))
+- Joined NPCs no longer appear as drained 255 levels, and show a plain white combat-icon preview with icon controls disabled. ([#532](https://github.com/malcyon/wish/issues/532), [#533](https://github.com/malcyon/wish/issues/533))
+- Imported Pool of Radiance DOS characters retain all 21 memorised spells. ([#508](https://github.com/malcyon/wish/issues/508), [#509](https://github.com/malcyon/wish/issues/509))
+
 ## [0.1.3] - 2026-09-06
 
 ### Added
@@ -127,7 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/malcyon/wish/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/malcyon/wish/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/malcyon/wish/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/malcyon/wish/releases/tag/v0.1.0
