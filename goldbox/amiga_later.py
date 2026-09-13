@@ -210,11 +210,6 @@ class AmigaItem:
         return cls(bytes(data), deltas)
 
     @property
-    def shape(self) -> AmigaDeltas:
-        """Pre-#470 name for :attr:`deltas`, so old callers keep reading."""
-        return self.deltas
-
-    @property
     def text(self) -> str:
         """The cached display line: the first NUL-terminated run.
 
@@ -332,11 +327,6 @@ class AmigaCharacter:
                 f"an Amiga {deltas.title} record is {deltas.record_size} "
                 f"bytes, got {len(data)}")
         return cls(bytes(data), deltas, source, tuple(items), tuple(effects))
-
-    @property
-    def shape(self) -> AmigaDeltas:
-        """Pre-#470 name for :attr:`deltas`, so old callers keep reading."""
-        return self.deltas
 
     @property
     def name(self) -> str:
