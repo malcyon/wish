@@ -907,7 +907,11 @@ class EditorBinding(QObject):
             if isinstance(w, QComboBox) and name in tables:
                 w.clear()
                 for code, label in sorted(tables[name].items()):
-                    w.addItem(f"{code}  {label}", code)
+                    if name in {"race", "char_class", "class_bits", "alignment"}:
+                        label = label[:1].upper() + label[1:]
+                        w.addItem(label, code)
+                    else:
+                        w.addItem(f"{code}  {label}", code)
                 _size_combo(w)
             elif hasattr(w, "set_game"):
                 # The Character Traits list, whose codes are per title too:
@@ -955,7 +959,7 @@ class EditorBinding(QObject):
             box = self._child(name)
             if box is None:
                 continue
-            box.setMinimumWidth(min(floor, box.minimumSizeHint().width()))
+            box.setMinimumWidth(floor)
         for name in TOOLBAR_BUTTONS:
             button = self._child(name)
             if button is not None:

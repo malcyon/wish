@@ -1172,10 +1172,15 @@ def test_race_class_alignment_and_sex_are_named(editor):
     editor.roster.selectRow(4)                    # LADY KATHERINE -- row 4, #160
     shown = {n: editor._widgets[n].currentText()
              for n in ("race", "char_class", "class_bits", "alignment", "sex")}
-    assert shown["race"] == "4  HALF-ELF"
-    assert shown["class_bits"] == "5  magic-user/thief"
-    assert shown["alignment"] == "5  NEUTRAL EVIL"
+    assert shown["race"] == "HALF-ELF"
+    assert shown["char_class"] == "Magic-user/thief"
+    assert shown["class_bits"] == "Magic-user/thief"
+    assert shown["alignment"] == "NEUTRAL EVIL"
     assert shown["sex"] == "1  female"
+    assert {n: editor._widgets[n].currentData()
+            for n in ("race", "char_class", "class_bits", "alignment")} == {
+                "race": 4, "char_class": 16, "class_bits": 5, "alignment": 5,
+            }
 
 
 def test_race_zero_is_named_rather_than_left_blank():
@@ -1471,7 +1476,7 @@ def test_the_class_combo_repairs_a_dual_classed_character_who_has_not_regained(a
 
     editor.roster.selectRow(row)
     shown = editor._widgets["char_class"].currentText().lower()
-    assert shown == "2  fighter"
+    assert shown == "fighter"
 
 
 def test_curses_class_code_10_names_cleric_ranger_not_pool_of_radiances_pair(app):
@@ -1522,8 +1527,8 @@ def test_an_ordinary_single_classed_character_is_unaffected_by_409(app):
     assert shara.class_name == "cleric"
 
     editor.roster.selectRow(row)
-    assert editor._widgets["class_bits"].currentText().lower() == "2  cleric"
-    assert editor._widgets["char_class"].currentText().lower() == "0  cleric"
+    assert editor._widgets["class_bits"].currentText().lower() == "cleric"
+    assert editor._widgets["char_class"].currentText().lower() == "cleric"
 
 
 @game_disks
