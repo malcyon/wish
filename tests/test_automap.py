@@ -2800,9 +2800,13 @@ def test_the_tab_shows_the_quest_log(app, tmp_path, monkeypatch):
                          MemoryTarget({0x4900: save0, 0x8300: save1}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    assert window.questlog.completed.text().startswith(
-        "Quests completed:")
     assert window.questlog.heading.text() == "Quest Log"
+    completed = window.questlog.groups["completed"]
+    assert completed.heading.text() == "Completed"
+    # BRUTUS has no paid commission in this captured state, so the section
+    # stays out of the log rather than reserving a blank heading.
+    assert not completed.visible_rows()
+    assert not completed.isVisible()
 
 
 def test_a_poll_that_reads_nothing_leaves_the_quest_log_alone(app, tmp_path,
@@ -2814,11 +2818,20 @@ def test_a_poll_that_reads_nothing_leaves_the_quest_log_alone(app, tmp_path,
     window = make_window(app, tmp_path, monkeypatch, machine)
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    before = window.questlog.completed.text()
+    before = {
+        name: [(row.what.text(), row.state.text())
+               for row in group.visible_rows()]
+        for name, group in window.questlog.groups.items()
+    }
     machine.memory[0x4900] = bytes(0x1C00)
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    assert window.questlog.completed.text() == before
+    after = {
+        name: [(row.what.text(), row.state.text())
+               for row in group.visible_rows()]
+        for name, group in window.questlog.groups.items()
+    }
+    assert after == before
 
 
 # --- the action buttons -----------------------------------------------------
