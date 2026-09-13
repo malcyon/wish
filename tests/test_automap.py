@@ -2806,7 +2806,7 @@ def test_the_tab_shows_the_quest_log(app, tmp_path, monkeypatch):
     # BRUTUS has no paid commission in this captured state, so the section
     # stays out of the log rather than reserving a blank heading.
     assert not completed.visible_rows()
-    assert not completed.isVisible()
+    assert completed.isHidden()
 
 
 def test_a_poll_that_reads_nothing_leaves_the_quest_log_alone(app, tmp_path,
