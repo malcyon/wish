@@ -13,10 +13,10 @@ The `model` and `model_reasoning_effort` in the TOML are **not** copied from
 the Markdown frontmatter -- that frontmatter's `model` field names a Claude
 model (`sonnet`, `opus`, `fable`, `haiku`), which is not the model this tool
 must write. The Codex identifier and reasoning effort for each agent are
-Donald's own decision, from `#506 (Set Codex up as a second orchestrator with
-its own subagents, without a second copy of the rules)`'s "Step 4 settled
-with Donald" comment, and are pinned in `CODEX_MODELS` below rather than
-derived.
+configured in `CODEX_MODELS` below rather than derived. Historical mappings
+came from `#506 (Set Codex up as a second orchestrator with its own subagents,
+without a second copy of the rules)`'s "Step 4 settled with Donald" comment;
+later configured defaults use the same table.
 
 `general-purpose` has no `.claude/agents/general-purpose.md` -- it is a
 built-in on both sides -- so it has no row here and gets no TOML.
@@ -52,9 +52,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CLAUDE_AGENTS_DIR = ROOT / ".claude" / "agents"
 CODEX_AGENTS_DIR = ROOT / ".codex" / "agents"
 
-#: Codex model identifier and reasoning effort for each agent, from #506's
-#: "Step 4 settled with Donald" comment. Not derived from the Markdown
-#: frontmatter's `model` field, which names a Claude model instead.
+#: Codex model identifier and reasoning effort for each agent. Not derived from
+#: the Markdown frontmatter's `model` field, which names a Claude model instead.
 #: `general-purpose` is deliberately absent: it has no `.claude/agents/` file
 #: to generate from, so it gets no TOML either.
 CODEX_MODELS = {
