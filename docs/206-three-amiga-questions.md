@@ -15,7 +15,7 @@ loaded slot.
 whether it draws a portrait at all)`.
 
 The disk was built the way that issue asked for -- a C64 party whose records
-carry portrait ids, so `goldbox.amiga_por.new_por_savegame` wrote `$49FF` = 3:
+carry portrait ids, so `goldbox.amiga_savegame.new_por_savegame` wrote `$49FF` = 3:
 
 ```sh
 tools/toamigapor.py work/3q/por1.adf --to B --out work/3q/por1-B.adf \

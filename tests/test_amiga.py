@@ -27,6 +27,7 @@ from goldbox import (
     amiga_pod,
     amiga_por,
     amiga_port,
+    amiga_savegame,
     amiga_shared,
     dos_port,
 )
@@ -1759,9 +1760,9 @@ def synthetic_savegame(slot: str = "A") -> bytes:
     `CHRDAT<slot><n>` as eight plain bytes. `docs/124-amiga-port.md` §1.9a has
     the region map the rest of the file would follow.
     """
-    save = bytearray(amiga_por.POR_SAVEGAME_SIZE)
-    for n in range(amiga_por.POR_PARTY_MAX):
-        at = amiga_por.POR_CHARACTER_TABLE + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
+    save = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    for n in range(amiga_savegame.POR_PARTY_MAX):
+        at = amiga_savegame.POR_CHARACTER_TABLE + n * amiga_savegame.POR_CHARACTER_TABLE_STRIDE
         save[at:at + 8] = f"CHRDAT{slot.upper()}{n + 1}".encode("ascii")
     return bytes(save)
 
@@ -1772,7 +1773,7 @@ def save_disk_with(slots: str = "A"):
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
-    disk.write_file(amiga_por.POR_SLOT_LIST, amiga_por.slot_list_bytes(list(slots)))
+    disk.write_file(amiga_savegame.POR_SLOT_LIST, amiga_savegame.slot_list_bytes(list(slots)))
     return disk
 
 
@@ -1783,19 +1784,19 @@ def test_a_slot_written_onto_a_disk_is_offered_by_the_picker():
     the thing a player would see rather than that a function was called.
     """
     disk = save_disk_with("A")
-    written = amiga_por.write_por_slot(disk, "B", [sample()],
+    written = amiga_savegame.write_por_slot(disk, "B", [sample()],
                                    savegame=synthetic_savegame())
-    assert amiga_por.read_slot_list(disk) == ["A", "B"]
-    assert disk.read_file(amiga_por.POR_SLOT_LIST) == b"AB        "
+    assert amiga_savegame.read_slot_list(disk) == ["A", "B"]
+    assert disk.read_file(amiga_savegame.POR_SLOT_LIST) == b"AB        "
     assert "/save/CHRDATB1.sav" in written
-    assert amiga_por.POR_SLOT_LIST in written
+    assert amiga_savegame.POR_SLOT_LIST in written
     assert disk.verify() == []
 
 
 def test_the_slot_list_is_ten_bytes_and_space_padded():
     """`"A         "` is what the shipped disk holds; ten bytes, not one."""
-    assert amiga_por.slot_list_bytes(["A"]) == b"A         "
-    assert len(amiga_por.slot_list_bytes(list("ABCDEFGHIJ"))) == 10
+    assert amiga_savegame.slot_list_bytes(["A"]) == b"A         "
+    assert len(amiga_savegame.slot_list_bytes(list("ABCDEFGHIJ"))) == 10
 
 
 def test_each_slot_letter_sits_in_its_own_byte_and_a_gap_stays_a_gap():
@@ -1808,9 +1809,9 @@ def test_each_slot_letter_sits_in_its_own_byte_and_a_gap_stays_a_gap():
     gap. The order the letters are handed over cannot matter, so `D` first
     gives the same bytes.
     """
-    assert amiga_por.slot_list_bytes(["A", "B", "D"]) == b"AB D      "
-    assert amiga_por.slot_list_bytes(["D", "B", "A"]) == b"AB D      "
-    assert amiga_por.slot_list_bytes(list("ABCDEFGHIJ")) == b"ABCDEFGHIJ"
+    assert amiga_savegame.slot_list_bytes(["A", "B", "D"]) == b"AB D      "
+    assert amiga_savegame.slot_list_bytes(["D", "B", "A"]) == b"AB D      "
+    assert amiga_savegame.slot_list_bytes(list("ABCDEFGHIJ")) == b"ABCDEFGHIJ"
 
 
 def test_a_new_slot_does_not_take_another_slots_byte():
@@ -1822,10 +1823,10 @@ def test_a_new_slot_does_not_take_another_slots_byte():
     than reasoned about.
     """
     disk = save_disk_with("A")
-    disk.write_file(amiga_por.POR_SLOT_LIST, b"AB D      ")
-    amiga_por.write_por_slot(disk, "F", [sample()],
+    disk.write_file(amiga_savegame.POR_SLOT_LIST, b"AB D      ")
+    amiga_savegame.write_por_slot(disk, "F", [sample()],
                          savegame=synthetic_savegame())
-    assert disk.read_file(amiga_por.POR_SLOT_LIST) == b"AB D F    "
+    assert disk.read_file(amiga_savegame.POR_SLOT_LIST) == b"AB D F    "
 
 
 def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
@@ -1838,7 +1839,7 @@ def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
     disk = save_disk_with("A")
     before = disk.to_bytes()
     with pytest.raises(AmigaRecordError):
-        amiga_por.write_por_slot(disk, "K", [sample()],
+        amiga_savegame.write_por_slot(disk, "K", [sample()],
                              savegame=synthetic_savegame())
     assert disk.to_bytes() == before
 
@@ -1848,7 +1849,7 @@ def test_a_slot_with_no_saved_game_is_refused():
     disk = save_disk_with("A")
     before = disk.to_bytes()
     with pytest.raises(AmigaRecordError):
-        amiga_por.write_por_slot(disk, "B", [sample()])
+        amiga_savegame.write_por_slot(disk, "B", [sample()])
     assert disk.to_bytes() == before
 
 
@@ -1860,28 +1861,28 @@ def test_a_saved_game_moved_to_another_slot_is_retargeted():
     without this loads the party it came from.
     """
     disk = save_disk_with("A")
-    amiga_por.write_por_slot(disk, "B", [sample()],
+    amiga_savegame.write_por_slot(disk, "B", [sample()],
                          savegame=synthetic_savegame("A"))
     save = disk.read_file("/save/savgamB.dat")
-    for n in range(amiga_por.POR_PARTY_MAX):
-        at = amiga_por.POR_CHARACTER_TABLE + n * amiga_por.POR_CHARACTER_TABLE_STRIDE
+    for n in range(amiga_savegame.POR_PARTY_MAX):
+        at = amiga_savegame.POR_CHARACTER_TABLE + n * amiga_savegame.POR_CHARACTER_TABLE_STRIDE
         assert save[at:at + 8] == f"CHRDATB{n + 1}".encode()
 
 
 def test_a_saved_game_that_is_not_one_is_refused_by_name():
     with pytest.raises(AmigaRecordError):
-        amiga_por.retarget_savegame(bytes(amiga_por.POR_SAVEGAME_SIZE), "B")
+        amiga_savegame.retarget_savegame(bytes(amiga_savegame.POR_SAVEGAME_SIZE), "B")
     with pytest.raises(AmigaRecordError):
-        amiga_por.retarget_savegame(bytes(13137), "B")
+        amiga_savegame.retarget_savegame(bytes(13137), "B")
 
 
 def test_a_shorter_party_does_not_leave_the_old_ones_files_behind():
     """Six characters then four must not leave slots five and six loadable."""
     disk = save_disk_with("A")
-    amiga_por.write_por_slot(disk, "B", [sample()] * 6,
+    amiga_savegame.write_por_slot(disk, "B", [sample()] * 6,
                          savegame=synthetic_savegame())
     assert disk.lookup("/save/CHRDATB6.sav")
-    amiga_por.write_por_slot(disk, "B", [sample()] * 4,
+    amiga_savegame.write_por_slot(disk, "B", [sample()] * 4,
                          savegame=synthetic_savegame())
     for n in (5, 6):
         with pytest.raises(Exception):
@@ -1896,7 +1897,7 @@ def test_a_disk_with_no_slot_list_lists_nothing():
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
-    assert amiga_por.read_slot_list(disk) == []
+    assert amiga_savegame.read_slot_list(disk) == []
 
 
 def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
@@ -1907,25 +1908,25 @@ def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
     what lets the next write put all three in their proper bytes.
     """
     disk = save_disk_with("A")
-    disk.write_file(amiga_por.POR_SLOT_LIST, b"ADB       ")
-    assert amiga_por.read_slot_list(disk) == ["A", "D", "B"]
-    disk.write_file(amiga_por.POR_SLOT_LIST, b"AB D      ")
-    assert amiga_por.read_slot_list(disk) == ["A", "B", "D"]
+    disk.write_file(amiga_savegame.POR_SLOT_LIST, b"ADB       ")
+    assert amiga_savegame.read_slot_list(disk) == ["A", "D", "B"]
+    disk.write_file(amiga_savegame.POR_SLOT_LIST, b"AB D      ")
+    assert amiga_savegame.read_slot_list(disk) == ["A", "B", "D"]
 
 
 @pytest.mark.parametrize("party", [[], [1] * 7])
 def test_a_party_that_is_not_one_to_six_is_refused(party):
     disk = save_disk_with("A")
     with pytest.raises(AmigaRecordError):
-        amiga_por.write_por_slot(disk, "B", [sample()] * len(party),
+        amiga_savegame.write_por_slot(disk, "B", [sample()] * len(party),
                              savegame=synthetic_savegame())
 
 
 def test_the_saved_game_file_name_is_the_shipped_one():
-    assert amiga_por.por_savegame_filename("A") == "savgamA.dat"
-    assert amiga_por.por_savegame_filename("b") == "savgamB.dat"
+    assert amiga_savegame.por_savegame_filename("A") == "savgamA.dat"
+    assert amiga_savegame.por_savegame_filename("b") == "savgamB.dat"
     with pytest.raises(AmigaRecordError):
-        amiga_por.por_savegame_filename("K")
+        amiga_savegame.por_savegame_filename("K")
 
 
 def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case():
@@ -1966,10 +1967,10 @@ def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
     # 48 blocks fits the six records and stops on the saved game.
     disk = AmigaDisk.blank("poolgame", blocks=48)
     disk.make_dir("save")
-    disk.write_file(amiga_por.POR_SLOT_LIST, amiga_por.slot_list_bytes(["A"]))
+    disk.write_file(amiga_savegame.POR_SLOT_LIST, amiga_savegame.slot_list_bytes(["A"]))
     before = disk.to_bytes()
     with pytest.raises(Exception):
-        amiga_por.write_por_slot(disk, "B", [sample()] * 6,
+        amiga_savegame.write_por_slot(disk, "B", [sample()] * 6,
                              savegame=synthetic_savegame())
     assert disk.to_bytes() == before
     assert disk.verify() == []

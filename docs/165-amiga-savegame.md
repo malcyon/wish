@@ -4,7 +4,7 @@
 here comes from the save and load routines in the three Amiga executables --
 `/Curse` on Curse disk A, `/Secret` on Silver Blades disk A, `/program` on
 Pool of Radiance disk 1 -- read with `tools/amiga68k.py` and proved by
-`tools/amigasavegame.py`, which parses every saved game on the machine through
+`tools/amigasavecheck.py`, which parses every saved game on the machine through
 this map and checks itself against the signature scan, the variable array and
 the file length. Seven specimens, all clean: the three found saves (`CurseA`,
 `Secret 1`, `poolgame` slot A) and the four Pool of Radiance slots WinUAE was
@@ -256,7 +256,7 @@ port rather than out of DOS.
 | `$5012` | `[block2]+$fe24` | the container number, written from the same byte the file opens with |
 | `$503E` | `+$fe7c` | party size; **cleared on load** |
 
-The clock at `$49C6`-`$49CB` is read through the map by `tools/amigasavegame.py`
+The clock at `$49C6`-`$49CB` is read through the map by `tools/amigasavecheck.py`
 and agrees with the status line on the two saves that were read on screen.
 
 ### What an in-world Silver Blades save holds, against the DOS map
@@ -358,7 +358,7 @@ the whole array is identical. The two header bytes that moved are `$5079`
 engine rebuilds, and the mode-before byte.
 
 Both engine-written files parse through this page's map with every claim in
-`tools/amigasavegame.py`'s `check` clean, including `rebuild(parse(f)) == f`.
+`tools/amigasavecheck.py`'s `check` clean, including `rebuild(parse(f)) == f`.
 
 ### The derived fields are recomputed from the item chain
 
@@ -417,7 +417,7 @@ picker)`. A fourth per-title difference.
   Radiance's saved games here stand in three of the game's 29 areas -- The
   Slums, New Phlan and one wilderness window -- and **108 of the 2560 words
   are non-zero in at least one of the nineteen**. The rest are written zero by
-  `goldbox.amiga_por.new_por_savegame` on the strength of that sweep, and the
+  `goldbox.amiga_savegame.new_por_savegame` on the strength of that sweep, and the
   sweep is only as wide as the places the party has stood:
 
   | `$5012` | files | words non-zero | a corpus of this one alone would have missed |

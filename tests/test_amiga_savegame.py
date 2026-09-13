@@ -41,10 +41,10 @@ def _synthetic(shape, names=("ALPHA", "BETA")) -> bytes:
     return bytes(out)
 
 
-@pytest.mark.parametrize("shape", amiga_savegame.SHAPES,
-                         ids=lambda shape: shape.key)
-def test_each_measured_header_parses_without_game_data(shape):
-    save = amiga_savegame.parse(_synthetic(shape), shape)
+@pytest.mark.parametrize("container", amiga_savegame.CONTAINERS[:2],
+                         ids=lambda container: container.key)
+def test_each_measured_header_parses_without_game_data(container):
+    save = amiga_savegame.parse(_synthetic(container), container)
     assert (save.x, save.y, save.facing) == (3, 14, 2)
     assert save.wallset == ((1, 1), (2, 2), (0xFFFF, 0xFFFF))
     assert [char.name for char in save.characters] == ["ALPHA", "BETA"]
@@ -53,6 +53,17 @@ def test_each_measured_header_parses_without_game_data(shape):
 def test_the_two_first_record_offsets_are_the_engines_own():
     assert amiga_savegame.CURSE.party_at == 0x3219
     assert amiga_savegame.SILVER_BLADES.party_at == 0x1417
+
+
+def test_pool_container_uses_its_independent_fixed_party_table_offset():
+    container = amiga_savegame.POOL_OF_RADIANCE
+    assert container.fixed_size == 13141
+    assert container.party_at == 12813
+    data = bytearray(container.fixed_size)
+    data[container.count_at] = 1
+    data[container.party_at:container.party_at + 8] = b"CHRDATA1"
+    parsed = amiga_savegame.parse(data, container)
+    assert parsed.names[:2] == ("CHRDATA1", "")
 
 
 def test_a_fresh_disk_has_only_the_save_drawer_and_slot():
@@ -119,39 +130,14 @@ def test_an_engine_written_save_round_trips_square_clock_and_order(
     assert landed_state.wallset == state.wallset
 
 
-def test_the_library_and_the_tool_state_the_same_container():
-    """`goldbox/amiga_savegame.py` and `tools/amigasavegame.py` each declare
-    the container's byte-level numbers, and two independent statements of the
-    same offsets drift silently.
-
-    The plan recorded on #512 is to move the map into the library so the tool
-    imports it rather than restating it -- the tool's own `SaveShape` is the
-    richer of the two, carrying Pool of Radiance, the square struct field by
-    field and the note beside each field, so the move is a real piece of work
-    rather than a rename.  Until somebody does it, this is what makes the
-    drift loud: every number both modules hold has to agree.
-    """
-    from tools import amigasavegame as tool
+def test_the_diagnostic_tool_imports_the_library_containers():
+    """The checker uses the production map, while its parse evidence stays separate."""
+    from tools import amigasavecheck as tool
 
     assert amiga_savegame.VM_BYTES == tool.VM_BYTES
     assert amiga_savegame.VM_BASE == tool.VM_BASE
     assert amiga_savegame.ECL_BYTES == tool.ECL_BYTES
-    for mine, theirs in ((amiga_savegame.CURSE, tool.CURSE),
-                         (amiga_savegame.SILVER_BLADES, tool.SILVER_BLADES)):
-        assert mine.title == theirs.title
-        assert mine.ecl_bytes == theirs.ecl_bytes
-        assert mine.square_bytes == theirs.square_bytes
-        assert mine.square_at == theirs.square_at
-        assert mine.first_mode_at == theirs.first_mode_at
-        assert mine.mode_at == theirs.mode_at
-        assert mine.wallset_at == theirs.wallset_at
-        assert mine.count_at == theirs.count_at
-        assert mine.party_at == theirs.party_at
-        assert mine.x_bytes == theirs.square[0].size
-        assert mine.deltas is theirs.record_shape
-        # The library hardcodes the one-byte container-number header that the
-        # tool carries as `header_bytes`; a title that ever opened without it
-        # would make every offset above disagree, so pin the assumption too.
-        assert theirs.header_bytes == 1
-        assert theirs.wallset_table and theirs.count_bytes == 2
-        assert mine.word_offset(tool.VM_BASE) == theirs.vm_offset(tool.VM_BASE)
+    assert tool.CONTAINERS is amiga_savegame.CONTAINERS
+    assert tool.CURSE is amiga_savegame.CURSE
+    assert tool.SILVER_BLADES is amiga_savegame.SILVER_BLADES
+    assert tool.POOL_OF_RADIANCE is amiga_savegame.POOL_OF_RADIANCE

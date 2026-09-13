@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy an Amiga Pool of Radiance save slot into another slot on the disk.
 
-`goldbox.amiga_por.write_por_slot` writes a whole slot -- six characters, their
+`goldbox.amiga_savegame.write_por_slot` writes a whole slot -- six characters, their
 items and effects, the saved game pointed at those files, and `save/save`, the
 ten-byte array the picker reads -- and until this there was no way to run it
 outside the test suite.  It is what the emulator proof for
@@ -11,7 +11,7 @@ hand, so the game can be asked whether it offers it.
 
     tools/porslot.py work/por1.adf --from A --to F --out work/por1-F.adf
 
-The party is read back out of the disk through `goldbox.amiga_por.read_por_slot`
+The party is read back out of the disk through `goldbox.amiga_savegame.read_por_slot`
 and `goldbox.dos_codec.to_neutral`, so it goes through the same neutral record a
 converted party would, and anything that cannot cross is reported rather than
 dropped.
@@ -28,14 +28,14 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_por, amiga_port, dos_codec  # noqa: E402
+from goldbox import amiga_port, amiga_savegame, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 
 
 def read_slot(disk: AmigaDisk, slot: str):
     """The characters of one slot, as neutral records, and its saved game.
 
-    Reads through `goldbox.amiga_por.read_por_slot`, which reads the `.sav`,
+    Reads through `goldbox.amiga_savegame.read_por_slot`, which reads the `.sav`,
     `.itm` and `.spc` blocks straight off the disk -- nothing here is written
     to the host filesystem to read a slot.  `read_por_slot` answers
     `list[goldbox.dos_codec.DosCharacter]`, so each one is turned neutral with
@@ -43,7 +43,7 @@ def read_slot(disk: AmigaDisk, slot: str):
     characters, and for one with characters and no saved game.
     """
     letter = slot.upper()
-    characters, savegame = amiga_por.read_por_slot(disk, letter)
+    characters, savegame = amiga_savegame.read_por_slot(disk, letter)
     return [dos_codec.to_neutral(c) for c in characters], savegame
 
 
@@ -69,8 +69,8 @@ def main(argv: list[str] | None = None) -> int:
 
     disk = AmigaDisk.open(args.disk)
     print(f"Slot list before: "
-          f"{disk.read_file(amiga_por.POR_SLOT_LIST)!r} "
-          f"{amiga_por.read_slot_list(disk)}")
+          f"{disk.read_file(amiga_savegame.POR_SLOT_LIST)!r} "
+          f"{amiga_savegame.read_slot_list(disk)}")
 
     try:
         neutral, savegame = read_slot(disk, args.source)
@@ -82,13 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Read {len(neutral)} characters from slot {args.source.upper()}: "
           f"{', '.join(c.get('name') for c in neutral)}")
 
-    written = amiga_por.write_por_slot(disk, args.target, neutral, savegame)
+    written = amiga_savegame.write_por_slot(disk, args.target, neutral, savegame)
     print(f"Wrote {len(written)} files:")
     for path in written:
         print(f"  {path}")
     print(f"Slot list after:  "
-          f"{disk.read_file(amiga_por.POR_SLOT_LIST)!r} "
-          f"{amiga_por.read_slot_list(disk)}")
+          f"{disk.read_file(amiga_savegame.POR_SLOT_LIST)!r} "
+          f"{amiga_savegame.read_slot_list(disk)}")
     problems = disk.verify()
     if problems:
         raise SystemExit("The disk does not verify:\n  "

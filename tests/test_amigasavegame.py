@@ -20,8 +20,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import amiga_later, amiga_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-from tools import amigarecords, amigasavegame, amigasaves  # noqa: E402
-from tools.amigasavegame import (  # noqa: E402
+from tools import amigarecords, amigasaves  # noqa: E402
+from tools import amigasavecheck as amigasavegame  # noqa: E402
+from tools.amigasavecheck import (  # noqa: E402
     CURSE,
     POOL_OF_RADIANCE,
     SILVER_BLADES,
@@ -235,7 +236,7 @@ def test_the_embedded_party_is_the_signature_scans_party(specimens):
         save = parse(data, source=label)
         if save.shape.party != "records":
             continue
-        scanned = amiga_later.party_in_savegame(data, save.shape.record_shape)
+        scanned = amiga_later.party_in_savegame(data, save.shape.deltas)
         assert [c.name for c in save.characters] == [c.name for c in scanned]
         assert save.count == len(scanned) == save.word(0x503E)
         seen += 1

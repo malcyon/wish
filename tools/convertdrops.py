@@ -265,7 +265,7 @@ def sweep() -> int:
 
 def reach() -> int:
     """Which declared drop-list entry any registered direction can reach."""
-    from goldbox import amiga_later, amiga_por
+    from goldbox import amiga_later
     from goldbox.amiga_adf import AmigaDisk
 
     root = specimen_root()
@@ -281,7 +281,7 @@ def reach() -> int:
         else:
             disk = AmigaDisk.open(str(source.path))
             if source.key == c64_port.POOL_OF_RADIANCE.key:
-                raw, _savgam = amiga_por.read_por_slot(disk, source.slot)
+                raw, _savgam = amiga_savegame.read_por_slot(disk, source.slot)
                 party = [dos_codec.to_neutral(c) for c in raw]
             else:
                 save = amiga_savegame.read_slot(disk, source.slot, source.key)

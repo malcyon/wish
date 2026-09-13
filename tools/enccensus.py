@@ -58,10 +58,10 @@ from goldbox import dos_codec as gdos  # noqa: E402
 from goldbox import dos_port as dl  # noqa: E402
 from tools import (  # noqa: E402
     amigarecords,
-    amigasavegame,
     amigasaves,
     dostailcensus,
 )
+from tools import amigasavecheck as amigasavegame  # noqa: E402
 
 #: Where a DOS record might be, beyond the archives `dostailcensus` finds:
 #: this repository's `work/`, the specimen tree that outlives an emulator

@@ -18,7 +18,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from editor import convert
-from goldbox import amiga_por, c64_codec, dos_codec, neutral
+from goldbox import amiga_por, amiga_savegame, c64_codec, dos_codec, neutral
 from goldbox.neutral import NeutralCharacter
 from goldbox.portraits import PortraitTables
 from goldbox.record import CharacterRecord
@@ -124,8 +124,8 @@ def test_a_party_on_the_menus_first_head_still_switches_portraits_on(
     def fake_write_por(char, icon=None):
         return b"rec", b"itm", b"spc", neutral.Report()
 
-    monkeypatch.setattr(amiga_por, "new_por_savegame", fake_new_por_savegame)
-    monkeypatch.setattr(amiga_por, "make_por_save_disk", fake_make_por_save_disk)
+    monkeypatch.setattr(amiga_savegame, "new_por_savegame", fake_new_por_savegame)
+    monkeypatch.setattr(amiga_savegame, "make_por_save_disk", fake_make_por_save_disk)
     monkeypatch.setattr(amiga_por, "write_por", fake_write_por)
 
     party = []
@@ -155,8 +155,8 @@ def test_a_party_with_no_faces_at_all_still_switches_portraits_off(
     def fake_write_por(char, icon=None):
         return b"rec", b"itm", b"spc", neutral.Report()
 
-    monkeypatch.setattr(amiga_por, "new_por_savegame", fake_new_por_savegame)
-    monkeypatch.setattr(amiga_por, "make_por_save_disk", fake_make_por_save_disk)
+    monkeypatch.setattr(amiga_savegame, "new_por_savegame", fake_new_por_savegame)
+    monkeypatch.setattr(amiga_savegame, "make_por_save_disk", fake_make_por_save_disk)
     monkeypatch.setattr(amiga_por, "write_por", fake_write_por)
 
     party = [NeutralCharacter("C64") for _ in range(2)]

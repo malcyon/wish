@@ -602,7 +602,7 @@ all three container writers.
 |---|---|---|
 | C64 `SAVEDGAME0`/`SAVEDGAME1` | `goldbox.world_state.from_c64` | `goldbox.dos_codec.write_c64_save`, or `new_save_from` for a save owing nothing to another (#118 (Write a C64 save from nothing, so importing a DOS save needs no existing .d64)) |
 | DOS `SAVGAM<slot>.DAT` | `goldbox.world_state.from_dos` | `goldbox.dos_codec.write_dos_save_from`, or `new_dos_save_from` for a save owing nothing to another (#26 (Write a DOS save, not just read one)) |
-| Amiga `savgam<letter>.dat` | `goldbox.world_state.from_amiga` | `goldbox.amiga_por.por_savegame_writes`, or `new_por_savegame` for a save owing nothing to another |
+| Amiga `savgam<letter>.dat` | `goldbox.world_state.from_amiga` | `goldbox.amiga_savegame.por_savegame_writes`, or `new_por_savegame` for a save owing nothing to another |
 
 `goldbox.amiga_por.por_state_from_c64`, `.por_state_from_dos`, `.por_state_from_amiga`
 and `.read_por_state` are wrappers around the readers above kept for the
@@ -642,7 +642,7 @@ because the combat figure crosses through `icon_head`, `icon_body`,
 world-state fields and not ones a `NeutralCharacter` carries either. That
 stays true with an Amiga source too: the Amiga stores a character in DOS's
 own field order, big-endian ("What the two formats actually are" above), so
-`goldbox.amiga_por.read_por_slot` turns each record into a `DosCharacter`
+`goldbox.amiga_savegame.read_por_slot` turns each record into a `DosCharacter`
 directly (`to_dos_character`), never through a `WorldState` field; only the
 DOS-bound direction sends the same party through `dos.to_neutral` afterwards,
 the same conversion a DOS source has always used.

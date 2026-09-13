@@ -323,7 +323,7 @@ def test_the_pad_is_non_zero_only_in_the_first_three_slots_of_the_pool():
     saves = _later_savegames()
     if not saves:
         pytest.skip("no Amiga Curse or Silver Blades saved games here")
-    from tools import amigasavegame
+    from tools import amigasavecheck as amigasavegame
     nodes = 0
     non_zero: list[tuple[str, int, int]] = []
     for label, data in saves:
@@ -363,7 +363,7 @@ def test_the_curse_corpus_carries_no_such_byte_at_all():
              if label.endswith(".dat")]
     if not saves:
         pytest.skip("no Amiga Curse saved games here")
-    from tools import amigasavegame
+    from tools import amigasavecheck as amigasavegame
     nodes = [e for _, data in saves
              for ch in amigasavegame.parse(data).characters
              for e in ch.effects]
@@ -390,7 +390,7 @@ def test_the_engine_keeps_the_zero_a_converted_party_arrives_with():
     saves = _later_savegames(converted=True)
     if not saves:
         pytest.skip("needs the #384 converted Amiga Silver Blades specimens")
-    from tools import amigasavegame
+    from tools import amigasavecheck as amigasavegame
     nodes = [(label, ch.name.strip(), node)
              for label, data in saves
              for ch in amigasavegame.parse(data, source=label).characters

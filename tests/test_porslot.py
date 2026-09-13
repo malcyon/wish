@@ -6,7 +6,7 @@ You point `porslot.py` at a *Pool of Radiance* disk to put a slot our own
 code wrote in front of the game's picker, and until this its `read_slot`
 unpacked each character's `.sav`, `.itm` and `.spc` into a
 `tempfile.TemporaryDirectory` and read them back with `read_amiga_por`,
-because that reader wanted a path. `goldbox.amiga_por.read_por_slot` now reads
+because that reader wanted a path. `goldbox.amiga_savegame.read_por_slot` now reads
 the same three files straight off the disk's own blocks, and `read_slot`
 goes through that instead -- `#373 (tools/porslot.py reads an Amiga slot
 through a temporary directory, where goldbox.amiga.read_por_slot now reads
@@ -27,7 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from test_amigatoc64 import _pool_of_radiance_disk_1  # noqa: E402
 
-from goldbox import amiga_por, amiga_port, dos_codec  # noqa: E402
+from goldbox import amiga_port, amiga_savegame, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools import porslot  # noqa: E402
 
@@ -42,18 +42,18 @@ def test_read_slot_gives_what_read_por_slot_and_to_neutral_give(
         shipped_disk):
     """The same slot, the same six characters, the same saved game.
 
-    `read_slot` is now nothing but `amiga_por.read_por_slot` plus
+    `read_slot` is now nothing but `amiga_savegame.read_por_slot` plus
     `dos_codec.to_neutral` over each of its characters -- this pins that shape
     directly, so a hand rewrite that quietly changed what it composes would
     be caught here rather than only by a byte-for-byte comparison downstream.
     """
-    party, savegame = amiga_por.read_por_slot(shipped_disk, "A")
+    party, savegame = amiga_savegame.read_por_slot(shipped_disk, "A")
     want = [dos_codec.to_neutral(c) for c in party]
 
     got, got_savegame = porslot.read_slot(shipped_disk, "A")
 
     assert got_savegame == savegame
-    assert len(got) == len(want) == amiga_por.POR_PARTY_MAX
+    assert len(got) == len(want) == amiga_savegame.POR_PARTY_MAX
     for w, g in zip(want, got):
         assert g.get("name") == w.get("name")
         assert g.fields.keys() == w.fields.keys()
@@ -81,14 +81,14 @@ def test_read_slot_creates_no_temporary_directory(shipped_disk, monkeypatch):
     monkeypatch.setattr(tempfile, "mkdtemp", _boom)
 
     characters, savegame = porslot.read_slot(shipped_disk, "A")
-    assert len(characters) == amiga_por.POR_PARTY_MAX
-    assert len(savegame) == amiga_por.POR_SAVEGAME_SIZE
+    assert len(characters) == amiga_savegame.POR_PARTY_MAX
+    assert len(savegame) == amiga_savegame.POR_SAVEGAME_SIZE
 
 
 def test_read_slot_raises_amiga_record_error_for_an_absent_slot(
         shipped_disk):
     """Disk 1 ships slot A alone, so any other letter has no character
-    files. `amiga_por.read_por_slot` is what names the missing file; `read_slot`
+    files. `amiga_savegame.read_por_slot` is what names the missing file; `read_slot`
     no longer has its own `SystemExit` for this, so the same exception has
     to reach the caller."""
     with pytest.raises(amiga_port.AmigaRecordError):

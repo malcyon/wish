@@ -1539,10 +1539,9 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                          "for Pool of Radiance"),
     ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
                    "colours, a C64 character set no other port can draw. "
-                   "#320 (A C64 party converted to DOS arrives with no "
-                   "combat figure at all, because the table only runs one "
-                   "way) is the reverse table this needs and does not yet "
-                   "have"),
+                   "#383 and #422 convert it when the source title's own "
+                   "icon tables are supplied; without source disks there "
+                   "are no tables to supply (#482)"),
 )
 
 #: What a player reads for each name in :data:`READ_DROPPED` -- the read

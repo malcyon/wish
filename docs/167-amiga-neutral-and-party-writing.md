@@ -224,7 +224,7 @@ byte for byte the block that came in.
 
 ### The party region
 
-`tools/amigasavegame.py`'s `rebuild` writes a new party into a saved game. The
+`tools/amigasavecheck.py`'s `rebuild` writes a new party into a saved game. The
 party region is the **last** thing in a Curse or Silver Blades file — both
 specimens end exactly where the last block does — so the output is the header
 up to the count, the count as a `u16be`, and the blocks. Two bytes in front of

@@ -69,7 +69,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
-from goldbox import amiga_por, c64_port, dos_codec  # noqa: E402
+from goldbox import amiga_savegame, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools import dosdisk  # noqa: E402
@@ -81,12 +81,12 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 def read_slot(disk, slot: str):
     """One Amiga slot as the pair both destinations take.
 
-    `goldbox.amiga_por.read_por_slot` reads the party straight off the `.adf`
+    `goldbox.amiga_savegame.read_por_slot` reads the party straight off the `.adf`
     blocks and `read_por_state` the place and the clock.  Both destinations
     below start here, which is the whole of what they share.
     """
-    party, savgam = amiga_por.read_por_slot(disk, slot)
-    state = amiga_por.read_por_state(
+    party, savgam = amiga_savegame.read_por_slot(disk, slot)
+    state = amiga_savegame.read_por_state(
         savgam, source=f"{disk.volume_name} slot {slot.upper()}")
     return party, state
 
@@ -352,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     disk = AmigaDisk.open(args.adf)
-    present = amiga_por.por_slots_present(disk)
+    present = amiga_savegame.por_slots_present(disk)
     if not present:
         raise SystemExit(f"{args.adf} holds no Pool of Radiance save slot")
     slot = (args.slot or present[0]).upper()

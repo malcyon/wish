@@ -41,7 +41,7 @@ def _por_disk_1(tmp_path: pathlib.Path) -> pathlib.Path:
     where this title's is 13141.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from goldbox.amiga_por import POR_SAVEGAME_SIZE
+    from goldbox.amiga_savegame import POR_SAVEGAME_SIZE
     from tools import amigasaves, gamedisks
 
     if not gamedisks.candidates("amiga"):
@@ -101,13 +101,13 @@ def _read_slot(image: pathlib.Path, letter: str) -> list:
     """Every character of one slot on a disk, back through the reader."""
     import tempfile
 
-    from goldbox import amiga_por
+    from goldbox import amiga_por, amiga_savegame
     from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 
     disk = AmigaDisk.open(image)
     out = []
     with tempfile.TemporaryDirectory() as tmp:
-        for index in range(1, amiga_por.POR_PARTY_MAX + 1):
+        for index in range(1, amiga_savegame.POR_PARTY_MAX + 1):
             stem = f"/{amiga_por.POR_SAVE_DRAWER}/" \
                    f"{amiga_por.por_filename(letter, index, '')}"
             try:
@@ -180,7 +180,7 @@ def test_a_dos_character_reaches_an_amiga_slot_with_his_two_items(tmp_path):
 def test_the_slot_letter_lands_in_its_own_byte_of_the_picker_list(tmp_path):
     """`save/save` is an array indexed by the slot letter (#109), so a party
     written into `D` puts `D` at byte 3 and leaves bytes 1 and 2 alone."""
-    from goldbox import amiga_por
+    from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
     from tools import toamigapor
 
@@ -190,7 +190,7 @@ def test_the_slot_letter_lands_in_its_own_byte_of_the_picker_list(tmp_path):
     toamigapor.main([str(disk), "--to", "D", "--out", str(out),
                      "--data-disk", str(_por_disk_2(tmp_path)),
                      "--c64", str(party)])
-    listed = AmigaDisk.open(out).read_file(amiga_por.POR_SLOT_LIST)
+    listed = AmigaDisk.open(out).read_file(amiga_savegame.POR_SLOT_LIST)
     assert listed == b"A  D      "
 
 
@@ -248,7 +248,7 @@ def test_the_saved_game_is_the_partys_own_place_and_not_the_disks(tmp_path):
     converted party arrived on SSI's square at SSI's clock; this asserts it
     arrives on its own.
     """
-    from goldbox import amiga_por, c64_port, dos_savegame
+    from goldbox import amiga_savegame, c64_port, dos_savegame
     from goldbox.amiga_adf import AmigaDisk
     from goldbox.d64 import load_payload
     from tools import toamigapor
@@ -261,22 +261,22 @@ def test_the_saved_game_is_the_partys_own_place_and_not_the_disks(tmp_path):
 
     source = load_payload(str(party),
                           c64_port.by_key("pool-of-radiance").save_file)
-    state = amiga_por.por_state_from_c64(source, str(party))
+    state = amiga_savegame.por_state_from_c64(source, str(party))
     built = AmigaDisk.open(out).read_file("/savgamB.dat")
     shipped = AmigaDisk.open(disk).read_file("/save/savgamA.dat")
 
-    assert (built[amiga_por.POR_POS_X], built[amiga_por.POR_POS_Y],
-            built[amiga_por.POR_POS_FACING]) == (state.x, state.y,
+    assert (built[amiga_savegame.POR_POS_X], built[amiga_savegame.POR_POS_Y],
+            built[amiga_savegame.POR_POS_FACING]) == (state.x, state.y,
                                              state.facing * 2)
-    assert amiga_por.por_word(built, dos_savegame.SCRIPT) == state.area
+    assert amiga_savegame.por_word(built, dos_savegame.SCRIPT) == state.area
     for i, digit in enumerate(state.clock):
-        assert amiga_por.por_word(built, dos_savegame.CLOCK + i) == digit
+        assert amiga_savegame.por_word(built, dos_savegame.CLOCK + i) == digit
 
     # And it is not the disk's, which is the failure this replaces: a
     # difference here means the party moved rather than that a byte drifted.
-    assert built[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1] != \
-        shipped[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1]
-    start, end = amiga_por.POR_ECL_BUFFER
+    assert built[amiga_savegame.POR_POS_X:amiga_savegame.POR_POS_FACING + 1] != \
+        shipped[amiga_savegame.POR_POS_X:amiga_savegame.POR_POS_FACING + 1]
+    start, end = amiga_savegame.POR_ECL_BUFFER
     assert built[start:end] != shipped[start:end]
 
 
@@ -287,7 +287,7 @@ def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
     `tools/porslot.py` does between two Amiga slots -- so it stays, and the
     run says in words that the place is not the party's.
     """
-    from goldbox import amiga_por
+    from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
     from tools import toamigapor
 
@@ -300,8 +300,8 @@ def test_the_copied_container_is_still_reachable_and_says_so(tmp_path, capsys):
 
     built = AmigaDisk.open(out).read_file("/save/savgamB.dat")
     shipped = AmigaDisk.open(disk).read_file("/save/savgamA.dat")
-    assert built[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1] == \
-        shipped[amiga_por.POR_POS_X:amiga_por.POR_POS_FACING + 1]
+    assert built[amiga_savegame.POR_POS_X:amiga_savegame.POR_POS_FACING + 1] == \
+        shipped[amiga_savegame.POR_POS_X:amiga_savegame.POR_POS_FACING + 1]
 
 
 # ---------------------------------------------------------------------------

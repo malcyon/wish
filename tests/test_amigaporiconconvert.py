@@ -102,7 +102,7 @@ def test_c64_to_amiga_direction_recognises_the_sources_own_combat_icon(
     `(0, 0)` because `write_por` had no `icon` parameter to hand it to.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from goldbox.amiga_por import read_por_slot
+    from goldbox.amiga_savegame import read_por_slot
 
     save0, save1, parts = _six_icon_party()
     disk2 = _por_disk_2(tmp_path)
@@ -130,7 +130,7 @@ def test_c64_to_amiga_direction_with_no_icon_parts_still_converts(tmp_path):
     every figure is the game's own default and the drop line names it, as
     `C64ToDos`'s own fallback already documents for the DOS destination."""
     from goldbox.amiga_adf import AmigaDisk
-    from goldbox.amiga_por import read_por_slot
+    from goldbox.amiga_savegame import read_por_slot
 
     save0, save1, _parts = _six_icon_party()
     disk2 = _por_disk_2(tmp_path)
@@ -175,7 +175,7 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     banded mail -- the measurement `#424`'s own issue body cites.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from goldbox.amiga_por import read_por_slot
+    from goldbox.amiga_savegame import read_por_slot
 
     disk2 = _por_disk_2(tmp_path)
     folder = gamedata.specimen("por-item-granted")
@@ -216,7 +216,7 @@ def test_the_dialog_wires_the_sources_own_combat_icon_into_an_amiga_convert(
     test asks it for the DOS direction.
     """
     from goldbox.amiga_adf import AmigaDisk
-    from goldbox.amiga_por import read_por_slot
+    from goldbox.amiga_savegame import read_por_slot
     from goldbox.iconparts import IconParts
 
     where = gamedata.disk_dir()

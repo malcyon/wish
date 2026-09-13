@@ -1372,7 +1372,7 @@ is current, and that a disk carrying a complete slot the file does not name is
 offered only the slots it does name. `#36 (Write an Amiga disk image, not just the character files)`'s demonstration worked because that
 file was edited by hand as part of the experiment; nothing wrote it.
 
-`goldbox.amiga_por.write_por_slot(disk, slot, characters, savegame)` is what writes
+`goldbox.amiga_savegame.write_por_slot(disk, slot, characters, savegame)` is what writes
 one now, and the rule it enforces is **a slot that cannot be listed is not
 written**. The refusals run before anything touches the disk, and the list is
 read back afterwards, because a silent failure here is invisible until

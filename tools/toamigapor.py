@@ -61,7 +61,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_por  # noqa: E402
+from goldbox import amiga_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 
@@ -143,7 +143,7 @@ def build_savegame(args, party_size: int, portraits: bool):
     if args.c64:
         payload = load_payload(args.c64,
                                c64_port.by_key("pool-of-radiance").save_file)
-        state = amiga_por.por_state_from_c64(payload, args.c64)
+        state = amiga_savegame.por_state_from_c64(payload, args.c64)
     else:
         folder = pathlib.Path(args.dos)
         slot = args.dos_slot.upper()
@@ -151,8 +151,8 @@ def build_savegame(args, party_size: int, portraits: bool):
         if not savgam.exists():
             raise SystemExit(f"{savgam} is not there, and the saved game is "
                              f"where the party's square and clock live")
-        state = amiga_por.por_state_from_dos(savgam.read_bytes(), str(savgam))
-    return amiga_por.new_por_savegame(state, args.target, party_size,
+        state = amiga_savegame.por_state_from_dos(savgam.read_bytes(), str(savgam))
+    return amiga_savegame.new_por_savegame(state, args.target, party_size,
                                   read_ecl_dax(args), portraits=portraits)
 
 
@@ -238,9 +238,9 @@ def main(argv: list[str] | None = None) -> int:
     disk = AmigaDisk.open(args.disk)
     report = None
     if args.container:
-        container = amiga_por.por_savegame_filename(args.container.upper())
+        container = amiga_savegame.por_savegame_filename(args.container.upper())
         try:
-            savegame = disk.read_file(f"/{amiga_por.POR_SAVE_DRAWER}/{container}")
+            savegame = disk.read_file(f"/{amiga_savegame.POR_SAVE_DRAWER}/{container}")
         except AmigaDiskError:
             raise SystemExit(
                 f"{args.disk} has no {container}; --container names a slot "
@@ -279,11 +279,11 @@ def main(argv: list[str] | None = None) -> int:
         # A save disk is not a copy of anything: it is formatted here, and the
         # only byte of the input that reaches it is the saved game read above.
         out_path, drawer = args.save_disk, ""
-        disk = amiga_por.make_por_save_disk(args.target, party, savegame)
+        disk = amiga_savegame.make_por_save_disk(args.target, party, savegame)
         written = [p for p in _walk_names(disk)]
     else:
-        out_path, drawer = args.out, amiga_por.POR_SAVE_DRAWER
-        written = amiga_por.write_por_slot(disk, args.target, party, savegame)
+        out_path, drawer = args.out, amiga_savegame.POR_SAVE_DRAWER
+        written = amiga_savegame.write_por_slot(disk, args.target, party, savegame)
     problems = disk.verify()
     if problems:
         raise SystemExit("the new disk does not verify:\n  "
@@ -292,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     for path in written:
         print(f"  wrote {path}")
     print(f"{out_path}: volume {disk.volume_name!r}, slot list "
-          f"{amiga_por.read_slot_list(disk, drawer)}, "
+          f"{amiga_savegame.read_slot_list(disk, drawer)}, "
           f"{disk.free_count()} blocks free")
     if args.save_disk:
         print("  put it in any drive and answer PATH FOR SAVE with RETURN")

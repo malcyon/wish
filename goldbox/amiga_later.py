@@ -754,14 +754,13 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                        "two fields -- see icon_head's LATER_TRANSFORMED "
                        "entry for the other three combat-icon fields, which "
                        "this reader used to drop alongside it"),
-    ("portrait_head", "the sheet portrait's head: 0 in 21 of the 21 Amiga "
-                      "records on this machine -- 15 Curse and 6 Silver "
-                      "Blades -- and neither title's sheet draws a face on "
-                      "either port (#300), so there is no position to "
-                      "convert and none to lose. The DOS reader says the "
-                      "same of the same two titles in its own TRANSFORMED "
-                      "entry: a title whose sheet draws no face has no "
-                      "creation menu to convert a position through"),
+    ("portrait_head", "the sheet portrait's head: Pool of Radiance's Amiga "
+                      "creation menu has been read, but neither later "
+                      "title's has. 0 in 21 of the 21 Amiga records on this "
+                      "machine -- 15 Curse and 6 Silver Blades -- and "
+                      "neither title's sheet draws a face on either port "
+                      "(#300), so there is no position to convert or menu "
+                      "to read until either title draws one"),
     ("portrait_body", "see portrait_head; the body half of the same pair, "
                       "0 in the same 21 of 21"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "

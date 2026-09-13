@@ -50,7 +50,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import amiga_later, amiga_port, dos_codec, dos_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
-from tools import amigalaterwrite, amigasavegame  # noqa: E402
+from tools import amigalaterwrite  # noqa: E402
+from tools import amigasavecheck as amigasavegame  # noqa: E402
 
 SAVE_DRAWER = amigalaterwrite.SAVE_DRAWER
 SUFFIXES = amigalaterwrite.SUFFIXES

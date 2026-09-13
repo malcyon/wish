@@ -125,7 +125,7 @@ title's shift map — and never by whatever happened to differ.
 
 **Every block came back the length it went in**, and so did every file: 8073
 against 8073 and 15717 against 15717, with the same six people in the same
-order and the same item and effect counts. `tools/amigasavegame.py`'s every
+order and the same item and effect counts. `tools/amigasavecheck.py`'s every
 internal check is clean on all three engine-written files, `rebuild(parse(f))
 == f` included.
 

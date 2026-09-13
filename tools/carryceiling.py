@@ -469,7 +469,7 @@ def amiga_rows(specimen_grades: dict[str, str], problems: list[str]):
 def _amiga_specimen(path, specimen_grades, problems):
     """One Amiga file out of the specimen tree, whatever shape it is."""
     from goldbox import amiga_later, amiga_por
-    from tools import amigasavegame
+    from tools import amigasavecheck as amigasavegame
     data = path.read_bytes()
     grade = _grade(path, specimen_grades)
     if len(data) == amiga_por.AMIGA_POR_RECORD_SIZE:
@@ -544,7 +544,7 @@ def _amiga_later_characters(data: bytes, what: str, label: str, problems):
     where the header ends: 12825 bytes for Curse, 5143 for Silver Blades.
     """
     from goldbox import amiga_later, amiga_port
-    from tools import amigasavegame
+    from tools import amigasavecheck as amigasavegame
     if what != "record":
         try:
             shape = amigasavegame.detect(data).record_shape

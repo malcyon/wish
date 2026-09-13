@@ -285,32 +285,32 @@ def from_amiga(savgam: bytes, source: str = "") -> WorldState:
     DOS save)` -- holds 5 in that slot for the same area 26 this reads 0
     for.  So this takes the same substitution `_resolve_dos_place` does.
     """
-    from . import amiga_por as _amiga
+    from . import amiga_savegame as _amiga
     from . import c64_port
     from . import dos_codec as _dos
 
-    area = _amiga.por_word(savgam, dos_savegame.SCRIPT)
-    outdoors = not _amiga.por_word(savgam, dos_savegame.INDOORS)
+    area = _amiga.word(savgam, dos_savegame.SCRIPT)
+    outdoors = not _amiga.word(savgam, dos_savegame.INDOORS)
     where = areas.area_in(area, c64_port.POOL_OF_RADIANCE.title)
     geo = (_dos._sqrdata_number(where.sqrdata)
            if outdoors and where is not None and where.sqrdata
-           else _amiga.por_word(savgam, dos_savegame.AREA))
+           else _amiga.word(savgam, dos_savegame.AREA))
     return WorldState(
         title=c64_port.POOL_OF_RADIANCE.title,
         area=area,
         geo=geo,
-        x=savgam[_amiga.POR_POS_X], y=savgam[_amiga.POR_POS_Y],
-        facing=savgam[_amiga.POR_POS_FACING] // dos_savegame.FACING_SCALE,
-        clock=tuple(_amiga.por_word(savgam, dos_savegame.CLOCK + i)
+        x=savgam[_amiga.POR_POSITION[0]], y=savgam[_amiga.POR_POSITION[1]],
+        facing=savgam[_amiga.POR_POSITION[2]] // dos_savegame.FACING_SCALE,
+        clock=tuple(_amiga.word(savgam, dos_savegame.CLOCK + i)
                     for i in range(dos_savegame.CLOCK_DIGITS)),
-        wallset=tuple(_amiga.por_word(savgam, _amiga.POR_WALLSET + i)
+        wallset=tuple(_amiga.word(savgam, _amiga.POR_WALLSET + i)
                      for i in range(3)),
-        flags=tuple(_amiga.por_word(savgam, dos_savegame.FLAGS_FIRST + i)
+        flags=tuple(_amiga.word(savgam, dos_savegame.FLAGS_FIRST + i)
                     for i in range(c64_save.POOL_OF_RADIANCE.quest_flags[1])),
-        scratch={a: _amiga.por_word(savgam, a) for a in _dos.SHARED_SCRATCH},
+        scratch={a: _amiga.word(savgam, a) for a in _dos.SHARED_SCRATCH},
         outdoors=outdoors,
-        travel=(_amiga.por_word(savgam, dos_savegame.TRAVEL_X),
-                _amiga.por_word(savgam, dos_savegame.TRAVEL_Y)),
+        travel=(_amiga.word(savgam, dos_savegame.TRAVEL_X),
+                _amiga.word(savgam, dos_savegame.TRAVEL_Y)),
         set_out=True,
-        header={a: _amiga.por_word(savgam, a) for a in HEADER_ADDRESSES},
+        header={a: _amiga.word(savgam, a) for a in HEADER_ADDRESSES},
         source=source)

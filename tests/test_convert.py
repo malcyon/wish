@@ -2427,7 +2427,7 @@ def test_an_adf_that_holds_no_saved_game_is_refused_and_not_guessed_at(
 
 def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     """The bytes the dialog's Amiga row writes equal what
-    `tools/fromamigapor.py` writes, calling `goldbox.amiga_por.read_por_slot`,
+    `tools/fromamigapor.py` writes, calling `goldbox.amiga_savegame.read_por_slot`,
     `goldbox.dos_codec.new_save_from` and `goldbox.dos_codec.save_disk` directly for the
     same slot -- so `#353`'s VICE proof stands for this path too, which is
     the same argument `test_dos_to_c64_direction_is_the_transfer_test`
@@ -2435,7 +2435,7 @@ def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
 
     `icon`/`animate` are zero-filled: this is a round trip of our own code
     for one input, not a claim about what the player's C64 disks hold."""
-    from goldbox import amiga_por
+    from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
 
     icon, animate = bytes(36), bytes(852)
@@ -2449,8 +2449,8 @@ def test_amiga_to_c64_direction_is_the_transfer_test(amiga_adf, tmp_path):
     assert [p.name for p in written] == [f"PORSAVE{source.slot}.D64"]
 
     disk = AmigaDisk.open(str(amiga_adf))
-    party, savgam = amiga_por.read_por_slot(disk, source.slot)
-    state = amiga_por.read_por_state(savgam, str(amiga_adf))
+    party, savgam = amiga_savegame.read_por_slot(disk, source.slot)
+    state = amiga_savegame.read_por_state(savgam, str(amiga_adf))
     ref0, ref1, report = dos_codec.new_save_from(state, party, icon, animate)
     reference = dos_codec.save_disk(bytes(ref0), bytes(ref1))
     assert (destination / f"PORSAVE{source.slot}.D64").read_bytes() == \
@@ -2545,7 +2545,7 @@ def test_choosing_a_slot_converts_that_partys_own_place_not_the_first(
     container, so this is the written save agreeing with the source rather
     than one number compared with itself.
     """
-    from goldbox import amiga_por, world_state
+    from goldbox import amiga_savegame, world_state
     from goldbox.amiga_adf import AmigaDisk
 
     path = _outdoor_amiga_disk(tmp_path)
@@ -2564,8 +2564,8 @@ def test_choosing_a_slot_converts_that_partys_own_place_not_the_first(
         written = direction.write(rehearsal, tmp_path / "out")
 
         disk = AmigaDisk.open(str(path))
-        party, savgam = amiga_por.read_por_slot(disk, "C")
-        state = amiga_por.read_por_state(savgam, str(path))
+        party, savgam = amiga_savegame.read_por_slot(disk, "C")
+        state = amiga_savegame.read_por_state(savgam, str(path))
         ref0, ref1, report = dos_codec.new_save_from(state, party, icon, animate)
         reference = dos_codec.save_disk(bytes(ref0), bytes(ref1))
         assert written[0].read_bytes() == reference.to_bytes()
@@ -2586,7 +2586,7 @@ def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
     `AmigaToDos` takes `source.slot` directly (`AmigaToDos.rehearse`'s own
     docstring: "Two slots, and they are not the same letter"), so this is
     the other direction reading the row rather than a second mechanism."""
-    from goldbox import amiga_por
+    from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
 
     path = _outdoor_amiga_disk(tmp_path)
@@ -2603,7 +2603,7 @@ def test_changing_the_slot_carries_into_the_dos_direction_too(tmp_path):
         rehearsal = direction.rehearse(dialog.source, "A", _game_dir())
 
         disk = AmigaDisk.open(str(path))
-        party, _savgam = amiga_por.read_por_slot(disk, "C")
+        party, _savgam = amiga_savegame.read_por_slot(disk, "C")
         assert [c.fields["name"].value for c in rehearsal.characters] == \
             [c.name for c in party]
     finally:
@@ -3027,8 +3027,8 @@ def _por_amiga_disk_2(tmp_path):
 def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     """Every file on the `.adf` this direction writes equals, byte for
     byte, the same file on a disk built by calling `goldbox.dos_codec.c64_party`,
-    `goldbox.amiga_por.por_state_from_c64`, `goldbox.amiga_por.new_por_savegame` and
-    `goldbox.amiga_por.make_por_save_disk` by hand -- the same argument
+    `goldbox.amiga_savegame.por_state_from_c64`, `goldbox.amiga_savegame.new_por_savegame` and
+    `goldbox.amiga_savegame.make_por_save_disk` by hand -- the same argument
     `test_dos_to_c64_direction_is_the_transfer_test` makes for the DOS row.
 
     **File content, not the disk's raw bytes**: `goldbox.amiga_adf.
@@ -3047,7 +3047,7 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     """
     from test_toamigapor import _c64_specimen
 
-    from goldbox import amiga_por
+    from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
 
     disk2 = _por_amiga_disk_2(tmp_path)
@@ -3066,11 +3066,11 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     ecl = AmigaDisk.open(str(disk2)).read_file("/ecl.dax")
     party, _icons = dos_codec.c64_party(source.save0, source.save1,
                                   game=c64_port.by_key(dos_port.POOL_OF_RADIANCE.key))
-    state = amiga_por.por_state_from_c64(source.save0, str(source.path))
-    savegame, report = amiga_por.new_por_savegame(
+    state = amiga_savegame.por_state_from_c64(source.save0, str(source.path))
+    savegame, report = amiga_savegame.new_por_savegame(
         state, "A", len(party), ecl,
         portraits=any("portrait_head" in c for c in party))
-    reference = amiga_por.make_por_save_disk("A", party, savegame)
+    reference = amiga_savegame.make_por_save_disk("A", party, savegame)
     assert report.unwritten == []
 
     out_disk = AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
@@ -3080,7 +3080,7 @@ def test_c64_to_amiga_direction_is_the_transfer_test(tmp_path):
     for path in written_paths:
         assert out_disk.read_file(path) == reference.read_file(path), path
 
-    slot_party, _savgam = amiga_por.read_por_slot(out_disk, "A")
+    slot_party, _savgam = amiga_savegame.read_por_slot(out_disk, "A")
     names = [c.name for c in slot_party]
     assert names[0] == "BRUTUS"
     assert names[-1] == "MALCYON"
@@ -3093,7 +3093,7 @@ def test_dos_to_amiga_direction_is_the_transfer_test(tmp_path):
     letter -- D, not A -- and the built saved game carries THRENDER GRONE's
     own square and clock rather than SSI's, `#316`'s whole point at the
     level a player would notice it."""
-    from goldbox import amiga_por
+    from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
 
     disk2 = _por_amiga_disk_2(tmp_path)
@@ -3110,13 +3110,13 @@ def test_dos_to_amiga_direction_is_the_transfer_test(tmp_path):
     direction.write(rehearsal, out_dir)
 
     out_disk = AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME))
-    assert amiga_por.read_slot_list(out_disk, drawer="") == ["D"]
+    assert amiga_savegame.read_slot_list(out_disk, drawer="") == ["D"]
 
     savgam_path = folder / "SAVGAMD.DAT"
-    state = amiga_por.por_state_from_dos(savgam_path.read_bytes(), str(savgam_path))
+    state = amiga_savegame.por_state_from_dos(savgam_path.read_bytes(), str(savgam_path))
     built = out_disk.read_file("/savgamD.dat")
-    assert (built[amiga_por.POR_POS_X], built[amiga_por.POR_POS_Y],
-           built[amiga_por.POR_POS_FACING]) == (state.x, state.y, state.facing * 2)
+    assert (built[amiga_savegame.POR_POS_X], built[amiga_savegame.POR_POS_Y],
+           built[amiga_savegame.POR_POS_FACING]) == (state.x, state.y, state.facing * 2)
 
 
 # ---------------------------------------------------------------------------

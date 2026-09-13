@@ -18,7 +18,7 @@ right, and nothing in the writer has to change.
 | slot | party | who wrote it |
 |---|---|---|
 | `A` | GARWAN and five others | the game, shipped on disk 1 |
-| `F` | the same six, Amiga -> neutral -> Amiga | `goldbox.amiga_por.write_por_slot`, for `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)` on 2026-09-01 |
+| `F` | the same six, Amiga -> neutral -> Amiga | `goldbox.amiga_savegame.write_por_slot`, for `#109 (A save slot written onto an Amiga disk is not offered by the game's picker)` on 2026-09-01 |
 | `B` | MALCYON, TWIN, ROLAND, LADY KATHERINE, MAGNUS, BRUTUS | `tools/toamigapor.py --c64`, from the C64 specimen `por-party-twin-pair` |
 | `C` | the same six | **the engine**, saved from slot `B` in camp |
 | `D` | THRENDER GRONE | `tools/toamigapor.py --dos`, from the DOS specimen `por-item-granted` |

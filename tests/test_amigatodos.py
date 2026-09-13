@@ -35,7 +35,13 @@ import pytest
 from test_dossave import _save_dir, needs_dos_saves
 
 from editor import convert
-from goldbox import amiga_por, dos_codec, dos_port, dos_savegame, world_state
+from goldbox import (
+    amiga_savegame,
+    dos_codec,
+    dos_port,
+    dos_savegame,
+    world_state,
+)
 from goldbox.amiga_adf import AmigaDisk
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -162,7 +168,7 @@ def test_the_dos_slot_written_is_not_the_amiga_slot_read(one_character_adf,
     `source.slot` -- E on this disk -- and the DOS slot is what the dialog
     passes, always `A` for a fresh folder. Reading the wrong one converts
     whichever Amiga slot happens to share the DOS letter, which on this disk
-    is a different party: slot D is `goldbox.amiga_por.write_por_slot`'s own
+    is a different party: slot D is `goldbox.amiga_savegame.write_por_slot`'s own
     output and slot E is the Amiga engine's resave of it."""
     source = convert.Source.detect(one_character_adf)
     assert source.slot == "D"          # the first slot the disk holds files for
@@ -176,7 +182,7 @@ def test_the_dos_slot_written_is_not_the_amiga_slot_read(one_character_adf,
         "CHRDATA1.ITM", "CHRDATA1.SAV", "CHRDATA1.SPC", "SAVGAMA.DAT"]
     # Slot E's own party, not slot D's: one character, and the name written
     # is his.
-    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(one_character_adf)), "E")
+    party, _ = amiga_savegame.read_por_slot(AmigaDisk.open(str(one_character_adf)), "E")
     assert len(party) == 1
     written_name = dos_codec.DosCharacter(
         (tmp_path / "out" / "CHRDATA1.SAV").read_bytes()).name
@@ -206,7 +212,7 @@ def test_a_party_of_one_writes_one_record_and_no_others(one_character_adf,
     savgam = (tmp_path / "out" / "SAVGAMA.DAT").read_bytes()
     assert dos_savegame.party_size(savgam) == 1
     # **All six names, and the party size is what says how many are read.**
-    # The two ports part company here: `goldbox.amiga_por.retarget_savegame`
+    # The two ports part company here: `goldbox.amiga_savegame.retarget_savegame`
     # fills the Amiga table only as far as the party goes, and
     # `goldbox.dos_savegame.put_character_files` writes six because no DOS
     # specimen shows what a blanked entry does. So converting a party of one
@@ -273,8 +279,8 @@ def test_the_place_and_the_clock_are_the_amiga_saved_game_s(shipped_adf,
     direction.write(rehearsal, tmp_path / "out")
 
     disk = AmigaDisk.open(str(shipped_adf))
-    _, savgam = amiga_por.read_por_slot(disk, source.slot)
-    want = amiga_por.read_por_state(savgam, source=str(shipped_adf))
+    _, savgam = amiga_savegame.read_por_slot(disk, source.slot)
+    want = amiga_savegame.read_por_state(savgam, source=str(shipped_adf))
     got = world_state.from_dos(
         (tmp_path / "out" / "SAVGAMA.DAT").read_bytes(), source="written")
 
@@ -314,7 +320,7 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
 
     allowed = {"field_83_87", "unnamed_0ab", "item_chain", "hands_used",
                "heap_104"}
-    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(shipped_adf)),
+    party, _ = amiga_savegame.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
     assert len(party) == 6
     for n, char in enumerate(party, 1):
@@ -357,7 +363,7 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
     rehearsal = direction.rehearse(source, "A", _game_dir())
     direction.write(rehearsal, tmp_path / "out")
 
-    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(shipped_adf)),
+    party, _ = amiga_savegame.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
     heads, bodies = set(), set()
     for n, char in enumerate(party, 1):
@@ -387,7 +393,7 @@ def test_the_party_is_written_in_the_amiga_s_own_order(shipped_adf, tmp_path):
     rehearsal = direction.rehearse(source, "A", _game_dir())
     direction.write(rehearsal, tmp_path / "out")
 
-    party, _ = amiga_por.read_por_slot(AmigaDisk.open(str(shipped_adf)),
+    party, _ = amiga_savegame.read_por_slot(AmigaDisk.open(str(shipped_adf)),
                                    source.slot)
     written = [dos_codec.DosCharacter(
         (tmp_path / "out" / f"CHRDATA{n}.SAV").read_bytes()).name

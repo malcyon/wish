@@ -6,7 +6,7 @@
     tools/amigacontainercheck.py --data-disk pool2.adf --game-disk pool1.adf
     tools/amigacontainercheck.py --out work/issue316/container.md
 
-`goldbox.amiga_por.new_por_savegame` builds all 13,141 bytes of a
+`goldbox.amiga_savegame.new_por_savegame` builds all 13,141 bytes of a
 `savgam<letter>.dat` from the save being converted, so a converted party
 arrives on its own square at its own clock rather than on the one SSI shipped
 (`#316 (Write the Amiga Pool of Radiance saved game from the source save, so a
@@ -21,7 +21,7 @@ own source, 1 when one does not, 2 when there was nothing to check.
 result means anything.**  :func:`c64_fields` reads the C64 payload *by hand*
 at the ECL addresses the C64 engine uses -- offset = address minus
 :data:`ECL_BASE` -- and :func:`container_fields` reads the built file at fixed
-numeric offsets, big-endian, rather than through `goldbox.amiga_por.por_word` or
+numeric offsets, big-endian, rather than through `goldbox.amiga_savegame.por_word` or
 `goldbox.world_state`.  A later editor tidying either of them into a call to
 the library being checked would leave a tool that agrees with the writer by
 construction and cannot fail: `tests/test_amigacontainercheck.py` asserts the
@@ -53,7 +53,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import amiga_por, c64_port  # noqa: E402
+from goldbox import amiga_savegame, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 
@@ -141,7 +141,7 @@ def container_fields(save: bytes) -> dict:
 
     Read at fixed offsets, deliberately: the variable array is big-endian
     words at `2 * (address - ECL_BASE)` and the square is three plain bytes at
-    the tail.  Nothing here calls `goldbox.amiga_por.por_word`.
+    the tail.  Nothing here calls `goldbox.amiga_savegame.por_word`.
     """
     if len(save) != CONTAINER_SIZE:
         raise ValueError(
@@ -293,8 +293,8 @@ def build(payload: bytes, source: str, ecl_dax: bytes, slot: str,
           count: int) -> tuple[bytes, object]:
     """The container `goldbox.amiga_por` builds for this save. The thing under
     test, and the only call into it."""
-    state = amiga_por.por_state_from_c64(payload, source)
-    return amiga_por.new_por_savegame(state, slot, count, ecl_dax)
+    state = amiga_savegame.por_state_from_c64(payload, source)
+    return amiga_savegame.new_por_savegame(state, slot, count, ecl_dax)
 
 
 # ---------------------------------------------------------------------------
