@@ -2939,9 +2939,24 @@ def test_a_later_amiga_companion_reaches_npc_and_its_control_byte():
         assert out.get("npc") is True, shape.key
         assert out.get("npc_control_byte") == 0xFF, shape.key
 
-        # The other bytes are the engine's measured default, so the reader
-        # reports no loss for this run after extracting the control byte.
-        assert not [d for d in out.dropped if "Treasure share" in d]
+        # The player-facing `field_83_87` line used to say the whole run
+        # "makes no difference to the character sheet", which stopped being
+        # true the moment the control byte above started reaching `npc` --
+        # `editor/window.py` and `editor/roster.py` draw a companion
+        # differently.  It still fires, for the one byte that remains
+        # genuinely unconverted (the treasure share), and must not claim the
+        # control byte is among the bytes that make no difference.
+        #
+        # Deleted on 2026-09-13 when the whole run was reclassified a
+        # constant, and restored the same day: the run is not constant --
+        # 21 Amiga records hold four different values of it, and MALACHITE's
+        # share byte is measured turning from 0 into 1 on the way to a DOS
+        # record.  `.claude/rules/conversions.md`: "an entry leaves a drop
+        # list when the field converts, never when it stops being counted."
+        f83_lines = [d for d in out.dropped if d.startswith("Treasure share")]
+        assert f83_lines, (shape.key, out.dropped)
+        assert "make no difference" not in f83_lines[0]
+        assert "control" not in f83_lines[0].lower()
 
 
 def test_a_later_amiga_identity_byte_reaches_the_neutral_record():
@@ -3021,7 +3036,7 @@ def test_no_drop_line_of_a_later_read_carries_developer_detail():
     seen = 0
     for char in _later_parties():
         out = amiga_por.to_neutral(char)
-        assert not out.dropped, (char.name, out.dropped)
+        assert out.dropped, char.name
         for line in out.dropped + out.warnings:
             assert not hex_offset.search(line), (char.name, line)
             assert not bare_issue.search(line), (char.name, line)

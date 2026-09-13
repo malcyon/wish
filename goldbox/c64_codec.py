@@ -716,9 +716,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set(c64_name, v.value)
         emit(v, c64_name, dst.offset, dst.size)
 
-    # The C64 stores no encumbrance total.  Its own runtime recomputes what
-    # it needs from the inventory, so consuming the source value here records
-    # a derived disposition without turning bookkeeping into a reported loss.
+    # The C64 record has no encumbrance field and the engine works the total
+    # out again whenever it draws a sheet, so taking the value here and
+    # writing it nowhere is the honest disposition rather than a silencing:
+    # `DERIVED` below has the run that demonstrated it.  `use`, not `get`, so
+    # the field counts as consumed and `Writer.finish` does not report a loss
+    # for a number the destination computes better than we could copy it.
     use("encumbrance")
 
     # -- saving throws: overwrite `DIRECT`'s plain-row copy for a sturdy race
@@ -1451,9 +1454,31 @@ DROPPED: tuple[tuple[str, str], ...] = (
                     "is recomputed rather than copied"),
 )
 
+#: Neutral fields the C64 **recomputes for itself**, so writing them would be
+#: pointless rather than impossible.  Reported by `field_disposition` as
+#: `derived:` rather than `dropped:`, which
+#: `.claude/rules/conversions.md` allows only where the derivation has been
+#: *"demonstrated in the running game"* -- so each row names the run, the way
+#: `goldbox.dos_codec.DERIVED`'s third column does.
+#:
+#: `encumbrance` moved here from :data:`DROPPED` on 2026-09-13, when an Amiga
+#: Curse or Silver Blades source became the first reader to set the neutral
+#: field at all and the line started reaching a report.  It is the
+#: destination's own arithmetic and not a loss, and that rests on a
+#: measurement rather than on the move being convenient.
 DERIVED: tuple[tuple[str, str], ...] = (
-    ("encumbrance", "the C64 has no stored total and recomputes what it needs "
-                    "from the inventory"),
+    ("encumbrance", "the C64 record has no encumbrance field -- `encumbrance` "
+                    "is in no C64 layout -- and the engine works the total out "
+                    "again from the seven purses and the item weights the "
+                    "record does keep, each item's own two bytes at +8 of its "
+                    "sixteen, every time it draws a character sheet. Measured "
+                    "in the running C64 game, both later titles, "
+                    "`docs/139-per-title-validation.md` row A8: the sheet drew "
+                    "ENCUMBRANCE 16953 for Curse (16808 of coins plus 145 "
+                    "tenths of a pound of items) and 16808 for Silver Blades, "
+                    "both predicted before the boot from the purses staged "
+                    "through the editor. Money and items both convert, so the "
+                    "destination has everything the sum needs"),
 )
 
 

@@ -282,14 +282,26 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
 def test_a_field_the_target_cannot_represent_is_reported():
     """Never dropped silently: a field this writer takes nothing from.
 
-    `encumbrance` is the example rather than `portrait_head`: since #57 the
-    C64 writer copies a `portrait_head` it is given, so a field genuinely
-    left untaken is one still in `c64_codec.DROPPED`.
+    The example is whatever is still in `c64_codec.DROPPED`, which is how a
+    writer declares the fields it takes nothing from -- `portrait_head` left
+    that list in #57, when the C64 writer learnt to copy one it is given, and
+    `encumbrance` left it on 2026-09-13 for `c64_codec.DERIVED`, the C64
+    recomputing the total from the purses and item weights while it draws a
+    sheet.  Naming the list rather than a field keeps the test about the
+    mechanism: `Writer.finish` composes a line for a field the record carries
+    and the writer never took.
     """
-    char = _filled()
-    char.set("encumbrance", 42, "made up")
-    _, rep = c64_codec.write(char)
-    assert any(d.startswith("encumbrance:") for d in rep.dropped)
+    names = [n for n, _ in c64_codec.DROPPED]
+    assert names, ("c64_codec.DROPPED is empty, which is the day this "
+                   "project is working towards -- give this test a made-up "
+                   "entry to write against rather than deleting it, because "
+                   "what it checks is Writer.finish and not the list")
+    for name in names:
+        char = _filled()
+        char.set(name, 42, "made up")
+        _, rep = c64_codec.write(char)
+        assert any(d.startswith(f"{name}:") for d in rep.dropped), (
+            name, rep.dropped)
 
 
 def test_a_class_the_c64_has_no_level_slot_for_is_silent():

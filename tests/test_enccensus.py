@@ -121,8 +121,18 @@ def test_the_finder_keeps_the_same_exclusions_as_the_field_census(tmp_path):
 def test_the_c64_record_has_no_encumbrance_to_check():
     """No C64 save can fail this identity, so no C64 save can be judged by
     it.  If the field is ever located on the C64 this test goes red and the
-    census gains a third port."""
-    assert dict(c64_codec.DROPPED)["encumbrance"].startswith("derived")
+    census gains a third port.
+
+    The layout assertion is the tripwire and always was.  The other one
+    followed `encumbrance` from `c64_codec.DROPPED` to `c64_codec.DERIVED`
+    on 2026-09-13: the C64 has nothing to store, and its engine recomputes
+    the total from the purses and item weights while drawing a sheet --
+    measured in the running game on both later titles,
+    `docs/139-per-title-validation.md` row A8.  A conversion that reported a
+    loss there was reporting a number the destination computes for itself.
+    """
+    assert "encumbrance" in dict(c64_codec.DERIVED)
+    assert "encumbrance" not in dict(c64_codec.DROPPED)
     assert "encumbrance" not in layout.FIELDS_BY_NAME
 
 

@@ -729,8 +729,11 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 #: Fields that need an explicit disposition beyond the copies and transforms
-#: above.  The categories below separate values rebuilt by the destination
-#: from measured constants; neither is a player-data loss.
+#: above.  The three tables built from it separate values the destination
+#: rebuilds for itself, values every record anybody has read holds alike, and
+#: what is still a loss.  `unnamed_0ab` was on this table until 2026-09-13 and
+#: is not on it now: it is copied into the neutral field of the same name, so
+#: it belongs with the direct copies rather than with the dispositions.
 LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
     ("item_chain", "live heap state: the head of the Amiga's item list, "
                    "which the loader overwrites with the address it "
@@ -741,7 +744,6 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
     ("heap_104", "live heap pointers -- two longwords the saved game's own "
                  "loader clears outright"),
     ("hands_used", "live combat state"),
-    ("unnamed_0ab", "one unattributed byte, stable per character"),
     ("strength_bonus", "a boolean on DOS, derived from strength"),
     ("icon_dimension", "the combat icon's size: 1 for every player character "
                        "(#396, docs/199-amiga-combat-icons.md), and the C64 "
@@ -749,12 +751,16 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                        "two fields -- see icon_head's LATER_TRANSFORMED "
                        "entry for the other three combat-icon fields, which "
                        "this reader used to drop alongside it"),
-    ("portrait_head", "the sheet portrait's head: a position in the Amiga's "
-                      "own creation menu, and nobody has read that menu's "
-                      "tables out of the Amiga executables. Reading them is "
-                      "what would let the portrait cross, exactly as it did "
-                      "for DOS"),
-    ("portrait_body", "see portrait_head; the body half of the same pair"),
+    ("portrait_head", "the sheet portrait's head: 0 in 21 of the 21 Amiga "
+                      "records on this machine -- 15 Curse and 6 Silver "
+                      "Blades -- and neither title's sheet draws a face on "
+                      "either port (#300), so there is no position to "
+                      "convert and none to lose. The DOS reader says the "
+                      "same of the same two titles in its own TRANSFORMED "
+                      "entry: a title whose sheet draws no face has no "
+                      "creation menu to convert a position through"),
+    ("portrait_body", "see portrait_head; the body half of the same pair, "
+                      "0 in the same 21 of 21"),
     ("field_83_87", "five bytes in Curse and four in Silver Blades that DOS "
                     "calls unknown, one of which is the share of treasure a "
                     "character takes. **Not zero in a record the Amiga "
@@ -764,18 +770,33 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                     "six Silver Blades ones hold 00 01 00 00, which is "
                     "`goldbox.dos_codec.FIELD_83_87` byte for byte. The eleven "
                     ".guy pregens and Silver Blades' MALACHITE hold zeros, "
-                    "and they were what the old reading rested on. The "
-                    "reader still drops the whole run and `write_later` "
-                    "writes the DOS constant, which is what the engine "
-                    "writes. **Only one of the remaining bytes is genuinely "
-                    "homeless**: the neutral record has no field for a "
-                    "treasure share, and no specimen has separated it from "
-                    "the run's other constant bytes. The control byte -- "
-                    "byte 1 of Curse's run, byte 0 of Silver Blades' -- is "
-                    "no longer one of them: `to_neutral_later` reads it into "
-                    "`npc` and `npc_control_byte` itself now, the same index "
+                    "and they were what the old reading rested on. **Nor is "
+                    "the run a constant**, which this table claimed for one "
+                    "day on 2026-09-13: over the 21 Amiga records on this "
+                    "machine the share byte -- index 2 of Curse's run, index "
+                    "1 of Silver Blades' -- is 1 in 9 and 0 in 12, and "
+                    "MALACHITE holds 0 in the same engine-written saved game "
+                    "in which his five party-mates hold 1. `write_later` "
+                    "reaches `goldbox.dos_codec.write`, whose `write_constants` "
+                    "puts `FIELD_83_87` back whatever the source held, so "
+                    "MALACHITE converts to 00 01 00 00 and his own 0 is gone: "
+                    "measured 2026-09-13, source 00 00 00 00 in and 00 01 00 "
+                    "00 out. The DOS side says the same of itself and keeps "
+                    "the byte off `WRITE_DEFAULTS` on purpose, because "
+                    "masking it *\"would hide MALACHITE\'s real difference "
+                    "rather than convert it\"*. **So one byte of the run is "
+                    "genuinely homeless**: the neutral record has no field "
+                    "for a treasure share. The control byte -- index 1 of "
+                    "Curse's run, index 0 of Silver Blades' -- is not that "
+                    "byte: `to_neutral_later` reads it into `npc` and "
+                    "`npc_control_byte` itself now, the same index "
                     "`goldbox.dos_codec.to_neutral` computes (#386, closed "
-                    "2026-09-07)"),
+                    "2026-09-07). What would remove this entry: a neutral "
+                    "field for the share, taken from that one index and "
+                    "written back by all three destination writers -- the "
+                    "C64's own home for it is 0x0FA, PROBABLE, "
+                    "docs/195-three-dos-record-bytes-named-from-the-"
+                    "overlays.md -- which is #529"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
                                      "array, which no character of either "
                                      "port sets a byte of and no class has "
@@ -801,17 +822,33 @@ LATER_DERIVED: tuple[tuple[str, str], ...] = tuple(
         "item_chain", "item_count", "effect_chain", "heap_104",
         "hands_used", "strength_bonus", "paladin_cures"))
 
-#: Values measured as fixed across the 70 engine-written character instances
-#: audited for #512.  `field_83_87`'s NPC control byte is converted separately;
-#: the rest of the run is the engine's measured default.
+#: Values measured as fixed across every Amiga record of these two titles
+#: this project can read -- 15 Curse and 6 Silver Blades, plus the 70
+#: engine-written instances audited for #512, which repeat characters across
+#: resaves.  A field belongs here when putting the one measured value back
+#: loses nothing, and `field_83_87` is **not** one of them: the 21 records
+#: hold four different runs between them.
 LATER_CONSTANTS: tuple[tuple[str, str], ...] = tuple(
     (name, _LATER_ACCOUNT[name]) for name in (
-        "icon_dimension", "portrait_head", "portrait_body", "field_83_87",
-        "spells_castable_unattributed", "turn_class"))
+        "portrait_head", "portrait_body", "spells_castable_unattributed"))
 
-#: There is no remaining player-visible loss.  `unnamed_0ab` now has the
-#: neutral field that already serves DOS and the C64.
-LATER_DROPPED: tuple[tuple[str, str], ...] = ()
+#: What the read still leaves behind, and why.  Every one is named here: a
+#: drop that nobody counts is what `.claude/rules/conversions.md` forbids --
+#: *"an entry leaves a drop list when the field converts, never when it stops
+#: being counted"*.
+#:
+#: All three were moved onto :data:`LATER_CONSTANTS` on 2026-09-13 and moved
+#: back the same day.  `field_83_87` because the run is not constant and the
+#: writer's own is measured overwriting MALACHITE's share byte;
+#: `icon_dimension` and `turn_class` because `goldbox.dos_codec.DROPPED`
+#: keeps the same two fields, for the same two reasons, and says in its own
+#: comment that silencing them was an agent's judgement Donald took back on
+#: 2026-09-06 -- *"shown until he rules on it himself"*.  Neither of those two
+#: has a line in :data:`LATER_DROPPED_PLAYER_TEXT`, and neither did before:
+#: being counted here and saying nothing to a reader are different questions.
+LATER_DROPPED: tuple[tuple[str, str], ...] = tuple(
+    (name, _LATER_ACCOUNT[name]) for name in (
+        "icon_dimension", "field_83_87", "turn_class"))
 
 #: The plain-English half of `LATER_DROPPED`, and the only one that reaches
 #: the report.  It is read in the debug log and in a `--report` printout
@@ -826,7 +863,26 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = ()
 #: entry here is a drop the report stays silent about; only the fields whose
 #: loss a player could notice have one, which is the same line
 #: `goldbox/dos_codec.py` draws with `UNREPORTED_DROPS`.
-LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {}
+LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
+    # icon_head, icon_body and icon_colours came off this table on
+    # 2026-09-07 (#396, #319): the combat icon is DOS's own art, DOS's own
+    # numbering and DOS's own colour pairs, and converts rather than drops.
+    # icon_dimension stays on `LATER_DROPPED` -- the C64 has one size byte
+    # where the Amiga keeps two -- but carries no line here, matching
+    # Donald's ruling on the identical DOS line, 2026-09-06: "All PCs are
+    # the same size, so it doesn't matter. Just leave that line out during
+    # conversions."  turn_class carries none for the same reason: it is the
+    # row of the turning matrix the *target* answers to, zero for every
+    # player character, and what a cleric can turn is `turn_power`.
+    #
+    # No marker on the line below: every entry in this table becomes a drop
+    # line, and a drop line goes to `wish/debuglog.py` rather than to a pane
+    # since Donald's ruling of 2026-09-08 (`.claude/rules/conversions.md`,
+    # *"a drop line is therefore never a string Donald words"*).
+    "field_83_87": "Treasure share: how this character's cut of the "
+                   "party's loot is set has not been converted yet, so it "
+                   "resets to the game's own default",
+}
 
 #: The one thing the neutral record cannot say about these two titles, and it
 #: is a classification rather than a byte: which effect records are **innate**

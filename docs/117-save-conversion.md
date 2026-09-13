@@ -2057,6 +2057,15 @@ graph LR
   amiga_por -.->|deferred| traits
   amiga_por --> world_state
   amiga_port --> dos_port
+  amiga_savegame --> amiga_adf
+  amiga_savegame --> amiga_later
+  amiga_savegame --> amiga_port
+  amiga_savegame --> areas
+  amiga_savegame --> c64_port
+  amiga_savegame --> dos_codec
+  amiga_savegame --> dos_savegame
+  amiga_savegame --> neutral
+  amiga_savegame --> world_state
   amiga_shared -.->|deferred| amiga_por
   amiga_shared --> amiga_port
   amiga_shared --> dos_port

@@ -117,3 +117,41 @@ def test_an_engine_written_save_round_trips_square_clock_and_order(
     assert [char.name for char in landed.characters] == [
         char.name for char in source.characters]
     assert landed_state.wallset == state.wallset
+
+
+def test_the_library_and_the_tool_state_the_same_container():
+    """`goldbox/amiga_savegame.py` and `tools/amigasavegame.py` each declare
+    the container's byte-level numbers, and two independent statements of the
+    same offsets drift silently.
+
+    The plan recorded on #512 is to move the map into the library so the tool
+    imports it rather than restating it -- the tool's own `SaveShape` is the
+    richer of the two, carrying Pool of Radiance, the square struct field by
+    field and the note beside each field, so the move is a real piece of work
+    rather than a rename.  Until somebody does it, this is what makes the
+    drift loud: every number both modules hold has to agree.
+    """
+    from tools import amigasavegame as tool
+
+    assert amiga_savegame.VM_BYTES == tool.VM_BYTES
+    assert amiga_savegame.VM_BASE == tool.VM_BASE
+    assert amiga_savegame.ECL_BYTES == tool.ECL_BYTES
+    for mine, theirs in ((amiga_savegame.CURSE, tool.CURSE),
+                         (amiga_savegame.SILVER_BLADES, tool.SILVER_BLADES)):
+        assert mine.title == theirs.title
+        assert mine.ecl_bytes == theirs.ecl_bytes
+        assert mine.square_bytes == theirs.square_bytes
+        assert mine.square_at == theirs.square_at
+        assert mine.first_mode_at == theirs.first_mode_at
+        assert mine.mode_at == theirs.mode_at
+        assert mine.wallset_at == theirs.wallset_at
+        assert mine.count_at == theirs.count_at
+        assert mine.party_at == theirs.party_at
+        assert mine.x_bytes == theirs.square[0].size
+        assert mine.deltas is theirs.record_shape
+        # The library hardcodes the one-byte container-number header that the
+        # tool carries as `header_bytes`; a title that ever opened without it
+        # would make every offset above disagree, so pin the assumption too.
+        assert theirs.header_bytes == 1
+        assert theirs.wallset_table and theirs.count_bytes == 2
+        assert mine.word_offset(tool.VM_BASE) == theirs.vm_offset(tool.VM_BASE)

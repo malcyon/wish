@@ -5,6 +5,16 @@ The layouts come from their save and load routines; ``docs/165-amiga-savegame.md
 records the byte-level evidence.  This module is the library counterpart of
 ``tools/amigasavegame.py``: it reads a whole slot and builds one from a
 ``WorldState`` and neutral characters without a template.
+
+**The two modules state the same offsets twice**, which is drift waiting to
+happen, and the plan recorded on #512 is to move the map into this one so the
+tool imports it.  That is not a rename: the tool's own ``SaveShape`` is the
+richer of the two, covering Pool of Radiance's filename party as well, and
+carrying the square struct field by field with the note that names each field
+in the engine's code.  Until somebody moves it,
+``tests/test_amiga_savegame.py``'s
+``test_the_library_and_the_tool_state_the_same_container`` is what makes a
+disagreement between them fail rather than pass quietly.
 """
 
 from __future__ import annotations
