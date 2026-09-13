@@ -123,10 +123,10 @@ def _blades_modules():
     import amiga_tables  # noqa: PLC0415
     try:
         import screen  # noqa: PLC0415
-    except ImportError as error:
+    except ModuleNotFoundError as error:
         package = error.name or "a private-reader dependency"
         raise SystemExit(
-            f"{package} is missing from {sys.executable}; rerun with an "
+            f"Missing dependency {package} in {sys.executable}; rerun with an "
             "interpreter whose environment has the private screen reader's "
             "dependencies") from None
     return screen, amiga_tables

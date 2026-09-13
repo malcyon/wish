@@ -273,9 +273,31 @@ def test_a_missing_private_reader_dependency_names_the_environment(
     with pytest.raises(SystemExit) as raised:
         journal._blades_modules()
     message = str(raised.value)
+    assert message.startswith("Missing dependency numpy in ")
     assert "numpy" in message
     assert sys.executable in message
     assert "private screen reader's dependencies" in message
+
+
+def test_a_broken_private_reader_import_is_not_reported_as_missing(
+        monkeypatch, tmp_path):
+    analysis = tmp_path / "ssb" / "analysis"
+    analysis.mkdir(parents=True)
+    monkeypatch.setattr(journal, "wheel_repo", lambda: tmp_path)
+    monkeypatch.setitem(sys.modules, "amiga_tables", types.ModuleType("amiga_tables"))
+    monkeypatch.delitem(sys.modules, "screen", raising=False)
+    original_import = builtins.__import__
+    broken_reader = ImportError("reader is broken")
+
+    def broken_import(name, *args, **kwargs):
+        if name == "screen":
+            raise broken_reader
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", broken_import)
+    with pytest.raises(ImportError) as raised:
+        journal._blades_modules()
+    assert raised.value is broken_reader
 
 
 def test_a_disk_that_is_not_there_is_named(tmp_path):
