@@ -70,13 +70,20 @@ def test_the_four_combat_icon_drop_lines_are_gone():
     assert seen == 21, seen
 
 
-def test_the_pane_still_reports_something_else():
-    """The sweep above did not empty the whole drop list -- only checked that
-    is not proof of anything. Every specimen still carries at least one
-    unrelated drop line, such as the sheet portrait or the treasure share."""
+def test_the_pane_reports_no_loss_when_every_reportable_field_converts():
+    """All 21 records now have no reportable loss.
+
+    The two remaining entries in `LATER_DROPPED` are accounting-only and have
+    no player report text. The portrait constants, treasure share and combat
+    icon all now have a destination home, so an empty report is the faithful
+    result rather than evidence that the pane stopped reading it.
+    """
+    seen = 0
     for label, char in _all_characters():
         neutral = amiga_later.to_neutral_later(char)
-        assert neutral.dropped, (label, char.name)
+        assert neutral.dropped == [], (label, char.name)
+        seen += 1
+    assert seen == 21, seen
 
 
 def test_icon_head_body_and_colours_are_named_transformed_not_dropped():
