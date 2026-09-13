@@ -824,15 +824,21 @@ def test_curses_item_lists_still_carry_the_file_in_their_name():
 # LDX offsets,Y / LDA masks,Y / ORA record,X / STA record,X / DEY / BPL`, and
 # the `BEQ` target is the `RTS` that the level table's own index 0 sits on --
 # which is what fixes the overlay's base without fitting anything.
+# The noncapturing optional gap recognises Y-clamping instructions; matching it
+# does not execute them.
 _GRANT_LOOP = re.compile(
-    rb"\xAE(.)\x7C\xF0(.)\xBC(..)\xBE(..)\xB9(..)\x1D\x00\x7C\x9D\x00\x7C"
+    rb"\xAE(.)\x7C\xF0(.)\xBC(..)(?:.{0,12}?)\xBE(..)\xB9(..)\x1D\x00\x7C\x9D\x00\x7C"
     rb"\x88\x10\xF1\x60", re.DOTALL)
 
 
-def _grant_table(payload: bytes, record_offset: int):
-    """(level -> set of spell ids) for one of `GEN`'s grant routines."""
+def _cleric_grant_table(payload: bytes):
+    """(level -> set of spell ids) from Curse's cleric grant routine.
+
+    The starting-book routine also has a grant-loop shape, but clamps its row
+    index after `LDY`; these ten raw level rows are only the cleric's table.
+    """
     for match in _GRANT_LOOP.finditer(payload):
-        if match.group(1)[0] != record_offset:
+        if match.group(1)[0] != 0xCA:
             continue
         levels, offsets, masks = (
             g[0] | g[1] << 8 for g in match.group(3, 4, 5))
@@ -851,7 +857,7 @@ def _grant_table(payload: bytes, record_offset: int):
                             for bit in range(8) if mask & (1 << bit)}
             out[level] = granted
         return out
-    pytest.skip("GEN carries no grant loop for that class")
+    pytest.skip("GEN carries no cleric grant loop")
 
 
 def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
@@ -864,7 +870,7 @@ def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
     """
     from goldbox.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
 
-    grants = _grant_table(_curse_file(b"GEN"), 0xCA)      # 0x0CA, cleric level
+    grants = _cleric_grant_table(_curse_file(b"GEN"))     # 0x0CA, cleric level
     expected = {}
     for low, high, cls, level in TABLE.groups:
         if cls == "cleric":
@@ -883,8 +889,31 @@ def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
         assert want - ids <= {36, 100}, (spell_level, sorted(want - ids))
 
 
-def test_curses_grant_tables_write_as_far_as_0x081():
-    """Where Curse's own grant tables reach, which is one of two measurements.
+@pytest.mark.parametrize("gap", [b"", b"\xC0\x03\x90\x02\xA0\x03"])
+def test_grant_loop_recognises_a_post_ldy_clamp(gap):
+    """Recognising an optional Y clamp leaves the established captures intact."""
+    loop = b"\xBE\x67\x45\xB9\x78\x56\x1D\x00\x7C\x9D\x00\x7C\x88"
+    branch = bytes(((-len(loop) - 2) % 256,))
+    payload = b"\xAE\xCA\x7C\xF0\x00\xBC\x56\x34" + gap + loop + b"\x10" + branch + b"\x60"
+
+    match = _GRANT_LOOP.fullmatch(payload)
+    assert match is not None
+    assert match.group(1) == b"\xCA"
+    assert match.group(2) == b"\x00"
+    assert match.group(3, 4, 5) == (b"\x56\x34", b"\x67\x45", b"\x78\x56")
+
+
+def test_curse_grant_loop_discovery_includes_the_starting_book():
+    """The two matches are the cleric grant and starting book, not two trainer steps.
+
+    The sequence-membership tests establish that distinction.
+    """
+    payload = _curse_file(b"GEN")
+    assert sorted(m.group(1)[0] for m in _GRANT_LOOP.finditer(payload)) == [0xC9, 0xCA]
+
+
+def test_curses_cleric_grant_table_writes_as_far_as_0x081():
+    """Where Curse's cleric grant table reaches, one of two measurements.
 
     Silver Blades settles its width in `GEN`, which clears sixteen bytes at
     `$7C78`. Curse's `GEN` has no such loop -- that is the one place the answer
@@ -892,21 +921,20 @@ def test_curses_grant_tables_write_as_far_as_0x081():
     give: `0x081`, from the cleric's table. The upper one comes from `CAMP`, in
     the test below.
 
-    **Curse has exactly one grant loop, and it is the cleric's.** Silver Blades
-    has three -- cleric, magic-user and ranger -- so the shape is not shared,
-    and this asserts the count rather than looping over class offsets that
-    might quietly contribute nothing. What Curse's magic-user trainer does
-    instead has not been read.
+    Curse has a cleric grant and a starting-book grant; its magic-user trainer
+    is the menu at `$2200`. This test measures only the cleric's `0x081` lower
+    bound. `docs/135-levelling.md` supplies the correction, and the separate
+    `CAMP` test supplies the thirteen-byte evidence.
     """
     payload = _curse_file(b"GEN")
     assert b"\xA2\x0F\xA9\x00\x9D\x78\x7C\xCA\x10\xFA" not in payload, (
         "Curse's GEN does have a spellbook clear loop after all -- read it")
 
-    found = [m.group(1)[0] for m in _GRANT_LOOP.finditer(payload)]
-    assert found == [0xCA], [hex(f) for f in found]
+    matches = [m for m in _GRANT_LOOP.finditer(payload) if m.group(1)[0] == 0xCA]
+    assert len(matches) == 1, len(matches)
 
     reach = 0
-    for match in _GRANT_LOOP.finditer(payload):
+    for match in matches:
         offsets = match.group(4)[0] | match.group(4)[1] << 8
         levels = match.group(3)[0] | match.group(3)[1] << 8
         base = levels - (match.end() - 1)

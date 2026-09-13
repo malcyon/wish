@@ -717,11 +717,14 @@ def test_castable_per_level_is_blank_rather_than_pool_of_radiances_numbers():
 
 #: The grant loop, Silver Blades' spelling of it. `LDX record / ... /
 #: LDY levels,X / LDX offsets,Y / LDA masks,Y / ORA $7C78,X / STA $7C78,X /
-#: DEY / BPL / RTS`. **The one difference from Curse** is the indexing: Curse
-#: writes `$7C00,X` and its offsets table holds record offsets 0x078-0x087,
-#: where Silver Blades writes `$7C78,X` and holds byte numbers 0-15.
+#: DEY / BPL / RTS`. These patterns use different ORA/STA bases and offset
+#: conventions: Curse writes `$7C00,X` and its offsets table holds record
+#: offsets 0x078-0x087, where Silver Blades writes `$7C78,X` and holds byte
+#: numbers 0-15.
+#: The noncapturing optional gap recognises Y-clamping instructions; matching it
+#: does not execute them.
 _GRANT_LOOP = re.compile(
-    rb"\xAE(.)\x7C(.{2,24}?)\xBC(..)\xBE(..)\xB9(..)\x1D\x78\x7C\x9D\x78\x7C"
+    rb"\xAE(.)\x7C(.{2,24}?)\xBC(..)(?:.{0,12}?)\xBE(..)\xB9(..)\x1D\x78\x7C\x9D\x78\x7C"
     rb"\x88\x10\xF1\x60", re.DOTALL)
 
 #: Where `GEN` runs, which is not where it loads. The file declares `$4000` and
@@ -737,6 +740,29 @@ def _gen() -> bytes:
     """Silver Blades' `GEN` payload, or skip."""
     disk = _game_disk_with(b"GEN")
     return split_load_address(D64.open(str(disk)).read_file(b"GEN"))[1]
+
+
+@pytest.mark.parametrize("gap", [b"", b"\xC0\x03\x90\x02\xA0\x03"])
+def test_grant_loop_recognises_a_post_ldy_clamp(gap):
+    """Recognising an optional Y clamp leaves the established captures intact."""
+    loop = b"\xBE\x67\x45\xB9\x78\x56\x1D\x78\x7C\x9D\x78\x7C\x88"
+    branch = bytes(((-len(loop) - 2) % 256,))
+    payload = b"\xAE\xCA\x7C\xF0\x00\xBC\x56\x34" + gap + loop + b"\x10" + branch + b"\x60"
+
+    match = _GRANT_LOOP.fullmatch(payload)
+    assert match is not None
+    assert match.group(1) == b"\xCA"
+    assert match.group(2) == b"\xF0\x00"
+    assert match.group(3, 4, 5) == (b"\x56\x34", b"\x67\x45", b"\x78\x56")
+
+
+def test_silver_blades_grant_loop_discovery_includes_the_starting_book():
+    """The three matches are two trainer grants and one starting-book grant.
+
+    The sequence-membership tests establish that distinction.
+    """
+    payload = _gen()
+    assert sorted(m.group(1)[0] for m in _GRANT_LOOP.finditer(payload)) == [0xC9, 0xCA, 0xD0]
 
 
 def _grant_table(payload: bytes, record_offset: int,

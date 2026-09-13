@@ -547,8 +547,9 @@ stops at the ceiling and nothing else in `goldbox/levels.py` reaches entry
 thirteen. (An earlier version of this page said Curse needed no such field;
 that confused the shape of the game's table with the shape of ours.)
 
-**The magic-user picks one spell from a menu**, as in Pool of Radiance and
-unlike Silver Blades. `$2200` computes the castable level as `LSR A / ADC #$00`
+**The magic-user picks one spell from a menu in all three titles; the later
+Silver Blades reading established its menu at `$1896`.** `$2200` computes the
+castable level as `LSR A / ADC #$00`
 — `(level + 1) / 2` — copies the 32-byte spellbook mask aside, rotates it a bit
 at a time and lists every id the character does not know whose level is at or
 below that. Curse *does* have a magic-user grant loop of Silver Blades' shape
