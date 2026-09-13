@@ -1499,10 +1499,13 @@ class EditorBinding(QObject):
             header.setSectionResizeMode(column,
                                         header.ResizeMode.ResizeToContents)
         view.resizeColumnsToContents()
+        # Before the first layout, Qt has not assigned the vertical header's
+        # width, although the viewport will reserve it.
+        view.updateGeometries()
         from PyQt6.QtWidgets import QStyle
         bar = view.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
         natural = (header.length() + view.verticalHeader().width()
-                   + 2 * view.frameWidth() + bar)
+                   + 2 * view.frameWidth())
         header.setSectionResizeMode(NAME_COLUMN,
                                     header.ResizeMode.Interactive)
         view.measure(natural, header.sectionSize(NAME_COLUMN))

@@ -2608,6 +2608,60 @@ def test_nothing_looks_editable_that_cannot_be_written(app, save):
 
 # --- the roster carries race and class, and is no taller than its rows -------
 
+def test_the_roster_at_its_natural_width_has_no_vertical_scrollbar_allowance(
+        app, party):
+    """A loaded wide roster is exactly its five columns, without a dead bar.
+
+    The vertical header has to lay itself out before the roster measures its
+    natural width.  Otherwise deleting the dead vertical-scrollbar allowance
+    makes the final column overflow by that header's width.
+    """
+    from editor.rosterview import NAME_COLUMN
+    from wish.session import Session
+    from wish.window import EDITOR_TAB, WishWindow
+
+    win = WishWindow(str(party), maps={}, tab=EDITOR_TAB,
+                     session=Session(find=lambda pref=None: None))
+    try:
+        win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        win.show()
+        app.processEvents()
+        view = win.editor.roster
+        floor = win.minimumSizeHint()
+        win.resize(floor.width() + view.maximumWidth(), floor.height())
+        app.processEvents()
+
+        header = view.horizontalHeader()
+        assert view.width() == view.maximumWidth()
+        assert view.width() > view.minimumWidth()
+        assert header.length() == view.viewport().width()
+        assert not view.horizontalScrollBar().isVisible()
+        assert view.horizontalScrollBar().maximum() == 0
+        assert not view.verticalScrollBar().isVisible()
+
+        wide = [header.sectionSize(column)
+                for column in range(view.model().columnCount())]
+        win.resize(1, win.height())
+        app.processEvents()
+        squeezed = [header.sectionSize(column)
+                    for column in range(view.model().columnCount())]
+        assert win.minimumSizeHint() == floor
+        assert squeezed[:NAME_COLUMN] == wide[:NAME_COLUMN]
+        assert squeezed[NAME_COLUMN + 1:] == wide[NAME_COLUMN + 1:]
+        assert squeezed[NAME_COLUMN] < wide[NAME_COLUMN]
+        assert not view.horizontalScrollBar().isVisible()
+        assert not view.verticalScrollBar().isVisible()
+
+        win.resize(floor.width() + view.maximumWidth(), floor.height())
+        app.processEvents()
+        assert [header.sectionSize(column)
+                for column in range(view.model().columnCount())] == wide
+        assert header.length() == view.viewport().width()
+        assert not view.horizontalScrollBar().isVisible()
+        assert view.horizontalScrollBar().maximum() == 0
+    finally:
+        win.close()
+
 @game_disks
 def test_the_roster_names_the_race_and_class(app, save):
     """"The dwarf fighter" is how you pick who to edit.
@@ -2645,8 +2699,8 @@ def test_the_roster_is_sized_to_its_rows_not_to_the_window(app, save):
     assert _content_height(w.roster) < 300
 
 
-@pytest.mark.parametrize("extra", [0, 6, 10])
-def _test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
+@pytest.mark.parametrize("extra", [6, 10])
+def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
     """#92, at the fonts and the width where it bit.
 
     `_size_roster` pinned the roster to exactly `header + rows + frame +
@@ -2673,20 +2727,23 @@ def _test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
     """
     from PyQt6.QtGui import QFont
 
-    from editor.window import EditorBinding
+    from wish.session import Session
+    from wish.window import EDITOR_TAB, WishWindow
 
     base = app.font()
     try:
         bigger = QFont(base)
         bigger.setPointSizeF(base.pointSizeF() + extra)
         app.setFont(bigger)
-        w = EditorBinding(make_root(), str(party))
-        w.root.resize(1, 900)               # Qt clamps to the window's own floor
-        w.root.show()
+        w = WishWindow(str(party), maps={}, tab=EDITOR_TAB,
+                       session=Session(find=lambda pref=None: None))
+        w.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        w.show()
+        w.resize(1, 900)                    # Qt clamps to the window's own floor
         app.processEvents()
-        view = w.roster
+        view = w.editor.roster
         room = view.viewport().height()
-        for row in range(w.model.rowCount()):
+        for row in range(w.editor.model.rowCount()):
             bottom = view.rowViewportPosition(row) + view.rowHeight(row)
             assert bottom <= room, (
                 f"+{extra}pt: row {row} runs {bottom - room}px past the "
