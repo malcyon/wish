@@ -29,7 +29,7 @@ def test_table_ends_where_slot_zero_begins():
     assert ICON_TABLE_BASE + ICON_COUNT * ICON_SIZE == SLOT_AREA_BASE
 
 
-def test_entry_splits_into_equal_shape_and_colour_halves():
+def test_entry_splits_into_equal_screen_code_and_colour_halves():
     assert ICON_SIZE == CELLS * 2
 
 
