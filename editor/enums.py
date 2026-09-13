@@ -181,11 +181,13 @@ SIZE = {0: "small", 1: "large"}
 #:   level 8 and the thirteen first-level magic-user spells at 9 -- AD&D 1st
 #:   edition verbatim -- and whose shipped PAINE holds exactly those four
 #:   (`tests/test_silverblades.py::test_the_ranger_grant_is_the_shipped_rangers_spellbook`).
-#:   PROBABLE in Curse and the rest: Curse's `GEN` has exactly one grant loop
-#:   and it is the cleric's (`tests/test_curse.py::test_curses_grant_tables_write_as_far_as_0x081`),
-#:   but its magic-user's is missing from `GEN` too, so an absent loop is not
-#:   evidence of an absent class -- and Curse's own spell table carries the
-#:   druid group 77-80 that Silver Blades' ranger is granted.
+#:   PROBABLE in Curse and the rest: Curse's `GEN` has a cleric grant
+#:   (`tests/test_curse.py::test_curses_cleric_grant_table_writes_as_far_as_0x081`)
+#:   and a magic-user starting-book grant
+#:   (`tests/test_curse.py::test_curse_grant_loop_discovery_includes_the_starting_book`);
+#:   its magic-user trainer is the `$2200` menu, so neither grant establishes
+#:   a ranger. Curse's own spell table carries the druid group 77-80 that
+#:   Silver Blades' ranger is granted.
 #: * **the paladin does not.** Silver Blades' `GEN` has three grant routines
 #:   and no fourth, and the shipped GUY DE VALOIS holds an empty mask.
 #: * **the Knight of Solamnia does not.** Nobody has read Krynn's `GEN`; the
