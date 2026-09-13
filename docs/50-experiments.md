@@ -7413,8 +7413,282 @@ mtime is not a creation time and does not establish provenance by itself. The
 matching old output, the six-character imported party and the unchanged icon
 table across its related saves are the evidence for the grade.
 
-**The absence of a retroactive repair is CONFIRMED from the current code.**
-`goldbox/dos_codec.py` seeds the NPC-only entries only while its conversion
-writer builds a save. Opening an existing disk reads the icon table unchanged,
-and the editor's treatment of an NPC preserves its stored bytes. Therefore the
-current fix protects new imports but does not alter this existing lineage.
+**The absence of an automatic retroactive repair is CONFIRMED from the code.**
+`goldbox/dos_codec.py` seeds icons while its conversion writer builds a save.
+Opening an existing disk reads the icon table unchanged, and the editor's
+treatment of an NPC preserves its stored bytes. The September 7 fix did not
+alter this existing lineage and left the smaller-party gap established below;
+the earlier blanket statement that it protected new imports was too broad.
+The new explicit, copy-only recovery command is described separately below.
+
+### The recruitment handler preserves an icon seeded before the party existed
+
+**CONFIRMED from the engine's instructions.** `ADDNPC` does not replace the
+joined character's party icon. This is distinct from the separate monster art
+described below. `INIT $0948` calls `$0B02`, which seeds all eight
+party icons before character creation. That routine points `$07/$08` at
+`$4BE0`, copies 36 bytes from `INIT $0B2D`, and repeats eight times:
+`$0B0C = A9 08`, `$0B13 = BD 2D 0B`, `$0B16 = 91 07`, and
+`$0B1C = E0 24`. Its source at payload `+$32D` is byte-identical to
+`IconParts.default_icon()` from `POOL3.D64`, SHA-256
+`cbed0266b8dd190cbf9067193bc5321b1a85e7a6913bbfea0c3fc03c206575ad`.
+This independently corroborates the eight creation measurements cited in
+`goldbox/iconparts.py`; the default is in the initializer itself.
+
+**CONFIRMED for Dirten's script.** `POOL3.D64/ECL00 $A046` contains
+`36 00 6B 00 63`: `ADDNPC 107, 99`. The preceding subroutine at `$AEA8`
+compares the party count at `$6E3E` with 8 and returns when it is smaller.
+`LIBRARY $3FC6-$3FE0` counts nonzero roster entries in slots 0-7 into that
+byte, with no NPC exclusion.
+`DUNGEON` dispatches opcode `$36` through table bytes `$15DF = $24` and
+`$161D = $27` to `$2724`. The handler performs these operations:
+
+| Engine location | Operation and byte evidence | Icon consequence |
+|---|---|---|
+| `DUNGEON $1A60`, called at `$2727` | Scans character names in slots 0-11. Every empty slot below 8 replaces `$03FD`; `$1A8B = 9D FD 03` and the group test is `$1A8E = E0 01` | Selects the highest empty party slot, anywhere in 0-7 |
+| `DUNGEON $2865`, called at `$272A` | Clears `$6C20-$6D1F`, the working item block | Does not clear or build an icon |
+| `DUNGEON $2735-$2737` | Loads the first operand as file kind 12: `A2 0C / 20 19 12`. `LIBRARY $41CA = $00`, `$41E3 = $6B` locate that load at `$6B00` | Dirten's 480-byte `MON6B` ends at `$6CDF`; it never reaches the working icon at `$6D20` |
+| `DUNGEON $273D-$2759` | Sets the stored slot index, side and NPC flags. The second operand becomes `(99 >> 1) | $80 = $B1`, matching the saved Dirten flag | Establishes which roster and character slot will be written |
+| `DUNGEON $275C-$275F` | Calls `LIBRARY $3ED2` and `$3729` to derive combat values | Neither routine writes the icon table |
+| `DUNGEON $2762` | Calls `LIBRARY $441E`, which calls `$319A` and tail-calls `$3173` | Writes the 32-byte roster, 256-byte character page and 256-byte item page only |
+
+**The exclusion of the icon is CONFIRMED by the copy destinations**, not by
+the monster file's length alone. `LIBRARY $3140` computes
+`$8300 + slot*$20`; `$319A` copies 32 bytes there. `$312B` computes
+`$4D00 + slot*$100` and `$5900 + slot*$100`; `$3173` copies 256 bytes to each.
+No fourth copy writes `$4BE0 + slot*$24`. The complete reachable call graph
+of the less obvious helper, `$3729`, contains 391 decoded instructions,
+15 distinct call targets, no unresolved jump and no indirect store; every
+store falls outside the icon table. All 391 instruction mnemonics and sizes
+agree between `tools/d6502.py` and Capstone 5.0.7. The small `$3ED2` routine
+writes only the strength-derived byte `$6BE2`.
+
+**CONFIRMED: saving and loading preserve that inherited value.**
+`CAMP $0D16-$0D73` saves both memory regions; its bounds table at `$0DB8`
+names `$4900-$64FF` and `$8300-$8AFF`, including the complete icon table.
+`GEN $25AE-$25DC` loads `SAVEDGAME1` and `SAVEDGAME0`; its subsequent
+`$25DE-$25EB` loop refreshes the file cache, not the icon table. The earlier
+paused control run independently measured the saved zero entry surviving
+reload. `COM.PREP $122C-$12AA` then expands all eight entries unconditionally:
+18 screen codes become `CHARPIC00[code*8]` glyphs, followed by 18 copied
+colours, at `$9BE8 + slot*162`. There is no zero-icon test or default lookup.
+Thus a zero entry survives recruitment and reload, and becomes the measured
+glyph-zero block in combat. This establishes the engine mechanism; it does
+not upgrade the historical attribution of Donald's save beyond PROBABLE.
+
+**A source-selection trap, CONFIRMED and corrected.** `MON6B` exists on two
+sides. `POOL1.D64/MON6B` names WILLIAM D'OR; `POOL3.D64/MON6B` names DIRTEN.
+Both are 480-byte payloads. The generic first-match `_file("MON6B")` selects
+the former, so this reading names the disk as well as the file. No conclusion
+about Dirten's template rests on that first match. The table below hashes
+payloads after stripping the two-byte PRG header; code addresses use the
+established runtime bases, not the files' misleading headers.
+
+| Source under the player's Pool of Radiance disk directory | Payload bytes | Runtime base | Payload SHA-256 |
+|---|---:|---|---|
+| `POOL1.D64/INIT` | 2939 | `$0800` | `929cfecebec326596de206ac7c4b681938a79c25f92be432c459cd00e8549079` |
+| `POOL1.D64/DUNGEON` | 9088 | `$0800` | `fa108e341704890741446fc9de128be99f2876794d386de9ae7fa880374a7370` |
+| `POOL1.D64/LIBRARY` | 7348 | `$2C48` | `c1ebbd47bdc94c508967eb87cacab2995f89b02037fe7aeac72bb53c549d8655` |
+| `POOL1.D64/CAMP` | 9088 | `$0800` | `57db9a4a3ae430acc3fbcddcfda3dba6394c47da7dfe865dbf80f64ced620845` |
+| `POOL3.D64/GEN` | 9083 | `$0800` | `6de4bcafb0d0825445a2abd9b9a82f865ac01a60a7c94a21289922752b54a6f5` |
+| `POOL1.D64/COM.PREP` | 4116 | `$0800` | `035954cf7e604244104131bffd099039978718b79e352a559e7aefe0b1c0f6ca` |
+| `POOL3.D64/ECL00` | 7468 | `$9900` | `343a923093e65eb23f246abf5c5a9741da8ac21d05f776e8e0610b593b607f3b` |
+| `POOL3.D64/ECL0B` | 2376 | `$9900` | `7dcb646684283e8779c008a2e24cd7135aa28bac12ebb0e913341d6f95dc4179` |
+| `POOL3.D64/MON6B` | 480 | `$6B00` | `d3d381cf58c4c5506b206c8aed38df8e816b25b47877e392c3b37822ce8e2da8` |
+| `POOL1.D64/MON6B`, excluded as Dirten evidence | 480 | `$6B00` | `1d990962c4f8e3f51ed0107ed2afecceb39d3a3c19ecdfcc4a5fe6cf13aecd83` |
+
+### Monster combat art exists; joining selects the party path
+
+**CONFIRMED: nonparty monsters have separate combat art.** A monster-loading
+instruction, ECL opcode `$0B`, takes three operands: record id, count and
+combat-picture id. Its handler at `DUNGEON $1AC6` loads the `MON` record,
+then fetches the third operand at `$1B65` and stores it with
+`$1B6B = 9D B3 6D`, indexed by the selected temporary record slot. The picture
+id comes from the script, not from a field in `MON6B` or another `MON` record.
+For example, `ECL0B $9D06` contains `0B 00 29 00 01 00 0B`: one `MON29`
+using `COMPIC0B`. `POOL1.D64/COMPIC0B` is a separate 162-byte payload,
+SHA-256 `45c4de21d390afc11b12ef8abda4eadacd1572502057230a35c5037e2e866bd1`.
+
+**CONFIRMED: the preparation code selects by record slot, not by whether
+the character has an NPC flag.** `COM.PREP $0831` expands all eight party
+icons through `$122C`. It then starts its separate monster loop with
+`$083E = A9 08 / $0840 = 8D B1 6D` and ends it at
+`$0879 = C9 0C`: record slots 8-11 only. For each, `$084E` reads the
+script-supplied id from `$6DB3,X`; `$0853-$0855` loads file kind `$17`,
+which `LIBRARY`'s tables name `COMPIC` at `$8C00`. `$0858-$0870` copies the
+picture into the expanded-art buffer starting at `$9BE8 + record_slot*162`.
+
+| Record slots | Art source selected by the engine | How Dirten reaches it |
+|---|---|---|
+| 0-7, persistent party | The slot's saved 36-byte icon, expanded through `CHARPIC00` | `ADDNPC` puts him in the highest free party slot |
+| 8-11, temporary monster records | A separate `COMPIC` selected by the third operand of opcode `$0B` | His two-operand `ADDNPC 107,99` does not enter this path |
+
+**The creation default is therefore native recruitment behavior — CONFIRMED
+from both complete paths.** Starting with the game's own initialized table,
+joining Dirten preserves that default; a previously customized slot preserves
+its customized figure. Default seeding does not discard a Dirten-specific
+picture selected by recruitment. The previous short-file argument could not
+establish this distinction; the separate selector and explicit slot-8 boundary
+do. No additional emulator run was needed for this code-level conclusion.
+
+**Universal absence of Dirten art is not established.** Among 332 reachable
+opcode-`$0B` statements in the thirty area scripts, none has literal first
+operand 107, but 26 compute that operand. This does not prove that no indirect
+encounter or unused picture could depict Dirten. Resolving those 26 argument
+paths and their disk sources would test an indirect association; it would not
+change which source the proven `ADDNPC` party path uses. No claim that NPCs
+have no combat art rests on the 480-byte record length.
+
+### The smaller-party writer gap and its prevention
+
+**CONFIRMED in pre-fix writer output and the engine code.** A player converts
+five characters, recruits two NPCs into slots 7 and 6, then accepts Dirten
+while the party has seven members. His script's count check permits the join
+and `ADDNPC` chooses the empty slot 5. The two-slot writer left that slot's
+icon zero. The two-slot restriction in `NPC_ICON_SLOTS = (6, 7)` describes
+slots reserved from player-character creation; it is not a restriction on
+where NPCs may join.
+
+**The normal script also permits repeated recruitment — CONFIRMED from
+`ECL0B`.** Its recruitment call at `$9FEB` is preceded by `$A19C`'s same
+party-count test, `< 8`. After the call, the menu at `$A015-$A019` can return
+to `$9DBE` for another candidate. The separate attempt counter at `$4A10`
+permits eight attempts; it does not count two NPCs and then refuse. This
+provides a script route for filling slots 7, 6 and then 5, rather than relying
+on the unproven provenance of a found eight-member save.
+
+Before the prevention change, six generated payload pairs exercised
+`new_save_from_neutral`, hence the same
+`write_c64_save` used by conversions. Inputs were prefixes of the six PCs
+read from the unchanged control snapshot, the snapshot's `WorldState`,
+`IconParts` from `POOL3.D64` and the player's `ANIMATE00`; no source was
+modified. These are writer tests, not engine-written specimens. All six
+reports said `unwritten = []` despite the 15 zero future icons:
+
+| Converted PCs | Empty slots still zero | Empty slots given the creation default |
+|---:|---|---|
+| 1 | 1-5 | 6, 7 |
+| 2 | 2-5 | 6, 7 |
+| 3 | 3-5 | 6, 7 |
+| 4 | 4, 5 | 6, 7 |
+| 5 | 5 | 6, 7 |
+| 6 | None | 6, 7 |
+
+**Prevention implemented and byte-checked — CONFIRMED.** The Pool branch of
+`write_c64_save` now seeds every unoccupied party slot with the native default.
+Occupied converted figures and the four combat scratch slots are unchanged;
+the later titles retain their existing two-slot policy. No UI changes were
+needed. The six generated regressions failed before the production change at
+party sizes 1-5, with the six-PC control passing; all six pass after it.
+Six additional cases preserve distinct occupied DOS figures through the
+runtime `IconParts` path. The tests account for every output byte, keep empty
+records/items/rosters empty, and compare the default with the player's own
+`INIT` payload `+$32D-+$350`. Its PRG header names `$1000`; the engine loads
+the overlay at `$0800`, so the header is not the runtime base in this audit.
+The existing test that expected empty slots 0-5 to be zero was corrected on
+this engine evidence, not weakened to accept arbitrary output.
+
+### Explicit recovery writes a new copy, not the original save
+
+**The recovery command reproduces the accepted repair — CONFIRMED.**
+`tools/dirtenicon.py` inspects by default; `--out` must name a new `.d64` in
+an existing directory. It locates DIRTEN across all eight party slots by name,
+NPC flag, nonzero roster status with `OUT_OF_PLAY` clear, and matching roster
+slot identity. It refuses
+missing or ambiguous identity, any nonzero icon, unsupported saves, malformed
+sector chains and cross-links. It reads the native default through `POR_DISKS`
+then `automap.paths.find_disks()`, requires POOL3's composed default to equal
+POOL1's INIT seed, and prints hashes instead of embedding art.
+
+The command verifies the planned image against an independently mapped
+36-byte disk window, exclusively creates the named output, and holds that
+descriptor through the write, flush, hash verification and final path/inode
+check. Input/output aliases and existing files are refused. The pre-creation
+source rehash detects prior drift; it cannot exclude later external writes.
+The output represents the named input snapshot, and the tool never opens its
+source for writing. A failure may leave an incomplete output, explicitly
+reported for inspection; no failure path unlinks a name another process may
+have replaced. No automatic migration or original-file write was added.
+
+A read-only inspection of the established control and one explicit disposable
+output at `work/issue533/deep-research/cli-iTcZtY/repaired.d64` both produced
+the already accepted output hash
+`a49e2d071d21a46df5a7cd1e31c8dfc214e8b71bc9737526ecae6c2f0b26b64c`:
+exactly 36 changed bytes, `SAVEDGAME1` and every other disk byte unchanged.
+The control still hashes to
+`9217a34736c8e0cff8ba11b51116a345ba8091bbfe4ce499935413bde3bdce53`.
+A second disposable copy, made with the revised exclusive-descriptor writer,
+at `work/issue533/deep-research/cli-review-N5N0cl/repaired.d64` has the same
+accepted output hash. The revised CLI describes a verified snapshot copy,
+not an assertion that no external process could have changed the source.
+
+### Review findings: active status, publication ownership and BAM scope
+
+**The active-status predicate was incomplete — CONFIRMED.** A truthy roster
+byte accepted `$80` and `$81`, although `c64_codec.OUT_OF_PLAY = $80` is
+independent of the low status bits. `layout.py` records the engine's measured
+`$81`/`$05` controls and `LIBRARY`'s separate mask/display branches. Generated
+`$80` and `$81` refusal tests both failed before the guard was added. Both
+now refuse; `$01` and `$05` still pass. No further low-status restriction was
+inferred from the review.
+
+**The old temporary-path publisher could publish unverified bytes and remove
+a replacement — CONFIRMED.** A generated probe replaced the temporary name
+after its hash check, just before `os.link`: 22 unrelated bytes were published
+as success and the replacement temporary name was then unlinked. Two generated
+tests replacing the write path with another file or a symlink also failed:
+the hash failure was detected, but cleanup removed the replacement. Holding
+the new output descriptor and never unlinking a failed path removes both
+failures. Complete-file atomic visibility was our implementation choice, not
+the requested copy-only guarantee; the parent approved this smaller portable
+contract. All successful output bytes and the final path identity are checked.
+External writers can still modify files after verification; no lock or future
+immutability is promised.
+
+**The source rehash did not prevent a later external write — CONFIRMED.** A
+second probe changed the source immediately after that check. Its output was
+still exactly the verified inspected snapshot, but the old `input unchanged`
+success wording was false. The source was never written by the repair code.
+The revised wording names the snapshot and promises only read-only treatment
+of the source. Prior detected drift still refuses before output creation; a
+generated late-edit case preserves both the correct snapshot output and the
+external writer's new source bytes.
+
+**No additional BAM refusal is justified by this repair — CONFIRMED for the
+two reported cases.** Flipping the per-track free count at BAM `+$04`, or
+marking directory sector 18/1 free at BAM `+$49` bit 1, leaves the allowed
+36-byte patch unchanged. Both generated output images preserve the original
+BAM byte-for-byte, and undoing the icon patch restores the complete original
+image. `write_file_inplace` follows existing sector chains and allocates
+nothing, so those counters and directory allocation bits do not choose or
+alter its output bytes. They remain pre-existing filesystem bookkeeping, not
+a general filesystem-health guarantee. Actual file/file and file/directory
+cross-links are different: they share physical data, and existing checks reject
+them. A generated file sharing an otherwise empty directory sector is refused
+without a new gate.
+
+**Terminal checks — CONFIRMED on the revised change.** The seven initial
+review regressions yielded four failures and three passes before fixes; the
+four failures were the two out-of-play statuses and the two deleted path
+replacements. All 62 tool cases now pass. Together with the import and
+repository-content checks, 225 tests passed with no skips. Ruff passed and
+`tools/genui.py --check` reported every generated file current. The six-case
+temporary engine/writer audit also remains established: all 391 instruction
+decodes agree, all 27 empty party entries are default-seeded, and every writer
+report is fully accounted. The full suite belongs to the separate pre-push
+run and was not duplicated here.
+
+**Limits and remaining work.** This extension traced Pool of Radiance only.
+The smaller-party recruitment sequence is proven by its script and handler,
+but was not driven through a new VICE session. A final integration check would
+convert five PCs, recruit two companions, take Dirten from the Bishop and
+read slot 5 before and after the join and at his combat frame. Its 36 bytes
+must remain the seeded default throughout. This is separate from recovery of
+the existing save, whose 36-byte repair-copy comparison already passed.
+The prevention and copy-only recovery code changed; no UI or original user
+save changed. No new emulator or background wait was started. The decoding
+checklist is deliberately unchanged: this investigation confirms its existing
+instruction to inspect the code and disambiguate duplicate filenames. The
+historical old-writer attribution remains PROBABLE, and the 26 computed
+monster arguments remain unresolved; neither affects the proven recruitment
+branch or this repair's byte boundary.
