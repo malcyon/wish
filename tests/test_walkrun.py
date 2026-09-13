@@ -89,16 +89,28 @@ def fake_session(monkeypatch):
 
 
 @pytest.fixture
-def args(tmp_path, monkeypatch):
+def disks(tmp_path):
+    """Synthetic regular files satisfy the harness's source-side contract."""
+    source = tmp_path / "fixture-disks"
+    source.mkdir()
+    for i in range(1, 9):
+        (source / f"POOL{i}.D64").write_bytes(f"side {i}".encode())
+    return source
+
+
+@pytest.fixture
+def args(tmp_path, monkeypatch, disks):
     """A minimal, valid command line: a real (empty) base save and an
     isolated walks directory, so nothing is written under the real
     `work/drive/walks/`."""
     base = tmp_path / "base.d64"
     base.write_bytes(b"\x00")
     monkeypatch.setattr(walkrun, "WALKS", str(tmp_path / "walks"))
+    monkeypatch.setattr(walkrun, "_disks", None)
     monkeypatch.setattr(
         sys, "argv",
-        ["walkrun.py", "--name", "t", "--route", "I", "--base", str(base)],
+        ["walkrun.py", "--name", "t", "--route", "I", "--base", str(base),
+         "--disks", str(disks)],
     )
     return base
 
