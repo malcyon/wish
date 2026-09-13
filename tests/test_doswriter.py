@@ -1387,6 +1387,35 @@ def test_same_named_party_members_get_stable_distinct_identity_bytes():
         [identities[0], identities[0]]
 
 
+def test_party_identity_deduplication_has_a_bounded_collision_fallback(
+        monkeypatch):
+    """Six party members leave an identity byte even under hostile hashes."""
+    field = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
+    made_up = "made up: #528's bounded collision probe"
+    first = _filled()
+    second = _filled()
+    first.set("name", "DUPLICO", made_up)
+    second.set("name", "DUPLICO", made_up)
+    records = []
+    for char in (first, second):
+        rec, itm, spc, report = dos_codec.write(char)
+        staged = bytearray(rec)
+        staged[field.offset] = 0
+        records.append((char, bytes(staged), itm, spc, report))
+    monkeypatch.setattr(dos_codec, "identity_byte", lambda *args: 0)
+
+    adjusted = dos_codec._deduplicate_party_identities(
+        records, dos_port.POOL_OF_RADIANCE)
+    assert [record[field.offset] for _, record, *_ in adjusted] == [0, 1]
+
+
+def test_identity_probe_counter_does_not_overflow():
+    """The bounded party probe has a valid input at its final attempt."""
+    record, _, _, _ = dos_codec.write(_filled())
+    assert 0 <= dos_codec.identity_byte(
+        record, dos_port.POOL_OF_RADIANCE, counter=256) <= 0xFF
+
+
 def test_the_party_writer_de_duplicates_same_named_identities(tmp_path,
                                                                monkeypatch):
     """The shared party path changes only a same-named collision.
@@ -1426,6 +1455,36 @@ def test_the_party_writer_de_duplicates_same_named_identities(tmp_path,
     assert [record[field.offset] for record in first_run] == \
         [record[field.offset] for record in second_run]
     assert len({record[field.offset] for record in first_run}) == 2
+
+
+def test_the_party_writer_uses_the_written_name_when_deduplicating(
+        tmp_path, monkeypatch):
+    """Distinct source names can serialize as one fifteen-byte DOS name."""
+    from goldbox import areas
+
+    field = dos_port.FIELDS_BY_NAME["unnamed_0ab"]
+    made_up = "made up: #528's DOS name truncation"
+    first = _filled()
+    second = _filled()
+    first.set("name", "ABCDEFGHIJKLMNOX", made_up)
+    second.set("name", "ABCDEFGHIJKLMNOY", made_up)
+    state = world_state.WorldState(
+        title=areas.POOL_OF_RADIANCE, area=0, geo=0, x=0, y=0, facing=0,
+        clock=(0,) * 6, wallset=(0, 0, 0), flags=(), scratch={},
+        outdoors=False, travel=(0, 0), set_out=True, header={})
+    where = areas.area_in(0, areas.POOL_OF_RADIANCE)
+    assert where is not None
+    monkeypatch.setattr(dos_codec, "_area_dax", lambda *args: (where, 1))
+    monkeypatch.setattr(dos_codec, "_area_script", lambda *args: b"")
+    monkeypatch.setattr(dos_codec, "portrait_tables", lambda *args: (None, ""))
+    monkeypatch.setattr(dos_codec, "savgam_writes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dos_codec, "savgam_zeroes", lambda *args: None)
+
+    dos_codec.write_dos_save_from(state, [first, second], None, tmp_path, "A")
+    records = [(tmp_path / f"CHRDATA{number}.SAV").read_bytes()
+               for number in (1, 2)]
+    assert records[0][:dos_port.NAME_SIZE] == records[1][:dos_port.NAME_SIZE]
+    assert len({record[field.offset] for record in records}) == 2
 
 
 @needs_dos_saves

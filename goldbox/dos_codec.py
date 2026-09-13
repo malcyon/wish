@@ -3105,7 +3105,7 @@ def identity_byte(record: bytes | bytearray,
         # Party writers use this only after finding the same name and digest
         # together.  Folding their stable position into this otherwise pure
         # input keeps a second conversion byte-for-byte identical.
-        body.extend(counter.to_bytes(1, "little"))
+        body.extend(counter.to_bytes(2, "little"))
     return hashlib.blake2b(bytes(body), digest_size=1).digest()[0]
 
 
@@ -3121,17 +3121,25 @@ def _deduplicate_party_identities(
     colliding same-named pair; then the party's usable identity wins.
     """
     field = FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
-    used: dict[str, set[int]] = {}
+    name_length = FIELDS_BY_NAME_FOR[deltas.key]["name_length"]
+    name_text = FIELDS_BY_NAME_FOR[deltas.key]["name_text"]
+    used: dict[bytes, set[int]] = {}
     result = []
     for char, rec, itm, spc, report in built:
         record = bytearray(rec)
-        name = str(char.get("name", ""))
+        name = bytes(record[name_length.offset:name_text.end])
         identities = used.setdefault(name, set())
         identity = record[field.offset]
-        counter = 0
-        while identity in identities:
-            counter += 1
-            identity = identity_byte(record, deltas, counter)
+        if identity in identities:
+            for counter in range(1, 256):
+                identity = identity_byte(record, deltas, counter)
+                if identity not in identities:
+                    break
+            else:
+                # A DOS party has at most six members, so one of these bytes
+                # always remains even if every digest probe collides.
+                identity = next(value for value in range(256)
+                                if value not in identities)
         record[field.offset] = identity
         identities.add(identity)
         result.append((char, bytes(record), itm, spc, report))
