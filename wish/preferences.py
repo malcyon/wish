@@ -673,7 +673,8 @@ class PreferencesDialog(QDialog):
         # Two lines of note is 17 px of a dialog that has to fit 662 of them
         # (§14), so each of these is one line at the width `fit` opens.
         if chosen_backup_folder(self.win.settings):
-            why = "Yours, for every save. Clear it to follow the save again."
+            why = ("Use this folder for all backups. Clear it to use a “backups” "
+                   "folder beside each save.")
         elif where:
             why = ""
         else:

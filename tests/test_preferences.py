@@ -766,7 +766,8 @@ def test_the_backups_note_names_the_state_and_nothing_else(
     assert "no saving" not in blank.lower()
     assert "open a save" not in blank.lower()
     assert following == ""            # Donald removed this one too
-    assert "yours" in chosen.lower()
+    assert chosen == ("Use this folder for all backups. Clear it to use a “backups” "
+                      "folder beside each save.")
     # The standing facts went too -- Donald removed them. The note names the
     # state and nothing else, and blank names nothing at all.
     for note in (blank, following, chosen):
