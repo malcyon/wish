@@ -17,6 +17,7 @@ screen`, and never either side of the exchange.
 
 from __future__ import annotations
 
+import builtins
 import pathlib
 import sys
 import types
@@ -252,6 +253,29 @@ def test_a_machine_without_the_repository_is_told_where_it_looked(monkeypatch,
         journal._blades_modules()
     assert "nothing" in str(raised.value)
     assert journal.ENV in str(raised.value)
+
+
+def test_a_missing_private_reader_dependency_names_the_environment(
+        monkeypatch, tmp_path):
+    analysis = tmp_path / "ssb" / "analysis"
+    analysis.mkdir(parents=True)
+    monkeypatch.setattr(journal, "wheel_repo", lambda: tmp_path)
+    monkeypatch.setitem(sys.modules, "amiga_tables", types.ModuleType("amiga_tables"))
+    monkeypatch.delitem(sys.modules, "screen", raising=False)
+    original_import = builtins.__import__
+
+    def missing_numpy(name, *args, **kwargs):
+        if name == "screen":
+            raise ModuleNotFoundError("No module named 'numpy'", name="numpy")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", missing_numpy)
+    with pytest.raises(SystemExit) as raised:
+        journal._blades_modules()
+    message = str(raised.value)
+    assert "numpy" in message
+    assert sys.executable in message
+    assert "private screen reader's dependencies" in message
 
 
 def test_a_disk_that_is_not_there_is_named(tmp_path):
