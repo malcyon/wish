@@ -1060,8 +1060,8 @@ def _test_the_window_opens_inside_a_small_desktop(app, save):
 
 # --- the combat icon --------------------------------------------------------
 
-def test_an_npc_hides_its_stale_icon_and_cannot_edit_it(app, party):
-    """NPC icons stay hidden even when the slot contains nonzero stale bytes."""
+def test_an_npc_icon_is_shown_edited_and_flushed(app, party):
+    """An NPC's stored icon is editable in a save, as a PC's is."""
     from editor.window import EditorBinding
     from goldbox.icons import ICON_SIZE, Icon
 
@@ -1076,19 +1076,19 @@ def test_an_npc_hides_its_stale_icon_and_cannot_edit_it(app, party):
     editor._populate()
 
     icon = editor._widgets["icon"]
-    assert icon.icon is None
-    assert not icon.isEnabled()
-    assert not icon.btn_change.isEnabled()
-    assert not icon.part_combo.isEnabled()
-    assert not icon.color_combo.isEnabled()
+    assert icon.icon == stale
+    assert icon.isEnabled()
+    assert icon.btn_change.isEnabled()
+    assert icon.part_combo.isEnabled()
+    assert icon.color_combo.isEnabled()
     assert editor._widgets["levels_drained"].value() == 0
     assert editor._widgets["hp_lost_to_drain"].value() == 0
     before = npc.icon
     icon.set_cell_colour(0, 7)
-    assert npc.icon == before
-    assert not editor.dirty
+    assert icon.icon != before
+    assert editor.dirty == {0}
     editor._flush()
-    assert npc.icon == stale
+    assert npc.icon == icon.icon
     assert npc.record.get("levels_drained") == 255
     assert npc.record.get("hp_lost_to_drain") == 255
 
