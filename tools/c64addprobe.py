@@ -38,7 +38,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import shutil
 import sys
 import time
 
@@ -48,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import curseload, curserun, gamedisks  # noqa: E402
+from tools import curserun, gamedisks  # noqa: E402
 from tools import savecheck as SC  # noqa: E402
 from tools import session as por  # noqa: E402
 from tools.c64nametable import character_files, from_bar, load_party  # noqa: E402
@@ -86,7 +85,7 @@ def directory(sess, out, tag, keep: bool = False) -> list[str]:
     names = [e.name.decode("latin1").rstrip("\xa0 ")
              for e in D64.open(sess.save_disk).iter_directory()]
     if keep:
-        shutil.copy(sess.save_disk, out / f"disk-{tag}.D64")
+        por.copy_closed_disk(pathlib.Path(sess.save_disk), out / f"disk-{tag}.D64")
     print(json.dumps({"event": "directory", "tag": tag, "names": names}), flush=True)
     return names
 
@@ -265,18 +264,7 @@ def main(argv=None) -> int:
         sess.wait_text("BEGIN ADVENTURING", 90)
 
         kept = out / "save-after.D64"
-        shutil.copy(sess.save_disk, kept)
-        # A copy taken straight after the engine's own `SAVE CURRENT GAME`
-        # can catch `SAVEAZURE` before the drive has finished closing it --
-        # type `$02`, no block count -- and the game answers such a disk with
-        # `UNABLE TO LOAD SAVED GAME.` on the next boot
-        # (`docs/179-loading-a-curse-save.md`, `60, WRITE FILE OPEN`).  The
-        # payload is all there, so closing the entry in **this copy** is what
-        # makes the run's own output loadable; the disk it was staged from is
-        # never touched.
-        print(json.dumps({"event": "closed_splat",
-                          "entries": curseload.close_splat(str(kept))}),
-              flush=True)
+        por.copy_closed_disk(pathlib.Path(sess.save_disk), kept)
         after = D64.open(str(kept))
         print("files after add+save:", [e.name for e in after.iter_directory()],
               flush=True)

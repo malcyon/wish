@@ -46,7 +46,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -414,7 +413,7 @@ def drive(args) -> int:
             if save_current_game(run):
                 dest = pathlib.Path(args.save_out)
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy(pathlib.Path(slot.dir) / "SIDE0.D64", dest)
+                por.copy_closed_disk(pathlib.Path(slot.dir) / "SIDE0.D64", dest)
                 run.note(event="saved", to=str(dest))
             else:
                 run.note(event="save-failed")

@@ -38,7 +38,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import signal
 import struct
 import sys
@@ -953,7 +952,8 @@ def run(args, log: Log) -> int:
             log.emit("resave", ok=ok, to=args.resave)
             log.say(f"The game's own ENCAMP > SAVE wrote the party back: {ok}")
             if ok:
-                shutil.copy(sess.save_disk, args.resave)
+                S.copy_closed_disk(pathlib.Path(sess.save_disk),
+                                   pathlib.Path(args.resave))
                 log.say(f"The engine-written disk is at {args.resave}")
             sess.settle(3)
 

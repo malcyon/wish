@@ -41,7 +41,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -423,7 +422,7 @@ def boot(args) -> int:
         if args.save_game:
             if sess.save_game():
                 written = pathlib.Path(sess.save_disk)
-                shutil.copy(written, out / "saved.d64")
+                S.copy_closed_disk(written, out / "saved.d64")
                 log.emit("saved", blocks=trait_blocks(out / "saved.d64"))
                 log.say("the game saved; blocks on its disk "
                         + str(trait_blocks(out / "saved.d64")))

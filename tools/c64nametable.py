@@ -35,7 +35,6 @@ import argparse
 import json
 import pathlib
 import re
-import shutil
 import sys
 import time
 
@@ -440,7 +439,7 @@ def drive(save: str, out: str, pool: int | None, disks: str | None,
             run.answer_yes("after-save")
             sess.wait_text("BEGIN ADVENTURING", 90)
         kept = run.out / "save-after.D64"
-        shutil.copy(sess.save_disk, kept)
+        por.copy_closed_disk(pathlib.Path(sess.save_disk), kept)
         after = D64.open(str(kept))
         run.log("done", ok=True, save_after=str(kept),
                 character_files=character_files(after, PREFIX[game.key]),

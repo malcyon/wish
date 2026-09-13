@@ -33,7 +33,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -226,7 +225,8 @@ def run(args, log: Log) -> int:
             log.say(f"the game's own ENCAMP > SAVE wrote back: {ok}")
             if ok:
                 pathlib.Path(args.resave).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy(sess.save_disk, args.resave)
+                S.copy_closed_disk(pathlib.Path(sess.save_disk),
+                                   pathlib.Path(args.resave))
                 log.say(f"the engine-written disk is at {args.resave}")
             sess.settle(3)
         rc = 0 if moved_any else 1

@@ -60,7 +60,6 @@ import hashlib
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -720,7 +719,7 @@ def run(args) -> int:
                 + ("CHANGED" if after_disk != before_disk
                    else "was not written"))
         if sess.save_disk and pathlib.Path(sess.save_disk).exists():
-            shutil.copy(sess.save_disk, out / "save-after.d64")
+            S.copy_closed_disk(pathlib.Path(sess.save_disk), out / "save-after.d64")
         frames.write(out / "screens.txt", started)
         try:
             sess.kbd.screenshot(str(out / "outcome.png"))

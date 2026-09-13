@@ -58,7 +58,6 @@ import json
 import os
 import pathlib
 import re
-import shutil
 import socket
 import sys
 import threading
@@ -1023,7 +1022,7 @@ def main(argv=None) -> int:
         tracer.phase = "end"
         if args.save_game:
             if sess.save_game():
-                shutil.copy(pathlib.Path(sess.save_disk), out / "saved.d64")
+                S.copy_closed_disk(pathlib.Path(sess.save_disk), out / "saved.d64")
                 log.emit("saved", blocks=trait_blocks(out / "saved.d64"))
                 log.say("save written; trait blocks "
                         + str(trait_blocks(out / "saved.d64")))

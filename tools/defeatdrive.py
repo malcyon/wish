@@ -53,7 +53,6 @@ import hashlib
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -394,7 +393,7 @@ def main(argv=None) -> int:
                 + ("CHANGED" if after_disk != before_disk
                    else "was not written"))
         if sess.save_disk and pathlib.Path(sess.save_disk).exists():
-            shutil.copy(sess.save_disk, out / "save-after.d64")
+            S.copy_closed_disk(pathlib.Path(sess.save_disk), out / "save-after.d64")
         frames.write(out / "screens.txt", started)
         try:
             sess.kbd.screenshot(str(out / "outcome.png"))
@@ -424,7 +423,7 @@ def main(argv=None) -> int:
         log.emit("save_disk", when="end", sha256=last_disk,
                  changed=last_disk != before_disk)
         if last_disk != after_disk and pathlib.Path(sess.save_disk).exists():
-            shutil.copy(sess.save_disk, out / "save-end.d64")
+            S.copy_closed_disk(pathlib.Path(sess.save_disk), out / "save-end.d64")
             log.say("  the save disk changed again during the watch")
     except Exception as exc:
         import traceback

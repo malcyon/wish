@@ -13,6 +13,8 @@ whatever screen the game happened to be showing.
 import pytest
 from conftest import load_tools_module
 
+from goldbox.d64 import D64
+
 session = load_tools_module("session")
 
 
@@ -64,3 +66,51 @@ def test_a_live_console_still_hears_everything(monkeypatch, capsys,
     out = capsys.readouterr().out
     assert "attached SIDE0.D64" in out
     assert "the confirm prompt came up" in out
+
+
+def _open_save(path):
+    disk = D64.blank(b"SAVE")
+    disk.write_file(b"SAVEDGAME0", bytes(range(256)))
+    entry = disk.entry(b"SAVEDGAME0")
+    raw = bytearray(disk.to_bytes())
+    raw[entry.offset] &= 0x7f
+    path.write_bytes(raw)
+
+
+def test_copy_closed_disk_retries_until_the_drive_closes_the_entry(
+        tmp_path, monkeypatch):
+    """The copy leaving a slot must not preserve a transient splat entry."""
+    source = tmp_path / "SIDE0.D64"
+    copied = tmp_path / "saved.D64"
+    _open_save(source)
+    slept = []
+
+    def close_after_wait(seconds):
+        slept.append(seconds)
+        disk = D64.open(source)
+        entry = disk.entry(b"SAVEDGAME0")
+        raw = bytearray(disk.to_bytes())
+        raw[entry.offset] |= 0x80
+        source.write_bytes(raw)
+
+    monkeypatch.setattr(session.time, "sleep", close_after_wait)
+
+    assert session.copy_closed_disk(source, copied, attempts=2, backoff=0.01) == str(copied)
+    assert slept == [0.01]
+    assert D64.open(copied).entry(b"SAVEDGAME0").is_closed
+
+
+def test_copy_closed_disk_refuses_a_copy_the_drive_never_closes(tmp_path,
+                                                                  monkeypatch):
+    """A bounded wait must leave a clear failure, not an unloadable output."""
+    source = tmp_path / "SIDE0.D64"
+    copied = tmp_path / "saved.D64"
+    _open_save(source)
+    copied.write_bytes(b"the earlier, known-good copy")
+    waits = []
+    monkeypatch.setattr(session.time, "sleep", waits.append)
+
+    with pytest.raises(RuntimeError, match="SAVEDGAME0"):
+        session.copy_closed_disk(source, copied, attempts=2, backoff=0.01)
+    assert waits == [0.01]
+    assert copied.read_bytes() == b"the earlier, known-good copy"

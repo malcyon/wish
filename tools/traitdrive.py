@@ -40,7 +40,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import shutil
 import struct
 import sys
 
@@ -300,7 +299,7 @@ def main(argv=None) -> int:
         if args.save_game:
             if sess.save_game():
                 written = pathlib.Path(sess.save_disk)
-                shutil.copy(written, out / "saved.d64")
+                S.copy_closed_disk(written, out / "saved.d64")
                 log.emit("saved", blocks=trait_blocks(out / "saved.d64"))
                 log.say("save written; trait blocks "
                         + str(trait_blocks(out / "saved.d64")))

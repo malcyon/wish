@@ -52,7 +52,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
@@ -157,7 +156,7 @@ def run(args) -> int:
         here = pathlib.Path(slot.dir)
         report["seed"] = seed_disk(source, here / "SIDE0.D64",
                                    area=args.area, x=args.x, y=args.y)
-        shutil.copy(here / "SIDE0.D64", out / "SEED.D64")
+        S.copy_closed_disk(here / "SIDE0.D64", out / "SEED.D64")
 
         sess = S.Session(boot, slot=slot)
         if not sess.boot():
@@ -201,7 +200,7 @@ def run(args) -> int:
             if not sess.save_game():
                 raise RuntimeError(f"ENCAMP > SAVE did not complete for {name}")
             sess.settle(3)
-            shutil.copy(sess.save_disk, out / name)
+            S.copy_closed_disk(pathlib.Path(sess.save_disk), out / name)
             saved = load_payload(str(out / name), POOL_OF_RADIANCE.save_file)
             g = lambda a: saved[a - 0x4900]      # noqa: E731
             report.setdefault("saves", []).append({

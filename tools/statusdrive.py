@@ -52,7 +52,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import shutil
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
@@ -406,7 +405,7 @@ def main(argv=None) -> int:
         if not args.no_save and after:
             if sess.save_game():
                 sess.settle(4)
-                shutil.copy(sess.save_disk, out / "saved.d64")
+                S.copy_closed_disk(pathlib.Path(sess.save_disk), out / "saved.d64")
                 on_disk = read_saved(out / "saved.d64")
                 log.emit("saved", roster=on_disk)
                 log.say("saved roster +0x00: "

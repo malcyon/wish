@@ -19,7 +19,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -143,7 +142,7 @@ def main() -> int:
                         steps.append(rec)
                         raise RuntimeError(f"save failed at step {i}")
                     out = f"{WALKS}/{args.name}-{i:02d}.D64"
-                    shutil.copy(work_save, out)
+                    S.copy_closed_disk(pathlib.Path(work_save), pathlib.Path(out))
                     rec["disk"] = os.path.basename(out)
                     on_disk = read_position(out)
                     rec["disk_position"] = on_disk

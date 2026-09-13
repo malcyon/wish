@@ -49,7 +49,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -235,7 +234,7 @@ def run(args) -> int:
             report["resaved"] = sess.save_game()
             shot("06-resaved")
             sess.settle(4)
-            shutil.copy(save_disk, args.resave)
+            por.copy_closed_disk(pathlib.Path(save_disk), pathlib.Path(args.resave))
             report["resave_kept_at"] = args.resave
             log(event="resave", ok=report["resaved"], kept=args.resave)
         return 0

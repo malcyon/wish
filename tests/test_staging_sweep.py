@@ -168,15 +168,6 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     # and the staged `SAVE` tree are both writable before the game is booted
     # -- `tools/session.py`'s `_restage` and `dosbox.Session.stage` see to
     # that -- so what the game leaves behind is writable too.
-    ("c64addprobe.py", "kept"):
-        "the slot's SIDE0.D64 after the game's own SAVE CURRENT GAME",
-    ("c64addprobe.py", 'out / f"disk-{tag}.D64"'):
-        "the slot's SIDE0.D64 as the game left it, kept for a directory read",
-    ("c64nametable.py", "kept"):
-        "the slot's SIDE0.D64 after the game's own SAVE CURRENT GAME",
-    ("c64outdoor.py", 'out / "SEED.D64"'):
-        "the SIDE0.D64 this run seeded in its own slot, staged by stage_disks",
-    ("c64outdoor.py", "out / name"): "the slot's SIDE0.D64 after ENCAMP > SAVE",
     ("convertrun.py", "out / p.name"):
         "the CHRDAT records the game wrote in this run's staged tree",
     ("convertrun.py", "s.save_dir / p.name"):
@@ -184,10 +175,6 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
         "tree Session.stage(fresh=True) has just rebuilt",
     ("curseregain.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
-    ("defeatdrive.py", 'out / "save-after.d64"'):
-        "the slot's SIDE0.D64 after the fight this run drove",
-    ("defeatdrive.py", 'out / "save-end.d64"'):
-        "the slot's SIDE0.D64 at the end of the run",
     ("dosencsave.py", "d / p.name"):
         "the save files the game wrote in this run's staged tree",
     ("dosladder.py", "d / p.name"):
@@ -205,18 +192,8 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("dossheetread.py", "dest"):
         "the whole staged SAVE tree after the game resaved it; the destination "
         "is rmtree'd first, so no leftover survives either",
-    ("fleedrive.py", 'out / "save-after.d64"'):
-        "the slot's SIDE0.D64 after the flee this run drove",
     ("portraitshot.py", "keep"):
         "the staged SAVE tree kept as a template; rmtree'd first",
-    ("statusdrive.py", 'out / "saved.d64"'):
-        "the slot's SIDE0.D64 after the game's own save",
-    ("traitask.py", 'out / "saved.d64"'):
-        "the slot's SIDE0.D64 after the game's own save",
-    ("traitdrive.py", 'out / "saved.d64"'):
-        "the slot's SIDE0.D64 after the game's own save",
-    ("traitsave.py", 'out / "saved.d64"'):
-        "the slot's SIDE0.D64 after the game's own save",
 
     # -- copied from outside the run, and the site restores the write bit
     # itself on the very next line.  These predate `stage_writable` and do
@@ -524,8 +501,6 @@ def test_the_sweep_names_all_eight_pre_fix_sites_together(tmp_path):
 #: ignore it.
 OWN_RESULT = (
     ("convertrun.py", 'out / "loaded.png"'),      # a screenshot it just took
-    ("statusdrive.py", 'out / "saved.d64"'),      # the disk the game just wrote
-    ("defeatdrive.py", 'out / "save-after.d64"'),  # the same, after a fight
     ("dosladder.py", "d / p.name"),               # the staged tree's own records
 )
 
@@ -541,7 +516,7 @@ def test_a_run_copying_its_own_result_into_out_is_not_a_defect(name, dest):
 
 
 def test_the_failure_message_names_none_of_the_run_s_own_results():
-    """The assertion a person actually reads. If any of the four above ever
+    """The assertion a person actually reads. If either above ever
     reached it, the next reader would learn the sweep cries wolf."""
     found = reused_destination_copies()
     unruled = set(found) - set(ARTEFACT_COPIES) - set(OPEN_DEFECTS)

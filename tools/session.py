@@ -32,6 +32,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -46,6 +47,7 @@ TOOLS = str(pathlib.Path(__file__).resolve().parent)
 sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
+from goldbox.d64 import D64, D64Error  # noqa: E402
 from tools import instance  # noqa: E402
 from tools.drive import (  # noqa: E402
     Keyboard,
@@ -2664,6 +2666,48 @@ def _restage(src: pathlib.Path, dest: pathlib.Path) -> None:
             f"leftover from an earlier tenant of the slot, delete {dest} "
             f"by hand and retry."
         ) from exc
+
+
+def copy_closed_disk(src: pathlib.Path, dest: pathlib.Path, *,
+                     attempts: int = 8, backoff: float = 0.25) -> str:
+    """Copy a C64 disk out of a slot only after its files are closed.
+
+    A successful game menu does not mean the 1541 has finished its final
+    directory update.  An image copied while that update is pending contains
+    a splat entry which the game refuses with ``60, WRITE FILE OPEN``.  Copy
+    each observation, rather than inspecting the live image in place, so the
+    result handed to the caller is the exact image whose directory was proved
+    closed.
+    """
+    if attempts < 1:
+        raise ValueError("attempts must be at least one")
+    src, dest = pathlib.Path(src), pathlib.Path(dest)
+    with tempfile.NamedTemporaryFile(prefix=f".{dest.name}.", suffix=".tmp",
+                                     dir=dest.parent, delete=False) as candidate:
+        candidate = pathlib.Path(candidate.name)
+    try:
+        last = "could not read the copied disk"
+        for attempt in range(attempts):
+            shutil.copy(src, candidate)
+            try:
+                image = D64.open(candidate)
+            except D64Error as exc:
+                last = f"could not read the copied disk ({exc})"
+            else:
+                unclosed = [entry for entry in image.iter_directory()
+                            if not entry.is_empty and not entry.is_closed]
+                if not unclosed:
+                    candidate.replace(dest)
+                    return str(dest)
+                names = ", ".join(repr(entry.display_name) for entry in unclosed)
+                last = f"open directory {'entry' if len(unclosed) == 1 else 'entries'} {names}"
+            if attempt + 1 < attempts:
+                time.sleep(backoff)
+        raise RuntimeError(
+            f"refusing to copy {src}: the drive did not close every non-empty "
+            f"directory entry after {attempts} read(s); {last}")
+    finally:
+        candidate.unlink(missing_ok=True)
 
 
 def stage_disks(slot, disks, save: str = "") -> str:
