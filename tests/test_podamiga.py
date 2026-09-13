@@ -194,6 +194,29 @@ def test_the_pod_treasure_share_is_a_raw_byte_in_both_directions(share):
     assert writer.provenance()[amiga_pod.FIELD_83_87_SECOND] == "treasure_share"
 
 
+@pytest.mark.parametrize("share", (0, 255))
+def test_the_pod_conversion_keeps_an_explicit_treasure_share(share):
+    """A `.pc` read reaches both composed Amiga writing routes unchanged."""
+    raw = bytearray(amiga_pod.PodWriter(
+        name="TEST",
+        character_class=amiga_pod.CLASSES.index("FIGHTER"),
+        class_levels=(0, 0, 1, 0, 0, 0, 0),
+        class_bits=amiga_pod.CLASS_BIT["fighter"],
+    ).to_bytes())
+    raw[amiga_pod.FIELD_83_87_SECOND] = share
+    character = amiga_pod.pod_to_neutral(bytes(raw))
+
+    writer, _write_report = amiga_pod.write_pod(character)
+    assert writer.to_bytes()[amiga_pod.FIELD_83_87_SECOND] == share
+    assert writer.provenance()[amiga_pod.FIELD_83_87_SECOND] == "treasure_share"
+
+    written, report = amiga_pod.to_pc(character)
+    assert written[amiga_pod.FIELD_83_87_SECOND] == share
+    assert report.unaccounted(written) == []
+    assert report.sources[amiga_pod.FIELD_83_87_SECOND].startswith(
+        "treasure_share <- Amiga")
+
+
 def test_the_reader_drops_a_strict_subset_of_what_the_writer_drops():
     """The reader's list was computed from the writer's until `#462` and is
     its own now, so this is what stops the two drifting apart the wrong way.
