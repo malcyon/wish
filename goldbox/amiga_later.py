@@ -61,7 +61,7 @@ if TYPE_CHECKING:          # avoided at runtime: goldbox.dos_codec is the
 # registry, and the item-node facts they are built from -- moved to
 # `goldbox/amiga_port.py` in #470's stage 4b, so the port's own module holds
 # what an Amiga record looks like and this one holds only the code that reads
-# and writes it.  Every name is imported at the head of this file and every
+# and writes it.  Every name is imported at the head of this file and the
 # compatibility constants retain the port's established registry spellings.
 CURSE_SHAPE = CURSE_DELTAS
 SILVER_BLADES_SHAPE = SILVER_BLADES_DELTAS
@@ -791,10 +791,9 @@ LATER_CONSTANTS: tuple[tuple[str, str], ...] = tuple(
 #: *"an entry leaves a drop list when the field converts, never when it stops
 #: being counted"*.
 #:
-#: All three were moved onto :data:`LATER_CONSTANTS` on 2026-09-13 and moved
-#: back the same day.  `field_83_87` because the run is not constant and the
-#: writer's own is measured overwriting MALACHITE's share byte;
-#: `icon_dimension` and `turn_class` because `goldbox.dos_codec.DROPPED`
+#: Both fields were moved onto :data:`LATER_CONSTANTS` on 2026-09-13 and moved
+#: back the same day.  `icon_dimension` and `turn_class` because
+#: `goldbox.dos_codec.DROPPED`
 #: keeps the same two fields, for the same two reasons, and says in its own
 #: comment that silencing them was an agent's judgement Donald took back on
 #: 2026-09-06 -- *"shown until he rules on it himself"*.  Neither of those two
