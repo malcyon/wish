@@ -730,7 +730,7 @@ _GRANT_LOOP = re.compile(
 #: Where `GEN` runs, which is not where it loads. The file declares `$4000` and
 #: the grant routines reference `$0F16` and jump to `$0EFC`, so this part of it
 #: is relocated low. 0x0800 is Curse's overlay base as well -- `tests/
-#: test_curse.py::_grant_table` asserts it there -- and it is what makes the
+#: test_curse.py::_cleric_grant_table` asserts it there -- and it is what makes the
 #: ranger table read as the four druid spells the shipped PAINE holds. Any
 #: other base gives byte numbers outside 0-15 or a spell set nobody has.
 _GEN_BASE = 0x0800

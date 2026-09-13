@@ -17,7 +17,7 @@ import pytest
 from goldbox import levels, levelup, spells
 from goldbox.record import CharacterRecord
 from tests import gamedata
-from tests.test_curse import _grant_table
+from tests.test_curse import _cleric_grant_table
 from tools import laterthac0
 
 GEN_BASE = 0x0800
@@ -546,7 +546,7 @@ def test_the_cleric_grant_is_curses_own_table_at_every_level_it_reaches():
     equals what the game's own grant routine would OR into the mask, which is
     the only check worth having: two independent readings of one fact.
     """
-    grants = _grant_table(_curse_gen(), 0xCA)
+    grants = _cleric_grant_table(_curse_gen())
     for level in sorted(grants):
         assert set(levelup._cleric_spell_ids(level, CURSE_KEY)) == grants[level], (
             level, sorted(set(levelup._cleric_spell_ids(level, CURSE_KEY))

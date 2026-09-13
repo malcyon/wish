@@ -359,7 +359,7 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     not_a_spell=_NOT_A_SPELL_CURSE,
     spellbook_size=13,
     # 36 ANIMATE DEAD and 100 BESTOW CURSE. `GEN`'s own cleric grant table --
-    # the one `tests/test_curse.py::_grant_table` reads out of the bytes --
+    # the one `tests/test_curse.py::_cleric_grant_table` reads out of the bytes --
     # hands out 1-8, 22-28, 37-44, {58, 66-70} and 71-76 at levels 1, 3, 5, 7
     # and 9, and stops. Both ids are in a cleric group because both are cleric
     # spells; neither is ever granted at a temple, and a player meets them on a
