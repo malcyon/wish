@@ -41,11 +41,11 @@ def test_colours_are_valid_c64_values(save):
         assert all(c <= 0x0F for c in icon.colours), s.record.name
 
 
-def test_shape_and_colours_are_independently_editable(save):
+def test_screen_codes_and_colours_are_independently_editable(save):
     """MAGNUS changed only colours where ROLAND changed both, so the halves are
     genuinely separate."""
     icon = icon_for_slot(save.to_bytes(), 0)
-    assert len(icon.shape) == CELLS
+    assert len(icon.screen_codes) == CELLS
     assert len(icon.colours) == CELLS
     assert icon.palette                      # non-empty, de-duplicated
 
@@ -77,7 +77,7 @@ def test_a_bit3_clear_cell_draws_hires_not_multicolour(save):
     own = color_byte & 0x07
 
     pixels = icon_pixels(icon, charset)
-    code = icon.shape[cell]
+    code = icon.screen_codes[cell]
     glyph = charset[code * 8: code * 8 + 8]
     cx, cy = cell % CELL_COLS, cell // CELL_COLS
     for row in range(8):

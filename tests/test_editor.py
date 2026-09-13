@@ -1139,14 +1139,14 @@ def test_changing_a_cell_glyph_reaches_the_disk(editor, save):
     from editor.window import EditorBinding
     editor.roster.selectRow(4)                    # MAGNUS
     icon = editor._widgets["icon"]
-    assert icon.icon.shape[0] != 200
+    assert icon.icon.screen_codes[0] != 200
     icon.set_cell_glyph(0, 200)
     editor._edited()
     assert "wrote" in editor.save(interactive=False)
 
     again = EditorBinding(make_root(), str(save), GAME_DISK)
     again.roster.selectRow(4)
-    assert again._widgets["icon"].icon.shape[0] == 200
+    assert again._widgets["icon"].icon.screen_codes[0] == 200
 
 
 @game_disks

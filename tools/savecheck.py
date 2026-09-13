@@ -222,7 +222,7 @@ def slot_icons(disk: pathlib.Path) -> list[dict]:
     for n in range(I.ICON_COUNT):
         icon = I.icon_for_slot(payload, n)
         out.append({"slot": n, "occupied": sg0.slot(n).occupied,
-                    "shape": icon.shape.hex(), "colours": icon.colours.hex()})
+                    "shape": icon.screen_codes.hex(), "colours": icon.colours.hex()})
     return out
 
 

@@ -31,7 +31,7 @@ is small and 1 is large, which is also what the game shows for a dwarf.
 **Size is never written back.** No `STA $6B99` exists in `SPELLN64`: choosing
 SIZE only switches which lists this session offers. So an icon may legally mix a
 large body with a small head, and one on our disks does -- HOGARTH's. That is
-why `legal_shapes` explores both pairs together rather than one at a time.
+why `legal_screen_codes` explores both pairs together rather than one at a time.
 
 Reconstruction is the evidence: 17 of the 18 distinct shapes on our disks come
 out of a (weapon, head) pair exactly, and the 18th is HOGARTH's mixed-size one.
@@ -835,7 +835,7 @@ class IconParts:
 
     # -- the legal set ---------------------------------------------------
 
-    def legal_shapes(self, sizes: tuple[str, ...] = ("small", "large")) -> set[bytes]:
+    def legal_screen_codes(self, sizes: tuple[str, ...] = ("small", "large")) -> set[bytes]:
         """Every shape reachable by any sequence of menu choices.
 
         Not the product of the two lists. A weapon preserves the head cells, so

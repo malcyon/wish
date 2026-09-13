@@ -22,7 +22,7 @@ def parts() -> IconParts:
 @pytest.fixture(scope="module")
 def legal(parts) -> set[bytes]:
     """The whole reachable set. Slow enough to be worth computing once."""
-    return parts.legal_shapes()
+    return parts.legal_screen_codes()
 
 
 def test_the_counts_come_from_the_overlay_not_from_here(parts):
@@ -69,8 +69,8 @@ def test_the_reachable_set_is_bigger_than_the_naive_product(parts, legal):
     """35x23 would be 805. Order matters and the two size pairs interact, so
     the real answer is larger -- which is why the editor explores rather than
     enumerating pairs."""
-    assert len(parts.legal_shapes(("large",))) == 3138
-    assert len(parts.legal_shapes(("small",))) == 1227
+    assert len(parts.legal_screen_codes(("large",))) == 3138
+    assert len(parts.legal_screen_codes(("small",))) == 1227
     assert len(legal) == 15328
     assert len(legal) > 35 * 23 + 28 * 14
 
@@ -90,7 +90,7 @@ def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
         # perfectly legal art look unreachable.
         save0 = SaveGame0.from_prg((FIXTURES / name).read_bytes()).to_bytes()
         for slot in range(ICON_COUNT):
-            shape = bytes(icon_for_slot(save0, slot).shape)
+            shape = bytes(icon_for_slot(save0, slot).screen_codes)
             if set(shape) != {SPACE} and any(shape):
                 shapes.add(shape)
     assert shapes, "no icons in the fixtures"
@@ -132,7 +132,7 @@ def test_the_colour_rule_reproduces_the_icons_we_hold(parts):
     checked = 0
     for slot in range(ICON_COUNT):
         icon = icon_for_slot(save0, slot)
-        shape, colours = bytes(icon.shape), bytes(icon.colours)
+        shape, colours = bytes(icon.screen_codes), bytes(icon.colours)
         if set(shape) == {SPACE} or not any(shape):
             continue
         per_class = parts.part_colours(colours, shape)
@@ -747,14 +747,14 @@ def test_a_staged_silver_blades_party_arrives_holding_what_it_held(
         "this specimen's one small character is what the row is about")
     for index, char in enumerate(party):
         at = container.icon(dos_codec.marching_slot(index, len(party)))
-        drawn = _draws_shape(silver_blades_parts,
+        drawn = _drawn_parts(silver_blades_parts,
                              bytes(save0[at:at + 18]))
         small = char.get("size") == 1
         assert ("weapon" in drawn) is not small, (char.name, drawn)
         assert ("cap" in drawn) is not small, (char.name, drawn)
 
 
-def _draws_shape(parts, shape) -> set[str]:
+def _drawn_parts(parts, shape) -> set[str]:
     """Which named part classes a composed icon's eighteen cells hold."""
     from goldbox.iconparts import PART_CLASSES
 

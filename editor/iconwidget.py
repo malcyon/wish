@@ -195,7 +195,7 @@ class IconEditor(QWidget):
         if part_idx < 0:
             return
             
-        pc = self._parts.part_colours(bytes(self._icon.colours), bytes(self._icon.shape))
+        pc = self._parts.part_colours(bytes(self._icon.colours), bytes(self._icon.screen_codes))
         current_color = pc.get(part_idx, 0)
         
         self.color_combo.blockSignals(True)
@@ -212,27 +212,27 @@ class IconEditor(QWidget):
         if part_idx < 0 or color_val is None:
             return
             
-        pc = self._parts.part_colours(bytes(self._icon.colours), bytes(self._icon.shape))
+        pc = self._parts.part_colours(bytes(self._icon.colours), bytes(self._icon.screen_codes))
         pc[part_idx] = color_val
         
-        new_colours = self._parts.colours_for(bytes(self._icon.shape), pc, bytes(self._icon.colours))
-        self.set_shape(bytes(self._icon.shape), new_colours)
+        new_colours = self._parts.colours_for(bytes(self._icon.screen_codes), pc, bytes(self._icon.colours))
+        self.set_cells(bytes(self._icon.screen_codes), new_colours)
 
     def _pick_parts(self) -> None:
         if (not self.isEnabled() or not self._charset or self._parts is None
                 or self._icon is None):
             return
         dialog = PartsPicker(self._parts, self._charset,
-                             bytes(self._icon.shape),
+                             bytes(self._icon.screen_codes),
                              bytes(self._icon.colours), self._size, self)
         if dialog.exec() != int(QDialog.DialogCode.Accepted):
             return
-        self.set_shape(dialog.shape, dialog.colours)
+        self.set_cells(dialog.shape, dialog.colours)
 
-    def set_shape(self, shape: bytes, colours: bytes) -> None:
+    def set_cells(self, screen_codes: bytes, colours: bytes) -> None:
         if not self.isEnabled() or self._icon is None:
             return
-        self._icon = Icon(bytes(shape) + bytes(colours))
+        self._icon = Icon(bytes(screen_codes) + bytes(colours))
         self.preview.set_icon(self._icon, self._charset)
         self._update_color_combo()
         self.iconChanged.emit()
@@ -244,7 +244,7 @@ class IconEditor(QWidget):
         if raw[cell] == code:
             return
         raw[cell] = code & 0xFF
-        self.set_shape(bytes(raw[:CELLS]), bytes(raw[CELLS:]))
+        self.set_cells(bytes(raw[:CELLS]), bytes(raw[CELLS:]))
 
     def set_cell_colour(self, cell: int, value: int) -> None:
         if self._icon is None or not 0 <= cell < CELLS:
@@ -253,7 +253,7 @@ class IconEditor(QWidget):
         if raw[CELLS + cell] == value:
             return
         raw[CELLS + cell] = value & 0x0F
-        self.set_shape(bytes(raw[:CELLS]), bytes(raw[CELLS:]))
+        self.set_cells(bytes(raw[:CELLS]), bytes(raw[CELLS:]))
 
 
 def _swatch(colour_: QColor):

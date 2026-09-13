@@ -39,7 +39,7 @@ class Icon:
     raw: bytes
 
     @property
-    def shape(self) -> bytes:
+    def screen_codes(self) -> bytes:
         """The 18 screen codes that draw the icon."""
         return self.raw[:CELLS]
 
@@ -62,7 +62,7 @@ class Icon:
         return seen
 
     def __repr__(self) -> str:
-        return f"<Icon shape={self.shape.hex()} palette={'/'.join(self.palette)}>"
+        return f"<Icon shape={self.screen_codes.hex()} palette={'/'.join(self.palette)}>"
 
 
 def icon_for_slot(save0_payload: bytes, slot: int) -> Icon:
@@ -134,7 +134,7 @@ def icon_pixels(icon: "Icon", charset: bytes) -> list[list[int]]:
               2: COMBAT_MULTICOLOUR_2}
     out = [[COMBAT_BACKGROUND] * PIXELS_WIDE for _ in range(PIXELS_HIGH)]
     for cell in range(CELLS):
-        code = icon.shape[cell]
+        code = icon.screen_codes[cell]
         color_byte = icon.colours[cell]
         is_mc = bool(color_byte & 0x08)
         own = color_byte & 0x07

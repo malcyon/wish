@@ -489,7 +489,7 @@ def entry_for(char, slot_index: int, items, icon, game: C64Container | None = No
             row["_type_summary"] = kind.summary()
         row["raw"] = it.raw.hex()
         entry["items"].append(row)
-    entry["icon"] = {"shape": icon.shape.hex(),
+    entry["icon"] = {"shape": icon.screen_codes.hex(),
                      "colours": icon.colours.hex()}
     # The character level the game itself keeps, separate from the
     # per-class array above. They agree in every specimen, and every

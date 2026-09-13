@@ -125,5 +125,5 @@ def test_an_icon_of_the_wrong_size_still_slices_predictably():
     """Icon does not validate its length, so say what short input does rather
     than discover it later: shape and colours simply come back short."""
     icon = Icon(bytes(10))
-    assert len(icon.shape) + len(icon.colours) == 10
-    assert len(icon.shape) <= CELLS
+    assert len(icon.screen_codes) + len(icon.colours) == 10
+    assert len(icon.screen_codes) <= CELLS

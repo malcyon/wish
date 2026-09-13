@@ -50,7 +50,7 @@ def tables():
 @pytest.fixture(scope="module")
 def legal(parts) -> set[bytes]:
     """Every shape any sequence of ICON menu choices reaches. Slow."""
-    return parts.legal_shapes()
+    return parts.legal_screen_codes()
 
 
 def test_the_table_names_every_figure_a_dos_player_can_choose(tables):
@@ -74,7 +74,7 @@ def test_every_dos_figure_becomes_an_icon_the_game_could_have_made(
         parts, tables, legal):
     """All 896 of them: 32 bodies x 14 heads x two sizes.
 
-    Membership in `legal_shapes` is the check that matters.  Eighteen screen
+    Membership in `legal_screen_codes` is the check that matters.  Eighteen screen
     codes that no menu reaches are not a figure -- they are eighteen glyphs
     of `CHARPIC00` in whatever order, and the engine draws them anyway.
     """

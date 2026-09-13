@@ -789,7 +789,7 @@ def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
 
     # SSI's own pre-generated party, not the player's: an icon a person has
     # hand-edited need not be one pair, because a weapon change preserves the
-    # head and the two menus can be walked in any order. `legal_shapes` is the
+    # head and the two menus can be walked in any order. `legal_screen_codes` is the
     # question that asks about those; this one asks about the tables.
     payload = None
     for disk in gamedata.curse_disks():
