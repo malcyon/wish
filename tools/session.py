@@ -2691,11 +2691,11 @@ def copy_closed_disk(src: pathlib.Path, dest: pathlib.Path, *,
             shutil.copy(src, candidate)
             try:
                 image = D64.open(candidate)
+                unclosed = [entry for entry in image.iter_directory()
+                            if not entry.is_empty and not entry.is_closed]
             except D64Error as exc:
                 last = f"could not read the copied disk ({exc})"
             else:
-                unclosed = [entry for entry in image.iter_directory()
-                            if not entry.is_empty and not entry.is_closed]
                 if not unclosed:
                     candidate.replace(dest)
                     return str(dest)

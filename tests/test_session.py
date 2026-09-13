@@ -13,7 +13,7 @@ whatever screen the game happened to be showing.
 import pytest
 from conftest import load_tools_module
 
-from goldbox.d64 import D64
+from goldbox.d64 import D64, DIRECTORY_SECTOR, DIRECTORY_TRACK, sector_offset
 
 session = load_tools_module("session")
 
@@ -77,6 +77,14 @@ def _open_save(path):
     path.write_bytes(raw)
 
 
+def _looping_directory(path):
+    """A full-size image whose directory chain cannot be walked."""
+    raw = bytearray(D64.blank(b"SAVE").to_bytes())
+    directory = sector_offset(DIRECTORY_TRACK, DIRECTORY_SECTOR)
+    raw[directory:directory + 2] = bytes((DIRECTORY_TRACK, DIRECTORY_SECTOR))
+    path.write_bytes(raw)
+
+
 def test_copy_closed_disk_retries_until_the_drive_closes_the_entry(
         tmp_path, monkeypatch):
     """The copy leaving a slot must not preserve a transient splat entry."""
@@ -114,3 +122,26 @@ def test_copy_closed_disk_refuses_a_copy_the_drive_never_closes(tmp_path,
         session.copy_closed_disk(source, copied, attempts=2, backoff=0.01)
     assert waits == [0.01]
     assert copied.read_bytes() == b"the earlier, known-good copy"
+
+
+def test_copy_closed_disk_retries_a_malformed_directory_before_publishing(
+        tmp_path, monkeypatch):
+    """An incomplete directory chain is not evidence that a copy is safe."""
+    source = tmp_path / "SIDE0.D64"
+    copied = tmp_path / "saved.D64"
+    _looping_directory(source)
+    copied.write_bytes(b"the earlier, known-good copy")
+    waits = []
+
+    def finish_directory(seconds):
+        waits.append(seconds)
+        assert copied.read_bytes() == b"the earlier, known-good copy"
+        disk = D64.blank(b"SAVE")
+        disk.write_file(b"SAVEDGAME0", bytes(range(256)))
+        disk.save(source)
+
+    monkeypatch.setattr(session.time, "sleep", finish_directory)
+
+    assert session.copy_closed_disk(source, copied, attempts=2, backoff=0.01) == str(copied)
+    assert waits == [0.01]
+    assert D64.open(copied).entry(b"SAVEDGAME0").is_closed
