@@ -28,13 +28,32 @@ _ROOT = _TOOLS.parent
 
 sys.path.insert(0, str(_ROOT))
 from automap.paths import find_disks  # noqa: E402
+from goldbox import c64_port  # noqa: E402
 from tools import instance  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools.session import HERE, Session, claim_slot, stage_writable  # noqa: E402
 
 WALKS = f"{HERE}/walks"
-_disks = find_disks()
+_disks = find_disks(c64_port.POOL_OF_RADIANCE)
 BASE_SAVE = str(_disks / "PORSAVE11.D64") if _disks else "PORSAVE11.D64"
+
+
+def pool_sides(disks: str) -> pathlib.Path:
+    """Require the complete Pool of Radiance set before claiming a session.
+
+    ``stage_disks`` deliberately tolerates an absent side for tools that
+    stage titles with a different disk count.  A walk run needs all eight,
+    because a slot directory survives its previous tenant and an omitted side
+    would otherwise silently retain unrelated content.
+    """
+    path = pathlib.Path(disks).expanduser()
+    missing = [f"POOL{i}.D64" for i in range(1, 9)
+               if not (path / f"POOL{i}.D64").is_file()]
+    if missing:
+        raise ValueError(
+            f"--disks {path} must contain Pool of Radiance's eight sides; "
+            f"missing {', '.join(missing)}")
+    return path
 
 
 def main() -> int:
@@ -53,6 +72,11 @@ def main() -> int:
     args = ap.parse_args()
 
     os.makedirs(WALKS, exist_ok=True)
+    try:
+        disks = pool_sides(args.disks)
+    except ValueError as exc:
+        print(f"Could not stage Pool of Radiance disks: {exc}", file=sys.stderr)
+        return 1
 
     # `Slot.env()` now defaults `POR_HEADLESS` to `"1"` itself (#147), and
     # this tool always claims a slot before building a `Session` -- there is
@@ -73,7 +97,7 @@ def main() -> int:
         # Session attaches only disks inside this slot.  Slots outlive their
         # leases, so always replace all eight sides rather than relying on a
         # prior run having left the right title's disks behind.
-        S.stage_disks(slot, args.disks)
+        S.stage_disks(slot, disks)
         # `stage_writable`, not a bare `shutil.copy`: `--base` is often a
         # read-only specimen under `$WISH_SPECIMENS`, and `shutil.copy`
         # carries that mode onto the copy -- the game is then handed a

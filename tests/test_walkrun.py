@@ -261,6 +261,28 @@ def test_the_eight_sides_are_staged_before_the_session_is_built(
 
 
 @posix
+def test_missing_a_required_side_refuses_before_using_a_stale_slot_side(
+        pool, fake_session, args, monkeypatch, tmp_path, capsys):
+    """An incomplete ``--disks`` must not make a run borrow a prior tenant's
+    side and silently walk against the wrong game content."""
+    disks = tmp_path / "incomplete-disks"
+    disks.mkdir()
+    for i in range(1, 8):
+        (disks / f"POOL{i}.D64").write_bytes(f"side {i}".encode())
+
+    stale = Path(pool / "inst" / "0" / "SIDE8.D64")
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"wrong previous side")
+    monkeypatch.setattr(sys, "argv", [*sys.argv, "--disks", str(disks)])
+
+    assert walkrun.main() == 1
+
+    assert FakeSession.instances == []
+    assert stale.read_bytes() == b"wrong previous side"
+    assert "POOL8.D64" in capsys.readouterr().err
+
+
+@posix
 def test_a_second_run_reusing_the_slot_does_not_raise(
         pool, fake_session, args, monkeypatch):
     """A pool slot's directory outlives the lease: the second run to land on
