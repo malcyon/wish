@@ -53,23 +53,6 @@ if TYPE_CHECKING:          # avoided at runtime: goldbox.dos_codec is the
 
 
 
-# ---------------------------------------------------------------------------
-# Amiga Curse of the Azure Bonds and Secret of the Silver Blades (#55)
-# ---------------------------------------------------------------------------
-#
-# The two later titles' record deltas -- `AmigaDeltas`, the two rows and the
-# registry, and the item-node facts they are built from -- moved to
-# `goldbox/amiga_port.py` in #470's stage 4b, so the port's own module holds
-# what an Amiga record looks like and this one holds only the code that reads
-# and writes it.  Every name is imported at the head of this file and the
-# compatibility constants retain the port's established registry spellings.
-CURSE_SHAPE = CURSE_DELTAS
-SILVER_BLADES_SHAPE = SILVER_BLADES_DELTAS
-AMIGA_SHAPES = AMIGA_DELTAS
-AMIGA_SHAPES_BY_SIZE = AMIGA_DELTAS_BY_SIZE
-
-
-
 AMIGA_SSB_SPELLBOOK_BYTES = 15
 AMIGA_SSB_SPELLBOOK_AT = 0x071
 

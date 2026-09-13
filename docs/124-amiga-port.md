@@ -307,7 +307,7 @@ which a nine-byte record cannot do.
 records (the archives' `Default files/Saves`), eleven Amiga `.guy` pregens and
 the four character blocks embedded in the Amiga Curse saved game -- and the
 last four are what place two of the anchors, because they are a *played* party
-where the pregens are not. It is `CURSE_SHAPE` in `goldbox/amiga_later.py`, which
+where the pregens are not. It is `CURSE_DELTAS` in `goldbox/amiga_port.py`, which
 reads `goldbox/dos_port.py`'s Curse table through it rather than restating
 it, and `tools/amigarecords.py` produces the specimens.
 
@@ -1710,7 +1710,7 @@ engine's own.** Amiga Pools of Darkness carries a routine that turns an Amiga
 player's finished Silver Blades party, arriving in the next title — and it is
 a straight field-by-field copy: 66 `move.b $src(a3), $dst(a2)` instructions
 and eleven block copies, at file offset `0x026000` to `0x0262DC`.
-`goldbox.amiga_later.SILVER_BLADES_SHAPE` already names every source offset, because
+`goldbox.amiga_port.SILVER_BLADES_DELTAS` already names every source offset, because
 §1.6a decoded that record for `#55 (Decode the Amiga Curse and Silver Blades
 records)`, so each instruction reads as *"Silver Blades' `hp_rolled` is Pools
 of Darkness' `0x0B8`"*.

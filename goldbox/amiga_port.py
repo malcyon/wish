@@ -19,8 +19,7 @@ convention that the platform is the prefix and the role is the noun:
 * the **machine** -- a live, running game's addresses (`automap/amiga.py`'s
   `AmigaMachine`).
 
-`AmigaShape` was the class's name before that stage. `CURSE_SHAPE`, `SILVER_BLADES_SHAPE`,
-`AMIGA_SHAPES` and `AMIGA_SHAPES_BY_SIZE` remain registry names.
+`AmigaShape` was the class's name before that stage.
 
 **Nothing here imports `amiga_por`, `amiga_later`, `amiga_pod` or
 `amiga_shared`.**  The dependency runs one way --
