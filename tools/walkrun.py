@@ -29,6 +29,7 @@ _ROOT = _TOOLS.parent
 sys.path.insert(0, str(_ROOT))
 from automap.paths import find_disks  # noqa: E402
 from tools import instance  # noqa: E402
+from tools import session as S  # noqa: E402
 from tools.session import HERE, Session, claim_slot, stage_writable  # noqa: E402
 
 WALKS = f"{HERE}/walks"
@@ -42,6 +43,8 @@ def main() -> int:
     ap.add_argument("--route", required=True, help="I forward, J left, K right, M about")
     ap.add_argument("--save-every", type=int, default=1, help="0 to never save")
     ap.add_argument("--base", default=BASE_SAVE)
+    ap.add_argument("--disks", default=str(_disks or ""),
+                    help="directory containing POOL1.D64 through POOL8.D64")
     ap.add_argument("--timeout", type=float, default=3600)
     ap.add_argument("--slot", type=int, default=None,
                      help="a specific instance-pool slot, if a brief names one; "
@@ -67,6 +70,10 @@ def main() -> int:
     try:
         here = str(slot.dir)
         work_save = f"{here}/SIDE0.D64"
+        # Session attaches only disks inside this slot.  Slots outlive their
+        # leases, so always replace all eight sides rather than relying on a
+        # prior run having left the right title's disks behind.
+        S.stage_disks(slot, args.disks)
         # `stage_writable`, not a bare `shutil.copy`: `--base` is often a
         # read-only specimen under `$WISH_SPECIMENS`, and `shutil.copy`
         # carries that mode onto the copy -- the game is then handed a

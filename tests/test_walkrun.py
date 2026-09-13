@@ -228,6 +228,39 @@ def test_the_staged_save_disk_is_writable(pool, fake_session, args):
 
 
 @posix
+def test_the_eight_sides_are_staged_before_the_session_is_built(
+        pool, fake_session, args, monkeypatch, tmp_path):
+    """A reused slot must receive this run's eight sides, not whatever a
+    prior tenant left there; ``--base`` remains the separate save source."""
+    disks = tmp_path / "disks"
+    disks.mkdir()
+    sides = {
+        i: f"intended side {i}".encode()
+        for i in range(1, 9)
+    }
+    for i, contents in sides.items():
+        (disks / f"POOL{i}.D64").write_bytes(contents)
+
+    # Slot 0 is freshly claimed by this run.  A stale side there must not
+    # survive merely because this harness short-circuits before ``boot``.
+    stale = Path(pool / "inst" / "0" / "SIDE1.D64")
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"wrong previous side")
+    args.write_bytes(b"separate base save")
+    monkeypatch.setattr(sys, "argv", [*sys.argv, "--disks", str(disks)])
+
+    rc = walkrun.main()
+
+    assert rc == 1  # FakeSession.boot() fails after staging.
+    slot_dir = Path(FakeSession.instances[0].slot.dir)
+    assert {
+        i: (slot_dir / f"SIDE{i}.D64").read_bytes()
+        for i in range(1, 9)
+    } == sides
+    assert (slot_dir / "SIDE0.D64").read_bytes() == b"separate base save"
+
+
+@posix
 def test_a_second_run_reusing_the_slot_does_not_raise(
         pool, fake_session, args, monkeypatch):
     """A pool slot's directory outlives the lease: the second run to land on
