@@ -21,9 +21,9 @@ resulting path is also asserted, it is built by calling `os.path.join` again
 in the test, never a literal with a hardcoded separator.
 
 `ntpath.join` was used once, by hand, to confirm `os.path.join` is genuinely
-the fix: on a Windows-style base `C:\\Users\\donald\\work\\drive`,
+the fix: on a Windows-style base `C:\\Users\\someone\\work\\drive`,
 `ntpath.join(base, "SIDE1.D64")` answers
-`C:\\Users\\donald\\work\\drive\\SIDE1.D64`, matching a
+`C:\\Users\\someone\\work\\drive\\SIDE1.D64`, matching a
 `pathlib.PureWindowsPath`-built expectation, where the old
 `f"{base}/SIDE1.D64"` answers `...drive/SIDE1.D64` and does not.  `ntpath` is
 not imported into a test here because nothing in this module needs to *run*
