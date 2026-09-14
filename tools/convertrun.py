@@ -28,9 +28,15 @@ What it does, in order:
    text a player would be reading before they press Convert;
 2. calls `EditorBinding.convert(source=…, destination=…, folder=…, game=…)`,
    which is the method `File ▸ Convert…` calls -- given every argument no
-   picker opens, the way `tests/test_convert.py` drives it. `exec()` is the
-   one thing replaced: it is the modal wait for a person to press Convert,
-   and there is no person here;
+   picker opens, the way `tests/test_convert.py` drives it. Four things are
+   replaced for the duration of that call, the way `tests/test_convert.py`'s
+   own `_no_real_modals` fixture replaces them: `exec()`, the modal wait for
+   a person to press Convert; the post-write success box
+   (`QMessageBox.information`) and a stray warning (`QMessageBox.warning`),
+   both recorded into the report instead of shown; and a refusal
+   (`QMessageBox.critical`), which raises `Refused` instead of blocking, so
+   a write that fails stops the run after one attempt rather than hanging on
+   a box nobody can answer;
 3. boots what came out. A C64 destination goes to the reader that knows
    its title -- `tools/savecheck.py` for Pool of Radiance,
    `tools/cursecheck.py` for Curse of the Azure Bonds -- which reads the
@@ -84,6 +90,23 @@ def disks_dir(named: str | None = None) -> pathlib.Path:
     if named:
         return pathlib.Path(named).expanduser()
     return pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+
+
+class Refused(RuntimeError):
+    """`QMessageBox.critical` reached inside `window.convert` (#542),
+    raised here in its place. `EditorBinding.convert` is a `while True`:
+    on a write that raises it removes the failed folder, calls
+    `dialog.refuse(...)` -- `QMessageBox.critical` -- and `continue`s, so a
+    person who cannot see the box would sit through it forever and a stub
+    that only swallowed the box would spin the loop at full CPU forever
+    instead, retrying a write that will fail the same way every time.
+    Raising here reaches `write_via_dialog` after exactly one attempt, the
+    same way it would reach a person after they dismissed the box."""
+
+    def __init__(self, title: str, text: str):
+        super().__init__(text)
+        self.title = title
+        self.text = text
 
 
 # ---------------------------------------------------------------------------
@@ -144,19 +167,47 @@ def write_via_dialog(source: pathlib.Path, to: str, folder: pathlib.Path,
         window.close()
         return report
 
-    # The modal wait for a person, and nothing else.  Everything after it --
+    # The modal wait for a person, and the three `QMessageBox` calls
+    # `window.convert` can reach once `exec` is stubbed to always accept --
+    # there is nobody here to see any of them.  Everything else --
     # `fresh_folder`, the `mkdir`, `Direction.write`, opening a C64 result in
     # the editor -- is `EditorBinding.convert`'s own code, unpatched.
     original_exec = convert_mod.ConvertDialog.exec
+    original_information = convert_mod.QMessageBox.information
+    original_warning = convert_mod.QMessageBox.warning
+    original_critical = convert_mod.QMessageBox.critical
     convert_mod.ConvertDialog.exec = (
         lambda self: QDialog.DialogCode.Accepted)
+    popups: list = []
+
+    def _record(kind: str):
+        def _popup(parent, title, text):
+            popups.append([kind, title, text])
+        return _popup
+
+    def _refuse(parent, title, text):
+        raise Refused(title, text)
+
+    convert_mod.QMessageBox.information = _record("information")
+    convert_mod.QMessageBox.warning = _record("warning")
+    convert_mod.QMessageBox.critical = _refuse
     try:
         note = window.convert(source=str(source), destination=to,
                               folder=str(folder),
                               game=str(game) if game else None)
+    except Refused as exc:
+        report["popups"] = popups
+        report["refused"] = [exc.title, exc.text]
+        report["error"] = exc.text
+        window.close()
+        return report
     finally:
         convert_mod.ConvertDialog.exec = original_exec
+        convert_mod.QMessageBox.information = original_information
+        convert_mod.QMessageBox.warning = original_warning
+        convert_mod.QMessageBox.critical = original_critical
 
+    report["popups"] = popups
     report["note"] = note
     written = sorted(p for p in folder.glob("wish-*/*") if p.is_file())
     report["written"] = [str(p) for p in written]
