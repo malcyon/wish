@@ -209,11 +209,15 @@ class RedrawingGame(FakeGame):
     Curse draws the command bar first, then the party panel row by row, then
     the status line, then the 3D viewport, all at real emulated time (`#538`).
     For `torn` `screen()` calls after `press_kernal(BAR_CANCEL)` leaves a
-    sheet, this serves the captured torn frame -- the command bar already
-    changed, only the first three panel rows drawn, no status line -- the
-    same frame `work/issue52/walk-amigatoc64-curse/cursecheck/
-    sheet-3-missing.txt` captured.  Every call after that draws the whole
-    panel, as `FakeGame.screen` already does.
+    sheet, this serves a synthetic torn frame -- the command bar already
+    changed, only the first three panel rows drawn, no status line -- built
+    from the general redraw race rather than from a specific capture.  The
+    torn frames actually on file, `work/issue52/walk-amigatoc64-curse/
+    cursecheck/sheet-3-missing.txt` and its `walk-dostoc64-curse` sibling,
+    both caught the panel with all six rows drawn and only the last row's HP
+    field still blank, which is the separate case
+    `test_a_partially_drawn_last_row_is_not_a_reading` covers.  Every call
+    after that draws the whole panel, as `FakeGame.screen` already does.
     """
 
     def __init__(self, names=NAMES, torn: int = 2):
