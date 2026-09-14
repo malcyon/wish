@@ -42,6 +42,39 @@ stage, commit, push, spawn agents, or write tracker content. Read `AGENTS.md`
 and `INDEX.md`, then the applicable rules named by their routing table,
 including `emulator.md`, `testing.md`, and `scratch.md`.
 
+## Backgrounding strands you, not just the command
+
+The Bash tool has its own `timeout` parameter (milliseconds, default 120000,
+maximum 600000). A call that runs past it is not killed: the harness moves it
+to the background and replies "Command did not complete within its 120s
+timeout and was moved to the background (ID: …). You will be notified when it
+completes." That promise is false for a subagent: the notification is
+delivered only as an attachment to your next tool call's result, never by
+re-invoking you after your turn ends. Ending a turn while believing you'll be
+woken strands the task permanently, with the emulator still running on a pool
+slot or VM lane nobody is using.
+
+1. Pass `timeout: 600000` (the tool's own maximum) on every Bash call that
+   converts a save, boots or drives an emulator, takes a screenshot, or waits
+   on any of those — and on every poll loop too.
+2. Some operations genuinely take longer than ten minutes (a C64 write via
+   `EditorBinding.convert` has taken over 30 minutes on a busy night). When a
+   call is moved to the background anyway, poll its output file in the
+   foreground for the harness's own completion marker rather than trusting the
+   notification promise:
+   `until grep -q '^\[exited with code' <output-file>; do sleep 10; done; tail -60 <output-file>`
+   — with `timeout: 600000` on that poll call too, reissued if it also gets
+   backgrounded. Repeat until the marker appears.
+3. Never end a turn while any task ID you started, or were handed, is still
+   running.
+4. A bare `sleep N` with N of 30 or more is refused by the harness, and the
+   refusal suggests `Monitor` or `run_in_background: true` — neither is useful
+   here: subagents have no `Monitor` tool, and `run_in_background` followed by
+   ending the turn is the failure itself, not an escape from it. For a WinUAE
+   boot's 45–55 second waits, use `tools/winvmsettle.py <shot.png> --limit 150`
+   in the foreground instead; for anything else, an
+   `until <condition>; do sleep 5; done` loop with `timeout: 600000`.
+
 ## Uncertainty Flagging
 
 If confidence is below a reasonable threshold, return a structured exception:
