@@ -109,8 +109,8 @@ def dos_rows(root: pathlib.Path):
     first**.
 
     `editor/roster.py`'s `Party` opens a `.d64` and nothing else, so a DOS
-    record only ever reaches the Class combo after `File > Import` has turned
-    it into a C64 one.  Measuring the combo rule against a raw DOS record
+    record only ever reaches the Class combo after `File ▸ Convert…` has
+    turned it into a C64 one.  Measuring the combo rule against a raw DOS record
     would be measuring a call that cannot happen -- and it reads wrong, since
     DOS gives the paladin and the ranger one bit between them where the
     neutral order gives the ranger bit 7 (`goldbox.dos_codec.neutral_class_bits`).

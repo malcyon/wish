@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a C64 save disk from a DOS save folder, owing nothing to another save.
 
-This is the command-line form of what `File > Import` does after #118: read a
+This is the command-line form of what `File ▸ Convert…` does after #118: read a
 DOS *Pool of Radiance* save slot, write all 9216 bytes of `SAVEDGAME0` and
 `SAVEDGAME1` from two zeroed buffers, and put them on a `D64.blank()`.  No
 existing `.d64` is opened at any point.

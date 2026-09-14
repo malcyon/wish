@@ -15,7 +15,7 @@ than a `--game` on the first.
 
 **Two reach-arounds this tool used to need, both closed by step 4.**
 `goldbox.dos_codec.CONVERTS` now carries Curse for real and `goldbox/areas.py` now
-carries these same twenty-five rows in `areas.TABLES` -- `File > Import`
+carries these same twenty-five rows in `areas.TABLES` -- `File ▸ Convert…`
 converts a Curse folder too, for everyone since 2026-09-06 (#131).
 `enable_curse()` and `CURSE_AREAS` below are kept as a defensive no-op rather
 than removed: both guard on "is this already true" before touching anything,
