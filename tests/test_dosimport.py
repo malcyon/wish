@@ -1278,3 +1278,44 @@ def test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_dos_record_error_ne
 
     assert dialog._blocked == (dosimport.DIALOG_TITLE,
                                "This save cannot be converted.")
+
+
+def test_a_refusal_on_construction_is_shown_not_swallowed(app, tmp_path,
+                                                           monkeypatch):
+    """A folder whose only slot fails rehearsal is what a player reaches by
+    picking a folder holding one DOS save, and that is the ordinary case,
+    not an edge one -- `editor/window.py` only checks the folder has *some*
+    slot before this window is built, never that the selected one actually
+    converts (`#52 (File ▸ Import and File ▸ Export for every direction the
+    library supports)`).
+
+    Unlike the tests above, `rehearse` is monkeypatched *before* the dialog
+    is constructed, so it is the constructor's own first `_rehearse()` that
+    hits the refusal -- not a second, already-interactive one. Before the
+    fix this modal never fired: `_maybe_warn`'s gate on `self._interactive`
+    returned before showing anything and before recording
+    `_last_blocked_shown`, so a folder with only one slot left the window
+    sitting open with Convert disabled and nothing said, escapable only
+    with Cancel. Fails before the fix: reverting `_maybe_warn`'s early
+    return turns the assertion on `shown` red, with `_blocked` still set.
+    """
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor import dosimport
+
+    shown = []
+    monkeypatch.setattr(dosimport.QMessageBox, "critical",
+                        lambda *a, **_k: shown.append(a[1:]))
+
+    def refuse(*_args, **_kwargs):
+        raise dos_codec.DosRecordError("boom")
+
+    monkeypatch.setattr(dosimport, "rehearse", refuse)
+    folder = _fake_dos_dir(tmp_path)
+    dialog = dosimport.DosImportDialog(folder, _fake_files())
+
+    assert dialog._blocked == (dosimport.DIALOG_TITLE,
+                               "This save cannot be converted.")
+    assert shown == [(dosimport.DIALOG_TITLE, "This save cannot be converted.")]
+    assert not dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()

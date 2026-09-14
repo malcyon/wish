@@ -402,19 +402,20 @@ class DosImportDialog(QDialog):
         self._name_warning: str | None = None
         #: What `_maybe_warn` last actually showed, so rehearsing again
         #: after an unrelated change does not repeat an identical modal the
-        #: player has already read.
+        #: player has already read. Unset here, so the constructor's own
+        #: first `_rehearse()` below shows a real refusal too -- unlike
+        #: `editor/convert.py`'s `ConvertDialog`, whose construction-time
+        #: `replan()` opens on a blank `From` row and takes an early return
+        #: before setting a real `_blocked`, this dialog's first rehearsal
+        #: is always against a real slot the player did not choose blank
+        #: (`#52 (File ▸ Import and File ▸ Export for every direction the
+        #: library supports)`). Gating this call the way `ConvertDialog`
+        #: gates its own left a folder with only one slot stuck open with
+        #: Convert disabled and no explanation, escapable only with Cancel.
         self._last_blocked_shown: tuple[str, str] | None = None
         self._last_name_warning_shown: str | None = None
-        #: `False` through the constructor's own first `_rehearse()` below,
-        #: so building a `DosImportDialog` over a specimen already known to
-        #: refuse -- every such test in `tests/test_dosimport.py` -- never
-        #: has to expect a modal of its own. `True` from here on: a real
-        #: player only reaches this dialog after construction has already
-        #: run once.
-        self._interactive = False
 
         self._rehearse()
-        self._interactive = True
 
     # -- the parts ---------------------------------------------------------
 
@@ -496,14 +497,18 @@ class DosImportDialog(QDialog):
         not hold whole (`self._name_warning`) -- `editor/convert.py`'s own
         `_maybe_warn`, ported rather than reinvented.
 
-        Gated on `self._interactive`, so a slot the constructor's own first
-        rehearsal reads never pops a modal before the window is even shown.
-        Deduplicated against what was last actually shown, so rehearsing
-        again after an unrelated change -- typing in the destination box,
-        say -- does not repeat a modal the player has already read.
+        Not gated on whether the window has been shown yet: unlike
+        `ConvertDialog`, whose construction-time rehearsal is always inert
+        (`__init__`'s own comment above), this dialog's very first
+        rehearsal already ran against a real slot, and a refusal there is a
+        refusal the player has to be told about even though the window has
+        not appeared yet -- the same pattern `editor/window.py` already
+        uses for `NO_DISKS`, a critical modal that fires before any window
+        does. Deduplicated against what was last actually shown, so
+        rehearsing again after an unrelated change -- typing in the
+        destination box, say -- does not repeat a modal the player has
+        already read.
         """
-        if not self._interactive:
-            return
         if self._blocked != self._last_blocked_shown:
             self._last_blocked_shown = self._blocked
             if self._blocked is not None:
