@@ -2198,8 +2198,9 @@ def to_neutral(dos: DosCharacter,
                 # (`.claude/rules/conversions.md`).  Every direction with a
                 # DOS source ends at `editor/dosimport.pane_text`, which logs
                 # `report.dropped` and draws only `messages` and `losses`;
-                # `editor/exports.py`'s own pane, which does still draw
-                # `dropped`, reads a C64 save and never this reader.
+                # `editor/exports.py`, whose own pane once drew `dropped` for
+                # a C64 save, is deleted (`#52`), and no pane reads this
+                # reader's drop text at all now.
                 out.drop(f"Character portrait ({label}): position {position} "
                          f"in this save is not one the character-creation "
                          f"menu offers, so no matching portrait exists.")
@@ -2624,6 +2625,11 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 #: declared on :data:`WRITE_NO_SUCH_FIELD` or :data:`WRITE_DERIVED`, which
 #: report `derived:` rather than `dropped:` and reach nobody, honestly rather
 #: than by a list built to keep them off the count.
+#:
+#: The two entries below lost their ``(NOT APPROVED)`` marker 2026-09-14, not
+#: by Donald's wording: `editor/exports.py`'s pane, the only thing that ever
+#: drew `report.dropped` to a player, is deleted (`#52`), and
+#: `editor/convert.py`'s own dialog sends this report to the debug log only.
 WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     # The two below are the later titles' fields, and this writer builds a
     # Pool of Radiance record: it declares one copy of each ability and no
@@ -2633,10 +2639,10 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     # (#234 for the dual class; the ability copy is unread on that side too).
     ("abilities_second", "a Pool of Radiance record keeps one copy of "
                          "each ability score, so a second has nowhere to "
-                         "go. (NOT APPROVED)"),
+                         "go."),
     ("former_levels", "a Pool of Radiance record has no former-class "
                       "level array; that title does not let a character "
-                      "change class. (NOT APPROVED)"),
+                      "change class."),
 )
 
 #: Why a neutral field is not written when the destination title's record has
@@ -3686,12 +3692,11 @@ def write(char: NeutralCharacter,
         if want is None:
             put(code, "char_class")
         else:
-            # **Not a warning**, and deliberately: `editor/exports.py`'s
-            # `losses` puts every warning in front of the player under a
-            # heading that says the conversion could not do something
-            # faithfully, and this is the opposite -- the record contradicted
-            # itself and the conversion repaired it.  The provenance line
-            # `put` writes is our own accounting, which is where it belongs.
+            # **Not a warning**, and deliberately: a warning says the
+            # conversion could not do something faithfully, and this is the
+            # opposite -- the record contradicted itself and the conversion
+            # repaired it.  The provenance line `put` writes is our own
+            # accounting, which is where it belongs.
             put(code, "char_class",
                 f", recomputed from {source}: the source record says "
                 f"{int(code.value)} and its own classes say {want} (#310)",
@@ -3983,11 +3988,14 @@ def write(char: NeutralCharacter,
         # record: the sentence reaches an Amiga player through `write_por`
         # and `write_later`, which build their own record out of this one,
         # and the fact it states -- this title has no former-class array --
-        # is true of the title on any port (#389).
+        # is true of the title on any port (#389).  Marker off 2026-09-14:
+        # `editor/exports.py`'s pane, the only thing that ever drew this to
+        # a player, is deleted (`#52`); `editor/convert.py` sends
+        # `report.dropped` to the debug log only.
         rep.dropped.append(
             f"former_levels: a {deltas.title} record has no former-class "
             f"level array; that title does not let a character change "
-            f"class. (NOT APPROVED)")
+            f"class.")
 
     # -- spell slots, by class: two arrays on Pool of Radiance, three after --
     # Three levels of slots in Pool of Radiance, five in Curse and seven in
@@ -4003,10 +4011,13 @@ def write(char: NeutralCharacter,
                     # No "DOS" (#389): the same array is missing from the
                     # title's record on any port, and this sentence reaches
                     # an Amiga player through `write_por`/`write_later`.
+                    # Marker off 2026-09-14: `editor/exports.py`'s pane, the
+                    # only thing that ever drew this to a player, is deleted
+                    # (`#52`); `editor/convert.py` sends `report.dropped` to
+                    # the debug log only.
                     rep.dropped.append(
                         f"spells_castable[{school!r}]: a {deltas.title} "
-                        f"record has no {school} spell-slot array. "
-                        f"(NOT APPROVED)")
+                        f"record has no {school} spell-slot array.")
                 continue
             depth = table[dos_name].size
             run = tuple(castable.value.get(school, ()))
@@ -4074,14 +4085,17 @@ def write(char: NeutralCharacter,
             # (#389): a straight DOS write says "the DOS record" truthfully,
             # and `write_por`/`write_later` pass `into="Amiga"` so the same
             # sentence does not blame DOS for an Amiga player's missing face.
+            # Marker off 2026-09-14: `editor/exports.py`'s pane, the only
+            # thing that ever drew this to a player, is deleted (`#52`);
+            # `editor/convert.py` sends `report.dropped` to the debug log
+            # only.
             rep.dropped.append(
                 f"{pname}: {port} carries {stem}{int(v.value):02X} and " +
                 (f"the creation menu does not offer it, so the {into} "
                  f"record has no position for it"
                  if portraits is not None else
                  f"the creation menu's own tables were not available to "
-                 f"turn it into the position the {into} record stores") +
-                " (NOT APPROVED)")
+                 f"turn it into the position the {into} record stores"))
 
     # -- the combat icon: provenance is the icon's own, not this function's --
     # `icon` is computed by the caller, not here: it takes an `IconParts`
@@ -4341,10 +4355,13 @@ def write(char: NeutralCharacter,
             # `into` (#389): a straight DOS write names DOS truthfully, and
             # `write_por`/`write_later` pass `into="Amiga"` so an Amiga
             # player is not told about a DOS limit that is not theirs.
+            # Marker off 2026-09-14: `editor/exports.py`'s pane, the only
+            # thing that ever drew this to a player, is deleted (`#52`);
+            # `editor/convert.py` sends `report.dropped` to the debug log
+            # only.
             rep.dropped.append(
                 f"{status.value.capitalize()}: the character "
-                f"arrives well -- the {into} game has no such state. "
-                f"(NOT APPROVED)")
+                f"arrives well -- the {into} game has no such state.")
     if active is not None:
         rec[f.offset + 1] = 1 if active.value else 0
         said.append(f"the active flag is {rec[f.offset + 1]} "
@@ -5991,11 +6008,11 @@ def dos_dax_number(game: "str | pathlib.Path | None", area: int
 #: **This is a note and no longer a line a player reads** -- #248 (The DOS
 #: export pane's outdoor-facing drop line carries a memory address and a raw
 #: byte number in front of a player).  It went verbatim into
-#: `report.dropped`, so `editor/exports.py`'s pane showed `$033D`,
-#: `$4900-$64FF` and "byte 12803" to somebody exporting an outdoor party,
-#: which is what `.claude/rules/gui-text.md` calls a developer's note that
-#: escaped.  `report.note` is where an address belongs: those never leave the
-#: byte-by-byte accounting.
+#: `report.dropped`, so `editor/exports.py`'s pane (deleted 2026-09-14,
+#: `#52`) showed `$033D`, `$4900-$64FF` and "byte 12803" to somebody
+#: exporting an outdoor party, which is what `.claude/rules/gui-text.md`
+#: calls a developer's note that escaped.  `report.note` is where an address
+#: belongs: those never leave the byte-by-byte accounting.
 #:
 #: **Nothing replaced it, on purpose.**  Every word a player reads is
 #: Donald's to approve (`.claude/rules/gui-text.md`), so a new sentence is
@@ -6936,9 +6953,10 @@ def write_dos_save_from(state: "world_state.WorldState",
                       else (None, ""))
     if faces is None and why_not:
         # A warning rather than a `converted` line: `converted` is what *did*
-        # cross, and `editor/exports.py`'s `losses` does not read it, so the
-        # one sentence saying why every character lost its face would not
-        # have reached the person doing the conversion.
+        # cross, and nothing that shows a player `report.warnings` reads it
+        # wholesale (`.claude/rules/conversions.md`), so a sentence saying
+        # why every character lost its face belongs in the accounting
+        # instead of pretending it converted.
         report.warnings.append(
             f"no character's sheet portrait crossed, because {why_not}")
 

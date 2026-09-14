@@ -545,9 +545,9 @@ def to_neutral(char) -> NeutralCharacter:
     # here named the wrong destination for that direction.
     # No marker: a drop line goes to `wish/debuglog.py` and to a `--report`
     # printout, never to a pane, since Donald's ruling of 2026-09-08
-    # (`.claude/rules/conversions.md`).  `editor/exports.py`'s pane is the
-    # one that still draws `report.dropped`, and it reads a C64 save rather
-    # than an Amiga one, so no reader on this side reaches it.
+    # (`.claude/rules/conversions.md`).  `editor/exports.py`, whose pane
+    # once drew `report.dropped` for a C64 save, is deleted (`#52`), and no
+    # pane reads this reader's drop text at all now.
     out.drop("Amiga 0x11F: the trailing pad, which the neutral record has "
              "no room for.")
     # There is no loop here reporting the effects the neutral record cannot

@@ -1830,23 +1830,34 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: trailing-pad line and its `field_83_87` treasure-share entry in
     #: `LATER_DROPPED_PLAYER_TEXT` (3 to 1).
     #:
-    #: **The drop lines that kept their marker did so for one reason**:
-    #: `editor/exports.py`'s own pane still draws `report.dropped` through
-    #: `exports.losses`, and `File ▸ Export` is built whenever
-    #: `WISH_EXPERIMENTAL_EXPORT` is set. That pane reads a **C64** save, so
-    #: every drop line the C64 reader and the DOS and Amiga writers compose
-    #: can still reach a person -- which is `goldbox.c64_codec`'s
-    #: `READ_DROPPED_PLAYER_TEXT` entry and all seven of `goldbox.dos_codec`'s.
-    #: The four above are on the other side of that split: a C64
-    #: *destination*, a DOS *reader* and an Amiga *reader* reach the Convert
-    #: dialog and nothing else.
+    #: **The seven that kept their marker until 2026-09-14 did so for one
+    #: reason, and that reason is gone.** `editor/exports.py`'s own pane used
+    #: to draw `report.dropped` through `exports.losses` whenever
+    #: `WISH_EXPERIMENTAL_EXPORT` was set, reading a **C64** save -- so every
+    #: drop line the C64 reader and the DOS and Amiga writers compose could
+    #: still reach a person, which was `goldbox.c64_codec`'s
+    #: `READ_DROPPED_PLAYER_TEXT` entry and six of `goldbox.dos_codec`'s.
+    #: `File ▸ Export` is deleted whole (`#52 (File ▸ Import and File ▸
+    #: Export for every direction the library supports)`'s 2026-09-09
+    #: ruling, carried out 2026-09-14) -- `editor/exports.py`, `exports.ui`,
+    #: `ui_exports.py` and `WISH_EXPERIMENTAL_EXPORT` are all gone -- so
+    #: nothing draws either module's drop text any more.
+    #: `editor/convert.py`'s own dialog, the only one left, sends
+    #: `report.dropped` to `wish/debuglog.py` and nowhere else
+    #: (`.claude/rules/conversions.md`, *"a drop line is therefore never a
+    #: string Donald words"*), which `.claude/rules/gui-text.md` exempts from
+    #: approval by name. So the seven markers came off with the pane, the
+    #: same way the four on 2026-09-09 came off with `WISH_EXPERIMENTAL_
+    #: EXPORT`'s own sibling change: nobody worded them, they stopped being
+    #: strings a player can reach.
     #:
-    #: `goldbox.amiga`'s remaining one is `pod_to_neutral`'s, and it is a
-    #: **warning** rather than a drop: a reader's warnings reach the pane
-    #: through `losses` on any conversion to the C64. Nothing calls
-    #: `pod_to_neutral` outside the tests today, so it reaches no player yet;
-    #: the marker stays because wiring it up is what `#194 (Import and export
-    #: a Pools of Darkness save between DOS and the Amiga)` is for.
+    #: `goldbox.amiga_pod`'s one remaining marker is `pod_to_neutral`'s, and
+    #: it is a **warning** rather than a drop: a reader's warnings reached
+    #: the exports pane through `losses` on any conversion to the C64.
+    #: Nothing calls `pod_to_neutral` outside the tests today, so it reached
+    #: no player even before the pane went; the marker stays because wiring
+    #: it up is what `#194 (Import and export a Pools of Darkness save
+    #: between DOS and the Amiga)` is for.
     # `automap.actions` went 4 -> 3 when Fast Travel's failure line got the
     # wording Donald ruled on 2026-09-07 (`#306 (The Fast Travel button's own
     # disabled tooltip carries a memory address)`), which had been recorded
@@ -1859,19 +1870,22 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     # deleted, not reworded: Donald ruled, on the 950-character census #399's
     # own closing comment carries, that no real conversion reaches any of
     # these ceilings -- "I agree that we do not need the sentences." A short
-    # comment citing #399 sits where each one was. The one line left is the
-    # combat-icon figure, `#320`/`#355` territory and untouched here.
+    # comment citing #399 sits where each one was. The one line left was the
+    # combat-icon figure, `#320`/`#355` territory -- and that one went to 0
+    # on 2026-09-14 for the `File ▸ Export`-deletion reason above.
     #
-    # `goldbox.dos_codec` went 7 to 6 the same day, also with nothing approved:
-    # `encumbrance`'s drop-list line moved to `WRITE_DERIVED` (#483, The
-    # Convert flag could come off while two fields are still lost, because a
-    # silencing list keeps them out of the count that decides it), which
-    # `write` now consumes with `use()` rather than ever composing a report
-    # line for -- so, like the four that came off the day before, it stopped
-    # being a string a player, or even a developer reading `report.dropped`,
-    # can reach.
-    WAITING = {"goldbox.c64_codec": 1, "goldbox.amiga_pod": 1,
-               "goldbox.dos_codec": 6,
+    # `goldbox.dos_codec` went 7 to 6 on 2026-09-09, also with nothing
+    # approved: `encumbrance`'s drop-list line moved to `WRITE_DERIVED`
+    # (#483, The Convert flag could come off while two fields are still
+    # lost, because a silencing list keeps them out of the count that
+    # decides it), which `write` now consumes with `use()` rather than ever
+    # composing a report line for. That was the same kind of change as the
+    # four on 2026-09-09; the remaining six (`abilities_second`,
+    # `former_levels` twice, `spells_castable['druid']`, the shared
+    # `portrait_head`/`portrait_body` line and `Dead`'s status line) went to
+    # 0 on 2026-09-14 for the `File ▸ Export`-deletion reason above.
+    WAITING = {"goldbox.c64_codec": 0, "goldbox.amiga_pod": 1,
+               "goldbox.dos_codec": 0,
                # 3 -> 2 on 2026-09-10: Donald approved the failure line for
                # a Fast Travel that cannot walk the party through a door
                # (`#493 (A Fast Travel that fails walking the party out

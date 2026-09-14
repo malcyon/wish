@@ -69,8 +69,7 @@ def test_a_trained_curse_records_zeroed_code_is_recomputed():
     at = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"][
         "char_class"].offset
     assert "recomputed from class_bits" in _rep.sources[at], _rep.sources[at]
-    # And it is not a warning: `editor/exports.py` puts every warning in front
-    # of the player under a heading that says the conversion failed at
+    # And it is not a warning: a warning says the conversion failed at
     # something, and this is a repair.
     assert not any("char_class" in w for w in _rep.warnings), _rep.warnings
 

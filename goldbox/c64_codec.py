@@ -1551,12 +1551,18 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
 #: "a second copy" is an assumption rather than a measurement:
 #: `#367 (What is the second ability array at 0x065 for, and which of the two
 #: does the engine treat as current?)`.
+#:
+#: `region_220`'s marker came off 2026-09-14, and not because Donald worded
+#: it: `editor/exports.py`, whose pane was the only thing that ever drew a
+#: C64 reader's drop text, is deleted (`#52`), and `editor/convert.py`'s own
+#: dialog sends `report.dropped` to the debug log only.  A sentence nothing
+#: shows needs no approval to sit unmarked.
 READ_DROPPED_SILENT: tuple[str, ...] = ("abilities_second",)
 
 READ_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "region_220": "Combat figure: Wish cannot yet turn the C64's own combat "
                   "icon into this game's own art, so your character's "
-                  "figure is not set. (NOT APPROVED)",
+                  "figure is not set.",
 }
 
 #: C64 fields the reader leaves behind because the value is recomputed

@@ -70,8 +70,8 @@ folder directly, the way `tools/dosdisk.py` and `tools/dosnewsave.py`
 already do. When the path is
 the save the editor already has open, the caller passes `party` and this
 reads its in-memory bytes instead, so unsaved edits cross -- the same rule
-`exports.Source.from_party` followed. `exports.Source` retires into this one
-at step 5.
+`exports.Source.from_party` followed before that module was deleted.
+`exports.Source` retired into this one at step 5.
 
 **`ConvertDialog`, below, is step B of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment** (also
 `#52`'s comment of 2026-09-05 13:58:53): the source and destination rows, a
@@ -546,8 +546,8 @@ class DosWriteRehearsal(Rehearsal):
     `goldbox.dos_codec.new_dos_save` writes real files, so the rehearsal itself
     runs into a scratch directory and `write` calls it a second time straight
     into the folder the player chose -- the same order `editor/exports.py`'s
-    `DosPlan` already follows, and the reason `files` is measured from the
-    scratch run rather than replayed from it.
+    `DosPlan` followed before that module was deleted (`#52`), and the reason
+    `files` is measured from the scratch run rather than replayed from it.
     """
 
     save0: bytes
@@ -1127,10 +1127,13 @@ def fresh_folder(destination: str | pathlib.Path,
 # The flag
 # ---------------------------------------------------------------------------
 
-#: **Off unless `WISH_EXPERIMENTAL_CONVERT=1`.** Replaces
+#: **Off unless `WISH_EXPERIMENTAL_CONVERT=1`.** Replaced
 #: `editor.dosimport.ENV` and `editor.exports.ENV`, whose submenus this
-#: dialog replaces -- `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs
+#: dialog replaced -- `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs
 #: the import working for all three C64 titles)`'s bar transfers unchanged.
+#: `editor/exports.py` is deleted along with `File ▸ Export` itself
+#: (`#52 (File ▸ Import and File ▸ Export for every direction the library
+#: supports)`'s 2026-09-09 ruling, carried out 2026-09-14).
 #: Not built rather than greyed out: a greyed entry invites the question of
 #: how to un-grey it, and the answer would be a sentence in the interface
 #: (`.claude/rules/feature-flags.md`).

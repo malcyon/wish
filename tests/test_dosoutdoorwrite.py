@@ -241,10 +241,10 @@ def test_the_outdoor_facing_is_dropped_rather_than_taken_from_the_stale_byte(
     **The reason is a note and not a line a player reads**, which is
     #248 (The DOS export pane's outdoor-facing drop line carries a memory
     address and a raw byte number in front of a player): the same sentence
-    used to go into `report.dropped`, so `editor/exports.py`'s pane showed
-    `$033D`, `$4900-$64FF` and "byte 12803" to whoever was exporting.
-    `report.sources` is where an address belongs -- nothing renders it in
-    front of a person.
+    used to go into `report.dropped`, so `editor/exports.py`'s pane
+    (deleted 2026-09-14, `#52`) showed `$033D`, `$4900-$64FF` and
+    "byte 12803" to whoever was exporting. `report.sources` is where an
+    address belongs -- nothing renders it in front of a person.
     """
     savgam, report = _write(_c64_on_the_travel_grid(facing=3), tmp_path,
                             game_dir)

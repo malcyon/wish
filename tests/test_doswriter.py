@@ -960,9 +960,11 @@ def test_a_conversion_with_no_game_directory_says_the_faces_went(tmp_path):
     reports the loss on the save's own report rather than leaving a party
     silently faceless.
 
-    Both halves are asserted, because they reach the player through different
-    lists: the warning says why once, and the per-character drop names the
-    `HEAD<xx>` that went.  `editor/exports.py`'s `losses` reads both.
+    Both halves are asserted, because they were two different lists a
+    player once read: the warning said why once, and the per-character drop
+    named the `HEAD<xx>` that went.  `editor/exports.py`'s `losses` read
+    both before that module was deleted (`#52`); both now reach the debug
+    log only.
     """
     save0, save1 = _fixture_payloads()
     report = dos_codec.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
