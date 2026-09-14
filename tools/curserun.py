@@ -491,7 +491,7 @@ class CurseSession(por.Session):
             with self.mon(5) as m:
                 side = m.read(address, 1)[0]
             if 1 <= side <= len(SIDES):
-                want = f"{self.here}/SIDE{side}.D64"
+                want = os.path.join(self.here, f"SIDE{side}.D64")
                 if os.path.abspath(want) != self.attached:
                     self.log(f"  saved disk hint -> {os.path.basename(want)}")
                     self.attach(want)
@@ -512,7 +512,7 @@ class CurseSession(por.Session):
             m = RE_CURSE_SIDE.search(text)
             if m:
                 digit = m.group(1)
-                want = f"{self.here}/SIDE{int(digit, 16)}.D64"
+                want = os.path.join(self.here, f"SIDE{int(digit, 16)}.D64")
         if want is None:
             return False
         self._last_prompt = time.time()

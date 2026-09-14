@@ -318,7 +318,7 @@ class SSBSession(por.Session):
             if line:
                 self.log(f"  prompt text: {line!r} -> side {side}")
             if side is not None:
-                want = f"{self.here}/SIDE{side}.D64"
+                want = os.path.join(self.here, f"SIDE{side}.D64")
         if want is None:
             return False
         if not os.path.exists(want):
@@ -471,7 +471,7 @@ def impossible_side(sess, addr, text: str, fix: bool) -> dict | None:
     # the ordinary answer to a disk prompt: put a disk in and press a key.
     n = getattr(sess, "_side_rotation", 0)
     sess._side_rotation = n + 1
-    want = f"{sess.here}/SIDE{(n % 6) + 1}.D64"
+    want = os.path.join(sess.here, f"SIDE{(n % 6) + 1}.D64")
     sess.log(f"  offering {os.path.basename(want)}")
     sess.attach(want)
     sess.kbd.key("space")
