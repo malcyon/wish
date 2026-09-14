@@ -33,7 +33,7 @@ EXPECTED_AGENTS = {
     "junior-dev",
     "qt-ui-specialist",
     "reverse-engineering",
-    "senior-dev-reviewer",
+    "senior-analyst",
     "test-runner",
 }
 EXPECTED_MODELS = {
@@ -47,7 +47,7 @@ EXPECTED_MODELS = {
     "junior-dev": ("gpt-5.6-terra", "medium"),
     "qt-ui-specialist": ("gpt-5.6-terra", "high"),
     "reverse-engineering": ("gpt-5.6-sol", "high"),
-    "senior-dev-reviewer": ("gpt-5.6-sol", "high"),
+    "senior-analyst": ("gpt-5.6-sol", "high"),
     "test-runner": ("gpt-5.6-luna", "low"),
 }
 

@@ -68,7 +68,7 @@ CODEX_MODELS = {
     "test-runner": ("gpt-5.6-luna", "low"),
     "qt-ui-specialist": ("gpt-5.6-terra", "high"),
     "emulator-runner": ("gpt-5.6-terra", "medium"),
-    "senior-dev-reviewer": ("gpt-5.6-sol", "high"),
+    "senior-analyst": ("gpt-5.6-sol", "high"),
 }
 
 #: `model_reasoning_effort` never names this level: every one of these agents
