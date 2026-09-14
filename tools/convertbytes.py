@@ -74,14 +74,31 @@ DOS_DIRS = {
 }
 
 
-def sources(root: pathlib.Path):
-    """Every specimen path `editor.convert.Source.detect` accepts."""
+def sources(root: pathlib.Path, scratch: pathlib.Path):
+    """Every specimen path `editor.convert.Source.detect` accepts.
+
+    `tools/convertdrops.py`'s enumerator, copied whole, including its
+    second branch: the later titles' Amiga specimens are engine-written
+    containers rather than images, so each goes into a fresh disk first.
+    Without it there is no Amiga Curse or Amiga Silver Blades source at
+    all and four directions are never offered (#536).
+    """
+    from goldbox import amiga_savegame
     out = []
     for folder in sorted(root.glob("*-dos/WISH-SPEC-*")):
         if folder.is_dir():
             out.extend(sorted(folder.glob("SAVGAM?.DAT")))
     out.extend(sorted(root.glob("*-c64/WISH-SPEC-*.[dD]64")))
     out.extend(sorted(root.glob("*-amiga/WISH-SPEC-*/*.adf")))
+    later = (list(root.glob("coab-amiga/WISH-SPEC-*/savgam?.dat"))
+             + list(root.glob("ssb-amiga/WISH-SPEC-*/savgam?.sav")))
+    for index, path in enumerate(sorted(later)):
+        shape = amiga_savegame.detect(path.read_bytes())
+        slot = path.stem[-1]
+        disk = amiga_savegame.make_save_disk(shape, slot, path.read_bytes())
+        image = scratch / f"later-amiga-{index:02d}-{path.parent.name}.adf"
+        image.write_bytes(disk.to_bytes())
+        out.append(image)
     return out
 
 
@@ -126,17 +143,42 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
         cache[game.key] = out
         return out
 
-    def ecl_disk(scratch: pathlib.Path):
+    def amiga_game_disks(scratch: pathlib.Path) -> dict:
+        """One read-only game-data image per Amiga destination title.
+
+        `tools/convertdrops.py`'s own search.  The single-disk `ecl_disk`
+        this replaces returned Pool of Radiance disk 2 (volume `POOLDATA`)
+        and handed it to every Amiga destination, so Curse's writer, which
+        wants `/DISKB/ECL.GLB`, died with `'DISKB' is not in the root of
+        'POOLDATA'` on every specimen (#536).
+        """
         from tools import amigasaves
+        out: dict = {}
+        first = None
         for _label, data in amigasaves.images():
+            if first is None:
+                first = data
             try:
                 AmigaDisk(bytearray(data)).read_file("/ecl.dax")
             except Exception:
-                continue
-            path = scratch / "amiga-disk-2.adf"
-            path.write_bytes(data)
-            return path
-        return None
+                pass
+            else:
+                path = scratch / "pool-amiga-game-data.adf"
+                path.write_bytes(data)
+                out[c64_port.POOL_OF_RADIANCE.key] = path
+            try:
+                AmigaDisk(bytearray(data)).read_file("/DISKB/ECL.GLB")
+            except Exception:
+                pass
+            else:
+                path = scratch / "curse-amiga-game-data.adf"
+                path.write_bytes(data)
+                out[c64_port.CURSE_OF_THE_AZURE_BONDS.key] = path
+        if first is not None:
+            path = scratch / "silver-blades-amiga-game-data.adf"
+            path.write_bytes(first)
+            out[c64_port.SECRET_OF_THE_SILVER_BLADES.key] = path
+        return out
 
     def hashes(files: dict) -> dict:
         """`{name: sha256}`, an `.ADF` opened and hashed file by file."""
@@ -158,8 +200,20 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
     root = specimen_root()
     with tempfile.TemporaryDirectory(prefix="convertbytes-") as tmp:
         scratch = pathlib.Path(tmp)
-        disk2 = ecl_disk(scratch)
-        for path in sources(root):
+        amiga_disks = amiga_game_disks(scratch)
+
+        def key(path: pathlib.Path) -> str:
+            """A manifest key that survives the run's temporary directory.
+
+            A synthesised later-title source lives under `scratch`, whose
+            name changes every run, so keying on the full path shows every
+            one of them as "only one side" of a `--diff` (#536).
+            """
+            text = str(path)
+            return (text.replace(str(scratch), "<scratch>")
+                    if text.startswith(str(scratch)) else text)
+
+        for path in sources(root, scratch):
             try:
                 source = convert.Source.detect(path)
             except Exception as exc:
@@ -177,7 +231,8 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                     slot = source.slot
                     options = game_files(direction.destination_game)
                 elif direction.destination_port == "amiga":
-                    slot, options = source.slot or "A", disk2
+                    slot = source.slot or "A"
+                    options = amiga_disks.get(direction.destination_game.key)
                 else:
                     slot = "A"
                     stem = DOS_DIRS.get(direction.destination_game.key)
@@ -221,11 +276,11 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                             for ipath, _e in sorted(inner.walk()):
                                 out = where / (name + ipath.replace("/", "_"))
                                 out.write_bytes(inner.read_file(ipath))
-                manifest.setdefault(label, {})[str(path)] = {
+                manifest.setdefault(label, {})[key(path)] = {
                     "files": hashes(rehearsal.files),
                     "dropped": sorted(rehearsal.report.dropped),
                 }
-            offered[str(path)] = sorted(names)
+            offered[key(path)] = sorted(names)
     return {"manifest": manifest, "failed": dict(failed), "offered": offered}
 
 
