@@ -24,6 +24,7 @@ configured model, not the same decision spelled two ways.
 | `reverse-engineering` | Opus | `gpt-5.6-sol` | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
 | `deep-research` | **Fable** | `gpt-6-astra` | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
 | `architect` | **Fable** | `gpt-6-astra` | a plan for another agent to execute, when working out how to do the work is harder than doing it. Writes the plan, does not build it. |
+| `senior-dev-reviewer` | Opus | `gpt-5.6-sol` | an issue that names a goal and not its mechanism, when the code it touches is already in the tree: reads the issue and the code, posts a plan naming files, functions and tests, and says which agent builds it. Writes the plan, does not build it. |
 | `junior-dev` | Sonnet | `gpt-5.6-terra` | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | unset -- inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | `gpt-5.6-terra` | after **every** subagent that wrote code, on the local commit, before it is pushed. Scope it to the files it owns |
@@ -63,6 +64,19 @@ one, and a ticket that has sat because nobody could say what some bytes hold is
 this agent's work now. What still does not come here is ordinary building and
 ordinary measuring: a `reverse-engineering` agent does those as well, and
 sending them to `deep-research` or `architect` buys nothing.
+
+**`senior-dev-reviewer` sits between `architect` and `junior-dev`, and the
+split is where the difficulty lives.** Donald, 2026-09-14: an orchestrator
+that finds a bug and files it needs a higher model to turn the ticket into a
+plan, and `architect` on Fable was doing that for bugs that did not need an
+expert. So: when the code that must change is already in the tree and the
+question is which lines, which helper already does it and what the test
+asserts, it goes to `senior-dev-reviewer`, which posts the plan on the issue
+and names the builder. When working out *how* is the hard part -- an unknown
+in the bytes, a subsystem that does not exist, stages across several agents
+-- it goes to `architect`, or to `deep-research` if the obstacle is an
+UNKNOWN. A `senior-dev-reviewer` that finds it is holding `architect`'s work
+stops and says so, and that is a completed task.
 
 **`junior-dev`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? `#71 (Character draws on top of itself when the header is squeezed to its floor)`
