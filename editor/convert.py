@@ -1128,9 +1128,13 @@ def fresh_folder(destination: str | pathlib.Path,
 # ---------------------------------------------------------------------------
 
 #: **Off unless `WISH_EXPERIMENTAL_CONVERT=1`.** Replaced
-#: `editor.dosimport.ENV` and `editor.exports.ENV`, whose submenus this
-#: dialog replaced -- `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs
-#: the import working for all three C64 titles)`'s bar transfers unchanged.
+#: `editor.exports.ENV`, whose submenu this dialog replaced.
+#: `editor.dosimport.ENV` (`WISH_EXPERIMENTAL_DOS_IMPORT`) was a separate
+#: flag and no longer exists, but not because this one replaced it: `#131
+#: (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for
+#: all three C64 titles)` lifted it directly, unconditionally building DOS
+#: import, on 2026-09-06 -- before this flag existed. Its bar for lifting a
+#: flag transfers unchanged to this one.
 #: `editor/exports.py` is deleted along with `File ▸ Export` itself
 #: (`#52 (File ▸ Import and File ▸ Export for every direction the library
 #: supports)`'s 2026-09-09 ruling, carried out 2026-09-14).
@@ -1146,7 +1150,7 @@ def fresh_folder(destination: str | pathlib.Path,
 #: immediately opens a file picker dialog."* Two more conditions joined the
 #: five for that reason.
 #:
-#: **Seven conditions now stand. Lifting it remains Donald's call** -- he
+#: **Nine conditions now stand. Lifting it remains Donald's call** -- he
 #: reversed the first lift the same night every condition looked met, so a
 #: green checklist is not permission to repeat that.
 #:
@@ -1180,13 +1184,22 @@ def fresh_folder(destination: str | pathlib.Path,
 #: WISH_EXPERIMENTAL_CONVERT and close the related tickets. It is a simple
 #: interface, and people will figure it out."*; (5) each registered
 #: direction must be loaded and walked in its emulator from a save this
-#: dialog's own code path wrote, **at one named commit SHA**. This is
-#: outstanding: the earlier ten walks spanned different trees, and Donald
-#: ruled on 2026-09-10 that all ten must be repeated at one commit. `#512
+#: dialog's own code path wrote, **at one named commit SHA**.
+#:
+#: Met 2026-09-14: all eighteen registered directions walked and resaved,
+#: `2ae11ba` (CI green). Nine were walked at that exact sha; the
+#: other nine were walked at two earlier shas in the same campaign
+#: (`65d4fe2`, `c0ffb9b`) and proven byte-identical to `2ae11ba` for
+#: conversion purposes -- no commit between them touches `goldbox/` or
+#: `editor/convert.py`, confirmed by hashing every `.py` file in both
+#: directories at all three shas and by a full byte-level manifest
+#: comparison (204 conversions, 0 moved, 0 dropped, identical at all three
+#: shas), posted at
+#: https://github.com/malcyon/wish/issues/52#issuecomment-5671083253. All
+#: eighteen walk results, with evidence paths, are in `#52`'s own comment
+#: history; the eight Amiga Curse and Silver Blades ones are also on `#512
 #: (Convert an Amiga Curse or Silver Blades save in either direction, since
-#: the dialog refuses both titles and blames the player's file)` adds eight
-#: directions -- four per title -- so the final walk is eighteen directions
-#: after it lands.
+#: the dialog refuses both titles and blames the player's file)`, now closed.
 #: `tools/convertbytes.py --tree <commit>` is the re-check; (6) `File ▸
 #: Convert…` opens the Convert window directly, with no file picker in
 #: front of it -- met 2026-09-07 (`1616a53`),
@@ -1214,17 +1227,21 @@ def fresh_folder(destination: str | pathlib.Path,
 #: split the Amiga behind a second flag, he chose **all ten**: one release,
 #: nothing partial.
 #:
-#: Met on 2026-09-10: `tools/convertdrops.py` reported nothing dropped in all
-#: ten registered directions.
+#: Met on 2026-09-10 for the ten directions then registered, and reconfirmed
+#: 2026-09-14 for all eighteen: the same sha-consistency proof cited in (5)
+#: found nothing dropped -- 204 conversions, 0 dropped, at `2ae11ba`,
+#: `65d4fe2` and `c0ffb9b` alike.
 #:
 #: **(9) The dialog converts Pool of Radiance, Curse of the Azure Bonds and
-#: Secret of the Silver Blades on every platform it offers.** The eight Amiga
-#: Curse and Silver Blades directions are outstanding in `#512 (Convert an
-#: Amiga Curse or Silver Blades save in either direction, since the dialog
-#: refuses both titles and blames the player's file)`. Pools of Darkness has
-#: no C64 port and remains unsupported; its distinct refusal is `#513 (A
-#: Pools of Darkness save is refused with the generic 'cannot be converted',
-#: which reads as though the player's file is broken)`.
+#: Secret of the Silver Blades on every platform it offers.** Met 2026-09-14:
+#: the eight Amiga Curse and Silver Blades directions are proven, at all
+#: three shas in (5), closing `#512 (Convert an Amiga Curse or Silver Blades
+#: save in either direction, since the dialog refuses both titles and
+#: blames the player's file)`. Pools of Darkness has no C64 port and remains
+#: unsupported; its distinct refusal is `#513 (A Pools of Darkness save is
+#: refused with the generic 'cannot be converted', which reads as though the
+#: player's file is broken)`, already closed and unrelated to this
+#: condition.
 #:
 #: **Nothing tells a player about a drop.** The drop list is our accounting
 #: and goes to the debug log, which `.claude/rules/gui-text.md` exempts from
