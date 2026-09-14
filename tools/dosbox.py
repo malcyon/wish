@@ -557,7 +557,7 @@ class Session:
         and it only ever reads.
         """
         dest = self.dir / "game"
-        assert str(dest.resolve()).startswith(str(WORK)), dest
+        assert dest.resolve().is_relative_to(WORK.resolve()), dest
         if fresh and dest.exists():
             shutil.rmtree(dest)
         if not dest.exists():

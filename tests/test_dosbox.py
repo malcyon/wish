@@ -467,6 +467,107 @@ def test_a_session_refuses_to_stage_outside_work(tmp_path):
     slot.release()
 
 
+#: `#544 (tools/dosbox.py's Session.stage() refuses a detached worktree whose
+#: work/ is symlinked to the shared work/)` -- distinct from `posix_only`
+#: above, which is about `flock`. These three build a real symlink, which
+#: Windows handles differently (and often needs elevated privileges for), so
+#: they skip there rather than for any reason to do with the lease.
+symlink_only = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="these tests build a real symlink, which Windows handles differently")
+
+
+def _staged_session(work: pathlib.Path, source: pathlib.Path, slot: str = "0") -> "dosbox.Session":
+    session = dosbox.Session.__new__(dosbox.Session)
+    session.dir = work / "inst" / slot
+    session.stem = "POOLRAD"
+    session.source = source
+    session.exe = "START.EXE"
+    session.cycles = 20000
+    return session
+
+
+@symlink_only
+def test_a_session_stages_through_a_symlinked_work(tmp_path, monkeypatch):
+    """A detached worktree's `work/` is a symlink to the main tree's own
+    `work/`, per `.claude/rules/commits.md`'s own pattern
+    (`ln -sfn "$PWD/work" "$WT/work"`) -- reused by every walk agent's
+    worktree, not only the one that filed `#544
+    (tools/dosbox.py's Session.stage() refuses a detached worktree whose
+    work/ is symlinked to the shared work/)`. `stage()` must not mistake that
+    link for reaching outside its own sandbox.
+    """
+    main = tmp_path / "main"
+    (main / "work" / "dosbox" / "inst" / "0").mkdir(parents=True)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / "work").symlink_to(main / "work", target_is_directory=True)
+
+    work = wt / "work" / "dosbox"
+    monkeypatch.setattr(dosbox, "WORK", work)
+    monkeypatch.setattr(dosbox, "INST", work / "inst")
+
+    source = tmp_path / "POOLRAD"
+    source.mkdir()
+    (source / "START.EXE").write_text("stand-in for the game tree")
+
+    session = _staged_session(work, source)
+    session.stage()
+
+    landed = main / "work" / "dosbox" / "inst" / "0" / "game" / "POOLRAD" / "START.EXE"
+    assert landed.exists()
+    assert (session.dir / "dosbox.conf").exists()
+
+
+@symlink_only
+def test_a_session_still_refuses_a_symlink_that_escapes_work(tmp_path, monkeypatch):
+    """The safety property the fix must not loosen: an instance directory that
+    is itself a symlink pointing outside `work/dosbox` is still refused, and
+    whatever it pointed at survives untouched.
+    """
+    main = tmp_path / "main"
+    (main / "work" / "dosbox" / "inst").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere" / "game"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "keep.txt").write_text("not staged over")
+    (main / "work" / "dosbox" / "inst" / "1").symlink_to(
+        tmp_path / "elsewhere", target_is_directory=True)
+
+    work = main / "work" / "dosbox"
+    monkeypatch.setattr(dosbox, "WORK", work)
+    monkeypatch.setattr(dosbox, "INST", work / "inst")
+
+    source = tmp_path / "POOLRAD"
+    source.mkdir()
+    (source / "START.EXE").write_text("stand-in for the game tree")
+
+    session = _staged_session(work, source, slot="1")
+    with pytest.raises(AssertionError):
+        session.stage()
+    assert (elsewhere / "keep.txt").exists()
+
+
+@symlink_only
+def test_a_sibling_directory_sharing_the_prefix_is_still_refused(tmp_path, monkeypatch):
+    """`work/dosbox-other/` shares `work/dosbox` as a string prefix without
+    being inside it -- the second, smaller defect the same line carried.
+    """
+    main = tmp_path / "main"
+    (main / "work" / "dosbox-other" / "inst" / "0").mkdir(parents=True)
+
+    work = main / "work" / "dosbox"
+    monkeypatch.setattr(dosbox, "WORK", work)
+    monkeypatch.setattr(dosbox, "INST", main / "work" / "dosbox-other" / "inst")
+
+    source = tmp_path / "POOLRAD"
+    source.mkdir()
+    (source / "START.EXE").write_text("stand-in for the game tree")
+
+    session = _staged_session(main / "work" / "dosbox-other", source)
+    with pytest.raises(AssertionError):
+        session.stage()
+
+
 def test_find_game_says_so_when_the_archives_are_absent(tmp_path, monkeypatch):
     monkeypatch.setattr(dosbox, "ARCHIVES", tmp_path / "nowhere")
     with pytest.raises(FileNotFoundError):
