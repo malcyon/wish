@@ -34,12 +34,17 @@ bitmaps in `coab/images/` are the same runes rendered from the C64's own
 normalised grids with a cell of slack rather than pixel for pixel.
 
 **The path** is the row under the runes: `----------`, `..........` or
-`-..-..-..-`, drawn as marks whose *height in the character cell* is what
-separates them -- dashes sit in the middle, dots at the bottom.  That is read
-here; the **box number is not**, because it is one 8x8 digit glyph in the
-game's own display font and reading it needs a font this tool does not have.
-Pass `--box`, which is the number the prompt prints in words a person can
-read at a glance.
+`-..-..-..-`, drawn as marks one to a character cell, each cell's *own shape*
+being what tells a dash from a dot -- a dash is a 7px-wide bar across rows 2-3
+of its cell, a dot a 3x3 diamond in rows 4-6, measured off three live prompts
+on 2026-09-14 (`#537`).  A dash prompt lights only every other cell of the
+nine (14, 16, 18, 20, 22 of the row's forty), not a contiguous run, so what
+`read_path()` looks for is a run of five or more marked cells with nothing but
+text between them, not five or more marked cells in a row.  That is read here;
+the **box number is not**, because it is one 8x8 digit glyph in the game's own
+display font and reading it needs a font this tool does not have.  Pass
+`--box`, which is the number the prompt prints in words a person can read at a
+glance.
 
 The wheel table and the two arithmetics come from
 `$WISH_CODEWHEEL`, default `~/src/goldbox-codewheel` -- kept out of this
@@ -146,50 +151,88 @@ def reference(pre: str, n: int) -> list[frozenset]:
     return out
 
 
-def path_marks(im, top: int) -> list[tuple[int, int, tuple[int, ...]]]:
-    """The horizontal marks in the 8-pixel text cell starting at row `top`.
+#: A dot is DOS Curse's diamond: no more than 3px in either direction and no
+#: more than 5 lit pixels, measured at columns 2-4, rows 4-6 of its cell.
+DOT_MAX_SIZE = 3
+DOT_MAX_INK = 5
 
-    A dash and a dot are each **two rows tall and several columns wide**, and
-    no letter in the game's font is: a letter's columns light five or six
-    rows.  So a run of four or more consecutive columns whose lit rows are the
-    same adjacent pair is a mark and everything else is text, which is what
-    separates the pattern from the words `UNDER THE` and `PATH.` around it.
+#: A dash is DOS Curse's bar: at least 4px wide and no more than 2px tall,
+#: measured 7px wide across rows 2-3 of its cell.  Every letter in the game's
+#: font lights at least five rows, so nothing in the surrounding prose can
+#: pass this test.
+DASH_MIN_WIDTH = 4
+DASH_MAX_HEIGHT = 2
+
+#: The fewest marked cells one path band has to carry before it is believed
+#: over the green period that ends `PATH.`, which is a lone dot two cells
+#: past where a real band ends.  A dash band marks only every other cell of
+#: its nine -- 14, 16, 18, 20, 22 -- so this counts *marked* cells within a
+#: run of non-text cells, not five marked cells adjacent to one another.
+MIN_MARKS = 5
+
+
+def classify_cell(im, left: int, top: int) -> str:
+    """`"empty"`, `"dot"`, `"dash"` or `"text"`, for the 8x8 cell at `left`,
+    `top`.
+
+    A dot and a dash are read by the shape of their own ink, not by the pen --
+    the pen is white here on every specimen seen, but the game's own prose
+    row above is white too, so pen colour tells a mark from nothing rather
+    than a mark from a letter.
     """
     px = im.load()
-    cols = {x: tuple(y - top for y in range(top, top + 8)
-                     if sum(px[x, y]) > 150) for x in range(320)}
-    out, x = [], 0
-    while x < 320:
-        rows = cols[x]
-        if len(rows) == 2 and rows[1] == rows[0] + 1:
-            j = x
-            while j < 320 and cols[j] == rows:
-                j += 1
-            if j - x >= 4:
-                out.append((x, j, rows))
-            x = j
-        else:
-            x += 1
-    return out
+    lit = [(x - left, y - top) for y in range(top, top + 8)
+           for x in range(left, left + 8) if sum(px[x, y]) > 150]
+    if not lit:
+        return "empty"
+    xs = [p[0] for p in lit]
+    ys = [p[1] for p in lit]
+    w, h = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+    if w <= DOT_MAX_SIZE and h <= DOT_MAX_SIZE and len(lit) <= DOT_MAX_INK:
+        return "dot"
+    if w >= DASH_MIN_WIDTH and h <= DASH_MAX_HEIGHT:
+        return "dash"
+    return "text"
+
+
+def path_marks(im, top: int) -> list[str]:
+    """Each of the row's forty 8-pixel text cells, classified by
+    `classify_cell`, for the row starting at `top`."""
+    return [classify_cell(im, 8 * cell, top) for cell in range(40)]
 
 
 def read_path(im) -> int | None:
-    """Which of the three patterns is drawn, by where in its cell each mark sits.
+    """Which of the three patterns is drawn, by the shape of the marks in one
+    row of cells.
 
-    A dash is drawn across the middle of its cell and a dot along the bottom.
-    All-middle is `----------`, all-bottom is `..........`, and both heights
-    in one row is the mixed `-..-..-..-`.
+    A run of `MIN_MARKS` or more marked cells, with nothing but empty cells
+    between them and text on both sides, is the pattern; an all-dash run is
+    `----------` (0), an all-dot run is `..........` (1), and a run carrying
+    both is the mixed `-..-..-..-` (2).  The run rule is what keeps the green
+    period after `PATH.` -- the same diamond a dot mark is, six cells past
+    where a real band ends -- from being read as a one-mark band.
     """
-    for cell in range(8, 24):
-        marks = path_marks(im, cell * 8)
-        if len(marks) < 3:
-            continue
-        heights = {rows[0] for _a, _b, rows in marks}
-        if heights <= {2, 3}:
-            return 0
-        if min(heights) >= 4:
-            return 1
-        return 2
+    for top in range(8 * 8, 24 * 8, 8):
+        cells = path_marks(im, top)
+        i = 0
+        while i < len(cells):
+            if cells[i] == "text":
+                i += 1
+                continue
+            j = i
+            marks = []
+            while j < len(cells) and cells[j] != "text":
+                if cells[j] != "empty":
+                    marks.append(cells[j])
+                j += 1
+            if len(marks) >= MIN_MARKS:
+                kinds = set(marks)
+                if kinds == {"dash"}:
+                    return 0
+                if kinds == {"dot"}:
+                    return 1
+                return 2
+            i = j
     return None
 
 
@@ -236,8 +279,11 @@ def main(argv=None) -> int:
     # whatever ink it finds, so a main menu answers a rune with a confident
     # number and no warning; Curse does not ask its wheel on every boot, so a
     # driver *will* meet that frame.  Both tiles hold 100 or more pixels on a
-    # real prompt and a handful on anything else.
-    if min(got["espruar_ink"], got["dethek_ink"]) < 40 or got["path"] is None:
+    # real prompt and a handful on anything else.  Whether the path itself was
+    # read is a different question, asked below -- folding it in here turned
+    # "the challenge is up but the path did not read" into "nothing is up at
+    # all", which contradicts what this docstring has always promised (#537).
+    if min(got["espruar_ink"], got["dethek_ink"]) < 40:
         print("no challenge on screen")
         return 1
     path = args.path if args.path is not None else got["path"]
