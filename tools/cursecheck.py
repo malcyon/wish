@@ -83,16 +83,19 @@ def probe_square(sess) -> list[int]:
 def panel(sess) -> list[str]:
     """The world panel's rows that name a character, left-trimmed.
 
-    `Session.party_rows` finds them under the panel's own `NAME  AC HP`
+    `Session.stable_party_rows` finds them under the panel's own `NAME  AC HP`
     heading rather than at fixed rows, because how many there are is the
     party size and that is one of the things being checked
     (`#104 (A converted DOS party arrives with the template save's spare
-    characters still in it)`).
+    characters still in it)`) -- and waits for two reads to agree rather than
+    trusting the first frame, because a read straight after a sheet can land
+    on the panel still being redrawn (`#538`).
     """
+    rows = sess.stable_party_rows()
     s = sess.screen()
     if s is None:
         return []
-    return [s.row(r)[por.PARTY_COLUMN:].rstrip() for r in sess.party_rows(s)]
+    return [s.row(r)[por.PARTY_COLUMN:].rstrip() for r in rows]
 
 
 def read_sheets(sess, out: pathlib.Path, log) -> list[list[str]]:
@@ -104,7 +107,7 @@ def read_sheets(sess, out: pathlib.Path, log) -> list[list[str]]:
     as 51, a dropped combat tail, a garbage weapon line -- were all sheet
     faults.
     """
-    listed = len(sess.party_rows())
+    listed = len(sess.stable_party_rows())
     if not listed:
         log(event="no-panel", note="the party panel lists nobody")
         return []

@@ -653,6 +653,13 @@ class Session:
     #: party across the world, which is not a step.
     outdoor_boat: str | None = None
 
+    #: Seconds between the two reads `stable_party_rows` compares.  A class
+    #: attribute so a fake can set it near zero and a real run does not wait
+    #: any longer than the redraw it is waiting out -- measured at three rows
+    #: within a few tens of ms of the world bar giving way and the whole panel
+    #: done within roughly 200ms (`#538`).
+    PANEL_SETTLE = 0.3
+
     def __init__(self, disk: str | None = None, display: str | None = None,
                  slot=None, fastloader: str | None = None):
         self.slot = slot
@@ -1106,6 +1113,42 @@ class Session:
                 return i
         return None
 
+    def stable_party_rows(self, settle: float | None = None,
+                           timeout: float = 3.0) -> list[int]:
+        """`party_rows`, but only once two reads in a row agree.
+
+        Curse redraws the world screen after a sheet in stages -- the command
+        bar on row 24 first, then the party panel row by row, then the status
+        line, then the 3D viewport -- all at real emulated time.  A single
+        `party_rows` read a few tens of ms after `cancel_bar` sees the bar
+        change lands mid-redraw: on a six-person party it can find only the
+        first three rows drawn, or the right rows with the last one's text
+        still filling in (`#538`).
+
+        Reads the panel, `settle` seconds apart, comparing both the rows
+        `party_rows` finds and the text of those rows from `PARTY_COLUMN` to
+        the end of the line -- text as well as count, because a row can be
+        present with its AC or HP not yet drawn.  Returns as soon as two
+        consecutive reads agree on both; past `timeout` it gives up and
+        returns the last read, settled or not.
+        """
+        if settle is None:
+            settle = self.PANEL_SETTLE
+        deadline = time.time() + timeout
+        prev_rows: list[int] | None = None
+        prev_text: list[str] | None = None
+        while True:
+            s = self.screen()
+            rows = self.party_rows(s) if s is not None else []
+            text = [s.row(r)[PARTY_COLUMN:] for r in rows] if s is not None \
+                else []
+            if rows == prev_rows and text == prev_text:
+                return rows
+            prev_rows, prev_text = rows, text
+            if time.time() >= deadline:
+                return rows
+            time.sleep(settle)
+
     def select_party(self, index: int, timeout: float = 25.0) -> bool:
         """Put the world panel's highlight on party slot *index*, 0 first.
 
@@ -1116,10 +1159,24 @@ class Session:
         So the selection happens before `VIEW`, on the world screen, and it is
         `Up` and `Down` that make it.
 
+        **The "no such slot" verdict comes from a stable read, taken once,
+        before the loop** -- not from a fresh `party_rows` on whatever frame
+        the loop happens to poll.  Straight after a sheet that frame can be
+        the world screen half-redrawn, which is what made `select_party(3)`
+        refuse a six-person Curse party at exactly three, every time (`#538`).
+        An empty stable read is not "no party", only "not settled in time" or
+        "not on the world screen at all", so it falls through to the loop
+        below, whose own "no name is highlighted" path answers that case.
+
         Driven by where the highlight actually is after each press, the same
         way `select_row` is, so a swallowed keypress costs a pass round the
         loop rather than putting every later count out by one.
         """
+        rows = self.stable_party_rows()
+        if rows and not 0 <= index < len(rows):
+            self.log(f"  the panel lists {len(rows)} characters, so there "
+                     f"is no slot {index}")
+            return False
         deadline = time.time() + timeout
         seen = False
         while time.time() < deadline:
@@ -1127,17 +1184,12 @@ class Session:
             if s is None:
                 time.sleep(0.3)
                 continue
-            rows = self.party_rows(s)
             at = self.party_highlight(s)
             if at is None:
                 self.handle_prompt(s)   # a disk prompt can sit over the panel
                 time.sleep(0.3)
                 continue
             seen = True
-            if not 0 <= index < len(rows):
-                self.log(f"  the panel lists {len(rows)} characters, so there "
-                         f"is no slot {index}")
-                return False
             if at == index:
                 return True
             self.kbd.key("Down" if at < index else "Up", 0.15, 0.30)

@@ -101,6 +101,10 @@ class FakeGame(Session):
     the real code.
     """
 
+    #: `Session.stable_party_rows`'s wait between reads, zero here so a test
+    #: settles on the read count rather than on wall-clock time (`#538`).
+    PANEL_SETTLE = 0.0
+
     def __init__(self, names=NAMES, status_row: int | None = 14):
         # No `Session.__init__`: it reads the environment and opens a real
         # keyboard on a real X display.
@@ -111,6 +115,7 @@ class FakeGame(Session):
         self.bar_at = 0        # which word of the current bar is highlighted
         self.kbd = FakeKeyboard(self)
         self.shots: list[str] = []
+        self.screen_calls = 0
 
     # -- what the screen looks like ---------------------------------------
 
@@ -128,6 +133,7 @@ class FakeGame(Session):
         return out
 
     def screen(self):
+        self.screen_calls += 1
         s = FakeScreen()
         if self.where == "world":
             s.put(2, S.PARTY_COLUMN, "NAME            AC HP", 1)
@@ -195,6 +201,46 @@ class FakeGame(Session):
 
     def leave_move(self, tries: int = 8) -> bool:
         return False
+
+
+class RedrawingGame(FakeGame):
+    """A `FakeGame` that redraws the world panel in stages after a sheet.
+
+    Curse draws the command bar first, then the party panel row by row, then
+    the status line, then the 3D viewport, all at real emulated time (`#538`).
+    For `torn` `screen()` calls after `press_kernal(BAR_CANCEL)` leaves a
+    sheet, this serves the captured torn frame -- the command bar already
+    changed, only the first three panel rows drawn, no status line -- the
+    same frame `work/issue52/walk-amigatoc64-curse/cursecheck/
+    sheet-3-missing.txt` captured.  Every call after that draws the whole
+    panel, as `FakeGame.screen` already does.
+    """
+
+    def __init__(self, names=NAMES, torn: int = 2):
+        super().__init__(names=names, status_row=None)
+        self.torn = torn
+        self.torn_reads_left: int | None = None
+
+    def press_kernal(self, code: int) -> None:
+        was_sheet = self.where == "sheet"
+        super().press_kernal(code)
+        if code == S.BAR_CANCEL and was_sheet:
+            self.torn_reads_left = self.torn
+
+    def screen(self):
+        if self.where == "world" and self.torn_reads_left:
+            self.screen_calls += 1
+            self.torn_reads_left -= 1
+            s = FakeScreen()
+            s.put(2, S.PARTY_COLUMN, "NAME            AC HP", 1)
+            for i, name in enumerate(self.names[:3]):
+                s.put(4 + i, S.PARTY_COLUMN, f"{name:<16}2 11",
+                      1 if i == self.picked else CYAN)
+            col, word = self.words()[self.bar_at]
+            s.put(24, 0, self.bar())
+            s.put(24, col, word, 1)
+            return s
+        return super().screen()
 
 
 def test_every_character_in_the_party_has_a_sheet_read():
@@ -305,3 +351,78 @@ def test_the_sheets_name_is_read_past_the_frame_and_its_glyphs():
     assert sheet_name(["$----------$", "$          $", "$ ROLAND   $"]) == "ROLAND"
     # Nothing but frame is not a name, and must not raise.
     assert sheet_name(["$----------$", "$          $"]) == "(blank)"
+
+
+# -- a torn frame after a sheet stopped a six-person party at three (#538) --
+
+
+def test_stable_party_rows_survives_the_captured_torn_frame():
+    """The regression: `select_party` used to give its "no such slot" verdict
+    on the first frame after a sheet, and that frame is the torn one --
+    Curse's own command bar already changed, only three panel rows drawn.
+
+    Reading all six sheets in slot order went `MATHEW`, `PHILIPPE`, `SHARA`,
+    then nothing: `select_party(3)` read the same three-row frame and found
+    `3` out of `range(0, 3)`, regardless of the true party size, because that
+    is how many rows are on screen a few tens of ms after the command bar
+    gives way.  Reverting `select_party` to read `party_rows` straight off
+    the first frame -- rather than `stable_party_rows` -- makes this fail at
+    slot 3 with `None`, the same place the real run stopped.
+    """
+    game = RedrawingGame()
+    got = [game.character_sheet(n)[0].strip() for n in range(len(NAMES))]
+    assert got == NAMES
+
+
+def test_a_genuinely_short_party_is_still_refused_quickly():
+    """The guard still guards: a real three-person party refuses slot 3 in a
+    bounded number of reads, not by waiting out `select_party`'s 25s timeout.
+
+    A "fix" that retried "index out of range" until the deadline would pass
+    the regression test above -- the retries would eventually see a settled
+    six-row panel -- and would also make this refusal 25s slow.  Counting
+    `screen()` calls is what tells the two apart.
+    """
+    game = FakeGame(names=NAMES[:3])
+    before = game.screen_calls
+    assert game.select_party(3) is False
+    assert game.screen_calls - before < 10
+
+
+def test_a_partially_drawn_last_row_is_not_a_reading():
+    """`sheet-3-missing.txt` showed PHILIPPE's row with an AC and no HP yet
+    -- present under the header, so `party_rows` alone counts it as a row,
+    but not a row anybody should trust.  `stable_party_rows` also compares
+    each row's own text, so it does not settle until the HP has caught up.
+    """
+    def panel_row(text: str) -> "FakeScreen":
+        s = FakeScreen()
+        s.put(2, S.PARTY_COLUMN, "NAME            AC HP", 1)
+        s.put(4, S.PARTY_COLUMN, text, CYAN)
+        return s
+
+    partial = panel_row(f"{'PHILIPPE':<16}7")
+    full = panel_row(f"{'PHILIPPE':<16}7 33")
+
+    class ReadSequenceSession(Session):
+        """Serves fixed frames in order, then repeats the last one."""
+
+        PANEL_SETTLE = 0.0
+
+        def __init__(self, frames):
+            self.frames = list(frames)
+            self.calls = 0
+
+        def screen(self):
+            i = min(self.calls, len(self.frames) - 1)
+            self.calls += 1
+            return self.frames[i]
+
+    sess = ReadSequenceSession([partial, full, full])
+    rows = sess.stable_party_rows()
+    assert rows == [4]
+    # The name field alone is the same row on every frame; only the AC/HP
+    # text past it tells the partial frame from the full one, and that is
+    # what made this take all three reads rather than settling on the first
+    # two.
+    assert sess.calls == 3

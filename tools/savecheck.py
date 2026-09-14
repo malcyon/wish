@@ -474,7 +474,7 @@ def sheets(sess, count: int, log: Log, tag: str) -> list[list[str]]:
     conversion proven on one sheet of six is proven on one sixth of it.
     """
     out: list[list[str]] = []
-    listed = len(sess.party_rows())
+    listed = len(sess.stable_party_rows())
     if listed == 0:
         log.say("  the party panel lists nobody; this is not the world screen")
         return out

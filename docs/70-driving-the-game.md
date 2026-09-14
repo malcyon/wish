@@ -244,6 +244,15 @@ slot 0 against `PORSAVE13.D64` on 2026-09-03:
 `Session.character_sheet` are that, and `tools/savecheck.py --view` reads
 every character the panel lists.
 
+**After a sheet closes, Curse redraws the world in stages, at real emulated
+time**: the command bar on row 24 first, then the party panel row by row,
+then the status line, then the 3D viewport, which is why `Session.
+select_party` takes its "no such slot" verdict from `Session.
+stable_party_rows` -- two reads of the panel agreeing, not the first frame
+after the bar changes -- rather than trusting a read that can land mid-redraw
+(`#538 (tools/cursecheck.py's sheet reader stops after three of a six-person
+Curse party, though the same run's own panel lists all six)`).
+
 **Nothing on the sheet itself changes character**, and this is the expensive
 half of the finding, because it is what three earlier runs assumed. The
 sheet's bar is `VIEW:ITEMS EXIT` with the highlight on `ITEMS`; there is no
