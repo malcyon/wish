@@ -52,12 +52,11 @@ These are custom-painted widgets with no child layout to design — they draw vi
 > [!NOTE]
 > `SpellbookEditor` and `MemorisedEditor` are no longer promoted widgets — their content (a `QListWidget`, a `QComboBox`, two buttons, a label) is inlined directly into the unified `.ui`. The Python classes become controllers that operate on those widgets by `objectName`.
 
-### What stays as separate `.ui` files (5 dialogs)
+### What stays as separate `.ui` files (4 dialogs)
 
 | File | Why |
 |---|---|
 | `automap/noteeditor.ui` | Popup dialog |
-| `editor/dosimport.ui` | Modal dialog |
 | `editor/inventory.ui` | Modal dialog ("Add item") |
 | `editor/partspicker.ui` | Modal dialog |
 | `wish/preferences.ui` | Modal dialog |
@@ -400,7 +399,7 @@ class MemorisedEditor:
 Update `UI_DIRS`:
 ```python
 UI_DIRS = [
-    ROOT / "editor",     # dosimport.ui, inventory.ui, partspicker.ui
+    ROOT / "editor",     # convert.ui, inventory.ui, partspicker.ui
     ROOT / "automap",    # noteeditor.ui only
     ROOT / "wish",       # window.ui (the unified file), preferences.ui
 ]

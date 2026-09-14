@@ -96,7 +96,7 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
     touched.
 
     From :func:`read_slot` this is `goldbox.dos_codec.new_save_from`, which is the
-    same engine `File ▸ Import` has used for a DOS folder since #118.
+    same engine `File ▸ Convert…` has used for a DOS folder since #118.
 
     The creation menu's two tables (#57) come off the same `disks` directory
     the icon and `ANIMATE00` do.  Unlike those two a conversion does not

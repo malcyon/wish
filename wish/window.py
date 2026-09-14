@@ -225,44 +225,21 @@ class WishWindow(QMainWindow):
         # convert to shows the approved refusal rather than a disabled menu
         # item nobody can explain.
         #
-        # Built only when `WISH_EXPERIMENTAL_CONVERT` says so -- see
-        # `editor/convert.py`, whose flag block names the seven conditions
-        # that remove it. Lifted once, on 2026-09-07, and put back the same
-        # night: the dialog still opened behind a file picker
-        # (`#412 (File ▸ Convert demands a save in a file picker before it
-        # will show you the Convert window)`) and `File ▸ Import ▸ DOS save
-        # folder` below still duplicates it (`#52`'s own step 5), and
-        # neither is a property the code-side conditions ever tested.
-        # Replaces the Import submenu below, built for everyone since
-        # `#131`, and `WISH_EXPERIMENTAL_EXPORT`'s; Donald ruled on
-        # 2026-09-07 that both submenus are deleted, and they stay until
-        # `#52`'s step 5 does it -- after this flag comes off, never before,
-        # since Import is the only route a player has until then.
+        # Built for everyone since 2026-09-14, when `WISH_EXPERIMENTAL_CONVERT`
+        # was lifted on Donald's word and `File ▸ Import ▸ DOS Save Folder…`
+        # was removed in the same commit -- Import was the only route a
+        # player had until then, so the two could not land apart. Lifted
+        # once before, on 2026-09-07, and put back the same night: the
+        # dialog still opened behind a file picker (`#412 (File ▸ Convert
+        # demands a save in a file picker before it will show you the
+        # Convert window)`) and `File ▸ Import` still duplicated it, and
+        # neither was a property the code-side conditions tested that time.
         from editor import convert
-        self.convert_action = None
-        if convert.enabled():
-            convert_action = QAction(convert.MENU_CONVERT, self)
-            convert_action.triggered.connect(
-                lambda _checked=False: self.editor.convert())
-            menu.addAction(convert_action)
-            self.convert_action = convert_action
-
-        # A submenu with one item in it, because the thing it imports is one
-        # of several ports and the next one goes beside it rather than growing
-        # the File menu another top-level verb.
-        #
-        # Built for everyone.  It sat behind `WISH_EXPERIMENTAL_DOS_IMPORT`
-        # from 2026-08-24 until `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT,
-        # which needs the import working for all three C64 titles)` closed
-        # on 2026-09-06: all three titles convert and have been played from
-        # a converted disk, and no player is shown a dropped field.
-        from editor import dosimport
-        imports = menu.addMenu(dosimport.MENU_IMPORT)
-        dos_save = QAction(dosimport.MENU_DOS_SAVE, self)
-        dos_save.triggered.connect(
-            lambda _checked=False: self.editor.import_dos_save())
-        imports.addAction(dos_save)
-        self.import_dos_action = dos_save
+        convert_action = QAction(convert.MENU_CONVERT, self)
+        convert_action.triggered.connect(
+            lambda _checked=False: self.editor.convert())
+        menu.addAction(convert_action)
+        self.convert_action = convert_action
 
         menu.addSeparator()
         prefs = QAction("&Preferences…", self)

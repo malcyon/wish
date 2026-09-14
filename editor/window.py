@@ -71,8 +71,7 @@ _log = logging.getLogger("wish.editor.window")
 #: -- the file is a Commodore 64 disk image, and "Gold Box" named the games on
 #: it rather than the thing being opened.
 DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
-#: The Save As picker's title. `editor/dosimport.py`'s Browse… opens the same
-#: picker for the same purpose and reuses this rather than wording it again.
+#: The Save As picker's title.
 SAVE_AS_TITLE = "Save the disk as"
 
 #: Donald's wording, approved verbatim (#145) -- one line per field that
@@ -1165,74 +1164,20 @@ class EditorBinding(QObject):
 
     # -- importing --------------------------------------------------------
 
-    def game_files_for_import(self):
-        """The icon, `ANIMATE00` and the creation menu a conversion needs, or
-        None for the first two (#118).
-
-        The creation menu's two tables (#57) come off the same disks
-        directory, through `goldbox.portraits.tables_from_disks`. Unlike the
-        icon and `ANIMATE00`, a conversion needs no disk for them: a
-        directory with no side carrying `GEN` leaves `portraits` `None`, and
-        `goldbox.dos_codec.to_neutral` falls back to the stored menu -- twenty-six
-        numbers read out of `GEN` once and committed, so every character
-        still arrives with his own face. Reading the player's own disks is
-        kept because it is the check that the stored numbers are still
-        right, not because a conversion depends on it (#131).
-
-        The open party's own title -- or the default title with none open --
-        says which folder in Preferences (`Settings.game_folders`,
-        `#22 (A disk folder setting per game, not one shared by all six)`) to
-        try beside the shared one, the way `game_files_for` below already
-        does for the destination (`#342 (A Curse or Silver Blades save
-        cannot be converted unless its C64 sides sit in the Pool of
-        Radiance disk folder)`).
-        """
-        from goldbox import dos_codec
-        from goldbox.d64 import load_payload
-        from goldbox.portraits import PortraitError, tables_from_disks
-
-        from .dosimport import GameFiles
-
-        def read_animate(disk):
-            return load_payload(disk, dos_codec.ANIMATE_FILE)
-
-        game = self.party.game if self.party is not None else por_games.DEFAULT
-        icon_disk = self._find_disk(IconParts.load, game=game)
-        animate_disk = self._find_disk(read_animate, game=game)
-        if icon_disk is None or animate_disk is None:
-            return None
-        own = self._own_disk_folder(game)
-        portraits = None
-        for candidate in (self.disks, own):
-            if not candidate:
-                continue
-            try:
-                portraits = tables_from_disks(candidate)
-                break
-            except (PortraitError, OSError) as exc:
-                _log.debug("no creation menu off %s: %s", candidate, exc)
-        try:
-            return GameFiles(icon=IconParts.load(icon_disk),
-                             animate=read_animate(animate_disk),
-                             portraits=portraits)
-        except Exception:
-            _log.exception("could not read the import's game files off "
-                           "%s and %s", icon_disk, animate_disk)
-            return None
-
     def game_files_for(self, game):
         """The icon, `ANIMATE00` and the creation menu a conversion into
         `game` needs, or `None` for the first two.
 
-        `game_files_for_import` above answers the same question for the
-        *open* party's title; this is `#52 (File ▸ Import and File ▸ Export
-        for every direction the library supports)`'s `ConvertDialog`'s own
-        version, which asks for the **destination**'s disks instead. Three
-        C64 titles convert now (`editor.convert.DIRECTIONS`), so a Curse DOS
-        save converted with a Pool of Radiance party open -- or none open at
-        all -- has to read `ANIMATE00` off a `CURSE*` disk, not a `POOL*`
-        one; `_disk_candidates`'s `pattern` argument is what makes that
-        possible without it caring what, if anything, is open.
+        This is `#52 (File ▸ Import and File ▸ Export for every direction
+        the library supports)`'s `ConvertDialog`'s own reader, which asks
+        for the **destination**'s disks -- the only reader left since
+        `game_files_for_import`, which asked the same question for the
+        *open* party's title, was deleted with `File ▸ Import` on
+        2026-09-14. Three C64 titles convert now (`editor.convert.DIRECTIONS`),
+        so a Curse DOS save converted with a Pool of Radiance party open --
+        or none open at all -- has to read `ANIMATE00` off a `CURSE*` disk,
+        not a `POOL*` one; `_disk_candidates`'s `pattern` argument is what
+        makes that possible without it caring what, if anything, is open.
 
         Portrait tables are asked for only when `game` is Pool of Radiance:
         `#300 (A Curse or Silver Blades party imported to the C64 arrives
@@ -1282,59 +1227,6 @@ class EditorBinding(QObject):
                            "%s and %s", icon_disk, animate_disk)
             return None
 
-    def import_dos_save(self, folder: str | None = None) -> str:
-        """File > Import > DOS Save Folder… Returns what happened, for a test."""
-        from goldbox import dos_codec
-
-        from .dosimport import (
-            FOLDER_TITLE,
-            NO_DISKS,
-            NO_DISKS_TITLE,
-            NO_SLOTS,
-            NO_SLOTS_TITLE,
-            DosImportDialog,
-        )
-
-        game_files = self.game_files_for_import()
-        if game_files is None:
-            QMessageBox.critical(self.root, NO_DISKS_TITLE, NO_DISKS)
-            return "no game disks"
-        if folder is None:
-            folder = QFileDialog.getExistingDirectory(
-                self.root, FOLDER_TITLE,
-                str(self.path.parent if self.path else ""))
-        if not folder:
-            return "cancelled"
-        if not dos_codec.slots_available(folder):
-            QMessageBox.warning(self.root, NO_SLOTS_TITLE,
-                                NO_SLOTS.format(folder=folder))
-            return "no DOS save"
-        dialog = DosImportDialog(
-            folder, game_files, self.root,
-            start_dir=files.open_start_dir(self.last_save_folder, self.path,
-                                           self.saves_folder))
-        while True:
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return "cancelled"
-            if dialog.conversion is None:
-                return "cancelled"
-            self.adopt_conversion(dialog.conversion, dialog.target())
-            try:
-                return self.save(interactive=False)
-            except Exception as exc:
-                dialog.refuse(str(exc))
-
-    def adopt_conversion(self, conversion, path: str | None = None) -> str:
-        """Show a converted save. Separate so a test can call it."""
-        from .dosimport import CONVERTED
-
-        if conversion is None:
-            return "cancelled"
-        note = CONVERTED.format(slot=conversion.slot) if path is None else None
-        party = Party("", game=conversion.game, disk=conversion.disk)
-        self._adopt(party, path, note=note, dirty=True)
-        return note or ""
-
     # -- converting ---------------------------------------------------------
 
     def convert(self, source: str | None = None, destination: str | None = None,
@@ -1343,19 +1235,18 @@ class EditorBinding(QObject):
         """File ▸ Convert… Returns what happened, for a test.
 
         `source`, `destination`, `folder`, `game` and `disk` pre-fill the
-        dialog's rows the way `import_dos_save(folder=...)` pre-fills its
-        one row -- given every argument, no picker ever opens, which is how
-        a test drives the whole path (`#52 (File ▸ Import and File ▸ Export
-        for every direction the library supports)`'s plan comment step C).
-        `disk` is the player's own Amiga disk 2, the twin of `game` for an
-        Amiga destination (`#36 (Write an Amiga disk image, not just the
-        character files)`). With no `source`, the dialog opens with an
+        dialog's rows -- given every argument, no picker ever opens, which is
+        how a test drives the whole path (`#52 (File ▸ Import and File ▸
+        Export for every direction the library supports)`'s plan comment
+        step C). `disk` is the player's own Amiga disk 2, the twin of `game`
+        for an Amiga destination (`#36 (Write an Amiga disk image, not just
+        the character files)`). With no `source`, the dialog opens with an
         empty `From` row rather than a picker in front of it (`#412 (File ▸
         Convert demands a save in a file picker before it will show you the
         Convert window)`) -- the row's own `Choose` button is the picker
         now. The write itself happens here rather than inside
-        `ConvertDialog`, the same split `import_dos_save` keeps between
-        rehearsing (the dialog) and committing (this method): `fresh_folder`
+        `ConvertDialog`, rehearsing (the dialog) kept apart from committing
+        (this method): `fresh_folder`
         names a folder and `mkdir()`s it immediately afterwards (the review
         of `a60e829`: it names a folder, it does not reserve one), then
         `Direction.write` puts the files in it. A C64 destination is opened
@@ -1726,13 +1617,16 @@ class EditorBinding(QObject):
         which `close()` never even reaches -- it returns before calling this
         when `self.dirty` is empty, and an empty editor is never dirty.
         `self.path is None` with a party that *is* dirty is the one state a
-        converted-but-unnamed party (`adopt_conversion` with no destination)
-        can be in. When `interactive`, that opens the same chooser
-        `save_as()` opens (#515) -- cancelling it still answers
+        converted-but-unnamed party can be in -- constructible only from
+        inside this class now that `adopt_conversion` and `import_dos_save`,
+        its one caller, are both gone (`File ▸ Import`'s removal,
+        `#52 (File ▸ Import and File ▸ Export for every direction the
+        library supports)`, 2026-09-14). When `interactive`, that opens the
+        same chooser `save_as()` opens (#515) -- cancelling it still answers
         `"no destination"`, which is not a successful save: `close()` below
         has to tell the two apart from `"failed"` rather than read either as
-        "done". When not `interactive` (`import_dos_save`'s own call), no
-        chooser opens and an unnamed party is simply left unwritten.
+        "done". When not `interactive`, no chooser opens and an unnamed
+        party is simply left unwritten.
         """
         if self.party is None:
             return "nothing open"
@@ -2222,8 +2116,11 @@ class EditorBinding(QObject):
             return False
         if ans == QMessageBox.StandardButton.Discard:
             return True
-        # Not `!= "failed"`: a converted party with no destination
-        # (`adopt_conversion`, no path) answers `"no destination"` here,
-        # neither an exception nor a written file, and treating that as
-        # success closed the window and threw the party away (#505, #514).
+        # Not `!= "failed"`: a converted party with no destination (`_adopt`
+        # with no path -- constructible only from inside this class since
+        # `adopt_conversion` was deleted, `#52 (File ▸ Import and File ▸
+        # Export for every direction the library supports)`, 2026-09-14)
+        # answers `"no destination"` here, neither an exception nor a
+        # written file, and treating that as success closed the window and
+        # threw the party away (#505, #514).
         return self.save() not in ("failed", "no destination")

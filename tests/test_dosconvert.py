@@ -940,7 +940,7 @@ def test_every_derived_field_carries_the_run_that_demonstrated_it():
 @needs_disks
 def test_no_dos_derived_or_constant_field_reaches_the_import_pane():
     """#324: converting `WISH-SPEC-por-party-l1-intown` slot E through
-    `editor.dosimport.rehearse` -- the same call `File > Import` makes --
+    `editor.dosimport.rehearse` -- the same call `File ▸ Convert…` makes --
     shows no line for item bookkeeping, heap state, the running-effects
     link, which hand holds a weapon or the five constant bytes at
     `field_83_87`.  What is left on the pane is exactly the lines still on

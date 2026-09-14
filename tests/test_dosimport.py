@@ -10,14 +10,18 @@ def make_root():
     return root
 
 
-"""File > Import > DOS save: the window over `goldbox/dos_codec.py`'s converter.
+"""`editor/dosimport.py`: `editor/convert.py`'s own DOS-to-C64 helper.
 
 The conversion itself is `tests/test_dosconvert.py`'s. What is tested here is
-the one thing a menu can get wrong that a command line cannot: **the losses
-are on screen before anything is written**, a refusal reaches the user as a
-sentence rather than as a traceback, and the import refuses outright when the
-player's game disks are not there rather than writing a save with invented
-bytes in it (#118).
+`rehearse`, `pane_text`, `name_warnings` and `log_unshown_losses` -- the
+functions `editor/convert.py`'s `ConvertDialog` calls in for -- plus the two
+`#176 (A player importing a Curse of the Azure Bonds save is shown an issue
+number)` refusal tests that build no dialog at all. This module carried a
+window in its own right, `DosImportDialog`, from 2026-08-24 until it was
+deleted along with `File ▸ Import` on 2026-09-14 (`#52 (File ▸ Import and
+File ▸ Export for every direction the library supports)`); what tested that
+window is ported to `tests/test_convert.py` against `ConvertDialog`, noted
+in place here rather than silently gone.
 
 Both halves need somebody's files. The DOS save is Donald's unpacked copy of
 *Forgotten Realms: The Archives* (`$FR_ARCHIVES`) and the game disks are his
@@ -29,10 +33,10 @@ platform before Qt is imported.
 
 import gamedata
 import pytest
-from gamedata import disk_dir, game_disk
+from gamedata import disk_dir
 from test_dossave import _save_dir, needs_dos_saves
 
-from goldbox import dos_codec, dos_savegame
+from goldbox import dos_codec
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
@@ -43,29 +47,6 @@ def app():
     """The session-wide application `tests/conftest.py` holds a reference to."""
     from PyQt6.QtWidgets import QApplication
     return QApplication.instance() or QApplication([])
-
-
-@pytest.fixture(autouse=True)
-def _no_real_modals(monkeypatch):
-    """Neutralise `QMessageBox.critical`/`.warning` by default, for every
-    test in this module -- `tests/test_convert.py`'s own `_no_real_modals`,
-    ported rather than reinvented for `DosImportDialog._maybe_warn`
-    (2026-09-14), which pops a real one once a dialog is `_interactive`.
-    Without this, a test that reaches that point hangs under `pytest`'s
-    offscreen platform, waiting on a `QMessageBox.exec()` nobody can
-    dismiss.
-
-    A test that wants to know what the dialog actually showed reads
-    `dialog._blocked`/`dialog._name_warning` directly, or does its own
-    `monkeypatch.setattr` on `editor.dosimport.QMessageBox`, which simply
-    replaces this default for that one test.
-    """
-    from editor import dosimport
-
-    monkeypatch.setattr(dosimport.QMessageBox, "critical",
-                        lambda *a, **k: None)
-    monkeypatch.setattr(dosimport.QMessageBox, "warning",
-                        lambda *a, **k: None)
 
 
 @pytest.fixture
@@ -181,58 +162,13 @@ def test_nothing_in_the_converted_save_is_left_to_a_previous_owner(
     assert len(report.sources) == report.total == 9216
 
 
-def _stub_conversion(report):
-    """A `Conversion` with only what the pane reads -- the report -- so a
-    pane test can force any mix of messages and drops rather than wait for a
-    specimen that happens to produce it."""
-    import types
-    return types.SimpleNamespace(report=report, slot="A")
-
-
-def _dialog_showing(app, tmp_path, monkeypatch, report):
-    """The real dialog, rehearsed over `report` instead of a DOS folder."""
-    from editor import dosimport
-
-    folder = _fake_dos_dir(tmp_path)
-    dialog = dosimport.DosImportDialog(folder, _fake_files())
-    monkeypatch.setattr(dosimport, "rehearse",
-                        lambda *_a, **_k: _stub_conversion(report))
-    dialog._rehearse()
-    return dialog
-
-
-def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
-        app, tmp_path, monkeypatch):
-    """This window carried a pane from 2026-09-06 until 2026-09-14, and
-    across that history `report.messages` was always shown and
-    `report.dropped` never reached it (2026-09-08 ruling,
-    `.claude/rules/conversions.md`). The pane is gone now (`#52 (File ▸
-    Import and File ▸ Export for every direction the library supports)`,
-    matching `editor/convert.py`'s own removal of 2026-09-10), and nothing
-    replaced its display of `messages` -- `_maybe_warn` only ever shows
-    `_blocked` (a refusal) or `_name_warning` (a truncated name), and
-    neither of those is set by a message, a drop, or a `losses` line that is
-    not a name truncation. Convert still stays pressable throughout.
-
-    A `report.losses` line that is not a name truncation used to reach this
-    window's own pane, unfiltered, before 2026-09-14; it is filtered out
-    now, the same way `editor/convert.py`'s dialog has filtered it since
-    2026-09-10 (`test_name_warnings_keeps_only_the_truncated_name`).
-    """
-    from PyQt6.QtWidgets import QDialogButtonBox
-
-    from goldbox.dos_codec import NOT_SET_OUT, C64SaveReport
-
-    report = C64SaveReport(save0_size=0x1C00)
-    report.messages.append(NOT_SET_OUT)
-    report.dropped.append("Something the C64 has no place for")
-    report.losses.append("carries more items than the C64 can hold")
-    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
-
-    assert dialog._blocked is None
-    assert dialog._name_warning is None
-    assert dialog.buttons.button(
-        QDialogButtonBox.StandardButton.Ok).isEnabled()
+#: `test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_
+#: nothing`, which drove this against `DosImportDialog` itself, is ported
+#: to `tests/test_convert.py` against `ConvertDialog` -- deleted with the
+#: dialog on 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every
+#: direction the library supports)`), missed by that ticket's own plan as
+#: one of the four to port because it sat in this section, which the plan
+#: otherwise kept whole.
 
 
 def test_pane_text_is_the_messages_and_never_the_drops():
@@ -424,321 +360,23 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
     assert "emptied" not in text
 
 
-# --- the window -------------------------------------------------------------
-
-@needs_dos_saves
-@needs_disks
-def test_the_rehearsal_is_complete_before_the_button_is_pressable(
-        app, dos_save, files):
-    """The dialog rehearses on construction, so Convert is already
-    pressable the moment the window would appear -- and if a real save's own
-    rehearsal set `_name_warning`, the one thing this window still says out
-    loud, it carries no address, file name or issue number."""
-    import re
-
-    from PyQt6.QtWidgets import QDialogButtonBox
-
-    from editor.dosimport import DosImportDialog
-
-    dialog = DosImportDialog(dos_save, files)
-    assert dialog.conversion is not None
-    assert dialog._blocked is None
-    if dialog._name_warning:
-        assert not re.search(r"\$[0-9A-F]{4}\b|0x[0-9A-Fa-f]+|\.py\b|#\d",
-                             dialog._name_warning), dialog._name_warning
-    assert dialog.buttons.button(
-        QDialogButtonBox.StandardButton.Ok).isEnabled()
-
-
-@needs_dos_saves
-def test_a_pool_of_radiance_import_with_no_creation_tables_converts_with_its_own_faces(
-        app, dos_save):
-    """A disk folder that carries `SPELLE64` and `ANIMATE00` but no readable
-    `GEN` -- `GameFiles` with `portraits` `None` -- converts, and every
-    character arrives with the face his own DOS record names, out of the
-    stored menu (`goldbox.portraits.POOL_OF_RADIANCE_MENU`, 2026-09-06).
-    For one night `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
-    import working for all three C64 titles)` had this refuse in the pane
-    with Convert disabled; Donald: *"We don't need to refuse game disks.
-    Just store the IDs we would otherwise be looking up."*
-
-    `icon` and `animate` are dummy bytes: what is under test is the third
-    file nobody read, not the two.
-    """
-    from PyQt6.QtWidgets import QDialogButtonBox
-
-    from editor.dosimport import DosImportDialog, GameFiles
-    from goldbox.portraits import stored_tables
-
-    menu = stored_tables(None)
-    dialog = DosImportDialog(dos_save, GameFiles(icon=bytes(36),
-                                                 animate=bytes(852)))
-    for slot in dos_codec.slots_available(dos_save):
-        party = dos_codec.read_party(dos_save, slot)
-        if all(menu.head_art(c.get("portrait_head")) is not None
-               and menu.body_art(c.get("portrait_body")) is not None
-               for c in party):
-            break
-    else:
-        pytest.skip("no DOS slot here has every character in the menu")
-    dialog.slots.setCurrentText(slot)
-    assert dialog.conversion is not None
-    assert dialog.buttons.button(
-        QDialogButtonBox.StandardButton.Ok).isEnabled()
-    assert dialog._blocked is None
-    save0 = dialog.conversion.save0.to_bytes()
-    assert save0[dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE] == dos_codec.PORTRAIT_ON
-    for index, char in enumerate(party):
-        place = dos_codec.marching_slot(index, len(party))
-        rec_at = dos_codec.SLOT_AREA - dos_codec.SAVE0_BASE + place * dos_codec.SLOT_STRIDE
-        assert save0[rec_at + 0x0FE] == \
-            menu.head_art(char.get("portrait_head")), char.name
-        assert save0[rec_at + 0x0FF] == \
-            menu.body_art(char.get("portrait_body")), char.name
-
-
-@needs_dos_saves
-@needs_disks
-def test_the_save_points_at_the_area_the_dos_party_is_in(app, dos_save, files):
-    """There is no template to agree or disagree with any more, so the
-    loaded-files cache is computed from the DOS save alone every time.
-    `docs/140-loaded-files-cache.md`."""
-    from editor.dosimport import DosImportDialog
-
-    dialog = DosImportDialog(dos_save, files)
-    assert dialog.conversion is not None
-    payload = dialog.conversion.save0.to_bytes()
-    at = dos_codec.FILE_CACHE[0] - dos_codec.SAVE0_BASE
-    there = dos_savegame.area_id(
-        (dos_save / f"SAVGAM{dialog.slot}.DAT").read_bytes())
-    want = bytearray(b"\xFF" * dos_codec.FILE_CACHE[1])
-    want[dos_codec.CACHE_GEO] = want[dos_codec.CACHE_ECL] = there
-    # Slot 11: the save carries `ANIMATE00` in `SAVEDGAME1`'s tail, so the
-    # cache has to say it is resident or the party cannot walk into an area
-    # (#102). The literal 11 and 0, not the module's names, so this fails on a
-    # renumbering rather than following it.
-    want[11] = 0
-    assert payload[at:at + dos_codec.FILE_CACHE[1]] == bytes(want)
-
-
-@needs_dos_saves
-@needs_disks
-def test_changing_the_slot_re_rehearses(app, dos_save, files):
-    """Every change re-rehearses, so the pane is never the losses of a
-    conversion other than the one the button would commit."""
-    from editor.dosimport import DosImportDialog
-
-    offered = dos_codec.slots_available(dos_save)
-    if len(offered) < 2:
-        pytest.skip("needs a DOS save folder holding two slots")
-    dialog = DosImportDialog(dos_save, files)
-    first = dialog.conversion
-    assert first is not None
-    other = next(s for s in offered if s != dialog.slot)
-    dialog.slots.setCurrentText(other)
-    assert dialog.conversion is not None and dialog.conversion is not first
-    assert dialog.conversion.slot == other
-
-
-@needs_dos_saves
-@needs_disks
-def test_the_slots_offered_are_the_ones_the_folder_holds(app, dos_save, files):
-    from editor.dosimport import DosImportDialog
-
-    dialog = DosImportDialog(dos_save, files)
-    offered = [dialog.slots.itemText(i) for i in range(dialog.slots.count())]
-    assert offered == dos_codec.slots_available(dos_save)
-
-
-# --- the refusal when the game disks are missing (#118) ----------------------
-
-def test_no_game_disks_is_a_pop_up_and_no_folder_picker(app, tmp_path,
-                                                        monkeypatch):
-    """Donald's ruling, 2026-08-27: *"We should never attempt to write a save
-    file if we don't have the game disks and we need them. That would mean
-    making up data, which we will not do."*
-
-    The check fires **before** the folder picker, so a user with no disks is
-    not asked to choose a folder and only then told it was pointless. This
-    fails without the guard in two ways at once: the picker opens, and the
-    box is never shown.
-    """
-    import editor.window as ew
-    from editor.dosimport import NO_DISKS, NO_DISKS_TITLE
-    from editor.window import EditorBinding
-
-    said, picked = [], []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append((a[1], a[2])))
-    monkeypatch.setattr(ew.QFileDialog, "getExistingDirectory",
-                        lambda *a, **k: picked.append(a) or "")
-    # An empty folder for the Game directory and nothing in the environment,
-    # so nothing on this machine can be found however many disks it has.
-    monkeypatch.delenv("POR_DISKS", raising=False)
-    monkeypatch.delenv("POR_GAME_DISK", raising=False)
-    empty = tmp_path / "no disks here"
-    empty.mkdir()
-    monkeypatch.chdir(empty)
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(empty))
-    assert window.import_dos_save() == "no game disks"
-    assert said == [(NO_DISKS_TITLE, NO_DISKS)]
-    assert picked == [], "the folder picker opened before the refusal"
-    window.close()
-
-
-@needs_disks
-def test_with_the_game_disks_there_the_import_gets_as_far_as_the_picker(
-        app, tmp_path, monkeypatch):
-    """The other direction, which is what stops the refusal being a refusal of
-    everything: with the disks configured the import goes on to the folder
-    picker, and cancelling it is the only reason it stops."""
-    import editor.window as ew
-    from editor.window import EditorBinding
-
-    said, picked = [], []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append(a))
-    monkeypatch.setattr(ew.QFileDialog, "getExistingDirectory",
-                        lambda *a, **k: picked.append(a) or "")
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-    assert window.import_dos_save() == "cancelled"
-    assert said == []
-    assert len(picked) == 1
-    window.close()
-
-
-@needs_disks
-def test_a_disk_that_loads_once_but_fails_on_the_second_read_refuses(
-        app, tmp_path, monkeypatch):
-    """`_find_disk` proves `IconParts.load` succeeds *once*, on the probe
-    read; `game_files_for_import` reads the same disk a second time to build
-    the `GameFiles` it returns (#130 -- the table is now kept whole rather
-    than reduced to one composed default at this point, so it is read once
-    more rather than reused).  A corrupt or truncated `SPELLE64` that fails
-    only on that second read must not escape the menu's slot uncaught:
-    `wish/debuglog.py` logs it and **the user sees nothing at all happen**.
-
-    What has to come back is the refusal the missing-disks case already
-    gets, and no folder picker.
-    """
-    import editor.window as ew
-    from editor.dosimport import NO_DISKS, NO_DISKS_TITLE
-    from editor.window import EditorBinding
-    from goldbox.iconparts import IconParts
-
-    said, picked = [], []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append((a[1], a[2])))
-    monkeypatch.setattr(ew.QFileDialog, "getExistingDirectory",
-                        lambda *a, **k: picked.append(a) or "")
-
-    # Construct the window with the real reader first -- it already calls
-    # `IconParts.load` more than once for its own game-disk setup, and the
-    # scenario this test wants is specific to `import_dos_save`'s own second
-    # read, not to whatever `EditorBinding.__init__` did on the way up.
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-
-    real_load = IconParts.load
-    calls = []
-
-    def fails_on_the_second_call(disk):
-        calls.append(disk)
-        if len(calls) > 1:
-            raise ValueError("SPELLE64 truncated on the second read")
-        return real_load(disk)
-
-    monkeypatch.setattr(IconParts, "load", staticmethod(fails_on_the_second_call))
-    assert window.import_dos_save() == "no game disks"
-    assert said == [(NO_DISKS_TITLE, NO_DISKS)]
-    assert picked == []
-    assert len(calls) > 1, "the scenario needs a second read to fail on"
-    window.close()
-
-
-@needs_disks
-def test_the_game_files_an_import_needs_are_the_icon_and_animate(app, tmp_path):
-    """What `game_files_for_import` actually found, rather than that it found
-    something: the C64's own icon option tables (#130 -- kept whole rather
-    than reduced to one composed default here, so each character can get his
-    own figure later) and `ANIMATE00`'s own 852 bytes."""
-    from editor.window import EditorBinding
-    from goldbox.iconparts import IconParts
-
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-    found = window.game_files_for_import()
-    assert found is not None
-    assert isinstance(found.icon, IconParts)
-    default = found.icon.default_icon()
-    assert len(default) == 36 and any(default)
-    assert len(found.animate) == 852 and any(found.animate)
-    assert len(found.animate) == dos_codec.ANIMATE_SIZE
-    window.close()
-
-
-@needs_disks
-def test_the_game_files_an_import_needs_include_the_creation_menu(app, tmp_path):
-    """`game_files_for_import` also reads the creation menu (#57) off the
-    same disks directory, through `goldbox.portraits.tables_from_disks` --
-    the wiring `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
-    import working for all three C64 titles)` is waiting on.
-
-    Before this wiring `GameFiles` carried no `portraits` field at all, so
-    this raised `AttributeError` rather than finding one.
-    """
-    from editor.window import EditorBinding
-    from goldbox.portraits import PortraitTables
-
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-    found = window.game_files_for_import()
-    assert found is not None
-    assert isinstance(found.portraits, PortraitTables)
-    window.close()
-
-
-@needs_dos_saves
-@needs_disks
-def test_an_import_started_from_the_window_carries_its_own_faces(app, tmp_path):
-    """The whole chain, window to converted disk: `game_files_for_import`
-    finds the creation menu, `rehearse` passes it on to `dos_codec.new_save`, and a
-    party wholly inside the fourteen-and-twelve menu comes back with the
-    sheet portrait switched on.
-
-    Reusing a `GameFiles` built by hand -- as the `files` fixture above does
-    -- would say nothing about this: it never carries `portraits`, so it
-    cannot tell a wired `rehearse` from one that still defaults to `None`.
-    This is deliberately the one test in the module that goes through
-    `EditorBinding.game_files_for_import` instead.
-    """
-    from editor.dosimport import rehearse
-    from editor.window import EditorBinding
-
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-    game_files = window.game_files_for_import()
-    assert game_files is not None and game_files.portraits is not None
-
-    where = _save_dir()
-    slot = None
-    for candidate in dos_codec.slots_available(where):
-        party = dos_codec.read_party(where, candidate)
-        neutral = [dos_codec.to_neutral(c, portraits=game_files.portraits)
-                  for c in party]
-        if all("portrait_head" in n and "portrait_body" in n
-               for n in neutral):
-            slot = candidate
-            break
-    if slot is None:
-        pytest.skip("no DOS slot here has every character in the menu")
-
-    conversion = rehearse(where, slot, game_files)
-    at = dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE
-    assert conversion.save0.to_bytes()[at] == dos_codec.PORTRAIT_ON
-    window.close()
+#: `DosImportDialog`'s own window tests and its refusal-when-disks-missing
+#: tests -- `test_the_rehearsal_is_complete_before_the_button_is_
+#: pressable`, `test_a_pool_of_radiance_import_with_no_creation_tables_
+#: converts_with_its_own_faces`, `test_the_save_points_at_the_area_the_
+#: dos_party_is_in`, `test_changing_the_slot_re_rehearses`, `test_the_
+#: slots_offered_are_the_ones_the_folder_holds`, `test_no_game_disks_is_a_
+#: pop_up_and_no_folder_picker`, `test_with_the_game_disks_there_the_
+#: import_gets_as_far_as_the_picker`, `test_a_disk_that_loads_once_but_
+#: fails_on_the_second_read_refuses`, `test_the_game_files_an_import_
+#: needs_are_the_icon_and_animate`, `test_the_game_files_an_import_needs_
+#: include_the_creation_menu`, `test_an_import_started_from_the_window_
+#: carries_its_own_faces` -- are deleted along with the dialog, its menu
+#: entry and `EditorBinding.import_dos_save`/`game_files_for_import`
+#: (`#52 (File ▸ Import and File ▸ Export for every direction the library
+#: supports)`, 2026-09-14). `editor.convert.ConvertDialog` and
+#: `EditorBinding.game_files_for` are the survivors these tested against;
+#: `tests/test_convert.py` covers them.
 
 
 # --- what reaches the editor -------------------------------------------------
@@ -750,13 +388,24 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
     """The converted party is in the window, marked dirty, and there is **no
     path**: the disk was built in memory a moment ago and no file it could
     have come from exists. Save As is what names one, and that is the write.
+
+    `File ▸ Import` -- the route that made this state reachable for a
+    player -- is gone (`#52 (File ▸ Import and File ▸ Export for every
+    direction the library supports)`, 2026-09-14), and so is
+    `EditorBinding.adopt_conversion`. The guard stays, because the state is
+    still constructible from inside `EditorBinding`: a `Party` built from a
+    rehearsal's own bytes, adopted with no path, exactly the three lines
+    `adopt_conversion` used to be.
     """
     import editor.window as ew
     from editor.dosimport import rehearse
+    from editor.roster import Party
     from editor.window import EditorBinding
 
     window = EditorBinding(make_root(), backups=str(tmp_path / "backups"))
-    note = window.adopt_conversion(rehearse(dos_save, "A", files))
+    conversion = rehearse(dos_save, "A", files)
+    party = Party("", game=conversion.game, disk=conversion.disk)
+    window._adopt(party, None, dirty=True)
 
     assert window.dirty                      # unsaved, and the title says so
     assert window.path is None, "an import has no file behind it"
@@ -766,7 +415,6 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
     # not its reverse.
     names = [m.name for m in window.party.members if m.name]
     assert names == [c.name for c in dos_codec.read_party(dos_save, "A")]
-    assert "slot A" in note or "A" in note
 
     out = tmp_path / "NEW.D64"
     monkeypatch.setattr(ew.QFileDialog, "getSaveFileName",
@@ -784,8 +432,8 @@ def test_closing_a_converted_party_with_no_destination_keeps_the_edit(
     button by silently doing nothing and closing, losing the edits)`, made
     reachable again by `File ▸ Import`'s own return (`#514 (Restoring File ▸
     Import makes #505's silent-save data loss reachable, so it must be fixed
-    in the same change)`): `adopt_conversion` called with `path=None` --
-    what `DosImportDialog`'s own Convert button refuses to reach with an
+    in the same change)`): a party adopted with `path=None` -- what
+    `DosImportDialog`'s own Convert button used to refuse to reach with an
     empty destination, but a caller other than that dialog is not stopped by
     a disabled button -- leaves the window dirty with nowhere to write to.
     Closing it must not silently discard the party the way `#505` found it
@@ -799,15 +447,24 @@ def test_closing_a_converted_party_with_no_destination_keeps_the_edit(
     exactly what a player sees when they close that chooser without naming a
     file, and the edit has to survive that the same way it survived before
     the chooser existed.
+
+    `File ▸ Import` and `EditorBinding.adopt_conversion`, which used to make
+    this state reachable, are both gone (`#52 (File ▸ Import and File ▸
+    Export for every direction the library supports)`, 2026-09-14). The
+    guard is kept because the state is still constructible from inside
+    `EditorBinding` -- see the previous test's own docstring.
     """
     from PyQt6.QtWidgets import QMessageBox
 
     import editor.window as ew
     from editor.dosimport import rehearse
+    from editor.roster import Party
     from editor.window import EditorBinding
 
     window = EditorBinding(make_root())
-    window.adopt_conversion(rehearse(dos_save, "A", files), path=None)
+    conversion = rehearse(dos_save, "A", files)
+    party = Party("", game=conversion.game, disk=conversion.disk)
+    window._adopt(party, None, dirty=True)
     assert window.dirty
     assert window.path is None
 
@@ -828,15 +485,24 @@ def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes
     """The other half of `#515`: given a name in the chooser the Save button
     opens, the party is written there and the window closes, the same as if
     it had been named all along.
+
+    `File ▸ Import` and `EditorBinding.adopt_conversion`, which used to make
+    this state reachable, are both gone (`#52 (File ▸ Import and File ▸
+    Export for every direction the library supports)`, 2026-09-14) -- see
+    `test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it`'s
+    own docstring for why the guard is kept anyway.
     """
     from PyQt6.QtWidgets import QMessageBox
 
     import editor.window as ew
     from editor.dosimport import rehearse
+    from editor.roster import Party
     from editor.window import EditorBinding
 
     window = EditorBinding(make_root())
-    window.adopt_conversion(rehearse(dos_save, "A", files), path=None)
+    conversion = rehearse(dos_save, "A", files)
+    party = Party("", game=conversion.game, disk=conversion.disk)
+    window._adopt(party, None, dirty=True)
     assert window.dirty
     assert window.path is None
 
@@ -851,274 +517,34 @@ def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes
     assert out.exists() and out.stat().st_size == 174848
 
 
-# --- the destination row, and Convert writing (#118) -------------------------
-
-@needs_dos_saves
-@needs_disks
-def test_the_destination_starts_filled_in_from_the_slot(app, dos_save, files,
-                                                        tmp_path):
-    """Donald picked a full path that starts filled in, so Convert has
-    somewhere to write the moment the window opens: `PORSAVEJ.D64` for slot J,
-    in the folder `File > Open` would have started in."""
-    from editor.dosimport import DosImportDialog
-
-    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
-    assert dialog.target() == str(tmp_path / f"PORSAVE{dialog.slot}.D64")
-
-
-@needs_dos_saves
-@needs_disks
-def test_the_suggested_name_changes_with_the_slot(app, dos_save, files,
-                                                  tmp_path):
-    """The name is built out of the slot letter, so a slot the user changes
-    their mind about must not leave the previous slot's name behind it."""
-    from editor.dosimport import DosImportDialog
-
-    offered = dos_codec.slots_available(dos_save)
-    if len(offered) < 2:
-        pytest.skip("needs a DOS save folder holding two slots")
-    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
-    other = next(s for s in offered if s != dialog.slot)
-    dialog.slots.setCurrentText(other)
-    assert dialog.target() == str(tmp_path / f"PORSAVE{other}.D64")
+#: `DosImportDialog`'s own destination-row tests and Convert-writing tests
+#: -- `test_the_destination_starts_filled_in_from_the_slot`, `test_the_
+#: suggested_name_changes_with_the_slot`, `test_a_path_the_user_typed_
+#: survives_a_change_of_slot`, `test_an_empty_destination_is_not_
+#: convertible`, `test_convert_writes_the_file_the_window_names`, `test_a_
+#: write_that_cannot_happen_pops_a_modal_naming_the_refusal`, `test_
+#: import_dos_save_is_cancellable_without_touching_anything`, `test_a_
+#: folder_with_no_dos_save_says_so` -- are deleted along with the dialog
+#: and `EditorBinding.import_dos_save` (`#52 (File ▸ Import and File ▸
+#: Export for every direction the library supports)`, 2026-09-14).
+#: `editor.convert.ConvertDialog`'s own destination row and
+#: `EditorBinding.convert` are the survivors; `tests/test_convert.py`
+#: covers them.
 
 
-@needs_dos_saves
-@needs_disks
-def test_a_path_the_user_typed_survives_a_change_of_slot(app, dos_save, files,
-                                                         tmp_path):
-    """The other direction, and the one that would cost somebody their choice:
-    a path somebody typed is theirs, and the slot stops rewriting the box."""
-    from PyQt6.QtTest import QTest
-
-    from editor.dosimport import DosImportDialog
-
-    offered = dos_codec.slots_available(dos_save)
-    if len(offered) < 2:
-        pytest.skip("needs a DOS save folder holding two slots")
-    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
-    mine = str(tmp_path / "MINE.D64")
-    dialog.destination.clear()
-    # Typed, not `setText`: `textEdited` is what tells a box from a program
-    # filling it in, and using `setText` here would test nothing.
-    QTest.keyClicks(dialog.destination, mine)
-    other = next(s for s in offered if s != dialog.slot)
-    dialog.slots.setCurrentText(other)
-    assert dialog.target() == mine
-
-
-@needs_dos_saves
-@needs_disks
-def test_an_empty_destination_is_not_convertible(app, dos_save, files,
-                                                 tmp_path):
-    """Clearing the box is the one way to leave Convert with nowhere to write,
-    and a disabled button says so without a sentence saying it."""
-    from PyQt6.QtWidgets import QDialogButtonBox
-
-    from editor.dosimport import DosImportDialog
-
-    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
-    ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
-    assert ok.isEnabled()
-    dialog.destination.clear()
-    assert not ok.isEnabled()
-
-
-@needs_dos_saves
-@needs_disks
-def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
-                                                 monkeypatch):
-    """The whole of Donald's ruling in one test: *"when the user clicks the
-    Convert button, it does what the user expects. it converts."*
-
-    Pressing Convert writes the `.d64` the bottom row names -- no Save As
-    after it -- and what lands on disk is byte for byte the disk the rehearsal
-    built, so the editor's save machinery carrying the write changes nothing
-    about it. Afterwards the window has that file: a path, an `opened` signal,
-    a title bar with the name in it and no unsaved mark.
-
-    The comparison rehearsal uses `game_files_for_import` rather than the
-    module-level `files` fixture: since the wiring in `#57 (Carry the
-    character portrait across ports)` a `GameFiles` also carries the
-    creation menu, and the fixture's hand-built one does not, so the two
-    would legitimately disagree on the sheet portrait bytes.
-    """
-    from PyQt6.QtWidgets import QDialog
-
-    import editor.dosimport as di
-    from editor.dosimport import rehearse
-    from editor.window import EditorBinding
-
-    monkeypatch.setattr(di.DosImportDialog, "exec",
-                        lambda self: QDialog.DialogCode.Accepted)
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent),
-                          last_save_folder=str(tmp_path))
-    opened = []
-    window.opened.connect(opened.append)
-
-    slot = dos_codec.slots_available(dos_save)[0]
-    game_files = window.game_files_for_import()
-    note = window.import_dos_save(folder=str(dos_save))
-    out = tmp_path / f"PORSAVE{slot}.D64"
-
-    assert out.exists(), f"Convert wrote nothing; it said {note!r}"
-    assert out.read_bytes() == \
-        rehearse(dos_save, slot, game_files).disk.to_bytes()
-    assert window.path == out
-    assert not window.dirty
-    assert opened == [str(out)]
-    assert out.name in note
-    assert out.name in window.root.windowTitle()
-    assert "*" not in window.root.windowTitle()
-    window.close()
-
-
-@needs_dos_saves
-@needs_disks
-def test_a_write_that_cannot_happen_pops_a_modal_naming_the_refusal(
-        app, tmp_path, dos_save, monkeypatch):
-    """A refused write reaches the user as the sentence it raised, in a
-    modal -- `refuse`, ported to `QMessageBox.critical` the way `editor/
-    convert.py`'s own `refuse` was on 2026-09-10 -- with the window still
-    open on the path that has to change, not as a traceback in the log and
-    nothing on screen.
-
-    No backup folder is the refusal that can be stood up without depending on
-    what a filesystem allows: `editor/files.py` will not overwrite a save with
-    nowhere to put the copy, and it checks that before it looks at whether the
-    target exists.
-    """
-    from PyQt6.QtWidgets import QDialog
-
-    import editor.dosimport as di
-    import editor.window as ew
-    from editor.window import EditorBinding
-
-    tries = []
-
-    def once(self):
-        tries.append(self)
-        return (QDialog.DialogCode.Accepted if len(tries) == 1
-                else QDialog.DialogCode.Rejected)
-
-    monkeypatch.setattr(di.DosImportDialog, "exec", once)
-
-    refusals = []
-    real_refuse = di.DosImportDialog.refuse
-
-    def note_refusal(self, text):
-        refusals.append(text)
-        return real_refuse(self, text)
-
-    monkeypatch.setattr(di.DosImportDialog, "refuse", note_refusal)
-    # A window somebody is managing the backup folder for, and it is unset --
-    # `wish/window.py` hands over `""` before any save has been opened.
-    window = EditorBinding(make_root(), backups="", disks=str(game_disk().parent),
-                          last_save_folder=str(tmp_path))
-    assert window.import_dos_save(folder=str(dos_save)) == "cancelled"
-
-    assert len(refusals) == 1
-    said = refusals[0]
-    assert "backup" in said.lower(), said
-    assert not said.startswith("Traceback")
-    assert sorted(p.name for p in tmp_path.iterdir()) == []
-    # The party is still in the window and still unsaved, which is the honest
-    # state and is what a failed Save As leaves too -- so closing asks, and a
-    # test that did not answer would block here forever.
-    assert window.dirty
-    monkeypatch.setattr(ew.QMessageBox, "exec",
-                        lambda self: int(ew.QMessageBox.StandardButton.Discard))
-    window.close()
-
-
-@needs_dos_saves
-@needs_disks
-def test_import_dos_save_is_cancellable_without_touching_anything(
-        app, tmp_path, dos_save, monkeypatch):
-    """A folder picker dismissed is a menu item that did nothing."""
-    from editor.window import EditorBinding
-
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-    before = sorted(p.name for p in tmp_path.iterdir())
-    assert window.import_dos_save(folder="") == "cancelled"
-    assert sorted(p.name for p in tmp_path.iterdir()) == before
-    window.close()
-
-
-@needs_disks
-def test_a_folder_with_no_dos_save_says_so(app, tmp_path, monkeypatch):
-    """And says it in a box rather than opening an empty conversion window."""
-    import editor.window as ew
-    from editor.window import EditorBinding
-
-    said = []
-    monkeypatch.setattr(ew.QMessageBox, "warning",
-                        lambda *a, **k: said.append(a[2]))
-    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
-                          disks=str(game_disk().parent))
-    assert window.import_dos_save(folder=str(tmp_path)) == "no DOS save"
-    assert said and str(tmp_path) in said[0]
-    window.close()
-
-
-# --- the menu ----------------------------------------------------------------
-
-def _window(tmp_path, monkeypatch):
-    """A window with nothing to attach to. The caller closes it."""
-    from wish.session import Session
-    from wish.window import WishWindow
-
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    # Nothing answering, and nothing looked for: a menu test must not go
-    # probing the ports a human's own game session is on.
-    return WishWindow(maps={}, session=Session(find=lambda pref=None: None))
-
-
-def _file_menu(window):
-    return next(a.menu() for a in window.menuBar().actions()
-                if a.text() == "&File")
-
-
-def test_the_file_menu_carries_the_import_with_nothing_set(app, tmp_path,
-                                                           monkeypatch):
-    """`File ▸ Import ▸ DOS Save Folder…` is built for everyone.
-
-    It sat behind `WISH_EXPERIMENTAL_DOS_IMPORT` until `#131 (Lift
-    WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
-    three C64 titles)` closed; the three tests that proved the gate held
-    came down with the gate, and this is the direction they never covered.
-    """
-    from editor.dosimport import MENU_DOS_SAVE, MENU_IMPORT
-
-    monkeypatch.delenv("WISH_EXPERIMENTAL_DOS_IMPORT", raising=False)
-    window = _window(tmp_path, monkeypatch)
-    submenu = next(a.menu() for a in _file_menu(window).actions()
-                   if a.text() == MENU_IMPORT)
-    assert [a.text() for a in submenu.actions()] == [MENU_DOS_SAVE]
-    assert window.import_dos_action.text() == MENU_DOS_SAVE
-    window.close()
-
-
-@pytest.mark.parametrize("value", ["1", "0", "true", "off", "", "no"])
-def test_the_import_does_not_depend_on_the_removed_variable(app, tmp_path,
-                                                            monkeypatch,
-                                                            value):
-    """A player who exported the old flag once, at any value, before its
-    removal (#131), gets the same File menu as everyone else."""
-    def file_menu_texts():
-        window = _window(tmp_path, monkeypatch)
-        try:
-            return [a.text() for a in _file_menu(window).actions()]
-        finally:
-            window.close()
-
-    monkeypatch.setenv("WISH_EXPERIMENTAL_DOS_IMPORT", value)
-    with_var = file_menu_texts()
-    monkeypatch.delenv("WISH_EXPERIMENTAL_DOS_IMPORT", raising=False)
-    assert with_var == file_menu_texts()
+#: `test_the_file_menu_carries_the_import_with_nothing_set` was added
+#: 2026-09-10 for one purpose -- to catch a repeat of `File ▸ Import` being
+#: removed before `File ▸ Convert…` could replace it. The removal it
+#: guarded against is no longer premature: both happened in the same
+#: commit, 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every
+#: direction the library supports)`). Its replacement is
+#: `tests/test_convert.py::test_the_file_menu_carries_convert_with_
+#: nothing_set`, which asserts the File menu's whole action list in order,
+#: pinning Import's absence in the same assertion that pins Convert's
+#: presence -- so nobody has to remember to separately assert a deleted
+#: constant is missing. `test_the_import_does_not_depend_on_the_removed_
+#: variable` goes with it, replaced by `test_convert_does_not_depend_on_
+#: the_removed_variable`.
 
 
 # --- the refusal a player reads (#176) --------------------------------------
@@ -1150,32 +576,11 @@ def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
 
 @needs_dos_saves
 @needs_disks
-def test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_exception(
-        app, dos_save, files, monkeypatch):
-    """The routing, which is the half a unit test of the exception cannot see.
-
-    `_attempt` used to put `str(exc)` straight into the pane; now it sets
-    `self._blocked`, which `_maybe_warn` would show in a modal. Reverting
-    `_attempt`'s `except DosRecordError` to use `str(exc)` instead of
-    `exc.player_message` turns this red: `_blocked` fills with the
-    tracker's sentence instead.
-    """
-    from editor import dosimport
-
-    def refuse(*_args, **_kwargs):
-        raise dos_codec.WrongTitleError(
-            "Curse of the Azure Bonds records read, but only Pool of "
-            "Radiance converts: no other pair of ports has been measured "
-            "against each other (#53)",
-            title="Curse of the Azure Bonds")
-
-    dialog = dosimport.DosImportDialog(dos_save, files)
-    monkeypatch.setattr(dosimport, "rehearse", refuse)
-    dialog._rehearse()
-
-    assert dialog._blocked == (
-        dosimport.DIALOG_TITLE,
-        "Curse of the Azure Bonds imports not yet supported.")
+#: `test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_
+#: exception` drove this against `DosImportDialog`; ported to
+#: `tests/test_convert.py` against `ConvertDialog`, deleted with the
+#: dialog on 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every
+#: direction the library supports)`).
 
 
 def test_a_refusal_cannot_be_raised_without_naming_the_title():
@@ -1191,131 +596,13 @@ def test_a_refusal_cannot_be_raised_without_naming_the_title():
         dos_codec.WrongTitleError("the developer's reason")
 
 
-# --- every other refusal a player reads (#195) ------------------------------
 
-#: The two developer sentences `#195 (The import pane shows a player a
-#: memory address when the conversion refuses for any reason but the wrong
-#: title)` names as confirmed reachable from `rehearse` -> `dos_codec.new_save`,
-#: quoted from `goldbox/dos_codec.py:new_save` and `goldbox/dos_codec.py:apply_file_cache`
-#: so the test forces the real wording rather than a guess at it.
-_UNWRITTEN_BYTES_MESSAGE = (
-    "29 bytes of the save have no source and were left zero by accident "
-    "rather than by measurement; the first is SAVEDGAME0 $8300")
-_OUTDOOR_DISAGREEMENT_MESSAGE = (
-    "the save's own $49E6 says outdoors, but script id 12 (Kuto's Well) is "
-    "marked indoors in goldbox/areas.py -- these two disagree and neither "
-    "is trusted over the other")
-
-
-def _fake_dos_dir(tmp_path):
-    """A folder `dos_codec.slots_available` reads as holding slot A, with none of
-    a real DOS save's files in it. `rehearse` is monkeypatched in every test
-    below, so nothing here ever reads a character out of it."""
-    (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
-    return tmp_path
-
-
-def _fake_files():
-    from editor.dosimport import GameFiles
-    return GameFiles(icon=b"\x00" * 36, animate=b"\x00" * 852)
-
-
-@pytest.mark.parametrize("message", [
-    _UNWRITTEN_BYTES_MESSAGE, _OUTDOOR_DISAGREEMENT_MESSAGE,
-    "an area with no row in our table",
-])
-def test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_sentence(
-        message, app, tmp_path, monkeypatch):
-    """`_attempt` used to catch `dos_codec.WrongTitleError` specially and fall
-    through to `str(exc)` for everything else, so a real refusal -- the
-    unwritten-bytes one, or the outdoor-signals one -- filled `_blocked` with
-    `SAVEDGAME0 $8300` or `goldbox/areas.py`. This forces each of those two
-    confirmed developer sentences through the real dialog and checks what a
-    player would actually read, not a list of expected strings: it asserts
-    the exact approved sentence, and separately that nothing matching a
-    memory address, a source path or an issue number reaches `_blocked`, so a
-    fallback that echoed part of `message` back would still be caught.
-    """
-    import re
-
-    from editor import dosimport
-
-    def refuse(*_args, **_kwargs):
-        raise dos_codec.DosRecordError(message)
-
-    folder = _fake_dos_dir(tmp_path)
-    dialog = dosimport.DosImportDialog(folder, _fake_files())
-    monkeypatch.setattr(dosimport, "rehearse", refuse)
-    dialog._rehearse()
-
-    assert dialog._blocked == (dosimport.DIALOG_TITLE,
-                               "This save cannot be converted.")
-    shown = dialog._blocked[1]
-    assert not re.search(r"\$[0-9A-F]{4}\b", shown), (
-        f"a memory address reaches the player: {shown!r}")
-    assert not re.search(r"\.py\b", shown), (
-        f"a source file name reaches the player: {shown!r}")
-    assert not re.search(r"#\d", shown), (
-        f"an issue number reaches the player: {shown!r}")
-
-
-def test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_dos_record_error_never_names(
-        app, tmp_path, monkeypatch):
-    """Not every refusal is a `DosRecordError` -- `_attempt`'s bare `except
-    Exception` is what stands between an unanticipated one and a raw
-    traceback reaching a player. It must set `_blocked` to the same approved
-    sentence, not `str(exc)`.
-    """
-    from editor import dosimport
-
-    def refuse(*_args, **_kwargs):
-        raise RuntimeError("$49E6 disagrees with goldbox/areas.py (#99)")
-
-    folder = _fake_dos_dir(tmp_path)
-    dialog = dosimport.DosImportDialog(folder, _fake_files())
-    monkeypatch.setattr(dosimport, "rehearse", refuse)
-    dialog._rehearse()
-
-    assert dialog._blocked == (dosimport.DIALOG_TITLE,
-                               "This save cannot be converted.")
-
-
-def test_a_refusal_on_construction_is_shown_not_swallowed(app, tmp_path,
-                                                           monkeypatch):
-    """A folder whose only slot fails rehearsal is what a player reaches by
-    picking a folder holding one DOS save, and that is the ordinary case,
-    not an edge one -- `editor/window.py` only checks the folder has *some*
-    slot before this window is built, never that the selected one actually
-    converts (`#52 (File ▸ Import and File ▸ Export for every direction the
-    library supports)`).
-
-    Unlike the tests above, `rehearse` is monkeypatched *before* the dialog
-    is constructed, so it is the constructor's own first `_rehearse()` that
-    hits the refusal -- not a second, already-interactive one. Before the
-    fix this modal never fired: `_maybe_warn`'s gate on `self._interactive`
-    returned before showing anything and before recording
-    `_last_blocked_shown`, so a folder with only one slot left the window
-    sitting open with Convert disabled and nothing said, escapable only
-    with Cancel. Fails before the fix: reverting `_maybe_warn`'s early
-    return turns the assertion on `shown` red, with `_blocked` still set.
-    """
-    from PyQt6.QtWidgets import QDialogButtonBox
-
-    from editor import dosimport
-
-    shown = []
-    monkeypatch.setattr(dosimport.QMessageBox, "critical",
-                        lambda *a, **_k: shown.append(a[1:]))
-
-    def refuse(*_args, **_kwargs):
-        raise dos_codec.DosRecordError("boom")
-
-    monkeypatch.setattr(dosimport, "rehearse", refuse)
-    folder = _fake_dos_dir(tmp_path)
-    dialog = dosimport.DosImportDialog(folder, _fake_files())
-
-    assert dialog._blocked == (dosimport.DIALOG_TITLE,
-                               "This save cannot be converted.")
-    assert shown == [(dosimport.DIALOG_TITLE, "This save cannot be converted.")]
-    assert not dialog.buttons.button(
-        QDialogButtonBox.StandardButton.Ok).isEnabled()
+#: `test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_
+#: sentence`, `test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_
+#: dos_record_error_never_names` and `test_a_refusal_on_construction_is_
+#: shown_not_swallowed`, which drove `#195`'s guarantee against
+#: `DosImportDialog`, are ported to `tests/test_convert.py` against
+#: `ConvertDialog`, deleted with the dialog on 2026-09-14 (`#52 (File ▸
+#: Import and File ▸ Export for every direction the library supports)`).
+#: `_UNWRITTEN_BYTES_MESSAGE` and `_OUTDOOR_DISAGREEMENT_MESSAGE` moved
+#: with them, quoted verbatim.

@@ -119,7 +119,6 @@ def _add_bar(self, bar_widget):
 | `SpellbookEditor` | `editor/spellbook.ui` | `editor/` | Edits known spells in the spellbook. |
 | `MemorisedEditor` | `editor/memorised.ui` | `editor/` | Edits currently memorized spells. |
 | `PartsPicker` | `editor/partspicker.ui` | `editor/` | Icon assembly tool (Heads, Weapons). |
-| `DosImportDialog` | `editor/dosimport.ui` | `editor/` | Modal for converting DOS saves to C64. |
 | `AddItemDialog` | `editor/inventory.ui` | `editor/` | Filterable list for adding items to inventory. |
 
 ## Updating the UI

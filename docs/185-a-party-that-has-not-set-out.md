@@ -221,9 +221,12 @@ The mechanics, in `goldbox/dos_codec.py`:
 * `convert_save` puts `NOT_SET_OUT` -- Donald's approved sentence, *"Your
   party had not set out yet, so it starts at the beginning of the story."*
   -- on `C64SaveReport.messages`, and `summary()` prints it.
-  `editor/dosimport.py`'s pane shows `messages` and nothing else since
-  2026-09-06 (`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
-  import working for all three C64 titles)`): the dropped list is the
+  `editor/convert.py`'s dialog does not draw `messages` any more -- its
+  report pane went on 2026-09-10, and `editor/dosimport.py`'s own dialog,
+  which had shown `messages` and nothing else since 2026-09-06, was deleted
+  along with `File ▸ Import` on 2026-09-14 (`#52 (File ▸ Import and File ▸
+  Export for every direction the library supports)`). `NOT_SET_OUT` still
+  reaches the debug log and `report.summary()`; the dropped list is the
   conversion's own accounting and no player reads it.
 
 A party standing in New Phlan with the clock running is untouched: the

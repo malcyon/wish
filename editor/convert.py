@@ -1124,144 +1124,22 @@ def fresh_folder(destination: str | pathlib.Path,
 
 
 # ---------------------------------------------------------------------------
-# The flag
+# The flag, lifted
 # ---------------------------------------------------------------------------
 
-#: **Off unless `WISH_EXPERIMENTAL_CONVERT=1`.** Replaced
-#: `editor.exports.ENV`, whose submenu this dialog replaced.
-#: `editor.dosimport.ENV` (`WISH_EXPERIMENTAL_DOS_IMPORT`) was a separate
-#: flag and no longer exists, but not because this one replaced it: `#131
-#: (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for
-#: all three C64 titles)` lifted it directly, unconditionally building DOS
-#: import, on 2026-09-06 -- before this flag existed. Its bar for lifting a
-#: flag transfers unchanged to this one.
-#: `editor/exports.py` is deleted along with `File ▸ Export` itself
-#: (`#52 (File ▸ Import and File ▸ Export for every direction the library
-#: supports)`'s 2026-09-09 ruling, carried out 2026-09-14).
-#: Not built rather than greyed out: a greyed entry invites the question of
-#: how to un-grey it, and the answer would be a sentence in the interface
-#: (`.claude/rules/feature-flags.md`).
-#:
-#: **Lifted once, on 2026-09-07 (`e9e4bac`), and put back the same night.**
-#: The five conditions below were all met and every one of them was a
-#: property of the code -- directions registered, drop panes clear, no
-#: unapproved string reachable. None asked whether a person could actually
-#: reach the dialog. Donald: *"When I pick File->Convert, it still
-#: immediately opens a file picker dialog."* Two more conditions joined the
-#: five for that reason.
-#:
-#: **Nine conditions now stand. Lifting it remains Donald's call** -- he
-#: reversed the first lift the same night every condition looked met, so a
-#: green checklist is not permission to repeat that.
-#:
-#: **Comes off when, all nine:** (1) no string below carries the
-#: `(NOT APPROVED)` marker -- met 2026-09-05, kept met by
-#: `test_no_string_the_player_reads_is_unapproved`; (2) a Pool of Radiance, a
-#: Curse and a Silver Blades DOS save each list the Commodore 64, and a Pools
-#: of Darkness save never does -- met 2026-09-07,
-#: `test_a_pool_of_radiance_savgam_file_lists_c64_and_records_its_slot`,
-#: `test_a_curse_or_silver_blades_savgam_file_lists_c64`,
-#: `test_a_curse_or_silver_blades_d64_lists_dos` and
-#: `test_a_pools_of_darkness_folder_lists_nothing`; (3) every registered
-#: direction's drop list is empty or accounts for a named, tracked line
-#: rather than a silent one -- met 2026-09-07 for the eight directions then
-#: registered, `#355 (A C64 party converted to DOS is shown nine developer
-#: notes, with memory addresses, overlay names and issue numbers in them)`
-#: and `#388 (A converted paladin or ranger loses his innate effect on the
-#: way to DOS, because the writer filters through Pool of Radiance's id
-#: list)` both closed. `DIRECTIONS` grew to ten on 2026-09-07 (`18eb498`),
-#: registering the two Amiga write rows `#36 (Write an Amiga disk image, not
-#: just the character files)` asked for; the one gap they opened -- both
-#: arrived with no combat figure at all -- is closed too,
-#: `#422 (A C64 party converted to an Amiga save disk arrives with no combat
-#: figure at all, because C64ToAmiga never recognises it)` and
-#: `#424 (A DOS party converted to an Amiga save disk arrives with no combat
-#: figure either, though #422 says that route needs no fix)`, so the count
-#: this condition watches did not move; the sweep test's own `WAITING`
-#: table (`tests/test_convert.py`) is unchanged by the Amiga rows; (4) the
-#: README says how the source picker works -- waived by Donald, 2026-09-07:
-#: *"I will update the README, but don't wait on that to remove
-#: WISH_EXPERIMENTAL_CONVERT and close the related tickets. It is a simple
-#: interface, and people will figure it out."*; (5) each registered
-#: direction must be loaded and walked in its emulator from a save this
-#: dialog's own code path wrote, **at one named commit SHA**.
-#:
-#: Met 2026-09-14: all eighteen registered directions walked and resaved,
-#: `2ae11ba` (CI green). Four were walked at that exact sha; the other
-#: fourteen were walked at two earlier shas in the same campaign
-#: (thirteen at `65d4fe2`, one at `c0ffb9b`) and proven byte-identical to
-#: `2ae11ba` for conversion purposes -- no commit between them touches
-#: `goldbox/` or `editor/convert.py`, confirmed by hashing every `.py`
-#: file in both directories at all three shas and by a full byte-level manifest
-#: comparison (204 conversions, 0 moved, 0 dropped, identical at all three
-#: shas), posted at
-#: https://github.com/malcyon/wish/issues/52#issuecomment-5671083253. All
-#: eighteen walk results, with evidence paths, are in `#52`'s own comment
-#: history; the eight Amiga Curse and Silver Blades ones are also on `#512
-#: (Convert an Amiga Curse or Silver Blades save in either direction, since
-#: the dialog refuses both titles and blames the player's file)`, now closed.
-#: `tools/convertbytes.py --tree <commit>` is the re-check; (6) `File ▸
-#: Convert…` opens the Convert window directly, with no file picker in
-#: front of it -- met 2026-09-07 (`1616a53`),
-#: `#412 (File ▸ Convert demands a save in a file picker before it will show
-#: you the Convert window)`; (7) `File ▸ Import ▸ DOS save folder` is
-#: removed -- two menu items doing the same job is still the state this
-#: dialog exists to end, and stays the goal, but **not before this flag
-#: comes off, and in the same change that does.** Tried the other way round
-#: on 2026-09-07 (`375bf07`, `#52`'s own step 5) and reverted on 2026-09-10:
-#: this dialog sits behind its own flag, so removing the only unflagged
-#: import path left a player running Wish as it ships with no way in at
-#: all. Donald: *"I think you removed the File->Import dialog prematurely.
-#: That needs to come back until the Convert dialog is done."*
-#: `DosImportDialog`, the menu entry, `editor/dosimport.ui` and
-#: `editor/ui_dosimport.py` are back;
-#: `test_the_file_menu_carries_the_import_with_nothing_set`
-#: (`tests/test_dosimport.py`) pins their presence.
-#:
-#: **(8) Every registered direction is perfect -- its drop list is empty.**
-#: Donald, 2026-09-08, adding this condition and choosing what it waits for:
-#: *"I want perfect conversions. We should not have to tell the player that
-#: anything is dropped, because everything should just work. We should keep
-#: things behind feature flags until they are perfect."* Asked whether the
-#: dialog should ship with the perfect directions alone, wait for all ten, or
-#: split the Amiga behind a second flag, he chose **all ten**: one release,
-#: nothing partial.
-#:
-#: Met on 2026-09-10 for the ten directions then registered, and reconfirmed
-#: 2026-09-14 for all eighteen: the same sha-consistency proof cited in (5)
-#: found nothing dropped -- 204 conversions, 0 dropped, at `2ae11ba`,
-#: `65d4fe2` and `c0ffb9b` alike.
-#:
-#: **(9) The dialog converts Pool of Radiance, Curse of the Azure Bonds and
-#: Secret of the Silver Blades on every platform it offers.** Met 2026-09-14:
-#: the eight Amiga Curse and Silver Blades directions are proven, at all
-#: three shas in (5), closing `#512 (Convert an Amiga Curse or Silver Blades
-#: save in either direction, since the dialog refuses both titles and
-#: blames the player's file)`. Pools of Darkness has no C64 port and remains
-#: unsupported; its distinct refusal is `#513 (A Pools of Darkness save is
-#: refused with the generic 'cannot be converted', which reads as though the
-#: player's file is broken)`, already closed and unrelated to this
-#: condition.
-#:
-#: **Nothing tells a player about a drop.** The drop list is our accounting
-#: and goes to the debug log, which `.claude/rules/gui-text.md` exempts from
-#: approval, and was never read by the pane in the first place -- confirmed
-#: false until 2026-09-10 was this same paragraph's claim that the `Convert
-#: Log` heading over that pane was already gone; it was not, Donald found it
-#: still there, and removing it is what made the claim true.
-ENV = "WISH_EXPERIMENTAL_CONVERT"
-
-#: Anything else -- an empty string, `0`, `off` -- is off, matching
-#: `wish/debugmode.py`. A variable somebody exported once and forgot must
-#: not put an unfinished dialog in front of them.
-TRUE = ("1", "true", "yes", "on")
-
-
-def enabled() -> bool:
-    """Is `File ▸ Convert…` offered in this run?"""
-    import os
-    return os.environ.get(ENV, "").strip().lower() in TRUE
-
+#: **`WISH_EXPERIMENTAL_CONVERT` no longer exists.** `File ▸ Convert…` is
+#: built for everyone, unconditionally, since 2026-09-14. Donald lifted it
+#: directly: *"Lift WISH_EXPERIMENTAL_CONVERT, remove File ▸ Import, close
+#: #52."* All nine conditions the flag once named were met -- the evidence
+#: is `#52 (File ▸ Import and File ▸ Export for every direction the library
+#: supports)`'s own comment history and the byte-level manifest at
+#: `2ae11ba` -- and `File ▸ Import ▸ DOS Save Folder…` was removed in the
+#: same commit that lifted this flag, because condition 7 required exactly
+#: that: this dialog was the only import route a player had, so the two
+#: could not land apart. `editor.dosimport.ENV`
+#: (`WISH_EXPERIMENTAL_DOS_IMPORT`) went the same way earlier, `#131 (Lift
+#: WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
+#: three C64 titles)`, 2026-09-06.
 
 # ---------------------------------------------------------------------------
 # Strings.
@@ -1274,7 +1152,8 @@ def enabled() -> bool:
 
 #: The File menu entry. Approved by Donald 2026-09-05, with every other
 #: string in this block: *"I think these are all fine."*  The two submenus
-#: it replaces were `&Import` and `&Export`, and this dialog is neither.
+#: it replaced, `&Import` and `&Export`, are both gone now -- this dialog
+#: was neither.
 MENU_CONVERT = "&Convert…"
 
 #: The dialog's title bar. Approved 2026-09-05.
@@ -1432,10 +1311,10 @@ POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 #: missing set of game disks is a field the dialog itself cannot fill in for
 #: the player, the same shape as `NO_FOLDER` and the other rows above, so a
 #: modal added nothing a disabled Convert button did not already say.
-#: `editor/window.py`'s own direct use of it, for `File ▸ Import` refusing
-#: outright before its dialog even opens, is unchanged: a player who has just
-#: chosen that menu item has asked for something this sentence explains why
-#: it cannot do, which is a real refusal rather than an unfinished row.
+#: `editor/window.py`'s own direct use of it, refusing `File ▸ Import`
+#: outright before its dialog even opened, is gone along with that menu
+#: entry, `#52 (File ▸ Import and File ▸ Export for every direction the
+#: library supports)`, 2026-09-14.
 NO_DISKS = dosimport.NO_DISKS
 NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
 #: Donald's own wording, `09027bb` (2026-09-05) -- shared with
@@ -2014,7 +1893,10 @@ class ConvertDialog(QDialog):
         #: Still called for its own side effect -- `report.dropped`, to the
         #: debug log -- even though nothing shows its returned text any
         #: more. `DosImportDialog` stopped calling this too, 2026-09-14,
-        #: when its own pane went the same way this dialog's did.
+        #: when its own pane went the same way this dialog's did, and was
+        #: itself deleted later that same day along with `File ▸ Import`,
+        #: `#52 (File ▸ Import and File ▸ Export for every direction the
+        #: library supports)`.
         dosimport.pane_text(self.rehearsal.report)
 
         #: `report.losses` split in two, Donald's ruling of 2026-09-10 on

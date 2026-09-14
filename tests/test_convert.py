@@ -1734,9 +1734,11 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     the two combat-icon lines (`c64_codec.py`'s and `amiga.py`'s) stay
     unworded until the tickets that would delete them close, so the right
     outcome here is a count held at today's number rather than a demand
-    that it reach zero. `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-07
-    with these still on the pane -- the flag's own condition was about the
-    dialog's own strings block, never about this wider sweep.
+    that it reach zero. `WISH_EXPERIMENTAL_CONVERT` came off on 2026-09-14
+    with these still on the pane -- it did not come off on 2026-09-07, as
+    an earlier version of this sentence said: that lift went straight back
+    the same night. The flag's own condition was about the dialog's own
+    strings block, never about this wider sweep.
     """
     import inspect
 
@@ -1989,36 +1991,51 @@ def _file_menu(window):
                if a.text() == "&File")
 
 
-def test_convert_is_not_offered_unless_it_is_asked_for(app, tmp_path,
-                                                       monkeypatch):
-    """No menu entry, not a greyed one -- `convert.ENV` unset is the shipped
-    state."""
-    monkeypatch.delenv(convert.ENV, raising=False)
+def test_the_file_menu_carries_convert_with_nothing_set(app, tmp_path,
+                                                        monkeypatch):
+    """The whole File menu, in order, with nothing set -- pins Convert's
+    presence and Import's absence in one assertion, so nobody has to
+    remember to separately assert a deleted constant is missing.
+
+    `WISH_EXPERIMENTAL_CONVERT` no longer exists (`#52 (File ▸ Import and
+    File ▸ Export for every direction the library supports)`, 2026-09-14).
+    This is the guard against a fourth repeat of the failure `#514
+    (Restoring File ▸ Import makes #505's silent-save data loss reachable,
+    so it must be fixed in the same change)` describes: `File ▸ Import`
+    gone while `File ▸ Convert…` is somehow still gated would leave a
+    shipping player with no route in at all.
+    """
+    monkeypatch.delenv("WISH_EXPERIMENTAL_CONVERT", raising=False)
     window = _wish_window(tmp_path, monkeypatch)
-    assert convert.MENU_CONVERT not in [a.text()
-                                        for a in _file_menu(window).actions()]
-    assert window.convert_action is None
+    assert [a.text() for a in _file_menu(window).actions()] == [
+        "&Open…", "&Save", "Save &As…", convert.MENU_CONVERT,
+        "", "&Preferences…", "", "&Quit"]
+    assert window.convert_action.text() == convert.MENU_CONVERT
     window.close()
 
 
-def test_a_variable_somebody_forgot_does_not_turn_convert_on(app, tmp_path,
-                                                             monkeypatch):
-    """`0` and `off` are off, the same rule `wish/debugmode.py` follows."""
-    for value in ("", "0", "off", "no"):
-        monkeypatch.setenv(convert.ENV, value)
-        window = _wish_window(tmp_path, monkeypatch)
-        assert convert.MENU_CONVERT not in [
-            a.text() for a in _file_menu(window).actions()], value
-        window.close()
+@pytest.mark.parametrize("value", ["1", "0", "true", "off", "", "no"])
+def test_convert_does_not_depend_on_the_removed_variable(value, app, tmp_path,
+                                                         monkeypatch):
+    """`WISH_EXPERIMENTAL_CONVERT` governed `File ▸ Convert…` until
+    2026-09-14; any value left behind in a shell's environment now -- on,
+    off, or nonsense -- must leave the File menu exactly as it is with
+    nothing set.
 
+    Put the `if convert.enabled():` gate back in `wish/window.py`
+    (`.claude/rules/scratch.md`: copy the file aside, edit, diff it against
+    the copy, put the copy back, clear `__pycache__`) to watch this fail:
+    with the gate restored, `convert.enabled()` no longer exists at all,
+    so every value here raises instead of matching the reference menu.
+    """
+    monkeypatch.delenv("WISH_EXPERIMENTAL_CONVERT", raising=False)
+    reference = _wish_window(tmp_path, monkeypatch)
+    reference_texts = [a.text() for a in _file_menu(reference).actions()]
+    reference.close()
 
-def test_the_file_menu_carries_convert_when_asked_for(app, tmp_path,
-                                                      monkeypatch):
-    monkeypatch.setenv(convert.ENV, "1")
+    monkeypatch.setenv("WISH_EXPERIMENTAL_CONVERT", value)
     window = _wish_window(tmp_path, monkeypatch)
-    assert convert.MENU_CONVERT in [a.text()
-                                    for a in _file_menu(window).actions()]
-    assert window.convert_action.text() == convert.MENU_CONVERT
+    assert [a.text() for a in _file_menu(window).actions()] == reference_texts
     window.close()
 
 
@@ -2348,6 +2365,226 @@ def test_an_unreadable_source_still_pops_a_modal(tmp_path):
 
     assert critical == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)], critical
     assert convert.CANNOT_CONVERT != convert.POOLS_OF_DARKNESS_UNSUPPORTED
+
+
+# ---------------------------------------------------------------------------
+# A DOS refusal reaches a player as the approved sentence, never the
+# developer's own text (#176, #195). Ported from `tests/test_dosimport.py`
+# against `DosImportDialog`, deleted along with `File ▸ Import` on
+# 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every direction
+# the library supports)`). `DosToC64.rehearse` calls `dosimport.rehearse`
+# exactly as that dialog did, so the same monkeypatch reaches
+# `ConvertDialog._rehearse_and_report`'s own `except dos_codec.
+# DosRecordError` -- the guarantee is unchanged, only the window it is
+# read through.
+# ---------------------------------------------------------------------------
+
+def test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_exception(
+        tmp_path, monkeypatch):
+    """The routing, which is the half a unit test of the exception cannot see.
+
+    `_rehearse_and_report` used to put `str(exc)` straight into `_blocked`;
+    now it uses `exc.player_message`. Reverting that turns this red:
+    `_blocked` fills with the tracker's sentence, issue number included,
+    instead.
+    """
+    def refuse(*_args, **_kwargs):
+        raise dos_codec.WrongTitleError(
+            "Curse of the Azure Bonds records read, but only Pool of "
+            "Radiance converts: no other pair of ports has been measured "
+            "against each other (#53)",
+            title="Curse of the Azure Bonds")
+
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
+                                   _some_disks)
+    try:
+        monkeypatch.setattr(dosimport, "rehearse", refuse)
+        dialog._interactive = True
+        dialog.replan()
+
+        assert dialog._blocked == (
+            convert.DIALOG_TITLE,
+            "Curse of the Azure Bonds imports not yet supported.")
+    finally:
+        dialog.close()
+
+
+#: The two developer sentences `#195 (The import pane shows a player a
+#: memory address when the conversion refuses for any reason but the wrong
+#: title)` names as confirmed reachable from `rehearse` -> `dos_codec.new_save`,
+#: quoted from `goldbox/dos_codec.py:new_save` and
+#: `goldbox/dos_codec.py:apply_file_cache` so the test forces the real
+#: wording rather than a guess at it.
+_UNWRITTEN_BYTES_MESSAGE = (
+    "29 bytes of the save have no source and were left zero by accident "
+    "rather than by measurement; the first is SAVEDGAME0 $8300")
+_OUTDOOR_DISAGREEMENT_MESSAGE = (
+    "the save's own $49E6 says outdoors, but script id 12 (Kuto's Well) is "
+    "marked indoors in goldbox/areas.py -- these two disagree and neither "
+    "is trusted over the other")
+
+
+@pytest.mark.parametrize("message", [
+    _UNWRITTEN_BYTES_MESSAGE, _OUTDOOR_DISAGREEMENT_MESSAGE,
+    "an area with no row in our table",
+])
+def test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_sentence(
+        message, tmp_path, monkeypatch):
+    """`_rehearse_and_report` used to fall through to `str(exc)` for every
+    `DosRecordError` but `WrongTitleError`, so a real refusal -- the
+    unwritten-bytes one, or the outdoor-signals one -- filled `_blocked`
+    with `SAVEDGAME0 $8300` or `goldbox/areas.py`. This forces each of those
+    two confirmed developer sentences through the real dialog and checks
+    what a player would actually read, not a list of expected strings: it
+    asserts the exact approved sentence, and separately that nothing
+    matching a memory address, a source path or an issue number reaches
+    `_blocked`, so a fallback that echoed part of `message` back would
+    still be caught.
+    """
+    import re
+
+    def refuse(*_args, **_kwargs):
+        raise dos_codec.DosRecordError(message)
+
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
+                                   _some_disks)
+    try:
+        monkeypatch.setattr(dosimport, "rehearse", refuse)
+        dialog._interactive = True
+        dialog.replan()
+
+        assert dialog._blocked == (convert.DIALOG_TITLE,
+                                   convert.CANNOT_CONVERT)
+        shown = dialog._blocked[1]
+        assert not re.search(r"\$[0-9A-F]{4}\b", shown), (
+            f"a memory address reaches the player: {shown!r}")
+        assert not re.search(r"\.py\b", shown), (
+            f"a source file name reaches the player: {shown!r}")
+        assert not re.search(r"#\d", shown), (
+            f"an issue number reaches the player: {shown!r}")
+    finally:
+        dialog.close()
+
+
+def test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_dos_record_error_never_names(
+        tmp_path, monkeypatch):
+    """Not every refusal is a `DosRecordError` -- `_rehearse_and_report`'s
+    bare `except Exception` is what stands between an unanticipated one and
+    a raw traceback reaching a player. It must set `_blocked` to the same
+    approved sentence, not `str(exc)`.
+    """
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("$49E6 disagrees with goldbox/areas.py (#99)")
+
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
+                                   _some_disks)
+    try:
+        monkeypatch.setattr(dosimport, "rehearse", refuse)
+        dialog._interactive = True
+        dialog.replan()
+
+        assert dialog._blocked == (convert.DIALOG_TITLE,
+                                   convert.CANNOT_CONVERT)
+    finally:
+        dialog.close()
+
+
+def test_a_refusal_on_construction_is_shown_not_swallowed(tmp_path,
+                                                          monkeypatch):
+    """A folder whose only slot fails rehearsal is what a player reaches by
+    picking it through the source row's own `Choose…` button, and that is
+    the ordinary case, not an edge one.
+
+    **Adapted, not a straight port.** `tests/test_dosimport.py`'s original
+    drove `DosImportDialog`'s own *construction-time* rehearsal, which
+    fired `_maybe_warn` unconditionally -- that dialog's very first
+    rehearsal already ran against a real slot the player had picked by
+    opening the folder. `ConvertDialog`'s own first `replan()`, run inside
+    `__init__`, is deliberately inert instead: `_interactive` stays `False`
+    until after it returns, so a dialog built with a state already
+    prefilled -- every other test in this file -- never has to expect a
+    modal of its own (`ConvertDialog`'s own docstring). That difference is
+    the dialog's design, not something to port around, so this drives the
+    player's actual first interactive action -- `_choose_source`, the
+    `Choose…` button -- which is where a real refusal first reaches
+    `_maybe_warn` with `_interactive` already `True`. What is still
+    checked is `#195`'s own guarantee: the modal actually fires (`shown`),
+    not only that `_blocked` gets set, and Convert stays disabled.
+    """
+    def refuse(*_args, **_kwargs):
+        raise dos_codec.DosRecordError("boom")
+
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    source = folder / "SAVGAMA.DAT"
+    shown = []
+
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda self_, title, text: shown.append((title, text)))
+    monkeypatch.setattr(convert.QFileDialog, "getOpenFileName",
+                        lambda *a, **k: (str(source), ""))
+    monkeypatch.setattr(dosimport, "rehearse", refuse)
+
+    dialog = convert.ConvertDialog("", None, _some_disks)
+    try:
+        dialog._choose_source()
+
+        assert dialog._blocked == (convert.DIALOG_TITLE,
+                                   convert.CANNOT_CONVERT)
+        assert shown == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)]
+        ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
+        assert not ok.isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
+        tmp_path, monkeypatch):
+    """`DosImportDialog` carried a pane from 2026-09-06 until it lost it on
+    2026-09-10, and `ConvertDialog` never carried one at all. Neither
+    `_blocked` nor `_name_warning` is set by a message, a drop, or a
+    `report.losses` line that is not a name truncation -- `_maybe_warn`
+    only ever shows a real refusal or a truncated name -- and Convert stays
+    pressable throughout.
+
+    Ported from `tests/test_dosimport.py` (`#52 (File ▸ Import and File ▸
+    Export for every direction the library supports)`, 2026-09-14), where
+    this guarded `DosImportDialog`'s own wiring, missed by that ticket's
+    plan as one of the four to port because it sat in the "rehearsal"
+    section the plan otherwise kept whole.
+    `ConvertDialog._rehearse_and_report` calls the same `pane_text`/
+    `name_warnings`/`log_unshown_losses` trio `DosImportDialog._attempt`
+    did, so the guarantee carries over unchanged.
+    """
+    from types import SimpleNamespace
+
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from goldbox.dos_codec import NOT_SET_OUT, C64SaveReport
+
+    report = C64SaveReport(save0_size=0x1C00)
+    report.messages.append(NOT_SET_OUT)
+    report.dropped.append("Something the C64 has no place for")
+    report.losses.append("carries more items than the C64 can hold")
+
+    def stub_rehearse(*_args, **_kwargs):
+        return SimpleNamespace(report=report,
+                               disk=SimpleNamespace(to_bytes=lambda: b""))
+
+    folder = _synthetic_dos_folder(tmp_path, dos_port.POOL_OF_RADIANCE)
+    monkeypatch.setattr(dosimport, "rehearse", stub_rehearse)
+    dialog = convert.ConvertDialog(str(folder / "SAVGAMA.DAT"), None,
+                                   _some_disks,
+                                   folder=str(tmp_path / "out"))
+    try:
+        assert dialog._blocked is None
+        assert dialog._name_warning is None
+        assert dialog.buttons.button(
+            QDialogButtonBox.StandardButton.Ok).isEnabled()
+    finally:
+        dialog.close()
 
 
 # ---------------------------------------------------------------------------
