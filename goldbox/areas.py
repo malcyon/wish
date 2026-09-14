@@ -710,20 +710,25 @@ class Start:
 #: is `AREAS`' own arrival square for New Phlan, measured separately by a
 #: driven fast travel.  Two independent readings of the same square.
 #:
-#: **Secret of the Silver Blades has no entry, and that is not an oversight.**
-#: Its two never-adventured containers hold the same area 0 and the same
-#: `7,13` facing north that Curse's do, its table's lowest id is `$04`, and
-#: all five of its played containers stand in area `$10` -- which is
-#: suggestive and is not the measurement.  The experiment is the one that
-#: settled Curse: boot DOS Silver Blades, create one character, add it to the
-#: party, `SAVE CURRENT GAME`, then `BEGIN ADVENTURING` and save again with
-#: the party standing still.  Area `$10` in the second save confirms `$10`;
-#: `$04` confirms `$04`.  Until then a caller gets `None` and has to refuse,
-#: rather than being handed a guess that looks like a row.
+#: Secret of the Silver Blades is CONFIRMED the same way
+#: (`#535 (A Secret of the Silver Blades save made before the party set out
+#: is refused by Convert, because nobody has measured where that title
+#: begins)`): one boot, a character created, `SAVE CURRENT GAME` to slot C at
+#: the party menu, then `BEGIN ADVENTURING` through the arrival narrative with
+#: the party standing still, and slot D reads area `$10` (16), square `3,3`
+#: facing south, clock 00:00.  Slot C matches the never-adventured pattern
+#: already on record -- area 0, `7,13` facing north -- confirming this
+#: title's `GAME.OVR` leaves the same placeholder Curse's does.  `$10` was
+#: suggestive before this: all five played containers on this machine stood
+#: there, but that is a square parties had reached during play, not the one
+#: `BEGIN ADVENTURING` itself lands on -- which is `3,3`, not the `15,8`
+#: earlier guessed from the census.  Evidence at `work/issue535/`.
 STARTS: Mapping[str, Start] = MappingProxyType({
     POOL_OF_RADIANCE: Start(0, Arrival(15, 1, 3), Confidence.CONFIRMED),
     CURSE_OF_THE_AZURE_BONDS: Start(0x01, Arrival(7, 13, 1),
                                     Confidence.CONFIRMED),
+    SECRET_OF_THE_SILVER_BLADES: Start(0x10, Arrival(3, 3, 2),
+                                        Confidence.CONFIRMED),
 })
 
 

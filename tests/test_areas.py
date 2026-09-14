@@ -864,18 +864,26 @@ def test_pool_of_radiances_start_square_is_the_one_its_area_row_already_holds():
     assert start.arrival == areas.area(0).arrival
 
 
-def test_silver_blades_has_no_start_row_rather_than_a_guessed_one():
-    """A caller must refuse rather than convert a Silver Blades party that has
-    not set out to whichever area looks likeliest.
+def test_silver_blades_starts_in_area_0x10_at_3_3_facing_south():
+    """`STARTS` now carries Silver Blades' row (`#535 (A Secret of the Silver
+    Blades save made before the party set out is refused by Convert, because
+    nobody has measured where that title begins)`), measured the same way
+    Curse's was: one boot, a character created, `SAVE CURRENT GAME` at the
+    party menu, then `BEGIN ADVENTURING` with the party standing still. The
+    second save read area `$10`, square `3,3` facing south, clock 00:00.
 
-    Its two never-adventured containers hold the same area 0 and `7,13` facing
-    north that Curse's do, and its table has no area 0 -- so the case exists
-    and the answer has not been measured. `STARTS` says so by having no entry,
-    which a caller can act on; a row with `Confidence.UNKNOWN` reads as an
-    answer at a glance and would be converted as one.
+    Its two never-adventured containers hold the same area 0 and `7,13`
+    facing north that Curse's do, and its table has no area 0 -- so before
+    this the case existed and the answer had not been measured, and a caller
+    had to refuse rather than convert to whichever area looked likeliest.
     """
-    assert areas.start_of(SECRET_OF_THE_SILVER_BLADES) is None
-    assert areas.start_area(SECRET_OF_THE_SILVER_BLADES) is None
+    start = areas.start_of(SECRET_OF_THE_SILVER_BLADES)
+    assert start.area == 0x10
+    assert (start.arrival.x, start.arrival.y) == (3, 3)
+    assert start.arrival.facing_letter == "S"
+    assert start.confidence == Confidence.CONFIRMED
+    row = areas.start_area(SECRET_OF_THE_SILVER_BLADES)
+    assert row.ecl == "ECL10" and row.geos == ("GEO10",) and row.disk == 1
     assert areas.area_in(0, SECRET_OF_THE_SILVER_BLADES) is None
 
 

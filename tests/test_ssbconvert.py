@@ -762,48 +762,60 @@ def test_dos_head_ten_reaches_donalds_own_c64_head_through_the_conversion(
         assert icon[:18] == expected, which
 
 
-# --- #301: a party that has not set out is refused, not guessed --------------
+# --- #535: a party that has not set out converts to the start of area $10 ----
 
-def test_a_silver_blades_party_that_has_not_set_out_is_refused_not_guessed():
+def _expect_the_start_of_area_0x10(save0: bytearray) -> None:
+    """Area `$10`, `GEO10`, side 1, the square `3,3` facing south: what the
+    DOS engine itself does with the same save on `BEGIN ADVENTURING`, and
+    what `areas.STARTS` holds for this title (#535)."""
+    cont = c64_save.container_for(SSB_GAME)
+    at = cont.cache[0]
+    assert save0[at + dos_codec.CACHE_ECL] == 0x10 | dos_codec.FILE_CACHE_RELOAD
+    assert save0[at + dos_codec.CACHE_GEO] == 0x10 | dos_codec.FILE_CACHE_RELOAD
+    assert save0[cont.current_script] == 0x10
+    assert save0[cont.current_geo] == 0x10
+    assert save0[cont.disk_hint] == 1
+    assert save0[cont.indoors] == 1
+    assert tuple(save0[cont.position:cont.position + 3]) == (3, 3, 2)
+
+
+def test_a_silver_blades_party_that_has_not_set_out_converts_to_the_start_of_area_0x10():
     """Silver Blades' container stages no script, so `$4FE1` is the reading
     -- 0 in both never-adventured containers here and 255 in all five
-    played ones -- and its first area is UNMEASURED, so `areas.STARTS` has
-    no row and the conversion refuses rather than sending the party to
-    whichever area looks likeliest (#301).  The sentence the player reads
-    is Donald's own, 2026-09-06, and names no title on purpose: it reads
-    the same whichever title is refused, so nothing is interpolated into
-    it."""
+    played ones.  `areas.STARTS` now carries this title's row, measured on
+    #535 by driving DOS Silver Blades from the party menu through
+    `BEGIN ADVENTURING` with the party standing still, so a save made
+    before the party set out converts to that arrival rather than being
+    refused."""
     shape = sg.SAVE_SECRET_OF_THE_SILVER_BLADES
     assert shape.script_buffer is None
     savgam = bytearray(shape.size)
     sg.put_word(savgam, sg.INDOORS, 1, shape)
     sg.put_position(savgam, 7, 13, 0, shape)
     assert dos_codec.never_adventured(bytes(savgam))
-    # The refusal used to be `apply_file_cache`'s and `apply_position`'s own,
-    # each independently calling `never_adventured`; both checks are
-    # `world_state.from_dos`'s `_resolve_dos_place` now, so building `state`
-    # is where it fires -- once, rather than twice.
-    with pytest.raises(dos_codec.NotSetOutError) as raised:
-        world_state.from_dos(bytes(savgam), shape)
-    assert raised.value.player_message == (
-        "This save has never been played yet. Wish does not yet support "
-        "converting these saves.")
-    assert raised.value.player_message == dos_codec.NOT_SET_OUT_UNPLACED
-    assert "NOT APPROVED" not in raised.value.player_message
-    assert "$" not in raised.value.player_message
-
-    # The same container one keypress later -- `$4FE1` written, a real area
-    # -- is a party in the world and is placed where it stands.
-    sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255, shape)
-    sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
-    sg.put_word(savgam, sg.AREA, 0x10, shape)
-    assert not dos_codec.never_adventured(bytes(savgam))
     state = world_state.from_dos(bytes(savgam), shape)
     cont = c64_save.container_for(SSB_GAME)
     save0 = bytearray(cont.payload_size)
+    line = dos_codec.apply_file_cache(save0, state, cont)
+    assert "had not set out" in line
+    dos_codec.apply_position(save0, state)
+    _expect_the_start_of_area_0x10(save0)
+
+    # The same container one keypress later -- `$4FE1` written, a real area
+    # -- is a party in the world and is placed where it stands, not
+    # re-sent to the arrival square.
+    sg.put_word(savgam, dos_codec.LATER_BEGUN_WORD, 255, shape)
+    sg.put_word(savgam, sg.SCRIPT, 0x10, shape)
+    sg.put_word(savgam, sg.AREA, 0x10, shape)
+    sg.put_position(savgam, 5, 9, 1, shape)
+    assert not dos_codec.never_adventured(bytes(savgam))
+    state = world_state.from_dos(bytes(savgam), shape)
+    save0 = bytearray(cont.payload_size)
     dos_codec.apply_file_cache(save0, state, cont)
+    dos_codec.apply_position(save0, state)
     assert save0[cont.current_script] == 0x10
     assert save0[cont.disk_hint] == 1
+    assert tuple(save0[cont.position:cont.position + 3]) == (5, 9, 1)
 
 
 def _shipped_silver_blades_save():
@@ -814,14 +826,16 @@ def _shipped_silver_blades_save():
 
 @pytest.mark.skipif(_shipped_silver_blades_save() is None,
                     reason="needs the archives' Silver Blades saves")
-def test_the_archives_shipped_silver_blades_party_is_one_that_has_not_set_out():
+def test_the_archives_shipped_silver_blades_party_converts_to_the_start_of_area_0x10():
     """The two saved games the archives ship for this title are both in this
     state -- area 0, `7,13` facing north, `$4FE1` = 0 -- so the first Silver
-    Blades save a player reaches for is one the import refuses until the
-    title's start is measured.  A found save with no chain of custody, read
-    here only to show what the refusal says about it."""
+    Blades save a player reaches for used to be refused until the title's
+    start was measured (#535); it now converts to the arrival `areas.STARTS`
+    names.  A found save with no chain of custody, read here only to show
+    what the conversion does with it -- not as a measurement of the game."""
     savgam = _shipped_silver_blades_save().read_bytes()
     assert sg.current_area(savgam) == 0
     assert dos_codec.never_adventured(savgam)
-    with pytest.raises(dos_codec.NotSetOutError):
-        world_state.from_dos(savgam)
+    state = world_state.from_dos(savgam)
+    assert state.set_out is False
+    assert (state.area, state.x, state.y, state.facing) == (0x10, 3, 3, 2)
