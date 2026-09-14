@@ -120,14 +120,16 @@ and the command at the top of §1 rebuilds them.
 engine does not clear the field behind it. `goldbox.amiga_por` already stops at the
 NUL.
 
-## 3. Pools of Darkness lists what `File > Export > Amiga...` writes
+## 3. Pools of Darkness lists what `tools/toamiga.py` writes
 
 `#317 (Does the Amiga game's Add Character menu list a character Wish exported
 into the pool drawer?)`.
 
-`tools/toamiga.py` is the command-line half of the same
-`goldbox.amiga_pod.export_party` the menu item calls, so this exercises the menu
-item's writer:
+At the time this was run, `tools/toamiga.py` was the command-line half of the
+same `goldbox.amiga_pod.export_party` a `File ▸ Export ▸ Amiga…` menu item
+also called; that menu item is gone since (`#52 (File ▸ Import and File ▸
+Export for every direction the library supports)`'s 2026-09-09 ruling), and
+`tools/toamiga.py` is what exercises the writer now:
 
 ```sh
 tools/toamiga.py ~/wish-specimens/por-c64/WISH-SPEC-ssb-d-engine-resave.D64 \
@@ -170,9 +172,8 @@ copied**: the writer wrote the unarmoured 10 and PoD applied dexterity 18 for
 strength's 1, and `DAMAGE 1D2+3` is unarmed `1d2` plus that strength's damage
 bonus.
 
-So the drawer is the pool, `editor/exports.py`'s `AmigaPlan` docstring is
-right, and a player who uses that menu item gets characters the Amiga game
-offers them.
+So the drawer is the pool, and a player who runs `tools/toamiga.py` gets
+characters the Amiga game offers them.
 
 **Where the disk has to be.** The `Save` drawer of **disk 3**, and disk 3 in
 **DF1** -- with it in DF2 the game sat on `INSERT DISK 3 AND PRESS A KEY` and

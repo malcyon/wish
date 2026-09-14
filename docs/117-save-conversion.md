@@ -5,9 +5,11 @@ table and `goldbox/dos_codec.py` reads a DOS save, exports it as the editor's ow
 and builds a C64 `SAVEDGAME0`/`SAVEDGAME1` pair from it. **Steps 1 to 6 of the
 order of work below are closed**, and so is step 7: `File > Import` is built
 for everyone since 2026-09-06 (`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
-needs the import working for all three C64 titles)`), and `File > Export` is
-wired behind `WISH_EXPERIMENTAL_EXPORT` until its direction is proven end to
-end.
+needs the import working for all three C64 titles)`). `File > Export` is gone
+outright -- Donald ruled on 2026-09-09 that it is deleted rather than finished,
+since `File > Convert…` (`editor/convert.py`, `WISH_EXPERIMENTAL_CONVERT`)
+reaches the same two directions and a second menu item meaning almost the same
+thing was not wanted.
 Everything the plan said had to be found out first has been found out —
 the spell tables agree exactly, nothing DOS stores is lost that matters, and
 the clock is the one loose end.
@@ -1325,13 +1327,15 @@ game reading 21:15, and #103 (A DOS party converted to the C64 arrives at the te
 6. **The party's square and area — done.** `goldbox.dos_savegame.position` and
    `area_id`; the facing is halved.
 7. **An editor menu item.** Built, 2026-08-24 — `#23 (A conversion window for DOS saves, under File ▸ Import)`'s
-   dialog is `editor/dosimport.py` and the export side is `editor/exports.py`.
-   The Import submenu sat behind `WISH_EXPERIMENTAL_DOS_IMPORT` until
-   2026-09-06, when `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the
-   import working for all three C64 titles)` closed and `wish/window.py`
-   started building it for everyone; Export still sits behind
-   `WISH_EXPERIMENTAL_EXPORT`, built inside the flag's `if` rather than
-   greyed out. `goldbox.dos_codec.convert_save` is the whole
+   dialog is `editor/dosimport.py`, and an export side existed in
+   `editor/exports.py` behind its own flag until `#52 (File ▸ Import and
+   File ▸ Export for every direction the library supports)`'s 2026-09-09
+   ruling deleted it outright, one `File ▸ Convert…` dialog
+   (`editor/convert.py`) covering both directions instead. The Import
+   submenu sat behind `WISH_EXPERIMENTAL_DOS_IMPORT` until 2026-09-06, when
+   `#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working
+   for all three C64 titles)` closed and `wish/window.py` started building it
+   for everyone. `goldbox.dos_codec.convert_save` is the whole
    of what it needs to call: hand it a DOS save directory, a slot letter and a
    C64 save's two payloads and it rewrites them in place.
 

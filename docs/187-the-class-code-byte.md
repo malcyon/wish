@@ -172,8 +172,8 @@ the old class's slot is zeroed at the change and stays zero. The engine agrees
 -- `GEN $1939` branches away from the mask walk entirely when
 `dual_class_level` is set.
 
-**It is not reported to the player.** `editor/exports.py`'s `losses` puts
-every warning under a heading saying the conversion could not do something
+**It is not reported to the player.** A conversion's `losses` puts every
+warning under a heading saying the conversion could not do something
 faithfully, and this is the opposite. The provenance line in the report's own
 byte account is where it goes.
 

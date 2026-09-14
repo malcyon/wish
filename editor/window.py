@@ -1361,13 +1361,12 @@ class EditorBinding(QObject):
         `Direction.write` puts the files in it. A C64 destination is opened
         afterwards the same way `File ▸ Open` opens anything; a DOS or
         Amiga destination is not something the editor can show, so it only
-        gets a status line. **Flushes the open party first**, the same as
-        `export_source`: without it the dialog reads the disk image as it
-        was when the file was opened, not the edits on screen (`#478 (File
-        ▸ Convert converts the save as it was opened, not as it is on
-        screen, because it never flushes the editor's own edits)`). Guarded
-        on `self.party`, since Convert -- unlike Export -- still opens with
-        nothing open, to let the picker choose a source.
+        gets a status line. **Flushes the open party first**: without it the
+        dialog reads the disk image as it was when the file was opened, not
+        the edits on screen (`#478 (File ▸ Convert converts the save as it
+        was opened, not as it is on screen, because it never flushes the
+        editor's own edits)`). Guarded on `self.party`, since Convert opens
+        with nothing open too, to let the picker choose a source.
         """
         from editor import convert as convert_mod
 
@@ -1434,58 +1433,6 @@ class EditorBinding(QObject):
                 self.root, convert_mod.DIALOG_TITLE,
                 convert_mod.CONVERT_SUCCESS.format(folder=fresh))
             return result
-
-    # -- exports ----------------------------------------------------------
-
-    def export_source(self):
-        """The open save as it stands, edits on screen included."""
-        from .exports import NOTHING_OPEN, ExportError, Source
-
-        if self.party is None:
-            raise ExportError(NOTHING_OPEN)
-        self._flush()
-        self._write_back()
-        return Source.from_party(self.party, self.path)
-
-    def export_dos_save(self, destination: str | None = None) -> str:
-        """File > Export > DOS… Returns what happened, for a test."""
-        from .exports import DosExportDialog
-
-        return self._export(DosExportDialog, destination)
-
-    def export_amiga_party(self, destination: str | None = None) -> str:
-        """File > Export > Amiga… Returns what happened."""
-        from .exports import AmigaExportDialog
-
-        return self._export(AmigaExportDialog, destination)
-
-    def _export(self, dialog_class, destination: str | None) -> str:
-        from .exports import FAILED_TITLE, ExportError
-
-        try:
-            source = self.export_source()
-        except ExportError as exc:
-            QMessageBox.warning(self.root, FAILED_TITLE, str(exc))
-            return "nothing open"
-        dialog = dialog_class(source, destination=destination, parent=self.root)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return "cancelled"
-        return self.commit_export(dialog.plan)
-
-    def commit_export(self, plan) -> str:
-        """Write a rehearsed export. Separate so a test can call it."""
-        from .exports import FAILED_TITLE
-
-        if plan is None:
-            return "cancelled"
-        try:
-            note = plan.write()
-        except Exception as exc:
-            _log.exception("could not export into %s", plan.destination)
-            QMessageBox.critical(self.root, FAILED_TITLE, str(exc))
-            return "failed"
-        self.status(note)
-        return note
 
     def _size_roster(self) -> None:
         """Measure the roster: the height its rows need, and the width they

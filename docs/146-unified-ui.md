@@ -2,7 +2,7 @@
 
 ## Goal
 
-One `wish/window.ui` that defines the entire application layout. Opening it in Qt Designer shows the same window a user sees. All panels, cards, buttons, and fields are visible and repositionable. Only dialogs (preferences, import, export, parts picker, note editor, add-item) keep separate `.ui` files.
+One `wish/window.ui` that defines the entire application layout. Opening it in Qt Designer shows the same window a user sees. All panels, cards, buttons, and fields are visible and repositionable. Only dialogs (preferences, import, parts picker, note editor, add-item) keep separate `.ui` files.
 
 Standalone entry points (`python -m editor`, `python -m automap`) are dropped.
 
@@ -52,13 +52,12 @@ These are custom-painted widgets with no child layout to design — they draw vi
 > [!NOTE]
 > `SpellbookEditor` and `MemorisedEditor` are no longer promoted widgets — their content (a `QListWidget`, a `QComboBox`, two buttons, a label) is inlined directly into the unified `.ui`. The Python classes become controllers that operate on those widgets by `objectName`.
 
-### What stays as separate `.ui` files (6 dialogs)
+### What stays as separate `.ui` files (5 dialogs)
 
 | File | Why |
 |---|---|
 | `automap/noteeditor.ui` | Popup dialog |
 | `editor/dosimport.ui` | Modal dialog |
-| `editor/exports.ui` | Modal dialog |
 | `editor/inventory.ui` | Modal dialog ("Add item") |
 | `editor/partspicker.ui` | Modal dialog |
 | `wish/preferences.ui` | Modal dialog |
@@ -401,7 +400,7 @@ class MemorisedEditor:
 Update `UI_DIRS`:
 ```python
 UI_DIRS = [
-    ROOT / "editor",     # dosimport.ui, exports.ui, inventory.ui, partspicker.ui
+    ROOT / "editor",     # dosimport.ui, inventory.ui, partspicker.ui
     ROOT / "automap",    # noteeditor.ui only
     ROOT / "wish",       # window.ui (the unified file), preferences.ui
 ]
@@ -460,4 +459,4 @@ python tools/genui.py --check
 
 5. **Action buttons:** All 5 buttons enabled/disabled correctly based on game state.
 
-6. **Dialogs:** Preferences, Import, Export, Parts Picker, Note Editor, Add Item — all still work.
+6. **Dialogs:** Preferences, Import, Parts Picker, Note Editor, Add Item — all still work.
