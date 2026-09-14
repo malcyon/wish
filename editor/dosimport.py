@@ -11,11 +11,10 @@ editor's own Save, so the backup guarantee in `editor/files.py` covers this
 the way it covers every other write.
 
 `DosImportDialog`, below, is `File ▸ Import ▸ DOS save folder…`'s own window,
-and it carries no pane either, since Donald ruled on 2026-09-14 that it
-should lose its own the way `editor/convert.py`'s dialog lost its own on
+and it carries no pane either: Donald approved removing it directly, in this
+session, on 2026-09-14, the way `editor/convert.py`'s dialog lost its own on
 2026-09-10 (`#52 (File ▸ Import and File ▸ Export for every direction the
-library supports)`, https://github.com/malcyon/wish/issues/52#issuecomment-5666652114).
-It drew `pane_text` -- `C64SaveReport.messages`, then every
+library supports)`). It drew `pane_text` -- `C64SaveReport.messages`, then every
 `C64SaveReport.losses` line, unfiltered -- from 2026-09-06 until then; that
 window was removed once before (2026-09-07, `375bf07`) on the belief that
 `editor/convert.py`'s dialog already did its job in full. That dialog sits
