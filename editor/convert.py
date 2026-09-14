@@ -1993,8 +1993,8 @@ class ConvertDialog(QDialog):
 
         #: Still called for its own side effect -- `report.dropped`, to the
         #: debug log -- even though nothing shows its returned text any
-        #: more (`dropped_text`'s own sibling in this respect, both left
-        #: reachable rather than reworded tonight).
+        #: more. `DosImportDialog` stopped calling this too, 2026-09-14,
+        #: when its own pane went the same way this dialog's did.
         dosimport.pane_text(self.rehearsal.report)
 
         #: `report.losses` split in two, Donald's ruling of 2026-09-10 on

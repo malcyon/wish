@@ -45,6 +45,29 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def _no_real_modals(monkeypatch):
+    """Neutralise `QMessageBox.critical`/`.warning` by default, for every
+    test in this module -- `tests/test_convert.py`'s own `_no_real_modals`,
+    ported rather than reinvented for `DosImportDialog._maybe_warn`
+    (2026-09-14), which pops a real one once a dialog is `_interactive`.
+    Without this, a test that reaches that point hangs under `pytest`'s
+    offscreen platform, waiting on a `QMessageBox.exec()` nobody can
+    dismiss.
+
+    A test that wants to know what the dialog actually showed reads
+    `dialog._blocked`/`dialog._name_warning` directly, or does its own
+    `monkeypatch.setattr` on `editor.dosimport.QMessageBox`, which simply
+    replaces this default for that one test.
+    """
+    from editor import dosimport
+
+    monkeypatch.setattr(dosimport.QMessageBox, "critical",
+                        lambda *a, **k: None)
+    monkeypatch.setattr(dosimport.QMessageBox, "warning",
+                        lambda *a, **k: None)
+
+
 @pytest.fixture
 def dos_save():
     where = _save_dir()
@@ -178,72 +201,38 @@ def _dialog_showing(app, tmp_path, monkeypatch, report):
     return dialog
 
 
-def test_the_pane_shows_what_the_conversion_did_and_never_a_dropped_field(
+def test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_nothing(
         app, tmp_path, monkeypatch):
-    """Donald, 2026-09-06, having seen the messages-only pane `#131 (Lift
-    WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
-    three C64 titles)` shipped: *"do not show dropped fields if they are
-    derived in the new game. Show others for now. I will refine them as we
-    go."* -- and then, 2026-09-08, having seen the ones left standing:
-    *"a route which drops something is not offered to a player as though it
-    worked."* `report.dropped` stopped reaching this pane at all that day
-    (`pane_text`'s own docstring), so this window shows the same thing
-    `editor/convert.py`'s dialog does with the same report: the messages
-    alone, the drop line only in the debug log
-    (`test_pane_text_sends_the_drops_to_the_debug_log_instead_of_the_pane`).
+    """This window carried a pane from 2026-09-06 until 2026-09-14, and
+    across that history `report.messages` was always shown and
+    `report.dropped` never reached it (2026-09-08 ruling,
+    `.claude/rules/conversions.md`). The pane is gone now (`#52 (File ▸
+    Import and File ▸ Export for every direction the library supports)`,
+    matching `editor/convert.py`'s own removal of 2026-09-10), and nothing
+    replaced its display of `messages` -- `_maybe_warn` only ever shows
+    `_blocked` (a refusal) or `_name_warning` (a truncated name), and
+    neither of those is set by a message, a drop, or a `losses` line that is
+    not a name truncation. Convert still stays pressable throughout.
 
-    Corrected 2026-09-10 (`#52 (File ▸ Import and File ▸ Export for every
-    direction the library supports)`'s revert of `375bf07`): this test used
-    to assert the drop line was shown, from before the 09-08 ruling, and
-    that assertion came back stale when this window did.
+    A `report.losses` line that is not a name truncation used to reach this
+    window's own pane, unfiltered, before 2026-09-14; it is filtered out
+    now, the same way `editor/convert.py`'s dialog has filtered it since
+    2026-09-10 (`test_name_warnings_keeps_only_the_truncated_name`).
     """
     from PyQt6.QtWidgets import QDialogButtonBox
 
-    from editor.dosimport import DROPPED_HEADING
     from goldbox.dos_codec import NOT_SET_OUT, C64SaveReport
 
-    #: A sentence of its own rather than one taken out of
-    #: `DROPPED_PLAYER_TEXT`. This test is about where the pane puts a drop
-    #: line, not about which fields have one -- and that dict is empty
-    #: today, because Donald read both entries on 2026-09-06 and neither
-    #: cost a player anything.
-    drop = "Something the C64 has no place for"
     report = C64SaveReport(save0_size=0x1C00)
     report.messages.append(NOT_SET_OUT)
-    report.dropped.append(drop)
+    report.dropped.append("Something the C64 has no place for")
+    report.losses.append("carries more items than the C64 can hold")
     dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
 
-    shown = dialog.report_pane.toPlainText()
-    assert shown == NOT_SET_OUT
-    assert drop not in shown
-    assert DROPPED_HEADING not in shown
+    assert dialog._blocked is None
+    assert dialog._name_warning is None
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
-
-
-def test_a_conversion_with_nothing_to_say_leaves_the_pane_empty(
-        app, tmp_path, monkeypatch):
-    """No heading over nothing (#338's rule): a conversion that did nothing
-    remarkable shows an empty pane under its label, whether or not it
-    dropped a field -- `report.dropped` never reaches this pane at all
-    (2026-09-08 ruling, the test above) -- and a genuine platform ceiling on
-    `report.losses` shows that line alone."""
-    from goldbox.dos_codec import C64SaveReport
-
-    report = C64SaveReport(save0_size=0x1C00)
-    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
-    assert dialog.report_pane.toPlainText() == ""
-
-    #: Dropped, not lost: never reaches the pane, whatever it says.
-    report.dropped.append("Something the C64 has no place for")
-    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
-    assert dialog.report_pane.toPlainText() == ""
-
-    #: A genuine capacity ceiling still shows, alone.
-    loss = "carries more items than the C64 can hold"
-    report.losses.append(loss)
-    dialog = _dialog_showing(app, tmp_path, monkeypatch, report)
-    assert dialog.report_pane.toPlainText() == loss
 
 
 def test_pane_text_is_the_messages_and_never_the_drops():
@@ -435,69 +424,28 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
     assert "emptied" not in text
 
 
-def test_the_pane_is_headed_conversion_info_and_is_half_the_height_it_was(
-        app, tmp_path, monkeypatch):
-    """Donald, 2026-09-06: *"how about 'Conversion Info'. I think it should
-    be half its current size, too."*
-
-    The label is the form's, above the pane, with his words exactly; the
-    pane's height is measured in lines of its own font rather than in
-    pixels, because a pixel count is a measurement of this machine.  The
-    pane before this was 342 pixels high in the 680x480 dialog -- about
-    twenty lines at the base font -- and half of that is ten; the dialog is
-    330 high now and the pane comes out at 169, nine or ten lines.  A pane
-    that fits eleven lines or more at the base font has grown back.
-    """
-    from editor.dosimport import PANE_HEADING
-    from goldbox.dos_codec import C64SaveReport
-
-    dialog = _dialog_showing(app, tmp_path, monkeypatch,
-                             C64SaveReport(save0_size=0x1C00))
-    dialog.show()
-    app.processEvents()
-    label = dialog.ui.label_report
-    assert label.text() == PANE_HEADING == "Conversion Info"
-    assert label.isVisibleTo(dialog)
-    assert label.y() < dialog.report_pane.y()
-    #: Against what it was, with room for a machine that lays out
-    #: differently. Neither a line count nor a share of the dialog works
-    #: here: CI's line spacing is 14 px where this desktop's is about 17, so
-    #: the same pane is ten lines on one and thirteen on the other, and the
-    #: dialog shrank alongside the pane so the share barely moved. What
-    #: "half its current size" means is the pane itself, and the pane was
-    #: **342 px** before Donald asked on 2026-09-06. Under two thirds of
-    #: that is half within any font's rounding; over 100 says it did not
-    #: collapse to nothing.
-    was = 342
-    height = dialog.report_pane.height()
-    assert 100 < height < was * 2 / 3, (height, was)
-    dialog.close()
-
-
 # --- the window -------------------------------------------------------------
 
 @needs_dos_saves
 @needs_disks
-def test_the_pane_is_filled_before_the_button_is_pressable(
+def test_the_rehearsal_is_complete_before_the_button_is_pressable(
         app, dos_save, files):
-    """The dialog rehearses on construction, so the pane holds the
-    conversion's own messages and every field it did not convert, in the
-    words the report gives them, at the moment Convert first becomes
-    pressable -- and no address, file name or issue number among them."""
+    """The dialog rehearses on construction, so Convert is already
+    pressable the moment the window would appear -- and if a real save's own
+    rehearsal set `_name_warning`, the one thing this window still says out
+    loud, it carries no address, file name or issue number."""
     import re
 
     from PyQt6.QtWidgets import QDialogButtonBox
 
-    from editor.dosimport import DROPPED_HEADING, DosImportDialog, pane_text
+    from editor.dosimport import DosImportDialog
 
     dialog = DosImportDialog(dos_save, files)
     assert dialog.conversion is not None
-    text = dialog.report_pane.toPlainText()
-    assert text == pane_text(dialog.conversion.report)
-    assert DROPPED_HEADING not in text
-    for line in dialog.conversion.report.dropped:
-        assert line in text
-    assert not re.search(r"\$[0-9A-F]{4}\b|0x[0-9A-Fa-f]+|\.py\b|#\d", text), text
+    assert dialog._blocked is None
+    if dialog._name_warning:
+        assert not re.search(r"\$[0-9A-F]{4}\b|0x[0-9A-Fa-f]+|\.py\b|#\d",
+                             dialog._name_warning), dialog._name_warning
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
 
@@ -537,7 +485,7 @@ def test_a_pool_of_radiance_import_with_no_creation_tables_converts_with_its_own
     assert dialog.conversion is not None
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
-    assert "portrait" not in dialog.report_pane.toPlainText().lower()
+    assert dialog._blocked is None
     save0 = dialog.conversion.save0.to_bytes()
     assert save0[dos_codec.PORTRAIT_SWITCH - dos_codec.SAVE0_BASE] == dos_codec.PORTRAIT_ON
     for index, char in enumerate(party):
@@ -1028,11 +976,13 @@ def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
 
 @needs_dos_saves
 @needs_disks
-def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
+def test_a_write_that_cannot_happen_pops_a_modal_naming_the_refusal(
         app, tmp_path, dos_save, monkeypatch):
-    """A refused write reaches the user as the sentence it raised, in the pane
-    the losses are already reported in, with the window still open on the path
-    that has to change -- not as a traceback in the log and nothing on screen.
+    """A refused write reaches the user as the sentence it raised, in a
+    modal -- `refuse`, ported to `QMessageBox.critical` the way `editor/
+    convert.py`'s own `refuse` was on 2026-09-10 -- with the window still
+    open on the path that has to change, not as a traceback in the log and
+    nothing on screen.
 
     No backup folder is the refusal that can be stood up without depending on
     what a filesystem allows: `editor/files.py` will not overwrite a save with
@@ -1053,13 +1003,23 @@ def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
                 else QDialog.DialogCode.Rejected)
 
     monkeypatch.setattr(di.DosImportDialog, "exec", once)
+
+    refusals = []
+    real_refuse = di.DosImportDialog.refuse
+
+    def note_refusal(self, text):
+        refusals.append(text)
+        return real_refuse(self, text)
+
+    monkeypatch.setattr(di.DosImportDialog, "refuse", note_refusal)
     # A window somebody is managing the backup folder for, and it is unset --
     # `wish/window.py` hands over `""` before any save has been opened.
     window = EditorBinding(make_root(), backups="", disks=str(game_disk().parent),
                           last_save_folder=str(tmp_path))
     assert window.import_dos_save(folder=str(dos_save)) == "cancelled"
 
-    said = tries[0].report_pane.toPlainText()
+    assert len(refusals) == 1
+    said = refusals[0]
     assert "backup" in said.lower(), said
     assert not said.startswith("Traceback")
     assert sorted(p.name for p in tmp_path.iterdir()) == []
@@ -1190,12 +1150,15 @@ def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
 
 @needs_dos_saves
 @needs_disks
-def test_the_pane_shows_the_players_sentence_and_not_the_exception(
+def test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_exception(
         app, dos_save, files, monkeypatch):
     """The routing, which is the half a unit test of the exception cannot see.
 
-    `_attempt` used to put `str(exc)` straight into the pane. Reverting that
-    turns this red: the pane fills with the tracker's sentence instead.
+    `_attempt` used to put `str(exc)` straight into the pane; now it sets
+    `self._blocked`, which `_maybe_warn` would show in a modal. Reverting
+    `_attempt`'s `except DosRecordError` to use `str(exc)` instead of
+    `exc.player_message` turns this red: `_blocked` fills with the
+    tracker's sentence instead.
     """
     from editor import dosimport
 
@@ -1210,7 +1173,8 @@ def test_the_pane_shows_the_players_sentence_and_not_the_exception(
     monkeypatch.setattr(dosimport, "rehearse", refuse)
     dialog._rehearse()
 
-    assert dialog.report_pane.toPlainText() == (
+    assert dialog._blocked == (
+        dosimport.DIALOG_TITLE,
         "Curse of the Azure Bonds imports not yet supported.")
 
 
@@ -1260,16 +1224,16 @@ def _fake_files():
     _UNWRITTEN_BYTES_MESSAGE, _OUTDOOR_DISAGREEMENT_MESSAGE,
     "an area with no row in our table",
 ])
-def test_the_pane_shows_the_fallback_and_not_the_developers_sentence(
+def test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_sentence(
         message, app, tmp_path, monkeypatch):
     """`_attempt` used to catch `dos_codec.WrongTitleError` specially and fall
     through to `str(exc)` for everything else, so a real refusal -- the
-    unwritten-bytes one, or the outdoor-signals one -- filled the pane with
+    unwritten-bytes one, or the outdoor-signals one -- filled `_blocked` with
     `SAVEDGAME0 $8300` or `goldbox/areas.py`. This forces each of those two
     confirmed developer sentences through the real dialog and checks what a
     player would actually read, not a list of expected strings: it asserts
     the exact approved sentence, and separately that nothing matching a
-    memory address, a source path or an issue number reaches the pane, so a
+    memory address, a source path or an issue number reaches `_blocked`, so a
     fallback that echoed part of `message` back would still be caught.
     """
     import re
@@ -1284,22 +1248,23 @@ def test_the_pane_shows_the_fallback_and_not_the_developers_sentence(
     monkeypatch.setattr(dosimport, "rehearse", refuse)
     dialog._rehearse()
 
-    shown = dialog.report_pane.toPlainText()
-    assert shown == "This save cannot be converted."
+    assert dialog._blocked == (dosimport.DIALOG_TITLE,
+                               "This save cannot be converted.")
+    shown = dialog._blocked[1]
     assert not re.search(r"\$[0-9A-F]{4}\b", shown), (
-        f"a memory address reaches the pane: {shown!r}")
+        f"a memory address reaches the player: {shown!r}")
     assert not re.search(r"\.py\b", shown), (
-        f"a source file name reaches the pane: {shown!r}")
+        f"a source file name reaches the player: {shown!r}")
     assert not re.search(r"#\d", shown), (
-        f"an issue number reaches the pane: {shown!r}")
+        f"an issue number reaches the player: {shown!r}")
 
 
-def test_the_pane_shows_the_fallback_for_a_refusal_dos_record_error_never_names(
+def test_the_dialog_is_blocked_by_the_fallback_for_a_refusal_dos_record_error_never_names(
         app, tmp_path, monkeypatch):
     """Not every refusal is a `DosRecordError` -- `_attempt`'s bare `except
     Exception` is what stands between an unanticipated one and a raw
-    traceback in the pane. It must show the same approved sentence, not
-    `str(exc)`.
+    traceback reaching a player. It must set `_blocked` to the same approved
+    sentence, not `str(exc)`.
     """
     from editor import dosimport
 
@@ -1311,4 +1276,5 @@ def test_the_pane_shows_the_fallback_for_a_refusal_dos_record_error_never_names(
     monkeypatch.setattr(dosimport, "rehearse", refuse)
     dialog._rehearse()
 
-    assert dialog.report_pane.toPlainText() == "This save cannot be converted."
+    assert dialog._blocked == (dosimport.DIALOG_TITLE,
+                               "This save cannot be converted.")

@@ -839,8 +839,9 @@ def test_no_dropped_reason_carries_developer_detail():
 def test_no_composed_dropped_line_carries_developer_detail():
     """The same guard as `test_no_dropped_reason_carries_developer_detail`,
     against `report.dropped` itself rather than the `why` clauses that feed
-    it -- the composed line is what a player actually reads in
-    `editor/dosimport.py`'s Import pane, through `dropped_text`.
+    it -- the composed line is our own accounting, read by a driven tool's
+    `--report` and logged to `WISH_DEBUG`, never shown to a player
+    (`.claude/rules/conversions.md`).
     """
     import re
 

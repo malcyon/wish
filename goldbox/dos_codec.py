@@ -5258,11 +5258,10 @@ def apply_file_cache(save0: bytearray, state: "world_state.WorldState",
     and never off the area word: both words are the initialiser's 0 there,
     `$49E6` is whatever that title's initialiser left, and the row comes
     from `areas.STARTS` -- New Phlan for Pool of Radiance, area 1 for Curse,
-    and a refusal for Silver Blades until its first area is measured.
-    `state.set_out` is that same reading, and the $49E6/area-table
-    contradiction this used to check for itself is `_resolve_dos_place`'s
-    now, raised while `state` was being built -- so a `state` reaching here
-    has already survived it.
+    and area `0x10` for Secret of the Silver Blades (#535). `state.set_out`
+    is that same reading, and the $49E6/area-table contradiction this used
+    to check for itself is `_resolve_dos_place`'s now, raised while `state`
+    was being built -- so a `state` reaching here has already survived it.
 
     **It applies to a template standing in the area too** (#121).  That case
     used to return early and keep the template's own cache, on the reasoning

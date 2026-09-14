@@ -2,44 +2,54 @@
 
 `goldbox/dos_codec.py` does the conversion and this is the window over it. The one
 thing this file exists for is the order of events: the conversion is
-**rehearsed** in memory, what it did to the player's own save is put on
-screen -- `C64SaveReport.messages`, a party that had not set out being
-started at the beginning of the story -- and only then is there a button to
-press. The file the write goes to is named in this window, on the bottom
-row, before Convert is pressed -- Donald's shape, 2026-08-27: *"when the user
-clicks the Convert button, it does what the user expects. it converts."* The
-write itself is still the editor's own Save, so the backup guarantee in
-`editor/files.py` covers this the way it covers every other write.
+**rehearsed** in memory first, and only then is there a button to press --
+never a write the player cannot see coming. The file the write goes to is
+named in this window, on the bottom row, before Convert is pressed --
+Donald's own wording, 2026-08-27: *"when the user clicks the Convert button,
+it does what the user expects. it converts."* The write itself is still the
+editor's own Save, so the backup guarantee in `editor/files.py` covers this
+the way it covers every other write.
 
-`DosImportDialog`, below, is `File ▸ Import ▸ DOS save folder…`'s own window
-and it draws `pane_text` -- `C64SaveReport.messages`, then every
-`C64SaveReport.losses` line -- exactly as it did on 2026-09-06, before this
-window was removed once (2026-09-07, `375bf07`) on the belief that
+`DosImportDialog`, below, is `File ▸ Import ▸ DOS save folder…`'s own window,
+and it carries no pane either, since Donald ruled on 2026-09-14 that it
+should lose its own the way `editor/convert.py`'s dialog lost its own on
+2026-09-10 (`#52 (File ▸ Import and File ▸ Export for every direction the
+library supports)`, https://github.com/malcyon/wish/issues/52#issuecomment-5666652114).
+It drew `pane_text` -- `C64SaveReport.messages`, then every
+`C64SaveReport.losses` line, unfiltered -- from 2026-09-06 until then; that
+window was removed once before (2026-09-07, `375bf07`) on the belief that
 `editor/convert.py`'s dialog already did its job in full. That dialog sits
 behind `WISH_EXPERIMENTAL_CONVERT`, so the removal had in fact left a player
 running Wish as it ships with no import path at all; Donald put this window
-back on 2026-09-10 for that reason, and it stays until `#52 (File ▸ Import
-and File ▸ Export for every direction the library supports)`'s flag is
-lifted (`editor/convert.py`'s own condition 7).
+back on 2026-09-10 for that reason, and it stays until the flag is lifted
+(`editor/convert.py`'s own condition 7).
 
-**`editor/convert.py`'s own dialog carries no pane at all as of 2026-09-10**
--- Donald, seeing the two that had stood in for it in turn: *"the box under
-it has to be removed, too. That was the entire point."* What a player is
-shown there now is two modals and nothing else: one of the refusals below,
-or a name DOS's own fifteen-character field could not hold whole
-(`name_warnings`). Everything else that used to reach that pane --
+**What a player is shown here now is two modals and nothing else**, ported
+from `editor/convert.py`'s own `_maybe_warn`: one of the refusals below, or a
+name DOS's own fifteen-character field could not hold whole
+(`name_warnings`). Everything else that used to reach the pane --
 `C64SaveReport.messages` entirely, and `C64SaveReport.losses` beyond the one
-name-length kind -- goes to the debug log instead (`log_unshown_losses`,
-`pane_text`'s own `report.dropped` logging), never a player of that dialog.
-Two of those losses are Donald's own examples of why: a magic-user
-memorising more spells than the destination title's own slots and a spell
-id outside the destination's own book are both **bugs** (#508, #509), not
-platform limits, and a modal reporting a bug instead of it getting fixed is
-the pattern that dialog is being kept narrow to stop -- *"the agents find a
-bug, and instead of fixing it, they want to write an excuse to the player
-and then they never fix it... We need it to be correct."* This window
-predates that ruling and is not held to it: what a player sees here is
-unfiltered, the way it was on 2026-09-06.
+name-length kind -- goes to the debug log instead (`log_unshown_losses`, and
+this dialog's own `report.dropped` logging in `_attempt`), never a player of
+this window. Two of those losses are Donald's own examples of why: a
+magic-user memorising more spells than the destination title's own slots and
+a spell id outside the destination's own book are both **bugs** (#508, #509),
+not platform limits, and a modal reporting a bug instead of it getting fixed
+is the pattern this window is now kept narrow to stop, the same ruling
+`editor/convert.py`'s own docstring quotes -- *"the agents find a bug, and
+instead of fixing it, they want to write an excuse to the player and then
+they never fix it... We need it to be correct."*
+
+**`goldbox.dos_codec.NOT_SET_OUT` and `C64SaveReport.messages` stay,
+unshortened, in `goldbox/dos_codec.py`.** Removing this window's pane does not
+make either dead: `dos_codec.convert_save`'s own contract -- a never-set-out
+party is converted to the start of the story and `report.messages` says so --
+is pinned directly against real specimens in `tests/test_dosconvert.py` and
+`tests/test_curseconvert.py`, independent of any window, and `report.summary()`
+still puts the sentence in front of whoever runs a driven tool with
+`--report`. Only *this window's own display of it* is gone, the way
+`editor/convert.py`'s pane stopped drawing it on 2026-09-10 while the
+constant and the field it fills stayed exactly where they were.
 
 **`report.warnings` is not shown wholesale, and never has been** -- most of
 it is this project's own bookkeeping (a quest-flag byte count, a party's
@@ -82,6 +92,7 @@ from typing import Any
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QMessageBox,
     QWidget,
 )
 
@@ -142,11 +153,6 @@ DEFAULT_NAME = "PORSAVE{slot}.D64"
 #: module load (`DROPPED_HEADING = dosimport.DROPPED_HEADING`); deleting it
 #: here would break that import.
 DROPPED_HEADING = "Wish cannot currently convert these fields:"
-
-#: The heading over the pane, Donald's wording of 2026-09-06: *"how about
-#: 'Conversion Info'."*  It is in `dosimport.ui` and is here so a test can
-#: name it; the two must agree.
-PANE_HEADING = "Conversion Info"
 
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of
@@ -268,27 +274,18 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 
 def pane_text(report: dos_codec.Report) -> str:
     """The messages, then the losses, joined -- what `DosImportDialog`'s own
-    pane, below, has always shown, and what `editor/convert.py`'s pane used
-    to draw before that pane was removed outright, 2026-09-10.
+    pane drew, unfiltered, from 2026-09-06 until that pane was removed,
+    2026-09-14, and what `editor/convert.py`'s pane drew before that pane
+    was removed outright, 2026-09-10.
 
-    **Still called by `editor/convert.py`, for `report.dropped`'s own
-    logging below, even though nothing there reads the string it returns
-    any more.** Every field the conversion did not convert, in the words
-    `goldbox.dos_codec.DROPPED_PLAYER_TEXT` gives each, is the accounting a route
-    is judged perfect or not by, and it stays that: a test reads it and
-    every driven tool still prints it with `--report`. `editor/convert.py`'s
-    dialog has never shown it to a player; `_log` carries it to
-    `WISH_DEBUG`'s file instead, so a bug report can still say what a
-    conversion left behind.
-
-    `C64SaveReport.messages` and `C64SaveReport.losses` beyond a truncated
-    name are no longer shown by `editor/convert.py`'s own dialog at all,
-    `_rehearse_and_report` and `dosimport.log_unshown_losses` -- Donald,
-    2026-09-10, of two `losses` lines a player had been shown there:
-    *"the agents find a bug, and instead of fixing it, they want to write
-    an excuse to the player and then they never fix it... We need it to be
-    correct."* `DosImportDialog` predates that ruling and still shows both
-    halves unfiltered, in the pane this function's return value fills.
+    **No dialog reads the string this returns any more.** `editor/convert.py`
+    still calls this on every rehearsal, for `report.dropped`'s own logging
+    below -- the only way `report.dropped` reaches the debug log there
+    without duplicating this function's own logic -- and discards the
+    return value; `DosImportDialog` no longer calls it at all, since its own
+    `_attempt` logs `report.dropped` itself. What is left reading the return
+    value is `tests/test_dosimport.py`, pinning the join-and-blank-line logic
+    on its own.
     """
     if report.dropped:
         _log.info("Not converted: %s", "; ".join(report.dropped))
@@ -341,10 +338,8 @@ def log_unshown_losses(report: dos_codec.Report) -> None:
 class DosImportDialog(QDialog):
     """The folder, the slot, what the conversion did, and where it goes.
 
-    Every change to the slot re-runs `rehearse`, so the pane is never showing
-    the messages of a conversion other than the one the button would commit
-    -- and Convert is disabled unless there is a rehearsal behind it and a
-    path in front of it.
+    Every change to the slot re-runs `rehearse`, and Convert is disabled
+    unless there is a rehearsal behind it and a path in front of it.
 
     The bottom row is the destination, and it is why there is no Save As after
     this window any more: the file is named before Convert is pressed, so
@@ -353,6 +348,10 @@ class DosImportDialog(QDialog):
     `files` is the icon and `ANIMATE00`, already read: `editor/window.py`
     refuses the whole import before this window is built when they cannot be
     found, so by the time anything here runs they exist.
+
+    **Carries no pane, since 2026-09-14.** What a player is told is two
+    modals (`_maybe_warn`) -- ported from `editor/convert.py`'s own dialog,
+    which lost its pane the same way on 2026-09-10.
     """
 
     def __init__(self, folder: str | pathlib.Path, files: GameFiles,
@@ -382,8 +381,6 @@ class DosImportDialog(QDialog):
         self.slots.addItems(dos_codec.slots_available(self.folder))
         self.slots.currentTextChanged.connect(lambda _t: self._rehearse())
 
-        self.report_pane = self.ui.dos_report
-
         self.destination = self.ui.dos_destination
         self.destination.textEdited.connect(self._typed)
         self.destination.textChanged.connect(lambda _t: self._settle_button())
@@ -395,7 +392,29 @@ class DosImportDialog(QDialog):
         self.buttons.button(
             QDialogButtonBox.StandardButton.Ok).setText(BUTTON_CONVERT)
 
+        #: Set by `_attempt`. `(title, text)` for why Convert cannot go, or
+        #: `None` -- `editor/convert.py`'s own `_blocked`, ported rather than
+        #: reinvented.
+        self._blocked: tuple[str, str] | None = None
+        #: A name DOS's own fifteen-character field could not hold whole
+        #: (`name_warnings`), or `None` -- the one thing left in
+        #: `report.losses` a player is shown.
+        self._name_warning: str | None = None
+        #: What `_maybe_warn` last actually showed, so rehearsing again
+        #: after an unrelated change does not repeat an identical modal the
+        #: player has already read.
+        self._last_blocked_shown: tuple[str, str] | None = None
+        self._last_name_warning_shown: str | None = None
+        #: `False` through the constructor's own first `_rehearse()` below,
+        #: so building a `DosImportDialog` over a specimen already known to
+        #: refuse -- every such test in `tests/test_dosimport.py` -- never
+        #: has to expect a modal of its own. `True` from here on: a real
+        #: player only reaches this dialog after construction has already
+        #: run once.
+        self._interactive = False
+
         self._rehearse()
+        self._interactive = True
 
     # -- the parts ---------------------------------------------------------
 
@@ -443,28 +462,57 @@ class DosImportDialog(QDialog):
             self.destination.setText(path)
 
     def refuse(self, text: str) -> None:
-        """Put a failed write in the pane the messages are already shown in.
+        """Report a failed write with a modal, since this dialog no longer
+        carries a pane to put it in -- `editor/convert.py`'s own `refuse`,
+        ported rather than reinvented (2026-09-10 there, 2026-09-14 here).
 
         The window stays open on the path that did not work, which is the one
         thing the user has to change -- and it is a sentence rather than the
         traceback that reaches `wish/debuglog.py`.
         """
-        self.report_pane.setPlainText(text)
+        QMessageBox.critical(self, DIALOG_TITLE, text)
 
     # -- the rehearsal -----------------------------------------------------
 
     def _rehearse(self) -> None:
-        """Build the save in memory, and put what it did on screen.
+        """Build the save in memory, and set what to tell the player, if
+        anything.
 
         Failures are shown, not raised: a refusal reaches the user as its own
-        message while the log keeps the traceback, which is a sentence in the
-        pane rather than what looks like a broken menu item.
+        modal (`_maybe_warn`) while the log keeps the traceback.
         """
         self.conversion = None
-        text = self._attempt()
-        self.report_pane.setPlainText(text)
+        self._blocked = None
+        self._name_warning = None
+        self._attempt()
         self._suggest()
         self._settle_button()
+        self._maybe_warn()
+
+    def _maybe_warn(self) -> None:
+        """Tell the player the one or two things left to say, now that
+        `_rehearse` has no pane to draw a running status on: why the save
+        could not be read (`self._blocked`), or a name DOS's own field could
+        not hold whole (`self._name_warning`) -- `editor/convert.py`'s own
+        `_maybe_warn`, ported rather than reinvented.
+
+        Gated on `self._interactive`, so a slot the constructor's own first
+        rehearsal reads never pops a modal before the window is even shown.
+        Deduplicated against what was last actually shown, so rehearsing
+        again after an unrelated change -- typing in the destination box,
+        say -- does not repeat a modal the player has already read.
+        """
+        if not self._interactive:
+            return
+        if self._blocked != self._last_blocked_shown:
+            self._last_blocked_shown = self._blocked
+            if self._blocked is not None:
+                title, text = self._blocked
+                QMessageBox.critical(self, title, text)
+        if self._name_warning != self._last_name_warning_shown:
+            self._last_name_warning_shown = self._name_warning
+            if self._name_warning:
+                QMessageBox.warning(self, DIALOG_TITLE, self._name_warning)
 
     def _settle_button(self) -> None:
         """Convert is pressable when there is a conversion and somewhere to
@@ -473,13 +521,13 @@ class DosImportDialog(QDialog):
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
             self.conversion is not None and bool(self.target()))
 
-    def _attempt(self) -> str:
+    def _attempt(self) -> None:
         # No slot is not a state the user can reach: `import_dos_save` refuses
-        # a folder with no DOS save in it before this window is built. An
-        # empty pane rather than a sentence, because a sentence about a state
+        # a folder with no DOS save in it before this window is built. Nothing
+        # said rather than a sentence, because a sentence about a state
         # nobody can be in is a sentence nobody should have to read.
         if not self.slot:
-            return ""
+            return
         try:
             self.conversion = rehearse(self.folder, self.slot, self.files)
         except dos_codec.DosRecordError as exc:
@@ -489,16 +537,29 @@ class DosImportDialog(QDialog):
             # `dos_codec.CANNOT_CONVERT` for every other refusal (#176, #195).
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
-            return exc.player_message
+            self._blocked = (DIALOG_TITLE, exc.player_message)
+            return
         except Exception:
             # Anything `DosRecordError` does not cover is still not a
             # developer's traceback in front of a player (#195).
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
-            return dos_codec.CANNOT_CONVERT
-        # The same lines the pane shows, for whoever is debugging with
-        # `WISH_DEBUG` and no window in front of them.
+            self._blocked = (DIALOG_TITLE, dos_codec.CANNOT_CONVERT)
+            return
+        # For whoever is debugging with `WISH_DEBUG` and no window in front
+        # of them -- `report.messages` (never shown here, or anywhere, any
+        # more) is not repeated here, since nothing but `NOT_SET_OUT` has
+        # ever written to it and that sentence names no offset worth a log
+        # line of its own.
         for line in self.conversion.report.dropped:
             _log.debug("not converted, %s slot %s: %s",
                        self.folder, self.slot, line)
-        return pane_text(self.conversion.report)
+        # `report.losses` split in two, the same ruling `editor/convert.py`
+        # follows: a name DOS's own field could not hold whole is real and
+        # goes to the player; a magic-user memorising more spells than the
+        # destination title's own slots (#508) and a spell id outside the
+        # destination's own book (#509) are bugs, not platform limits, and
+        # go to the debug log instead (`log_unshown_losses`).
+        names = name_warnings(self.conversion.report)
+        self._name_warning = "\n".join(names) if names else None
+        log_unshown_losses(self.conversion.report)
