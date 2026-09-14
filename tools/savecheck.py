@@ -22,6 +22,10 @@ What it reads, in order:
 * each character's `VIEW` sheet, verbatim -- all of them with `--view` and no
   number, because the party panel is the selector and `Up`/`Down` on it is
   what reaches characters two to six (`#183`);
+* every `--walk` move, and whatever prompt it puts up;
+* with `--resave`, the game's own `ENCAMP > SAVE` writing the party back --
+  after the walk, so the disk it writes holds wherever `--walk` left the
+  party rather than where it arrived (`#543`);
 * the combat floor, when `--fight` is given, and the screen codes each party
   figure is drawn from -- which is the only place a converted combat icon is
   ever seen.
@@ -155,7 +159,17 @@ def answer_bars(sess, log: Log, answer: str = "NO", tries: int = 60,
             log.say(f"    the square is a boat landing: |{row.strip()}| -- "
                     f"nothing here answers it; pass --boat")
             return "boat"
-        if "PRESS" in row:
+        if S.MOVE_SUBBAR in row:
+            # A scripted crossing can leave row 24 on the dungeon's move
+            # sub-bar instead of the world bar (`walk_one`'s own docstring,
+            # `#545`).  `MOVE` is not a word on this row at all, so falling
+            # into the `PRESS`/`YES NO` checks below just spends the retry
+            # budget looking for text that was never going to appear;
+            # `leave_move` is what actually gets off it.
+            log.say(f"    the square left the move sub-bar up: "
+                    f"|{row.strip()}| -- leaving it")
+            sess.leave_move()
+        elif "PRESS" in row:
             sess.kbd.key("Return")
         elif "YES" in row and "NO" in row:
             log.say(f"    answering {answer} to |{row.strip()}|")
@@ -941,22 +955,6 @@ def run(args, log: Log) -> int:
                 log.say(f"  Only {len(read)} of the {len(named)} characters "
                         f"the panel lists had a sheet read")
 
-        if args.resave:
-            # The control `#185` wanted and nobody had: the **engine's** own
-            # save of the party now standing here.  `ENCAMP > SAVE` writes over
-            # the slot's copy of the disk -- never the player's -- so what
-            # comes out is the same party in the same place with every byte
-            # written by the game, which is the one thing a converted save
-            # cannot be compared against any other way.
-            ok = sess.save_game()
-            log.emit("resave", ok=ok, to=args.resave)
-            log.say(f"The game's own ENCAMP > SAVE wrote the party back: {ok}")
-            if ok:
-                S.copy_closed_disk(pathlib.Path(sess.save_disk),
-                                   pathlib.Path(args.resave))
-                log.say(f"The engine-written disk is at {args.resave}")
-            sess.settle(3)
-
         was = area(sess)
         log.say(f"the resident area is {was}")
         for move in args.walk:
@@ -986,6 +984,34 @@ def run(args, log: Log) -> int:
             if sess.in_combat():
                 log.say("  a random encounter started")
                 break
+
+        if args.resave:
+            # The control `#185` wanted and nobody had: the **engine's** own
+            # save of the party now standing here.  `ENCAMP > SAVE` writes over
+            # the slot's copy of the disk -- never the player's -- so what
+            # comes out is the same party in the same place with every byte
+            # written by the game, which is the one thing a converted save
+            # cannot be compared against any other way.  Below the walk loop,
+            # not above it (#543): the resave has to see whatever `--walk`
+            # did, or it writes back the party as it stood on arrival, before
+            # any of the walk's moves reached the game.
+            if sess.in_combat():
+                # The combat bar has no `ENCAMP` on it, so `select_bar` would
+                # otherwise spend its whole 30s timeout hunting a menu the
+                # walk's own encounter has taken off the screen.
+                log.emit("resave", ok=False, to=args.resave,
+                         reason="the walk ended in combat")
+                log.say("The walk ended in combat; ENCAMP > SAVE is not on "
+                        "the combat bar, so the resave is skipped")
+            else:
+                ok = sess.save_game()
+                log.emit("resave", ok=ok, to=args.resave)
+                log.say(f"The game's own ENCAMP > SAVE wrote the party back: {ok}")
+                if ok:
+                    S.copy_closed_disk(pathlib.Path(sess.save_disk),
+                                       pathlib.Path(args.resave))
+                    log.say(f"The engine-written disk is at {args.resave}")
+                sess.settle(3)
 
         if args.fight:
             steps = 0
@@ -1165,8 +1191,10 @@ def main(argv=None) -> int:
     p.add_argument("--budget", type=float, default=900.0,
                    help="seconds to give the fight")
     p.add_argument("--resave", default=None,
-                   help="After arriving, have the game's own ENCAMP > SAVE "
-                        "write the party back, and copy that disk here")
+                   help="After the walk, if any -- or after arriving, if "
+                        "--walk was not given -- have the game's own "
+                        "ENCAMP > SAVE write the party back, and copy that "
+                        "disk here")
     p.add_argument("--icon", action="store_true",
                    help="check the combat floor against the composed icon")
     p.add_argument("--answer", default="NO",

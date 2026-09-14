@@ -1858,6 +1858,15 @@ class Session:
     def save_game(self, to: str | None = None) -> bool:
         if to:
             self.save_disk = os.path.abspath(to)
+        s = self.screen()
+        if s is not None and s.contains(MOVE_SUBBAR):
+            # A resave asked for right after a walk that crossed an area
+            # boundary can find row 24 still on the dungeon's move sub-bar
+            # rather than the world bar.  `select_bar` must never be pointed
+            # at it -- `docs/70-driving-the-game.md:315` -- and would
+            # otherwise burn its whole 30s timeout hunting `ENCAMP` on a row
+            # that will never show it (`#545`).
+            self.leave_move()
         if not self.select_bar("ENCAMP"):
             return False
         self.settle(2)
