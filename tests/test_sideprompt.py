@@ -22,6 +22,8 @@ with a row 24 it can read perfectly well.
 
 from __future__ import annotations
 
+import os
+
 from conftest import load_tools_module
 
 S = load_tools_module("session")
@@ -115,8 +117,15 @@ def test_a_disk_prompt_still_counts_as_the_move_sub_bar_having_gone():
 def test_waiting_for_the_world_puts_the_disk_in_rather_than_pressing_return():
     """The run that failed: the prompt on the screen, and nothing attached."""
     sess = FakeSession([screen_of(SIDE_PROMPT), screen_of(WORLD_BAR)])
+    # `handle_prompt` builds this with `os.path.join(self.here, ...)`
+    # (#546 (tools/session.py's Session base class still builds disk/log
+    # paths with a hardcoded forward slash, the same bug Windows CI just
+    # caught in its subclasses)), which joins with `\` on Windows even
+    # though `self.here` already contains a `/` -- so the expectation has
+    # to be built the same way rather than as a hardcoded literal.
+    want = os.path.join(sess.here, "SIDE3.D64")
     assert sess.wait_for_world(timeout=5.0, interval=0.0) is True
-    assert sess.attaches == ["/slot/SIDE3.D64"]
+    assert sess.attaches == [want]
     assert sess.keys == ["space"]
     assert sess.kernal == [], "a Return at a disk prompt leaves the drive wrong"
 
@@ -134,8 +143,9 @@ def test_a_disk_prompt_off_row_24_is_still_answered():
     """The game asks in three wordings on two rows, and `combat_state` only
     ever sees row 24."""
     sess = FakeSession([screen_of("", {12: SIDE_PROMPT}), screen_of(WORLD_BAR)])
+    want = os.path.join(sess.here, "SIDE3.D64")
     assert sess.wait_for_world(timeout=5.0, interval=0.0) is True
-    assert sess.attaches == ["/slot/SIDE3.D64"]
+    assert sess.attaches == [want]
 
 
 def test_a_prompt_the_driver_cannot_read_is_not_answered_as_a_bar():

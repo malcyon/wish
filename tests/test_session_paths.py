@@ -197,7 +197,13 @@ def test_launch_builds_the_porlaunch_and_log_paths_with_os_path_join(
         return FakeProc()
 
     monkeypatch.setattr(session.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(session.os, "getpgid", lambda pid: pid)
+    # `os.getpgid` is POSIX-only and does not exist as an attribute on
+    # Windows, where `monkeypatch.setattr` would otherwise fail before
+    # `launch()` ever runs.  `raising=False` creates it for the duration of
+    # the test on a platform that lacks it, and overrides the real one where
+    # it exists -- the same behaviour either way, so `launch()`'s own
+    # unconditional call to it succeeds on both.
+    monkeypatch.setattr(session.os, "getpgid", lambda pid: pid, raising=False)
     monkeypatch.setattr(sess, "mon", lambda timeout=3.0: FakeMon())
 
     class FakeSocket:
