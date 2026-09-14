@@ -1187,12 +1187,12 @@ def fresh_folder(destination: str | pathlib.Path,
 #: dialog's own code path wrote, **at one named commit SHA**.
 #:
 #: Met 2026-09-14: all eighteen registered directions walked and resaved,
-#: `2ae11ba` (CI green). Nine were walked at that exact sha; the
-#: other nine were walked at two earlier shas in the same campaign
-#: (`65d4fe2`, `c0ffb9b`) and proven byte-identical to `2ae11ba` for
-#: conversion purposes -- no commit between them touches `goldbox/` or
-#: `editor/convert.py`, confirmed by hashing every `.py` file in both
-#: directories at all three shas and by a full byte-level manifest
+#: `2ae11ba` (CI green). Four were walked at that exact sha; the other
+#: fourteen were walked at two earlier shas in the same campaign
+#: (thirteen at `65d4fe2`, one at `c0ffb9b`) and proven byte-identical to
+#: `2ae11ba` for conversion purposes -- no commit between them touches
+#: `goldbox/` or `editor/convert.py`, confirmed by hashing every `.py`
+#: file in both directories at all three shas and by a full byte-level manifest
 #: comparison (204 conversions, 0 moved, 0 dropped, identical at all three
 #: shas), posted at
 #: https://github.com/malcyon/wish/issues/52#issuecomment-5671083253. All
