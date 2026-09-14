@@ -680,13 +680,13 @@ class Session:
         self.cmd_port = slot.cmd_port if slot is not None else CMD_PORT
         self.monflags = slot.monflags() if slot is not None else MONFLAGS
         self.display = display or (slot.display if slot is not None else DISPLAY)
-        self.disk = disk or f"{self.here}/SIDE1.D64"
+        self.disk = disk or os.path.join(self.here, "SIDE1.D64")
         self.kbd = Keyboard(self.display)
         self.text: socket.socket | None = None
         self.attached = self.disk
         # which image answers "insert your save game disk"; swappable so a run
         # can read one save and write another
-        self.save_disk = f"{self.here}/SIDE0.D64"
+        self.save_disk = os.path.join(self.here, "SIDE0.D64")
         self.side_prompts = 0
         self._last_prompt = 0.0
         # Why the last `walk_one` sent no key, or None when it sent one.  A
@@ -733,9 +733,9 @@ class Session:
         env = instance.launch_env(extra)
         os.makedirs(self.here, exist_ok=True)
         proc = subprocess.Popen(
-            [f"{TOOLS}/porlaunch.sh", self.disk],
+            [os.path.join(TOOLS, "porlaunch.sh"), self.disk],
             env=env,
-            stdout=open(f"{self.here}/vice.log", "wb"),
+            stdout=open(os.path.join(self.here, "vice.log"), "wb"),
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
@@ -828,7 +828,7 @@ class Session:
     def attach(self, path: str, unit: int = 8,
                settle: float | None = None) -> None:
         if str(path).isdigit():
-            path = f"{self.here}/SIDE{path}.D64"
+            path = os.path.join(self.here, f"SIDE{path}.D64")
         path = os.path.abspath(path)
         assert path.startswith(self.here), \
             f"refusing to attach outside {self.here}: {path}"
@@ -922,7 +922,7 @@ class Session:
         else:
             m = RE_GAME_SIDE.search(text)
             if m:
-                want = f"{self.here}/SIDE{m.group(1)}.D64"
+                want = os.path.join(self.here, f"SIDE{m.group(1)}.D64")
         if want is None:
             return False
         self._last_prompt = time.time()
@@ -2888,7 +2888,7 @@ def handle(sess: Session, line: str) -> bool:
         print(sess.begin_adventuring())
     elif cmd == "shot":
         print("ok" if sess.kbd.screenshot(
-            args[0] if args else f"{sess.here}/shot.png") else "failed")
+            args[0] if args else os.path.join(sess.here, "shot.png")) else "failed")
     else:
         print("unknown command", cmd)
     return True
