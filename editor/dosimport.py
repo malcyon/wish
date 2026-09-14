@@ -338,25 +338,6 @@ def log_unshown_losses(report: dos_codec.Report) -> None:
                   "; ".join(unshown))
 
 
-def dropped_text(report: dos_codec.Report) -> str:
-    """The losses, one to a line, under a heading -- or nothing at all.
-
-    **Not this window's.** `DosImportDialog` draws :func:`pane_text`, which
-    puts the same drop lines under the pane's own `Conversion Info` label
-    with no heading of their own; this is kept for `editor/convert.py`,
-    which still calls it, and goes when that dialog stops.
-
-    Empty when nothing was dropped (#338): the heading says something was
-    lost, and a heading over no lines told a player that with nothing to
-    back it up. A caller that puts more text after this one must not glue a
-    blank line onto an empty string either.
-    """
-    if not report.dropped:
-        return ""
-    return "\n".join([DROPPED_HEADING, ""]
-                     + [f"  {d}" for d in report.dropped])
-
-
 class DosImportDialog(QDialog):
     """The folder, the slot, what the conversion did, and where it goes.
 

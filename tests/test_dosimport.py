@@ -474,16 +474,6 @@ def test_the_pane_is_headed_conversion_info_and_is_half_the_height_it_was(
     dialog.close()
 
 
-def test_a_conversion_that_drops_nothing_gets_no_heading():
-    """#338 (The conversion pane says fields could not be converted and then
-    lists none): a heading over no lines told a player something was lost
-    with nothing to name, which is worse than saying nothing."""
-    from editor.dosimport import dropped_text
-    from goldbox.dos_codec import Report
-
-    assert dropped_text(Report()) == ""
-
-
 # --- the window -------------------------------------------------------------
 
 @needs_dos_saves
