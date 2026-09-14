@@ -142,7 +142,7 @@ the world -- go through it.
 | files calling `ANIMATE +$6` (body at `$CC44`) | 2: `LIBRARY`, `POOLRB` | **0** | **0** |
 | files calling `ANIMATE +$9` (head at `$CC44`) | 2: `LIBRARY`, `POOLRB` | **0** | **0** |
 | files calling `ANIMATE +$0`/`+$3`/`+$C` (the view window) | 4 / 6 / 2 | 5 / 4 / 3 | 3 / 3 / 2 |
-| the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same shape |
+| the sheet routine | `LIBRARY $4435`, menu `VIEW: ITEMS SPELLS TRADE DROP EXIT` | `LIBRARY $4600`, menu `ITEMS SPELLS TRADE DROP CURE HEAL EXIT` | present, same shape; measured bar `EXIT` alone for a character with nothing to list (GUY DE VALOIS, `work/issue52/walk-dostoc64-ssb/ssbcheck.jsonl`, `work/issue52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`) |
 | `LIBRARY` naming the save's `+$0FF` | yes, the `BPL` above | no | no |
 
 `tools/portraitdraw.py` prints that table off the player's own disks. It

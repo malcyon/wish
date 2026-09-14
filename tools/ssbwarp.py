@@ -263,6 +263,28 @@ class SSBSession(por.Session):
     #: title it is)`).
     game = c64_port.SECRET_OF_THE_SILVER_BLADES
 
+    def sheet_is_up(self, s) -> bool:
+        """Silver Blades' sheet bar has no `VIEW:` on it either.
+
+        Measured against GUY DE VALOIS, a level 8 paladin with nothing
+        readied, on 2026-09-14: the sheet bar reads `EXIT` alone, followed by
+        36 spaces and nothing else on the row --
+        `work/issue52/walk-amigatoc64-ssb/ssbcheck2/ssbcheck2.jsonl`
+        (`sheet_bar_probe`) and
+        `work/issue52/walk-dostoc64-ssb/ssbcheck.jsonl` (`sheet`, last line),
+        with a screenshot at `02-sheet-0.png` in the DOS-to-C64 walk
+        directory. The world bar on the same walk reads `MOVE VIEW CAST AREA
+        ENCAMP SEARCH LOOK`, `ENCAMP` spelled in full -- identical to
+        Curse's, so `CurseSession.sheet_is_up`'s own test transfers unchanged:
+        the world bar has no `EXIT` on it, the camp bar begins `ENCAMP:` and
+        is excluded by the second clause, and `EXIT` is the one word every
+        version of the sheet bar ends with. `tools/curserun.py`'s method is
+        not reused directly, so this driver does not gain a dependency on
+        Curse's.
+        """
+        row = s.row(24)
+        return "EXIT" in row and "ENCAMP" not in row
+
     def handle_prompt(self, s=None) -> bool:
         if time.time() - self._last_prompt < 2.0:
             return False
