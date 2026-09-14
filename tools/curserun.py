@@ -58,11 +58,12 @@ RE_CURSE_SIDE = re.compile(
 #: of Radiance draws, so it is `session.SAVE_PROMPT` ("SAVE GAME DISK"),
 #: imported rather than copied so the two cannot drift apart again. The
 #: party-menu loader draws a second, different prompt for the same disk:
-#: `INSERT CURSE SAVE DISK, PRESS A KEY`.  `CurseSession.save_game` does not
-#: rely on either -- its `wait_bar` presses through any row 24 carrying
-#: `PRESS`, `CONTINUE` or `MORE` -- so nothing today depends on this needle
-#: catching the camp wording; it is added for `handle_prompt` to stay
-#: correct on its own.
+#: `INSERT CURSE SAVE DISK, PRESS A KEY`.  `CurseSession.save_game`'s
+#: `wait_bar` calls `handle_prompt` on every poll before it falls back to a
+#: blind `PRESS`/`CONTINUE`/`MORE` key press, so it now recognises the camp
+#: wording through this needle too and attaches the save disk itself,
+#: rather than waiting for `save_game`'s own belt-and-brace attach lower
+#: down.
 LOADER_SAVE_PROMPT = "CURSE SAVE DISK"
 
 

@@ -1,12 +1,13 @@
 """Silver Blades and Curse each draw two different save-disk prompts (#539).
 
-`tools/ssbwarp.py`'s own `SAVE_PROMPT = "SAVE DISK"` was not a substring of
-either of Silver Blades' actual prompts -- `INSERT YOUR SAVE GAME DISK` from
-camp, or `INSERT BLADES SAVE DISK. PRESS A KEY.` from the party-menu loader --
-so `SSBSession.handle_prompt` never recognised a save-disk prompt at all, and
+`tools/ssbwarp.py`'s own `SAVE_PROMPT = "SAVE DISK"` is a substring of the
+party-menu loader's prompt, `INSERT BLADES SAVE DISK. PRESS A KEY.`, but not
+of camp's, `INSERT YOUR SAVE GAME DISK` -- so `SSBSession.handle_prompt`
+recognised the loader prompt fine and only missed the camp one, and
 `ENCAMP > SAVE` sat on the camp prompt forever. `tools/curserun.py` carried
-the same wrong constant for Curse, unnoticed because `CurseSession.save_game`
-has its own routine that does not depend on the needle.
+the same wrong constant for Curse, and `CurseSession.save_game`'s `wait_bar`
+calls `handle_prompt` on every poll, so the same narrower gap applied there
+too.
 
 Nothing here needs an emulator. `FakeSSBSession` and `FakeCurseSession`
 subclass the real drivers -- `tests/test_session_indoors.py`'s pattern of

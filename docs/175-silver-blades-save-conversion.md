@@ -263,8 +263,10 @@ from camp -- confirmed in the running game and at `SILVER-1.D64` offset
 prompt for the same disk, `INSERT BLADES SAVE DISK. PRESS A KEY.` (offset
 `0x23A21`), which a driven run answers wherever it needs to reattach the save
 disk to reload a party. `tools/ssbwarp.py`'s `SSBSession.handle_prompt` used
-to check for neither -- its own `SAVE_PROMPT = "SAVE DISK"` matched neither
-wording -- so a driven `ENCAMP > SAVE` sat on the camp prompt forever
+to check for only one of the two -- its own `SAVE_PROMPT = "SAVE DISK"` is a
+substring of the loader wording but not of camp's -- so it recognised the
+loader prompt fine and only missed the camp one, and a driven `ENCAMP > SAVE`
+sat on the camp prompt forever
 (`#539 (tools/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
 save-disk prompt, so ENCAMP > SAVE silently refuses)`). `save_disk_wanted`
 now checks both, and no driven run has ever put the loader's own wording on
