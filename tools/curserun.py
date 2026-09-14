@@ -53,11 +53,23 @@ SIDE_GLOBS = ("CURSE_?.D64", "CURSE?.D64", "*Disk?.d64")
 #: of Radiance's: the wording is not the same and the digit may be a letter.
 RE_CURSE_SIDE = re.compile(
     r"INSERT\s+(?:YOUR\s+)?(?:GAME\s+)?(?:DISK|SIDE)\s*#?\s*([1-9A-F])")
-#: What Curse draws when it wants the save disk.  Pool of Radiance says
-#: `INSERT YOUR SAVE GAME DISK`; Curse says `INSERT CURSE SAVE DISK, PRESS A
-#: KEY`, so `tools/session.py`'s needle never matches and every save-disk
-#: prompt in a Curse session goes unanswered.
-SAVE_PROMPT = "SAVE DISK"
+#: Curse draws two different save-disk prompts, the same split Silver Blades
+#: has (#539). Camp's is `INSERT YOUR SAVE GAME DISK`, the same wording Pool
+#: of Radiance draws, so it is `session.SAVE_PROMPT` ("SAVE GAME DISK"),
+#: imported rather than copied so the two cannot drift apart again. The
+#: party-menu loader draws a second, different prompt for the same disk:
+#: `INSERT CURSE SAVE DISK, PRESS A KEY`.  `CurseSession.save_game` does not
+#: rely on either -- its `wait_bar` presses through any row 24 carrying
+#: `PRESS`, `CONTINUE` or `MORE` -- so nothing today depends on this needle
+#: catching the camp wording; it is added for `handle_prompt` to stay
+#: correct on its own.
+LOADER_SAVE_PROMPT = "CURSE SAVE DISK"
+
+
+def save_disk_wanted(text: str) -> bool:
+    """Whether *text* is either of Curse's two save-disk prompts."""
+    return por.SAVE_PROMPT in text or LOADER_SAVE_PROMPT in text
+
 
 #: The release's start-up check names the character it wants, so the answer is
 #: read off the screen rather than written down here.
@@ -493,7 +505,7 @@ class CurseSession(por.Session):
             return False
         text = s.text()
         want = None
-        if SAVE_PROMPT in text:
+        if save_disk_wanted(text):
             want = self.save_disk
         else:
             m = RE_CURSE_SIDE.search(text)

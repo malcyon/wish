@@ -100,7 +100,6 @@ SIDE_GLOBS = ("SILVER-?.D64", "SILVER?.D64", "*Disk?.d64")
 #: nothing says the loader never prints one.
 RE_SSB_SIDE = re.compile(
     r"INSERT\s+(?:YOUR\s+)?(?:GAME\s+)?(?:DISK|SIDE)\s*#?\s*([1-6A-F])\b")
-SAVE_PROMPT = "SAVE DISK"
 
 
 def side_wanted(text: str) -> tuple[int | None, str]:
@@ -116,6 +115,24 @@ def side_wanted(text: str) -> tuple[int | None, str]:
     tok = m.group(1)
     side = int(tok) if tok.isdigit() else ord(tok) - ord("A") + 1
     return (side if 1 <= side <= 6 else None), m.group(0)
+
+
+#: Silver Blades draws two different save-disk prompts. Camp's -- `INSERT
+#: YOUR SAVE GAME DISK` -- is the same wording Pool of Radiance and Curse
+#: draw, so it is `session.SAVE_PROMPT` ("SAVE GAME DISK"), imported rather
+#: than copied so the two cannot drift apart again (#539, where
+#: `"SAVE DISK"` alone matched neither this nor that). The party-menu loader
+#: draws a second, different prompt for the same disk: `INSERT BLADES SAVE
+#: DISK. PRESS A KEY.`, confirmed at `SILVER-1.D64` offset `0x23A21` on all
+#: six sides. Neither wording is a substring of the other, so both are
+#: checked.
+LOADER_SAVE_PROMPT = "BLADES SAVE DISK"
+
+
+def save_disk_wanted(text: str) -> bool:
+    """Whether *text* is either of Silver Blades' two save-disk prompts."""
+    return por.SAVE_PROMPT in text or LOADER_SAVE_PROMPT in text
+
 
 #: A release check that names the character it wants, as Curse's does. Kept
 #: because it costs nothing and its absence is itself a finding.
@@ -294,7 +311,7 @@ class SSBSession(por.Session):
             return False
         text = s.text()
         want = None
-        if SAVE_PROMPT in text:
+        if save_disk_wanted(text):
             want = self.save_disk
         else:
             side, line = side_wanted(text)
@@ -560,7 +577,7 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
         if "ENCAMP" in text:
             return True
         if entered and stop_at_idle and not side_wanted(text)[1] \
-                and SAVE_PROMPT not in text:
+                and not save_disk_wanted(text):
             # Not while a disk prompt is up: that waits in `LIBRARY` too, at
             # its own loop rather than in the fetcher, and a warp made with
             # the drive half-way through a file is the one thing the PC guard

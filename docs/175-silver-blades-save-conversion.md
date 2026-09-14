@@ -254,6 +254,24 @@ The four saves are in the specimen tree as `ssb-d-engine-resave`,
 `ssb-d-converted-resave-walked` -- the first engine-written Silver Blades
 saves this project has had.
 
+**The driven route to that resave goes through `Session.save_game()`
+(`tools/session.py`), and it needs both of the game's save-disk prompts
+answered, not one.** `ENCAMP > SAVE` draws `INSERT YOUR SAVE GAME DISK` /
+`PRESS ANY KEY TO CONTINUE`, the same wording Pool of Radiance and Curse draw
+from camp -- confirmed in the running game and at `SILVER-1.D64` offset
+`0x2230F` on all six sides. The party-menu loader draws a second, different
+prompt for the same disk, `INSERT BLADES SAVE DISK. PRESS A KEY.` (offset
+`0x23A21`), which a driven run answers wherever it needs to reattach the save
+disk to reload a party. `tools/ssbwarp.py`'s `SSBSession.handle_prompt` used
+to check for neither -- its own `SAVE_PROMPT = "SAVE DISK"` matched neither
+wording -- so a driven `ENCAMP > SAVE` sat on the camp prompt forever
+(`#539 (tools/ssbwarp.py's SAVE_PROMPT does not match Silver Blades' actual
+save-disk prompt, so ENCAMP > SAVE silently refuses)`). `save_disk_wanted`
+now checks both, and no driven run has ever put the loader's own wording on
+screen -- every party load attaches the save disk before picking `LOAD SAVED
+GAME`, so which of the game's two paths would actually draw it is still
+unconfirmed.
+
 ## What is still wrong, and is not this page's to fix
 
 * **A converted Silver Blades human arrives with sixty feet of infravision.**

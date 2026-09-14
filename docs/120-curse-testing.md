@@ -302,7 +302,13 @@ side. Later side transitions have not been proven without that patch.
 **Curse asks for a disk in three wordings and Pool of Radiance's needle matches
 only one.** `INSERT SIDE # n, AND PRESS ANY KEY.`, `INSERT CURSE SAVE DISK,
 PRESS A KEY` from the party-formation menu, and `INSERT YOUR SAVE GAME DISK`
-from camp.
+from camp. `tools/curserun.py`'s `CurseSession.handle_prompt` now checks both
+save-disk wordings -- `session.SAVE_PROMPT` for the camp one and its own
+`LOADER_SAVE_PROMPT` for the party-menu one -- so the camp wording is
+recognised on its own, though nothing has yet driven a camp save through it:
+`CurseSession.save_game` still does its own thing and does not depend on this
+needle (`#539 (tools/ssbwarp.py's SAVE_PROMPT does not match Silver Blades'
+actual save-disk prompt, so ENCAMP > SAVE silently refuses)`).
 
 ### 3.3 The `ITEMS` screen takes Return and nothing else
 
