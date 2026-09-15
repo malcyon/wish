@@ -530,6 +530,80 @@ _CLERIC_CURSE = [(1, 0, 0, 0, 0), (2, 0, 0, 0, 0), (2, 1, 0, 0, 0),
                  (3, 2, 0, 0, 0), (3, 3, 1, 0, 0), (3, 3, 2, 0, 0),
                  (3, 3, 2, 1, 0), (3, 3, 3, 2, 0), (4, 4, 3, 2, 1),
                  (4, 4, 3, 3, 2)]
+
+# --- the two classes that borrow another's array, #548 -----------------------
+# Both rows below are **Curse's own slot builder**, `GAME.OVR:0x3AC81` in the
+# DOS build: it `FillChar`s the fifteen bytes at record `0x12D` and then, for
+# each class slot whose level is above zero, adds that class's table rows
+# cumulatively, one row a level.  The tables are *deltas* there; these are the
+# running totals, so they read the way `_CLERIC_CURSE` does and the way a
+# character sheet does.  `tests/test_cursespellslots.py::
+# test_the_four_delta_tables_are_the_games_own` reads all four back off the
+# player's own image and accumulates them, so a transcription slip here fails
+# rather than ships.
+#
+# The same read reproduces `_CLERIC_CURSE` (`DS:42BC`) and `_MAGIC_USER_CURSE`
+# (`DS:44AB`) row for row, for all ten cleric and all eleven magic-user levels
+# with no exceptions -- and those two were originally read off the C64's
+# `ECL65` payload `0x88D`, which stores the same table as totals rather than
+# deltas.  Two ports, two encodings, the same numbers: that is what makes it
+# safe to take the paladin's and the ranger's rows from DOS.
+
+#: The paladin's, `DS:43E5`, added from level 9 (`cmp [bp-2], 8 / jg`) into the
+#: **cleric** array at `record[0x12C + s]` -- he has no array of his own.
+#: Curse's paladin ceiling is 11, so this is the whole progression; the table
+#: itself continues `2 2 0 0 0` at 12, which is what Pools of Darkness' shipped
+#: GUY DE VALOIS, a paladin 12, holds in his cleric array.
+#:
+#: **CONFIRMED on both ports.** The C64 computes it arithmetically instead of
+#: reading a table -- `ECL65 $884B` is `LDA $7CCF` (the paladin class-level
+#: slot) / `LDX #$01` / `CMP #$09 / BCC` past it / `CMP #$0A / BCC` / `INX` /
+#: `CMP #$0B / BCC` / `INC $2BBC`, then `TXA / ADC $2BBB` -- and it lands on
+#: the same 1, 2, and 2 1.
+#:
+#: **A paladin gets no Wisdom bonus.** `GAME.OVR:0x3B2E6` is called from the
+#: cleric branch alone (`0x3AD4E`); the C64's `ECL65 $88F6` opens
+#: `LDA $7CCA / BEQ`, which is the cleric slot. So a paladin of 11 with
+#: Wisdom 18 holds `2 1 0 0 0`.
+_PALADIN_CURSE = [(0, 0, 0, 0, 0), (0, 0, 0, 0, 0), (0, 0, 0, 0, 0),
+                  (0, 0, 0, 0, 0), (0, 0, 0, 0, 0), (0, 0, 0, 0, 0),
+                  (0, 0, 0, 0, 0), (0, 0, 0, 0, 0), (1, 0, 0, 0, 0),
+                  (2, 0, 0, 0, 0), (2, 1, 0, 0, 0)]
+
+#: The ranger's, `DS:4448`, added from level 8 (`cmp [bp-2], 7 / jg`) -- and
+#: one class level fills **two** arrays, so each entry is
+#: `(druid run, magic-user run)`.  `GAME.OVR:0x3AEB4` adds the table's columns
+#: 1-3 into `record[0x131 + s]`, the druid array, and `0x3AEF5` adds columns
+#: 4-5 into `record[0x136 + s - 3]`, the first two levels of the magic-user
+#: array.  **The druid array is a ranger's, not a druid character's**: Curse
+#: has no druid class at all (`goldbox.classcode.CLASS_CODE_TABLE` gives class
+#: code 1 a zero bitmask, and the builder's class loop has no branch for it),
+#: which is what `goldbox.dos_port`'s `_DRUID_SLOT_NOTE` already says from six
+#: rangers in the two later titles.
+#:
+#: **The two ports disagree at ranger 11, and only there.** The C64's
+#: `ECL65 $8868` is `LDA $7CD0` (the ranger slot) / `CMP #$08 / BCC` past it /
+#: `INX` / `CMP #$09 / BCC` / `BEQ` / `INX` / `INY`, then `STX $2BC0` and
+#: `TYA / ADC $2BB6`: X is the druid first-level count and Y the magic-user
+#: one, and **Y never reaches 2**, so a C64 ranger 11 memorises one
+#: first-level magic-user spell where the DOS row below gives two.  AD&D 1st
+#: edition gives two, so the C64 is the odd one out.  The DOS numbers are what
+#: goes here because this table is only ever read to *write* a DOS-format
+#: record -- which the DOS engine then rebuilds from `DS:4448` on load anyway,
+#: and which is what an Amiga record is built from.
+_RANGER_CURSE = [
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 1
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 2
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 3
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 4
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 5
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 6
+    ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 7
+    ((1, 0, 0, 0, 0), (0, 0, 0, 0, 0)),          # 8
+    ((1, 0, 0, 0, 0), (1, 0, 0, 0, 0)),          # 9
+    ((2, 0, 0, 0, 0), (1, 0, 0, 0, 0)),          # 10
+    ((2, 0, 0, 0, 0), (2, 0, 0, 0, 0)),          # 11
+]
 # Bonus first-, second- and third-level cleric spells for high Wisdom. **The
 # game's, not AD&D's**: `goldbox.levels.wisdom_bonus_spells` implements `GEN
 # $10AD` and the shifts `$2108` puts it through, and the game's first-level
@@ -542,9 +616,16 @@ _CLERIC_CURSE = [(1, 0, 0, 0, 0), (2, 0, 0, 0, 0), (2, 1, 0, 0, 0),
 # the record reserves six spell levels and neither game has been seen to grant
 # it.
 
-_SLOTS = {
-    POOL_OF_RADIANCE.key: (_MAGIC_USER, _CLERIC),
-    CURSE_OF_THE_AZURE_BONDS.key: (_MAGIC_USER_CURSE, _CLERIC_CURSE),
+#: Per title, the rows tables keyed by the **class** that owns them -- not by
+#: the array they are written into, because a paladin's rows go in the cleric
+#: array and a ranger's in two arrays at once. Pool of Radiance has neither
+#: class, so it keeps exactly the two it always had.
+_SLOTS: dict[str, dict[str, list]] = {
+    POOL_OF_RADIANCE.key: {"magic-user": _MAGIC_USER, "cleric": _CLERIC},
+    CURSE_OF_THE_AZURE_BONDS.key: {"magic-user": _MAGIC_USER_CURSE,
+                                   "cleric": _CLERIC_CURSE,
+                                   "paladin": _PALADIN_CURSE,
+                                   "ranger": _RANGER_CURSE},
 }
 
 
@@ -621,10 +702,33 @@ def write_spellbook(record, ids, game=None) -> bool:
     return set_spellbook_raw(record, spellbook_bytes(ids, game))
 
 
+def _row_at(rows: list, level: int):
+    """One table's row for a class level, clamped to the table's own ends."""
+    return rows[max(1, min(int(level), len(rows))) - 1]
+
+
+def _accumulate(out: dict[str, tuple[int, ...]], school: str,
+                run) -> None:
+    """Add one class's run into an array, creating it if nothing filled it.
+
+    The engine's own arithmetic: `GAME.OVR:0x3AC81` clears the fifteen bytes
+    once and then walks all eight class slots **adding** each one's rows, so
+    two classes that reach the same array sum rather than one winning.
+    """
+    have = out.get(school)
+    if have is None:
+        out[school] = tuple(run)
+        return
+    width = max(len(have), len(run))
+    out[school] = tuple((have[i] if i < len(have) else 0)
+                        + (run[i] if i < len(run) else 0)
+                        for i in range(width))
+
+
 def capacity_by_class(class_levels: dict[str, int], wisdom: int,
                        game=None) -> dict[str, tuple[int, ...]]:
     """How many spells of each level the character may memorise, one row per
-    class at that class's own level.
+    **array** in the record, at each contributing class's own level.
 
     `capacity`, below, cannot answer this for a character split across two
     spell-casting classes: it takes one `level` for both, where Curse of the
@@ -635,6 +739,20 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
 
     A class absent from `class_levels`, or present at 0, gets no row -- the
     class is not held, the same as a bit `capacity` was not given.
+
+    **The key is the array, not the class**, because two of Curse's classes
+    have no array of their own: a paladin's slots go in the cleric array and
+    a ranger's in the druid array and the magic-user array at once. So a
+    paladin 9 comes back as `{"cleric": (1, 0, 0, 0, 0)}` and a ranger 9 as
+    `{"druid": ..., "magic-user": ...}`. `#548 (What do Curse's spell-slot
+    arrays hold for a paladin, a ranger or a druid, which nothing on this
+    machine can reach?)` has the read; there is no druid *class* in Curse, so
+    a `"druid"` class level contributes nothing.
+
+    The order below is the engine's own: the class loop walks slot 0, the
+    cleric, and applies the Wisdom bonus inside that branch, before it
+    reaches slot 3, the paladin. That is why a paladin's rows are added
+    *after* the bonus and so never receive it.
     """
     rows = _SLOTS.get(for_game(game).key)
     if rows is None:
@@ -643,23 +761,28 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
         # caller shows no number rather than another game's -- the same rule
         # `goldbox/c64_port.py` applies to a race table it does not have. Issue #31.
         return {}
-    magic_user, cleric = rows
     out: dict[str, tuple[int, ...]] = {}
     mu_level = int(class_levels.get("magic-user") or 0)
-    if mu_level:
-        level = max(1, min(mu_level, len(magic_user)))
-        out["magic-user"] = magic_user[level - 1]
+    if mu_level and "magic-user" in rows:
+        _accumulate(out, "magic-user", _row_at(rows["magic-user"], mu_level))
     cleric_level = int(class_levels.get("cleric") or 0)
-    if cleric_level:
-        level = max(1, min(cleric_level, len(cleric)))
-        row = cleric[level - 1]
+    if cleric_level and "cleric" in rows:
+        row = _row_at(rows["cleric"], cleric_level)
         bonus = levels.wisdom_bonus_spells(wisdom, game)
         # A Wisdom bonus only applies at a spell level the cleric can already
         # reach, so a level-1 cleric with WIS 16 gets three first-level spells
         # and no second-level ones.
-        out["cleric"] = tuple(
+        _accumulate(out, "cleric", tuple(
             base + (bonus[i] if base and i < len(bonus) else 0)
-            for i, base in enumerate(row))
+            for i, base in enumerate(row)))
+    paladin_level = int(class_levels.get("paladin") or 0)
+    if paladin_level and "paladin" in rows:
+        _accumulate(out, "cleric", _row_at(rows["paladin"], paladin_level))
+    ranger_level = int(class_levels.get("ranger") or 0)
+    if ranger_level and "ranger" in rows:
+        druid_run, magic_user_run = _row_at(rows["ranger"], ranger_level)
+        _accumulate(out, "druid", druid_run)
+        _accumulate(out, "magic-user", magic_user_run)
     return out
 
 

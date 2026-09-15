@@ -3344,12 +3344,15 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
        "class_levels": "from neutral levels, permuted to class numbers",
        "spells_castable_cleric": "from neutral spells_castable['cleric'], "
                                  "recomputed from the cleric level and "
-                                 "wisdom for a source port whose own C64 "
-                                 "engine never stores one -- Curse only "
-                                 "(#547)",
+                                 "wisdom -- and from the paladin level, "
+                                 "whose slots the engine adds into this same "
+                                 "array with no wisdom bonus -- for a source "
+                                 "port whose own C64 engine never stores one "
+                                 "-- Curse only (#547, #548)",
        "spells_castable_magic_user":
            "from neutral spells_castable['magic-user'], recomputed the "
-           "same way and for the same reason (#547)",
+           "same way and for the same reason, from the magic-user level and "
+           "from a ranger's level 9 and above (#547, #548)",
        "size": "from neutral size_small, plus one",
        "attack_forms": "from neutral attack_forms, as a block",
        "roster_tail": "from neutral roster_tail, as a block",
@@ -3415,7 +3418,11 @@ def write_targets(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
                         "the byte the engine keeps it in",
         "former_class_levels": "from neutral former_levels, permuted to "
                                "class numbers",
-        "spells_castable_druid": "from neutral spells_castable['druid']",
+        "spells_castable_druid":
+            "from neutral spells_castable['druid'], recomputed from a "
+            "ranger's level 8 and above for a source port whose own C64 "
+            "engine never stores one -- Curse has no druid class, so this "
+            "array is a ranger's druid spells (#548)",
     }
     out |= {name: f"zero: {why}" for name, why in WRITE_UNSOURCED_LATER}
     out |= {name: f"derived: {why}" for name, why in WRITE_DERIVED_LATER}
@@ -4053,9 +4060,25 @@ def write(char: NeutralCharacter,
     # records read hold the table row) and a DOS source's is the engine's
     # own, so both keep their own bytes.
     #
-    # No table exists for the druid array -- `_SLOTS` holds only the
-    # magic-user and cleric rows -- so it is always copied, which for a C64
-    # Curse source is the zeros the C64 never fills either (#548).
+    # **The paladin's and the ranger's arrays are recomputed too, since
+    # `#548 (What do Curse's spell-slot arrays hold for a paladin, a ranger
+    # or a druid, which nothing on this machine can reach?)`.** Neither class
+    # holds a cleric or a magic-user level, so before that both arrived with
+    # all three arrays zero -- which DOS repaired on load and the Amiga never
+    # did, leaving a converted paladin of 9 unable to memorise a spell for
+    # ever.  Curse's own slot builder, `GAME.OVR:0x3AC81`, adds a paladin's
+    # rows into the **cleric** array from level 9 and a ranger's into the
+    # **druid** array from 8 and the magic-user array from 9, and
+    # `goldbox.spells.capacity_by_class` now returns those arrays -- so the
+    # loop below writes them with no change, `"druid"` already being one of
+    # the three schools it walks.
+    #
+    # **There is no druid class in Curse**, so the druid array is never a
+    # druid character's: `goldbox.classcode.CLASS_CODE_TABLE` gives class
+    # code 1 a bitmask of zero and the builder's class loop has no branch for
+    # it.  A record whose source holds no ranger keeps the source's own bytes
+    # there, which for a C64 Curse source is the zeros the C64 never fills
+    # either.
     #
     # `w.get`, not `use`: `levels` and `wisdom` were already taken by the
     # `WRITE_DIRECT` copy loop above.

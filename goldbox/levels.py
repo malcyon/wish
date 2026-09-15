@@ -431,6 +431,17 @@ _SLOTS_MAGIC_USER = ((1,), (2,), (2, 1), (3, 2), (4, 2, 1), (4, 2, 2),
 _SLOTS_CLERIC = ((1,), (2,), (2, 1), (3, 2), (3, 3, 1), (3, 3, 2),
                  (3, 3, 2, 1), (3, 3, 3, 2), (4, 4, 3, 2, 1), (4, 4, 3, 3, 2))
 
+#: The paladin's cleric slots, from level 9. Curse's DOS slot builder,
+#: `GAME.OVR:0x3AC81`, reads them out of `DS:43E5` and **adds them into the
+#: cleric array** at record `0x12D` -- a paladin has no array of his own. The
+#: C64 computes the same three rows arithmetically rather than from a table
+#: (`ECL65 $884B`: `LDA $7CCF` for the paladin's class-level slot, then three
+#: compares against 9, 10 and 11), so both ports agree. `goldbox.spells.
+#: _PALADIN_CURSE` is the same progression written out to the record's full
+#: five columns, and `tests/test_cursespellslots.py` reads `DS:43E5` back off
+#: the player's own image (#548).
+_SLOTS_PALADIN = ((), (), (), (), (), (), (), (), (1,), (2,), (2, 1))
+
 #: `GEN` `$136E`, measured. Every value is the AD&D 1st edition number plus one
 #: -- 2001 to leave fighter 1 -- with two exceptions the disk is emphatic
 #: about: the ranger's first threshold is a bare 2250, and the fighter's
@@ -465,12 +476,25 @@ CURSE_THIEF = _progression(
 CURSE_FIGHTER = _progression(
     ceiling=12, experience=_XP_FIGHTER, thac0=_THAC0_FIGHTER,
     saves=_SAVES_FIGHTER, die=10, roll_to=9, flat=3, attacks=_ATTACKS_FIGHTER)
-# No spell table has been found for either. Curse does carry the ranger's
-# druid list -- spell ids 77-80 -- so the slots exist somewhere; they are not
-# in `ECL65` beside the other two, and an empty tuple is the honest answer.
+# **Both tables are found, and neither is in `ECL65`.** This comment used to
+# say no spell table existed for either class; what it should have said is
+# that neither is in `ECL65` beside the cleric's and the magic-user's, which
+# is where somebody had looked. They are in the DOS build, read out of
+# `GAME.OVR:0x3AC81`'s own delta tables -- the paladin's at `DS:43E5` and the
+# ranger's at `DS:4448` -- and the same read reproduces `_SLOTS_CLERIC` and
+# `_SLOTS_MAGIC_USER` row for row off `DS:42BC` and `DS:44AB`, which is the
+# corroboration that makes the other two safe to take from DOS (#548).
+#
+# **The ranger's stay empty here, and that is the field rather than the
+# reading.** `Level.spells` is one tuple and a ranger fills two arrays from
+# one class level: druid spells from 8 and magic-user spells from 9. Putting
+# either run in this field alone would say the other did not exist.
+# `goldbox.spells._RANGER_CURSE` carries the pair, and `goldbox.spells.
+# capacity_by_class` is what a caller wanting a ranger's slots asks.
 CURSE_PALADIN = _progression(
     ceiling=11, experience=_XP_PALADIN, thac0=_THAC0_FIGHTER,
-    saves=_SAVES_PALADIN, die=10, roll_to=9, flat=3, attacks=_ATTACKS_FIGHTER)
+    saves=_SAVES_PALADIN, die=10, roll_to=9, flat=3, attacks=_ATTACKS_FIGHTER,
+    spells=_SLOTS_PALADIN)
 CURSE_RANGER = _progression(
     ceiling=11, experience=_XP_RANGER, thac0=_THAC0_FIGHTER,
     saves=_SAVES_RANGER, die=8, roll_to=10, flat=2, attacks=_ATTACKS_RANGER)
