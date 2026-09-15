@@ -116,10 +116,12 @@ public comment is a channel in its own right.
 ## How to file and how to report
 
 **An agent writes** with `tools/wishagent.py` -- `create` to open an issue,
-`comment` to post a finding, `close` to close one. Not `gh issue create`, which
-would author it as Donald. Do not add the `AI` label by hand; the workflow owns
-it. **And it does not comment at all on a thread labelled `human`**, which is a
-conversation between Donald and somebody outside the project.
+`comment` to post a finding, `close` to close one, `edit` to correct a factual
+error in an issue's own title or body, always with a comment saying so in the
+same breath. Not `gh issue create` or `gh issue edit`, either of which would
+author the change as Donald. Do not add the `AI` label by hand; the workflow
+owns it. **And it does not comment at all on a thread labelled `human`**, which
+is a conversation between Donald and somebody outside the project.
 
 **An agent reads** with `tools/issueread.py N`, which
 `.claude/hooks/check-issue-reads.py` enforces by refusing the unfiltered form.

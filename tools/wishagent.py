@@ -7,6 +7,7 @@
     tools/wishagent.py comment N --body-file F
     tools/wishagent.py close   N [--comment-file F]
     tools/wishagent.py label   N [--add L]... [--remove L]...
+    tools/wishagent.py edit    N [--title T] [--body-file F] [--comment-file F]
     tools/wishagent.py edit-comment ID --body-file F
 
 An issue or comment filed by an agent should say so in its byline, and a
@@ -343,6 +344,36 @@ def close_issue(number, comment_text=None):
         raise ApiError(f"{status} closing #{number}: {_error_detail(raw)}", status)
 
 
+def edit_issue(number, title=None, body_text=None, comment_text=None):
+    """Correct an issue's own title and/or body -- `.claude/rules/issues.md`:
+    "Edit the description only to correct a factual error in it, and say in a
+    comment that you did."
+
+    Only the fields actually given go into the `PATCH` payload, so a
+    title-only correction leaves the body untouched and vice versa -- sending
+    both always would silently overwrite whichever one the caller did not
+    mean to touch.
+
+    `comment_text`, when given, is posted *after* the `PATCH` succeeds, the
+    opposite order from `close_issue`. A comment claiming a correction that
+    then failed would be a lie on a public tracker; a close whose comment
+    posts but whose state-change then fails just leaves a truthful comment on
+    an issue that is still open.
+    """
+    payload = {}
+    if title is not None:
+        payload["title"] = title
+    if body_text is not None:
+        payload["body"] = body_text
+    status, _headers, raw = _api_call("PATCH", _issues_path(number), body=payload)
+    if status >= 400:
+        raise ApiError(f"{status} editing #{number}: {_error_detail(raw)}", status)
+    result = json.loads(raw)["html_url"]
+    if comment_text:
+        comment_on_issue(number, comment_text)
+    return result
+
+
 def label_issue(number, add=(), remove=()):
     if add:
         status, _headers, raw = _api_call(
@@ -411,6 +442,12 @@ def build_parser():
     p_label.add_argument("--add", action="append", default=[], dest="add")
     p_label.add_argument("--remove", action="append", default=[], dest="remove")
 
+    p_edit_issue = sub.add_parser("edit")
+    p_edit_issue.add_argument("number", type=int)
+    p_edit_issue.add_argument("--title")
+    p_edit_issue.add_argument("--body-file")
+    p_edit_issue.add_argument("--comment-file")
+
     p_edit = sub.add_parser("edit-comment")
     p_edit.add_argument("id", type=int)
     p_edit.add_argument("--body-file", required=True)
@@ -419,7 +456,8 @@ def build_parser():
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     try:
         if args.command == "whoami":
             print(whoami())
@@ -440,6 +478,19 @@ def main(argv=None):
         elif args.command == "label":
             label_issue(args.number, args.add, args.remove)
             print(f"labelled #{args.number}")
+        elif args.command == "edit":
+            if args.title is None and args.body_file is None:
+                parser.error("edit needs --title, --body-file, or both")
+            body_text = (
+                _read_body_file(args.body_file) if args.body_file else None
+            )
+            comment_text = (
+                _read_body_file(args.comment_file) if args.comment_file else None
+            )
+            print(edit_issue(
+                args.number, title=args.title, body_text=body_text,
+                comment_text=comment_text,
+            ))
         elif args.command == "edit-comment":
             body_text = _read_body_file(args.body_file)
             print(edit_comment(args.id, body_text))

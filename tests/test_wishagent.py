@@ -147,6 +147,7 @@ def test_missing_key_is_refused_naming_the_path(monkeypatch, tmp_path):
         lambda: wishagent.comment_on_issue(1, "body"),
         lambda: wishagent.close_issue(1),
         lambda: wishagent.label_issue(1, add=["bug"]),
+        lambda: wishagent.edit_issue(1, title="t"),
     ],
 )
 def test_token_never_appears_in_output(capsys, monkeypatch, invoke):
@@ -160,6 +161,68 @@ def test_token_never_appears_in_output(capsys, monkeypatch, invoke):
     captured = capsys.readouterr()
     assert "sentinel-installation-token" not in captured.out
     assert "sentinel-installation-token" not in captured.err
+
+
+# ---------------------------------------------------------------------------
+# edit_issue sends only the fields it was given
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected_body",
+    [
+        ({"title": "corrected title"}, {"title": "corrected title"}),
+        ({"body_text": "corrected body"}, {"body": "corrected body"}),
+        (
+            {"title": "corrected title", "body_text": "corrected body"},
+            {"title": "corrected title", "body": "corrected body"},
+        ),
+    ],
+)
+def test_edit_sends_only_the_fields_it_was_given(monkeypatch, kwargs, expected_body):
+    """A version that always sent both fields would silently overwrite
+    whichever one the caller did not mean to touch -- the single-field cases
+    are the point of this test, not the two-field one."""
+    _prime_token_cache()
+    calls = _install_fake_transport(monkeypatch, (200, {"html_url": "http://example"}))
+
+    wishagent.edit_issue(1, **kwargs)
+
+    assert len(calls) == 1
+    method, url, _headers, body = calls[0]
+    assert method == "PATCH"
+    assert url.endswith("/issues/1")
+    assert body == expected_body
+
+
+def test_edit_without_a_field_is_a_usage_error(monkeypatch):
+    calls = _install_fake_transport(monkeypatch, (200, {"html_url": "http://example"}))
+
+    with pytest.raises(SystemExit) as excinfo:
+        wishagent.main(["edit", "1"])
+
+    assert excinfo.value.code == 2
+    assert calls == []
+
+
+def test_edit_posts_its_comment_after_the_patch(monkeypatch):
+    _prime_token_cache()
+    calls = _install_fake_transport(
+        monkeypatch,
+        [
+            (200, {"html_url": "http://example/issues/1"}),
+            (200, {"html_url": "http://example/issues/1#comment"}),
+        ],
+    )
+
+    wishagent.edit_issue(1, title="corrected title", comment_text="I corrected it.")
+
+    assert len(calls) == 2
+    method, url, _headers, _body = calls[0]
+    assert method == "PATCH"
+    assert url.endswith("/issues/1")
+    method, url, _headers, _body = calls[1]
+    assert method == "POST"
+    assert url.endswith("/issues/1/comments")
 
 
 # ---------------------------------------------------------------------------

@@ -49,6 +49,8 @@ REFUSED = [
     "gh issue create --title x --body-file /tmp/b",
     "gh issue close 470",
     "gh issue edit 470 --add-label AI",
+    "gh issue edit 470 --title x",
+    "gh issue edit 470 --body-file /tmp/b",
     # However the call is reached.
     "cd /tmp && gh issue comment 470 --body-file b",
     "(gh issue comment 470 --body-file b)",
@@ -135,6 +137,15 @@ def test_the_refusal_names_the_tool_and_a_runnable_line(capsys, monkeypatch):
     assert "tools/wishagent.py" in err
     assert "--body-file" in err
     assert "wish-agent[bot]" in err
+
+
+def test_the_refusal_names_the_edit_verb(capsys, monkeypatch):
+    """`gh issue edit` is refused, and the message must point somewhere that
+    can actually correct a title or a body -- `edit_issue()`'s own verb,
+    not one of the other three."""
+    assert run("gh issue edit 470 --title x", monkeypatch) == 2
+    err = capsys.readouterr().err
+    assert "wishagent.py edit" in err
 
 
 def test_a_non_bash_tool_is_ignored(monkeypatch):

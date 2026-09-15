@@ -16,7 +16,10 @@ is not the first line of the description, and nobody reads them as one.
 **Reply, never rewrite.** Progress goes in a comment (`gh issue comment N`).
 The description is what the author asked for, and editing it destroys the
 record of what was originally wanted. Edit the description only to correct a
-factual error in it, and say in a comment that you did.
+factual error in it, and say in a comment that you did -- `tools/wishagent.py
+edit N --title T --body-file F --comment-file F` makes the correction and
+posts that comment in the same call, after the edit succeeds rather than
+before, so a comment never claims a correction that failed to land.
 
 ## Citing an issue
 
@@ -146,6 +149,7 @@ anything filed with it says he wrote it.
     tools/wishagent.py create  --title T --body-file F --label L...
     tools/wishagent.py comment N --body-file F
     tools/wishagent.py close   N [--comment-file F]
+    tools/wishagent.py edit    N [--title T] [--body-file F] [--comment-file F]
 
 **Comments matter more than creation here**, because "Reply, never rewrite"
 makes the comment the unit of nearly all issue traffic: a session that files two
