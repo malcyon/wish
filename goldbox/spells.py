@@ -621,6 +621,48 @@ def write_spellbook(record, ids, game=None) -> bool:
     return set_spellbook_raw(record, spellbook_bytes(ids, game))
 
 
+def capacity_by_class(class_levels: dict[str, int], wisdom: int,
+                       game=None) -> dict[str, tuple[int, ...]]:
+    """How many spells of each level the character may memorise, one row per
+    class at that class's own level.
+
+    `capacity`, below, cannot answer this for a character split across two
+    spell-casting classes: it takes one `level` for both, where Curse of the
+    Azure Bonds' LEDERA, a fighter 4 / magic-user 4, needs her magic-user row
+    read at 4 rather than at her fighter level or some combined total. This
+    is the same table `capacity` reads, `_SLOTS[key]`, keyed by class name
+    instead of by bit mask.
+
+    A class absent from `class_levels`, or present at 0, gets no row -- the
+    class is not held, the same as a bit `capacity` was not given.
+    """
+    rows = _SLOTS.get(for_game(game).key)
+    if rows is None:
+        # Silver Blades' progression tables have not been read off its disks,
+        # and neither have the Krynn titles' or Gateway's. Nothing here, so a
+        # caller shows no number rather than another game's -- the same rule
+        # `goldbox/c64_port.py` applies to a race table it does not have. Issue #31.
+        return {}
+    magic_user, cleric = rows
+    out: dict[str, tuple[int, ...]] = {}
+    mu_level = int(class_levels.get("magic-user") or 0)
+    if mu_level:
+        level = max(1, min(mu_level, len(magic_user)))
+        out["magic-user"] = magic_user[level - 1]
+    cleric_level = int(class_levels.get("cleric") or 0)
+    if cleric_level:
+        level = max(1, min(cleric_level, len(cleric)))
+        row = cleric[level - 1]
+        bonus = levels.wisdom_bonus_spells(wisdom, game)
+        # A Wisdom bonus only applies at a spell level the cleric can already
+        # reach, so a level-1 cleric with WIS 16 gets three first-level spells
+        # and no second-level ones.
+        out["cleric"] = tuple(
+            base + (bonus[i] if base and i < len(bonus) else 0)
+            for i, base in enumerate(row))
+    return out
+
+
 def capacity(class_bits: int, level: int, wisdom: int,
              game=None) -> dict[str, tuple[int, ...]]:
     """How many spells of each level the character may memorise.
@@ -638,27 +680,13 @@ def capacity(class_bits: int, level: int, wisdom: int,
     reaches five, and the record has room for it.
 
     Returned per class, because a multi-class character memorises from each
-    list separately.
+    list separately. One `level` for both classes, unlike
+    :func:`capacity_by_class` -- this is Pool of Radiance's own single-class
+    shape, and a multi-class caller wants that function instead.
     """
-    rows = _SLOTS.get(for_game(game).key)
-    if rows is None:
-        # Silver Blades' progression tables have not been read off its disks,
-        # and neither have the Krynn titles' or Gateway's. Nothing here, so a
-        # caller shows no number rather than another game's -- the same rule
-        # `goldbox/c64_port.py` applies to a race table it does not have. Issue #31.
-        return {}
-    magic_user, cleric = rows
-    level = max(1, min(int(level or 1), len(magic_user)))
-    out: dict[str, tuple[int, ...]] = {}
+    class_levels: dict[str, int] = {}
     if class_bits & 1:
-        out["magic-user"] = magic_user[level - 1]
+        class_levels["magic-user"] = level or 1
     if class_bits & 2:
-        row = cleric[min(level, len(cleric)) - 1]
-        bonus = levels.wisdom_bonus_spells(wisdom, game)
-        # A Wisdom bonus only applies at a spell level the cleric can already
-        # reach, so a level-1 cleric with WIS 16 gets three first-level spells
-        # and no second-level ones.
-        out["cleric"] = tuple(
-            base + (bonus[i] if base and i < len(bonus) else 0)
-            for i, base in enumerate(row))
-    return out
+        class_levels["cleric"] = level or 1
+    return capacity_by_class(class_levels, wisdom, game)

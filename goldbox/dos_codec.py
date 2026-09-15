@@ -66,6 +66,7 @@ from . import (
     classcode,
     dos_savegame,
     neutral,
+    spells,
     titles,
     traits,
     world_state,
@@ -2745,15 +2746,21 @@ def write_absent(deltas: "int | str | DosDeltas" = POOL_OF_RADIANCE
 #:
 #: **`spells_castable` is not here and that is not an oversight.**  #307 named
 #: it as the second entry, and this writer composes no line for it: it is
-#: `use`\\ d on every path, so the closing sweep never sees it, and a neutral
-#: record with no `spells_castable` at all -- which is what a C64 Curse or
-#: Silver Blades source produces, `C64Deltas.spell_slots` being `False` for
-#: both -- writes zeroes and reports nothing.  `goldbox.c64_codec.
-#: NO_SPELL_SLOTS`, the `spells_castable` line on the DOS-to-C64 direction,
-#: went the same way for the same reason (#324): #192 step 3 and #193 step 3
-#: both watched the memorise screen enforce a ceiling nothing in the
-#: converted save wrote, so it is a note over the six bytes it leaves zero
-#: rather than a line in `report.dropped`.
+#: `use`\\ d on every path, so the closing sweep never sees it.  A neutral
+#: record from a C64 Curse or Silver Blades source does **not** arrive with
+#: no `spells_castable` at all -- `goldbox.c64_codec`'s reader unpacks the
+#: field off `0x0EE` unconditionally, for every title, off bytes neither
+#: engine ever writes, so it arrives holding three all-zero tuples per
+#: class, `C64Deltas.spell_slots` being `False` for both.  Curse's zeros are
+#: recomputed below (`_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, #547) rather than
+#: written as they stand, because `goldbox.spells.capacity_by_class`'s table
+#: reproduces every engine-written Curse array on this machine; Silver
+#: Blades has no such table (`_SLOTS` carries no row for it) and keeps its
+#: zeros.  `goldbox.c64_codec.NO_SPELL_SLOTS`, the `spells_castable` line on
+#: the DOS-to-C64 direction, went the same way for the same reason (#324):
+#: #192 step 3 and #193 step 3 both watched the memorise screen enforce a
+#: ceiling nothing in the converted save wrote, so it is a note over the six
+#: bytes it leaves zero rather than a line in `report.dropped`.
 WRITE_NO_SUCH_FIELD: tuple[tuple[str, str], ...] = (
     ("turn_power", "the DOS game works a cleric's turning strength out for "
                    "itself, from his own class and level, at the moment the "
@@ -3015,6 +3022,23 @@ _THIEF_SKILL_NAMES: frozenset[str] = frozenset(n for n, _ in _THIEF_SKILL_COLUMN
 #: stepping stone, so a broader gate would recompute an Amiga round trip
 #: too.  A port added to this set needs its own measurement first.
 _THIEF_SKILL_RECOMPUTE_FROM_PORTS = ("C64",)
+
+#: Ports `write` recomputes `spells_castable` for, rather than copying the
+#: source's own arrays -- see the comment above the block in `write` itself.
+#: `#547 (A C64-to-DOS Curse resave writes a thief's base skills and a
+#: mage's/cleric's spell slots wrong, silently repaired by the engine's own
+#: next load)` measured a C64 Curse source's array against the DOS engine's
+#: own `ENCAMP > SAVE` resave of the same party and found the C64 reader
+#: hands back all zeros for a title whose own `C64Deltas.spell_slots` is
+#: `False`, because `goldbox.c64_codec`'s reader packs the field
+#: unconditionally where its writer already honours the flag. An Amiga
+#: source's own array is real -- fifteen of fifteen Amiga Curse records this
+#: project has read hold the table row -- and a DOS source's is the engine's
+#: own, so both are copied unchanged; only the C64's means "this port never
+#: stored one." A port added to this set needs its own measurement first,
+#: the same as `_THAC0_RECOMPUTE_FROM_PORTS` and
+#: `_THIEF_SKILL_RECOMPUTE_FROM_PORTS`.
+_SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("C64",)
 
 
 #: Where a *port* keeps `attack_level` differently from the DOS engine of the
@@ -3318,9 +3342,14 @@ WRITE_TARGETS: dict[str, str] = {n: w for n, w in (
        "spells_memorised": "from neutral spells_memorised, reversed",
        "spellbook": "from neutral spells_known, one byte per id",
        "class_levels": "from neutral levels, permuted to class numbers",
-       "spells_castable_cleric": "from neutral spells_castable['cleric']",
+       "spells_castable_cleric": "from neutral spells_castable['cleric'], "
+                                 "recomputed from the cleric level and "
+                                 "wisdom for a source port whose own C64 "
+                                 "engine never stores one -- Curse only "
+                                 "(#547)",
        "spells_castable_magic_user":
-           "from neutral spells_castable['magic-user']",
+           "from neutral spells_castable['magic-user'], recomputed the "
+           "same way and for the same reason (#547)",
        "size": "from neutral size_small, plus one",
        "attack_forms": "from neutral attack_forms, as a block",
        "roster_tail": "from neutral roster_tail, as a block",
@@ -4001,6 +4030,37 @@ def write(char: NeutralCharacter,
     # Three levels of slots in Pool of Radiance, five in Curse and seven in
     # Silver Blades, and the druid's array only from Curse on.  A neutral
     # record that carries more levels than the destination keeps says so.
+    #
+    # **Recomputed rather than copied, for the one port measured to have
+    # nothing to copy.** `goldbox.c64_codec`'s reader unpacks
+    # `spells_castable` off the C64 record at `0x0EE` for every title, but
+    # Curse and Silver Blades never write those bytes -- `stores_spell_
+    # capacity` is `False` for both, and their own writer already honours
+    # that flag -- so a C64 source of either title reaches here holding all
+    # zeros, and a straight copy would write those zeros into DOS. `#547 (A
+    # C64-to-DOS Curse resave writes a thief's base skills and a mage's/
+    # cleric's spell slots wrong, silently repaired by the engine's own next
+    # load)` measured the DOS engine's own `ENCAMP > SAVE` resave of a
+    # converted Curse party and found `goldbox.spells.capacity_by_class`'s
+    # table reproduces it: 96 of 96 engine-written Curse `cleric` and
+    # `magic-user` arrays on this machine, from the class levels and wisdom
+    # alone. Gated to `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, the same shape as
+    # `_THAC0_RECOMPUTE_FROM_PORTS` and `_THIEF_SKILL_RECOMPUTE_FROM_PORTS`:
+    # an Amiga source's own array is real (fifteen of fifteen Amiga Curse
+    # records read hold the table row) and a DOS source's is the engine's
+    # own, so both keep their own bytes.
+    #
+    # No table exists for the druid array -- `_SLOTS` holds only the
+    # magic-user and cleric rows -- so it is always copied, which for a C64
+    # Curse source is the zeros the C64 never fills either (#548).
+    #
+    # `w.get`, not `use`: `levels` and `wisdom` were already taken by the
+    # `WRITE_DIRECT` copy loop above.
+    computed_slots = None
+    if (port in _SPELL_SLOT_RECOMPUTE_FROM_PORTS
+            and not level_tables.for_game(deltas.key).stores_spell_capacity):
+        computed_slots = spells.capacity_by_class(
+            w.get("levels", {}) or {}, w.get("wisdom", 0), deltas.key)
     castable = use("spells_castable")
     if castable is not None:
         for school, dos_name in (("cleric", "spells_castable_cleric"),
@@ -4020,13 +4080,20 @@ def write(char: NeutralCharacter,
                         f"record has no {school} spell-slot array.")
                 continue
             depth = table[dos_name].size
-            run = tuple(castable.value.get(school, ()))
+            if computed_slots is not None and school in computed_slots:
+                run = computed_slots[school]
+                extra = (f", recomputed from the {school} level and wisdom "
+                         f"through this title's own table: {port} {deltas.title} "
+                         f"never stores this array (#547)")
+            else:
+                run = tuple(castable.value.get(school, ()))
+                extra = f", the {school} run"
             if len(run) > depth and any(run[depth:]):
                 rep.warnings.append(
                     f"{port} carries {school} spell slots {len(run)} levels "
                     f"deep and {deltas.title} keeps {depth}; the rest dropped")
             run = (run + (0,) * depth)[:depth]
-            put(castable, dos_name, f", the {school} run",
+            put(castable, dos_name, extra,
                 value=bytes(min(int(n), 0xFF) for n in run))
 
     # -- size: neutral 0 small / 1 large, DOS 1 small / 2 medium -------------
