@@ -38,6 +38,8 @@ a port fixed one, that is said.
 | 11 | Every weapon in Tilverton's shop costs the same three platinum | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 | 12 | You can camp in the Slums for as long as you like and nothing ever finds you -- unless you have murdered the fortune teller | Pool of Radiance | script | CONFIRMED, in game |
 | 13 | Every thief gets another race's skill adjustments, and a halfling gets a penalty instead of a bonus | Secret of the Silver Blades | engine | CONFIRMED, in game |
+| 14 | A ranger who reaches level 11 can memorize only one first-level magic-user spell, where the DOS version of the same game offers two | Curse of the Azure Bonds | engine | CONFIRMED, in game |
+| 15 | A paladin who reaches level 11 carries a second-level cleric spell slot he can never fill | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 
 ---
 
@@ -678,3 +680,85 @@ order**, 40 bytes for 40, read out of its own `START.EXE` on 2026-09-08 with
 data is not what differs between the ports, and whether the DOS engine
 subtracts the one before indexing has not been read; a DOS thief record of a
 known race would settle it in one sweep.
+
+---
+
+## 14. A ranger who reaches level 11 can memorize only one first-level magic-user spell, half of what the DOS version offers
+
+**Confirmed by editing a level directly and reading the game's own screens --
+not from a save found in the wild.**
+
+**How a player ends up there.** A ranger climbs to level 11 -- reachable in
+ordinary play, since Curse's ranger ceiling is 11 -- and opens `ENCAMP ▸
+MAGIC ▸ MEMORIZE` to prepare spells for the day, the same screen every
+spellcaster in the party uses.
+
+**What the game does.** On the Commodore 64, that screen offers the ranger
+exactly one first-level magic-user spell to memorize: choosing a first one
+succeeds (`RANGER WILL MEMORIZE`), and choosing a second -- the same spell
+again, or a different one -- is refused (`RANGER CAN'T MEMORIZE`). On the DOS
+version of the same game, at the same level, the same screen reads `RANGER CAN
+MEMORIZE: ... MAGIC-USER SPELLS: 2` and lets him prepare two.
+
+**What it should do.** What the DOS version does, and what AD&D 1st edition's
+own rule for a ranger gives at level 11: two first-level magic-user spells, not
+one.
+
+**The evidence.** A ranger and a paladin were raised to level 11 by setting
+their level directly -- an input the game itself computes from, the same way
+raising a cleric's wisdom in Wish and driving the trainer is a valid
+experiment -- and then driven on both ports. On the Commodore 64: `RANGER WILL
+MEMORIZE` once, `RANGER CAN'T MEMORIZE` on a second attempt at the same spell
+and on a different one. Converted through Wish's own C64-to-DOS conversion and
+read the same way under DOSBox: `RANGER CAN MEMORIZE: ... MAGIC-USER SPELLS:
+2`, and a second spell is accepted where the C64 refused it.
+
+**What the player sees.** A ranger who has earned two spells' worth of arcane
+training on paper is only ever handed one at the table, on the Commodore 64
+alone.
+
+**Version.** Curse of the Azure Bonds, Commodore 64. DOS is unaffected.
+CONFIRMED, in game, on both builds.
+
+---
+
+## 15. A paladin who reaches level 11 carries a second-level cleric spell slot he can never fill
+
+**Confirmed by editing a level directly and reading the game's own screens --
+not from a save found in the wild.**
+
+**How a player ends up there.** A paladin climbs to level 11 -- reachable in
+ordinary play, since Curse's paladin ceiling is 11 -- and opens `ENCAMP ▸
+MAGIC ▸ MEMORIZE`.
+
+**What the game does.** On the Commodore 64, the screen counts down `SPELLS
+LEFT TO MEMORIZE: 0 1` once his two first-level slots are filled -- the second
+number, a genuine second-level cleric slot, never moves, because his
+spellbook never holds a single second-level cleric spell to put in it. Exiting
+to `PALADIN'S CHOSEN SPELLS` shows only a `1ST LEVEL` heading; no `2ND LEVEL`
+heading ever appears, on any paladin at any level, because nothing on the
+Commodore 64 ever grants him one. The DOS version of the same game grants him
+seven of them the moment he reaches level 11 -- the same screen there lists a
+full `2ND LEVEL` page (`FIND TRAPS`, `HOLD PERSON`, `RESIST FIRE`, `SILENCE,
+15' RADIUS`, `SLOW POISON`, `SNAKE CHARM`, `SPIRITUAL HAMMER`) beside the
+first-level one, `CLERIC SPELLS: 2 1`, and picking one of them succeeds.
+
+**What it should do.** What the DOS version does: grant the seven second-level
+cleric spells a paladin of that level has earned, the same way it already
+grants his eight first-level ones on both ports.
+
+**The evidence.** A paladin raised to level 11 the same way as entry 14's
+ranger -- his level set directly, an input, and the game driven from there --
+on both ports. Commodore 64: `SPELLS LEFT TO MEMORIZE: 0 1` after his first-level
+slots are spent, and no `2ND LEVEL` heading anywhere in his book. Converted
+through Wish's own C64-to-DOS conversion, with no further edit needed, and
+read the same way under DOSBox: the grimoire already lists ids 22-28 as a full
+`2ND LEVEL` section, `CLERIC SPELLS: 2 1`, and memorizing `SPIRITUAL HAMMER`
+succeeds, dropping the count to `2 0`.
+
+**What the player sees.** A paladin's sheet promises a second-level prayer and
+never lets him learn one, on the Commodore 64 alone -- a slot with nothing
+that will ever go in it.
+
+**Version.** Curse of the Azure Bonds, Commodore 64. DOS is unaffected.
+CONFIRMED, in game, on both builds.
