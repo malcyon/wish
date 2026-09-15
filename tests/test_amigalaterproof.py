@@ -151,6 +151,25 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
     `combat_figure` is the writer's own known gap; the other two are now on
     `LATER_WRITE_DERIVED`, so nothing but `combat_figure` should be left.
 
+    The reference specimen is `WISH-SPEC-coab-amiga-converted-resave-
+    postspellfix`, captured 2026-09-14 at commit `64eb99a` -- after `#547
+    (A C64-to-DOS Curse resave writes a thief's base skills and a mage's/
+    cleric's spell slots wrong, silently repaired by the engine's own next
+    load)`'s fix landed, which makes `write_later` compute real spell-slot
+    values instead of zeros for a Curse party.  The original specimen,
+    `WISH-SPEC-coab-amiga-converted-resave` (`#384`, captured 2026-09-07,
+    before the fix), still held the pre-fix zeros, so comparing today's
+    fixed "ours" against it reported the fix landing as a regression --
+    `#549 (The Amiga two-hop spell-slot proof's reference specimen predates
+    #547's fix, so it now reports the fix landing as a regression)`.  This
+    fresh specimen proves the round trip still holds with the corrected
+    values: PHILIPPE's `spells_castable_magic_user` (`4 2 1 0 0`), SHARA's
+    `spells_castable_cleric` (`5 5 2 0 0`) and LEDERA's
+    `spells_castable_magic_user` (`3 2 0 0 0`) all survive the Amiga
+    engine's own load-camp-save cycle unchanged -- the engine does not
+    recompute this field on load, which is why the pre-fix zeros were
+    permanent and why the fix matters more for Amiga than for DOS.
+
     `docs/203-a-converted-later-amiga-party-in-the-running-game.md`.
     """
     root = specimen_root()
@@ -159,9 +178,10 @@ def test_the_curse_engine_resave_leaves_only_combat_figure_outside_the_lists():
     source = (root / "coab-c64" /
               "WISH-SPEC-curse-52-dialog-converted-resave.D64")
     theirs_path = (root / "coab-amiga" /
-                   "WISH-SPEC-coab-amiga-converted-resave" / "savgamC.dat")
+                   "WISH-SPEC-coab-amiga-converted-resave-postspellfix" /
+                   "savgamC.dat")
     if not source.is_file() or not theirs_path.is_file():
-        pytest.skip("the #384/#402 specimens are not on this machine")
+        pytest.skip("the #384/#402/#549 specimens are not on this machine")
 
     amigalaterwrite = proof.amigalaterwrite
     built = amigalaterwrite.convert(amigalaterwrite.party_from(source))
