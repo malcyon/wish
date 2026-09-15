@@ -4042,9 +4042,12 @@ def write(char: NeutralCharacter,
     # cleric's spell slots wrong, silently repaired by the engine's own next
     # load)` measured the DOS engine's own `ENCAMP > SAVE` resave of a
     # converted Curse party and found `goldbox.spells.capacity_by_class`'s
-    # table reproduces it: 96 of 96 engine-written Curse `cleric` and
-    # `magic-user` arrays on this machine, from the class levels and wisdom
-    # alone. Gated to `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, the same shape as
+    # table reproduces it: on this machine, 16 of 18 engine-written Curse
+    # `cleric` arrays and 29 of 31 `magic-user` arrays, from the class
+    # levels and wisdom alone -- the four misses are this project's own
+    # pre-fix output sitting in the specimen tree, not the game's
+    # (`tests/test_cursespellslots.py`'s `COUNTS`). Gated to
+    # `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`, the same shape as
     # `_THAC0_RECOMPUTE_FROM_PORTS` and `_THIEF_SKILL_RECOMPUTE_FROM_PORTS`:
     # an Amiga source's own array is real (fifteen of fifteen Amiga Curse
     # records read hold the table row) and a DOS source's is the engine's
