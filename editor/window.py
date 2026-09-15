@@ -40,7 +40,7 @@ from goldbox.icons import load_icon_charset
 from goldbox.items import load_item_names, load_item_templates, load_item_types
 from goldbox.layout import FIELDS_BY_NAME
 from goldbox.savegame import store_save
-from goldbox.spells import capacity, load_spell_names
+from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
 from . import activeeffects, changes, files, inventory
@@ -1966,9 +1966,15 @@ class EditorBinding(QObject):
         if book is not None:
             memorised.set_known(book.known())
         game = self.party.game if self.party is not None else None
+        # `record` is the raw C64 `CharacterRecord` (`goldbox/record.py`), which
+        # has no neutral `"levels"` field -- so build the same class-name ->
+        # level dict `c64_codec.read()` builds for the neutral record
+        # (`c64_codec.py`'s own `LEVEL_FIELDS` table), directly off the raw
+        # per-class level fields it names.
+        class_levels = {name: record.get(field)
+                         for name, field in c64_codec.LEVEL_FIELDS.items()}
         memorised.set_capacity(
-            capacity(record.class_bits, record.get("level"),
-                     record.get("wisdom"), game),
+            capacity_by_class(class_levels, record.get("wisdom"), game),
             casts=bool(record.class_bits & caster_bits(game)))
 
     # -- items ------------------------------------------------------------

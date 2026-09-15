@@ -921,6 +921,35 @@ def test_the_capacity_is_shown_beside_the_memorised_list(editor):
     assert "cleric: L1 3/3" in memorised.capacity.text()
 
 
+def test_a_curse_paladin_above_ninth_level_shows_a_real_spell_capacity():
+    """#552. `goldbox.spells.capacity` only recognizes the magic-user and
+    cleric `class_bits`, so a paladin's `0x40` fell through and the pane
+    showed nothing; `capacity_by_class` (#548) reads the same table by class
+    name and knows paladin (whose row is added into the cleric array) and
+    ranger too.
+
+    MATHEW, on `WISH-SPEC-curse-trained-party`, is a paladin alone
+    (`class_bits` 0x40) at level 6 -- a paladin's first row in
+    `goldbox.spells._PALADIN_CURSE` does not fill in until level 9, past
+    anything this disk's own party reached, so the level is bumped in the
+    loaded record before reading the pane. This exercises our own display
+    code against a `levels` dict it is given, not a claim about what the
+    engine computes for a level the party never reached
+    (`.claude/rules/testing.md`'s provenance rule is about specimens, not
+    about this)."""
+    from editor.window import EditorBinding
+
+    path = _curse_trained_party_specimen()
+    editor = EditorBinding(make_root(), str(path))
+    mathew = editor.party.member(_row_named(editor.party, "MATHEW"))
+    assert mathew.record.get("class_bits") == 0x40
+    mathew.record.set("level_paladin", 9)
+    editor.roster.selectRow(_row_named(editor.party, "MARK"))
+    editor.roster.selectRow(_row_named(editor.party, "MATHEW"))
+    _book, memorised = editor._spell_widgets()
+    assert "cleric: L1 0/1" in memorised.capacity.text()
+
+
 @game_disks
 def test_editing_the_spellbook_reaches_the_disk(editor, save):
     from editor.window import EditorBinding
