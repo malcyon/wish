@@ -316,15 +316,31 @@ wisdom 15, 16 and 17 — so it is the one column and not the whole table.
 
 **The evidence.** The table's bytes and the three compares. ROLAND, wisdom 16,
 stores `50 50 20` at cleric 6, which is `3,3,2` plus `+2,+2,0` and agrees with
-both readings; no cleric on the player's disks has a wisdom of 12 or 13, which
-is why the shift has never been seen rather than computed.
+both readings; no cleric on the player's *C64* disks has a wisdom of 12 or 13,
+which is why the shift was computed off the table rather than seen.
+
+**The DOS build does not share it**, which is the measurement the paragraph
+above used to say nobody had (`#510 (Can a Pool of Radiance character memorise
+more than the 21 spells its DOS record allots?)`, 2026-09-15). Two records DOS Pool of
+Radiance's own CREATE NEW CHARACTER screens wrote under DOSBox, neither
+touched afterwards, are clerics of exactly those two wisdoms:
+`WISH-SPEC-human7`'s HUMAN7, a cleric 1 with wisdom 12, stores `1 0 0` — the
+class row and no bonus at all — and `WISH-SPEC-halfe8`'s HALFE8, a cleric 1
+with wisdom 13, stores `2 0 0`, one bonus spell. That is AD&D 1st edition
+exactly, and it is one point later than `$10AD` at both scores. The DOS table
+is six bytes at `START.EXE 0x00F6B0`, `01 02 02 02 02 02`, immediately in
+front of the cleric's five experience thresholds: wisdom 13 to 18, where the
+C64's covers 12 to 25. Every other cleric in the DOS corpus — 42 of 44 caster
+records — agrees with both builds, because 14 and up is where they stop
+differing.
 
 **What the player sees.** One extra first-level spell on the memorise screen,
 and no way to tell it is extra. Here rather than in the front-door file for
 that reason: it is CONFIRMED from the table and the compares, but what it costs
 a player is a spell they will assume they were owed.
 
-**Version.** Pool of Radiance, Commodore 64. CONFIRMED.
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED, and **CONFIRMED absent
+from the DOS build of the same game**.
 
 ---
 

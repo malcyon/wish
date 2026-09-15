@@ -143,11 +143,17 @@ HUMAN offers only CLERIC / FIGHTER / MAGIC-USER / THIEF. Real class values run
 beyond it: LARA SPELLSWORD has `char_class = 13`, a multi-class code (elf
 fighter/magic-user).
 
-**The full encoding is now known**, from the class table the 1989 BASIC editor
-displays, which agrees with all four multi-class codes we had already derived
-from the bitmask at `0x0EB`: 8 cleric/fighter, 9 cleric/fighter/magic-user,
-10 and 11 cleric/magic-user, 12 cleric/thief, 13 fighter/magic-user,
-14 fighter/thief, 15 fighter/magic-user/thief, 16 magic-user/thief. See
+**The full encoding is now known**, and from the game rather than from the 1989
+BASIC editor: DOS `START.EXE` keeps the eighteen class names as counted strings
+in code order from `0x00CF06`, and they agree with all four multi-class codes
+we had already derived from the bitmask at `0x0EB`: 8 cleric/fighter,
+9 cleric/fighter/magic-user, 10 **cleric/ranger**, 11 cleric/magic-user,
+12 cleric/thief, 13 fighter/magic-user, 14 fighter/thief,
+15 fighter/magic-user/thief, 16 magic-user/thief, 17 monster. **10 is not a
+second cleric/magic-user**, which this page said until 2026-09-15: it is the
+cleric/ranger, a combination Pool of Radiance implements no further than the
+name — `GEN $0E64` gives code 10 a race mask of zero, so no race is ever
+offered it, and its ability minimums at `GEN $0E75` are the ranger's. See
 `docs/20-character-record.md`. `class_bits` remains the field to prefer.
 
 ## Other tables spotted (not yet mapped in detail)

@@ -7285,15 +7285,85 @@ first zero byte **with no upper bound at all**, so an engine handed a
 twenty-second spell would write it into `0x02C`. Nothing was staged to make it
 do that; it is recorded because it says what SSI believed the ceiling was.
 
-**What is still open.** Whether a Pool of Radiance character can reach 22.
-Through the game's own slot tables (`goldbox.spells.capacity`) a human cleric at
-wisdom 18 tops out at 16 and a magic-user at 11, so no single-classed character
-comes near 21. A half-elf cleric/magic-user at that race's own limits — cleric
-5, magic-user 8, from the racial table at `GEN $1E60` — computes to 12 + 10 =
-22. Whether the game offers that combination, and whether its experience
-economy lets both halves reach their caps, is UNMEASURED, and is `#510 (Can a
-Pool of Radiance character memorise more than the 21 spells its DOS record
-allots?)`. It does not bear on the fix: 21 is what the engine allots.
+**Whether 22 can be reached, settled.** No, and the 22 was arithmetic on the
+wrong table. See the next section.
+
+## The twenty-second spell that cannot be memorised
+**Hypothesis.** A Pool of Radiance character can be offered 22 spells to
+memorise, one more than the DOS record's 21-byte list at `0x017` holds, so the
+truncation in `goldbox.dos_codec.write` is reachable. The arithmetic behind it:
+a half-elf cleric/magic-user at the racial table's own limits — cleric 5,
+magic-user 8, `GEN $1E60` — gets (3,3,1) + the wisdom-18 bonus (2,2,1) on the
+cleric side and (4,3,3) on the magic-user side. (`#510 (Can a Pool of Radiance
+character memorise more than the 21 spells its DOS record allots?)`.)
+
+**Method.** Two tables and no emulator. Read which class combinations creation
+offers each race, on both ports — `tools/classlegality.py` — and then read how
+far each half may be taken, from the engine rather than from the racial table
+alone.
+
+**Result.** REFUTED, and the ceiling is **20**.
+
+**Only a half-elf can hold cleric and magic-user levels at once.** The C64's
+`GEN $0E64` is seventeen bytes, one per class code, each a bitmask of the races
+that may take it (bit `race - 1`, the race read from `0x072`); code 11,
+cleric/magic-user, holds `$08`, the half-elf alone, and so does code 9,
+cleric/fighter/magic-user. The menu builder at `GEN $0A38` walks all seventeen
+codes (`CMP #$11`), drops a code whose race bit is clear, drops one whose six
+ability minima at `GEN $0E75` the character misses, and appends what survives.
+DOS keeps the other half of the same matrix as seven counted lists of class
+codes in race order at `START.EXE 0x00F44F`, and the two ports agree row for
+row, 37 entries over 7 races. The DOS lists also match the creation menus
+driven in the game for `docs/90-specimens.md`, in content **and in order**, 11
+of 11 for the half-elf.
+
+**And the racial table is not the ceiling.** `GEN $1E21` clamps twice: first
+against the class ceiling at `$1E5C` — `06 06 09 08`, magic-user 6, cleric 6,
+thief 9, fighter 8 — and only then against the racial limit `$24A0` fetches
+from `$1E60`. So a half-elf magic-user stops at **6**, not the 8 his race
+allows, and his cleric half stops at 5. `06 06 09 08` is the DOS build's too:
+each class's experience thresholds in `START.EXE` run out where that ceiling
+does — cleric five of them at `0x00F6B6` (1501 to 27501), magic-user five at
+`0x00F726` (2501 to 40001), fighter seven, thief eight — with five spell-slot
+rows beside each, levels 2 to 6.
+
+| build | cleric | magic-user | slots offered at wisdom 18 |
+|---|---|---|---|
+| half-elf cleric/magic-user, at both caps | 5 | 6 | (3,3,1)+(2,2,1) = 12, (4,2,2) = 8 — **20** |
+| half-elf cleric/fighter/magic-user | 5 | 6 | the same 20; the fighter adds nothing |
+| human or half-elf cleric | 6 | — | 13 |
+| elf, half-elf or human magic-user | — | 6 | 8 |
+
+Nothing else can reach both halves: Pool of Radiance has no dual-class
+command at all — no `CHANGE CLASS` string anywhere on either port, and `GEN`'s
+only `CHANGE` is the portrait menu's `CHANGE:`/`HEAD`/`BODY`/`KEEP` — so the
+creation menu is the only route to a second spell-casting class. The wisdom
+bonus cannot grow either: `GEN $10AD` holds 2 for every score from 13 to 25 and
+the second and third columns are gated at 15, 16 and 17, so (2,2,1) is the most
+any cleric gets, and a half-elf's wisdom maximum is 18 (`START.EXE 0x00F3E0`,
+sixteen bytes a race: half-elf STR 3/18, INT 4/18, WIS 3/18, DEX 6/18, CON
+6/18, CHA 3/18).
+
+**The corpus agrees as far as it reaches.** Over 44 distinct DOS Pool of
+Radiance caster records on this machine, the deepest capacity is WISHHEL's 17
+— a half-elf cleric 5 / fighter 4 / magic-user 4 with wisdom 18, storing
+`5 5 2` and `3 2 0`. Training his magic-user half from 4 to its ceiling of 6
+adds exactly the three the table predicts, which is the 20 above.
+
+**So the truncation is unreachable by any character the game can make**, and
+SSI's 21 is one byte clear of the game's own maximum rather than one short of
+it. What was *not* established: DOS's racial level limits were not found.
+Scans of `START.EXE` and `GAME.OVR` for the C64's rows and columns — the
+cleric column `8 7 7 5 0 4`, the magic-user column `0 11 0 8 0 0`, the fighter
+column `9 7 6 8 6 10`, and pre-clamped variants — came back empty at every
+stride from 1 to 40, in both directions. It does not change the answer: if DOS
+enforces no racial cleric limit, a half-elf cleric 6 / magic-user 6 reaches 21,
+which is the array exactly.
+
+**And one port difference fell out of the corpus check.** Our
+`levels.wisdom_bonus_spells` is the C64's table, which starts a point low, and
+the DOS build's does not — `docs/125-bug-notes.md` N13 has both, and the two
+engine-written records that measured it.
 
 ## The spellbook ceiling nobody could reach
 **Hypothesis.** A conversion can carry a spell id the destination title's book
