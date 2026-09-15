@@ -328,6 +328,50 @@ def test_saving_a_misidentified_curse_character_does_not_corrupt_the_abilities(
     assert record.get_raw("abilities_second") == abilities
 
 
+def test_saving_the_minority_titles_member_uses_its_own_title_not_the_partys(
+        tmp_path):
+    """The gap `code-reviewer` found in the test above: `_parked_disk` prefixes
+    every file the same title, so `party.game` and `member.game` were always
+    equal there and the write path could read `self._game()` -- the whole
+    party's fallback title -- without that ever being exercised.
+
+    Here the disk mixes a Pool of Radiance file with a Curse cleric's, so the
+    party as a whole falls back to Pool of Radiance (`detect_from_roster`
+    refuses to pick between two disagreeing titles) while SHARA's own file
+    still names Curse. Saving her memorised spells has to use *her* title,
+    not the party's whole-disk fallback, or the same corruption reaches the
+    one character on the disk whose title actually differs from the
+    party's."""
+    from editor.window import EditorBinding
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS, POOL_OF_RADIANCE
+    from goldbox.record import LOAD_ADDRESS
+
+    arden = _ability_record("ARDEN", class_bits=0x08)          # fighter
+    shara = _ability_record("SHARA", class_bits=0x02)          # cleric
+    shara.set_raw("spells_memorised", bytes([22, 22]) + bytes(67))
+    abilities = bytes([17, 12, 17, 17, 16, 17, 0])
+    shara.set_raw("abilities_second", abilities)
+
+    disk = _disk_of(tmp_path, (0x01, arden, LOAD_ADDRESS),
+                    (0x02, shara, 0x7C00))
+    editor = EditorBinding(make_root(), str(disk))
+    assert editor.party.game is POOL_OF_RADIANCE      # the whole-disk fallback
+    row = next(i for i, m in enumerate(editor.party.members)
+               if m.name == "SHARA")
+    assert editor.party.member(row).game is CURSE_OF_THE_AZURE_BONDS
+
+    editor.roster.selectRow(row)
+    _book, memorised = editor._spell_widgets()
+    assert memorised.ids() == [22, 22]      # not Pool of Radiance's 81-byte span
+
+    assert memorised.add_spell(22)
+    editor._edited()
+    assert "wrote" in editor.save(interactive=False)
+
+    record = editor.party.member(row).record
+    assert record.get_raw("abilities_second") == abilities
+
+
 # --- backups ----------------------------------------------------------------
 
 class FakeDisk:
