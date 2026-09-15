@@ -45,10 +45,18 @@ DISAGREE = {
 }
 
 #: How many records of each title reproduce from its own table, and how many
-#: do not.  Every miss is a magic-user, and every one of them is a record the
-#: rebuild loop has not run over since it was created, dual-classed or
-#: imported -- see `docs/135-levelling.md`.
-RECORDS = {POOL: (202, 0), CURSE: (77, 9), SSB: (72, 2)}
+#: do not.  Almost every miss sits on a `DISAGREE` cell whose table byte is
+#: below 40, the flat value every engine writes at creation
+#: (`test_nothing_clamps_the_field_and_creation_writes_a_flat_40`, below):
+#: the DOS engine's own load routine writes 40 back over the table's lower
+#: number for these classes and levels, confirmed 2026-09-14 by diffing a
+#: `C64ToDos` Curse resave (PHILIPPE, magic-user 5, written 39 from our own
+#: table) against the same record read back after `LOAD SAVED GAME` in the
+#: engine (40) -- `#318`'s own finding for Pool of Radiance, still open for
+#: Curse and Silver Blades because it holds here too.  The one exception is
+#: a record the rebuild loop has not run over since it was dual-classed --
+#: see `docs/135-levelling.md`.
+RECORDS = {POOL: (202, 0), CURSE: (77, 12), SSB: (72, 2)}
 
 
 def _located(title: str):
