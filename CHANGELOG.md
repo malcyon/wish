@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Convert now supports Curse of the Azure Bonds and Secret of the Silver Blades saves on the Amiga, in both directions; it previously refused both titles on that platform. ([#512](https://github.com/malcyon/wish/issues/512))
+
+### Changed
+
+- File ▸ Import is now File ▸ Convert…, converting a Pool of Radiance, Curse of the Azure Bonds or Secret of the Silver Blades save between any two of DOS, Commodore 64 and Amiga, instead of only from DOS to Commodore 64. ([#52](https://github.com/malcyon/wish/issues/52))
+
+### Fixed
+
+- A Secret of the Silver Blades save made before the party has set out now converts to the start of the story, instead of being refused. ([#535](https://github.com/malcyon/wish/issues/535))
+- A Curse of the Azure Bonds magic-user or cleric converted from Commodore 64 to DOS or Amiga now arrives able to memorise the right number of spells for its level, instead of none. ([#547](https://github.com/malcyon/wish/issues/547))
+
 ## [0.1.4] - 2026-09-13
 
 ### Added
