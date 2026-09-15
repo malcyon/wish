@@ -190,6 +190,144 @@ def test_a_prg_that_is_not_a_character_is_still_skipped(tmp_path):
     assert [m.name for m in party.members] == ["ARDEN"]
 
 
+def _ability_record(name: str, **fields) -> "CharacterRecord":
+    from goldbox.record import CharacterRecord
+    r = CharacterRecord.blank()
+    r.set("name", name)
+    for field in ("strength", "intelligence", "wisdom",
+                  "dexterity", "constitution", "charisma"):
+        r.set(field, 12)
+    for field, value in fields.items():
+        r.set(field, value)
+    return r
+
+
+def _disk_of(tmp_path, *entries) -> pathlib.Path:
+    """`entries` is `(prefix_byte, record, load_address)`, so a disk can mix
+    two titles' files -- `_parked_disk` above always writes Curse's prefix
+    and load address, which is not enough for #553's own tests."""
+    from gamedata import _disk_with
+    out = tmp_path / "MIXED.D64"
+    files = [(bytes([prefix]) + r.name.encode(), r.to_prg(address))
+             for prefix, r, address in entries]
+    out.write_bytes(_disk_with(files))
+    return out
+
+
+def test_a_curse_character_disk_names_a_paladin_and_a_former_class(tmp_path):
+    """A Curse character disk with no save game read Pool of Radiance's
+    tables: a paladin's class showed as the raw bits, `64`, and a
+    dual-classed character's former class was never drawn at all, because
+    Pool of Radiance's own `class_bit_names` has no paladin and
+    `C64Deltas.dual_class` is False for it (#553). MATHEW is a paladin alone;
+    PHILIPPE trained out of magic-user 6 into fighter."""
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+
+    mathew = _ability_record("MATHEW", class_bits=0x40)
+    philippe = _ability_record("PHILIPPE", class_bits=0x08,
+                                dual_class_slot=0, dual_class_level=6)
+    party = Party(str(_parked_disk(tmp_path, mathew, philippe)))
+    assert party.game is CURSE_OF_THE_AZURE_BONDS
+    by_name = {m.name: m for m in party.members}
+    assert by_name["MATHEW"].class_name == "paladin"
+    assert by_name["PHILIPPE"].class_name == "fighter (was magic-user 6)"
+
+
+def test_a_silver_blades_character_disk_is_identified_by_its_own_prefix(
+        tmp_path):
+    """`$05` in front of the filename, not `$02` -- the byte that separates
+    Curse from Silver Blades, which the load address alone cannot (#553)."""
+    from goldbox.c64_port import SECRET_OF_THE_SILVER_BLADES
+
+    guy = _ability_record("GUY", class_bits=0x40)     # paladin
+    disk = _disk_of(tmp_path, (0x05, guy, 0x7C00))
+    party = Party(str(disk))
+    assert party.game is SECRET_OF_THE_SILVER_BLADES
+    assert party.members[0].class_name == "paladin"
+
+
+def test_a_pool_of_radiance_character_disk_is_identified_by_its_own_prefix(
+        tmp_path):
+    """`$01`, at Pool of Radiance's own roster load address -- the third
+    prefix, so a disk parking one of its characters is not read as Curse's
+    default by accident."""
+    from goldbox.c64_port import POOL_OF_RADIANCE
+    from goldbox.record import LOAD_ADDRESS
+
+    arden = _ability_record("ARDEN")
+    disk = _disk_of(tmp_path, (0x01, arden, LOAD_ADDRESS))
+    party = Party(str(disk))
+    assert party.game is POOL_OF_RADIANCE
+
+
+def test_a_disk_with_no_character_files_is_still_pool_of_radiance(tmp_path):
+    """No save file and no prefixed character file names no title at all, so
+    the last resort stays Pool of Radiance -- there is nothing on such a disk
+    to misread, so no refusal is needed (#553)."""
+    from goldbox.c64_port import POOL_OF_RADIANCE
+
+    disk = _disk_of(tmp_path)
+    party = Party(str(disk))
+    assert party.game is POOL_OF_RADIANCE
+    assert not party.members
+
+
+def test_a_disk_mixing_two_titles_files_keeps_each_members_own_title(
+        tmp_path):
+    """`ADD CHARACTER TO PARTY` can put another title's file on a disk
+    (`ADD FROM: CURSE POOL HILLSFAR`). The party as a whole falls back to
+    Pool of Radiance -- the two files disagree, so there is no single answer
+    for the disk -- but each `Member` still reads its own file's title, which
+    is what keeps a Pool of Radiance fighter and a Curse paladin each showing
+    their own class rather than one of them showing the other's (#553)."""
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS, POOL_OF_RADIANCE
+    from goldbox.record import LOAD_ADDRESS
+
+    arden = _ability_record("ARDEN", class_bits=0x08)          # fighter
+    mathew = _ability_record("MATHEW", class_bits=0x40)        # paladin
+    disk = _disk_of(tmp_path, (0x01, arden, LOAD_ADDRESS),
+                    (0x02, mathew, 0x7C00))
+    party = Party(str(disk))
+    assert party.game is POOL_OF_RADIANCE          # the whole-disk fallback
+    by_name = {m.name: m for m in party.members}
+    assert by_name["ARDEN"].game is POOL_OF_RADIANCE
+    assert by_name["MATHEW"].game is CURSE_OF_THE_AZURE_BONDS
+    assert by_name["MATHEW"].class_name == "paladin"
+
+
+def test_saving_a_misidentified_curse_character_does_not_corrupt_the_abilities(
+        tmp_path):
+    """The write half of #553, and the reason its priority moved to High.
+
+    With the title misdetected as Pool of Radiance, the memorised-spell
+    widget was handed 81 bytes from 0x020 instead of Curse's 69, so a
+    cleric's own ability scores at 0x065 were shown as six extra prepared
+    spells. Saving after any edit repacked the list and moved zero bytes
+    into `abilities_second` -- the array Curse's own engine copies over the
+    scores the sheet draws. Detecting the title off the roster prefix keeps
+    the memorised span at 69 bytes, so an edit never reaches past it."""
+    from editor.window import EditorBinding
+    from goldbox.c64_port import CURSE_OF_THE_AZURE_BONDS
+
+    shara = _ability_record("SHARA", class_bits=0x02)          # cleric
+    shara.set_raw("spells_memorised", bytes([22, 22]) + bytes(67))
+    abilities = bytes([17, 12, 17, 17, 16, 17, 0])
+    shara.set_raw("abilities_second", abilities)
+
+    editor = EditorBinding(make_root(), str(_parked_disk(tmp_path, shara)))
+    assert editor.party.game is CURSE_OF_THE_AZURE_BONDS
+    editor.roster.selectRow(0)
+    _book, memorised = editor._spell_widgets()
+    assert memorised.ids() == [22, 22]
+
+    assert memorised.add_spell(22)
+    editor._edited()
+    assert "wrote" in editor.save(interactive=False)
+
+    record = editor.party.member(0).record
+    assert record.get_raw("abilities_second") == abilities
+
+
 # --- backups ----------------------------------------------------------------
 
 class FakeDisk:
@@ -993,7 +1131,8 @@ def test_an_untouched_spell_field_is_written_back_byte_for_byte(editor):
     # is the same idea: 81 slots in Pool of Radiance, which is three declared
     # fields and not the 69 `spells_memorised` covers on its own (#268).
     assert book.to_bytes() == editor._spellbook_raw(record)
-    assert memorised.to_bytes() == editor._memorised_raw(record)
+    assert memorised.to_bytes() == editor._memorised_raw(
+        record, editor.party.member(2).game)
     assert len(memorised.to_bytes()) == 81
 
 

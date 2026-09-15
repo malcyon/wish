@@ -89,6 +89,10 @@ DEFAULT = POOL_OF_RADIANCE
 BY_KEY = {g.key: g for g in GAMES}
 BY_SAVE_FILE = {g.save_file: g for g in GAMES}
 BY_TITLE = {g.title: g for g in GAMES}
+#: The reverse of `C64Container.roster_prefix`, for the three titles that have
+#: one measured. A disk's directory names a title this way when it carries no
+#: save game at all -- see `detect_from_roster`.
+BY_ROSTER_PREFIX = {g.roster_prefix: g for g in GAMES if g.roster_prefix is not None}
 
 
 def by_title(title: str | None) -> Game | None:
@@ -130,3 +134,40 @@ def detect(disk, default: Game | None = None) -> Game | None:
     """The title a D64 holds a save for, or `default`."""
     found = detect_from_names(e.name for e in disk.directory())
     return found if found is not None else default
+
+
+def title_of_roster_file(name) -> Game | None:
+    """The title whose prefix byte stands in front of this filename, or None.
+
+    `name` is a parked character's own directory name -- byte 0 is the prefix
+    `GEN` writes there, byte 1 on is the name itself.  Bytes and a `str` both
+    work, matching what `DirEntry.name` and `entry.name` already hand back
+    elsewhere in this file.
+    """
+    if isinstance(name, str):
+        if not name:
+            return None
+        key = ord(name[0])
+    else:
+        name = bytes(name)
+        if not name:
+            return None
+        key = name[0]
+    return BY_ROSTER_PREFIX.get(key)
+
+
+def detect_from_roster(disk) -> Game | None:
+    """The one title every parked character file on this disk names.
+
+    None when the disk carries none, and None when they disagree -- a
+    disagreement is `ADD CHARACTER TO PARTY` having reached across titles, not
+    a reason to guess one of them.  Matches on the filename alone, the same
+    test the engine's own `ADD FROM:` directory scan makes
+    (`docs/216-the-c64-name-table.md`), not on the file's contents.
+    """
+    found = {title_of_roster_file(e.name) for e in disk.directory()
+             if e.is_prg and not e.is_empty}
+    found.discard(None)
+    if len(found) == 1:
+        return next(iter(found))
+    return None

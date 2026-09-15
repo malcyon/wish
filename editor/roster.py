@@ -13,6 +13,11 @@ Which title a disk belongs to is detected from its directory and kept as
 `Party.game`; no filename is spelled out here any more. Pool of Radiance writes
 `SAVEDGAME0` plus `SAVEDGAME1`, Curse of the Azure Bonds writes `SAVEAZURE`
 alone, and `goldbox/c64_port.py` is the only place that knows the difference.
+
+A disk with no save file on it -- a roster disk -- names no title by its save
+file, so the title is read off the prefix byte in front of each parked
+character's own filename instead, and each `Member` keeps its own file's
+title rather than only the party's, for a disk that mixes two (#553).
 """
 
 from __future__ import annotations
@@ -198,8 +203,11 @@ class Party:
         """
         self.path = path
         self.disk = D64.open(path) if disk is None else disk
-        self.game = game or c64_port.detect(self.disk, c64_port.DEFAULT)
-        self.is_save = c64_port.detect(self.disk) is not None
+        detected = c64_port.detect(self.disk)
+        self.is_save = detected is not None
+        self.game = (game or detected
+                     or c64_port.detect_from_roster(self.disk)
+                     or c64_port.DEFAULT)
         self.save0: SaveGame0 | None = None
         self.save1: SaveGame1 | None = None
         self.members: list[Member] = []
@@ -270,9 +278,10 @@ class Party:
                 # filter working, not a fault.
                 _log.debug("%s is not a character record: %s", entry.name, exc)
                 continue
+            game = c64_port.title_of_roster_file(entry.name) or self.game
             self.members.append(
                 Member(i, record, record.name, source=entry.name,
-                       record_original=record.to_bytes(), game=self.game))
+                       record_original=record.to_bytes(), game=game))
 
     # -- what the window asks ---------------------------------------------
 
@@ -324,8 +333,11 @@ class Party:
         return len(self.members)
 
     def describe(self) -> str:
-        # A roster disk holds bare character files and names no title, so it is
-        # not labelled with one rather than guessed at.
+        # A roster disk's title comes from the prefix byte on its character
+        # files (`self.game`, via `c64_port.detect_from_roster`) rather than
+        # from a save file's name, but the string here stays untitled -- what
+        # this line should say once a roster disk can name its own title is
+        # Donald's wording to approve, not a change made in passing (#553).
         if not self.is_save:
             return f"roster disk, {len(self.members)} character(s)"
         return f"{self.game.title} save disk, {len(self.members)} character(s)"

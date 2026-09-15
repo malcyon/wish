@@ -1081,21 +1081,26 @@ class EditorBinding(QObject):
                 record.set_raw(name, chunk)
             at += size
 
-    def _memorised_raw(self, record) -> bytes:
-        """The memorised-spell list, as wide as the open title reads it.
+    def _memorised_raw(self, record, game) -> bytes:
+        """The memorised-spell list, as wide as `game` reads it.
 
         Not `record.get_raw("spells_memorised")`: the declared field is the 69
         bytes every measured title agrees about, and Pool of Radiance's own
         list is 81 from `0x020` while Silver Blades' is 74 from `0x01B`. A
         character with more than the declared width memorised lost the rest
         the moment the sheet was saved (#268).
-        """
-        return c64_codec.get_memorised(record, self._game())
 
-    def _set_memorised_raw(self, record, raw: bytes) -> None:
+        `game` is the *record's own* title, not necessarily the open party's:
+        a character-only disk can hold files from two titles, and reading
+        this span with the wrong one is what zeroed a Curse cleric's second
+        ability array (#553).
+        """
+        return c64_codec.get_memorised(record, game)
+
+    def _set_memorised_raw(self, record, raw: bytes, game) -> None:
         """The inverse, over the same span, and only when it moved."""
-        if raw != c64_codec.get_memorised(record, self._game()):
-            c64_codec.set_memorised(record, raw, self._game())
+        if raw != c64_codec.get_memorised(record, game):
+            c64_codec.set_memorised(record, raw, game)
 
     def _game(self):
         """The open title, or None before a save is open."""
@@ -1776,7 +1781,7 @@ class EditorBinding(QObject):
                 elif isinstance(w, SpellbookEditor):
                     self._set_spellbook_raw(record, w.to_bytes())
                 elif isinstance(w, MemorisedEditor):
-                    self._set_memorised_raw(record, w.to_bytes())
+                    self._set_memorised_raw(record, w.to_bytes(), member.game)
                 elif isinstance(w, SpellEditor):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
@@ -1881,7 +1886,7 @@ class EditorBinding(QObject):
                 if isinstance(w, SpellbookEditor):
                     w.set_bytes(self._spellbook_raw(record))
                 elif isinstance(w, MemorisedEditor):
-                    w.set_bytes(self._memorised_raw(record))
+                    w.set_bytes(self._memorised_raw(record, member.game))
                 else:
                     w.set_bytes(record.get_raw(name))
                 if hasattr(w, "codes"):

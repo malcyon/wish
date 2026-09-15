@@ -57,6 +57,13 @@ prefix byte the directory scan filters on. That is the same mechanism
 `docs/116-second-game.md` §4 describes for importing a Pool of Radiance
 character into Curse.
 
+`C64Container.roster_prefix` is where the program now keeps that byte
+(`#553 (A Curse or Silver Blades character disk is read with Pool of
+Radiance's tables, so a paladin's class shows as 64 and a dual-classed
+character's former class disappears)`): a save disk with no save game on it
+names its title by this byte on each parked character's own file, since it
+has no save file to read a title off at all.
+
 ## What was measured, and where
 
 **CONFIRMED in the running game**, VICE pool slot 0, 2026-09-08,

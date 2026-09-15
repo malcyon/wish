@@ -69,14 +69,22 @@ def test_gen_touches_the_table_in_six_places_and_no_others(title):
 
 
 @pytest.mark.parametrize("title,want", [("curse-of-the-azure-bonds", 0x02),
-                                        ("secret-of-the-silver-blades", 0x05)])
+                                        ("secret-of-the-silver-blades", 0x05),
+                                        ("pool-of-radiance", 0x01)])
 def test_the_filename_prefix_comes_off_the_scratch_template(title, want):
     """`S0:` and then the byte `GEN` puts in front of a character's name.
 
     `GEN` carries a second `S0:` -- `S0:SAVEDBASH`, the save file's own
     scratch -- and taking the first match reads `$53`, the `S` of `SAVEDBASH`.
+
+    Cross-checked against `C64Container.roster_prefix` (#553), so the table
+    read out of the game and the one the editor reads a roster disk with
+    cannot drift apart.
     """
-    assert nt.prefix(gen_for(title)) == want
+    from goldbox import c64_port
+    got = nt.prefix(gen_for(title))
+    assert got == want
+    assert c64_port.by_key(title).roster_prefix == got
 
 
 def test_pool_of_radiance_has_no_such_table():

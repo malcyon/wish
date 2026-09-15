@@ -205,6 +205,15 @@ class C64Container:
     roster_offset: int = 0
     disk_glob: str = "*.[dD]64"
 
+    #: The byte `GEN` puts in front of a character's name to make the
+    #: filename of a parked character's own file: `0x01` Pool of Radiance,
+    #: `0x02` Curse of the Azure Bonds, `0x05` Secret of the Silver Blades,
+    #: all three CONFIRMED in `docs/216-the-c64-name-table.md`.  None for a
+    #: title nobody has read it off -- Champions of Krynn, Death Knights of
+    #: Krynn and Gateway to the Savage Frontier -- and None means "we do not
+    #: know", not "there is no such byte".
+    roster_prefix: int | None = None
+
     #: The title whose C64 release this is -- the rules, apart from any
     #: machine.  `races` and `class_bits` below are its own tuples, passed in
     #: rather than read through so that `dataclasses.replace(row, races=None)`
@@ -542,6 +551,7 @@ POOL_OF_RADIANCE = C64Container(
     roster_load_address=0x8300,
     roster_size=0x0800,
     disk_glob="POOL*.[dD]64",
+    roster_prefix=0x01,
     races=RACES_FORGOTTEN_REALMS,
     class_bits=CLASS_BITS_CLASSIC,
     item_names_load_address=NAMES_LOAD_ADDRESS_POOL,
@@ -586,6 +596,7 @@ CURSE_OF_THE_AZURE_BONDS = C64Container(
     save_load_address=0x4B00,
     save_size=0x1D00,
     disk_glob="CURSE*.[dD]64",
+    roster_prefix=0x02,
     races=RACES_CURSE,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
@@ -698,6 +709,7 @@ SECRET_OF_THE_SILVER_BLADES = C64Container(
     save_load_address=0x4B00,
     save_size=0x1D00,
     disk_glob="SILVER*.[dD]64",
+    roster_prefix=0x05,
     races=RACES_SILVER_BLADES,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
