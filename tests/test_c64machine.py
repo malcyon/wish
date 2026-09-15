@@ -30,7 +30,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from automap import actions, c64  # noqa: E402
+from automap import actions, c64, combat  # noqa: E402
 from automap.target import MemoryTarget  # noqa: E402
 from goldbox import c64_port, c64_save, titles  # noqa: E402
 
@@ -180,6 +180,31 @@ def test_a_key_nobody_knows_raises_rather_than_answering_pool_of_radiance():
     """The refusal `#460` is about, one class over: no silent fallback."""
     with pytest.raises(KeyError):
         c64.machine_for("pools-of-darkness")
+
+
+# --- agreement with `automap.combat.CombatMemory` ---------------------------
+
+@pytest.mark.parametrize("key", MEASURED)
+def test_the_machine_agrees_with_combatmemory_on_the_four_fields_both_know(key):
+    """`C64Machine` and `automap.combat.CombatMemory` are two tables built for
+    two different tickets (`#470` and `#39 (Combat view and combat log for
+    Curse and Silver Blades)`) and they happen to carry four of the same
+    facts -- the mode flag, the roster, the save's load address and the record
+    slots. Nothing before this pinned that they agree, so an edit to one could
+    silently diverge from the other and neither test would notice.
+
+    This does not argue for unifying the two tables: `CombatMemory` refuses
+    on the three titles `C64Machine` still measures for
+    (`memory_for` returns None for them), and folding them together would need
+    that refusal rebuilt for titles nobody has run a fight on, for no
+    behaviour a player would see.
+    """
+    machine = c64.MACHINES[key]
+    where = combat.BY_KEY[key]
+    assert where.mode == machine.mode_flag, key
+    assert where.roster == machine.roster_base, key
+    assert where.save_head == machine.save_load_address, key
+    assert where.records == machine.slot_area_base, key
 
 
 def test_a_game_outside_the_registry_keeps_its_own_geometry():

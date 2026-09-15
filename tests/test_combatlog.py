@@ -10,11 +10,12 @@ see the numbered list at the end of `docs/110-combat-log.md`.
 
 import pytest
 
-from automap import combatlog, rolls
+from automap import combat, combatlog, rolls
 from automap import window as window_module
 from automap.combatlog import CombatLog, message, parse
 from automap.screen import SCREEN_COLS, band
 from automap.target import MemoryTarget
+from goldbox import c64_port
 
 SCREEN = 0xCC00
 LEFT, RIGHT, TOP, BOTTOM = combatlog.COMBAT_WINDOW
@@ -457,6 +458,92 @@ def warnings_in(window) -> list[str]:
             if COMBAT_TOO_FAST in line]
 
 
+# --- the live window, threaded through to Curse's own addresses (#39) -------
+#
+# Everything above proves `CombatLog.poll(game=...)` in isolation. This is the
+# one level up: `AutomapBinding.poll_battle` and `.poll_combat_log` are the
+# window's own live loop, and until they pass `self.mapper.game` through, a
+# Curse-titled window standing on a Curse-shaped combat floor found no fight
+# and logged nothing at all -- Pool of Radiance's `$6E11`/`$49FC` regardless of
+# what `self.mapper.game` said.
+
+def curse_arena_with_screen(rows, delay: int = 2) -> MemoryTarget:
+    """`arena_with_screen`, laid out the way a running Curse holds a fight.
+
+    `later_arena` (`tests/test_latercombat.py`) supplies the combat view's
+    half -- the mode byte, the map, the roster, the positions, the initiative
+    table and the save head, all at Curse's addresses. The message panel's
+    mode, delay and screen bytes are added here, the same way `arena_with_
+    screen` adds `machine()`'s to `synthetic_arena`'s.
+    """
+    from test_latercombat import later_arena
+    where = combat.BY_KEY[CURSE.key]
+    memory = dict(later_arena())
+    memory[where.delay] = bytes([delay])
+    memory[0xD011] = bytes([0x1B])
+    memory[0xD018] = b"\x34"                       # screen page 3 of the bank...
+    memory[0xDD00] = b"\x00"                       # ...and bank 3, so $CC00
+    memory[combatlog.WINDOW] = bytes(
+        [LEFT, RIGHT, combatlog.MESSAGE_TOP, BOTTOM])
+    memory[combatlog.CURSOR] = bytes([LEFT, combatlog.MESSAGE_TOP])
+    memory[SCREEN + combatlog.MESSAGE_TOP * SCREEN_COLS] = painted(rows)
+    return MemoryTarget(memory)
+
+
+def curse_fighting_window(target, tmp_path, monkeypatch):
+    """`fighting_window`, with the mapper's own title set to Curse."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = AutomapBinding(root, Automapper(target, {}, title=CURSE.title))
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    return window
+
+
+def test_a_curse_titled_window_finds_its_own_fight_live(app, tmp_path,
+                                                        monkeypatch):
+    """`poll_battle` threads `self.mapper.game` into `combat.read_battle`.
+
+    Before that wiring, the window's live loop read Pool of Radiance's
+    `$6E11` regardless of the title `self.mapper.game` named, so a Curse
+    party standing on its own combat floor was reported as not fighting at
+    all -- `#334`'s failure, with the live GUI window in place of the session
+    driver.
+    """
+    target = curse_arena_with_screen([])
+    window = curse_fighting_window(target, tmp_path, monkeypatch)
+    assert window.mapper.game is CURSE
+    assert window.battle is not None, "poll_battle did not find the fight"
+
+
+def test_a_curse_titled_windows_log_reads_its_own_mode_and_delay_live(
+        app, tmp_path, monkeypatch):
+    """`poll_combat_log` threads the same `game` into `CombatLog.poll`.
+
+    Same failure as the view, one call over: read at Pool of Radiance's
+    `$49FC` and `$6E11`, a Curse fight's message panel never gets polled at
+    all -- `poll_combat_log` returns on `self.battle is None` before it ever
+    reaches the burst.
+    """
+    target = curse_arena_with_screen([])
+    window = curse_fighting_window(target, tmp_path, monkeypatch)
+    assert window.battle is not None
+
+    show(target, ["MAGNUS", "MISSES."])
+    window.tick()
+    show(target, [])                     # the game paints over it: commits
+    window.tick()
+    said = [line for line in window.messages.lines() if "misses" in line]
+    assert said and all(line.endswith("Magnus misses.") for line in said)
+
+
 def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
                                                        monkeypatch):
     """`MessagesPanel.say` drops a line identical to the one before it, which
@@ -753,6 +840,76 @@ def test_the_dice_come_from_the_attacker_and_not_the_target():
     assert line(MISS, raw=4,
                 state=attack(actor=8, target=0, hit=False, damage=0)) == \
         "ORC rolled 4, needed 17"
+
+
+# --- Curse and Silver Blades' own addresses (#39) ---------------------------
+#
+# `later_arena` in `tests/test_latercombat.py` lays out a Curse-shaped machine
+# for the combat *view*; this is the same idea for the log. Before the
+# per-title table was wired in, `poll` read `$6E11` and `$49FC` -- and
+# `rolls.D20`/`rolls.ATTACK`/`rolls.ROSTER` at their Pool of Radiance addresses
+# -- regardless of `game`, so a Curse or Silver Blades fight, whose loader byte
+# and dice live at `$7F11`/`$4BFC`/`$A915`/`$9458`/`$6700` instead, read as no
+# fight and no dice at all.
+
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
+
+
+def later_dice_machine(game, rows=(), raw: int = 19,
+                       state: bytes | None = None,
+                       table: bytes = BOTH) -> MemoryTarget:
+    """`dice_machine`, at `game`'s own mode, delay, d20, attack and roster."""
+    where = combat.BY_KEY[game.key]
+    target = MemoryTarget({
+        0xD011: bytes([0x1B]),
+        0xD018: b"\x34",
+        0xDD00: b"\x00",
+        where.mode: bytes([2]),
+        where.delay: bytes([2]),
+        combatlog.WINDOW: bytes(
+            [LEFT, RIGHT, combatlog.MESSAGE_TOP, BOTTOM]),
+        combatlog.CURSOR: bytes([LEFT, combatlog.MESSAGE_TOP]),
+        SCREEN + combatlog.MESSAGE_TOP * SCREEN_COLS: painted(rows),
+    })
+    target.memory[where.d20] = bytes([raw])
+    target.memory[where.attack] = state if state is not None else attack()
+    target.memory[where.roster] = table
+    return target
+
+
+def later_logged(game, target: MemoryTarget, rows) -> list:
+    """`logged`, polling with `game` named on every call."""
+    log = CombatLog()
+    log.poll(target, game=game)          # the first poll only finds the screen
+    show(target, rows)
+    log.poll(target, game=game)
+    show(target, [])
+    return log.poll(target, game=game)
+
+
+@pytest.mark.parametrize("game", [CURSE, SILVER])
+def test_a_later_titles_fight_is_logged_at_its_own_addresses(game):
+    """The message and the roll both come back, read off `game`'s own bytes."""
+    done = later_logged(game, later_dice_machine(game), HIT)
+    assert len(done) == 1, [m.text for m in done]
+    assert done[0].text == "BRUTUS ATTACKS ORC AND HITS FOR 7 POINTS OF DAMAGE"
+    assert rolls.roll_line(done[0], NAMES) == \
+        "BRUTUS rolled 19, needed 12, 1d8+5 = 7"
+
+
+def test_a_title_nobody_has_measured_combat_addresses_for_logs_nothing():
+    """Champions of Krynn gets no messages at all, never Pool of Radiance's.
+
+    The same refusal `combat.read_battle` makes: an unmeasured address reads
+    as a plausible fight instead of an error, and that failure is the one
+    `#39` is about with the log in place of the view.
+    """
+    target = later_dice_machine(CURSE)          # Curse's bytes, wrong title
+    log = CombatLog()
+    assert log.poll(target, game=c64_port.CHAMPIONS_OF_KRYNN) == []
+    show(target, HIT)
+    assert log.poll(target, game=c64_port.CHAMPIONS_OF_KRYNN) == []
 
 
 def test_a_roll_that_names_somebody_else_is_not_shown():

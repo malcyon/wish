@@ -109,12 +109,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from . import rolls
+from goldbox import c64_port as G
+
+from . import combat, rolls
 from .screen import SCREEN_COLS, SCREEN_ROWS, band, is_bitmap, screen_address
 from .target import screen_banks
 
+#: Pool of Radiance's own row of `combat.BY_KEY` -- what `poll` reads when
+#: `game` names none, and where `MODE` and `DELAY` below get their values.
+_POOL = combat.BY_KEY[G.POOL_OF_RADIANCE.key]
+
 # Which overlay is running. The same gate `combat.py` uses.
-MODE = 0x6E11
+MODE = _POOL.mode
 COMBAT = 2
 
 #: left, one-past-right, top, one-past-bottom -- four consecutive bytes, which
@@ -127,8 +133,10 @@ CURSOR_LEN = 2
 #: The delay between a message and the clear that follows it, in units of about
 #: a third of a second. `INIT $09AC` sets it to 2; `CAMP $0CA1`/`$0CA6` step it.
 #: It is the player's own setting, shown as a digit by the `SPEED` command in
-#: `ENCAMP` and on the combat bar, and `FASTER` walks it down to 0.
-DELAY = 0x49FC
+#: `ENCAMP` and on the combat bar, and `FASTER` walks it down to 0. Pool of
+#: Radiance's own address -- Curse and Silver Blades read the same byte of
+#: their own save payload, `$4BFC`, out of `combat.BY_KEY` instead.
+DELAY = _POOL.delay
 
 #: The smallest `DELAY` at which a block stays on the screen long enough for a
 #: poll to see it, and the whole of what this reader can promise.
@@ -622,13 +630,24 @@ class CombatLog:
 
     # -- reading a live machine -------------------------------------------
 
-    def poll(self, target) -> list[Message]:
+    def poll(self, target, game=None) -> list[Message]:
         """Read one frame off a live target. One burst.
+
+        `game` picks this title's own mode byte, delay byte and dice
+        addresses out of `automap.combat.BY_KEY` -- the same table the combat
+        view reads -- and defaults to Pool of Radiance the way every caller
+        that names none already means. A title nobody has measured combat
+        addresses for answers no messages at all, the same refusal
+        `combat.read_battle` makes, rather than reading Pool of Radiance's
+        bytes on a machine they mean something else on.
 
         Returns the messages this frame completed -- usually none, because a
         message is only complete once the game has painted over it.
         """
         if target is None:
+            return []
+        where = combat.memory_for(game or G.POOL_OF_RADIANCE)
+        if where is None:
             return []
         if self._address is None:
             self._address = self._locate(target)
@@ -638,13 +657,13 @@ class CombatLog:
         # memories at the same addresses (`#421`). A backend that cannot tell
         # them apart ignores the names and reads as it always did.
         blocks = ((0xD011, 1, "io"), (0xD018, 1, "io"), (0xDD00, 1, "io"),
-                  (MODE, 1),
+                  (where.mode, 1),
                   # The player's own combat speed, on the same burst as
                   # everything else, so knowing whether this reader can keep up
                   # costs one byte rather than a round trip -- `#425 (The
                   # Messages window logs a quarter of a fight when the player
                   # turns the game's combat speed up)`.
-                  (DELAY, 1),
+                  (where.delay, 1),
                   (WINDOW, WINDOW_LEN), (CURSOR, CURSOR_LEN),
                   # Row 10 to the bottom of the screen, always: the window's
                   # own height is in the same burst and so is not known yet,
@@ -656,8 +675,8 @@ class CombatLog:
                   # the cost of a read is the round trip and not the bytes, and
                   # the battle roster comes whole because the block wanted is
                   # named by `$A4F4`, which arrives in this same burst.
-                  (rolls.D20, 1), (rolls.ATTACK, rolls.ATTACK_LEN),
-                  (rolls.ROSTER, rolls.ROSTER_LEN))
+                  (where.d20, 1), (where.attack, rolls.ATTACK_LEN),
+                  (where.roster, rolls.ROSTER_LEN))
         (d011, d018, dd00, mode, delay, win, _cursor, codes,
          d20, attack, roster) = _burst(target, blocks)
         if not mode or mode[0] != COMBAT:

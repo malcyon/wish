@@ -904,8 +904,8 @@ class AutomapBinding(QObject):
         """
         if self.battle is None and self._live_ticks % self.LIVE_EVERY:
             return False
-        was, self.battle = self.battle, combat.read_battle(self.mapper.target,
-                                                           self.battle)
+        was, self.battle = self.battle, combat.read_battle(
+            self.mapper.target, self.mapper.game, previous=self.battle)
         if self.battle is None:
             if was is not None:
                 # The last message of a fight is never painted over -- COMBAT
@@ -946,7 +946,7 @@ class AutomapBinding(QObject):
             return
         self.combat_log.note_round([c.initiative
                                     for c in self.battle.combatants])
-        messages = self.combat_log.poll(self.mapper.target)
+        messages = self.combat_log.poll(self.mapper.target, self.mapper.game)
         if self.combat_log.take_speed_warning():
             self.messages.say(COMBAT_TOO_FAST, dedup=False, alarm=True)
         self.log_combat(messages)

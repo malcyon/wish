@@ -80,11 +80,24 @@ from dataclasses import dataclass, replace
 from goldbox.savegame import ROSTER_STRIDE, SAVE1_LOAD_ADDRESS, RosterBlock
 
 #: `COMBAT $1289`. One byte, and 20 is stored as 100.
+#:
+#: **Pool of Radiance's own default, kept for that title's direct use and as
+#: the base the offsets below are computed from.** Curse and Silver Blades
+#: keep the same roll at a different address -- `$A915`, in `ECL64` rather
+#: than in `COMBAT` -- and `automap.combatlog.CombatLog.poll` reads it out of
+#: `automap.combat.BY_KEY` per title instead of off this constant (`#39
+#: (Combat view and combat log for Curse and Silver Blades)`).
 D20 = 0x2B10
 NATURAL_20 = 100
 D20_SIDES = 20
 
 #: `$A4F0`-`$A4FB`: everything about the attack in progress, in one range.
+#:
+#: Pool of Radiance's own default, for the same reason `D20` above is one --
+#: the later titles' block is at `$9458`, read per title through
+#: `automap.combat.BY_KEY` rather than through this name. The offsets below
+#: are arithmetic inside the block and need no change: they are the same
+#: twelve bytes wherever the block starts.
 ATTACK = 0xA4F0
 ATTACK_LEN = 0x0C
 # `$A4F0` itself -- the number the roll had to reach -- has deliberately no
@@ -103,6 +116,10 @@ HIT = 0xA4FB - ATTACK
 #: The battle roster: 64 blocks of 32 bytes filling `$8300`-`$8AFF`, the same
 #: table `combat.read_battle` reads. Read whole because the block wanted is
 #: named by `$A4F4`, which arrives in the same burst.
+#:
+#: Pool of Radiance's own default, once more for the reason `D20` and `ATTACK`
+#: above are: Curse and Silver Blades hold the same roster at `$6700`, and
+#: `CombatLog.poll` reads it per title through `automap.combat.BY_KEY`.
 ROSTER = SAVE1_LOAD_ADDRESS
 ROSTER_BLOCKS = 64
 ROSTER_LEN = ROSTER_BLOCKS * ROSTER_STRIDE
