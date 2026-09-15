@@ -2113,7 +2113,7 @@ graph LR
   dos_codec --> portraits
   dos_codec --> record
   dos_codec -.->|deferred| savegame
-  dos_codec -.->|deferred| spells
+  dos_codec --> spells
   dos_codec --> titles
   dos_codec --> traits
   dos_codec --> world_state
