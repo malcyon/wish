@@ -162,7 +162,8 @@ def monster_blocks(title: str, given: str | None = None):
         try:
             disk = D64.open(str(path))
             entries = list(disk.directory())
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - a disk we cannot read
+            print(f"  skipped {path.parent.name}/{path.name}: {exc}")
             continue
         for entry in entries:
             name = entry.name.decode("latin1").rstrip("\xa0 ")
@@ -170,7 +171,8 @@ def monster_blocks(title: str, given: str | None = None):
                 continue
             try:
                 body = disk.read_file(entry.name)[2:]
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - a file we cannot read
+                print(f"  skipped {path.name}/{name}: {exc}")
                 continue
             if len(body) < TRAIT_SLOTS + TRAIT_COUNT:
                 continue
