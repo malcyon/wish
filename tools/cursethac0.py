@@ -430,7 +430,7 @@ class Run:
                 self.sess.press_bar(word, timeout=10)
                 self.log("dismissed", word=word, was=row, now=self.row24())
                 return word
-        if "PRESS" in row:
+        if "PRESS" in row.split():
             self.sess.press_kernal(0x0D)
             self.log("acknowledged", was=row, now=self.row24())
             return "PRESS"
