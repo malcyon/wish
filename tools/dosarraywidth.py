@@ -142,6 +142,28 @@ def measure(data: bytes, displacement: int, show_sites: bool = False
     return tally
 
 
+def width(data: bytes, displacement: int) -> int | None:
+    """The width the engine's own loop implies for an array at
+    `displacement`, or `None` when there is nothing to say.
+
+    Lifted out of :func:`report` for `#516 (Generate boundary characters and
+    check every writer's field widths, since no real save reaches a limit
+    and the corpus cannot find a wrong one)`'s `tests/test_boundary.py`,
+    which asserts against this rather than parsing what `report` prints.
+    `report` calls this now and its own printed output is unchanged.
+
+    `cmp byte [bp-n], 0` is the commonest instruction in the family and is
+    almost never a loop bound -- it is the "is this entry empty" test inside
+    the body.  Dropping it is the one piece of judgement here.
+    """
+    tally = measure(data, displacement)
+    ranked = [(v, k) for k, v in tally.items() if k]
+    if not ranked:
+        return None
+    _count, top = max(ranked)
+    return top + 1
+
+
 def report(title: str, field: str | None, displacement: int,
            overlay: pathlib.Path, show_sites: bool) -> int | None:
     """Print one title's answer and hand back the width it implies."""
@@ -153,10 +175,8 @@ def report(title: str, field: str | None, displacement: int,
     print(f"  scanning    es:[reg + {displacement:#04x}]")
     tally = measure(data, displacement, show_sites)
     hits = len(accesses(data, displacement))
-    # `cmp byte [bp-n], 0` is the commonest instruction in the family and is
-    # almost never a loop bound -- it is the "is this entry empty" test inside
-    # the body.  Dropping it is the one piece of judgement here, and the whole
-    # tally is printed so a reader can disagree with it.
+    # The whole tally is printed so a reader can disagree with the choice
+    # `width` makes above.
     ranked = [(v, k) for k, v in tally.items() if k]
     if not hits:
         print("  no access at that displacement -- which is evidence and not "

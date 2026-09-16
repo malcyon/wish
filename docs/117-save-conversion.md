@@ -405,6 +405,27 @@ engine of the family, and their bounds are `0x53` (84) at `0x1E` in Curse,
 `0x4A` (75) at `0x1E` in Silver Blades and `0x8C` (140, so 141) at `0x1E` in
 Pools of Darkness — this table's other three columns exactly.
 
+**`#508 (A converted magic-user loses memorised spells on the way to DOS,
+because our table says a title has fewer slots than the engine gives it)` sat
+unnoticed because the corpus could not find it, and the harness
+`#516 (Generate boundary characters and check every writer's field widths,
+since no real save reaches a limit and the corpus cannot find a wrong one)`
+built is what would have caught it on the first run.** `tools/boundarychars.py` builds
+four Pool of Radiance characters at the game's own reachable extremes — a
+half-elf cleric/magic-user memorising all 20 spells the title's own table
+allows, a fighter at the hit-point and ability ceiling, a thief with all eight
+skill percentages at their column-wise maximum, and the deepest legal
+three-class combination — and `tests/test_boundary.py` runs every one through
+`goldbox.dos_codec.write`, checks the record comes back whole, and checks the
+one array width the engine's own bytes corroborate (`tools/dosarraywidth.py`'s
+`width()`) against the declared table. It checks that every writer *takes* a
+value for every field the neutral vocabulary offers it, not that every field's
+declared width is independently proven — most of `dos_port.py`'s other array
+widths have no second, uncorrelated engine reading to check against yet, which
+is `#516 (Generate boundary characters and check every writer's field widths,
+since no real save reaches a limit and the corpus cannot find a wrong one)`'s
+own follow-up work rather than something this harness claims to have settled.
+
 **The high bit of an entry is a flag, not part of the id.** Memorising stores
 `id + 0x80`; the rest that completes it clears the bit. It is the same
 convention the C64's `CAMP` clears with `AND #$7F`, so the byte crosses between

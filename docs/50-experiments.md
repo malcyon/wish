@@ -7762,3 +7762,76 @@ instruction to inspect the code and disambiguate duplicate filenames. The
 historical old-writer attribution remains PROBABLE, and the 26 computed
 monster arguments remain unresolved; neither affects the proven recruitment
 branch or this repair's byte boundary.
+
+## Four boundary characters, and the harness that proves it can fail
+
+[`#516 (Generate boundary characters and check every writer's field widths,
+since no real save reaches a limit and the corpus cannot find a wrong one)`](https://github.com/malcyon/wish/issues/516),
+slices 1 and 2 of `architect`'s plan. `tools/boundarychars.py` builds four
+Pool of Radiance `NeutralCharacter`s at the game's own reachable extremes, and
+`tests/test_boundary.py` runs each through `goldbox.dos_codec.write`.
+
+**The cases**, every ceiling computed rather than typed in: a half-elf cleric
+5 / magic-user 6 at wisdom 18 memorising all 20 spells `goldbox.spells.
+capacity_by_class` gives him (the corpus's own deepest caster, WISHHEL, reaches
+17); a dwarf fighter 8 at every ability's racial maximum, hit points at the
+dice-plus-constitution ceiling (112), the DOS name field's full fifteen
+characters, all sixteen C64 item slots, and every coin purse at the format's
+own `U16` ceiling; a halfling thief 9 at dexterity 18, the race/dexterity
+combination `goldbox.levels.dos_thief_skills` gives the highest column-wise
+reading for every one of the eight stored percentages; and the deepest legal
+three-class combination, half-elf cleric 5 / fighter 8 / magic-user 6, the same
+20 spells as the first case.
+
+**First run: all four cases pass clean.** Zero warnings, zero unexpected drops
+(only the portrait pair, which reports itself when no creation-menu tables are
+available to convert it, and was available on this run — so even that drop list
+came back empty), and zero log lines on `wish.goldbox.dos_codec`. No first-run
+failure needed triage into the three kinds the plan named.
+
+**The array-width check (part C) is corroborated for one field only.** The
+plan's own measurement, taken 2026-09-16, found every other multi-byte array
+in the Pool of Radiance table reading a neighbouring loop's guard rather than
+its own bound when scanned with `tools/dosarraywidth.py`. `spells_memorised`
+alone reads the same width in all four titles the tool can check (21, 84, 75,
+141, matching the declared table exactly) and is the only assertion `tests/
+test_boundary.py`'s part C makes; a `reverse-engineering` agent is the plan's
+named follow-up for the three uncorroborated rows (`spells_castable_cleric`,
+`attack_forms`, `field_83_87`).
+
+**The regression proof.** `dataclasses.replace(dos_port.POOL_OF_RADIANCE,
+sizes={...,"spells_memorised": 16}, inserts={...,"exceptional_strength": 5})`
+rebuilds the table exactly as it stood before `#508 (A converted magic-user
+loses memorised spells on the way to DOS, because our table says a title has
+fewer slots than the engine gives it)`'s fix, monkeypatched into `dos_port.
+FIELDS_BY_NAME_FOR["pool-of-radiance"]` for one test's duration. Against it,
+the caster case's 20 memorised spells come back 16 of 20 with the log line
+`spells_memorised: 20 ids and Pool of Radiance allots 16 slots, so 4 were not
+written`, and `tools.dosarraywidth.width()` at the real array offset (`0x017`)
+reads 21 against the old table's declared 16 — both proven to fail without the
+fix and to pass with it, watched directly rather than assumed.
+
+**One correction to the plan's own text, found while building D.** The plan
+describes the old table's declared offset, `0x01C`, as the one to scan with
+`width()`, expecting to read 21 there. It does not: the old table's offset is
+wrong as well as its size — the real array starts five bytes earlier, at
+`0x017`, which is exactly what `#508 (A converted magic-user loses memorised
+spells on the way to DOS, because our table says a title has fewer slots than
+the engine gives it)` found — so `0x01C` has no loop-bound access nearby at
+all (`width()` there answers `None`). The test compares the old table's
+declared *size* against `width()` read at the array's real, now-fixed offset
+instead, which is the comparison the engine check could actually make and is
+what `docs/117-save-conversion.md`'s own account of `#508 (A converted
+magic-user loses memorised spells on the way to DOS, because our table says a
+title has fewer slots than the engine gives it)` already says about the two
+offsets.
+
+**What this harness checks and what it does not.** It proves every writer
+takes a value for every field the neutral vocabulary offers it (test B, the
+coverage hook), and that the one array width with independent engine
+corroboration matches. It is not a general proof that every declared width in
+`goldbox/dos_port.py` is correct — most have no second, uncorroborated reading
+to check against, which is `#516 (Generate boundary characters and check
+every writer's field widths, since no real save reaches a limit and the
+corpus cannot find a wrong one)`'s own step 3, left to a `reverse-engineering`
+agent.
