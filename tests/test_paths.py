@@ -287,11 +287,24 @@ def test_the_map_says_where_the_party_is_not_which_file_it_came_from():
         win.session.close()
 
 
-def test_a_curse_party_still_gets_no_pool_of_radiance_place_name():
+def test_a_curse_party_gets_its_own_place_name_not_pool_of_radiances():
+    """`GEO15` is in both games' disks and is a different map in each: Pool
+    of Radiance's `GEO15` is "Sokol Keep" (`goldbox/areas.py`), and a Curse
+    party standing in its own `GEO15` must never show that name.
+
+    Before `#15 (Fast Travel for more than one Gold Box title)` landed
+    Curse's own area names, Curse's table was empty and this test checked
+    for the raw file-stem fallback (`"GEO15"`) as a stand-in for "definitely
+    not Sokol Keep." Curse's `$15` now has a real landed name, so the
+    fallback is no longer what should show -- the guarantee this test
+    proves is the same one it always proved: no cross-title name leak.
+    """
     from wish.window import WishWindow
     win = WishWindow(maps={}, title="Curse of the Azure Bonds")
     try:
         win.mapper.state.area = "GEO15"
-        assert win.mapper.state.area_label == "GEO15"
+        assert win.mapper.state.area_label == \
+            "shared blocks: Voonlar, Phlan dungeons"
+        assert win.mapper.state.area_label != "Sokol Keep"
     finally:
         win.session.close()
