@@ -505,9 +505,10 @@ def test_a_silver_blades_elf_is_not_given_pool_of_radiances_ability(
 
 
 def test_a_curse_elf_still_reads_the_way_it_always_did(window, tmp_path):
-    """The control. Curse seeds its elf 107 and shares Pool of Radiance's
-    table, so this row passes before the per-title split and after it -- which
-    is what says the fix moved Silver Blades and nothing else."""
+    """The control. Curse seeds its elf 107 the same as Pool of Radiance and
+    `#561` never touched that code, so this row passes before the per-title
+    split and after it -- which is what says the fix moved Silver Blades'
+    and Curse's own contested codes and nothing else."""
     rows = _sheet_traits(window, tmp_path, CURSE, race=2, codes=(107,))
     assert rows[0] == ELF_RESISTANCE
 
@@ -526,14 +527,27 @@ def test_a_silver_blades_code_nobody_has_read_keeps_its_number(
 
 # --- the table itself, with no window --------------------------------------
 
-def test_curse_shares_pool_of_radiances_trait_table():
+def test_curse_has_its_own_trait_table():
     """`GEN $24EA` seeds dwarf 26, 47, 97, gnome 18, 48, 97, elf 107 and
     half-elf 124, every one landing on the race its Pool of Radiance name is
-    about. `tests/test_coldread.py` reads that off the disks; this pins that
-    the table the editor uses says so."""
+    about -- `tests/test_coldread.py` reads that off the disks, and the
+    racial half of the argument still holds.
+
+    What does not hold is sharing the *whole* table: Curse spent free code
+    numbers on forty-four spells Pool of Radiance has not got, including
+    numbers Pool of Radiance was already using, so `#561 (A Curse of the
+    Azure Bonds character's traits are named from Pool of Radiance's table,
+    which disagrees with Curse's own data about eight codes)` gave it
+    `NAMES_CURSE`. `tests/test_curtraitnames.py` re-derives that table off
+    the disks; this pins that the editor uses it."""
     from goldbox import traits
-    assert traits.for_game(CURSE) is traits.for_game(POOL)
+    assert traits.for_game(CURSE) is not traits.for_game(POOL)
+    assert traits.for_game(CURSE) is traits.NAMES_CURSE
     assert traits.for_game(None) is traits.for_game(POOL)
+    for code in (26, 47, 97, 18, 48, 107, 124):
+        assert traits.describe(code, CURSE) == traits.describe(code, POOL)
+    for code in (3, 4, 7, 27, 35, 63, 68, 69):
+        assert traits.describe(code, CURSE) != traits.describe(code, POOL)
 
 
 def test_silver_blades_reuses_the_string_and_not_the_number():

@@ -742,11 +742,84 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 # second line to any of them is `tools/traitask.py`'s: write the id into a
 # slot on a copy of a save and watch the fight.
 
+#: Curse of the Azure Bonds seeds the same racial codes as Pool of Radiance
+#: (`GEN $24EA`: dwarf 26/47/97, gnome 18/48/97, elf 107, half-elf 124,
+#: paladin 45, ranger 134), so `NAMES` served it for a while -- but Curse's
+#: forty-four extra spells spent free code numbers on their own effects,
+#: including numbers Pool of Radiance was already using, and `NAMES` never
+#: gave those a table of its own. `#561 (A Curse of the Azure Bonds
+#: character's traits are named from Pool of Radiance's table, which
+#: disagrees with Curse's own data about eight codes)` is where the census
+#: -- `tools/traitnames.py curse-of-the-azure-bonds` and its `--monsters` and
+#: `--records` flags -- read Curse's own `COMBAT2 +2732` spell table (100
+#: nine-byte records, byte 0 the effect code) and its 70 `MON*` templates
+#: against `NAMES`.
+#:
+#: **Thirteen codes CONFIRMED wrong or unnamed by Curse's own spell table**:
+#: 3, 4, 7, 27, 35, 63, 68, 69 (Pool of Radiance's name is a different
+#: effect), 105 (Pool of Radiance's "(unused)" is wrong -- five dark elf
+#: records carry it), and 136, 142, 143 (Pool of Radiance names nothing
+#: there at all). 60 is CONFIRMED wrong by its own handler, read the same way
+#: `NAMES_SILVER_BLADES` reads 60, though the exact rule is PROBABLE.
+#:
+#: **Eighteen codes are omitted rather than mis-named.** Twelve of them are
+#: Pool of Radiance names landing on a Curse creature that cannot have them
+#: -- 57, 60's Pool of Radiance wording, 63's, 81, 82, 84, 85, 86, 87, 90, 96,
+#: 103 -- of which 60 and 63 are replaced above and the other ten
+#: (57, 81, 82, 84, 85, 86, 87, 90, 96, 103) are simply refuted, with no
+#: right answer read yet. And eight of Curse's own codes above `NAMES`'s
+#: reach are carried by a Curse creature `NAMES` never named at all -- 128,
+#: 129, 130, 131, 132, 133, 135, 138. Every one of the eighteen is left out
+#: of this table so `describe()` falls back to "trait {code}" (unnamed)
+#: rather than a name the game's own data contradicts.
+#:
+#: **71, 73 and 109 keep Pool of Radiance's wording on purpose.** Their only
+#: Curse evidence is a spell row whose name pointer was never set (it reads
+#: as the table's first string, BLESS) and no Curse creature carries them,
+#: so nothing here contradicts Pool of Radiance for these three -- unlike
+#: Silver Blades' 71, which Curse's own FAERIE FIRE at 7 does contradict.
+#:
+#: **Everything else transfers unchanged from `NAMES`.** Most of the shared
+#: namespace agrees between the two titles (54 of the first 56 spell codes,
+#: and thirteen monster-carried codes on the same creature in both), so this
+#: is written as a full table rather than a sparse one of overrides only --
+#: a sparse table would leave hundreds of correctly-named codes unnamed for
+#: Curse.
+_CURSE_UNNAMED = (
+    57, 81, 82, 84, 85, 86, 87, 90, 96, 103,           # refuted, not replaced
+    128, 129, 130, 131, 132, 133, 135, 138,            # Curse-only, unnamed
+)
+_CURSE_REPLACED = {
+    3: ("Sticks to Snakes", "CONFIRMED"),
+    4: ("Dispel Evil", "CONFIRMED"),
+    7: ("Faerie Fire", "CONFIRMED"),
+    27: ("Fumble", "CONFIRMED"),
+    35: ("Confusion", "CONFIRMED"),
+    60: ("damage reduced by the weapon's plus", "PROBABLE"),
+    63: ("Minor Globe of Invulnerability", "CONFIRMED"),
+    68: ("Feeblemind", "CONFIRMED"),
+    69: ("Invisibility to Animals", "CONFIRMED"),
+    105: ("50% magic resistance", "CONFIRMED"),
+    136: ("Entangle", "CONFIRMED"),
+    142: ("Fear", "CONFIRMED"),
+    143: ("Fire Shield", "CONFIRMED"),
+}
+NAMES_CURSE: dict[int, tuple[str, str]] = {
+    **{code: value for code, value in NAMES.items()
+       if code not in _CURSE_UNNAMED and code not in _CURSE_REPLACED},
+    **_CURSE_REPLACED,
+    # 71, 73, 109: refuted for nothing else, so Pool of Radiance's wording
+    # stands until Curse's own data says otherwise.
+    71: (NAMES[71][0], "PROBABLE"),
+    73: (NAMES[73][0], "CONFIRMED"),
+    109: (NAMES[109][0], "PROBABLE"),
+}
+
 #: Code table per title key. A title that is not here gets Pool of Radiance's,
 #: which is what every caller written before this table existed means.
 TABLES: dict[str, dict[int, tuple[str, str]]] = {
     "pool-of-radiance": NAMES,
-    "curse-of-the-azure-bonds": NAMES,
+    "curse-of-the-azure-bonds": NAMES_CURSE,
     "secret-of-the-silver-blades": NAMES_SILVER_BLADES,
 }
 
