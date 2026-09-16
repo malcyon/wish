@@ -372,6 +372,31 @@ def test_saving_the_minority_titles_member_uses_its_own_title_not_the_partys(
     assert record.get_raw("abilities_second") == abilities
 
 
+def test_saving_a_curse_character_disk_keeps_its_own_load_address(tmp_path):
+    """`_write_back` called `m.record.to_prg()` with no address, so every
+    file on a Curse or Silver Blades character disk came back stamped with
+    Pool of Radiance's `$6B00` instead of the `$7C00` it was read at
+    (#556). The record bytes are unchanged either way -- only the disk's
+    backup copy still carries the address the file actually had."""
+    from editor.window import EditorBinding
+    from goldbox.d64 import D64
+
+    arden = _ability_record("ARDEN")
+    brisa = _ability_record("BRISA")
+    path = _parked_disk(tmp_path, arden, brisa)
+    editor = EditorBinding(make_root(), str(path))
+    editor.save(interactive=False)
+
+    disk = D64.open(str(path))
+    prg_entries = [e for e in disk.directory() if e.is_prg and not e.is_empty]
+    assert len(prg_entries) == 2
+    for entry in prg_entries:
+        raw = disk.read_file(entry)
+        assert raw[:2] == bytes([0x00, 0x7C]), (
+            f"{entry.name} starts {raw[:2].hex()}, not Curse's own "
+            f"{CURSE_RECORD_LOAD_ADDRESS:#06x}")
+
+
 # --- backups ----------------------------------------------------------------
 
 class FakeDisk:

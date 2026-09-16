@@ -38,7 +38,7 @@ from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
 from goldbox.items import load_item_names, load_item_templates, load_item_types
-from goldbox.layout import FIELDS_BY_NAME
+from goldbox.layout import FIELDS_BY_NAME, LOAD_ADDRESS
 from goldbox.savegame import store_save
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
@@ -1717,7 +1717,10 @@ class EditorBinding(QObject):
         else:
             for m in party.members:
                 if m.source:
-                    party.disk.write_file_inplace(m.source, m.record.to_prg())
+                    address = (m.load_address if m.load_address is not None
+                               else LOAD_ADDRESS)
+                    party.disk.write_file_inplace(
+                        m.source, m.record.to_prg(address))
 
     # -- the sheet --------------------------------------------------------
 

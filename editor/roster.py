@@ -56,6 +56,15 @@ class Member:
     icon: Icon | None = None             # from the shared table at $4BE0
     icon_original: Icon | None = None
     record_original: bytes | None = None  # as read, for the change preview
+    #: The PRG load address this file was actually read from, for a standalone
+    #: character. Pool of Radiance parks a roster file at `$6B00`; Curse of
+    #: the Azure Bonds and Secret of the Silver Blades park one at `$7C00`
+    #: (`_load_standalone` below). Writing it back at the wrong address is
+    #: silent -- the record bytes are unchanged and the disk still opens --
+    #: but it is the only copy left with the address the file actually
+    #: carried (#556). None means there is no file to write back to (a save
+    #: game's own character, kept in its slot rather than a standalone file).
+    load_address: int | None = None
     #: Which title this character's save came from, so the two names below are
     #: looked up in that title's tables rather than Pool of Radiance's. **None
     #: means Pool of Radiance**, which is what a `Member` built without one
@@ -279,10 +288,15 @@ class Party:
                 # filter working, not a fault.
                 _log.debug("%s is not a character record: %s", entry.name, exc)
                 continue
+            # The file's own address, whichever branch above accepted it, so
+            # a write-back can hand it straight to `to_prg()` rather than
+            # falling back to Pool of Radiance's `$6B00` (#556).
+            load_address = raw[0] | (raw[1] << 8)
             game = c64_port.title_of_roster_file(entry.name) or self.game
             self.members.append(
                 Member(i, record, record.name, source=entry.name,
-                       record_original=record.to_bytes(), game=game))
+                       record_original=record.to_bytes(), game=game,
+                       load_address=load_address))
 
     # -- what the window asks ---------------------------------------------
 
