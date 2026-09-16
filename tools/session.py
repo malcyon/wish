@@ -1067,8 +1067,16 @@ class Session:
             state = self.combat_state(s)
             if state.kind == BAR_PRESS:
                 self.press_kernal(0x0D)
-                self.await_change(state.text,
+                after = self.await_change(state.text,
                                    timeout=max(1.0, min(6.0, deadline - time.time())))
+                if after.kind == BAR_PRESS:
+                    # Unmoved: the same retry `await_change`'s own docstring
+                    # asks for, and the one `wait_for_world` and `fight`
+                    # already take.  Returning `True` here would tell the
+                    # caller the acknowledgement was dismissed while the
+                    # game is still sitting on it -- the ticket's own bug in
+                    # a form that no longer even times out visibly (#565).
+                    continue
                 return True
             col = s.row(row).find(label.upper())
             span = span_in(s, row)

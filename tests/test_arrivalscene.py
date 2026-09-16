@@ -155,6 +155,12 @@ class FakeSession(Session):
     def handle_prompt(self, s=None) -> bool:
         return False
 
+    def await_change(self, was: str, timeout: float = 6.0, interval: float = 0.4):
+        """No wall clock in this fixture: state only changes via `step`, so
+        give back what row 24 already says instead of sleeping to find out
+        whether it will."""
+        return self.combat_state()
+
     def select_row(self, label: str, timeout: float = 30.0,
                    column: int | None = None) -> bool:
         return True   # BEGIN ADVENTURING's own menu is not what this tests
@@ -207,6 +213,24 @@ def test_select_bar_presses_a_scripts_own_one_option_acknowledgement():
     sess = FakeSession([PRESS_BAR, WORLD_BAR])
     assert sess.select_bar("CONTINUE.", timeout=1.0) is True
     assert 0x0D in sess.injected
+    assert sess.kbd.sent == []
+
+
+def test_select_bar_retries_a_press_that_did_not_take_effect():
+    """A prompt with a second page behind it draws the same row 24 again --
+    `fight`'s own `BAR_PRESS` comment names this case -- so the first press
+    must not be reported as success while the bar is still up.
+
+    The fixture's `PRESS_BAR` repeats once before the world bar, and
+    `press_kernal` only steps the script one bar per call, so the first
+    press lands on the repeat rather than clearing it.  `select_bar` must
+    press a second time and only then return `True`; reverting the fix (a
+    bare `return True` right after the first `press_kernal`) makes this
+    answer after one press, with the bar still unmoved.
+    """
+    sess = FakeSession([PRESS_BAR, PRESS_BAR, WORLD_BAR])
+    assert sess.select_bar("CONTINUE.", timeout=1.0) is True
+    assert sess.injected.count(0x0D) == 2
     assert sess.kbd.sent == []
 
 
