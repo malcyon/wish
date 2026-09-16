@@ -314,7 +314,7 @@ def curse_fight(run: Battle, args, disks: str) -> int:
     if not entered:
         return 1
     run.probe("in-the-world")          # the control, before any fight exists
-    arrived = run.goto(TAVERN, args.steps, geo=geo)
+    arrived = run.goto(TAVERN, args.steps, geo=geo, accept=args.accept)
     run.log("goto", target=list(TAVERN), arrived=arrived,
             triple=list(run.triple()), row24=run.row24())
     run.dump("arrived")
@@ -387,7 +387,7 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
                 budget = min(args.laps, args.steps - spent)
                 if budget <= 0 or run.in_combat():
                     break
-                arrived = run.goto(stop, budget, geo=geo)
+                arrived = run.goto(stop, budget, geo=geo, accept=args.accept)
                 spent += budget
                 run.log("goto", target=list(stop), arrived=arrived,
                         area=str(area), spent=spent,
@@ -408,35 +408,27 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
         if run.in_combat():
             run.log("wandered-into-a-fight", step=n)
             return 0
-        s = sess.screen()
-        bar = "" if s is None else s.row(24).strip()
-        if "I,J,K,M" not in bar:
-            # A script bar or a message eats the move keys until it is
-            # answered, the same way Curse's does.
-            for word in ("QUIT", "LEAVE", "NO", "EXIT"):
-                if word in bar.split():
-                    sess.select_bar(word, timeout=8)
-                    break
-            else:
-                if "PRESS" in bar or s is None:
-                    sess.press_kernal(0x0D)
-            sess.select_bar("MOVE", timeout=10)
-            time.sleep(0.8)
+        # A script bar or a message eats the move keys until it is answered,
+        # the same way Curse's does -- `run.clear_bar` is the one place that
+        # knows how, and knows `$7F11` rather than row 24 for whether a fight
+        # has already started (`#334`: this used to be a second, incomplete
+        # copy of that logic, with no `ACCEPT` and no guard against
+        # dismissing the move sub-bar itself).
+        run.clear_bar(accept=args.accept)
+        if run.in_combat():
+            run.log("wandered-into-a-fight", step=n)
+            return 0
         before = run.triple()
         key = "K" if turn_next else keys[i % len(keys)]
         turn_next = False
-        # `ssbwarp.walk_proof` sends these over XTEST and measured them that
-        # way over eight sessions, which is the one place Silver Blades and
-        # Curse differ about keys. The KERNAL copy is the fallback rather than
-        # the first try, so a title that reads both does not get two.
-        sess.kbd.key(key.lower(), 0.15, 0.30)
-        time.sleep(1.2)
+        # `run.press` re-enters the move sub-bar if a dismissed bar left the
+        # world bar showing, sends the key over XTEST the way
+        # `ssbwarp.walk_proof` measured it, and falls back to the KERNAL
+        # buffer if nothing moved -- one copy of that fallback rather than
+        # this loop's own.
+        moved = run.press(key)
         after = run.triple()
-        if after == before:
-            sess.press_kernal(ord(key))
-            time.sleep(1.2)
-            after = run.triple()
-        if after[:2] == before[:2]:
+        if not moved:
             i += 1
             turn_next = key != "K"          # walled in: turn, then try again
         run.log("step", n=n, key=key, before=list(before), after=list(after),
@@ -475,6 +467,10 @@ def main(argv=None) -> int:
     p.add_argument("--keys", action="store_true",
                    help="press each joystick direction once and read the "
                         "acting combatant's square back")
+    p.add_argument("--accept", action="store_true",
+                   help="take the YES half of a script's own YES/NO bar "
+                        "instead of declining it, for a walker that is "
+                        "trying to reach a fight (#334)")
     p.add_argument("--quick", type=int, default=0,
                    help="resolve this many turns with the game's own QUICK")
     p.add_argument("--melee", type=float, default=0.0,

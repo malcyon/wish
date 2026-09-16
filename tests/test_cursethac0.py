@@ -191,3 +191,113 @@ def test_staging_experience_is_a_third_byte_range_and_nothing_else():
                       at, at + 1,
                       cursethac0.ROSTER_AT + cursethac0.ROSTER_THAC0]
     assert int.from_bytes(body[at:at + 3], "little") == 46000
+
+
+# -- clear_bar's decline/accept/acknowledge logic, no emulator needed -------
+#
+# `#334 (The session driver cannot fight in Curse or Silver Blades, and says
+# the party is not in a fight while it is standing on the combat floor)`:
+# `clear_bar` used to know only how to decline a script bar, which is why a
+# walker could never take the `YES` half of a combat challenge, and it had
+# no way to get past a `PRESS <RETURN> OR BUTTON TO CONTINUE` acknowledgement
+# either -- both of those are pure row-24 decisions and need no machine.
+
+class FakeCombatSess:
+    """Just enough of `CurseSession` for `clear_bar` to drive."""
+
+    def __init__(self):
+        self.pressed: list[str] = []
+        self.kernal: list[int] = []
+
+    def press_bar(self, label, row=24, timeout=30.0):
+        self.pressed.append(label)
+        return True
+
+    def press_kernal(self, code):
+        self.kernal.append(code)
+
+
+class FakeCombatRun(cursethac0.Run):
+    """A `Run` whose row 24 and combat state are set by the test, not read
+    off a machine."""
+
+    def __init__(self, row: str, in_combat: bool = False):
+        import io  # noqa: PLC0415
+        self.file = io.StringIO()
+        self.quiet = True
+        self.sess = FakeCombatSess()
+        self._row = row
+        self._in_combat = in_combat
+
+    def row24(self) -> str:
+        return self._row
+
+    def in_combat(self) -> bool:
+        return self._in_combat
+
+
+def test_clear_bar_declines_by_default():
+    """A locked door's `BASH PICKLOCK QUIT` is answered the ordinary way."""
+    run = FakeCombatRun("BASH PICKLOCK QUIT")
+    assert run.clear_bar() == "QUIT"
+    assert run.sess.pressed == ["QUIT"]
+
+
+def test_clear_bar_ignores_yes_no_bars_by_default():
+    """Without `accept`, a `YES NO` bar is still answered `NO`.
+
+    This is the bug `#334` found: a walker with no way to ask for the other
+    half of a `YES NO` bar can never take a combat challenge that puts one
+    up, whatever it presses.
+    """
+    run = FakeCombatRun("SHOP: YES NO")
+    assert run.clear_bar() == "NO"
+    assert run.sess.pressed == ["NO"]
+
+
+def test_clear_bar_accepts_yes_when_asked():
+    run = FakeCombatRun("SHOP: YES NO")
+    assert run.clear_bar(accept=True) == "YES"
+    assert run.sess.pressed == ["YES"]
+
+
+def test_clear_bar_falls_back_to_dismiss_when_theres_no_yes_to_accept():
+    """`accept=True` does not make a locked door open itself."""
+    run = FakeCombatRun("BASH PICKLOCK QUIT")
+    assert run.clear_bar(accept=True) == "QUIT"
+    assert run.sess.pressed == ["QUIT"]
+
+
+def test_clear_bar_acknowledges_a_press_prompt():
+    """`PRESS <RETURN> OR BUTTON TO CONTINUE.` gets a KERNAL Return.
+
+    Several of Silver Blades' own combat challenges put exactly this
+    between the message and the `COMBAT` opcode -- `#334` -- and it is not a
+    decision `accept` should have to name either way.
+    """
+    run = FakeCombatRun("PRESS BUTTON OR RETURN TO CONTINUE.")
+    assert run.clear_bar() == "PRESS"
+    assert run.sess.kernal == [0x0D]
+    assert run.clear_bar(accept=True) == "PRESS"
+    assert run.sess.kernal == [0x0D, 0x0D]
+
+
+def test_clear_bar_leaves_the_move_subbar_alone():
+    run = FakeCombatRun("I,J,K,M, RETURN OR BUTTON")
+    assert run.clear_bar(accept=True) is None
+    assert run.sess.pressed == []
+    assert run.sess.kernal == []
+
+
+def test_clear_bar_leaves_the_world_bar_alone():
+    run = FakeCombatRun("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK")
+    assert run.clear_bar(accept=True) is None
+    assert run.sess.pressed == []
+
+
+def test_clear_bar_does_nothing_once_a_fight_has_started():
+    """Even a row that looks like a challenge is left alone once `in_combat`
+    says the fight is already running -- `$7F11` outranks row 24 (`#334`)."""
+    run = FakeCombatRun("SHOP: YES NO", in_combat=True)
+    assert run.clear_bar(accept=True) is None
+    assert run.sess.pressed == []

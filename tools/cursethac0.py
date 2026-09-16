@@ -141,6 +141,14 @@ WORLD_WORDS = ("MOVE", "ENCAMP")
 #: `BASH PICKLOCK QUIT`, a shopkeeper's `YES NO`, a room's `... LEAVE`.
 DISMISS = ("QUIT", "LEAVE", "NO")
 
+#: What takes the offered path on a script's own `YES NO` bar, instead of
+#: declining it. `#334`'s driver used to press only `DISMISS`'s half of
+#: every such bar -- which is why it could walk past a combat challenge and
+#: never fight -- so a caller asking for a fight has to say so explicitly;
+#: `clear_bar`'s default stays the walker's, which is to leave a bar alone
+#: rather than provoke one.
+ACCEPT = ("YES",)
+
 RE_THACO = re.compile(r"THACO\s+(\d+)")
 RE_DAMAGE = re.compile(r"DAMAGE\s+(\S+)")
 
@@ -378,7 +386,7 @@ class Run:
     def in_combat(self) -> bool:
         return any(w in self.row24() for w in COMBAT_WORDS)
 
-    def clear_bar(self) -> str | None:
+    def clear_bar(self, accept: bool = False) -> str | None:
         """Answer a script bar that is eating the move keys, and say which.
 
         Walking a Curse street puts a bar in front of the party every few
@@ -388,19 +396,44 @@ class Run:
         is the one that stopped `work/issue368/run4`: `BASH PICKLOCK QUIT`,
         for twenty-five seconds a step until the budget was gone.
 
-        Each of these words leaves the party where it is with nothing else
-        changed, which is what a walker wants and what `BASH` is not.
+        Each of `DISMISS`'s words leaves the party where it is with nothing
+        else changed, which is what an ordinary walker wants and what `BASH`
+        is not.
+
+        **`accept=True` is for a walker that is trying to reach a fight**,
+        not avoid one. `#334` found Silver Blades' own combat challenges put
+        up a `YES NO` bar in front of a battle, and a driver that always
+        answers `DISMISS`'s half can never take it -- so `ACCEPT` is tried
+        first, and only when the caller has asked for it. A bar with no
+        `YES` on it (a locked door, a shop with nothing left to decline) is
+        still answered the ordinary way rather than left standing.
+
+        **A `PRESS <RETURN> OR BUTTON TO CONTINUE` acknowledgement is
+        answered here too**, whatever `accept` is. It is the one further step
+        several of Silver Blades' own scripts take between a message and the
+        `COMBAT` opcode itself, and it is not a decision either side of
+        `accept` should have to name.
         """
         row = self.row24()
         if not row or MOVE_SUBBAR in row or self.in_combat():
             return None
         if all(w in row for w in WORLD_WORDS):
             return None
+        if accept:
+            for word in ACCEPT:
+                if word in row.split():
+                    self.sess.press_bar(word, timeout=10)
+                    self.log("accepted", word=word, was=row, now=self.row24())
+                    return word
         for word in DISMISS:
             if word in row.split():
                 self.sess.press_bar(word, timeout=10)
                 self.log("dismissed", word=word, was=row, now=self.row24())
                 return word
+        if "PRESS" in row:
+            self.sess.press_kernal(0x0D)
+            self.log("acknowledged", was=row, now=self.row24())
+            return "PRESS"
         return None
 
     def quickfight(self, turns: int) -> None:
@@ -451,7 +484,7 @@ class Run:
         return self.triple()[2]
 
     def goto(self, target: tuple[int, int], budget: int = 60,
-             geo=None) -> bool:
+             geo=None, accept: bool = False) -> bool:
         """Walk to a square, following the area's own map where there is one.
 
         **A greedy walk cannot get there.**  From `5,13` in Tilverton the
@@ -465,13 +498,16 @@ class Run:
         A step that goes nowhere bans that edge and the route is planned
         again, which is how the locked door is discovered rather than
         assumed -- the map cannot tell a locked door from an open one.
+
+        `accept` is passed straight to `clear_bar`: a walker headed for a
+        named fight square wants the `YES` half of what it meets there.
         """
         banned: set[tuple[int, int, int]] = set()
         came_from: tuple[int, int] | None = None
         for _ in range(budget):
             if self.in_combat():
                 return True
-            self.clear_bar()
+            self.clear_bar(accept=accept)
             if self.in_combat():
                 return True
             x, y, facing = self.triple()
