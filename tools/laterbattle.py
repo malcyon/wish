@@ -388,7 +388,10 @@ def ssb_fight(run: Battle, args, disks: str) -> int:
                 if budget <= 0 or run.in_combat():
                     break
                 arrived = run.goto(stop, budget, geo=geo, accept=args.accept)
-                spent += budget
+                # `goto` returns as soon as it arrives, so charging the whole
+                # `budget` for a leg that took fewer steps inflates `spent`
+                # past the real walk and ends the tour early (`#554`).
+                spent += run.last_goto_steps
                 run.log("goto", target=list(stop), arrived=arrived,
                         area=str(area), spent=spent,
                         triple=list(run.triple()), row24=run.row24())

@@ -290,6 +290,10 @@ class Run:
         self.sess = None
         self.shots = 0
         self.checks: dict[str, int] = {}
+        #: How many of `goto`'s `budget` the last call actually walked --
+        #: `goto` returns as soon as it arrives, so its bool return says
+        #: nothing about that (`#554`).
+        self.last_goto_steps = 0
 
     def log(self, kind: str, **kw) -> None:
         kw["kind"], kw["t"] = kind, round(time.time(), 3)
@@ -504,14 +508,19 @@ class Run:
         """
         banned: set[tuple[int, int, int]] = set()
         came_from: tuple[int, int] | None = None
+        took = 0
         for _ in range(budget):
+            took += 1
             if self.in_combat():
+                self.last_goto_steps = took
                 return True
             self.clear_bar(accept=accept)
             if self.in_combat():
+                self.last_goto_steps = took
                 return True
             x, y, facing = self.triple()
             if (x, y) == target:
+                self.last_goto_steps = took
                 return True
             route = plan(geo, (x, y), target, banned) if geo else []
             if route:
@@ -538,6 +547,7 @@ class Run:
             self.log("step", before=list(before), after=list(after),
                      want=want, moved=moved, planned=route,
                      banned=len(banned), row24=self.row24())
+        self.last_goto_steps = took
         return self.in_combat() or self.triple()[:2] == target
 
 
