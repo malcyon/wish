@@ -966,6 +966,14 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                        for i in range(3)) + bytes(3)
         rec.set_raw("spells_castable", packed)
         if computed_cleric is not None:
+            # `rep.note` alone does not do `emit`'s other job -- forwarding
+            # anything the source reader already attached to this Value's
+            # own `dropped` list (`Writer.emit`'s `self.report.dropped.
+            # extend(v.dropped)`). No reader reaching this today puts
+            # anything there (`goldbox.dos_codec.to_neutral` never does),
+            # so this is currently a no-op, but the recomputed path must
+            # forward drops the same way the copied path already does.
+            rep.dropped.extend(castable.dropped)
             rep.note(0x0EE, 6,
                      f"spells_castable: the cleric column recomputed "
                      f"through this title's own table from the class "
