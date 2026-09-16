@@ -5,19 +5,22 @@ names, and nobody has ruled on whether it should offer Pool of Radiance's
 129)` is the ticket. Donald ruled on 2026-09-15 that the codes be named
 properly rather than the picker staying thin or borrowing Pool of Radiance's
 names unmarked, and `goldbox/traits.py`'s `NAMES_SILVER_BLADES` went from six
-entries to 59.
+entries to 59 by the spell table and the check lists, and to 94 -- every one
+of the 90 codes the engine honours in a slot -- by reading the handler each
+code dispatches.
 
 Two kinds of test here, and the second is the one that would catch a mistake:
 
 * the picker offers what the table names, which is the ticket's own request;
-* **44 of the 59 entries are re-derived off the player's own disks** by
-  reading that title's spell-effect table, so a name that drifts from what
-  the game's data says turns this red. Those skip with no disks.
+* **the entries are re-derived off the player's own disks**: 44 by reading
+  that title's spell-effect table, and the handler-named ones by reading the
+  handler table through `tools/traitquery.py` and pinning the bytes each
+  name rests on -- the damage-type bit an immunity tests, the item template
+  that grants the code, the creature that carries it, the spell routine that
+  writes it. A base that slips or a name that drifts from the code turns
+  these red. All of them skip with no disks.
 
-The other fifteen -- the ones earned by a check list, by a call site, by a
-creature carrying the code or by `GEN`'s racial seed -- are graded PROBABLE
-and cannot be re-derived this cheaply; `docs/171-c64-trait-slots.md` has the
-runs and `tools/traitquery.py --compare` re-takes the first of them.
+`docs/171-c64-trait-slots.md` has the readings and `work/issue497/` the runs.
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ from __future__ import annotations
 import pytest
 
 from editor import effects
-from goldbox import c64_port, traits
+from goldbox import c64_port, items, traits
+from goldbox.d64 import D64
 from tools import gamedisks, traitquery
 
 SSB = c64_port.SECRET_OF_THE_SILVER_BLADES
@@ -61,19 +65,35 @@ def _disks():
     return str(root)
 
 
+@pytest.fixture(scope="module")
+def dispatch():
+    """The chain from the predicate to the handler tables, derived once."""
+    return traitquery.dispatch_for(_disks(), SSB)
+
+
+def _overlay(dispatch, name: str) -> bytes:
+    body = dispatch.body_map.get(name)
+    if body is None:
+        pytest.skip(f"the Secret of the Silver Blades disks here ship no {name}")
+    return body
+
+
 # --- the table itself -------------------------------------------------------
 
 def test_every_entry_carries_a_grade_this_project_uses():
     """A code with no grade is a code nobody has thought about hard enough.
 
-    44 CONFIRMED and 15 PROBABLE, and the split is not decoration: the
+    91 CONFIRMED and 3 PROBABLE, and the split is not decoration: the
     picker's `Seen in this game` section is `confidence != PROBABLE`, so a
-    grade here decides which half of the list a player reads a name in.
+    grade here decides which half of the list a player reads a name in. The
+    three left PROBABLE are 43, 44 and 89, whose handlers were not read.
     """
     grades = [grade for _name, grade in traits.NAMES_SILVER_BLADES.values()]
     assert sorted(set(grades)) == ["CONFIRMED", "PROBABLE"]
-    assert grades.count("CONFIRMED") == 44
-    assert grades.count("PROBABLE") == 15
+    assert grades.count("CONFIRMED") == 91
+    assert grades.count("PROBABLE") == 3
+    assert sorted(code for code, (_n, g) in traits.NAMES_SILVER_BLADES.items()
+                  if g == "PROBABLE") == [43, 44, 89]
 
 
 def test_no_entry_is_blank_or_a_bare_number():
@@ -127,7 +147,7 @@ def test_the_table_is_still_this_titles_own():
     does not have are absent, which is what `#186` and `#196` are about."""
     table = traits.for_game(SSB)
     assert table is not traits.for_game(POOL)
-    for code in (38, 107, 124, 139, 255):
+    for code in (38, 84, 124, 139, 255):
         assert code not in table
     # And the four Pool of Radiance names this title's own data contradicts
     # are not reused at their old numbers.
@@ -139,9 +159,9 @@ def test_the_table_is_still_this_titles_own():
 
 def test_the_picker_offers_every_code_the_table_names():
     """The ticket's own request. `editor.effects.offered` is what fills the
-    picker, and on this title it now offers 59 rows where it offered six."""
+    picker, and on this title it now offers 94 rows where it offered six."""
     offered = effects.offered(SSB)
-    assert len(offered) == len(traits.NAMES_SILVER_BLADES) == 59
+    assert len(offered) == len(traits.NAMES_SILVER_BLADES) == 94
     assert {code for code, _name, _seen in offered} == set(
         traits.NAMES_SILVER_BLADES)
     for code, name, seen in offered:
@@ -155,14 +175,25 @@ def test_the_picker_still_offers_pool_of_radiances_own_list_unchanged():
     assert len(effects.offered(None)) == len(effects.offered(POOL))
 
 
-def test_a_code_no_route_reached_still_reads_as_its_number():
-    """35 of the 90 codes the engine honours here are unnamed, and the number
-    is the honest answer for each. 92 is the halfling's own racial seed and
-    this title's DREADLORD carries it too, which is why no reading of it
-    survives; 105 is the ranger's."""
-    for code in (7, 92, 105):
+def test_a_code_the_engine_ignores_still_reads_as_its_number():
+    """The table names what a slot can do something with and nothing else:
+    84 and 100 are inside this title's 113-code namespace and on no list, so
+    the number stays the honest answer for them."""
+    for code in (84, 100):
         assert traits.describe(code, SSB) == f"trait {code}"
         assert traits.confidence(code, SSB) == ""
+
+
+def test_every_code_the_engine_honours_is_named():
+    """The residue is zero, measured rather than counted: the check lists
+    and the literal asks off the disks give the 90, and each has an entry."""
+    _lists, honoured = traitquery.measure(_disks(), SSB)
+    assert len(honoured) == 90
+    assert honoured <= set(traits.NAMES_SILVER_BLADES)
+    # And the four named for the active-effects panel alone are the only
+    # entries the engine does not ask a slot about.
+    assert sorted(set(traits.NAMES_SILVER_BLADES) - honoured) == [
+        11, 12, 34, 111]
 
 
 # --- re-derived off the disks ----------------------------------------------
@@ -235,8 +266,12 @@ def test_code_73_is_not_named_from_the_spell_row_that_appears_to_write_it():
     assert 96 in grouped
     assert 95 not in grouped
 
-    assert 73 not in traits.NAMES_SILVER_BLADES
-    assert traits.describe(73, SSB) == "trait 73"
+    # 73 is named now, and by its handler rather than by row 95: `$292C`
+    # zeroes damage carrying `$A904` bit 5, the breath-weapon bit, and four
+    # dragons carry it. Nothing about a charm survives.
+    assert traits.NAMES_SILVER_BLADES[73] == ("immune to breath weapons",
+                                              "CONFIRMED")
+    assert "charm" not in traits.describe(73, SSB).lower()
     assert traits.NAMES_SILVER_BLADES[11][0] == traits.NAMES[11][0]
 
 
@@ -291,3 +326,161 @@ def test_the_three_codes_positional_agreement_got_wrong():
     assert "CONFUSION" in by_code[35]
     for code in (4, 27, 35):
         assert traits.NAMES[code][0] != traits.NAMES_SILVER_BLADES[code][0]
+
+
+# --- the handlers, re-read off the disks ------------------------------------
+
+def test_the_handler_table_is_indexed_by_the_id_itself(dispatch):
+    """`COMBAT $12C3` is `LDX $7F6E / LDA $EF90,X / STA / LDA $F001,X`: the
+    scratch the predicate parks the id in, then the two tables at the id.
+    Every handler-named entry rests on this indexing, so it is pinned before
+    any of them."""
+    assert (dispatch.ask_file, dispatch.ask_base) == ("COMBAT", 0x0800)
+    assert (dispatch.low_at, dispatch.high_at) == (0xEF90, 0xF001)
+    assert dispatch.namespace == 113
+    body = dispatch.body_map["COMBAT"]
+    at = dispatch.ask_off + 0x15
+    assert body[at:at + 3] == bytes((0xAE, 0x6E, 0x7F))        # LDX $7F6E
+    assert body[at + 3] == 0xBD
+    assert body[at + 4] | body[at + 5] << 8 == dispatch.low_at
+    assert body[at + 9] == 0xBD
+    assert body[at + 10] | body[at + 11] << 8 == dispatch.high_at
+
+
+def test_an_immunity_zeroes_the_damage_where_resist_fire_halves_it(dispatch):
+    """93 was "half damage from fire" by agreement with Curse. Its handler
+    and Resist Fire's differ by exactly the instruction that decides it: 20
+    is `LSR $945F`, 93 lands on `$14EF`, which stores zero over the damage
+    and the effect. 6, 73 and 98 are the same tail behind the electricity,
+    breath and cold bits."""
+    root = _disks()
+    handler = lambda code, n: traitquery.handler_bytes(  # noqa: E731
+        root, SSB, code, n, dispatch=dispatch)
+    assert handler(20, 10) == bytes.fromhex("a9 01 2d 04 a9 f0 ee 4e 5f 94")
+    assert handler(93, 4) == bytes.fromhex("a9 01 d0 20")
+    assert handler(6, 5) == bytes.fromhex("a9 04 4c 32 29")
+    assert handler(73, 4) == bytes.fromhex("a9 20 d0 02")
+    assert handler(98, 11) == bytes.fromhex("a9 02 2d 04 a9 f0 03 20 ef 14 60")
+    body = dispatch.body_map["COMBAT"]
+    assert body[0x14EF - 0x0800:0x14F8 - 0x0800] == bytes.fromhex(
+        "a9 00 8d 02 a9 8d 5f 94 60")
+    for code in (6, 73, 93, 98):
+        assert traits.NAMES_SILVER_BLADES[code][1] == "CONFIRMED"
+    assert traits.NAMES_SILVER_BLADES[93][0] == traits.NAMES[112][0]
+    assert traits.NAMES_SILVER_BLADES[96][0] == traits.NAMES[108][0]
+    # 96 cancels sleep and charm outright; 95 and 18 do the same behind a
+    # d100 under 90 and 30.
+    assert handler(96, 5) == bytes.fromhex("a9 35 20 ea 14")
+    assert handler(95, 2) == bytes.fromhex("a9 5a")
+    assert handler(18, 2) == bytes.fromhex("a9 1e")
+
+
+def test_the_items_that_grant_a_handler_named_code(dispatch):
+    """Seven templates carry a passive power (+15 bit 7) whose +14 is a code
+    the handler pass named, and the item is what the name says."""
+    root = _disks()
+    templates = items.load_item_templates(root + "/" + sorted(
+        p.name for p in gamedisks.find(SSB.key).glob(SSB.disk_glob))[0],
+        game=SSB)
+    granted = {
+        "BOOTS OF SPEED": 74, "LONG SWORD VS. GIANTS": 75, "MIRROR": 72,
+        "SILVER SHIELD +5": 72, "PERIAPT OF HEALTH": 76,
+        "STONE OF GOOD LUCK": 78, "RING OF INVISIBILITY": 56,
+        "RING OF FIRE RESISTANCE": 61,
+    }
+    for name, code in granted.items():
+        raw = templates[name]
+        assert raw[14] == code, name
+        assert raw[15] & 0x80, name
+        assert traits.NAMES_SILVER_BLADES[code][1] == "CONFIRMED"
+    # 90 reads the weapon's type entry rather than the template: byte +7 of
+    # `ITEMS`, bit 7, on the blunt types and no others among those shipped.
+    types = _overlay(dispatch, "ITEMS")
+    blunt = {t for t in range(128) if types[t * 16 + 7] & 0x80}
+    by_type = {raw[0]: name for name, raw in templates.items()}
+    assert {by_type[t] for t in blunt if t in by_type} == {
+        "HAMMER +4", "MACE +4", "MORNING STAR +2", "QUARTER STAFF +4",
+        "SLING", "STAFF SLING +3", "FLAIL +4"}
+    assert not any(t in blunt for t in (
+        templates["LONG SWORD +4"][0], templates["DAGGER +3"][0],
+        templates["LONG BOW"][0]))
+
+
+def test_the_creatures_carry_what_their_handlers_do(dispatch):
+    """The 71 `MON*` records against the handler readings: each id lands on
+    the creature the *Monster Manual* gives that ability to, and the five
+    with no carrier are the five the table says rest on the handler alone."""
+    carriers: dict[int, set[str]] = {}
+    seen: set[str] = set()
+    for path in sorted(gamedisks.find(SSB.key).glob(SSB.disk_glob)):
+        image = D64.open(str(path))
+        for entry in image.directory():
+            name = bytes(entry.name).decode("latin-1")
+            if not name.startswith("MON") or name in seen:
+                continue
+            seen.add(name)
+            body = image.read_file(entry)[2:]
+            monster = body[:20].split(b"\0")[0].decode("latin-1").strip()
+            for code in body[0xAD:0xB7]:
+                if code:
+                    carriers.setdefault(code, set()).add(monster)
+    assert len(seen) == 71
+    dragons = {"ANCIENT DRAGON", "RED DRAGON", "RED HATCHLING", "WHITE DRAGON"}
+    expected = {
+        6: {"STORM GIANT", "DREADLORD"}, 60: {"IRON GOLEM"},
+        65: {"COCKATRICE"}, 66: {"REMORHAZ"}, 67: {"12HD PYROHYDRA"},
+        70: {"UMBER HULK"}, 73: dragons, 79: {"IRON GOLEM"},
+        80: {"HELL HOUND"}, 81: {"GIANT SLUG"},
+        83: {"WHITE DRAGON", "ANCIENT DRAGON"}, 86: {"PHASE SPIDER"},
+        88: {"DREADLORD", "DRIDER"}, 90: {"GIANT SLUG"}, 92: {"DREADLORD"},
+        93: {"DREADLORD", "FIRE GIANT"}, 96: {"DREADLORD"},
+        98: {"DREADLORD", "FROST GIANT"}, 99: {"DREADLORD"},
+        103: {"DREADLORD", "GARGOYLE", "MARGOYLE"},
+        104: {"ANCIENT DRAGON", "RED DRAGON", "RED HATCHLING"},
+    }
+    for code, names in expected.items():
+        assert carriers.get(code) == names, code
+    for code in (50, 54, 77, 82, 108):
+        assert code not in carriers, code
+
+
+def test_dispel_evil_writes_the_dismissal_touch_and_confusion_writes_107(
+        dispatch):
+    """Two spell-written codes the spell table's effect byte cannot show,
+    because the routine writes them beside the byte's own code.
+
+    `COMBAT $1F96`, DISPEL EVIL's routine: 32 to the caster with the message
+    IS PROTECTED, then 4 silently. `$26E8`, CONFUSION's outcome table: 27,
+    107, 111 or 11 by a d100 against 50, 70, 80, 100.
+    """
+    body = dispatch.body_map["COMBAT"]
+    assert body[0x1F96 - 0x0800:0x1FAD - 0x0800] == bytes.fromhex(
+        "20 2c 8f a2 20 ad 0a a9 8d 00 a9 a9 3a 20 23 12 a2 04 a9 80 4c 23 12")
+    assert body[0x26E8 - 0x0800:0x26F0 - 0x0800] == bytes(
+        (27, 107, 111, 11, 50, 70, 80, 100))
+    assert traits.NAMES_SILVER_BLADES[32][1] == "CONFIRMED"
+    assert traits.NAMES_SILVER_BLADES[107][1] == "CONFIRMED"
+
+
+def test_110_is_the_paladins_cure_disease_timer(dispatch):
+    """`GEN $0C6E` seeds record `$013` = 1 and `$012` = one per five levels;
+    `ECL65 $871D` spends `$012` and plants 110 on the paladin with duration
+    `$C7`; the camp table at `ECL65 $9496` sends 110 at expiry to `$8657`,
+    which recomputes `$012`."""
+    gen = _overlay(dispatch, "GEN")
+    assert gen[0x46E:0x481] == bytes.fromhex(
+        "a0 01 8c 13 7c c9 06 90 06 c8 c9 0b 90 01 c8 8c 12 7c 60")
+    ecl = _overlay(dispatch, "ECL65")
+    assert ecl[0x72E:0x733] == bytes.fromhex("a9 6e 20 7d 38")   # has 110?
+    assert ecl[0x738:0x73F] == bytes.fromhex("a9 6e 8d 69 2a a9 c7")
+    assert ecl[0x74B:0x74E] == bytes.fromhex("ce 12 7c")          # DEC $7C12
+    ids = ecl[0x1496:0x14A3]
+    assert ids == bytes((113, 38, 12, 14, 22, 34, 109, 110, 43, 44, 62, 15, 0))
+    index = ids.index(110)
+    target = ecl[0x14A3 + index] | ecl[0x14AF + index] << 8
+    assert target == 0x8657
+    assert ecl[0x657:0x65D] == bytes.fromhex("20 4e 88 8c 12 7c")
+    # And lay on hands is the twin: 109, duration $C1, record $013.
+    assert ecl[0x766:0x76E] == bytes.fromhex("a9 6d 8d 69 2a a9 c1 8d")
+    assert ecl[0x779:0x77C] == bytes.fromhex("ce 13 7c")
+    assert traits.NAMES_SILVER_BLADES[110][1] == "CONFIRMED"

@@ -514,12 +514,14 @@ def test_a_curse_elf_still_reads_the_way_it_always_did(window, tmp_path):
 
 def test_a_silver_blades_code_nobody_has_read_keeps_its_number(
         window, tmp_path):
-    """The halfling's 92 and the ranger's 105 are seeded and unnamed. The
-    number is the honest answer; Pool of Radiance's "50% magic resistance" for
-    105 is not."""
-    rows = _sheet_traits(window, tmp_path, SSB, race=5, codes=(0, 92, 105))
-    assert rows[1] == "trait 92"
-    assert rows[2] == "trait 105"
+    """84 and 100 are ids no handler, no spell table and no `GEN` seed in
+    this title ever dispatches from a trait slot -- #497's own deep-research
+    pass named all 90 the engine does honour and left these two out on
+    purpose. The number is the honest answer, and it stays honest as the
+    table grows further, since these two are not on it to grow into."""
+    rows = _sheet_traits(window, tmp_path, SSB, race=5, codes=(0, 84, 100))
+    assert rows[1] == "trait 84"
+    assert rows[2] == "trait 100"
 
 
 # --- the table itself, with no window --------------------------------------
@@ -544,27 +546,44 @@ def test_silver_blades_reuses_the_string_and_not_the_number():
 
 
 def test_silver_blades_names_only_codes_its_own_game_data_establishes():
-    """The table grew from six to 59 on #497 and is still this title's own.
+    """The table grew from six to 59 on #497, and to 94 when the same
+    ticket's deep-research pass named every id the engine honours in this
+    title's trait slots. Still this title's own.
 
     Every entry was earned here -- by the spell its own `COMBAT2` table says
     writes the code, by the numbered check list the code shares with Curse,
     by the routine that asks about it, by the creature carrying it, or by
-    `GEN`'s racial seed. What the test guards is the boundary: the codes Pool
-    of Radiance names and this title spends elsewhere must **not** appear,
-    because reading a save through the wrong table is #186 and #196.
+    `GEN`'s racial seed. What the test guards is the boundary: a code Pool of
+    Radiance names for one thing can carry a different meaning here, because
+    reading a save through the wrong table is #186 and #196.
     """
     from goldbox import traits
     table = traits.for_game(SSB)
-    assert len(table) == 59
-    # 38 "extra strength", 107 and 124 the elf's and half-elf's resistance,
-    # 139 "phasing": Pool of Radiance names all four and this title does not.
-    for code in (38, 107, 124, 139):
+    assert len(table) == 94
+    # 38 "extra strength", 124 the half-elf's resistance, 139 "phasing": Pool
+    # of Radiance names all three and this title does not.
+    for code in (38, 124, 139):
         assert code not in table
         assert traits.describe(code, SSB) == f"trait {code}"
         assert traits.confidence(code, SSB) == ""
-    # And a code positional agreement offered and the monster census refused:
-    # an IRON GOLEM carries 60, which Pool of Radiance's guide calls unused.
-    assert 60 not in table
+    # 107 is also in Pool of Radiance's table, as the elf's own resistance --
+    # and it is in this title's table too, now, but the deep-research pass
+    # read the handler and found this title spent 107 on something else
+    # (confused, attacking the nearest creature). Reading it through Pool of
+    # Radiance's table would still be wrong; the guard is that the two
+    # descriptions disagree, not that the code is absent.
+    assert traits.describe(107, SSB) != ELF_RESISTANCE
+    # 60 was the code positional agreement offered and the monster census
+    # refused, before the handler was read: an IRON GOLEM carries it, and the
+    # handler settled it as the golem's own +3-weapon immunity rather than
+    # Pool of Radiance's guide-only "unused".
+    assert 60 in table
+    # 84 and 100 are the stable absent codes now -- ids no handler, spell
+    # table or racial seed in this title ever dispatches from a trait slot.
+    for code in (84, 100):
+        assert code not in table
+        assert traits.describe(code, SSB) == f"trait {code}"
+        assert traits.confidence(code, SSB) == ""
 
 
 def test_a_title_nobody_has_read_keeps_pool_of_radiances_table():

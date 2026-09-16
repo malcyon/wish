@@ -35,6 +35,7 @@ byte for byte -- `SPELLE65 +0x0570`, 20 lists, 134 ids, 92 distinct.
     tools/traitquery.py secret-of-the-silver-blades --compare \
         curse-of-the-azure-bonds
     tools/traitquery.py secret-of-the-silver-blades --spells
+    tools/traitquery.py secret-of-the-silver-blades --handlers 60 79 90
 
 What `--lists` came back with, on 2026-09-10, and the last column is why
 `#497 (The trait picker offers a Secret of the Silver Blades character six
@@ -45,7 +46,7 @@ names, and nobody has ruled on whether it should offer Pool of Radiance's
 |---|---|---|---|---|
 | Pool of Radiance | 139 | 92 | 95 | 95 |
 | Curse of the Azure Bonds | 146 | 115 | 120 | 106 |
-| Secret of the Silver Blades | 113 | 80 | 90 | 6, and 55 after #497 |
+| Secret of the Silver Blades | 113 | 80 | 90 | 6, and all 90 after #497 |
 
 Nothing here needs an emulator or a save: it reads the overlays off the
 player's own disks through `tools/gamedisks.py`, and nothing it prints is
@@ -70,6 +71,10 @@ Two more readings off the same disks do say, and #497 used both:
   `goldbox/effects.py` already reads for durations; Curse and Silver Blades
   keep a nine-byte version in `COMBAT2`. `SPELL_EFFECTS` below has the three
   and how each was located.
+* **`--handlers`** disassembles the routine each id dispatches through the
+  pair of tables the ask reads, indexed by the id itself. It is the route for
+  an id no spell writes and no creature carries, and the one that finished
+  Silver Blades: `docs/171-c64-trait-slots.md` has every reading.
 
 ## Finding the lists without knowing where anything runs
 
@@ -477,17 +482,47 @@ def flags_tail(lists: list[list[int]]) -> bool:
     return bool(lists) and len(set(lists[-1])) <= 2 and len(lists[-1]) >= 6
 
 
-def report_lists(root: str, game: c64_port.C64Container, entry: int,
-                 literal: set[int], show: bool = True):
-    """Print the check lists, and the ids they add to the literal census.
+class Dispatch:
+    """Where one title asks about an id and dispatches its handler.
 
-    Returns `(status, lists, honoured)` so `--compare` can take the same
-    measurement without printing it: `lists` is the decoded block, one list of
-    ids per check, and `honoured` is every id a trait slot can do anything
-    with -- the lists plus the literal census. `show=False` silences the
-    whole of it and nothing else changes.
+    Every field is either an absolute operand read off the disks (`wrapper`,
+    `ask`, `low_at`, `high_at`, `lists_at`) or a file-and-offset pair a reader
+    can check by hand. `ask_base` is scored rather than read, and it is the
+    one thing here that says where `COMBAT` runs -- which is what puts a
+    handler address onto a file offset.
     """
-    say = print if show else (lambda *a, **k: None)
+
+    def __init__(self, body_map, called, literal, wrap_file, wrap_off,
+                 wrapper, ask_file, ask_off, ask_base, low_at, high_at,
+                 walk_file, walk_off, lists_at):
+        self.body_map = body_map
+        self.called = called
+        self.literal = literal
+        self.wrap_file, self.wrap_off, self.wrapper = (wrap_file, wrap_off,
+                                                       wrapper)
+        self.ask_file, self.ask_off, self.ask_base = (ask_file, ask_off,
+                                                      ask_base)
+        self.low_at, self.high_at = low_at, high_at
+        self.walk_file, self.walk_off, self.lists_at = (walk_file, walk_off,
+                                                        lists_at)
+
+    @property
+    def ask(self) -> int:
+        return self.ask_base + self.ask_off
+
+    @property
+    def namespace(self) -> int:
+        return self.high_at - self.low_at
+
+
+def find_dispatch(root: str, game: c64_port.C64Container, entry: int,
+                  literal: set[int]):
+    """Follow the chain from the predicate out to the handler tables.
+
+    Returns a `Dispatch`, or a string saying which link was missing. `literal`
+    is widened in place with any id named at a call through the wrapper,
+    which `call_sites` cannot see because it only looks at the predicate.
+    """
     body_map = bodies(root, game)
     called = set()
     for body in body_map.values():
@@ -495,19 +530,16 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     found = find_wrapper(body_map, entry)
     if found is None:
-        say("  no LDX/JMP wrapper around the predicate; nothing to walk")
-        return 1, [], set()
+        return "  no LDX/JMP wrapper around the predicate; nothing to walk"
     wrap_file, wrap_off = found
     wrap_base = entry_point(body_map[wrap_file], wrap_off, called)
     if wrap_base is None:
-        say(f"  {wrap_file} has the wrapper at +{wrap_off:#06x} and nothing "
-          f"calls it at any load address")
-        return 1, [], set()
+        return (f"  {wrap_file} has the wrapper at +{wrap_off:#06x} and "
+                f"nothing calls it at any load address")
     wrapper = wrap_base + wrap_off
 
-    # A caller that goes through the wrapper is invisible to `call_sites`,
-    # which only looks at the predicate itself. Silver Blades has one that
-    # names its id: `COMBAT $25D5 LDA #$18 / JSR $928F`.
+    # Silver Blades has one caller through the wrapper that names its id:
+    # `COMBAT $25D5 LDA #$18 / JSR $928F`.
     want = bytes((wrapper & 0xFF, wrapper >> 8))
     for body in body_map.values():
         i = body.find(want)
@@ -520,13 +552,11 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     found = find_ask(body_map, wrapper)
     if found is None:
-        say(f"  nothing calls ${wrapper:04X} the way the tables do")
-        return 1, [], set()
+        return f"  nothing calls ${wrapper:04X} the way the tables do"
     ask_file, ask_off = found
     tables = handler_tables(body_map[ask_file], ask_off)
     if tables is None:
-        say(f"  {ask_file} +{ask_off:#06x} dispatches through no table pair")
-        return 1, [], set()
+        return f"  {ask_file} +{ask_off:#06x} dispatches through no table pair"
     low_at, high_at = tables
     namespace = high_at - low_at
 
@@ -541,24 +571,44 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     ask_base = entry_point(body_map[ask_file], ask_off, called, lands_right)
     if ask_base is None:
-        say(f"  {ask_file} +{ask_off:#06x} has no load address that both "
-            f"puts it where something calls it and puts its walker's list "
-            f"base at ${high_at + namespace + 1:04X}")
-        return 1, [], set()
-    ask = ask_base + ask_off
+        return (f"  {ask_file} +{ask_off:#06x} has no load address that both "
+                f"puts it where something calls it and puts its walker's "
+                f"list base at ${high_at + namespace + 1:04X}")
     walk_file, walk_off, lists_at = find_walker(
-        body_map, ask, same=ask_file, avoid=ask_off)
+        body_map, ask_base + ask_off, same=ask_file, avoid=ask_off)
+    return Dispatch(body_map, called, literal, wrap_file, wrap_off, wrapper,
+                    ask_file, ask_off, ask_base, low_at, high_at,
+                    walk_file, walk_off, lists_at)
+
+
+def report_lists(root: str, game: c64_port.C64Container, entry: int,
+                 literal: set[int], show: bool = True):
+    """Print the check lists, and the ids they add to the literal census.
+
+    Returns `(status, lists, honoured)` so `--compare` can take the same
+    measurement without printing it: `lists` is the decoded block, one list of
+    ids per check, and `honoured` is every id a trait slot can do anything
+    with -- the lists plus the literal census. `show=False` silences the
+    whole of it and nothing else changes.
+    """
+    say = print if show else (lambda *a, **k: None)
+    d = find_dispatch(root, game, entry, literal)
+    if isinstance(d, str):
+        say(d)
+        return 1, [], set()
+    body_map, namespace = d.body_map, d.namespace
+    low_at, high_at, lists_at = d.low_at, d.high_at, d.lists_at
 
     # The three addresses below are absolute operands and carry their targets
     # wherever the overlays run; the file-and-offset pairs are what a reader
     # can check by hand. Where an overlay's own load address is printed it is
     # scored rather than read, and nothing the measurement rests on uses it.
-    say(f"\n  {wrap_file} +{wrap_off:#06x}: LDX <character> / JMP "
+    say(f"\n  {d.wrap_file} +{d.wrap_off:#06x}: LDX <character> / JMP "
         f"${entry:04X}, the wrapper the lists ask through")
-    say(f"  {ask_file} +{ask_off:#06x}: one id, one combatant, then that "
+    say(f"  {d.ask_file} +{d.ask_off:#06x}: one id, one combatant, then that "
         f"id's handler")
-    say(f"  {walk_file} +{walk_off:#06x}: where the walker calls it, having\n"
-        f"      skipped X zero-terminated lists at ${lists_at:04X}")
+    say(f"  {d.walk_file} +{d.walk_off:#06x}: where the walker calls it, "
+        f"having\n      skipped X zero-terminated lists at ${lists_at:04X}")
     say(f"  ${low_at:04X}/${high_at:04X}: handler address per id, so the "
         f"namespace is {namespace} ids")
     if lists_at != high_at + namespace + 1:
@@ -818,6 +868,191 @@ def report_spells(root: str, game: c64_port.C64Container,
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Route 3: the handler the id dispatches
+# ---------------------------------------------------------------------------
+# The ask dispatches a matched id through the pair of tables `find_dispatch`
+# found -- `LDX <scratch> / LDA <low>,X / LDA <high>,X`, so **the table index
+# is the id itself** -- and the address it lands on is a routine in the same
+# file as the ask, which is `COMBAT` in all three titles. Reading that routine
+# is what names an id no spell writes and no creature carries, and it is the
+# route `#497` finished Silver Blades with: `docs/171-c64-trait-slots.md` has
+# every reading and the anchors (`$A904` is the damage type, `$945F` the
+# damage, `$A903` the saving-throw roll, `$7C00` the staged record).
+#
+# `--handlers` prints each id's address, its file and offset, and the routine
+# decoded linearly until a return or jump that no forward branch reaches past.
+# A 6502 has no instruction alignment, so the extent is a reading aid rather
+# than a proof; `d6502.py`'s own docstring has the caveat.
+
+
+def dispatch_for(root: str, game: c64_port.C64Container,
+                 overlay: str = "LIBRARY") -> Dispatch:
+    """The chain from predicate to handler tables, or `SystemExit` saying
+    which link is missing."""
+    predicate = predicate_for(root, game, overlay)
+    literal = literal_ids(root, game, predicate)
+    d = find_dispatch(root, game, predicate.entry, literal)
+    if isinstance(d, str):
+        raise SystemExit(f"traitquery.py: {game.title}:\n{d}")
+    return d
+
+
+def handler_addresses(root: str, game: c64_port.C64Container,
+                      overlay: str = "LIBRARY",
+                      dispatch: Dispatch | None = None) -> dict[int, int]:
+    """`{id: handler address}` for every id in the title's namespace.
+
+    Index 0 is whatever the byte before each table holds and is not an id.
+    """
+    d = dispatch or dispatch_for(root, game, overlay)
+    block = find_block(d.body_map, d.lists_at, d.high_at, d.namespace)
+    if block is None:
+        raise SystemExit(f"traitquery.py: no file holds {game.title}'s "
+                         f"handler tables at ${d.low_at:04X}")
+    name, _offset, base = block[4], block[5], block[6]
+    body = d.body_map[name]
+    low, high = d.low_at - base, d.high_at - base
+    return {i: body[low + i] | body[high + i] << 8
+            for i in range(d.namespace)}
+
+
+def handler_extent(root: str, game: c64_port.C64Container, address: int,
+                   overlay: str = "LIBRARY", dispatch: Dispatch | None = None,
+                   limit: int = 60):
+    """`(file, offset, lines)` for the routine at `address`, or None when it
+    falls outside the file the ask runs in.
+
+    Decodes forward until an `RTS`, `RTI` or `JMP` that sits past every
+    forward branch target seen so far, which is how a handler that skips
+    over its own tail with a `BNE` is still read whole.
+    """
+    d = dispatch or dispatch_for(root, game, overlay)
+    where = handler_file(d, address, root, game, overlay)
+    if where is None:
+        return None
+    name, base = where
+    body = d.body_map[name]
+    out = []
+    pc = far = address
+    for _ in range(limit):
+        i = pc - base
+        if i >= len(body):
+            break
+        op = body[i]
+        if op not in d6502.T:
+            out.append(f"${pc:04X}  {op:02X}           .byte ${op:02X}")
+            pc += 1
+            continue
+        mn, mode = d6502.T[op]
+        size = d6502.SZ[mode]
+        raw = body[i:i + size]
+        out.append(f"${pc:04X}  {' '.join(f'{x:02X}' for x in raw):<9s}  "
+                   f"{d6502.fmt(pc, mn, mode, raw)}")
+        if mode == d6502.M_REL:
+            step = raw[1] - 256 if raw[1] > 127 else raw[1]
+            far = max(far, pc + 2 + step)
+        pc += size
+        if mn in ("RTS", "RTI", "JMP") and pc > far:
+            break
+    return name, address - base, out
+
+
+def handler_file(d: Dispatch, address: int, root: str,
+                 game: c64_port.C64Container, overlay: str = "LIBRARY"):
+    """`(file, base)` for the overlay a handler address falls in, or None.
+
+    Curse and Silver Blades keep the handlers in the ask's own file, so that
+    is tried first. Pool of Radiance keeps them in `SPELLE01` at `$A700`
+    (`docs/171-c64-trait-slots.md`), which the ask's file cannot answer for,
+    and `SPELLE04` loads at `$A700` as well -- so when more than one other
+    file's best-scoring load address covers the table equally well this
+    answers None rather than guessing, and `--handlers` prints the
+    candidates. `handler_candidates` is the ranking behind that.
+    """
+    body, base = d.body_map[d.ask_file], d.ask_base
+    if base <= address < base + len(body):
+        return d.ask_file, base
+    covering = [row for row in handler_candidates(d, root, game, overlay)
+                if row[3] <= address < row[3] + len(d.body_map[row[2]])]
+    if len(covering) == 1 or (
+            len(covering) > 1 and covering[0][0] > covering[1][0]):
+        return covering[0][2], covering[0][3]
+    return None
+
+
+def handler_candidates(d: Dispatch, root: str, game: c64_port.C64Container,
+                       overlay: str = "LIBRARY"):
+    """`(covered, score, file, base)` for every file and load address that
+    puts at least a quarter of the handler table inside the file, best
+    first. Cached on the dispatch, since it costs a scan of every file."""
+    cache = getattr(d, "_handler_files", None)
+    if cache is None:
+        cache = d._handler_files = []
+        table = handler_addresses(root, game, overlay, d)
+        addresses = {a for c, a in table.items() if c}
+        for name, other in sorted(d.body_map.items()):
+            if name == d.ask_file:
+                continue
+            for score, _good, candidate in bases(other)[:3]:
+                covered = sum(1 for a in addresses
+                              if candidate <= a < candidate + len(other))
+                if covered >= len(addresses) // 4:
+                    cache.append((covered, score, name, candidate))
+        cache.sort(reverse=True)
+    return cache
+
+
+def handler_bytes(root: str, game: c64_port.C64Container, code: int,
+                  count: int, overlay: str = "LIBRARY",
+                  dispatch: Dispatch | None = None) -> bytes:
+    """The first `count` bytes of one id's handler, for a test to pin."""
+    d = dispatch or dispatch_for(root, game, overlay)
+    address = handler_addresses(root, game, overlay, d)[code]
+    body, base = d.body_map[d.ask_file], d.ask_base
+    return bytes(body[address - base:address - base + count])
+
+
+def report_handlers(root: str, game: c64_port.C64Container, codes,
+                    overlay: str = "LIBRARY") -> int:
+    """One block per id: where its handler is, and what the bytes decode to."""
+    d = dispatch_for(root, game, overlay)
+    table = handler_addresses(root, game, overlay, d)
+    _lists, honoured = measure(root, game, overlay)
+    print(f"{game.title}: handler tables ${d.low_at:04X}/${d.high_at:04X}, "
+          f"indexed by the id itself; {d.ask_file} runs at ${d.ask_base:04X}")
+    wanted = sorted(codes) if codes else sorted(honoured)
+    names = traits.for_game(game.key)
+    for code in wanted:
+        if code not in table:
+            print(f"\n{code}: outside the {d.namespace}-id namespace")
+            continue
+        address = table[code]
+        shared = sorted(c for c, a in table.items() if a == address and c)
+        head = f"\n{code} -> ${address:04X}"
+        if len(shared) > 1:
+            head += f"  (shared with {', '.join(str(c) for c in shared if c != code)})"
+        if code in names:
+            head += f"  {names[code][0]} ({names[code][1]})"
+        print(head)
+        found = handler_extent(root, game, address, overlay, d)
+        if found is None:
+            rows = [f"{n} at ${b:04X} ({c} of the table inside)"
+                    for c, _s, n, b in handler_candidates(d, root, game,
+                                                          overlay)
+                    if b <= address < b + len(d.body_map[n])]
+            print(f"   outside {d.ask_file}; " + (
+                "no other file covers it" if not rows else
+                "the files that could hold it score alike: "
+                + "; ".join(rows)))
+            continue
+        name, offset, lines = found
+        print(f"   {name} +{offset:#06x}")
+        for line in lines:
+            print("   " + line)
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("title")
@@ -836,6 +1071,9 @@ def main(argv=None) -> int:
     parser.add_argument("--spells", action="store_true",
                         help="which effect id each of this title's spells "
                              "writes, read off its own spell-effect table")
+    parser.add_argument("--handlers", nargs="*", type=int, metavar="ID",
+                        help="disassemble the handler each id dispatches "
+                             "(every honoured id when none are given)")
     args = parser.parse_args(argv)
 
     game = title_named(args.title)
@@ -848,6 +1086,8 @@ def main(argv=None) -> int:
                               args.overlay)
     if args.spells:
         return report_spells(root, game, args.overlay)
+    if args.handlers is not None:
+        return report_handlers(root, game, args.handlers, args.overlay)
 
     predicate = predicate_for(root, game, args.overlay)
     record = staging(game)

@@ -359,15 +359,33 @@ EMPTY = "—"
 # might like to see.
 #
 # ---------------------------------------------------------------------------
-# The four routes that filled the table below, and what each one is worth
+# The routes that filled the table below, and what each one is worth
 # ---------------------------------------------------------------------------
 # Donald ruled on 2026-09-15 that the picker should offer this title's ids
 # named properly, rather than staying at six or borrowing another title's
 # names unmarked (#497). **90 ids do something in a trait slot here** --
 # 80 on the engine's own check lists and ten more named by an instruction --
-# and the routes below name 55 of them. `tools/traitquery.py` takes all four
-# measurements off the player's disks and `docs/171-c64-trait-slots.md` has
-# the run.
+# and the routes below name all 90. `tools/traitquery.py` takes every
+# measurement off the player's disks and `docs/171-c64-trait-slots.md` has
+# the runs.
+#
+# **The handler the id dispatches, read. CONFIRMED.** The combat ask
+# dispatches a matched id through `LDX $7F6E / LDA $EF90,X / LDA $F001,X`,
+# so the table index is the id itself and the address is a routine in
+# `COMBAT` at `$0800`. `tools/traitquery.py --handlers` prints each one.
+# Reading them is what named the 35 ids no spell writes and no check-list
+# agreement reached, and it corrected two names the other routes had
+# offered: 93 zeroes fire damage rather than halving it, and 96 cancels
+# sleep and charm rather than anything to do with silver. The anchors every
+# reading rests on: `$A904` is the damage type (bit 0 fire, 1 cold, 2
+# electricity, 3 magic, 4 acid -- the bit picks the "FROM FIRE" .. "FROM
+# ACID" message at `COMBAT $107A` -- bit 5 a breath weapon, bit 6 a spell),
+# `$945F` the damage, `$A903` the saving-throw d20 (list 12 is walked from
+# inside the roll, so a list-12 handler that increments it is a save
+# bonus), `$A915` the attack d20, `$7C00` the staged record with the ten
+# slots at `$7CAD`, and `$14EF` the routine that zeroes both the damage and
+# the effect being applied, which is what an immunity is. Where a creature,
+# an item or a spell routine carries the id as well, the comment says so.
 #
 # **The spell that writes it. CONFIRMED.** `COMBAT2 +2937` is this title's
 # per-spell record, nine bytes each, one per spell id 1-117, and byte 0 is
@@ -512,75 +530,217 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
     111: ("Fear", "CONFIRMED"),                        # FEAR
     112: ("Fire Shield", "CONFIRMED"),                 # FIRE SHIELD
 
-    # -- the same code in the same numbered check list as Curse (PROBABLE) --
-    # 26, 47 and 48 are also what `GEN` seeds a dwarf and a gnome, so each
-    # has two lines of evidence rather than one.
-    26: (NAMES[26][0], "PROBABLE"),                    # list 10, to hit
-    31: (NAMES[31][0], "PROBABLE"),                    # list 7, restrained
-    47: (NAMES[47][0], "PROBABLE"),                    # list 11, to hit
-    48: (NAMES[48][0], "PROBABLE"),                    # list 11, to hit
-    61: (NAMES[61][0], "PROBABLE"),          # lists 6 and 12, spell damage
+    # -- offered by the same numbered check list as Curse, then settled by
+    # -- the handler (CONFIRMED where the handler says so) ------------------
+    # 26, 47 and 48 are also what `GEN` seeds a dwarf and a gnome. The
+    # handlers read the *other* combatant's creature-type bytes, record
+    # `$D4`/`$D5`: 26 is `INC $A915` (+1 on the attack d20) when the target
+    # has `$D4` bit 7; 47 and 48 add 4 to the target's working AC when the
+    # attacker has `$D4` bit 2 (every giant and the OGRE in the census) or
+    # bit 5 (those plus the BUGBEAR).
+    26: (NAMES[26][0], "CONFIRMED"),                   # list 10, $25E4
+    # $27D4 sets the lose-your-actions flag and clears movement and attacks,
+    # the same handler hold, sleep and snake charm dispatch.
+    31: (NAMES[31][0], "CONFIRMED"),                   # list 7, $27D4
+    47: (NAMES[47][0], "CONFIRMED"),                   # list 11, $2796
+    48: (NAMES[48][0], "CONFIRMED"),                   # list 11, $27A5
+    # $2828: on fire, one point per die off twice and +2 on the save twice,
+    # which is the AD&D ring to the letter. The RING OF FIRE RESISTANCE
+    # template carries 61 at +14 with +15 = $80.
+    61: (NAMES[61][0], "CONFIRMED"),         # lists 6 and 12, spell damage
     89: (NAMES[89][0], "PROBABLE"),                    # list 16, miss chance
-    # And a FIRE GIANT carries 93 here, which is the second line on it.
-    93: (NAMES[93][0], "PROBABLE"),                    # list 6, spell damage
+    # Agreement offered "half damage from fire" and the handler refuses it:
+    # $290E is `LDA #$01 / AND $A904 / BEQ / JSR $14EF`, which zeroes the
+    # damage on fire and halves nothing. FIRE GIANT and DREADLORD carry it,
+    # and a fire giant is immune. The string is Pool of Radiance's 112.
+    93: (NAMES[112][0], "CONFIRMED"),                  # list 6, $290E
 
-    # -- the same routine asking in two titles (PROBABLE) ------------------
-    96: (NAMES[96][0], "PROBABLE"),          # COMBAT $1191 here, $1194 there
+    # -- once "the same routine asking in two titles"; the handler says
+    # -- otherwise (CONFIRMED) ---------------------------------------------
+    # The call at `COMBAT $1191` is `LDA $A902 / LDX $945D / JSR $3854` --
+    # the effect being applied, not a literal 96 -- so that evidence was an
+    # artefact of decoding backwards. $291D cancels 53 and 11 outright:
+    # immune to sleep and charm, which is the DREADLORD's. 95 and 18 are the
+    # same routine behind a 90% and a 30% roll.
+    96: (NAMES[108][0], "CONFIRMED"),                  # list 9, $291D
 
-    # -- the creature carrying it (PROBABLE) -------------------------------
+    # -- the creature carrying it, then the handler (CONFIRMED) ------------
     # BASILISK, MEDUSA and SARGATHA carry 58 and 59 where Pool of Radiance's
-    # basilisk and medusa carry 83 and 127. 58 is on list 14 and so is Pool
-    # of Radiance's 83; neither 59 nor 127 is on any list.
-    58: (NAMES[83][0], "PROBABLE"),
-    59: (NAMES[127][0], "PROBABLE"),
+    # basilisk and medusa carry 83 and 127. $16C5 is the gaze: range 4,
+    # "GAZES...", ranged form 4 whose message is "TURNS TO STONE" -- and
+    # before it fires, if the gazer has 59 and the target has 72, "REFLECTS
+    # IT" and the gazer becomes its own target.
+    58: (NAMES[83][0], "CONFIRMED"),
+    59: (NAMES[127][0], "CONFIRMED"),
     # 64 lands on GIANT SNAKE, GIANT SPIDER, MEDUSA, WYVERN, PURPLE WORM,
-    # CENTIPEDE, FIRE KNIFE and SARGATHA -- the same creature set that
-    # carries it in Pool of Radiance.
-    64: (NAMES[64][0], "PROBABLE"),
+    # CENTIPEDE, FIRE KNIFE and SARGATHA. $181D: a save on the poison column
+    # with no modifier, "IS POISONED", and on a failure hit points to zero
+    # with "IS KILLED" -- save or die.
+    64: (NAMES[64][0], "CONFIRMED"),
 
-    # -- what `GEN` seeds by race (PROBABLE) -------------------------------
-    # The two seeds no other route reaches. `GEN $0C5B` gives a half-elf 18
-    # and an elf 95, and the strings are Pool of Radiance's for the same two
-    # abilities at its own numbers, 124 and 107.
-    18: (NAMES[124][0], "PROBABLE"),
-    95: (NAMES[107][0], "PROBABLE"),
+    # -- what `GEN` seeds by race, then the handler (CONFIRMED) ------------
+    # `GEN $0C5B` gives a half-elf 18 and an elf 95. $2912 and $2916 are one
+    # routine entered with 30 and 90: roll d100, and under that number cancel
+    # a sleep (53) or a charm (11) being applied.
+    18: (NAMES[124][0], "CONFIRMED"),
+    95: (NAMES[107][0], "CONFIRMED"),
+
+    # -- the handler it dispatches, read (CONFIRMED) -----------------------
+    # Damage-type immunities: `LDA #bit / AND $A904 / BEQ / JSR $14EF`.
+    # STORM GIANT and DREADLORD carry 6; FROST GIANT and DREADLORD 98; the
+    # four dragons (ANCIENT, RED, RED HATCHLING, WHITE) 73, bit 5 being the
+    # bit both breath handlers set.
+    6: ("immune to electricity", "CONFIRMED"),                     # $2927
+    73: ("immune to breath weapons", "CONFIRMED"),                 # $292C
+    98: (NAMES[110][0], "CONFIRMED"),                              # $2930
+    # $27DC and $27E2 are one routine with fire and cold swapped: the one
+    # element doubles the damage, the other halves it and adds 2 on the
+    # save. No shipped creature or spell carries either.
+    50: ("vulnerable to fire, resistant to cold", "CONFIRMED"),    # $27DC
+    54: ("vulnerable to cold, resistant to fire", "CONFIRMED"),    # $27E2
+    # Weapons. $23C9 is the attacker's best weapon plus; 60 zeroes the damage
+    # under +3 (IRON GOLEM) and 103 at +0 (GARGOYLE, MARGOYLE, DREADLORD).
+    # 90 stages the weapon's `ITEMS` type entry and zeroes the damage when
+    # byte +7 has bit 7 -- set on the mace, hammer, morning star, staff,
+    # flail and sling types -- and a GIANT SLUG carries it.
+    60: ("hit only by +3 or better weapons", "CONFIRMED"),         # $2819
+    90: ("immune to blunt weapons", "CONFIRMED"),                  # $28F1
+    103: (NAMES[119][0], "CONFIRMED"),                             # $294F
+    # Effect immunities, `LDA #id / JSR $14EA` for each: 76 cancels 34; 92
+    # cancels 29, 68 and 111; 99 cancels 55, 30, 31 and 52. The PERIAPT OF
+    # HEALTH template carries 76 at +14. DREADLORD carries 92 and 99, and
+    # `GEN $0C62` seeds a halfling 92 as well.
+    76: ("immune to disease (Periapt of Health)", "CONFIRMED"),    # $2861
+    92: ("immune to Ray of Enfeeblement, Feeblemind and Fear",
+         "CONFIRMED"),                                             # $28FF
+    99: (NAMES[111][0], "CONFIRMED"),                              # $293B
+    # Melee specials, lists 2 and 3. 65 is the gaze's tail entered without
+    # the range or mirror checks (COCKATRICE). 86 is 64's poison with the
+    # save byte $C1, whose top three bits are a -2 (PHASE SPIDER). 88 is a
+    # save on the paralysis column or 52, held, for the fight (DREADLORD,
+    # DRIDER).
+    65: ("petrifying touch", "CONFIRMED"),                         # $1705
+    86: (NAMES[70][0], "CONFIRMED"),                               # $1810
+    88: ("melee paralysis", "CONFIRMED"),                          # $184D
+    # Weapon-damage specials, list 4. 66 reads the attack d20 `ECL64 $84F9`
+    # stored and on a 20 sets the damage to the target's hit points plus
+    # ten, "IS SWALLOWED!" (REMORHAZ). 75 is +1 on the attack d20 and 1d12+1
+    # damage when the target has `$D5` bit 0, which every giant has; the
+    # LONG SWORD VS. GIANTS template carries it at +14. 105 adds the ranger
+    # level at record `$D0` to melee damage when the target has `$D4` bit 3
+    # -- giants, ogre, ettin, bugbear -- and is the ranger's seed.
+    66: ("swallows whole on a natural 20", "CONFIRMED"),           # $170B
+    75: ("wielding a giant-slaying weapon", "CONFIRMED"),          # $2849
+    105: ("ranger: +1 damage per level against giant-class creatures",
+          "CONFIRMED"),                                            # $2957
+    # Ranged forms, list 14, chosen by the monster's turn in `SECSET64`.
+    # 67 fires form 0, "BREATHES...", 8 fire, at range 3 on every attack up
+    # to the head count (12HD PYROHYDRA). 80 fires form 1, 7 fire, at range
+    # 2 half the time (HELL HOUND). 70 is "GAZES..." and form 2, whose
+    # message is "IS CONFUSED" and whose effect is 35 (UMBER HULK). 81 is
+    # "SPITS A STREAM OF ACID", 4d8 at range 7, hitting 50% plus 10% a
+    # square under six (GIANT SLUG). 83 and 104 are the breath cone with
+    # `$A904` = $A2 and $A1: the target's hit points, save vs. breath for
+    # half, cold at range 8 (WHITE DRAGON, the 10HD ANCIENT DRAGON) and fire
+    # at range 9 (RED DRAGON, RED HATCHLING, the 15HD ANCIENT DRAGON).
+    67: ("pyrohydra: breathes fire with each head", "CONFIRMED"),  # $1726
+    70: ("confusing gaze", "CONFIRMED"),                           # $173F
+    80: ("hell hound: breathes fire", "CONFIRMED"),                # $1755
+    81: ("spits a stream of acid", "CONFIRMED"),                   # $176E
+    83: ("cold breath weapon", "CONFIRMED"),                       # $17D5
+    104: ("fire breath weapon", "CONFIRMED"),                      # $186B
+    # $28B0, IRON GOLEM's second id: on a spell (`$A904` bit 6), fire heals
+    # the damage instead, electricity applies 42 with "IS SLOWED", and every
+    # spell's damage and effect are then zeroed.
+    79: ("iron golem: healed by fire, slowed by electricity, immune to "
+         "other spells", "CONFIRMED"),                             # $28B0
+    # Start of combat, list 8. 56 and 108 both apply 25 to the carrier
+    # through `$1113`; 56 with a duration of 12 and the RING OF
+    # INVISIBILITY template carrying it at +14, 108 silently with none.
+    # 82 walks combatants 0-7 and marks every living one below level 5 as
+    # afraid with "IS TERRIFIED BY A LICH"; no shipped MON record carries it.
+    56: (NAMES[56][0], "CONFIRMED"),                               # $2810
+    82: ("fear aura: terrifies characters below level 5",
+         "CONFIRMED"),                                             # $17A2
+    108: ("invisible at the start of combat", "CONFIRMED"),        # $2970
+    # Turn start, list 15. $286B prints raw message 59, "IS BERSERKING",
+    # then finds the nearest creature on its own side, makes it the target
+    # and moves the carrier to the other side with the changed-side bits
+    # set; 107 is the same routine without the message, and CONFUSION's
+    # handler at $26E8 writes it on a 50-69 roll of d100 beside 27, 111 and
+    # 11. On expiry both restore the side, the way charm does.
+    77: ("berserk, attacking the nearest ally", "CONFIRMED"),      # $286B
+    107: ("confused, attacking the nearest creature", "CONFIRMED"),   # $2866
+    # Movement, list 18: $2840 doubles the movement being computed, the
+    # same `ASL $A91E` as haste. BOOTS OF SPEED carry it at +14.
+    74: ("moves at double speed (Boots of Speed)", "CONFIRMED"),   # $2840
+    # Saving throws, list 12, which is walked with the d20 in `$A903`:
+    # $249B is `INC $A903`. STONE OF GOOD LUCK carries it at +14.
+    78: ("+1 to saving throws (Stone of Good Luck)", "CONFIRMED"), # $249B
+    # Asked by name at $16E0 inside the gaze handler and nowhere else: a
+    # target carrying 72 turns a reflectable gaze back on the gazer. The
+    # MIRROR and the SILVER SHIELD +5 carry it at +14.
+    72: ("carrying a mirror (reflects gaze attacks)", "CONFIRMED"),   # 58's
+    # The gnome's second seed. $2469 is `INC $A915` when the target has
+    # `$D5` bit 2, which in the census only the BUGBEAR has -- this title's
+    # stand-in for the kobolds and goblins the ability is named for.
+    7: (NAMES[18][0], "CONFIRMED"),                                # $2469
+    # DISPEL EVIL's own routine at $1F96 writes 32 to the caster beside 4.
+    # $263D: against a target with `$D4` bit 0 (the HELL HOUND, from the
+    # lower planes) the hit becomes ranged form 5, "DISAPPEARS!", and the
+    # caster's 4 ends. The same routine then removes 35 rather than 32, so
+    # the touch outlives the protection until its own duration runs out.
+    32: ("Dispel Evil, dismissal touch", "CONFIRMED"),             # $263D
+    # Asked by name in camp only, `ECL65 $8730`, by the paladin's cure
+    # disease: after the cure it is put on the paladin with duration $C7 and
+    # his uses at record `$012` (`GEN $0C6E`: one per five levels) go down
+    # one; when it expires the camp's own table at `ECL65 $9496` sends it to
+    # $8657, which recomputes the uses. 109 is lay on hands' twin, with $C1
+    # and record `$013`. The combat handler, shared with 15, 34, 43 and 44,
+    # only re-instates the effect at expiry.
+    110: ("paladin: cure disease uses return when this expires",
+          "CONFIRMED"),                                            # $24EE
 }
-# **35 of the 90 are still unnamed, and each one is a handler somebody has to
-# read** -- `docs/189-effect-97-from-the-code.md`'s method, one at a time,
-# through the handler table at `$EF90`/`$F001`. They are 6, 7, 32, 50, 54, 56,
-# 60, 65, 66, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 86, 88,
-# 90, 92, 98, 99, 103, 104, 105, 107, 108 and 110.
+# **All 90 ids the engine honours in a trait slot are named, 87 CONFIRMED and
+# 3 PROBABLE** (43, 44 and 89, whose handlers were not read: the first two
+# share the camp-condition handler with 110, and 89's sets a field nobody has
+# named). Four more entries -- 11, 12, 34 and 111 -- are on no list and
+# asked by no instruction, so they do nothing in a slot and are named for the
+# active-effects panel, which shares this table.
 #
-# Nine of those were offered by positional agreement and refused, which is
-# where a reader is most likely to want the reasoning:
+# Nine ids that positional agreement offered a name for were refused in the
+# first pass and then read in the third, which is where a reader is most
+# likely to want the reasoning:
 #
-# * **50** and **54** sit on the two saving-throw lists in this title and in
-#   Curse and on no list at all in Pool of Radiance, whose names for them are
-#   "mummy rot, blocking healing" and a bronze dragon's repulsion. Neither is
-#   a saving-throw modifier, so the later two spent the pair on something
-#   else.
-# * **56** would be "wearing a Ring of Invisibility", and a DREADLORD carries
-#   it. No creature in Pool of Radiance carries 56 at all.
-# * **60** would be "unused" and an IRON GOLEM carries it; **65** would be
-#   "melee poison, +4 to save" and a COCKATRICE carries it, which petrifies
-#   and has no poison.
-# * **73** and **83** would be "rear claw rake" and "petrifying gaze", and
-#   four dragons carry 73 while two carry 83 -- and this title's basilisk and
-#   medusa carry 58 and 59 instead, so 83 is not its petrifying gaze. **73 is
-#   also the one id the spell route appears to reach and does not**: spell row
-#   95 writes it, but that row's name is spell 96's -- the two share a name
-#   pointer, 96 is the druid CHARM PERSON OR MAMMAL and writes 11, and 95 is
-#   in no spell group at all. The paragraph above the table has the four
-#   strands.
-# * **75** and **77** sit in the same lists as Curse's and in different ones
-#   from Pool of Radiance's, which is the pattern that turned out wrong for
-#   4, 27 and 35.
+# * **50** and **54** were offered "mummy rot, blocking healing" and a bronze
+#   dragon's repulsion; the handlers are a matched pair of fire/cold
+#   vulnerability and resistance.
+# * **56** was offered "wearing a Ring of Invisibility" and the refusal was
+#   wrong: the handler applies invisibility at the start of combat and the
+#   ring's own template carries 56 at +14. The DREADLORD carries it too.
+# * **60** was offered "unused" and is the iron golem's +3 weapon immunity;
+#   **65** was offered "melee poison, +4 to save" and is the cockatrice's
+#   petrifying touch.
+# * **73** was offered "rear claw rake" and is immunity to breath weapons;
+#   **83** was offered "petrifying gaze" and is the cold breath weapon. 73
+#   is also the one id the spell route appears to reach and does not: spell
+#   row 95 writes it, but that row's name is spell 96's -- the two share a
+#   name pointer, 96 is the druid CHARM PERSON OR MAMMAL and writes 11, and
+#   95 is in no spell group at all. The paragraph above the table has the
+#   four strands.
+# * **75** and **77** sat in the same lists as Curse's and in different ones
+#   from Pool of Radiance's; they are the giant-slaying sword and berserking.
 #
-# Three of the nine codes `GEN` seeds are among the unnamed: **7**, the
-# gnome's second, which Curse spends on FAERIE FIRE and this title does not;
-# **92**, the halfling's only one, which this title's DREADLORD also carries,
-# so no reading that is purely a halfling's survives; and **105**, the
-# ranger's, where Curse of the Azure Bonds writes an equally unnamed 134.
+# The three seeds that were unnamed are the gnome's kobold-and-goblin bonus
+# (7), the halfling's immunity to Ray of Enfeeblement, Feeblemind and Fear
+# (92 -- read off the handler, and an odd thing to give a halfling; the
+# DREADLORD carries it as well) and the ranger's damage bonus against
+# giant-class creatures (105).
+#
+# Five named ids have no shipped carrier at all -- 50, 54, 77, 82 and 108 --
+# so their names rest on the handler alone. The experiment that would add a
+# second line to any of them is `tools/traitask.py`'s: write the id into a
+# slot on a copy of a save and watch the fight.
 
 #: Code table per title key. A title that is not here gets Pool of Radiance's,
 #: which is what every caller written before this table existed means.

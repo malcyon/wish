@@ -182,9 +182,10 @@ tables the ask dispatches through, and the lists land at exactly
 checking itself.
 
 **Silver Blades honours 90 ids and `goldbox/traits.py` named six of them until
-2026-09-15. It now names 55.** That is `#497 (The trait picker offers a Secret
-of the Silver Blades character six names, and nobody has ruled on whether it
-should offer Pool of Radiance's 129)`, and the next section is how.
+2026-09-15. It now names all 90, 87 of them CONFIRMED.** That is `#497 (The
+trait picker offers a Secret of the Silver Blades character six names, and
+nobody has ruled on whether it should offer Pool of Radiance's 129)`, and the
+next two sections are how.
 
 **How far Pool of Radiance's names can be trusted for Silver Blades is a
 question about the id, not about the title.** The lists are positional -- the
@@ -204,20 +205,23 @@ half is not, which is what the racial seeds said too: Silver Blades gives an
 elf 95 where Pool of Radiance gives 107. PROBABLE, on one measurement of
 positional agreement and no reading of a Silver Blades handler.
 
-## Naming Silver Blades' ids: four routes, and what each one is worth
+## Naming Silver Blades' ids: five routes, and what each one is worth
 
 Donald ruled on 2026-09-15 that the picker should offer this title's ids named
 properly rather than staying at six or borrowing Pool of Radiance's names
-unmarked. Four readings off the player's own disks filled 55 of the 90;
-`tools/traitquery.py` takes all four and the runs are in `work/issue497/`.
+unmarked. Four readings off the player's own disks filled 55 of the 90, and a
+fifth -- reading the handler each id dispatches -- filled the other 35 and
+corrected two of the 55. `tools/traitquery.py` takes all five and the runs are
+in `work/issue497/`.
 
 | route | what it reads | ids named | grade |
 |---|---|---|---|
 | the spell that writes it | this title's own per-spell record, `COMBAT2 +2937` | **40** of the 90 (and four more the engine ignores in a slot) | CONFIRMED |
-| the same numbered check list as Curse | `--compare`, both titles' lists | 7 more | PROBABLE |
-| the same routine asking in both titles | the literal call sites | 3 more | PROBABLE |
-| the creature carrying it | the 71 `MON*` records on the six sides | 3 more, and **four refusals** | PROBABLE |
-| `GEN`'s racial seed | already in `goldbox/traits.py` | 2 more | PROBABLE |
+| the same numbered check list as Curse | `--compare`, both titles' lists | 7 more | PROBABLE, and 6 of the 7 since CONFIRMED by their handlers |
+| the same routine asking in both titles | the literal call sites | 1 (96), **withdrawn** -- the call site names no id | -- |
+| the creature carrying it | the 71 `MON*` records on the six sides | 3 more, and **four refusals** | PROBABLE, all 3 since CONFIRMED |
+| `GEN`'s racial seed | already in `goldbox/traits.py` | 2 more | PROBABLE, both since CONFIRMED |
+| **the handler it dispatches** | `--handlers`, `COMBAT` at `$0800` | **35 more**, and 93 and 96 renamed | CONFIRMED |
 
 ### The spell that writes it, which is the strong one
 
@@ -332,14 +336,178 @@ So the rule for `--spells`: **a row names an id only when the row's own message
 fits the name and the row is in a spell group.** Silver Blades has twenty rows
 in no group (57, 59-65, 95, 97, 99-108), and they are where a name goes wrong.
 
-### What is left
+## The handler, read one id at a time
 
-**35 of the 90 are still unnamed**: 6, 7, 32, 50, 54, 56, 60, 65, 66, 67, 70,
-72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 86, 88, 90, 92, 98, 99, 103,
-104, 105, 107, 108 and 110. Almost all of them are monster specials, which is
-the half of the namespace this title renumbered, and the only route left is
-reading the handler each one dispatches through the table at `$EF90`/`$F001`
--- `docs/189-effect-97-from-the-code.md`'s method, one id at a time.
+The 35 the four routes left -- 6, 7, 32, 50, 54, 56, 60, 65, 66, 67, 70, 72,
+73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 86, 88, 90, 92, 98, 99, 103, 104,
+105, 107, 108 and 110 -- were named on 2026-09-16 by reading the routine each
+one dispatches, `docs/189-effect-97-from-the-code.md`'s method. Every reading
+is CONFIRMED from the code; where a creature, an item template or a spell
+routine carries the id as well, the table says so, and that second line is
+what the *Monster Manual* would have predicted in every case it applies.
+`tools/traitquery.py secret-of-the-silver-blades --handlers` prints all 90
+and `work/issue497/ssb-handlers.txt` is that run.
+
+### The dispatch, and the anchors every reading stands on
+
+The ask at `COMBAT $12AE` (the file runs at `$0800`, scored by
+`entry_point` and pinned by the walker's list base landing at
+`$F001 + 113 + 1`) dispatches a matched id with
+
+```
+$12C3  LDX $7F6E          the id the predicate parked
+$12C6  LDA $EF90,X        low byte
+$12CC  LDA $F001,X        high byte
+$12D2  LDA $A928          Y as the walker passed it, 0 from a list
+$12D5  JSR $FFFF          patched with the pair
+```
+
+so **the table index is the id itself** and every address lands inside
+`COMBAT` ($16C5-$186B and $2430-$299C). Twenty ids that no list reaches
+share `$2430`, which is Bless's handler and the table's filler, so a shared
+address is not evidence about an id that only an instruction asks about. The
+variables the handlers touch, each pinned by a handler whose meaning was
+already CONFIRMED by the spell route:
+
+| where | what | pinned by |
+|---|---|---|
+| `$A904` | damage type: bit 0 fire, 1 cold, 2 electricity, 3 magic, 4 acid, 5 a breath weapon, 6 a spell | `COMBAT $107A` picks the message "FROM FIRE" .. "FROM ACID" by the lowest set bit; Resist Fire (20) tests bit 0 and Resist Cold (10) bit 1; both breath handlers store `$A1`/`$A2` |
+| `$945F` | the damage | Resist Fire halves it with `LSR $945F` |
+| `$14EF` | zero the damage and the effect being applied | the tail every immunity ends in |
+| `$14EA` | the same, only when the effect being applied is A | 18 and 95 cancel 53 and 11 behind a d100 |
+| `$A903` | the saving-throw d20; list 12 is walked from inside `$0FAA` after the roll | Resist Fire on list 12 adds 3, the ring (61) adds 4: the AD&D numbers |
+| `$A93B` | the save byte: bits 2-4 the column, bits 5-7 the modifier (1-4 a bonus, 5-7 a penalty of `n & 3`), bits 0-1 what a made save does | `$0FAA`, and the breath cone's `$0E`: column 3, half on a save |
+| `$A915` | the attack d20 (100 on a natural 20) | `ECL64 $8506` stores it, then walks list 10; Bless increments it |
+| `$7C00` | the staged record, slots at `$7CAD`, level `$7CA0`, hit points `$7D19`/`$7C76`, side `$7D0C` | `$138D` writes a granted id into the first free slot from 9 down |
+| `$D4`/`$D5` | two creature-type bytes of the record, read from the *other* combatant through `$152A` (target) or `$1503` (attacker) | 47 tests `$D4` bit 2 and every giant and the OGRE have it; the LONG SWORD VS. GIANTS tests `$D5` bit 0 and only the giants have it |
+| `$7E8C` | the attacker's weapon's `ITEMS` type entry, staged by `$909B` beside the item at `$7E7C` | `$23C9` reads the plus at `$7E80`; 90 reads `+7` bit 7, set on the mace, hammer, morning star, staff, flail and sling types |
+| `$1649`, `$1675`, `$F2A6..$F2D5` | pick a target within range A, then fire ranged form X from six parallel six-entry tables: message, damage, save byte, duration, effect, damage type | form 4 is "TURNS TO STONE", form 2 "IS CONFUSED" with effect 35 |
+
+Messages are the combat message table `goldbox/spells.py` already reads,
+entry `118 + n` for `$137A` with X = n and entry n itself for `$136E`.
+
+### The 35, by what the handler does
+
+| id | handler | what it does | carried by |
+|---|---|---|---|
+| 6 | `$2927` | electricity: zero the damage | STORM GIANT, DREADLORD |
+| 73 | `$292C` | `$A904` bit 5, a breath weapon: zero the damage | ANCIENT DRAGON, RED DRAGON, RED HATCHLING, WHITE DRAGON |
+| 98 | `$2930` | cold: zero the damage | FROST GIANT, DREADLORD |
+| 50 | `$27DC` | fire doubles the damage; cold halves it and adds 2 on the save | nothing shipped |
+| 54 | `$27E2` | the same with the elements swapped | nothing shipped |
+| 60 | `$2819` | weapon plus under 3: zero the damage | IRON GOLEM |
+| 90 | `$28F1` | weapon type byte `+7` bit 7 (blunt): zero the damage | GIANT SLUG |
+| 103 | `$294F` | weapon plus 0: zero the damage | GARGOYLE, MARGOYLE, DREADLORD |
+| 76 | `$2861` | cancel 34 (Cause Disease) | PERIAPT OF HEALTH, `+14` |
+| 92 | `$28FF` | cancel 29, 68 and 111 | DREADLORD; the halfling's seed |
+| 99 | `$293B` | cancel 55, 30, 31 and 52 | DREADLORD |
+| 65 | `$1705` | the gaze's tail without range or mirror: form 4, "TURNS TO STONE" | COCKATRICE |
+| 86 | `$1810` | 64's poison with save byte `$C1`: -2 on the save | PHASE SPIDER |
+| 88 | `$184D` | save on the paralysis column or 52, held, "IS PARALYZED" | DREADLORD, DRIDER |
+| 66 | `$170B` | on an attack d20 of 20 (`ECL64 $84F9` stores it), damage = hit points + 10, "IS SWALLOWED!" | REMORHAZ |
+| 75 | `$2849` | target has `$D5` bit 0: +1 on the attack d20, +1d12+1 damage | LONG SWORD VS. GIANTS, `+14` |
+| 105 | `$2957` | target has `$D4` bit 3, melee only: + ranger level (`$7CD0`) damage | the ranger's seed |
+| 67 | `$1726` | while the attack number is within the head count: form 0, "BREATHES...", 8 fire, range 3 | 12HD PYROHYDRA |
+| 80 | `$1755` | half the time: form 1, "BREATHES...", 7 fire, range 2, then the turn ends | HELL HOUND |
+| 70 | `$173F` | "GAZES...", form 2: "IS CONFUSED", effect 35 for 3d4, range 7 | UMBER HULK |
+| 81 | `$176E` | "SPITS A STREAM OF ACID": range 7, hits 50% + 10% a square under six, 4d8, form 3 | GIANT SLUG |
+| 83 | `$17D5` | the breath cone with `$A904 = $A2`: hit points of damage, cold, range 8, save vs. breath for half | WHITE DRAGON, the 10HD ANCIENT DRAGON |
+| 104 | `$186B` | the same with `$A1`, fire, range 9 | RED DRAGON, RED HATCHLING, the 15HD ANCIENT DRAGON |
+| 79 | `$28B0` | on a spell: fire heals the damage instead, electricity applies 42 "IS SLOWED", then zero the damage and effect | IRON GOLEM |
+| 56 | `$2810` | at the start of combat apply 25, invisible, duration 12 | RING OF INVISIBILITY, `+14`; DREADLORD |
+| 108 | `$2970` | apply 25 to itself, silently, no duration | nothing shipped |
+| 82 | `$17A2` | combatants 0-7 alive and below level 5: afraid, "IS TERRIFIED BY A LICH" | nothing shipped |
+| 77 | `$286B` | "IS BERSERKING", then target the nearest creature on its own side and change sides | nothing shipped |
+| 107 | `$2866` | the same without the message; CONFUSION's outcome table at `$26E8` writes it on 50-69 of d100 | CONFUSION |
+| 74 | `$2840` | double the movement being computed, as haste does | BOOTS OF SPEED, `+14` |
+| 78 | `$249B` | `INC $A903`: +1 on every saving throw | STONE OF GOOD LUCK, `+14` |
+| 72 | asked at `$16E0` | the gaze is reflected, "REFLECTS IT", when the gazer has 59 and the target has 72 | MIRROR and SILVER SHIELD +5, `+14` |
+| 7 | `$2469` | target has `$D5` bit 2: +1 on the attack d20 | the gnome's seed; only the BUGBEAR has the bit |
+| 32 | `$263D` | target has `$D4` bit 0: form 5, "DISAPPEARS!", and the caster's 4 ends | DISPEL EVIL's routine at `$1F96` writes it beside 4 |
+| 110 | `$24EE` | re-instate at expiry; the meaning is in camp | the paladin's cure disease, `ECL65 $871D` |
+
+**Two names the earlier routes gave are wrong and are corrected.** 93 was
+"half damage from fire" by agreement with Curse and the FIRE GIANT; `$290E`
+is `LDA #$01 / AND $A904 / BEQ / JSR $14EF`, which zeroes the damage, so it
+is "immune to fire" -- what a fire giant is. 96 was "hit only by silver or
+magical weapons" on the strength of `COMBAT $1191` asking about 96 in both
+titles; the instruction there is `LDA $A902 / LDX $945D / JSR $3854`, the
+effect being applied, and the 96 was `immediate_before` decoding backwards
+through the wrong alignment. `$291D` cancels 53 and 11: immune to sleep and
+charm, and the DREADLORD carries it. Ten PROBABLE entries whose handlers say
+what the name says were promoted at the same time (18, 26, 31, 47, 48, 58,
+59, 61, 64, 95); 43, 44 and 89 stay PROBABLE.
+
+**110 is the one id whose meaning is not in `COMBAT`.** Its combat handler is
+the one 15, 34, 43 and 44 share, which puts the effect back when it expires.
+It is asked about in camp only, at `ECL65 $8730` (`ECL65` runs at `$8000`,
+co-resident with `CAMP`; `tools/traitquery.py --sites` prints the site as
+`$0F30` because it assumes `$0800`). `CAMP $1045`-`$1056` dispatches three
+paladin actions into `ECL65`: `$8751` heals twice the paladin level at
+`$7CCF` and spends record `$013` (lay on hands), `$871D` strips 31, 34, 43
+and 44 from the target and restores the hit points the disease took, spends
+record `$012`, and if the paladin has no 110 gives him one with duration
+`$C7`. `GEN $0C6E` sets `$013` to 1 and `$012` to one per five levels at
+creation; `LIBRARY $4383` hides the camp entries when either is 0; and the
+camp's own handler table at `ECL65 $9496` -- twelve ids, `113 38 12 14 22
+34 109 110 43 44 62 15`, with addresses at `$94A3`/`$94AF` -- sends 110 at
+expiry to `$8657`, which recomputes `$012`, and 109 (lay on hands' twin,
+duration `$C1`) to `$8650`, which sets `$013` back to 1. So a paladin with
+110 in a slot has spent his cure disease and the uses come back when it
+expires -- and a slot never expires, which is why the name says so.
+
+### What the lists are for, from their call sites
+
+The 2026-09-10 comment left this unread. Each numbered list is walked by one
+`LDX #n / JSR` site, and the site says what is being asked:
+
+| list | walked from | for | ids |
+|---|---|---|---|
+| 1 | `ECL64 $897F` | target, whether it can be seen | 37, 25, 69 |
+| 2, 3 | `ECL64 $845E`, `LDX $9457 / INX / INX` | attacker's melee specials, one list per attack form | 64, 65, 86, 88; 65, 86, 88 |
+| 4 | `ECL64 $85B1` | attacker, weapon damage | 29, 32, 66, 75, 105 |
+| 5 | `ECL64 $85B6` | target, weapon damage | 28, 41, 60, 90, 103, 112 |
+| 6 | `COMBAT $1019`, `$29DD` | target of spell damage | 6, 10, 17, 20, 28, 61, 73, 79, 93, 98 |
+| 7 | `COMBAT $132C` | restrained | 31, 51, 52, 53 |
+| 8 | `COMBAT2 $F549` | every combatant, at the start | 56, 82, 108 |
+| 9 | `COMBAT $1134`, `$1595` | target, immunities, as an effect is about to be applied | 18, 28, 76, 79, 92, 95, 96, 99 |
+| 10 | `ECL64 $850B` | attacker, to hit, with the d20 in `$A915` | 1, 2, 7, 26, 33, 36, 49, 75 |
+| 11 | `ECL64 $853D` | target, to hit | 4, 8, 9, 13, 17, 30, 33, 45, 46, 47, 48, 71 |
+| 12 | `COMBAT $0FF2`, inside the saving throw | target, saving throw, with the d20 in `$A903` | 8, 9, 10, 13, 17, 20, 33, 36, 45, 46, 49, 50, 54, 61, 78 |
+| 13 | `ECL64 $868C` | target, on going down | (empty) |
+| 14 | `SECSET64 $BA9D` | the monster's turn, choosing a ranged form | 58, 67, 70, 80, 81, 83, 104 |
+| 15 | `ECL64 $903D`, `COMBAT2 $F63F` | attacker, at turn start | 3, 21, 27, 30, 35, 77, 106, 107, 5 |
+| 16 | `ECL64 $8510` | target, miss chance, right after the attack d20 | 37, 89, 25, 69 |
+| 17 | `SECSET64 $BC5A` | attacker, in the monster's choice | 1, 2 |
+| 18 | `COMBAT $1438` | movement | 39, 42, 74 |
+| 19 | `COMBAT2 $F6C3` | every combatant, each round | 23, 56 |
+| 20 | `COMBAT $1026`, after a failed save | target, damage after a failed save | 50, 54 |
+
+### Negative results from the handler pass
+
+* **No shipped creature, item or spell carries 50, 54, 77, 82 or 108**, so
+  those five rest on the handler alone. 82's message names a lich and the
+  71 `MON*` records have none.
+* **Dispel Evil's dismissal removes the wrong effect.** `$263D` ends with
+  `LDA #$04 / JSR $2405` and `LDA #$23 / JMP $2405` -- 4 and 35 stripped
+  from the caster, where 35 is CONFUSION and the id the touch should strip
+  is its own, 32. A player sees the touch keep working after the first
+  dismissal until the spell's duration runs out; not chased.
+* **`immediate_before` can name an id that is not there.** `COMBAT $1191`
+  and Curse's `$1194` are `LDA $A902`, and the tool reported 96 from a
+  decode that entered the bytes mid-instruction. A literal it reports for
+  a call whose preceding instruction is a three-byte absolute load is to be
+  read by hand before it is believed.
+* **`--handlers` cannot say which file holds Pool of Radiance's handlers.**
+  `SPELLE00`, `SPELLE01`, `SPELLE04` and `SPELLE65` all score a load address
+  near `$A700` that covers the table, so it prints the candidates rather
+  than choosing; `SPELLE01` at `$A700` is the answer, from "What 61 does"
+  above. The later two titles keep them in the ask's own file and need no
+  choice.
+* **`$953A` in `ECL65` is not an effect table.** It reads like one -- a run
+  of `$41`-`$46` bytes indexed by something -- and it is the spell-to-class
+  and level table `$8701` uses for memorising, indexed by spell id off the
+  record's `$1B` list. An hour went on it.
 
 **Curse of the Azure Bonds does not fully share Pool of Radiance's table
 either, and `goldbox/traits.py` still says it does.** Its own spell-effect
@@ -585,6 +753,7 @@ and the eight-hour rest, with ROLAND's sheet in `sheet.txt`).
 
 `work/issue497/` holds the naming runs, all of them from the disks and none
 of them needing an emulator: the three `--lists` runs of 2026-09-10, then
-`ssb-vs-curse-lists.txt` and `ssb-vs-por-lists.txt` (`--compare`) and
-`por-`, `curse-` and `ssb-spell-effects.txt` (`--spells`). Each is one
-`tools/traitquery.py` invocation and re-running it reproduces the file.
+`ssb-vs-curse-lists.txt` and `ssb-vs-por-lists.txt` (`--compare`), `por-`,
+`curse-` and `ssb-spell-effects.txt` (`--spells`), and `ssb-handlers.txt`
+(`--handlers`, all 90). Each is one `tools/traitquery.py` invocation and
+re-running it reproduces the file.
