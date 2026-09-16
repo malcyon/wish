@@ -859,7 +859,8 @@ def constitution_hp_bonus(constitution: int, fighter: bool = False,
 _WISDOM_BONUS_BASE = 12
 
 
-def wisdom_bonus_spells(wisdom: int, game=None) -> tuple[int, ...]:
+def wisdom_bonus_spells(wisdom: int, game=None,
+                        port: str | None = None) -> tuple[int, ...]:
     """Bonus cleric spells, by spell level. `GEN $2108`, or Curse's `$88F6`.
 
     **Three numbers for Pool of Radiance and five for Curse**, because the
@@ -871,13 +872,26 @@ def wisdom_bonus_spells(wisdom: int, game=None) -> tuple[int, ...]:
     loops once for every point of wisdom from 13 up, each point buying one
     spell at the level `$8906` names -- and the one visible difference is at
     wisdom 12, where Pool of Radiance grants a spell AD&D does not and Curse
-    does not (`docs/125-bug-notes.md`).
+    does not (`docs/125-bug-notes.md`). Curse's branch returns before `port`
+    is consulted, so this argument makes no difference to it: both builds
+    run the same row table (#547).
 
-    **The game's table starts one point low.** AD&D 1st edition gives the first
-    bonus spell at wisdom 13 and the second at 14; `$10AD` holds 1 at 12 and 2
-    from 13 up, so a wisdom-12 cleric memorises a first-level spell the rules
-    do not give it. The second- and third-level columns are AD&D exactly --
-    they are gated on `CPY #$0F`, `#$10` and `#$11`. See `docs/125-bug-notes.md`.
+    **The C64 build's table starts one point low.** AD&D 1st edition gives
+    the first bonus spell at wisdom 13 and the second at 14; `$10AD` holds 1
+    at 12 and 2 from 13 up, so a wisdom-12 cleric memorises a first-level
+    spell the rules do not give it. The second- and third-level columns are
+    AD&D exactly -- they are gated on `CPY #$0F`, `#$10` and `#$11`. See
+    `docs/125-bug-notes.md`.
+
+    **`port="DOS"` shifts the first column to the title's own
+    `dos_wisdom_bonus_from`**, when the title has read one (Pool of
+    Radiance's is 13, from `START.EXE 0x00F6B0` and two engine-written
+    specimens, #557). Only the exact string `"DOS"` selects it: an Amiga
+    record keeps the C64's numbers, because nobody has read Amiga Pool of
+    Radiance's own table, and a port nobody has measured keeps what it had
+    rather than being corrected by a table never checked against it.  A
+    title with no `dos_wisdom_bonus_from` (0) answers exactly as it would
+    with no port at all.
 
     The bonus is only granted where the class table already gives a slot at
     that spell level (`GEN $210A` skips a zero), so a level-1 cleric gets no
@@ -886,10 +900,13 @@ def wisdom_bonus_spells(wisdom: int, game=None) -> tuple[int, ...]:
     tables = for_game(game)
     if tables.wisdom_bonus_level:
         return tables.wisdom_bonus_spells(wisdom)
+    base_from = _WISDOM_BONUS_BASE
+    if port == "DOS" and tables.dos_wisdom_bonus_from:
+        base_from = tables.dos_wisdom_bonus_from
     score = int(wisdom or 0)
-    if score < _WISDOM_BONUS_BASE:
+    if score < base_from:
         return (0, 0, 0)
-    base = 1 if score == _WISDOM_BONUS_BASE else 2
+    base = 1 if score == base_from else 2
     second = 0 if score < 15 else (base >> 1 if score < 16 else base)
     third = 0
     if score >= 15:
@@ -1050,6 +1067,15 @@ class LevelTables:
     #: nobody has read this title's DOS copy, and every caller treats that as
     #: "cannot answer" rather than as agreement with the C64.
     dos_thac0: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    #: The wisdom score at which the DOS build's first bonus first-level
+    #: cleric spell arrives, where it differs from the C64 build's `$10AD`.
+    #: 0 means nobody has read this title's DOS table. `13` on Pool of
+    #: Radiance, from `START.EXE 0x00F6B0`'s `01 02 02 02 02 02` and two
+    #: engine-written specimens, `WISH-SPEC-human7` (wisdom 12) and
+    #: `WISH-SPEC-halfe8` (wisdom 13). Left at 0 for Curse and Silver
+    #: Blades, which is right rather than merely unread for Curse --
+    #: `wisdom_bonus_level` already starts at 13 on both builds (#547).
+    dos_wisdom_bonus_from: int = 0
 
     def divide_rounds_up(self, remainder: int, roll: int) -> bool:
         """Whether a divided hit-die or constitution total's leftover point
@@ -1384,6 +1410,7 @@ POOL_OF_RADIANCE = LevelTables(
     clamp_thresholds=(("magic-user", 60001), ("cleric", 55001),
                       ("thief", 160001), ("fighter", 250001)),
     dos_thac0=_DOS_THAC0_POOL,
+    dos_wisdom_bonus_from=13,
 )
 
 #: `DS:0x3E3A`, 8 rows of 13, transcribed from `tools/laterthac0.py table

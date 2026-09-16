@@ -342,7 +342,7 @@ def _consistency(char, block, items, names, types, spell_names, game=None):
         yield (f"{describe(sid, spell_names, game)} is memorised but is not "
                f"in the spellbook")
     cap = capacity(char.get("class_bits"), char.get("level"),
-                   char.get("wisdom"), game)
+                   char.get("wisdom"), game, port=char.port)
     if cap:
         # As many spell levels as the title's own table has, not Pool of
         # Radiance's three: Curse's rows are five wide, and stopping at three
@@ -506,7 +506,8 @@ def entry_for(char, slot_index: int, items, icon, game: C64Container | None = No
     if book:
         entry["_spells_known_named"] = [describe(i, spell_names, game)
                                         for i in book]
-    cap = capacity(class_bits, char.get("level"), char.get("wisdom"), game)
+    cap = capacity(class_bits, char.get("level"), char.get("wisdom"), game,
+                   port=char.port)
     if cap:
         entry["_spell_capacity"] = "; ".join(
             "%s %s" % (k, "/".join(str(n) for n in v)) for k, v in cap.items())

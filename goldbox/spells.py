@@ -726,7 +726,8 @@ def _accumulate(out: dict[str, tuple[int, ...]], school: str,
 
 
 def capacity_by_class(class_levels: dict[str, int], wisdom: int,
-                       game=None) -> dict[str, tuple[int, ...]]:
+                       game=None,
+                       port: str | None = None) -> dict[str, tuple[int, ...]]:
     """How many spells of each level the character may memorise, one row per
     **array** in the record, at each contributing class's own level.
 
@@ -739,6 +740,12 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
 
     A class absent from `class_levels`, or present at 0, gets no row -- the
     class is not held, the same as a bit `capacity` was not given.
+
+    `port` says which build's cleric wisdom-bonus table to read -- passed
+    straight to `goldbox.levels.wisdom_bonus_spells`, whose own docstring has
+    the difference. With none given, this answers with the C64's table,
+    which is what every caller written before there was a per-port table
+    means (#557).
 
     **The key is the array, not the class**, because two of Curse's classes
     have no array of their own: a paladin's slots go in the cleric array and
@@ -768,7 +775,7 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
     cleric_level = int(class_levels.get("cleric") or 0)
     if cleric_level and "cleric" in rows:
         row = _row_at(rows["cleric"], cleric_level)
-        bonus = levels.wisdom_bonus_spells(wisdom, game)
+        bonus = levels.wisdom_bonus_spells(wisdom, game, port=port)
         # A Wisdom bonus only applies at a spell level the cleric can already
         # reach, so a level-1 cleric with WIS 16 gets three first-level spells
         # and no second-level ones.
@@ -787,7 +794,7 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
 
 
 def capacity(class_bits: int, level: int, wisdom: int,
-             game=None) -> dict[str, tuple[int, ...]]:
+             game=None, port: str | None = None) -> dict[str, tuple[int, ...]]:
     """How many spells of each level the character may memorise.
 
     Read off the game's own tables, not derived. **The record also carries this
@@ -812,4 +819,4 @@ def capacity(class_bits: int, level: int, wisdom: int,
         class_levels["magic-user"] = level or 1
     if class_bits & 2:
         class_levels["cleric"] = level or 1
-    return capacity_by_class(class_levels, wisdom, game)
+    return capacity_by_class(class_levels, wisdom, game, port=port)

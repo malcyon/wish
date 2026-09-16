@@ -7,9 +7,9 @@ import glob
 import pathlib
 
 import pytest
-from gamedata import disk_dir
+from gamedata import disk_dir, specimen
 
-from goldbox import levels
+from goldbox import dos_codec, levels, spells
 from goldbox.d64 import D64
 from goldbox.levels import TABLES, at_level, next_threshold, progress
 from goldbox.record import CharacterRecord
@@ -410,6 +410,70 @@ def test_the_wisdom_bonus_table_is_the_games_own():
     assert levels.wisdom_bonus_spells(12) == (1, 0, 0)
     assert levels.wisdom_bonus_spells(16) == (2, 2, 0)
     assert levels.wisdom_bonus_spells(17) == (2, 2, 1)
+
+
+def test_the_dos_wisdom_bonus_table_starts_one_point_later():
+    """#557. `START.EXE 0x00F6B0`: `01 02 02 02 02 02`, wisdom 13 to 18 -- one point
+    later than the C64's `$10AD`, and AD&D 1st edition's own rule. Only the
+    first column moves; the second and third are gated on absolute wisdom 15,
+    16 and 17 on both builds already.
+    """
+    assert levels.wisdom_bonus_spells(12, port="DOS") == (0, 0, 0)
+    assert levels.wisdom_bonus_spells(13, port="DOS") == (1, 0, 0)
+    # The portless (C64) answer must not move.
+    assert levels.wisdom_bonus_spells(12) == (1, 0, 0)
+    assert levels.wisdom_bonus_spells(13) == (2, 0, 0)
+    for score in list(range(3, 12)) + list(range(14, 19)):
+        assert (levels.wisdom_bonus_spells(score, port="DOS")
+                == levels.wisdom_bonus_spells(score)), score
+
+
+def test_curse_wisdom_bonus_ignores_port():
+    """Curse's own table starts at 13 on both builds already (#547), so
+    `wisdom_bonus_level` returns before `port` is ever consulted."""
+    curse = levels.CURSE_OF_THE_AZURE_BONDS
+    for score in (12, 13, 18):
+        assert (levels.wisdom_bonus_spells(score, curse, port="DOS")
+                == levels.wisdom_bonus_spells(score, curse)), score
+
+
+def test_capacity_by_class_dos_pool_of_radiance_wisdom_12_and_13():
+    """The issue's own test (#557): a DOS cleric of wisdom 12 or 13 gets one
+    fewer first-level spell than the C64 game would give the same wisdom."""
+    assert spells.capacity_by_class(
+        {"cleric": 1}, 13, port="DOS") == {"cleric": (2, 0, 0)}
+    assert spells.capacity_by_class(
+        {"cleric": 1}, 12, port="DOS") == {"cleric": (1, 0, 0)}
+    # No port given: the C64 case, and it must not move.
+    assert spells.capacity_by_class(
+        {"cleric": 1}, 13) == {"cleric": (3, 0, 0)}
+    assert spells.capacity_by_class(
+        {"cleric": 1}, 12) == {"cleric": (2, 0, 0)}
+
+
+@pytest.mark.parametrize("name,wisdom,engine_wrote", [
+    ("human7", 12, 1), ("halfe8", 13, 2)])
+def test_dos_specimens_wisdom_bonus_matches_the_engines_own_write(
+        name, wisdom, engine_wrote):
+    """`WISH-SPEC-human7` and `WISH-SPEC-halfe8`, the two engine-written DOS
+    cleric records #84's own creation screens rolled. Each stores its cleric
+    array at `0x0B2` as the engine itself wrote it -- `1 0 0` and `2 0 0` --
+    and `capacity_by_class(..., port=neutral.port)` must match that; with no
+    `port` it claims one first-level spell more (#557)."""
+    where = specimen(name, "dos")
+    cha = sorted(where.glob("*.CHA"))
+    assert cha, f"WISH-SPEC-{name} has no .CHA"
+    dos = dos_codec.read_character(cha[0])
+    neutral = dos_codec.to_neutral(dos)
+    assert neutral.get("wisdom") == wisdom
+    assert neutral.port == "DOS"
+    assert neutral.get("spells_castable")["cleric"][0] == engine_wrote
+    with_port = spells.capacity_by_class(
+        neutral.get("levels"), neutral.get("wisdom"), port=neutral.port)
+    without_port = spells.capacity_by_class(
+        neutral.get("levels"), neutral.get("wisdom"))
+    assert with_port["cleric"][0] == engine_wrote
+    assert without_port["cleric"][0] == engine_wrote + 1
 
 
 def test_the_spell_slot_rows_are_the_games_own():

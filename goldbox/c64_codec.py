@@ -666,6 +666,24 @@ _DUAL_CLASS_SLOT_NAMES: dict[int, str] = {
     for name, field in LEVEL_FIELDS.items() if name != "knight"
 }
 
+#: Source ports whose `spells_castable` needs recomputing rather than
+#: copying, the mirror of `goldbox.dos_codec._THAC0_RECOMPUTE_FROM_PORTS`,
+#: `_THIEF_SKILL_RECOMPUTE_FROM_PORTS` and `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`
+#: on the other side of the same conversion.  **`"DOS"` alone, and only Pool
+#: of Radiance ever reaches this**: the block below already runs only when
+#: `deltas.spell_slots`, which is `False` for Curse and Silver Blades, so no
+#: extra title gate is needed here. Pool of Radiance's own cleric wisdom
+#: bonus starts one point lower on the C64 than on DOS -- `GEN $10AD` grants
+#: a first-level bonus spell at wisdom 12, DOS's own table
+#: (`START.EXE 0x00F6B0`) at 13 -- so a DOS source copied verbatim leaves a
+#: converted wisdom-12 or wisdom-13 cleric one first-level spell short of
+#: what the C64 game's own trainer would give him (#559). An Amiga source's
+#: own wisdom table is unmeasured and keeps its own bytes, the same as
+#: `_THAC0_RECOMPUTE_FROM_PORTS`'s own note: a port nobody has checked keeps
+#: what it had rather than being "corrected" by a table never verified
+#: against it.
+_SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
+
 
 def write(char: NeutralCharacter, icon: bytes | None = None,
           ) -> tuple[CharacterRecord, Report]:
@@ -928,15 +946,35 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                      f"through a different one (#366)")
 
     # -- spell slots: three packed nibbles, cleric high, magic-user low ------
+    # The cleric column is recomputed rather than copied for a source port
+    # measured to run a different wisdom-bonus table (#559):
+    # `_SPELL_SLOT_RECOMPUTE_FROM_PORTS`'s own note has the measurement.
+    # `capacity_by_class` is asked with no `port`, so it answers with the
+    # C64's own table -- the one `deltas.spell_slots` says this record
+    # stores.
     castable = use("spells_castable")
     if castable is not None and deltas.spell_slots:
-        cleric = castable.value.get("cleric", (0, 0, 0))
+        computed_cleric = None
+        if port in _SPELL_SLOT_RECOMPUTE_FROM_PORTS:
+            computed_cleric = spells.capacity_by_class(
+                w.get("levels", {}) or {}, w.get("wisdom", 0),
+                char.game).get("cleric")
+        cleric = (computed_cleric if computed_cleric is not None
+                 else castable.value.get("cleric", (0, 0, 0)))
         mage = castable.value.get("magic-user", (0, 0, 0))
         packed = bytes((_clamp_nibble(cleric[i]) << 4) | _clamp_nibble(mage[i])
                        for i in range(3)) + bytes(3)
         rec.set_raw("spells_castable", packed)
-        emit(castable, "spells_castable", 0x0EE, 6,
-             ", repacked cleric-high/magic-user-low")
+        if computed_cleric is not None:
+            rep.note(0x0EE, 6,
+                     f"spells_castable: the cleric column recomputed "
+                     f"through this title's own table from the class "
+                     f"levels and wisdom, the way GEN $2108 rebuilds the "
+                     f"wisdom bonus -- {port} runs a different bonus table "
+                     f"at wisdom 12 and 13 (#559)")
+        else:
+            emit(castable, "spells_castable", 0x0EE, 6,
+                 ", repacked cleric-high/magic-user-low")
         for name_ in castable.value:
             if name_ not in ("cleric", "magic-user"):
                 rep.dropped.append(NO_SLOT_ARRAY_FOR.format(what=name_))
