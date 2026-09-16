@@ -66,6 +66,17 @@ and stop** — do not silently do something better.
 number and title, and a cited issue is usually cited because it settles
 something. An issue that says "read #65 first" means it.
 
+## Every turn resends everything you have read
+
+**A tool call is a turn, and every turn resends everything before it** — every
+file, screenshot and output you have already read. So: **do not reread a file
+that is already in front of you**; do not search for a file the brief has
+already named; run the test once to see it red, once to see it green, and not
+again after every edit in between; report as soon as the deliverable the brief
+names exists. **Do not sweep the tree for related problems** — a bug that is
+not this ticket's belongs on its own issue as a note, not in more of your
+turns.
+
 ## Testing
 
 **Prove the regression test fails without your fix.** Revert your fix, watch the test fail, put

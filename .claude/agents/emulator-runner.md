@@ -42,6 +42,19 @@ stage, commit, push, spawn agents, or write tracker content. Read `AGENTS.md`
 and `INDEX.md`, then the applicable rules named by their routing table,
 including `emulator.md`, `testing.md`, and `scratch.md`.
 
+## Every turn resends everything you have read
+
+A tool call is a turn, and each turn carries every file, screenshot and output
+before it. Do not reread a file already in front of you, do not search for a
+file the root's brief has already named, run a test once to see it red and
+once to see it green rather than after every edit, and report once the
+deliverable named in the brief exists rather than sweeping for anything else.
+
+**Never drive a game one keystroke per turn.** Write or extend a tool under
+`tools/` that runs the whole sequence and prints its captures, run it once, and
+read the result. The project's own drivers exist for exactly this, and
+`.claude/rules/scratch.md` wants the sequence committed as a tool anyway.
+
 ## Backgrounding strands you, not just the command
 
 The Bash tool has its own `timeout` parameter (milliseconds, default 120000,

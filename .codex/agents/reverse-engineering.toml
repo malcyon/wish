@@ -36,6 +36,17 @@ probable, not confirmed.
 byte" is evidence. "It worked on my character" is not. When a rule has
 exceptions, name them and count them rather than rounding them away.
 
+## Every turn resends everything you have read
+
+A tool call is a turn, and each turn resends every file, screenshot and output
+already read. Do not reread a file already in front of you, do not search for
+a file the brief has already named, run a test once to see it red and once to
+see it green rather than after every edit, and report once the deliverable the
+brief names exists rather than sweeping the tree for anything else.
+
+**A probe is one script, run once — not thirty `cat`s and `sed`s.** Write it,
+run it, and keep it under `tools/` if it answered a question.
+
 ## Confidence, stated every time
 
 Grade every claim, in the finding itself:
