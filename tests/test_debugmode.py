@@ -1004,6 +1004,31 @@ def test_a_fasttravel_is_verified_by_the_map_at_0400(app):
 
 
 
+def test_check_arrival_names_the_place_in_the_running_title_not_pools(app):
+    """`GEO15` is a real collision, not a hypothetical one: Pool of Radiance's
+    own table calls it "Sokol Keep" and Curse of the Azure Bonds' calls it
+    "shared blocks: Voonlar, Phlan dungeons" (`goldbox/areas.py`). Before
+    #564 `check_arrival` asked `place_name` for the place with no title, which
+    always answered from Pool of Radiance's table -- so a Curse party
+    fasttravelling to its own area `$15` would have been told "Arrived: Sokol
+    Keep" (measured directly against `goldbox.areas.geo_name`, posted on #564)."""
+    from goldbox import areas
+    from goldbox.geo import Geo
+    from tests.gamedata import synthetic_geo
+    row = actions.area_by_id(0x15, areas.CURSE_OF_THE_AZURE_BONDS)
+    assert row is not None                          # the row this test rests on
+    raw = synthetic_geo()
+    target = loaded(raw, area=0)
+    said = []
+    row_bar = bar(app, target, maps={row.geos[0]: Geo(raw)},
+                 title=areas.CURSE_OF_THE_AZURE_BONDS,
+                 say=lambda text, detail="", alarm=False: said.append(text))
+    row_bar.combo.setCurrentIndex(row_bar.rows.index(row))
+    assert row_bar.run().ok
+    assert row_bar.check_arrival() == row.geos[0]
+    assert said[-1] == "Arrived: shared blocks: Voonlar, Phlan dungeons"
+
+
 def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     """Not five. Stepping into an encounter in New Phlan takes about 25 to
     load, and four runs "died" on a timeout that was too short."""

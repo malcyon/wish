@@ -623,7 +623,7 @@ class FastTravelBar(QObject):
         name = ResidentGeo(self.target).identify(self.maps) if self.maps else None
         if name is not None and name in expect:
             self._pending = None
-            place = engine.place_name(name)
+            place = engine.place_name(name, self.title)
             self._said(f"Arrived: {place}" if place else "Arrived.")
             _log("arrived: %s is loaded at $0400, byte for byte", name)
             return name

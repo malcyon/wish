@@ -1393,19 +1393,28 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     return pick(geo)
 
 
-def place_name(geo: str) -> str | None:
+def place_name(geo: str, title: str | None = None) -> str | None:
     """What to call the map now resident, or None if we cannot say.
 
     `goldbox.areas.geo_name`, imported the same guarded way as the table and for
     the same reason. The name is the one the status line under the map already
     shows -- `AutomapState.area_label` calls the same function -- so the two
     cannot disagree about where the party is.
+
+    **`title` follows `FastTravelBar.title`'s own convention: None means Pool
+    of Radiance**, the same as every caller written before there was a second
+    title. Before #564 this took no title at all and always answered from Pool
+    of Radiance's table, which is Curse's own arrival toast reading Pool of
+    Radiance's name for whichever `GEO` file its own table happened to share a
+    key with.
     """
     try:
         from goldbox.areas import geo_name
     except ImportError:                     # pragma: no cover - defensive
         return None
-    return geo_name(geo)
+    if title is None:
+        return geo_name(geo)
+    return geo_name(geo, title)
 
 
 @dataclass(frozen=True)
