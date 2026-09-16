@@ -85,6 +85,42 @@ def test_no_entry_is_blank_or_a_bare_number():
         assert not name.startswith("trait ")
 
 
+def test_the_picker_no_longer_warns_off_this_titles_own_spells():
+    """`#562 (The trait picker warns a Silver Blades player off six of their
+    own spells, because its warning tables are Pool of Radiance's)`.
+
+    `editor.effects.warning`'s three tables -- `MONSTER_FIRST`, `BORN_WITH`
+    and `NO_HANDLER` -- were Pool of Radiance's alone and every title read
+    them. 63 is Pool of Radiance's own "no handler exists"; Secret of the
+    Silver Blades' own Minor Globe of Invulnerability writes it, so it
+    carries no warning there. 68, 69, 71, 106, 111 and 112 are real spells in
+    this title's own 113-wide namespace and Pool of Radiance's own
+    monster-attack-form cut; Pool of Radiance's half of each pair is the
+    control that the fix moved one title and not both.
+    """
+    for code in (63, 68, 69, 71, 106, 111, 112):
+        assert effects.warning(code, game=SSB) == "", code
+    assert effects.warning(63, game=POOL) == effects.REASON_NO_HANDLER
+    for code in (68, 69, 71, 106, 111, 112):
+        assert effects.warning(code, game=POOL) == effects.REASON_MONSTER, code
+
+
+def test_a_monster_attack_form_this_title_shares_still_warns():
+    """The control inside the title itself: 64 (a monster's poison) and 93 (a
+    monster's fire resistance) are not spells here either, so the fix must
+    not have simply blanked the table."""
+    for code in (64, 93):
+        assert effects.warning(code, game=SSB) == effects.REASON_MONSTER, code
+
+
+def test_curse_of_the_azure_bonds_own_minor_globe_carries_no_warning():
+    """Named in `#562`'s root cause alongside Secret of the Silver Blades:
+    Curse of the Azure Bonds' own Minor Globe of Invulnerability writes 63
+    too, so it drops out of `NO_HANDLER` for that title as well."""
+    curse = c64_port.CURSE_OF_THE_AZURE_BONDS
+    assert effects.warning(63, game=curse) == ""
+
+
 def test_the_table_is_still_this_titles_own():
     """It grew from six to 59 and none of the growth is Pool of Radiance's
     table by the back door: the codes that title spends on something this one

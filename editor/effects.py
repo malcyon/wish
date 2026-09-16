@@ -104,7 +104,10 @@ REASON_DUPLICATE = ("This character already has this in another slot. Whether "
 
 #: Ids from here up are monster attack forms -- poison bites, gazes, breath
 #: weapons -- and belong on a monster rather than a character
-#: (`docs/107-roster-and-notes.md` section 8).
+#: (`docs/107-roster-and-notes.md` section 8). **Pool of Radiance's own cut**,
+#: true there because that title's spell effects stop at 63. A title not in
+#: `MONSTER_FIRST_BY_GAME` gets this, which is what every caller written
+#: before that table existed meant.
 MONSTER_FIRST = 64
 
 #: The exceptions: ids at or above that cut which the **game itself** writes
@@ -117,10 +120,40 @@ MONSTER_FIRST = 64
 #: * 92, 95 and 105, three of the nine Secret of the Silver Blades seeds.
 #: * 107 and 124, the elf's and half-elf's resistance to sleep and charm,
 #:   which `GEN` seeds at creation.
+#:
+#: **Pool of Radiance's own set.** A title not in `BORN_WITH_BY_GAME` gets
+#: this.
 BORN_WITH = frozenset({89, 90, 92, 95, 97, 105, 107, 124})
 
 #: Codes `goldbox/traits.py` records as having no handler in the game.
+#: **Pool of Radiance's own set** -- its own 63 is "unimplemented -- no
+#: handler exists" (`goldbox/traits.py:NAMES`). A title not in
+#: `NO_HANDLER_BY_GAME` gets this.
 NO_HANDLER = frozenset({54, 63})
+
+#: Per-title corrections to the three constants above, the way
+#: `goldbox.traits.TABLES` and `automap.live.BADGE_TABLES` already are: a
+#: title not here gets Pool of Radiance's, which is the default every caller
+#: written before these tables existed meant.
+#:
+#: `MONSTER_FIRST` itself has not needed a different cut for any title
+#: measured yet -- only its exceptions and `NO_HANDLER` have, so there is no
+#: `MONSTER_FIRST_BY_GAME` until one does.
+#:
+#: `#562`: Secret of the Silver Blades' own namespace runs to 112 and spends
+#: 68, 69, 71, 106, 111 and 112 -- six of Pool of Radiance's monster-attack-
+#: form ids -- on real spells (`tools/traitquery.py secret-of-the-silver-
+#: blades --spells`, `#497`), so they join its `BORN_WITH`. 63 has a handler
+#: in both Secret of the Silver Blades and Curse of the Azure Bonds -- each
+#: title's own Minor Globe of Invulnerability writes it -- so both drop it
+#: from `NO_HANDLER`.
+BORN_WITH_BY_GAME: dict[str, frozenset[int]] = {
+    "secret-of-the-silver-blades": BORN_WITH | frozenset({68, 69, 71, 106, 111, 112}),
+}
+NO_HANDLER_BY_GAME: dict[str, frozenset[int]] = {
+    "secret-of-the-silver-blades": NO_HANDLER - {63},
+    "curse-of-the-azure-bonds": NO_HANDLER - {63},
+}
 
 
 def warning(code: int, others: tuple[int, ...] = (), game=None) -> str:
@@ -132,11 +165,13 @@ def warning(code: int, others: tuple[int, ...] = (), game=None) -> str:
     """
     if not code or code == FILL:
         return ""
-    if code in NO_HANDLER:
+    key = getattr(game, "key", game)
+    if code in NO_HANDLER_BY_GAME.get(key, NO_HANDLER):
         return REASON_NO_HANDLER
     if confidence(code, game) == "UNKNOWN":
         return REASON_UNNAMED
-    if code >= MONSTER_FIRST and code not in BORN_WITH:
+    if (code >= MONSTER_FIRST
+            and code not in BORN_WITH_BY_GAME.get(key, BORN_WITH)):
         return REASON_MONSTER
     if code in others:
         return REASON_DUPLICATE
