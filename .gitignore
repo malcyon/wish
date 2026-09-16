@@ -254,6 +254,10 @@ gamedisks.local.toml
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/caveman
+!.claude/skills/orchestrate
+# The orchestrator's own ranked queue is the project's too -- it is how one
+# /orchestrate session hands off to the next.
+!.claude/orchestrator-queue.md
 skills-lock.json
 # `.codex/agents/*.toml` (#506) is generated from `.claude/agents/*.md` and is
 # the project's, not one machine's; everything else Codex writes under
