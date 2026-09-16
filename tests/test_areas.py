@@ -261,9 +261,12 @@ def test_geo_number_reads_hex():
 
 def test_geo_name_says_nothing_rather_than_something_wrong():
     assert areas.geo_name("GEO15", POOL_OF_RADIANCE) == "Sokol Keep"
-    # `$43`'s screen disagreed with its approved name and it was held back
-    # pending Donald's decision (`#15`), so `GEO43` is still nameless.
-    assert areas.geo_name("GEO43", CURSE_OF_THE_AZURE_BONDS) is None
+    assert (areas.geo_name("GEO43", CURSE_OF_THE_AZURE_BONDS)
+            == "Myth Drannor, Ruined Temple")
+    # `GEO01` is two different approved names sharing one file, so
+    # `_names_for_curse` leaves it out rather than picking a winner -- see
+    # test_geo_names_shared_by_two_curse_areas_are_left_out_of_both.
+    assert areas.geo_name("GEO01", CURSE_OF_THE_AZURE_BONDS) is None
     assert areas.geo_name("GEO15", "no such game") is None
     assert areas.geo_name("GEO15", None) is None
 
@@ -363,11 +366,12 @@ def test_the_label_names_a_curse_area_with_its_own_name_not_pools():
     assert st.area_label != "Sokol Keep"
 
 
-def test_the_label_still_falls_back_to_the_stem_for_an_unnamed_curse_area():
-    """`GEO43` (`$43`) disagreed with its approved name on the screen and was
-    held back pending Donald's decision, so it is still the file stem."""
-    st = AutomapState(area="GEO43", title=CURSE_OF_THE_AZURE_BONDS)
-    assert st.area_label == "GEO43"
+def test_the_label_still_falls_back_to_the_stem_for_a_shared_curse_map():
+    """`GEO01` is `$01`'s streets and `$02`'s Thieves' Guild -- two different
+    approved names on one map file -- so `_names_for_curse` leaves it out
+    rather than picking a winner, and the label is still the file stem."""
+    st = AutomapState(area="GEO01", title=CURSE_OF_THE_AZURE_BONDS)
+    assert st.area_label == "GEO01"
 
 
 def test_the_label_still_falls_back_to_candidates_with_no_area():
@@ -732,18 +736,19 @@ def test_a_curse_label_names_its_lettered_disk_not_a_number():
     (`#427 (Fast Travel's dropdown names Curse's disks CURSE_2 rather than
     CURSE_B, which is not a disk the player has)`).
 
-    `$01` and `$40` carried this test until `#15 (Fast Travel for more than
-    one Gold Box title)` gave them both a name, so it now reads two rows
-    that are still nameless -- `$1E` (no approved name at all) and `$43`
-    (held back pending Donald's decision) -- to keep this test about the
-    disk letter rather than about the name landing.
+    `$01`, `$40`, `$22`, `$23` and `$43` all carried this test in turn until
+    `#15 (Fast Travel for more than one Gold Box title)` named them, one
+    round of the ticket at a time, so it now reads `$1E` -- the one row with
+    no approved name at all -- alongside a named row on a different disk, to
+    keep this test about the disk letter rather than about which rows are
+    still nameless.
     """
     row = areas.area_in(0x1E, areas.CURSE_OF_THE_AZURE_BONDS)
     assert row.disk == 1
     assert row.label == "ECL1E - no map, CURSE_A"
     row = areas.area_in(0x43, areas.CURSE_OF_THE_AZURE_BONDS)
     assert row.disk == 6
-    assert row.label == "ECL43 - GEO43, CURSE_F"
+    assert row.label == "Myth Drannor, Ruined Temple - GEO43, CURSE_F"
     # The two titles this could regress stay right.
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
     silver = areas.area_in(0x22, areas.SECRET_OF_THE_SILVER_BLADES)
@@ -773,17 +778,19 @@ def test_curse_is_offered_too_now_that_its_table_exists():
     `automap.actions.area_rows`'s gates are open, the same as Silver Blades'.
 
     `confidence` grades the name (see `Area.confidence`'s own docstring), so
-    it moved off UNKNOWN for the 21 rows `#15 (Fast Travel for more than one
-    Gold Box title)` landed a name for. The other four -- `$1E`, which has no
-    approved name at all, and `$22`/`$23`/`$43`, whose screens disagreed and
-    are held pending Donald's decision -- stay UNKNOWN.
+    it moved off UNKNOWN for 24 rows: the 21 `#15 (Fast Travel for more than
+    one Gold Box title)` landed a name for straight off the validation pass,
+    plus `$22` and `$43`, whose screens disagreed and were confirmed by a
+    later bytecode read, plus `$23`, whose script genuinely holds two arrival
+    scenes and got a name covering both. `$1E`, which has no approved name at
+    all, is the only row left UNKNOWN.
     """
     assert len(areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS)) == 25
     assert areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
     assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
     unknown = {a.id for a in areas.AREAS_CURSE
                if a.confidence is areas.Confidence.UNKNOWN}
-    assert unknown == {0x1E, 0x22, 0x23, 0x43}
+    assert unknown == {0x1E}
 
 
 #: The fourteen derived arrival squares landed for `#15 (Fast Travel for more
@@ -839,33 +846,31 @@ def test_a_curse_arrival_square_is_still_not_what_confidence_grades():
     row, back when UNKNOWN was every row's only state. `confidence` grades
     the **name** (`Area.confidence`'s own docstring: "What this grades is the
     `name`, and only the name" -- the same convention `AREAS` uses), and
-    landing the 21 approved names
-    (`test_the_approved_curse_names_are_landed_and_graded` below) moved
-    thirteen of the fourteen arrival rows off UNKNOWN. That is the name's
-    grade, not the arrival's: the derived-arrival calibration is
-    `tests/test_areatable.py::
+    landing the 23 approved names
+    (`test_the_approved_curse_names_are_landed_and_graded` below) moved all
+    fourteen arrival rows off UNKNOWN, `$22` last of them -- its screen
+    disagreed with its approved name and held it back until a bytecode read
+    confirmed the name separately (`#15 (Fast Travel for more than one Gold
+    Box title)`). That is the name's grade, not the arrival's: the
+    derived-arrival calibration is `tests/test_areatable.py::
     test_a_derived_arrival_square_is_right_ten_times_in_eleven` (ten of
     eleven, never eleven of eleven) and this landing did not touch it.
-
-    `$22` is the one arrival row still provably ungraded: its screen
-    disagreed with its approved name, so it was held back and its
-    `confidence` is still the only thing this test can pin.
     """
     table = {a.id: a for a in areas.AREAS_CURSE}
-    assert table[0x22].confidence is areas.Confidence.UNKNOWN
-    assert table[0x22].name is None
-    assert 0x22 in _CURSE_ARRIVALS
-    named_arrivals = {id for id in _CURSE_ARRIVALS if id != 0x22}
     assert all(table[id].confidence is not areas.Confidence.UNKNOWN
-               for id in named_arrivals)
+               for id in _CURSE_ARRIVALS)
 
 
-#: The 21 names Donald approved on `#15 (Fast Travel for more than one Gold
+#: The 24 names Donald approved on `#15 (Fast Travel for more than one Gold
 #: Box title)`, 2026-09-15, off the forum table he named
-#: (`docs/126-forum-findings.md`, topic 1048), graded CONFIRMED or PROBABLE
-#: by an emulator-runner's validation pass the next day. `$22`, `$23` and
-#: `$43` disagreed with the screen and stay unnamed, pending his decision;
-#: `$1E` has no approved name at all.
+#: (`docs/126-forum-findings.md`, topic 1048). 21 were graded CONFIRMED or
+#: PROBABLE the next day by an emulator-runner's validation pass against the
+#: first screen the game drew on arrival; `$22`, `$23` and `$43` disagreed
+#: with that screen and were held back. A bytecode read the day after
+#: confirmed `$22` and `$43` were capture artefacts rather than wrong names,
+#: landed CONFIRMED; `$23`'s script genuinely holds two arrival scenes and
+#: Donald renamed the row to cover both, landed PROBABLE. `$1E` has no
+#: approved name at all.
 _CURSE_NAMES = {
     0x01: ("Tilverton streets", areas.Confidence.PROBABLE),
     0x02: ("Thieves' Guild under Tilverton", areas.Confidence.CONFIRMED),
@@ -877,6 +882,8 @@ _CURSE_NAMES = {
     0x15: ("shared blocks: Voonlar, Phlan dungeons", areas.Confidence.PROBABLE),
     0x20: ("Zhentil Keep streets", areas.Confidence.CONFIRMED),
     0x21: ("Temple of Bane", areas.Confidence.CONFIRMED),
+    0x22: ("Cave of the Beholder", areas.Confidence.CONFIRMED),
+    0x23: ("Zhentil Keep courtroom/tavern", areas.Confidence.PROBABLE),
     0x25: ("Dagger Falls Dungeon (Oxam's Tower)", areas.Confidence.PROBABLE),
     0x30: ("outside Haptooth", areas.Confidence.CONFIRMED),
     0x31: ("Haptooth streets", areas.Confidence.CONFIRMED),
@@ -886,6 +893,7 @@ _CURSE_NAMES = {
            areas.Confidence.PROBABLE),
     0x40: ("Myth Drannor, Burial Glen", areas.Confidence.PROBABLE),
     0x42: ("Ruins of Myth Drannor", areas.Confidence.PROBABLE),
+    0x43: ("Myth Drannor, Ruined Temple", areas.Confidence.CONFIRMED),
     0x45: ("shared blocks: Hillsfar, Teshwave dungeons", areas.Confidence.PROBABLE),
     0x50: ("world map", areas.Confidence.CONFIRMED),
     0x51: ("world map", areas.Confidence.CONFIRMED),
@@ -894,12 +902,21 @@ _CURSE_NAMES = {
 
 def test_the_approved_curse_names_are_landed_and_graded():
     """`#15 (Fast Travel for more than one Gold Box title)`: Donald's ruling
-    approved names for 24 of the 25 rows (`$1E` has none at all) and an
-    emulator-runner's validation pass graded each one against the first
-    screen the game drew on arrival. This lands the 21 that were CONFIRMED
-    or PROBABLE; the three that disagreed with the screen (`$22`, `$23`,
-    `$43`) are not landed and stay `name=None`, `confidence=UNKNOWN`, pending
-    his decision.
+    approved names for 24 of the 25 rows (`$1E` has none at all). An
+    emulator-runner's validation pass graded 21 of them against the first
+    screen the game drew on arrival, landed here as CONFIRMED or PROBABLE.
+    `$22`, `$23` and `$43` disagreed with that screen. A follow-up bytecode
+    read of the scripts (`ECL22`, `ECL43`, and `ECL42`'s own naming of `$43`)
+    found `$22` and `$43`'s disagreements were capture artefacts -- `$22`'s
+    screen was page 1 of a three-page arrival that names the beholder on
+    page 2, and `$43`'s screen was one door's own narration rather than the
+    place's -- so both land here CONFIRMED. `$23`'s script genuinely holds
+    two arrival scenes, chosen by a quest flag: a courtroom/arena pair the
+    original approved name covered, and a tavern it did not -- the scene a
+    fast-travelling party actually lands in. Donald renamed the row
+    "Zhentil Keep courtroom/tavern" to cover both, landed here PROBABLE:
+    exactly right for two of the script's scenes, only adjacent for the
+    third.
 
     Pinned against the ruling and the grading pass as literals, separately
     from `goldbox/areas.py`, so a change to either side is caught rather than
@@ -909,10 +926,10 @@ def test_the_approved_curse_names_are_landed_and_graded():
     landed = {id: (a.name, a.confidence)
               for id, a in table.items() if a.name is not None}
     assert landed == _CURSE_NAMES
-    assert len(landed) == 21
+    assert len(landed) == 24
 
     unnamed = {id for id, a in table.items() if a.name is None}
-    assert unnamed == {0x1E, 0x22, 0x23, 0x43}
+    assert unnamed == {0x1E}
 
 
 def test_silver_blades_and_pool_of_radiance_tables_are_untouched():

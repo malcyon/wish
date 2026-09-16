@@ -570,15 +570,16 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
        confidence: Confidence = Confidence.UNKNOWN) -> Area:
     """One Curse row: id, disk side and the maps its script loads.
 
-    `name` is `None` for the four rows with no approved name yet -- `$1E`,
-    which no forum table entry covers at all, and `$22`/`$23`/`$43`, whose
-    screen disagreed with the name Donald approved and are held pending his
-    decision (`#15 (Fast Travel for more than one Gold Box title)`).
+    `name` is `None` for one row -- `$1E`, which no forum table entry covers
+    at all (`#15 (Fast Travel for more than one Gold Box title)`).
     `confidence` grades the name and only the name, the same convention
     `AREAS`' own rows use: CONFIRMED where the emulator-runner's validation
-    pass saw the screen name the place outright, PROBABLE where it saw a map
-    or a generic scene consistent with the name and nothing that named it
-    outright, UNKNOWN for the four with no name to grade.
+    pass saw the screen name the place outright, or where a later bytecode
+    read of the script confirmed it outright after the screen disagreed;
+    PROBABLE where the validation pass saw a map or a generic scene
+    consistent with the name and nothing that named it outright, or where
+    the name is accurate for only one of a script's several scenes; UNKNOWN
+    for the one row with no name to grade.
 
     Fourteen of the twenty-five carry an `arrival`; see the table's own
     comment for what grade that field carries -- separate from `confidence`,
@@ -611,9 +612,20 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: names the place outright, PROBABLE where it only shows a map or a
 #: generic scene consistent with the name.  Twenty-one landed that way,
 #: eleven CONFIRMED and ten PROBABLE; three -- `$22`, `$23` and `$43` --
-#: disagreed with the screen and stay unnamed, `confidence` UNKNOWN, pending
-#: Donald's decision; `$1E` has no approved name at all, the forum table
-#: carries no entry for it and the row loads no map.  The `geos` column is
+#: disagreed with the screen.  A follow-up bytecode read of the scripts found
+#: all three disagreements were about the capture, not the name: `$22`'s
+#: graded screen was page 1 of a three-page arrival that names the beholder
+#: on page 2 (`ECL22+$0153`), CONFIRMED; `$43`'s graded screen was one door's
+#: own narration -- chosen by the party's `x` coordinate, carried over from
+#: wherever it came from -- rather than the place's, with `ECL42+$00BD`
+#: naming the destination a ruined temple fourteen bytes before dispatching
+#: there, CONFIRMED; and `$23`'s script holds two arrival scenes chosen by a
+#: quest flag, a courtroom/arena pair the original name covered and a tavern
+#: it did not, so Donald renamed the row "Zhentil Keep courtroom/tavern" to
+#: cover the scene a fast-travelling party actually lands in too -- PROBABLE,
+#: because the name is exactly right for two of the script's scenes and only
+#: adjacent for the third.  `$1E` has no approved name at all, the forum
+#: table carries no entry for it and the row loads no map.  The `geos` column is
 #: the strongest part of the table regardless of any of that -- `ECL02`
 #: loads `GEO01`, `ECL22` loads `GEO21` and `ECL31`/`ECL32` both load
 #: `GEO32`, so it cannot be derived from the id the way a straight numbering
@@ -673,8 +685,9 @@ AREAS_CURSE: tuple[Area, ...] = (
     _c(0x20, 4, ("GEO20",), Arrival(14, 1, 0),
        name="Zhentil Keep streets", confidence=C),
     _c(0x21, 4, (), Arrival(3, 8, 2), name="Temple of Bane", confidence=C),
-    _c(0x22, 4, ("GEO21",), Arrival(12, 7, 3)),
-    _c(0x23, 4, ()),
+    _c(0x22, 4, ("GEO21",), Arrival(12, 7, 3),
+       name="Cave of the Beholder", confidence=C),
+    _c(0x23, 4, (), name="Zhentil Keep courtroom/tavern", confidence=P),
     _c(0x25, 4, ("GEO25",),
        name="Dagger Falls Dungeon (Oxam's Tower)", confidence=P),
     _c(0x30, 5, (), name="outside Haptooth", confidence=C),
@@ -689,7 +702,8 @@ AREAS_CURSE: tuple[Area, ...] = (
        confidence=P),
     _c(0x40, 6, ("GEO40",), name="Myth Drannor, Burial Glen", confidence=P),
     _c(0x42, 6, ("GEO42",), name="Ruins of Myth Drannor", confidence=P),
-    _c(0x43, 6, ("GEO43",)),
+    _c(0x43, 6, ("GEO43",), name="Myth Drannor, Ruined Temple",
+       confidence=C),
     _c(0x45, 6, ("GEO45",), Arrival(6, 10, 1),
        name="shared blocks: Hillsfar, Teshwave dungeons", confidence=P),
     _c(0x50, 1, (), name="world map", confidence=C),
