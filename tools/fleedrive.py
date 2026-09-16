@@ -97,6 +97,15 @@ RESULT = 0x6DC7
 #: `JMP $14AC`, so a run that ends in flight should never be caught here.
 SPIN = 0x0957
 
+#: `POST.COM $0E1E`, `LDA $6DE6 / BNE next` -- inside the loop at `$0DF8` that
+#: otherwise clears status and empties the roster slot of anyone who is
+#: neither `RUNNING` nor the flee outcome itself.  Nonzero skips the drop and
+#: spares the character.  The same byte gates the `$0957` spin on a defeat
+#: (`tools/defeatdrive.py`'s `MERCY`); `#445`'s `--mercy` here stages it to 1
+#: once, after the fight has started and before the outcome is decided, to
+#: test whether it spares the characters a flight would otherwise drop.
+MERCY = 0x6DE6
+
 #: What the low three bits of record `0x100` name, from `LIBRARY $38BE`.
 STATUS_WORDS = {0: "(empty)", 1: "OK", 2: "GONE", 3: "DEAD", 4: "DYING",
                 5: "UNCONSIOUS", 6: "RUNNING", 7: "STONED"}
@@ -316,6 +325,20 @@ def hitpoints(page: bytes) -> list[int]:
         at = i * savegame.ROSTER_STRIDE + HP
         out.append(page[at] | page[at + 1] << 8)
     return out
+
+
+def stage_mercy(sess) -> int:
+    """Write `MERCY` (`$6DE6`) to 1, and return what was there before.
+
+    Called once the fight has started and before the outcome is decided --
+    `#445`'s experiment.  Nothing on the disk writes this byte between here
+    and `POST.COM $0E1E`'s read of it: `INIT $091A` zeroed it at boot, before
+    this tool ever gets the monitor.
+    """
+    with sess.mon(5) as m:
+        before = m.read(MERCY, 1)[0]
+        m.write(MERCY, bytes([1]))
+    return before
 
 
 def wound(sess, slots: list[int], to: int) -> None:
@@ -697,6 +720,11 @@ def run(args) -> int:
                 log.say(f"    {c.name.strip():<12} at {c.x},{c.y}  "
                         f"move {c.movement}")
 
+        if args.mercy:
+            before_mercy = stage_mercy(sess)
+            log.emit("mercy", staged=1, was=before_mercy)
+            log.say(f"  $6DE6 staged to 1 (was ${before_mercy:02X})")
+
         outcome = drive(sess, log, frames, flight, args)
         log.say(f"fight ended: {outcome or 'no outcome line seen'}")
 
@@ -705,13 +733,22 @@ def run(args) -> int:
         log.emit("roster", when="outcome", status=after, hp=hitpoints(page))
         log.say("  after:  " + "  ".join(
             f"{i}:{describe(after[i])}" for i in occupied))
+        if outcome == "ran":
+            dropped = [i for i in occupied if after[i] == 0]
+            kept = [i for i in occupied if after[i] != 0]
+            log.emit("spared", occupied=occupied, dropped=dropped, kept=kept,
+                     mercy=args.mercy)
+            log.say(f"  of {len(occupied)} occupied slots: {len(kept)} kept, "
+                    f"{len(dropped)} dropped -- {dropped}")
         with sess.mon(5) as m:
             result = m.read(RESULT, 1)[0]
+            mercy = m.read(MERCY, 1)[0]
         log.emit("result", byte=result, attempts=flight.attempts,
-                 got_away=flight.got_away, failed=dict(flight.failed))
+                 got_away=flight.got_away, failed=dict(flight.failed),
+                 mercy=mercy)
         log.say(f"  $6DC7 = ${result:02X}   flee attempts "
                 f"{flight.attempts}, got away {flight.got_away}, "
-                f"failed {dict(flight.failed)}")
+                f"failed {dict(flight.failed)}   $6DE6 = ${mercy:02X}")
         after_disk = digest(sess.save_disk)
         log.emit("save_disk", when="outcome", sha256=after_disk,
                  changed=after_disk != before_disk)
@@ -803,6 +840,10 @@ def main(argv=None) -> int:
     d.add_argument("--no-wound", dest="wound", action="store_false",
                    help="never write a hit point: the whole party has to get "
                         "away on its own")
+    d.add_argument("--mercy", action="store_true",
+                   help="stage $6DE6 to 1 once the fight has started, to "
+                        "test whether it spares the characters left behind "
+                        "instead of POST.COM $0E1E dropping them (#445)")
     d.add_argument("--walk", default="I",
                    help="the move to repeat while looking for a fight")
     d.add_argument("--steps", type=int, default=400,

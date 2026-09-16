@@ -88,6 +88,18 @@ PARTY_SIZE = 0x6E3E
 #: overlay base is `$0800`, not the `$1000` the PRG header claims.
 SPIN = 0x0957
 
+#: `POST.COM $094F`, `LDA $6DE6 / BEQ $0957` -- the byte that decides, when
+#: nobody is `GONE` or `DEAD` (bit 4 of `$2B5D` clear and `$2B70` short of the
+#: party size, which is what both driven defeats measured), whether the game
+#: spins or carries on to `$0954 JMP $0A2F`.  `#445`'s `--mercy` writes this
+#: to 1 once, right after wounding and before the fight is driven to its end,
+#: and nothing on the disk touches it in between: `INIT $091A` zeroes it at
+#: boot, before this tool ever gets the monitor, and `POST.COM $14D2` zeroes
+#: it again, but `docs/207-c64-rest-interruption.md` places that store in the
+#: same batch as `$6DD2`/`$6DD3`'s own camp-entry reset, well after the
+#: outcome branch this run is watching.
+MERCY = 0x6DE6
+
 #: What the low three bits of record `0x100` name, read out of `LIBRARY
 #: $38BE` -- `AND #$07 / ADC #$29` into LIBRARY's own string table.  Zero is
 #: not a status; it is an empty roster slot.
@@ -157,6 +169,24 @@ def wound_all(sess, slots: list[int], to: int) -> None:
         for i in slots:
             at = ROSTER + i * savegame.ROSTER_STRIDE + HP
             m.write(at, bytes([to & 0xFF, to >> 8]))
+
+
+def stage_mercy(sess) -> int:
+    """Write `MERCY` (`$6DE6`) to 1, and return what was there before.
+
+    Called once, after the party is wounded and before the fight is driven to
+    its end -- `#445`'s experiment.  Nothing else on the disk writes this byte
+    between here and `POST.COM $094F`'s read of it.
+    """
+    with sess.mon(5) as m:
+        before = m.read(MERCY, 1)[0]
+        m.write(MERCY, bytes([1]))
+    return before
+
+
+def read_mercy(sess) -> int:
+    with sess.mon(5) as m:
+        return m.read(MERCY, 1)[0]
 
 
 def digest(path: str | os.PathLike) -> str | None:
@@ -278,6 +308,7 @@ def watch_after(sess, log: Log, frames: Frames, seconds: float,
                 mode = m.read(S.MODE, 1)[0]
                 result = m.read(RESULT, 1)[0]
                 size = m.read(PARTY_SIZE, 1)[0]
+                mercy = m.read(MERCY, 1)[0]
         except Exception as exc:
             log.emit("sample_failed", error=repr(exc))
             time.sleep(poll)
@@ -287,7 +318,8 @@ def watch_after(sess, log: Log, frames: Frames, seconds: float,
         s = sess.screen()
         if s is not None and frames.add(rows_of(s)):
             log.emit("screen", rows=rows_of(s))
-        log.emit("after", pc=pc, mode=mode, result=result, party_size=size)
+        log.emit("after", pc=pc, mode=mode, result=result, party_size=size,
+                 mercy=mercy)
         time.sleep(poll)
     return pcs
 
@@ -318,6 +350,11 @@ def main(argv=None) -> int:
                    help="give up after this many steps with no fight")
     p.add_argument("--out", default=None, help="run directory")
     p.add_argument("--quiet", action="store_true")
+    p.add_argument("--mercy", action="store_true",
+                   help="stage $6DE6 to 1 once, right after wounding and "
+                        "before the fight is driven to its end, to test "
+                        "whether it lets a defeat carry on past the $0957 "
+                        "spin instead of reaching it (#445)")
     args = p.parse_args(argv)
     SC.catch_signals()
 
@@ -368,6 +405,11 @@ def main(argv=None) -> int:
         log.say(f"wounded {len(occupied)} character(s) down to {args.hp} "
                 "hit point(s) each")
 
+        if args.mercy:
+            before_mercy = stage_mercy(sess)
+            log.emit("mercy", staged=1, was=before_mercy)
+            log.say(f"  $6DE6 staged to 1 (was ${before_mercy:02X})")
+
         outcome = drive(sess, log, frames, args.budget, args.poll)
         log.say(f"fight ended: {outcome or 'no outcome line seen'}")
 
@@ -384,8 +426,10 @@ def main(argv=None) -> int:
         with sess.mon(5) as m:
             result = m.read(RESULT, 1)[0]
             size = m.read(PARTY_SIZE, 1)[0]
-        log.emit("result", byte=result, party_size=size)
-        log.say(f"  $6DC7 = ${result:02X}   party size $6E3E = {size}")
+            mercy = m.read(MERCY, 1)[0]
+        log.emit("result", byte=result, party_size=size, mercy=mercy)
+        log.say(f"  $6DC7 = ${result:02X}   party size $6E3E = {size}   "
+                f"$6DE6 = ${mercy:02X}")
         after_disk = digest(sess.save_disk)
         log.emit("save_disk", when="outcome", sha256=after_disk,
                  changed=after_disk != before_disk)
@@ -406,6 +450,7 @@ def main(argv=None) -> int:
         spun = sum(1 for pc in pcs if pc == SPIN)
         (out / "hang.json").write_text(json.dumps(
             {"samples": len(pcs), "at_spin": spun, "spin": SPIN,
+             "mercy_staged": args.mercy,
              "pcs": [f"${pc:04X}" for pc in pcs]}, indent=1) + "\n")
         log.say(f"  program counter: {spun} of {len(pcs)} readings at "
                 f"${SPIN:04X}")
