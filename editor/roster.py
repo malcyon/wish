@@ -98,7 +98,8 @@ class Member:
 
         A dual-classed human's former class and the level he left it at ride
         along, `(was fighter 5)`-shaped (#256) -- Donald's decision of
-        2026-09-05, wording NOT APPROVED (`.claude/rules/gui-text.md`).
+        2026-09-05. Wording approved 2026-09-15 -- *"The wording '(was
+        magic-user 6)' is approved as written"* (`.claude/rules/gui-text.md`).
         """
         from .enums import char_class_names, class_bit_names
         try:
