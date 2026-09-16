@@ -3,7 +3,7 @@ name: emulator-runner
 description: Executes approved, bounded emulator experiments through the instance pool and preserves their evidence. Use when the harness, actions, captures, and termination conditions are specified.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-effort: high
+effort: medium
 memory: project
 color: green
 ---

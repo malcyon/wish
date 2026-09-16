@@ -3,7 +3,7 @@ name: code-reviewer
 description: Reviews code for best-practice violations, gaps in exception handling and logging, and likely bugs. Use proactively after writing or modifying code.
 tools: Read, Grep, Glob, Bash
 model: sonnet
-effort: high
+effort: medium
 memory: project
 color: blue
 ---
