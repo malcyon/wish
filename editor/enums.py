@@ -130,7 +130,7 @@ CHAR_CLASS = {
     0: "CLERIC", 1: "DRUID", 2: "FIGHTER", 3: "PALADIN", 4: "RANGER",
     5: "MAGIC-USER", 6: "THIEF", 7: "MONK",
     8: "cleric/fighter", 9: "cleric/fighter/magic-user",
-    11: "cleric/magic-user (again)",
+    11: "cleric/magic-user",
     12: "cleric/thief", 13: "fighter/magic-user", 14: "fighter/thief",
     15: "fighter/magic-user/thief", 16: "magic-user/thief",
 }

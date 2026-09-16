@@ -1721,6 +1721,41 @@ def test_curses_class_code_10_names_cleric_ranger_not_pool_of_radiances_pair(app
     assert "magic-user" not in class_shown
 
 
+def test_class_code_11_reads_cleric_magic_user_without_the_stale_parenthetical(app):
+    """#558. `editor/enums.py`'s `CHAR_CLASS` used to answer code 11 with
+    "cleric/magic-user (again)" -- a leftover from when code 10 was wrongly
+    believed to be a second cleric/magic-user (#409's fix removed that
+    belief from code 10 alone, and left the parenthetical on 11, the code it
+    was copied from). Half-elf cleric/magic-users are on the creation menu's
+    own list, so this is a word a player reads about a character he actually
+    made. The Class combo must name the same two classes the Class bits
+    combo names for the same mask -- cleric and magic-user, and no
+    parenthetical -- though the two tables join them in different orders
+    (`class_bits`' is `class_table`'s own bit order, `char_class`'s is
+    `CHAR_CLASS`'s alphabetical one, and that mismatch predates this issue
+    and is not what it is about).
+    """
+    from editor.window import EditorBinding
+
+    path = _curse_trained_party_specimen()
+    editor = EditorBinding(make_root(), str(path))
+    row = _row_named(editor.party, "MARK")
+    editor.roster.selectRow(row)
+
+    member = editor.party.member(row)
+    member.record.set("class_bits", 0x03)
+    member.record.set("char_class", 11)
+    editor._populate()
+
+    bits_shown = editor._widgets["class_bits"].currentText().lower()
+    class_shown = editor._widgets["char_class"].currentText().lower()
+    assert "cleric" in bits_shown and "magic-user" in bits_shown
+    assert "cleric" in class_shown and "magic-user" in class_shown
+    assert "again" not in class_shown
+    assert class_shown == "cleric/magic-user"
+    assert "again" not in class_shown
+
+
 def test_an_ordinary_single_classed_character_is_unaffected_by_409(app):
     """The control: SHARA on `WISH-SPEC-curse-409-regained-paladin` is an
     untouched human cleric, `class_bits` 0x02, `char_class` 0. #409's fix
