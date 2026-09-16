@@ -1045,6 +1045,18 @@ class Session:
         twice, minutes apart, and returned `True` both times (`#173`).  It is
         the same fault `span_in` and `Session.combat_bar` were written to
         remove inside a fight, and it was believed not to show outside one.
+
+        **A bar with only one option has nothing to walk the highlight
+        towards.**  A script's own acknowledgement -- `PRESS BUTTON OR
+        RETURN TO CONTINUE.`, an arrival narration's last step -- carries no
+        highlighted word at all, so `span_in` came back `None` and this spun
+        its whole timeout instead of pressing the one thing the game was
+        waiting for; three Curse landings hit exactly this
+        (`work/issue15/curse25/run.log` lines 27, 38, 112, `#565`).
+        `combat_state` already tells such a bar apart as `BAR_PRESS`, and
+        `wait_for_world` already answers it with `press_kernal` rather than
+        a highlight walk -- reused here rather than a second copy of the
+        same classification.
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -1052,6 +1064,12 @@ class Session:
             if s is None:
                 time.sleep(0.3)
                 continue
+            state = self.combat_state(s)
+            if state.kind == BAR_PRESS:
+                self.press_kernal(0x0D)
+                self.await_change(state.text,
+                                   timeout=max(1.0, min(6.0, deadline - time.time())))
+                return True
             col = s.row(row).find(label.upper())
             span = span_in(s, row)
             if col < 0 or span is None:

@@ -75,10 +75,17 @@ WORLD_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
 
 
 class FakeScreen:
-    """One row-24 bar, on an otherwise blank screen."""
+    """One row-24 bar, on an otherwise blank screen.
+
+    **No cell is ever coloured 1** -- an acknowledgement bar carries no
+    highlighted word at all, the way the real `PRESS BUTTON OR RETURN TO
+    CONTINUE.` does not, so `span_in` (`#565`) reads it as no highlight
+    rather than as one this project has not modelled.
+    """
 
     def __init__(self, bar: str):
         self.codes = bytearray(0x20 for _ in range(ROWS * COLS))
+        self.colours = bytearray(5 for _ in range(ROWS * COLS))
         for i, ch in enumerate(bar[:COLS]):
             self.codes[24 * COLS + i] = ord(ch)
 
@@ -183,4 +190,40 @@ def test_wait_for_world_gives_up_rather_than_waiting_for_ever():
     own timeout instead of hanging."""
     sess = FakeSession(["GUARDING"])
     assert sess.wait_for_world(timeout=0.2, interval=0.02) is False
+
+
+def test_select_bar_presses_a_scripts_own_one_option_acknowledgement():
+    """`select_bar` has nowhere to walk the highlight on a one-option bar.
+
+    Three Curse landings (`$20`, `$22`, `$33`) put up `PRESS BUTTON OR
+    RETURN TO CONTINUE.` after their arrival narration, and
+    `select_bar('CONTINUE.')` spun its whole timeout instead of pressing the
+    one option offered (`work/issue15/curse25/run.log` lines 27, 38, 112,
+    `#565`).  There is no highlighted word on this bar at all -- an
+    acknowledgement is not a menu -- so a fixed `select_bar` presses it
+    through `press_kernal`, the same way `wait_for_world`'s own `BAR_PRESS`
+    branch above already does, whatever word it was asked for.
+    """
+    sess = FakeSession([PRESS_BAR, WORLD_BAR])
+    assert sess.select_bar("CONTINUE.", timeout=1.0) is True
+    assert 0x0D in sess.injected
+    assert sess.kbd.sent == []
+
+
+def test_select_bar_still_walks_an_ordinary_multi_option_bar():
+    """The one-option branch must not swallow a real menu.
+
+    `WORLD_BAR` carries no `PRESS`, so this exercises the highlight walk
+    `select_bar` always had, on a bar the fixture already builds elsewhere in
+    this file.
+    """
+    bar = WORLD_BAR
+    col = bar.upper().find("CAST")
+    screen = FakeScreen(bar)
+    for i in range(col, col + len("CAST")):
+        screen.colours[24 * COLS + i] = 1
+    sess = FakeSession([bar])
+    sess.screen = lambda: screen           # a highlight already on CAST
+    assert sess.select_bar("CAST", timeout=1.0) is True
+    assert sess.kbd.sent == ["Return"]     # already there: no Left or Right
 
