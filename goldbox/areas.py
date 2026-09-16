@@ -61,11 +61,12 @@ PROBABLE.
 
 `AREAS_CURSE` is the third, measured for `#192 (Convert a Curse of the Azure
 Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
-the same tool. It carries no name, and fourteen of its twenty-five rows carry
-a derived arrival square (`#15 (Fast Travel for more than one Gold Box
-title)`), PROBABLE and never better -- see the table's own comment. Every row
-is UNKNOWN on `confidence`, because unlike Silver Blades no Curse area has
-been entered by a driven fast travel yet, only walked by the bytecode.
+the same tool. Fourteen of its twenty-five rows carry a derived arrival
+square (`#15 (Fast Travel for more than one Gold Box title)`), PROBABLE and
+never better -- see the table's own comment. Twenty-one of the twenty-five
+carry a name too, approved by Donald off a forum table and graded CONFIRMED
+or PROBABLE by a driven validation pass, also on `#15`; the other four stay
+unnamed and `confidence` UNKNOWN, three of them pending his decision.
 
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
@@ -565,13 +566,26 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
 
 
 def _c(id: int, disk: int, geos: tuple[str, ...],
-       arrival: Arrival | None = None) -> Area:
-    """One Curse row: id, disk side and the maps its script loads. No name --
-    nobody has played Curse far enough to name a place. Fourteen of the
-    twenty-five carry an `arrival`; see the table's own comment for what
-    grade it carries."""
-    return Area(id=id, name=None, disk=disk, geos=geos, arrival=arrival,
-                confidence=Confidence.UNKNOWN, side_name="CURSE_{}",
+       arrival: Arrival | None = None, name: str | None = None,
+       confidence: Confidence = Confidence.UNKNOWN) -> Area:
+    """One Curse row: id, disk side and the maps its script loads.
+
+    `name` is `None` for the four rows with no approved name yet -- `$1E`,
+    which no forum table entry covers at all, and `$22`/`$23`/`$43`, whose
+    screen disagreed with the name Donald approved and are held pending his
+    decision (`#15 (Fast Travel for more than one Gold Box title)`).
+    `confidence` grades the name and only the name, the same convention
+    `AREAS`' own rows use: CONFIRMED where the emulator-runner's validation
+    pass saw the screen name the place outright, PROBABLE where it saw a map
+    or a generic scene consistent with the name and nothing that named it
+    outright, UNKNOWN for the four with no name to grade.
+
+    Fourteen of the twenty-five carry an `arrival`; see the table's own
+    comment for what grade that field carries -- separate from `confidence`,
+    exactly as it is for `AREAS`.
+    """
+    return Area(id=id, name=name, disk=disk, geos=geos, arrival=arrival,
+                confidence=confidence, side_name="CURSE_{}",
                 lettered_side=True)
 
 
@@ -587,12 +601,30 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: re-checked directly off the disks by `tools/cursedisk.py --check-areas`
 #: on 2026-09-05 with 0 disagreements against this table.
 #:
-#: `confidence` is UNKNOWN for every row, unlike Silver Blades' table: no
-#: Curse area has been entered by a driven fast travel, only walked by the
-#: bytecode.  The `geos` column is the strongest part of it regardless --
-#: `ECL02` loads `GEO01`, `ECL22` loads `GEO21` and `ECL31`/`ECL32` both load
+#: `confidence` grades the **name**, exactly as it does for `AREAS` -- see
+#: that field's own docstring, "What this grades is the `name`, and only the
+#: name."  It was UNKNOWN for every row until Donald's 2026-09-15 ruling on
+#: `#15 (Fast Travel for more than one Gold Box title)` approved names off a
+#: forum table he named (`docs/126-forum-findings.md`, topic 1048) and an
+#: emulator-runner's validation pass the next day graded each one against
+#: the first screen the game drew on arrival: CONFIRMED where the screen
+#: names the place outright, PROBABLE where it only shows a map or a
+#: generic scene consistent with the name.  Twenty-one landed that way,
+#: eleven CONFIRMED and ten PROBABLE; three -- `$22`, `$23` and `$43` --
+#: disagreed with the screen and stay unnamed, `confidence` UNKNOWN, pending
+#: Donald's decision; `$1E` has no approved name at all, the forum table
+#: carries no entry for it and the row loads no map.  The `geos` column is
+#: the strongest part of the table regardless of any of that -- `ECL02`
+#: loads `GEO01`, `ECL22` loads `GEO21` and `ECL31`/`ECL32` both load
 #: `GEO32`, so it cannot be derived from the id the way a straight numbering
 #: could be.
+#:
+#: **`GEO01` and `GEO32` are each two different named places sharing one map
+#: file** -- `$01`/`$02` and `$31`/`$32` -- so
+#: `GEO_NAMES[CURSE_OF_THE_AZURE_BONDS]` leaves both files out rather than
+#: picking one name to show over the other; see `_names_for_curse`'s own
+#: docstring.  Every row's own `name` is unambiguous regardless, since it is
+#: keyed by area id and not by map file.
 #:
 #: **Fourteen rows carry an `arrival`, read the same way and graded the same
 #: way as Silver Blades' twelve: PROBABLE, and never better, because
@@ -623,31 +655,45 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: import, because no row of the area table names area 0)` and
 #: `docs/185-a-party-that-has-not-set-out.md` have the measurements.
 AREAS_CURSE: tuple[Area, ...] = (
-    _c(0x01, 2, ("GEO01",), Arrival(7, 13, 1)),
-    _c(0x02, 2, ("GEO01",), Arrival(8, 0, 1)),
-    _c(0x03, 2, ("GEO03",)),
-    _c(0x04, 2, ("GEO04",)),
-    _c(0x10, 3, ("GEO10",), Arrival(0, 8, 3)),
-    _c(0x11, 3, ("GEO11",), Arrival(0, 0, 1)),
-    _c(0x12, 3, (), Arrival(15, 14, 2)),
-    _c(0x15, 3, ("GEO15",), Arrival(8, 12, 1)),
+    _c(0x01, 2, ("GEO01",), Arrival(7, 13, 1),
+       name="Tilverton streets", confidence=P),
+    _c(0x02, 2, ("GEO01",), Arrival(8, 0, 1),
+       name="Thieves' Guild under Tilverton", confidence=C),
+    _c(0x03, 2, ("GEO03",), name="Tilverton sewers", confidence=C),
+    _c(0x04, 2, ("GEO04",), name="Fire Knife hideout", confidence=P),
+    _c(0x10, 3, ("GEO10",), Arrival(0, 8, 3),
+       name="Yulash streets", confidence=P),
+    _c(0x11, 3, ("GEO11",), Arrival(0, 0, 1),
+       name="Pit of Moander", confidence=C),
+    _c(0x12, 3, (), Arrival(15, 14, 2),
+       name="Pit of Moander, second level", confidence=P),
+    _c(0x15, 3, ("GEO15",), Arrival(8, 12, 1),
+       name="shared blocks: Voonlar, Phlan dungeons", confidence=P),
     _c(0x1E, 1, ()),
-    _c(0x20, 4, ("GEO20",), Arrival(14, 1, 0)),
-    _c(0x21, 4, (), Arrival(3, 8, 2)),
+    _c(0x20, 4, ("GEO20",), Arrival(14, 1, 0),
+       name="Zhentil Keep streets", confidence=C),
+    _c(0x21, 4, (), Arrival(3, 8, 2), name="Temple of Bane", confidence=C),
     _c(0x22, 4, ("GEO21",), Arrival(12, 7, 3)),
     _c(0x23, 4, ()),
-    _c(0x25, 4, ("GEO25",)),
-    _c(0x30, 5, ()),
-    _c(0x31, 5, ("GEO32",), Arrival(3, 0, 2)),
-    _c(0x32, 5, ("GEO32",), Arrival(6, 15)),
-    _c(0x33, 5, ("GEO33",), Arrival(7, 15, 3)),
-    _c(0x35, 5, ("GEO35",)),
-    _c(0x40, 6, ("GEO40",)),
-    _c(0x42, 6, ("GEO42",)),
+    _c(0x25, 4, ("GEO25",),
+       name="Dagger Falls Dungeon (Oxam's Tower)", confidence=P),
+    _c(0x30, 5, (), name="outside Haptooth", confidence=C),
+    _c(0x31, 5, ("GEO32",), Arrival(3, 0, 2),
+       name="Haptooth streets", confidence=C),
+    _c(0x32, 5, ("GEO32",), Arrival(6, 15),
+       name="Dracolich cave", confidence=C),
+    _c(0x33, 5, ("GEO33",), Arrival(7, 15, 3),
+       name="Dracandros' Tower", confidence=C),
+    _c(0x35, 5, ("GEO35",),
+       name="shared blocks: Ashabenford, Essembra, Shadowdale dungeons",
+       confidence=P),
+    _c(0x40, 6, ("GEO40",), name="Myth Drannor, Burial Glen", confidence=P),
+    _c(0x42, 6, ("GEO42",), name="Ruins of Myth Drannor", confidence=P),
     _c(0x43, 6, ("GEO43",)),
-    _c(0x45, 6, ("GEO45",), Arrival(6, 10, 1)),
-    _c(0x50, 1, ()),
-    _c(0x51, 1, (), Arrival(0, 8, 3)),
+    _c(0x45, 6, ("GEO45",), Arrival(6, 10, 1),
+       name="shared blocks: Hillsfar, Teshwave dungeons", confidence=P),
+    _c(0x50, 1, (), name="world map", confidence=C),
+    _c(0x51, 1, (), Arrival(0, 8, 3), name="world map", confidence=C),
 )
 
 #: Game title -> that title's areas.
@@ -883,15 +929,46 @@ def _names_for_pool() -> Mapping[str, str]:
     return MappingProxyType(out)
 
 
-#: Game title -> map file -> the name to show. Curse and Silver Blades are
-#: present and empty: their maps are not named anywhere yet -- Silver Blades'
-#: twenty-two areas are decoded down to the map and the disk side and not one
-#: of them has a name -- and an empty table degrades to `"area 21"` where a
+def _names_for_curse() -> Mapping[str, str]:
+    """The same derivation as `_names_for_pool`, with one difference: `GEO01`
+    and `GEO32` are each two different Curse areas' own map (`$01`/`$02` and
+    `$31`/`$32`), and the two areas on each file carry two different
+    approved names -- "Tilverton streets" against "Thieves' Guild under
+    Tilverton", "Haptooth streets" against "Dracolich cave". A dict keyed by
+    the map file alone cannot hold both, and picking one to show over the
+    other is not a call this function makes, so both are left out rather
+    than one winning by iteration order. `geo_name` degrades those two files
+    to their own stem, the same fallback every other unnamed Curse map
+    already gets. Reported on `#15 (Fast Travel for more than one Gold Box
+    title)` rather than resolved -- every row's own `name` stays
+    unambiguous, since it is keyed by area id and not by map file.
+    """
+    out: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for a in AREAS_CURSE:
+        for name in a.geos:
+            label = a.name_for(name)
+            if not label:
+                continue
+            if name in out and out[name] != label:
+                ambiguous.add(name)
+                continue
+            out[name] = label
+    for name in ambiguous:
+        out.pop(name, None)
+    return MappingProxyType(out)
+
+
+#: Game title -> map file -> the name to show. Silver Blades is present and
+#: empty: its twenty-two areas are decoded down to the map and the disk side
+#: and not one of them has a name yet. Curse carries names for the maps
+#: whose area is unambiguous -- see `_names_for_curse` for the two files it
+#: leaves out on purpose. An empty table degrades to `"area 21"` where a
 #: missing title would degrade to the same thing. Listing them is the
 #: difference between "we know we do not know" and "we never looked".
 GEO_NAMES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     POOL_OF_RADIANCE: _names_for_pool(),
-    CURSE_OF_THE_AZURE_BONDS: MappingProxyType({}),
+    CURSE_OF_THE_AZURE_BONDS: _names_for_curse(),
     SECRET_OF_THE_SILVER_BLADES: MappingProxyType({}),
 })
 

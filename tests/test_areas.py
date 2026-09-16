@@ -228,9 +228,16 @@ def test_a_label_names_both_maps_and_the_disk():
 
 def test_geo15_is_sokol_keep_only_in_pool_of_radiance():
     """The bug `docs/120-curse-testing.md` recorded: `GEO15` is in both games,
-    and a Curse party standing in it was labelled "Sokol Keep"."""
+    and a Curse party standing in it was labelled "Sokol Keep".
+
+    `#15 (Fast Travel for more than one Gold Box title)` landed Curse's own
+    name for its `GEO15` -- "shared blocks: Voonlar, Phlan dungeons" -- so the
+    title-keying is now proven by two real names disagreeing rather than by
+    one side being blank.
+    """
     assert areas.area_name("GEO15", POOL_OF_RADIANCE) == "Sokol Keep"
-    assert areas.area_name("GEO15", CURSE_OF_THE_AZURE_BONDS) == "area 21"
+    assert (areas.area_name("GEO15", CURSE_OF_THE_AZURE_BONDS)
+            == "shared blocks: Voonlar, Phlan dungeons")
     assert areas.area_name("GEO15", "Secret of the Silver Blades") == "area 21"
     assert areas.area_name("GEO15", None) == "area 21"
 
@@ -254,9 +261,32 @@ def test_geo_number_reads_hex():
 
 def test_geo_name_says_nothing_rather_than_something_wrong():
     assert areas.geo_name("GEO15", POOL_OF_RADIANCE) == "Sokol Keep"
-    assert areas.geo_name("GEO15", CURSE_OF_THE_AZURE_BONDS) is None
+    # `$43`'s screen disagreed with its approved name and it was held back
+    # pending Donald's decision (`#15`), so `GEO43` is still nameless.
+    assert areas.geo_name("GEO43", CURSE_OF_THE_AZURE_BONDS) is None
     assert areas.geo_name("GEO15", "no such game") is None
     assert areas.geo_name("GEO15", None) is None
+
+
+def test_geo_names_shared_by_two_curse_areas_are_left_out_of_both():
+    """`GEO01` (`$01`/`$02`) and `GEO32` (`$31`/`$32`) are each two different
+    approved names on one map file, and `_names_for_curse` leaves both out
+    rather than picking a winner (`#15 (Fast Travel for more than one Gold
+    Box title)`). Both areas' own `name` stay correct regardless -- this is
+    only about the derived, geo-keyed table the automapper's live label
+    reads.
+    """
+    curse = areas.GEO_NAMES[CURSE_OF_THE_AZURE_BONDS]
+    assert "GEO01" not in curse
+    assert "GEO32" not in curse
+    assert areas.area_in(0x01, CURSE_OF_THE_AZURE_BONDS).name \
+        == "Tilverton streets"
+    assert areas.area_in(0x02, CURSE_OF_THE_AZURE_BONDS).name \
+        == "Thieves' Guild under Tilverton"
+    assert areas.area_in(0x31, CURSE_OF_THE_AZURE_BONDS).name \
+        == "Haptooth streets"
+    assert areas.area_in(0x32, CURSE_OF_THE_AZURE_BONDS).name \
+        == "Dracolich cave"
 
 
 def test_a_two_map_area_can_name_its_second_map_separately():
@@ -291,7 +321,9 @@ def test_the_tables_are_read_only_views():
 def test_area_names_is_a_view_over_por_areas_and_is_keyed_by_title():
     assert AREA_NAMES is areas.GEO_NAMES
     assert AREA_NAMES[POOL_OF_RADIANCE]["GEO00"] == "New Phlan"
-    assert AREA_NAMES[CURSE_OF_THE_AZURE_BONDS] == {}
+    assert (AREA_NAMES[CURSE_OF_THE_AZURE_BONDS]["GEO20"]
+            == "Zhentil Keep streets")
+    assert AREA_NAMES[CURSE_OF_THE_AZURE_BONDS] != AREA_NAMES[POOL_OF_RADIANCE]
 
 
 def test_the_old_hand_written_names_all_survived_the_move():
@@ -319,9 +351,23 @@ def test_the_label_names_a_pool_of_radiance_area():
     assert st.area_label == "Sokol Keep"
 
 
-def test_the_label_refuses_to_name_a_curse_area_sokol_keep():
+def test_the_label_names_a_curse_area_with_its_own_name_not_pools():
+    """`GEO15` used to have no Curse name at all, so this test proved the
+    label refused to borrow Pool of Radiance's "Sokol Keep". `#15 (Fast
+    Travel for more than one Gold Box title)` landed Curse's own name for it,
+    so the label now shows that instead of either the borrowed name or the
+    file stem.
+    """
     st = AutomapState(area="GEO15", title=CURSE_OF_THE_AZURE_BONDS)
-    assert st.area_label == "GEO15"
+    assert st.area_label == "shared blocks: Voonlar, Phlan dungeons"
+    assert st.area_label != "Sokol Keep"
+
+
+def test_the_label_still_falls_back_to_the_stem_for_an_unnamed_curse_area():
+    """`GEO43` (`$43`) disagreed with its approved name on the screen and was
+    held back pending Donald's decision, so it is still the file stem."""
+    st = AutomapState(area="GEO43", title=CURSE_OF_THE_AZURE_BONDS)
+    assert st.area_label == "GEO43"
 
 
 def test_the_label_still_falls_back_to_candidates_with_no_area():
@@ -684,13 +730,20 @@ def test_a_curse_label_names_its_lettered_disk_not_a_number():
     through `CURSE_F.D64`, and `disk` holds the number the loader prompts
     for and a fast travel writes, not the letter on the label
     (`#427 (Fast Travel's dropdown names Curse's disks CURSE_2 rather than
-    CURSE_B, which is not a disk the player has)`)."""
-    row = areas.area_in(0x01, areas.CURSE_OF_THE_AZURE_BONDS)
-    assert row.disk == 2
-    assert row.label == "ECL01 - GEO01, CURSE_B"
-    row = areas.area_in(0x40, areas.CURSE_OF_THE_AZURE_BONDS)
+    CURSE_B, which is not a disk the player has)`).
+
+    `$01` and `$40` carried this test until `#15 (Fast Travel for more than
+    one Gold Box title)` gave them both a name, so it now reads two rows
+    that are still nameless -- `$1E` (no approved name at all) and `$43`
+    (held back pending Donald's decision) -- to keep this test about the
+    disk letter rather than about the name landing.
+    """
+    row = areas.area_in(0x1E, areas.CURSE_OF_THE_AZURE_BONDS)
+    assert row.disk == 1
+    assert row.label == "ECL1E - no map, CURSE_A"
+    row = areas.area_in(0x43, areas.CURSE_OF_THE_AZURE_BONDS)
     assert row.disk == 6
-    assert row.label == "ECL40 - GEO40, CURSE_F"
+    assert row.label == "ECL43 - GEO43, CURSE_F"
     # The two titles this could regress stay right.
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
     silver = areas.area_in(0x22, areas.SECRET_OF_THE_SILVER_BLADES)
@@ -719,14 +772,18 @@ def test_curse_is_offered_too_now_that_its_table_exists():
     warps (`#19`) before this table existed -- so both of
     `automap.actions.area_rows`'s gates are open, the same as Silver Blades'.
 
-    Unlike Silver Blades, no individual row has been landed on by a driven
-    fast travel: every row here is UNKNOWN rather than CONFIRMED.
+    `confidence` grades the name (see `Area.confidence`'s own docstring), so
+    it moved off UNKNOWN for the 21 rows `#15 (Fast Travel for more than one
+    Gold Box title)` landed a name for. The other four -- `$1E`, which has no
+    approved name at all, and `$22`/`$23`/`$43`, whose screens disagreed and
+    are held pending Donald's decision -- stay UNKNOWN.
     """
     assert len(areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS)) == 25
     assert areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
     assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
-    assert all(a.confidence is areas.Confidence.UNKNOWN
-               for a in areas.AREAS_CURSE)
+    unknown = {a.id for a in areas.AREAS_CURSE
+               if a.confidence is areas.Confidence.UNKNOWN}
+    assert unknown == {0x1E, 0x22, 0x23, 0x43}
 
 
 #: The fourteen derived arrival squares landed for `#15 (Fast Travel for more
@@ -777,21 +834,85 @@ def test_fourteen_curse_arrivals_are_landed_and_probable():
     assert len(absent) == 11
 
 
-def test_a_curse_arrival_is_never_better_than_probable():
-    """The brief's own grade: a derived square is PROBABLE and never
-    CONFIRMED, because `AREAS_CURSE`'s rows have not been landed on by a
-    driven fast travel (`test_curse_is_offered_too_now_that_its_table_exists`
-    already pins `confidence` UNKNOWN for every row). `confidence` does not
-    grade `arrival` at all -- Silver Blades' table reads the same way -- so
-    this is asserted directly against the calibration in
+def test_a_curse_arrival_square_is_still_not_what_confidence_grades():
+    """This used to assert `confidence` UNKNOWN for every arrival-carrying
+    row, back when UNKNOWN was every row's only state. `confidence` grades
+    the **name** (`Area.confidence`'s own docstring: "What this grades is the
+    `name`, and only the name" -- the same convention `AREAS` uses), and
+    landing the 21 approved names
+    (`test_the_approved_curse_names_are_landed_and_graded` below) moved
+    thirteen of the fourteen arrival rows off UNKNOWN. That is the name's
+    grade, not the arrival's: the derived-arrival calibration is
     `tests/test_areatable.py::
-    test_a_derived_arrival_square_is_right_ten_times_in_eleven`: ten of
-    eleven, never eleven of eleven, which is why nothing here is graded
-    CONFIRMED.
+    test_a_derived_arrival_square_is_right_ten_times_in_eleven` (ten of
+    eleven, never eleven of eleven) and this landing did not touch it.
+
+    `$22` is the one arrival row still provably ungraded: its screen
+    disagreed with its approved name, so it was held back and its
+    `confidence` is still the only thing this test can pin.
     """
     table = {a.id: a for a in areas.AREAS_CURSE}
-    for id in _CURSE_ARRIVALS:
-        assert table[id].confidence is areas.Confidence.UNKNOWN
+    assert table[0x22].confidence is areas.Confidence.UNKNOWN
+    assert table[0x22].name is None
+    assert 0x22 in _CURSE_ARRIVALS
+    named_arrivals = {id for id in _CURSE_ARRIVALS if id != 0x22}
+    assert all(table[id].confidence is not areas.Confidence.UNKNOWN
+               for id in named_arrivals)
+
+
+#: The 21 names Donald approved on `#15 (Fast Travel for more than one Gold
+#: Box title)`, 2026-09-15, off the forum table he named
+#: (`docs/126-forum-findings.md`, topic 1048), graded CONFIRMED or PROBABLE
+#: by an emulator-runner's validation pass the next day. `$22`, `$23` and
+#: `$43` disagreed with the screen and stay unnamed, pending his decision;
+#: `$1E` has no approved name at all.
+_CURSE_NAMES = {
+    0x01: ("Tilverton streets", areas.Confidence.PROBABLE),
+    0x02: ("Thieves' Guild under Tilverton", areas.Confidence.CONFIRMED),
+    0x03: ("Tilverton sewers", areas.Confidence.CONFIRMED),
+    0x04: ("Fire Knife hideout", areas.Confidence.PROBABLE),
+    0x10: ("Yulash streets", areas.Confidence.PROBABLE),
+    0x11: ("Pit of Moander", areas.Confidence.CONFIRMED),
+    0x12: ("Pit of Moander, second level", areas.Confidence.PROBABLE),
+    0x15: ("shared blocks: Voonlar, Phlan dungeons", areas.Confidence.PROBABLE),
+    0x20: ("Zhentil Keep streets", areas.Confidence.CONFIRMED),
+    0x21: ("Temple of Bane", areas.Confidence.CONFIRMED),
+    0x25: ("Dagger Falls Dungeon (Oxam's Tower)", areas.Confidence.PROBABLE),
+    0x30: ("outside Haptooth", areas.Confidence.CONFIRMED),
+    0x31: ("Haptooth streets", areas.Confidence.CONFIRMED),
+    0x32: ("Dracolich cave", areas.Confidence.CONFIRMED),
+    0x33: ("Dracandros' Tower", areas.Confidence.CONFIRMED),
+    0x35: ("shared blocks: Ashabenford, Essembra, Shadowdale dungeons",
+           areas.Confidence.PROBABLE),
+    0x40: ("Myth Drannor, Burial Glen", areas.Confidence.PROBABLE),
+    0x42: ("Ruins of Myth Drannor", areas.Confidence.PROBABLE),
+    0x45: ("shared blocks: Hillsfar, Teshwave dungeons", areas.Confidence.PROBABLE),
+    0x50: ("world map", areas.Confidence.CONFIRMED),
+    0x51: ("world map", areas.Confidence.CONFIRMED),
+}
+
+
+def test_the_approved_curse_names_are_landed_and_graded():
+    """`#15 (Fast Travel for more than one Gold Box title)`: Donald's ruling
+    approved names for 24 of the 25 rows (`$1E` has none at all) and an
+    emulator-runner's validation pass graded each one against the first
+    screen the game drew on arrival. This lands the 21 that were CONFIRMED
+    or PROBABLE; the three that disagreed with the screen (`$22`, `$23`,
+    `$43`) are not landed and stay `name=None`, `confidence=UNKNOWN`, pending
+    his decision.
+
+    Pinned against the ruling and the grading pass as literals, separately
+    from `goldbox/areas.py`, so a change to either side is caught rather than
+    both agreeing with themselves.
+    """
+    table = {a.id: a for a in areas.AREAS_CURSE}
+    landed = {id: (a.name, a.confidence)
+              for id, a in table.items() if a.name is not None}
+    assert landed == _CURSE_NAMES
+    assert len(landed) == 21
+
+    unnamed = {id for id, a in table.items() if a.name is None}
+    assert unnamed == {0x1E, 0x22, 0x23, 0x43}
 
 
 def test_silver_blades_and_pool_of_radiance_tables_are_untouched():
