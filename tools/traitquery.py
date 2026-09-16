@@ -32,6 +32,9 @@ byte for byte -- `SPELLE65 +0x0570`, 20 lists, 134 ids, 92 distinct.
     tools/traitquery.py pool-of-radiance
     tools/traitquery.py curse-of-the-azure-bonds --sites
     tools/traitquery.py secret-of-the-silver-blades --lists
+    tools/traitquery.py secret-of-the-silver-blades --compare \
+        curse-of-the-azure-bonds
+    tools/traitquery.py secret-of-the-silver-blades --spells
 
 What `--lists` came back with, on 2026-09-10, and the last column is why
 `#497 (The trait picker offers a Secret of the Silver Blades character six
@@ -42,11 +45,31 @@ names, and nobody has ruled on whether it should offer Pool of Radiance's
 |---|---|---|---|---|
 | Pool of Radiance | 139 | 92 | 95 | 95 |
 | Curse of the Azure Bonds | 146 | 115 | 120 | 106 |
-| Secret of the Silver Blades | 113 | 80 | 90 | **6** |
+| Secret of the Silver Blades | 113 | 80 | 90 | 6, and 55 after #497 |
 
 Nothing here needs an emulator or a save: it reads the overlays off the
 player's own disks through `tools/gamedisks.py`, and nothing it prints is
 committed.
+
+## Naming an id, which is what `--compare` and `--spells` are for
+
+`--lists` says which ids matter and nothing about what any of them means.
+Two more readings off the same disks do say, and #497 used both:
+
+* **`--compare TITLE`** puts each id's check-list membership beside the same
+  id's membership in another title. The walker takes a list *number*, so list
+  12 is "target, saving throw" whichever title is running, and an id in the
+  same numbered list in two titles is being asked the same question about the
+  same thing. 46 of Silver Blades' 90 agree with Curse that way. It is
+  positional agreement rather than a read of a handler, so it earns PROBABLE
+  -- and `--spells` caught it wrong three times in twenty-eight.
+* **`--spells`** reads the per-spell record the engine copies when a spell is
+  cast and prints the effect id each spell writes, with the game's own message
+  beside it. That is the game's data naming the id, so it earns CONFIRMED.
+  Pool of Radiance keeps the table in `ECL65` at seven bytes a record, which
+  `goldbox/effects.py` already reads for durations; Curse and Silver Blades
+  keep a nine-byte version in `COMBAT2`. `SPELL_EFFECTS` below has the three
+  and how each was located.
 
 ## Finding the lists without knowing where anything runs
 
@@ -103,9 +126,10 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import c64_port, traits  # noqa: E402
+from goldbox import c64_port, spells, traits  # noqa: E402
+from goldbox.d64 import D64  # noqa: E402
 from tools import d6502, gamedisks  # noqa: E402
-from tools.absrefsweep import files, is_art  # noqa: E402
+from tools.absrefsweep import disks, files, is_art  # noqa: E402
 
 #: Where `LINKER` puts an overlay it dispatches to, used only to print a call
 #: site's address in the same coordinates `tools/absrefsweep.py` prints.
@@ -454,8 +478,16 @@ def flags_tail(lists: list[list[int]]) -> bool:
 
 
 def report_lists(root: str, game: c64_port.C64Container, entry: int,
-                 literal: set[int]) -> int:
-    """Print the check lists, and the ids they add to the literal census."""
+                 literal: set[int], show: bool = True):
+    """Print the check lists, and the ids they add to the literal census.
+
+    Returns `(status, lists, honoured)` so `--compare` can take the same
+    measurement without printing it: `lists` is the decoded block, one list of
+    ids per check, and `honoured` is every id a trait slot can do anything
+    with -- the lists plus the literal census. `show=False` silences the
+    whole of it and nothing else changes.
+    """
+    say = print if show else (lambda *a, **k: None)
     body_map = bodies(root, game)
     called = set()
     for body in body_map.values():
@@ -463,14 +495,14 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     found = find_wrapper(body_map, entry)
     if found is None:
-        print("  no LDX/JMP wrapper around the predicate; nothing to walk")
-        return 1
+        say("  no LDX/JMP wrapper around the predicate; nothing to walk")
+        return 1, [], set()
     wrap_file, wrap_off = found
     wrap_base = entry_point(body_map[wrap_file], wrap_off, called)
     if wrap_base is None:
-        print(f"  {wrap_file} has the wrapper at +{wrap_off:#06x} and nothing "
-              f"calls it at any load address")
-        return 1
+        say(f"  {wrap_file} has the wrapper at +{wrap_off:#06x} and nothing "
+          f"calls it at any load address")
+        return 1, [], set()
     wrapper = wrap_base + wrap_off
 
     # A caller that goes through the wrapper is invisible to `call_sites`,
@@ -488,13 +520,13 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     found = find_ask(body_map, wrapper)
     if found is None:
-        print(f"  nothing calls ${wrapper:04X} the way the tables do")
-        return 1
+        say(f"  nothing calls ${wrapper:04X} the way the tables do")
+        return 1, [], set()
     ask_file, ask_off = found
     tables = handler_tables(body_map[ask_file], ask_off)
     if tables is None:
-        print(f"  {ask_file} +{ask_off:#06x} dispatches through no table pair")
-        return 1
+        say(f"  {ask_file} +{ask_off:#06x} dispatches through no table pair")
+        return 1, [], set()
     low_at, high_at = tables
     namespace = high_at - low_at
 
@@ -509,10 +541,10 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
 
     ask_base = entry_point(body_map[ask_file], ask_off, called, lands_right)
     if ask_base is None:
-        print(f"  {ask_file} +{ask_off:#06x} has no load address that both "
-              f"puts it where something calls it and puts its walker's list "
-              f"base at ${high_at + namespace + 1:04X}")
-        return 1
+        say(f"  {ask_file} +{ask_off:#06x} has no load address that both "
+            f"puts it where something calls it and puts its walker's list "
+            f"base at ${high_at + namespace + 1:04X}")
+        return 1, [], set()
     ask = ask_base + ask_off
     walk_file, walk_off, lists_at = find_walker(
         body_map, ask, same=ask_file, avoid=ask_off)
@@ -521,54 +553,269 @@ def report_lists(root: str, game: c64_port.C64Container, entry: int,
     # wherever the overlays run; the file-and-offset pairs are what a reader
     # can check by hand. Where an overlay's own load address is printed it is
     # scored rather than read, and nothing the measurement rests on uses it.
-    print(f"\n  {wrap_file} +{wrap_off:#06x}: LDX <character> / JMP "
-          f"${entry:04X}, the wrapper the lists ask through")
-    print(f"  {ask_file} +{ask_off:#06x}: one id, one combatant, then that "
-          f"id's handler")
-    print(f"  {walk_file} +{walk_off:#06x}: where the walker calls it, having\n"
-          f"      skipped X zero-terminated lists at ${lists_at:04X}")
-    print(f"  ${low_at:04X}/${high_at:04X}: handler address per id, so the "
-          f"namespace is {namespace} ids")
+    say(f"\n  {wrap_file} +{wrap_off:#06x}: LDX <character> / JMP "
+        f"${entry:04X}, the wrapper the lists ask through")
+    say(f"  {ask_file} +{ask_off:#06x}: one id, one combatant, then that "
+        f"id's handler")
+    say(f"  {walk_file} +{walk_off:#06x}: where the walker calls it, having\n"
+        f"      skipped X zero-terminated lists at ${lists_at:04X}")
+    say(f"  ${low_at:04X}/${high_at:04X}: handler address per id, so the "
+        f"namespace is {namespace} ids")
     if lists_at != high_at + namespace + 1:
-        print(f"  ** ${lists_at:04X} is not ${high_at:04X} + {namespace} + 1; "
-              f"the block is not laid out as expected")
+        say(f"  ** ${lists_at:04X} is not ${high_at:04X} + {namespace} + 1; "
+            f"the block is not laid out as expected")
 
     block = find_block(body_map, lists_at, high_at, namespace)
     if block is None:
-        print("  no file holds a block that decodes at that address")
-        return 1
+        say("  no file holds a block that decodes at that address")
+        return 1, [], set()
     (_code, _distinct, _count, clustered,
      name, offset, base, lists) = block
-    print(f"  {name} +{offset:#06x} holds it, which puts that file at "
-          f"${base:04X} ({clustered} of {namespace} handler pages clustered)")
+    say(f"  {name} +{offset:#06x} holds it, which puts that file at "
+        f"${base:04X} ({clustered} of {namespace} handler pages clustered)")
 
     if flags_tail(lists):
-        print(f"  the last decoded list is the flags table that follows: "
-              f"{len(lists[-1])} bytes over {len(set(lists[-1]))} values")
+        say(f"  the last decoded list is the flags table that follows: "
+            f"{len(lists[-1])} bytes over {len(set(lists[-1]))} values")
         lists = lists[:-1]
 
-    print()
+    say()
     for i, one in enumerate(lists):
         shown = " ".join(f"{v:3d}" for v in one) or "(empty)"
-        print(f"    list {i:>2}  {shown}")
+        say(f"    list {i:>2}  {shown}")
     ids = {v for one in lists for v in one}
     total = sum(len(one) for one in lists)
-    print(f"\n  {len(lists)} lists, {total} ids, {len(ids)} distinct")
+    say(f"\n  {len(lists)} lists, {total} ids, {len(ids)} distinct")
 
     extra = sorted(literal - ids)
     both = ids | literal
-    print(f"  the literal census adds {len(extra)}: "
-          + ", ".join(str(v) for v in extra))
-    print(f"  {len(both)} ids reach the trait slots in all")
+    say(f"  the literal census adds {len(extra)}: "
+        + ", ".join(str(v) for v in extra))
+    say(f"  {len(both)} ids reach the trait slots in all")
     table = traits.for_game(game.key)
     named = sorted(v for v in both if v in table)
-    print(f"  {len(named)} of them have a name in this title's own table: "
-          + ", ".join(str(v) for v in named))
-    return 0
+    say(f"  {len(named)} of them have a name in this title's own table: "
+        + ", ".join(str(v) for v in named))
+    return 0, lists, both
 
 
 def describe(game: c64_port.C64Container, code: int) -> str:
     return traits.describe(code, game.key)
+
+
+# ---------------------------------------------------------------------------
+# Route 1: the same id in the same numbered check list in two titles
+# ---------------------------------------------------------------------------
+# The walker takes a list *number*, so list 12 is "target, saving throw" in
+# whichever title is running and an id on it is being asked the same question
+# about the same thing. That makes an id sitting in the same numbered list in
+# two titles evidence that it means the same thing in both, which is what
+# `--compare` counts. It is **positional agreement and not a read of the
+# handler**, so what it earns is PROBABLE.
+#
+# `#497` measured how far that carries, and the answer is per id rather than
+# per title: 29 of the 32 ids below 64 that are on a list in both Pool of
+# Radiance and Silver Blades sit in the same numbered list, and 0 of the 7
+# above 100 do.
+
+
+def title_named(name: str) -> c64_port.C64Container:
+    game = next((g for g in c64_port.GAMES
+                 if g.key == name or g.title == name), None)
+    if game is None:
+        raise SystemExit(f"No such title: {name}")
+    return game
+
+
+def disks_for(game: c64_port.C64Container, given: str | None = None) -> str:
+    root = given or str(gamedisks.find(game.key) or "")
+    if not root or not os.path.isdir(root):
+        raise SystemExit(f"No disks for {game.title}; pass --disks.")
+    return root
+
+
+def predicate_for(root: str, game: c64_port.C64Container,
+                  overlay: str = "LIBRARY") -> Predicate:
+    record = staging(game)
+    for _disk, name, body in files(root, game):
+        if overlay and name != overlay:
+            continue
+        found = find_predicate(name, body, record)
+        if found is not None:
+            return found
+    raise SystemExit(
+        f"traitquery.py: no array-then-traits predicate in "
+        f"{overlay} for {game.title}; try --overlay.")
+
+
+def literal_ids(root: str, game: c64_port.C64Container,
+                predicate: Predicate) -> set[int]:
+    """Every id an instruction names at the array-then-traits entry.
+
+    The same census `main` prints, with 0 and the fill byte dropped, so a
+    caller that only wants the numbers does not have to print the rows.
+    """
+    out: set[int] = set()
+    for _name, _off, _kind, ids in call_sites(root, game, predicate.entry):
+        if len(ids) == 1:
+            out |= ids
+    out.discard(0)
+    return {v for v in out if v != 0xFF}
+
+
+def membership(lists: list[list[int]]) -> dict[int, set[int]]:
+    """Which numbered lists each id is on."""
+    out: dict[int, set[int]] = collections.defaultdict(set)
+    for number, one in enumerate(lists):
+        for value in one:
+            out[value].add(number)
+    return out
+
+
+def measure(root: str, game: c64_port.C64Container, overlay: str = "LIBRARY"):
+    """`(lists, honoured)` for one title, with nothing printed."""
+    predicate = predicate_for(root, game, overlay)
+    literal = literal_ids(root, game, predicate)
+    status, lists, both = report_lists(root, game, predicate.entry, literal,
+                                       show=False)
+    if status:
+        raise SystemExit(f"traitquery.py: could not read {game.title}'s "
+                         f"check lists; run it with --lists to see why.")
+    return lists, both
+
+
+def report_compare(game: c64_port.C64Container, root: str,
+                   other: c64_port.C64Container, other_root: str,
+                   overlay: str = "LIBRARY") -> int:
+    """One row per id the first title honours, and where the second puts it."""
+    lists, honoured = measure(root, game, overlay)
+    other_lists, other_honoured = measure(other_root, other, overlay)
+    mine, theirs = membership(lists), membership(other_lists)
+    table = traits.for_game(other.key)
+
+    agree: list[int] = []
+    contradict = absent = 0
+    print(f"{game.title} against {other.title}: {len(honoured)} ids honoured "
+          f"here, {len(other_honoured)} there\n")
+    print(f"{'id':>4}  {'here':<14} {'there':<14} {'':<12} "
+          f"the other table's name")
+    for value in sorted(honoured):
+        here, there = sorted(mine.get(value, ())), sorted(theirs.get(value, ()))
+        name = table.get(value, ("", ""))[0]
+        if set(here) & set(there):
+            verdict = "same list"
+            agree.append(value)
+        elif there:
+            verdict = "MOVED"
+            contradict += 1
+        else:
+            verdict, name = "not there", ""
+            absent += 1
+        print(f"{value:>4}  {str(here):<14} {str(there):<14} {verdict:<12} "
+              f"{name[:44]}")
+    named = [v for v in agree if v in table]
+    print(f"\n  {len(agree)} of {len(honoured)} sit in the same numbered list "
+          f"in both, {contradict} sit in a different one, {absent} are on no "
+          f"list in the other title")
+    print(f"  {len(named)} of the agreeing ids have a name in the other "
+          f"title's table: " + ", ".join(str(v) for v in named))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Route 2: the spell that writes the id
+# ---------------------------------------------------------------------------
+#: Where each title keeps the per-spell record `CAMP` copies when a spell is
+#: cast, as `(file, payload offset, record size, effect byte, message byte)`.
+#:
+#: Pool of Radiance's is already documented -- `goldbox/effects.py` reads the
+#: same 469 bytes for their durations, and `docs/50-experiments.md` has
+#: `CAMP $1429` computing `$9900 + (id - 1) * 7`. **Its effect byte carries a
+#: flag in bit 7** (set on every cleric spell: 1-8, 22-28, 36-44 and 56), so
+#: it is masked; the later titles' is a full byte, which they need because
+#: their namespaces run past 127.
+#:
+#: The later two were found by scoring every offset in every file against Pool
+#: of Radiance's own sequence of effect ids for the first thirty spells:
+#: `COMBAT2 +2732` scores 26 of 30 in Curse and `COMBAT2 +2937` scores 25 of
+#: 30 in Silver Blades, and nothing else in either title scores above 18.
+SPELL_EFFECTS = {
+    "pool-of-radiance": ("ECL65", 0, 7, 3, 4, 0x7F),
+    "curse-of-the-azure-bonds": ("COMBAT2", 2732, 9, 0, 1, 0xFF),
+    "secret-of-the-silver-blades": ("COMBAT2", 2937, 9, 0, 1, 0xFF),
+}
+
+
+def spell_effects(root: str, game: c64_port.C64Container):
+    """`{spell id: (spell name, effect id, the message it prints)}`.
+
+    The message is what pins the record's fields: index 59 is `IS BLESSED` in
+    all three titles, and it is reached at `last spell + 1 + index` in the
+    same name table `goldbox/spells.py` reads -- 57, 101 and 118, which are
+    exactly the three "spells run to" boundaries that module already carries.
+    """
+    where = SPELL_EFFECTS.get(game.key)
+    if where is None:
+        raise SystemExit(f"traitquery.py: no spell-effect table is known for "
+                         f"{game.title}.")
+    name, at, size, effect_at, message_at, mask = where
+    body = next((b for _d, n, b in files(root, game) if n == name), None)
+    if body is None:
+        raise SystemExit(f"traitquery.py: {game.title} ships no {name}.")
+
+    table = spells.for_game(game.key)
+    disk = next((p for p in disks(root, game)
+                 if _holds(p, table.file)), None)
+    if disk is None:
+        raise SystemExit(f"traitquery.py: no side carries "
+                         f"{table.file.decode()} for {game.title}.")
+    text = spells.load_spell_names(disk, game=game.key)
+
+    out = {}
+    for spell in range(1, table.last_spell + 1):
+        record = at + size * (spell - 1)
+        if record + size > len(body):
+            break
+        effect = body[record + effect_at] & mask
+        message = body[record + message_at]
+        out[spell] = (text.get(spell, "?"), effect,
+                      text.get(table.last_spell + 1 + message, f"msg {message}"))
+    return out
+
+
+def _holds(path: str, name: bytes) -> bool:
+    try:
+        image = D64.open(path)
+    except Exception:
+        return False
+    return any(entry.name.decode("latin1").rstrip("\xa0 ") == name.decode()
+               for entry in image.iter_directory())
+
+
+def report_spells(root: str, game: c64_port.C64Container,
+                  overlay: str = "LIBRARY") -> int:
+    """Every effect id one of this title's own spells writes, and which."""
+    _lists, honoured = measure(root, game, overlay)
+    where = SPELL_EFFECTS[game.key]
+    table = spells.for_game(game.key)
+    print(f"{game.title}: {where[0]} +{where[1]}, {where[2]} bytes a record, "
+          f"{table.last_spell} spells")
+    print(f"{'id':>4} {'honoured':<9} spells that write it        message\n")
+    by_id: dict[int, list[tuple[str, str]]] = collections.defaultdict(list)
+    for _spell, (name, effect, message) in sorted(spell_effects(root,
+                                                               game).items()):
+        if effect:
+            by_id[effect].append((name, message))
+    for effect in sorted(by_id):
+        rows = by_id[effect]
+        names = "; ".join(n for n, _m in rows)
+        messages = ", ".join(sorted({m for _n, m in rows}))
+        mark = "yes" if effect in honoured else "no"
+        print(f"{effect:>4} {mark:<9} {names[:44]:<44} {messages[:30]}")
+    print(f"\n  {len(by_id)} ids are written by a spell; "
+          f"{len([e for e in by_id if e in honoured])} of them are honoured "
+          f"in a trait slot")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -581,28 +828,29 @@ def main(argv=None) -> int:
                         help="one row per call site, not one per id")
     parser.add_argument("--lists", action="store_true",
                         help="also read the combat check lists off the disks")
+    parser.add_argument("--compare", metavar="TITLE",
+                        help="which numbered check list each id is on here "
+                             "and in TITLE")
+    parser.add_argument("--compare-disks",
+                        help="where TITLE's sides are")
+    parser.add_argument("--spells", action="store_true",
+                        help="which effect id each of this title's spells "
+                             "writes, read off its own spell-effect table")
     args = parser.parse_args(argv)
 
-    game = next((g for g in c64_port.GAMES
-                 if g.key == args.title or g.title == args.title), None)
-    if game is None:
-        raise SystemExit(f"No such title: {args.title}")
-    root = args.disks or str(gamedisks.find(game.key) or "")
-    if not root or not os.path.isdir(root):
-        raise SystemExit(f"No disks for {game.title}; pass --disks.")
+    game = title_named(args.title)
+    root = disks_for(game, args.disks)
 
+    if args.compare:
+        other = title_named(args.compare)
+        return report_compare(game, root, other,
+                              disks_for(other, args.compare_disks),
+                              args.overlay)
+    if args.spells:
+        return report_spells(root, game, args.overlay)
+
+    predicate = predicate_for(root, game, args.overlay)
     record = staging(game)
-    predicate = None
-    for _disk, name, body in files(root, game):
-        if args.overlay and name != args.overlay:
-            continue
-        predicate = find_predicate(name, body, record)
-        if predicate is not None:
-            break
-    if predicate is None:
-        raise SystemExit(
-            f"traitquery.py: no array-then-traits predicate in "
-            f"{args.overlay} for {game.title}; try --overlay.")
 
     print(f"{game.title}: record ${record:04X}, trait block "
           f"${record + TRAIT_SLOT:04X}")
@@ -649,7 +897,7 @@ def main(argv=None) -> int:
         literal.discard(0)
         literal = {v for v in literal if v != 0xFF}
         print(f"\n{game.title}: the combat check lists")
-        return report_lists(root, game, predicate.entry, literal)
+        return report_lists(root, game, predicate.entry, literal)[0]
     return 0
 
 

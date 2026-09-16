@@ -181,12 +181,10 @@ tables the ask dispatches through, and the lists land at exactly
 `<high table> + namespace + 1` in all three titles, which is the layout
 checking itself.
 
-**Silver Blades honours 90 ids and `goldbox/traits.py` names six of them.**
-That is what `#497 (The trait picker offers a Secret of the Silver Blades
-character six names, and nobody has ruled on whether it should offer Pool of
-Radiance's 129)` asked for. The six are a **subset** rather than an overlap:
-18, 26, 45, 47 and 48 are on the lists and 95 is on list 9, so every id that
-title's own table names is one its engine asks about.
+**Silver Blades honours 90 ids and `goldbox/traits.py` named six of them until
+2026-09-15. It now names 55.** That is `#497 (The trait picker offers a Secret
+of the Silver Blades character six names, and nobody has ruled on whether it
+should offer Pool of Radiance's 129)`, and the next section is how.
 
 **How far Pool of Radiance's names can be trusted for Silver Blades is a
 question about the id, not about the title.** The lists are positional -- the
@@ -205,6 +203,116 @@ So the spell-effect half of the namespace is shared and the monster-special
 half is not, which is what the racial seeds said too: Silver Blades gives an
 elf 95 where Pool of Radiance gives 107. PROBABLE, on one measurement of
 positional agreement and no reading of a Silver Blades handler.
+
+## Naming Silver Blades' ids: four routes, and what each one is worth
+
+Donald ruled on 2026-09-15 that the picker should offer this title's ids named
+properly rather than staying at six or borrowing Pool of Radiance's names
+unmarked. Four readings off the player's own disks filled 55 of the 90;
+`tools/traitquery.py` takes all four and the runs are in `work/issue497/`.
+
+| route | what it reads | ids named | grade |
+|---|---|---|---|
+| the spell that writes it | this title's own per-spell record, `COMBAT2 +2937` | **40** of the 90 (and four more the engine ignores in a slot) | CONFIRMED |
+| the same numbered check list as Curse | `--compare`, both titles' lists | 7 more | PROBABLE |
+| the same routine asking in both titles | the literal call sites | 3 more | PROBABLE |
+| the creature carrying it | the 71 `MON*` records on the six sides | 3 more, and **four refusals** | PROBABLE |
+| `GEN`'s racial seed | already in `goldbox/traits.py` | 2 more | PROBABLE |
+
+### The spell that writes it, which is the strong one
+
+**Every Gold Box title ships a per-spell record the engine copies when a spell
+is cast, and one byte of it is the effect id that spell writes.** Pool of
+Radiance's is `ECL65 +0`, 67 records of seven bytes, which `goldbox/effects.py`
+already reads for their durations and `CAMP $1429` indexes as
+`$9900 + (id - 1) * 7`. Curse and Silver Blades keep a nine-byte version in
+`COMBAT2`, at `+2732` and `+2937`.
+
+`tools/traitquery.py --spells` prints it. Four things hold the reading up and
+no two of them share a source:
+
+1. **Pool of Radiance's copy reproduces what is already known.** Its effect
+   byte gives BLESS 1, SLEEP 53, INVISIBILITY 25, HASTE 39, STRENGTH 38 and
+   DETECT MAGIC 5 -- six ids this project confirmed by other routes entirely,
+   four of them from `P3-EFFECTS.D64` and one from five Sleep-struck orcs.
+   Bit 7 of that byte is a flag rather than part of the id there: it is set on
+   every cleric spell (1-8, 22-28, 36-44 and 56) and nothing else.
+2. **The two later titles agree with each other** on the effect id for 54 of
+   the first 56 spells, and on twenty more above 56 where both name tables
+   resolve to the same spell.
+3. **Every one of Silver Blades' 117 values falls inside its own 113-id
+   namespace**, bar one: spell 59, whose value is the namespace size exactly
+   and whose own slot in the name table is unused in this title and in Curse.
+   Curse's row 59 is the same, at its own namespace size of 146.
+4. **The message index beside it resolves.** Byte 1 indexes the combat
+   messages that follow the spell names in the same table `goldbox/spells.py`
+   reads, at `last spell + 1 + index` -- 57, 101 and 118, which are exactly
+   the three "spells run to" boundaries that module already carries. Index 59
+   is `IS BLESSED` in all three titles.
+
+The check lists then corroborate it from the other direction, and they were
+read through a different chain entirely (the walker's own operand): BARKSKIN's
+13 sits on lists 11 and 12, "target, to hit" and "target, saving throw", where
+an armour-class spell belongs; FIRE SHIELD's 112 on list 5, "target, weapon
+damage"; FAERIE FIRE's 71 on list 11; INVISIBILITY TO ANIMALS' 69 on lists 1
+and 16, the two miss-chance lists; PRAYER's 49 on lists 10 and 12; and the two
+globes, 57 and 63, are the two ids `COMBAT` asks about by instruction,
+seventeen bytes apart at `$15DC` and `$15ED`.
+
+### Positional agreement got three of twenty-eight wrong
+
+Both routes reach 28 of the same ids and they agree on 25. The three they
+disagree on are all ids the later titles spent on a spell Pool of Radiance
+does not have, and the spell table wins because it reads the write:
+
+| id | what the check lists offered | what Silver Blades' own table says |
+|---|---|---|
+| 4 | starting to train with a Manual of Bodily Health | DISPEL EVIL |
+| 27 | feather falling | FUMBLE |
+| 35 | under an allied Prayer | CONFUSION |
+
+**That is the calibration on the PROBABLE grade** -- roughly one in nine --
+and it is why a name is taken from list agreement only when the check the list
+performs makes sense of it. 31 "helpless" on list 7 beside hold, sleep and
+snake charm does; 50 "mummy rot, blocking healing" on the two saving-throw
+lists does not.
+
+### The monster census refused four that agreement offered
+
+The route Pool of Radiance's own table was built on, over the 71 `MON*`
+records on the six Silver Blades sides. It named three -- 64 lands on this
+title's eight poisoners, the same creature set that carries it in Pool of
+Radiance, and BASILISK, MEDUSA and SARGATHA carry the pair 58/59 where Pool of
+Radiance's basilisk and medusa carry 83/127 -- and it refused four more:
+
+| id | the name agreement offered | the creature carrying it here |
+|---|---|---|
+| 60 | unused | IRON GOLEM |
+| 65 | melee poison, +4 to save | COCKATRICE, which has no poison |
+| 73 | rear claw rake | ANCIENT DRAGON, RED DRAGON, RED HATCHLING, WHITE DRAGON |
+| 83 | petrifying gaze | ANCIENT DRAGON, WHITE DRAGON -- and this title's basilisk and medusa carry 58 and 59 instead |
+
+### What is left
+
+**35 of the 90 are still unnamed**: 6, 7, 32, 50, 54, 56, 60, 65, 66, 67, 70,
+72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 86, 88, 90, 92, 98, 99, 103,
+104, 105, 107, 108 and 110. Almost all of them are monster specials, which is
+the half of the namespace this title renumbered, and the only route left is
+reading the handler each one dispatches through the table at `$EF90`/`$F001`
+-- `docs/189-effect-97-from-the-code.md`'s method, one id at a time.
+
+**Curse of the Azure Bonds does not fully share Pool of Radiance's table
+either, and `goldbox/traits.py` still says it does.** Its own spell-effect
+table gives 3 to STICKS TO SNAKES, 4 to DISPEL EVIL, 7 to FAERIE FIRE, 27 to
+FUMBLE, 35 to CONFUSION, 63 to MINOR GLOBE OF INVULNERABILITY, 68 to
+FEEBLEMIND and 69 to INVISIBILITY TO ANIMALS, where the shared table reads
+those eight as a Manual of Bodily Health, feather falling, an allied Prayer,
+an unimplemented handler and two melee paralysis grades. So a Curse character
+carrying one of the eight is named wrongly today. `tools/traitquery.py
+curse-of-the-azure-bonds --spells` is the run; nothing has been changed for
+that title here, because `#497 (The trait picker offers a Secret of the Silver
+Blades character six names, and nobody has ruled on whether it should offer
+Pool of Radiance's 129)` is about Silver Blades.
 
 ## Watching the asks
 
@@ -434,3 +542,9 @@ camp (`ask8`-`ask10`). Each holds `traits.jsonl`, `trace.log`,
 Save wrote, and the one-byte diff), `cast-edited/` and `cast-control/` (the
 differential pair), `boot1/` and `reload/` (the engine's own save, the reload
 and the eight-hour rest, with ROLAND's sheet in `sheet.txt`).
+
+`work/issue497/` holds the naming runs, all of them from the disks and none
+of them needing an emulator: the three `--lists` runs of 2026-09-10, then
+`ssb-vs-curse-lists.txt` and `ssb-vs-por-lists.txt` (`--compare`) and
+`por-`, `curse-` and `ssb-spell-effects.txt` (`--spells`). Each is one
+`tools/traitquery.py` invocation and re-running it reproduces the file.

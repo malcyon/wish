@@ -316,6 +316,15 @@ EMPTY = "—"
 # ranger 134. Read off the player's own disks by `tools/coldread.py traits
 # curse-of-the-azure-bonds`, and asserted in `tests/test_coldread.py`.
 #
+# **That argument covers the nine codes `GEN` seeds and not the other 137, and
+# eight of those are wrong.** Curse's own per-spell table, `COMBAT2 +2732`,
+# gives 3 to STICKS TO SNAKES, 4 to DISPEL EVIL, 7 to FAERIE FIRE, 27 to
+# FUMBLE, 35 to CONFUSION, 63 to MINOR GLOBE OF INVULNERABILITY, 68 to
+# FEEBLEMIND and 69 to INVISIBILITY TO ANIMALS -- spells Pool of Radiance has
+# not got, on codes it was already using. `tools/traitquery.py
+# curse-of-the-azure-bonds --spells` is the run and #561 is the ticket; it is
+# left as it stands here because #497 was about Silver Blades.
+#
 # **Secret of the Silver Blades does not.** Its `GEN $0C4B` seeds two slots
 # from `$0C5B` and `$0C62`, seven bytes each, indexed by the race byte:
 #
@@ -344,46 +353,209 @@ EMPTY = "—"
 # * 24 is on 36 of the 48 Silver Blades records that carry anything at all,
 #   against one of Pool of Radiance's 59.
 #
-# So the names below are the ones the seed tables themselves establish, by the
-# race or class the game gives them to, and nothing else. Every other code
-# falls back to `trait <n>`, which is the honest answer: this is a table of
-# what has been read, not of what a reader might like to see.
+# So this title gets a table earned the way the other two were, code by code,
+# and every code no route reaches falls back to `trait <n>`, which is the
+# honest answer: this is a table of what has been read, not of what a reader
+# might like to see.
+#
+# ---------------------------------------------------------------------------
+# The four routes that filled the table below, and what each one is worth
+# ---------------------------------------------------------------------------
+# Donald ruled on 2026-09-15 that the picker should offer this title's ids
+# named properly, rather than staying at six or borrowing another title's
+# names unmarked (#497). **90 ids do something in a trait slot here** --
+# 80 on the engine's own check lists and ten more named by an instruction --
+# and the routes below name 55 of them. `tools/traitquery.py` takes all four
+# measurements off the player's disks and `docs/171-c64-trait-slots.md` has
+# the run.
+#
+# **The spell that writes it. CONFIRMED.** `COMBAT2 +2937` is this title's
+# per-spell record, nine bytes each, one per spell id 1-117, and byte 0 is
+# the effect id the spell writes. So the game's own data says PROTECTION FROM
+# EVIL writes 8 and BARKSKIN writes 13, and the spell's name names the code.
+# Four things hold the reading up, and no two of them share a source: Pool of
+# Radiance's copy of the same table (`ECL65 +0`, seven bytes a record,
+# `goldbox/effects.py` reads it for durations and `CAMP $1429` indexes it)
+# reproduces forty-odd spell-to-code pairs including six this project had
+# already confirmed elsewhere -- BLESS 1, SLEEP 53, INVISIBILITY 25, HASTE
+# 39, STRENGTH 38 and DETECT MAGIC 5; Curse of the Azure Bonds keeps the same
+# nine-byte table at `COMBAT2 +2732` and agrees with this one on 54 of the
+# first 56 spells; all 117 of this title's values fall inside its own 113-code
+# namespace; and byte 1 is a message index into the same string table
+# `goldbox/spells.py` reads, where 59 is `IS BLESSED` in all three titles.
+#
+# **The same code in the same numbered check list as Curse. PROBABLE.** The
+# walker takes a list *number*, so list 12 is "target, saving throw" whichever
+# title is running and a code on it in two titles is being asked the same
+# question about the same thing. 46 of the 90 agree with Curse that way.
+# It is positional agreement rather than a read of a handler, and the spell
+# table above **caught it being wrong three times in twenty-eight** -- 4, 27
+# and 35, where the later titles gave a Pool of Radiance code to a new spell.
+# So a name is taken from this route only when the check the list performs
+# makes sense of it: 31 "helpless" on list 7 with hold, sleep and snake charm
+# does, and 50 "mummy rot, blocking healing" on the two saving-throw lists
+# does not.
+#
+# **The same routine asking about the same code in two titles. PROBABLE.**
+# 43 and 44 are asked fifteen bytes apart in `ECL65` in Curse and again
+# fifteen bytes apart in `ECL65` here, in the same order; 96 is asked at
+# `COMBAT $1194` in Curse and `COMBAT $1191` here.
+#
+# **The creature carrying it. PROBABLE.** The route Pool of Radiance's own
+# table was built on, over the 71 `MON*` records on the six sides. It
+# **named** three -- 64 lands on this title's eight poisoners, the same
+# creature set that carries it in Pool of Radiance, and BASILISK, MEDUSA and
+# SARGATHA carry the pair 58/59 where Pool of Radiance's basilisk and medusa
+# carry 83/127, with the one of the pair on list 14 matching the one of Pool
+# of Radiance's pair on list 14. It also **refused** four that positional
+# agreement had offered, which is the more useful half: 60 "unused" (an IRON
+# GOLEM carries it), 65 "melee poison, +4 to save" (a COCKATRICE, which has
+# no poison), 83 "petrifying gaze" (two dragons, while this title's basilisk
+# and medusa carry 58 and 59 instead) and 73 "rear claw rake" (four dragons,
+# against a spell row whose own name is a duplicate).
 
-#: Secret of the Silver Blades' codes, as far as its own `GEN` establishes
-#: them. Six of the nine it seeds; the strings are Pool of Radiance's own,
-#: pointed at the numbers this title uses for the same abilities.
+#: Secret of the Silver Blades' effect codes. Each entry carries its grade and
+#: the route that earned it in the comment above it; `docs/171-c64-trait-slots.md`
+#: has the evidence and `tools/traitquery.py --spells`, `--compare` and
+#: `--lists` re-take the measurements.
 #:
-#: PROBABLE throughout. The evidence is which race or class the game seeds
-#: each code on -- the same argument the Pool of Radiance names were earned
-#: by -- and no Silver Blades record has been watched using one.
-#:
-#: **Six is a count of what has been named, not of what the engine honours.**
-#: Silver Blades' combat check lists name 80 distinct effect ids and ten more
-#: reach the trait predicate from an instruction, so **90** ids do something
-#: in a trait slot and this table names six of them; all six are on the
-#: lists. `tools/traitquery.py --lists` takes the measurement off the disks
-#: and `docs/171-c64-trait-slots.md` has it per title, alongside how far Pool
-#: of Radiance's names can be trusted here -- 29 of 32 shared ids below 64
-#: sit in the same numbered check list in both titles, and 0 of 7 above 100
-#: do.
+#: **A string that is `NAMES[n][0]` is Pool of Radiance's own, pointed at the
+#: number this title uses for the same thing** -- the pattern the first six
+#: entries here were written with. A literal string is one no code in the
+#: shared table stands for, and it is the game's own spell name, spelled the
+#: way this table already spells BLESS, ENLARGE and SILENCE 15' RADIUS.
 NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
+    # -- the spell that writes it (CONFIRMED) ------------------------------
+    1: (NAMES[1][0], "CONFIRMED"),                     # BLESS
+    2: (NAMES[2][0], "CONFIRMED"),                     # CURSE
+    # 3, 4, 13, 27, 35, 63, 68 and 69 are codes the shared table names for
+    # something else. This title spent them on spells Pool of Radiance does
+    # not have, and its own table is what says so.
+    3: ("Sticks to Snakes", "CONFIRMED"),              # STICKS TO SNAKES
+    4: ("Dispel Evil", "CONFIRMED"),                   # DISPEL EVIL
+    5: (NAMES[5][0], "CONFIRMED"),                     # DETECT MAGIC
+    8: (NAMES[8][0], "CONFIRMED"),                     # PROTECTION FROM EVIL
+    9: (NAMES[9][0], "CONFIRMED"),                     # PROTECTION FROM GOOD
+    10: (NAMES[10][0], "CONFIRMED"),                   # RESIST COLD
+    11: (NAMES[11][0], "CONFIRMED"),                   # CHARM PERSON
+    12: (NAMES[12][0], "CONFIRMED"),                   # ENLARGE
+    # REDUCE writes nothing here, where it writes 13 in the other two, and
+    # BARKSKIN has the code instead. Lists 11 and 12 -- to hit and saving
+    # throw -- are where an armour-class spell belongs.
+    13: ("Barkskin", "CONFIRMED"),                     # BARKSKIN
+    17: (NAMES[17][0], "CONFIRMED"),                   # SHIELD
+    20: (NAMES[20][0], "CONFIRMED"),                   # RESIST FIRE
+    21: (NAMES[21][0], "CONFIRMED"),                   # SILENCE 15' RADIUS
+    23: (NAMES[23][0], "CONFIRMED"),                   # SPIRITUAL HAMMER
+    24: (NAMES[24][0], "CONFIRMED"),                   # DETECT INVISIBILITY
+    25: (NAMES[25][0], "CONFIRMED"),                   # INVISIBILITY
+    27: ("Fumble", "CONFIRMED"),                       # FUMBLE
+    28: (NAMES[28][0], "CONFIRMED"),                   # MIRROR IMAGE
+    29: (NAMES[29][0], "CONFIRMED"),                   # RAY OF ENFEEBLEMENT
+    30: (NAMES[30][0], "CONFIRMED"),                   # STINKING CLOUD
+    33: (NAMES[33][0], "CONFIRMED"),                   # CAUSE BLINDNESS
+    34: (NAMES[34][0], "CONFIRMED"),                   # CAUSE DISEASE
+    35: ("Confusion", "CONFIRMED"),                    # CONFUSION
+    36: (NAMES[36][0], "CONFIRMED"),                   # BESTOW CURSE
+    37: (NAMES[37][0], "CONFIRMED"),                   # BLINK
+    39: (NAMES[39][0], "CONFIRMED"),                   # HASTE
+    41: (NAMES[41][0], "CONFIRMED"),          # PROTECTION FROM NORMAL MISSILES
+    42: (NAMES[42][0], "CONFIRMED"),                   # SLOW
+    # 43 and 44 are asked about by no list and by one instruction each,
+    # fifteen bytes apart in `ECL65` in this title and fifteen bytes apart in
+    # `ECL65` in Curse, in the same order. PROBABLE, on that agreement.
+    43: (NAMES[43][0], "PROBABLE"),
+    44: (NAMES[44][0], "PROBABLE"),
+    45: (NAMES[45][0], "CONFIRMED"),          # PROTECTION FROM EVIL 10' RADIUS
+    46: (NAMES[46][0], "CONFIRMED"),          # PROTECTION FROM GOOD 10' RADIUS
+    # PRAYER writes 49 here and in Curse, and 35 in Pool of Radiance, whose
+    # 49 the shared table already calls Prayer -- so the pair swapped roles
+    # and the string is right for this number.
+    49: (NAMES[49][0], "CONFIRMED"),                   # PRAYER
+    51: (NAMES[51][0], "CONFIRMED"),                   # SNAKE CHARM
+    52: (NAMES[52][0], "CONFIRMED"),                   # HOLD PERSON
+    53: (NAMES[53][0], "CONFIRMED"),                   # SLEEP
+    55: (NAMES[55][0], "CONFIRMED"),                   # POISON, CLOUD KILL
+    # The two globes are also the two ids `COMBAT` asks about by instruction,
+    # seventeen bytes apart at `$15DC` and `$15ED`.
+    57: ("Globe of Invulnerability", "CONFIRMED"),     # GLOBE OF INVULNERABLITY
+    63: ("Minor Globe of Invulnerability", "CONFIRMED"),
+    68: ("Feeblemind", "CONFIRMED"),                   # FEEBLEMIND
+    69: ("Invisibility to Animals", "CONFIRMED"),      # INVISIBILITY TO ANIMALS
+    # Curse gives FAERIE FIRE 7 and this title gives it 71, which is why the
+    # gnome's second seed, 7, stays unnamed below. List 11 is "target, to
+    # hit", which is what faerie fire is for.
+    71: ("Faerie Fire", "CONFIRMED"),                  # FAERIE FIRE
+    # One code for three spells, which is why it is named by all three rather
+    # than by a state nobody has read. Curse spends 136 on ENTANGLE alone.
+    106: ("Entangle, Trip or Power Word Stun", "CONFIRMED"),
+    111: ("Fear", "CONFIRMED"),                        # FEAR
+    112: ("Fire Shield", "CONFIRMED"),                 # FIRE SHIELD
+
+    # -- the same code in the same numbered check list as Curse (PROBABLE) --
+    # 26, 47 and 48 are also what `GEN` seeds a dwarf and a gnome, so each
+    # has two lines of evidence rather than one.
+    26: (NAMES[26][0], "PROBABLE"),                    # list 10, to hit
+    31: (NAMES[31][0], "PROBABLE"),                    # list 7, restrained
+    47: (NAMES[47][0], "PROBABLE"),                    # list 11, to hit
+    48: (NAMES[48][0], "PROBABLE"),                    # list 11, to hit
+    61: (NAMES[61][0], "PROBABLE"),          # lists 6 and 12, spell damage
+    89: (NAMES[89][0], "PROBABLE"),                    # list 16, miss chance
+    # And a FIRE GIANT carries 93 here, which is the second line on it.
+    93: (NAMES[93][0], "PROBABLE"),                    # list 6, spell damage
+
+    # -- the same routine asking in two titles (PROBABLE) ------------------
+    96: (NAMES[96][0], "PROBABLE"),          # COMBAT $1191 here, $1194 there
+
+    # -- the creature carrying it (PROBABLE) -------------------------------
+    # BASILISK, MEDUSA and SARGATHA carry 58 and 59 where Pool of Radiance's
+    # basilisk and medusa carry 83 and 127. 58 is on list 14 and so is Pool
+    # of Radiance's 83; neither 59 nor 127 is on any list.
+    58: (NAMES[83][0], "PROBABLE"),
+    59: (NAMES[127][0], "PROBABLE"),
+    # 64 lands on GIANT SNAKE, GIANT SPIDER, MEDUSA, WYVERN, PURPLE WORM,
+    # CENTIPEDE, FIRE KNIFE and SARGATHA -- the same creature set that
+    # carries it in Pool of Radiance.
+    64: (NAMES[64][0], "PROBABLE"),
+
+    # -- what `GEN` seeds by race (PROBABLE) -------------------------------
+    # The two seeds no other route reaches. `GEN $0C5B` gives a half-elf 18
+    # and an elf 95, and the strings are Pool of Radiance's for the same two
+    # abilities at its own numbers, 124 and 107.
     18: (NAMES[124][0], "PROBABLE"),
-    26: (NAMES[26][0], "PROBABLE"),
-    45: (NAMES[45][0], "PROBABLE"),
-    47: (NAMES[47][0], "PROBABLE"),
-    # 48 is the gnome's, and Curse of the Azure Bonds seeds its gnome the
-    # same 48 -- alongside the 18 and 97 this title does not give it.
-    48: (NAMES[48][0], "PROBABLE"),
     95: (NAMES[107][0], "PROBABLE"),
 }
-# Three of the nine are seeded and unnamed, and stay that way until somebody
-# establishes what they do: **7**, the gnome's second, which is a different
-# code from the 18 Curse of the Azure Bonds gives a gnome because this title
-# spent 18 on the half-elf; **92**, the halfling's only one, which Silver
-# Blades' DREADLORD also carries, so no reading that is purely a halfling's
-# survives; and **105**, the ranger's, where Curse of the Azure Bonds writes
-# an equally unnamed 134. Naming them would be inventing prose for a player to
-# read, and wrong words are worse than no words.
+# **35 of the 90 are still unnamed, and each one is a handler somebody has to
+# read** -- `docs/189-effect-97-from-the-code.md`'s method, one at a time,
+# through the handler table at `$EF90`/`$F001`. They are 6, 7, 32, 50, 54, 56,
+# 60, 65, 66, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 86, 88,
+# 90, 92, 98, 99, 103, 104, 105, 107, 108 and 110.
+#
+# Nine of those were offered by positional agreement and refused, which is
+# where a reader is most likely to want the reasoning:
+#
+# * **50** and **54** sit on the two saving-throw lists in this title and in
+#   Curse and on no list at all in Pool of Radiance, whose names for them are
+#   "mummy rot, blocking healing" and a bronze dragon's repulsion. Neither is
+#   a saving-throw modifier, so the later two spent the pair on something
+#   else.
+# * **56** would be "wearing a Ring of Invisibility", and a DREADLORD carries
+#   it. No creature in Pool of Radiance carries 56 at all.
+# * **60** would be "unused" and an IRON GOLEM carries it; **65** would be
+#   "melee poison, +4 to save" and a COCKATRICE carries it, which petrifies
+#   and has no poison.
+# * **73** and **83** would be "rear claw rake" and "petrifying gaze", and
+#   four dragons carry 73 while two carry 83 -- and this title's basilisk and
+#   medusa carry 58 and 59 instead, so 83 is not its petrifying gaze.
+# * **75** and **77** sit in the same lists as Curse's and in different ones
+#   from Pool of Radiance's, which is the pattern that turned out wrong for
+#   4, 27 and 35.
+#
+# Three of the nine codes `GEN` seeds are among the unnamed: **7**, the
+# gnome's second, which Curse spends on FAERIE FIRE and this title does not;
+# **92**, the halfling's only one, which this title's DREADLORD also carries,
+# so no reading that is purely a halfling's survives; and **105**, the
+# ranger's, where Curse of the Azure Bonds writes an equally unnamed 134.
 
 #: Code table per title key. A title that is not here gets Pool of Radiance's,
 #: which is what every caller written before this table existed means.

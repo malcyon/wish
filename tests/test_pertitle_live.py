@@ -157,11 +157,14 @@ def test_a_badge_name_comes_from_the_titles_own_trait_table():
     it is what `$0FF0` writes for a paladin -- so it is the one that can show
     the two tables agreeing on a string by way of the right number."""
     assert traits.describe(45, SSB) == traits.describe(45, POOL)
-    # And every other badged id is unread on that title, which is why the
-    # groups are empty there rather than renamed.
+    # #497 named 53 more Silver Blades codes, so only 38 "extra strength" is
+    # still unread of the seventeen badged ids -- it was 16 of 17 the other
+    # way round. `BADGE_TABLES` still gives that title no groups, which is
+    # `automap/live.py`'s decision and not this table's.
     unread = [i for _, ids in live.CONDITION_BADGES for i in ids
               if i not in traits.for_game(SSB)]
-    assert len(unread) == 16
+    assert unread == [38]
+    assert live.condition_badges(SSB) == ()
 
 
 def test_a_title_nobody_has_read_keeps_pool_of_radiances_badges():

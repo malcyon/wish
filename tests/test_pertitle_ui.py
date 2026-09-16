@@ -543,15 +543,28 @@ def test_silver_blades_reuses_the_string_and_not_the_number():
     assert traits.describe(95, POOL) == POOL_NAME_FOR_95
 
 
-def test_silver_blades_names_only_what_its_own_gen_establishes():
-    """Six of the nine codes `GEN` seeds, and nothing else. Naming the rest
-    from Pool of Radiance would be the same fault in a different place: the
-    monster census shows the reassignment reaches past the racial codes --
-    PHASE SPIDER carries 37 and 139 there and 37 and 86 here."""
+def test_silver_blades_names_only_codes_its_own_game_data_establishes():
+    """The table grew from six to 59 on #497 and is still this title's own.
+
+    Every entry was earned here -- by the spell its own `COMBAT2` table says
+    writes the code, by the numbered check list the code shares with Curse,
+    by the routine that asks about it, by the creature carrying it, or by
+    `GEN`'s racial seed. What the test guards is the boundary: the codes Pool
+    of Radiance names and this title spends elsewhere must **not** appear,
+    because reading a save through the wrong table is #186 and #196.
+    """
     from goldbox import traits
-    assert sorted(traits.for_game(SSB)) == [18, 26, 45, 47, 48, 95]
-    assert traits.describe(39, SSB) == "trait 39"      # "hasted" in Pool's
-    assert traits.confidence(39, SSB) == ""
+    table = traits.for_game(SSB)
+    assert len(table) == 59
+    # 38 "extra strength", 107 and 124 the elf's and half-elf's resistance,
+    # 139 "phasing": Pool of Radiance names all four and this title does not.
+    for code in (38, 107, 124, 139):
+        assert code not in table
+        assert traits.describe(code, SSB) == f"trait {code}"
+        assert traits.confidence(code, SSB) == ""
+    # And a code positional agreement offered and the monster census refused:
+    # an IRON GOLEM carries 60, which Pool of Radiance's guide calls unused.
+    assert 60 not in table
 
 
 def test_a_title_nobody_has_read_keeps_pool_of_radiances_table():
