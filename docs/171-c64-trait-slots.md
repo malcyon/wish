@@ -292,6 +292,46 @@ Radiance's basilisk and medusa carry 83/127 -- and it refused four more:
 | 73 | rear claw rake | ANCIENT DRAGON, RED DRAGON, RED HATCHLING, WHITE DRAGON |
 | 83 | petrifying gaze | ANCIENT DRAGON, WHITE DRAGON -- and this title's basilisk and medusa carry 58 and 59 instead |
 
+### A spell row is not evidence until its name is its own
+
+**73 reads like a 45th spell-named id and it is not**, and it is the one place
+`--spells` has to be read with its other two columns rather than off the id
+column alone. A code review raised it on 2026-09-15 and the answer is no.
+
+`COMBAT2`'s name table gives **one string to a spell granted at two levels**,
+so a shared pointer is the ordinary case rather than a fault: DETECT MAGIC
+covers spells 5, 11 and 77 and all three write 5; HOLD PERSON covers 23 and 49
+and both write 52. Fifteen names are shared between rows in Silver Blades,
+**eleven have every row writing the same id, and each of the other four
+contains a row that is in no spell group.**
+
+Spell rows 95 and 96 both point at `$E471`, `CHARM PERSON OR MAMMAL`, and they
+are the exception: **95 writes 73 with the message `IS PROTECTED`, 96 writes 11
+with `IS CHARMED`.** Four things say 96 is the spell and 95 is a row whose
+pointer was never set:
+
+* `goldbox/spells.py`'s group table puts spell 96 in druid level 2 and **95 in
+  no group at all** -- it falls in the gap between magic-user level 5 (91-94)
+  and that druid entry;
+* 11 is already this table's `charmed`, from CHARM PERSON at spell 10, so 96
+  agrees with a name the table had before any of this;
+* **Curse's row 95 writes the same 73 and the same `IS PROTECTED`**, under a
+  pointer to `$E000` -- the first string in its table, which seven of its rows
+  share and which is its unused-slot marker;
+* ANCIENT DRAGON, RED DRAGON, RED HATCHLING and WHITE DRAGON carry 73 innately,
+  and it is on list 6, where a resistance to spell damage is asked about. A
+  druid's charm is neither.
+
+**Two names already in the table depend on reading it this way**: 39 is taken
+from HASTE at spell 48 and not from row 57, which shares CURE SERIOUS WOUNDS'
+pointer and writes 39 as well, and 25 comes from INVISIBILITY and not from row
+97, whose name reads `IS ALIVE`. Naming 73 from row 95 would be doing the
+opposite of what those two do.
+
+So the rule for `--spells`: **a row names an id only when the row's own message
+fits the name and the row is in a spell group.** Silver Blades has twenty rows
+in no group (57, 59-65, 95, 97, 99-108), and they are where a name goes wrong.
+
 ### What is left
 
 **35 of the 90 are still unnamed**: 6, 7, 32, 50, 54, 56, 60, 65, 66, 67, 70,

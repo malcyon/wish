@@ -212,6 +212,66 @@ def test_every_spell_named_code_is_what_the_games_own_table_writes():
         assert traits.NAMES_SILVER_BLADES[code][1] == "CONFIRMED"
 
 
+def test_code_73_is_not_named_from_the_spell_row_that_appears_to_write_it():
+    """73 reads like a 45th spell-named code and it is not. Raised by a code
+    review on 2026-09-15 and answered no, so the answer is pinned here.
+
+    `COMBAT2`'s name table gives one string to a spell granted at two levels,
+    so a shared pointer is ordinary. Rows 95 and 96 share
+    `CHARM PERSON OR MAMMAL` and are the pair that writes two different codes:
+    95 writes 73 with the message `IS PROTECTED`, 96 writes 11 with
+    `IS CHARMED`. 96 is the spell -- `goldbox/spells.py` has it in druid
+    level 2 and has 95 in no group at all -- and 11 is already this table's
+    `charmed` from CHARM PERSON at spell 10.
+    """
+    from goldbox import spells
+    table = traitquery.spell_effects(_disks(), SSB)
+    assert table[95] == ("CHARM PERSON OR MAMMAL", 73, "IS PROTECTED")
+    assert table[96] == ("CHARM PERSON OR MAMMAL", 11, "IS CHARMED")
+
+    grouped = set()
+    for first, last, _who, _level in spells.for_game(SSB.key).groups:
+        grouped |= set(range(first, last + 1))
+    assert 96 in grouped
+    assert 95 not in grouped
+
+    assert 73 not in traits.NAMES_SILVER_BLADES
+    assert traits.describe(73, SSB) == "trait 73"
+    assert traits.NAMES_SILVER_BLADES[11][0] == traits.NAMES[11][0]
+
+
+def test_a_shared_spell_name_usually_means_one_spell_at_two_levels():
+    """Which is why row 95 cannot be waved through as a name-table fault.
+
+    Fifteen names are shared between spell rows in Silver Blades and eleven
+    have every row writing the same code. **Each of the other four contains a
+    row in no spell group** -- that is the discriminator, and it is what keeps
+    39 coming from HASTE rather than from row 57, which shares CURE SERIOUS
+    WOUNDS' pointer and writes 39 too.
+    """
+    from goldbox import spells
+    table = traitquery.spell_effects(_disks(), SSB)
+    descriptor = spells.for_game(SSB.key)
+    grouped = set()
+    for first, last, _who, _level in descriptor.groups:
+        grouped |= set(range(first, last + 1))
+
+    shared: dict[str, list[int]] = {}
+    for spell, (name, _code, _message) in table.items():
+        shared.setdefault(name, []).append(spell)
+    shared = {name: rows for name, rows in shared.items() if len(rows) > 1}
+    assert len(shared) == 15
+
+    disagree = [rows for rows in shared.values()
+                if len({table[s][1] for s in rows}) > 1]
+    assert len(disagree) == 4
+    for rows in disagree:
+        assert any(s not in grouped for s in rows)
+    assert sorted(set(range(1, descriptor.last_spell + 1)) - grouped) == [
+        57, 59, 60, 61, 62, 63, 64, 65, 95, 97,
+        99, 100, 101, 102, 103, 104, 105, 106, 107, 108]
+
+
 def test_the_three_codes_positional_agreement_got_wrong():
     """4, 27 and 35 are why the check-list route is PROBABLE and not better.
 

@@ -411,8 +411,28 @@ EMPTY = "—"
 # agreement had offered, which is the more useful half: 60 "unused" (an IRON
 # GOLEM carries it), 65 "melee poison, +4 to save" (a COCKATRICE, which has
 # no poison), 83 "petrifying gaze" (two dragons, while this title's basilisk
-# and medusa carry 58 and 59 instead) and 73 "rear claw rake" (four dragons,
-# against a spell row whose own name is a duplicate).
+# and medusa carry 58 and 59 instead) and 73 "rear claw rake" (four dragons).
+#
+# **A spell row is not evidence until its name is its own**, and 73 is the
+# worked example -- it reads like the spell route's 45th id and it is not.
+# `COMBAT2`'s name table gives one string to a spell granted at two levels, so
+# a shared pointer is ordinary: DETECT MAGIC covers spells 5, 11 and 77 and
+# all three write 5. Fifteen names are shared between rows here and eleven
+# have every row writing the same id; each of the other four holds a row that
+# is in no spell group at all, and spell rows 95 and 96 are one of them --
+# both point at `$E471`, `CHARM PERSON OR MAMMAL`, and 95 writes 73 with the
+# message `IS PROTECTED` while 96 writes 11 with `IS CHARMED`. Four things
+# say 96 is the spell and 95 the row whose pointer was never set:
+# `goldbox/spells.py`'s own
+# group table puts 96 in druid level 2 and **95 in no group at all**; 11 is
+# already this table's "charmed" from CHARM PERSON at spell 10; Curse's row 95
+# writes the same 73 and the same message under a pointer to `$E000`, the
+# first string in its table and its unused-slot marker; and ANCIENT DRAGON,
+# RED DRAGON, RED HATCHLING and WHITE DRAGON carry 73 innately, on list 6,
+# which is where a resistance to spell damage is asked about. **So 73 stays
+# unnamed.** The same reading is why 39 is taken from HASTE at spell 48 rather
+# than from row 57, which shares CURE SERIOUS WOUNDS' pointer and writes 39
+# too, and why 25 comes from INVISIBILITY rather than from row 97.
 
 #: Secret of the Silver Blades' effect codes. Each entry carries its grade and
 #: the route that earned it in the comment above it; `docs/171-c64-trait-slots.md`
@@ -546,7 +566,12 @@ NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
 #   and has no poison.
 # * **73** and **83** would be "rear claw rake" and "petrifying gaze", and
 #   four dragons carry 73 while two carry 83 -- and this title's basilisk and
-#   medusa carry 58 and 59 instead, so 83 is not its petrifying gaze.
+#   medusa carry 58 and 59 instead, so 83 is not its petrifying gaze. **73 is
+#   also the one id the spell route appears to reach and does not**: spell row
+#   95 writes it, but that row's name is spell 96's -- the two share a name
+#   pointer, 96 is the druid CHARM PERSON OR MAMMAL and writes 11, and 95 is
+#   in no spell group at all. The paragraph above the table has the four
+#   strands.
 # * **75** and **77** sit in the same lists as Curse's and in different ones
 #   from Pool of Radiance's, which is the pattern that turned out wrong for
 #   4, 27 and 35.
