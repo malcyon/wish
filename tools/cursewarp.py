@@ -221,7 +221,30 @@ def load_curse_save(sess, timeout: float = 240.0) -> bool:
     return False
 
 
-def enter_world(sess, timeout: float = 300.0) -> bool:
+def idle_in_key_window(sess, addr: Addresses) -> int | None:
+    """The PC, if the machine is sitting in a key window right now.
+
+    A single read rather than `wait_idle`'s poll: the caller already has a
+    screen unchanged for several seconds, and what this settles is only
+    whether that stillness is a menu waiting for a key or a disk load in
+    progress with nothing yet drawn to show for it. `DUNGEON`'s key-wait
+    loop and `LIBRARY`'s fetcher are the two windows `NEWECL`'s tail can
+    safely be entered from -- the same ones `wait_idle` polls for after a
+    warp -- so the same pair of ranges answers this too.
+    """
+    windows = (addr.key_wait, addr.key_fetch)
+    try:
+        with sess.mon(6) as m:
+            pc = m.registers().get(pc_register(m))
+    except Exception:
+        return None
+    if pc is None or not any(lo <= pc < hi for lo, hi in windows):
+        return None
+    return pc
+
+
+def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
+                ) -> bool:
     """Take a loaded party from the formation menu into the world.
 
     `Session.begin_adventuring` picks the row once and then waits, and two
@@ -237,7 +260,17 @@ def enter_world(sess, timeout: float = 300.0) -> bool:
 
     So: act only on what is on screen, press nothing at a blank screen, and
     back out with Escape only when some *other* menu has been sitting there
-    unchanged for `STUCK` seconds.
+    unchanged for `STUCK` seconds -- and, with `addr` given, only once the PC
+    is confirmed sitting in a key window rather than mid-load (#568): Escape
+    is VICE's RUN/STOP, which aborts a KERNAL LOAD in progress, and a screen
+    can sit unchanged for `STUCK` seconds either because a menu is waiting or
+    because a disk load has not finished drawing anything yet.
+
+    **`addr` is optional only for the callers that do not yet pass one** --
+    `tools/livecheck.py`, `tools/inventorycheck.py` and `tools/cursecheck.py`
+    all call this without an `Addresses`, and giving `addr` no default would
+    break them outright; without it, this falls back to the old unconditional
+    Escape and cannot tell a stuck menu from a slow load.
     """
     STUCK = 15.0
     deadline = time.time() + timeout
@@ -262,9 +295,15 @@ def enter_world(sess, timeout: float = 300.0) -> bool:
             sess.select_row("BEGIN ADVENTURING")
             sess.press_kernal(0x0D)
         elif state != "(blank)" and time.time() - since > STUCK:
-            sess.log("  world: backing out with Escape")
-            sess.kbd.key("Escape")
-            since = time.time()
+            pc = idle_in_key_window(sess, addr) if addr is not None else True
+            if pc is not None:
+                sess.log("  world: backing out with Escape" +
+                         (f" (idle at ${pc:04X})" if addr is not None else ""))
+                sess.kbd.key("Escape")
+                since = time.time()
+            else:
+                sess.log("  world: screen stuck but not idle in a key "
+                         "window; assuming a slow load and waiting")
         time.sleep(1.5)
     return False
 
@@ -609,7 +648,7 @@ def run(args) -> int:
             print(screen_text(sess, out / "stuck-load.txt"), flush=True)
             sess.kbd.screenshot(str(out / "stuck-load.png"))
             return 3
-        if not enter_world(sess):
+        if not enter_world(sess, addr):
             print("never reached the world; the screen says:", flush=True)
             print(screen_text(sess, out / "stuck-world.txt"), flush=True)
             sess.kbd.screenshot(str(out / "stuck-world.png"))

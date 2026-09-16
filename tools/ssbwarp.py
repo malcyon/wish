@@ -625,9 +625,23 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
             sess.press_kernal(0x0D)
             since = time.time()
         elif state != "(blank)" and time.time() - since > STUCK:
-            sess.log("  world: backing out with Escape")
-            sess.kbd.key("Escape")
-            since = time.time()
+            # A screen unchanged for STUCK seconds is what a stuck menu and a
+            # slow ECL load off floppy both look like, and Escape is VICE's
+            # RUN/STOP -- which aborts a KERNAL LOAD in progress. Silver
+            # Blades' scripts run 26-31 blocks and can sit with the screen
+            # unchanged the whole time, so this checks the PC is actually in
+            # DUNGEON's key-wait loop or LIBRARY's fetcher -- the same guard
+            # `enter_world`'s own idle branch above applies -- before sending
+            # Escape (#568).
+            pc = idle_in_key_window(sess, addr)
+            if pc is not None:
+                sess.log(f"  world: backing out with Escape (idle at "
+                         f"${pc:04X})")
+                sess.kbd.key("Escape")
+                since = time.time()
+            else:
+                sess.log("  world: screen stuck but not idle in a key "
+                         "window; assuming a slow load and waiting")
         time.sleep(1.5)
     return False
 
