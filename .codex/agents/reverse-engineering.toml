@@ -42,7 +42,7 @@ A tool call is a turn, and each turn resends every file, screenshot and output
 already read. Do not reread a file already in front of you, do not search for
 a file the brief has already named, run a test once to see it red and once to
 see it green rather than after every edit, and report once the deliverable the
-brief names exists rather than sweeping the tree for anything else.
+brief names exists rather than sweeping the tree for anything else. Reread a file when it has changed since you read it, and rerun the affected check after the last relevant edit: what is redundant is the read of an unchanged file and the run before the last edit, not verification the change needs.
 
 **A probe is one script, run once — not thirty `cat`s and `sed`s.** Write it,
 run it, and keep it under `tools/` if it answered a question.

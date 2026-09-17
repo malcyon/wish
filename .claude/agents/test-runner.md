@@ -26,51 +26,30 @@ three whatever happens to the first:
 **Do not stop at the first failure.** A brief that gets one failure back and
 then a second one an hour later has cost two round trips for one report.
 
-## The whole suite goes in a detached worktree
+## The whole suite is one command, and it writes the marker
 
 Other agents are usually mid-edit in this tree, so a run in place tests their
-half-finished code and says nothing about the commits about to be pushed. A
-detached worktree at the explicit target SHA supplied by the root tests exactly
-what will land. A full run requires that SHA; resolve it once before creating
-the worktree and use the resolved value throughout:
+half-finished code and says nothing about the commits about to be pushed.
+`tools/suiterun.py` does the whole run against exactly what will land:
 
 ```sh
-SHA=$(git rev-parse "$TARGET_SHA")
-WT=$(mktemp -d)/wt
-git worktree add -q --detach "$WT" "$SHA"
-ln -sfn "$PWD/work" "$WT/work"
-(cd "$WT" && /home/donald/src/wish/.venv/bin/python -m pytest -q)
-git worktree remove "$WT" --force
+.venv/bin/python tools/suiterun.py "$TARGET_SHA"
 ```
 
-**The symlink is the part that is easy to miss, and without it the run lies by
-omission.** `work/` is gitignored, so a bare worktree skips every test that
-reads a specimen out of it — the ones with real game data behind them.
+It resolves the sha, adds a detached worktree there, symlinks `work/` into it
+(gitignored, and without it every specimen-backed test skips), runs `pytest
+-q`, `ruff check .` and `tools/genui.py --check` all inside that worktree,
+removes the worktree, and only if all three passed writes
+`work/testrun/<sha>.green` with pytest's summary line. That marker is what
+`.claude/hooks/check-push-tested.py` looks for before a push, and it is
+written by the command that saw the checks pass, never by you. **Do not
+write or touch a marker yourself, and do not run the three checks by hand
+for a whole-suite run**: a marker assembled from a pytest result in one
+checkout and a ruff result in another says "green at A" about a tree that
+was not A.
 
-`ruff` and `genui.py --check` run in the main tree, not the worktree. Record
-their locations separately: they are not evidence about the target SHA. For a
-scoped dirty-tree run, report the base SHA and dirty scope; do not call it an
-exact committed result.
-
-**Remove the worktree even when the run fails.** A worktree left behind is one
-the next run trips over.
-
-## The marker, and it is the one file you write
-
-When the whole suite, `ruff` and `genui.py --check` are all green at the
-target SHA, record it:
-
-```sh
-mkdir -p work/testrun
-echo "6724 passed, 39 skipped" > "work/testrun/$SHA.green"
-```
-
-Run from the main tree, with pytest's own summary line as the contents.
-`.claude/hooks/check-push-tested.py` refuses a `git push` that has no such
-marker for the tip, or for an ancestor with only documentation between it
-and the tip, so this file is what lets the push through. **Never write it
-after a failure, and a scoped run writes nothing.** `work/` is gitignored,
-so the marker never enters a commit.
+`--keep` leaves the worktree behind to look at a failure. A scoped run on
+named files is still `pytest` in the main tree and writes nothing.
 
 ## Run in the foreground, always
 
@@ -128,8 +107,8 @@ timestamp in it). Say so if you see one rather than diagnosing it.
 * **You do not fix anything.** You report. Diagnosing a failure is somebody
   else's work and usually a different agent's; guessing at a cause in your
   report is worse than saying "not diagnosed".
-* **You do not edit, stage, commit or push.** Ever. The green marker under
-  `work/testrun/` is the one file you write, and it is not in the tree.
+* **You do not edit, stage, commit or push.** Ever. You do not write the
+  green marker either; `tools/suiterun.py` does, on a green run.
 * **You never run `git checkout`, `git restore`, `git reset`, `git stash` or
   `git clean`** against a file in this tree. Several agents share it and a
   revert silently discards whatever anybody else has uncommitted. `git

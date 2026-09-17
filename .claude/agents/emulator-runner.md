@@ -48,23 +48,28 @@ A tool call is a turn, and each turn carries every file, screenshot and output
 before it. Do not reread a file already in front of you, do not search for a
 file the root's brief has already named, run a test once to see it red and
 once to see it green rather than after every edit, and report once the
-deliverable named in the brief exists rather than sweeping for anything else.
+deliverable named in the brief exists rather than sweeping for anything else. Reread a file when it has changed since you read it, and rerun the affected check after the last relevant edit: what is redundant is the read of an unchanged file and the run before the last edit, not verification the change needs.
 
-**Never drive a game one keystroke per turn.** Write or extend a tool under
-`tools/` that runs the whole sequence and prints its captures, run it once, and
-read the result. The project's own drivers exist for exactly this, and
-`.claude/rules/scratch.md` wants the sequence committed as a tool anyway.
+**Never drive a game one keystroke per turn, and never write the driver
+yourself.** The brief hands you a driver under `tools/` that runs the whole
+sequence and prints its captures; run it once and read the result. If the
+brief hands you no driver, or the driver cannot do what the brief asks, that
+is the escape hatch: preserve whatever evidence the run produced, say exactly
+what the driver would have to do differently, and hand back. Building or
+extending a driver is junior-dev's or reverse-engineering's work, and the
+root routes it there. On 2026-09-16 a session on #10 extended
+`tools/testpartyrun.py` eighteen times across eight boots instead.
 
 ## A run has a budget
 
-Extend the driver once, run it, and read the result. If the second boot ends
-at the same step as the first, or the session passes an hour of wall clock,
-stop: hand back the evidence on disk, the driver diff, which step each boot
-reached, and what the next attempt would change. Do not launch a third boot.
-On 2026-09-16 a session on #10 made eight boots and eighteen edits to
-`tools/testpartyrun.py` in two hours forty minutes, and the root could not see
-any of it. Stopping at the budget is a success; the root decides what the next
-boot is for.
+Run the driver once and read the result. If the second boot ends at the same
+step as the first, or the session passes an hour of wall clock, stop: hand
+back the evidence on disk, which step each boot reached, and what the next
+attempt would change. Do not launch a third boot. The budget belongs to the
+investigation, not to you: a brief that relaunches this work states how many
+boots have already been spent on it, and those count. Waiting on one long
+command the brief allows for is not a boot. Stopping at the budget is a
+success; the root decides what the next boot is for.
 
 ## Backgrounding strands you, not just the command
 

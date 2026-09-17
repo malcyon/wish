@@ -45,9 +45,13 @@ def run(monkeypatch, payload):
     return mod.main()
 
 
-def spawn(path, agent="junior-dev", tool="Agent"):
-    return {"tool_name": tool, "transcript_path": path,
-            "tool_input": {"subagent_type": agent, "prompt": "x"}}
+def spawn(path, agent="junior-dev", tool="Agent", session=None, cwd=None):
+    payload = {"tool_name": tool, "transcript_path": path,
+               "tool_input": {"subagent_type": agent, "prompt": "x"}}
+    if session:
+        payload["session_id"] = session
+        payload["cwd"] = str(cwd)
+    return payload
 
 
 def test_the_context_is_the_sum_of_the_three_input_counts(tmp_path, monkeypatch):
@@ -102,6 +106,31 @@ def test_the_wind_down_agents_are_still_allowed(tmp_path, monkeypatch):
     assert run(monkeypatch, spawn(path, "senior-analyst")) == 2
 
 
+def test_a_message_to_a_finished_agent_is_refused_past_the_line(tmp_path, monkeypatch, capsys):
+    """SendMessage resumes an agent with more work, which is a launch by another door."""
+    path = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
+    message = {"tool_name": "SendMessage", "transcript_path": path,
+               "tool_input": {"to": "a1b2c3", "message": "one more ticket"}}
+    assert run(monkeypatch, message) == 2
+    assert "finished agent" in capsys.readouterr().err
+    under = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=100_000))
+    message["transcript_path"] = under
+    assert run(monkeypatch, message) == 0
+
+
+def test_once_refused_a_session_stays_refused(tmp_path, monkeypatch, capsys):
+    """A compaction can bring the measured context back under the line."""
+    over = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
+    assert run(monkeypatch, spawn(over, session="s1", cwd=tmp_path)) == 2
+    assert (tmp_path / "work" / "handoff" / "s1").exists()
+    compacted = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=90_000))
+    assert run(monkeypatch, spawn(compacted, session="s1", cwd=tmp_path)) == 2
+    assert "winding down" in capsys.readouterr().err
+    # The wind-down agents still get through, and another session is untouched.
+    assert run(monkeypatch, spawn(compacted, "test-runner", session="s1", cwd=tmp_path)) == 0
+    assert run(monkeypatch, spawn(compacted, session="s2", cwd=tmp_path)) == 0
+
+
 def test_the_older_tool_name_is_matched_too(tmp_path, monkeypatch):
     path = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
     assert run(monkeypatch, spawn(path, tool="Task")) == 2
@@ -143,6 +172,7 @@ def test_the_hook_is_registered_on_the_agent_tool():
               if any("check-context-handoff.py" in h["command"] for h in g["hooks"])]
     assert groups, "not wired into .claude/settings.json"
     assert "Agent" in groups[0]["matcher"]
+    assert "SendMessage" in groups[0]["matcher"]
 
 
 def test_the_skill_names_the_hook():

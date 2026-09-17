@@ -114,7 +114,33 @@ def test_a_stale_marker_for_a_commit_that_is_not_an_ancestor_does_not_count(clon
 def test_a_documentation_only_push_needs_no_marker(clone, monkeypatch):
     commit(clone, "docs/note.md")
     commit(clone, "CLAUDE.md")
+    commit(clone, "tools/README.md")
     assert run(monkeypatch, "git push", clone) == 0
+
+
+def test_only_prose_markdown_is_documentation(clone, monkeypatch):
+    """pyproject.toml, the hook wiring and an agent's source are read by tests."""
+    for name in ("pyproject.toml", ".codex/hooks.json",
+                 ".codex/agents/junior-dev.toml", ".claude/agents/junior-dev.md"):
+        sha = commit(clone, name)
+        assert run(monkeypatch, "git push", clone) == 2, name
+        mark(clone, sha)
+
+
+def test_a_commit_and_a_push_in_one_call_are_refused_even_with_a_marker(clone, monkeypatch, capsys):
+    """The hook runs before the call, so it would vouch for a HEAD the call replaces."""
+    sha = commit(clone, "mod.py")
+    mark(clone, sha)
+    for command in [
+        "git add -A && git commit -m x && git push",
+        "git commit -am x; git push",
+        "bash -c 'git commit -m x && git push'",
+        "git commit -m x\ngit push",
+    ]:
+        assert run(monkeypatch, command, clone) == 2, command
+        assert "one command" in capsys.readouterr().err
+    # A push followed by a commit pushes the HEAD the hook saw.
+    assert run(monkeypatch, "git push && git commit --allow-empty -m x", clone) == 0
 
 
 def test_a_ui_file_and_a_test_fixture_both_count_as_code(clone, monkeypatch):
@@ -142,7 +168,7 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "true;git push",
         "git push&",
         "git push|cat",
-        "git commit -m x\ngit push",
+        "eval 'git push'",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 

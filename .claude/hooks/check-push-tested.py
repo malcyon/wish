@@ -18,11 +18,14 @@ allowed when:
 
   * the tip has a marker; or
   * some ancestor of the tip has a marker and everything between it and the
-    tip is documentation -- no `.py`, no `.ui`, nothing under `tests/` -- so
-    the orchestrator's queue-file commit after the run does not need a
-    second run; or
-  * everything between the upstream and the tip is documentation, which is
+    tip is prose -- `.md` files outside `.claude/agents/` -- so a README row
+    or a document after the run does not need a second run; or
+  * everything between the upstream and the tip is prose, which is
     `commits.md`'s own exception, unchanged.
+
+A commit and a push in one call are refused outright: the hook runs before
+the call, so it can only vouch for the HEAD it sees, and `git commit && git
+push` would push a commit it never checked.
 
 Otherwise it refuses with exit 2, and its stderr, which goes back to the
 assistant as the tool's result, says to send the suite to `test-runner`.
@@ -49,9 +52,10 @@ HEREDOC = re.compile(
     r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1.*?^\s*\2\s*$",
     re.DOTALL | re.MULTILINE)
 
-#: Where one shell command stops and the next begins. Split on these before
-#: tokenising, because `shlex` treats `push;` as one word.
-SEPARATORS = re.compile(r"\|\||&&|[;&|\n]")
+#: Where one shell command stops and the next begins. `shlex` with
+#: `punctuation_chars` hands these back as their own tokens, so `push;`
+#: is two tokens and a quoted script stays one.
+BOUNDARY = {"&&", "||", "|", ";", "&", "(", ")", "\n"}
 
 #: Shell punctuation glued to a token with no space.
 GLUED = "`(){}[]<>$"
@@ -63,6 +67,11 @@ SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 #: is still a push and `git stash push` is not.
 GIT_OPTIONS_WITH_ARGUMENT = {"-C", "-c", "--git-dir", "--work-tree",
                              "--namespace", "--exec-path"}
+
+#: Git subcommands that move HEAD, so a push in the same call would push a
+#: commit the hook never saw.
+MOVES_HEAD = {"commit", "merge", "rebase", "cherry-pick", "reset",
+              "checkout", "switch", "pull", "am", "revert"}
 
 #: How many recorded markers `verdict` walks, newest first. Older ones are
 #: never the answer, and each costs a `git merge-base`.
@@ -76,15 +85,27 @@ def commands_only(command: str) -> str:
 
 def _tokens(command: str) -> list[str]:
     try:
-        return shlex.split(command, posix=True)
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        return list(lexer)
     except ValueError:
         return command.split()
 
 
-def _is_push_command(tokens: list[str], depth: int) -> bool:
-    """Whether one shell command, already split off, is `git push`."""
-    for i, raw in enumerate(tokens):
-        token = raw.strip(GLUED)
+def subcommands(command: str, depth: int = 0) -> list[str]:
+    """Every git subcommand on the line, in order.
+
+    A plain `git ...` runs one. A shell handed a script (`bash -c '...'`)
+    is looked into and reports everything the script runs.
+    """
+    if depth > 3:
+        return []
+    # A newline separates commands as `;` does, and `shlex` would fold it.
+    tokens = _tokens(commands_only(command).replace("\n", " ; "))
+    found = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i].strip(GLUED)
         base = os.path.basename(token)
         if base == "git":
             j = i + 1
@@ -96,21 +117,39 @@ def _is_push_command(tokens: list[str], depth: int) -> bool:
                     j += 1
                 else:
                     break
-            return j < len(tokens) and tokens[j].strip(GLUED) == "push"
-        if base in SHELLS or base == "eval":
-            return any(is_push(arg, depth + 1) for arg in tokens[i + 1:]
-                       if arg not in ("-c", "-lc", "-ec"))
-    return False
+            if j < len(tokens) and tokens[j] not in BOUNDARY:
+                found.append(tokens[j].strip(GLUED))
+            i = j
+        elif base in SHELLS or base == "eval":
+            j = i + 1
+            while j < len(tokens) and tokens[j] not in BOUNDARY:
+                if tokens[j] not in ("-c", "-lc", "-ec"):
+                    found.extend(subcommands(tokens[j], depth + 1))
+                j += 1
+            i = j
+        else:
+            # An environment assignment, a `cd`, or a non-git command: look
+            # at the next token rather than the next command, so
+            # `GIT_DIR=x git push` is still seen.
+            i += 1
+    return found
 
 
-def is_push(command: str, depth: int = 0) -> bool:
+def is_push(command: str) -> bool:
     """Whether any command on the line is a `git push`."""
-    if depth > 3:
+    return "push" in subcommands(command)
+
+
+def moves_head_first(command: str) -> bool:
+    """Whether a command that moves HEAD runs on the same line as the push.
+
+    The hook runs before the whole call, so it can only vouch for the HEAD it
+    sees; `git commit -m x && git push` would push a commit it never checked.
+    """
+    subs = subcommands(command)
+    if "push" not in subs:
         return False
-    for piece in SEPARATORS.split(commands_only(command)):
-        if piece.strip() and _is_push_command(_tokens(piece), depth):
-            return True
-    return False
+    return any(s in MOVES_HEAD for s in subs[:subs.index("push")])
 
 
 def _git(cwd: str, *args: str) -> str | None:
@@ -125,9 +164,17 @@ def _git(cwd: str, *args: str) -> str | None:
 
 
 def is_code(path: str) -> bool:
-    """A path whose change needs the suite, per commits.md's exception."""
-    return (path.endswith(".py") or path.endswith(".ui")
-            or path.startswith("tests/"))
+    """A path whose change needs the suite.
+
+    commits.md's exception is for prose: a `.md` that no test reads as data.
+    Everything else counts -- `.py`, `.ui`, anything under `tests/`, and
+    also `pyproject.toml`, the hook wiring, and the agent TOML files, which
+    tests read. `.claude/agents/*.md` is the source the TOML is generated
+    from and `tests/test_gencodex.py` checks the two agree, so it counts too.
+    """
+    if not path.endswith(".md"):
+        return True
+    return path.startswith(".claude/agents/")
 
 
 def changed_paths(cwd: str, base: str) -> list[str] | None:
@@ -175,9 +222,10 @@ def verdict(cwd: str) -> str | None:
         f"Refused: no green suite is recorded for {head}. Send the whole "
         "suite to test-runner at this commit; on a green run it writes "
         f"{MARKER_DIR}/{head}.green, and then the push goes through. A "
-        "commit made after the run is fine if it touches no .py, .ui or "
-        "tests/ file; otherwise the run happens again at the new tip. A "
-        "push carrying no .py, .ui or tests/ change needs no run.\n")
+        "commit made after the run is fine if it touches only "
+        "prose .md files; anything else, including pyproject.toml, an agent "
+        "definition or a TOML file, means the run happens again at the new "
+        "tip. A push carrying only prose .md changes needs no run.\n")
 
 
 def main() -> int:
@@ -190,6 +238,12 @@ def main() -> int:
     command = (payload.get("tool_input") or {}).get("command") or ""
     if not is_push(command):
         return 0
+    if moves_head_first(command):
+        sys.stderr.write(
+            "Refused: this call moves HEAD and pushes in one command, so the "
+            "push guard cannot see the commit it would push. Commit in one "
+            "call and push in another.\n")
+        return 2
     cwd = payload.get("cwd") or os.getcwd()
     refusal = verdict(cwd)
     if refusal is None:

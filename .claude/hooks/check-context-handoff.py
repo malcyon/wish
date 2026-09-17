@@ -27,6 +27,12 @@ and run the suite before the push.
 The line is 300,000 tokens; `WISH_HANDOFF_TOKENS` overrides it, for a
 session Donald wants to run longer or a test that wants a smaller number.
 
+`SendMessage` is refused too, because a message to a finished agent gives it
+more work without a launch, and once refused a session stays refused, by an
+empty file under `work/handoff/`, so a compaction that brings the measured
+context back under the line does not turn the wind-down back into a working
+session.
+
 **This is a tripwire, not a boundary.** It measures the context at the last
 completed turn, not the current one; the refusal itself and the turns that
 wind down still cost their full context each; and a session with no
@@ -40,9 +46,15 @@ import sys
 
 DEFAULT_LIMIT = 300_000
 
-#: Only tools that start a subagent are refused. Claude Code names the tool
-#: `Agent` today and named it `Task` before that.
-SPAWN_TOOLS = {"Agent", "Task"}
+#: Tools that give a subagent work. Claude Code names the launcher `Agent`
+#: today and named it `Task` before that; `SendMessage` resumes a finished
+#: agent with more work, which is a launch by another door.
+SPAWN_TOOLS = {"Agent", "Task", "SendMessage"}
+
+#: Once a session has been refused, it stays refused: a compaction can bring
+#: the measured context back under the line, and the wind-down must not turn
+#: back into a working session because of it. One empty file per session.
+STICKY_DIR = os.path.join("work", "handoff")
 
 #: The wind-down needs these two: the review of the last commits and the one
 #: suite run before the push. Everything else is new work.
@@ -109,16 +121,33 @@ def last_context(path: str) -> int | None:
     return None
 
 
-def refusal(tokens: int, cap: int) -> str:
+def refusal(tokens: int, cap: int, resumed: bool = False,
+            already: bool = False) -> str:
+    if already:
+        head = ("Refused: this session is winding down; it passed the "
+                f"{cap:,} hand-off line earlier and stays past it. ")
+    else:
+        head = (f"Refused: this session's context is {tokens:,} tokens, past "
+                f"the {cap:,} hand-off line in "
+                ".claude/skills/orchestrate/SKILL.md. Every turn resends all "
+                "of it. ")
+    what = ("A message to a finished agent is new work by another door. "
+            if resumed else "")
     return (
-        f"Refused: this session's context is {tokens:,} tokens, past the "
-        f"{cap:,} hand-off line in .claude/skills/orchestrate/SKILL.md. "
-        "Every turn resends all of it. Launch no new work. Let the agents "
+        head + what +
+        "Launch no new work and resume no finished agent. Let the agents "
         "already in flight report, commit their work, run code-reviewer and "
         "test-runner (both are still allowed), push, stop the loop with "
-        "ScheduleWakeup stop:true, and tell Donald to "
-        "start a fresh session with /orchestrate. Only code-reviewer and "
-        "test-runner may be launched now.\n")
+        "ScheduleWakeup stop:true, and tell Donald to start a fresh session "
+        "with /orchestrate.\n")
+
+
+def sticky_path(payload: dict) -> str | None:
+    session = payload.get("session_id")
+    cwd = payload.get("cwd") or os.getcwd()
+    if not session:
+        return None
+    return os.path.join(cwd, STICKY_DIR, str(session))
 
 
 def main() -> int:
@@ -126,19 +155,31 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except ValueError:
         return 0
-    if payload.get("tool_name") not in SPAWN_TOOLS:
+    tool = payload.get("tool_name")
+    if tool not in SPAWN_TOOLS:
         return 0
     agent = (payload.get("tool_input") or {}).get("subagent_type", "")
-    if agent in ALLOWED_PAST_THE_LINE:
+    if tool != "SendMessage" and agent in ALLOWED_PAST_THE_LINE:
         return 0
+    sticky = sticky_path(payload)
+    cap = limit()
+    if sticky and os.path.exists(sticky):
+        sys.stderr.write(refusal(cap, cap, resumed=(tool == "SendMessage"),
+                                 already=True))
+        return 2
     path = payload.get("transcript_path")
     if not path:
         return 0
     tokens = last_context(path)
-    cap = limit()
     if tokens is None or tokens < cap:
         return 0
-    sys.stderr.write(refusal(tokens, cap))
+    if sticky:
+        try:
+            os.makedirs(os.path.dirname(sticky), exist_ok=True)
+            open(sticky, "a").close()
+        except OSError:
+            pass
+    sys.stderr.write(refusal(tokens, cap, resumed=(tool == "SendMessage")))
     return 2
 
 

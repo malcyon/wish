@@ -144,12 +144,15 @@ straight out.
 `closes #N` leaves its issue open while everything looks finished. Push in the
 batches the reviews land in.
 
-**The push is refused until the run is recorded.** `test-runner` writes
-`work/testrun/<sha>.green` after a green whole-suite run at that commit, and
-`.claude/hooks/check-push-tested.py` refuses a `git push` carrying a `.py`,
-`.ui` or `tests/` change with no marker for the tip, or for an ancestor with
-only documentation between it and the tip. The documentation-only exception
-above is unchanged: a push carrying no code needs no marker. On 2026-09-16
+**The push is refused until the run is recorded.** `tools/suiterun.py`
+writes `work/testrun/<sha>.green` after a green whole-suite run at that
+commit, and `.claude/hooks/check-push-tested.py` refuses a `git push` with no
+marker for the tip, or for an ancestor with only prose between it and the
+tip. Prose means `.md` files outside `.claude/agents/`; `pyproject.toml`, a
+TOML agent profile and the hook wiring are read by tests and count as code.
+A commit and a push in one call are refused outright, because the hook can
+only vouch for the HEAD it sees. The documentation-only exception above is
+otherwise unchanged: a push carrying only prose needs no marker. On 2026-09-16
 the rule alone let eighteen pushes out with one run, and the batch that
 closed `#89` turned `main` red on a test nobody in scope had run.
 
