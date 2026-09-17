@@ -1143,8 +1143,12 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     trainer is fully measured (`#18 (Measure Curse's trainer so Level Up
     works there)`, `#415 (automap/window.py picks the level-up spell
     dialog's class the same wrong way plan would have, blocking Curse's
-    trainer)`), so it is asserted offered below alongside Pool of Radiance,
-    and Silver Blades takes over as the still-refused example."""
+    trainer)`), so it is asserted offered below alongside Pool of Radiance.
+    Silver Blades took over as the still-refused example and is not one any
+    more either -- its trainer is measured too (`#89 (Silver Blades' trainer
+    grants spells from a table, and goldbox/levelup.py offers them from a
+    menu)`) -- so Champions of Krynn, which has no level tables of its own
+    at all, is the refused example now."""
     from PyQt6.QtWidgets import QMainWindow
 
     from automap.state import Automapper
@@ -1167,12 +1171,12 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     # before its trainer was measured -- and both are offered now.
     assert curse.fasttravel_bar.has_areas
 
-    silverblades = AutomapBinding(root,
+    krynn = AutomapBinding(root,
         Automapper(MemoryTarget({}), {},
-                   title="Secret of the Silver Blades"))
-    assert not silverblades.roster.levelling
+                   title="Champions of Krynn"))
+    assert not krynn.roster.levelling
     # Cards built after the fact are told too -- they are made on demand.
-    card = silverblades.roster.cards[0]
+    card = krynn.roster.cards[0]
     assert not card.levelling
 
 
