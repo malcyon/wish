@@ -413,6 +413,11 @@ def main(argv=None) -> int:
             log.say(f"wounded {len(occupied)} character(s) down to {args.hp} "
                     "hit point(s) each")
         else:
+            # A fresh read, like the branch above: `page` above was taken in
+            # town, before the walk into the ambush and before `settle(2)`, so
+            # logging it here would report the party as it stood before the
+            # orcs had touched it.
+            page = roster_page(sess)
             log.emit("wounded", slots=[], hp=None, status=statuses(page),
                      current=hitpoints(page))
             log.say("  --no-wound: nothing written, the orcs do it")

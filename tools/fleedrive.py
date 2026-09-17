@@ -464,8 +464,9 @@ class Flight:
         whether `COMBAT`'s own `GOT AWAY`/`FAILED` showed up (either would mean
         a flee attempt was made, which is the YES behaviour), and what
         `combat_state` reads afterward.  Comparing the `cancel` and `no`
-        entries is what answers the question -- the same shape of change on
-        both is what "reads as NO" means.
+        entries is what answers the question: if cancel reads as NO, then
+        neither press produces `GOT AWAY` or `FAILED`, and both leave the bar
+        and `combat_state` the same way.
         """
         before = sess.combat_state().text
         if kind == "cancel":
