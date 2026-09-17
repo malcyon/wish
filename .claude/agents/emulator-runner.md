@@ -55,6 +55,17 @@ deliverable named in the brief exists rather than sweeping for anything else.
 read the result. The project's own drivers exist for exactly this, and
 `.claude/rules/scratch.md` wants the sequence committed as a tool anyway.
 
+## A run has a budget
+
+Extend the driver once, run it, and read the result. If the second boot ends
+at the same step as the first, or the session passes an hour of wall clock,
+stop: hand back the evidence on disk, the driver diff, which step each boot
+reached, and what the next attempt would change. Do not launch a third boot.
+On 2026-09-16 a session on #10 made eight boots and eighteen edits to
+`tools/testpartyrun.py` in two hours forty minutes, and the root could not see
+any of it. Stopping at the budget is a success; the root decides what the next
+boot is for.
+
 ## Backgrounding strands you, not just the command
 
 The Bash tool has its own `timeout` parameter (milliseconds, default 120000,
