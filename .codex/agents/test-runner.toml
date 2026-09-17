@@ -50,6 +50,23 @@ exact committed result.
 **Remove the worktree even when the run fails.** A worktree left behind is one
 the next run trips over.
 
+## The marker, and it is the one file you write
+
+When the whole suite, `ruff` and `genui.py --check` are all green at the
+target SHA, record it:
+
+```sh
+mkdir -p work/testrun
+echo "6724 passed, 39 skipped" > "work/testrun/$SHA.green"
+```
+
+Run from the main tree, with pytest's own summary line as the contents.
+`.claude/hooks/check-push-tested.py` refuses a `git push` that has no such
+marker for the tip, or for an ancestor with only documentation between it
+and the tip, so this file is what lets the push through. **Never write it
+after a failure, and a scoped run writes nothing.** `work/` is gitignored,
+so the marker never enters a commit.
+
 ## Run in the foreground, always
 
 `pytest -q` is already parallel: `-n auto --dist loadgroup` lives in
@@ -106,7 +123,8 @@ timestamp in it). Say so if you see one rather than diagnosing it.
 * **You do not fix anything.** You report. Diagnosing a failure is somebody
   else's work and usually a different agent's; guessing at a cause in your
   report is worse than saying "not diagnosed".
-* **You do not edit, stage, commit or push.** Ever.
+* **You do not edit, stage, commit or push.** Ever. The green marker under
+  `work/testrun/` is the one file you write, and it is not in the tree.
 * **You never run `git checkout`, `git restore`, `git reset`, `git stash` or
   `git clean`** against a file in this tree. Several agents share it and a
   revert silently discards whatever anybody else has uncommitted. `git
