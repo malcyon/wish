@@ -63,7 +63,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import amiga_dax, amiga_por, amiga_savegame, c64_port  # noqa: E402
+from goldbox import amiga_dax, amiga_savegame, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools import amigasaves, eclcensus, gamedisks  # noqa: E402
 
@@ -146,7 +146,7 @@ def amiga_corpus() -> "list[tuple[str, bytes]]":
             if "savgam" not in path.lower():
                 continue
             data = disk.read_file(path)
-            if len(data) != amiga_por.POR_SAVEGAME_SIZE:
+            if len(data) != amiga_savegame.POR_SAVEGAME_SIZE:
                 continue
             found.setdefault(hashlib.md5(data).hexdigest(),
                              (f"{image.parent.name}{path}", data))

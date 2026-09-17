@@ -430,10 +430,30 @@ picker)`. A fourth per-title difference.
 
   The ten saved games of the 2026-09-05 census, all in New Phlan, gave 92.
   Two more areas found sixteen more live words, so **read "zero in every Amiga
-  saved game here" as "in three areas of 29"**. One engine-written saved game
-  from Valjevo Castle or the Temple of Bane, swept the same way, is what
-  narrows it: no new non-zero word makes the argument much stronger, and ten
-  new ones are ten words the writer is zeroing for no measured reason.
+  saved game here" as "in three areas of 29"**.
+
+  Two more areas have since been added: `WISH-SPEC-por-446-valjevo-pool`
+  (area 7, Valjevo Castle, the Pool) and `WISH-SPEC-por-446-temple-of-bane`
+  (area 24, Temple of Bane), each staged at the area's own documented
+  arrival square, loaded, walked over a few of the area's own squares, and
+  written back with `ENCAMP > SAVE`. Re-swept, the corpus is **24 distinct
+  saved games standing in five areas -- 0 (New Phlan), 7, 20 (The Slums), 24
+  and 26 (a wilderness window) -- and 120 of the 2560 words are non-zero in
+  at least one of the 24**, up from 108 across 19 across three areas.
+  **Neither of the two new saved games turned up a new non-zero word among
+  the ones this measurement was hunting.**
+
+  That is the two-reasons-versus-one-reason split
+  `#446 (The Amiga saved game's zero argument rests on three of the game's
+  twenty-nine areas)` settles: `goldbox.amiga_savegame.POR_SAVGAM_UNVISITED`
+  now names every word the catch-all sweep's argument does not actually
+  cover -- one whose only writer is an area's own script -- and says, per
+  word, whether that area still has no saved game at all (weaker than the
+  sweep's claim) or whether a saved game now exists from inside it and
+  still reads zero there (stronger than the sweep's claim, because the
+  specific write had a real chance to fire and left no trace). Everything
+  else in the 2560 words is still zeroed on the strength of the sweep
+  alone. Re-take with `tools/amigazerowords.py`.
 
 **Amiga Silver Blades past its party menu is no longer open.**
 `tools/amigabladesjournal.py` answers the `BEGIN ADVENTURING` prompt and the

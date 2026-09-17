@@ -1126,6 +1126,134 @@ POR_SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
      "save is still holding `YOU HAVE SURPRISED A PARTY OF  ORCS.`"),
 )
 
+#: Words the catch-all sweep's argument does not cover: no Amiga saved game
+#: read here is non-zero in them, and every script that writes one belongs to
+#: an area named below, in the game's own area numbering (the `$49F2` word,
+#: not the `$5012` container id).  For most of these rows that area is one no
+#: saved game here comes from at all, which is what the reason string below
+#: says.
+#:
+#: Two groups are the exception, and their reason says something different.
+#: `WISH-SPEC-por-446-valjevo-pool` and `WISH-SPEC-por-446-temple-of-bane`
+#: are saved games taken **inside** area 7 (Valjevo Castle, the Pool) and
+#: area 24 (Temple of Bane) -- each staged at that area's own documented
+#: arrival square, loaded, walked over a few of the area's own squares, and
+#: written back with `ENCAMP > SAVE` -- and every word below that only their
+#: scripts write still reads zero in both.  That is stronger evidence for the
+#: sweep's zero claim than "unvisited", not weaker: the specific write these
+#: rows describe had a real chance to fire and left no trace
+#: (`#446 (The Amiga saved game's zero argument rests on three of the game's
+#: twenty-nine areas)`).  Re-take with `tools/amigazerowords.py`.
+POR_SAVGAM_UNVISITED: tuple[tuple[int, int, str], ...] = (
+    (0x4D01, 1,
+     "zeroed: no Amiga saved game here holds anything in this word, and "
+     "the only script that writes it belongs to area 9 (Stojanow Gate), "
+     "which no saved game here comes from. That is weaker than the sweep's "
+     "claim and #446 is where it is measured; `tools/amigazerowords.py` "
+     "re-takes it."),
+    (0x4D20, 1,
+     "zeroed: no Amiga saved game here holds anything in this word, and "
+     "the only script that writes it belongs to area 14 (Kovel Mansion), "
+     "which no saved game here comes from. That is weaker than the sweep's "
+     "claim and #446 is where it is measured; `tools/amigazerowords.py` "
+     "re-takes it."),
+    (0x4D32, 1,
+     "zeroed: no Amiga saved game here holds anything in this word, and "
+     "the only script that writes it belongs to area 19 (Cave of "
+     "Diogenes), which no saved game here comes from. That is weaker than "
+     "the sweep's claim and #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x4FC2, 1,
+     "zeroed: the only script that writes this word belongs to area 7 "
+     "(Valjevo Castle, the Pool). A saved game now exists from inside "
+     "that area -- `WISH-SPEC-por-446-valjevo-pool`, staged at the area's "
+     "own arrival square, loaded and walked over a few of its own squares "
+     "before `ENCAMP > SAVE` -- and it still reads zero here. That is "
+     "stronger evidence for the sweep's zero claim than an unvisited area "
+     "would give, not weaker: the write this word describes had a real "
+     "chance to fire and left no trace. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x4FC3, 1,
+     "zeroed: the only script that writes this word belongs to area 7 "
+     "(Valjevo Castle, the Pool). A saved game now exists from inside "
+     "that area -- `WISH-SPEC-por-446-valjevo-pool`, staged at the area's "
+     "own arrival square, loaded and walked over a few of its own squares "
+     "before `ENCAMP > SAVE` -- and it still reads zero here. That is "
+     "stronger evidence for the sweep's zero claim than an unvisited area "
+     "would give, not weaker: the write this word describes had a real "
+     "chance to fire and left no trace. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x4FC7, 1,
+     "zeroed: no Amiga saved game here holds anything in this word, and "
+     "the only scripts that write it belong to areas 3, 4, 5, 6 (Valjevo "
+     "Castle) and 9 (Stojanow Gate), none of which any saved game here "
+     "comes from. That is weaker than the sweep's claim and #446 is where "
+     "it is measured; `tools/amigazerowords.py` re-takes it."),
+    (0x5071, 1,
+     "zeroed: no Amiga saved game here holds anything in this word, and "
+     "the only scripts that write it belong to areas 3 (Valjevo Castle), "
+     "13 (The Kobold Caves) and 16 (The Lizardman Keep), none of which "
+     "any saved game here comes from. That is weaker than the sweep's "
+     "claim and #446 is where it is measured; `tools/amigazerowords.py` "
+     "re-takes it."),
+    (0x5072, 1,
+     "zeroed: no Amiga saved game here holds anything in this word, and "
+     "the only scripts that write it belong to areas 13 (The Kobold "
+     "Caves) and 16 (The Lizardman Keep), neither of which any saved game "
+     "here comes from. That is weaker than the sweep's claim and #446 is "
+     "where it is measured; `tools/amigazerowords.py` re-takes it."),
+    (0x5210, 1,
+     "zeroed: the scripts that write this word belong to area 24 (Temple "
+     "of Bane) and area 29 (Kuto's Well). A saved game now exists from "
+     "inside the Temple of Bane -- `WISH-SPEC-por-446-temple-of-bane`, "
+     "staged at the area's own arrival square, loaded and walked over a "
+     "few of its own squares before `ENCAMP > SAVE` -- and it still reads "
+     "zero here; Kuto's Well is still an area no saved game here comes "
+     "from. That is stronger evidence for the sweep's zero claim from the "
+     "area now measured, not weaker. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x5211, 1,
+     "zeroed: the only script that writes this word belongs to area 24 "
+     "(Temple of Bane). A saved game now exists from inside that area -- "
+     "`WISH-SPEC-por-446-temple-of-bane`, staged at the area's own "
+     "arrival square, loaded and walked over a few of its own squares "
+     "before `ENCAMP > SAVE` -- and it still reads zero here. That is "
+     "stronger evidence for the sweep's zero claim than an unvisited area "
+     "would give, not weaker: the write this word describes had a real "
+     "chance to fire and left no trace. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x5216, 1,
+     "zeroed: the only script that writes this word belongs to area 24 "
+     "(Temple of Bane). A saved game now exists from inside that area -- "
+     "`WISH-SPEC-por-446-temple-of-bane`, staged at the area's own "
+     "arrival square, loaded and walked over a few of its own squares "
+     "before `ENCAMP > SAVE` -- and it still reads zero here. That is "
+     "stronger evidence for the sweep's zero claim than an unvisited area "
+     "would give, not weaker: the write this word describes had a real "
+     "chance to fire and left no trace. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x5218, 7,
+     "zeroed: the only script that writes these words belongs to area 24 "
+     "(Temple of Bane). A saved game now exists from inside that area -- "
+     "`WISH-SPEC-por-446-temple-of-bane`, staged at the area's own "
+     "arrival square, loaded and walked over a few of its own squares "
+     "before `ENCAMP > SAVE` -- and they still read zero here. That is "
+     "stronger evidence for the sweep's zero claim than an unvisited area "
+     "would give, not weaker: the writes these words describe had a real "
+     "chance to fire and left no trace. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+    (0x5222, 4,
+     "zeroed: the only script that writes these words belongs to area 24 "
+     "(Temple of Bane). A saved game now exists from inside that area -- "
+     "`WISH-SPEC-por-446-temple-of-bane`, staged at the area's own "
+     "arrival square, loaded and walked over a few of its own squares "
+     "before `ENCAMP > SAVE` -- and they still read zero here. That is "
+     "stronger evidence for the sweep's zero claim than an unvisited area "
+     "would give, not weaker: the writes these words describe had a real "
+     "chance to fire and left no trace. #446 is where it is measured; "
+     "`tools/amigazerowords.py` re-takes it."),
+)
+
 #: The 32 bytes of heap after each of the eight names in the character table.
 #: Written zero, and the same 274 bytes DOS zeroes: display scratch, and the
 #: evidence is what is in them -- the engine's own menu words, and the ten
@@ -1403,6 +1531,8 @@ def por_savegame_zeroes(save: bytearray, report: PorSaveReport) -> None:
     """Account for every byte :func:`por_savegame_writes` left zero."""
     for address, words, why in POR_SAVGAM_UNSOURCED:
         _por_note_word(report, address, words, f"zeroed -- {why}")
+    for address, words, why in POR_SAVGAM_UNVISITED:
+        _por_note_word(report, address, words, why)
     rest = [i for i in range(POR_VAR_OFFSET,
                              POR_VAR_OFFSET + 2 * POR_VAR_WORDS)
             if i not in report.sources]
