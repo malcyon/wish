@@ -39,7 +39,7 @@ You are the orchestrator for this session. You never run anything yourself: no t
 
 ## Keeping the queue file current
 
-Rewrite the row's status column whenever an issue starts, reports, is committed, or closes, and add a row for anything filed. Commit the file with each push, in the same batch, with the message "Update the orchestrator queue".
+Rewrite the row's status column whenever an issue starts, reports, is committed, or closes, and add a row for anything filed. Do not commit it each time you edit it. It goes in one commit per push, made immediately before that push and only if the file changed, with the message "Update the orchestrator queue"; and only the queue file goes in that commit, so run `git diff --cached --name-only` first and unstage anything else. Seven queue commits in a row with no work between them is the failure this paragraph exists to prevent.
 
 ## Handing off
 
