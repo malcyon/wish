@@ -202,9 +202,12 @@ def test_the_creatures_that_refuse_the_pool_of_radiance_names():
     """The ten refused codes, read straight off the 70 `MON*` templates:
     each lands on a creature the *Monster Manual* power `NAMES` gives that
     number cannot have."""
+    root = gamedisks.find(CURSE.key)
+    if root is None:
+        pytest.skip("no Curse of the Azure Bonds disks on this machine")
     carriers: dict[int, set[str]] = {}
     seen: set[str] = set()
-    for path in sorted(gamedisks.find(CURSE.key).glob(CURSE.disk_glob)):
+    for path in sorted(root.glob(CURSE.disk_glob)):
         image = D64.open(str(path))
         for entry in image.directory():
             name = bytes(entry.name).decode("latin-1")
@@ -240,8 +243,11 @@ def test_the_creatures_that_refuse_the_pool_of_radiance_names():
 
 
 def test_curse_only_codes_carried_by_a_creature_names_never_names():
+    root = gamedisks.find(CURSE.key)
+    if root is None:
+        pytest.skip("no Curse of the Azure Bonds disks on this machine")
     carriers: set[int] = set()
-    for path in sorted(gamedisks.find(CURSE.key).glob(CURSE.disk_glob)):
+    for path in sorted(root.glob(CURSE.disk_glob)):
         image = D64.open(str(path))
         for entry in image.directory():
             name = bytes(entry.name).decode("latin-1")
