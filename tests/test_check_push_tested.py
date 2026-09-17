@@ -91,10 +91,10 @@ def test_a_marker_for_the_tip_lets_it_through(clone, monkeypatch):
 
 
 def test_a_documentation_commit_on_top_of_a_tested_one_needs_no_second_run(clone, monkeypatch):
-    """The orchestrator commits its queue file after the run, and that is fine."""
+    """A README row or a doc after the run does not need the suite again."""
     tested = commit(clone, "mod.py")
     mark(clone, tested)
-    commit(clone, ".claude/orchestrator-queue.md")
+    commit(clone, "tools/README.md")
     assert run(monkeypatch, "git push", clone) == 0
 
 

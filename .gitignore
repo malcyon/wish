@@ -241,6 +241,7 @@ gamedisks.local.toml
 !.agents/skills/
 .agents/skills/*
 !.agents/skills/caveman/
+!.agents/skills/orchestrate/
 # The subagent definitions, the standards under `rules/`, the hooks and the
 # project settings are the project's, not one machine's; everything else under
 # `.claude/` is local state. The hooks are tracked because an untracked tool is

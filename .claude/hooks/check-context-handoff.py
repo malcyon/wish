@@ -115,8 +115,8 @@ def refusal(tokens: int, cap: int) -> str:
         f"{cap:,} hand-off line in .claude/skills/orchestrate/SKILL.md. "
         "Every turn resends all of it. Launch no new work. Let the agents "
         "already in flight report, commit their work, run code-reviewer and "
-        "test-runner (both are still allowed), push, commit the queue file, "
-        "stop the loop with ScheduleWakeup stop:true, and tell Donald to "
+        "test-runner (both are still allowed), push, stop the loop with "
+        "ScheduleWakeup stop:true, and tell Donald to "
         "start a fresh session with /orchestrate. Only code-reviewer and "
         "test-runner may be launched now.\n")
 
