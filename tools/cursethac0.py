@@ -426,12 +426,12 @@ class Run:
         if accept:
             for word in ACCEPT:
                 if word in row.split():
-                    self.sess.press_bar(word, timeout=10)
+                    self.sess.select_bar(word, timeout=10)
                     self.log("accepted", word=word, was=row, now=self.row24())
                     return word
         for word in DISMISS:
             if word in row.split():
-                self.sess.press_bar(word, timeout=10)
+                self.sess.select_bar(word, timeout=10)
                 self.log("dismissed", word=word, was=row, now=self.row24())
                 return word
         if "PRESS" in row.split():
@@ -457,7 +457,7 @@ class Run:
             rows = [r.rstrip() for r in self.dump(f"turn-{turn:02d}")]
             said = [r.strip() for r in rows
                     if "HIT" in r or "MISS" in r or "DAMAGE" in r]
-            pressed = self.sess.press_bar("QUICK", timeout=15.0)
+            pressed = self.sess.select_bar("QUICK", timeout=15.0)
             self.sess.settle(3.0)
             after = [r.strip() for r in self.sess_rows()
                      if "HIT" in r or "MISS" in r or "DAMAGE" in r]
@@ -709,11 +709,14 @@ def drive(args) -> int:
         run.reading("arrived")
 
         # The tavern's script draws a **bar**, not a menu of rows:
-        # `PUNCH BARKEEP  HAVE A DRINK  LEAVE`.  `CurseSession.press_bar`
+        # `PUNCH BARKEEP  HAVE A DRINK  LEAVE`.  `Session.select_bar`
         # walks the highlight and presses whichever Return the screen reads.
+        # It is on every session type, `SSBSession` included, where
+        # `CurseSession.press_bar` -- the name every call site used to use --
+        # was not (`#569`).
         if args.punch and not run.in_combat():
             for word in args.punch.split("/"):
-                pressed = sess.press_bar(word, timeout=20.0)
+                pressed = sess.select_bar(word, timeout=20.0)
                 sess.settle(3.0)
                 run.log("script", word=word, pressed=pressed,
                         row24=run.row24())
@@ -738,13 +741,13 @@ def drive(args) -> int:
         # the number the fight is using can be read as a person reads it and
         # not only off the roster page.
         if run.in_combat() and args.view_in_fight:
-            pressed = sess.press_bar("VIEW", timeout=20.0)
+            pressed = sess.select_bar("VIEW", timeout=20.0)
             sess.settle(4.0)
             rows = run.dump("sheet-in-the-fight")
             run.log("sheet", when="in-the-fight", pressed=pressed,
                     who=rows[2].strip(" $*<>|").strip(),
                     **sheet_numbers([r.strip() for r in rows if r.strip()]))
-            sess.press_bar("EXIT", timeout=15.0)
+            sess.select_bar("EXIT", timeout=15.0)
             sess.settle(3.0)
 
         if run.in_combat() and args.quick:

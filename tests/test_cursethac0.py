@@ -203,13 +203,19 @@ def test_staging_experience_is_a_third_byte_range_and_nothing_else():
 # either -- both of those are pure row-24 decisions and need no machine.
 
 class FakeCombatSess:
-    """Just enough of `CurseSession` for `clear_bar` to drive."""
+    """Just enough of `Session` for `clear_bar` to drive.
+
+    `clear_bar` calls `select_bar`, which every session type has --
+    `CurseSession.press_bar` was only ever a thin wrapper around it, and
+    `#569` found `clear_bar` calling that wrapper by name, which
+    `SSBSession` does not carry.
+    """
 
     def __init__(self):
         self.pressed: list[str] = []
         self.kernal: list[int] = []
 
-    def press_bar(self, label, row=24, timeout=30.0):
+    def select_bar(self, label, row=24, timeout=30.0):
         self.pressed.append(label)
         return True
 
@@ -301,3 +307,30 @@ def test_clear_bar_does_nothing_once_a_fight_has_started():
     run = FakeCombatRun("SHOP: YES NO", in_combat=True)
     assert run.clear_bar(accept=True) is None
     assert run.sess.pressed == []
+
+
+def test_clear_bar_reaches_a_script_bar_on_a_session_with_no_press_bar():
+    """`tools/laterbattle.py --title ssb` crashed here (`#569`).
+
+    `SSBSession` (`tools/ssbwarp.py`) carries no `press_bar` -- only
+    `CurseSession` (`tools/curserun.py`) ever did, and it was a thin wrapper
+    around `select_bar`. `clear_bar` used to call `press_bar` by name, so a
+    Silver Blades walk raised `AttributeError` on the first script bar it
+    met. This fake session is built the way `SSBSession` is: `select_bar`
+    only, no `press_bar` at all.
+    """
+
+    class NoPressBarSess:
+        def __init__(self):
+            self.pressed: list[str] = []
+
+        def select_bar(self, label, row=24, timeout=30.0):
+            self.pressed.append(label)
+            return True
+
+    assert not hasattr(NoPressBarSess(), "press_bar")
+
+    run = FakeCombatRun("BASH PICKLOCK QUIT")
+    run.sess = NoPressBarSess()
+    assert run.clear_bar() == "QUIT"
+    assert run.sess.pressed == ["QUIT"]
