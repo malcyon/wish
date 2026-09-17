@@ -41,7 +41,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from goldbox import dos_codec  # noqa: E402
+from goldbox import (
+    dos_codec,  # noqa: E402
+    dos_savegame,  # noqa: E402
+)
 from goldbox import portraits as portrait_tables  # noqa: E402
 from goldbox.c64_port import POOL_OF_RADIANCE  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
@@ -57,14 +60,6 @@ from tools import portraitshot as shot  # noqa: E402
 #: sheet has no route off it either, so `--first` is how the other five are
 #: reached.
 NEXT = "n"
-
-#: The party, in marching order, inside `SAVGAM<slot>.DAT`: six 41-byte
-#: entries from file offset 12809, each a length byte and the record's
-#: filename.  The engine loads whoever is named here rather than whatever
-#: `CHRDAT<slot><n>.SAV` files exist, which is what makes `--first` a
-#: reordering of the party and not a rewrite of anybody's record.
-PARTY_AT = 12809
-PARTY_STRIDE = 41
 
 
 def records(save_dir: pathlib.Path, slot: str) -> list[dict]:
@@ -99,19 +94,17 @@ def put_first(save_dir: pathlib.Path, slot: str, index: int) -> list[str]:
     the six 285-byte files are exactly what the conversion wrote, and the only
     difference between one run and the next is which of them the engine loads
     first.  It is the same reordering a player makes in camp.
+
+    The swap itself is `goldbox.dos_savegame.swap_party_entries`, addressed
+    through the save's own `party_table` rather than a hardcoded offset --
+    Pool of Radiance's is 12809, Curse's is twelve bytes further in, and this
+    tool used to hardcode the former (#555).
     """
     path = save_dir / f"SAVGAM{slot}.DAT"
     data = bytearray(path.read_bytes())
-
-    def entry(n: int) -> slice:
-        return slice(PARTY_AT + n * PARTY_STRIDE,
-                     PARTY_AT + (n + 1) * PARTY_STRIDE)
-
-    first, other = bytes(data[entry(0)]), bytes(data[entry(index)])
-    data[entry(0)], data[entry(index)] = other, first
+    dos_savegame.swap_party_entries(data, 0, index)
     path.write_bytes(bytes(data))
-    return [bytes(data[entry(n)][1:1 + data[entry(n)][0]]).decode("latin1")
-            for n in range(6)]
+    return dos_savegame.character_files(bytes(data))
 
 
 def expected(rows: list[dict], tables) -> list[dict]:

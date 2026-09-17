@@ -235,6 +235,74 @@ def test_the_party_filenames_are_rewritten_for_the_slot():
         f"CHRDATC{n}" for n in range(1, 7)]
 
 
+def test_swap_party_entries_reorders_two_slots_and_touches_nothing_else():
+    """#555: the marching-order swap the driving harness needs.
+
+    Everything outside the two 41-byte entries stays byte for byte -- the
+    only thing that changed is which of the six the engine loads first.
+    """
+    save = blank()
+    sg.put_character_files(save, "A")
+    before = bytes(save)
+    sg.swap_party_entries(save, 0, 4)
+    after = bytes(save)
+    assert sg.character_files(after) == [
+        "CHRDATA5", "CHRDATA2", "CHRDATA3", "CHRDATA4",
+        "CHRDATA1", "CHRDATA6"]
+    at = sg.PARTY_TABLE
+    changed = slice(at, at + 5 * sg.PARTY_ENTRY)
+    assert before[:at] == after[:at]
+    assert before[changed.stop:] == after[changed.stop:]
+    assert before[changed] != after[changed]
+
+
+def test_swap_party_entries_on_a_curse_sized_buffer_uses_curses_own_offset():
+    """The regression test for the hardcoded Pool of Radiance offset.
+
+    Curse's party table starts twelve bytes later than Pool of Radiance's
+    (`SAVE_CURSE_OF_THE_AZURE_BONDS.unnamed`).  A swap addressed at the
+    Pool of Radiance offset -- `tools/dosportraitparty.py`'s old
+    `PARTY_AT = 12809` -- lands twelve bytes short of the real table, so it
+    swaps only the last 29 of each entry's 41 bytes and leaves the first 12
+    of the *next* entry untouched: not a swap at all, but two entries each
+    carrying 29 bytes of the other and 12 of a neighbour. Filling every
+    entry with a distinct byte throughout its own 41 bytes is what makes
+    that partial swap visible -- `put_character_files` alone leaves the
+    scratch tail zero in both entries, which hides the misalignment.
+    """
+    curse = sg.SAVE_CURSE_OF_THE_AZURE_BONDS
+    assert curse.party_table == sg.PARTY_TABLE + 12
+    save = bytearray(curse.size)
+    at = curse.party_table
+    for n in range(6):
+        save[at + n * sg.PARTY_ENTRY:at + (n + 1) * sg.PARTY_ENTRY] = (
+            bytes([n + 1]) * sg.PARTY_ENTRY)
+
+    def wrong_offset_swap(data: bytearray, i: int, j: int) -> None:
+        wrong_at = sg.PARTY_TABLE  # the Pool of Radiance offset, hardcoded
+
+        def entry(n: int) -> slice:
+            start = wrong_at + n * sg.PARTY_ENTRY
+            return slice(start, start + sg.PARTY_ENTRY)
+        data[entry(i)], data[entry(j)] = (bytes(data[entry(j)]),
+                                          bytes(data[entry(i)]))
+
+    wrong = bytearray(save)
+    wrong_offset_swap(wrong, 0, 4)
+    assert bytes(wrong[at:at + sg.PARTY_ENTRY]) != bytes([5]) * sg.PARTY_ENTRY, (
+        "the wrong offset should not produce a clean swap")
+
+    right = bytearray(save)
+    sg.swap_party_entries(right, 0, 4, curse)
+    assert bytes(right[at:at + sg.PARTY_ENTRY]) == bytes([5]) * sg.PARTY_ENTRY
+    assert bytes(right[at + 4 * sg.PARTY_ENTRY:
+                       at + 5 * sg.PARTY_ENTRY]) == bytes([1]) * sg.PARTY_ENTRY
+    for n in (1, 2, 3, 5):
+        start = at + n * sg.PARTY_ENTRY
+        assert bytes(right[start:start + sg.PARTY_ENTRY]) == (
+            bytes([n + 1]) * sg.PARTY_ENTRY)
+
+
 def test_the_wall_map_marks_the_slots_the_triple_fills():
     assert sg.wall_map((2, 4, 1)) == (1, 2, 3)
     assert sg.wall_map((0, sg.EMPTY, sg.EMPTY)) == (1, sg.EMPTY, sg.EMPTY)

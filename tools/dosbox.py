@@ -340,6 +340,43 @@ class Screen:
         )
         return hashlib.sha1(bits).hexdigest()[:16]
 
+    def highlight_row(self, rect: tuple[int, int, int, int],
+                      row_height: int = 8, floor: int = 10) -> int | None:
+        """Which 8px-high row of `rect` the game has drawn in reverse video.
+
+        #555: DOS Curse's generic list menu (`PICK A SPELL TO MEMORIZE`,
+        Curse's roster) highlights its selected line in near-white against a
+        paper of another colour, one row to an 8px band. Counting
+        near-white pixels per band and returning the band with the most is
+        how the highlight is read rather than assumed -- measured against
+        `PALADIN'S SPELLS IN GRIMOIRE`, where 186-394 pixels lit the
+        highlighted row and 0 lit every other one, so `floor` only refuses a
+        rectangle carrying no highlight at all rather than discriminating
+        between rows.
+
+        `rect` should stay clear of a list's own border columns: reading the
+        full frame width picked up border noise that read as a highlight
+        where there was none (`work/issue555/highlight-findings.md`).
+
+        Returns the row's index within `rect` (0 at its top), or `None` when
+        no band clears `floor` -- the caller's signal that the list is not
+        showing a highlight at all, which must not be misread as "found row
+        0".
+        """
+        x, y, w, h = rect
+        best_row, best_count = None, floor - 1
+        for row in range(h // row_height):
+            top = y + row * row_height
+            count = 0
+            px = self.rows((x, top, w, row_height))
+            for i in range(0, len(px), 3):
+                r, g, b = px[i], px[i + 1], px[i + 2]
+                if r > 200 and g > 200 and b > 200:
+                    count += 1
+            if count > best_count:
+                best_row, best_count = row, count
+        return best_row
+
 
 # --------------------------------------------------------------------------
 # Which window is ours, and whether anything is in it
@@ -454,6 +491,29 @@ def window_pid(wid: str, env: dict[str, str]) -> int | None:
     out = subprocess.run(["xdotool", "getwindowpid", wid],
                          env=env, capture_output=True).stdout.strip()
     return int(out) if out.isdigit() else None
+
+
+#: The DOS engine's generic list menu protocol, one copy rather than a
+#: private guess in each of `tools/dosaddchar.py`, `tools/dosparty.py`,
+#: `tools/dosgnome.py`, `tools/dosladder.py` and `tools/curseregain.py`
+#: (#555). `N`/`P` (the bar's own `NEXT`/`PREV`) turn the page and any other
+#: key picks whatever is highlighted, measured at Pool of Radiance's
+#: creation lists and DOS Curse's own roster and confirmed again at Curse's
+#: `PICK A SPELL TO MEMORIZE` grimoire (#551's second comment).
+#:
+#: **`End` and `Home` move the highlighted line one row, wrapping** -- at
+#: the grimoire, `End` from the last row of a page moved to the first, and a
+#: second `End` moved one row down from there.  This corrects the reading in
+#: `tools/dosaddchar.py`'s own docstring, "`Home` and `End` move the
+#: highlight within the page", which was never wrong at the screens it was
+#: measured against but reads as jump-to-start/jump-to-end and is not: it is
+#: NEXT-ITEM/PREV-ITEM, one row at a time, at every screen this project has
+#: tried it on.
+LIST_DOWN = "End"
+LIST_UP = "Home"
+LIST_PAGE_DOWN = "n"
+LIST_PAGE_UP = "p"
+LIST_LEAVE = "Escape"
 
 
 # --------------------------------------------------------------------------
@@ -842,6 +902,96 @@ class Session:
         self, rect: tuple[int, int, int, int], same: str, timeout: float = 30.0
     ) -> bool:
         return self.wait_for(lambda s: s.glyphs(rect) != same, timeout)
+
+    def press_until_change(self, key: str, tries: int = 5,
+                           gap: float = 0.8) -> bool:
+        """Press `key` until the screen differs from before the first press.
+
+        **The first keypress after a redraw is reliably swallowed here** --
+        the same is true on the C64 (`docs/70-driving-the-game.md`) -- so a
+        caller that presses once and moves on risks acting on a key the game
+        never saw.  Lifted from `tools/dosladder.py:Ladder.press_until_
+        change`, the most careful of several private copies (#555).
+        """
+        before = self.capture().digest()
+        for _ in range(tries):
+            self.key(key)
+            time.sleep(gap)
+            if self.settle(quiet=0.5, timeout=20.0).digest() != before:
+                return True
+        return False
+
+    def walk_highlight(self, rect: tuple[int, int, int, int], want: int,
+                       key: str = LIST_DOWN, timeout: float = 20.0) -> int | None:
+        """Move a list's highlight onto row `want`, reading it after each press.
+
+        **Driven by where the highlight actually is, never by counting
+        presses from an assumed start** -- `tools/session.py:select_row` is
+        the C64 original and its own docstring says why a blind count
+        desynchronises: a swallowed keypress leaves a counted walk one row
+        short of where it thinks it is, and a camp screen that can open with
+        the highlight already on its last row (measured at Curse's
+        grimoire, #555) breaks the standing assumption that a list opens
+        fresh on entry 0.
+
+        `key` wraps -- `LIST_DOWN` (`End`) moved from a page's last row back
+        to its first at the grimoire -- so pressing it and re-reading the
+        highlight always reaches `want` in a finite number of presses,
+        whatever row the list opened on, as long as the key moves the
+        highlight at all. Returns the row reached, or `None` when either no
+        row is ever highlighted (`highlight_row` never answers) or twice in
+        a row the same press leaves the highlight exactly where it was --
+        the sign that the key does nothing at this screen and further
+        presses would spin until `timeout`.
+        """
+        deadline = time.time() + timeout
+        here = self.capture().highlight_row(rect)
+        stuck = 0
+        while time.time() < deadline:
+            if here == want:
+                return here
+            if here is None:
+                return None
+            self.key(key)
+            self.settle(quiet=0.5, timeout=max(1.0, min(10.0, deadline - time.time())))
+            now = self.capture().highlight_row(rect)
+            if now == here:
+                stuck += 1
+                if stuck >= 2:
+                    return None
+            else:
+                stuck = 0
+            here = now
+        return here if here == want else None
+
+    def marching_first(self, slot_letter: str, index: int,
+                       container: "_sav.DosContainer | None" = None
+                       ) -> "PoolOfRadiance":
+        """Swap the `index`-th party member to marching position 0, and reload.
+
+        **There is no key that changes which character a camp screen acts
+        on** -- sixteen keys tried on a DOS sheet moved nothing (#555's own
+        confirmation), so this is the whole route.  `_sav.swap_party_
+        entries` reorders `SAVGAM<slot_letter>.DAT`'s party table -- the
+        same reordering a player makes in camp, with no character record
+        touched -- so it has to happen while the game is down: this writes
+        the file, `restart()`s DOSBox against the same staged tree, and
+        reloads the slot.  **Nothing may call `_sav.put_character_files`
+        afterwards**: it rewrites all six entries in file order and would
+        undo the swap.
+
+        Returns a fresh `PoolOfRadiance` for the reloaded session, the way
+        `load_game` itself would be reached from a boot.
+        """
+        path = self.save_file(slot_letter)
+        data = bytearray(path.read_bytes())
+        _sav.swap_party_entries(data, 0, index, container)
+        path.write_bytes(bytes(data))
+        self.restart()
+        game = PoolOfRadiance(self)
+        game.to_main_menu()
+        game.load_game(slot_letter)
+        return game
 
 
 # --------------------------------------------------------------------------
@@ -1478,6 +1628,72 @@ class PoolOfRadiance:
             self.s.wait_while_glyphs(BAR, bar, timeout=dwell)
         self.s.shot("fight_stuck", allow_blank=True)
         return False
+
+
+class Camp:
+    """DOS Curse's `ENCAMP > MAGIC` screens, once the world map is showing.
+
+    Reached from the map the same way `curseregain.py`'s own run reaches
+    the roster menu -- `PoolOfRadiance.to_main_menu`/`load_game` boot Curse
+    as well as Pool of Radiance -- so this drives only the one screen
+    family neither of those already covers: the spell list a magic-using
+    class memorizes from.
+    """
+
+    #: `PICK A SPELL TO MEMORIZE`'s list, x clear of the border columns
+    #: Curse draws down each side, y spanning its eleven 8px rows.  Measured
+    #: off `024-paladin_book.png` and `027-paladin_next.png`
+    #: (`#551`'s live-boot comment) and confirmed against a live `End`/`Home`
+    #: walk in `work/issue555/highlight-findings.md` (#555).
+    GRIMOIRE_LIST = (16, 40, 288, 88)
+
+    def __init__(self, session: Session):
+        self.s = session
+
+    def memorize(self, row: int, page: int = 0, timeout: float = 20.0) -> int:
+        """From `ENCAMP > MAGIC > MEMORIZE`, memorize the grimoire's `row`th spell.
+
+        Presses `LIST_PAGE_DOWN` `page` times to turn to the wanted page,
+        walks the highlight onto `row` (`Session.walk_highlight`, driven by
+        where the highlight actually is -- the grimoire can open with it
+        already on the page's last row rather than row 0, measured at
+        #551/#555), then confirms with `Return`, which is the key the issue
+        confirmed fires on whichever entry is highlighted. Returns the row
+        actually reached, so a caller can check it against `row` instead of
+        trusting the walk blindly.
+
+        Raises `TimeoutError` when the highlight never reaches `row` --
+        this must never be swallowed into pressing `Return` on whatever was
+        already highlighted, which is the exact failure #555 exists to fix.
+
+        **`page=0` (the default) is what #555's own driven proof exercised**
+        -- moving the highlight to a non-default row on the page the
+        grimoire opens on, memorizing it, and reading the id back out of a
+        saved record. **`page > 0` is not proven and measured flaky**: two
+        driven attempts at `page=1` both landed back on page 0 with nothing
+        memorized. `Session.walk_highlight` reads a *physical screen row*,
+        and whether pressing `LIST_PAGE_DOWN` keeps the highlight on the
+        same logical spell (now drawn at a different row) or resets it to
+        the new page's own last row turned out to depend on whether the
+        highlight had already been moved by an `End` press before the page
+        turn -- and in the reset case, `End` was seen to cross back over
+        the page boundary on its own, so `walk_highlight` can report
+        `reached == row` while `row` names a different spell than the one
+        asked for. Untangling that is `#574 (Camp.memorize's page-turn
+        landing is stateful and not proven for page > 0)`. Prefer `page=0`
+        until that closes.
+        """
+        for _ in range(page):
+            self.s.key(LIST_PAGE_DOWN)
+            self.s.settle(quiet=0.5, timeout=timeout)
+        reached = self.s.walk_highlight(self.GRIMOIRE_LIST, row, timeout=timeout)
+        if reached != row:
+            raise TimeoutError(
+                f"the grimoire highlight never reached row {row} "
+                f"(reached {reached!r})")
+        self.s.key("Return")
+        self.s.settle(quiet=0.6, timeout=timeout)
+        return reached
 
 
 # --------------------------------------------------------------------------

@@ -940,6 +940,28 @@ def put_character_files(save: bytearray, slot: str,
         save[at + 1:at + 1 + len(name)] = name
 
 
+def swap_party_entries(save: bytearray, i: int, j: int,
+                       container: "DosContainer | None" = None) -> None:
+    """Swap two marching-order slots, in place, by whichever title `save` is.
+
+    The engine loads the party in the order named here rather than in
+    `CHRDAT` file order (`put_character_files`'s own docstring), so this is
+    the same reordering a player makes in camp -- no character record is
+    touched, and nothing but the two 41-byte entries moves. `tools/
+    dosportraitparty.py:put_first` did this against a hardcoded Pool of
+    Radiance offset (12809); a Curse save's table starts twelve bytes later,
+    at `party_table`, so that offset swapped the wrong bytes on any other
+    title.
+    """
+    container = _container_for_save(save, container)
+
+    def entry(n: int) -> slice:
+        at = container.party_table + n * PARTY_ENTRY
+        return slice(at, at + PARTY_ENTRY)
+
+    save[entry(i)], save[entry(j)] = bytes(save[entry(j)]), bytes(save[entry(i)])
+
+
 def character_files(save: bytes,
                     container: "DosContainer | None" = None) -> list[str]:
     """The CHRDAT filenames the engine will load the party from.

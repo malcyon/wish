@@ -221,6 +221,56 @@ def test_the_ink_digest_ignores_recolouring_and_detects_moved_pixels():
 
 
 # --------------------------------------------------------------------------
+# #555: reading a list menu's highlighted row from the pixels alone
+# --------------------------------------------------------------------------
+
+
+def _rect_frame(width, height, rect, lit_row, row_height=8, paper=(0, 0, 0),
+                lit=(255, 255, 255)):
+    """A frame with one row of `rect` filled `lit`, the rest `paper`."""
+    px = bytearray(list(paper) * width * height)
+    x, y, w, h = rect
+    top = y + lit_row * row_height
+    for row_y in range(top, top + row_height):
+        for row_x in range(x, x + w):
+            i = (row_y * width + row_x) * 3
+            px[i:i + 3] = bytes(lit)
+    return dosbox.Screen(width, height, bytes(px))
+
+
+def test_highlight_row_finds_the_one_band_that_is_lit():
+    rect = (16, 40, 288, 88)  # #555's own GRIMOIRE_LIST rectangle
+    screen = _rect_frame(320, 200, rect, lit_row=3)
+    assert screen.highlight_row(rect) == 3
+
+
+def test_highlight_row_is_none_when_nothing_is_lit():
+    rect = (16, 40, 288, 88)
+    px = bytearray([0, 0, 0] * 320 * 200)
+    screen = dosbox.Screen(320, 200, bytes(px))
+    assert screen.highlight_row(rect) is None
+
+
+def test_a_stray_lit_pixel_does_not_beat_a_real_highlighted_row():
+    """One pixel under `floor` must not read as a highlight of its own row.
+
+    Border noise reading as a highlight is exactly what #555's own live run
+    found at x=0..320 before it narrowed to a rectangle clear of the list's
+    border columns; the floor is the same protection inside the rectangle.
+    """
+    rect = (16, 40, 288, 88)
+    screen = _rect_frame(320, 200, rect, lit_row=5)
+    px = bytearray(screen.px)
+    # One stray near-white pixel in row 0's band -- far under the floor.
+    stray_y = rect[1] + 1
+    stray_x = rect[0] + 1
+    i = (stray_y * 320 + stray_x) * 3
+    px[i:i + 3] = b"\xff\xff\xff"
+    noisy = dosbox.Screen(320, 200, bytes(px))
+    assert noisy.highlight_row(rect) == 5
+
+
+# --------------------------------------------------------------------------
 # A frame from one harness read with the other's geometry (#204)
 # --------------------------------------------------------------------------
 #
