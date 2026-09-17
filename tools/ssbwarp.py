@@ -640,6 +640,12 @@ def enter_world(sess, addr, timeout: float = 600.0, fix: bool = True,
                 sess.kbd.key("Escape")
                 since = time.time()
             else:
+                # A stuck-but-not-idle state (a firmware wait, a submenu
+                # this loop's own state matching does not otherwise cover)
+                # now runs out the clock on `timeout` in silence instead of
+                # ever getting an Escape -- traded deliberately, because
+                # Escape aborting a load that was only slow was the more
+                # common and more damaging failure (#568).
                 sess.log("  world: screen stuck but not idle in a key "
                          "window; assuming a slow load and waiting")
         time.sleep(1.5)

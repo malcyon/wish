@@ -224,13 +224,33 @@ def load_curse_save(sess, timeout: float = 240.0) -> bool:
 def idle_in_key_window(sess, addr: Addresses) -> int | None:
     """The PC, if the machine is sitting in a key window right now.
 
-    A single read rather than `wait_idle`'s poll: the caller already has a
-    screen unchanged for several seconds, and what this settles is only
-    whether that stillness is a menu waiting for a key or a disk load in
-    progress with nothing yet drawn to show for it. `DUNGEON`'s key-wait
-    loop and `LIBRARY`'s fetcher are the two windows `NEWECL`'s tail can
-    safely be entered from -- the same ones `wait_idle` polls for after a
-    warp -- so the same pair of ranges answers this too.
+    A single read rather than `tools/ssbwarp.py`'s multi-sample poll of the
+    same name. `ssbwarp.py` needs several readings with the screen unchanged
+    across them because it uses a confirmed idle PC to *warp* -- jump the
+    party's own execution -- and its worry is the ECL interpreter's own print
+    routine passing through the key-wait window as ordinary control flow
+    while it is still printing, which a single sample could not tell apart
+    from genuinely parking there.
+
+    This function only ever gates a single Escape keypress, and the failure
+    it exists to rule out (`#568 (cursewarp.py and ssbwarp.py can abort a
+    mid-load ECL script by sending Escape to a screen that is merely slow,
+    not stuck)`) is a KERNAL `LOAD` still running underneath an unchanged
+    screen -- not a print in progress. A `LOAD` runs entirely in KERNAL ROM,
+    nowhere near `DUNGEON`'s own `key_wait`/`key_fetch` addresses, so a PC
+    reading that lands inside either window cannot be a load caught
+    mid-flight; it is the game's own code actually waiting there. That is a
+    different question from `ssbwarp.py`'s, which is why the same window
+    pair is answered here with one read rather than four.
+
+    `enter_world` also only calls this after its own `STUCK` wait has the
+    screen sitting unchanged for fifteen seconds, and keeps calling it every
+    pass of its loop for as long as that holds -- so a reading here is never
+    the first look at a freshly-stalled screen.
+
+    `DUNGEON`'s key-wait loop and `LIBRARY`'s fetcher are the two windows
+    `NEWECL`'s tail can safely be entered from -- the same ones `wait_idle`
+    polls for after a warp -- so the same pair of ranges answers this too.
     """
     windows = (addr.key_wait, addr.key_fetch)
     try:
@@ -295,13 +315,19 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
             sess.select_row("BEGIN ADVENTURING")
             sess.press_kernal(0x0D)
         elif state != "(blank)" and time.time() - since > STUCK:
-            pc = idle_in_key_window(sess, addr) if addr is not None else True
-            if pc is not None:
+            idle = idle_in_key_window(sess, addr) if addr is not None else True
+            if idle is not None:
                 sess.log("  world: backing out with Escape" +
-                         (f" (idle at ${pc:04X})" if addr is not None else ""))
+                         (f" (idle at ${idle:04X})" if addr is not None else ""))
                 sess.kbd.key("Escape")
                 since = time.time()
             else:
+                # A stuck-but-not-idle state (a firmware wait, a submenu
+                # this loop's own state matching does not otherwise cover)
+                # now runs out the clock on `timeout` in silence instead of
+                # ever getting an Escape -- traded deliberately, because
+                # Escape aborting a load that was only slow was the more
+                # common and more damaging failure (#568).
                 sess.log("  world: screen stuck but not idle in a key "
                          "window; assuming a slow load and waiting")
         time.sleep(1.5)
