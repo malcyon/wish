@@ -273,9 +273,13 @@ def warrior() -> NeutralCharacter:
 
 def thief() -> NeutralCharacter:
     """The halfling thief 9 at dexterity 18: the class ceiling (unlimited
-    for every race, so 9 is the table's own last row) at the race/dexterity
-    combination that maximises every one of the eight stored percentages at
-    once.
+    for every race, so 9 is the table's own last row), halfling because it
+    leads on two of the eight stored percentages (`thief_move_silently`,
+    `thief_hide_in_shadows`) -- no single race reaches every column's own
+    ceiling at once, checked across all seven races for thief 9 at dexterity
+    18: dwarf leads `thief_open_locks` and `thief_find_traps`, half-orc leads
+    `thief_climb_walls`, gnome leads `thief_hear_noise`, and `thief_pick_
+    pockets` and `thief_read_languages` each go to a different race again.
     """
     char = _base()
     level = 9
@@ -285,9 +289,9 @@ def thief() -> NeutralCharacter:
                                              dexterity=18)
     char.set("name", "THIEF", "made up", Confidence.CONFIRMED,
              Provenance.RESHAPED)
-    char.set("race", RACE_HALFLING, "the racial row goldbox.levels."
-             "dos_thief_skills gives the highest column-wise maximum over "
-             "all seven races")
+    char.set("race", RACE_HALFLING, "leads two of the eight stored "
+             "percentages (move_silently, hide_in_shadows); no single race "
+             "leads all eight (checked across all seven races)")
     char.set("dexterity", 18, "the dexterity block's own top row")
     char.set("levels", levels, "the thief ceiling; no race limits it")
     char.set("class_bits", bits, "computed from levels")

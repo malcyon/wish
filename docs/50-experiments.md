@@ -7777,9 +7777,11 @@ capacity_by_class` gives him (the corpus's own deepest caster, WISHHEL, reaches
 17); a dwarf fighter 8 at every ability's racial maximum, hit points at the
 dice-plus-constitution ceiling (112), the DOS name field's full fifteen
 characters, all sixteen C64 item slots, and every coin purse at the format's
-own `U16` ceiling; a halfling thief 9 at dexterity 18, the race/dexterity
-combination `goldbox.levels.dos_thief_skills` gives the highest column-wise
-reading for every one of the eight stored percentages; and the deepest legal
+own `U16` ceiling; a halfling thief 9 at dexterity 18 -- halfling leads only
+two of the eight stored percentages (`thief_move_silently`, `thief_hide_in_
+shadows`); no single race leads all eight, checked across all seven races
+with `goldbox.levels.dos_thief_skills`, so this is a reasonable single choice
+rather than a true ceiling on every column at once -- and the deepest legal
 three-class combination, half-elf cleric 5 / fighter 8 / magic-user 6, the same
 20 spells as the first case.
 

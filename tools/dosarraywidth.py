@@ -142,6 +142,23 @@ def measure(data: bytes, displacement: int, show_sites: bool = False
     return tally
 
 
+def _pick(tally: collections.Counter) -> tuple[int, int] | None:
+    """The `(count, immediate)` `width` and `report` agree the loop bound is:
+    the most common non-zero guard immediate across every site, or `None`
+    when there is nothing to say.
+
+    `cmp byte [bp-n], 0` is the commonest instruction in the family and is
+    almost never a loop bound -- it is the "is this entry empty" test inside
+    the body.  Dropping it is the one piece of judgement here, and it lives
+    in exactly this one place so `width` and `report` cannot drift apart
+    on it.
+    """
+    ranked = [(v, k) for k, v in tally.items() if k]
+    if not ranked:
+        return None
+    return max(ranked)
+
+
 def width(data: bytes, displacement: int) -> int | None:
     """The width the engine's own loop implies for an array at
     `displacement`, or `None` when there is nothing to say.
@@ -150,18 +167,11 @@ def width(data: bytes, displacement: int) -> int | None:
     check every writer's field widths, since no real save reaches a limit
     and the corpus cannot find a wrong one)`'s `tests/test_boundary.py`,
     which asserts against this rather than parsing what `report` prints.
-    `report` calls this now and its own printed output is unchanged.
-
-    `cmp byte [bp-n], 0` is the commonest instruction in the family and is
-    almost never a loop bound -- it is the "is this entry empty" test inside
-    the body.  Dropping it is the one piece of judgement here.
+    `report` calls this for its own top-line answer, through `_pick`, so the
+    selection rule lives once.
     """
-    tally = measure(data, displacement)
-    ranked = [(v, k) for k, v in tally.items() if k]
-    if not ranked:
-        return None
-    _count, top = max(ranked)
-    return top + 1
+    picked = _pick(measure(data, displacement))
+    return None if picked is None else picked[1] + 1
 
 
 def report(title: str, field: str | None, displacement: int,
@@ -176,25 +186,27 @@ def report(title: str, field: str | None, displacement: int,
     tally = measure(data, displacement, show_sites)
     hits = len(accesses(data, displacement))
     # The whole tally is printed so a reader can disagree with the choice
-    # `width` makes above.
-    ranked = [(v, k) for k, v in tally.items() if k]
+    # `_pick` makes above.
+    picked = _pick(tally)
     if not hits:
         print("  no access at that displacement -- which is evidence and not "
               "proof: a big array is often walked by adding the offset into "
               "a pointer first, and then no instruction carries it")
         return None
-    if not ranked:
+    if picked is None:
         print(f"  {hits} access(es), no non-zero loop guard in range -- "
               f"nothing to say")
         return None
-    count, top = max(ranked)
+    count, top = picked
     others = ", ".join(f"{k:#04x} x{v}" for k, v in sorted(tally.items())
                        if k != top)
     print(f"  {hits} access(es); guard immediates: {top:#04x} x{count}"
           + (f", {others}" if others else ""))
     print(f"  width       {top + 1} bytes, "
           f"{displacement:#05x}-{displacement + top:#05x}")
-    return top + 1
+    result = width(data, displacement)
+    assert result == top + 1, (result, top + 1)
+    return result
 
 
 def main(argv=None) -> int:
