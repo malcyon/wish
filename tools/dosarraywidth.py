@@ -12,7 +12,19 @@ inside the record is a byte counter compared against the array's **last
 index**, then `add di, ax` and the access.  Both halves are findable without
 an emulator: scan the overlay for `es`-prefixed accesses at the displacement,
 disassemble each, and look back for the `cmp byte [bp-n], imm` that guards it.
-The immediate is `width - 1`.
+
+**This holds for a 0-based loop, and this compiler also emits 1-based
+ones**, where the immediate is the width itself rather than `width - 1` --
+`#516 (Generate boundary characters and check every writer's field widths,
+since no real save reaches a limit and the corpus cannot find a wrong one)`'s
+slice 3 found the record-array fill loops (`spells_castable_cleric` among
+them) generated as `for i := 1 to N`, which puts `offset - 1` in the
+instruction's displacement and `N` in the guard immediate.  Scanning at the
+field's own offset finds nothing for one of these, because the instruction
+carries the offset one lower: pass `--displacement <offset-1>` to reach it.
+`tools/dosrecordloops.py` reads this shape directly, by tying the guard to
+the stack slot actually added into `di` and reading its initialiser, rather
+than assuming 0-based.
 
 Written for `#508 (A converted magic-user loses memorised spells on the way to
 DOS, because our table says a title has fewer slots than the engine gives it)`,
@@ -31,6 +43,14 @@ Capstone decoding the four bytes filters most of that and does not prove it.
 all four DOS engines of the family, so a reading is only believable when the
 three titles whose widths are already measured come out unchanged --
 `--family` does exactly that and is the honest way to use this.
+
+**`spells_castable_cleric`, `attack_forms` and `field_83_87` are settled** --
+`#516` slice 3 read the guarded loops behind all three with
+`tools/dosrecordloops.py` and confirmed the declared widths in every title
+that has them.  `--family`'s own disagreeing numbers for two of them were
+defects in this tool's 0-based/`imm`-only reading (see above and the
+`LOOKBACK` note below), not real widths; do not re-run the family scan on
+these three expecting a different answer.
 
 Reads the player's own archives through `tools/dosbox.find_game` and writes
 nothing.  Prints addresses, immediates and short instruction windows; the
@@ -65,6 +85,14 @@ STEMS = {
 #: 90 bytes covers every site measured; a site inside a loop body whose guard
 #: is further up has none, which is why the answer is the *set* of immediates
 #: found across all the sites rather than one per site.
+#:
+#: The window is truncated at a `retf`/`ret` between the guard and the site,
+#: found by `_window_start` below -- a flat 90-byte window routinely crosses
+#: into the *previous* subroutine, which is what produced Pool of Radiance's
+#: false "8" for `spells_castable_cleric` in `#516` slice 3: the site at
+#: `0x02ac52` is in the function that begins `0x02ac36`, and the compare
+#: that used to win the tally, `cmp byte [bp-1], 7` at `0x02ac08`, belongs to
+#: the one before it, which ends `retf 4` at `0x02ac33`.
 LOOKBACK = 90
 
 #: `cmp byte [bp+d], imm` and `cmp byte [bx+d], imm` -- a Turbo Pascal `for`
@@ -113,10 +141,32 @@ def accesses(data: bytes, displacement: int) -> list[tuple[int, str]]:
     return out
 
 
+def _window_start(data: bytes, at: int) -> int:
+    """Where the `LOOKBACK` window should actually begin: the earliest byte
+    in `[at - LOOKBACK, at)` whose decode, run forward, lands an instruction
+    boundary exactly on `at` -- the same synchronisation trick
+    `tools/dosrecordloops.py` uses -- truncated to just past the last
+    `retf`/`ret` that stream contains, so the guard scan never crosses into
+    a different subroutine.  Falls back to the flat window when no alignment
+    lands on `at` at all.
+    """
+    lo = max(0, at - LOOKBACK)
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    for start in range(lo, at + 1):
+        ins = list(md.disasm(data[start:at], start))
+        if ins and ins[-1].address + ins[-1].size == at:
+            for i in ins:
+                if i.mnemonic in ("retf", "ret", "retn"):
+                    lo = i.address + i.size
+            return lo
+    return lo
+
+
 def guards(data: bytes, at: int) -> list[tuple[int, str, int]]:
-    """The `cmp byte [bp-n], imm` sites in the `LOOKBACK` bytes before `at`."""
-    window = data[max(0, at - LOOKBACK):at]
-    base = max(0, at - LOOKBACK)
+    """The `cmp byte [bp-n], imm` sites in the `LOOKBACK` bytes before `at`,
+    not crossing a `retf`/`ret` into a different subroutine."""
+    base = _window_start(data, at)
+    window = data[base:at]
     found: list[tuple[int, str, int]] = []
     for pattern, reg in GUARDS:
         for m in re.finditer(pattern, window):
