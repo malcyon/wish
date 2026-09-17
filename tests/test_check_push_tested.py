@@ -173,14 +173,16 @@ def test_outside_a_repository_it_lets_the_push_through(tmp_path, monkeypatch):
     assert run(monkeypatch, "git push", tmp_path) == 0
 
 
-def test_the_hook_is_registered_on_bash():
+def test_the_hook_is_registered_on_bash_in_both_harnesses():
+    """Claude Code reads `.claude/settings.json`; Codex reads `.codex/hooks.json`."""
     root = pathlib.Path(__file__).resolve().parents[1]
-    claude = json.loads((root / ".claude" / "settings.json").read_text())
-    commands = [h["command"]
-                for group in claude["hooks"].get("PreToolUse", [])
-                if group.get("matcher") == "Bash"
-                for h in group["hooks"]]
-    assert any("check-push-tested.py" in c for c in commands)
+    for path in (root / ".claude" / "settings.json", root / ".codex" / "hooks.json"):
+        wiring = json.loads(path.read_text())
+        commands = [h["command"]
+                    for group in wiring["hooks"].get("PreToolUse", [])
+                    if group.get("matcher") == "Bash"
+                    for h in group["hooks"]]
+        assert any("check-push-tested.py" in c for c in commands), path
 
 
 def test_the_test_runner_is_told_to_write_the_marker():
