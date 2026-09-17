@@ -101,6 +101,13 @@ mistakes, error returns ignored.
 say so and name the file you would need to read to confirm.** A named
 uncertainty is useful; a confident guess is not.
 
+When a commit adds or changes a test that reads a game disk or a specimen
+under work/, check that the test skips cleanly when the file is absent
+rather than raising. CI has no disks, so a test that only passes on this
+machine is a red main waiting to happen. Run the test with the disks
+unreachable, for instance with POR_DISKS pointed at an empty directory, and
+report what it does.
+
 ## Reporting
 
 Organise by severity:
