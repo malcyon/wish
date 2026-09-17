@@ -209,7 +209,8 @@ def run(args) -> int:
         if outcome != "loaded":
             return 1
         sess.patch_disk_prompt()
-        if not cursewarp.enter_world(sess, timeout=args.wait):
+        addr = cursewarp.Addresses(sess.game, disks)
+        if not cursewarp.enter_world(sess, addr, timeout=args.wait):
             log(event="never-reached-the-world")
             shot("03-stuck")
             return 1

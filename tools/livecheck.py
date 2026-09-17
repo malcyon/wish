@@ -283,7 +283,8 @@ class Curse(Title):
         if outcome != "loaded":
             return sess, f"load-{outcome}"
         sess.patch_disk_prompt()
-        if not cursewarp.enter_world(sess, timeout=wait):
+        addr = cursewarp.Addresses(self.game, disks)
+        if not cursewarp.enter_world(sess, addr, timeout=wait):
             return sess, "world-failed"
         cursewarp.clear_messages(sess)
         return sess, "world"

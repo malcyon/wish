@@ -402,7 +402,7 @@ def open_items(sess, r: Run, who: str) -> list[str] | None:
     return listed
 
 
-def curse_world(slot, r: Run, save: str, where: str, wait: float):
+def curse_world(slot, r: Run, save: str, where: str, game, wait: float):
     """Boot Curse, load the party and get it to the world command bar."""
     from tools import curseload, curserun, cursewarp
 
@@ -426,7 +426,8 @@ def curse_world(slot, r: Run, save: str, where: str, wait: float):
         r.capture(sess, "load-failed")
         return sess, False
     sess.patch_disk_prompt()
-    if not cursewarp.enter_world(sess, timeout=wait):
+    addr = cursewarp.Addresses(game, where)
+    if not cursewarp.enter_world(sess, addr, timeout=wait):
         r.log("world", ok=False)
         r.capture(sess, "stuck")
         return sess, False
@@ -499,10 +500,7 @@ def run(save: str, out: str, who: str, pool: int | None,
           display=slot.display, dir=str(slot.dir), title=game.title)
     sess = None
     try:
-        if driver is ssb_world:
-            sess, ok = driver(slot, r, save, where, game, wait)
-        else:
-            sess, ok = driver(slot, r, save, where, wait)
+        sess, ok = driver(slot, r, save, where, game, wait)
         if not ok:
             return 1
         r.capture(sess, "world")
