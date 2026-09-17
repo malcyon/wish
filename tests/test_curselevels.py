@@ -583,16 +583,38 @@ def test_the_castable_row_reaches_curses_fifth_spell_level():
 
 
 def test_levelling_a_title_with_an_unread_trainer_refuses():
-    """Silver Blades has its own `goldbox/levels.py` entry now (#187), and
-    `plan` still refuses it: the trainer's own inputs -- the constitution
-    hit-point bonus, the thief-skill racial adjustment, the wisdom bonus
-    spells, the turning table -- remain unread or unattributed, so
-    `levels.trainer_measured` is still False and `_tables_for` names the
-    title in its refusal."""
+    """`_tables_for` names the title in its refusal.
+
+    **This used to be asked of Silver Blades**, whose trainer inputs were
+    unread when the test was written and which `#187` had given a
+    `goldbox/levels.py` entry. It has been measured since -- fourteen driven
+    trainings on 2026-09-16, `#89 (Silver Blades' trainer grants spells from
+    a table, and goldbox/levelup.py offers them from a menu)` -- so the
+    question moves to Champions of Krynn, which is in `c64_port.GAMES`, has
+    no tables of its own.
+
+    There are two refusals and both are checked, because the one Silver
+    Blades used to hit is the second: a title with **no tables at all** is
+    refused by key, and a title with a full set of tables that nobody has
+    watched a trainer write is refused by `levels.trainer_measured`.
+    """
+    import dataclasses
+
+    from goldbox import c64_port
+
+    krynn = c64_port.CHAMPIONS_OF_KRYNN
     rec = _caster(0x02, 5)
     with pytest.raises(levelup.CannotLevel) as exc:
-        levelup.plan(rec, "cleric", game=SSB_KEY)
-    assert levels.SECRET_OF_THE_SILVER_BLADES.title in str(exc.value)
+        levelup.plan(rec, "cleric", game=krynn)
+    assert "no level tables of its own" in str(exc.value)
+    assert krynn.key in str(exc.value)
+
+    unmeasured = dataclasses.replace(levels.SECRET_OF_THE_SILVER_BLADES,
+                                     key="a-title-nobody-has-measured",
+                                     title="A Title Nobody Has Measured")
+    with pytest.raises(levelup.CannotLevel) as exc:
+        levelup.plan(rec, "cleric", game=unmeasured)
+    assert unmeasured.title in str(exc.value)
 
     # And the same rule read from the other end: nothing is claimed about how
     # many spells a Silver Blades cleric may **memorise**, because its

@@ -34,9 +34,13 @@ Three subcommands:
         table runs in marching order while the slots do not
         (`goldbox/c64_save.py`), and on `work/193/SSBD.D64` entry 2 says
         EPONA over a slot whose record says MALACHITE.  The fields are
-        `xp`, `plat`, `con`, `race`, `bits`, `dcs`, `dcl`, `hpr` and
-        `lvl_<class>`; `plat` zeroes the four lesser coins.  `--repair`
-        closes a `SAVEDBASH` the drive never finished (`#298`).
+        `xp`, `plat`, `con`, `race`, `bits`, `dcs`, `dcl`, `hpr`, `int`,
+        `wis` and `lvl_<class>`; `plat` zeroes the four lesser coins, and
+        `int` and `wis` each write **two** bytes -- the permanent score at
+        `0x066`/`0x067`, which is what this title's trainer reads
+        (`$18AA LDA $7C66`, `$0F35 LDA $7C67`), and the score in force at
+        `0x015`/`0x016`, so the sheet agrees with it.  `--repair` closes a
+        `SAVEDBASH` the drive never finished (`#298`).
 
     tools/ssbtrain.py run --pool N --save <out.d64> --out work/issue344/run1
 
@@ -53,6 +57,23 @@ Three subcommands:
         handed to `goldbox.levelup.plan` as well, reaching past
         `levels.TRAINER_MEASURED` in this process only, and a `plan` that
         cannot yet answer for this title is reported rather than fatal.
+        With **no** `--class` the replay goes through `plan_all`, which is
+        what `automap.actions.LevelUp.run` calls and what this title's
+        `trains_all_ready_classes` needs.  `--learn <id>` is the spell a
+        magic-user picked off the menu at `$1896`, and the sixteen-byte
+        spellbook at `0x078` is diffed id by id whether or not one was
+        picked -- `Plan.spellbook` is a separate attribute from
+        `Plan.fields` and nothing compared it before `#89`.
+
+        **The trainer's inputs come off `--after`.**  A run that pokes the
+        roster between presses changes bytes the trainer *reads* -- race,
+        the six abilities in force, the six permanent ones -- between the
+        two dumps, and replaying from the stale `--before` then derives the
+        wrong row and reports every field that depends on it as a mismatch.
+        Three of `#344`'s six pairs read as 9-10 failures for exactly that
+        reason and all three are clean once the inputs are taken from the
+        record the engine actually trained.  Each one taken this way is
+        printed, so a substitution is never silent.
 
 ### The recipe, once the session is up
 
@@ -78,7 +99,9 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
+import socket
 import sys
+import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
@@ -97,6 +120,25 @@ RECORD_LEN = 0x200
 #: area scripts write and what opened its hall (`docs/172-curse-trainer.md`).
 HALL = 0x7EA8
 HALL_OPEN = 0x7F
+
+#: **The roster, as the running game holds it.** `SAVEDBASH` loads at `$4B00`
+#: and its eight slots start `$400` in, so slot *n* is here -- the record the
+#: trainer copies to `$7C00` when a name is picked and writes back on
+#: success.  Measured 2026-09-16: with the shipped party on `SILVER-6.D64`
+#: loaded, all four slots read back **byte for byte identical** to the same
+#: slots of `SAVEDBASH` on the disk.
+ROSTER = 0x4F00
+
+#: What the magic-user menu at `GEN $1896` leaves behind, and the whole
+#: reason a menu can be measured without reading the screen.
+#: `$18DA STY $1C10` is how many ids it offered, `$18EB STA $7A00,X` is the
+#: ids themselves in the order the menu lists them, and `$1902 STA $2ACE` is
+#: the one the player picked.  Every reference to `$1C10` in `GEN` is inside
+#: `$18D8`-`$1B21` and `$2A2D`, all of it this menu, so zeroing it before a
+#: press makes a non-zero reading afterwards this press's and no other's.
+MENU_COUNT = 0x1C10
+MENU_IDS = 0x7A00
+MENU_PICKED = 0x2ACE
 
 #: `SAVEDBASH`'s geometry, from `goldbox/c64_save.py`: Curse's container
 #: byte for byte under another name.
@@ -118,10 +160,22 @@ FIELDS = {
     "dcl": (0x0BA, 1),
     "hpr": (0x0ED, 1),
     "bits": (0x0EB, 1),
+    "level": (0x0A0, 1),
     "lvl_magic-user": (0x0C9, 1), "lvl_cleric": (0x0CA, 1),
     "lvl_thief": (0x0CB, 1), "lvl_fighter": (0x0CC, 1),
     "lvl_paladin": (0x0CF, 1), "lvl_ranger": (0x0D0, 1),
 }
+
+#: `--give int=` and `--give wis=` each write two bytes: the permanent score
+#: the trainer reads and the score in force the sheet draws.
+PAIRED = {"int": (0x015, 0x066), "wis": (0x016, 0x067)}
+
+#: What the trainer **reads and never writes**, as `(offset, width, what)`.
+#: A poke between two dumps moves these, and a replay from the stale
+#: `--before` then derives the wrong row -- see `compare`.
+INPUTS = ((0x014, 6, "abilities in force"),
+          (0x065, 6, "permanent abilities"),
+          (0x072, 1, "race"))
 
 SAVES = ("save_paralysis", "save_petrification", "save_wands",
          "save_breath", "save_spell")
@@ -205,14 +259,19 @@ def stage(args) -> int:
                 for coin in range(4):
                     write_u(body, base + MONEY + 2 * coin, 2, 0)
                 write_u(body, base + PLATINUM, 2, value)
+            elif key in PAIRED:
+                for off in PAIRED[key]:
+                    write_u(body, base + off, 1, value)
             elif key in FIELDS:
                 off, width = FIELDS[key]
                 write_u(body, base + off, width, value)
             else:
-                raise SystemExit(f"unknown field {key!r}; use plat= or one "
-                                 f"of {', '.join(sorted(FIELDS))}")
+                raise SystemExit(
+                    f"unknown field {key!r}; use plat= or one of "
+                    f"{', '.join(sorted(set(FIELDS) | set(PAIRED)))}")
         print(f"{names[n]:14s} slot {n}: race {body[base + 0x72]}  con "
-              f"{body[base + 0x18]:2d}  xp {read_u(body, base + XP, 3):7d}"
+              f"{body[base + 0x18]:2d}  int {body[base + 0x66]:2d}  wis "
+              f"{body[base + 0x67]:2d}  xp {read_u(body, base + XP, 3):7d}"
               f"  platinum {read_u(body, base + PLATINUM, 2):5d}")
     disk = D64(image)
     disk.write_file_inplace(SAVE_FILE,
@@ -231,8 +290,17 @@ def stage(args) -> int:
 
 
 def _record(stem: str) -> CharacterRecord:
+    """The record out of a `tools/porcmd peek` dump.
+
+    `<stem>-a.hex` and `<stem>-b.hex` are `$7C00` and `$7D00`.  A dump of a
+    **roster slot** -- `$4F00 + slot * $100`, where the trainer reads the
+    record from and writes it back to -- is 256 bytes and has no second
+    half, so a missing `-b.hex` is zero-filled rather than an error: every
+    field this tool compares lives below `0x100`.
+    """
     a = bytes.fromhex(pathlib.Path(f"{stem}-a.hex").read_text().strip())
-    b = bytes.fromhex(pathlib.Path(f"{stem}-b.hex").read_text().strip())
+    second = pathlib.Path(f"{stem}-b.hex")
+    b = bytes.fromhex(second.read_text().strip()) if second.exists() else b""
     return CharacterRecord.from_bytes((a + b).ljust(580, b"\0"))
 
 
@@ -265,6 +333,58 @@ def check_saves(after: CharacterRecord) -> tuple[int, int]:
     return sum(a == b for a, b in zip(got, want)), 5
 
 
+def inputs_from_after(before: CharacterRecord, after: CharacterRecord,
+                      overrides: dict[str, int]) -> CharacterRecord:
+    """`before` carrying the trainer's **inputs** as the engine saw them.
+
+    Race, the six abilities in force and the six permanent ones are read by
+    the trainer and never written by it, so where the two dumps disagree the
+    difference is a poke between the presses and `--after` is the record the
+    engine actually trained.  Taking them off `--before` is what made three
+    of `#344`'s six pairs report 9-10 mismatches that were the tool's and not
+    the model's.  Each substitution prints.
+    """
+    body = bytearray(bytes(before))
+    late = bytes(after)
+    for off, width, what in INPUTS:
+        was, now = body[off:off + width], late[off:off + width]
+        if was != now:
+            print(f"  input {what:20s} {was.hex(' ')} -> {now.hex(' ')}"
+                  f"  (taken from --after)")
+            body[off:off + width] = now
+    for key, value in overrides.items():
+        for off in PAIRED[key]:
+            body[off] = value
+        print(f"  input {key:20s} forced to {value} at "
+              f"{', '.join(f'{o:#05x}' for o in PAIRED[key])}")
+    return CharacterRecord.from_bytes(bytes(body))
+
+
+def compare_spellbook(replayed: CharacterRecord, after: CharacterRecord,
+                      game) -> tuple[int, int]:
+    """The sixteen-byte mask at `0x078`, id by id; `(ok, total)`.
+
+    `Plan.spellbook` is a separate attribute from `Plan.fields`, so the loop
+    over `set(p.fields)` never reaches it and no test in this repository
+    compared a trained spellbook before `#89`.
+    """
+    from goldbox import spells  # noqa: PLC0415
+
+    want = spells.spellbook_raw(replayed)[:16]
+    got = spells.spellbook_raw(after)[:16]
+    wanted = set(spells.spells_known(bytes(replayed), game))
+    engine = set(spells.spells_known(bytes(after), game))
+    print(f"  spellbook plan   {want.hex(' ')}")
+    print(f"  spellbook engine {got.hex(' ')}"
+          f"{'' if want == got else '   <-- DIFFERS'}")
+    if wanted != engine:
+        print(f"  plan grants and the engine did not: "
+              f"{sorted(wanted - engine)}")
+        print(f"  the engine granted and plan did not: "
+              f"{sorted(engine - wanted)}")
+    return (16 if want == got else sum(a == b for a, b in zip(want, got))), 16
+
+
 def compare(args) -> int:
     from goldbox import c64_port, levels, levelup  # noqa: PLC0415
 
@@ -278,21 +398,31 @@ def compare(args) -> int:
             print(f"  {off:#05x} {name:22s} {was:8d} -> {now:8d}")
     ok, total = check_saves(after)
     print(f"{ok} of {total} saving-throw columns reproduce")
-    if not args.classes:
-        return 0 if ok == total else 1
+    overrides = {k: getattr(args, k) for k in PAIRED
+                 if getattr(args, k) is not None}
+    before = inputs_from_after(before, after, overrides)
     levels.TRAINER_MEASURED = frozenset(
         set(levels.TRAINER_MEASURED) | {ssb.key})
     rolled = (after.get("hp_rolled") or 0) - (before.get("hp_rolled") or 0)
     record, names = before, set()
     try:
-        for i, cls in enumerate(args.classes):
-            p = levelup.plan(record, cls, game=ssb,
-                             rolled=rolled if i == 0 else 0)
-            names |= set(p.fields)
-            record = levelup.apply_to(record, p)
+        if args.classes:
+            for i, cls in enumerate(args.classes):
+                p = levelup.plan(record, cls, game=ssb, learn=args.learn,
+                                 rolled=rolled if i == 0 else 0)
+                names |= set(p.fields)
+                record = levelup.apply_to(record, p)
+        else:
+            # `trains_all_ready_classes` is set for this title, so one press
+            # raises every ready class and `plan_all` is the walk
+            # `automap.actions.LevelUp.run` itself makes.  It takes no
+            # `rolled`, so the die is compared rather than handed in.
+            for p in levelup.plan_all(record, game=ssb, learn=args.learn):
+                names |= set(p.fields)
+                record = levelup.apply_to(record, p)
     except Exception as e:  # noqa: BLE001 -- reported, not fatal
         print(f"levelup.plan cannot replay this title yet: {e!r}")
-        return 0 if ok == total else 1
+        return 1
     pok = 0
     for name in sorted(names):
         got, want = after.get(name), record.get(name)
@@ -301,7 +431,107 @@ def compare(args) -> int:
               f"plan {want!r:>12}  engine {got!r:>12}")
     print(f"{pok} of {len(names)} derived fields reproduce through plan, "
           f"roll total {rolled}")
-    return 0 if ok == total else 1
+    sok, stotal = compare_spellbook(record, after, ssb)
+    print(f"{sok} of {stotal} spellbook bytes reproduce")
+    return 0 if (ok == total and pok == len(names) and sok == stotal) else 1
+
+
+def cmd(port: int, *words) -> str:
+    """One line to a `tools/session.py` command server; its whole reply."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=600)
+    sock.sendall((" ".join(str(w) for w in words) + "\n").encode())
+    out = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        out += chunk
+    sock.close()
+    return out.decode("latin1")
+
+
+def _peek(port: int, addr: int, length: int) -> bytes:
+    # `session.handle`'s `peek` takes the address in hex and the **length in
+    # decimal**, and prints hex.  A `peek 5100 100` that looks like 256 bytes
+    # is 100 of them, which is how this tool first read a record with no
+    # class levels in it at all.
+    return bytes.fromhex(cmd(port, "peek", f"{addr:X}", length).strip())
+
+
+def press(args) -> int:
+    """One `TRAIN CHARACTER` press, staged, pressed and dumped.
+
+    The whole 256-byte roster slot is written before the press rather than
+    the handful of bytes that change, so `--before` is a record this tool
+    composed and the engine then trained -- there is nothing left over from
+    the press before it to go stale.  `--set` takes the same field names
+    `stage --give` does.
+
+    The spell menu is driven only when one was built: `$1C10` is zeroed and
+    `$7A00` filled with `$FF` first, so a count that comes back non-zero is
+    this press's menu and the ids beside it are its own.
+    """
+    port = args.port
+    base = bytearray(bytes.fromhex(
+        pathlib.Path(args.record).read_text().strip()))
+    if len(base) != SLOT_SIZE:
+        raise SystemExit(f"{args.record} holds {len(base)} bytes, not "
+                         f"{SLOT_SIZE}")
+    for spec in args.set:
+        for pair in spec.split(","):
+            key, _, val = pair.partition("=")
+            value = int(val)
+            if key in PAIRED:
+                for off in PAIRED[key]:
+                    base[off] = value
+            elif key in FIELDS:
+                off, width = FIELDS[key]
+                write_u(base, off, width, value)
+            else:
+                raise SystemExit(f"unknown field {key!r}")
+    at = ROSTER + args.slot * SLOT_SIZE
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd(port, "poke", f"{at:X}", base.hex())
+    cmd(port, "poke", f"{MENU_COUNT:X}", "00")
+    cmd(port, "poke", f"{MENU_IDS:X}", "ff" * 64)
+    before = _peek(port, at, SLOT_SIZE)
+    if before != bytes(base):
+        raise SystemExit("the roster slot did not take the poke")
+    pathlib.Path(f"{args.out}-before-a.hex").write_text(before.hex())
+
+    if args.enter:
+        cmd(port, "row", "TRAIN CHARACTER")
+    cmd(port, "row", args.name)
+    # **`row` returns when the key is sent, not when the trainer has run.**
+    # `$18DA` writes the count part-way through the raise, and a press read
+    # the moment the highlight was picked came back zero with the menu on
+    # screen a second later -- so this settles first, and it also answers the
+    # `INSERT SIDE A` the menu needs before it can print a spell's name.
+    cmd(port, "settle", 12)
+    count = _peek(port, MENU_COUNT, 1)[0]
+    offered = list(_peek(port, MENU_IDS, max(count, 1))[:count])
+    print(f"menu offered {count} ids: {offered}")
+    picked = None
+    if count:
+        cmd(port, "bar", "LEARN SPELL")
+        for _ in range(args.pick):
+            cmd(port, "key", "Down")
+        cmd(port, "key", "Return")
+        picked = _peek(port, MENU_PICKED, 1)[0]
+        print(f"the engine took id {picked}")
+    cmd(port, "settle", 6)
+    time.sleep(1.0)
+    after = _peek(port, at, SLOT_SIZE)
+    pathlib.Path(f"{args.out}-after-a.hex").write_text(after.hex())
+    pathlib.Path(f"{args.out}-menu.txt").write_text(
+        f"count {count}\nids {offered}\npicked {picked}\n")
+    changed = [i for i in range(SLOT_SIZE) if before[i] != after[i]]
+    print(f"{len(changed)} bytes moved: "
+          + ", ".join(f"{i:#05x} {before[i]:02x}->{after[i]:02x}"
+                      for i in changed))
+    return 0
 
 
 def drive(args) -> int:
@@ -336,10 +566,38 @@ def main(argv=None) -> int:
     rn.add_argument("--out", default="work/issue344/run")
     rn.set_defaults(func=drive)
 
+    pr = sub.add_parser("press", help="drive one training press and dump it")
+    pr.add_argument("--port", type=int,
+                    default=int(os.environ.get("POR_CMD_PORT") or 6600),
+                    help="the session's command port")
+    pr.add_argument("--slot", type=int, required=True,
+                    help="which roster slot, 0-7")
+    pr.add_argument("--name", required=True, help="the row to press")
+    pr.add_argument("--record", required=True,
+                    help="a 256-byte slot, as hex, to write before pressing")
+    pr.add_argument("--set", action="append", default=[],
+                    metavar="lvl_cleric=10,xp=675001")
+    pr.add_argument("--out", required=True, help="stem for the dumps")
+    pr.add_argument("--enter", action="store_true",
+                    help="press TRAIN CHARACTER first; without it the "
+                         "session is already at TRAIN WHO")
+    pr.add_argument("--pick", type=int, default=0,
+                    help="how far down the spell menu to walk before Return")
+    pr.set_defaults(func=press)
+
     df = sub.add_parser("diff", help="diff a before/after record pair")
     df.add_argument("--before", required=True)
     df.add_argument("--after", required=True)
-    df.add_argument("--class", dest="classes", action="append", default=[])
+    df.add_argument("--class", dest="classes", action="append", default=[],
+                    help="the class raised; repeat in the engine's own "
+                         "order. With none, the replay goes through plan_all")
+    df.add_argument("--learn", type=int, default=None,
+                    help="the spell id a magic-user picked at `$1896`")
+    df.add_argument("--int", dest="int", type=int, default=None,
+                    help="force the intelligence the trainer read, both "
+                         "copies, when neither dump holds what was poked")
+    df.add_argument("--wis", dest="wis", type=int, default=None,
+                    help="force the wisdom the trainer read, both copies")
     df.set_defaults(func=compare)
 
     args = ap.parse_args(argv)

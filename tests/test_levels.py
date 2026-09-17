@@ -513,12 +513,18 @@ def test_pool_of_radiance_and_curses_trainers_are_measured():
     assert levels.trainer_measured(c64_port.POOL_OF_RADIANCE)
     assert levels.trainer_measured(levels.POOL_OF_RADIANCE)
     assert levels.trainer_measured(c64_port.CURSE_OF_THE_AZURE_BONDS)
+    # Silver Blades joined on 2026-09-16, after fourteen driven trainings
+    # (`#89`); `tests/test_ssbtrainer.py` is the measurement.
+    assert levels.trainer_measured(c64_port.SECRET_OF_THE_SILVER_BLADES)
+    measured = (c64_port.POOL_OF_RADIANCE,
+                c64_port.CURSE_OF_THE_AZURE_BONDS,
+                c64_port.SECRET_OF_THE_SILVER_BLADES)
     for game in c64_port.GAMES:
-        if game in (c64_port.POOL_OF_RADIANCE, c64_port.CURSE_OF_THE_AZURE_BONDS):
+        if game in measured:
             continue
         assert not levels.trainer_measured(game), game.title
-    # Silver Blades has tables too (#187) and is still refused: having a
-    # table is not having read the trainer.
+    # The three titles with tables of their own are these three; the other
+    # three fall back to Pool of Radiance's and are refused for it.
     assert levels.for_game(c64_port.CURSE_OF_THE_AZURE_BONDS).key == \
         "curse-of-the-azure-bonds"
     assert levels.for_game(c64_port.SECRET_OF_THE_SILVER_BLADES).key == \

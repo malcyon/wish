@@ -104,17 +104,23 @@ def test_the_six_shipped_saves_reproduce_without_disks():
         assert got == expect, name
 
 
-def test_levelling_still_refuses_silver_blades_even_with_thief_skills_filled():
+def test_levelling_refuses_an_unmeasured_title_however_full_its_tables_are():
     """Proves the guard in `goldbox/levelup.py:_tables_for` asks
     `levels.trainer_measured` and not `tables.thief_skills` -- an empty tuple
     that would stop refusing the moment somebody attributes `$126D`.
 
-    Filling `thief_skills` from Pool of Radiance's table (a stand-in for "the
-    field is no longer empty") must still be refused: the old guard let this
-    straight through, because it only asked whether the tuple was empty.
+    **This used to be asked of Silver Blades itself**, whose `thief_skills`
+    was empty and which the old guard would have let through the moment
+    somebody filled it in. It is measured now (`#89 (Silver Blades' trainer
+    grants spells from a table, and goldbox/levelup.py offers them from a
+    menu)`, fourteen driven presses on 2026-09-16), so the question needs a
+    title that is not -- Silver Blades' own tables under a key
+    `TRAINER_MEASURED` has never heard of, which is exactly the state the
+    next title added to this module arrives in.
     """
-    filled = dataclasses.replace(SSB, thief_skills=POOL.thief_skills)
-    assert filled.thief_skills            # the old guard would now say yes
+    filled = dataclasses.replace(SSB, key="a-title-nobody-has-measured",
+                                 title="A Title Nobody Has Measured")
+    assert filled.thief_skills            # the old guard would say yes
     assert not levels.trainer_measured(filled)   # the new guard still says no
 
     rec = CharacterRecord.blank()
@@ -273,14 +279,25 @@ def test_the_seven_trainer_deltas_fields_are_curses_own():
     assert SSB.stores_spell_capacity == CURSE.stores_spell_capacity is False
 
 
-def test_silver_blades_is_still_not_in_trainer_measured():
-    """`#89`'s own 2026-09-08 comment: filling the table is not the last
-    blocker. `automap/window.py`'s spell-dialog gate (`#415`'s shape) has not
-    been re-verified for this title, and no Silver Blades training has been
-    driven through `levelup.plan`/`plan_all` and diffed against the engine
-    the way `#18` drove five Curse ones. So this stays False here -- flipping
-    it is the next agent's job, once one of those two is actually done, not
-    this one's.
+def test_silver_blades_is_now_in_trainer_measured():
+    """This assertion used to say the opposite, and it was right to.
+
+    `#89`'s own 2026-09-08 comment named two blockers beyond the tables, and
+    this test pinned the exclusion so the next reader would see it as a
+    decision rather than an oversight. Both closed on 2026-09-16 and the
+    decision changed with them.
+
+    `automap/window.py`'s spell-dialog gate (`#415 (automap/window.py picks
+    the level-up spell dialog's class the same wrong way plan would have,
+    blocking Curse's trainer)`) needed no second fix: `LevelUp.offers`
+    branches on `trains_all_ready_classes`, which this title has set. And the
+    training was driven -- fourteen presses over two boots covering all four
+    of this trainer's spellcasting classes, 196 of 196 derived fields, 70 of
+    70 saving-throw columns and 224 of 224 spellbook bytes reproduced through
+    `goldbox.levelup.plan`, with the menu the engine built at `$7A00` matching
+    `levelup.learnable` id for id over six menus, 113 ids.
+    `WISH-SPEC-ssb-89-train-input` and `WISH-SPEC-ssb-89-trained-party` keep
+    four of those presses, and `tests/test_ssbtrainer.py` replays them.
     """
-    assert not levels.trainer_measured(SSB)
-    assert SSB.key not in levels.TRAINER_MEASURED
+    assert levels.trainer_measured(SSB)
+    assert SSB.key in levels.TRAINER_MEASURED

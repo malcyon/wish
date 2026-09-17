@@ -386,66 +386,60 @@ def test_the_blockers_are_empty_because_every_field_is_confirmed():
     assert all(isinstance(b, str) for b in actions.level_up_blockers(None))
 
 
-# --- one title has been measured and five have not ---------------------------
+# --- three titles have been measured and three have not ----------------------
 
 def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
-    """#16. Silver Blades is the dangerous one now: its level tables are in
-    `goldbox/levels.py` (#187), so selecting them looks like enough and is
-    not -- its constitution hit-point bonus, thief-skill racial adjustment and
-    wisdom bonus spells are still unread or unattributed
-    (`docs/121-silver-blades.md`). Every derivation not yet its own was read
-    at Pool of Radiance's addresses out of Pool of Radiance's `GEN`, so a
-    Silver Blades fighter would be written Pool of Radiance's THAC0, saving
-    throws and hit die.
+    """#16. Champions of Krynn is the example now: `levels.for_game` falls
+    back to Pool of Radiance's tables for it, so a Krynn fighter would be
+    written Pool of Radiance's THAC0, saving throws and hit die -- the silent
+    wrong answer `level_up_blockers` exists to stop.
 
-    **Curse used to be this test's example and is not any more.** Its own
-    trainer is now fully measured -- `goldbox/levelup.py` reproduces it and
-    `automap/actions.py`'s `LevelUp.run` calls `plan_all` for it (`#18
-    (Measure Curse's trainer so Level Up works there)`), and the one remaining
-    gap, `automap/window.py`'s own decision of when to open the spell dialog,
-    closed on `#415 (automap/window.py picks the level-up spell dialog's
-    class the same wrong way plan would have, blocking Curse's trainer)`. A
-    Curse fighter genuinely levels now; see
-    `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured`."""
+    **Two titles have been this test's example and neither is any more.**
+    Curse's trainer was measured on `#18 (Measure Curse's trainer so Level Up
+    works there)` and `#415 (automap/window.py picks the level-up spell
+    dialog's class the same wrong way plan would have, blocking Curse's
+    trainer)`; Silver Blades' on `#89 (Silver Blades' trainer grants spells
+    from a table, and goldbox/levelup.py offers them from a menu)`, fourteen
+    driven trainings on 2026-09-16 --
+    `tests/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
+    Both genuinely level now."""
     from goldbox import c64_port
 
-    # A Silver Blades-shaped machine, so the refusal is the trainer's and not
-    # an accident of reading its addresses on Pool of Radiance's memory. Since
-    # #29 Silver Blades *has* a combat flag, so `Action.legality` lets this
-    # through and the gate that stops it is `level_up_blockers`, which is the
-    # right one.
+    # A Krynn-shaped machine, so the refusal is the trainer's and not an
+    # accident of reading its addresses on Pool of Radiance's memory. It has
+    # a combat flag, so `Action.legality` lets this through and the gate that
+    # stops it is `level_up_blockers`, which is the right one.
+    krynn = c64_port.by_key("champions-of-krynn")
     save0, roster = captured()
-    at = c64_port.SECRET_OF_THE_SILVER_BLADES.slot_area_base - 0x4B00 + 0x0E8
+    at = krynn.slot_area_base - krynn.save_load_address + 0x0E8
     save0[at:at + 3] = (2001).to_bytes(3, "little")
     target = MemoryTarget({
-        c64_port.SECRET_OF_THE_SILVER_BLADES.save_load_address:
-            bytes(save0 + roster),
-        c64.MACHINES["secret-of-the-silver-blades"].mode_flag:
-            bytes([WORLD])})
+        krynn.save_load_address: bytes(save0 + roster),
+        c64.MACHINES["champions-of-krynn"].mode_flag: bytes([WORLD])})
     before = dict(target.memory)
-    outcome = actions.LevelUp(c64_port.SECRET_OF_THE_SILVER_BLADES).apply(
-        target, slot=0)
+    outcome = actions.LevelUp(krynn).apply(target, slot=0)
     assert not outcome.ok and outcome.writes == ()
     assert target.memory == before
     said = " ".join((outcome.message,) + outcome.notes)
-    assert "Secret of the Silver Blades" in said
+    assert krynn.title in said
 
 
-@pytest.mark.parametrize("game", ["secret-of-the-silver-blades",
-                                  "champions-of-krynn",
+@pytest.mark.parametrize("game", ["champions-of-krynn",
                                   "death-knights-of-krynn",
                                   "gateway-to-the-savage-frontier"])
-def test_every_title_but_pool_of_radiance_and_curse_is_refused_by_name(game):
-    """Curse's trainer is fully measured now (`#18 (Measure Curse's trainer
-    so Level Up works there)`, `#415 (automap/window.py picks the level-up
-    spell dialog's class the same wrong way plan would have, blocking Curse's
-    trainer)`), so it joined Pool of Radiance in `TRAINER_MEASURED` -- see
-    `tests/test_cursetrainer.py::test_curse_is_now_in_trainer_measured`.
-    Silver Blades has level tables of its own too (#187) but not a measured
-    trainer; the other three have no tables at all, so `levels.for_game`
-    falls back to Pool of Radiance's. Either way `trainer_measured` refuses
-    every one of them, which is exactly the silent wrong answer the blocker
-    is here to stop."""
+def test_every_title_but_the_three_measured_ones_is_refused_by_name(game):
+    """Three trainers are measured and three are not.
+
+    Curse's joined on `#18 (Measure Curse's trainer so Level Up works there)`
+    and `#415 (automap/window.py picks the level-up spell dialog's class the
+    same wrong way plan would have, blocking Curse's trainer)`; Silver Blades'
+    on `#89 (Silver Blades' trainer grants spells from a table, and
+    goldbox/levelup.py offers them from a menu)`, fourteen driven trainings on
+    2026-09-16 --
+    `tests/test_ssbtrainer.py::test_silver_blades_is_now_in_trainer_measured`.
+    The three below have no tables at all, so `levels.for_game` falls back to
+    Pool of Radiance's and `trainer_measured` refuses every one of them, which
+    is exactly the silent wrong answer the blocker is here to stop."""
     from goldbox import c64_port
 
     blockers = actions.level_up_blockers(None, c64_port.by_key(game))
@@ -453,6 +447,8 @@ def test_every_title_but_pool_of_radiance_and_curse_is_refused_by_name(game):
     assert actions.level_up_blockers(None, c64_port.POOL_OF_RADIANCE) == ()
     assert actions.level_up_blockers(
         None, c64_port.CURSE_OF_THE_AZURE_BONDS) == ()
+    assert actions.level_up_blockers(
+        None, c64_port.SECRET_OF_THE_SILVER_BLADES) == ()
 
 
 def test_levelling_writes_what_the_trainer_writes():

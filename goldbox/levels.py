@@ -1633,11 +1633,11 @@ DEFAULT = POOL_OF_RADIANCE
 #: ticket's to write -- see `#418 (The level-up confirmation dialog previews
 #: one step of a Curse dual-training press, not the whole chain)`.
 #:
-#: Silver Blades is the same case one step earlier, and it is not in this set
-#: yet either -- **not because a table is missing any more.** All the trainer
-#: inputs `#89 (Silver Blades' trainer grants spells from a table, and
-#: goldbox/levelup.py offers them from a menu)` was still calling unread or
-#: unattributed are now in `SECRET_OF_THE_SILVER_BLADES`, CONFIRMED: the
+#: **Silver Blades joined on 2026-09-16, and a driven session is what put it
+#: here.** All the trainer inputs `#89 (Silver Blades' trainer grants spells
+#: from a table, and goldbox/levelup.py offers them from a menu)` was calling
+#: unread or unattributed had already reached
+#: `SECRET_OF_THE_SILVER_BLADES`, CONFIRMED: the
 #: constitution hit-point bonus and the thief dexterity and wisdom rows are
 #: Curse's own bytes at different addresses; the thief level rows share their
 #: first 72 bytes with Curse and Pool of Radiance and add eight of Silver
@@ -1650,23 +1650,45 @@ DEFAULT = POOL_OF_RADIANCE
 #: read byte-identical to Curse's own routines. Its **turning table is read**
 #: too, at `GEN $13A5` (#288), CONFIRMED against DOMINIC and GUY DE VALOIS.
 #:
-#: **Two things still hold this title out, and neither is here to fix.** The
-#: `automap/window.py` spell-dialog gate `#415 (automap/window.py picks the
-#: level-up spell dialog's class the same wrong way plan would have, blocking
-#: Curse's trainer)` closed for Curse has not been re-verified for Silver
-#: Blades, and no Silver Blades training has been driven through
-#: `levelup.plan`/`plan_all` and diffed against the engine the way `#18
-#: (Measure Curse's trainer so Level Up works there)` drove five Curse ones --
-#: `#89`'s own 2026-09-08 comment names both. Flipping this set on tables
-#: alone, with `plan()`'s assembly of them never watched against a real
-#: training, is the gap `testing.md`'s "a conversion is not proven until it
-#: runs" is about.
+#: **What had never happened was the press.** `#89`'s own 2026-09-08 comment
+#: named two blockers and both are closed. The `automap/window.py`
+#: spell-dialog gate `#415 (automap/window.py picks the level-up spell
+#: dialog's class the same wrong way plan would have, blocking Curse's
+#: trainer)` closed for Curse needed no second fix here: `LevelUp.offers`
+#: branches on `trains_all_ready_classes`, which this title has set, so it
+#: takes Curse's own branch by construction --
+#: `tests/test_ssbtrainer.py::test_the_level_up_button_asks_for_a_spell_through_the_window`
+#: drives it through the window all the same. And the training was driven:
+#: **fourteen presses over two boots, 2026-09-16**, on SSI's shipped party off
+#: `SILVER-6.D64` with the hall opened by poking `$7EA8` to `$7F`, covering
+#: every class this trainer has a spell step for -- DOMINIC cleric 8 to 9 and
+#: 10 to 11 at both sides of the `$0F35` Wisdom gate, MORGAINE magic-user
+#: 10 to 11, 11 to 12, 12 to 13 and 13 to 14 at four permanent intelligences,
+#: GUY DE VALOIS paladin 8 to 9 and 11 to 12, PAINE ranger 8 to 9, 11 to 12
+#: and 12 to 13. `goldbox/levelup.py` reproduced **196 of 196 derived fields,
+#: 70 of 70 saving-throw columns and 224 of 224 spellbook bytes**
+#: (`tools/ssbtrain.py diff`).
+#:
+#: **The spellbook is the half nothing had ever compared**, in this title or
+#: in Curse: `Plan.spellbook` is a separate attribute from `Plan.fields`, so
+#: every earlier replay looped the fields and left the sixteen bytes at
+#: `0x078` alone. The menu the engine builds was read the same way --
+#: `$18DA STY $1C10` counts it and `$18EB STA $7A00,X` holds the ids -- and
+#: `levelup.learnable` gives the same list id for id, 113 ids over six menus.
+#: Two of those six are what discriminate `SpellTable.menu_spell_level` from
+#: the `(level + 1) // 2` the other two titles compute: the two rules agree
+#: at magic-user 12 and 14 and differ at 11 and 13, and at both the engine
+#: offered the table's answer.
+#: `WISH-SPEC-ssb-89-train-input` and `WISH-SPEC-ssb-89-trained-party` are
+#: four of those presses saved by the game itself, and
+#: `tests/test_ssbtrainer.py` replays them.
 #:
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a
 #: character record. A writer asks this instead.
 TRAINER_MEASURED: frozenset[str] = frozenset(
-    {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key})
+    {POOL_OF_RADIANCE.key, CURSE_OF_THE_AZURE_BONDS.key,
+     SECRET_OF_THE_SILVER_BLADES.key})
 
 #: Titles whose **racial saving-throw bonus** is confirmed, which is a
 #: narrower question than :data:`TRAINER_MEASURED` and the only one

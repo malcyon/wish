@@ -650,26 +650,25 @@ def test_only_the_dwarf_gets_silver_blades_constitution_save_bonus():
     assert bytes([0xCA, 0xCA]) in body, "it does not step two columns at a time"
 
 
-def test_a_silver_blades_party_has_level_tables_and_its_trainer_is_still_unread():
+def test_a_silver_blades_party_has_level_tables_and_a_measured_trainer():
     """`goldbox/levels.py` has Silver Blades' own tables now (#187), and its
-    trainer is still refused -- the constitution hit-point bonus, the
-    thief-skill racial adjustment and the wisdom bonus spells remain unread or
-    unattributed. The turning table no longer does: `GEN $13A5` was read for
-    #288 and is in `goldbox/levels.py`, checked against the routine and
-    against the two shipped records that store the byte in
-    `tests/test_turning.py`. One table is not a trainer, so the assertion
-    below stands.
+    trainer is measured too.
 
-    This test used to assert the opposite: that Silver Blades fell back to
-    Pool of Radiance's tables entirely, with a docstring saying the day the
-    tables landed the assertion would go red. It did, which was the point --
-    see #187 (Silver Blades characters are shown Pool of Radiance's level
-    progression).
+    **This assertion has inverted twice, and each time that was the point.**
+    It first said Silver Blades fell back to Pool of Radiance's tables
+    entirely, and #187 made it red. It then said the tables were there and
+    the trainer still refused, because the constitution hit-point bonus, the
+    thief-skill racial adjustment and the wisdom bonus spells were unread --
+    all three landed, and then fourteen driven trainings on 2026-09-16
+    reproduced 196 of 196 derived fields and 224 of 224 spellbook bytes
+    (`#89 (Silver Blades' trainer grants spells from a table, and
+    goldbox/levelup.py offers them from a menu)`,
+    `tests/test_ssbtrainer.py`), so `TRAINER_MEASURED` gained the key.
     """
     from goldbox import levels
 
     assert levels.for_game(SSB).key == levels.SECRET_OF_THE_SILVER_BLADES.key
-    assert not levels.trainer_measured(SSB)
+    assert levels.trainer_measured(SSB)
 
 
 # --- #187: every literal `goldbox/levels.py` holds for Silver Blades, ------
