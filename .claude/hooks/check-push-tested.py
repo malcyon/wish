@@ -49,14 +49,24 @@ HEREDOC = re.compile(
     r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1.*?^\s*\2\s*$",
     re.DOTALL | re.MULTILINE)
 
-#: Where one shell command's arguments stop.
-BOUNDARY = {"&&", "||", "|", ";", "&", "\n"}
+#: Where one shell command stops and the next begins. Split on these before
+#: tokenising, because `shlex` treats `push;` as one word.
+SEPARATORS = re.compile(r"\|\||&&|[;&|\n]")
 
 #: Shell punctuation glued to a token with no space.
 GLUED = "`(){}[]<>$"
 
 #: Interpreters whose argument is a new command line.
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+#: `git`'s own options that take a separate argument, so `git -C dir push`
+#: is still a push and `git stash push` is not.
+GIT_OPTIONS_WITH_ARGUMENT = {"-C", "-c", "--git-dir", "--work-tree",
+                             "--namespace", "--exec-path"}
+
+#: How many recorded markers `verdict` walks, newest first. Older ones are
+#: never the answer, and each costs a `git merge-base`.
+MARKERS_CHECKED = 20
 
 
 def commands_only(command: str) -> str:
@@ -71,33 +81,35 @@ def _tokens(command: str) -> list[str]:
         return command.split()
 
 
+def _is_push_command(tokens: list[str], depth: int) -> bool:
+    """Whether one shell command, already split off, is `git push`."""
+    for i, raw in enumerate(tokens):
+        token = raw.strip(GLUED)
+        base = os.path.basename(token)
+        if base == "git":
+            j = i + 1
+            while j < len(tokens):
+                option = tokens[j].strip(GLUED)
+                if option in GIT_OPTIONS_WITH_ARGUMENT:
+                    j += 2
+                elif option.startswith("-"):
+                    j += 1
+                else:
+                    break
+            return j < len(tokens) and tokens[j].strip(GLUED) == "push"
+        if base in SHELLS or base == "eval":
+            return any(is_push(arg, depth + 1) for arg in tokens[i + 1:]
+                       if arg not in ("-c", "-lc", "-ec"))
+    return False
+
+
 def is_push(command: str, depth: int = 0) -> bool:
     """Whether any command on the line is a `git push`."""
     if depth > 3:
         return False
-    text = commands_only(command)
-    # Keep newlines as boundaries; shlex would otherwise fold them.
-    text = text.replace("\n", " ; ")
-    tokens = _tokens(text)
-    seen_git = False
-    for i, raw in enumerate(tokens):
-        token = raw.strip(GLUED)
-        if token in BOUNDARY:
-            seen_git = False
-            continue
-        base = os.path.basename(token)
-        if base == "git":
-            seen_git = True
-            continue
-        if seen_git and token == "push":
+    for piece in SEPARATORS.split(commands_only(command)):
+        if piece.strip() and _is_push_command(_tokens(piece), depth):
             return True
-        if base in SHELLS or base == "eval":
-            for arg in tokens[i + 1:]:
-                if arg.strip(GLUED) in BOUNDARY:
-                    break
-                if arg not in ("-c", "-lc", "-ec"):
-                    if is_push(arg, depth + 1):
-                        return True
     return False
 
 
@@ -146,7 +158,7 @@ def verdict(cwd: str) -> str | None:
     recorded = markers(root)
     if head in recorded:
         return None
-    for sha in recorded:
+    for sha in recorded[:MARKERS_CHECKED]:
         if _git(cwd, "merge-base", "--is-ancestor", sha, "HEAD") is None:
             continue
         between = changed_paths(cwd, sha)

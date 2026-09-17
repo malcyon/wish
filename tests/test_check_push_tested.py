@@ -135,6 +135,14 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "/usr/bin/git push",
         "bash -c 'git push'",
         "(git push)",
+        "git -C /tmp push",
+        "git push --force-with-lease",
+        "GIT_DIR=x git push",
+        "git add -A && git commit -m x && git push;",
+        "true;git push",
+        "git push&",
+        "git push|cat",
+        "git commit -m x\ngit push",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 
@@ -146,6 +154,10 @@ def test_commands_that_do_not_push_are_ignored(clone, monkeypatch):
         "git log --oneline -5",
         "echo push",
         "grep -n 'git push' docs/x.md",
+        "echo 'git push'",
+        "git stash push",
+        "git tag push",
+        "git log push",
         "cat > f.md <<'EOF'\ngit push origin main\nEOF",
     ]:
         assert run(monkeypatch, command, clone) == 0, command
