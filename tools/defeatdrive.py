@@ -355,6 +355,13 @@ def main(argv=None) -> int:
                         "before the fight is driven to its end, to test "
                         "whether it lets a defeat carry on past the $0957 "
                         "spin instead of reaching it (#445)")
+    p.add_argument("--no-wound", dest="wound", action="store_false",
+                   help="never write a hit point: let the orcs bring a "
+                        "character down to DYING on their own, so a mercy "
+                        "reading at $6C19 afterward is not confounded by a "
+                        "hit-point patch the harness itself made (#445, the "
+                        "POST.COM $1544 experiment). Needs a much larger "
+                        "--budget than the wounded default")
     args = p.parse_args(argv)
     SC.catch_signals()
 
@@ -398,12 +405,17 @@ def main(argv=None) -> int:
         log.emit("fight_start", steps=steps)
         sess.settle(2)
 
-        wound_all(sess, occupied, args.hp)
-        page = roster_page(sess)
-        log.emit("wounded", slots=occupied, hp=args.hp,
-                 status=statuses(page), current=hitpoints(page))
-        log.say(f"wounded {len(occupied)} character(s) down to {args.hp} "
-                "hit point(s) each")
+        if args.wound:
+            wound_all(sess, occupied, args.hp)
+            page = roster_page(sess)
+            log.emit("wounded", slots=occupied, hp=args.hp,
+                     status=statuses(page), current=hitpoints(page))
+            log.say(f"wounded {len(occupied)} character(s) down to {args.hp} "
+                    "hit point(s) each")
+        else:
+            log.emit("wounded", slots=[], hp=None, status=statuses(page),
+                     current=hitpoints(page))
+            log.say("  --no-wound: nothing written, the orcs do it")
 
         if args.mercy:
             before_mercy = stage_mercy(sess)
@@ -454,6 +466,19 @@ def main(argv=None) -> int:
              "pcs": [f"${pc:04X}" for pc in pcs]}, indent=1) + "\n")
         log.say(f"  program counter: {spun} of {len(pcs)} readings at "
                 f"${SPIN:04X}")
+
+        # `POST.COM $14FB`'s per-slot pass -- the one `$1544` gives a mercy
+        # character back one hit point -- runs once, after the outcome line
+        # and somewhere inside the watch above, not at the moment the line
+        # appears (`#445`).  So the hp reading this experiment is *for* is
+        # taken here, after the watch, and not folded into the "outcome" read.
+        page = roster_page(sess)
+        watched = statuses(page)
+        log.emit("roster", when="after_watch", status=watched,
+                 hp=hitpoints(page))
+        log.say("  after the watch: " + "  ".join(
+            f"{i}:{describe(watched[i])} hp={hitpoints(page)[i]}"
+            for i in occupied))
 
         frames.write(out / "screens.txt", started)
         log.say(f"  {len(frames.seen)} distinct screens -> "

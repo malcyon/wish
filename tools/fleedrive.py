@@ -440,11 +440,53 @@ class Flight:
     thing `melee_turn` keeps within one turn.
     """
 
-    def __init__(self, log: Log):
+    def __init__(self, log: Log, cancel_test: bool = False):
         self.log = log
         self.attempts = 0
         self.got_away: dict[str, int] = {}
         self.failed: collections.Counter = collections.Counter()
+        #: `#445`'s `BAR_CANCEL` experiment: from the code, `$5F` at a combat
+        #: bar comes back from the menu interpreter as `$FF`, and `COMBAT
+        #: $179F` tests only for zero -- so at `FLEE: YES NO` the back-arrow
+        #: should read as NO rather than as a cancel with its own meaning.
+        #: When set, the *first* time this run's tactic reaches that bar it
+        #: presses cancel and logs what followed instead of answering; the
+        #: *second* time it presses NO explicitly, for the direct comparison;
+        #: every time after that it flees for real, so the run still reaches
+        #: an outcome line.
+        self.cancel_test = cancel_test
+        self.probe_stage = 0   # 0: untested, 1: cancel done, 2: NO done
+
+    def probe(self, sess, who: str, kind: str) -> None:
+        """Press `kind` ("cancel" or "no") at a live `FLEE: YES NO` bar.
+
+        Logged rather than asserted: whether the key changed the bar at all,
+        whether `COMBAT`'s own `GOT AWAY`/`FAILED` showed up (either would mean
+        a flee attempt was made, which is the YES behaviour), and what
+        `combat_state` reads afterward.  Comparing the `cancel` and `no`
+        entries is what answers the question -- the same shape of change on
+        both is what "reads as NO" means.
+        """
+        before = sess.combat_state().text
+        if kind == "cancel":
+            changed = sess.cancel_bar(timeout=8, row=24)
+        else:
+            changed = sess.combat_bar("NO", timeout=8)
+        deadline = time.time() + 4
+        text = ""
+        while time.time() < deadline:
+            text = self.band(sess)
+            if text:
+                break
+            time.sleep(0.3)
+        message = GOT_AWAY if GOT_AWAY in text else (
+            FAILED if FAILED in text else None)
+        after = sess.combat_state()
+        self.log.emit(f"probe_{kind}", who=who, before=before,
+                       bar_changed=changed, message=message,
+                       after_kind=after.kind, after_text=after.text)
+        self.log.say(f"    probe {kind}: bar_changed={changed} "
+                      f"message={message!r} after={after.kind}:{after.text!r}")
 
     def band(self, sess) -> str:
         s = sess.screen()
@@ -508,6 +550,14 @@ class Flight:
                 bar = sess.await_bar((S.BAR_YESNO,) + S.AFTER_MOVE, timeout=6)
                 if bar is not None and bar.kind == S.BAR_YESNO \
                         and "FLEE" in bar.text.upper():
+                    if self.cancel_test and self.probe_stage == 0:
+                        self.probe_stage = 1
+                        self.probe(sess, who, "cancel")
+                        continue
+                    if self.cancel_test and self.probe_stage == 1:
+                        self.probe_stage = 2
+                        self.probe(sess, who, "no")
+                        continue
                     if self.answer_flee(sess, who) == GOT_AWAY:
                         return "FLEE"
                     break
@@ -673,7 +723,7 @@ def run(args) -> int:
     out = pathlib.Path(args.out)
     log = Log(out, args.quiet)
     frames = Frames()
-    flight = Flight(log)
+    flight = Flight(log, cancel_test=args.cancel_test)
     started = time.time()
     slot = S.claim_slot(args.slot, f"fleedrive/{args.save}")
     log.say(f"slot {slot.n} display {slot.display}  out {out}")
@@ -844,6 +894,11 @@ def main(argv=None) -> int:
                    help="stage $6DE6 to 1 once the fight has started, to "
                         "test whether it spares the characters left behind "
                         "instead of POST.COM $0E1E dropping them (#445)")
+    d.add_argument("--cancel-test", action="store_true",
+                   help="at the first FLEE: YES NO bar, press BAR_CANCEL "
+                        "instead of answering, log what followed, then press "
+                        "NO explicitly at the next one for comparison, "
+                        "before fleeing for real (#445)")
     d.add_argument("--walk", default="I",
                    help="the move to repeat while looking for a fight")
     d.add_argument("--steps", type=int, default=400,
