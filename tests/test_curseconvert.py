@@ -16,9 +16,10 @@ files and twelve pages.
 
 **Where the specimens come from.**  The synthetic records here are built from
 `goldbox/dos_port.py`'s own table, so they belong to us and run anywhere.
-The two tests that read a C64 save the *game* wrote are marked and skip
-without it: `work/issue32/specimens/` holds three C64 Curse saves an agent
-drove the game to write for `#32`.  The tests that read a *played DOS*
+The two tests that read a C64 save the *game* wrote skip without it:
+`coab-c64/WISH-SPEC-curse-party-with-items.D64` is the save an agent drove
+the game to write for `#32`, in the specimen tree rather than under
+`work/issue32/specimens/`.  The tests that read a *played DOS*
 session use `gamedata.specimen("curse-131-four-items-readied")`, under
 `$WISH_SPECIMENS` (`~/wish-specimens/` by default) rather than `work/curse/`,
 which held the `#113`/`#234` sessions these once read and has been lost
@@ -27,8 +28,6 @@ lived under work/, which has been lost twice).
 """
 
 from __future__ import annotations
-
-import pathlib
 
 import gamedata
 import pytest
@@ -48,8 +47,6 @@ from goldbox.d64 import D64, split_load_address
 
 CURSE = dos_port.CURSE_OF_THE_AZURE_BONDS
 CURSE_GAME = c64_port.CURSE_OF_THE_AZURE_BONDS
-WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
-SPECIMENS = WORK / "issue32" / "specimens"
 
 
 # --- helpers ----------------------------------------------------------------
@@ -343,10 +340,19 @@ def test_the_last_flag_word_reaches_the_c64_payload():
 
 
 # --- the container, against a save the game itself wrote --------------------
+#: `#32`'s own run, in the specimen tree since 2026-09-14.  It was
+#: `work/issue32/specimens/D-curse-party-with-items.D64`, which is
+#: byte-identical to the tree's copy; `work/` is gitignored and has been lost
+#: twice, so only the tree is looked at now (#575).
+ENGINE_WRITTEN = "coab-c64/WISH-SPEC-curse-party-with-items.D64"
+
+
 def _engine_written():
-    path = SPECIMENS / "D-curse-party-with-items.D64"
-    if not path.exists():
-        pytest.skip(f"no engine-written Curse save at {path}; #32 makes one")
+    root = gamedata.specimen_root()
+    path = root / ENGINE_WRITTEN if root else None
+    if path is None or not path.is_file():
+        pytest.skip(f"needs {ENGINE_WRITTEN}; set $WISH_SPECIMENS or see "
+                    f"tools/specimens.py -- #32 is the run that makes one")
     return split_load_address(D64.open(path).read_file("SAVEAZURE"))[1]
 
 

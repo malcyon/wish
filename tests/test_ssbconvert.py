@@ -57,7 +57,6 @@ from goldbox.iconparts import SPACE, dos_icon_tables
 SSB = dos_port.SECRET_OF_THE_SILVER_BLADES
 SSB_GAME = c64_port.SECRET_OF_THE_SILVER_BLADES
 CURSE_GAME = c64_port.CURSE_OF_THE_AZURE_BONDS
-WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
 
 #: DOS level-array slots, `goldbox.dos_codec.CLASS_LEVEL_SLOTS`: 3 paladin, 4 ranger.
 PALADIN, RANGER = 3, 4
@@ -568,27 +567,24 @@ def test_a_converted_party_shows_no_portrait_or_identity_drop_line():
 
 
 # --- the engine's own rewrite, from this ticket's VICE session ---------------
-#: The specimen tree first, because `work/` is gitignored and a save the
+#: The specimen tree only, because `work/` is gitignored and a save the
 #: engine wrote is the one thing here that cannot be regenerated without an
 #: emulator session -- `.claude/rules/testing.md`, "a specimen dies with the
-#: emulator slot that made it".
+#: emulator slot that made it".  `work/193/run2/engine-resave.D64`, which
+#: this also read, is byte-identical to the specimen (#575).
 def _engine_save() -> "pathlib.Path | None":
-    import os
-    tree = pathlib.Path(os.environ.get("WISH_SPECIMENS",
-                                       pathlib.Path.home() / "wish-specimens"))
-    for candidate in (tree / "por-c64" / "WISH-SPEC-ssb-d-converted-resave.D64",
-                      WORK / "193" / "run2" / "engine-resave.D64",
-                      WORK / "193" / "run1" / "engine-resave.D64"):
-        if candidate.is_file():
-            return candidate
-    return None
+    root = gamedata.specimen_root()
+    if root is None:
+        return None
+    candidate = root / "por-c64" / "WISH-SPEC-ssb-d-converted-resave.D64"
+    return candidate if candidate.is_file() else None
 
 
 ENGINE = _engine_save()
 needs_engine_save = pytest.mark.skipif(
     ENGINE is None,
-    reason="no engine-written Silver Blades save in the specimen tree or "
-           "under work/193/")
+    reason="needs por-c64/WISH-SPEC-ssb-d-converted-resave.D64; set "
+           "$WISH_SPECIMENS or see tools/specimens.py")
 
 
 @needs_engine_save

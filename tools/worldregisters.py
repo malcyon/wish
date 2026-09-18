@@ -24,7 +24,11 @@ writing a save.  The player's disks are read and never written.
 | `$8C00`-`$8E87` | the resident window against the disk's own `SQRDATA0n` |
 | `$033D` after each of the digits `1`-`8` | which value of the heading byte is which compass direction |
 
-    tools/worldregisters.py --disk work/p190/C64OUT1.D64
+    tools/worldregisters.py
+
+With no `--disk` it boots the engine-written outdoor save out of the specimen
+tree -- `$WISH_SPECIMENS`, `~/wish-specimens` by default -- and says what to
+set when the tree has none.
 """
 
 from __future__ import annotations
@@ -45,6 +49,13 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
 from tools import session as S  # noqa: E402
 from tools import worldtiles as WT  # noqa: E402
+
+#: The outdoor save this boots when `--disk` names none: `#190`'s own resave,
+#: the first C64 saved game anybody made standing on the travel grid, written
+#: by the game's own `ENCAMP > SAVE` after two walked squares.  It was
+#: `work/p190/C64OUT1.D64`; `work/` is gitignored and has been lost twice, so
+#: it is in the specimen tree now (#575).
+OUTDOOR_SPECIMEN = "por-c64/WISH-SPEC-por-190-c64-outdoor-1.D64"
 
 #: The eight-way travel heading (`docs/137-wilderness-automap.md`), page 3 and
 #: so outside every saved game.
@@ -195,21 +206,43 @@ def compass(sess, log) -> list[dict]:
     return out
 
 
+def outdoor_save(given: str | None) -> pathlib.Path | None:
+    """The outdoor save disk to boot, or `None` when nothing names one.
+
+    `--disk` wins outright.  With no flag the specimen tree answers, so the
+    tool finds the same disk on any machine that has run
+    `tools/specimens.py add`.
+    """
+    if given:
+        return pathlib.Path(given).expanduser()
+    from tools import specimens
+
+    where = specimens.tree_root() / OUTDOOR_SPECIMEN
+    return where if where.is_file() else None
+
+
 def run(args) -> int:
+    disk = outdoor_save(args.disk)
+    if disk is None:
+        print(f"No outdoor save disk to boot. Pass --disk, or put "
+              f"{OUTDOOR_SPECIMEN} in the specimen tree -- $WISH_SPECIMENS, "
+              f"or ~/wish-specimens by default. tools/c64outdoor.py makes "
+              f"one and tools/specimens.py add puts it there.", flush=True)
+        return 1
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    report: dict = {"disk": args.disk}
+    report: dict = {"disk": str(disk)}
 
     def log(line: str) -> None:
         print(line, flush=True)
 
-    slot = S.claim_slot(args.slot, f"worldregisters/{pathlib.Path(args.disk).name}")
+    slot = S.claim_slot(args.slot, f"worldregisters/{disk.name}")
     log(f"slot {slot.n} display {slot.display}")
     sess = None
     rc = 0
     try:
         boot = S.stage_disks(slot, pathlib.Path(args.disks))
-        S.stage_writable(args.disk, pathlib.Path(slot.dir) / "SIDE0.D64")
+        S.stage_writable(disk, pathlib.Path(slot.dir) / "SIDE0.D64")
         sess = S.Session(boot, slot=slot)
         if not sess.boot():
             raise RuntimeError("boot failed")
@@ -279,8 +312,9 @@ def run(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disk", default="work/p190/C64OUT1.D64",
-                   help="an outdoor save disk to boot")
+    p.add_argument("--disk", default=None,
+                   help="an outdoor save disk to boot; the specimen tree's "
+                        f"{OUTDOOR_SPECIMEN} when this is not given")
     p.add_argument("--disks", default=str(find_disks() or ""),
                    help="the player's game disks, read only")
     p.add_argument("--out", default="work/issue11", help="where the report goes")

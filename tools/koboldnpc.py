@@ -286,7 +286,7 @@ def run(args) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--plan", choices=("walk", "warp"), default="walk")
-    p.add_argument("--save", default="~/Downloads/npc_party.d64",
+    p.add_argument("--save", default=str(S.npc_party_save()),
                    help="a save disk whose party is inside the Kobold Caves "
                         "with an NPC in it; copied in as SIDE0")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")

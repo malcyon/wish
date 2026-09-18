@@ -148,6 +148,20 @@ paths = [
     "/mnt/media/roms/c64/Death Knights of Krynn V1.1 (1991)(SSI)[cr trd]",
 ]
 
+[npc-party-save]
+env = "WISH_NPC_PARTY"
+glob = ["npc_party.d64"]
+# A hacked Pool of Radiance save disk Donald found online, whose party stands
+# inside the Kobold Caves with an NPC (`docs/90-specimens.md`). Somebody edited
+# it with an editor, so it is evidence of nothing; three tools boot it as an
+# *input* disk so the game's own code runs from a state nobody has reached by
+# playing (`tools/fasttravelrun.py`, `koboldnpc.py`, `exitreentry.py`).
+paths = [
+    "/data/agent-disks/npc-party-save",
+    "/mnt/disks/npc-party-save",
+    "~/Downloads",
+]
+
 [codewheel]
 env = "WISH_CODEWHEEL"
 # Donald's separate private repository holding the code-wheel arithmetic and

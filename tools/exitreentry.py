@@ -474,7 +474,7 @@ def run(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--save", default="~/Downloads/npc_party.d64")
+    p.add_argument("--save", default=str(S.npc_party_save()))
     p.add_argument("--slot", type=int, default=None)
     p.add_argument("--out", default=str(ROOT / "work" / "issue207" / "run1"))
     p.add_argument("--arrive", type=float, default=240.0)

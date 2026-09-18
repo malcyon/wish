@@ -48,7 +48,7 @@ sys.path.insert(0, str(pathlib.Path(TOOLS).parent))
 from automap import c64 as machines  # noqa: E402
 from goldbox import c64_port as G  # noqa: E402
 from goldbox.d64 import D64, D64Error  # noqa: E402
-from tools import instance  # noqa: E402
+from tools import gamedisks, instance  # noqa: E402
 from tools.drive import (  # noqa: E402
     Keyboard,
     Monitor,
@@ -2686,6 +2686,15 @@ def claim_slot(want: int | None = None, note: str = ""):
     if slot is None:
         raise RuntimeError(f"slot {want} is not free")
     return slot
+
+
+def npc_party_save() -> pathlib.Path:
+    """The `npc-party-save` registry entry's `npc_party.d64`, or where it would
+    be if this machine had it -- the path a run refuses with when the file is
+    missing, so the message names the place to put it (#575)."""
+    where = gamedisks.find("npc-party-save") or gamedisks.candidates(
+        "npc-party-save")[0]
+    return where / "npc_party.d64"
 
 
 def writable(path) -> str:

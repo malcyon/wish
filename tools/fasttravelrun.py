@@ -19,8 +19,7 @@ Princess Fatima from the roster the same way walking out does, because
 one is ever wanted, but only the Kobold Caves case has a save that carries
 the NPC -- `npc_party.d64` -- and has actually been driven this way.
 
-    tools/fasttravelrun.py --disks $POR_DISKS --save ~/Downloads/npc_party.d64 \\
-        --out work/issue207/live2
+    tools/fasttravelrun.py --disks $POR_DISKS --out work/issue207/live2
 
 Nothing is written to the player's disks: `tools.session.stage_disks` copies
 the sides into the slot, and `--save` is copied in as `SIDE0.D64`. The pool
@@ -48,7 +47,7 @@ from automap.target import ViceTarget  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
-DEFAULT_SAVE = pathlib.Path("~/Downloads/npc_party.d64").expanduser()
+DEFAULT_SAVE = S.npc_party_save()
 
 CAVES, EAST = 13, 27
 SLOT_RECORD, SLOT_ROSTER, SLOTS = 0x4D00, 0x8300, 8
@@ -150,7 +149,7 @@ def run(args) -> int:
     try:
         boot = S.stage_disks(slot, disks)
         # The save usually lives outside the disk directory -- the default
-        # is `~/Downloads/npc_party.d64` -- so it is staged by hand rather
+        # is the `npc-party-save` registry entry's file -- so it is staged by hand rather
         # than through `stage_disks`'s own `save` argument, which looks for
         # it alongside the eight sides.
         S.stage_writable(pathlib.Path(args.save).expanduser(),

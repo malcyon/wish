@@ -24,8 +24,8 @@ The two sources are the two shapes of disk, on purpose:
   somewhere is proved.  `$WISH_SPECIMENS/por-amiga/WISH-SPEC-por-amiga-slums-resave` is that
   disk, put there on 2026-09-07 under `#332 (The specimen tree cannot hold
   an Amiga saved game, so the first two engine-written Amiga parties sit
-  outside its checks)`; the tests that want it skip when it is on neither
-  the specimen tree nor `work/`.
+  outside its checks)`; the tests that want it skip when the specimen tree
+  has none.
 """
 
 import pathlib
@@ -46,34 +46,30 @@ from goldbox.amiga_port import AmigaRecordError
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
-WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
-
 #: The engine-written Amiga saved game this direction was proved against:
 #: Amiga Pool of Radiance's own `ENCAMP ▸ SAVE` to slot C on 2026-09-05,
 #: standing in the Slums at 21:22 (`#316`'s run 2).
 #:
 #: In the specimen tree since 2026-09-07 -- `#332 (The specimen tree cannot
 #: hold an Amiga saved game, so the first two engine-written Amiga parties
-#: sit outside its checks)` -- with the `work/` copy kept as a fallback,
-#: because that is
-#: where a machine that has not had `tools/specimens.py add` run on it still
-#: has one and `work/` is gitignored either way.
+#: sit outside its checks)`.  The `work/issue316/` copy this also read is
+#: byte-identical to the tree's and is no longer looked for: `work/` is
+#: gitignored and has been lost twice, so a second route to the same bytes
+#: only decides which copy a failure is about.
 ENGINE_SPECIMEN = ("por-amiga/WISH-SPEC-por-amiga-slums-resave/"
                    "poolsave-c64-after-C.adf")
-ENGINE_IN_WORK = WORK / "issue316" / "poolsave-c64-after-C.adf"
 ENGINE_SLOT = "C"
 
 
 def _engine_save_disk() -> pathlib.Path | None:
     """Where the engine-written Amiga slot C is on this machine, or `None`."""
-    import os
+    from gamedata import specimen_root
 
-    tree = pathlib.Path(os.environ.get("WISH_SPECIMENS")
-                        or pathlib.Path.home() / "wish-specimens")
-    for candidate in (tree / ENGINE_SPECIMEN, ENGINE_IN_WORK):
-        if candidate.exists():
-            return candidate
-    return None
+    root = specimen_root()
+    if root is None:
+        return None
+    candidate = root / ENGINE_SPECIMEN
+    return candidate if candidate.exists() else None
 
 #: A conversion needs the combat icon tables and `ANIMATE00` off the player's
 #: C64 disks and refuses without them.  Zeros stand in wherever what is under
@@ -123,8 +119,8 @@ def engine_disk() -> AmigaDisk:
     """The `POOLSAVE` disk the Amiga game itself saved slot C onto."""
     path = _engine_save_disk()
     if path is None:
-        pytest.skip(f"neither $WISH_SPECIMENS/{ENGINE_SPECIMEN} nor "
-                    f"{ENGINE_IN_WORK} is on this machine")
+        pytest.skip(f"needs {ENGINE_SPECIMEN}; set $WISH_SPECIMENS or see "
+                    f"tools/specimens.py")
     return AmigaDisk.open(str(path))
 
 
@@ -302,9 +298,10 @@ def test_an_outdoor_party_converts_to_the_c64_travel_grid(outdoor_disk):
     engine leaves the resident-map word at 0 outdoors, exactly as DOS does,
     and `goldbox.world_state.from_amiga` substitutes the area table's own
     `SQRDATA05` for area 26's window rather than pass the 0 through --
-    `work/p190/C64OUT1.D64`, the engine's own outdoor resave from `#190 (A
-    C64 party standing on the travel grid cannot be written into a DOS
-    save)`, holds 5 in the same slot for the same area, and a save built
+    `WISH-SPEC-por-190-c64-outdoor-1` (`work/p190/C64OUT1.D64` when this was
+    measured), the engine's own outdoor resave from `#190 (A C64 party
+    standing on the travel grid cannot be written into a DOS save)`, holds 5
+    in the same slot for the same area, and a save built
     with the raw 0 loaded in VICE, drew the party roster and never reached
     a world to show.
 

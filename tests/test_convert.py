@@ -17,8 +17,9 @@ own played saves, on the repository's allowlist; the DOS side reads
 without it -- the DOS → C64 direction also needs the player's own
 `POOL*.D64` game disks and skips without those too.
 
-The Curse of the Azure Bonds transfer test reads `work/curse/H-square-5-13`,
-the DOS session `tests/test_curseconvert.py`'s `_dos_save()` already reads
+The Curse of the Azure Bonds transfer test reads
+`WISH-SPEC-curse-131-four-items-readied`, the DOS session
+`tests/test_curseconvert.py`'s `_dos_save()` already reads
 for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
 the importer refuses today)` -- the FR_ARCHIVES default Curse save this
 project has access to stands in area 0, which is not a mapped Curse area
@@ -46,27 +47,29 @@ from goldbox import c64_port, dos_codec, dos_port, dos_savegame, titles
 from goldbox.savegame import SaveGame0, SaveGame1
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
-WORK = pathlib.Path(__file__).resolve().parent.parent / "work"
-CURSE_DOS_SESSION = WORK / "curse" / "H-square-5-13"
+
+#: The played DOS Curse session this reads, and the slot in it.  It was
+#: `work/curse/H-square-5-13`, which is gone from this machine -- `work/` is
+#: gitignored and has been lost twice -- so this follows
+#: `test_curseconvert.py`'s `_dos_save()` onto the specimen tree, where
+#: `#131`'s own session stands in Tilverton with four items readied.
+CURSE_SPECIMEN, CURSE_SLOT = "curse-131-four-items-readied", "I"
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
 
 
 def _curse_save_dir() -> pathlib.Path | None:
-    """`work/curse/H-square-5-13`, if it is still on this machine.
-
-    `work/` is gitignored and has been lost twice; `test_curseconvert.py`'s
-    `_dos_save()` skips the same way for the same reason.
-    """
-    if (CURSE_DOS_SESSION / "SAVGAMH.DAT").exists():
-        return CURSE_DOS_SESSION
-    return None
+    """The DOS Curse session in the specimen tree, or `None`."""
+    if not gamedata.have_specimen(CURSE_SPECIMEN):
+        return None
+    return gamedata.specimen(CURSE_SPECIMEN)
 
 
 needs_curse_dos_save = pytest.mark.skipif(
-    _curse_save_dir() is None,
-    reason=f"no DOS Curse session at {CURSE_DOS_SESSION}; #113 makes one")
+    not gamedata.have_specimen(CURSE_SPECIMEN),
+    reason=f"needs specimen WISH-SPEC-{CURSE_SPECIMEN}; set $WISH_SPECIMENS "
+           f"or see tools/specimens.py")
 
 
 def _game_dir() -> pathlib.Path:
@@ -546,7 +549,7 @@ def test_curse_dos_to_c64_direction_is_the_transfer_test(tmp_path):
     for this DOS session -- a round trip of our code, not a claim about
     what the player's Curse disks hold."""
     folder = _curse_save_dir()
-    slot = "H"
+    slot = CURSE_SLOT
     icon, animate = bytes(36), bytes(852)
     game_files = dosimport.GameFiles(icon=icon, animate=animate)
     source = convert.Source.detect(folder)
