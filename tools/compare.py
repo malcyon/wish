@@ -17,13 +17,16 @@ from goldbox import layout
 from goldbox.d64 import D64
 from goldbox.layout import Confidence
 from goldbox.record import RECORD_SIZE, CharacterRecord
-
-DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+from tools import gamedisks
 
 
 def load_specimens() -> dict[str, CharacterRecord]:
     out: dict[str, CharacterRecord] = {}
-    img = D64.open(f"{DISKS}/PORSAVE.D64")
+    disks = gamedisks.find("pool-of-radiance")
+    if disks is None:
+        sys.exit("No Pool of Radiance disks found; set POR_DISKS or add the "
+                 "directory to gamedisks.local.toml")
+    img = D64.open(disks / "PORSAVE.D64")
     for e in img.directory():
         if bytes(e.raw_name).startswith(b"\x01"):
             blob = img.read_file(e)

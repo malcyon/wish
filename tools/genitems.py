@@ -24,14 +24,22 @@ from goldbox.items import (  # noqa: E402
     ItemType,
     load_item_names,
 )
+from tools import gamedisks  # noqa: E402
 
-DEFAULT_DISK = "work/POOL1.D64.orig"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "85-item-tables.md"
 
 CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
 DAMAGE_TYPES = {0: "slashing", 1: "piercing", 128: "bludgeoning"}
 WEAPON_FLAGS = ((1, "arrows"), (2, "ranged"), (4, "strength"),
                 (8, "multi-shot"), (16, "thrown"), (128, "bolts"))
+
+
+def default_disk() -> str:
+    where = gamedisks.find("pool-of-radiance")
+    if where is None:
+        sys.exit("No Pool of Radiance disks found; pass a disk, set POR_DISKS "
+                 "or add the directory to gamedisks.local.toml")
+    return str(where / "POOL1.D64")
 
 
 def dice(n: int, sides: int, bonus: int) -> str:
@@ -55,7 +63,7 @@ def classes(bits: int) -> str:
 
 
 def main() -> int:
-    disk = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DISK
+    disk = sys.argv[1] if len(sys.argv) > 1 else default_disk()
     img = d64.D64.open(disk)
     names = load_item_names(img)
     types = img.read_file(b"ITEMS")[2:]

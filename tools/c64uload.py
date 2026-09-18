@@ -97,6 +97,7 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from tools import gamedisks  # noqa: E402
 from tools.c64urest import find_host, first_prg, screen_text  # noqa: E402
 
 DEFAULT_PORT = 80
@@ -525,7 +526,16 @@ def boot(dev: Device, log: Log, image: pathlib.Path, answer: str) -> bool:
     return taken
 
 
+def default_image() -> pathlib.Path:
+    where = gamedisks.find("pool-of-radiance")
+    if where is None:
+        sys.exit("No Pool of Radiance disks found; pass --image, set "
+                 "POR_DISKS or add the directory to gamedisks.local.toml")
+    return where / "POOL1.D64"
+
+
 def cmd_trial(args) -> int:
+    image = pathlib.Path(args.image) if args.image else default_image()
     log = Log(args.log)
     dev = Device(args.host, args.port, log)
     if args.treatment in ("readmem",) and (args.size is None
@@ -545,7 +555,7 @@ def cmd_trial(args) -> int:
             return 4
     dev.json("/machine:reset", method="PUT")
     time.sleep(5)
-    if not boot(dev, log, pathlib.Path(args.image), args.answer):
+    if not boot(dev, log, image, args.answer):
         log.write("meta", event="boot failed")
         dev.json("/machine:reset", method="PUT")
         return 2
@@ -717,7 +727,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--treatment", required=True,
                    choices=["silent", "readmem", "wish", "info", "version",
                             "drives"])
-    p.add_argument("--image", default="work/issue286/disks/POOL1.D64")
+    p.add_argument("--image", default=None,
+                   help="the disk to boot; default is POOL1.D64 from "
+                        "`gamedisks.find(\"pool-of-radiance\")`")
     p.add_argument("--answer", default="Y",
                    help="the fastloader prompt's answer")
     p.add_argument("--interval", type=float, default=2.0)

@@ -38,6 +38,7 @@ paths = [
     "/data/agent-disks/curse-of-the-azure-bonds",
     "/mnt/disks/curse-of-the-azure-bonds",
     "/mnt/media/roms/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS",
+    "/mnt/media/roms/c64/All Games/Curse_of_the_Azure_Bonds_with_docs.SSI",
     "~/c64/Curse of the Azure Bonds Disks",
     "~/Curse of the Azure Bonds Disks",
 ]

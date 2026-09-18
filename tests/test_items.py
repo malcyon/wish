@@ -11,13 +11,13 @@ from goldbox.savegame import SaveGame0
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
-POOL1_ORIG = "work/POOL1.D64.orig"
+POOL1 = f"{DISKS}/POOL1.D64"
 
-# Needs a specimen under `work/`, which is gitignored: a checkout without
-# it skips rather than fails.
+# A checkout without the game's own disk skips rather than fails.
 pytestmark = pytest.mark.skipif(
-    not pathlib.Path(POOL1_ORIG).exists(),
-    reason="needs the disks under work/")
+    not pathlib.Path(POOL1).exists(),
+    reason="needs Pool of Radiance disk 1; set POR_DISKS or add it to "
+           "gamedisks.local.toml")
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 # Read the committed fixture, never the live disk -- an earlier version read
@@ -29,7 +29,7 @@ equipped = pytest.mark.skipif(
 
 @pytest.fixture
 def names():
-    return load_item_names("work/POOL1.D64.orig")
+    return load_item_names(POOL1)
 
 
 @pytest.fixture
@@ -138,7 +138,9 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL2.D64").exists(),
 @game_disks
 def test_templates_come_from_every_disk():
     from goldbox.items import load_item_templates
-    one = load_item_templates("work/POOL1.D64.orig")
+    # A D64, not a path: a path also scans the sibling disks, and this asks
+    # what one disk alone holds.
+    one = load_item_templates(D64.open(POOL1))
     all_of_them = load_item_templates(f"{DISKS}/POOL1.D64")
     assert len(all_of_them) > len(one)          # siblings are scanned
     assert "WAND OF MAGIC MISSILES" in all_of_them
@@ -149,7 +151,7 @@ def test_the_hidden_name_mask_produces_the_unidentified_name(names):
     is the decisive case: it hides the noun and the suffix, so a cursed item
     presents as a plain NECKLACE."""
     from goldbox.items import Item, load_item_templates
-    tpl = load_item_templates("work/POOL1.D64.orig", names)
+    tpl = load_item_templates(D64.open(POOL1), names)
     cases = {"BANDED MAIL +1": "BANDED MAIL",
              "POTION OF HEALING": "POTION",
              "BATTLE AXE": "BATTLE AXE"}

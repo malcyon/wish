@@ -16,13 +16,21 @@ from goldbox.items import (  # noqa: E402
     load_item_templates,
     load_item_types,
 )
+from tools import gamedisks  # noqa: E402
 
-DEFAULT_DISK = "/mnt/media/roms/c64/Pool of Radiance Disks/POOL1.D64"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "87-item-templates.md"
 
 
+def default_disk() -> str:
+    where = gamedisks.find("pool-of-radiance")
+    if where is None:
+        sys.exit("No Pool of Radiance disks found; pass a disk, set POR_DISKS "
+                 "or add the directory to gamedisks.local.toml")
+    return str(where / "POOL1.D64")
+
+
 def main() -> int:
-    disk = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DISK
+    disk = sys.argv[1] if len(sys.argv) > 1 else default_disk()
     names = load_item_names(disk)
     types = load_item_types(disk)
     templates = load_item_templates(disk, names)

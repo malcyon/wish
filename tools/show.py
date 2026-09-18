@@ -21,6 +21,7 @@ from goldbox.items import items_for_slot, load_item_names
 from goldbox.layout import Confidence
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import SaveGame0
+from tools import gamedisks
 
 RACES = {1: "dwarf", 2: "elf", 3: "gnome", 4: "half-elf",
          5: "halfling", 6: "half-orc", 7: "human", 8: "monster"}
@@ -106,7 +107,9 @@ def main() -> int:
     names = None
     # GAME_DISK was a name that never existed, so this loop had always raised
     # NameError before it could find anything.
-    for candidate in (os.environ.get("POR_GAME_DISK"), "work/POOL1.D64.orig"):
+    disks = gamedisks.find("pool-of-radiance")
+    pool1 = disks / "POOL1.D64" if disks else None
+    for candidate in (os.environ.get("POR_GAME_DISK"), pool1):
         if not candidate:
             continue
         try:
@@ -114,6 +117,9 @@ def main() -> int:
             break
         except Exception:
             continue          # item names need a readable game disk
+    if names is None:
+        print("No Pool of Radiance disk to read item names from; set "
+              "POR_DISKS or add it to gamedisks.local.toml", file=sys.stderr)
     img = D64.open(args.path)
     print(f"{args.path}")
     print(f"disk {img.disk_name!r}  id {img.disk_id!r}   {len(img.directory())} files\n")

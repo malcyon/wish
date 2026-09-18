@@ -18,7 +18,6 @@ skip when there is no specimen of that size on the machine.
 
 
 import functools
-import os
 import pathlib
 
 import pytest
@@ -193,24 +192,19 @@ def test_the_plain_image_is_still_writable(tmp_path):
 
 
 # --- the player's own disks -------------------------------------------------
-# Found by size, across the roots the other suites already look in. No new
+# Found by size, across the game disks the registry knows (#575). No new
 # environment variable: the question here is about the container, so any image
 # of the right size answers it.
 
-_REPO = pathlib.Path(__file__).resolve().parent.parent
+_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds",
+           "secret-of-the-silver-blades", "champions-of-krynn")
 
 
 def _roots():
     """Deliberately shallow. `rglob` from `$HOME` walks the whole account for
     the sake of one disk image, which on this machine cost fifteen seconds."""
-    home = pathlib.Path.home()
-    out = [pathlib.Path.cwd(), home / "Documents", home / "Games",
-           home / "c64", home / "roms", home / "Downloads", _REPO / "work"]
-    for env in ("POR_DISKS", "COAB_DISKS", "SSB_DISKS"):
-        where = os.environ.get(env)
-        if where:
-            out.append(pathlib.Path(where))
-    return out
+    from tools import gamedisks
+    return [root for title in _TITLES for root in gamedisks.candidates(title)]
 
 
 @functools.lru_cache(maxsize=1)
