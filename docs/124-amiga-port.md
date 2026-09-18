@@ -209,9 +209,9 @@ variation has to be manufactured (phase 4).
 
 ### 1.6 Curse and Silver Blades, read off the shipped disks
 
-Five Amiga disks arrived on 2026-08-25 and are at
-`/mnt/media/roms/amiga/Curse_Of_The_Azure_Bonds/` and
-`/mnt/media/roms/amiga/Secret_Of_The_Silver_Blades/`: two Curse of the Azure
+Five Amiga disks arrived on 2026-08-25 and are in the
+`Curse_Of_The_Azure_Bonds/` and `Secret_Of_The_Silver_Blades/` folders of the
+`amiga` registry entry: two Curse of the Azure
 Bonds game disks, a Curse **save disk**, and two Secret of the Silver Blades
 disks. `goldbox/amiga_adf.py` walks them, finding the root block by scanning
 because the save disk is 1804 blocks rather than 1760, and
@@ -2363,7 +2363,7 @@ So nobody is surprised, and nobody tries.
    emulator is only needed to produce them. A PoD automapper is still a
    separate project and out of scope here, but it is no longer blocked on a
    missing debugger — it is blocked on nobody having pointed this one at PoD.
-   Kickstart ROMs are present at `/home/donald/FS-UAE/Kickstarts` (1.3 and 3.1)
+   Kickstart ROMs are present in the `kickstarts` registry entry's folder (1.3 and 3.1; `$WISH_KICKSTARTS`)
    for FS-UAE, and at `C:\Amiga\Kickstarts` in the WinUAE guest, so booting is
    not itself a blocker either way.
 8. ~~**Nothing here has been run against a real emulator yet.**~~ Phase 2 has

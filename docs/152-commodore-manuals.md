@@ -5,9 +5,9 @@ for what the *hardware* does — where the screen is, what the sixteen colour
 codes are, which byte is which opcode — as against what *the game* does, which
 is what the rest of this knowledge base measures.
 
-**This page is the only place that names a path.** Everywhere else cites a
+**This page is the only place that names where they are.** Everywhere else cites a
 manual, a section and a page, so that a citation survives the files moving
-again — which they already did once, from `~/Downloads` on 2026-09-04.
+again — which they already did once, from a downloads folder on 2026-09-04.
 
 ## The three
 
@@ -31,14 +31,16 @@ guide has an OCR layer and `pdftotext -f N -l M` reads it for nothing.
 
 ## Where they are, and why there
 
-    /mnt/media/roms/c64/manuals/commodore_64_users_guide.pdf
-    /mnt/media/roms/c64/manuals/commodore_64_programmers_reference_guide.pdf
-    /mnt/media/roms/c64/manuals/Commodore_1541_Disk_Drive_Users_Guide_1982-09_Commodore.pdf
+    commodore_64_users_guide.pdf
+    commodore_64_programmers_reference_guide.pdf
+    Commodore_1541_Disk_Drive_Users_Guide_1982-09_Commodore.pdf
 
-`/mnt/media/roms/c64/` is where this machine keeps its C64 library — the same
-directory `gamedisks.toml` and `automap.paths.find_disks()` search for game
-disks. A manual sits beside the disks it documents rather than in a downloads
-folder that gets cleared.
+Each sits in the folder the `manuals` entry of `gamedisks.toml` resolves to
+(`$WISH_MANUALS` beats it; `tools/gamedisks.py` prints where), written
+`$MANUALS` below. On this machine
+that is a folder beside the C64 game disks, which are searched by the same file:
+a manual sits beside the disks it documents rather than in a downloads folder
+that gets cleared.
 
 **It is read-only to this project.** Nothing here writes there. Anything that
 needs to extract from a PDF copies into `work/` first.
@@ -112,7 +114,7 @@ into `work/` or a scratch directory, and read that:
 
     gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=257 -dLastPage=259 \
        -sOutputFile=work/prg-235-237.pdf \
-       /mnt/media/roms/c64/manuals/commodore_64_programmers_reference_guide.pdf
+       "$MANUALS/commodore_64_programmers_reference_guide.pdf"
 
 Three pages come out at about a megabyte. The other two guides open whole.
 

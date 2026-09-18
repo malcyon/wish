@@ -3,7 +3,7 @@ from __future__ import annotations
 """The area table, and the title key that stops it lying about Curse.
 
 The table's claims are checked against the game's own scripts where those are
-present under `work/ecl-scripts/` -- disassemblies produced by this project,
+present in the `ecl-scripts` registry entry -- disassemblies produced by this project,
 not game data -- and skipped where they are not, exactly as `tests/gamedata.py`
 skips when no disk is attached.
 """
@@ -23,8 +23,9 @@ from goldbox.areas import (
     Arrival,
     Confidence,
 )
+from tools import gamedisks
 
-SCRIPTS = pathlib.Path(__file__).resolve().parent.parent / "work" / "ecl-scripts"
+SCRIPTS = gamedisks.find("ecl-scripts")
 
 
 # -- the shape of the table --------------------------------------------------
@@ -384,7 +385,7 @@ def test_the_label_still_falls_back_to_candidates_with_no_area():
 def _script_paths() -> dict[int, pathlib.Path]:
     """`{area id: dis_POOLn__ECLxx.txt}` for whatever is present."""
     out: dict[int, pathlib.Path] = {}
-    if not SCRIPTS.is_dir():
+    if SCRIPTS is None:
         return out
     for path in SCRIPTS.glob("dis_POOL?__ECL??.txt"):
         m = re.fullmatch(r"dis_POOL(\d)__ECL([0-9A-F]{2})\.txt", path.name)
@@ -414,9 +415,10 @@ def scripts() -> dict[int, pathlib.Path]:
         # scripts. If I decide I want to see them, we can approach the issue
         # again at that time." These five tests stay skipping until that
         # reopens.
-        pytest.skip("no ECL disassemblies under work/ecl-scripts/; the "
-                     "decoder that produced them is gone and rebuilding it "
-                     "was deliberately shelved -- docs/115-review-the-scripts.md")
+        pytest.skip("needs the ecl-scripts entry; set WISH_ECL_SCRIPTS or add it "
+                    "to gamedisks.local.toml. The decoder that produced the "
+                    "disassemblies is gone and rebuilding it was deliberately "
+                    "shelved -- docs/115-review-the-scripts.md")
     return found
 
 
@@ -1060,7 +1062,7 @@ def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
 # -- the same reading, run against Pool of Radiance as a control -------------
 #
 # The five tests above that check `AREAS` against the scripts have skipped
-# since `work/ecl-scripts/` was lost with the rest of `work/` (#137). These
+# since the `ecl-scripts` directory was lost with the rest of `work/` (#137). These
 # three ask the same questions of the disks directly, through the reader that
 # built the Silver Blades table -- so the Silver Blades rows are not the only
 # thing that reader has ever been believed about.

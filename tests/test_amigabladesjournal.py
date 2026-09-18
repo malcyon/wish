@@ -27,6 +27,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tools import amigabladesjournal as journal  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 
 def _stripes(path: pathlib.Path, rows: list[int], *,
@@ -243,7 +244,7 @@ def test_the_environment_names_the_repository_and_has_a_default(monkeypatch):
     monkeypatch.setenv(journal.ENV, "/somewhere/else")
     assert journal.wheel_repo() == pathlib.Path("/somewhere/else")
     monkeypatch.delenv(journal.ENV, raising=False)
-    assert journal.wheel_repo().name == "goldbox-codewheel"
+    assert journal.wheel_repo() in gamedisks.candidates("codewheel")
 
 
 def test_a_machine_without_the_repository_is_told_where_it_looked(monkeypatch,

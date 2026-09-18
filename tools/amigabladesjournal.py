@@ -49,11 +49,11 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from tools import amigadrive, gamedisks  # noqa: E402
+from tools import amigadrive, cursewheel, gamedisks  # noqa: E402
 
 #: Where the private repository is.  `tools/cursewheel.py` settled this name
-#: and this default for the DOS side; a second spelling of the same thing is a
-#: second thing to get wrong.
+#: and the registry lookup for the DOS side; a second spelling of the same
+#: thing is a second thing to get wrong.
 ENV = "WISH_CODEWHEEL"
 
 #: The colour the game draws the challenge in, and how far a pixel may be from
@@ -107,8 +107,7 @@ def reader_pitch(target_pitch: float) -> float:
 
 
 def wheel_repo() -> pathlib.Path:
-    return pathlib.Path(os.environ.get(ENV)
-                        or pathlib.Path.home() / "src/goldbox-codewheel")
+    return cursewheel.wheel_repo()
 
 
 def _blades_modules():

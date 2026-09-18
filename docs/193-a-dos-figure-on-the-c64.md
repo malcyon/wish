@@ -131,7 +131,7 @@ is Donald's, and the code uses whatever `tools/iconproposal.yaml` says.
 
 **No Pool of Radiance party on this machine wears one, so one had to be
 staged.** `tools/dosmixedicon.py --census` read every `.SAV` and `.CHA` under
-`~/dos_por_play/SAVE`, `~/wish-specimens/por-dos` and `~/Downloads/fr-archives`:
+the `SAVE/` folder of the `por-dos-play` registry entry, `$WISH_SPECIMENS`' `por-dos` folder and the `dos-archives` entry:
 **2 of 372 records** are small characters already on a large-only row, and both
 are the same *Pools of Darkness* character, ABAGAIL, in two copies of one
 party. So the question cannot be settled by finding a specimen. `--stage`
@@ -216,7 +216,7 @@ taking 21 and 24, and C64 head 2 taking DOS heads 1, 4 and 6. The collisions
 are the table's, not the reader's: three DOS maces genuinely land on the one
 C64 mace.
 
-The party is `~/dos_por_play/SAVE` slot J, six played characters in The Slums —
+The party is slot J of the `por-dos-play` entry's `SAVE/` folder, six played characters in The Slums —
 untrusted as evidence *about the game* and adequate as *input to a conversion*.
 It is the party on this machine with the most to say: six different
 `icon_head`/`icon_body` pairs, and two of the six small.
@@ -341,7 +341,7 @@ against all six.
 The party above cannot be fought: it stands in New Phlan, which has no
 wandering monsters, and `tools/iconswing.py` walked it 60 steps for **no
 encounter in 60 steps**. So the fight was driven on a second converted party —
-`~/dos_por_play/SAVE` slot B, six played characters in a dungeon, whose
+slot B of the same `SAVE/` folder, six played characters in a dungeon, whose
 provenance is untrusted as evidence *about the game* and adequate as *input to
 a conversion*. Two of its six name the same DOS body and head and differ only
 in colour, which is the interesting case.
@@ -374,13 +374,16 @@ is what `docs/186-ready-and-action.md` describes it doing.
 
 ## Reproducing it
 
-The four sheets Donald judges the rows on, and the party that proved them:
+The four sheets Donald judges the rows on, and the party that proved them.
+`$SAVE` below is the `SAVE/` subfolder of the `por-dos-play` registry entry
+(`$POR_DOS_GAME`, else `gamedisks.toml`; `tools/gamedisks.py` prints where it
+resolves). It is input only, never evidence about the game:
 
 ```sh
 for k in weapon head; do for s in small large; do
     tools/iconproposal.py --kind $k --size $s --png work/issue130/$k-$s.png
 done; done
-tools/dosfigures.py --folder ~/dos_por_play/SAVE --slot J \
+tools/dosfigures.py --folder "$SAVE" --slot J \
     --out work/issue130/PLAYJ.D64 --png work/issue130/playj.png
 POR_HEADLESS=1 tools/savecheck.py --disk work/issue130/PLAYJ.D64 \
     --icon --fight --steps 60
@@ -391,7 +394,7 @@ The nine mixed rows, which no Pool of Radiance party here wears:
 ```sh
 tools/dosmixedicon.py --census
 tools/dosmixedicon.py --stage work/issue130/mixedparty \
-    --from ~/dos_por_play/SAVE --slot J
+    --from "$SAVE" --slot J
 tools/dosfigures.py --folder work/issue130/mixedparty --slot J \
     --out work/issue130/MIXEDJ.D64 --png work/issue130/mixedj.png
 POR_HEADLESS=1 tools/iconswing.py --disk work/issue130/MIXEDJ.D64 \

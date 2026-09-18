@@ -19,7 +19,7 @@ if either side moves.
 
 Neither half is in this repository. The disks are the player's own
 (`tests/gamedata.py`), and the C# is somebody else's work fetched to
-`work/forums/ext/`, which is `.gitignore`d. Both halves skip when what they need
+the `coab-source` registry entry's folder. Both halves skip when what they need
 is absent, which is what CI does.
 """
 
@@ -33,6 +33,7 @@ from gamedata import curse_dir, disk_dir
 
 from goldbox.d64 import D64, load_payload
 from goldbox.spells import load_spell_names, spellbook_bytes
+from tools import gamedisks
 
 # --- the STING negative ------------------------------------------------------
 
@@ -131,13 +132,15 @@ def test_the_gods_never_intervene():
 
 # --- the coab constants ------------------------------------------------------
 
-EXT = pathlib.Path(__file__).resolve().parent.parent / "work" / "forums" / "ext"
+EXT = gamedisks.find("coab-source")
 
 
 def _source(name: str) -> str:
-    path = EXT / name
-    if not path.is_file():
-        pytest.skip(f"needs {path}; fetch simeonpilgrim/coab into work/forums/ext")
+    path = EXT / name if EXT is not None else None
+    if path is None or not path.is_file():
+        pytest.skip(f"needs {name} from simeonpilgrim/coab in the coab-source "
+                    "entry; set WISH_COAB_SOURCE or add it to "
+                    "gamedisks.local.toml")
     return path.read_text(encoding="utf-8", errors="replace")
 
 

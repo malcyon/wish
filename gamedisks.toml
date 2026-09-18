@@ -135,6 +135,19 @@ paths = [
     "/mnt/media/roms/c64/Champions_of_Krynn-EF-[n0]",
 ]
 
+[death-knights-of-krynn]
+env = "DKK_DISKS"
+glob = ["*.d64", "*.D64"]
+# Death Knights of Krynn's disks, for `tests/test_titletables.py`, which tells
+# it from Champions of Krynn by its coin names rather than by where it sits,
+# so a folder holding both titles is fine. The `[n0]` folder is a cartridge
+# image, not disks, and is left out.
+paths = [
+    "/data/agent-disks/death-knights-of-krynn",
+    "/mnt/disks/death-knights-of-krynn",
+    "/mnt/media/roms/c64/Death Knights of Krynn V1.1 (1991)(SSI)[cr trd]",
+]
+
 [codewheel]
 env = "WISH_CODEWHEEL"
 # Donald's separate private repository holding the code-wheel arithmetic and

@@ -47,15 +47,19 @@ display font and reading it needs a font this tool does not have.  Pass
 glance.
 
 The wheel table and the two arithmetics come from
-`$WISH_CODEWHEEL`, default `~/src/goldbox-codewheel` -- kept out of this
-repository deliberately, like the disks.
+the `codewheel` entry of `gamedisks.toml` (`$WISH_CODEWHEEL` beats it) --
+kept out of this repository deliberately, like the disks.
 """
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+
+from tools import gamedisks  # noqa: E402
 
 #: The two rune tiles' **interiors**, as (left, top, width, height) in the
 #: 320x200 frame.  Measured off a live prompt on 2026-09-05 and inset three
@@ -77,8 +81,12 @@ GRID = 16
 
 
 def wheel_repo() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("WISH_CODEWHEEL")
-                        or pathlib.Path.home() / "src/goldbox-codewheel")
+    """The private repository, through the `codewheel` registry entry (#575).
+
+    The first candidate is returned when none exists, so a caller's own "is not
+    a directory" message names the place `$WISH_CODEWHEEL` would have to point.
+    """
+    return gamedisks.find("codewheel") or gamedisks.candidates("codewheel")[0]
 
 
 def normalise(points: set[tuple[int, int]]) -> frozenset[tuple[int, int]]:

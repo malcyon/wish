@@ -357,11 +357,14 @@ and `XDG_DATA_HOME` redirected there, so that nothing landed in Donald's own
 `~/.config/wish` or `~/.local/share/wish` — both were confirmed untouched
 afterwards. The window steps ran on a headless `Xvfb` driven by `xdotool`.*
 
-**L1.** Make the working copy. Everything downstream uses it.
+**L1.** Make the working copy. Everything downstream uses it. `$POR` is the
+folder the `pool-of-radiance` registry entry resolves to (`$POR_DISKS`, else
+`gamedisks.toml`; `tools/gamedisks.py` prints it), where the save disk
+`PORSAVE11.D64` is.
 
 ```sh
 mkdir -p ~/wish-test && cd ~/wish-test
-cp "/home/donald/c64/Pool of Radiance Disks/PORSAVE11.D64" ./TESTSAVE.D64
+cp "$POR/PORSAVE11.D64" ./TESTSAVE.D64
 ```
 
 **L2.** Unpack the frozen build.
@@ -444,7 +447,7 @@ Windows, so confirm it agrees here where you can check both.
    proves nothing: the field is already showing 4321 from the edit.
 5. Confirm the original is untouched:
    ```sh
-   cmp "/home/donald/c64/Pool of Radiance Disks/PORSAVE11.D64" ~/wish-test/TESTSAVE.D64
+   cmp "$POR/PORSAVE11.D64" ~/wish-test/TESTSAVE.D64
    ```
    *Expect:* no output. *If it differs:* something wrote to a file it should not
    have, and that is the most serious failure in this document.
@@ -556,7 +559,7 @@ the same reason L9's `ModuleNotFoundError: tools` is.
 
 *Verified 2026-08-22* against a Curse of the Azure Bonds save made by the
 project's own driven session (`work/curse/CURSESAVE2.D64`), there being no
-`SAVEAZURE` disk in `/mnt/media/roms`. It exported three characters under
+`SAVEAZURE` disk in any folder `gamedisks.toml` lists. It exported three characters under
 `# Curse of the Azure Bonds character export`, and re-imported byte for byte.
 Silver Blades remains untested: the disks are there, a save is not.
 

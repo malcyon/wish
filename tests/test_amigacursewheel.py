@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import amigacursewheel  # noqa: E402
+from tools import amigacursewheel, gamedisks  # noqa: E402
 
 
 def test_a_winuae_capture_is_scaled_up_to_the_readers_range():
@@ -47,7 +47,7 @@ def test_the_environment_names_the_repository_and_has_a_default(monkeypatch):
     monkeypatch.setenv(amigacursewheel.ENV, "/somewhere/else")
     assert amigacursewheel.wheel_repo() == pathlib.Path("/somewhere/else")
     monkeypatch.delenv(amigacursewheel.ENV, raising=False)
-    assert amigacursewheel.wheel_repo().name == "goldbox-codewheel"
+    assert amigacursewheel.wheel_repo() in gamedisks.candidates("codewheel")
 
 
 def test_a_machine_without_the_repository_is_told_where_it_looked(monkeypatch,

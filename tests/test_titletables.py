@@ -28,7 +28,6 @@ Knights of Krynn carries the same race labels and would otherwise match.
 
 
 import functools
-import os
 import pathlib
 
 import pytest
@@ -37,8 +36,7 @@ from goldbox import c64_port, items, levels, spells
 from goldbox.d64 import D64
 from tests import gamedata
 from tests.test_silverblades import ssb_dir
-
-_REPO = pathlib.Path(__file__).resolve().parent.parent
+from tools import gamedisks
 
 POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
@@ -91,15 +89,27 @@ OUTSIDE_THE_RUN = {"secret-of-the-silver-blades": (7,)}
 
 # --- finding the disks -------------------------------------------------------
 
-def _shallow_roots():
-    home = pathlib.Path.home()
-    out = [pathlib.Path.cwd(), home / "Documents", home / "Games",
-           home / "c64", home / "roms", home / "Downloads", _REPO / "work"]
-    for env in ("POR_DISKS", "COAB_DISKS", "SSB_DISKS", "COK_DISKS"):
-        where = os.environ.get(env)
-        if where:
-            out.append(pathlib.Path(where))
+def _roots(*entries):
+    """Every folder `gamedisks.toml` lists for these entries, in that order (#575).
+
+    No search of the home directory: a machine says where its disks are in the
+    registry, and `$COK_DISKS` and its siblings still win over it.
+    """
+    out = []
+    for name in entries:
+        for path in gamedisks.candidates(name):
+            if path not in out:
+                out.append(path)
     return out
+
+
+def _champions_roots():
+    return _roots("champions-of-krynn", "pool-of-radiance",
+                  "curse-of-the-azure-bonds", "secret-of-the-silver-blades")
+
+
+def _death_knights_roots():
+    return gamedisks.candidates("death-knights-of-krynn")
 
 
 @functools.lru_cache(maxsize=1)
@@ -110,7 +120,7 @@ def _champions_side_a():
     seven Krynn race labels, so the race table cannot tell them apart; the coin
     names can, because Death Knights makes every coin STEEL.
     """
-    for root in _shallow_roots():
+    for root in _champions_roots():
         for pattern in ("*.[dD]64", "*/*.[dD]64", "*/*/*.[dD]64"):
             try:
                 paths = sorted(root.glob(pattern))
@@ -135,7 +145,7 @@ def _champions_side_a():
 @functools.lru_cache(maxsize=1)
 def _death_knights_side():
     """The Death Knights of Krynn side carrying `ITEMNAMES`, or None."""
-    for root in _shallow_roots():
+    for root in _death_knights_roots():
         for pattern in ("*.[dD]64", "*/*.[dD]64", "*/*/*.[dD]64"):
             try:
                 paths = sorted(root.glob(pattern))
@@ -161,14 +171,17 @@ def champions_disk() -> pathlib.Path:
     path = _champions_side_a()
     if path is None:
         pytest.skip("needs a Champions of Krynn side carrying ITEMNAMES; "
-                    "set COK_DISKS to where the disks are")
+                    "set COK_DISKS or add the champions-of-krynn entry "
+                    "to gamedisks.local.toml")
     return path
 
 
 def death_knights_disk() -> pathlib.Path:
     path = _death_knights_side()
     if path is None:
-        pytest.skip("needs a Death Knights of Krynn side carrying ITEMNAMES")
+        pytest.skip("needs a Death Knights of Krynn side carrying ITEMNAMES, "
+                    "beside a champions-of-krynn candidate; set COK_DISKS or "
+                    "add the entry to gamedisks.local.toml")
     return path
 
 

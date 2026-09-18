@@ -9,7 +9,7 @@ DOS Curse prompts on 2026-09-14 (`#537 (tools/cursewheel.py never recognises
 a real DOS Curse code-wheel screenshot, so its own command line refuses every
 prompt)`, both comments on that issue): a dot is a 3x3 diamond at columns
 2-4, rows 4-6 of its 8x8 text cell; a dash is a 7px-wide bar across rows 2-3.
-`identify()` runs its whole pipeline against `$WISH_CODEWHEEL`'s reference
+`identify()` runs its whole pipeline against the `codewheel` entry's reference
 bitmaps without any frame corresponding to a real challenge; what is
 asserted is the shape of the command line's own output, never which rune it
 decided on.
@@ -28,7 +28,8 @@ from tools import cursewheel  # noqa: E402
 
 needs_wheel_repo = pytest.mark.skipif(
     not (cursewheel.wheel_repo() / "coab" / "images").is_dir(),
-    reason="needs $WISH_CODEWHEEL, Donald's separate private repository")
+    reason="needs the codewheel entry, Donald's separate private repository; "
+           "set WISH_CODEWHEEL or add it to gamedisks.local.toml")
 
 #: The row the frames below draw their path band in -- cell row 13, the same
 #: row every real prompt measured for #537 used.
