@@ -817,8 +817,8 @@ def title_dos_game(title: str, given: str | None,
     """`title`'s own DOS game folder.
 
     Pool of Radiance keeps `iconcorrespond.dos_game`'s own search -- `--dos`,
-    then `$POR_DOS_GAME`, then the played copy at `~/dos_por_play`, then the
-    archives -- unchanged, so the single-title tool this always was still
+    then `gamedisks.toml`'s `por-dos-play` entry (`$POR_DOS_GAME` first), then
+    the archives -- unchanged, so the single-title tool this always was still
     works the same way with no `--title` given. Curse of the Azure Bonds and
     Secret of the Silver Blades have no played copy on this machine, so they
     are found the way `tools/dosicontitles.py` finds them: under the

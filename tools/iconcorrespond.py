@@ -56,6 +56,7 @@ from automap.paths import find_disks  # noqa: E402
 from goldbox import icons  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
 from goldbox.iconparts import CELLS_PER_POSE, SPACE, IconParts  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 #: A block's pixels start here.  Byte 0 is the row count and byte 2 the width
 #: in fours; `tools/portraitshot.py` fitted the 17 against every `HEAD`,
@@ -166,22 +167,25 @@ def ascii_art(pixels: list[list[int]]) -> list[str]:
 
 # -- where the files are ----------------------------------------------------
 def dos_game(given: str | None) -> pathlib.Path:
-    """The DOS game directory: `--dos`, then `$POR_DOS_GAME`, then a search."""
+    """The DOS game directory: `--dos`, then `gamedisks.toml`'s `por-dos-play`
+    (`$POR_DOS_GAME` first), then a `POOLRAD` folder under its `dos-archives`
+    (#575)."""
     if given:
         return pathlib.Path(given).expanduser()
-    named = os.environ.get("POR_DOS_GAME")
-    if named:
-        return pathlib.Path(named).expanduser()
-    roots = [pathlib.Path.home() / "dos_por_play"]
-    archives = os.environ.get("FR_ARCHIVES")
+    roots = []
+    played = gamedisks.find("por-dos-play")
+    if played:
+        roots.append(played)
+    archives = gamedisks.find("dos-archives")
     if archives:
-        roots += sorted(pathlib.Path(archives).expanduser().rglob("POOLRAD"))
+        roots += sorted(archives.rglob("POOLRAD"))
     for root in roots:
         if (root / "CBODY.DAX").exists() and (root / "CHEAD.DAX").exists():
             return root
     raise SystemExit(
         "no DOS Pool of Radiance directory with CBODY.DAX and CHEAD.DAX in "
-        "it; pass --dos, or set POR_DOS_GAME")
+        "it; pass --dos, or set POR_DOS_GAME (the por-dos-play entry) or "
+        "FR_ARCHIVES (dos-archives), or add one to gamedisks.local.toml")
 
 
 def c64_disk(given: str | None) -> pathlib.Path:

@@ -87,12 +87,13 @@ from tools import gamedisks  # noqa: E402
 
 # Where the player's copy of Forgotten Realms: The Archives is unpacked.
 # Read only, always: a game tree is copied into `work/` before DOSBox sees it.
-# `$FR_ARCHIVES` first -- taken as given, even when it does not exist, so a
-# wrong setting is named in the error rather than silently ignored -- then
-# `gamedisks.toml`'s own search list (#212).
-_fr_archives_env = os.environ.get("FR_ARCHIVES")
-ARCHIVES = (Path(_fr_archives_env) if _fr_archives_env else
-           gamedisks.find("dos-archives") or Path.home() / "Downloads" / "fr-archives")
+# The registry's `dos-archives` entry (#212, #575): `$FR_ARCHIVES` first, then
+# its search list. When nothing holds data this stays the first candidate --
+# the `$FR_ARCHIVES` value when set, even if it does not exist, so a wrong
+# setting is named in the error rather than silently ignored -- because other
+# modules call `ARCHIVES.is_dir()` and must get a path, not `None`.
+ARCHIVES = (gamedisks.find("dos-archives")
+            or gamedisks.candidates("dos-archives")[0])
 
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
@@ -136,7 +137,9 @@ def find_game(stem: str = "POOLRAD") -> Path:
     the archives are not on this machine, which is how the tests skip.
     """
     if not ARCHIVES.is_dir():
-        raise FileNotFoundError(f"no archives at {ARCHIVES}")
+        raise FileNotFoundError(
+            f"no archives at {ARCHIVES}; set FR_ARCHIVES or add the "
+            f"dos-archives entry to gamedisks.local.toml")
     for collection in sorted(ARCHIVES.iterdir()):
         games = collection / "games"
         if not games.is_dir():

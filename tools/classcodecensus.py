@@ -39,7 +39,7 @@ sys.path.insert(0, str(REPO))
 from goldbox import c64_codec, dos_codec, dos_port, items  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
-from tools import dostailcensus  # noqa: E402
+from tools import dostailcensus, gamedisks, specimens  # noqa: E402
 
 #: Curse of the Azure Bonds' own class table, `GEN $1951`, indexed by the
 #: class code and holding the class bitmask.  Index 10 is `0x82`
@@ -180,15 +180,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dos", action="append", default=[],
                     help="a directory of DOS records, repeatable")
     ap.add_argument("--archives", action="store_true",
-                    help="add ~/Downloads/fr-archives to the DOS roots")
+                    help="add the dos-archives entry of gamedisks.toml to the DOS roots")
     args = ap.parse_args(argv)
     c64 = [pathlib.Path(p).expanduser() for p in args.c64]
     dosr = [pathlib.Path(p).expanduser() for p in args.dos]
     if not c64 and not dosr:
-        c64 = [pathlib.Path.home() / "wish-specimens" / "por-c64"]
-        dosr = [pathlib.Path.home() / "wish-specimens" / "por-dos"]
+        c64 = [specimens.tree_root() / "por-c64"]
+        dosr = [specimens.tree_root() / "por-dos"]
     if args.archives:
-        dosr.append(pathlib.Path.home() / "Downloads" / "fr-archives")
+        found = gamedisks.find("dos-archives")
+        if not found:
+            ap.error("no DOS archives; set FR_ARCHIVES or add the "
+                     "dos-archives entry to gamedisks.local.toml")
+        dosr.append(found)
     bad = 0
     for root in c64:
         print(f"== C64: {root}")

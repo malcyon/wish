@@ -16,7 +16,7 @@ a look needs a specimen.  This finds one or makes one.
 
     tools/dosmixedicon.py --census
     tools/dosmixedicon.py --stage work/issue130/mixedparty --slot J \\
-        --from ~/dos_por_play/SAVE
+        --from "$POR_DOS_GAME/SAVE"
 
 `--census` reads every `.SAV` and `.CHA` under the DOS corpora and reports
 every record whose `size` is 1 and whose row lands past a small list -- the
@@ -50,16 +50,29 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import dos_codec  # noqa: E402
 from goldbox.iconparts import dos_icon_tables  # noqa: E402
+from tools import gamedisks, specimens  # noqa: E402
 
 ICON_HEAD = 0x0BD
 ICON_BODY = 0x0BE
 
-#: Where DOS saves live on this machine.  Read only; `--stage` copies out.
-CORPORA = (
-    pathlib.Path.home() / "dos_por_play" / "SAVE",
-    pathlib.Path.home() / "wish-specimens" / "por-dos",
-    pathlib.Path.home() / "Downloads" / "fr-archives",
-)
+
+def corpora() -> list[pathlib.Path]:
+    """Where DOS saves live on this machine, from `gamedisks.toml` (#575).
+
+    Read only; `--stage` copies out.  The played copy's `SAVE/` is edited with
+    Gold Box Companion, so it is an input here and never evidence -- this tool
+    only asks whether a row exists, and `--stage` makes the one a look needs.
+    """
+    roots = []
+    played = gamedisks.find("por-dos-play")
+    if played:
+        roots.append(played / "SAVE")
+    roots.append(specimens.tree_root() / "por-dos")
+    archives = gamedisks.find("dos-archives")
+    if archives:
+        roots.append(archives)
+    return roots
+
 
 #: The C64's small lists, which are what a row has to clear to be composable
 #: at a small character's own size.  Read off `SPELLE64` by
@@ -77,11 +90,11 @@ def mixed_rows(tables=None) -> tuple[list[int], list[int]]:
             [h for h, c in sorted(tables.heads.items()) if c >= SMALL_HEADS])
 
 
-def census(roots=CORPORA, tables=None) -> tuple[int, list[dict]]:
+def census(roots=None, tables=None) -> tuple[int, list[dict]]:
     """Every small record already wearing a large-only option, and how many read."""
     tables = tables or dos_icon_tables()
     read, hits = 0, []
-    for root in roots:
+    for root in corpora() if roots is None else roots:
         if not root.exists():
             continue
         for path in sorted(root.rglob("*")):
@@ -160,6 +173,10 @@ def main(argv=None) -> int:
 
     if args.census:
         read, hits = census(tables=tables)
+        if not read:
+            print("No DOS records found; set POR_DOS_GAME (por-dos-play), "
+                  "FR_ARCHIVES (dos-archives) or WISH_SPECIMENS, or add the "
+                  "entries to gamedisks.local.toml", file=sys.stderr)
         print(f"{read} DOS records read; {len(hits)} are small characters "
               f"already wearing a large-only option")
         for hit in hits:
