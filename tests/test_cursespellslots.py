@@ -592,6 +592,12 @@ def test_every_engine_written_record_reproduces_except_the_known_misses(
     this project wrote before the fix and two Pool of Radiance oddities
     `#547` could not chase further.
     """
+    if not dosbox.ARCHIVES.is_dir():
+        # The counts below were measured over the specimen tree and the
+        # archives together; the tree alone is a smaller corpus and would fail
+        # them for lack of the archive's records, not for a wrong table.
+        pytest.skip("needs the DOS archives as well as the specimen tree; "
+                    "set FR_ARCHIVES or add dos-archives to gamedisks.yaml")
     records = _dos_records(title)
     if not records:
         pytest.skip(f"no DOS {title} records on this machine")
