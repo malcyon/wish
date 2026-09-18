@@ -110,12 +110,7 @@ def main(argv=None) -> int:
                         help="include records this project wrote")
     args = parser.parse_args(argv)
 
-    roots = list(args.roots)
-    if not roots:
-        archives = dostailcensus.archives()
-        if archives:
-            roots.append(archives)
-        roots.append(ROOT / "work")
+    roots = list(args.roots) or dostailcensus.dos_record_roots()
     all_specs, skipped = dostailcensus.collect(roots, args.built)
     specs = [s for s in all_specs if s.shape.key == args.title]
     if not specs:

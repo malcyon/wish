@@ -40,8 +40,8 @@ specimen is only evidence if we know who wrote it.  Each row carries a grade:
 * `ours`  -- written by one of this project's own writers, by the filename
   prefixes `tools/dostailcensus.py` already lists, or by a `provenance.toml`
   whose `made_by` names our writer.  Never evidence about the game;
-* `found` -- anywhere else: the archives, a game disk, a `work/` directory.
-  No chain of custody.
+* `found` -- anywhere else: the archives, a game disk, the played DOS game
+  directory, or any root named on the command line.  No chain of custody.
 
 Records this project wrote are **excluded by default** and included, marked,
 by `--ours`; an emulator instance's staged game tree is skipped outright, the
@@ -479,13 +479,10 @@ def _game_dir(args) -> pathlib.Path:
 
 
 def census(args) -> int:
-    roots = list(args.roots)
+    roots = list(args.roots) or dostailcensus.dos_record_roots()
     if not roots:
-        roots.append(specimens.tree_root())
-        arch = dostailcensus.archives()
-        if arch:
-            roots.append(arch)
-        roots.append(REPO / "work")
+        print(dostailcensus.NO_RECORDS, file=sys.stderr)
+        return 1
 
     records, skipped = collect(roots, args.ours, args.title, args.foreign)
     ours = sum(1 for r in records if r.ours)
@@ -512,7 +509,7 @@ def main(argv=None) -> int:
     c = sub.add_parser("census", help="who carries which id, across the corpus")
     c.add_argument("roots", nargs="*", type=pathlib.Path,
                    help="directories to sweep; default the specimen tree, "
-                        "the archives and work/")
+                        "the archives and the played DOS game directory")
     c.add_argument("--title", help="substring of a shape key: pool, curse, "
                                    "silver, darkness")
     c.add_argument("--by-id", action="store_true",

@@ -8,18 +8,21 @@ does not survive the training fee, so failing it is not evidence of an edited
 record)` is the ticket that doubts it, and this is the sweep behind the answer.
 
 `tools/dosencumbrance.py` already prints both sides of the sum for one DOS
-directory and sweeps the DOS records under the archives and `work/`.  This
-tool asks the wider question the rule file rests on, and asks it of the whole
-machine:
+directory and sweeps the same DOS records.  This tool asks the wider question
+the rule file rests on, and asks it of the whole machine:
 
 * **every port**, not DOS alone -- the Amiga's records carry the same field
   (Pool of Radiance at `0x056`, Curse at `0x18C`), and **the C64 record has
   no such field at all**, so a C64 save can never fail the identity and can
   never be judged by it.  That is printed rather than left implied.
-* **every corpus** -- the archives, the played DOS directory, the specimen
-  tree, `work/`, and the Amiga disk images -- each row graded by where it came
+* **every corpus** -- the specimen tree, the archives, the played DOS
+  directory and the Amiga disk images -- each row graded by where it came
   from, because a record nobody watched being written is not evidence about
-  what the engine does.
+  what the engine does.  A record that exists only under `work/` is in none
+  of them: that directory is gitignored scratch and is no longer a default
+  root (#575), so a run whose records are evidence copies them into the
+  specimen tree with `tools/specimens.py add`.  `dos_rows(roots=[...])` still
+  takes any directory a caller wants swept.
 * **the direction of the miss**, because `#323`'s standing hypothesis is that
   a training fee always leaves the stored number *above* the sum and an edit
   leaves it *below*.  A count by sign is what tests that.
@@ -61,12 +64,6 @@ from tools import (  # noqa: E402
     amigasaves,
     dostailcensus,
 )
-
-#: Where a DOS record might be, beyond the archives `dostailcensus` finds:
-#: this repository's `work/`, the specimen tree that outlives an emulator
-#: slot, and the played DOS directory.  Copied from `tools/spellbookcensus.py`,
-#: which had already worked out that the archives are not the whole corpus.
-DOS_EXTRA = ("work", "~/wish-specimens", "~/dos_por_play")
 
 #: How a record is graded, by where it was found, strongest claim first.  A
 #: record found in two places takes the **worst** grade of the two: the
@@ -150,14 +147,12 @@ def _carried(items) -> int:
 # --- DOS ---------------------------------------------------------------------
 
 def dos_roots() -> list[pathlib.Path]:
-    out = []
-    archives = dostailcensus.archives()
-    if archives is not None:
-        out.append(archives)
-    for name in DOS_EXTRA:
-        p = pathlib.Path(name).expanduser()
-        out.append(p if p.is_absolute() else ROOT / name)
-    return out
+    """The specimen tree, the archives and the played DOS game directory.
+
+    `tools/dostailcensus.py`'s own list, so every DOS census on this machine
+    covers the same corpus (#575).  `tools/dosencrecompute.py` calls this.
+    """
+    return dostailcensus.dos_record_roots()
 
 
 def dos_rows(roots=None, want_built: bool = True):
@@ -505,6 +500,8 @@ def main(argv: list[str] | None = None) -> int:
 
     rows: list[Row] = []
     if not args.amiga_only:
+        if not dos_roots():
+            print(dostailcensus.NO_RECORDS)
         dos, skipped = dos_rows()
         rows += dos
         for other, n in sorted(skipped.items()):

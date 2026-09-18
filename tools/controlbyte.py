@@ -22,8 +22,11 @@ flag that the conversion reports as having nowhere to go)`.
 **Provenance is the whole caution and it is printed on every run.**  A save
 found on a disk was not necessarily written by the game; `tests/gamedata.py`
 and `.claude/rules/testing.md` say why.  The DOS half reuses
-`tools/dostailcensus.py`'s finder, so it inherits that tool's exclusions --
-records this project wrote, and an emulator instance's staged game tree.
+`tools/dostailcensus.py`'s finder and its roots -- the specimen tree, the
+archives and the played DOS game directory, every record in the last of which
+has been through Gold Box Companion's editor -- so it inherits that tool's
+exclusions as well: records this project wrote, and an emulator instance's
+staged game tree.
 
 Reads only.  Nothing here writes anything, on any disk.
 """
@@ -158,9 +161,10 @@ def census_c64(disks: list[pathlib.Path]) -> int:
 
 def census_dos(want_built: bool) -> int:
     """Partition the DOS control and share bytes per title."""
-    roots = [r for r in (dostailcensus.archives(),
-                         pathlib.Path(__file__).resolve().parent.parent / "work")
-             if r is not None]
+    roots = dostailcensus.dos_record_roots()
+    if not roots:
+        print("\n" + dostailcensus.NO_RECORDS)
+        return 0
     specs, skipped = dostailcensus.collect(roots, want_built)
     print(f"\nDOS: {len(specs)} distinct records under "
           + ", ".join(str(r) for r in roots))

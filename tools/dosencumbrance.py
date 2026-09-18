@@ -9,21 +9,27 @@ term rather than guessed at.  Point it at a directory of saves per step of a
 driven run and one purchase's effect on the stored number is a diff of two
 lines.
 
-`--census` sweeps every `.SAV` and `.CHA` the machine has -- the DOS archives
-by `gamedisks.toml` and everything under `work/` -- deduplicates on the record
-bytes together with its items', and reports how the discrepancy is
-distributed.  That is what makes a claim about the identity a count rather
-than an anecdote.  On 2026-09-04: **264 distinct records, 214 balancing
-exactly, and every one of the six that miss by `+3` is a Curse character
-freshly out of the Tilverton shop.**  Two caveats on the rest of that
-distribution, because the sweep is deliberately unfiltered -- the large
-positives are our own `BUILT-`/`ENGINE-` seeds under `work/`, which have no
-item file for the sum to find, and the two Pool of Radiance characters at
-`-65` and `-20`, GILES and ASTRID, are PROBABLY edited: their cached line and
-stored total agree with each other against a round quantity byte, which is
-what an edit leaves, where the engine itself keeps the quantity byte and the
-stored total in step and lets only the cached line go stale
-(`docs/125-bug-notes.md` N19).
+`--census` sweeps every `.SAV` and `.CHA` the machine has -- the specimen
+tree, the DOS archives and the played DOS game directory, all three by
+`tools/dostailcensus.py`'s own root list -- deduplicates on the record bytes
+together with its items', and reports how the discrepancy is distributed.
+That is what makes a claim about the identity a count rather than an anecdote.
+On 2026-09-18, over 331 distinct records: **272 balance exactly**, 48 of the
+59 that miss are `#249`'s own training ladder missing by an exact multiple of
+1000 gp -- the training fee -- and the two Pool of Radiance characters at
+`-65` and `-20`, GILES and ASTRID, are PROBABLY edited: their cached line and stored
+total agree with each other against a round quantity byte, which is what an
+edit leaves, where the engine itself keeps the quantity byte and the stored
+total in step and lets only the cached line go stale
+(`docs/125-bug-notes.md` N19).  Six at `-18001` are `#323`'s deliberately
+spoiled specimen, and `+109` is the hand-axe purchase of
+`docs/213-the-dos-shopping-trip.md`.
+
+The 2026-09-04 reading was 264 records over the archives and `work/`, and the
+six Curse characters `#225` found at `+3` were under `work/`.  That directory
+is gitignored scratch and has been lost twice, so it is no longer a default
+root (#575): the two counts are not counts of the same corpus, and neither
+number can be read as the other moving.
 
 Written for `#225 (A shopped Curse character's stored encumbrance is three
 tenths above the sum)`, where the answer turned out to be that a purchase
@@ -87,13 +93,14 @@ def report(name: str, char: dos_codec.DosCharacter, verbose: bool = True) -> Non
 
 
 def census_roots() -> list[pathlib.Path]:
-    """Every directory the project knows of that may hold DOS records."""
-    from tools import gamedisks
-    roots = [p for p in gamedisks.candidates("dos-archives") if p.is_dir()]
-    work = pathlib.Path(__file__).resolve().parent.parent / "work"
-    if work.is_dir():
-        roots.append(work)
-    return roots
+    """Every directory the project knows of that may hold DOS records.
+
+    `tools/dostailcensus.py`'s list, so this sweep and every other DOS census
+    on this machine cover the same corpus (#575): the specimen tree, the
+    archives and the played DOS game directory.
+    """
+    from tools import dostailcensus
+    return dostailcensus.dos_record_roots()
 
 
 def census(roots: list[pathlib.Path]) -> None:
@@ -149,7 +156,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.census:
-        census(census_roots() + [p for p in args.paths if p.is_dir()])
+        roots = census_roots() + [p for p in args.paths if p.is_dir()]
+        if not roots:
+            from tools import dostailcensus
+            print(dostailcensus.NO_RECORDS, file=sys.stderr)
+            return 1
+        census(roots)
         return 0
     for path in args.paths:
         pairs = ([(path.name, dos_codec.read_character(path))] if path.is_file()

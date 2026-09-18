@@ -171,12 +171,6 @@ class Carried:
         return self.traits if self.traits is not None else self.innate + self.granted
 
 
-#: Where a DOS or Amiga record might be, beyond the archives: the specimen
-#: tree that outlives an emulator slot, this repository's `work/`, and the
-#: played DOS directory.  Copied from `tools/spellbookcensus.py`, which had
-#: already worked out that the archives are not the whole corpus.
-DOS_EXTRA = ("work", "~/wish-specimens", "~/dos_por_play")
-
 #: Every character record in here has been edited with Gold Box Companion --
 #: Donald, 2026-09-04: *"Assume all character records in
 #: /home/donald/dos_por_play/SAVE/ were edited."*  Graded, not excluded: an
@@ -265,11 +259,15 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
 
     The registry's three title directories, **and their parents** -- Champions
     of Krynn, Death Knights of Krynn and Gateway to the Savage Frontier are
-    three of Wish's six C64 titles and none of them has a `gamedisks.toml`
+    three of Wish's six C64 titles and none of them has a `gamedisks.yaml`
     entry, so a sweep of the registry alone silently covers half the titles.
     The parent of `/.../c64/Pool of Radiance Disks` is where the other three
     sit on this machine, and an image with no saved game costs one read and is
     skipped.
+
+    **No `work/` sweep** (#575): a disk image a driven run left there is
+    gitignored scratch, and one carrying a party that is evidence belongs in
+    the specimen tree.  `--disk` still takes any image by name.
     """
     paths: list[pathlib.Path] = []
     for _game, key in C64_TITLES:
@@ -281,7 +279,6 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
     root = _specimen_root()
     if root is not None:
         paths += sorted(root.glob("*/WISH-SPEC-*.[dD]64"))
-    paths += sorted((ROOT / "work").rglob("*.[dD]64"))
     paths += [pathlib.Path(p) for p in extra_disks]
     out: dict[str, pathlib.Path] = {}
     for path in paths:
@@ -363,15 +360,13 @@ def _specimen_root():
 # --- DOS ---------------------------------------------------------------------
 
 def _dos_roots() -> list[pathlib.Path]:
+    """The specimen tree, the archives and the played DOS game directory.
+
+    `tools/dostailcensus.py`'s own list, so every DOS census on this machine
+    covers the same corpus (#575).
+    """
     from tools import dostailcensus
-    out = []
-    archives = dostailcensus.archives()
-    if archives is not None:
-        out.append(archives)
-    for name in DOS_EXTRA:
-        p = pathlib.Path(name).expanduser()
-        out.append(p if p.is_absolute() else ROOT / name)
-    return out
+    return dostailcensus.dos_record_roots()
 
 
 def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
@@ -383,7 +378,10 @@ def dos_rows(specimen_grades: dict[str, str], problems: list[str]):
     size as one we have a layout for.
     """
     from tools import dostailcensus
-    specs, skipped = dostailcensus.collect(_dos_roots(), want_built=True)
+    roots = _dos_roots()
+    if not roots:
+        problems.append(dostailcensus.NO_RECORDS)
+    specs, skipped = dostailcensus.collect(roots, want_built=True)
     for other, n in sorted(skipped.items()):
         problems.append(f"{n} DOS record(s) skipped under {other}: the same "
                         f"record size as a title read here, and not the same "

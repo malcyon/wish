@@ -13,25 +13,31 @@ So this widens the corpus rather than re-reading the same 24 files.
 What it does, and it reads only:
 
 1. **Finds every DOS Gold Box character record** under the roots given, or
-   under the player's archives and `work/` by default.  A record is a file
-   whose size is one of the four `goldbox/dos_port.py` knows -- 285 Pool of
-   Radiance, 422 Curse, 439 Silver Blades, 510 Pools of Darkness -- and whose
-   suffix is a record suffix (`.SAV`, `.CHA`, `.GUY`).  Anything else,
-   including the 288-byte Amiga records under `work/`, is skipped.  A record
-   under a `FOREIGN_TITLES` directory -- Gateway to the Savage Frontier's
-   `.GUY` is 422 bytes, Treasures of the Savage Frontier's record is 510 --
-   is the same size as a title read here and is skipped and counted rather
-   than read through that title's table; `--foreign` includes it, marked.
+   under `dos_record_roots()` by default -- the specimen tree, the player's
+   archives and the played DOS game directory.  A record is a file whose size
+   is one of the four `goldbox/dos_port.py` knows -- 285 Pool of Radiance, 422
+   Curse, 439 Silver Blades, 510 Pools of Darkness -- and whose suffix is a
+   record suffix (`.SAV`, `.CHA`, `.GUY`).  Anything else, including the
+   288-byte Amiga records, is skipped.  A record under a `FOREIGN_TITLES`
+   directory -- Gateway to the Savage Frontier's `.GUY` is 422 bytes,
+   Treasures of the Savage Frontier's record is 510 -- is the same size as a
+   title read here and is skipped and counted rather than read through that
+   title's table; `--foreign` includes it, marked.
 2. **Grades each file's provenance.**  `engine` is a file the game wrote:
-   everything in the archives, and everything under `work/` that does not carry
-   one of the `BUILT-`/`SEED-`/`C64-` prefixes this project's own writers use.
-   `built` is ours.  The distinction is the whole point of the run: our own
-   `WRITE_CONSTANTS` writes `00 00 01 00 00` into `field_83_87`, so a built
-   file can only ever agree with the claim under test.  `--built` includes
-   them, marked, and they are never counted in the headline partition.
+   everything that does not carry one of the `BUILT-`/`SEED-`/`C64-` prefixes
+   this project's own writers use.  `built` is ours.  The distinction is the
+   whole point of the run: our own `WRITE_CONSTANTS` writes `00 00 01 00 00`
+   into `field_83_87`, so a built file can only ever agree with the claim
+   under test.  `--built` includes them, marked, and they are never counted in
+   the headline partition.  **`engine` is not a chain of custody**: the
+   archives are a download and every record under the played game directory
+   has been through Gold Box Companion's editor, so both are an *input* rather
+   than evidence (`.claude/rules/testing.md`).  Only the specimen tree says
+   who wrote each file, and `tools/innateids.py` and `tools/enccensus.py`
+   print that finer grade.
 3. **Deduplicates on the record bytes**, per title, because the archives ship
-   every save directory twice and `work/` holds resave after resave of the
-   same party.  A count is a count of distinct records.
+   every save directory twice and carry a second copy of the played game
+   directory's own `SAVE`.  A count is a count of distinct records.
 4. **Prints the value partition** for each field named with `--field`: which
    byte values occur, how many distinct records hold each, and which -- name,
    class, level, title -- so a value that varies can be correlated at once.
@@ -51,7 +57,6 @@ from __future__ import annotations
 import argparse
 import collections
 import hashlib
-import os
 import pathlib
 import sys
 
@@ -106,6 +111,14 @@ FOREIGN_TITLES = ("gateway to the savage frontier",
                   "unlimited adventures")
 
 
+#: What to tell somebody whose machine holds no DOS records at all.  Naming
+#: the registry entry and its variable is the whole point: a census that
+#: prints a row of zeros and no advice looks like a finding (#575).
+NO_RECORDS = ("No DOS records on this machine: set $FR_ARCHIVES to the "
+              "Forgotten Realms archives, or add a dos-archives path to "
+              "gamedisks.yaml")
+
+
 def foreign_title(path: pathlib.Path) -> str | None:
     """The name of a title with no layout here, if `path` is inside one."""
     text = path.as_posix().lower()
@@ -115,18 +128,53 @@ def foreign_title(path: pathlib.Path) -> str | None:
 def archives() -> pathlib.Path | None:
     """The player's unpacked Forgotten Realms archives, or None.
 
-    `$FR_ARCHIVES`, then `gamedisks.toml`'s search list, then the usual
-    unpack directory -- the same three steps `tools/dosbox.py` takes, so a
-    machine configured for one is configured for the other.
+    The `dos-archives` entry of `gamedisks.yaml`, whose own first layer is
+    `$FR_ARCHIVES` -- so the variable still wins outright and the private
+    fallback this used to carry is one search list rather than two (#575).
     """
-    env = os.environ.get("FR_ARCHIVES")
-    if env:
-        return pathlib.Path(env).expanduser()
-    found = gamedisks.find("dos-archives")
-    if found:
-        return found
-    guess = pathlib.Path.home() / "Downloads" / "fr-archives"
-    return guess if guess.is_dir() else None
+    return gamedisks.find("dos-archives")
+
+
+def specimen_tree() -> pathlib.Path | None:
+    """The specimen tree, `$WISH_SPECIMENS` or `~/wish-specimens`, or None.
+
+    Every record in there says who made it and how, which is the only corpus
+    on this machine that does -- `.claude/rules/testing.md`.
+    """
+    from tools import specimens  # noqa: PLC0415
+    root = pathlib.Path(specimens.tree_root())
+    return root if root.is_dir() else None
+
+
+def played_game_dir() -> pathlib.Path | None:
+    """Donald's own played DOS game directory, `por-dos-play`, or None.
+
+    **Every character record under it has been edited with Gold Box
+    Companion**, so it is an input to a census of what a container will hold
+    and never evidence about what the engine writes -- `.claude/rules/
+    testing.md`, "A specimen is only evidence if we know who wrote it".  It is
+    swept because the question these tools ask is what values exist, and
+    graded wherever a tool grades at all.
+    """
+    return gamedisks.find("por-dos-play")
+
+
+def dos_record_roots() -> list[pathlib.Path]:
+    """Every directory on this machine that may hold a DOS record.
+
+    The specimen tree first, because it is the only one whose files carry
+    their own provenance and a deduplicated record should show that path;
+    then the archives; then the played game directory, whose `SAVE` the
+    archives already ship a byte-identical copy of.
+
+    **`work/` is not here and must not be** (#575).  It is gitignored scratch
+    that has been lost twice, so a corpus that lives only there is a corpus
+    that stops existing; a run whose records are evidence copies them into the
+    specimen tree with `tools/specimens.py add`.  Pass a `work/` directory on
+    the command line to sweep one anyway.
+    """
+    roots = [specimen_tree(), archives(), played_game_dir()]
+    return [r for r in roots if r is not None]
 
 
 def is_built(path: pathlib.Path) -> bool:
@@ -272,7 +320,8 @@ def _partition(specs, field, examples, indent="  ") -> None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("roots", nargs="*", type=pathlib.Path,
-                    help="directories to sweep; default the archives and work/")
+                    help="directories to sweep; default the specimen tree, "
+                         "the archives and the played DOS game directory")
     ap.add_argument("--field", action="append", default=[],
                     help="layout field name, or 0xNN:len in Pool of "
                          "Radiance offsets; repeatable")
@@ -290,12 +339,10 @@ def main(argv=None) -> int:
                     help="list every distinct record found and stop")
     args = ap.parse_args(argv)
 
-    roots = list(args.roots)
+    roots = list(args.roots) or dos_record_roots()
     if not roots:
-        arch = archives()
-        if arch:
-            roots.append(arch)
-        roots.append(REPO / "work")
+        print(NO_RECORDS, file=sys.stderr)
+        return 1
     fields = args.field or ["field_83_87", "field_10c_10f"]
 
     specs, skipped = collect(roots, args.built, args.foreign)

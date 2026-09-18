@@ -24,12 +24,12 @@ being written is not evidence about the game.  A `found` record with a bit set
 would say the bit is *storable*; only a record the engine wrote says the engine
 sets it.
 
-The DOS half reuses `tools/dostailcensus.py`'s finder and its exclusions (an
-emulator instance's staged tree, and records we wrote), widened to the
-specimen tree and the played DOS directory the way `tools/neveradventured.py`
-widens its roots.  The C64 half reads every save disk `tools/gamedisks.py`
-finds plus the specimen tree; the Amiga half reads the records out of the disk
-images through `tools/amigasaves.py` and `tools/amigarecords.py`.
+The DOS half reuses `tools/dostailcensus.py`'s finder, its roots -- the
+specimen tree, the archives and the played DOS directory -- and its exclusions
+(an emulator instance's staged tree, and records we wrote).  The C64 half
+reads every save disk `tools/gamedisks.py` finds plus the specimen tree; the
+Amiga half reads the records out of the disk images through
+`tools/amigasaves.py` and `tools/amigarecords.py`.
 
 Reads only.  Nothing here writes anything, on any disk.
 """
@@ -83,12 +83,6 @@ C64_CLASS_BITS = 0x0EB
 #: Which C64 titles to sweep, by the key that finds their disks.
 C64_DISKS = ("pool-of-radiance", "curse-of-the-azure-bonds",
              "secret-of-the-silver-blades")
-
-#: Where a DOS record might be, beyond `dostailcensus`' archives: the specimen
-#: tree that outlives an emulator slot, this repository's `work/`, and the
-#: played DOS directory.  Copied from `tools/neveradventured.py`, which had
-#: already worked out that the archives are not the whole corpus.
-DOS_EXTRA = ("work", "~/wish-specimens", "~/dos_por_play")
 
 #: `(offset, slots)` of the C64 memorised-spell list, per title.  **Not the
 #: `goldbox/layout.py` field**, which is declared at the 69 bytes every
@@ -228,13 +222,17 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
 
     The registry's three title directories **and their parents**: Champions of
     Krynn, Death Knights of Krynn and Gateway to the Savage Frontier are three
-    of Wish's six C64 titles and none has a `gamedisks.toml` entry, so a sweep
+    of Wish's six C64 titles and none has a `gamedisks.yaml` entry, so a sweep
     of the registry alone covers half the titles and says nothing about it.
     On this machine the other three sit beside the registered ones under
     `/mnt/media/roms/c64`.  An image with no saved game costs one read and is
     skipped; a title `goldbox/c64_save.py` has no container for is skipped the
     same way, which is why the report says how many images were unreadable.
     Copied from `tools/carryceiling.py`, which worked this out first.
+
+    **No `work/` sweep** (#575): a disk image a driven run left there is
+    gitignored scratch, and one carrying a party that is evidence belongs in
+    the specimen tree.  `--disk` still takes any image by name.
     """
     paths: list[pathlib.Path] = []
     for key in C64_DISKS:
@@ -247,7 +245,6 @@ def c64_disks(extra_disks=()) -> list[pathlib.Path]:
     if root is not None:
         paths += sorted(root.glob("*/WISH-SPEC-*.[dD]64"))
         paths += sorted(root.glob("*/WISH-SPEC-*.d64"))
-    paths += sorted((ROOT / "work").rglob("*.[dD]64"))
     paths += [pathlib.Path(p) for p in extra_disks]
     out: dict[str, pathlib.Path] = {}
     for path in paths:
@@ -302,15 +299,12 @@ def _specimen_root():
 # --- DOS ---------------------------------------------------------------------
 
 def dos_roots() -> list[pathlib.Path]:
-    repo = pathlib.Path(__file__).resolve().parent.parent
-    out = []
-    archives = dostailcensus.archives()
-    if archives is not None:
-        out.append(archives)
-    for name in DOS_EXTRA:
-        p = pathlib.Path(name).expanduser()
-        out.append(p if p.is_absolute() else repo / name)
-    return out
+    """The specimen tree, the archives and the played DOS game directory.
+
+    `tools/dostailcensus.py`'s own list, so every DOS census on this machine
+    covers the same corpus (#575).
+    """
+    return dostailcensus.dos_record_roots()
 
 
 def dos_rows(want_built: bool = True):
@@ -546,6 +540,8 @@ def main(argv=None) -> int:
     if want[0]:
         rows += list(c64_rows(args.disk))
     if want[1]:
+        if not dos_roots():
+            print(dostailcensus.NO_RECORDS)
         rows += list(dos_rows(not args.no_built))
     if want[2]:
         rows += list(amiga_rows())

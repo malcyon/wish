@@ -39,6 +39,12 @@ the buffer where the shape has one and the word where it does not -- so a
 sweep can say whether the rule and either reading ever part company.  They
 agreed on all 107 containers where both could be taken on 2026-09-06.
 
+**That 107 is a count of a corpus that included `work/`, and this sweep no
+longer reaches there** (#575): on 2026-09-18 it finds 39 Pool of Radiance
+containers, 14 Curse and 11 Silver Blades.  `work/` is gitignored scratch that
+has been lost twice, so a container that is evidence belongs in the specimen
+tree; name a directory on the command line to sweep one that is not there yet.
+
 Reading only.  Nothing here writes a saved game or touches the player's disks.
 """
 
@@ -54,7 +60,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import areas, dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
-from tools import dossavcensus  # noqa: E402
+from tools import dossavcensus, dostailcensus  # noqa: E402
 
 #: The three titles whose container holds a `u16le` variable array at Pool of
 #: Radiance's offsets.  Pools of Darkness' 1364-byte container has a byte-wide
@@ -64,13 +70,6 @@ from tools import dossavcensus  # noqa: E402
 SHAPES = (sg.SAVE_POOL_OF_RADIANCE,
           sg.SAVE_CURSE_OF_THE_AZURE_BONDS,
           sg.SAVE_SECRET_OF_THE_SILVER_BLADES)
-
-#: Where a saved game might be, beyond `dossavcensus`' own archive roots.
-#: `~/wish-specimens` is the tree that outlives an emulator slot
-#: (`.claude/rules/testing.md`); `work/` is a run's output and half of what is
-#: there today will be gone tomorrow, which is the reason this sweep gets
-#: written down rather than re-typed.
-EXTRA = ("work", "~/wish-specimens", "~/dos_por_play")
 
 #: The words a never-adventured container holds at zero and a played one does
 #: not, by the census this tool takes.  `$49F2` and `$49C5` are in the list
@@ -82,17 +81,36 @@ WORDS = (("$49C5 map", 0x49C5), ("$49E6 indoors", 0x49E6),
 
 #: `$4FE1` = 0 is the never-adventured reading.  `goldbox/dos_savegame.py`'s
 #: `SAVGAM_CONSTANTS` says "255 in every specimen" of this address, measured
-#: over four Pool of Radiance containers; this sweep sees 255 in 57 played
-#: containers, 16 in 41 and 8 in 3, so the constant is what a conversion
-#: writes rather than what every save holds.  What survives that correction is
-#: the part used here: it is never 0 once the party has been in the world.
+#: over four Pool of Radiance containers; this sweep saw 255 in 57 played
+#: containers, 16 in 41 and 8 in 3 on 2026-09-06, and 255 in 19, 16 in 13, 42
+#: in 2 and 8 in 1 on 2026-09-18 over the narrower corpus #575 left it.  So
+#: the constant is what a conversion writes rather than what every save holds.
+#: What survives that correction is the part used here: it is never 0 once the
+#: party has been in the world, in both sweeps.
 NEVER_ADVENTURED_WORD = 0x4FE1
 
 
 def roots(extra: list[str] | None = None) -> list[pathlib.Path]:
-    where = [pathlib.Path(p).expanduser() for p in (extra or EXTRA)]
-    repo = pathlib.Path(__file__).resolve().parent.parent
-    return [p if p.is_absolute() else repo / p for p in where]
+    """The directories to sweep beyond `dossavcensus`' own archive roots.
+
+    The specimen tree that outlives an emulator slot
+    (`.claude/rules/testing.md`), and the played DOS game directory, every
+    character record in which has been through Gold Box Companion's editor --
+    an input to a census of what a container holds, never evidence about what
+    the engine writes.
+
+    **`work/` is not one of them** (#575).  A run's output there is gitignored
+    scratch and half of what is there today will be gone tomorrow, which is
+    the reason this sweep gets written down rather than re-typed; a container
+    that is evidence goes into the specimen tree with `tools/specimens.py
+    add`.  Name a directory on the command line to sweep one anyway.
+    """
+    if extra:
+        repo = pathlib.Path(__file__).resolve().parent.parent
+        where = [pathlib.Path(p).expanduser() for p in extra]
+        return [p if p.is_absolute() else repo / p for p in where]
+    out = [dostailcensus.specimen_tree(), dostailcensus.played_game_dir()]
+    return [p for p in out if p is not None]
 
 
 def never_adventured(save: bytes, shape: sg.DosContainer,
@@ -194,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         out[shape.key] = rows
         if not args.json:
             report(shape, rows, args.list)
+    if not args.json and not any(out.values()):
+        print(dostailcensus.NO_RECORDS)
     if args.json:
         json.dump(out, sys.stdout, indent=2)
         print()
