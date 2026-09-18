@@ -18,10 +18,11 @@ files, exactly as you do.** Observed from inside a running subagent on
 `paths:`-scoped ones -- so a brief only needs to name one of those, when the
 agent's work will not itself touch a file that loads it.
 
-## Words to avoid
+## Banned Words
 
 | instead of | say |
 |---|---|
+| **corpus** | say what it is: "the saves we have", "the specimens", "every save on this machine", "the files" |
 | **load-bearing** | what holds it up, what depends on it, what breaks without it |
 | **fair**, in any construction -- "fair", "fair enough", "fair point", "that's fair" | agree or disagree in words: "you're right", "I don't think so, because" |
 | **blast radius** | what else this touches, what it would break |

@@ -89,7 +89,7 @@ The same discipline applies when the honest situation is unflattering to the
 bug. "No user can reach this" is an answer, and it is the answer that moves
 something down the list.
 
-## Words to avoid
+## Banned Words
 
 Three separate corrections produced this list, and all three are about the same
 habit: reaching for a piece of jargon that sounds precise and carries less than
@@ -768,7 +768,7 @@ making art, which is the thing it must not do. The correct answer is a different
 icon, or not using it at that size.
 
 The one thing that has gone wrong here is an attribution rather than a drawing,
-and it is recorded under Words to avoid: the licence credit for Lorc's
+and it is recorded under Banned Words: the licence credit for Lorc's
 *Embraced energy* was written from the filename rather than from the title its
 author gave it.
 

@@ -538,12 +538,12 @@ def test_claude_md_imports_the_file_that_holds_the_rules():
     assert (ROOT / IMPORTED).is_file(), (
         f"CLAUDE.md imports {IMPORTED}, which is not there.")
 
-    # "Words to avoid" is the one exception: it lists the jargon Claude
+    # "Banned Words" is the one exception: it lists the jargon Claude
     # reaches for, so it belongs in Claude's file. Moved 2026-09-10.
-    assert "## Words to avoid" in text, (
+    assert "## Banned Words" in text, (
         "CLAUDE.md no longer holds the words table. It lives here rather than "
         f"in {IMPORTED} because it corrects this model's own habits.")
-    assert "## Words to avoid" not in (ROOT / IMPORTED).read_text(encoding="utf-8"), (
+    assert "## Banned Words" not in (ROOT / IMPORTED).read_text(encoding="utf-8"), (
         f"the words table is Claude-only and belongs in CLAUDE.md, not {IMPORTED}.")
 
 
