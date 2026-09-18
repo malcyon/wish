@@ -389,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="the winuae.ps1 lane claim this run holds")
     parser.add_argument("--adf", default=None,
                         help="the Silver Blades side-A image; found through "
-                             "gamedisks.toml when not given")
+                             "gamedisks.yaml when not given")
     parser.add_argument("--settle", type=float, default=1.0,
                         help="seconds to wait after each key (default 1)")
     args = parser.parse_args(argv)

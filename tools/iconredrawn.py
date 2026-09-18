@@ -323,7 +323,7 @@ now draws two different things depending on the character's race.</p>
 
 # -- where the art is --------------------------------------------------------
 def c64_disk(given: str | None) -> pathlib.Path:
-    """`SILVER-1.D64`: `--disk`, then `gamedisks.toml`'s Silver Blades entry."""
+    """`SILVER-1.D64`: `--disk`, then `gamedisks.yaml`'s Silver Blades entry."""
     if given:
         return pathlib.Path(given).expanduser()
     found = gamedisks.find(SUBJECT)

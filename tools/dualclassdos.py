@@ -45,7 +45,7 @@ on the specimens landing in different slots, not on anything printed here.
     tools/dualclassdos.py code --title curse-of-the-azure-bonds --window 60
 
 The archives are the player's and are read only, the way `tools/dosbox.py`
-finds them: `$FR_ARCHIVES`, then `gamedisks.toml`, then `~/Downloads`.  With
+finds them: `$FR_ARCHIVES`, then `gamedisks.yaml`, then `~/Downloads`.  With
 no archives both commands print nothing and exit 0, the way the tests skip.
 """
 

@@ -530,7 +530,7 @@ def default_image() -> pathlib.Path:
     where = gamedisks.find("pool-of-radiance")
     if where is None:
         sys.exit("No Pool of Radiance disks found; pass --image, set "
-                 "POR_DISKS or add the directory to gamedisks.local.toml")
+                 "POR_DISKS or add the directory to gamedisks.yaml")
     return where / "POOL1.D64"
 
 

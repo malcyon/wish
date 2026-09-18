@@ -30,7 +30,7 @@ from tools import gamedisks  # noqa: E402
 
 
 def archive_roots() -> list[pathlib.Path]:
-    """Where the Forgotten Realms Archives might be: `gamedisks.toml`'s own
+    """Where the Forgotten Realms Archives might be: `gamedisks.yaml`'s own
     search list (#212), so a machine where the suite finds the archives is a
     machine where this tool finds them too."""
     return gamedisks.candidates("dos-archives")

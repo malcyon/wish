@@ -25,7 +25,7 @@ def load_specimens() -> dict[str, CharacterRecord]:
     disks = gamedisks.find("pool-of-radiance")
     if disks is None:
         sys.exit("No Pool of Radiance disks found; set POR_DISKS or add the "
-                 "directory to gamedisks.local.toml")
+                 "directory to gamedisks.yaml")
     img = D64.open(disks / "PORSAVE.D64")
     for e in img.directory():
         if bytes(e.raw_name).startswith(b"\x01"):

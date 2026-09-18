@@ -359,7 +359,7 @@ afterwards. The window steps ran on a headless `Xvfb` driven by `xdotool`.*
 
 **L1.** Make the working copy. Everything downstream uses it. `$POR` is the
 folder the `pool-of-radiance` registry entry resolves to (`$POR_DISKS`, else
-`gamedisks.toml`; `tools/gamedisks.py` prints it), where the save disk
+`gamedisks.yaml`; `tools/gamedisks.py` prints it), where the save disk
 `PORSAVE11.D64` is.
 
 ```sh
@@ -559,7 +559,7 @@ the same reason L9's `ModuleNotFoundError: tools` is.
 
 *Verified 2026-08-22* against a Curse of the Azure Bonds save made by the
 project's own driven session (`work/curse/CURSESAVE2.D64`), there being no
-`SAVEAZURE` disk in any folder `gamedisks.toml` lists. It exported three characters under
+`SAVEAZURE` disk in any folder `gamedisks.yaml` lists. It exported three characters under
 `# Curse of the Azure Bonds character export`, and re-imported byte for byte.
 Silver Blades remains untested: the disks are there, a save is not.
 

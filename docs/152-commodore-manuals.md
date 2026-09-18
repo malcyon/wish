@@ -35,7 +35,7 @@ guide has an OCR layer and `pdftotext -f N -l M` reads it for nothing.
     commodore_64_programmers_reference_guide.pdf
     Commodore_1541_Disk_Drive_Users_Guide_1982-09_Commodore.pdf
 
-Each sits in the folder the `manuals` entry of `gamedisks.toml` resolves to
+Each sits in the folder the `manuals` entry of `gamedisks.yaml` resolves to
 (`$WISH_MANUALS` beats it; `tools/gamedisks.py` prints where), written
 `$MANUALS` below. On this machine
 that is a folder beside the C64 game disks, which are searched by the same file:

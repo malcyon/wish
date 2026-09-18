@@ -24,7 +24,7 @@ none.
 save for each title (`~/wish-specimens`, `tools/specimens.py`) and each
 title's own C64 game disks (`tools/gamedisks.py`, never a hardcoded path);
 Curse of the Azure Bonds and Secret of the Silver Blades resolved through
-`/mnt/media/roms/c64/...`, on `gamedisks.toml`'s own committed search list.
+`/mnt/media/roms/c64/...`, on `gamedisks.yaml`'s own committed search list.
 C64 → DOS reads a real C64 save for Curse and Silver Blades and the
 allowlisted `tests/fixtures/savedgame0.bin`/`savedgame1.bin` for Pool of
 Radiance -- `test_convert.py`'s own fixture, not a new one -- and each

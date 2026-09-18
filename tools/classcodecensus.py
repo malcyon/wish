@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dos", action="append", default=[],
                     help="a directory of DOS records, repeatable")
     ap.add_argument("--archives", action="store_true",
-                    help="add the dos-archives entry of gamedisks.toml to the DOS roots")
+                    help="add the dos-archives entry of gamedisks.yaml to the DOS roots")
     args = ap.parse_args(argv)
     c64 = [pathlib.Path(p).expanduser() for p in args.c64]
     dosr = [pathlib.Path(p).expanduser() for p in args.dos]
@@ -191,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         found = gamedisks.find("dos-archives")
         if not found:
             ap.error("no DOS archives; set FR_ARCHIVES or add the "
-                     "dos-archives entry to gamedisks.local.toml")
+                     "dos-archives entry to gamedisks.yaml")
         dosr.append(found)
     bad = 0
     for root in c64:

@@ -11,7 +11,7 @@ re-derived:
     tools/portraitmenu.py            # print the menu off whatever is here
     tools/portraitmenu.py --check    # exit 1 if the disks disagree with it
 
-It reads the C64 side (`GEN`, off `$POR_DISKS` or wherever `gamedisks.toml`
+It reads the C64 side (`GEN`, off `$POR_DISKS` or wherever `gamedisks.yaml`
 says the `POOL*.D64` sides are) and the DOS side (`START.EXE`, in the
 *Forgotten Realms: The Archives* game directory `tools/dosbox.py` finds),
 whichever of the two is on this machine, through the same run-finder the

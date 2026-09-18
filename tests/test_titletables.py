@@ -90,7 +90,7 @@ OUTSIDE_THE_RUN = {"secret-of-the-silver-blades": (7,)}
 # --- finding the disks -------------------------------------------------------
 
 def _roots(*entries):
-    """Every folder `gamedisks.toml` lists for these entries, in that order (#575).
+    """Every folder `gamedisks.yaml` lists for these entries, in that order (#575).
 
     No search of the home directory: a machine says where its disks are in the
     registry, and `$COK_DISKS` and its siblings still win over it.
@@ -172,7 +172,7 @@ def champions_disk() -> pathlib.Path:
     if path is None:
         pytest.skip("needs a Champions of Krynn side carrying ITEMNAMES; "
                     "set COK_DISKS or add the champions-of-krynn entry "
-                    "to gamedisks.local.toml")
+                    "to gamedisks.yaml")
     return path
 
 
@@ -181,7 +181,7 @@ def death_knights_disk() -> pathlib.Path:
     if path is None:
         pytest.skip("needs a Death Knights of Krynn side carrying ITEMNAMES, "
                     "beside a champions-of-krynn candidate; set COK_DISKS or "
-                    "add the entry to gamedisks.local.toml")
+                    "add the entry to gamedisks.yaml")
     return path
 
 

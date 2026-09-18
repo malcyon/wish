@@ -416,7 +416,7 @@ def scripts() -> dict[int, pathlib.Path]:
         # again at that time." These five tests stay skipping until that
         # reopens.
         pytest.skip("needs the ecl-scripts entry; set WISH_ECL_SCRIPTS or add it "
-                    "to gamedisks.local.toml. The decoder that produced the "
+                    "to gamedisks.yaml. The decoder that produced the "
                     "disassemblies is gone and rebuilding it was deliberately "
                     "shelved -- docs/115-review-the-scripts.md")
     return found

@@ -7,15 +7,19 @@ knew the answer to, and `#211 (103 tests skip on the machine that has the game
 files, and the game files are not why)` found four Amiga tests skipping
 against disks that had been on the machine the whole time.
 
-Three layers, highest precedence first:
+Two layers, highest precedence first:
 
 1. `$POR_DISKS` and its siblings -- unchanged, and still highest. One-off runs
    and CI keep working exactly as they do today. Taken *whole*: scoping it to
    a subdirectory is the caller's business, not this module's.
-2. `gamedisks.local.toml`, gitignored -- where somebody who clones this
-   repository says where their own disks are, without editing a tracked file.
-3. `gamedisks.toml`, committed -- the search list this project ships, one
-   entry per game or dataset, each a list of candidate paths tried in order.
+2. `gamedisks.yaml`, gitignored and the only file this module reads -- one
+   machine's own list of where its data is, one entry per game or dataset,
+   each a list of candidate paths tried in order. `gamedisks.yaml.example` is
+   committed and is the whole registry: every entry, its variable, its glob and
+   the comment saying what the dataset is. Somebody who clones this repository
+   copies the example to `gamedisks.yaml` and edits the paths. With no
+   `gamedisks.yaml` the loader stops with a one-line message saying so, rather
+   than quietly finding nothing.
 
     tools/gamedisks.py            one row per entry: variable, layer, path,
                                   found -- turns "103 skipped" into a question
@@ -42,7 +46,7 @@ So the two lookups answer two different questions:
   only inside one test file again.
 
 Nothing under `automap/`, `editor/`, `goldbox/`, `wish/` or `ui/` imports this
-module, and nothing should. `gamedisks.toml` sits at the repository root with
+module, and nothing should. `gamedisks.yaml` sits at the repository root with
 no package-data entry, so it is not in a wheel at all: shipped code calling
 `find()` would get a silent nothing on a player's machine, which is the worst
 shape a lookup can fail in.
@@ -54,47 +58,40 @@ import argparse
 import os
 import pathlib
 import sys
-import tomllib
+
+import yaml
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-COMMITTED = REPO / "gamedisks.toml"
-LOCAL = REPO / "gamedisks.local.toml"
+REGISTRY = REPO / "gamedisks.yaml"
+EXAMPLE = REPO / "gamedisks.yaml.example"
 
 ENV, GLOB, PATHS = "env", "glob", "paths"
 
 
-def _load(path: pathlib.Path) -> dict:
-    if not path.is_file():
-        return {}
-    with path.open("rb") as f:
-        return tomllib.load(f)
+class RegistryMissing(SystemExit):
+    """`gamedisks.yaml` is not there. A `SystemExit`, so a tool that asks the
+    registry stops with the one line and no traceback."""
 
 
-def _committed() -> dict:
+def _registry() -> dict:
     """Re-read every call: this is a developer tool, not a hot path, and a
-    cache would hide an edit to `gamedisks.toml` made mid-session."""
-    return _load(COMMITTED)
-
-
-def _local() -> dict:
-    return _load(LOCAL)
+    cache would hide an edit to `gamedisks.yaml` made mid-session."""
+    if not REGISTRY.is_file():
+        raise RegistryMissing(
+            f"{REGISTRY.name} is missing: copy {EXAMPLE.name} to "
+            f"{REGISTRY.name} and edit the paths")
+    with REGISTRY.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 def names() -> list[str]:
-    """Every entry this project ships a search list for."""
-    return list(_committed().keys())
+    """Every entry this machine's registry has a search list for."""
+    return list(_registry().keys())
 
 
 def entry(name: str) -> dict:
-    """The committed row for `name`, with `gamedisks.local.toml`'s own paths
-    tried before the committed ones."""
-    row = dict(_committed().get(name, {}))
-    local_row = _local().get(name, {})
-    if local_row:
-        row[ENV] = local_row.get(ENV, row.get(ENV))
-        row[GLOB] = local_row.get(GLOB, row.get(GLOB))
-        row[PATHS] = list(local_row.get(PATHS, [])) + list(row.get(PATHS, []))
-    return row
+    """The registry row for `name`, or an empty one."""
+    return dict(_registry().get(name) or {})
 
 
 def candidates(name: str) -> list[pathlib.Path]:
@@ -102,8 +99,8 @@ def candidates(name: str) -> list[pathlib.Path]:
 
     `$<env>` wins outright, taken as the one candidate -- as `automap.paths`
     already does for `$POR_DISKS`. With no environment variable, every path
-    from `gamedisks.local.toml` comes before every path from `gamedisks.toml`,
-    each `~`-expanded and de-duplicated in the order first seen.
+    from `gamedisks.yaml`, each `~`-expanded and de-duplicated in the order
+    first seen.
     """
     row = entry(name)
     var = row.get(ENV)
@@ -112,7 +109,7 @@ def candidates(name: str) -> list[pathlib.Path]:
         if value:
             return [pathlib.Path(value).expanduser()]
     seen: dict[pathlib.Path, None] = {}
-    for raw in row.get(PATHS, []):
+    for raw in row.get(PATHS) or []:
         seen.setdefault(pathlib.Path(raw).expanduser(), None)
     return list(seen)
 
@@ -146,10 +143,10 @@ def find(name: str) -> pathlib.Path | None:
 def report() -> list[tuple[str, str, str, str, bool]]:
     """One row per entry: name, variable, which layer answered, path, found.
 
-    "Layer" is `$VAR` when the environment variable is what is set, the file
-    name of whichever `.toml` supplied the winning path, or "none" when
-    nothing resolves -- which is correct for `amiga-por-saves` and
-    `pod-saves` until somebody plays far enough to export one (#211).
+    "Layer" is `$VAR` when the environment variable is what is set,
+    `gamedisks.yaml` when one of its paths answered, or "none" when nothing
+    resolves -- which is correct for `amiga-por-saves` and `pod-saves` until
+    somebody plays far enough to export one (#211).
     """
     rows = []
     for name in names():
@@ -159,21 +156,14 @@ def report() -> list[tuple[str, str, str, str, bool]]:
         if env_value:
             path, layer = pathlib.Path(env_value).expanduser(), f"${var}"
         else:
-            local_paths = [pathlib.Path(p).expanduser()
-                           for p in _local().get(name, {}).get(PATHS, [])]
-            committed_paths = [pathlib.Path(p).expanduser()
-                               for p in _committed().get(name, {})
-                               .get(PATHS, [])]
+            listed = candidates(name)
             path, layer = None, "none"
-            for candidate_path, candidate_layer in (
-                    [(p, "gamedisks.local.toml") for p in local_paths]
-                    + [(p, "gamedisks.toml") for p in committed_paths]):
+            for candidate_path in listed:
                 if _matches(candidate_path, row.get(GLOB)):
-                    path, layer = candidate_path, candidate_layer
+                    path, layer = candidate_path, REGISTRY.name
                     break
-            if path is None:
-                rest = local_paths + committed_paths
-                path = rest[0] if rest else None
+            if path is None and listed:
+                path = listed[0]
         found = path is not None and _matches(path, row.get(GLOB))
         rows.append((name, var, layer, str(path) if path else "-", found))
     return rows
@@ -184,7 +174,7 @@ def main(argv=None) -> int:
     parser.parse_args(argv)
     rows = report()
     if not rows:
-        print(f"no entries in {COMMITTED}")
+        print(f"no entries in {REGISTRY}")
         return 1
     name_w = max(len(r[0]) for r in rows)
     var_w = max(len(r[1]) for r in rows)

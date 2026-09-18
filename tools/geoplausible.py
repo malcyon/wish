@@ -60,7 +60,7 @@ from automap.area import (  # noqa: E402
 from goldbox.geo import GEO_SIZE, Geo  # noqa: E402
 from tools import gamedisks  # noqa: E402
 
-#: The C64 titles whose disks `gamedisks.toml` knows how to find, and the glob
+#: The C64 titles whose disks `gamedisks.yaml` knows how to find, and the glob
 #: that picks out their game disks rather than a save disk sitting beside them.
 C64_TITLES = (("Pool of Radiance C64", "pool-of-radiance", "POOL*.[dD]64"),
               ("Curse C64", "curse-of-the-azure-bonds", "CURSE*.[dD]64"),

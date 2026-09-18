@@ -139,7 +139,7 @@ def find_game(stem: str = "POOLRAD") -> Path:
     if not ARCHIVES.is_dir():
         raise FileNotFoundError(
             f"no archives at {ARCHIVES}; set FR_ARCHIVES or add the "
-            f"dos-archives entry to gamedisks.local.toml")
+            f"dos-archives entry to gamedisks.yaml")
     for collection in sorted(ARCHIVES.iterdir()):
         games = collection / "games"
         if not games.is_dir():

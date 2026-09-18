@@ -57,7 +57,7 @@ ICON_BODY = 0x0BE
 
 
 def corpora() -> list[pathlib.Path]:
-    """Where DOS saves live on this machine, from `gamedisks.toml` (#575).
+    """Where DOS saves live on this machine, from `gamedisks.yaml` (#575).
 
     Read only; `--stage` copies out.  The played copy's `SAVE/` is edited with
     Gold Box Companion, so it is an input here and never evidence -- this tool
@@ -176,7 +176,7 @@ def main(argv=None) -> int:
         if not read:
             print("No DOS records found; set POR_DOS_GAME (por-dos-play), "
                   "FR_ARCHIVES (dos-archives) or WISH_SPECIMENS, or add the "
-                  "entries to gamedisks.local.toml", file=sys.stderr)
+                  "entries to gamedisks.yaml", file=sys.stderr)
         print(f"{read} DOS records read; {len(hits)} are small characters "
               f"already wearing a large-only option")
         for hit in hits:

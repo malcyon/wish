@@ -29,7 +29,7 @@ from tools import cursewheel  # noqa: E402
 needs_wheel_repo = pytest.mark.skipif(
     not (cursewheel.wheel_repo() / "coab" / "images").is_dir(),
     reason="needs the codewheel entry, Donald's separate private repository; "
-           "set WISH_CODEWHEEL or add it to gamedisks.local.toml")
+           "set WISH_CODEWHEEL or add it to gamedisks.yaml")
 
 #: The row the frames below draw their path band in -- cell row 13, the same
 #: row every real prompt measured for #537 used.

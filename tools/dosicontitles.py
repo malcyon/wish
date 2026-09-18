@@ -34,7 +34,7 @@ missing scan rather than as a silent pass.
     tools/dosicontitles.py --code
     tools/dosicontitles.py --json work/issue330/icontitles.json
 
-The game folders are found under `$FR_ARCHIVES`, then `gamedisks.toml`'s
+The game folders are found under `$FR_ARCHIVES`, then `gamedisks.yaml`'s
 `dos-archives` entry.  Everything is read and nothing is written except what
 `--json` names, which belongs under `work/`.
 """
@@ -280,7 +280,7 @@ def read_code(folders: dict[str, pathlib.Path], keys: list[str]) -> dict:
 
 # -- where the games are -----------------------------------------------------
 def archives(given: str | None) -> pathlib.Path:
-    """`--archives`, then `$FR_ARCHIVES`, then `gamedisks.toml`."""
+    """`--archives`, then `$FR_ARCHIVES`, then `gamedisks.yaml`."""
     if given:
         return pathlib.Path(given).expanduser()
     named = os.environ.get("FR_ARCHIVES")

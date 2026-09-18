@@ -7,7 +7,7 @@ the fact was read out of them: Pool of Radiance's `LIBRARY $48A4` asks the
 loader for the `HEAD<xx>` and `BODY<xx>` files the character record names,
 and neither later title's `LIBRARY` calls the loader at all.  So the second
 group re-derives that off the player's own disks rather than trusting the
-frozenset -- if somebody points `gamedisks.toml` at a different rip, or a
+frozenset -- if somebody points `gamedisks.yaml` at a different rip, or a
 title's `LIBRARY` turns out to be built differently, this is what says so.
 
 The disk-backed tests skip cleanly with no disks, which is

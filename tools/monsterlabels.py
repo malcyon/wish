@@ -33,7 +33,7 @@ should be able to see them. Regenerated from the YAML every time; the
 document is never the thing edited.
 
 The names come off the three C64 titles' `MON*` files, found through
-`gamedisks.toml` the way every other tool finds them, and read at run time:
+`gamedisks.yaml` the way every other tool finds them, and read at run time:
 nothing of the game's is written anywhere. A title whose disks are not on the
 machine is reported as missing and its rows in the YAML are kept.
 """
@@ -59,7 +59,7 @@ from tools import gamedisks  # noqa: E402
 
 TABLE_PATH = TOOLS / "monsterlabels.yaml"
 
-#: `gamedisks.toml` entry -> the short name the YAML comments use.
+#: `gamedisks.yaml` entry -> the short name the YAML comments use.
 TITLES = (
     ("pool-of-radiance", "Pool"),
     ("curse-of-the-azure-bonds", "Curse"),

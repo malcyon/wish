@@ -12,6 +12,7 @@ what is committed. Untracked scratch under `work/` is ignored and fine.
 """
 
 
+import ast
 import pathlib
 import re
 import subprocess
@@ -127,12 +128,13 @@ def test_no_hardcoded_user_paths(files):
         except SyntaxError:
             pass
 
-    # `gamedisks.toml` (#212) is a committed list of absolute paths, which is
-    # exactly what this test polices -- and it is not Python, so the walk above
-    # never sees it.  A candidate under somebody's home directory has to be
-    # written `~/...`, which works on every machine; spelling the home out
-    # names one person's and nobody else's.
-    for path in (p for p in files if p.suffix == ".toml"):
+    # `gamedisks.yaml.example` (#212) is a committed list of absolute paths,
+    # which is exactly what this test polices -- and it is not Python, so the
+    # walk above never sees it.  A candidate under somebody's home directory
+    # has to be written `~/...`, which works on every machine; spelling the
+    # home out names one person's and nobody else's.
+    for path in (p for p in files
+                 if p.suffix == ".toml" or p.name.endswith(".yaml.example")):
         # `.codex/agents/<name>.toml` (#506) is generated verbatim from
         # `.claude/agents/<name>.md`'s body by `tools/gencodex.py`, so a line
         # this loop would otherwise flag is only a problem if it is *new* --
@@ -157,6 +159,77 @@ def test_no_hardcoded_user_paths(files):
 
     assert not bad, f"Hardcoded developer paths found in string literals: {bad}"
 
+
+
+# -- where a tool or test may look for game data (#575) -------------------------
+
+#: A string in code that names where one machine keeps its data, rather than
+#: asking `gamedisks.yaml`, `automap.paths` or `$WISH_SPECIMENS`. Docstrings
+#: and comments may say where things are; only a string that is used is flagged.
+_MACHINE_PATH = ("/mnt/", "~/downloads", "~/dos_por_play")
+
+#: A relative `work/` path to a game file: `work/POOL1.D64.orig`, an input.
+#: `work/` is scratch and has been lost twice (`.claude/rules/scratch.md`), so
+#: a run's own output there is fine and a file somebody depends on is not. A
+#: directory (`work/issue180`) is an output and is not matched.
+_WORK_INPUT = re.compile(
+    r"^work/\S*\.(d64|adf|sav|cha|pty|dax|itm|spc|g64|x64|prg|orig)$", re.I)
+
+#: Strings that look like a machine path and are not a lookup.
+_NOT_A_LOOKUP = {
+    # Fake paths handed to a parser that only reads their names.
+    "tests/test_carryceiling.py": "fake save paths the census parses",
+    "tests/test_spellbookcensus.py": "fake save paths the census parses",
+    # A `[Version]` config file inside a string, which contains `/mnt/`.
+    "tests/test_instance.py": "VICE config text",
+    # Third-party art, not game data.
+    "tools/taskbaricon.py": "the logo artwork",
+    "tests/test_taskbaricon.py": "the logo artwork",
+    # The text of a dialog a screenshot shows, not a path it opens.
+    "tools/convertshots.py": "a dialog's folder text",
+}
+
+
+def _docstring_ids(tree):
+    ids = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                              ast.AsyncFunctionDef)) and node.body):
+            first = node.body[0]
+            if (isinstance(first, ast.Expr)
+                    and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                ids.add(id(first.value))
+    return ids
+
+
+def test_no_machine_path_is_looked_up_in_code(files):
+    """A path to one machine's game data, written in code, is the thing
+    `gamedisks.yaml` exists to remove: on any other machine it finds nothing
+    and each file has its own place to edit (#575). Ask the registry, or
+    `automap.paths`, or `$WISH_SPECIMENS`."""
+    bad = []
+    for path in (p for p in files if p.suffix == ".py"):
+        name = path.as_posix()
+        if name in _NOT_A_LOOKUP or name in (
+                "tests/test_repository_contents.py", "tests/test_gamedisks.py"):
+            continue
+        try:
+            tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        docstrings = _docstring_ids(tree)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)) or id(node) in docstrings:
+                continue
+            low = node.value.lower()
+            if any(part in low for part in _MACHINE_PATH) or _WORK_INPUT.match(
+                    node.value):
+                bad.append(f"{name}:{node.lineno}: {node.value[:60]!r}")
+    assert not bad, (
+        "Game data reached by a path written in code instead of the registry:\n"
+        + "\n".join(bad))
 
 
 # -- citations into gitignored scratch ---------------------------------------

@@ -9,7 +9,7 @@ indistinguishable, which is how the wrong one survived.
 import pathlib
 
 import pytest
-from gamedata import disk_dir
+from gamedata import disk_dir, npc_party_disk
 
 from goldbox.record import CharacterRecord
 from goldbox.savegame import (
@@ -248,9 +248,11 @@ class TestRosterBlocks:
     is where the game caches what it derives -- armour class, THAC0, current hit
     points -- none of which is in the character record."""
 
+    DISKS = str(disk_dir() or "no-disks-here")
+
     def _save1(self):
         import pathlib
-        p = pathlib.Path("/mnt/media/roms/c64/Pool of Radiance Disks/PORSAVE2.D64")
+        p = pathlib.Path(f"{self.DISKS}/PORSAVE2.D64")
         if not p.exists():
             pytest.skip("needs a real save disk")
         from goldbox.d64 import D64
@@ -392,8 +394,10 @@ class TestRosterSpellCounts:
 
     def test_npc_party_agrees_level_by_level(self):
         """Eight for eight, per level -- not merely in sum, as first recorded."""
-        import os
-        sg0, sg1 = self._pair(os.path.expanduser("~/Downloads/npc_party.d64"))
+        npc_party = npc_party_disk()
+        if npc_party is None:
+            pytest.skip("needs npc_party.d64; set WISH_NPC_PARTY or add it to gamedisks.yaml")
+        sg0, sg1 = self._pair(str(npc_party))
         for slot in sg0.characters:
             assert self._by_level(slot.record) == sg1.roster(slot.index).unknown_03_05
 
@@ -515,11 +519,9 @@ class TestShippedNpcRecords:
         return payload
 
     def _npc_party(self):
-        import os
-        import pathlib as _p
-        p = _p.Path(os.path.expanduser("~/Downloads/npc_party.d64"))
-        if not p.exists():
-            pytest.skip("needs npc_party.d64")
+        p = npc_party_disk()
+        if p is None:
+            pytest.skip("needs npc_party.d64; set WISH_NPC_PARTY or add it to gamedisks.yaml")
         from goldbox.d64 import D64
         return SaveGame0.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME0"))
 

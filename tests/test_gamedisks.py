@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """`tools/gamedisks.py`, the one registry #212 asked for.
 
-Three layers, and the point of the module is their precedence: `$<env>` wins
-outright and is taken whole, `gamedisks.local.toml` (gitignored) comes next,
-and `gamedisks.toml` (committed) is the search list this project ships. Every
-test here points `COMMITTED` and `LOCAL` at files under `tmp_path`, so nothing
-depends on the real `gamedisks.toml` except the one test that checks it.
+Two layers, and the point of the module is their precedence: `$<env>` wins
+outright and is taken whole, and `gamedisks.yaml` -- gitignored, one machine's
+own, the only file the loader reads -- is the search list. `gamedisks.yaml.example`
+is committed and is the whole registry. Every test here points `REGISTRY` at a
+file under `tmp_path`, so nothing depends on this machine's `gamedisks.yaml`
+except the tests that read the example.
 """
 
 
@@ -14,6 +15,7 @@ import ast
 import pathlib
 
 import pytest
+import yaml
 
 from tools import gamedisks
 
@@ -28,34 +30,33 @@ def _write(path: pathlib.Path, text: str) -> pathlib.Path:
 
 @pytest.fixture
 def registry(tmp_path, monkeypatch):
-    """An isolated `gamedisks.toml` with no `gamedisks.local.toml` yet."""
-    committed = _write(tmp_path / "committed.toml", """
-[a-game]
-env = "A_GAME_DISKS"
-glob = ["A*.d64"]
-paths = ["committed-one", "committed-two"]
-
-[no-default]
-env = "NO_DEFAULT_DISKS"
+    """An isolated `gamedisks.yaml`."""
+    registry_file = _write(tmp_path / "gamedisks.yaml", """
+a-game:
+  env: A_GAME_DISKS
+  glob: ["A*.d64"]
+  paths:
+    - committed-one
+    - committed-two
+no-default:
+  env: NO_DEFAULT_DISKS
 """)
-    local = tmp_path / "local.toml"          # not written -- absent on purpose
-    monkeypatch.setattr(gamedisks, "COMMITTED", committed)
-    monkeypatch.setattr(gamedisks, "LOCAL", local)
+    monkeypatch.setattr(gamedisks, "REGISTRY", registry_file)
     monkeypatch.delenv("A_GAME_DISKS", raising=False)
     monkeypatch.delenv("NO_DEFAULT_DISKS", raising=False)
-    # The committed entries above use relative names, the way a real rip's
-    # directory name is relative to wherever it was found -- `is_dir()` checks
-    # them against the process's own working directory, so tests that create
-    # one of those directories need to be standing here when they check it.
+    # The entries above use relative names, the way a real rip's directory
+    # name is relative to wherever it was found -- `is_dir()` checks them
+    # against the process's own working directory, so tests that create one
+    # of those directories need to be standing here when they check it.
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
 
-def test_names_lists_every_committed_entry(registry):
+def test_names_lists_every_entry(registry):
     assert gamedisks.names() == ["a-game", "no-default"]
 
 
-def test_with_nothing_set_the_committed_paths_are_tried_in_order(registry):
+def test_with_nothing_set_the_paths_are_tried_in_order(registry):
     assert gamedisks.candidates("a-game") == [
         pathlib.Path("committed-one"), pathlib.Path("committed-two")]
 
@@ -75,35 +76,41 @@ def test_the_environment_variable_wins_outright_and_is_taken_whole(
         pathlib.Path("/wherever/the/player/put/it")]
 
 
-def test_the_local_file_is_tried_before_the_committed_one(registry):
-    _write(registry / "local.toml", """
-[a-game]
-paths = ["local-one"]
+def test_a_path_named_twice_appears_once(registry):
+    _write(registry / "gamedisks.yaml", """
+a-game:
+  paths: [one, two, one]
 """)
     assert gamedisks.candidates("a-game") == [
-        pathlib.Path("local-one"),
-        pathlib.Path("committed-one"), pathlib.Path("committed-two")]
+        pathlib.Path("one"), pathlib.Path("two")]
 
 
-def test_a_path_named_by_both_files_appears_once(registry):
-    _write(registry / "local.toml", """
-[a-game]
-paths = ["committed-one", "local-only"]
+def test_home_expands_in_every_candidate(registry):
+    _write(registry / "gamedisks.yaml", """
+a-game:
+  env: A_GAME_DISKS
+  paths: ["~/somewhere"]
 """)
-    assert gamedisks.candidates("a-game") == [
-        pathlib.Path("committed-one"), pathlib.Path("local-only"),
-        pathlib.Path("committed-two")]
-
-
-def test_home_expands_in_every_candidate(registry, monkeypatch):
-    _write(registry / "committed.toml", """
-[a-game]
-env = "A_GAME_DISKS"
-paths = ["~/somewhere"]
-""")
-    monkeypatch.delenv("A_GAME_DISKS", raising=False)
     assert gamedisks.candidates("a-game") == [
         pathlib.Path.home() / "somewhere"]
+
+
+def test_a_missing_registry_stops_with_one_line_naming_the_example(
+        tmp_path, monkeypatch):
+    """Copying the example is the whole setup, so that is what the message
+    says. A `SystemExit`, so a tool stops with the line and no traceback."""
+    monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "gamedisks.yaml")
+    with pytest.raises(gamedisks.RegistryMissing) as raised:
+        gamedisks.find("pool-of-radiance")
+    message = str(raised.value)
+    assert "\n" not in message
+    assert "gamedisks.yaml.example" in message
+
+
+def test_an_empty_registry_has_no_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(gamedisks, "REGISTRY",
+                        _write(tmp_path / "gamedisks.yaml", "# nothing yet\n"))
+    assert gamedisks.names() == []
 
 
 # -- find(), and both directions it has to prove ------------------------------
@@ -130,9 +137,9 @@ def test_pointed_at_an_empty_directory_find_is_still_none(registry,
 
 
 def test_an_entry_with_no_glob_only_needs_the_directory_to_exist(registry):
-    _write(registry / "committed.toml", """
-[a-game]
-paths = ["a-directory"]
+    _write(registry / "gamedisks.yaml", """
+a-game:
+  paths: ["a-directory"]
 """)
     (registry / "a-directory").mkdir()
     assert gamedisks.find("a-game") == pathlib.Path("a-directory")
@@ -155,64 +162,62 @@ def test_report_says_none_when_nothing_resolves(registry):
     assert rows["no-default"][3] is False
 
 
-def test_report_names_which_toml_answered(registry):
+def test_report_names_the_registry_file_as_the_layer(registry):
     disks = registry / "committed-two"
     disks.mkdir()
     (disks / "A1.d64").write_bytes(b"")
     rows = {name: row for name, *row in gamedisks.report()}
-    assert rows["a-game"][1] == "gamedisks.toml"
+    assert rows["a-game"][1] == "gamedisks.yaml"
     assert rows["a-game"][3] is True
 
 
-# -- the file this project actually ships --------------------------------------
+# -- the example this project actually ships -----------------------------------
 
-def test_every_committed_default_is_found_here_or_marked_unavailable():
-    """Every entry in the real `gamedisks.toml` either resolves on this
-    machine or carries no default at all, which for `amiga-por-saves` and
-    `pod-saves` is `#211 (103 tests skip on the machine that has the game
-    files, and the game files are not why)`'s own finding: nobody has
-    produced that data on any machine yet.
-
-    Skips as a whole on a machine with none of the game files -- CI, and any
-    checkout that is not this one -- because there each entry with a default
-    correctly finds nothing, and that is not a regression to report.
-    """
-    from tests import gamedata
-    if gamedata.disk_dir() is None:
-        pytest.skip("needs the game disks, to tell 'not on this machine' "
-                    "from 'the registry's default is wrong'")
-    missing = [name for name in gamedisks.names()
-              if _machine_defaults(name) and gamedisks.find(name) is None]
-    assert missing == []
+def _example() -> dict:
+    return yaml.safe_load(gamedisks.EXAMPLE.read_text(encoding="utf-8"))
 
 
-def _machine_defaults(name: str) -> list[str]:
-    """An entry's paths other than the two shared roots every entry lists.
-
-    `/data/agent-disks/<entry>` and `/mnt/disks/<entry>` are written for every
-    entry, including the ones nobody has produced any data for, so they say
-    nothing about whether an entry has a default on this machine (#575).
-    """
-    shared = (f"/data/agent-disks/{name}", f"/mnt/disks/{name}")
-    return [p for p in gamedisks._committed()[name].get(gamedisks.PATHS, [])
-            if p not in shared]
-
-
-def test_every_entry_lists_both_shared_roots_first():
-    """The game data is moving into one directory named for its entry, and
-    the agent VM sees it at a different mount from the desktop (#575)."""
-    wrong = []
-    for name in gamedisks.names():
-        paths = gamedisks._committed()[name].get(gamedisks.PATHS, [])
-        if paths[:2] != [f"/data/agent-disks/{name}", f"/mnt/disks/{name}"]:
-            wrong.append(name)
+def test_the_example_is_the_whole_registry():
+    """Every entry has its variable, and an example path under
+    `/data/agent-disks/<entry>` where `<entry>` is the entry's own name, so the
+    file and the directory describe each other."""
+    example = _example()
+    assert example, "gamedisks.yaml.example has no entries"
+    wrong = [name for name, row in example.items()
+             if not row.get(gamedisks.ENV)
+             or f"/data/agent-disks/{name}" not in (row.get(gamedisks.PATHS)
+                                                    or [])]
     assert wrong == []
+
+
+def test_the_example_says_what_every_entry_is():
+    """The comment above each entry's keys is the documentation: a machine
+    filling this in reads it to know what to put there."""
+    lines = gamedisks.EXAMPLE.read_text(encoding="utf-8").splitlines()
+    bare = []
+    for n, line in enumerate(lines):
+        if line and not line.startswith((" ", "#")) and line.endswith(":"):
+            block = lines[n + 1:n + 2]
+            if not (block and block[0].lstrip().startswith("#")):
+                bare.append(line.rstrip(":"))
+    # The three C64 title entries carry their comment too; none may be bare.
+    assert bare == []
+
+
+def test_this_machines_registry_only_names_entries_the_example_has():
+    """`gamedisks.yaml` is gitignored, so this is the one place a stale copy
+    (an entry renamed in the example) is caught. Skips where there is none:
+    CI, and any checkout that has not copied the example yet."""
+    if not gamedisks.REGISTRY.is_file():
+        pytest.skip("no gamedisks.yaml on this machine; copy the example")
+    unknown = set(gamedisks.names()) - set(_example())
+    assert unknown == set()
 
 
 def test_nothing_shipped_imports_this_module():
     """`gamedisks.py`'s own docstring: this is ours, not the player's.
 
-    `gamedisks.toml` carries no package-data entry, so a shipped `automap`,
+    `gamedisks.yaml` carries no package-data entry, so a shipped `automap`,
     `editor`, `goldbox`, `wish` or `ui` module calling `gamedisks.find` would
     get a silent nothing on a player's machine -- the worst shape a lookup can
     fail in. Checked by AST, the way `test_wish.py`'s transport check is: a
@@ -243,15 +248,15 @@ def test_nothing_shipped_imports_this_module():
     assert offenders == []
 
 
-def test_no_committed_default_points_into_work():
+def test_no_example_path_points_into_work():
     """`work/` is scratch, gitignored, and has been deleted twice -- a
     default that resolves into it stops resolving the day somebody runs
     `rm -rf work/`, which is what happened to
     `tests/test_silverblades.py`'s old `work/silverblades` entry."""
     repo = pathlib.Path(__file__).resolve().parent.parent
     offenders = [(name, raw)
-                for name, row in gamedisks._committed().items()
-                for raw in row.get(gamedisks.PATHS, [])
-                if (repo / "work") in pathlib.Path(raw).expanduser().parents
-                or pathlib.Path(raw).expanduser() == repo / "work"]
+                 for name, row in _example().items()
+                 for raw in row.get(gamedisks.PATHS) or []
+                 if (repo / "work") in pathlib.Path(raw).expanduser().parents
+                 or pathlib.Path(raw).expanduser() == repo / "work"]
     assert offenders == []

@@ -1,0 +1,173 @@
+# Where this machine keeps the player's own game disks and saves, for this
+# project's tests and tools. `tools/gamedisks.py` is the loader and the report
+# (`tools/gamedisks.py` prints one row per entry: found or missing); #212 is why
+# a registry exists instead of the seven searches it replaced.
+#
+# Each entry names an environment variable, which wins outright and is taken
+# whole when it is set, then a list of candidate `paths` tried in order, each
+# `~`-expanded; the first that exists and holds something matching `glob` (when
+# there is one) is the answer. An entry with no `paths` means nobody has produced
+# that data on any machine yet: setting the environment variable is the only way
+# in.
+#
+# No path here may sit under `work/`: that directory is scratch, gitignored, and
+# has been deleted twice, so a default that resolves into it stops resolving the
+# day somebody runs `rm -rf work/`.
+#
+# THIS IS THE EXAMPLE. Copy it to `gamedisks.yaml` in this directory -- that file
+# is gitignored, is the only one the loader reads, and is one machine's own -- and
+# edit the paths to where the data really is. The paths below are where Donald's
+# machines keep it, one directory per entry named for the entry, so the file and
+# the directory describe each other.
+
+pool-of-radiance:
+  # The eight Pool of Radiance C64 disk images, `POOL1.D64` onward, and the save
+  # disk beside them. Read by most tests and by every tool that needs item names,
+  # maps or templates.
+  env: POR_DISKS
+  glob: ["POOL*.d64", "POOL*.D64"]
+  paths:
+    - "/data/agent-disks/pool-of-radiance"
+
+curse-of-the-azure-bonds:
+  # The Curse of the Azure Bonds C64 disk images, `CURSE1.D64` onward.
+  env: COAB_DISKS
+  glob: ["CURSE*.d64", "CURSE*.D64"]
+  paths:
+    - "/data/agent-disks/curse-of-the-azure-bonds"
+
+secret-of-the-silver-blades:
+  # The Secret of the Silver Blades C64 disk images, `SILVER*.D64`.
+  env: SSB_DISKS
+  glob: ["SILVER*.d64", "SILVER*.D64"]
+  paths:
+    - "/data/agent-disks/secret-of-the-silver-blades"
+
+dos-archives:
+  # Every DOS Gold Box title's saved games, under Forgotten Realms: The
+  # Archives -- there is no single game glob, so the callers check for their
+  # own file names underneath.
+  env: FR_ARCHIVES
+  paths:
+    - "/data/agent-disks/dos-archives"
+
+amiga:
+  # Whole Amiga ROM libraries, not a Gold Box folder -- scanning one whole is
+  # how #211 found `Lemmings/lemm1.adf`, which is not an error and must not be
+  # asserted against. Callers narrow to the game directories by name
+  # themselves; `$AMIGA_DISKS`, when set, is taken whole and scoping it is the
+  # caller's business.
+  env: AMIGA_DISKS
+  paths:
+    - "/data/agent-disks/amiga"
+
+amiga-por-saves:
+  # No default, and the reason changed on 2026-09-04: twenty 288-byte records do
+  # exist, but not as loose files -- six in the `save/` drawer of Pool of
+  # Radiance disk 1 and fourteen in the Curse of the Azure Bonds save disk, both
+  # reachable through the `amiga` entry above. `tools/amigasaves.py` extracts
+  # them and `tests/test_amiga.py` calls it when this names nothing, so setting
+  # the variable is now for pointing at a hand-picked corpus rather than for
+  # having one at all. The old note here said none existed anywhere, which is
+  # what left thirty-one tests skipping on the machine that holds them (#211).
+  env: AMIGA_POR_SAVES
+  paths:
+    - "/data/agent-disks/amiga-por-saves"
+
+pod-saves:
+  # No default: no exported Pools of Darkness .pc file exists on any machine
+  # yet -- #211, waiting on the same play session as amiga-por-saves.
+  # Engine-written DOS Pools of Darkness containers are not this entry's
+  # business: they are specimens under `pod-dos` in `$WISH_SPECIMENS`. This is
+  # only for an exported Amiga `.pc` file.
+  env: POD_SAVES
+  paths:
+    - "/data/agent-disks/pod-saves"
+
+por-dos-play:
+  # A played, installed DOS Pool of Radiance, and Donald's own: every character
+  # record in its `SAVE/` has been edited with Gold Box Companion, so it is an
+  # *input* for tools that want a DOS game directory (`CBODY.DAX`, `CHEAD.DAX`
+  # and the rest of the `.DAX` files) and never evidence for a measurement --
+  # `.claude/rules/testing.md`, "A specimen is only evidence if we know who wrote
+  # it". Callers that need saves as well look under `SAVE/` themselves.
+  env: POR_DOS_GAME
+  glob: ["CBODY.DAX"]
+  paths:
+    - "/data/agent-disks/por-dos-play"
+
+champions-of-krynn:
+  # Champions of Krynn's disks, for `tests/test_titletables.py`, which
+  # recognises the side that carries `ITEMNAMES` by content -- so this names
+  # folders of disks rather than one disk, and the caller scans what is in them.
+  # Death Knights of Krynn ships the same Krynn race labels and is told apart
+  # by that content check, not by where it sits.
+  env: COK_DISKS
+  glob: ["*.d64", "*.D64"]
+  paths:
+    - "/data/agent-disks/champions-of-krynn"
+
+death-knights-of-krynn:
+  # Death Knights of Krynn's disks, for `tests/test_titletables.py`, which tells
+  # it from Champions of Krynn by its coin names rather than by where it sits,
+  # so a folder holding both titles is fine. The `[n0]` folder is a cartridge
+  # image, not disks, and is left out.
+  env: DKK_DISKS
+  glob: ["*.d64", "*.D64"]
+  paths:
+    - "/data/agent-disks/death-knights-of-krynn"
+
+npc-party-save:
+  # A hacked Pool of Radiance save disk Donald found online, whose party stands
+  # inside the Kobold Caves with an NPC (`docs/90-specimens.md`). Somebody edited
+  # it with an editor, so it is evidence of nothing; three tools boot it as an
+  # *input* disk so the game's own code runs from a state nobody has reached by
+  # playing (`tools/fasttravelrun.py`, `koboldnpc.py`, `exitreentry.py`).
+  env: WISH_NPC_PARTY
+  glob: ["npc_party.d64"]
+  paths:
+    - "/data/agent-disks/npc-party-save"
+
+codewheel:
+  # Donald's separate private repository holding the code-wheel arithmetic and
+  # the tables extracted from the player's own disks. It is copy-protection
+  # research and `CLAUDE.md` keeps it out of this repository, so it can only ever
+  # be a local path. `tools/cursewheel.py`, `amigacursewheel.py` and
+  # `amigabladesjournal.py` reach into it at run time.
+  env: WISH_CODEWHEEL
+  paths:
+    - "/data/agent-disks/codewheel"
+
+ecl-scripts:
+  # The decompiled ECL event scripts of the Gold Box titles, which `tests/
+  # test_areas.py` reads. They are derived from the game's own code, so they are
+  # game data and are never committed. No path on any machine has them yet: the
+  # directory this used to be, `work/ecl-scripts`, is gone, and `work/` is not
+  # somewhere to keep a corpus.
+  env: WISH_ECL_SCRIPTS
+  paths:
+    - "/data/agent-disks/ecl-scripts"
+
+coab-source:
+  # The decompiled source of Curse of the Azure Bonds, which `tests/
+  # test_coabsource.py` reads. Derived from the game's own executable, so it is
+  # game data and is never committed. No path on any machine has it yet: it used
+  # to be `work/forums/ext`, which is gone.
+  env: WISH_COAB_SOURCE
+  paths:
+    - "/data/agent-disks/coab-source"
+
+manuals:
+  # Commodore's own manuals, for the reference documents that cite them
+  # (`docs/152-commodore-manuals.md`). Commercial PDFs, so never committed.
+  env: WISH_MANUALS
+  glob: ["*.pdf"]
+  paths:
+    - "/data/agent-disks/manuals"
+
+kickstarts:
+  # The Amiga Kickstart ROMs FS-UAE and WinUAE boot from, named in
+  # `docs/124-amiga-port.md`. Commercial ROMs, so never committed.
+  env: WISH_KICKSTARTS
+  paths:
+    - "/data/agent-disks/kickstarts"

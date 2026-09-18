@@ -107,7 +107,7 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, required=True, help="session command port")
     ap.add_argument("--geo", required=True)
     ap.add_argument("--key", default="curse-of-the-azure-bonds",
-                    help="which game's disks, as gamedisks.toml names it")
+                    help="which game's disks, as gamedisks.yaml names it")
     ap.add_argument("--facing", type=int, default=None,
                     help="0 north, 1 east, 2 south, 3 west; read from the "
                          "session when left out")

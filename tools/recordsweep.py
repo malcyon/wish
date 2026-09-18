@@ -64,7 +64,7 @@ INDIRECT_WINDOW = 10
 def sides(title: str, directory: str | None = None, pattern: str | None = None):
     """Every disk image of a title, in name order. Yields `(path, D64)`.
 
-    `directory` and `pattern` are for a title `gamedisks.toml` has no entry
+    `directory` and `pattern` are for a title `gamedisks.yaml` has no entry
     for -- Champions of Krynn and the two after it -- so a question that has
     already been asked of three titles can be asked of the other three without
     a new table entry.
@@ -160,7 +160,7 @@ def main(argv=None) -> int:
                          "indirect-indexed opcode, instead of absolute-mode "
                          "references")
     ap.add_argument("--dir", help="a directory of disk images, for a title "
-                                  "gamedisks.toml has no entry for")
+                                  "gamedisks.yaml has no entry for")
     ap.add_argument("--glob", help="which images in it, e.g. '*.d64'")
     args = ap.parse_args(argv)
 

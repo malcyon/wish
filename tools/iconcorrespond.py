@@ -167,7 +167,7 @@ def ascii_art(pixels: list[list[int]]) -> list[str]:
 
 # -- where the files are ----------------------------------------------------
 def dos_game(given: str | None) -> pathlib.Path:
-    """The DOS game directory: `--dos`, then `gamedisks.toml`'s `por-dos-play`
+    """The DOS game directory: `--dos`, then `gamedisks.yaml`'s `por-dos-play`
     (`$POR_DOS_GAME` first), then a `POOLRAD` folder under its `dos-archives`
     (#575)."""
     if given:
@@ -185,7 +185,7 @@ def dos_game(given: str | None) -> pathlib.Path:
     raise SystemExit(
         "no DOS Pool of Radiance directory with CBODY.DAX and CHEAD.DAX in "
         "it; pass --dos, or set POR_DOS_GAME (the por-dos-play entry) or "
-        "FR_ARCHIVES (dos-archives), or add one to gamedisks.local.toml")
+        "FR_ARCHIVES (dos-archives), or add one to gamedisks.yaml")
 
 
 def c64_disk(given: str | None) -> pathlib.Path:

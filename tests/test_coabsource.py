@@ -140,7 +140,7 @@ def _source(name: str) -> str:
     if path is None or not path.is_file():
         pytest.skip(f"needs {name} from simeonpilgrim/coab in the coab-source "
                     "entry; set WISH_COAB_SOURCE or add it to "
-                    "gamedisks.local.toml")
+                    "gamedisks.yaml")
     return path.read_text(encoding="utf-8", errors="replace")
 
 

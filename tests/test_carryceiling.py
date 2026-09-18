@@ -172,7 +172,7 @@ def test_a_silver_blades_saved_game_is_not_read_as_curse():
 
 def test_the_c64_sweep_reaches_a_title_with_no_registry_entry(tmp_path,
                                                               monkeypatch):
-    """Three of Wish's six C64 titles have no `gamedisks.toml` entry.
+    """Three of Wish's six C64 titles have no `gamedisks.yaml` entry.
 
     Champions of Krynn, Death Knights of Krynn and Gateway to the Savage
     Frontier sit beside the three that do, so the sweep takes each registered

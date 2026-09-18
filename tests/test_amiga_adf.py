@@ -41,7 +41,7 @@ from goldbox.amiga_adf import (
 WHEN = datetime.datetime(1991, 6, 4, 12, 34, 56)
 
 
-#: The Amiga ROM library roots, `gamedisks.toml`'s `amiga` entry (#212). These
+#: The Amiga ROM library roots, `gamedisks.yaml`'s `amiga` entry (#212). These
 #: four skipped here for months against images that were on the disk the whole
 #: time -- `#211 (103 tests skip on the machine that has the game files, and
 #: the game files are not why)`. `tests/gamedata.py` does the same for the C64

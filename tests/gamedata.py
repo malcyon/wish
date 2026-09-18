@@ -48,6 +48,14 @@ from goldbox.geo import (
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
+def npc_party_disk():
+    """`npc_party.d64` -- the hacked save whose party stands in the Kobold
+    Caves with an NPC -- from the `npc-party-save` registry entry, or None."""
+    from tools import gamedisks
+    where = gamedisks.find("npc-party-save")
+    return where / "npc_party.d64" if where else None
+
+
 @functools.lru_cache(maxsize=1)
 def disk_dir():
     """Where Pool of Radiance's disks are on this machine, or None.
@@ -100,7 +108,7 @@ CURSE_KEY = "curse-of-the-azure-bonds"
 
 
 def _curse_candidates():
-    """Where Curse disks might be: `gamedisks.toml`'s own list (#212), plus
+    """Where Curse disks might be: `gamedisks.yaml`'s own list (#212), plus
     one level of subdirectory under `~/c64/All Games`.
 
     A rip is often unpacked under a name nobody would guess -- the one on this

@@ -330,7 +330,7 @@ def title_c64_disk(title: str, given: str | None) -> pathlib.Path | None:
     """The side of `title`'s own C64 disk set that carries the icon art.
 
     `--disk` wins; otherwise the folder comes from `tools/gamedisks.py` --
-    `$POR_DISKS`, `$COAB_DISKS`, `$SSB_DISKS`, then `gamedisks.toml` -- the
+    `$POR_DISKS`, `$COAB_DISKS`, `$SSB_DISKS`, then `gamedisks.yaml` -- the
     same resolution `tools/iconredrawn.py` uses for `SILVER-1.D64`, and the
     file name inside it is not guessed: every side matching the title's own
     `Game.disk_glob` is opened in name order and the first holding all of
@@ -817,13 +817,13 @@ def title_dos_game(title: str, given: str | None,
     """`title`'s own DOS game folder.
 
     Pool of Radiance keeps `iconcorrespond.dos_game`'s own search -- `--dos`,
-    then `gamedisks.toml`'s `por-dos-play` entry (`$POR_DOS_GAME` first), then
+    then `gamedisks.yaml`'s `por-dos-play` entry (`$POR_DOS_GAME` first), then
     the archives -- unchanged, so the single-title tool this always was still
     works the same way with no `--title` given. Curse of the Azure Bonds and
     Secret of the Silver Blades have no played copy on this machine, so they
     are found the way `tools/dosicontitles.py` finds them: under the
     unpacked Forgotten Realms archives, `--archives` then `$FR_ARCHIVES` then
-    `gamedisks.toml`'s `dos-archives` entry.
+    `gamedisks.yaml`'s `dos-archives` entry.
     """
     if given:
         return pathlib.Path(given).expanduser()
@@ -891,7 +891,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 f"no {c64_port.by_key(args.title).title} C64 disk carrying "
                 f"{', '.join(f.decode() for f in C64_ICON_FILES)}; pass "
-                f"--disk, or set the title's variable in gamedisks.toml")
+                f"--disk, or set the title's variable in gamedisks.yaml")
         sheet(title_dos_game(args.title, args.dos, args.archives),
               disk, args.kind, args.size, colours, pathlib.Path(args.png),
               title=args.title)

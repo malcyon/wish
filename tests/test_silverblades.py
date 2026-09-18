@@ -10,7 +10,7 @@ putting these two phases first.
 The Pool of Radiance half of every check is the control. An invariant asserted
 on one title only is an invariant that will be quietly broken for the other.
 
-**Where the disks are found.** `gamedisks.toml`'s `secret-of-the-silver-blades`
+**Where the disks are found.** `gamedisks.yaml`'s `secret-of-the-silver-blades`
 entry, behind `$SSB_DISKS` -- `tools/gamedisks.py` is the one registry now
 (#212), so this module no longer carries its own copy of the search.
 
@@ -60,7 +60,7 @@ SSB_KEY = "secret-of-the-silver-blades"
 
 
 def _candidates():
-    """`gamedisks.toml`'s own search list for this title (#212).
+    """`gamedisks.yaml`'s own search list for this title (#212).
 
     No candidate here may sit under `work/`: that directory is scratch and has
     been deleted twice, so a default that resolved into it stopped resolving

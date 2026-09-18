@@ -17,7 +17,7 @@ POOL1 = f"{DISKS}/POOL1.D64"
 pytestmark = pytest.mark.skipif(
     not pathlib.Path(POOL1).exists(),
     reason="needs Pool of Radiance disk 1; set POR_DISKS or add it to "
-           "gamedisks.local.toml")
+           "gamedisks.yaml")
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 # Read the committed fixture, never the live disk -- an earlier version read

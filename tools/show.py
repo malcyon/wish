@@ -119,7 +119,7 @@ def main() -> int:
             continue          # item names need a readable game disk
     if names is None:
         print("No Pool of Radiance disk to read item names from; set "
-              "POR_DISKS or add it to gamedisks.local.toml", file=sys.stderr)
+              "POR_DISKS or add it to gamedisks.yaml", file=sys.stderr)
     img = D64.open(args.path)
     print(f"{args.path}")
     print(f"disk {img.disk_name!r}  id {img.disk_id!r}   {len(img.directory())} files\n")

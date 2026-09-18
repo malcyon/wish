@@ -21,10 +21,10 @@ from goldbox.yaml_io import export_save, import_into, strip_annotations, to_yaml
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
 SAVE = f"{DISKS}/PORSAVE2.D64"
-GAME = "work/POOL1.D64.orig"
+GAME = f"{DISKS}/POOL1.D64"
 
-# Needs a specimen under `work/`, which is gitignored: a checkout without
-# it skips rather than fails.
+# Needs the game disk, which is not in the repository: a checkout without it
+# skips rather than fails.
 pytestmark = pytest.mark.skipif(
     not pathlib.Path(GAME).exists(),
     reason="needs the disks under work/")

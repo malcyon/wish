@@ -17,13 +17,22 @@ from goldbox.spells import (  # noqa: E402
     SPELL_RESTORATION,
     load_spell_names,
 )
+from tools import gamedisks  # noqa: E402
 
-DEFAULT_DISK = "work/POOL1.D64.orig"
+
+def default_disk() -> str:
+    where = gamedisks.find("pool-of-radiance")
+    if where is None:
+        sys.exit("No Pool of Radiance disks found; pass a disk, set POR_DISKS "
+                 "or add the directory to gamedisks.yaml")
+    return str(where / "POOL1.D64")
+
+
 OUT = Path(__file__).resolve().parent.parent / "docs" / "86-spell-table.md"
 
 
 def main() -> int:
-    disk = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DISK
+    disk = sys.argv[1] if len(sys.argv) > 1 else default_disk()
     names = load_spell_names(d64.D64.open(disk))
 
     out: list[str] = []

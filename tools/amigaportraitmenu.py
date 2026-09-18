@@ -15,7 +15,7 @@ re-derived:
     tools/amigaportraitmenu.py --montage work/issue194/menu.png
 
 It finds the player's own Amiga disk images the way the other Amiga tools do
--- `tools/amigasaves.py`'s walk of `$AMIGA_DISKS` and `gamedisks.toml`, which
+-- `tools/amigasaves.py`'s walk of `$AMIGA_DISKS` and `gamedisks.yaml`, which
 reads a loose `.adf` or one inside a zip -- takes `/program` off whichever
 image carries it and `/head.dax` and `/body.dax` off whichever carries those,
 and hands the three to `goldbox.portraits.tables_from_amiga`.  The table is

@@ -263,7 +263,7 @@ def test_the_writer_refuses_an_index_no_table_has():
 # -- the player's own files, when they have them -------------------------
 
 def pc_files() -> list[pathlib.Path]:
-    """`gamedisks.toml`'s `pod-saves` entry (#212), or the disks.
+    """`gamedisks.yaml`'s `pod-saves` entry (#212), or the disks.
 
     That entry has no default candidates and says no exported Pools of
     Darkness `.pc` file exists on any machine.  **True of an exported one,
@@ -779,7 +779,7 @@ def _extracted_records() -> tuple[pathlib.Path, ...]:
     disk.  They were once extracted into `work/`, which is gitignored and has
     been lost, so `$AMIGA_POR_SAVES` named nothing and thirty-one tests here
     skipped on the machine that holds every byte of the corpus -- the shape of
-    #211.  `tools/amigasaves.py` finds them again from `gamedisks.toml`'s
+    #211.  `tools/amigasaves.py` finds them again from `gamedisks.yaml`'s
     `amiga` entry, and this unpacks them into a directory that lives as long
     as the test process.
     """
@@ -797,7 +797,7 @@ _KEEP: list[tempfile.TemporaryDirectory] = []
 
 
 def amiga_por_records() -> list[pathlib.Path]:
-    """`gamedisks.toml`'s `amiga-por-saves` entry (#212), or the disks.
+    """`gamedisks.yaml`'s `amiga-por-saves` entry (#212), or the disks.
 
     `$AMIGA_POR_SAVES` still wins, because a run that wants a hand-picked
     corpus -- one character, or a set nobody has shipped -- has to be able to
@@ -1996,7 +1996,7 @@ def _later_specimens() -> tuple[pathlib.Path, ...]:
 
     None of them is a loose file on any machine: eleven are `SAVE/*.guy` on
     Amiga Curse disk 1 and the other ten are inside two saved games.
-    `tools/amigarecords.py` reads them out through `gamedisks.toml`'s `amiga`
+    `tools/amigarecords.py` reads them out through `gamedisks.yaml`'s `amiga`
     entry, into a directory that lives as long as the test process -- so the
     corpus is never only in `work/`, which is gitignored and has been lost.
     """

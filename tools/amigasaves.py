@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="the directory the records are written to")
     parser.add_argument("--disks", action="append", default=None,
                         help="a directory of Amiga disk images; repeatable. "
-                             "Defaults to gamedisks.toml's `amiga` entry")
+                             "Defaults to gamedisks.yaml's `amiga` entry")
     args = parser.parse_args(argv)
 
     roots = ([pathlib.Path(d).expanduser() for d in args.disks]

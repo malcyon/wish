@@ -55,7 +55,7 @@ def shipped_c64(disks: pathlib.Path | None) -> bytes:
     """The `SAVEDBASH` payload off the player's own side 6."""
     if disks is None:
         raise SystemExit("no Silver Blades disks: set $SSB_DISKS or add a row "
-                         "to gamedisks.local.toml")
+                         "to gamedisks.yaml")
     side = pathlib.Path(disks) / SHIPPED_SIDE
     if not side.is_file():
         matches = sorted(pathlib.Path(disks).glob("*6.[dD]64"))

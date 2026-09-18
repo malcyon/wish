@@ -20,7 +20,7 @@ import os
 import pathlib
 
 import pytest
-from gamedata import game_file
+from gamedata import game_file, specimen_root
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -35,7 +35,8 @@ from goldbox.savegame import SAVE0_SIZE, SaveGame0  # noqa: E402
 # (#211). It takes a session that reaches six City Hall commissions paid and
 # the endgame quests offered, not a tool: nothing short of playing that far
 # and visiting City Hall produces it.
-ADVANCED = pathlib.Path("work/fields/npc_party.d64")
+ADVANCED = ((specimen_root() or pathlib.Path("no-specimen-tree"))
+            / "por-c64" / "WISH-SPEC-city-hall-six-commissions-paid.D64")
 
 
 @pytest.fixture

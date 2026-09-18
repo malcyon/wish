@@ -47,7 +47,7 @@ display font and reading it needs a font this tool does not have.  Pass
 glance.
 
 The wheel table and the two arithmetics come from
-the `codewheel` entry of `gamedisks.toml` (`$WISH_CODEWHEEL` beats it) --
+the `codewheel` entry of `gamedisks.yaml` (`$WISH_CODEWHEEL` beats it) --
 kept out of this repository deliberately, like the disks.
 """
 from __future__ import annotations

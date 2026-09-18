@@ -165,7 +165,7 @@ def test_no_pool_of_radiance_record_on_the_c64_disks_sets_the_missing_id():
     """
     rows = [r for r in census.c64_rows() if r.title == "pool-of-radiance"]
     # The finder takes the parent of each registered disk directory as well,
-    # so the three C64 titles with no `gamedisks.toml` entry are read too;
+    # so the three C64 titles with no `gamedisks.yaml` entry are read too;
     # `has_table` keeps their books from being measured against Pool of
     # Radiance's 55-spell ceiling, which is what `beyond` would otherwise do.
     assert all(r.has_table for r in rows)

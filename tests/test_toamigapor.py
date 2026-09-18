@@ -9,7 +9,7 @@ character sheet and, where the character owned anything, the ITEMS screen.
 `docs/182-amiga-por-in-the-running-game.md` carries the screenshots and the
 byte-level comparisons.  What is here is what keeps that true afterwards.
 
-Everything reads the Amiga disk out of `gamedisks.toml`'s `amiga` entry and the
+Everything reads the Amiga disk out of `gamedisks.yaml`'s `amiga` entry and the
 parties out of `$WISH_SPECIMENS`, so nothing is committed and everything skips
 on a machine that has neither.
 """

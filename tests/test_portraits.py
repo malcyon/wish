@@ -508,7 +508,7 @@ def _amiga_files():
 
     The Amiga splits them across two disks and this machine keeps the images
     inside zips, so the search is `tools/amigaportraitmenu.py`'s -- the same
-    walk of `$AMIGA_DISKS` and `gamedisks.toml` every other Amiga tool uses.
+    walk of `$AMIGA_DISKS` and `gamedisks.yaml` every other Amiga tool uses.
     An empty answer skips rather than fails: the disks are Donald's.
     """
     from tools import amigaportraitmenu

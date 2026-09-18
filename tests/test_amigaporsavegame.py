@@ -6,7 +6,7 @@ square, the clock and the quest flags were SSI's.  These are the tests that
 keep it built.
 
 Everything reads the player's own disks: the Amiga images through
-`gamedisks.toml`'s `amiga` entry, the C64 and DOS parties out of
+`gamedisks.yaml`'s `amiga` entry, the C64 and DOS parties out of
 `$WISH_SPECIMENS`.  Nothing here is committed and every test skips on a
 machine that has neither.
 """

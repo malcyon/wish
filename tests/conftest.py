@@ -69,6 +69,20 @@ assert hasattr(wish, "__path__"), (
     f"before conftest was imported; see #259.")
 
 
+# `gamedisks.yaml` is gitignored and one machine's own (#575), so CI, a detached
+# worktree and any fresh clone have none, and the loader stops with a one-line
+# message when it is missing. A test module asks the registry while it is being
+# collected, so that stop would take the whole run down rather than skip the
+# tests that need game data. Here the example stands in: its paths are
+# `/data/agent-disks/<entry>`, which a machine with no registry has no reason to
+# have, so every lookup answers "not here" and those tests skip, as they always
+# have on a machine with no disks. A machine with the real file is untouched.
+from tools import gamedisks as _gamedisks  # noqa: E402
+
+if not _gamedisks.REGISTRY.is_file():
+    _gamedisks.REGISTRY = _gamedisks.EXAMPLE
+
+
 def load_tools_module(name: str):
     """Import ``tools/<name>.py`` by file path, without leaving ``tools/`` on
     ``sys.path`` for whatever pytest collects next.

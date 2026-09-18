@@ -14,8 +14,8 @@ What it does, in order, and all of it against the same checkout:
 1. `git worktree add --detach` at the resolved sha, so the run tests exactly
    what will land and not whatever other agents have half-edited in the
    main tree.
-2. Symlink `work/` into the worktree. It is gitignored, and without it every
-   test that reads a specimen from it skips.
+2. Symlink `work/` and `gamedisks.yaml` into the worktree. Both are gitignored,
+   and without them every test that reads game data skips.
 3. `pytest -q` in the worktree, with the repository's own virtual
    environment. `-n auto --dist loadgroup` is in `pyproject.toml`.
 4. `ruff check .` in the worktree.
@@ -104,6 +104,8 @@ def main(argv=None) -> int:
         return 1
     try:
         (worktree / "work").symlink_to(REPO / "work")
+        if (REPO / "gamedisks.yaml").is_file():
+            (worktree / "gamedisks.yaml").symlink_to(REPO / "gamedisks.yaml")
         green, summary, failure = run_checks(worktree)
     finally:
         if not args.keep:

@@ -38,7 +38,7 @@ def default_disk() -> str:
     where = gamedisks.find("pool-of-radiance")
     if where is None:
         sys.exit("No Pool of Radiance disks found; pass a disk, set POR_DISKS "
-                 "or add the directory to gamedisks.local.toml")
+                 "or add the directory to gamedisks.yaml")
     return str(where / "POOL1.D64")
 
 

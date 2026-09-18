@@ -26,7 +26,7 @@ What is tested, hardest evidence first.
 
 **The specimens are the twelve genuine `.pc` files in the `Save` drawer of
 Amiga Pools of Darkness disk 3**, read out of the player's own `.adf` at run
-time through `gamedisks.toml`'s `amiga` entry -- the same route
+time through `gamedisks.yaml`'s `amiga` entry -- the same route
 `tests/test_amiga.py` uses for the Amiga Pool of Radiance records, and for the
 same reason: they are not loose files on any machine. Everything here skips
 without the disks, which is what CI does.
@@ -52,7 +52,7 @@ def pc_bytes() -> dict[str, bytes]:
     and this narrows to the `.pc` files, which its own `specimens` does not
     yield: that one keeps to the 288-byte Pool of Radiance record.
 
-    **They are not loose files on any machine and `gamedisks.toml`'s
+    **They are not loose files on any machine and `gamedisks.yaml`'s
     `pod-saves` entry says so**, which is true of an *exported* `.pc` and
     left the twelve the game itself ships unused. Same shape as `#211 (103
     tests skip on the machine that has the game files, and the game files
