@@ -62,9 +62,10 @@ def put_ledger(flags: bytearray, index: int, value: int) -> bytearray:
 def advanced_save() -> bytes:
     if not ADVANCED.exists():
         pytest.skip(
-            f"needs {ADVANCED}: a save with six City Hall commissions paid "
-            "and the endgame quests offered -- only a session played that "
-            "far and saved there can produce it")
+            f"needs a specimen, not yet made, at {ADVANCED}: a save with six "
+            "City Hall commissions paid and the endgame quests offered -- "
+            "only a session played that far and saved there can produce it, "
+            "and `tools/specimens.py add` then files it under this name")
     from goldbox.d64 import load_payload
     return load_payload(str(ADVANCED), b"SAVEDGAME0")
 

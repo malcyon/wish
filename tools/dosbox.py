@@ -85,6 +85,7 @@ SLOTS = 16
 sys.path.insert(0, str(REPO))
 from tools import gamedisks  # noqa: E402
 
+
 # Where the player's copy of Forgotten Realms: The Archives is unpacked.
 # Read only, always: a game tree is copied into `work/` before DOSBox sees it.
 # The registry's `dos-archives` entry (#212, #575): `$FR_ARCHIVES` first, then
@@ -92,8 +93,20 @@ from tools import gamedisks  # noqa: E402
 # the `$FR_ARCHIVES` value when set, even if it does not exist, so a wrong
 # setting is named in the error rather than silently ignored -- because other
 # modules call `ARCHIVES.is_dir()` and must get a path, not `None`.
-ARCHIVES = (gamedisks.find("dos-archives")
-            or gamedisks.candidates("dos-archives")[0])
+#
+# Looked up when `dosbox.ARCHIVES` is first read and not when this module is
+# imported: fifty tools import this one, and an import that asks the registry
+# stops every one of them on a checkout with no `gamedisks.yaml`, including a
+# test's fresh interpreter that never loaded `tests/conftest.py`.
+def __getattr__(name):
+    if name == "ARCHIVES":
+        return gamedisks.where("dos-archives")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _archives() -> Path:
+    """`ARCHIVES`, unless something has set it (a test pointing it away)."""
+    return globals().get("ARCHIVES") or gamedisks.where("dos-archives")
 
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
@@ -136,11 +149,12 @@ def find_game(stem: str = "POOLRAD") -> Path:
     `<collection>/games/POOLRAD/GAME/POOLRAD`.  Raises `FileNotFoundError` when
     the archives are not on this machine, which is how the tests skip.
     """
-    if not ARCHIVES.is_dir():
+    archives = _archives()
+    if not archives.is_dir():
         raise FileNotFoundError(
-            f"no archives at {ARCHIVES}; set FR_ARCHIVES or add the "
+            f"no archives at {archives}; set FR_ARCHIVES or add the "
             f"dos-archives entry to gamedisks.yaml")
-    for collection in sorted(ARCHIVES.iterdir()):
+    for collection in sorted(archives.iterdir()):
         games = collection / "games"
         if not games.is_dir():
             continue
@@ -148,7 +162,7 @@ def find_game(stem: str = "POOLRAD") -> Path:
             inner = entry / "GAME" / stem
             if (inner / "START.EXE").is_file():
                 return inner
-    raise FileNotFoundError(f"no DOS {stem} under {ARCHIVES}")
+    raise FileNotFoundError(f"no DOS {stem} under {archives}")
 
 
 # --------------------------------------------------------------------------

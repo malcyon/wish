@@ -10,8 +10,10 @@ against disks that had been on the machine the whole time.
 Two layers, highest precedence first:
 
 1. `$POR_DISKS` and its siblings -- unchanged, and still highest. One-off runs
-   and CI keep working exactly as they do today. Taken *whole*: scoping it to
-   a subdirectory is the caller's business, not this module's.
+   and CI keep working exactly as they do today, with or without a
+   `gamedisks.yaml`: the variable's name is read from the example when the
+   machine has no file. Taken *whole*: scoping it to a subdirectory is the
+   caller's business, not this module's.
 2. `gamedisks.yaml`, gitignored and the only file this module reads -- one
    machine's own list of where its data is, one entry per game or dataset,
    each a list of candidate paths tried in order. `gamedisks.yaml.example` is
@@ -41,7 +43,7 @@ So the two lookups answer two different questions:
   `editor/files.py`, `automap/maps.py` and `automap/actions.py` all go through
   it, and `#22 (A disk folder setting per game, not one shared by all six)` is
   the ticket that gives it one answer per title.
-* This module answers **where the seven games are on a machine running the
+* This module answers **where the games are on a machine running the
   test suite or a reverse-engineering tool**, so a specimen is never known
   only inside one test file again.
 
@@ -68,9 +70,27 @@ EXAMPLE = REPO / "gamedisks.yaml.example"
 ENV, GLOB, PATHS = "env", "glob", "paths"
 
 
-class RegistryMissing(SystemExit):
-    """`gamedisks.yaml` is not there. A `SystemExit`, so a tool that asks the
-    registry stops with the one line and no traceback."""
+class RegistryError(SystemExit):
+    """The registry cannot be used. A `SystemExit`, so a tool that asks it stops
+    with the one line and no traceback."""
+
+
+class RegistryMissing(RegistryError):
+    """`gamedisks.yaml` is not there."""
+
+
+def _load(path: pathlib.Path) -> dict:
+    try:
+        with path.open(encoding="utf-8") as f:
+            loaded = yaml.safe_load(f) or {}
+    except yaml.YAMLError as err:
+        first = str(err).splitlines()[0] if str(err) else "not valid YAML"
+        raise RegistryError(f"{path.name} is not valid YAML ({first}); compare "
+                            f"it with {EXAMPLE.name}") from None
+    if not isinstance(loaded, dict):
+        raise RegistryError(f"{path.name} must be a mapping of entry names to "
+                            f"entries; compare it with {EXAMPLE.name}")
+    return loaded
 
 
 def _registry() -> dict:
@@ -80,8 +100,46 @@ def _registry() -> dict:
         raise RegistryMissing(
             f"{REGISTRY.name} is missing: copy {EXAMPLE.name} to "
             f"{REGISTRY.name} and edit the paths")
-    with REGISTRY.open(encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return _load(REGISTRY)
+
+
+def _as_list(value) -> list[str]:
+    """A hand-edited `paths: /one/path` is one path, not a list of letters."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return [str(v) for v in value if v is not None]
+
+
+def _row(name: str) -> dict:
+    """`name`'s row from this machine's `gamedisks.yaml`, stopping with the one
+    line when there is none. A machine whose file was copied before the entry
+    existed gets the example's row, so a new entry works without an edit."""
+    machine = _registry()
+    return dict(machine.get(name) or _load(EXAMPLE).get(name) or {})
+
+
+def _env_value(name: str) -> str | None:
+    """`$<env>` for `name`, when it is set -- known from the machine's row, or
+    from the committed example's when the machine has no row for it, so a
+    one-off run with `$POR_DISKS` set works on a checkout that has not copied
+    the example yet."""
+    row = None
+    if REGISTRY.is_file():
+        row = _load(REGISTRY).get(name)
+    var = (row or {}).get(ENV) or (
+        _load(EXAMPLE).get(name) or {}).get(ENV)
+    return os.environ.get(var) if var else None
+
+
+def _globs(name: str) -> list[str]:
+    row = None
+    if REGISTRY.is_file():
+        row = _load(REGISTRY).get(name)
+    if row is None:
+        row = _load(EXAMPLE).get(name)
+    return _as_list((row or {}).get(GLOB))
 
 
 def names() -> list[str]:
@@ -91,25 +149,22 @@ def names() -> list[str]:
 
 def entry(name: str) -> dict:
     """The registry row for `name`, or an empty one."""
-    return dict(_registry().get(name) or {})
+    return _row(name)
 
 
 def candidates(name: str) -> list[pathlib.Path]:
     """Where to look for `name`'s data, highest precedence first.
 
     `$<env>` wins outright, taken as the one candidate -- as `automap.paths`
-    already does for `$POR_DISKS`. With no environment variable, every path
-    from `gamedisks.yaml`, each `~`-expanded and de-duplicated in the order
-    first seen.
+    already does for `$POR_DISKS`, and even where there is no `gamedisks.yaml`.
+    With no environment variable, every path from `gamedisks.yaml`, each
+    `~`-expanded and de-duplicated in the order first seen.
     """
-    row = entry(name)
-    var = row.get(ENV)
-    if var:
-        value = os.environ.get(var)
-        if value:
-            return [pathlib.Path(value).expanduser()]
+    value = _env_value(name)
+    if value:
+        return [pathlib.Path(value).expanduser()]
     seen: dict[pathlib.Path, None] = {}
-    for raw in row.get(PATHS) or []:
+    for raw in _as_list(_row(name).get(PATHS)):
         seen.setdefault(pathlib.Path(raw).expanduser(), None)
     return list(seen)
 
@@ -133,11 +188,21 @@ def _matches(path: pathlib.Path, globs) -> bool:
 
 def find(name: str) -> pathlib.Path | None:
     """The first candidate that actually holds `name`'s data, or None."""
-    row = entry(name)
+    globs = _globs(name)
     for path in candidates(name):
-        if _matches(path, row.get(GLOB)):
+        if _matches(path, globs):
             return path
     return None
+
+
+def where(name: str) -> pathlib.Path:
+    """`find(name)`, or the first place it would be looked for.
+
+    For a module that needs *a* path at import time and reports a missing
+    directory itself, naming the place to put it. Never `None`, never an
+    `IndexError` for an entry with no paths."""
+    return (find(name) or next(iter(candidates(name)), None)
+            or pathlib.Path("/data/agent-disks") / name)
 
 
 def report() -> list[tuple[str, str, str, str, bool]]:
@@ -159,12 +224,12 @@ def report() -> list[tuple[str, str, str, str, bool]]:
             listed = candidates(name)
             path, layer = None, "none"
             for candidate_path in listed:
-                if _matches(candidate_path, row.get(GLOB)):
+                if _matches(candidate_path, _globs(name)):
                     path, layer = candidate_path, REGISTRY.name
                     break
             if path is None and listed:
                 path = listed[0]
-        found = path is not None and _matches(path, row.get(GLOB))
+        found = path is not None and _matches(path, _globs(name))
         rows.append((name, var, layer, str(path) if path else "-", found))
     return rows
 

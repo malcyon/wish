@@ -86,7 +86,7 @@ def wheel_repo() -> pathlib.Path:
     The first candidate is returned when none exists, so a caller's own "is not
     a directory" message names the place `$WISH_CODEWHEEL` would have to point.
     """
-    return gamedisks.find("codewheel") or gamedisks.candidates("codewheel")[0]
+    return gamedisks.where("codewheel")
 
 
 def normalise(points: set[tuple[int, int]]) -> frozenset[tuple[int, int]]:

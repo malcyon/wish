@@ -47,7 +47,6 @@ from automap.target import ViceTarget  # noqa: E402
 from tools import session as S  # noqa: E402
 
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
-DEFAULT_SAVE = S.npc_party_save()
 
 CAVES, EAST = 13, 27
 SLOT_RECORD, SLOT_ROSTER, SLOTS = 0x4D00, 0x8300, 8
@@ -229,7 +228,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disks", default=str(DISKS),
                     help="the game disk directory ($POR_DISKS if unset)")
-    p.add_argument("--save", default=str(DEFAULT_SAVE),
+    p.add_argument("--save", default=str(S.npc_party_save()),
                     help="the save disk to load, staged in as SIDE0.D64")
     p.add_argument("--out", default=str(ROOT / "work" / "issue207" / "live"))
     p.add_argument("--slot", type=int, default=None)

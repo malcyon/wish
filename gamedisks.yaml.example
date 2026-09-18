@@ -6,9 +6,8 @@
 # Each entry names an environment variable, which wins outright and is taken
 # whole when it is set, then a list of candidate `paths` tried in order, each
 # `~`-expanded; the first that exists and holds something matching `glob` (when
-# there is one) is the answer. An entry with no `paths` means nobody has produced
-# that data on any machine yet: setting the environment variable is the only way
-# in.
+# there is one) is the answer. An entry whose comment says "no data yet" means
+# nobody has produced that data on any machine; its path is where it would go.
 #
 # No path here may sit under `work/`: that directory is scratch, gitignored, and
 # has been deleted twice, so a default that resolves into it stops resolving the
@@ -62,7 +61,7 @@ amiga:
     - "/data/agent-disks/amiga"
 
 amiga-por-saves:
-  # No default, and the reason changed on 2026-09-04: twenty 288-byte records do
+  # No data at the path yet, and the reason changed on 2026-09-04: twenty 288-byte records do
   # exist, but not as loose files -- six in the `save/` drawer of Pool of
   # Radiance disk 1 and fourteen in the Curse of the Azure Bonds save disk, both
   # reachable through the `amiga` entry above. `tools/amigasaves.py` extracts
@@ -75,7 +74,7 @@ amiga-por-saves:
     - "/data/agent-disks/amiga-por-saves"
 
 pod-saves:
-  # No default: no exported Pools of Darkness .pc file exists on any machine
+  # No data at the path yet: no exported Pools of Darkness .pc file exists on any machine
   # yet -- #211, waiting on the same play session as amiga-por-saves.
   # Engine-written DOS Pools of Darkness containers are not this entry's
   # business: they are specimens under `pod-dos` in `$WISH_SPECIMENS`. This is

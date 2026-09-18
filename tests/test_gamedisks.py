@@ -100,6 +100,7 @@ def test_a_missing_registry_stops_with_one_line_naming_the_example(
     """Copying the example is the whole setup, so that is what the message
     says. A `SystemExit`, so a tool stops with the line and no traceback."""
     monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "gamedisks.yaml")
+    monkeypatch.delenv("POR_DISKS", raising=False)
     with pytest.raises(gamedisks.RegistryMissing) as raised:
         gamedisks.find("pool-of-radiance")
     message = str(raised.value)
@@ -111,6 +112,46 @@ def test_an_empty_registry_has_no_entries(tmp_path, monkeypatch):
     monkeypatch.setattr(gamedisks, "REGISTRY",
                         _write(tmp_path / "gamedisks.yaml", "# nothing yet\n"))
     assert gamedisks.names() == []
+
+
+def test_the_environment_variable_works_with_no_registry_at_all(
+        tmp_path, monkeypatch):
+    """`POR_DISKS=/where tools/genitems.py` on a checkout that has not copied
+    the example yet: the variable's name comes from the example, and the run
+    goes ahead rather than stopping at the missing file."""
+    (tmp_path / "POOL1.D64").write_bytes(b"")
+    monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "gamedisks.yaml")
+    monkeypatch.setenv("POR_DISKS", str(tmp_path))
+    assert gamedisks.find("pool-of-radiance") == tmp_path
+
+
+def test_an_entry_the_machines_file_lacks_takes_the_examples_row(registry):
+    """A `gamedisks.yaml` copied before an entry was added keeps working."""
+    assert gamedisks.candidates("pool-of-radiance") == [
+        pathlib.Path("/data/agent-disks/pool-of-radiance")]
+
+
+def test_where_is_never_none_and_never_an_index_error(registry):
+    assert gamedisks.where("no-default") == pathlib.Path(
+        "/data/agent-disks/no-default")
+    assert gamedisks.where("a-game") == pathlib.Path("committed-one")
+
+
+def test_a_hand_edited_string_is_one_path_not_a_list_of_letters(registry):
+    _write(registry / "gamedisks.yaml", """
+a-game:
+  glob: "A*.d64"
+  paths: /one/path
+""")
+    assert gamedisks.candidates("a-game") == [pathlib.Path("/one/path")]
+    assert gamedisks._globs("a-game") == ["A*.d64"]
+
+
+def test_a_registry_that_is_not_a_mapping_stops_with_one_line(registry):
+    _write(registry / "gamedisks.yaml", "- just\n- a list\n")
+    with pytest.raises(gamedisks.RegistryError) as raised:
+        gamedisks.names()
+    assert "\n" not in str(raised.value)
 
 
 # -- find(), and both directions it has to prove ------------------------------

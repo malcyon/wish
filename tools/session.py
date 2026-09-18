@@ -2692,9 +2692,7 @@ def npc_party_save() -> pathlib.Path:
     """The `npc-party-save` registry entry's `npc_party.d64`, or where it would
     be if this machine had it -- the path a run refuses with when the file is
     missing, so the message names the place to put it (#575)."""
-    where = gamedisks.find("npc-party-save") or gamedisks.candidates(
-        "npc-party-save")[0]
-    return where / "npc_party.d64"
+    return gamedisks.where("npc-party-save") / "npc_party.d64"
 
 
 def writable(path) -> str:

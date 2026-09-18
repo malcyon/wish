@@ -166,27 +166,35 @@ def test_no_hardcoded_user_paths(files):
 #: A string in code that names where one machine keeps its data, rather than
 #: asking `gamedisks.yaml`, `automap.paths` or `$WISH_SPECIMENS`. Docstrings
 #: and comments may say where things are; only a string that is used is flagged.
-_MACHINE_PATH = ("/mnt/", "~/downloads", "~/dos_por_play")
+_MACHINE_PATH = ("/mnt/", "~/downloads", "~/dos_por_play", "fr-archives")
 
 #: A relative `work/` path to a game file: `work/POOL1.D64.orig`, an input.
 #: `work/` is scratch and has been lost twice (`.claude/rules/scratch.md`), so
 #: a run's own output there is fine and a file somebody depends on is not. A
 #: directory (`work/issue180`) is an output and is not matched.
 _WORK_INPUT = re.compile(
-    r"^work/\S*\.(d64|adf|sav|cha|pty|dax|itm|spc|g64|x64|prg|orig)$", re.I)
+    r"^work/\S*\.(d64|adf|sav|cha|pty|dax|itm|spc|g64|x64|prg|orig|pc|dat|ptx"
+    r"|gz|zip|bin|dsk|hdf)$", re.I)
 
-#: Strings that look like a machine path and are not a lookup.
+#: (file, text the string starts with) for a string that looks like a machine
+#: path and is not a lookup. By string, not by file, so a new lookup in the
+#: same file is still caught.
 _NOT_A_LOOKUP = {
     # Fake paths handed to a parser that only reads their names.
-    "tests/test_carryceiling.py": "fake save paths the census parses",
-    "tests/test_spellbookcensus.py": "fake save paths the census parses",
+    ("tests/test_carryceiling.py", "/mnt/roms/c64/PORSAVE.D64"):
+        "a fake save path the census parses",
+    ("tests/test_enccensus.py", "/home/x/Downloads/fr-archives"):
+        "a fake path the census classifies by its name",
+    ("tests/test_spellbookcensus.py", "/x/fr-archives"):
+        "a fake path the census classifies by its name",
     # A `[Version]` config file inside a string, which contains `/mnt/`.
-    "tests/test_instance.py": "VICE config text",
+    ("tests/test_instance.py", "    [Version]"): "VICE config text",
     # Third-party art, not game data.
-    "tools/taskbaricon.py": "the logo artwork",
-    "tests/test_taskbaricon.py": "the logo artwork",
+    ("tools/taskbaricon.py", "~/Downloads/wish_logo"): "the logo artwork",
+    ("tests/test_taskbaricon.py", "`tools/taskbaricon.py`"): "the logo artwork",
     # The text of a dialog a screenshot shows, not a path it opens.
-    "tools/convertshots.py": "a dialog's folder text",
+    ("tools/convertshots.py", "~/dos_por_play/wish-2026-09-10"):
+        "a dialog's folder text",
 }
 
 
@@ -211,8 +219,8 @@ def test_no_machine_path_is_looked_up_in_code(files):
     bad = []
     for path in (p for p in files if p.suffix == ".py"):
         name = path.as_posix()
-        if name in _NOT_A_LOOKUP or name in (
-                "tests/test_repository_contents.py", "tests/test_gamedisks.py"):
+        if name in ("tests/test_repository_contents.py",
+                    "tests/test_gamedisks.py"):
             continue
         try:
             tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
@@ -226,6 +234,9 @@ def test_no_machine_path_is_looked_up_in_code(files):
             low = node.value.lower()
             if any(part in low for part in _MACHINE_PATH) or _WORK_INPUT.match(
                     node.value):
+                if any(name == f and node.value.startswith(text)
+                       for f, text in _NOT_A_LOOKUP):
+                    continue
                 bad.append(f"{name}:{node.lineno}: {node.value[:60]!r}")
     assert not bad, (
         "Game data reached by a path written in code instead of the registry:\n"

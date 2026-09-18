@@ -17,7 +17,9 @@ What it does, in order, and all of it against the same checkout:
 2. Symlink `work/` and `gamedisks.yaml` into the worktree. Both are gitignored,
    and without them every test that reads game data skips.
 3. `pytest -q` in the worktree, with the repository's own virtual
-   environment. `-n auto --dist loadgroup` is in `pyproject.toml`.
+   environment. `-n auto --dist loadgroup` is in `pyproject.toml`. Then the
+   tests that import every tool once more with `gamedisks.yaml` unlinked, as
+   CI has none.
 4. `ruff check .` in the worktree.
 5. `tools/genui.py --check` in the worktree.
 6. If all three passed, write `work/testrun/<sha>.green` in the main tree,
@@ -67,6 +69,11 @@ def summary_of(pytest_output: str) -> str:
     return found[-1] if found else pytest_output.strip().splitlines()[-1]
 
 
+#: What has to pass on a checkout with no `gamedisks.yaml`, which is what CI is.
+BARE_REGISTRY_TESTS = ("tests/test_toolshadowing.py", "tests/test_gamedisks.py",
+                       "tests/test_repository_contents.py")
+
+
 def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
     """(all green, pytest summary line, decisive failure output)."""
     python = str(PYTHON)
@@ -77,6 +84,20 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
         failed = [line for line in pytest.stdout.splitlines()
                   if line.startswith(("FAILED", "ERROR"))]
         return False, summary, "\n".join(failed) or pytest.stderr[-2000:]
+    # CI has no `gamedisks.yaml`, and the run above had one. Take it away and run
+    # the tests that import every tool in a fresh interpreter, where nothing
+    # can paper over an import that asks the registry (#575).
+    link = worktree / "gamedisks.yaml"
+    if link.is_symlink():
+        link.unlink()
+        bare = _run([python, "-m", "pytest", "-q", *BARE_REGISTRY_TESTS],
+                    worktree, 600)
+        print("without gamedisks.yaml:", summary_of(bare.stdout + bare.stderr))
+        if bare.returncode != 0:
+            failed = [line for line in bare.stdout.splitlines()
+                      if line.startswith(("FAILED", "ERROR"))]
+            return (False, summary + " (fails without gamedisks.yaml)",
+                    "\n".join(failed) or bare.stderr[-2000:])
     ruff = _run([str(REPO / ".venv" / "bin" / "ruff"), "check", "."], worktree, 300)
     print("ruff:", (ruff.stdout or ruff.stderr).strip().splitlines()[-1])
     if ruff.returncode != 0:
