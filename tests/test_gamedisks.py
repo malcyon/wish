@@ -182,9 +182,31 @@ def test_every_committed_default_is_found_here_or_marked_unavailable():
         pytest.skip("needs the game disks, to tell 'not on this machine' "
                     "from 'the registry's default is wrong'")
     missing = [name for name in gamedisks.names()
-              if gamedisks._committed()[name].get(gamedisks.PATHS)
-              and gamedisks.find(name) is None]
+              if _machine_defaults(name) and gamedisks.find(name) is None]
     assert missing == []
+
+
+def _machine_defaults(name: str) -> list[str]:
+    """An entry's paths other than the two shared roots every entry lists.
+
+    `/data/agent-disks/<entry>` and `/mnt/disks/<entry>` are written for every
+    entry, including the ones nobody has produced any data for, so they say
+    nothing about whether an entry has a default on this machine (#575).
+    """
+    shared = (f"/data/agent-disks/{name}", f"/mnt/disks/{name}")
+    return [p for p in gamedisks._committed()[name].get(gamedisks.PATHS, [])
+            if p not in shared]
+
+
+def test_every_entry_lists_both_shared_roots_first():
+    """The game data is moving into one directory named for its entry, and
+    the agent VM sees it at a different mount from the desktop (#575)."""
+    wrong = []
+    for name in gamedisks.names():
+        paths = gamedisks._committed()[name].get(gamedisks.PATHS, [])
+        if paths[:2] != [f"/data/agent-disks/{name}", f"/mnt/disks/{name}"]:
+            wrong.append(name)
+    assert wrong == []
 
 
 def test_nothing_shipped_imports_this_module():

@@ -8,6 +8,14 @@
 # means nobody has produced that data on any machine yet -- setting the
 # environment variable is the only way in.
 #
+# Every entry lists two roots first, `/data/agent-disks/<entry>` on Donald's
+# desktop and `/mnt/disks/<entry>` in the agent VM, where the game data is
+# moving into one directory he fills by hand (the VM sees it read-only). The
+# directory under the root is the entry name, so this file and that directory
+# describe each other. A path that does not exist on a machine is skipped,
+# which is why both are committed and no `gamedisks.local.toml` is needed for
+# them; the older paths stay behind them until the data has moved.
+#
 # No path here may sit under `work/`: that directory is scratch, gitignored,
 # and has been deleted twice, so a default that resolves into it stops
 # resolving the day somebody runs `rm -rf work/`.
@@ -16,6 +24,8 @@
 env = "POR_DISKS"
 glob = ["POOL*.d64", "POOL*.D64"]
 paths = [
+    "/data/agent-disks/pool-of-radiance",
+    "/mnt/disks/pool-of-radiance",
     "/mnt/media/roms/c64/Pool of Radiance Disks",
     "~/c64/Pool of Radiance Disks",
     "~/Pool of Radiance Disks",
@@ -25,6 +35,8 @@ paths = [
 env = "COAB_DISKS"
 glob = ["CURSE*.d64", "CURSE*.D64"]
 paths = [
+    "/data/agent-disks/curse-of-the-azure-bonds",
+    "/mnt/disks/curse-of-the-azure-bonds",
     "/mnt/media/roms/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS",
     "~/c64/Curse of the Azure Bonds Disks",
     "~/Curse of the Azure Bonds Disks",
@@ -34,6 +46,8 @@ paths = [
 env = "SSB_DISKS"
 glob = ["SILVER*.d64", "SILVER*.D64"]
 paths = [
+    "/data/agent-disks/secret-of-the-silver-blades",
+    "/mnt/disks/secret-of-the-silver-blades",
     "/mnt/media/roms/c64/SecretOfTheSilverBlades-Lithium",
     "~/c64/Secret of the Silver Blades Disks",
     "~/Secret of the Silver Blades Disks",
@@ -45,6 +59,8 @@ env = "FR_ARCHIVES"
 # Archives -- there is no single game glob, so the callers check for their
 # own file names underneath.
 paths = [
+    "/data/agent-disks/dos-archives",
+    "/mnt/disks/dos-archives",
     "~/Downloads/fr-archives",
     "~/fr-archives",
 ]
@@ -57,6 +73,8 @@ env = "AMIGA_DISKS"
 # themselves; `$AMIGA_DISKS`, when set, is taken whole and scoping it is the
 # caller's business.
 paths = [
+    "/data/agent-disks/amiga",
+    "/mnt/disks/amiga",
     "/mnt/media/roms/amiga",
     "~/amiga",
     "~/Downloads/amiga",
@@ -72,8 +90,103 @@ env = "AMIGA_POR_SAVES"
 # the variable is now for pointing at a hand-picked corpus rather than for
 # having one at all. The old note here said none existed anywhere, which is
 # what left thirty-one tests skipping on the machine that holds them (#211).
+paths = [
+    "/data/agent-disks/amiga-por-saves",
+    "/mnt/disks/amiga-por-saves",
+]
 
 [pod-saves]
 env = "POD_SAVES"
 # No default: no exported Pools of Darkness .pc file exists on any machine
 # yet -- #211, waiting on the same play session as amiga-por-saves.
+paths = [
+    "/data/agent-disks/pod-saves",
+    "/mnt/disks/pod-saves",
+]
+
+[por-dos-play]
+env = "POR_DOS_GAME"
+glob = ["CBODY.DAX"]
+# A played, installed DOS Pool of Radiance, and Donald's own: every character
+# record in its `SAVE/` has been edited with Gold Box Companion, so it is an
+# *input* for tools that want a DOS game directory (`CBODY.DAX`, `CHEAD.DAX`
+# and the rest of the `.DAX` files) and never evidence for a measurement --
+# `.claude/rules/testing.md`, "A specimen is only evidence if we know who wrote
+# it". Callers that need saves as well look under `SAVE/` themselves.
+paths = [
+    "/data/agent-disks/por-dos-play",
+    "/mnt/disks/por-dos-play",
+    "~/dos_por_play",
+]
+
+[champions-of-krynn]
+env = "COK_DISKS"
+glob = ["*.d64", "*.D64"]
+# Champions of Krynn's disks, for `tests/test_titletables.py`, which
+# recognises the side that carries `ITEMNAMES` by content -- so this names
+# folders of disks rather than one disk, and the caller scans what is in them.
+# Death Knights of Krynn ships the same Krynn race labels and is told apart
+# by that content check, not by where it sits.
+paths = [
+    "/data/agent-disks/champions-of-krynn",
+    "/mnt/disks/champions-of-krynn",
+    "/mnt/media/roms/c64/Champions of Krynn (SSI)[dom]",
+    "/mnt/media/roms/c64/Champions_of_Krynn-EF-[n0]",
+]
+
+[codewheel]
+env = "WISH_CODEWHEEL"
+# Donald's separate private repository holding the code-wheel arithmetic and
+# the tables extracted from the player's own disks. It is copy-protection
+# research and `CLAUDE.md` keeps it out of this repository, so it can only ever
+# be a local path. `tools/cursewheel.py`, `amigacursewheel.py` and
+# `amigabladesjournal.py` reach into it at run time.
+paths = [
+    "/data/agent-disks/codewheel",
+    "/mnt/disks/codewheel",
+    "~/src/goldbox-codewheel",
+]
+
+[ecl-scripts]
+env = "WISH_ECL_SCRIPTS"
+# The decompiled ECL event scripts of the Gold Box titles, which `tests/
+# test_areas.py` reads. They are derived from the game's own code, so they are
+# game data and are never committed. No path on any machine has them yet: the
+# directory this used to be, `work/ecl-scripts`, is gone, and `work/` is not
+# somewhere to keep a corpus.
+paths = [
+    "/data/agent-disks/ecl-scripts",
+    "/mnt/disks/ecl-scripts",
+]
+
+[coab-source]
+env = "WISH_COAB_SOURCE"
+# The decompiled source of Curse of the Azure Bonds, which `tests/
+# test_coabsource.py` reads. Derived from the game's own executable, so it is
+# game data and is never committed. No path on any machine has it yet: it used
+# to be `work/forums/ext`, which is gone.
+paths = [
+    "/data/agent-disks/coab-source",
+    "/mnt/disks/coab-source",
+]
+
+[manuals]
+env = "WISH_MANUALS"
+glob = ["*.pdf"]
+# Commodore's own manuals, for the reference documents that cite them
+# (`docs/152-commodore-manuals.md`). Commercial PDFs, so never committed.
+paths = [
+    "/data/agent-disks/manuals",
+    "/mnt/disks/manuals",
+    "/mnt/media/roms/c64/manuals",
+]
+
+[kickstarts]
+env = "WISH_KICKSTARTS"
+# The Amiga Kickstart ROMs FS-UAE and WinUAE boot from, named in
+# `docs/124-amiga-port.md`. Commercial ROMs, so never committed.
+paths = [
+    "/data/agent-disks/kickstarts",
+    "/mnt/disks/kickstarts",
+    "~/FS-UAE/Kickstarts",
+]
