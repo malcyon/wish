@@ -924,42 +924,50 @@ def test_a_shipped_container_reads_as_a_party_of_six_in_a_dungeon():
         assert data[sg.POD_PREVIOUS_MODE] == sg.POD_MODE_DUNGEON, path
 
 
-# --- the engine-written containers, if a drive has left any ------------------
+# --- the engine-written containers, from the specimen tree -------------------
 #
-# `tools/dospod.py` drives the game and snapshots its `SAVE` directory into
-# `work/p175/`, which is gitignored: these run where a drive has been done and
-# skip everywhere else, CI included. What stands behind the offsets without
-# them is the writer in `GAME.OVR`, and #175's comment carries the byte tables
-# these assertions were read off so they can be re-taken after `work/` is
-# cleared.
+# `tools/dospod.py` drove the game for #175 and its snapshots are the five
+# `pod-dos` specimens in the tree at `$WISH_SPECIMENS` (#575); these run where
+# the tree is and skip everywhere else, CI included. What stands behind the
+# offsets without them is the writer in `GAME.OVR`, and #175's comment carries
+# the byte tables these assertions were read off so they can be re-taken.
 
 
 def _played():
-    """Every distinct engine-written Pools of Darkness container under
-    `work/p175`, which is where `tools/dospod.py` leaves them.
+    """Every distinct engine-written Pools of Darkness container in the
+    specimen tree.
 
-    A file byte-identical to a shipped container is one `Session.stage`
-    copied in rather than one the engine wrote, so it is dropped: counting it
-    would put the initialiser's own output in a corpus of played saves.
+    `WISH-SPEC-p175-clock1`, `-diff1`, `-diff2`, `-run16` and `-run17` are
+    #175's five drives, and they hold only the containers the engine wrote: a
+    snapshot byte-identical to a shipped one was left out when they were
+    added, because counting it would put the new-game initialiser's own output
+    in a corpus of played saves. Eight distinct containers across the five.
 
-    That makes this need the archives as well as the drive output, which is
-    not a real limitation -- the drive stages the game out of the archives, so
-    a machine with `work/p175` and no archives is a machine where somebody
-    deleted them afterwards.
+    Each file is hashed against its own `provenance.toml` before it is read,
+    so a container somebody has edited fails here rather than being measured.
     """
-    import pathlib
-    root = pathlib.Path(__file__).resolve().parent.parent / "work" / "p175"
-    if not root.is_dir():
-        pytest.skip("no Pools of Darkness drive here; run tools/dospod.py")
-    shipped = {data for _, data in _of("pools-of-darkness")}
+    from gamedata import specimen_root
+
+    from tools import specimens
+    root = specimen_root()
+    where = root / "pod-dos" if root is not None else None
+    dirs = sorted(where.glob("WISH-SPEC-*")) if where and where.is_dir() else []
+    if not dirs:
+        pytest.skip("needs the Pools of Darkness specimens a tools/dospod.py "
+                    "drive left; set WISH_SPECIMENS, or see tools/specimens.py "
+                    "for the pod-dos tree")
     out = {}
-    for path in sorted(root.rglob("*.PTY")):
-        data = path.read_bytes()
-        if len(data) != sg.SAVE_POOLS_OF_DARKNESS.size or data in shipped:
-            continue
-        out.setdefault(data, path)
-    if not out:
-        pytest.skip("work/p175 holds no engine-written container")
+    for specimen_dir in dirs:
+        recorded = specimens.read_provenance(
+            specimen_dir / "provenance.toml").get("sha256", {})
+        for path in sorted(specimen_dir.glob("*.PTY")):
+            if specimens.sha256_file(path) != recorded.get(path.name):
+                pytest.fail(f"{path} no longer hashes to what its "
+                            f"provenance.toml recorded, so it is not evidence; "
+                            f"run tools/specimens.py check")
+            data = path.read_bytes()
+            assert len(data) == sg.SAVE_POOLS_OF_DARKNESS.size, path
+            out.setdefault(data, path)
     return [(path, data) for data, path in out.items()]
 
 

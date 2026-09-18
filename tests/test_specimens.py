@@ -148,6 +148,24 @@ def test_add_accepts_amiga_and_builds_a_directory_specimen(tree, one_source):
     assert specimens.check_specimens(tree) == []
 
 
+def test_add_takes_a_pools_of_darkness_specimen_into_its_own_directory(
+        tree, one_source):
+    """#575: the fourth title had no slug, so the engine-written containers
+    `tools/dospod.py` left under `work/` -- which is gitignored and has been
+    lost twice -- could not be kept in the tree at all. The directory is
+    `pod-dos`, the same `<title>-<platform>` the other three use."""
+    dest = specimens.add("dos", "p175-run17", one_source, root=tree,
+                         title="Pools of Darkness",
+                         issue="#175 (Decode the first 1024 bytes of the "
+                               "Pools of Darkness saved game)",
+                         made_by="tools/dospod.py under DOSBox",
+                         what="saved in a dungeon at 11,2 facing south")
+    assert dest == tree / "pod-dos" / "WISH-SPEC-p175-run17"
+    fields = specimens.read_provenance(dest / "provenance.toml")
+    assert fields["title"] == "Pools of Darkness"
+    assert specimens.check_specimens(tree) == []
+
+
 def test_add_refuses_a_title_with_no_known_slug(tree, one_source):
     with pytest.raises(ValueError):
         specimens.add("amiga", "x", one_source, root=tree,

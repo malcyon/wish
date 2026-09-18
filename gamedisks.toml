@@ -100,6 +100,9 @@ paths = [
 env = "POD_SAVES"
 # No default: no exported Pools of Darkness .pc file exists on any machine
 # yet -- #211, waiting on the same play session as amiga-por-saves.
+# Engine-written DOS Pools of Darkness containers are not this entry's
+# business: they are specimens under `pod-dos` in `$WISH_SPECIMENS`. This is
+# only for an exported Amiga `.pc` file.
 paths = [
     "/data/agent-disks/pod-saves",
     "/mnt/disks/pod-saves",

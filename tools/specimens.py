@@ -112,10 +112,14 @@ PLATFORMS = ("c64", "dos", "amiga")
 #: will adventure, so the title cannot be driven past its party menu) before
 #: this tool took Amiga specimens at all, and both picked this same shape.
 #: `add` refuses a title that is not here rather than guessing an abbreviation.
+#: `pod` is the fourth, added for #575 so the engine-written Pools of
+#: Darkness containers a `tools/dospod.py` drive left under `work/` could be
+#: kept somewhere that is not gitignored.
 TITLE_SLUGS = {
     "Pool of Radiance": "por",
     "Curse of the Azure Bonds": "coab",
     "Secret of the Silver Blades": "ssb",
+    "Pools of Darkness": "pod",
 }
 
 #: Required fields for a specimen to count as one at all -- see the module
