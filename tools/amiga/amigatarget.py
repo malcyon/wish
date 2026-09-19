@@ -178,7 +178,7 @@ def draw(target, layout, args) -> int:
     out.mkdir(parents=True, exist_ok=True)
     # The player's own notes and explored squares live in `automap.paths.
     # data_dir()`; a driven run must not write into them. Rebound here in the
-    # function rather than at import, which is `tools/livecheck.py`'s rule and
+    # function rather than at import, which is `tools/gui/livecheck.py`'s rule and
     # `#428`'s incident: a test that imports this module would otherwise
     # import the rebinding with it -- and put back on the way out, because a
     # test that *calls* this would otherwise leave every later test in the

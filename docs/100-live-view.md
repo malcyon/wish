@@ -259,7 +259,7 @@ number is only interesting while editing, it belongs on the editor tab.
   (`tests/test_wish.py`).
 * **The row was watched lighting in the running game**, on pool slot 2,
   `NEWSAVE6.D64`, 2026-09-02. Cast Bless with the party's cleric and
-  `tools/livestrip.py` reads six per-character rows off the machine and draws
+  `tools/gui/livestrip.py` reads six per-character rows off the machine and draws
   `healing-shield` with `Bless` in the tooltip; cast Prayer and it reads one
   `$FF` row, id 35, and draws the same shield with `Under an allied Prayer`.
   Pictures are in `cited/142-slot2`.

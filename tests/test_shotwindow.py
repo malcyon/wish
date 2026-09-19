@@ -10,7 +10,7 @@ def make_root():
     return root
 
 
-"""`tools/shotwindow.py` photographs the window, and the numbers it reports.
+"""`tools/gui/shotwindow.py` photographs the window, and the numbers it reports.
 
 The picture is not what is asserted on. A rendered image is not byte-identical
 between two machines -- a different font, a different Qt, a different
@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication
 
-from tools import shotwindow
+from tools.gui import shotwindow
 
 
 @pytest.fixture

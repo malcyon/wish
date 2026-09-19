@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""`tools/taskbaricon.py`: the comparison sheet is made by resizing the
+"""`tools/gui/taskbaricon.py`: the comparison sheet is made by resizing the
 artist's delivered files and by nothing else.
 
 The first sheet drawn for `#351 (The Windows build shows no logo in About
@@ -33,7 +33,7 @@ from PyQt6.QtCore import QRectF, Qt  # noqa: E402
 from PyQt6.QtGui import QGuiApplication, QImage, QPainter  # noqa: E402
 from PyQt6.QtSvg import QSvgRenderer  # noqa: E402
 
-from tools import taskbaricon  # noqa: E402
+from tools.gui import taskbaricon  # noqa: E402
 
 delivered = pytest.mark.skipif(
     not (taskbaricon.DELIVERY / "Marks").is_dir(),

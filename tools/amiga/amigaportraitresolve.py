@@ -42,7 +42,7 @@ not a table, and nothing may be written that relies on them.
 drawings: the Amiga keeps `0D`, `18` and `22` as one block, so its `0x18` is
 the drawing DOS calls `0x22` and not the one DOS calls `0x18`.  Reading the
 `33 -> art 0x18` row as "this reaches the DOS body" is the mistake `#480` was
-about; `tools/bodychoices.py --all` draws both containers side by side.
+about; `tools/gui/bodychoices.py --all` draws both containers side by side.
 
 Every disk and executable is opened read-only; nothing is written.
 """

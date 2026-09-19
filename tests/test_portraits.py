@@ -759,7 +759,7 @@ def test_the_body_dos_draws_for_position_eight_is_not_on_the_amiga_disk():
     second under `22`, and the Amiga keeps **one** drawing under all three,
     which is the one DOS calls `22`.  So the body a player chose at position
     8 has no block on the Amiga side at all, and this is the byte comparison
-    behind the picture `tools/bodychoices.py --all` draws.
+    behind the picture `tools/gui/bodychoices.py --all` draws.
     """
     from goldbox import amiga_dax
     from tools.amiga import amigaportraitmenu
@@ -787,13 +787,13 @@ def test_the_body_dos_draws_for_position_eight_is_not_on_the_amiga_disk():
 
 
 def test_the_three_panels_name_the_three_bodies_the_ticket_is_between():
-    """`tools/bodychoices.py` draws the ticket's own three candidates (#480).
+    """`tools/gui/bodychoices.py` draws the ticket's own three candidates (#480).
 
     The panels come from the stored menus rather than from constants, so a
     corrected menu moves the picture instead of leaving it saying something
     the tables no longer do.
     """
-    from tools import bodychoices
+    from tools.gui import bodychoices
 
     assert bodychoices.POSITION == 8
     assert bodychoices.PAST_THE_END == 33

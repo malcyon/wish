@@ -34,7 +34,7 @@ attribute assigned with no annotation. A union is counted, and reported with
 the annotation as written, so `Title | None` is visible as the weaker claim
 it is.
 
-**A bare class name is matched, not resolved.** `tools/livecheck.py` defines
+**A bare class name is matched, not resolved.** `tools/gui/livecheck.py` defines
 its own `Title` dataclass, so a run over `tools/` finds a different class with
 the same name. Read the file column before believing a hit.
 """

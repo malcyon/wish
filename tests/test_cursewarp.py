@@ -9,7 +9,7 @@ showing old content while a slow ECL load runs underneath it. The fix gates
 that Escape on `idle_in_key_window`, a single PC read against the same
 `key_wait`/`key_fetch` windows `wait_idle` already polls after a warp.
 
-**`addr` is optional on `enter_world` here**, because `tools/livecheck.py`,
+**`addr` is optional on `enter_world` here**, because `tools/gui/livecheck.py`,
 `tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py` -- none of them this
 file's own -- call it without one; those calls keep the old unconditional
 Escape.
@@ -155,7 +155,7 @@ def test_enter_world_escapes_once_the_pc_is_genuinely_idle(monkeypatch):
 
 def test_enter_world_without_addr_keeps_the_old_unconditional_escape(
         monkeypatch):
-    """The three callers that do not pass `addr` -- `tools/livecheck.py`,
+    """The three callers that do not pass `addr` -- `tools/gui/livecheck.py`,
     `tools/c64/inventorycheck.py`, `tools/curse_of_the_azure_bonds/cursecheck.py` -- must see the same
     behaviour as before this fix, since none of them is this ticket's file
     to change."""

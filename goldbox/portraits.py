@@ -631,7 +631,7 @@ POOL_OF_RADIANCE_MENU = PortraitTables(
 #: `0x18` on the C64 and in DOS.
 #:
 #: **This is an art table, not a conversion table.**  Use it to find the
-#: Amiga's own picture for a menu position -- what `tools/bodychoices.py` and
+#: Amiga's own picture for a menu position -- what `tools/gui/bodychoices.py` and
 #: `tools/amiga/amigaportraitmenu.py` draw with -- and never to move a character
 #: between ports.  A conversion maps position to position and resolves both
 #: ends against :func:`neutral_menu`; wiring this table into a writer is what

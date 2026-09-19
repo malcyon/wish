@@ -370,7 +370,7 @@ executables, audio and PDFs, which is the part that was ever about the game.
   a macOS package.
 * **The Windows taskbar drawing is still Donald's to choose.** §7: the
   colour mark's rings dissolve below 48 when rendered from the SVG, and
-  `tools/taskbaricon.py` draws every square file he delivered, resized and
+  `tools/gui/taskbaricon.py` draws every square file he delivered, resized and
   nothing else, on a light and a dark taskbar. Until he picks one, every
   size is the full mark rendered from the SVG.
 * **Nobody has seen the fixed build on a Windows taskbar.** The first build
@@ -504,7 +504,7 @@ decides the taskbar question: an opaque square is the same picture on a
 light taskbar and a dark one, and transparent line art is invisible on the
 taskbar that matches it.
 
-`tools/taskbaricon.py` draws the sheet, `cited/351/taskbar-marks.png`:
+`tools/gui/taskbaricon.py` draws the sheet, `cited/351/taskbar-marks.png`:
 twelve lettered rows, every square file rendered from its SVG and scaled
 from its nearest delivered PNG, at 16, 20, 24, 32, 48 and 256, each at true
 size on a light and a dark taskbar and magnified beside it. The taskbar
@@ -582,7 +582,7 @@ Donald, 2026-09-06: *"Go with row B, please."* What that is in the code:
   `tests/test_assets.py` fails for each PNG missing from that list, as it
   did for the SVGs.
 
-`tools/taskbaricon.py --shipped` draws the result --
+`tools/gui/taskbaricon.py --shipped` draws the result --
 `cited/351/taskbar-shipped.png`, the icon at 16, 20, 24, 32, 48 and 256
 through `ui.appicon.image`, on a light taskbar and a dark one -- so what
 shipped can be looked at rather than described. Not yet seen on a Windows

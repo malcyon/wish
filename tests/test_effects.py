@@ -27,7 +27,7 @@ def test_the_four_offsets_match_the_cold_read_evidence():
 
 def test_automap_live_reexports_the_same_names():
     """`automap/live.py` imports these back under the same names, so
-    `automap/combat.py`, `tools/combatshot.py`, `tools/livestrip.py` and
+    `automap/combat.py`, `tools/gui/combatshot.py`, `tools/gui/livestrip.py` and
     `tests/test_coldread.py` still resolve `live.EFFECT_ID_OFFSET` and the
     rest unchanged.
     """

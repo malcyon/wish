@@ -311,7 +311,7 @@ DOS, `0D` and `18` are one drawing (a bare chest under a red cloak with green
 armbands) and `22` is another; on the Amiga, `0D`, `18` and `22` are one
 block, and it is the one DOS calls `22` (a brown sleeve under a grey tabard).
 So the body a player chose at position 8 has no block anywhere in the Amiga's
-`body.dax`, and no value the record can hold reaches it. `tools/bodychoices.py
+`body.dax`, and no value the record can hold reaches it. `tools/gui/bodychoices.py
 --all` draws every block on both sides and is where that was seen;
 `tests/test_portraits.py::test_the_body_dos_draws_for_position_eight_is_not_
 on_the_amiga_disk` is the byte comparison behind it, 21 ids each side, 20

@@ -206,7 +206,7 @@ def test_the_screen_address_comes_from_the_chips():
 
 def test_one_reader_still_means_read_it_both_ways():
     """A plain callable is still accepted and still means the processor's own
-    view, which is what `tools/screenblind.py` measures with."""
+    view, which is what `tools/gui/screenblind.py` measures with."""
     mon = a_machine()
     assert screen_address(mon.read) == JUNK_SCREEN
     assert Banks.of(mon.read).io == mon.read

@@ -9,7 +9,7 @@ and this is what says the reading is the same one `pyreverse` would make:
 **an annotated attribute counts, a parameter does not.**
 
 The distinction is the whole tool.  `goldbox.titles.race_table` takes a
-`'Title | object | str | None'` and `tools/livecheck.py` takes a `title: Title`
+`'Title | object | str | None'` and `tools/gui/livecheck.py` takes a `title: Title`
 in an `__init__` signature; neither is an edge, and a count that included them
 would have said `Title` had edges at stage 1.
 """

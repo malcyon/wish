@@ -267,7 +267,7 @@ to saving throws)` work beside it stayed uncommitted and untouched, by building
 the intended version in the scratchpad, `git hash-object -w`-ing it and
 `git update-index --cacheinfo`-ing it into the index.
 
-**`tools/livestrip.py` reached `main` inside somebody else's commit,
+**`tools/gui/livestrip.py` reached `main` inside somebody else's commit,
 2026-09-01.** `git add X && git commit` commits the whole index, not just `X`.
 Several agents share this tree and they stage files, so a commit made after
 naming your own paths sweeps in whatever anybody else had staged. Worse, the
@@ -715,7 +715,7 @@ from evidence to a conclusion belongs in `docs/`, cited by a path that survives.
 tracked file, and the directory no longer exists (since 2026-09-18).
 
 **A README table that is only mostly true is worse than no table**, because the
-gap is invisible. `tools/livestrip.py` landing on `main` without its row is the
+gap is invisible. `tools/gui/livestrip.py` landing on `main` without its row is the
 worked example, and it is recorded under Git in a shared tree.
 
 **A wrong document is corrected, not escalated.** Donald, 2026-09-01: *"If you

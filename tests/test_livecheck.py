@@ -1,4 +1,4 @@
-"""`tools/livecheck.py` -- the per-title validation runner for #34.
+"""`tools/gui/livecheck.py` -- the per-title validation runner for #34.
 
 Three things about that tool can be wrong without any emulator noticing, and
 each of them cost something real:
@@ -38,7 +38,7 @@ from test_automapbanks import (  # noqa: E402
 
 from automap import c64  # noqa: E402
 
-livecheck = pytest.importorskip("tools.livecheck")
+livecheck = pytest.importorskip("tools.gui.livecheck")
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +88,7 @@ def test_a_runs_explored_squares_do_not_land_in_the_players_notes(monkeypatch):
     """A validation run walks a map; those squares are not the player's.
 
     **The redirect is applied here rather than at import**, and undone when
-    this test ends. It used to run at `tools/livecheck.py`'s module level, and
+    this test ends. It used to run at `tools/gui/livecheck.py`'s module level, and
     this file imports that module at *its* module level -- so under
     `pytest -n auto`, where every worker collects every file, every worker got
     the redirection before any test ran, and eight note tests in

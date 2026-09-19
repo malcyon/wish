@@ -130,7 +130,7 @@ instead. The names in that fight were `ORC` for indices 8-15 against
 So `#345 (Draw a letter in each combat-map square saying what is standing
 there, instead of the index the backend counts with)` and this have nothing to
 reconcile: both name a monster from that record, and
-`tools/monsterlabels.yaml` is an abbreviation of the same name. **The engine
+`tools/gui/monsterlabels.yaml` is an abbreviation of the same name. **The engine
 cannot tell eight orcs apart either** — all eight print `ORC`.
 
 ## What silences the panel, and it is not the reader

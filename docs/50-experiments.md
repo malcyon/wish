@@ -4619,7 +4619,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   is describing a hang rather than an inconvenience.
 
   **And writing `$49E6` = 1 before the jump is enough: the trip then works.**
-  CONFIRMED 2026-09-04 on pool slot 3, twice, with `tools/mapmarker.py --home`
+  CONFIRMED 2026-09-04 on pool slot 3, twice, with `tools/gui/mapmarker.py --home`
   (`#205 (A party that walks out onto the travel grid leaves the automapper's
   marker behind)`, step 7, which needed a party to walk back off the grid).
   Area 26 → area 20 with `$49E6` poked to 1 first: the loader asks for
@@ -4640,7 +4640,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   wrote — and nobody answers the disk prompt. The game then sits on
   `INSERT SIDE # 2` with the *wilderness* status line still on screen, which
   the automapper faithfully goes on reporting. Wait for the screen, not for
-  `$49E6`; `tools/mapmarker.py`'s `wait_indoors` does.
+  `$49E6`; `tools/gui/mapmarker.py`'s `wait_indoors` does.
 
 - **P51: Amiga Pools of Darkness accepts a C64 Pool of Radiance export as a
   character file. CONFIRMED, and it deletes the premise of

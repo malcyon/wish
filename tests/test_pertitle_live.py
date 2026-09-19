@@ -179,7 +179,7 @@ def test_a_title_nobody_has_read_keeps_pool_of_radiances_badges():
 
 
 def test_the_one_argument_badges_call_still_means_pool_of_radiance():
-    """`tools/rostercard.py` and `tools/shotstrip.py` read
+    """`tools/gui/rostercard.py` and `tools/gui/shotstrip.py` read
     `live.CONDITION_BADGES` directly and `badges()` is called with one
     argument in the existing tests. None is Pool of Radiance, here as in
     `traits.for_game` and `levels.for_game`."""

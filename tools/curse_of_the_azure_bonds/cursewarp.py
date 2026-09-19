@@ -289,7 +289,7 @@ def enter_world(sess, addr: Addresses | None = None, timeout: float = 300.0
     because a disk load has not finished drawing anything yet.
 
     **`addr` is optional only for the callers that do not yet pass one** --
-    `tools/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py`
+    `tools/gui/livecheck.py`, `tools/c64/inventorycheck.py` and `tools/curse_of_the_azure_bonds/cursecheck.py`
     all call this without an `Addresses`, and giving `addr` no default would
     break them outright; without it, this falls back to the old unconditional
     Escape and cannot tell a stuck menu from a slow load.

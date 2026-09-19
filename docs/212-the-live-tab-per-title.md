@@ -38,7 +38,7 @@ Each was measured as a refusal rather than assumed -- §2 and §3.
 
 ## 1. The run is the shipped code, called
 
-`tools/livecheck.py` boots a title on a pooled VICE slot from a save disk in
+`tools/gui/livecheck.py` boots a title on a pooled VICE slot from a save disk in
 the specimen tree, gets the party into the world, and then calls the tab's own
 code:
 
@@ -242,9 +242,9 @@ agree on the square and the facing.
 
 ## 6. Re-running it
 
-    tools/livecheck.py --title por   --walk JIKI --boundary --out $TMPDIR/por
-    tools/livecheck.py --title curse --walk JIKI --boundary --out $TMPDIR/curse
-    tools/livecheck.py --title ssb   --walk JIKI --boundary --out $TMPDIR/ssb
+    tools/gui/livecheck.py --title por   --walk JIKI --boundary --out $TMPDIR/por
+    tools/gui/livecheck.py --title curse --walk JIKI --boundary --out $TMPDIR/curse
+    tools/gui/livecheck.py --title ssb   --walk JIKI --boundary --out $TMPDIR/ssb
 
 Each claims its own pool slot, copies the player's disks into it and reads
 them only, and tears the slot down at the end. The save disks come out of the

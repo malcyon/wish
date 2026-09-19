@@ -9,7 +9,7 @@ the 6502 stack directly and calls it a re-entry point, and
 shipped `DUNGEON` with no emulator at all. Neither calls the production code
 path a player's own Fast Travel button runs. This does:
 `automap.actions.FastTravel().run()`, unmodified, through `automap.target.
-ViceTarget`, on a pool slot the way `tools/livecheck.py` boards one.
+ViceTarget`, on a pool slot the way `tools/gui/livecheck.py` boards one.
 
 The one case this has been run against is the one #207 was filed for:
 warping out of the Kobold Caves (area 13) to the East Window (area 27) drops
@@ -26,7 +26,7 @@ the sides into the slot, and `--save` is copied in as `SIDE0.D64`. The pool
 owns the emulator lifecycle throughout -- `tools.c64.session.claim_slot` leases
 a slot through `tools.instance.claim`, and the slot is torn down on every
 exit path, including an exception, the same `finally` shape
-`tools/areas/exitreentry.py` and `tools/livecheck.py` use.
+`tools/areas/exitreentry.py` and `tools/gui/livecheck.py` use.
 """
 from __future__ import annotations
 

@@ -5,8 +5,8 @@ Ported out of `automap/live.py` on `#13 (Edit traits and active effects, in
 two separate panels)`, because the panels that read and write this belong to
 `editor/`, and `editor/` may not import `automap` -- `tests/test_wish.py::
 test_editor_imports_nothing_live` is what enforces it. `automap/live.py`
-imports these same names back, so `automap/combat.py`, `tools/combatshot.py`,
-`tools/livestrip.py` and `tests/test_coldread.py` still resolve them as
+imports these same names back, so `automap/combat.py`, `tools/gui/combatshot.py`,
+`tools/gui/livestrip.py` and `tests/test_coldread.py` still resolve them as
 `live.EFFECT_ID_OFFSET` and so on.
 
 No Qt and no emulator here, the same rule the rest of `goldbox/` follows --

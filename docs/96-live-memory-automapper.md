@@ -334,7 +334,7 @@ Three facts from the same session, so nobody pays for them twice:
   and the next two reads of `$A2` on the *same socket* both came back correct.
   So the give-up path needs no resynchronisation and a timeout is safe to
   retry on: what has to happen after one is the hanging up, and nothing else.
-  `tools/monitorchain.py` step 5.
+  `tools/gui/monitorchain.py` step 5.
 * **Abandoning a socket does not freeze the game.** The jiffy clock at `$A2`
   went 42 to 164 across two seconds after a socket was closed with no `EXIT`
   sent -- VICE resumes when the connection drops.
@@ -345,7 +345,7 @@ Three facts from the same session, so nobody pays for them twice:
 
 ## The travel grid: a third answer, not a missing one
 
-**CONFIRMED in the running game, 2026-09-03** -- `tools/mapmarker.py` on pool
+**CONFIRMED in the running game, 2026-09-03** -- `tools/gui/mapmarker.py` on pool
 slot 2, photographing the real map tab after every step -- **found** `party_fix`
 producing **nothing** while the party was on the overland travel grid, so
 `Automapper.poll` returned before anything was recorded and `AutomapState` kept

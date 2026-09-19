@@ -1,7 +1,7 @@
 """Proof that `tests/conftest.py`'s `_guard_automap_state_data_dir` fires.
 
 `#428 (Ten automapper note tests fail under parallel load but pass alone, so
-a green suite depends on how busy the machine is)`: `tools/livecheck.py`
+a green suite depends on how busy the machine is)`: `tools/gui/livecheck.py`
 rebound `automap.state._data_dir` at import time, so `tests/test_livecheck.py`
 importing it at *its* module level carried the rebinding into every
 `pytest -n auto` worker before a single test ran, and every note test
@@ -95,7 +95,7 @@ def test_an_import_time_rebind_fails_the_suite_instead_of_poisoning_it():
     """The `#428` shape: a raw module-level assignment, at import time.
 
     Reproduces the mechanism directly instead of importing
-    `tools/livecheck.py`, which is fixed now and would prove nothing about
+    `tools/gui/livecheck.py`, which is fixed now and would prove nothing about
     the guard.
     """
     result = _run_throwaway_test('''
