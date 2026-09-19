@@ -76,13 +76,6 @@ RECORD_SUFFIXES = (".sav", ".cha", ".guy")
 #: is evidence about our writer and never about the game.
 BUILT_PREFIXES = ("built-", "seed-", "c64-", "conv-")
 
-#: Directories (they were under the scratch directory that has since been
-#: deleted) holding hand-assembled specimens whose names do
-#: not carry a prefix.  Listed rather than guessed; add to it, do not widen
-#: the prefix list, because a prefix that matches too much silently shrinks
-#: the corpus and the shrink is invisible in the output.
-BUILT_DIRS = ("issue191/built",)
-
 #: An emulator instance's **staged game tree**, which is skipped entirely.
 #:
 #: This is the trap that cost a re-take.  `tools/dosbox.py` copies the game
@@ -180,10 +173,7 @@ def dos_record_roots() -> list[pathlib.Path]:
 
 def is_built(path: pathlib.Path) -> bool:
     """Did this project write this record, rather than the game?"""
-    if path.name.lower().startswith(BUILT_PREFIXES):
-        return True
-    text = path.as_posix()
-    return any(d in text for d in BUILT_DIRS)
+    return path.name.lower().startswith(BUILT_PREFIXES)
 
 
 class Specimen:

@@ -255,6 +255,8 @@ def main(argv=None) -> int:
     ap.add_argument("--stage", action="store_true",
                     help="bank the chips out on purpose and read both ways")
     args = ap.parse_args(argv)
+    if "/" in args.tag or "\\" in args.tag or args.tag in (".", ".."):
+        ap.error("--tag names one directory: no slash, backslash, . or ..")
     if args.disks is None:
         from automap import paths
         args.disks = str(paths.find_disks())

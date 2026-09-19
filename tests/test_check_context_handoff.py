@@ -132,6 +132,38 @@ def test_once_refused_a_session_stays_refused(tmp_path, monkeypatch, capsys):
     assert run(monkeypatch, spawn(compacted, session="s2")) == 0
 
 
+@pytest.mark.parametrize("session", ["/tmp/elsewhere/s1", "../x", "a/../../x"])
+def test_a_session_id_cannot_move_the_marker_out_of_its_directory(
+        tmp_path, monkeypatch, session):
+    """The id is the harness's, but the marker is a file the hook creates, so
+    an absolute or `..` id must land under the sticky directory or not at all."""
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    over = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
+    assert run(monkeypatch, spawn(over, session=session)) == 2
+    sticky = tmp_path / "wish" / "check-context-handoff"
+    assert sticky.is_dir()
+    made = [p for p in tmp_path.rglob("*") if p.is_file() and p.name != "session.jsonl"]
+    assert made and all(sticky in p.parents for p in made)
+
+
+def test_a_session_id_that_is_only_dots_makes_no_marker(tmp_path, monkeypatch):
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    over = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
+    for session in ("..", "a/.."):
+        assert run(monkeypatch, spawn(over, session=session)) == 2
+    assert not (tmp_path / "wish").exists()
+
+
+def test_the_sticky_directory_is_the_one_scratch_names(tmp_path, monkeypatch):
+    """The hook cannot import `tools.scratch` (the system interpreter has no
+    repository on its path), so nothing else keeps the two spellings equal."""
+    from tools import scratch
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    mod = _module()
+    ours = pathlib.Path(mod.sticky_path({"session_id": "abc"}))
+    assert ours == scratch.scratch_dir("check-context-handoff", "abc")
+
+
 def test_the_older_tool_name_is_matched_too(tmp_path, monkeypatch):
     path = transcript(tmp_path, _turn("assistant", cache_read_input_tokens=600_000))
     assert run(monkeypatch, spawn(path, tool="Task")) == 2

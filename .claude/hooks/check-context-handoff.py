@@ -150,7 +150,12 @@ def sticky_path(payload: dict) -> str | None:
     session = payload.get("session_id")
     if not session:
         return None
-    return os.path.join(tempfile.gettempdir(), STICKY_DIR, str(session))
+    # A session id is a file name; one that is absolute or holds `..` must not
+    # point the marker anywhere but under the sticky directory.
+    name = os.path.basename(str(session))
+    if name in ("", ".", ".."):
+        return None
+    return os.path.join(tempfile.gettempdir(), STICKY_DIR, name)
 
 
 def main() -> int:

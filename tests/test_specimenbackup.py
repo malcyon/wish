@@ -295,6 +295,19 @@ def test_a_missing_archive_is_a_message_rather_than_a_traceback(
     assert "nothing.tar.gz" in capsys.readouterr().err
 
 
+def test_audit_with_nowhere_to_look_says_so_and_reads_nothing(
+        tree, capsys, monkeypatch):
+    """A bare `audit` is an operator's mistake: one line on stderr, exit 1,
+    and no hashing of the tree it would otherwise have compared against."""
+    def _no_audit(*a, **k):
+        raise AssertionError("audit() ran with nothing to search")
+    monkeypatch.setattr(specimenbackup, "audit", _no_audit)
+    args = argparse.Namespace(root=str(tree), into=None, tar=None)
+    assert specimenbackup.cmd_audit(args) == 1
+    err = capsys.readouterr().err
+    assert "audit needs --in DIR or --tar ARCHIVE" in err
+
+
 def test_a_symlink_out_of_the_repository_is_still_the_repository(
         tmp_path, tree, monkeypatch):
     """A directory of the repository that is a symlink out of it must not

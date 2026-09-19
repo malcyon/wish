@@ -143,7 +143,9 @@ def slug_for(targets: list[str]) -> str:
     for target in targets:
         name = pathlib.PurePosixPath(target.replace("\\", "/")).stem
         parts.append(name or target)
-    return "+".join(parts) or "run"
+    slug = "+".join(parts)
+    # `.` and `..` are not directory names `scratch_dir` accepts.
+    return slug if slug not in ("", ".", "..") else "run"
 
 
 def measure_mmd(text: str) -> tuple[int, int]:

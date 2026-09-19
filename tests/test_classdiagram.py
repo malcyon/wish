@@ -64,6 +64,11 @@ def test_measure_mmd_on_an_empty_diagram_is_zero_classes():
     assert classdiagram.measure_mmd(EMPTY_MMD) == (0, 0)
 
 
+def test_slug_for_never_returns_a_name_scratch_dir_refuses():
+    for targets in (["."], [".."], [""], []):
+        assert classdiagram.slug_for(targets) == "run"
+
+
 def test_slug_for_strips_directories_and_extensions():
     assert classdiagram.slug_for(["goldbox/amiga.py"]) == "amiga"
     assert classdiagram.slug_for(["goldbox"]) == "goldbox"

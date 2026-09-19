@@ -44,6 +44,9 @@ no-default:
     monkeypatch.setattr(gamedisks, "REGISTRY", registry_file)
     monkeypatch.delenv("A_GAME_DISKS", raising=False)
     monkeypatch.delenv("NO_DEFAULT_DISKS", raising=False)
+    # A row the machine's file lacks comes from the example, whose env name
+    # is `POR_DISKS`; a shell that exports it would win over the paths.
+    monkeypatch.delenv("POR_DISKS", raising=False)
     # The entries above use relative names, the way a real rip's directory
     # name is relative to wherever it was found -- `is_dir()` checks them
     # against the process's own working directory, so tests that create one
