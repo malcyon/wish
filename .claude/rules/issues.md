@@ -145,9 +145,11 @@ makes the comment the unit of nearly all issue traffic: a session that files two
 issues posts twenty comments. An AI issue authored by the bot and carrying
 twenty comments from Donald is worse than no scheme at all.
 
-**Reading stays on `gh`.** `gh issue list`, `gh issue view N --comments` and
-everything else unchanged -- a read needs no identity and the bot adds nothing
-to one.
+**Reading needs no identity, so listing stays on `gh`.** `gh issue list` and
+the other reads the hook allows are unchanged, and the bot adds nothing to them.
+An issue's title, body and comments are read with
+`tools/github/issueread.py N`, because `gh issue view N --comments` is refused;
+"Read an issue with `tools/github/issueread.py`" below says why.
 
 **Do not add the `AI` label by hand.** `.github/workflows/issue-origin.yml`
 labels every new issue by its author, once, when it is opened. **Nothing
