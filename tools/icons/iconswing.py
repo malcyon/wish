@@ -46,6 +46,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import savecheck as V  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -577,7 +578,7 @@ def run(args, log) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, help="the save .d64 to boot")
-    p.add_argument("--disks", default=str(V.DISKS),
+    p.add_argument("--disks", default=None,
                    help="where the player's game disks are; read only")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
@@ -603,6 +604,11 @@ def main(argv=None) -> int:
                    help="pass every turn instead of attacking, as the "
                         "control run did")
     args = p.parse_args(argv)
+    if args.disks is None:
+        found = tool_disks()
+        if found is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(found)
     args.tag = args.tag or pathlib.Path(args.disk).stem
     out = pathlib.Path(args.out or scratch.scratch_dir("iconswing") /
                        f"{args.tag}-swing.jsonl")

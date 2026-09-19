@@ -26,7 +26,6 @@ that follows has the file's side of the comparison in its log.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 
@@ -34,7 +33,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
     DEFAULT_BACKGROUND,
@@ -51,7 +50,7 @@ from goldbox.savegame import (  # noqa: E402
 )
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: Six figures a person can tell apart on a 24x24 grid: the size, then the
 #: weapon and head option numbers `IconParts.compose` takes.  Chosen for
@@ -122,9 +121,13 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True,
                    help="the save .d64 to edit in place; use a copy")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=None,
                    help="where the player's game disks are; read, never written")
     args = p.parse_args(argv)
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
     disk = pathlib.Path(args.disk)
     for slot, icon in poke(disk, pathlib.Path(args.disks)):
         print(f"slot {slot}: {icon[:18].hex()} / {icon[18:].hex()}")

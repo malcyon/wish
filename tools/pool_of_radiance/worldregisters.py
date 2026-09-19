@@ -45,7 +45,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import screen as SCR  # noqa: E402
 from automap import vice as V  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import world as W  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.pool_of_radiance import worldtiles as WT  # noqa: E402
@@ -316,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--disk", default=None,
                    help="an outdoor save disk to boot; the specimen tree's "
                         f"{OUTDOOR_SPECIMEN} when this is not given")
-    p.add_argument("--disks", default=str(find_disks() or ""),
+    p.add_argument("--disks", default=None,
                    help="the player's game disks, read only")
     p.add_argument("--out", default=str(scratch.scratch_dir("worldregisters")),
                    help="where the report goes")
@@ -326,7 +326,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="seconds to wait for the world bar")
     p.add_argument("--compass", action="store_true",
                    help="press each of 1-8 and read the heading byte")
-    return run(p.parse_args(argv))
+    args = p.parse_args(argv)
+    args.disks = args.disks or tool_disks()
+    if args.disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    return run(args)
 
 
 if __name__ == "__main__":

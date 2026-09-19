@@ -31,7 +31,6 @@ slot's own directory and the engine's resave is copied back out of it.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 import time
@@ -40,12 +39,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The clock's six digit bytes -- sub-minute, minute units, minute tens, hour,
 #: day, month (`docs/141-dos-savegame.md`).  Read beside the square because a
@@ -247,7 +246,7 @@ def run(args, log: Log) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, help="the save .d64 to boot")
-    p.add_argument("--disks", default=str(DISKS), help="the game disks")
+    p.add_argument("--disks", default=None, help="the game disks")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
     p.add_argument("--out", default=None, help="where the .jsonl goes (default: this tool's scratch "
@@ -265,6 +264,10 @@ def main(argv=None) -> int:
     p.add_argument("--arrive", type=float, default=240.0,
                    help="seconds to wait for the world bar")
     args = p.parse_args(argv)
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
     stem = pathlib.Path(args.disk).stem
     args.tag = args.tag or stem
     out = pathlib.Path(args.out) if args.out else (

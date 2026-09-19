@@ -145,8 +145,7 @@ def run(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disks", default=str(
-        pathlib.Path(os.environ.get("POR_DISKS") or "")))
+    p.add_argument("--disks", default=os.environ.get("POR_DISKS") or None)
     p.add_argument("--save", required=True,
                    help="a Curse save disk (SIDE0) to copy in")
     p.add_argument("--slot", type=int, default=None)
@@ -158,7 +157,7 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=str(scratch.scratch_dir("curseflee", "run")))
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
-    if not args.disks or args.disks == ".":
+    if args.disks is None:
         from automap import gamedisks
         found = gamedisks.find("curse-of-the-azure-bonds")
         if not found:

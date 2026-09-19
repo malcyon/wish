@@ -50,7 +50,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import sys
 import time
@@ -59,7 +58,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.savegame import SLOT_AREA_BASE, SLOT_STRIDE  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
@@ -74,7 +73,7 @@ from tools.c64.traitask import (  # noqa: E402
 )
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: Pool of Radiance's own prefix byte for a parked character's filename
 #: (`tools/c64/c64nametable.py`'s `PREFIX`).
@@ -326,7 +325,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, type=pathlib.Path,
                    help="the generated save disk, already a copy")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's game sides are; read, never "
                         "written")
     p.add_argument("--slot", type=int, default=None,
@@ -345,9 +344,12 @@ def main(argv=None) -> int:
                         "re-running the slow part of --full on its own")
     args = p.parse_args(argv)
 
+    disks = pathlib.Path(args.disks) if args.disks else DISKS
+    if disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     out = pathlib.Path(args.out) if args.out else scratch.scratch_dir("testpartyrun", "run")
     log = Log(out, args.quiet)
-    log.emit("start", disk=str(args.disk), sides=args.disks)
+    log.emit("start", disk=str(args.disk), sides=str(disks))
 
     # The staging directory holds the generated save beside symlinks to the
     # player's own sides, so `stage_disks` copies all nine into the slot and
@@ -356,7 +358,7 @@ def main(argv=None) -> int:
     staging.mkdir(parents=True, exist_ok=True)
     S.stage_writable(args.disk, staging / "STAGED.D64")
     for i in range(1, 9):
-        src = pathlib.Path(args.disks) / f"POOL{i}.D64"
+        src = disks / f"POOL{i}.D64"
         link = staging / f"POOL{i}.D64"
         if src.exists() and not link.exists():
             link.symlink_to(src.resolve())

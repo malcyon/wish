@@ -74,12 +74,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The window one poll reads. `goldbox/c64_port.py` POOL_OF_RADIANCE, and
 #: `automap/live.py`'s `memory_blocks`.
@@ -626,6 +626,8 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.mode == "rows":
         return rows_mode(args)
+    if DISKS is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     return run(args)
 
 

@@ -22,7 +22,7 @@ CombatLog.poll` both fall back to that alone when a backend has no `fix()` or
 test fixture.
 
 Claims one pool slot, stages `PORSAVE13.D64` from the player's own disks
-(`$POR_DISKS`, else `automap.paths.find_disks()`), walks until a fight starts
+(`$POR_DISKS`, else `automap.paths.tool_disks()`), walks until a fight starts
 and then pumps the real Qt event loop for `--budget` seconds while the fight is
 driven. Writes one JSON line per event to `--out`.
 
@@ -45,7 +45,7 @@ sys.path.insert(0, str(ROOT))
 
 from PyQt6.QtWidgets import QApplication, QMainWindow  # noqa: E402
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from automap.state import Automapper  # noqa: E402
 from automap.vice import Monitor  # noqa: E402
 from automap.window import AutomapBinding  # noqa: E402
@@ -86,10 +86,12 @@ def main(argv=None) -> int:
     out = args.out
     config_dir = out.parent / "automapfightwindow-config"
 
-    disks = os.environ.get("POR_DISKS") or str(find_disks() or "")
-    if not disks or not os.path.isdir(disks):
+    root = tool_disks()
+    if root is None or not os.path.isdir(root):
         print("No game disks. Set $POR_DISKS.", file=sys.stderr)
         return 2
+
+    disks = str(root)
 
     scratch.ensure(config_dir)
     lines = out.open("w")

@@ -58,7 +58,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import shutil
 import sys
@@ -116,9 +115,9 @@ def find_c64_save(name: str | None) -> pathlib.Path:
     """A C64 save disk: what `--c64` named, or the newest `PORSAVE*.D64`."""
     if name:
         return pathlib.Path(name).expanduser()
-    from automap.paths import find_disks
-    disks = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
-    found = sorted(disks.glob("PORSAVE*.D64"))
+    from automap.paths import tool_disks
+    disks = tool_disks()
+    found = sorted(disks.glob("PORSAVE*.D64")) if disks is not None else []
     if not found:
         raise SystemExit("No C64 save disk found; name one with --c64")
     return found[-1]

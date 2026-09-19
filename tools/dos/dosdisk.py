@@ -22,7 +22,7 @@ So it refuses without them rather than inventing either.
 
 The DOS folder is found the way `tools/dos/dosbox.py` finds it -- `$FR_ARCHIVES`,
 then `~/Downloads/fr-archives` -- and the game disks the way every other tool
-here does: `$POR_DISKS`, then `automap.paths.find_disks()`.  Both are read and
+here does: `$POR_DISKS`, then `automap.paths.tool_disks()`.  Both are read and
 never written; the output goes wherever `--out` says, and under this tool's
 scratch directory when it does not.
 
@@ -39,7 +39,6 @@ has shipped that passed every byte-level check that existed.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 
@@ -47,7 +46,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
@@ -55,7 +54,7 @@ from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 
 def dos_folder() -> pathlib.Path:
@@ -197,7 +196,7 @@ def main(argv=None) -> int:
     p.add_argument("--folder", default=None,
                    help="the DOS save directory; found in the archives if not "
                         "given")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's C64 disks are; read, never written")
     p.add_argument("--out", default=None,
                    help="the .d64 to write (default NEW<slot>.D64 in this "
@@ -215,9 +214,12 @@ def main(argv=None) -> int:
     if args.no_write:
         print("\n".join(sheet(folder, args.slot)))
         return 0
+    disks = pathlib.Path(args.disks) if args.disks else DISKS
+    if disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     out = pathlib.Path(args.out) if args.out else (
         scratch.scratch_dir("dosdisk") / f"NEW{args.slot}.D64")
-    report = build(folder, args.slot, pathlib.Path(args.disks), out)
+    report = build(folder, args.slot, disks, out)
     party = dos_codec.read_party(folder, args.slot)
     print(f"Slot {args.slot}: {len(party)} characters -- "
           + ", ".join(c.name for c in party))

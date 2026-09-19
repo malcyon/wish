@@ -56,7 +56,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import combatlog, rolls  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from automap.screen import band  # noqa: E402
 from tools.c64 import overlay  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -367,8 +367,7 @@ def drive(args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--disks", default=os.environ.get("POR_DISKS")
-                   or str(find_disks() or ""),
+    p.add_argument("--disks", default=None,
                    help="where the game disks are; read, never written")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("table", help="COMBAT's messages, out of SPELLN00")
@@ -391,13 +390,15 @@ def main(argv=None) -> int:
     fp.add_argument("--out", default=None)
     args = p.parse_args(argv)
 
-    if args.cmd == "fight":
-        return drive(args)
-
-    if not args.disks or not os.path.isdir(args.disks):
+    disks = args.disks or tool_disks()
+    if disks is None or (args.cmd != "fight" and not os.path.isdir(disks)):
         print("No game disks. Set $POR_DISKS or pass --disks.",
               file=sys.stderr)
         return 2
+    args.disks = str(disks)
+
+    if args.cmd == "fight":
+        return drive(args)
 
     if args.cmd == "table":
         for n, text in sorted(combat_messages(args.disks).items()):

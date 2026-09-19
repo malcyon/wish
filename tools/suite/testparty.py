@@ -366,12 +366,11 @@ def item_disk(where: "pathlib.Path | None" = None) -> pathlib.Path:
     uses.  `goldbox.items.load_item_templates` opens the siblings itself,
     because the `ITEMFILE*` lists are spread across all eight sides.
     """
-    import os
-
     from automap import paths
 
-    root = where or pathlib.Path(
-        os.environ.get("POR_DISKS") or paths.find_disks() or "")
+    root = where or paths.tool_disks()
+    if root is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     found = sorted(root.glob("POOL*.[dD]64"))
     if not found:
         raise SystemExit(f"no POOL disk in {root}; set $POR_DISKS")

@@ -45,14 +45,14 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.savecheck import Log, answer_bars  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 disks.  Read, never written -- the sides are
 #: copied into the slot and the game only ever sees the copies.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The bytes worth writing down beside every screenshot, and why each one is
 #: here.  `$49E6` says which of the two worlds the party is in; `$49C0` is the
@@ -535,7 +535,7 @@ def _pair(text: str) -> tuple[int, ...]:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, help="the save .d64 to boot")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=None,
                    help="where the player's game disks are; read, never written")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--walk", default="",
@@ -574,6 +574,10 @@ def main(argv=None) -> int:
                    help="seconds to wait for the world bar after BEGIN "
                         "ADVENTURING")
     args = p.parse_args(argv)
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
     args.tag = args.tag or pathlib.Path(args.disk).stem.lower()
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

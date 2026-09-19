@@ -68,7 +68,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import savegame  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
@@ -76,7 +76,7 @@ from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: The player's disks: `$POR_DISKS`, then the search every other tool does.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: `SAVEDGAME1`'s roster page, live.  Eight blocks of `$20`, one per save
 #: slot; the fields inside one are `goldbox/savegame.py`'s.
@@ -871,7 +871,7 @@ def main(argv=None) -> int:
     d = sub.add_parser("drive", help="drive a fight to a flight")
     d.add_argument("--save", default="PORSAVE13.D64",
                    help="the save disk to load, inside --disks")
-    d.add_argument("--disks", default=str(DISKS),
+    d.add_argument("--disks", default=None,
                    help="where the player's disks are; read, never written")
     d.add_argument("--slot", type=int, default=None,
                    help="demand this pool slot rather than the first free one")
@@ -922,6 +922,10 @@ def main(argv=None) -> int:
                 roots[title] = str(found) if found else ""
         return read_code(roots)
 
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
     SC.catch_signals()
     return run(args)
 

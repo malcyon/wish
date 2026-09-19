@@ -46,7 +46,7 @@ making up data, which we will not do."*:
 * `ANIMATE00`'s 852 payload bytes, which sit at `$8400` in `SAVEDGAME1`.
 
 The disks are found the way every other tool here finds them -- `$POR_DISKS`,
-then `automap.paths.find_disks()` -- and are read and never written.  The
+then `automap.paths.tool_disks()` -- and are read and never written.  The
 `.adf` is opened read-only.
 
 `--sheet` prints the **Amiga** party the way the C64's own VIEW screen lays
@@ -60,7 +60,6 @@ writes, so the two can be read side by side.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 
@@ -68,7 +67,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import amiga_savegame, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
@@ -76,7 +75,7 @@ from tools.dos import dosdisk  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 
 def read_slot(disk, slot: str):
@@ -323,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--slot", default=None,
                    help="the Amiga save slot letter (default: the first the "
                         "disk holds files for)")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the player's C64 disks are; read, never "
                         "written")
     p.add_argument("--to", default="c64", choices=("c64", "dos"),
@@ -376,9 +375,12 @@ def main(argv: list[str] | None = None) -> int:
         party, state, report = build_dos(disk, slot, game, out,
                                          args.dos_slot.upper())
     else:
+        disks = pathlib.Path(args.disks) if args.disks else DISKS
+        if disks is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
         out = None if args.no_write else pathlib.Path(
             args.out or scratch.scratch_dir("fromamigapor") / f"PORSAVE{slot}.D64")
-        party, state, report = build(disk, slot, pathlib.Path(args.disks), out)
+        party, state, report = build(disk, slot, disks, out)
 
     print(f"{args.adf} slot {slot}: {len(party)} character(s), "
           f"{', '.join(c.name for c in party)}")

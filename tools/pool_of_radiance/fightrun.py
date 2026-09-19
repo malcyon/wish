@@ -31,7 +31,6 @@ everybody in contact on turn 1.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sys
 import time
@@ -40,7 +39,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import savecheck as SC  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -52,7 +51,7 @@ from tools.registry import scratch  # noqa: E402
 #: what every other tool here uses -- a path spelled out in the source is one
 #: developer's machine written into a program that ships, and
 #: `test_no_hardcoded_user_paths` fails the build on one.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 
 #: Claiming a slot and staging the player's disks both live in
@@ -158,7 +157,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--save", default="PORSAVE13.D64",
                    help="the save disk to load, inside --disks")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=None,
                    help="where the player's disks are; read, never written")
     p.add_argument("--slot", type=int, default=None,
                    help="demand this pool slot rather than the first free one")
@@ -174,6 +173,10 @@ def main(argv=None) -> int:
                    help="where the log goes (default <temp>/wish/fightrun/<save>.jsonl)")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args(argv)
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
     SC.catch_signals()
 
     disks = pathlib.Path(args.disks)

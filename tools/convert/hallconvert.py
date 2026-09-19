@@ -25,14 +25,13 @@ converts, so `--borrow` is kept only as the record of how the shape was
 prototyped before it shipped.
 
 The DOS folder is `--folder`, the C64 game disks are `$POR_DISKS` then
-`automap.paths.find_disks()`, and both are read and never written.  Output
+`automap.paths.tool_disks()`, and both are read and never written.  Output
 goes wherever `--out` says.
 """
 from __future__ import annotations
 
 import argparse
 import dataclasses
-import os
 import pathlib
 import sys
 
@@ -40,13 +39,13 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import areas, dos_codec  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools.dos import dosdisk  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The two readers, by the word each keys on.  `geo` is what
 #: `current_area` did before `#257` -- `$49F2` outdoors, `$49C5` indoors --
@@ -94,7 +93,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--folder", required=True, help="the DOS save folder")
     p.add_argument("--slot", default="F", help="the DOS save slot letter")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=DISKS,
                    help="where the C64 game disks are; read only")
     p.add_argument("--out", required=True, help="a directory for the disks")
     p.add_argument("--borrow", default=None,
@@ -102,6 +101,9 @@ def main(argv=None) -> int:
                         "prototypes the fix without touching goldbox/areas.py")
     args = p.parse_args(argv)
 
+    disks = pathlib.Path(args.disks) if args.disks else DISKS
+    if disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     folder = pathlib.Path(args.folder).expanduser()
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -110,7 +112,7 @@ def main(argv=None) -> int:
           f"$49F2 = {sg.word(savgam, sg.SCRIPT)}  "
           f"$49E6 = {sg.word(savgam, sg.INDOORS)}")
     for reader in READERS:
-        area, note = convert(folder, args.slot, pathlib.Path(args.disks),
+        area, note = convert(folder, args.slot, disks,
                              out / f"{reader}.d64", reader, args.borrow)
         print(f"  {reader:6s} -> {area:3d}  {note}")
     return 0

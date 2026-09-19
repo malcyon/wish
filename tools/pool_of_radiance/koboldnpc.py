@@ -43,11 +43,11 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap import actions as A  # noqa: E402
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The Kobold Caves, and the wilderness east window its exit leads to.
 CAVES, EAST = 13, 27
@@ -293,7 +293,10 @@ def main(argv=None) -> int:
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     p.add_argument("--out", default=str(scratch.scratch_dir("koboldnpc")))
     p.add_argument("--arrive", type=float, default=240.0)
-    return run(p.parse_args(argv))
+    args = p.parse_args(argv)
+    if DISKS is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
+    return run(args)
 
 
 if __name__ == "__main__":

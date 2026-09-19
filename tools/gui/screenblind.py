@@ -259,7 +259,10 @@ def main(argv=None) -> int:
         ap.error("--tag names one directory: no slash, backslash, . or ..")
     if args.disks is None:
         from automap import paths
-        args.disks = str(paths.find_disks())
+        found = paths.tool_disks()
+        if found is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(found)
     return run(args)
 
 

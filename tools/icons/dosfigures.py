@@ -21,7 +21,7 @@ tool wrote the six icons over the table itself; a run then proved the
 composition and not the button, which is the failure that check now catches.
 
 The DOS folder is `--folder`, or found the way `tools/dos/dosdisk.py` finds it.
-The game disks come from `$POR_DISKS`, then `automap.paths.find_disks()`, and
+The game disks come from `$POR_DISKS`, then `automap.paths.tool_disks()`, and
 are read and never written; the output goes wherever `--out` says, which
 should be outside the repository.
 """
@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import sys
 
@@ -37,7 +36,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
@@ -51,7 +50,7 @@ from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from goldbox.savegame import SAVE0_LOAD_ADDRESS  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 
 def parts_from(disks: pathlib.Path) -> IconParts:
@@ -299,12 +298,16 @@ def main(argv=None) -> int:
     p.add_argument("--mixed-png", default=None,
                    help="draw the nine rows a small character wears large, "
                         "and write nothing else")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=None,
                    help="where the player's game disks are; read, never written")
     p.add_argument("--json", default=None, help="where the per-character log goes")
     p.add_argument("--png", default=None,
                    help="draw each DOS figure beside the one it converts to")
     args = p.parse_args(argv)
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
 
     if args.mixed_png:
         mixed_png(pathlib.Path(args.disks), pathlib.Path(args.mixed_png))

@@ -80,16 +80,17 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from goldbox import dos_savegame as sg  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 
 
-def disks_dir(named: str | None = None) -> pathlib.Path:
-    """Where the player keeps the C64 game disks. Read, never written."""
+def disks_dir(named: str | None = None) -> pathlib.Path | None:
+    """Where the player keeps the C64 game disks, or `None` when there are
+    none. Read, never written."""
     if named:
         return pathlib.Path(named).expanduser()
-    return pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+    return tool_disks()
 
 
 class Refused(RuntimeError):
@@ -455,9 +456,14 @@ def main(argv: list[str] | None = None) -> int:
                    help="write the conversion and stop before the emulator")
     args = p.parse_args(argv)
 
+    # Both destinations read C64 disks: a C64 destination for its icon and
+    # `ANIMATE00` tables, and a C64 source going to DOS for the source title's
+    # icon table (`ConvertDialog._rehearse_and_report`).
+    disks = disks_dir(args.disks)
+    if disks is None:
+        raise SystemExit("No game disks found. Set $POR_DISKS.")
     out = pathlib.Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    disks = disks_dir(args.disks)
     game = pathlib.Path(args.game) if args.game else (
         dosbox.find_game() if args.to == "dos" else None)
 

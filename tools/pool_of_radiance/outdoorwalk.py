@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import pathlib
 import sys
 import time
@@ -45,12 +44,12 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from automap.paths import find_disks  # noqa: E402
+from automap.paths import tool_disks  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
-DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
+DISKS: pathlib.Path | None = tool_disks()
 
 #: The live overland square.  `$49C0`-`$49C2` is the dungeon one and goes
 #: stale out here, which is the whole reason this tool reads memory at all.
@@ -155,7 +154,7 @@ def run(args) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, help="the save .d64 to boot")
-    p.add_argument("--disks", default=str(DISKS),
+    p.add_argument("--disks", default=None,
                    help="where the player's game disks are; read, never written")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
     # Compass digits, not `I J K M`. The travel grid's bar is
@@ -183,6 +182,10 @@ def main(argv=None) -> int:
     p.add_argument("--patience", type=float, default=25.0,
                    help="seconds to watch the travel square after each key")
     args = p.parse_args(argv)
+    if args.disks is None:
+        if DISKS is None:
+            raise SystemExit("No game disks found. Set $POR_DISKS.")
+        args.disks = str(DISKS)
     return run(args)
 
 
