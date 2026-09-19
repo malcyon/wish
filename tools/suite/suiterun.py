@@ -11,25 +11,29 @@ the tip, so `~/.cache/wish/testrun/<sha>.green` is what lets a push through.
 
 What it does, in order, and all of it against the same checkout:
 
-1. `git worktree add --detach` at the resolved sha, so the run tests exactly
+1. `git fetch origin`, then, when `<sha>` is the checked-out branch's tip and
+   `origin/main` is not already behind it, `git rebase origin/main`, so the
+   marker names the commit that will actually be pushed. A dirty tree, a
+   failed fetch or a conflict stops the run with nothing changed; `--no-rebase`
+   skips this step.
+2. `git worktree add --detach` at the resulting sha, so the run tests exactly
    what will land and not whatever other agents have half-edited in the
    main tree.
-2. Symlink `gamedisks.yaml` into the worktree. It is gitignored, and without
+3. Symlink `gamedisks.yaml` into the worktree. It is gitignored, and without
    it every test that reads game data skips.
-3. `pytest -q` in the worktree, with the repository's own virtual
-   environment. `-n auto --dist loadgroup` is in `pyproject.toml`. Then the
-   whole suite once more with `gamedisks.yaml` unlinked and every variable
-   `gamedisks.yaml.example` names pointing at one path that does not exist, so
-   nothing resolves and the data-backed tests skip, as CI has no data.
-4. `ruff check .` in the worktree.
-5. `tools/generate/genui.py --check` in the worktree.
-6. If all three passed, write `~/.cache/wish/testrun/<sha>.green`,
+4. `pytest -q` in the worktree, with the repository's own virtual
+   environment. `-n auto --dist loadgroup` is in `pyproject.toml`.
+5. The no-data pass, which behaves as CI does: `gamedisks.yaml` unlinked and
+   every variable `gamedisks.yaml.example` names pointing at one path that
+   does not exist. Every `tools/` module is imported in a fresh interpreter,
+   then only the test files that ask for game data or decide to skip without it
+   are run, so the pass shows nothing depends on data being present without
+   repeating the whole suite.
+6. `ruff check .` in the worktree.
+7. `tools/generate/genui.py --check` in the worktree.
+8. If all of it passed, write `~/.cache/wish/testrun/<sha>.green`,
    holding pytest's summary line. On any failure, write nothing.
-7. Remove the worktree, whatever happened, unless `--keep`.
-
-Steps 4 and 5 used to run in the main tree, which meant a marker could say
-"green at A" on the strength of a ruff or genui result taken from a dirty
-tree that was not A. They run in the worktree now for that reason.
+9. Remove the worktree, whatever happened, unless `--keep`.
 
 Exit status is 0 when the marker was written and 1 otherwise; the decisive
 lines of whichever check failed are the last thing printed.
@@ -38,6 +42,7 @@ lines of whichever check failed are the last thing printed.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import os
 import pathlib
 import re
@@ -95,6 +100,84 @@ def no_data_env(example: pathlib.Path, absent: pathlib.Path) -> dict[str, str]:
             if isinstance(row, dict) and row.get("env")}
 
 
+def _git(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
+    return _run(["git", *args], repo, 300)
+
+
+def rebase_onto_origin(repo: pathlib.Path, sha: str) -> tuple[str, str]:
+    """Fetch origin and rebase the checked-out branch onto `origin/main`.
+
+    Returns the sha to test and a line saying what happened. Only a `sha` that
+    is the branch's tip is rebased, because the marker has to name the commit
+    that gets pushed. Anything that would leave the tree half-done stops the
+    run instead: a failed fetch, a tree with uncommitted changes, or a conflict
+    (the rebase is aborted first, so the branch is as it was).
+    """
+    fetched = _git(repo, "fetch", "-q", "origin")
+    if fetched.returncode != 0:
+        raise SystemExit("could not fetch origin, nothing was tested:\n"
+                         + fetched.stderr.strip())
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    if sha != head:
+        return sha, f"{sha[:7]} is not the branch tip, so it was not rebased"
+    if _git(repo, "merge-base", "--is-ancestor", "origin/main", head).returncode == 0:
+        return sha, "already on top of origin/main"
+    if _git(repo, "status", "--porcelain", "--untracked-files=no").stdout.strip():
+        raise SystemExit("origin/main has moved but the tree has uncommitted "
+                         "changes, so it cannot be rebased: commit them or "
+                         "set them aside, then run again")
+    done = _git(repo, "rebase", "origin/main")
+    if done.returncode != 0:
+        _git(repo, "rebase", "--abort")
+        raise SystemExit("rebasing onto origin/main conflicts; the branch is "
+                         "unchanged. Resolve it, then run again:\n"
+                         + (done.stdout + done.stderr).strip()[-1500:])
+    new = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    return new, f"rebased onto origin/main: {head[:7]} -> {new[:7]}"
+
+
+#: What a test file says when it asks for game data or decides to skip without
+#: it: a skip, a `needs_*` marker, or a lookup of disks, archives, specimens or
+#: the registry.
+DATA_DECIDING = re.compile(
+    r"\bskip\w*\(|importorskip|\bneeds_\w+|pytest\.mark\.skip|gamedisks|find_disks"
+    r"|specimen|gamedata|automap\.paths|ARCHIVES|_DISKS\b|_SAVES\b|WISH_[A-Z_]+")
+
+
+def data_deciding_tests(tests: pathlib.Path) -> list[str]:
+    """The test files under `tests` that ask for game data or decide to skip
+    without it, as paths from the repository root, sorted."""
+    return sorted(str(path.relative_to(tests.parent))
+                  for path in tests.rglob("test_*.py")
+                  if DATA_DECIDING.search(
+                      path.read_text(encoding="utf-8", errors="replace")))
+
+
+def tool_modules(worktree: pathlib.Path) -> list[str]:
+    """Every module under `tools/`, as dotted names, packages included."""
+    root = worktree / "tools"
+    names = []
+    for path in sorted(root.rglob("*.py")):
+        parts = path.relative_to(worktree).with_suffix("").parts
+        names.append(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
+    return names
+
+
+def import_failures(worktree: pathlib.Path, python: str,
+                    env: dict[str, str]) -> list[str]:
+    """One line for each `tools/` module that does not import in a fresh
+    interpreter under `env`."""
+    def one(module: str) -> str | None:
+        done = _run([python, "-c", f"import {module}"], worktree, 180, env)
+        if done.returncode == 0:
+            return None
+        tail = (done.stderr.strip().splitlines() or ["no output"])[-1]
+        return f"{module}: {tail}"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        return [line for line in pool.map(one, tool_modules(worktree)) if line]
+
+
 def resolve(sha: str) -> str:
     done = _run(["git", "rev-parse", "--verify", f"{sha}^{{commit}}"], REPO, 30)
     if done.returncode != 0:
@@ -123,20 +206,24 @@ def run_checks(worktree: pathlib.Path) -> tuple[bool, str, str]:
         failed = [line for line in pytest.stdout.splitlines()
                   if line.startswith(("FAILED", "ERROR"))]
         return False, summary, "\n".join(failed) or pytest.stderr[-2000:]
-    # CI has no `gamedisks.yaml`, and the run above had one. Take it away and run
-    # everything again, with every registry variable pointing at an empty
-    # directory: a scoped rerun of the tests thought likely to care missed
-    # `tests/test_fleedrive.py`, which loads `tools/registry/gamedisks.py` under a
-    # second module name that the conftest fallback does not reach, and CI found
-    # it (#575).
     if link.is_symlink():
         link.unlink()
-        bare = _run([python, "-m", "pytest", "-q"], worktree, 1500, no_data)
-        print("without gamedisks.yaml:", summary_of(bare.stdout + bare.stderr))
+        broken = import_failures(worktree, python, no_data)
+        print("tool imports without data:",
+              f"{len(broken)} failed" if broken else "all import")
+        if broken:
+            return (False, summary + " (a tool fails to import without data)",
+                    "\n".join(broken))
+        chosen = data_deciding_tests(worktree / "tests")
+        if not chosen:
+            return False, summary, "no test file asks for game data: the selection is broken"
+        bare = _run([python, "-m", "pytest", "-q", *chosen], worktree, 1500, no_data)
+        print(f"without data, {len(chosen)} test files:",
+              summary_of(bare.stdout + bare.stderr))
         if bare.returncode != 0:
             failed = [line for line in bare.stdout.splitlines()
                       if line.startswith(("FAILED", "ERROR"))]
-            return (False, summary + " (fails without gamedisks.yaml)",
+            return (False, summary + " (fails without data)",
                     "\n".join(failed) or bare.stderr[-2000:])
     ruff = _run([str(REPO / ".venv" / "bin" / "ruff"), "check", "."], worktree, 300)
     print("ruff:", (ruff.stdout or ruff.stderr).strip().splitlines()[-1])
@@ -154,9 +241,14 @@ def main(argv=None) -> int:
     parser.add_argument("sha", help="the commit to test; resolved with git rev-parse")
     parser.add_argument("--keep", action="store_true",
                         help="leave the worktree behind for a look at a failure")
+    parser.add_argument("--no-rebase", action="store_true",
+                        help="do not fetch or rebase onto origin/main first")
     args = parser.parse_args(argv)
 
     sha = resolve(args.sha)
+    if not args.no_rebase:
+        sha, note = rebase_onto_origin(REPO, sha)
+        print(note)
     base = pathlib.Path(tempfile.mkdtemp(prefix="suiterun-"))
     worktree = base / "wt"
     added = _run(["git", "worktree", "add", "-q", "--detach", str(worktree), sha], REPO, 120)
