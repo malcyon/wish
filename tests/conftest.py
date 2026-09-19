@@ -267,3 +267,56 @@ def _isolate_config(tmp_path, monkeypatch):
     """
     for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
         monkeypatch.setenv(var, str(tmp_path))
+
+
+# -- the scratch directory must not come back ------------------------------------
+#
+# Donald decided on 2026-09-18 that the gitignored scratch directory at the
+# repository root is deleted for good and nothing may recreate it. The tracked
+# files are scanned for its name by `tests/test_repository_contents.py`; what
+# nothing tracked can show is a *run* creating it, and that is what this end of
+# the session catches. A plain test in the same file fails as soon as it exists;
+# this hook covers the one it cannot -- a test that makes the directory after
+# that test has already run.
+#
+# The name is spelled in two pieces because the guard scans this file too, and
+# this is the one file that has to say it.
+_SCRATCH_NAME = "wor" + "k"
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def scratch_directory_present(root: pathlib.Path) -> pathlib.Path | None:
+    """The scratch directory under ``root`` if it exists as a directory.
+
+    A file of that name is not it, and is not what anything writes; a symlink
+    to a directory is, because a detached worktree used to be given exactly
+    that link.
+    """
+    found = root / _SCRATCH_NAME
+    return found if found.is_dir() else None
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the run, with a line saying why, if the scratch directory exists.
+
+    Under ``pytest-xdist`` every worker runs this hook too, and a worker
+    finishing before the others would report a directory that another worker is
+    about to be blamed for; only the controller, which has no ``workerinput``,
+    speaks. A run with no xdist has none either, so it speaks as well.
+    """
+    if hasattr(session.config, "workerinput"):
+        return
+    found = scratch_directory_present(_REPO_ROOT)
+    if found is None:
+        return
+    line = (f"FAILED: {found} exists at the end of the session. The scratch "
+            f"directory is deleted for good and nothing may recreate it; find "
+            f"what wrote there and point it at a temp directory "
+            f"(tools/scratch.py).")
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line(line, red=True)
+    else:
+        print(line, file=sys.stderr)
+    if not session.exitstatus:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED

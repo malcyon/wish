@@ -8,7 +8,7 @@ data files. That rule was broken once by accident -- four fixtures, one of them
 are adding it. It is one, so this checks.
 
 The check runs against `git ls-files`, not the working tree: what matters is
-what is committed. Untracked scratch under `work/` is ignored and fine.
+what is committed.
 """
 
 
@@ -16,6 +16,7 @@ import ast
 import pathlib
 import re
 import subprocess
+import types
 
 import pytest
 
@@ -44,7 +45,8 @@ FORBIDDEN_SUFFIXES = {
 #: Every one is **the player's own saved game**, produced by playing, not
 #: content SSI shipped. A capture of live machine memory is not a saved game --
 #: it carries whatever code was resident at the time -- so `combat-arena.bin`
-#: was moved to `work/captures/` and the combat tests build an arena instead. Several capture states no disk still holds, so they
+#: was taken out of the repository and the combat tests build an arena instead.
+#: Several capture states no disk still holds, so they
 #: cannot be regenerated. Anything the publisher shipped -- a GEO, an overlay,
 #: the party on POOL1 -- is read from the player's disks at run time instead;
 #: `tests/gamedata.py` does that.
@@ -168,14 +170,6 @@ def test_no_hardcoded_user_paths(files):
 #: and comments may say where things are; only a string that is used is flagged.
 _MACHINE_PATH = ("/mnt/", "~/downloads", "~/dos_por_play", "fr-archives")
 
-#: A relative `work/` path to a game file: `work/POOL1.D64.orig`, an input.
-#: `work/` is scratch and has been lost twice (`.claude/rules/scratch.md`), so
-#: a run's own output there is fine and a file somebody depends on is not. A
-#: directory (`work/issue180`) is an output and is not matched.
-_WORK_INPUT = re.compile(
-    r"^work/\S*\.(d64|adf|sav|cha|pty|dax|itm|spc|g64|x64|prg|orig|pc|dat|ptx"
-    r"|gz|zip|bin|dsk|hdf)$", re.I)
-
 #: (file, text the string starts with) for a string that looks like a machine
 #: path and is not a lookup. By string, not by file, so a new lookup in the
 #: same file is still caught.
@@ -232,8 +226,7 @@ def test_no_machine_path_is_looked_up_in_code(files):
                     and isinstance(node.value, str)) or id(node) in docstrings:
                 continue
             low = node.value.lower()
-            if any(part in low for part in _MACHINE_PATH) or _WORK_INPUT.match(
-                    node.value):
+            if any(part in low for part in _MACHINE_PATH):
                 if any(name == f and node.value.startswith(text)
                        for f, text in _NOT_A_LOOKUP):
                     continue
@@ -241,73 +234,6 @@ def test_no_machine_path_is_looked_up_in_code(files):
     assert not bad, (
         "Game data reached by a path written in code instead of the registry:\n"
         + "\n".join(bad))
-
-
-# -- citations into gitignored scratch ---------------------------------------
-
-#: How far either side of a citation to look for the words that mark it lost.
-#: Three lines covers a citation wrapped across a sentence without reaching the
-#: next paragraph, which would let an unrelated "lost" excuse it.
-LOST_WINDOW = 3
-
-#: Wording that marks a citation as pointing at something no longer there.
-LOST = ("lost", "not currently present", "absent from", "no longer")
-
-#: Places where `work/reports/...` is where a tool *writes*, not where evidence
-#: *is*. These are not citations and the rule does not apply to them. Keep this
-#: short: a new entry is a claim that the path is an output, and if it is really
-#: a citation it belongs in `docs/` instead.
-OUTPUT_PATHS = {
-    "tools/iconsheet.py",
-    "tools/shotwindow.py",
-    "docs/109-icon-choices.md",       # the command line that runs iconsheet.py
-}
-
-CITING = ("docs", "automap", "goldbox", "editor", "wish", "ui", "tools")
-
-
-def test_no_citation_points_at_a_write_up_that_is_not_there(files):
-    """A `work/reports/` citation is a real file, or says it is lost.
-
-    `work/` is gitignored, so a permanent citation into it survives exactly as
-    long as one developer's scratch directory. `work/reports/` held 32
-    write-ups and all 32 went when it was deleted, taking the evidence for 80
-    citations across 29 documents with them (#136).
-    `.claude/rules/documentation.md` now puts a write-up's permanent home in
-    `docs/`; this is what stops the rule being
-    forgotten.
-
-    **Scoped to `work/reports/` on purpose.** There are ~300 other references
-    to working directories -- `work/p60/`, `work/drive/`, the emulator's
-    scratch -- and those are records of where something was *done*, not
-    citations of reasoning. Widening this test to all of `work/` would fail
-    306 times today and is its own piece of work, not this one's.
-    """
-    bad = []
-    for rel in files:
-        if rel.parts[0] not in CITING or rel.suffix not in (".md", ".py"):
-            continue
-        # `as_posix()`, not `str()`: on Windows a tracked path renders as
-        # `tools\\iconsheet.py` and never matches the allowlist, which is how
-        # this test went red on both Windows jobs and green on Linux.
-        if rel.as_posix() in OUTPUT_PATHS:
-            continue
-        lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
-        for i, line in enumerate(lines):
-            if "work/reports/" not in line:
-                continue
-            window = " ".join(lines[max(0, i - LOST_WINDOW):
-                                    i + LOST_WINDOW + 1]).lower()
-            if any(word in window for word in LOST):
-                continue
-            for cited in re.findall(r"work/reports/[A-Za-z0-9._/-]+", line):
-                if not (ROOT / cited.rstrip(".,;:`)")).exists():
-                    bad.append(f"{rel.as_posix()}:{i + 1}  {cited}")
-    assert not bad, (
-        "these cite a write-up under gitignored `work/reports/` without saying "
-        "it is lost, and the file is not there:\n  " + "\n  ".join(bad)
-        + "\n\nA write-up's permanent home is `docs/` -- see "
-          "`.claude/rules/documentation.md`.")
 
 
 #: The rule files, and the page holding the incidents behind them. Both are
@@ -334,7 +260,7 @@ def test_no_citation_points_at_a_rule_file_that_is_not_there(files):
     """
     bad = []
     for rel in files:
-        if rel.suffix not in (".md", ".py") or rel.parts[0] == "work":
+        if rel.suffix not in (".md", ".py"):
             continue
         for i, line in enumerate((ROOT / rel).read_text(encoding="utf-8").splitlines()):
             for name in RULE_CITATION.findall(line):
@@ -622,3 +548,310 @@ def test_no_bare_issue_number_where_a_citation_belongs(files):
         "these cite an issue by bare number instead of `#N (Title)`:\n  "
         + "\n  ".join(bad)
         + "\n\nTake the title from `gh issue view N --json number,title`.")
+
+
+# -- nothing tracked may name the scratch directory --------------------------
+#
+# Donald, 2026-09-18: the gitignored scratch directory at the repository root
+# is deleted for good, and nothing in the repository may name it as an input or
+# an output. Two scans, because a path is written two ways: as text anywhere, and
+# as a path segment in Python where the text has no slash to find. The checkers
+# take text or source so the tests below can hand them a violation.
+
+#: A repo-relative path into the scratch directory. The lookbehind lets a longer
+#: path through: `network/x`, `homework/x`, `a/work/b`, `~/.cache/work/x` and
+#: `my-work/x` all have a word character, slash, dot, tilde or hyphen in front
+#: of the name, so they are somebody else's. The lookahead wants a path
+#: character after the slash, so `work/` at the end of a line or before a space
+#: is prose about the directory and is not matched -- which is also why the
+#: `.gitignore` line for it is not the thing this reports.
+WORK_PATH = re.compile(r"(?<![\w/.~-])work/[\w.<{$*-]")
+
+#: Not scanned: this file, whose fixtures below are violations on purpose.
+WORK_SCAN_SKIPS = {"tests/test_repository_contents.py"}
+
+#: A `Path(...)` or a `join` is how Python builds a path from a segment.
+_PATH_BUILDERS = {"Path", "PurePath", "PosixPath", "WindowsPath",
+                  "PurePosixPath", "PureWindowsPath", "joinpath", "join"}
+
+#: How many `path:line` entries a failure lists before it says how many more.
+WORK_REPORT_CAP = 40
+
+
+def work_path_lines(text: str) -> list[int]:
+    """Line numbers (from 1) of `text` that name a path into the scratch dir."""
+    return [n for n, line in enumerate(text.splitlines(), 1)
+            if WORK_PATH.search(line)]
+
+
+def _is_work_constant(node) -> bool:
+    return isinstance(node, ast.Constant) and node.value == "work"
+
+
+def _callee_name(func) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def work_segment_lines(source: str) -> list[int]:
+    """Line numbers where Python source uses the string "work" as a path
+    segment: `x / "work"`, `Path("work")`, `Path(root, "work")`,
+    `os.path.join(root, "work")`, `root.joinpath("work")`.
+
+    A `"work"` that is a dict key, a word in prose or a comparison is not a path
+    segment and is not reported. Source that does not parse reports nothing:
+    another test owns that failure.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    lines = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            if _is_work_constant(node.right) or _is_work_constant(node.left):
+                lines.add(node.lineno)
+        elif isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Div):
+            if _is_work_constant(node.value):
+                lines.add(node.lineno)
+        elif isinstance(node, ast.Call):
+            if (_callee_name(node.func) in _PATH_BUILDERS
+                    and any(_is_work_constant(a) for a in node.args)):
+                lines.add(node.lineno)
+    return sorted(lines)
+
+
+def _readable_text(root: pathlib.Path, rel: pathlib.Path) -> str | None:
+    """The file's text, or None for anything that is not a text file: a binary,
+    a symlink to nowhere, a directory, or a file tracked but deleted from the
+    working tree (which is a change somebody has not committed yet)."""
+    path = root / rel
+    if not path.is_file():
+        return None
+    data = path.read_bytes()
+    if b"\0" in data:
+        return None
+    return data.decode("utf-8", errors="replace")
+
+
+def scan_for_work_paths(root: pathlib.Path, rels) -> list[str]:
+    """`path:line` for every text file in `rels` that names a path into the
+    scratch directory, as text."""
+    hits = []
+    for rel in rels:
+        if rel.as_posix() in WORK_SCAN_SKIPS:
+            continue
+        text = _readable_text(root, rel)
+        if text is not None:
+            hits += [f"{rel.as_posix()}:{n}" for n in work_path_lines(text)]
+    return hits
+
+
+def scan_for_work_segments(root: pathlib.Path, rels) -> list[str]:
+    """`path:line` for every `.py` in `rels` that builds a path through the
+    scratch directory."""
+    hits = []
+    for rel in rels:
+        if rel.suffix != ".py" or rel.as_posix() in WORK_SCAN_SKIPS:
+            continue
+        text = _readable_text(root, rel)
+        if text is not None:
+            hits += [f"{rel.as_posix()}:{n}" for n in work_segment_lines(text)]
+    return hits
+
+
+def _listing(hits: list[str]) -> str:
+    shown = "\n  ".join(hits[:WORK_REPORT_CAP])
+    more = len(hits) - WORK_REPORT_CAP
+    return shown + (f"\n  ... and {more} more" if more > 0 else "")
+
+
+def test_no_tracked_file_names_the_scratch_directory(files):
+    hits = scan_for_work_paths(ROOT, files)
+    assert not hits, (
+        f"{len(hits)} places name a path into the deleted scratch directory. "
+        "A run's output goes to a temp directory (tools/scratch.py) and a "
+        "finding goes in a comment on its issue or in docs/:\n  "
+        + _listing(hits))
+
+
+def test_no_python_file_builds_a_path_through_the_scratch_directory(files):
+    hits = scan_for_work_segments(ROOT, files)
+    assert not hits, (
+        f"{len(hits)} places build a path through the deleted scratch "
+        "directory in code:\n  " + _listing(hits))
+
+
+def test_the_scratch_directory_does_not_exist():
+    """Fails the moment anything recreates it. `pytest_sessionfinish` in
+    `tests/conftest.py` covers a test that makes it after this one has run."""
+    import conftest
+    found = conftest.scratch_directory_present(ROOT)
+    assert found is None, (
+        f"{found} exists. It is deleted for good; something wrote there, or a "
+        "worktree was given a link to it.")
+
+
+# -- the guard itself ---------------------------------------------------------
+
+@pytest.mark.parametrize("text", [
+    "work/foo",
+    "cd work/issue12 && ls",
+    "see `work/<n>/out.txt`",
+    "open('work/{name}.log')",
+    "ls work/*",
+    "work/.hidden",
+    "out = \"work/x\"",
+    "and/or work/school",      # prose is matched too: the regex cannot tell
+])
+def test_the_text_check_flags_a_path_into_the_scratch_directory(text):
+    assert work_path_lines(text) == [1]
+
+
+@pytest.mark.parametrize("text", [
+    "network/foo",
+    "homework/x",
+    "~/.cache/work/x",
+    "a/work/b",                # a longer path: the slash in front lets it through
+    "my-work/x",
+    "x.work/y",
+    "~work/x",
+    "the work/",               # nothing after the slash
+    "work/ is deleted",
+    "work",
+    "at work",
+])
+def test_the_text_check_leaves_other_paths_alone(text):
+    assert work_path_lines(text) == []
+
+
+def test_the_text_check_reports_the_right_line():
+    assert work_path_lines("fine\nfine\nrm -r work/tmp\nfine") == [3]
+
+
+@pytest.mark.parametrize("source", [
+    'p = root / "work"',
+    'p = "work" / root',
+    'p = root / "work" / "out"',
+    'p = Path("work")',
+    'p = pathlib.Path("work")',
+    'p = PurePath("work")',
+    'p = pathlib.PurePosixPath("work", "x")',
+    'p = Path(root, "work")',
+    'p = os.path.join(root, "work", "x")',
+    'p = join("work", "x")',
+    'p = root.joinpath("work")',
+    'p /= "work"',
+])
+def test_the_source_check_flags_work_as_a_path_segment(source):
+    assert work_segment_lines(source) == [1]
+
+
+@pytest.mark.parametrize("source", [
+    'd = {"work": 1}',
+    'msg = "the work is done"',
+    'if kind == "work":\n    pass',
+    'p = root / "network"',
+    'p = Path("homework")',
+    'p = os.path.join(root, "homework")',
+    'print("work")',
+    'x = ["work", "play"]',
+    'p = ", ".join(["work", "play"])',
+])
+def test_the_source_check_leaves_other_uses_of_the_word_alone(source):
+    assert work_segment_lines(source) == []
+
+
+def test_the_source_check_reports_the_right_line():
+    assert work_segment_lines('a = 1\nb = 2\np = root / "work"\n') == [3]
+
+
+def test_a_scan_over_files_reports_path_and_line_and_skips_what_it_should(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "bad.md").write_text("fine\nrun work/x\n")
+    (tmp_path / "bad.py").write_text('p = root / "work"\nq = "work/y"\n')
+    (tmp_path / "ok.md").write_text("network/x and ~/.cache/work/y\n")
+    (tmp_path / "blob.bin").write_bytes(b"\0work/x\0")
+    # The guard's own fixtures are violations on purpose.
+    (tmp_path / "tests" / "test_repository_contents.py").write_text("work/x\n")
+    rels = [pathlib.Path(n) for n in (
+        "bad.md", "bad.py", "ok.md", "blob.bin", "gone.md",
+        "tests/test_repository_contents.py")]
+
+    assert scan_for_work_paths(tmp_path, rels) == [
+        "bad.md:2", "bad.py:2"]
+    assert scan_for_work_segments(tmp_path, rels) == ["bad.py:1"]
+
+
+def test_a_long_report_says_how_many_it_left_out():
+    hits = [f"f.md:{n}" for n in range(WORK_REPORT_CAP + 5)]
+    listing = _listing(hits)
+    assert f"f.md:{WORK_REPORT_CAP - 1}" in listing
+    assert f"f.md:{WORK_REPORT_CAP}" not in listing
+    assert "and 5 more" in listing
+
+
+def test_the_session_hook_fails_a_run_that_leaves_the_directory(tmp_path, monkeypatch):
+    import conftest
+    monkeypatch.setattr(conftest, "_REPO_ROOT", tmp_path)
+
+    class Reporter:
+        lines: list[str] = []
+
+        def write_line(self, line, **_):
+            self.lines.append(line)
+
+    def session(reporter=None, worker=False):
+        config = types.SimpleNamespace(
+            pluginmanager=types.SimpleNamespace(get_plugin=lambda _: reporter))
+        if worker:
+            config.workerinput = {}
+        return types.SimpleNamespace(config=config, exitstatus=0)
+
+    # Absent: silent, and the exit status is untouched.
+    quiet = session(Reporter())
+    conftest.pytest_sessionfinish(quiet, 0)
+    assert quiet.exitstatus == 0 and Reporter.lines == []
+
+    (tmp_path / conftest._SCRATCH_NAME).mkdir()
+    assert conftest.scratch_directory_present(tmp_path) is not None
+
+    # Present: says so and fails the run.
+    failing = session(Reporter())
+    conftest.pytest_sessionfinish(failing, 0)
+    assert failing.exitstatus == 1
+    assert len(Reporter.lines) == 1 and "exists at the end" in Reporter.lines[0]
+
+    # An xdist worker leaves it to the controller.
+    worker = session(Reporter(), worker=True)
+    conftest.pytest_sessionfinish(worker, 0)
+    assert worker.exitstatus == 0 and len(Reporter.lines) == 1
+
+    # A run that already failed keeps its own status.
+    interrupted = session(Reporter())
+    interrupted.exitstatus = 2
+    conftest.pytest_sessionfinish(interrupted, 2)
+    assert interrupted.exitstatus == 2
+
+
+def test_the_session_hook_prints_when_there_is_no_terminal_reporter(
+        tmp_path, monkeypatch, capsys):
+    import conftest
+    monkeypatch.setattr(conftest, "_REPO_ROOT", tmp_path)
+    (tmp_path / conftest._SCRATCH_NAME).mkdir()
+    config = types.SimpleNamespace(
+        pluginmanager=types.SimpleNamespace(get_plugin=lambda _: None))
+    session = types.SimpleNamespace(config=config, exitstatus=0)
+    conftest.pytest_sessionfinish(session, 0)
+    assert "exists at the end" in capsys.readouterr().err
+    assert session.exitstatus == 1
+
+
+def test_a_file_or_a_missing_directory_is_not_the_scratch_directory(tmp_path):
+    import conftest
+    assert conftest.scratch_directory_present(tmp_path) is None
+    (tmp_path / conftest._SCRATCH_NAME).write_text("x")
+    assert conftest.scratch_directory_present(tmp_path) is None

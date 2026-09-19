@@ -224,7 +224,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Project-specific
-work/
 *.d64.bak
 # One machine's own game-disk locations -- #212. `gamedisks.yaml.example` is
 # the registry this project ships; a clone copies it to `gamedisks.yaml` and
@@ -245,8 +244,7 @@ gamedisks.yaml
 # The subagent definitions, the standards under `rules/`, the hooks and the
 # project settings are the project's, not one machine's; everything else under
 # `.claude/` is local state. The hooks are tracked because an untracked tool is
-# a tool this project has already lost twice -- `work/amiga/m68dis.py` and the
-# 32 write-ups under `work/reports/` (#136, #148).
+# a tool this project has already lost twice (#136, #148).
 .claude/*
 !.claude/agents/
 !.claude/hooks/
