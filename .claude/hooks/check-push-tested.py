@@ -12,14 +12,17 @@ and the full suite was the step that was skipped.
 
 So, like `check-orchestrator-edits.py`, this makes the rule mechanical. A
 `PreToolUse` hook on Bash: when the command is a `git push`, it looks for a
-marker `~/.cache/wish/testrun/<sha>.green`, which `test-runner` writes after
-`pytest`, `ruff` and `genui.py --check` all pass at that commit. The push is
-allowed when:
+marker `~/.cache/wish/testrun/<tree>.green`, which `tools/suite/suiterun.py`
+writes after `pytest`, `ruff` and `genui.py --check` all pass. `<tree>` is the
+hash of the tip's tree, not of the commit, so rewording a message or rebasing
+over unchanged files still matches, and changing any file does not. The push
+is allowed when:
 
-  * the tip has a marker; or
-  * some ancestor of the tip has a marker and everything between it and the
-    tip is prose -- `.md` files outside `.claude/agents/` -- so a README row
-    or a document after the run does not need a second run; or
+  * the tip's tree has a marker; or
+  * the tree of some ancestor of the tip has a marker and the files that
+    differ between that tree and the tip's are all prose -- `.md` files
+    outside `.claude/agents/` -- so a README row or a document after the run
+    does not need a second run; or
   * everything between the upstream and the tip is prose, which is
     `commits.md`'s own exception, unchanged.
 
@@ -28,7 +31,8 @@ the call, so it can only vouch for the HEAD it sees, and `git commit && git
 push` would push a commit it never checked.
 
 Otherwise it refuses with exit 2, and its stderr, which goes back to the
-assistant as the tool's result, says to send the suite to `test-runner`.
+assistant as the tool's result, says to run `tools/suite/suiterun.py` or send
+the suite to `test-runner`. A tip whose tree git cannot name is refused too.
 
 **This is a tripwire, not a boundary.** It reads one Bash call as a shell
 would tokenise it. A heredoc body is data unless a shell is reading it, in
@@ -176,15 +180,37 @@ def is_code(path: str) -> bool:
     return path.startswith(".claude/agents/")
 
 
-def changed_paths(cwd: str, base: str) -> list[str] | None:
-    out = _git(cwd, "diff", "--name-only", f"{base}..HEAD")
+def _paths(cwd: str, *revs: str) -> list[str] | None:
+    """The files that differ across `revs`, both sides of a rename included.
+
+    Without `--no-renames` a `mod.py` renamed to `mod.md` lists only the `.md`,
+    and a code change would read as prose.
+    """
+    out = _git(cwd, "diff", "--name-only", "--no-renames", *revs)
     if out is None:
         return None
     return [p for p in out.splitlines() if p.strip()]
 
 
+def changed_paths(cwd: str, base: str) -> list[str] | None:
+    return _paths(cwd, f"{base}..HEAD")
+
+
+def tree_paths(cwd: str, old: str, new: str) -> list[str] | None:
+    """The files that differ between two tree hashes, which need not belong to a commit."""
+    return _paths(cwd, old, new)
+
+
+def ancestor_trees(cwd: str) -> list[str] | None:
+    """The tree hash of HEAD and of every ancestor of it, nearest first."""
+    out = _git(cwd, "log", "--format=%T", "HEAD")
+    if out is None:
+        return None
+    return out.split()
+
+
 def markers() -> list[str]:
-    """Recorded green shas, newest first."""
+    """Recorded green tree hashes, newest first."""
     path = marker_dir()
     try:
         names = [n for n in os.listdir(path) if n.endswith(".green")]
@@ -201,13 +227,21 @@ def verdict(cwd: str) -> str | None:
     head = _git(cwd, "rev-parse", "HEAD")
     if not root or not head:
         return None
+    tree = _git(cwd, "rev-parse", "HEAD^{tree}")
+    if not tree:
+        return (f"Refused: git cannot name the tree of {head}, so no marker "
+                "can be matched to it. Fix the repository, then push again.\n")
     recorded = markers()
-    if head in recorded:
+    if tree in recorded:
         return None
-    for sha in recorded[:MARKERS_CHECKED]:
-        if _git(cwd, "merge-base", "--is-ancestor", sha, "HEAD") is None:
+    # A marker belongs to a tree, and the commit that made it may have been
+    # reworded or rebased away, so the walk asks which recorded trees are the
+    # tree of some ancestor and diffs trees, never commits.
+    ancestors = set(ancestor_trees(cwd) or [])
+    for marked in recorded[:MARKERS_CHECKED]:
+        if marked not in ancestors:
             continue
-        between = changed_paths(cwd, sha)
+        between = tree_paths(cwd, marked, tree)
         if between is not None and not any(is_code(p) for p in between):
             return None
     carried = changed_paths(cwd, "@{upstream}")
@@ -217,14 +251,22 @@ def verdict(cwd: str) -> str | None:
         return None
     if not any(is_code(p) for p in carried):
         return None
+    return refusal_for(head, tree)
+
+
+def refusal_for(head: str, tree: str) -> str:
+    """What to tell the assistant when the tip has no marker."""
     return (
-        f"Refused: no green suite is recorded for {head}. Send the whole "
-        "suite to test-runner at this commit; on a green run it writes "
-        f"{MARKER_DIR}/{head}.green, and then the push goes through. A "
-        "commit made after the run is fine if it touches only "
-        "prose .md files; anything else, including pyproject.toml, an agent "
-        "definition or a TOML file, means the run happens again at the new "
-        "tip. A push carrying only prose .md changes needs no run.\n")
+        f"Refused: no green suite is recorded for the tree of {head} "
+        f"({tree}). The marker is keyed on the tip's tree, so a reworded "
+        "commit still matches and a changed file does not. Run "
+        "tools/suite/suiterun.py on the tip, or send the whole suite to "
+        f"test-runner; on a green run it writes {MARKER_DIR}/{tree}.green, "
+        "and then the push goes through. A commit made after the run is fine "
+        "if it changes only prose .md files; anything else, including "
+        "pyproject.toml, an agent definition or a TOML file, means the run "
+        "happens again at the new tip. A push carrying only prose .md "
+        "changes needs no run.\n")
 
 
 def main() -> int:

@@ -407,6 +407,40 @@ def test_a_sigterm_mid_run_removes_the_worktree_and_its_parent(clones, tmp_path,
     assert signal.getsignal(signal.SIGTERM) is before
 
 
+def _green_run(mine, tmp_path, monkeypatch, result=(True, "1 passed", "")):
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    monkeypatch.setattr(suiterun, "RUFF", pathlib.Path(sys.executable))
+    monkeypatch.setattr(suiterun, "marker_dir", lambda: tmp_path / "testrun")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(suiterun, "run_checks", lambda worktree: result)
+    return suiterun.main(["HEAD", "--no-rebase"])
+
+
+def test_a_green_run_names_its_marker_for_the_tree_and_not_the_commit(clones, tmp_path, monkeypatch):
+    """The push hook looks the tip up by tree, so a name made from the commit would never match."""
+    _, mine = clones
+    tip = _git(mine, "rev-parse", "HEAD")
+    tree = _git(mine, "rev-parse", "HEAD^{tree}")
+    assert _green_run(mine, tmp_path, monkeypatch) == 0
+    assert [f.name for f in (tmp_path / "testrun").iterdir()] == [f"{tree}.green"]
+    assert tip != tree
+
+
+def test_a_reworded_commit_is_named_for_the_same_marker(clones, tmp_path, monkeypatch):
+    _, mine = clones
+    before = _git(mine, "rev-parse", "HEAD^{tree}")
+    _git(mine, "commit", "-q", "--amend", "-m", "the same files, another sentence")
+    assert _git(mine, "rev-parse", "HEAD^{tree}") == before
+    assert _green_run(mine, tmp_path, monkeypatch) == 0
+    assert [f.name for f in (tmp_path / "testrun").iterdir()] == [f"{before}.green"]
+
+
+def test_a_red_run_writes_no_marker(clones, tmp_path, monkeypatch):
+    _, mine = clones
+    assert _green_run(mine, tmp_path, monkeypatch, (False, "1 failed", "FAILED x")) == 1
+    assert not (tmp_path / "testrun").exists()
+
+
 CHILD = textwrap.dedent("""
     import pathlib, sys, time
     from tools.suite import datatouch, suiterun

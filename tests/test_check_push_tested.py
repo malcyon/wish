@@ -4,8 +4,9 @@
 that carries code. On 2026-09-16 the orchestrator pushed eighteen times and
 launched `test-runner` once, and the batch closing `#89` turned `main` red
 on a test neither the builder nor the reviewer had run. The hook is that
-sentence's enforcement: `tools/suite/suiterun.py` writes `~/.cache/wish/testrun/<sha>.green`
-after a green run, and a push without one stops here rather than on CI.
+sentence's enforcement: `tools/suite/suiterun.py` writes
+`~/.cache/wish/testrun/<tree>.green`, named for the hash of the tested tip's
+tree, after a green run, and a push without one stops here rather than on CI.
 """
 import importlib.util
 import io
@@ -72,10 +73,19 @@ def home(tmp_path, monkeypatch):
     return home
 
 
-def mark(work, sha):
+def mark_tree(tree):
     d = pathlib.Path(_module().marker_dir())
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{sha}.green").write_text("1 passed\n")
+    (d / f"{tree}.green").write_text("1 passed\n")
+
+
+def mark(work, sha):
+    """Record a green run for the tree of `sha`, as `suiterun.py` does."""
+    mark_tree(git(work, "rev-parse", f"{sha}^{{tree}}"))
+
+
+def tree_of(work, rev="HEAD"):
+    return git(work, "rev-parse", f"{rev}^{{tree}}")
 
 
 def run(monkeypatch, command, cwd, tool="Bash"):
@@ -88,9 +98,12 @@ def run(monkeypatch, command, cwd, tool="Bash"):
 
 def test_a_push_carrying_code_with_no_marker_is_refused(clone, monkeypatch, capsys):
     sha = commit(clone, "mod.py")
+    tree = tree_of(clone)
     assert run(monkeypatch, "git push", clone) == 2
     err = capsys.readouterr().err
     assert sha in err
+    assert f"testrun/{tree}.green" in err
+    assert "suiterun.py" in err
     assert "test-runner" in err
 
 
@@ -115,10 +128,110 @@ def test_a_code_commit_on_top_of_a_tested_one_is_refused(clone, monkeypatch):
     assert run(monkeypatch, "git push", clone) == 2
 
 
-def test_a_stale_marker_for_a_commit_that_is_not_an_ancestor_does_not_count(clone, monkeypatch):
+def test_a_stale_marker_for_a_tree_that_is_not_an_ancestors_does_not_count(clone, monkeypatch):
     commit(clone, "mod.py")
-    mark(clone, "0" * 40)
+    mark_tree("0" * 40)
     assert run(monkeypatch, "git push", clone) == 2
+
+
+def test_a_marker_named_for_the_commit_does_not_count(clone, monkeypatch):
+    """The lookup is by tree, so a marker made the old way, from the commit's own hash, matches nothing."""
+    sha = commit(clone, "mod.py")
+    mark_tree(sha)
+    assert run(monkeypatch, "git push", clone) == 2
+
+
+def test_a_reworded_commit_keeps_the_marker_made_for_the_original(clone, monkeypatch):
+    """Same files, different message and so a different sha: the suite result still holds."""
+    original = commit(clone, "mod.py")
+    mark(clone, original)
+    git(clone, "commit", "-q", "--amend", "-m", "another sentence")
+    assert git(clone, "rev-parse", "HEAD") != original
+    assert run(monkeypatch, "git push", clone) == 0
+
+
+def test_a_rebase_over_unchanged_files_keeps_the_marker(clone, monkeypatch):
+    """A rebase gives every commit a new sha and leaves the tip's tree alone."""
+    base = git(clone, "rev-parse", "HEAD")
+    git(clone, "checkout", "-q", "-b", "side")
+    commit(clone, "mod.py")
+    mark(clone, "HEAD")
+    git(clone, "checkout", "-q", "main")
+    git(clone, "commit", "-q", "--allow-empty", "-m", "an empty step")
+    git(clone, "checkout", "-q", "side")
+    git(clone, "rebase", "-q", "main")
+    assert git(clone, "rev-parse", "HEAD~1") != base
+    assert run(monkeypatch, "git push", clone) == 0
+
+
+def test_a_commit_that_changes_one_file_is_refused_with_the_marker_of_the_one_before(clone, monkeypatch):
+    tested = commit(clone, "mod.py", "one\n")
+    mark(clone, tested)
+    commit(clone, "mod.py", "two\n")
+    assert run(monkeypatch, "git push", clone) == 2
+
+
+def test_prose_on_top_of_a_reworded_tested_commit_needs_no_second_run(clone, monkeypatch):
+    """The marker's commit no longer exists under its old sha, and its tree is still in the history."""
+    tested = commit(clone, "mod.py")
+    mark(clone, tested)
+    git(clone, "commit", "-q", "--amend", "-m", "reworded")
+    commit(clone, "docs/note.md")
+    commit(clone, "tools/README.md")
+    assert run(monkeypatch, "git push", clone) == 0
+
+
+def test_code_on_top_of_a_reworded_tested_commit_is_refused(clone, monkeypatch):
+    tested = commit(clone, "mod.py")
+    mark(clone, tested)
+    git(clone, "commit", "-q", "--amend", "-m", "reworded")
+    commit(clone, "docs/note.md")
+    commit(clone, "other.py")
+    assert run(monkeypatch, "git push", clone) == 2
+
+
+def test_a_code_file_renamed_to_markdown_is_still_code(clone, monkeypatch):
+    """`git diff --name-only` lists only the new name of a rename, which would read as prose."""
+    tested = commit(clone, "mod.py", "a fairly long body\n" * 20)
+    mark(clone, tested)
+    git(clone, "push", "-q")
+    git(clone, "mv", "mod.py", "mod.md")
+    git(clone, "commit", "-q", "-m", "rename")
+    assert run(monkeypatch, "git push", clone) == 2
+
+
+def test_a_tip_whose_tree_git_cannot_name_is_refused(clone, monkeypatch):
+    """Nothing can be matched to a marker, so the answer is no rather than a guess."""
+    sha = commit(clone, "mod.py")
+    mark(clone, sha)
+    mod = _module()
+    real = mod._git
+
+    def failing(cwd, *args):
+        if "HEAD^{tree}" in args:
+            return None
+        return real(cwd, *args)
+
+    monkeypatch.setattr(mod, "_git", failing)
+    assert mod.verdict(str(clone)) is not None
+
+
+def test_a_history_git_cannot_list_refuses_where_only_an_ancestor_has_a_marker(clone, monkeypatch):
+    tested = commit(clone, "mod.py")
+    mark(clone, tested)
+    commit(clone, "docs/note.md")
+    mod = _module()
+    assert mod.verdict(str(clone)) is None
+    real = mod._git
+
+    def failing(cwd, *args):
+        if args[:1] == ("log",):
+            return None
+        return real(cwd, *args)
+
+    monkeypatch.setattr(mod, "_git", failing)
+    # The upstream check is what is left, and it sees the code commit.
+    assert mod.verdict(str(clone)) is not None
 
 
 def test_a_documentation_only_push_needs_no_marker(clone, monkeypatch):
@@ -335,7 +448,8 @@ def test_the_hook_and_suiterun_read_and_write_one_directory(home):
 @pytest.mark.skipif(WINDOWS, reason="/usr/bin/python3 does not exist on Windows")
 def test_the_hook_runs_under_the_system_interpreter(clone, home):
     """The harness runs it, not `.venv`, so it must be standard library only."""
-    sha = commit(clone, "mod.py")
+    commit(clone, "mod.py")
+    tree = tree_of(clone)
     payload = {"tool_name": "Bash", "cwd": str(clone),
                "tool_input": {"command": "git push"}}
     done = subprocess.run(["/usr/bin/python3", str(HOOK)],
@@ -343,7 +457,7 @@ def test_the_hook_runs_under_the_system_interpreter(clone, home):
                           env={**os.environ, "HOME": str(home)},
                           text=True, timeout=60)
     assert done.returncode == 2, done.stderr
-    assert sha in done.stderr
+    assert tree in done.stderr
 
 
 def test_strip_comments_joins_only_the_newlines_outside_quotes():

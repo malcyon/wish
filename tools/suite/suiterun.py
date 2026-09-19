@@ -7,7 +7,9 @@ This is the one run that gates a push (`.claude/rules/commits.md`), made
 into a single command so that the green marker is written by the command
 that saw the checks pass, and never by an agent concluding that it did.
 `.claude/hooks/check-push-tested.py` refuses a `git push` with no marker for
-the tip, so `~/.cache/wish/testrun/<sha>.green` is what lets a push through.
+the tip, so `~/.cache/wish/testrun/<tree>.green` is what lets a push through.
+`<tree>` is the hash of the tested commit's tree, so a reworded or rebased
+commit over the same files still matches and a changed file does not.
 
 What it does, in order, and all of it against the same checkout:
 
@@ -35,7 +37,7 @@ What it does, in order, and all of it against the same checkout:
    without repeating the whole suite.
 6. `ruff check .` in the worktree.
 7. `tools/generate/genui.py --check` in the worktree.
-8. If all of it passed, write `~/.cache/wish/testrun/<sha>.green`,
+8. If all of it passed, write `~/.cache/wish/testrun/<tree>.green`,
    holding pytest's summary line. On any failure, write nothing.
 9. Remove the worktree and the directory that held it, whatever happened,
    unless `--keep`. A `SIGTERM` is turned into an exit so this still runs, and
@@ -198,6 +200,14 @@ def resolve(sha: str) -> str:
     return done.stdout.strip()
 
 
+def tree_of(sha: str) -> str:
+    """The hash of `sha`'s tree, which is what the marker is named for."""
+    done = _run(["git", "rev-parse", "--verify", f"{sha}^{{tree}}"], REPO, 30)
+    if done.returncode != 0:
+        raise SystemExit(f"no tree for {sha}, nothing was tested:\n{done.stderr.strip()}")
+    return done.stdout.strip()
+
+
 def summary_of(pytest_output: str) -> str:
     found = SUMMARY.findall(pytest_output)
     return found[-1] if found else pytest_output.strip().splitlines()[-1]
@@ -312,6 +322,7 @@ def main(argv=None) -> int:
     if not args.no_rebase:
         sha, note = rebase_onto_origin(REPO, sha)
         print(note)
+    tree = tree_of(sha)
     root = scratch.scratch_dir("suiterun")
     _sweep(root)
     base = pathlib.Path(tempfile.mkdtemp(prefix=_prefix(), dir=scratch.ensure(root)))
@@ -334,12 +345,12 @@ def main(argv=None) -> int:
             _run(["git", "worktree", "remove", "--force", "--force", str(worktree)], REPO, 120)
             _run(["git", "worktree", "prune"], REPO, 60)
             shutil.rmtree(base, ignore_errors=True)
-    print(f"target {sha}")
+    print(f"target {sha} tree {tree}")
     if not green:
         print("RED, no marker written")
         print(failure)
         return 1
-    marker = scratch.ensure(marker_dir()) / f"{sha}.green"
+    marker = scratch.ensure(marker_dir()) / f"{tree}.green"
     marker.write_text(summary + "\n")
     print(f"GREEN: {summary}")
     print(f"marker {marker}")
