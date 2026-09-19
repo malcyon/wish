@@ -14,8 +14,12 @@ import weakref
 
 
 def test_a_collected_test_module_is_out_of_the_collectors_walk():
-    """`gc.get_objects()` leaves the permanent generation out."""
-    assert sys.modules[__name__] not in gc.get_objects()
+    """`gc.get_objects()` leaves the permanent generation out.
+
+    The search is by identity: `in` would run the `__eq__` of every unrelated
+    live object, and some of those raise.
+    """
+    assert not any(o is sys.modules[__name__] for o in gc.get_objects())
 
 
 def test_an_object_built_during_a_test_is_in_the_collectors_walk():
@@ -25,7 +29,7 @@ def test_an_object_built_during_a_test_is_in_the_collectors_walk():
         pass
 
     built = Built()
-    assert built in gc.get_objects()
+    assert any(o is built for o in gc.get_objects())
 
 
 def test_a_cycle_built_after_the_freeze_is_still_collected():

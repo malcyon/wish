@@ -253,8 +253,8 @@ def pytest_collection_finish(session):
     """Move every object the collected modules hold out of the collector's walk.
 
     Imported modules, classes and constants never become garbage, so each
-    per-test `gc.collect()` below no longer has to trace them; what a test
-    builds after this point is still collected.
+    `gc.collect()` in `_collect_between_tests` below no longer has to trace
+    them; what a test builds after this point is still collected.
     """
     gc.collect()
     gc.freeze()
