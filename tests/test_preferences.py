@@ -41,6 +41,8 @@ from wish.preferences import PreferencesDialog, report
 
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
+pytestmark = pytest.mark.usefixtures("no_registry")
+
 
 @pytest.fixture
 def app():

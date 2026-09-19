@@ -19,6 +19,7 @@ import pathlib
 
 import pytest
 
+from automap import gamedisks
 from goldbox import c64_port, items, yaml_io
 from goldbox.d64 import D64, split_load_address
 
@@ -32,9 +33,12 @@ KEYS = [g.key for g in c64_port.GAMES]
 # look one level down from the places disks live and match `Game.disk_glob`,
 # which is already per-title and already right.
 
-def _roots() -> list[pathlib.Path]:
+def _roots(key: str) -> list[pathlib.Path]:
+    """The registry's paths for this title, then the places somebody would put
+    disks by hand."""
     home = pathlib.Path.home()
-    bases = [pathlib.Path.cwd(), home, home / "c64",
+    bases = [*gamedisks.candidates(key),
+             pathlib.Path.cwd(), home, home / "c64",
              home / "Documents", home / "Games", home / "roms",
              home / "Downloads"]
     out: list[pathlib.Path] = []
@@ -57,7 +61,7 @@ def disks_for(key: str) -> tuple[pathlib.Path, ...]:
     """
     glob = c64_port.by_key(key).disk_glob
     out: list[pathlib.Path] = []
-    for root in _roots():
+    for root in _roots(key):
         try:
             out += sorted(root.glob(glob))
         except OSError:

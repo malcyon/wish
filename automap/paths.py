@@ -63,10 +63,26 @@ def _dir_names(game: c64_port.C64Container | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(out))
 
 
-# Where the game disks might be. `POR_DISKS` wins; otherwise look in the places
-# somebody would actually put them, and finally the working directory. There is
-# deliberately no absolute default -- an earlier version hard-coded one
-# developer's home directory, which is useless to everybody else.
+def _registered_candidates(game: c64_port.C64Container | None) -> list[pathlib.Path]:
+    """The registry's paths for this title, or none.
+
+    Any failure -- no `gamedisks.yaml`, no `yaml` module, an entry the file
+    lacks or malforms -- means "not registered": the caller's guesses stand.
+    The registry's own missing-file stop is a `SystemExit`, which is why this
+    catches more than `Exception`.
+    """
+    key = game.key if game else c64_port.POOL_OF_RADIANCE.key
+    try:
+        from automap import gamedisks
+        return [pathlib.Path(p) for p in gamedisks.candidates(key)]
+    except (Exception, SystemExit):
+        return []
+
+
+# Where the game disks might be. `POR_DISKS` wins; then the machine's registry,
+# where there is one; otherwise look in the places somebody would actually put
+# them, and finally the working directory. There is deliberately no absolute
+# default, which would be useless to everybody but its author.
 def disk_candidates(game: c64_port.C64Container | None = None) -> list[pathlib.Path]:
     env = os.environ.get("POR_DISKS")
     if env:
@@ -82,7 +98,8 @@ def disk_candidates(game: c64_port.C64Container | None = None) -> list[pathlib.P
         drive = os.environ.get("OneDrive")
         for base in ([pathlib.Path(drive)] if drive else []) + [here / "OneDrive"]:
             roots += [base, base / "Documents", base / "Downloads"]
-    out = [r / n for r in roots for n in names]
+    out = _registered_candidates(game)
+    out += [r / n for r in roots for n in names]
     out += [pathlib.Path.cwd(), here]
     return out
 

@@ -22,6 +22,8 @@ from goldbox import c64_port
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 POOL = c64_port.POOL_OF_RADIANCE
 
+pytestmark = pytest.mark.usefixtures("no_registry")
+
 
 def disks(where, *names):
     """Empty files standing in for disk images."""

@@ -47,6 +47,8 @@ POOL = c64_port.POOL_OF_RADIANCE
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 SILVER = c64_port.SECRET_OF_THE_SILVER_BLADES
 
+pytestmark = pytest.mark.usefixtures("no_registry")
+
 
 def disks(where, *names):
     """Empty files standing in for disk images -- a glob sees only the name."""

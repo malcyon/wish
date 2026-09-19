@@ -45,7 +45,7 @@ window.
 | | wants | resolved in | order before this |
 |---|---|---|---|
 | Character editor | a game **disk image** — item names, spell names, the icon charset, the icon option tables | `editor/window.py` `_disk_candidates` | `--game-disk` → `$POR_GAME_DISK` → the open save's own directory → the directory of whatever `--game-disk`/`$POR_GAME_DISK` named |
-| Automapper | a **directory** of that title's disks — every `GEO` on them | `automap/paths.py` `disk_candidates` → `locate_disks` | `$POR_DISKS` alone if set, else cwd, `~`, `~/Documents`, `~/Games`, `~/c64`, `~/roms`, `~/Downloads` each × `"<Title> Disks"`, `"<Title>"`, `PoR`, then cwd and `~` |
+| Automapper | a **directory** of that title's disks — every `GEO` on them | `automap/paths.py` `disk_candidates` → `locate_disks` | `$POR_DISKS` alone if set, else the paths `gamedisks.yaml` lists for the title (none where the file, its entry or `yaml` is missing), then cwd, `~`, `~/Documents`, `~/Games`, `~/c64`, `~/roms`, `~/Downloads` each × `"<Title> Disks"`, `"<Title>"`, `PoR`, then cwd and `~` |
 | Roster's readied item | the same names, again | `automap/live.py` `item_names` | `find_disks(game)`, i.e. the automapper's order |
 
 Three call sites, three orders, no shared function. **CONFIRMED** — read at
