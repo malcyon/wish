@@ -80,7 +80,10 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
     so a caller that would otherwise lose the line break to `shlex` sees one
     command per line. A newline inside quotes is left alone: it is the line
     structure of a script argument (`bash -c '# c` newline `git push'`), which
-    the caller reads again and strips per line. Without it, every newline stays.
+    the caller reads again and strips per line. A backslash-newline pair, outside
+    quotes or inside double quotes, is deleted as bash deletes it, so `git \\`
+    newline `push` reads as `git push`; inside single quotes it is literal and
+    stays. Without `join_lines`, every newline and every backslash stays.
 
     `shlex` cannot be trusted with them: an apostrophe inside a comment
     (`git push; # it's done`) is read as an unterminated quote and the whole line
@@ -105,15 +108,23 @@ def strip_comments(text: str, join_lines: str | None = None) -> str:
         char = text[i]
         if quote:
             if char == "\\" and quote == '"':
-                out.append(text[i:i + 2])
+                pair = text[i:i + 2]
+                # Inside double quotes bash deletes a backslash-newline too.
+                if not (join_lines is not None and pair == "\\\n"):
+                    out.append(pair)
                 i += 2
                 continue
             if char == quote:
                 quote = ""
         elif char == "\\":
             pair = text[i:i + 2]
-            out.append(pair.replace("\n", join_lines) if join_lines is not None else pair)
             i += 2
+            if join_lines is not None and pair == "\\\n":
+                # Bash deletes the pair before it splits words, so `git \` newline
+                # `push` is `git push`. Whether the next text begins a word is
+                # whatever it was before the pair.
+                continue
+            out.append(pair)
             begins_word = False
             continue
         elif char in "'\"":

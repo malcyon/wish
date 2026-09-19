@@ -218,6 +218,13 @@ def test_the_push_is_seen_however_it_is_reached(clone, monkeypatch):
         "bash -c \"bash -c '# c\ngit push'\"",
         "eval \"# c\ngit push\"",
         "bash -c '# x\r\ngit push'",
+        "git \\\npush",
+        "git push \\\norigin main",
+        "git \\\ncommit -m x\ngit push",
+        "git \\\n  push origin main",
+        "bash -c 'git \\\npush'",
+        "bash -c \"git \\\npush\"",
+        "git push \\\n# a comment\n",
     ]:
         assert run(monkeypatch, command, clone) == 2, command
 
@@ -243,6 +250,9 @@ def test_commands_that_do_not_push_are_ignored(clone, monkeypatch):
         "echo a # b && git push",
         "bash -c '# git push is blocked\ngit status'",
         "bash -c \"bash -c '# git push\ngit status'\"",
+        "echo git \\\nstatus",
+        "git \\\nstatus\necho push",
+        "echo 'git \\\npush'",
     ]:
         assert run(monkeypatch, command, clone) == 0, command
 
@@ -338,3 +348,32 @@ def test_strip_comments_joins_only_the_newlines_outside_quotes():
     assert strip("echo 'a\n# b' # c\nd", join_lines=" ; ") == "echo 'a\n# b'  ; d"
     # An unterminated quote leaves comments alone and joins every newline.
     assert strip("echo 'a # b\nc\nd", join_lines=" ; ") == "echo 'a # b ; c ; d"
+
+
+def test_a_backslash_newline_is_deleted_as_bash_deletes_it():
+    """Only with `join_lines`, and not inside single quotes, where it is literal."""
+    sys.path.insert(0, str(HOOK.parent))
+    try:
+        import shellcommands
+    finally:
+        sys.path.remove(str(HOOK.parent))
+    strip = shellcommands.strip_comments
+    join = " ; "
+    assert strip("git \\\npush", join_lines=join) == "git push"
+    assert strip("git push \\\norigin main", join_lines=join) == "git push origin main"
+    assert strip("git \\\ncommit -m x\ngit push", join_lines=join) == "git commit -m x ; git push"
+    assert strip('echo "a \\\nb"', join_lines=join) == 'echo "a b"'
+    assert strip("echo 'a \\\nb'", join_lines=join) == "echo 'a \\\nb'"
+    # A `#` after the pair begins a comment only if it began a word before it.
+    assert strip("echo a \\\n# b\nc", join_lines=join) == "echo a  ; c"
+    assert strip("echo a\\\n# b\nc", join_lines=join) == "echo a# b ; c"
+    # A backslash before any other character, and any backslash without `join_lines`, is unchanged.
+    assert strip("echo a\\ b\\\nc") == "echo a\\ b\\\nc"
+    assert strip("echo \\;\\\nc", join_lines=join) == "echo \\;c"
+
+
+def test_a_continued_command_is_read_as_one_command():
+    hook = _module()
+    assert hook.subcommands("git \\\npush") == ["push"]
+    assert hook.moves_head_first("git \\\ncommit -m x\ngit push")
+    assert not hook.is_push("echo git \\\nstatus")
