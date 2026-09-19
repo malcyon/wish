@@ -40,14 +40,14 @@ import subprocess
 import sys
 
 from automap import paths
+from goldbox.assets import asset_path
 
 #: The sizes a freedesktop icon theme looks for.  A desktop picks the nearest
 #: and scales, so the ones that matter most are the ones it will actually ask
 #: for: 48 for Alt-Tab on most themes, 32 and 24 for a taskbar button.
 SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 
-TEMPLATE = (pathlib.Path(__file__).resolve().parent.parent
-            / "assets" / "wish.desktop")
+TEMPLATE = asset_path("assets", "wish.desktop")
 
 
 def data_home() -> pathlib.Path:

@@ -44,6 +44,8 @@ COMMON_EXCLUDES = [
 
 # (source in the checkout, directory it lands in under `sys._MEIPASS`).
 DATAS = [
+    # `wish/installdesktop.py` writes this as the desktop entry on a Linux start.
+    ("assets/wish.desktop", "assets"),
     ("assets/logo/mark.svg", "assets/logo"),
     #: The PNG is what Help > About draws -- Qt drops four of the five
     #: node gradients in the vector (`wish/about.py`). The SVG stays
