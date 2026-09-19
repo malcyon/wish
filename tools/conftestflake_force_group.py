@@ -3,7 +3,7 @@ tests in `tests/test_conftest_state_guard.py` at collection time, without
 editing that file, so the marker claim in the issue can be checked by
 experiment rather than only by reading `pytest-xdist`'s source.
 
-Load alongside `tools.issue522_probe_watch` to see whether grouping removes
+Load alongside `tools.conftestflake_probe` to see whether grouping removes
 the overlap the watcher otherwise reports. Not meant to ship -- the fix, if
 any, belongs in the test file itself.
 """
@@ -33,7 +33,7 @@ def pytest_collection_finish(session):
     # together write side by side.
     logdir = Path(os.environ.get(
         "ISSUE522_LOGDIR",
-        scratch.scratch_dir("issue522_probe_watch", "watch")))
+        scratch.scratch_dir("conftestflake_probe", "watch")))
     logdir.mkdir(parents=True, exist_ok=True)
     worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
     with open(logdir / f"nodeids-{worker}.log", "a") as fh:

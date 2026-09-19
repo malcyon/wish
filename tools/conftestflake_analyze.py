@@ -1,11 +1,11 @@
-"""Summarise the logs `tools/issue522_probe_watch.py` writes.
+"""Summarise the logs `tools/conftestflake_probe.py` writes.
 
 Reads every worker's log under a run directory, merges the CREATE/DELETE
 events for the two probe files that
 `tests/test_conftest_state_guard.py::_run_throwaway_test` writes, and reports
 whether the two probes' lifetimes overlapped and for how long.
 
-Usage: `issue522_analyze_watch.py RUN1 RUN2 ...`, each a directory `tools/issue522_probe_watch.py` wrote logs into
+Usage: `conftestflake_analyze.py RUN1 RUN2 ...`, each a directory `tools/conftestflake_probe.py` wrote logs into
 """
 
 from __future__ import annotations

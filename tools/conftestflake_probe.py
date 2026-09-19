@@ -5,7 +5,7 @@ something)`.
 Watches `tests/` for the appearance and disappearance of the throwaway probe
 files that `tests/test_conftest_state_guard.py`'s `_run_throwaway_test`
 writes and removes, without changing that file at all. Loaded with
-`-p tools.issue522_probe_watch` on a command line that also runs
+`-p tools.conftestflake_probe` on a command line that also runs
 `tests/test_conftest_state_guard.py`; every worker `pytest -n auto` starts
 gets its own copy of this plugin and its own polling thread, and each writes
 its own log file so two workers polling the same directory never interleave
@@ -40,7 +40,7 @@ def _worker_id() -> str:
 
 def _log_path() -> Path:
     logdir = Path(os.environ.get("ISSUE522_LOGDIR",
-                                 scratch.scratch_dir("issue522_probe_watch", "watch")))
+                                 scratch.scratch_dir("conftestflake_probe", "watch")))
     logdir.mkdir(parents=True, exist_ok=True)
     return logdir / f"{_worker_id()}.log"
 
