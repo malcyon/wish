@@ -21,9 +21,9 @@ virtualenv, where the launcher is `<venv>/bin/wish`.  The path is worked out
 from the interpreter running this script, so nobody's home directory ends up
 in a committed file -- `tests/test_repository_contents.py` forbids that.
 
-    .venv/bin/python tools/installdesktop.py            # install
-    .venv/bin/python tools/installdesktop.py --check    # say what is there
-    .venv/bin/python tools/installdesktop.py --remove   # take it out again
+    .venv/bin/python -m wish.installdesktop            # install
+    .venv/bin/python -m wish.installdesktop --check    # say what is there
+    .venv/bin/python -m wish.installdesktop --remove   # take it out again
 
 The icon is rendered from the artist's own `assets/logo/mark.svg` through
 `ui.appicon`, at the sizes an icon theme expects, plus the SVG itself in
@@ -39,9 +39,7 @@ import shutil
 import subprocess
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-
-from automap import paths  # noqa: E402
+from automap import paths
 
 #: The sizes a freedesktop icon theme looks for.  A desktop picks the nearest
 #: and scales, so the ones that matter most are the ones it will actually ask

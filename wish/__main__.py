@@ -122,8 +122,8 @@ def main(argv: list[str] | None = None) -> int:
         # on the user's own XDG directories and it must work over ssh, on a
         # machine with no display, and in a virtualenv -- which is the case
         # it exists for, since a wheel's own data files land where no desktop
-        # looks. `tools/installdesktop.py` says why (#9).
-        from tools import installdesktop
+        # looks. `wish/installdesktop.py` says why (#9).
+        from . import installdesktop
 
         return installdesktop.main(
             ["--remove"] if args.remove_desktop else [])

@@ -29,7 +29,5 @@ What belongs to no one game or job: the body of `wish export` and `wish import`,
 | file | purpose |
 |---|---|
 | `__init__.py` | Binds the real `wish` package before any tool body runs, so `from tools import anything` cannot leave a process with `tools/wish.py` in its place; its docstring has the incident. |
-| `install-desktop.sh` | Installs `wish.desktop` and the icons under `$HOME` so a Linux desktop finds them, because Wayland has no protocol for a client-supplied window icon and the compositor matches the app id against an installed desktop file. |
-| `installdesktop.py` | Installs Wish's desktop entry and icon under `~/.local/share/applications` and `~/.local/share/icons/hicolor` for a virtualenv or `pipx` install, writing `Exec` from `sys.prefix`; `wish` calls `ensure()` at start, `--check` reports, `--remove` undoes it. |
 | `wish.py` | The body of `wish export` and `wish import`, a save disk to YAML and back, dispatched from `wish/__main__.py` and named in `wish.spec`'s `hiddenimports` because no static scan sees that import; `import` always writes a new disk. |
 | `wishagent.py` | Speaks to GitHub as the `wish-agent` App so issues and comments are authored by `wish-agent[bot]`, through the REST API with an installation token narrowed to `issues: write`; `git-credential` lets git push as the App; refuses a group- or world-readable key, reads every body from `--body-file`; `docs/218-the-wish-agent-bot.md`. |

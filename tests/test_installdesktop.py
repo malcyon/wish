@@ -1,4 +1,4 @@
-"""`tools/installdesktop.py`: the desktop entry and the icon theme entries.
+"""`wish/installdesktop.py`: the desktop entry and the icon theme entries.
 
 A Linux desktop draws the Alt-Tab icon by matching the window to a `.desktop`
 entry and then looking the icon up **by name** in its icon theme.  With
@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import installdesktop  # noqa: E402
+from wish import installdesktop  # noqa: E402
 
 
 @pytest.fixture

@@ -83,7 +83,7 @@ packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 # ways of installing**: `pip install --user` puts them in `~/.local/share` and
 # a system-wide install in `/usr/local/share`, both of which are on the search
 # path, while a virtualenv or a `pipx` install puts them somewhere that is
-# not. `tools/installdesktop.py` is what covers those, and `wish` runs it
+# not. `wish/installdesktop.py` is what covers those, and `wish` runs it
 # itself on first start when nothing is found -- see `#9 (Finish the packaging
 # icons: .desktop, .icns and a README lockup)`.
 #

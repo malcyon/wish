@@ -740,7 +740,7 @@ def dress(app) -> None:
     `setWindowIcon` said. Donald hit exactly that on 2026-09-05. A wheel ships
     both into `<prefix>/share`, which is on the search path for a
     `pip install --user` and not for a virtualenv or a `pipx` install -- so
-    `tools.installdesktop.ensure` puts them in the user's own directory the
+    `wish.installdesktop.ensure` puts them in the user's own directory the
     first time it finds none. It refuses to run on anything but Linux, when an
     entry already exists anywhere on the search path, when
     `WISH_NO_DESKTOP_INSTALL` is set, and in a headless or offscreen run --
@@ -753,7 +753,7 @@ def dress(app) -> None:
     app.setDesktopFileName(paths.APP)
     app.setWindowIcon(app_icon())
     if sys.platform.startswith("linux"):
-        from tools import installdesktop
+        from . import installdesktop
 
         written = installdesktop.ensure()
         if written is not None:
