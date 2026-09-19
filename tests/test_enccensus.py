@@ -151,13 +151,10 @@ def _archive_saves():
 
 
 def test_every_record_the_archives_ship_balances_exactly():
-    """`.claude/rules/testing.md` used to say six of the eighteen Pool of
-    Radiance records in `Default files/Saves` fail the identity.  They do
-    not, and neither does anything else the archives ship: 54 distinct
-    records over four titles, 0 misses, measured 2026-09-07 (Treasures of
-    the Savage Frontier's fourteen are skipped, having no layout here).  A
-    reader change that brings the six back turns this red, which is the
-    point of pinning it.
+    """Every record `Default files/Saves` ships balances the encumbrance
+    identity exactly: 54 distinct records over four titles, 0 misses.
+    Treasures of the Savage Frontier's fourteen are skipped, having no layout
+    here.  A reader change that makes a shipped record miss turns this red.
     """
     rows, _skipped = enccensus.dos_rows(_archive_saves())
 

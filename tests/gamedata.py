@@ -756,14 +756,9 @@ def save_disk(stem: str = "PORSAVE"):
 
 # --- specimens: records this project watched being written --------------------
 # `.claude/rules/testing.md`, "A specimen is only evidence if we know who wrote
-# it". A record found in a save directory -- Donald's play folder, the
-# archives' `Default files/Saves`, a rip off the internet -- has no chain of
-# custody, and on 2026-09-04 one edited with Gold Box Companion refuted a
-# correct belief and stopped `#232 (An item-granted effect is dropped on the
-# way through the neutral record, with no report)` for a day. `#246 (Nothing
-# tells an engine-written DOS record from one edited with Gold Box Companion,
-# and conclusions already rest on edited ones)` is the fix, and this is how a
-# test reaches the clean corpus.
+# it": a record found in a save directory has no chain of custody and may have
+# been edited, so a test that needs a trustworthy record reaches the clean
+# specimen tree through these helpers.
 #
 # The tree is `tools/registry/specimens.py`'s, at `$WISH_SPECIMENS` or `~/wish-specimens`
 # -- outside the repository, because the game's data must never be committed.

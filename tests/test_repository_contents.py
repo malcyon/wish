@@ -488,18 +488,18 @@ FULL_CITATION = re.compile(r"#\d{1,4} \((?:[^()]|\([^()]*\))*\)")
 #: URL fragment like `.../issues/136` does not).
 BARE_ISSUE_NUMBER = re.compile(r"(?<![\w/])#(\d{1,4})(?![\da-fA-F])")
 
-#: Where this rule actually applies. Scoped to what
-#: `.claude/rules/issues.md` and `#245 (tools/README.md cites issues by bare
-#: number, which is the lookup AGENTS.md's first rule exists to prevent)`
-#: swept, not every tracked `.md`:
+#: Where this rule applies: `docs/` and the listed READMEs, the prose that
+#: cites issues as project documentation. Three kinds of tracked `.md` stay
+#: outside it because a bare number is the content there:
 #:
-#: * `AGENTS.md` quotes a bare `#59` on purpose, as the example of what *not*
-#:   to write -- fixing it would delete the example.
-#: * `.claude/agents/*.md` do the same for `#59` and `#78`, and `junior-dev.md`
-#:   cites issues in its own worked examples rather than in project prose.
-#: * `CHANGELOG.md` uses a different, already-approved form -- a written-out
-#:   markdown link, `[#78](https://github.com/.../issues/78)` -- because
-#:   GitHub does not auto-link a bare number off the release page; see
+#: * `AGENTS.md` writes a bare `#123` only as the example of what *not* to
+#:   write -- scanning it would delete the example.
+#: * `.claude/agents/*.md` quote a bare `#59` or `#78` the same way, and
+#:   `junior-dev.md` cites issues in its own worked examples rather than in
+#:   project prose.
+#: * `CHANGELOG.md` uses a written-out markdown link,
+#:   `[#78](https://github.com/.../issues/78)`, because GitHub does not
+#:   auto-link a bare number off the release page; see
 #:   `.claude/agents/changelog-writer.md`.
 CITED_ISSUE_SCOPE = ("docs",)
 CITED_ISSUE_FILES = {
@@ -533,10 +533,8 @@ def test_no_bare_issue_number_where_a_citation_belongs(files):
         # A generated page's citations come from the source it is built from --
         # `goldbox/layout.py`'s field notes, `goldbox/memory.py`'s regions --
         # so a bare number here means the source was never swept, not that
-        # this page needs its own exemption.  #261 (A generated document's
-        # issue citations come from source notes that still use bare numbers)
-        # swept both sources; this guard now scans the pages they generate
-        # like any other.
+        # this page needs its own exemption: a generated page is scanned like
+        # any other.
         # Fenced code carries a commit-message example verbatim (the one place
         # AGENTS.md itself allows a bare number) and must not be scanned.
         text = re.sub(r"```.*?```", lambda m: re.sub(r"[^\n]", " ", m.group(0)),

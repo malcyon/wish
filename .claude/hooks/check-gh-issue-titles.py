@@ -1,34 +1,28 @@
 #!/usr/bin/env python3
-"""Refuse a `gh issue` body that cites an issue number without saying what it is.
+"""Refuse a `gh issue` comment that cites an issue number without saying what it is.
 
-The sibling `check-issue-titles.py` is a `Stop` hook: it reads what the
-assistant said to Donald and refuses a bare `#59`. It never sees an issue
-comment, because that leaves through Bash rather than through a reply -- and
-`.claude/rules/issues.md` says the rule covers "replies, issue comments,
-documents and tables", so half the rule had no guard at all.
-
-Found on 2026-09-02, when Donald asked why the guard was not working: it was,
-for replies, while six issue comments had gone out with bare numbers in them.
-
-**It is not registered today**, along with its sibling -- `3ee1a3f "Disable
-github issue hooks."` (2026-09-03) removed both from `.claude/settings.json`.
+The sibling `check-issue-titles.py` is a `Stop` hook that reads what the
+assistant said to Donald and refuses a bare `#59`. An issue comment never
+passes through it, because it leaves through Bash rather than through a reply,
+so this hook applies the same check to that route. The rule itself is in
+`.claude/rules/issues.md`, "Citing an issue".
 
 A `PreToolUse` hook on Bash. Exit 2 blocks the call and feeds stderr back, so
-the body is rewritten before it is posted.
+the body is rewritten before it is posted. It is not registered in
+`.claude/settings.json` at present.
 
 **What is checked.** The whole command text of any `gh issue create`,
 `gh issue comment` or `gh issue edit`, plus the contents of any `--body-file`
 that already exists. The command text is checked rather than only the parsed
-`--body`, because the usual shape here writes a heredoc to a file and passes
+`--body`, because the usual form here writes a heredoc to a file and passes
 `--body-file` in the same call -- at which point the file does not exist yet
 and the body is only in the command string.
 
-**The description of an issue is exempt, and that is Donald's ruling**, not an
-oversight: *"Leave them alone. GitHub.com shows the ticket details on hover
-and makes it a hotlink, so it will be fine."* An issue body is read on the
-web. A **comment** is read in a terminal and in a notification mail, so it is
-not exempt -- which is why `gh issue create` is checked only for the parts
-that are not the body, and `gh issue comment` is checked whole.
+**The description of an issue is exempt**: it is read on the web, where
+GitHub shows the issue's title on hover. A **comment** is read in a terminal
+and in a notification mail, so it is not exempt -- which is why `gh issue
+create` is checked only for the parts that are not the body, and `gh issue
+comment` is checked whole.
 """
 import importlib.util
 import json
@@ -53,8 +47,8 @@ GH_ISSUE = re.compile(r"\bgh\s+issue\s+(create|comment|edit)\b")
 GH_API_COMMENT = re.compile(r"\bgh\s+api\b[^\n]*issues/comments\b")
 
 #: Sub-commands whose body is prose a person reads in a terminal. `create`
-#: and `edit` write a *description*, which Donald has ruled is read on the web
-#: and may carry bare numbers.
+#: and `edit` write a *description*, which is read on the web and may carry bare
+#: numbers.
 CHECKED = {"comment"}
 
 
@@ -109,7 +103,7 @@ def main() -> int:
         + ", ".join(bare)
         + " each cite an issue without saying what it is.\n\n"
         "`.claude/rules/issues.md` says the rule covers replies, issue "
-        "comments, documents and tables alike. A bare number makes Donald "
+        "comments and documents. A bare number makes Donald "
         "look it up -- fast for you, slow for him. A comment is read in a "
         "terminal and in a notification mail, where nothing does that lookup "
         "for him; an issue *description* is exempt because on the web the "

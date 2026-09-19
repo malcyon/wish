@@ -91,6 +91,64 @@ Cut provenance, lines 54-56 ("It does not govern code"):
 > numbers in code or docstrings. I care about it when you are communicating with
 > me."* A docstring is read by somebody already in that file, and
 
+### What tests, a hook and an agent definition said before they dropped their history
+
+The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
+
+#### tests/test_repository_contents.py (comment above CITED_ISSUE_SCOPE)
+
+```
+#: Where this rule actually applies. Scoped to what
+#: `.claude/rules/issues.md` and `#245 (tools/README.md cites issues by bare
+#: number, which is the lookup AGENTS.md's first rule exists to prevent)`
+#: swept, not every tracked `.md`:
+#:
+#: * `AGENTS.md` quotes a bare `#59` on purpose, as the example of what *not*
+#:   to write -- fixing it would delete the example.
+#: * `.claude/agents/*.md` do the same for `#59` and `#78`, and `junior-dev.md`
+#:   cites issues in its own worked examples rather than in project prose.
+#: * `CHANGELOG.md` uses a different, already-approved form -- a written-out
+#:   markdown link, `[#78](https://github.com/.../issues/78)` -- because
+#:   GitHub does not auto-link a bare number off the release page; see
+#:   `.claude/agents/changelog-writer.md`.
+```
+
+Also (same file, inside test_no_bare_issue_number_where_a_citation_belongs, not yet edited; left in place, flagged for the orchestrator):
+
+```
+        # A generated page's citations come from the source it is built from --
+        # `goldbox/layout.py`'s field notes, `goldbox/memory.py`'s regions --
+        # so a bare number here means the source was never swept, not that
+        # this page needs its own exemption.  #261 (A generated document's
+        # issue citations come from source notes that still use bare numbers)
+        # swept both sources; this guard now scans the pages they generate
+        # like any other.
+```
+
+#### .claude/hooks/check-gh-issue-titles.py (module docstring)
+
+```
+The sibling `check-issue-titles.py` is a `Stop` hook: it reads what the
+assistant said to Donald and refuses a bare `#59`. It never sees an issue
+comment, because that leaves through Bash rather than through a reply -- and
+`.claude/rules/issues.md` says the rule covers "replies, issue comments,
+documents and tables", so half the rule had no guard at all.
+
+Found on 2026-09-02, when Donald asked why the guard was not working: it was,
+for replies, while six issue comments had gone out with bare numbers in them.
+
+**It is not registered today**, along with its sibling -- `3ee1a3f "Disable
+github issue hooks."` (2026-09-03) removed both from `.claude/settings.json`.
+
+...
+
+**The description of an issue is exempt, and that is Donald's ruling**, not an
+oversight: *"Leave them alone. GitHub.com shows the ticket details on hover
+and makes it a hotlink, so it will be fine."* An issue body is read on the
+web.
+```
+(Also in the file's `CHECKED` comment: "which Donald has ruled is read on the web" -- and the block-message string says "issues.md says the rule covers replies, issue comments, documents and tables alike", the same misquote, in a user-facing stderr string.)
+
 ## Conciseness and replies
 
 Conciseness carries no incident of its own; it is a standing preference, and
@@ -681,6 +739,26 @@ the letter stood for:
 > one that files twenty-three and closes ten was choosing A
 > too often
 
+### What tests, a hook and an agent definition said before they dropped their history
+
+The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
+
+#### .claude/agents/backlog-auditor.md -- Check 7, closing paragraph (deleted)
+
+This check exists because the words got into the backlog faster than into the documentation: `#97 (The character editor tab gets taller as the UI font grows, so a large font stops the window fitting a 720-high screen)` and `#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands)` were both filed by agents carrying language `AGENTS.md` had already ruled out, and nobody noticed until Donald read them.
+
+#### .claude/agents/backlog-auditor.md -- Check 8, first paragraph (the closing quotation)
+
+Original: A bare `#59 (Map the DOS saved game, not just the character record)` is an opaque number to anyone reading without a browser open, and Donald reads it that way: *"when you only reference a number, it never means anything to me."*
+
+#### .claude/agents/backlog-auditor.md -- Check 8, second paragraph (the ruling)
+
+**Issue bodies are exempt and are not a finding.** Donald ruled on 2026-09-01: *"Leave them alone. GitHub.com shows the ticket details on hover and makes it a hotlink, so it will be fine."* An issue body is read on the web, where the number is its own title to anybody with a pointer.
+
+#### .claude/agents/backlog-auditor.md -- Two rules of this repository, first bullet (the date)
+
+Original: `.claude/rules/issues.md`, rewritten 2026-09-09: keeping a label right is part of doing the work, ...
+
 ## Delegating
 
 **A reviewer's finding was nearly acted on and was wrong.** The `code-reviewer`
@@ -1231,6 +1309,37 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > Watching the routine run confirmed it, and readying a magical item in the
 > running game produced the engine-written specimen the corpus had never had.
 >
+
+### What tests, a hook and an agent definition said before they dropped their history
+
+The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
+
+#### tests/test_enccensus.py (docstring of test_every_record_the_archives_ship_balances_exactly)
+
+```
+    """`.claude/rules/testing.md` used to say six of the eighteen Pool of
+    Radiance records in `Default files/Saves` fail the identity.  They do
+    not, and neither does anything else the archives ship: 54 distinct
+    records over four titles, 0 misses, measured 2026-09-07 (Treasures of
+    the Savage Frontier's fourteen are skipped, having no layout here).  A
+    reader change that brings the six back turns this red, which is the
+    point of pinning it.
+    """
+```
+
+#### tests/gamedata.py (specimens comment block)
+
+```
+# `.claude/rules/testing.md`, "A specimen is only evidence if we know who wrote
+# it". A record found in a save directory -- Donald's play folder, the
+# archives' `Default files/Saves`, a rip off the internet -- has no chain of
+# custody, and on 2026-09-04 one edited with Gold Box Companion refuted a
+# correct belief and stopped `#232 (An item-granted effect is dropped on the
+# way through the neutral record, with no report)` for a day. `#246 (Nothing
+# tells an engine-written DOS record from one edited with Gold Box Companion,
+# and conclusions already rest on edited ones)` is the fix, and this is how a
+# test reaches the clean corpus.
+```
 
 ## Testing a conversion
 
