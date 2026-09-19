@@ -215,7 +215,7 @@ ps='powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1'
 winvm ssh "$ps claim -Holder por105"
 tools/amiga/toamigapor.py $TMPDIR/por1.adf --to B --out $TMPDIR/por1-B.adf \
     --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
-winvm scp $TMPDIR/por1-B.adf 'donald@192.168.123.50:C:/Amiga/Disks/por/x.adf'
+winvm scp $TMPDIR/por1-B.adf 'donald@10.77.0.11:C:/Amiga/Disks/por/x.adf'
 winvm ssh "$ps start -Holder por105 -log -f C:\Amiga\configs\goldbox-a500.uae \
     -s floppy0=C:\Amiga\Disks\por\x.adf -s floppy1=C:\Amiga\Disks\por\por2.adf"
 # RET at the code wheel, RET at the title, then:

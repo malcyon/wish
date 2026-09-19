@@ -59,8 +59,8 @@ costs nothing.
 | WinUAE 64-bit 6.0.3 | `C:\Program Files\WinUAE\winuae64.exe` in the guest — note the `64`, there is no `winuae.exe` |
 | Kickstart ROMs | `C:\Amiga\Kickstarts` — the fourteen out of `~/FS-UAE/Kickstarts` |
 | Game disk images | `C:\Amiga\Disks` — Pool of Radiance, Curse, Silver Blades, Pools of Darkness as `.adf`/`.zip` |
-| guest address | `192.168.123.50`, static — no DHCP on that libvirt network |
-| host → guest | `ssh donald@192.168.123.50`, key-only |
+| guest address | `10.77.0.11`, static — no DHCP on that libvirt network |
+| host → guest | `ssh donald@10.77.0.11`, key-only |
 | the machine config | `tools/amiga/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` |
 | the guest-side driver | `tools/amiga/winuae.ps1` and `tools/amiga/winuae-send.ps1`, deployed to `C:\Amiga\` |
 | the check on the driver | `tools/amiga/winuae-lanecheck.ps1` — proves one driver cannot destroy another's run, 1.1 |
@@ -70,7 +70,7 @@ costs nothing.
 quotes before anything you ran gets to see it.** `winvm ssh 'powershell
 -Command "$PSVersionTable"'` reaches the inner PowerShell as
 `System.Collections.Hashtable`. Anything more than a word goes to the guest as
-a file — `winvm scp x.ps1 donald@192.168.123.50:'C:/Amiga/x.ps1'` and then
+a file — `winvm scp x.ps1 donald@10.77.0.11:'C:/Amiga/x.ps1'` and then
 `-File` — rather than as a quoted command.
 
 **`winvm ssh` lands in Windows session 0; the VM's screen is session 1.** They
@@ -365,9 +365,9 @@ The guest runs OpenSSH with your key already authorised, so this is ordinary
 `scp`. Copying the 27 Gold Box disk images (16.6 MB) took 13 seconds.
 
 ```sh
-scp build/wish-snapshot.exe donald@192.168.123.50:'C:/Amiga/'
-scp -r ~/roms/amiga/Curse_Of_The_Azure_Bonds donald@192.168.123.50:'C:/Amiga/Disks/'
-scp donald@192.168.123.50:'C:/Amiga/dump/party.bin' /tmp/     # and back out
+scp build/wish-snapshot.exe donald@10.77.0.11:'C:/Amiga/'
+scp -r ~/roms/amiga/Curse_Of_The_Azure_Bonds donald@10.77.0.11:'C:/Amiga/Disks/'
+scp donald@10.77.0.11:'C:/Amiga/dump/party.bin' /tmp/     # and back out
 ```
 
 Forward slashes in the remote path. Quote it, because `C:` before a path would
@@ -380,7 +380,7 @@ intended workflow for a throwaway: **do not promote it.** Promoting would weld
 a snapshot build into the baseline of every future session.
 
 ```sh
-scp build/wish-snapshot.exe donald@192.168.123.50:'C:/Users/donald/Desktop/'
+scp build/wish-snapshot.exe donald@10.77.0.11:'C:/Users/donald/Desktop/'
 # ... test it through the SPICE console in virt-manager ...
 winvm revert          # gone, and so is anything it changed
 ```
@@ -695,7 +695,7 @@ S C:\Amiga\dump\party.bin 200000 200
 Then, from Linux:
 
 ```sh
-scp donald@192.168.123.50:C:/Amiga/dump/party.bin /tmp/
+scp donald@10.77.0.11:C:/Amiga/dump/party.bin /tmp/
 ```
 
 **The path must be absolute.** A relative one is not resolved against the
@@ -1011,7 +1011,7 @@ address instead.
 
 **Checked on the VM itself, 2026-08-25:**
 
-* the VM is up and `ssh donald@192.168.123.50` works with key auth, which is
+* the VM is up and `ssh donald@10.77.0.11` works with key auth, which is
   what `winvm ssh` rides on
 * `WinUAE 64-bit 6.0.3` is installed, and the binary is **`winuae64.exe`**
 * all fourteen Kickstart ROMs are in `C:\Amiga\Kickstarts`; the Curse and
@@ -1178,7 +1178,7 @@ the WinUAE VM, and neither of them can tell)`:
   into the running guest's overlay and not promoted, so it does not survive
   `winvm revert`, and the 2026-08-25 line above about golden's copies hashing
   equal to `tools/` is no longer true. `scp tools/amiga/winuae.ps1
-  donald@192.168.123.50:'C:/Amiga/'` after any revert, and promote deliberately
+  donald@10.77.0.11:'C:/Amiga/'` after any revert, and promote deliberately
   when the overlay holds nothing else you would not want in the baseline
 
 **Checked on the VM itself, 2026-09-01**, for `#95 (A WinUAE debugger batch
