@@ -1,0 +1,79 @@
+---
+# Proves the filter from inside every running guest: the internet works, the
+# peer answers, and nothing on the home LAN does. A wrong filter fails
+# silently -- the VM works and nobody notices it can reach the LAN --
+# so this is run every time the filter changes, not remembered.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml
+#
+# Every task that only reads is `check_mode: false`, so the test runs under
+# --check like the rest. Nothing here changes anything.
+
+# With no target there is nothing to check, and a test that checks nothing
+# passes.
+- name: Assert the inventory names at least one LAN target
+  ansible.builtin.assert:
+    that:
+      - sandbox_net_lan_targets | length > 0
+    fail_msg: >-
+      sandbox_net_lan_targets is empty. Name at least one LAN address the guests
+      must not reach in `ansible/inventory.yml`, which is gitignored;
+      `inventory.yml.example` beside it is the template.
+
+# A blocked probe and a probe that never ran both come back non-zero, so a
+# guest that is unreachable, or a LAN target that is simply down, would pass
+# for a working filter. The controls close both: the host must reach every LAN
+# target, and every probe must print a verdict of its own.
+- name: Control -- ping every LAN target from the host
+  ansible.builtin.command: "ping -c1 -W2 {{ item.ip }}"
+  loop: "{{ sandbox_net_lan_targets }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.ip }})"
+  register: sandbox_net_ctl_ping
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: false
+
+- name: Control -- open a TCP connection to every LAN target from the host
+  ansible.builtin.command: "timeout 3 bash -c 'exec 3<>/dev/tcp/{{ item.ip }}/{{ item.tcp_port }}'"
+  loop: "{{ sandbox_net_lan_targets }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.ip }}:{{ item.tcp_port }})"
+  register: sandbox_net_ctl_tcp
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: false
+
+- name: Assert the LAN targets are up, so a blocked probe means something
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: >-
+      The host cannot reach {{ item.item.name }} ({{ item.item.ip }}) either,
+      so a guest failing to reach it proves nothing. Fix that first.
+    quiet: true
+  loop: "{{ sandbox_net_ctl_ping.results + sandbox_net_ctl_tcp.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: List running domains
+  ansible.builtin.command: virsh -c qemu:///system list --name
+  register: sandbox_net_test_running
+  changed_when: false
+  check_mode: false
+
+- name: Test each running guest
+  ansible.builtin.include_tasks: isolation-test-guest.yml
+  loop: "{{ sandbox_net_probe_guests | selectattr('domain', 'in', sandbox_net_test_running.stdout_lines) | list }}"
+  loop_control:
+    loop_var: guest
+    label: "{{ guest.domain }}"
+
+- name: Say which guests were not running, and so not tested
+  ansible.builtin.debug:
+    msg: "{{ item.domain }} is not running: NOT TESTED."
+  loop: "{{ sandbox_net_probe_guests | rejectattr('domain', 'in', sandbox_net_test_running.stdout_lines) | list }}"
+  loop_control:
+    label: "{{ item.domain }}"

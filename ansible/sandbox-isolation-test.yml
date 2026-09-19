@@ -1,0 +1,16 @@
+---
+# Proves, from inside every running agent guest, that the internet works, the
+# peer answers and the home LAN does not. Run it every time the filter changes.
+# A guest that is not running is reported as not tested, never as passing.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml
+#
+- name: Test the isolation of the agent guests
+  hosts: agent_vm_hosts
+  become: true
+  tasks:
+    - name: Run the isolation test
+      ansible.builtin.include_role:
+        name: sandbox-network
+        tasks_from: isolation-test
+      tags: isolation

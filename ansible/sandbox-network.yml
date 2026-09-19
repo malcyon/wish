@@ -1,0 +1,13 @@
+---
+# The `sandbox` network and the `no-lan` filter, on their own. Both VM roles
+# depend on this one, so running either playbook defines them too; this is for
+# defining them, or changing the filter, without touching a guest.
+#
+#   ansible-playbook -i ansible/inventory.yml ansible/sandbox-network.yml
+#
+- name: Define the sandbox network and the no-lan filter
+  hosts: agent_vm_hosts
+  become: true
+  roles:
+    - role: sandbox-network
+      tags: agent_network

@@ -1,0 +1,22 @@
+{# Managed by Ansible — roles/sandbox-network #}
+<network>
+  <name>{{ sandbox_net_name }}</name>
+  <!-- Derived from the name rather than left to libvirt: net-define refuses
+       to redefine an existing network unless the UUID matches, so a generated
+       one would make every re-run after the first fail. -->
+  <uuid>{{ (sandbox_net_name ~ '-sandbox-net') | to_uuid }}</uuid>
+  <forward mode='nat'/>
+  <bridge name='{{ sandbox_net_bridge }}' stp='on' delay='0'/>
+  <!-- DHCP and DNS on: libvirt starts a dnsmasq for this network. There is no
+       other DNS or DHCP server on this host's bridge, so nothing else wants :53
+       or :67. Guests use the gateway below as their DNS server; dnsmasq
+       forwards to the host's own resolver. -->
+  <ip address='{{ sandbox_net_gateway }}' netmask='{{ sandbox_net_netmask }}'>
+    <dhcp>
+      <range start='{{ sandbox_net_dhcp_start }}' end='{{ sandbox_net_dhcp_end }}'/>
+{% for name, lease in sandbox_net_leases.items() %}
+      <host mac='{{ lease.mac }}' name='{{ name }}' ip='{{ lease.ip }}'/>
+{% endfor %}
+    </dhcp>
+  </ip>
+</network>

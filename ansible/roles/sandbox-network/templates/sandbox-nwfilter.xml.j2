@@ -1,0 +1,42 @@
+{# Managed by Ansible — roles/sandbox-network #}
+<filter name='{{ sandbox_net_filter_name }}' chain='ipv4'>
+  <!-- Derived from the name for the same reason as the network's. -->
+  <uuid>{{ (sandbox_net_filter_name ~ '-agent-nwfilter') | to_uuid }}</uuid>
+  <!-- Evaluated as a packet leaves the guest's NIC, before Docker's or
+       libvirt's own rules in the host's forwarding chain, and stored with
+       libvirt's configuration. Lower priority runs first, and a packet that
+       matches no rule is allowed — which is how the internet keeps working. -->
+{% for addr in sandbox_net_pinholes %}
+  <!-- The one hole in the isolation: a single host, all ports. -->
+  <rule action='accept' direction='out' priority='50'>
+    <ip dstipaddr='{{ addr }}' dstipmask='32'/>
+  </rule>
+{% endfor %}
+  <!-- The gateway address is this host. Its own rules, all in the iptables
+       layer, which is the one that tracks connections: an <ip> rule is
+       ebtables', stateless, and would drop the guest's replies to the host's
+       own ssh along with everything else. DNS and DHCP out; anything from the
+       host in, whose replies libvirt then lets back out on its own; and
+       nothing else out to it. -->
+{% for rule in sandbox_net_gateway_allow %}
+  <rule action='accept' direction='out' priority='{{ 60 + loop.index0 }}'>
+    <{{ rule.proto }} dstipaddr='{{ sandbox_net_gateway }}' dstipmask='32' dstportstart='{{ rule.port }}'/>
+  </rule>
+{% endfor %}
+  <rule action='accept' direction='in' priority='65'>
+    <all srcipaddr='{{ sandbox_net_gateway }}' srcipmask='32'/>
+  </rule>
+  <rule action='drop' direction='out' priority='70'>
+    <all dstipaddr='{{ sandbox_net_gateway }}' dstipmask='32'/>
+  </rule>
+  <!-- The rest of the guest's own subnet: the other VM. -->
+  <rule action='accept' direction='out' priority='100'>
+    <ip dstipaddr='{{ sandbox_net_subnet }}' dstipmask='{{ sandbox_net_prefix }}'/>
+  </rule>
+{% for cidr in sandbox_net_drops %}
+{% set addr, prefix = cidr.split('/') %}
+  <rule action='drop' direction='out' priority='{{ 200 + loop.index0 }}'>
+    <ip dstipaddr='{{ addr }}' dstipmask='{{ prefix }}'/>
+  </rule>
+{% endfor %}
+</filter>

@@ -1,0 +1,213 @@
+---
+# libvirt itself, then the `sandbox` network and the `no-lan` filter. Both VMs'
+# roles depend on this one (their meta/main.yml), so it runs first in either
+# playbook and once per play.
+
+- name: Check for /dev/kvm
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: sandbox_net_kvm
+
+- name: Assert the host supports hardware virtualisation
+  ansible.builtin.assert:
+    that:
+      - sandbox_net_kvm.stat.exists
+    fail_msg: >-
+      /dev/kvm is missing. Enable VT-x/AMD-V in the BIOS, or check that the
+      kvm_intel/kvm_amd module is loaded.
+
+- name: Install QEMU/KVM and libvirt
+  ansible.builtin.apt:
+    name:
+      - qemu-system-x86
+      - qemu-utils
+      - libvirt-daemon-system
+      - libvirt-clients
+      - xorriso         # builds the autounattend and cloud-init ISOs
+      - dnsmasq-base    # DHCP and DNS for the NAT network
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# libvirt's nftables backend writes to its own nft table, so its ACCEPT rules
+# cannot override the `iptables -P FORWARD DROP` that Docker sets, and VMs end
+# up with no outbound network. Pinning libvirt to the iptables backend puts its
+# rules at the top of the same chain Docker uses, so this matters on any host
+# that runs Docker.
+#
+# firewall_backend only exists in newer libvirt; the 10.x on Ubuntu 24.04
+# predates it and always uses iptables. Detected from the shipped config rather
+# than version-matched, so it keeps working as hosts get upgraded.
+- name: Check whether libvirt supports firewall_backend
+  ansible.builtin.command: grep -q firewall_backend /etc/libvirt/network.conf
+  register: sandbox_net_fw_backend
+  changed_when: false
+  failed_when: false
+  # Reads nothing and changes nothing, so it is safe under --check -- and it has
+  # to run there, or the task below sees no `rc`, believes its guard passed, and
+  # fails on a host where /etc/libvirt/network.conf does not exist at all.
+  check_mode: false
+
+- name: Pin libvirt's firewall backend to iptables (coexist with Docker)
+  ansible.builtin.lineinfile:
+    path: /etc/libvirt/network.conf
+    regexp: '^#?\s*firewall_backend\s*='
+    line: 'firewall_backend = "iptables"'
+    owner: root
+    group: root
+    mode: "0644"
+  when: sandbox_net_fw_backend.rc == 0
+  notify: Restart libvirt network daemon
+
+# Deliberately not `service: name=libvirtd`. libvirt may run either the
+# monolithic libvirtd or the modular virt*d daemons — both are socket-activated
+# by the package, and naming the wrong one either fails or starts a daemon that
+# fights the other. Poking virsh activates whichever is configured.
+- name: Wait for libvirt to accept connections
+  ansible.builtin.command: virsh -c qemu:///system version
+  register: sandbox_net_virsh
+  until: sandbox_net_virsh.rc == 0
+  retries: 10
+  delay: 3
+  changed_when: false
+  check_mode: false
+
+- name: Flush handlers so libvirt picks up the firewall backend before we define networks
+  ansible.builtin.meta: flush_handlers
+
+- name: Create the state directory
+  ansible.builtin.file:
+    path: "{{ sandbox_net_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# --- The network ------------------------------------------------------------
+
+- name: Render the network definition of {{ sandbox_net_name }}
+  ansible.builtin.template:
+    src: sandbox-network.xml.j2
+    dest: "{{ sandbox_net_state_dir }}/{{ sandbox_net_name }}-network.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: sandbox_net_xml
+
+- name: List defined libvirt networks
+  ansible.builtin.command: virsh -c qemu:///system net-list --all --name
+  register: sandbox_net_all
+  changed_when: false
+  check_mode: false
+
+- name: List running libvirt networks
+  ansible.builtin.command: virsh -c qemu:///system net-list --name
+  register: sandbox_net_running
+  changed_when: false
+  check_mode: false
+
+- name: Define the network {{ sandbox_net_name }}
+  ansible.builtin.command: "virsh -c qemu:///system net-define {{ sandbox_net_state_dir }}/{{ sandbox_net_name }}-network.xml"
+  when: sandbox_net_xml.changed or sandbox_net_name not in sandbox_net_all.stdout_lines
+  changed_when: true
+
+# Which running guests have a NIC on this network. `domiflist` names the source
+# network in its third column.
+- name: List running domains
+  ansible.builtin.command: virsh -c qemu:///system list --name
+  register: sandbox_net_domains
+  changed_when: false
+  check_mode: false
+
+- name: List the NICs of the running domains
+  ansible.builtin.command: "virsh -c qemu:///system domiflist {{ item }}"
+  loop: "{{ sandbox_net_domains.stdout_lines | select | list }}"
+  register: sandbox_net_ifaces
+  changed_when: false
+  check_mode: false
+
+- name: Work out whether a running guest is attached
+  ansible.builtin.set_fact:
+    sandbox_net_busy: >-
+      {{ sandbox_net_ifaces.results
+         | map(attribute='stdout_lines') | flatten
+         | select('search', '\s' ~ sandbox_net_name ~ '\s') | list | length > 0 }}
+
+- name: Apply the changed definition by restarting the network
+  ansible.builtin.shell: |
+    virsh -c qemu:///system net-destroy {{ sandbox_net_name }}
+    virsh -c qemu:///system net-start {{ sandbox_net_name }}
+  when:
+    - sandbox_net_xml.changed
+    - sandbox_net_name in sandbox_net_running.stdout_lines
+    - (not sandbox_net_busy) or (sandbox_net_restart_when_busy | bool)
+  changed_when: true
+
+- name: Say why a changed definition was not applied
+  ansible.builtin.debug:
+    msg: >-
+      The {{ sandbox_net_name }} network definition changed but a running guest
+      is attached, and restarting the network would cut it off. The new
+      definition is stored and takes effect the next time the network starts:
+      shut the guests down, then `virsh net-destroy {{ sandbox_net_name }}` and
+      `virsh net-start {{ sandbox_net_name }}` -- or set
+      sandbox_net_restart_when_busy to do it now.
+  when:
+    - sandbox_net_xml.changed
+    - sandbox_net_name in sandbox_net_running.stdout_lines
+    - sandbox_net_busy and not (sandbox_net_restart_when_busy | bool)
+
+- name: Check the autostart of the network {{ sandbox_net_name }}
+  ansible.builtin.stat:
+    path: "/etc/libvirt/qemu/networks/autostart/{{ sandbox_net_name }}.xml"
+  register: sandbox_net_autostart
+
+- name: Enable autostart on the network {{ sandbox_net_name }}
+  ansible.builtin.command: "virsh -c qemu:///system net-autostart {{ sandbox_net_name }}"
+  when: not sandbox_net_autostart.stat.exists
+  changed_when: true
+
+- name: Re-list running libvirt networks
+  ansible.builtin.command: virsh -c qemu:///system net-list --name
+  register: sandbox_net_running
+  changed_when: false
+  check_mode: false
+
+- name: Start the network {{ sandbox_net_name }}
+  ansible.builtin.command: "virsh -c qemu:///system net-start {{ sandbox_net_name }}"
+  when: sandbox_net_name not in sandbox_net_running.stdout_lines
+  changed_when: true
+
+# --- The filter -------------------------------------------------------------
+
+- name: Assert every pinhole is one bare IPv4 address
+  ansible.builtin.assert:
+    that:
+      - item is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: >-
+      '{{ item }}' is not a single IPv4 address. A pinhole through the filter
+      is one host, never a subnet.
+  loop: "{{ sandbox_net_pinholes }}"
+
+- name: Render the filter {{ sandbox_net_filter_name }}
+  ansible.builtin.template:
+    src: sandbox-nwfilter.xml.j2
+    dest: "{{ sandbox_net_state_dir }}/{{ sandbox_net_filter_name }}-nwfilter.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: sandbox_net_filter_xml
+
+- name: Check for an existing filter named {{ sandbox_net_filter_name }}
+  ansible.builtin.command: "virsh -c qemu:///system nwfilter-dumpxml {{ sandbox_net_filter_name }}"
+  register: sandbox_net_filter_defined
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# libvirt pushes a redefined filter into the guests that use it, running ones
+# included, and rolls the change back if it cannot apply it.
+- name: Define the filter {{ sandbox_net_filter_name }}
+  ansible.builtin.command: "virsh -c qemu:///system nwfilter-define {{ sandbox_net_state_dir }}/{{ sandbox_net_filter_name }}-nwfilter.xml"
+  when: sandbox_net_filter_xml.changed or sandbox_net_filter_defined.rc != 0
+  changed_when: true

@@ -1,0 +1,124 @@
+---
+# The isolated network the agent VMs and the Windows VM share, and the libvirt
+# network filter that keeps them off the home LAN. docs/219-the-agent-sandbox.md
+# is the design; this role is the part both VMs' roles depend on, so neither
+# defines it and neither can quietly define it differently.
+
+# --- Network ----------------------------------------------------------------
+sandbox_net_name: sandbox
+sandbox_net_bridge: virbr-sandbox
+sandbox_net_gateway: 10.77.0.1
+sandbox_net_subnet: 10.77.0.0
+sandbox_net_netmask: 255.255.255.0
+sandbox_net_prefix: 24
+# libvirt runs dnsmasq for this network. The guests take their DNS from
+# sandbox_net_gateway, never from a resolver on the LAN: the filter would drop
+# queries sent there, and the guest would lose the internet with no other symptom.
+sandbox_net_dhcp_start: 10.77.0.10
+sandbox_net_dhcp_end: 10.77.0.99
+sandbox_net_state_dir: /var/lib/libvirt/sandbox
+
+# The address table for everything on the network, keyed by libvirt domain
+# name. Each VM's role reads its own address and MAC from here, so this is the
+# only place a lease is written down. A reservation for the Windows guest is
+# belt and braces: it addresses itself statically, and the reservation keeps
+# dnsmasq from handing that address to anything else.
+sandbox_net_leases:
+  agent-vm:
+    mac: "52:54:00:7b:12:10"
+    ip: 10.77.0.10
+  win11:
+    mac: "52:54:00:7b:11:50"
+    ip: 10.77.0.11
+
+# A running guest keeps its tap on the bridge, and restarting the network
+# detaches it until the guest is restarted too. So a changed definition is
+# written to disk always, and applied to a running network only when nothing
+# is attached -- or when this is true.
+sandbox_net_restart_when_busy: false
+
+# --- Filter -----------------------------------------------------------------
+sandbox_net_filter_name: no-lan
+
+# What a guest may reach on the gateway address itself, which is this host: DNS
+# from libvirt's dnsmasq and DHCP renewals, and nothing else. The subnet accept
+# below would otherwise let a guest at every service the host has on that
+# address, sshd included. Everything else to the gateway is dropped, ahead of
+# that accept. ARP is not IP and is unaffected.
+sandbox_net_gateway_allow:
+  - {proto: udp, port: 53}
+  - {proto: tcp, port: 53}
+  - {proto: udp, port: 67}
+
+# Dropped after the guest's own subnet is accepted. Every private range, so a
+# LAN renumber does not silently open it, and 100.64.0.0/10 as well, which is
+# Tailscale's range. On a host that is a tailnet node, a guest could otherwise
+# reach the whole tailnet through the host's NAT.
+sandbox_net_drops:
+  - 192.168.0.0/16
+  - 172.16.0.0/12
+  - 10.0.0.0/8
+  - 100.64.0.0/10
+
+# Addresses a guest may reach on the home LAN, one host each and never a
+# subnet. Empty by default: the inventory sets it, since these are one
+# network's addresses. Each is a hole in the filter, for something the agents
+# drive over the LAN, such as the C64 Ultimate that wish's tools/c64/c64urest.py
+# talks to over HTTP and FTP. All ports on purpose, since FTP negotiates its
+# data connection at run time.
+sandbox_net_pinholes: []
+
+# --- Isolation test ---------------------------------------------------------
+# What a guest must reach, and what it must not.
+sandbox_net_internet_url: https://api.github.com/
+# TCP ports on the gateway that must be refused, tried by the isolation test.
+sandbox_net_gateway_denied_tcp: [22]
+# Hosts on the home LAN that must stay unreachable, such as the router and the
+# DNS server, each probed by ping and by a TCP connect and first probed from the
+# host as a control: a target that is down would make a broken filter look like
+# a working one. Empty by default and set by the inventory, since these are one
+# network's addresses; each entry is `name`, `ip` and `tcp_port`.
+sandbox_net_lan_targets: []
+
+# A GitHub token of any kind -- personal (ghp_), OAuth (gho_), user-to-server
+# (ghu_), installation (ghs_), refresh (ghr_), fine-grained (github_pat_) -- as
+# it looks in a file or in a process's environment. A guest listed with
+# `audit_dirs` must have none: nothing of the person's, and no token at rest
+# either, since the App's are minted per call and stored nowhere.
+sandbox_net_token_pattern: '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'
+
+# The guests the test looks in. `domain` is the libvirt name -- a guest that
+# is not running is skipped, not failed -- and `key` is the private key the
+# host logs in with ("" means the host user's own default). Windows' sshd
+# answers to the admin account the windows-vm role creates.
+#
+# The defaults read the Ubuntu guest's key from `agent_vm_keypair_path` and the
+# Windows guest's account from `winvm_admin_user`, so the inventory must set
+# both, as `inventory.yml.example` does.
+#
+# The mounts are filesystem containment, tested by the same run: the guest must
+# be able to write its one writable share, and must not be able to write the
+# read-only disks. A read-only mount that is not mounted at all also "fails" a
+# write, so that probe is reported as not tested rather than passed until the
+# mount is there.
+sandbox_net_probe_guests:
+  - domain: agent-vm
+    os: linux
+    user: agent           # must equal agent_vm_user
+    key: "{{ agent_vm_keypair_path }}"
+    audit_dirs:
+      - /home
+      - /root
+      - /etc
+      - /opt
+      - /tmp
+      - /var/tmp
+      - /mnt/disks
+    writable_mounts:
+      - /mnt/specimens
+    readonly_mounts:
+      - /mnt/disks
+  - domain: win11
+    os: windows
+    user: "{{ winvm_admin_user }}"
+    key: ""

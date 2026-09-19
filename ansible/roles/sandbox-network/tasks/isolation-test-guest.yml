@@ -1,0 +1,111 @@
+---
+# One guest's share of isolation-test.yml. `guest` is an entry of
+# sandbox_net_probe_guests.
+#
+# The probes are run over ssh as the person running the playbook, hence
+# `become: false`: under sudo ssh is root's, which has none of their keys.
+# Each command is wrapped to print a verdict of its own, so a probe that could
+# not run at all (ssh failed, the shell was not what was expected) is told
+# apart from one that ran and was blocked.
+
+# The peer is probed only when it is running: a peer that is off does not
+# answer, and that says nothing about the filter.
+#
+# Commands differ by OS: Windows' sshd hands them to PowerShell, which the
+# guest setup makes its default shell -- no `&&`, and `curl` there is an alias, so
+# it is `curl.exe` -- and its `ping` and `curl` are different programs from Linux's. `want` is the verdict the
+# probe should print -- 0 reached it, 1 did not.
+- name: Build the probes for {{ guest.domain }}
+  ansible.builtin.set_fact:
+    sandbox_net_probes: "{{ sandbox_net_probes_json | from_json }}"
+  vars:
+    sandbox_net_probes_json: |
+      {% set win = guest.os == 'windows' %}
+      {% set tail = ' *> $null; if ($LASTEXITCODE -eq 0) { "RC=0" } else { "RC=1" }' if win else ' >/dev/null 2>&1 && echo RC=0 || echo RC=1' %}
+      {% set ping = 'ping -n 1 -w 2000 ' if win else 'ping -c1 -W2 ' %}
+      {% set probes = [] %}
+      {% set _ = probes.append({
+           'name': 'internet',
+           'want': 0,
+           'cmd': ('curl.exe -sS --max-time 5 -o NUL ' if win else 'curl -sS --max-time 5 -o /dev/null ') ~ sandbox_net_internet_url ~ tail}) %}
+      {% for peer in sandbox_net_leases | dict2items | rejectattr('key', 'equalto', guest.domain) | selectattr('key', 'in', sandbox_net_test_running.stdout_lines) | map(attribute='value.ip') %}
+      {% set _ = probes.append({'name': 'peer VM ' ~ peer, 'want': 0, 'cmd': ping ~ peer ~ tail}) %}
+      {% endfor %}
+      {% for t in sandbox_net_lan_targets %}
+      {% set _ = probes.append({'name': 'LAN ' ~ t.name ~ ' ping', 'want': 1, 'cmd': ping ~ t.ip ~ tail}) %}
+      {% set tcp = ('powershell -NoProfile -Command "if ((New-Object Net.Sockets.TcpClient).ConnectAsync(\'' ~ t.ip ~ '\', ' ~ t.tcp_port ~ ').Wait(3000)) { exit 0 } else { exit 1 }"') if win
+                   else ('timeout 3 bash -c \'exec 3<>/dev/tcp/' ~ t.ip ~ '/' ~ t.tcp_port ~ '\'') %}
+      {% set _ = probes.append({'name': 'LAN ' ~ t.name ~ ' tcp/' ~ t.tcp_port, 'want': 1, 'cmd': tcp ~ tail}) %}
+      {% endfor %}
+      {% for port in sandbox_net_gateway_denied_tcp %}
+      {% set tcp = ('powershell -NoProfile -Command "if ((New-Object Net.Sockets.TcpClient).ConnectAsync(\'' ~ sandbox_net_gateway ~ '\', ' ~ port ~ ').Wait(3000)) { exit 0 } else { exit 1 }"') if win
+                   else ('timeout 3 bash -c \'exec 3<>/dev/tcp/' ~ sandbox_net_gateway ~ '/' ~ port ~ '\'') %}
+      {% set _ = probes.append({'name': 'gateway ' ~ sandbox_net_gateway ~ ' tcp/' ~ port, 'want': 1, 'cmd': tcp ~ tail}) %}
+      {% endfor %}
+      {% set dns = 'powershell -NoProfile -Command "Resolve-DnsName example.com -ErrorAction Stop | Out-Null"' if win else 'getent hosts example.com' %}
+      {% set _ = probes.append({'name': 'DNS through the gateway', 'want': 0, 'cmd': dns ~ tail}) %}
+      {% if guest.audit_dirs is defined %}
+      {% set pat = sandbox_net_token_pattern %}
+      {# grep exits 0 on a match, 1 on none and 2 on an error; only 1 is a pass, so
+         a directory that could not be read fails the audit and does not pass it. #}
+      {% set _ = probes.append({'name': 'no GitHub token in any file under ' ~ guest.audit_dirs | join(' '), 'want': 0,
+           'cmd': 'sudo grep -rIlsE \'' ~ pat ~ '\' ' ~ guest.audit_dirs | join(' ') ~ ' >/dev/null; [ $? -eq 1 ]' ~ tail}) %}
+      {% set _ = probes.append({'name': 'no GitHub token in any process environment', 'want': 0,
+           'cmd': 'sudo sh -c \'cat /proc/[0-9]*/environ\' 2>/dev/null | tr \'\\0\' \'\\n\' | grep -qE \'' ~ pat ~ '\'; [ $? -eq 1 ]' ~ tail}) %}
+      {% endif %}
+      {% for m in guest.writable_mounts | default([]) %}
+      {% set _ = probes.append({'name': 'write ' ~ m, 'want': 0,
+           'cmd': 'if mountpoint -q ' ~ m ~ '; then ( touch ' ~ m ~ '/.write-test && rm ' ~ m ~ '/.write-test ) >/dev/null 2>&1 && echo RC=0 || echo RC=1; else echo RC=1; fi'}) %}
+      {% endfor %}
+      {% for m in guest.readonly_mounts | default([]) %}
+      {% set _ = probes.append({'name': 'write ' ~ m ~ ' (read-only)', 'want': 1,
+           'cmd': 'if mountpoint -q ' ~ m ~ '; then ( touch ' ~ m ~ '/.write-test ) >/dev/null 2>&1 && echo RC=0 || echo RC=1; else echo RC=2; fi'}) %}
+      {% set _ = probes.append({'name': 'write ' ~ m ~ ' as root (read-only)', 'want': 1,
+           'cmd': 'if mountpoint -q ' ~ m ~ '; then ( sudo touch ' ~ m ~ '/.write-test ) >/dev/null 2>&1 && echo RC=0 || echo RC=1; else echo RC=2; fi'}) %}
+      {# RC=0 here means the device is write-protected, which is the host's doing: root in the guest cannot undo it. #}
+      {% set _ = probes.append({'name': m ~ ' is a write-protected device', 'want': 0,
+           'cmd': 'if mountpoint -q ' ~ m ~ '; then [ "$(sudo blockdev --getro "$(findmnt -no SOURCE ' ~ m ~ ')")" = 1 ] && echo RC=0 || echo RC=1; else echo RC=2; fi'}) %}
+      {% endfor %}
+      {{ probes | to_json }}
+
+- name: Run the probes in {{ guest.domain }}
+  ansible.builtin.command:
+    argv: >-
+      {{ ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no',
+          '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'ConnectTimeout=10']
+         + (['-i', guest.key, '-o', 'IdentitiesOnly=yes'] if guest.key | length else [])
+         + [guest.user ~ '@' ~ sandbox_net_leases[guest.domain].ip, item.cmd] }}
+  loop: "{{ sandbox_net_probes }}"
+  loop_control:
+    label: "{{ guest.domain }}: {{ item.name }}"
+  register: sandbox_net_results
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: false
+  environment:
+    SSH_ASKPASS_REQUIRE: never
+
+# RC=2 is a probe that does not apply yet -- a read-only mount that is not
+# mounted -- and is reported, never counted as a pass.
+- name: Assert every probe ran and returned what isolation requires
+  ansible.builtin.assert:
+    that:
+      - "'RC=' ~ item.item.want in item.stdout or 'RC=2' in item.stdout"
+    success_msg: >-
+      {{ guest.domain }}: {{ item.item.name }}:
+      {{ 'NOT TESTED, it is not mounted' if 'RC=2' in item.stdout
+         else ('succeeded' if item.item.want == 0 else 'was refused') ~ ', as it should be' }}
+    fail_msg: >-
+      {% if 'RC=0' not in item.stdout and 'RC=1' not in item.stdout -%}
+      {{ guest.domain }}: {{ item.item.name }} did not run at all (ssh exited
+      {{ item.rc }}: {{ item.stderr | trim }}). This proves nothing either way.
+      {%- elif item.item.want == 1 -%}
+      {{ guest.domain }}: {{ item.item.name }} answered or succeeded —
+      {{ 'LAN REACHABLE, ' if item.item.name.startswith('LAN') else '' }}ISOLATION BROKEN
+      {%- else -%}
+      {{ guest.domain }}: {{ item.item.name }} failed, but it must succeed
+      {%- endif %}
+  loop: "{{ sandbox_net_results.results }}"
+  loop_control:
+    label: "{{ guest.domain }}: {{ item.item.name }}"
