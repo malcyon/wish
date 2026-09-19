@@ -435,6 +435,30 @@ def test_a_reworded_commit_is_named_for_the_same_marker(clones, tmp_path, monkey
     assert [f.name for f in (tmp_path / "testrun").iterdir()] == [f"{before}.green"]
 
 
+def test_a_rebased_run_is_named_for_the_tree_of_the_rebased_tip(clones, tmp_path, monkeypatch):
+    """The marker has to match the tree that gets pushed, which after a rebase is not the tree that was asked for."""
+    other, mine = clones
+    old = _commit(mine, "mine.txt")
+    old_tree = _git(mine, "rev-parse", "HEAD^{tree}")
+    _commit(other, "theirs.txt")
+    _git(other, "push", "-q", "origin", "main")
+    monkeypatch.setattr(suiterun, "REPO", mine)
+    monkeypatch.setattr(suiterun, "RUFF", pathlib.Path(sys.executable))
+    monkeypatch.setattr(suiterun, "marker_dir", lambda: tmp_path / "testrun")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    tested = {}
+
+    def checked(worktree):
+        tested["commit"] = _git(worktree, "rev-parse", "HEAD")
+        tested["tree"] = _git(worktree, "rev-parse", "HEAD^{tree}")
+        return True, "1 passed", ""
+
+    monkeypatch.setattr(suiterun, "run_checks", checked)
+    assert suiterun.main(["HEAD"]) == 0
+    assert tested["commit"] != old and tested["tree"] != old_tree
+    assert [f.name for f in (tmp_path / "testrun").iterdir()] == [f"{tested['tree']}.green"]
+
+
 def test_a_red_run_writes_no_marker(clones, tmp_path, monkeypatch):
     _, mine = clones
     assert _green_run(mine, tmp_path, monkeypatch, (False, "1 failed", "FAILED x")) == 1

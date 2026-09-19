@@ -90,7 +90,7 @@ MOVES_HEAD = {"commit", "merge", "rebase", "cherry-pick", "reset",
               "checkout", "switch", "pull", "am", "revert"}
 
 #: How many recorded markers `verdict` walks, newest first. Older ones are
-#: never the answer, and each costs a `git merge-base`.
+#: never the answer, and each costs a `git diff`.
 MARKERS_CHECKED = 20
 
 

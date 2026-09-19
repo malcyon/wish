@@ -17,7 +17,7 @@ What it does, in order, and all of it against the same checkout:
    and not after the whole of pytest.
 1. `git fetch origin`, then, when `<sha>` is the checked-out branch's tip and
    `origin/main` is not already behind it, `git rebase origin/main`, so the
-   marker names the commit that will actually be pushed. A dirty tree, a
+   marker is named for the tree that will actually be pushed. A dirty tree, a
    failed fetch or a conflict stops the run with nothing changed; `--no-rebase`
    skips this step.
 2. `git worktree add --detach` at the resulting sha, so the run tests exactly
@@ -122,8 +122,8 @@ def rebase_onto_origin(repo: pathlib.Path, sha: str) -> tuple[str, str]:
     """Fetch origin and rebase the checked-out branch onto `origin/main`.
 
     Returns the sha to test and a line saying what happened. Only a `sha` that
-    is the branch's tip is rebased, because the marker has to name the commit
-    that gets pushed. Anything that would leave the tree half-done stops the
+    is the branch's tip is rebased, because the marker is named for the tree of
+    the tip that gets pushed. Anything that would leave the tree half-done stops the
     run instead: a failed fetch, a tree with uncommitted changes, or a conflict
     (the rebase is aborted first, so the branch is as it was).
     """

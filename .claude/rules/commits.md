@@ -146,8 +146,9 @@ writes `~/.cache/wish/testrun/<tree>.green` after a green whole-suite run,
 named for the hash of that commit's tree, and `.claude/hooks/check-push-tested.py`
 refuses a `git push` with no marker for the tip's tree, or for an ancestor's
 tree with only prose between it and the tip. A reword or a rebase over
-unchanged files keeps its marker; a changed file does not. Prose means `.md` files outside `.claude/agents/`; `pyproject.toml`, a
-TOML agent profile and the hook wiring are read by tests and count as code.
+unchanged files keeps its marker; a changed file does not. Prose means `.md`
+files outside `.claude/agents/`; `pyproject.toml`, a TOML agent profile and
+the hook wiring are read by tests and count as code.
 A commit and a push in one call are refused outright, because the hook can
 only vouch for the HEAD it sees. The documentation-only exception above is
 otherwise unchanged: a push carrying only prose needs no marker.
