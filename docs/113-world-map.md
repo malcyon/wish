@@ -184,7 +184,7 @@ answers unknown 2 on its own.
    `ECL19`/`ECL1A`/`ECL1B`'s own bytecode, not in `SQRDATA0n`, and their byte
    offsets were in `reports/world-map.md`, lost
    (`#136 (Thirty-two cited write-ups are gone, because the knowledge base
-   pointed into gitignored scratch)`) -- `tools/windowsquare.py`'s own
+   pointed into gitignored scratch)`) -- `tools/areas/windowsquare.py`'s own
    docstring says the same thing from the other side: "the running game is
    the only authority left." Recovering the offsets means rebuilding an ECL
    decoder, and reading the ECL scripts at all was **closed at Donald's own

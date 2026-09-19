@@ -398,7 +398,7 @@ def _script_paths() -> dict[int, pathlib.Path]:
 def scripts() -> dict[int, pathlib.Path]:
     found = _script_paths()
     if not found:
-        # `tools/eclwalk.py listing` looks like a rebuild -- it prints the
+        # `tools/areas/eclwalk.py listing` looks like a rebuild -- it prints the
         # same "LOADFILES 5, 5, 0" text these tests parse -- but it walks
         # each script from its five entry points and stops wherever the walk
         # cannot reach, not a linear sweep. Checked directly (#211): on
@@ -534,7 +534,7 @@ def test_area_eleven_is_the_training_hall_not_the_arena():
 @pytest.fixture(scope="module")
 def ssb_table():
     """The Silver Blades table read again off the disks, or skip."""
-    areatable = pytest.importorskip("tools.areatable")
+    areatable = pytest.importorskip("tools.areas.areatable")
     gamedisks = pytest.importorskip("tools.gamedisks")
     where = gamedisks.find("secret-of-the-silver-blades")
     if where is None or not where.is_dir():
@@ -796,7 +796,7 @@ def test_curse_is_offered_too_now_that_its_table_exists():
 
 
 #: The fourteen derived arrival squares landed for `#15 (Fast Travel for more
-#: than one Gold Box title)`, exactly as `tools/areatable.py
+#: than one Gold Box title)`, exactly as `tools/areas/areatable.py
 #: curse-of-the-azure-bonds --python` printed them the night they were taken.
 #: Pinned here as literals, separately from `goldbox.areas.AREAS_CURSE`, so a
 #: change to either one is caught by a comparison rather than by both sides
@@ -1070,8 +1070,8 @@ def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
 
 @pytest.fixture(scope="module")
 def pool_table():
-    """Pool of Radiance's scripts read by `tools/areatable.py`, or skip."""
-    areatable = pytest.importorskip("tools.areatable")
+    """Pool of Radiance's scripts read by `tools/areas/areatable.py`, or skip."""
+    areatable = pytest.importorskip("tools.areas.areatable")
     gamedisks = pytest.importorskip("tools.gamedisks")
     where = gamedisks.find("pool-of-radiance")
     if where is None or not where.is_dir():

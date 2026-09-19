@@ -18,7 +18,7 @@ committed and none of them ours:
    real source save, so the catch-all count is the writer's own rather than a
    number quoted from a document.
 2. **The game's own scripts**, `ecl.dax` off Amiga disk 2, every block walked
-   from its five entry `GOTO`s through `tools/eclcensus.py`'s decoder -- so a
+   from its five entry `GOTO`s through `tools/areas/eclcensus.py`'s decoder -- so a
    word is "named by a script" because a reachable statement names it, not
    because two bytes of a data table happen to spell it.
 3. **The VM's address classes.**  A script names the second and third heap
@@ -65,8 +65,9 @@ sys.path.insert(0, str(ROOT))
 
 from goldbox import amiga_dax, amiga_savegame, c64_port  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
-from tools import eclcensus, gamedisks  # noqa: E402
+from tools import gamedisks  # noqa: E402
 from tools.amiga import amigasaves  # noqa: E402
+from tools.areas import eclcensus  # noqa: E402
 
 #: The head of the sweep sentence `por_savegame_zeroes` gives every word no
 #: earlier writer claimed.  Matched rather than reproduced, so a reword of
@@ -229,7 +230,7 @@ class Census:
         if root is None:
             raise SystemExit("No Pool of Radiance disks; see tools/gamedisks.py")
         # The opcode tables and operand counts come out of the C64 DUNGEON,
-        # exactly as tools/eclcensus.py reads the DOS blocks with them.
+        # exactly as tools/areas/eclcensus.py reads the DOS blocks with them.
         machine, _base, _c64, _sides, _dos = eclcensus.load_port(
             str(root), game, None)
         keyed = {f"{area:02d}": body for area, body in bodies.items()}

@@ -10,7 +10,7 @@ twenty-nine scripts)`, after `#156 (Warping from the Slums to New Phlan draws
 New Phlan with the Slums' walls)` was found by a player hitting it and its
 mechanism turned out not to be specific to that pair.
 
-**Regenerate it with `tools/eclwalk.py exits`.** Nothing here is transcribed by
+**Regenerate it with `tools/areas/eclwalk.py exits`.** Nothing here is transcribed by
 hand.
 
 ## What a departing prologue is
@@ -27,7 +27,7 @@ answer to "what did not happen" keeps the guards in it.
 **A `NEWECL` that something jumps to has more than one prologue**, because
 which statements ran depends on the route in. `ECL06 $9B95` is the example that
 matters: two blocks reach it, and only one of them clears the wall-slot pins.
-`tools/eclwalk.py` prints one level of those inbound blocks under
+`tools/areas/eclwalk.py` prints one level of those inbound blocks under
 `-- and, arriving from $xxxx:`.
 
 ## The corpus
@@ -139,7 +139,7 @@ pins cleared, and leaving any other way goes to area 3, which is another
 quarter of the same castle and wants the same wall art. It is an optimisation
 between areas that share a wall set, and a fast travel takes neither branch.
 
-**Grade: CONFIRMED**, in the emulator on 2026-09-02 by `tools/wallpins.py`.
+**Grade: CONFIRMED**, in the emulator on 2026-09-02 by `tools/areas/wallpins.py`.
 This said PROBABLE until then, on the grounds that nobody had warped out of one
 of the three and looked. Three arrivals at Podol Plaza's own arrival square,
 one party, one session, `$ED50`-`$FF97` read through the monitor's `ram` bank:
@@ -251,15 +251,15 @@ jumps to the same main loop, so the engine does not trust the stack across an
 area transition either, and `reenter()` does at a different moment exactly
 what the engine's own transition does. **Grade CONFIRMED**, driven live
 three times out of three on `npc_party.d64` (2026-09-04/05) through the
-hand-rolled re-entry `tools/exitreentry.py`, and once more through the
+hand-rolled re-entry `tools/areas/exitreentry.py`, and once more through the
 shipped `automap.actions.FastTravel().run()` itself, unmodified,
 through a real `automap.target.ViceTarget` (2026-09-08) -- production code,
 not the hand-rolled tool, dropped Princess Fatima the same way walking out
-does. `tools/fasttravelrun.py` is that run's driver. `#180 (What the Kobold
+does. `tools/areas/fasttravelrun.py` is that run's driver. `#180 (What the Kobold
 Caves exit does to an NPC in the party is not understood, and Fast Travel
 skips it)` is closed; the mechanism is `#207 (Run an exit's own handler
 before Fast Travel warps out)`. **The shipped path has one live sample, by
-its author** -- an independent run through `tools/fasttravelrun.py` would
+its author** -- an independent run through `tools/areas/fasttravelrun.py` would
 make it more than that.
 
 The hard part is not this exit. **An area pair does not name a handler**:
@@ -310,7 +310,7 @@ it as belt-and-braces for a path that returns; on the path that reaches
 * **Only one level of inbound blocks is reported** for a `NEWECL` something
   jumps to. A route two jumps back may run statements this page does not list.
 * **Two of the three visible entries have now been watched in the running
-  game** -- the pinned wall slots by `tools/wallpins.py` on 2026-09-02 and the
+  game** -- the pinned wall slots by `tools/areas/wallpins.py` on 2026-09-02 and the
   Kobold Caves' NPC by `tools/koboldnpc.py` on 2026-09-03, both graded
   CONFIRMED above. This bullet said nothing here had been watched at all,
   which was true when the page was written and stopped being true with the

@@ -45,7 +45,7 @@ import os
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

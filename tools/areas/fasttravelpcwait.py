@@ -12,7 +12,7 @@ M1  Idle: sample the PC at the interval the wait loop will use, and for every
     inside again.
 M2  The same while the party walks -- the game genuinely busy.
 
-    tools/fasttravelpcwait.py [--slot 2] [--save PORSAVE11.D64] [--disks DIR] [--out DIR]
+    tools/areas/fasttravelpcwait.py [--slot 2] [--save PORSAVE11.D64] [--disks DIR] [--out DIR]
 
 It claims a pool slot, stages the Pool of Radiance disks and the save into it,
 boots, loads, begins adventuring and samples the monitor; `--save` defaults to
@@ -31,7 +31,7 @@ import sys
 import threading
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.actions import KEY_FETCH, KEY_WAIT, pc_register  # noqa: E402

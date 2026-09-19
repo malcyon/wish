@@ -1,4 +1,4 @@
-"""`tools/reentrypoints.py` -- the reading half of `#207`'s re-entry.
+"""`tools/areas/reentrypoints.py` -- the reading half of `#207`'s re-entry.
 
 The five addresses `automap.actions.reenter` rests on were measured in a
 running machine. This checks that the bytes on the player's own disks still
@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 from automap import fasttravel  # noqa: E402
 from tests.gamedata import disk_dir, needs_disks  # noqa: E402
-from tools import reentrypoints as rp  # noqa: E402
+from tools.areas import reentrypoints as rp  # noqa: E402
 
 BASE = 0x0800
 

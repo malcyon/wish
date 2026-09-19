@@ -3,9 +3,9 @@
 `automap.target.ViceTarget`, and check that it ran the exit's own handler.
 
 `#207 (Run an exit's own handler before Fast Travel warps out)`'s two
-existing proofs are elsewhere: `tools/exitreentry.py`'s `reenter()` rebuilds
+existing proofs are elsewhere: `tools/areas/exitreentry.py`'s `reenter()` rebuilds
 the 6502 stack directly and calls it a re-entry point, and
-`tools/reentrypoints.py` checks the five addresses that rests on against a
+`tools/areas/reentrypoints.py` checks the five addresses that rests on against a
 shipped `DUNGEON` with no emulator at all. Neither calls the production code
 path a player's own Fast Travel button runs. This does:
 `automap.actions.FastTravel().run()`, unmodified, through `automap.target.
@@ -19,14 +19,14 @@ Princess Fatima from the roster the same way walking out does, because
 one is ever wanted, but only the Kobold Caves case has a save that carries
 the NPC -- `npc_party.d64` -- and has actually been driven this way.
 
-    tools/fasttravelrun.py --disks $POR_DISKS --out DIR
+    tools/areas/fasttravelrun.py --disks $POR_DISKS --out DIR
 
 Nothing is written to the player's disks: `tools.session.stage_disks` copies
 the sides into the slot, and `--save` is copied in as `SIDE0.D64`. The pool
 owns the emulator lifecycle throughout -- `tools.session.claim_slot` leases
 a slot through `tools.instance.claim`, and the slot is torn down on every
 exit path, including an exception, the same `finally` shape
-`tools/exitreentry.py` and `tools/livecheck.py` use.
+`tools/areas/exitreentry.py` and `tools/livecheck.py` use.
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

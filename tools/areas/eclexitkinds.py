@@ -34,7 +34,7 @@ on.
     eclexitkinds.py            every script
     eclexitkinds.py ECL0D      one
 
-No string is printed as text, for the reason `tools/eclwalk.py` gives.
+No string is printed as text, for the reason `tools/areas/eclwalk.py` gives.
 """
 from __future__ import annotations
 
@@ -43,10 +43,10 @@ import collections
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox.geo import Geo  # noqa: E402
-from tools import eclwalk as W  # noqa: E402
+from tools.areas import eclwalk as W  # noqa: E402
 
 #: The two menus, and the text printers, by opcode.  `$2B` and `$15` carry a
 #: count operand (`W.COUNTED`); `$12` prints an inline string; `$0E` prints
@@ -128,7 +128,7 @@ def compare_index(script, path, var):
     `var` is the destination `mask_before` wrote the masked square id to. A
     route that has masked `$C04F` into `var` and then names it in a `COMPARE`
     against a literal, immediately followed by the `IF` that reads it, names
-    the id the same way an `ONGOTO` arm does -- `#255 (tools/eclexitkinds.py
+    the id the same way an `ONGOTO` arm does -- `#255 (tools/areas/eclexitkinds.py
     misses a square exit whose id is tested by COMPARE rather than
     ONGOTO)`.
     """

@@ -36,7 +36,7 @@ with that byte set and its stock preloaded by `TREASURE`**. Nothing else in
 | 55 | 23 | (11,10) (10,13) | (11,9) facing south |
 
 CONFIRMED, twice and independently, once per port. The C64 `ECL00` off
-`POOL3.D64` decodes to those arms through `tools/eclwalk.py`. The DOS
+`POOL3.D64` decodes to those arms through `tools/areas/eclwalk.py`. The DOS
 `ECL00` -- block 0 of `ECL3.DAX`, 7,473 bytes against the C64's 7,468 --
 carries the same four `TREASURE`/`$6E6C` sequences with the same shop ids and
 its own 28-arm `ONGOTO` puts them at the same arm numbers. The two scripts

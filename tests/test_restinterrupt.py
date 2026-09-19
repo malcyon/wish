@@ -179,7 +179,7 @@ def test_only_the_slums_has_a_camping_test_that_decides_nothing():
     tests below it pick a different one on each arm -- so it is asserted here
     as *not* deciding nothing, to keep the test honest about the distinction.
     """
-    from tools import eclwalk
+    from tools.areas import eclwalk
 
     eclwalk.DISKS = pathlib.Path(_root())
     dead, near = [], []

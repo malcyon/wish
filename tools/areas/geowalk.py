@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk a driven session to a square, routed on the area's own `GEO` file.
 
-    tools/geowalk.py --port 6563 --geo GEO01 --title curse 6 12 --to 5 5
+    tools/areas/geowalk.py --port 6563 --geo GEO01 --title curse 6 12 --to 5 5
 
 `tools/session.py`'s `walk` takes one step at a time and verifies each against
 the status line, which costs about forty seconds a step: right for measuring a
@@ -24,7 +24,7 @@ import socket
 import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from goldbox.d64 import D64, load_payload  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402

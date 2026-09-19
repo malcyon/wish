@@ -41,10 +41,10 @@ import collections
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import commissions  # noqa: E402
-from tools import eclwalk  # noqa: E402
+from tools.areas import eclwalk  # noqa: E402
 
 #: The whole page an area script can name. `$4AF8` is the top: no operand in
 #: any of the thirty scripts names anything above it.
@@ -403,7 +403,7 @@ def cmd_sites(refs, named, bases, reach, args):
 DOC_HEADER = """\
 # The quest-flag page, and what writes it
 
-**Generated** by `tools/eclflags.py doc` -- do not edit. Nothing here is
+**Generated** by `tools/areas/eclflags.py doc` -- do not edit. Nothing here is
 transcribed by hand, and no line of it is the game's own text.
 
 `$4A00`-`$4AF8` is where the game records what the party has done.

@@ -54,7 +54,7 @@ digits, rather than to a confident wrong answer.
 
 `AREAS_SILVER_BLADES` is the second table, built for
 `#20 (Build an area table for Silver Blades)` and read off that title's own
-six sides by `tools/areatable.py`. It shares the `Area` shape and nothing else:
+six sides by `tools/areas/areatable.py`. It shares the `Area` shape and nothing else:
 sparse ids, no names, disk sides 1-6, and five areas whose map is not their own
 id. Its own comment carries what does not carry over, and every row is
 PROBABLE.
@@ -246,7 +246,7 @@ class Area:
     #: True for the one title whose loader letters its sides instead of
     #: numbering them. Curse's disks are `CURSE_A.D64`-`CURSE_F.D64`, checked
     #: against the player's own disks, and its loader prompts `INSERT SIDE A`
-    #: through `INSERT SIDE F` -- `tools/areatable.py`'s `sides()` already
+    #: through `INSERT SIDE F` -- `tools/areas/areatable.py`'s `sides()` already
     #: reads that letter back into the number `disk` holds
     #: (`number = ord(letters.upper()) - ord("A") + 1`), so `label` reverses
     #: the same arithmetic rather than inventing a second one. `disk` itself
@@ -341,7 +341,7 @@ AREAS: tuple[Area, ...] = (
     # travel (#178).
     #
     # West Window CONFIRMED in the running game, 2026-09-02, by
-    # `tools/windowsquare.py` on pool slot 0: a fast travel out of the Slums
+    # `tools/areas/windowsquare.py` on pool slot 0: a fast travel out of the Slums
     # with $49C3/$49C4 seeded (0, 0) came up on (14, 29) reading `OUTDOORS
     # 21:15 14,29`, with the movement bar up and no event, and all eight
     # compass digits walked the party off it. No script names an (x, y) in
@@ -372,7 +372,7 @@ AREAS: tuple[Area, ...] = (
        geo_names=MappingProxyType({"GEO20": "Kuto's Well Catacombs"})),
     # `ECL1E` carries `LOADFILES 18, 2, 255` at `$9A54`, four statements after
     # writing the party's square, and file 18 is `GEO12` -- CONFIRMED off the
-    # player's own POOL1, `tools/areatable.py pool-of-radiance`, 2026-09-07
+    # player's own POOL1, `tools/areas/areatable.py pool-of-radiance`, 2026-09-07
     # (`#260 (Area 30 is recorded as having no map, and ECL1E loads GEO12)`).
     _a(30, None, 1, ("GEO12",), None, U, fasttravelable=False),
 )
@@ -395,7 +395,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 
 
 #: Secret of the Silver Blades, read off its own six sides by
-#: `tools/areatable.py` (`#20 (Build an area table for Silver Blades)`).
+#: `tools/areas/areatable.py` (`#20 (Build an area table for Silver Blades)`).
 #: Twenty-two scripts, seventeen maps, `ECL64` and `ECL65` excluded because
 #: their first four bytes do not decode as the `GOTO` an area script opens
 #: with -- they are on every side and are the machine, not a place.
@@ -454,7 +454,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #: `$4BF2`**, and a fast travel hands the arriving script a came-from it may
 #: have no branch for. `ECL34` and `ECL51` were already known to branch that
 #: way when the table was built; `ECL10`, `ECL42`, `ECL60` and `ECL61` do it
-#: too and `tools/areatable.py` recorded the constant on the branch it
+#: too and `tools/areas/areatable.py` recorded the constant on the branch it
 #: happened to walk. `ECL63` writes no square at all on this path: the
 #: deliberately wrong square survived it untouched.
 #:
@@ -595,7 +595,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: Silver Blades excludes its two -- they carry no `LOADFILES` and are not
 #: places.  Measured for `#192 (Convert a Curse of the Azure Bonds DOS save
 #: into a C64 one, which the importer refuses today)` step 0b by
-#: `tools/areatable.py curse-of-the-azure-bonds`, which walks every script's
+#: `tools/areas/areatable.py curse-of-the-azure-bonds`, which walks every script's
 #: control flow from its five entry `GOTO`s and reads the `LOADFILES`
 #: operands, corroborated by the loader's own disk byte `$7F12` agreeing
 #: with the target script's side on all 23 static `NEWECL`s it precedes, and
@@ -642,7 +642,7 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 #: way as Silver Blades' twelve: PROBABLE, and never better, because
 #: `confidence` above does not grade this field.**  Each one is the
 #: departing or arriving script's own `SAVE <n>, [$C04B]`/`[$C04C]`/`[$C04D]`,
-#: walked by `tools/areatable.py curse-of-the-azure-bonds --python` and
+#: walked by `tools/areas/areatable.py curse-of-the-azure-bonds --python` and
 #: pasted in unchanged.  The calibration is Pool of Radiance's own table,
 #: the one table here with driven arrivals to check a derived square
 #: against: eleven rows carry both, and ten agree

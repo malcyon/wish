@@ -26,7 +26,7 @@ rest there can be interrupted at all.
 
 `code` needs no emulator: it re-derives the gate out of `CAMP` and `DUNGEON`
 on the player's own disks, then walks every area script's entry 2 with
-`tools/eclwalk.py` -- **from entry 2**, so a conditional pair is reported as
+`tools/areas/eclwalk.py` -- **from entry 2**, so a conditional pair is reported as
 the values each arm reaches rather than whichever came first in address order.
 It also walks both arms of every conditional through the statements that leave
 no trace (`COMPARE`, `IF`, `GOTO`) and says which arrive at the same single
@@ -148,7 +148,7 @@ def _script(name: str, root: str):
     """One walked area script, off whichever side carries it."""
     import pathlib as _p
 
-    from tools import eclwalk
+    from tools.areas import eclwalk
 
     eclwalk.DISKS = _p.Path(root)
     found = eclwalk.scripts()
@@ -552,7 +552,7 @@ def _settles_at(script, start: int) -> frozenset[int]:
     read, so a walk through them says where a branch really goes. Everything
     else stops the walk and is reported as a destination.
     """
-    from tools import eclwalk
+    from tools.areas import eclwalk
 
     passthrough = {0x03, 0x01} | eclwalk.CONDITIONS   # COMPARE, GOTO, IF*
     seen, work, out = set(), [start], set()
@@ -581,7 +581,7 @@ def inert_tests(name: str, root: str) -> list[dict]:
     Reported for every area, so the Slums can be compared with the other
     twenty-one conditional ones rather than judged on its own.
     """
-    from tools import eclwalk
+    from tools.areas import eclwalk
 
     script, _ = _script(name, root)
     out = []
@@ -633,7 +633,7 @@ def show_code(args) -> int:
     if chosen == ["all"]:
         import pathlib as _p
 
-        from tools import eclwalk
+        from tools.areas import eclwalk
         eclwalk.DISKS = _p.Path(root)
         chosen = sorted(eclwalk.scripts())
     print("what each area script's entry 2 leaves in $6DD2, the ticks "

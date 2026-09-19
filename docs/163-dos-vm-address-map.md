@@ -118,7 +118,7 @@ passes, and then:
 
 The string is "The Party is rudely interrupted!", the rest ends, and the
 routine returns 1 to the camp menu, which runs the script's entry 3 -- the
-one `tools/eclwalk.py` already labels "camp interrupted". So the Slums are
+one `tools/areas/eclwalk.py` already labels "camp interrupted". So the Slums are
 checked every two hours at 24%, the overland every eight hours at 10%, Sokol
 Keep every ten minutes at 1%, and New Phlan every five minutes at 101%,
 which a d100 never beats: **resting in the streets of New Phlan is
@@ -222,7 +222,7 @@ bytes 12804 and 12805, and did not read the callees. They are:
 plane 1 south/west, plane 2 the attribute with bit 7 roofed and the rest the
 script id. So 12804 is the wall-art nibble in front of the party and 12805 the
 square's attribute -- the `$C04E` and `$C04F` the scripts read, which
-`tools/eclexitkinds.py` already calls `ATTR`. Both return 0 when
+`tools/areas/eclexitkinds.py` already calls `ATTR`. Both return 0 when
 `0x2EC16(x, y)` says the square is off the map and `[0x84DC]` is 0 or 10. The
 same two calls recompute them at `0x16E60` (a scripted move with wrap, unit
 `0x72`) and `0x171E4` (a turn, unit `0x75`), and `0x2DD1A` recomputes 12805

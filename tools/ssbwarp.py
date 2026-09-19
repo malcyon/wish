@@ -2,8 +2,8 @@
 """Fast-travel a *Secret of the Silver Blades* party, to confirm the area
 table against the running machine.
 
-`#20 (Build an area table for Silver Blades)` is the ticket. `tools/newecl.py`
-found the addresses off this title's own overlays and `tools/areatable.py`
+`#20 (Build an area table for Silver Blades)` is the ticket. `tools/areas/newecl.py`
+found the addresses off this title's own overlays and `tools/areas/areatable.py`
 built the table off its own scripts; both are static readings, so every row of
 `goldbox.areas.AREAS_SILVER_BLADES` is PROBABLE. **A party warped into an area
 that then draws that area's map is what makes a row CONFIRMED**, and that is
@@ -69,8 +69,9 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import pc_register  # noqa: E402
 from goldbox import areas, c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import newecl, scratch  # noqa: E402
+from tools import scratch  # noqa: E402
 from tools import session as por  # noqa: E402
+from tools.areas import newecl  # noqa: E402
 
 #: The live party square. **Not relocated in any title read so far**: page
 #: `$C0` is `GDRIVE00`, and `DUNGEON`'s own position flush reads `$C04B,X`
@@ -83,7 +84,7 @@ LIVE_X, LIVE_Y, LIVE_FACING = 0xC04B, 0xC04C, 0xC04D
 ARRIVAL_TIMEOUT = 240.0
 
 #: `SILVER-1.D64` ... `SILVER-6.D64`, staged as `SIDE1` ... `SIDE6`. The digit
-#: in the name is the side the loader prompts for: `tools/areatable.py` finds
+#: in the name is the side the loader prompts for: `tools/areas/areatable.py` finds
 #: 29 of 29 static disk writes agreeing with it, none disagreeing.
 SIDE_GLOBS = ("SILVER-?.D64", "SILVER?.D64", "*Disk?.d64")
 
@@ -142,7 +143,7 @@ RE_START_CHECK = re.compile(r'TYPE THE CHARACTER "(.)"')
 class Addresses:
     """Every address the warp needs, read out of this title's own overlays.
 
-    Built by `tools/newecl.py`'s finders rather than written down, so the trap
+    Built by `tools/areas/newecl.py`'s finders rather than written down, so the trap
     `#17` names -- an address taken from a PRG header, `$3800` out in this
     title -- has no way in. Silver Blades' `DUNGEON` header claims `$4000` and
     it runs at `$0800`.

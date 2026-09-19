@@ -26,8 +26,8 @@ address fails here instead of in an emulator slot:
   step counter and reads the square's own wall byte before counting anything,
   so a step into a wall is not a step off the map.
 
-    tools/reentrypoints.py
-    tools/reentrypoints.py --base 0x0800 --verbose
+    tools/areas/reentrypoints.py
+    tools/areas/reentrypoints.py --base 0x0800 --verbose
 
 Nothing is written anywhere and no emulator is started. Exit status is 0 when
 every check passes and 1 when any fails, so it can gate a change to those five
@@ -42,7 +42,7 @@ import pathlib
 import sys
 from typing import NamedTuple
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -51,7 +51,7 @@ from goldbox.d64 import D64, load_payload  # noqa: E402
 
 #: Where `DUNGEON` runs, whatever its PRG header declares. The header on the
 #: disks here says `$1000` and the code is linked for `$0800` (`#207`, and
-#: `tools/newecl.py` says the same of every title).
+#: `tools/areas/newecl.py` says the same of every title).
 DUNGEON_BASE = 0x0800
 
 

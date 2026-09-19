@@ -13,7 +13,7 @@ Bishop of Tyr's commission and therefore behind clearing Sokal Keep. It is not.
 
 ## What `census` does
 
-`tools/eclwalk.py` walks each script from its five entry `GOTO`s, following
+`tools/areas/eclwalk.py` walks each script from its five entry `GOTO`s, following
 both arms of every condition, so a statement it reaches is a statement the
 engine can reach. Every `ADDNPC` (opcode `$36`) it reached is listed with:
 
@@ -43,10 +43,10 @@ import argparse
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox.d64 import D64  # noqa: E402
-from tools import eclwalk  # noqa: E402
+from tools.areas import eclwalk  # noqa: E402
 
 ADDNPC = 0x36
 GETTABLE = 0x2A

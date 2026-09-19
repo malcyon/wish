@@ -1210,8 +1210,8 @@ def actions(store: SpellStore | None = None,
 # **Every address below is Pool of Radiance's, and is now one row of a table.**
 # `automap/fasttravel.py` holds the row for each title whose overlays have been
 # read, and the constants here are that row's fields under the names the rest
-# of the program already used -- `tools/wallpins.py`, `tools/windowsquare.py`,
-# `tools/exitreentry.py` and `tests/test_newecl.py` all import them, and every
+# of the program already used -- `tools/areas/wallpins.py`, `tools/areas/windowsquare.py`,
+# `tools/areas/exitreentry.py` and `tests/test_newecl.py` all import them, and every
 # one of those is Pool of Radiance's work. A `FastTravel` built for a title
 # reads its own row instead and never these (#15).
 
@@ -1539,7 +1539,7 @@ CMD_REGISTERS_AVAILABLE = 0x83
 #: beside `A`, `X`, `Y`, `PC` and `FL` at 0, 1, 2, 3 and 5. `#207 (Run an
 #: exit's own handler before Fast Travel warps out)`'s re-entry needs it to
 #: rebuild `DUNGEON`'s own stack before jumping, the same way
-#: `tools/exitreentry.py` proved live: `SP := [$03BF]`, then push.
+#: `tools/areas/exitreentry.py` proved live: `SP := [$03BF]`, then push.
 SP_REGISTER = 4
 
 
@@ -1659,7 +1659,7 @@ def _reentry_plan(addr: fasttravel.FastTravelAddresses,
     Entry 1 (`after_step`) does its own redraw before running the per-square
     dispatch, so it needs no chain. Entry 0 (`forward_key`) is reached by
     chaining the redraw in front of it, so `$C04E`/`$C04F` are fresh before
-    its own wall test -- `tools/exitreentry.py`'s `phase_edge`, measured live.
+    its own wall test -- `tools/areas/exitreentry.py`'s `phase_edge`, measured live.
     """
     if entry == 1:
         return addr.after_step, ()
@@ -1717,7 +1717,7 @@ def reenter(target, addr: fasttravel.FastTravelAddresses, entry: int) -> bool:
     handler -- `#207 (Run an exit's own handler before Fast Travel warps
     out)`.
 
-    Ported from `tools/exitreentry.py`'s `reenter()`, proven across three
+    Ported from `tools/areas/exitreentry.py`'s `reenter()`, proven across three
     live sessions: the party lost the Kobold Caves' NPC every time the
     handler was answered `YES`, and the same push/jump landed both the square
     dispatch (`after_step`) and the edge dispatch (`redraw` chained in front

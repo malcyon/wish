@@ -20,7 +20,7 @@ import pytest
 from goldbox import commissions
 from goldbox.d64 import D64
 from tests.gamedata import disk_dir, needs_disks
-from tools import eclflags, eclwalk
+from tools.areas import eclflags, eclwalk
 
 
 @pytest.fixture(scope="module")

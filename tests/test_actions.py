@@ -982,7 +982,7 @@ def test_the_fast_travel_dropdown_is_disabled_in_combat():
 
 # --- #207: running the exit's own handler instead of NEWECL's tail -----------
 #
-# `automap.actions.reenter` is `tools/exitreentry.py`'s `reenter()`, ported: it
+# `automap.actions.reenter` is `tools/areas/exitreentry.py`'s `reenter()`, ported: it
 # rebuilds `DUNGEON`'s own stack from `$03BF` and lands wherever a step would
 # have, so the departing script's own dispatch runs the handler. The push
 # itself was proven live across three sessions (#207); what is tested here is
@@ -1021,7 +1021,7 @@ def test_reenter_refuses_a_title_with_no_measured_reentry_addresses():
 
 def test_reenter_pushes_only_the_main_loop_return_for_entry_1():
     """Entry 1 (`after_step`) does its own redraw, so no chain -- the same
-    single push `tools/exitreentry.py`'s `phase_square` measured."""
+    single push `tools/areas/exitreentry.py`'s `phase_square` measured."""
     addr = fasttravel.POOL_OF_RADIANCE
     target = ReenterTarget({addr.saved_sp: bytes([0xF0])})
     assert actions.reenter(target, addr, 1)
@@ -1032,7 +1032,7 @@ def test_reenter_pushes_only_the_main_loop_return_for_entry_1():
 
 def test_reenter_chains_the_redraw_in_front_of_the_forward_key_for_entry_0():
     """Entry 0 (`forward_key`) is reached through the redraw, chained the way
-    `tools/exitreentry.py`'s `phase_edge` chained it live."""
+    `tools/areas/exitreentry.py`'s `phase_edge` chained it live."""
     addr = fasttravel.POOL_OF_RADIANCE
     target = ReenterTarget({addr.saved_sp: bytes([0xF0])})
     assert actions.reenter(target, addr, 0)
@@ -1245,7 +1245,7 @@ def test_reenter_pushes_the_stack_in_a_single_write_on_the_monitor_path():
 
     def old_loop_bytes(items: tuple[int, ...]) -> tuple[int, bytes]:
         """`reenter`'s own write loop before this ticket's fix, and
-        `tools/exitreentry.py`'s `reenter()` today: high byte then low,
+        `tools/areas/exitreentry.py`'s `reenter()` today: high byte then low,
         each pushed return address two bytes shallower than the last."""
         mem: dict[int, int] = {}
         sp = base_sp

@@ -802,7 +802,7 @@ def geo_block(save: bytes) -> int:
     * **the overland**, where no `GEO` is loaded at all -- 10 of 10 outdoor
       specimens (#59);
     * **an area whose script loads no map**, which in Pool of Radiance is
-      the training hall (11) and Phlan City Hall (8).  `tools/loadfiles.py`
+      the training hall (11) and Phlan City Hall (8).  `tools/areas/loadfiles.py`
       finds no `LOADFILES` anywhere in `ECL0B`, so the hall runs on New
       Phlan's `GEO00` and leaves `$49C5` at 0 while `$49F2` says 11 (#257).
     """

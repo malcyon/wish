@@ -93,7 +93,7 @@ UNKNOWN = "unknown"
 #: into it again, over 20 readings that were all byte-for-byte exact, with the
 #: load counter climbing past 900 as the engine drew from it. `#37 (Automap
 #: the Amiga version, not just the C64)`'s twelve Amiga readings were exact as
-#: well. `tools/georesident.py` re-takes it.
+#: well. `tools/areas/georesident.py` re-takes it.
 #:
 #: **It is still not zero**, because an exact test would read a session
 #: running the other port's disks as somebody else's game -- and what that

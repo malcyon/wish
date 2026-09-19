@@ -111,7 +111,7 @@ MAP: tuple[Region, ...] = (
                 "GETTABLE or SAVETABLE indexes, out of 1415 operand "
                 "references across all thirty scripts. The remaining 38 are "
                 "gaps between per-area blocks that no script touches. All of "
-                "that was regenerated on 2026-09-02 by tools/eclflags.py "
+                "that was regenerated on 2026-09-02 by tools/areas/eclflags.py "
                 "into docs/151-quest-flags.md, replacing the lost "
                 "reports/quest-flags.md, and every figure came back "
                 "identical. The one that did not is how many carry a naming "

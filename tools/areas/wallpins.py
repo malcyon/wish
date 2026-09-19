@@ -17,7 +17,7 @@ section: `ECL1A` entry 4 issues no `LOADPIECES` at all, so arriving on the
 travel grid touches `$ED50` by neither route and `cmp -l` there is empty.  The
 damage only shows one hop later, where something does unpack wall pieces.
 
-    tools/wallpins.py --slot 2 --out DIR
+    tools/areas/wallpins.py --slot 2 --out DIR
 
 Three arrivals at Podol Plaza's own arrival square, so the pictures compare:
 
@@ -42,7 +42,7 @@ import struct
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

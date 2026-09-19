@@ -12,7 +12,7 @@ Static only -- no emulator. Two questions:
    square to `15,11`/`15,12` that never enters `14,11`?
 
 Prints statement lengths for strings, never their text, the same way
-`tools/eclwalk.py` and `tools/eclcensus.py` do.
+`tools/areas/eclwalk.py` and `tools/areas/eclcensus.py` do.
 
 Run: `.venv/bin/python tools/ssbarm2route.py [--from HEX] [--to HEX] [--also
 LO:HI ...]`. Reads the Silver Blades disks `tools/gamedisks.py` finds and
@@ -33,10 +33,12 @@ from goldbox.d64 import D64  # noqa: E402
 from goldbox.geo import Geo  # noqa: E402
 from goldbox.savegame import load_save  # noqa: E402
 from tools import (  # noqa: E402
-    eclcensus,
-    eclwalk,
     gamedisks,
     specimens,
+)
+from tools.areas import (  # noqa: E402
+    eclcensus,
+    eclwalk,
 )
 
 SAVE = str(specimens.tree_root() / "por-c64"

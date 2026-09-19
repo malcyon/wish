@@ -72,7 +72,7 @@ ART_PREFIXES = ("PIC", "COMPIC", "BODY", "HEAD", "SPRITE", "WALLSET",
 
 #: `ECL<id>` is the script VM's own bytecode, not 6502, so a two-byte operand
 #: in one is a *script* variable and not an instruction naming an address --
-#: `tools/eclcensus.py` is what reads those. `ECL64` and `ECL65` are ordinary
+#: `tools/areas/eclcensus.py` is what reads those. `ECL64` and `ECL65` are ordinary
 #: overlays despite the name, which is why the test is on the id and not on the
 #: prefix.
 SCRIPT_IDS_EXCEPT = ("64", "65")

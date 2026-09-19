@@ -50,7 +50,7 @@ own bytecode, not in the file this module reads. The byte offsets of those
 tables were recorded once, in `reports/world-map.md` (scratch, deleted), which is lost
 with the scratch directory (`#136 (Thirty-two cited write-ups are gone, because the
 knowledge base pointed into gitignored scratch)`) -- confirmed by
-`tools/windowsquare.py`'s own docstring: "Passability cannot be read off the
+`tools/areas/windowsquare.py`'s own docstring: "Passability cannot be read off the
 disk: the impassable-terrain table's address was in
 `reports/world-map.md`, which is lost (#136), so the running game is
 the only authority left." Recovering the offsets means rebuilding an ECL

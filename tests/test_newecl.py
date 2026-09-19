@@ -7,7 +7,7 @@ believed through a differently-cracked release, a wrong `--base`, and a paste
 error, and the first symptom is a `JMP` into somebody else's code.
 
 So these re-derive them from the game's bytes, by the procedure
-`tools/newecl.py` uses -- find the script VM by its **self-modifying dispatch**
+`tools/areas/newecl.py` uses -- find the script VM by its **self-modifying dispatch**
 (a `JSR` whose own operand bytes two `STA`s elsewhere write), take entry `$20`
 of the tables it builds, and read the routine -- and check the answers against
 what the code ships. Nothing is compared against a number typed into this file
@@ -46,7 +46,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
 
 def _newecl():
     spec = importlib.util.spec_from_file_location(
-        "_newecl_under_test", TOOLS / "newecl.py")
+        "_newecl_under_test", TOOLS / "areas" / "newecl.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules.setdefault("_newecl_under_test", module)
     spec.loader.exec_module(module)
@@ -154,7 +154,7 @@ def test_every_shipped_row_is_what_that_titles_disks_say(newecl, key):
     """`automap/fasttravel.py`'s whole table, against the games' own bytes.
 
     Twelve numbers a fast travel writes or jumps to, per title, re-derived by
-    `tools/newecl.py` from the overlays rather than compared with anything
+    `tools/areas/newecl.py` from the overlays rather than compared with anything
     typed into this file. A row that drifts -- another release, another crack,
     a paste error -- is a `JMP` into somebody else's code and a byte written
     into whatever that title keeps at another title's address, and neither

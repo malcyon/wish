@@ -7,7 +7,7 @@ party is not in a fight while it is standing on the combat floor)` is the
 ticket that wanted it. A driven run photographed a line of dialogue and the
 question was which `ECL` arm produced it -- and that is the difference between
 "the square trigger never fired" and "the square trigger fired and the driver
-declined the fight". `tools/eclcensus.py` deliberately prints a string operand
+declined the fight". `tools/areas/eclcensus.py` deliberately prints a string operand
 as its byte length, so it cannot answer that.
 
     ecltext.py secret-of-the-silver-blades ECL10           lengths only
@@ -37,7 +37,7 @@ whole of this is that `ECL10 +$07B4`, unpacked that way, is character for
 character the line in `cited/334/ssb8/04-after-watch.txt`.
 
 Nothing is assumed from Pool of Radiance: the opcode tables and the operand
-counts come out of the title's own `DUNGEON` through `tools/eclcensus.py`,
+counts come out of the title's own `DUNGEON` through `tools/areas/eclcensus.py`,
 which gets them from the VM's self-modifying dispatch.
 """
 
@@ -49,14 +49,14 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import disk_globs  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import eclcensus  # noqa: E402
+from tools.areas import eclcensus  # noqa: E402
 
 #: The operand kind byte that introduces a packed string.
 STRING_KIND = 0x80
@@ -90,7 +90,7 @@ def strings(machine, body: bytes, base: int):
     """`(offset, opcode, operand, length, text)` for every reachable string.
 
     Only statements the control-flow walk reaches, for the same reason
-    `tools/eclcensus.py` walks rather than sweeps: a linear scan reads the
+    `tools/areas/eclcensus.py` walks rather than sweeps: a linear scan reads the
     data tables `GETTABLE` indexes as instructions and invents strings.
     """
     out = []

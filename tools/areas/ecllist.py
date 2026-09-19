@@ -4,11 +4,11 @@ of its `COMBAT` statements a given saved game can actually reach.
 
 `#334 (The session driver cannot fight in Curse or Silver Blades, and says the
 party is not in a fight while it is standing on the combat floor)` is the
-ticket, and the gap is the reason for the file. `tools/eclcensus.py` answers
+ticket, and the gap is the reason for the file. `tools/areas/eclcensus.py` answers
 "which addresses does this title's scripts name" and `--sites` prints the
 statements naming one; neither prints a **run of statements from an offset**,
 which is what every reading on that ticket wanted, and four of them were done
-by hand. `tools/ecltext.py` decodes the strings. This one decodes the code.
+by hand. `tools/areas/ecltext.py` decodes the strings. This one decodes the code.
 
     ecllist.py secret-of-the-silver-blades ECL10 --at 8513 --count 40
     ecllist.py secret-of-the-silver-blades ECL10 --walk
@@ -24,7 +24,7 @@ immediate word, `$03` word variable, `$80` string -- and the kind is what says
 whether a store touches one byte or two.
 
 `--handler` disassembles the 6502 routine behind an opcode, found through
-`tools/newecl.py`'s self-modifying dispatch rather than by an address anybody
+`tools/areas/newecl.py`'s self-modifying dispatch rather than by an address anybody
 wrote down. That is what settles a question like "does `SAVE` into a byte
 variable clobber its neighbour" from the engine instead of from plausibility.
 
@@ -46,14 +46,15 @@ import collections
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
-from tools import d6502, gamedisks, newecl  # noqa: E402
-from tools.eclcensus import (  # noqa: E402
+from tools import d6502, gamedisks  # noqa: E402
+from tools.areas import newecl  # noqa: E402
+from tools.areas.eclcensus import (  # noqa: E402
     CONDITIONS,
     DESTINATIONS,
     DUNGEON_BASE,
@@ -132,7 +133,7 @@ def text(statement, base: int) -> str:
 
 def walk_all(machine: Machine, body: bytes, base: int) -> dict:
     """Every statement reachable from the five entry `GOTO`s."""
-    from tools.eclcensus import walk
+    from tools.areas.eclcensus import walk
     return walk(machine, body, base)
 
 

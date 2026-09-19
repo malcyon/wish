@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Render the GEO map files, and place a party on one.
 
-    tools/geomap.py --list                       every GEO file and its stats
-    tools/geomap.py GEO04                        one floor plan
-    tools/geomap.py GEO04 --save PORSAVE11.D64   with the party marked
-    tools/geomap.py --find PORSAVE11.D64         which maps the party could be on
+    tools/areas/geomap.py --list                       every GEO file and its stats
+    tools/areas/geomap.py GEO04                        one floor plan
+    tools/areas/geomap.py GEO04 --save PORSAVE11.D64   with the party marked
+    tools/areas/geomap.py --find PORSAVE11.D64         which maps the party could be on
 
 `--find` is the anchor problem: we know where the party is standing but not which
 map it is standing on. It reports every GEO file where that square exists and the
@@ -16,7 +16,7 @@ import glob
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from automap.paths import disk_globs, find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

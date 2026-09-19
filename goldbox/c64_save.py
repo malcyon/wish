@@ -682,7 +682,7 @@ _SILVER_ZERO = ("zero: what the one Secret of the Silver Blades save on this "
 #:   that read.  CONFIRMED.
 #: * **`+$E7`-`+$E9` and `+$FD`-`+$FE` are copied rather than zeroed.**  An
 #:   address census over all 22 of this title's scripts, both ports
-#:   (`tools/eclcensus.py`), gives `$4BE7` and `$4BE8` 18 writes and **no
+#:   (`tools/areas/eclcensus.py`), gives `$4BE7` and `$4BE8` 18 writes and **no
 #:   reads** over seventeen scripts, `$4BE9` 10 writes over seven, `$4BFD` 8
 #:   and `$4BFE` 16.  They are per-area constants an arriving script sets, and
 #:   the party's own value is in the DOS save at the same ECL address, so the

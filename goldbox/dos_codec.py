@@ -4706,7 +4706,7 @@ def quest_flags(save: bytes,
     on both ports, finds the scripts reading and writing right up to the end
     of the page: `$4CFD` -- the same word index as Pool of Radiance's
     wallmap -- is named by seventeen of the twenty-two, 33 reads and 63
-    writes (`tools/eclcensus.py secret-of-the-silver-blades --range 4CE0
+    writes (`tools/areas/eclcensus.py secret-of-the-silver-blades --range 4CE0
     4CFF`).  So five more bytes of a Silver Blades party's flags live past
     where Pool of Radiance's page ends, and the window that stops at `$4AF8`
     loses them.
@@ -6350,7 +6350,7 @@ SAVGAM_UNSOURCED_LATER: tuple[tuple[int, int, str], ...] = (
                 "divide arm storing the remainder into VM word $6E3F, the "
                 "one site in either overlay that writes it; nothing in "
                 "either overlay reads it and no script of either title "
-                "names it (tools/dosptrfields.py, tools/eclcensus.py). 4 "
+                "names it (tools/dosptrfields.py, tools/areas/eclcensus.py). 4 "
                 "in both played Curse containers, 0 everywhere else"),
     (0x5079, 3, f"the VM's own working registers $6E79-$6E7B, {ENGINE_REBUILT}"
                 f"; no site in either overlay reaches them by "

@@ -39,7 +39,7 @@ drew nine and `TRAIN CHARACTER` was not among them. Poked to `$7F` and the menu
 rebuilt, it drew ten with `TRAIN CHARACTER` between MODIFY and VIEW; poked back
 to 0 later in the same session, the line went away again.
 
-**The area scripts write the same value.** `tools/eclcensus.py
+**The area scripts write the same value.** `tools/areas/eclcensus.py
 curse-of-the-azure-bonds --sites 7EA8` finds six statements in the whole
 corpus, four of them `SAVE 127, =[$7EA8]` in `ECL01`, `ECL03`, `ECL50` and
 `ECL51`; `ECL01+$01EF` writes 0 and `ECL01+$0228` compares against 124. `GEN

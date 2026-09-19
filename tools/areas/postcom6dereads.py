@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every read of $6DE2, $6DE3 and $6DE6 in Pool of Radiance's POST.COM, with the branch each one gates, for `#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been seen on a screen)`.
 
-    .venv/bin/python tools/postcom6dereads.py
+    .venv/bin/python tools/areas/postcom6dereads.py
 
 The engine side of ECL00's tavern-brawl writes: finds `POST.COM` on the
 player's C64 disks (`automap.paths.find_disks()`, so `$POR_DISKS` or the usual
@@ -17,7 +17,7 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402

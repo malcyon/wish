@@ -11,7 +11,7 @@ Radiance, because the one thing six Gold Box titles have taught this project is
 that structure transfers and addresses do not:
 
 * the **VM's opcode tables** come out of `DUNGEON` by the self-modifying
-  dispatch `tools/newecl.py` finds, so `LOADFILES` is entry `$21` of this
+  dispatch `tools/areas/newecl.py` finds, so `LOADFILES` is entry `$21` of this
   title's table and not a remembered address;
 * the **script load address** is derived from the scripts themselves -- the
   five `GOTO`s at the head of every script name addresses inside it, so the
@@ -27,9 +27,9 @@ that structure transfers and addresses do not:
 
 **No string operand is ever printed as text.** These are the game's own words
 and this tool's output goes into a repository that must not carry them; a
-string prints as its length, exactly as `tools/eclwalk.py` does it.
+string prints as its length, exactly as `tools/areas/eclwalk.py` does it.
 
-`tools/eclwalk.py` is the fuller reader and is Pool of Radiance's alone -- it
+`tools/areas/eclwalk.py` is the fuller reader and is Pool of Radiance's alone -- it
 hard-codes `$9900`, `POOL{n}.D64` and the sixty-two opcodes. This one asks the
 same questions of any title and answers fewer of them.
 """
@@ -42,14 +42,14 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import disk_globs  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import newecl  # noqa: E402
+from tools.areas import newecl  # noqa: E402
 
 #: Where `LINKER` puts `DUNGEON`, in every title read so far. Not its header.
 DUNGEON_BASE = 0x0800
@@ -63,7 +63,7 @@ NO_FALLTHROUGH = {EXIT, GOTO, RETURN, NEWECL}
 #: A false condition skips the statement after these.
 CONDITIONS = {0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B}
 #: Opcodes carrying a count of further operands, and how many fixed operands
-#: come first -- the count is the last of those. `tools/eclwalk.py` derived
+#: come first -- the count is the last of those. `tools/areas/eclwalk.py` derived
 #: these from Pool of Radiance's handlers; the handlers are the same routine in
 #: every title read here, which is checked and reported by `--verify`.
 COUNTED = {0x15: 3, 0x25: 2, 0x26: 2, 0x2B: 2}
@@ -1025,7 +1025,7 @@ def check(game: c64_port.C64Container, root: str) -> int:
 
 
 #: What the loader reads to decide which side to ask for, per title. Both were
-#: read off `LINKER`'s own dispatch by `tools/newecl.py` and neither is a
+#: read off `LINKER`'s own dispatch by `tools/areas/newecl.py` and neither is a
 #: guess; a title not here still gets its table, without the cross-check.
 DISK_BYTES = {
     "pool-of-radiance": 0x6E12,

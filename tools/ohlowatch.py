@@ -51,7 +51,7 @@ What one run does, in order:
 Nothing here holds any of the game's words.  The menu options, the prompt and
 the word the booth wants are decoded out of `ECL14` on the player's own disk
 at run time -- the scripts are 6-bit packed, four characters to three bytes --
-and are never printed: the log says "option 3 of 3", the way `tools/eclwalk.py`
+and are never printed: the log says "option 3 of 3", the way `tools/areas/eclwalk.py`
 prints a string as its length.
 
 The pool owns the emulator: claim, launch, tear down.  The player's disks are
@@ -108,7 +108,7 @@ WATCHED = {
 # --- where in `ECL14` each thing the driver needs is written ----------------
 #
 # Script addresses, which are unambiguous: an `ECL` loads at `$9900`. Each was
-# read with `tools/eclwalk.py listing ECL14`.
+# read with `tools/areas/eclwalk.py listing ECL14`.
 ECL14_BASE = 0x9900
 #: The booth, area-script id 19, `GEO14` (15,12) and nowhere else.
 BOOTH_MENU = 0xAEC8         # OP$2B, three options; the third speaks

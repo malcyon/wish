@@ -66,7 +66,7 @@ def wait_idle(sess, timeout: float = 300.0, need: int = 6) -> bool:
     """Wait until `DUNGEON` is back in its key-wait loop and stays there.
 
     A fixed settle measures this machine's floppy rather than the game.  Taken
-    from `tools/wallpins.py`, which needed it for the same reason.
+    from `tools/areas/wallpins.py`, which needed it for the same reason.
     """
     deadline = time.time() + timeout
     inloop = 0
@@ -171,7 +171,7 @@ def answer_the_exit(sess, target, out: pathlib.Path,
     The exit prints a question, offers two words, then prints seventy-two more
     bytes, and each of those may want a keypress.  Rather than guessing the
     sequence, read row 24 and answer what is there -- the same shape as
-    `tools/wallpins.py`'s `overland_key`.
+    `tools/areas/wallpins.py`'s `overland_key`.
     """
     deadline, shots, seen = time.time() + budget, 0, []
     while time.time() < deadline:

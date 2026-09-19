@@ -4,12 +4,12 @@
 `#207 (Run an exit's own handler before Fast Travel warps out)` asks Fast
 Travel to run the exit's own handler instead of jumping past it, and the
 question that decides whether that is safe for a given exit is not what the
-handler's last block writes -- `tools/eclwalk.py exits` already prints that --
+handler's last block writes -- `tools/areas/eclwalk.py exits` already prints that --
 but **what the whole route does**, from the entry the game dispatches through
 down to the `NEWECL`.  `ECL07 $A904`'s last block is six `SAVE`s and a
 `NEWECL 0`; its route is the endgame battle with Tyranthraxus.
 
-`tools/eclexitkinds.py` classifies all 79 exits and counts the features on
+`tools/areas/eclexitkinds.py` classifies all 79 exits and counts the features on
 each route.  This prints the route itself, so a feature count of `combat` can
 be read rather than believed.
 
@@ -33,7 +33,7 @@ reads as "leave when the step stays on the map".  The listing has
 left when `$6DD5` is **non**-zero.  Read `eclwalk.py listing` before
 concluding anything about which way a test goes.
 
-No string operand is printed as text, for the reason `tools/eclwalk.py`
+No string operand is printed as text, for the reason `tools/areas/eclwalk.py`
 gives: the game's words are its own.  Lengths are printed instead.
 """
 from __future__ import annotations
@@ -42,11 +42,11 @@ import argparse
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox.geo import Geo  # noqa: E402
-from tools import eclexitkinds as K  # noqa: E402
-from tools import eclwalk as W  # noqa: E402
+from tools.areas import eclexitkinds as K  # noqa: E402
+from tools.areas import eclwalk as W  # noqa: E402
 
 
 #: What each statement on a route would look like to a player, using the same

@@ -382,7 +382,7 @@ VM arithmetic handler's divide arm storing the division remainder into VM word
 `$6E3F`, which the file's contiguous naming calls `$503F`
 (`docs/163-dos-vm-address-map.md`). It is the only site in either overlay that
 writes it, nothing reads it, and no script of either title names it
-(`tools/dosptrfields.py`, `tools/eclcensus.py`). So the conversion writes it
+(`tools/dosptrfields.py`, `tools/areas/eclcensus.py`). So the conversion writes it
 **zero** with that reason in `SAVGAM_UNSOURCED_LATER`, and the running game
 confirmed the zero loads and plays. It is a stale VM register, not party
 state.

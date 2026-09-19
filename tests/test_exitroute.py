@@ -1,4 +1,4 @@
-"""`tools/exitroute.py`'s route printing, on statements built here and on the
+"""`tools/areas/exitroute.py`'s route printing, on statements built here and on the
 two exits `#207 (Run an exit's own handler before Fast Travel warps out)`
 turns on.
 
@@ -23,8 +23,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tests.gamedata import needs_disks  # noqa: E402
-from tools import eclwalk as W  # noqa: E402
-from tools import exitroute as R  # noqa: E402
+from tools.areas import eclwalk as W  # noqa: E402
+from tools.areas import exitroute as R  # noqa: E402
 
 
 def statement(op, operands=()):

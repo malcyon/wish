@@ -11,9 +11,9 @@ in Pool of Radiance, and none of them could be assumed to transfer: three are
 payload-relative, four are the loader's page, and the rest are overlay code
 that moves whenever a routine above it changes size.
 
-    tools/newecl.py pool-of-radiance
-    tools/newecl.py curse-of-the-azure-bonds --disks DIR
-    tools/newecl.py secret-of-the-silver-blades --against pool-of-radiance
+    tools/areas/newecl.py pool-of-radiance
+    tools/areas/newecl.py curse-of-the-azure-bonds --disks DIR
+    tools/areas/newecl.py secret-of-the-silver-blades --against pool-of-radiance
 
 **Nothing here is found by name or by header.** The chain is:
 
@@ -49,7 +49,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

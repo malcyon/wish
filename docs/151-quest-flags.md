@@ -1,6 +1,6 @@
 # The quest-flag page, and what writes it
 
-**Generated** by `tools/eclflags.py doc` -- do not edit. Nothing here is
+**Generated** by `tools/areas/eclflags.py doc` -- do not edit. Nothing here is
 transcribed by hand, and no line of it is the game's own text.
 
 `$4A00`-`$4AF8` is where the game records what the party has done.

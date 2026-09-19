@@ -127,7 +127,7 @@ govern it.
 
 And when a new file needs a path to the player's disks, use what the other
 tools use -- `$POR_DISKS`, then `automap.paths.find_disks()` -- rather than a
-fourth way. `tools/geomap.py` is the one-liner.
+fourth way. `tools/areas/geomap.py` is the one-liner.
 
 ## Pushing
 

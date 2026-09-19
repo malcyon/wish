@@ -14,13 +14,13 @@ ports load the save at different addresses.
     eclcensus.py curse-of-the-azure-bonds --compare    C64 bytes against DOS's
     eclcensus.py pool-of-radiance                      the control
 
-`tools/eclflags.py` asks this of Pool of Radiance's thirty scripts and knows
-what each address means; it goes through `tools/eclwalk.py`, which hard-codes
+`tools/areas/eclflags.py` asks this of Pool of Radiance's thirty scripts and knows
+what each address means; it goes through `tools/areas/eclwalk.py`, which hard-codes
 `$9900`, `POOL{n}.D64` and sixty-two opcodes. This one asks any title, reads
 the DOS side as well, and answers less about each hit.
 
 **Nothing is assumed from Pool of Radiance.** The opcode tables come out of the
-title's own `DUNGEON` by `tools/newecl.py`'s self-modifying dispatch, the
+title's own `DUNGEON` by `tools/areas/newecl.py`'s self-modifying dispatch, the
 operand counts out of the table beyond them, and the script base out of the
 five `GOTO`s every script opens with. A string operand prints as its length,
 never as text, because this output goes into a repository the game's words must
@@ -45,7 +45,7 @@ import os
 import pathlib
 import sys
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
@@ -53,7 +53,7 @@ from automap.paths import disk_globs  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
-from tools import newecl  # noqa: E402
+from tools.areas import newecl  # noqa: E402
 
 #: Where `LINKER` puts `DUNGEON`, in every title read so far -- not its header.
 DUNGEON_BASE = 0x0800
@@ -77,7 +77,7 @@ HANDLER_OPERANDS = {
     "pool-of-radiance": {0x0C: 3, 0x29: 14, 0x36: 2},
 }
 
-#: Which operands an opcode stores through. `tools/eclflags.py` derived this
+#: Which operands an opcode stores through. `tools/areas/eclflags.py` derived this
 #: from the instruction set and checked it against sixty-two handlers; it is
 #: copied rather than imported because that module is Pool of Radiance's.
 DESTINATIONS = {
@@ -358,7 +358,7 @@ def raw_loads(body: bytes) -> list[tuple[int, int, tuple[int, int, int]]]:
     """`LOADFILES`/`LOADPIECES` by byte pattern, not by walking.
 
     The all-immediate form only: opcode, then three `00 <value>` operands.
-    `tools/loadfiles.py` does this for Pool of Radiance and it is the
+    `tools/areas/loadfiles.py` does this for Pool of Radiance and it is the
     independent check on the walk -- a scan finds statements the walk never
     reached, and reads data tables as statements, so the two disagreeing is
     the interesting case rather than either being right.

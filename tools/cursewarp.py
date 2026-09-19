@@ -4,7 +4,7 @@ mechanism works there at all.
 
 `#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
 Radiance's alone?)` is the ticket, and it is the gate on the whole Fast Travel
-branch.  `tools/newecl.py` answers the static half -- every address the recipe
+branch.  `tools/areas/newecl.py` answers the static half -- every address the recipe
 needs exists in Curse's own overlays and `NEWECL` is the same routine.  This
 answers the half that a listing cannot: whether the writes made from outside,
 with the PC dropped into the handler's tail, actually land a party in another
@@ -27,7 +27,7 @@ and its own jump. A tool that reproduces a result its own way says nothing
 about the code that ships.
 
 **Every address here is Curse's, read out of Curse's overlays**, and none of
-them is Pool of Radiance's with an offset applied by hand: `tools/newecl.py`
+them is Pool of Radiance's with an offset applied by hand: `tools/areas/newecl.py`
 prints the derivation.  They are re-derived at run time rather than written
 down, so a differently-cracked release answers with its own or refuses.
 
@@ -58,8 +58,9 @@ sys.path.insert(0, str(ROOT))
 from automap.actions import pc_register  # noqa: E402
 from goldbox import c64_port  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
-from tools import curserun, newecl, scratch  # noqa: E402
+from tools import curserun, scratch  # noqa: E402
 from tools import session as por  # noqa: E402
+from tools.areas import newecl  # noqa: E402
 
 #: Where Curse's live party square is.  **Not relocated**: `DUNGEON`'s own
 #: position flush reads `$C04B,X` in Curse exactly as it does in Pool of
@@ -75,7 +76,7 @@ ARRIVAL_TIMEOUT = 180.0
 class Addresses:
     """Every address the warp needs, read out of this title's own overlays.
 
-    Built by `tools/newecl.py`'s finders rather than written down, so the one
+    Built by `tools/areas/newecl.py`'s finders rather than written down, so the one
     trap `#17` names -- an address taken from a PRG header, `$800` out -- has
     no way in.  The `save` base is `Game.save_load_address`, which is the only
     number here that comes from a table, and the two fields derived from it
@@ -533,7 +534,7 @@ def warp(sess, addr: Addresses, target: int, disk: int,
 
     The order is the handler's, with the operand fetch left out because there
     is no script stream to fetch from -- `docs/118-debug-mode.md` §3 for Pool
-    of Radiance, and `tools/newecl.py` for why the same order is Curse's.
+    of Radiance, and `tools/areas/newecl.py` for why the same order is Curse's.
     """
     made = {}
     with sess.mon(10) as m:
@@ -559,7 +560,7 @@ def warp(sess, addr: Addresses, target: int, disk: int,
 class SessTarget:
     """`automap.actions`' Target contract over this session's monitor.
 
-    The same four methods `tools/windowsquare.py` wraps a Pool of Radiance
+    The same four methods `tools/areas/windowsquare.py` wraps a Pool of Radiance
     session in. It exists so that `--via-actions` exercises the code the
     window ships rather than this file's own `warp`: the two write the same
     bytes, and only one of them is what a player clicking Fast Travel runs.

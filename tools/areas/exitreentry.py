@@ -26,7 +26,7 @@ the main loop), push the chain, set the PC.  `EXIT` unwinds to `$2B63`, which
 `$1581` records on entry, and `NEWECL`'s tail resets to `$03BF`, so whatever
 the party answers the machine comes back to a state the game itself built.
 
-    tools/exitreentry.py --out DIR
+    tools/areas/exitreentry.py --out DIR
 
 Boots `npc_party.d64` -- the party inside the Kobold Caves with Fatima in
 slot 3 -- and runs the phases in order, each writing a JSON capture and a
@@ -47,7 +47,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

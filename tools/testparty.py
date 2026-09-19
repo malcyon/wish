@@ -945,7 +945,7 @@ def write_disk(built: list[Built], base: pathlib.Path, out: pathlib.Path,
 def base_save_disk() -> pathlib.Path:
     """A save disk to copy: `$POR_DISKS` first, then `automap.paths`.
 
-    The same one-liner `tools/geomap.py` uses, so a fourth way of finding the
+    The same one-liner `tools/areas/geomap.py` uses, so a fourth way of finding the
     player's disks does not appear here.
     """
     import os

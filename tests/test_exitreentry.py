@@ -1,4 +1,4 @@
-"""`tools/exitreentry.py`'s hand-built stack, against a fake monitor rather
+"""`tools/areas/exitreentry.py`'s hand-built stack, against a fake monitor rather
 than a live emulator.
 
 The tool itself cannot be tested end to end here -- it needs a booted VICE
@@ -25,7 +25,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox.geo import EAST, Geo  # noqa: E402
 from tests.gamedata import game_file, needs_disks  # noqa: E402
-from tools import exitreentry as ER  # noqa: E402
+from tools.areas import exitreentry as ER  # noqa: E402
 
 
 class FakeMonitor:

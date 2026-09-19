@@ -96,7 +96,7 @@ FLOOR_COLS = range(0, 22)
 #: status line that shows the same `x,y` on both sides of a door.
 AREA_AT = 0x6E1B
 
-#: `MON_CMD_BANKS_AVAILABLE`.  `tools/wallpins.py` and `tools/vicebankcheck.py`
+#: `MON_CMD_BANKS_AVAILABLE`.  `tools/areas/wallpins.py` and `tools/vicebankcheck.py`
 #: carry the same constant and the same unpacking (#265).
 CMD_BANKS = 0x82
 

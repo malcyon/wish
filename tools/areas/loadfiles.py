@@ -11,14 +11,14 @@ thirty area scripts. Anything else is skipped rather than guessed at.
 
     loadfiles.py ECL00 ECL14
 
-`tools/eclwalk.py` reads the same scripts statement by statement and is the
+`tools/areas/eclwalk.py` reads the same scripts statement by statement and is the
 fuller answer; this one is the quick question, and it needs no `DUNGEON`.
 """
 import os
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

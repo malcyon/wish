@@ -1,4 +1,4 @@
-"""`tools/eclexitkinds.py`'s exit classification, on scripts built here rather
+"""`tools/areas/eclexitkinds.py`'s exit classification, on scripts built here rather
 than off a disk, plus the real totals it produces from the thirty area
 scripts.
 
@@ -10,7 +10,7 @@ machine reads is not reproduced here -- only the operand counts this file's
 own synthetic scripts need are declared, none of them copied off a disk.
 
 `test_the_79_exits_still_break_down_the_way_the_readme_row_says` is the
-precedent `tests/test_questflags.py` sets for `tools/eclflags.py`: the real
+precedent `tests/test_questflags.py` sets for `tools/areas/eclflags.py`: the real
 count, pinned, so a walk that reaches less of a script shows up here instead
 of only in a doc nobody reruns. It is the count behind the corrected
 `tools/README.md` row -- the old row implied every exit was `edge` or
@@ -28,8 +28,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox.geo import Geo  # noqa: E402
 from tests.gamedata import needs_disks  # noqa: E402
-from tools import eclexitkinds as EK  # noqa: E402
-from tools import eclwalk as W  # noqa: E402
+from tools.areas import eclexitkinds as EK  # noqa: E402
+from tools.areas import eclwalk as W  # noqa: E402
 
 EDGE_FLAG, ATTR = EK.EDGE_FLAG, EK.ATTR
 
@@ -456,7 +456,7 @@ def op_if(asm, opcode):
 
 
 def test_analyse_names_a_square_exit_gated_by_compare_instead_of_ongoto():
-    """`#255 (tools/eclexitkinds.py misses a square exit whose id is tested
+    """`#255 (tools/areas/eclexitkinds.py misses a square exit whose id is tested
     by COMPARE rather than ONGOTO)`: this route has no `ONGOTO` at all, only
     a masked `$C04F` and a `COMPARE`/`IF=`/`GOTO`, and the squares column
     used to stay empty for it."""

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Every reference to $6DE0-$6DEF in Pool of Radiance's thirty area scripts, walked and raw-scanned, for `#445 (The game's third fight outcome, THE PARTY RUNS AWAY, has never been seen on a screen)`.
 
-    .venv/bin/python tools/ecl6derefs.py
+    .venv/bin/python tools/areas/ecl6derefs.py
 
-Four passes over the C64 scripts `tools/eclcensus.py` loads, so the control-flow
+Four passes over the C64 scripts `tools/areas/eclcensus.py` loads, so the control-flow
 walk's 2% blind spot cannot hide a write: (1) every walked statement with an
 operand in $6DE0-$6DEF, marked WRITE or read; (2) a raw byte scan for the
 little-endian address bytes, marking each hit as inside a walked statement or
@@ -21,12 +21,12 @@ import argparse
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from automap.paths import find_disks  # noqa: E402
 from goldbox import c64_port  # noqa: E402
-from tools import eclcensus as E  # noqa: E402
+from tools.areas import eclcensus as E  # noqa: E402
 
 LO, HI = 0x6DE0, 0x6DEF
 

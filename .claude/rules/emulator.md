@@ -89,7 +89,7 @@ writing.
 
 **A new tool that needs the player's disks reads `$POR_DISKS`, then
 `automap.paths.find_disks()`** -- not a fourth way, and never a hardcoded path.
-`tools/geomap.py` is the one-liner.
+`tools/areas/geomap.py` is the one-liner.
 
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "The machine".

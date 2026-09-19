@@ -4,7 +4,7 @@
     tools/wallsmap.py DIR/01-podol-control.walls.bin
     tools/wallsmap.py DIR/*.walls.bin
 
-Reads the `<label>.walls.bin` captures `tools/wallpins.py` writes and prints
+Reads the `<label>.walls.bin` captures `tools/areas/wallpins.py` writes and prints
 one character per 128 bytes: `#` where the whole block matches `WALLS00` as it
 is on the disk, `+` where more than half of it does, `.` where it does not.
 Underneath, a `^` marks each of the three addresses `DUNGEON $1485` unpacks a

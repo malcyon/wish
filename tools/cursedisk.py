@@ -21,7 +21,7 @@ converts a Curse folder too, for everyone since 2026-09-06 (#131).
 than removed: both guard on "is this already true" before touching anything,
 so a copy of this file run against an older checkout still works, and
 `--check-areas` still re-derives the twenty-five off the disks with
-`tools/areatable.py curse-of-the-azure-bonds --python` and diffs them against
+`tools/areas/areatable.py curse-of-the-azure-bonds --python` and diffs them against
 this copy rather than against `goldbox/areas.py`'s -- catching either table
 going stale on its own.
 
@@ -102,12 +102,12 @@ def enable_curse() -> None:
 def check_areas(disks: pathlib.Path) -> list[str]:
     """Re-derive the rows off the disks and say where the copy differs.
 
-    `tools/areatable.py` walks each script's own control flow from its five
+    `tools/areas/areatable.py` walks each script's own control flow from its five
     entry `GOTO`s and reads the `LOADFILES` operands; this asks it for the
     same twenty-five rows and diffs the id, the side and the maps.  A copied
     table that nothing ever re-derives is a table that quietly goes stale.
     """
-    from tools import areatable
+    from tools.areas import areatable
 
     _base, scripts = areatable.load_scripts(
         str(disks), CURSE, areatable.Machine(str(disks), CURSE))

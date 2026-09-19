@@ -26,7 +26,7 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "docs", "88-map-files.md")
 HEADER = """# The `GEO` map files
 
 **Generated** by `tools/genmaps.py` — do not edit. Decoded in
-[GEO is solved](50-experiments.md); the reader is `goldbox/geo.py`, `tools/geomap.py`
+[GEO is solved](50-experiments.md); the reader is `goldbox/geo.py`, `tools/areas/geomap.py`
 renders them, and [`goldbox/areas.py`](../goldbox/areas.py) says which area loads which
 file and what it is called.
 

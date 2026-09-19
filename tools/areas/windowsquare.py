@@ -12,7 +12,7 @@ Passability cannot be read off the disk: the impassable-terrain table's
 address was in `reports/world-map.md`, which is lost (#136), so the
 running game is the only authority left.  That is what this drives:
 
-    tools/windowsquare.py --slot 0 --out DIR
+    tools/areas/windowsquare.py --slot 0 --out DIR
 
 For each window, in order: write `$49C3`/`$49C4` to a known wrong value so the
 arrival cannot be the stale square, fast travel there through
@@ -38,7 +38,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 

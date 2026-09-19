@@ -2,7 +2,7 @@
 
 `goldbox/areas.py` carries three tables -- thirty Pool of Radiance rows,
 twenty-five Curse rows and twenty-two Silver Blades rows -- and every one of
-them was produced by `tools/areatable.py` walking the game's own `ECL` scripts
+them was produced by `tools/areas/areatable.py` walking the game's own `ECL` scripts
 and then **copied into a source file**. A copied table is a claim nothing
 checks: it survives a wrong stride, a re-cracked release and a paste error, and
 the first symptom is a fast travel writing an area's id with another area's
@@ -22,7 +22,8 @@ from __future__ import annotations
 import pytest
 
 from goldbox import areas, c64_port
-from tools import areatable, gamedisks
+from tools import gamedisks
+from tools.areas import areatable
 
 TITLES = {
     c64_port.POOL_OF_RADIANCE: areas.POOL_OF_RADIANCE,

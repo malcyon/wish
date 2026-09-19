@@ -65,12 +65,12 @@ def enable_ssb() -> None:
 def check_areas(disks: pathlib.Path) -> list[str]:
     """Re-derive the rows off the disks and diff them against `goldbox.areas`.
 
-    `tools/areatable.py` walks each script's own control flow from its five
+    `tools/areas/areatable.py` walks each script's own control flow from its five
     entry `GOTO`s and reads the `LOADFILES` operands.  A table nothing ever
     re-derives is a table that quietly goes stale, and this one is consumed
     by `apply_file_cache` on every conversion.
     """
-    from tools import areatable
+    from tools.areas import areatable
 
     _base, scripts = areatable.load_scripts(
         str(disks), SSB, areatable.Machine(str(disks), SSB))

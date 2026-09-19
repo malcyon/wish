@@ -516,7 +516,7 @@ from the bytecode: 21 of Curse's 25 area scripts are **byte-identical** to the
 DOS `ECL<n>.DAX` blocks of the same id, so the two ports name one address set,
 and a census of every address operand in all 25 finds 219 references to the
 `$4B00` page, 2053 to `$4C00` and **none at all** to `$4900` or `$4A00`
-(`tools/eclcensus.py`). Silver Blades' 22 scripts read the same way. The
+(`tools/areas/eclcensus.py`). Silver Blades' 22 scripts read the same way. The
 relocation is exactly `$200` and `DUNGEON` shows it directly: the clock tick is
 the same routine at Pool of Radiance `$0DEC` on `$49C6`/`$4900`/`$4980` and at
 Curse `$0D4F` on `$4BC6`/`$4B00`/`$4B80`.

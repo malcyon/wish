@@ -40,7 +40,7 @@ game booting a disk built that way.
 
 **`+$E7`-`+$E9` and `+$FD`-`+$FE` are per-area constants an arriving script
 sets and no script reads.** An address census over all twenty-two `ECL`
-scripts, on both ports (`tools/eclcensus.py`), gives `$4BE7` and `$4BE8` 18
+scripts, on both ports (`tools/areas/eclcensus.py`), gives `$4BE7` and `$4BE8` 18
 writes and no reads across seventeen scripts, `$4BE9` 10 writes across seven,
 `$4BFD` 8 and `$4BFE` 16. The party's own value is in the DOS save at the same
 ECL address, so the conversion copies it rather than writing a zero nobody has

@@ -26,7 +26,7 @@ block, so a load count of zero would mean the checkpoints are measuring
 nothing.  The store counter is the measurement -- every write into the block
 while one map stays loaded, whoever makes it.
 
-    tools/georesident.py --save PORSAVE13.D64 --route IIIIII --out DIR
+    tools/areas/georesident.py --save PORSAVE13.D64 --route IIIIII --out DIR
 
 Crossing an area boundary is the other half, and `--route` is how it is asked
 for: the loader filling the page for the new area is a legitimate store, and
@@ -46,7 +46,7 @@ import pathlib
 import sys
 import time
 
-TOOLS = pathlib.Path(__file__).resolve().parent
+TOOLS = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS.parent))
 
 from automap.area import NEAR_ENOUGH, RESIDENT_GEO, ResidentGeo, _distance  # noqa: E402

@@ -6,7 +6,7 @@ the authority for all of it; the working that established it, `reports/commissio
 
 **The quest-flag half of that working is back and is now generated.**
 [`151-quest-flags.md`](151-quest-flags.md) is every reference the thirty
-scripts make to `$4A00`-`$4AF8`, rebuilt by `tools/eclflags.py` rather than
+scripts make to `$4A00`-`$4AF8`, rebuilt by `tools/areas/eclflags.py` rather than
 written by hand, and it reproduces the lost report's counts exactly: 179 of
 the 217 persistent bytes named, 1415 operand references, 38 gaps.
 
@@ -123,7 +123,7 @@ booth in the old rope guild, and gives his name, `OHLO`, as the password.
 | `$4A81` | the potion is not in hand | Ohlo's potion collected. | Ohlo's quest completed. |
 
 All CONFIRMED from `ECL14`'s own writes, re-derived on 2026-09-02 with
-`tools/eclflags.py sites 4A04 4A81` and given here as **script addresses**,
+`tools/areas/eclflags.py sites 4A04 4A81` and given here as **script addresses**,
 which are unambiguous because an `ECL` loads at `$9900`:
 
 | where | what |

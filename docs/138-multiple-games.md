@@ -11,7 +11,7 @@ They are. But the dialog is the last problem, not the first.
 | question | answer | grade |
 |---|---|---|
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
-| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, no names -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, no names and no arrival squares, `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
+| What do we have for Curse and Silver Blades? | **Silver Blades has a table**: twenty-two areas, seventeen maps, the disk side for every one, twelve arrival squares, no names -- `goldbox.areas.AREAS_SILVER_BLADES`, built by `tools/areas/areatable.py` off its own six sides for `#20 (Build an area table for Silver Blades)`. **Curse has one too**: twenty-five areas on six sides, sixteen maps, no names and no arrival squares, `goldbox.areas.AREAS_CURSE`, built by the same tool for `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the importer refuses today)`. Both re-derive off the disks today -- 25 of 25 and 22 of 22 on id, side and maps, `tools/areas/areatable.py <title> --check`, 2026-09-08 | CONFIRMED that the rows are what the scripts say; for Silver Blades CONFIRMED that the game does what they say, since fifteen driven arrivals matched the map at `$0400` byte for byte, and PROBABLE for Curse, where four warps landed but no individual row was checked |
 | What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/c64_port.py` has six titles and PoD is not one of them | CONFIRMED |
 | Does the fasttravel mechanism transfer? | **Yes.** `NEWECL` is the same routine in Curse and in Silver Blades, and four driven warps landed a Curse party in four different areas. §6 | CONFIRMED for Curse, PROBABLE for Silver Blades |
 
@@ -57,7 +57,7 @@ areas are per-title" is the trap. What it delivered was the names table.
 | `GEO` files decoded | 29 | 16, reciprocity ≥ 0.935 | 17, wall-art reciprocity 1.000 | — |
 | map ids | dense `GEO00`–`GEO1F` | sparse, chapter-grouped `01 03 04 / 10 11 15 / …` | sparse `$10`–`$62`; **high nibble is the disk side** | — |
 | area names | 29 of 30 | **none** | **none** | — |
-| `ECL` ids and area→map relation | fully decoded | ids read, 23 scripts | **fully decoded**, 22 scripts, `tools/areatable.py` | — |
+| `ECL` ids and area→map relation | fully decoded | ids read, 23 scripts | **fully decoded**, 22 scripts, `tools/areas/areatable.py` | — |
 | which disk carries which script | yes, `Area.disk` | read, not tabled | yes, `Area.disk`, corroborated 29 of 29 against the scripts' own disk writes | — |
 | arrival squares | 16 harvested, `landing_square` for the rest | 12 read, not tabled | 12 read, all from the arriving script's entry 4 | — |
 | live automapper run | shipping | done, `docs/120` tier 4 | done, `docs/121` phase 5 | — |
@@ -226,7 +226,7 @@ needed, and the claim it needed is now measured directly across *titles*.
 `DUNGEON $21BA` and Silver Blades' is `$20E6`, against Pool of Radiance's
 `$2011`; disassembled, Curse's is instruction for instruction identical bar
 three relocations, and Silver Blades' differs by one added store. Nothing was
-found by name or by an offset carried over — `tools/newecl.py` locates the
+found by name or by an offset carried over — `tools/areas/newecl.py` locates the
 script VM by its **self-modifying dispatch**, a `JSR` whose own operand bytes
 two `STA`s elsewhere write, and takes entry `$20` of the tables it builds.
 Every one of Pool of Radiance's documented addresses comes back out of that
@@ -363,10 +363,10 @@ version.
 
 ## 8. Silver Blades' table, and the four rules it breaks
 
-Built for `#20 (Build an area table for Silver Blades)` by `tools/areatable.py`,
+Built for `#20 (Build an area table for Silver Blades)` by `tools/areas/areatable.py`,
 which reads any title's `ECL` scripts through the opcode tables it takes out of
 that title's own `DUNGEON`. Pool of Radiance is the control, and
-`tools/areatable.py pool-of-radiance --check` is what scores it against
+`tools/areas/areatable.py pool-of-radiance --check` is what scores it against
 `AREAS`. Re-measured 2026-09-08, which corrected the two counts this paragraph
 used to carry ("reproduces `AREAS`' map column" and "fourteen of its sixteen
 arrival squares"):
@@ -379,7 +379,7 @@ arrival squares"):
 | maps | 27 of 30. `$03` and `$05` are `dynamic_geo`, issue no static `LOADFILES` and have no map to find; `ECL07` loads `GEO03` as well as its own `GEO07` and the table gives `GEO03` to area `$03` |
 | arrival square | the table has 16; the walk names one for 11 and **10 match**. It declines to name one for `$00`, `$0A`, `$0D`, `$0E` and `$17`, where two or three departing scripts disagree or none writes a square at all, and disagrees on `$16` |
 
-It reaches the 98.04% of script bytes `tools/eclwalk.py` already reached.
+It reaches the 98.04% of script bytes `tools/areas/eclwalk.py` already reached.
 `$16` is the one disagreement, and the two are reading different things:
 `ECL16`'s entry 4 places a party at (15, 0, 2) behind two
 `COMPARE [$49F2], n / IF= / EXIT` guards, so that is where a party arriving

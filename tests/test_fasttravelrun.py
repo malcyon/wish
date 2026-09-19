@@ -1,4 +1,4 @@
-"""`tools/fasttravelrun.py`'s judgement logic, against a fake monitor rather
+"""`tools/areas/fasttravelrun.py`'s judgement logic, against a fake monitor rather
 than a live emulator.
 
 The tool itself drives a real pool slot end to end -- boot, load a save,
@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from tools import fasttravelrun as FT  # noqa: E402
+from tools.areas import fasttravelrun as FT  # noqa: E402
 
 
 class FakeMonitor:

@@ -10,7 +10,7 @@ for, and the bank is a number this project mostly leaves at its default.
 So this measures it rather than arguing it.  On a pooled instance it
 
 * asks VICE for the banks it offers (`MON_CMD_BANKS_AVAILABLE`, the same
-  request `tools/wallpins.py`'s `bank_ids` makes);
+  request `tools/areas/wallpins.py`'s `bank_ids` makes);
 * writes a marker byte into `$D000` through the bank called `ram`;
 * reads `$D000` back through **every** bank, and says which ones show it.
 
@@ -46,7 +46,7 @@ from automap.paths import find_disks  # noqa: E402
 from tools import instance  # noqa: E402
 from tools.session import Session  # noqa: E402
 
-#: `MON_CMD_BANKS_AVAILABLE`.  `tools/wallpins.py` carries the same constant
+#: `MON_CMD_BANKS_AVAILABLE`.  `tools/areas/wallpins.py` carries the same constant
 #: and the same unpacking; this is the tool that says what the answer means.
 CMD_BANKS = 0x82
 
