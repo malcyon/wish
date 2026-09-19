@@ -1,5 +1,5 @@
 {
-  "description": "The two issue guards and the push guard, shared with Claude Code. One script each, no Codex-specific version: Codex sends the same `tool_name` and `tool_input` fields and honours exit code 2 with the reason on stderr. The context hand-off hook is not wired here: it reads Claude Code's `transcript_path`, which Codex does not send, and the orchestrate skill it serves is Claude Code's.",
+  "description": "The two issue guards and the push guard, shared with Claude Code. One script each, no Codex-specific version: Codex sends the same `tool_name` and `tool_input` fields and honours exit code 2 with the reason on stderr. The context-size notice hook is not wired here: it reads Claude Code's `transcript_path`, which Codex does not send, and the notice it prints is one Claude Code shows.",
   "hooks": {
     "PreToolUse": [
       {

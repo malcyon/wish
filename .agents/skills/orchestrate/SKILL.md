@@ -38,7 +38,6 @@ The definitions are .codex/agents/<name>.toml, generated from .claude/agents/<na
 - A subagent past its budget with no report is not waiting to be asked. Judge it by what it has written: the files it owns, and tools/registry/instance.py status if it holds a slot. If Codex gives you a way to stop it, stop it and relaunch with a tighter brief; if not, say so to Donald, who can. Check the pool afterwards, because a run it started with nohup keeps its slot after the agent dies.
 - You never edit a repository file yourself. A reviewer's finding goes back to the junior-dev that made the change, or to a new one, with the finding as the brief.
 - At most two review passes per change. After that, if the whole suite is green at the tip, commit the change and file the reviewer's remaining findings on the issue; if the suite is red, the change is not done, and it does not get pushed.
-- Past the hand-off line, launch nothing but code-reviewer and test-runner; a finding is filed on the issue and never fixed by hand.
 
 ## On start
 
@@ -56,4 +55,4 @@ Rewrite the row's status column whenever an issue starts, reports, is committed,
 
 ## Handing off
 
-Every turn resends your whole context, so a long session is the most expensive thing on this machine. Claude Code's copy of this skill has a hook that measures the context and refuses launches past 600k tokens. Codex sends its hooks nothing that names the session, so you have no such hook and cannot see the number yourself. Use the one count you can check: `git log origin/main --since="<the time this session started>" --oneline | wc -l` is the number of commits you have pushed. A Claude Code orchestrator crossed 300k after about twelve, so 600k is about twenty-four: **after the twenty-fourth pushed commit, hand off**: launch nothing new, let the agents in flight report, commit and push their work, and tell Donald to start a fresh session with /orchestrate. Do not wait for him to ask, do not round the count up to finish one more ticket, and do not hand a queue item to a finished agent by message instead. If a /goal is active, end it as part of the hand-off; a goal keeps a session working after its last subagent reports, which is the opposite of winding down.
+A session runs until its list is done or everything left is waiting on Donald. Codex has no hook to show a notice and no context-compaction step the way Claude Code does, but the orchestrator still never judges its own context size and never stops early for it.

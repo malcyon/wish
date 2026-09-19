@@ -10,7 +10,7 @@ because both were scoped to the builder's files by design. Only the full
 suite covers a test elsewhere in the tree that asserts the old behaviour,
 and the full suite was the step that was skipped.
 
-So, like `check-context-handoff.py`, this makes the rule mechanical. A
+So, like `check-orchestrator-edits.py`, this makes the rule mechanical. A
 `PreToolUse` hook on Bash: when the command is a `git push`, it looks for a
 marker `~/.cache/wish/testrun/<sha>.green`, which `test-runner` writes after
 `pytest`, `ruff` and `genui.py --check` all pass at that commit. The push is

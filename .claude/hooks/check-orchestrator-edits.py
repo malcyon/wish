@@ -23,8 +23,8 @@ when all three hold:
     allowed.
 
 Anything missing -- no `transcript_path`, an unreadable transcript, no
-repository root found -- lets the edit through, the way
-`check-context-handoff.py` does.
+repository root found -- lets the edit through: a hook with nothing to go on
+refuses nothing.
 
 Scanning the whole transcript for the marker has to be cheap enough to run
 on every edit, so the answer is cached in a stamp file under the temp
