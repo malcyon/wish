@@ -488,9 +488,10 @@ FULL_CITATION = re.compile(r"#\d{1,4} \((?:[^()]|\([^()]*\))*\)")
 #: URL fragment like `.../issues/136` does not).
 BARE_ISSUE_NUMBER = re.compile(r"(?<![\w/])#(\d{1,4})(?![\da-fA-F])")
 
-#: Where this rule applies: `docs/` and the listed READMEs, the prose that
-#: cites issues as project documentation. Three kinds of tracked `.md` stay
-#: outside it because a bare number is the content there:
+#: Where this rule applies: `docs/`, the listed READMEs and `tools/*/README.md`,
+#: the prose that cites issues as project documentation. Three kinds of tracked
+#: `.md` stay outside it, because a bare number is the content there or is
+#: written another way:
 #:
 #: * `AGENTS.md` writes a bare `#123` only as the example of what *not* to
 #:   write -- scanning it would delete the example.

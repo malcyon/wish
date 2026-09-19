@@ -11,18 +11,18 @@ A `PreToolUse` hook on Bash. Exit 2 blocks the call and feeds stderr back, so
 the body is rewritten before it is posted. It is not registered in
 `.claude/settings.json` at present.
 
-**What is checked.** The whole command text of any `gh issue create`,
-`gh issue comment` or `gh issue edit`, plus the contents of any `--body-file`
-that already exists. The command text is checked rather than only the parsed
-`--body`, because the usual form here writes a heredoc to a file and passes
-`--body-file` in the same call -- at which point the file does not exist yet
-and the body is only in the command string.
+**What is checked.** Any `gh issue comment`, and any `gh api` call against
+`issues/comments`, which is how an existing comment is corrected: the whole
+command text, plus the contents of any `--body-file` that already exists. The
+command text is checked rather than only the parsed `--body`, because the usual
+form here writes a heredoc to a file and passes `--body-file` in the same call
+-- at which point the file does not exist yet and the body is only in the
+command string.
 
-**The description of an issue is exempt**: it is read on the web, where
-GitHub shows the issue's title on hover. A **comment** is read in a terminal
-and in a notification mail, so it is not exempt -- which is why `gh issue
-create` is checked only for the parts that are not the body, and `gh issue
-comment` is checked whole.
+**Only a comment is checked.** The description of an issue, which `gh issue
+create` and `gh issue edit` write, is exempt: it is read on the web, where
+GitHub shows the issue's title on hover. A comment is read in a terminal and in
+a notification mail, so it is not exempt.
 """
 import importlib.util
 import json

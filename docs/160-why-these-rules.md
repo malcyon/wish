@@ -91,7 +91,7 @@ Cut provenance, lines 54-56 ("It does not govern code"):
 > numbers in code or docstrings. I care about it when you are communicating with
 > me."* A docstring is read by somebody already in that file, and
 
-### What tests, a hook and an agent definition said before they dropped their history
+### What tests and a hook said before they dropped their history
 
 The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
 
@@ -113,7 +113,7 @@ The passages below stood in code comments, a hook's docstring and an agent defin
 #:   `.claude/agents/changelog-writer.md`.
 ```
 
-Also (same file, inside test_no_bare_issue_number_where_a_citation_belongs, not yet edited; left in place, flagged for the orchestrator):
+Also, in the same file inside `test_no_bare_issue_number_where_a_citation_belongs`:
 
 ```
         # A generated page's citations come from the source it is built from --
@@ -739,7 +739,7 @@ the letter stood for:
 > one that files twenty-three and closes ten was choosing A
 > too often
 
-### What tests, a hook and an agent definition said before they dropped their history
+### What an agent definition said before it dropped its history
 
 The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
 
@@ -1310,7 +1310,7 @@ Each block is the original paragraph, verbatim, whose provenance was cut. The ru
 > running game produced the engine-written specimen the corpus had never had.
 >
 
-### What tests, a hook and an agent definition said before they dropped their history
+### What tests said before they dropped their history
 
 The passages below stood in code comments, a hook's docstring and an agent definition until the no-history rule removed them, verbatim.
 
